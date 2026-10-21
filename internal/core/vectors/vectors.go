@@ -1,0 +1,518 @@
+package vectors
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/netip"
+	"strings"
+	"time"
+
+	"golang.org/x/crypto/scrypt"
+
+	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/pepper"
+)
+
+const (
+	Spec      = "nylzo/v1"
+	Generator = "go run ./cmd/nylzo-vectors -out spec/vectors.json"
+	seed      = "nylzo/vectors/2026-10-22"
+	inlineMax = 70000
+)
+
+type File struct {
+	Spec      string     `json:"spec"`
+	Generator string     `json:"generator"`
+	Scrypt    []Scrypt   `json:"scrypt_rfc7914"`
+	Derive    []Derive   `json:"derive"`
+	Envelope  []Envelope `json:"envelope"`
+	Link      []Link     `json:"link"`
+	Meta      []MetaCase `json:"meta"`
+	Server    Server     `json:"server"`
+}
+
+type Scrypt struct {
+	Name     string `json:"name"`
+	Password string `json:"password"`
+	Salt     string `json:"salt"`
+	N        int    `json:"N"`
+	R        int    `json:"r"`
+	P        int    `json:"p"`
+	DKLen    int    `json:"dkLen"`
+	DK       string `json:"dk_hex"`
+	Heavy    bool   `json:"heavy"`
+}
+
+type Derive struct {
+	Name         string  `json:"name"`
+	ID           string  `json:"id"`
+	S            string  `json:"s"`
+	KDFID        int     `json:"kdf_id"`
+	Passphrase   *string `json:"passphrase,omitempty"`
+	HSalt        string  `json:"hsalt_hex"`
+	R            string  `json:"r_hex"`
+	SaltPW       string  `json:"salt_pw_hex"`
+	P            string  `json:"p_hex"`
+	K            string  `json:"k_hex"`
+	V            string  `json:"v_hex"`
+	M            string  `json:"m_hex"`
+	Wire         Wire    `json:"wire"`
+	Fragment     string  `json:"fragment"`
+	ReadHashHex  string  `json:"read_hash_hex"`
+	ManageHash   string  `json:"manage_hash_hex"`
+	VerifierHash *string `json:"verifier_hash_hex,omitempty"`
+}
+
+type Wire struct {
+	R            string  `json:"r"`
+	V            *string `json:"v,omitempty"`
+	M            string  `json:"m"`
+	ReadHash     string  `json:"read_hash"`
+	VerifierHash *string `json:"verifier_hash,omitempty"`
+	ManageHash   string  `json:"manage_hash"`
+}
+
+type Envelope struct {
+	Name         string       `json:"name"`
+	ID           string       `json:"id"`
+	S            string       `json:"s"`
+	KDFID        int          `json:"kdf_id"`
+	Passphrase   *string      `json:"passphrase,omitempty"`
+	Flags        int          `json:"flags"`
+	IV           string       `json:"iv_hex"`
+	OpensMax     int          `json:"opens_max"`
+	TTLSeconds   int          `json:"ttl_s"`
+	Text         *string      `json:"text,omitempty"`
+	File         *FileContent `json:"file,omitempty"`
+	MetaJSON     string       `json:"meta_json"`
+	PlaintextLen int          `json:"plaintext_len"`
+	AAD          string       `json:"aad_hex"`
+	ObjectLen    int          `json:"object_len"`
+	ObjectSHA256 string       `json:"object_sha256"`
+	Object       *string      `json:"object_b64,omitempty"`
+}
+
+type FileContent struct {
+	Name    string `json:"name"`
+	Mime    string `json:"mime"`
+	Size    int    `json:"size"`
+	Content string `json:"content"`
+}
+
+type Link struct {
+	Name  string  `json:"name"`
+	Input string  `json:"input"`
+	Valid bool    `json:"valid"`
+	ID    *string `json:"id,omitempty"`
+	KDFID *int    `json:"kdf_id,omitempty"`
+	S     *string `json:"s_hex,omitempty"`
+}
+
+type MetaCase struct {
+	Name      string  `json:"name"`
+	Input     string  `json:"input"`
+	Valid     bool    `json:"valid"`
+	Canonical *string `json:"canonical,omitempty"`
+	Text      *string `json:"text,omitempty"`
+	FileName  *string `json:"file_name,omitempty"`
+	FileMime  *string `json:"file_mime,omitempty"`
+	FileSize  *int64  `json:"file_size,omitempty"`
+}
+
+type Server struct {
+	Pepper           string      `json:"pepper_hex"`
+	PepperID         int         `json:"pepper_id"`
+	PreviousPepper   string      `json:"previous_pepper_hex"`
+	PreviousPepperID int         `json:"previous_pepper_id"`
+	MACs             []MACCase   `json:"macs"`
+	Buckets          []BucketOut `json:"buckets"`
+}
+
+type MACCase struct {
+	Purpose string `json:"purpose"`
+	Input   string `json:"input_hex"`
+	MAC     string `json:"mac_hex"`
+}
+
+type BucketOut struct {
+	Date   string `json:"date"`
+	Addr   string `json:"addr"`
+	Coarse bool   `json:"coarse"`
+	Bucket string `json:"bucket_hex"`
+}
+
+func det(label string, n int) []byte {
+	out := make([]byte, 0, n+32)
+	var ctr uint32
+	for len(out) < n {
+		h := sha256.New()
+		h.Write([]byte(seed))
+		h.Write([]byte(label))
+		var c [4]byte
+		binary.BigEndian.PutUint32(c[:], ctr)
+		h.Write(c[:])
+		out = append(out, h.Sum(nil)...)
+		ctr++
+	}
+	return out[:n]
+}
+
+func detID(label string) core.ID {
+	var id core.ID
+	copy(id[:], det("id/"+label, core.IDLen))
+	return id
+}
+
+func det32(label string) *[32]byte {
+	var s [32]byte
+	copy(s[:], det(label, 32))
+	return &s
+}
+
+func detIV(label string) [core.IVLen]byte {
+	var iv [core.IVLen]byte
+	copy(iv[:], det("iv/"+label, core.IVLen))
+	return iv
+}
+
+func counterBytes(n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = byte(i)
+	}
+	return b
+}
+
+func strp(s string) *string { return &s }
+
+func Generate() (*File, error) {
+	f := &File{Spec: Spec, Generator: Generator}
+	if err := f.scrypt(); err != nil {
+		return nil, err
+	}
+	if err := f.derive(); err != nil {
+		return nil, err
+	}
+	if err := f.envelope(); err != nil {
+		return nil, err
+	}
+	if err := f.link(); err != nil {
+		return nil, err
+	}
+	if err := f.meta(); err != nil {
+		return nil, err
+	}
+	if err := f.server(); err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+func Marshal(f *File) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(f); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (f *File) scrypt() error {
+	cases := []struct {
+		name, pw, salt string
+		n, r, p        int
+		heavy          bool
+	}{
+		{"rfc7914-1", "", "", 16, 1, 1, false},
+		{"rfc7914-2", "password", "NaCl", 1024, 8, 16, false},
+		{"rfc7914-3", "pleaseletmein", "SodiumChloride", 16384, 8, 1, false},
+		{"rfc7914-4", "pleaseletmein", "SodiumChloride", 1048576, 8, 1, true},
+	}
+	for _, c := range cases {
+		dk, err := scrypt.Key([]byte(c.pw), []byte(c.salt), c.n, c.r, c.p, 64)
+		if err != nil {
+			return err
+		}
+		f.Scrypt = append(f.Scrypt, Scrypt{Name: c.name, Password: c.pw, Salt: c.salt, N: c.n, R: c.r, P: c.p, DKLen: 64, DK: hex.EncodeToString(dk), Heavy: c.heavy})
+	}
+	return nil
+}
+
+type deriveCase struct {
+	name string
+	kdf  core.KDF
+	pw   *string
+}
+
+func deriveCases() []deriveCase {
+	return []deriveCase{
+		{"no-passphrase", core.KDFNone, nil},
+		{"scrypt-ascii", core.KDFScrypt, strp("correct horse battery staple")},
+		{"scrypt-nfc-composed", core.KDFScrypt, strp("héslo s češtinou")},
+		{"scrypt-nfc-decomposed", core.KDFScrypt, strp("héslo s češtinou")},
+		{"pbkdf2-ascii", core.KDFPBKDF2, strp("password")},
+		{"pbkdf2-emoji", core.KDFPBKDF2, strp("\U0001F510 tajné heslo")},
+		{"pbkdf2-empty", core.KDFPBKDF2, strp("")},
+	}
+}
+
+func (f *File) derive() error {
+	for _, c := range deriveCases() {
+		label := c.name
+		if strings.HasPrefix(c.name, "scrypt-nfc") {
+			label = "scrypt-nfc"
+		}
+		id := detID(label)
+		s := det32("s/" + label)
+		m := det32("m/" + label)
+		pw := ""
+		if c.pw != nil {
+			pw = *c.pw
+		}
+		link, err := core.DeriveLink(id, s)
+		if err != nil {
+			return err
+		}
+		p, err := core.DerivePassphraseKey(c.kdf, pw, &link.SaltPW)
+		if err != nil {
+			return err
+		}
+		content, err := core.DeriveContent(id, s, p)
+		if err != nil {
+			return err
+		}
+		hs := core.HSalt(id)
+		rh := core.Hash(link.R[:])
+		mh := core.Hash(m[:])
+		d := Derive{
+			Name: c.name, ID: id.String(), S: hex.EncodeToString(s[:]), KDFID: int(c.kdf), Passphrase: c.pw,
+			HSalt: hex.EncodeToString(hs[:]), R: hex.EncodeToString(link.R[:]), SaltPW: hex.EncodeToString(link.SaltPW[:]),
+			P: hex.EncodeToString(p), K: hex.EncodeToString(content.K[:]), V: hex.EncodeToString(content.V[:]), M: hex.EncodeToString(m[:]),
+			Fragment:    core.Fragment(c.kdf, s),
+			ReadHashHex: hex.EncodeToString(rh[:]), ManageHash: hex.EncodeToString(mh[:]),
+			Wire: Wire{R: core.Encode(link.R[:]), M: core.Encode(m[:]), ReadHash: core.Encode(rh[:]), ManageHash: core.Encode(mh[:])},
+		}
+		if c.kdf != core.KDFNone {
+			vh := core.Hash(content.V[:])
+			d.VerifierHash = strp(hex.EncodeToString(vh[:]))
+			d.Wire.V = strp(core.Encode(content.V[:]))
+			d.Wire.VerifierHash = strp(core.Encode(vh[:]))
+		}
+		f.Derive = append(f.Derive, d)
+	}
+	return nil
+}
+
+type envCase struct {
+	name     string
+	kdf      core.KDF
+	pw       *string
+	opens    uint16
+	ttl      uint32
+	text     *string
+	fileName string
+	fileMime string
+	fileSize int
+	fileHex  bool
+}
+
+func envCases() []envCase {
+	return []envCase{
+		{name: "text-ascii", kdf: core.KDFNone, opens: 1, ttl: 86400, text: strp("hello nylzo")},
+		{name: "text-escapes", kdf: core.KDFNone, opens: 2, ttl: 3600, text: strp("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash   line sep \U0001F600")},
+		{name: "text-exact-4096", kdf: core.KDFNone, opens: 1, ttl: 86400, text: strp(strings.Repeat("a", 4075))},
+		{name: "text-4097", kdf: core.KDFNone, opens: 1, ttl: 86400, text: strp(strings.Repeat("a", 4076))},
+		{name: "file-empty", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "empty.bin", fileMime: "application/octet-stream", fileSize: 0},
+		{name: "file-one-byte", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "b.bin", fileMime: "application/octet-stream", fileSize: 1, fileHex: true},
+		{name: "file-65536", kdf: core.KDFNone, opens: 3, ttl: 259200, fileName: "block.bin", fileMime: "", fileSize: 65536},
+		{name: "file-and-text-pbkdf2", kdf: core.KDFPBKDF2, pw: strp("password"), opens: 1, ttl: 86400, text: strp("příloha v příloze"), fileName: "příloha č.1.pdf", fileMime: "application/pdf", fileSize: 1000, fileHex: true},
+		{name: "file-5mib", kdf: core.KDFNone, opens: 1, ttl: 604800, fileName: "big.bin", fileMime: "application/octet-stream", fileSize: core.MaxFileBytes},
+		{name: "scrypt-text", kdf: core.KDFScrypt, pw: strp("correct horse battery staple"), opens: 1, ttl: 86400, text: strp("scrypt protected")},
+		{name: "scrypt-nfc-decomposed", kdf: core.KDFScrypt, pw: strp("héslo s češtinou"), opens: 1, ttl: 86400, text: strp("nfc")},
+		{name: "pbkdf2-empty-passphrase", kdf: core.KDFPBKDF2, pw: strp(""), opens: 1, ttl: 86400, text: strp("empty passphrase")},
+		{name: "opens-10-ttl-7d", kdf: core.KDFNone, opens: 10, ttl: 604800, text: strp("many opens")},
+	}
+}
+
+func (f *File) envelope() error {
+	for _, c := range envCases() {
+		id := detID("env/" + c.name)
+		s := det32("env/s/" + c.name)
+		pw := ""
+		if c.pw != nil {
+			pw = *c.pw
+		}
+		_, content, err := core.DeriveAll(id, s, c.kdf, pw)
+		if err != nil {
+			return err
+		}
+		h := core.Header{Version: core.Version, KDF: c.kdf, IV: detIV(c.name)}
+		pol := core.Policy{OpensMax: c.opens, TTLSeconds: c.ttl}
+		payload := core.Payload{Meta: core.Meta{Text: c.text}}
+		var fc *FileContent
+		if c.fileName != "" {
+			payload.Meta.File = &core.FileMeta{Name: c.fileName, Mime: c.fileMime, Size: int64(c.fileSize)}
+			payload.File = counterBytes(c.fileSize)
+			fc = &FileContent{Name: c.fileName, Mime: c.fileMime, Size: c.fileSize, Content: "counter"}
+			if c.fileHex {
+				fc.Content = hex.EncodeToString(payload.File)
+			}
+		}
+		metaJSON, err := core.EncodeMeta(payload.Meta)
+		if err != nil {
+			return err
+		}
+		object, err := core.Seal(&content.K, h, id, pol, payload)
+		if err != nil {
+			return err
+		}
+		sum := sha256.Sum256(object)
+		e := Envelope{
+			Name: c.name, ID: id.String(), S: hex.EncodeToString(s[:]), KDFID: int(c.kdf), Passphrase: c.pw, Flags: 0,
+			IV: hex.EncodeToString(h.IV[:]), OpensMax: int(c.opens), TTLSeconds: int(c.ttl), Text: c.text, File: fc,
+			MetaJSON: string(metaJSON), PlaintextLen: len(object) - core.HeaderLen - core.TagLen,
+			AAD: hex.EncodeToString(core.AAD(h, id, pol)), ObjectLen: len(object), ObjectSHA256: hex.EncodeToString(sum[:]),
+		}
+		if len(object) <= inlineMax {
+			e.Object = strp(core.Encode(object))
+		}
+		f.Envelope = append(f.Envelope, e)
+	}
+	return nil
+}
+
+func (f *File) link() error {
+	id := detID("link")
+	s := det32("link/s")
+	base := "https://nylzo.example"
+	valid := func(name string, kdf core.KDF) {
+		k := int(kdf)
+		f.Link = append(f.Link, Link{Name: name, Input: core.FormatLink(base, id, kdf, s), Valid: true, ID: strp(id.String()), KDFID: &k, S: strp(hex.EncodeToString(s[:]))})
+	}
+	valid("valid-kdf0", core.KDFNone)
+	valid("valid-kdf1", core.KDFScrypt)
+	valid("valid-kdf2", core.KDFPBKDF2)
+	frag := core.Fragment(core.KDFScrypt, s)
+	sEnc := core.Encode(s[:])
+	idEnc := id.String()
+	invalid := func(name, input string) {
+		f.Link = append(f.Link, Link{Name: name, Input: input, Valid: false})
+	}
+	invalid("fragment-version-2", base+"/m/"+idEnc+"#2.1."+sEnc)
+	invalid("fragment-kdf-3", base+"/m/"+idEnc+"#1.3."+sEnc)
+	invalid("fragment-missing", base+"/m/"+idEnc)
+	invalid("fragment-two-parts", base+"/m/"+idEnc+"#1."+sEnc)
+	invalid("secret-42-chars", base+"/m/"+idEnc+"#1.1."+sEnc[:42])
+	invalid("secret-44-chars", base+"/m/"+idEnc+"#1.1."+sEnc+"A")
+	invalid("secret-padding", base+"/m/"+idEnc+"#1.1."+sEnc+"=")
+	invalid("secret-non-canonical-last-char", base+"/m/"+idEnc+"#1.1."+sEnc[:42]+nonCanonicalLast(sEnc[42]))
+	invalid("secret-std-base64-alphabet", base+"/m/"+idEnc+"#1.1."+strings.Map(func(r rune) rune {
+		switch r {
+		case '-':
+			return '+'
+		case '_':
+			return '/'
+		}
+		return r
+	}, sEnc[:42])+"+")
+	invalid("id-21-chars", base+"/m/"+idEnc[:21]+"#"+frag)
+	invalid("id-23-chars", base+"/m/"+idEnc+"A#"+frag)
+	invalid("id-non-canonical-last-char", base+"/m/"+idEnc[:21]+nonCanonicalLast(idEnc[21])+"#"+frag)
+	invalid("path-not-m", base+"/x/"+idEnc+"#"+frag)
+	invalid("path-trailing-slash", base+"/m/"+idEnc+"/#"+frag)
+	return nil
+}
+
+func nonCanonicalLast(c byte) string {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	i := strings.IndexByte(alphabet, c)
+	return string(alphabet[i+1])
+}
+
+func (f *File) meta() error {
+	add := func(name, input string, valid bool) *MetaCase {
+		mc := MetaCase{Name: name, Input: input, Valid: valid}
+		if valid {
+			m, err := core.DecodeMeta([]byte(input))
+			if err != nil {
+				panic(fmt.Sprintf("vectors: meta %q must decode: %v", name, err))
+			}
+			can, err := core.EncodeMeta(m)
+			if err != nil {
+				panic(fmt.Sprintf("vectors: meta %q must encode: %v", name, err))
+			}
+			mc.Canonical = strp(string(can))
+			mc.Text = m.Text
+			if m.File != nil {
+				mc.FileName = strp(m.File.Name)
+				mc.FileMime = strp(m.File.Mime)
+				size := m.File.Size
+				mc.FileSize = &size
+			}
+		} else if _, err := core.DecodeMeta([]byte(input)); err == nil {
+			panic(fmt.Sprintf("vectors: meta %q must be rejected", name))
+		}
+		f.Meta = append(f.Meta, mc)
+		return &f.Meta[len(f.Meta)-1]
+	}
+	add("text-only", `{"v":1,"text":"ahoj"}`, true)
+	add("file-only", `{"v":1,"file":{"name":"a.txt","mime":"text/plain","size":3}}`, true)
+	add("text-and-file", `{"v":1,"text":"t","file":{"name":"a.txt","mime":"text/plain","size":0}}`, true)
+	add("escapes-canonical", `{"v":1,"text":"q\"b\\s\b\t\n\f\r\u0001\u001f/é  "}`, true)
+	add("whitespace-and-order", "{ \"text\" : \"x\" ,\n \"v\" : 1 }", true)
+	add("unknown-key-ignored", `{"v":1,"text":"x","extra":{"nested":[1,2,3]}}`, true)
+	add("duplicate-key-last-wins", `{"v":1,"text":"first","text":"second"}`, true)
+	add("escaped-slash-and-unicode", `{"v":1,"text":"a\/bAé"}`, true)
+	add("mime-missing", `{"v":1,"file":{"name":"a","size":1}}`, true)
+	add("missing-v", `{"text":"x"}`, false)
+	add("v-2", `{"v":2,"text":"x"}`, false)
+	add("v-string", `{"v":"1","text":"x"}`, false)
+	add("empty-object", `{"v":1}`, false)
+	add("not-object", `[1]`, false)
+	add("trailing-garbage", `{"v":1,"text":"x"} {}`, false)
+	add("name-slash", `{"v":1,"file":{"name":"a/b","mime":"","size":1}}`, false)
+	add("name-backslash", `{"v":1,"file":{"name":"a\\b","mime":"","size":1}}`, false)
+	add("name-control", `{"v":1,"file":{"name":"a\u0000b","mime":"","size":1}}`, false)
+	add("name-empty", `{"v":1,"file":{"name":"","mime":"","size":1}}`, false)
+	add("name-256-bytes", `{"v":1,"file":{"name":"`+strings.Repeat("n", 256)+`","mime":"","size":1}}`, false)
+	add("size-negative", `{"v":1,"file":{"name":"a","mime":"","size":-1}}`, false)
+	add("size-float", `{"v":1,"file":{"name":"a","mime":"","size":1.0}}`, false)
+	add("size-string", `{"v":1,"file":{"name":"a","mime":"","size":"1"}}`, false)
+	add("size-over-limit", fmt.Sprintf(`{"v":1,"file":{"name":"a","mime":"","size":%d}}`, core.MaxFileBytes+1), false)
+	add("text-over-limit", `{"v":1,"text":"`+strings.Repeat("x", core.MaxTextBytes+1)+`"}`, false)
+	add("text-at-limit", `{"v":1,"text":"`+strings.Repeat("x", core.MaxTextBytes)+`"}`, true)
+	add("mime-256-bytes", `{"v":1,"file":{"name":"a","mime":"`+strings.Repeat("m", 256)+`","size":1}}`, false)
+	return nil
+}
+
+func (f *File) server() error {
+	cur := det("pepper/current", 32)
+	prev := det("pepper/previous", 32)
+	ring, err := pepper.NewRing(cur, prev)
+	if err != nil {
+		return err
+	}
+	curKey, _ := pepper.New(cur)
+	prevKey, _ := pepper.New(prev)
+	f.Server = Server{Pepper: hex.EncodeToString(cur), PepperID: int(curKey.ID()), PreviousPepper: hex.EncodeToString(prev), PreviousPepperID: int(prevKey.ID())}
+	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.IP, pepper.PoW} {
+		input := det("mac-input/"+string(p), 32)
+		mac, _ := ring.MAC(p, input)
+		f.Server.MACs = append(f.Server.MACs, MACCase{Purpose: string(p), Input: hex.EncodeToString(input), MAC: hex.EncodeToString(mac[:])})
+	}
+	day := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	for _, a := range []string{"203.0.113.77", "203.0.113.78", "203.0.113.200", "::ffff:203.0.113.77", "2001:db8:1:2:3:4:5:6", "2001:db8:1:2:ffff:ffff:ffff:ffff", "2001:db8:1:3::1", "2001:db8:2::1"} {
+		addr := netip.MustParseAddr(a)
+		for _, coarse := range []bool{false, true} {
+			b := ring.Bucket(day, addr, coarse)
+			f.Server.Buckets = append(f.Server.Buckets, BucketOut{Date: "2026-10-22", Addr: a, Coarse: coarse, Bucket: hex.EncodeToString(b[:])})
+		}
+	}
+	return nil
+}
