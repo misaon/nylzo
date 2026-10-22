@@ -51,6 +51,7 @@ var (
 	errTooLarge       = apiError{Error: "too_large"}
 	errUnavailable    = apiError{Error: "unavailable"}
 	errPoWRequired    = apiError{Error: "pow"}
+	errIDToken        = apiError{Error: "id_token"}
 	errInternal       = apiError{Error: "internal"}
 )
 

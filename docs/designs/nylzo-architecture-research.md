@@ -199,7 +199,7 @@ Kanál odkazu: mimo systém; kdo odkaz vidí, je z pohledu systému příjemce.
 
 Z1. Důvěrnost proti pasivnímu úniku (T2) a proti serveru, který nepodvrhne klienta. Platí kryptograficky, pokud S neopustí klienta a klient je nepodvržený. To je definice „end-to-end šifrování“ v tomto dokumentu.
 Z2. Důvěrnost proti serveru, edge poskytovatele nebo build pipeline, které podvrhnou klientský kód (T3 aktivní, T4, T13 aktivní). Neplatí. Webový klient je vložený do stejné binárky jako server, takže kdo změní server, změní klienta. Zveřejněné hashe a reprodukovatelné sestavení ověřují vydání, ne to, co konkrétní návštěvník dostal; cílený útočník servíruje čistý bundle ověřovateli a podvržený oběti. Co pomáhá: ověřené vydání CLI pro každého, kdo provozovateli nevěří; nezávislý monitor z jiné sítě, který každou hodinu stáhne bundle a porovná hash s vydáním (odhalí plošnou, ne cílenou záměnu); kontroly na straně zdroje (chráněné větve, povinná revize, podepsané tagy, lokální reprodukce hashe maintainerem); ve druhé verzi oddělený statický origin pro klienta (OD23), který nutí útočníka kompromitovat dvě strany. Mechanismy transparentnosti webového kódu (WAICT) jsou v roce 2026 jen prototyp ve Firefox Nightly (příloha D); manifest ve stylu WAICT zveřejníme na well-known cestě už teď, aby opt-in později nic nestál.
-Z3. Integrita a původ obsahu. AES-GCM odhalí změnu ciphertextu; politika zprávy v AAD odhalí změnu metadat. Server bez S nemůže podvrhnout dešifrovatelný obsah. Příjemce ví, že obsah vytvořil držitel S (tvůrce odkazu). Není to ověření identity. Po smazání náhrobku (7 dní po konci zprávy) je id znovu volné, takže držitel starého odkazu může pod stejným id vytvořit nový obsah; přijaté riziko výměnou za to, že server o zprávě nic nedrží déle (review 22. 10. 2026).
+Z3. Integrita a původ obsahu. AES-GCM odhalí změnu ciphertextu; politika zprávy v AAD odhalí změnu metadat. Server bez S nemůže podvrhnout dešifrovatelný obsah. Příjemce ví, že obsah vytvořil držitel S (tvůrce odkazu). Není to ověření identity. Id zprávy vydává server (náhodných 128 bitů s tokenem platným 10 minut), takže ani po smazání náhrobku nikdo nezíská id staré zprávy a nemůže pod starým odkazem vytvořit nový obsah. Server si vydaná id nepamatuje, o zprávě tedy dál nic nedrží déle než 7 dní po jejím konci (review 22. 10. 2026, D2; nahrazuje dřívější přijaté riziko).
 Z4. Jednorázovost. Vynucuje ji server atomicky; platí jen pro poctivý server. Porušení lze odhalit jen nepřímo.
 Z5. Ukončení přístupu. Okamžité po spotřebování, zrušení, smazání nebo expiraci: server přestane ciphertext vydávat.
 Z6. Odstranění aktivních dat. Okamžité při burn, cancel a ack posledního lease; po vypršení posledního lease bez ack do konce lease plus interval úklidu (5 min self-hosting, 15 min veřejná instance); metadata přecházejí v náhrobek na 7 dní; lifecycle pravidlo v úložišti a denní porovnání objektů s řádky jsou pojistky.
@@ -399,7 +399,7 @@ Rozsah „hostováno v EU“ po složkách (doporučení, z přílohy G):
 
 Datové toky:
 
-1. Vytvoření: klient generuje id, S a M, odvodí R, K, V; zašifruje obálku; POST ciphertext + h(R) + h(V) + h(M) + politika. Server uloží blob a metadata a vrátí potvrzení. Klient složí URL a ukáže ji s M.
+1. Vytvoření: klient si z `GET /api/v1/instance` vezme id a token id, vygeneruje S a M, odvodí R, K, V; zašifruje obálku; POST ciphertext + h(R) + h(V) + h(M) + politika. Server uloží blob a metadata a vrátí potvrzení. Klient složí URL a ukáže ji s M.
 2. Čtení: klient načte statickou stránku (nic se nespotřebuje); z fragmentu odvodí R; GET metadata s R (nic se nespotřebuje); po kliku a případné passphrase POST claim s R a V; server atomicky sníží počítadlo a vydá obálku s lease; klient dešifruje v paměti, ověří politiku v AAD, zobrazí nebo nabídne stažení; po dešifrování odstraní fragment z aktuálního záznamu historie.
 3. Zrušení a stav: odesílatel s M. Smazání příjemcem s R.
 4. Úklid: každý požadavek kontroluje expiraci a volá ReleaseIfDone pro dané id; ack a časovač na konci lease volají ReleaseIfDone; pravidelný úklid (goroutine u self-hostingu, Serverless Job na veřejné instanci) maže prošlé zprávy, lease, náhrobky a bloby vyčerpaných zpráv; lifecycle pravidlo v Object Storage je pojistka.
@@ -476,13 +476,13 @@ Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní v
 
 ### Značení
 
-- id: 16 náhodných bajtů (CSPRNG klienta), base64url bez paddingu, 22 znaků. V cestě URL, smí do logů.
+- id: 16 náhodných bajtů z CSPRNG serveru, base64url bez paddingu, 22 znaků. Klient ho dostane spolu s tokenem id v odpovědi `GET /api/v1/instance` a sám id nikdy negeneruje. V cestě URL, do logů nikdy (review 22. 10. 2026, D2).
 - S: 32 náhodných bajtů, jen ve fragmentu URL jako `1.{kdf_id}.` + base64url(S) (43 znaků). Pokud poslední znak kódování je `-` nebo `_`, klient S vygeneruje znovu (některé autolinkery takový znak odříznou; cena 0,05 bitu).
 - kdf_id ve fragmentu: 0 bez passphrase, 1 scrypt, 2 PBKDF2. Příjemce bere profil KDF jen z fragmentu; hodnotu ze serveru použije jen k zobrazení a při neshodě odmítne pokračovat. Důvod: kdyby profil určoval server, mohl by zlý server nebo edge vynutit levnější PBKDF2 ověřovač pro zprávu chráněnou scryptem (nález kryptografické kontroly).
 - P: klíč z passphrase (32 bajtů), prázdný řetězec bez passphrase.
 - M: správcovský token, 32 náhodných bajtů, generuje klient; při vytvoření posílá h(M), při cancel a status M. Server nikdy žádné tajemství odesílatele nevyrábí, takže edge ani paměť procesu nedrží schopnost zrušení od první sekundy.
 - h(x) = SHA-256(x). HKDF = HKDF-SHA-256. Porovnání v konstantním čase. Klient odvozuje K jako neextrahovatelný CryptoKey (deriveKey, extractable = false); deriveBits jen pro R, V a sůl.
-- pepper: 32 bajtů serverového tajemství z konfigurace (`NYLZO_PEPPER`), nikdy v databázi. Klíče podle účelu: k_účel = HKDF(pepper, "nylzo/v1/mac/" + účel) pro read, verifier, manage, lease a ip; mac_účel(x) = HMAC-SHA-256(k_účel, x). Každý řádek nese pepper_id (1 B); `NYLZO_PEPPER_PREVIOUS` dovolí ověřovat starým a zapisovat novým klíčem, takže rotace po podezření z úniku neukončí živé zprávy (řádky zanikají do 7 dní, nic se nepřepisuje). Ztráta obou pepperů znamená, že server žádný token neověří a živé zprávy zaniknou (ztráta dostupnosti, ne důvěrnosti).
+- pepper: 32 bajtů serverového tajemství z konfigurace (`NYLZO_PEPPER`), nikdy v databázi. Klíče podle účelu: k_účel = HKDF(pepper, "nylzo/v1/mac/" + účel) pro read, verifier, manage, lease, ip, pow a id; mac_účel(x) = HMAC-SHA-256(k_účel, x). Každý řádek nese pepper_id (1 B); `NYLZO_PEPPER_PREVIOUS` dovolí ověřovat starým a zapisovat novým klíčem, takže rotace po podezření z úniku neukončí živé zprávy (řádky zanikají do 7 dní, nic se nepřepisuje). Ztráta obou pepperů znamená, že server žádný token neověří a živé zprávy zaniknou (ztráta dostupnosti, ne důvěrnosti).
 
 ### Odvození klíčů a tokenů
 
@@ -537,12 +537,14 @@ Cesta /m/{id} vrací statický klient; fragment nikdy neodchází na server. Ver
 ```
 POST /api/v1/messages
 Content-Type: application/octet-stream
-X-Nylzo-Create: base64url(JSON {id, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
+X-Nylzo-Create: base64url(JSON {id, id_token, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
 X-Nylzo-Pow: token   (jen když instance hlásí pow.required)
 tělo: objekt
 ```
 
-Server v tomto pořadí: parsování hlavičky a kontrola syntaxe id (přesně 22 znaků base64url); Content-Length povinný (411 bez něj), rovný `size` a pod limitem (400, 413) ještě před čtením těla; atomické zvýšení čítačů rate limitu (pokus se počítá i při selhání); PoW, pokud je zapnutý; až nakonec kontrola, že id neexistuje v `messages` ani `tombstones` (409 shodná pro obojí). Pořadí je záměrné: 409 je orákulum existence pro držitele id, a díky 128 bitům entropie je neškodné, ale nesmí být zdarma. Pak uloží blob a metadata (expires_at = now + ttl_s) a vrátí `201 {id, expires_at}`. Klient složí URL a nabídne uložení M (prohlížeč si M uloží do localStorage pod id do expirace zprávy plus 7 dní náhrobku; stránka /sent zobrazí seznam odeslaných zpráv z localStorage s jejich stavem přes endpoint status a umožní záznam smazat ručně; CLI vypíše M jen na výslovný přepínač).
+Token id: `base64url(u32be(expires_at) || HMAC-SHA-256(k_id, id || u32be(expires_at))[0:16])`, 27 znaků, platnost 10 minut od vydání (tolerance 5 s pro rozdíl hodin instancí), ověření v konstantním čase pod aktuálním pepperem. Server vydaná id neukládá; druhé vytvoření se stejným id skončí 409.
+
+Server v tomto pořadí: parsování hlavičky, kontrola syntaxe id (přesně 22 znaků base64url) a tokenu id (403 `id_token`); Content-Length povinný (411 bez něj), rovný `size` a pod limitem (400, 413) ještě před čtením těla; atomické zvýšení čítačů rate limitu (pokus se počítá i při selhání); PoW, pokud je zapnutý; až nakonec kontrola, že id neexistuje v `messages` ani `tombstones` (409 shodná pro obojí). Pořadí je záměrné: 409 je orákulum existence pro držitele id, a díky 128 bitům entropie je neškodné, ale nesmí být zdarma. Pak uloží blob a metadata (expires_at = now + ttl_s) a vrátí `201 {id, expires_at}`. Klient složí URL a nabídne uložení M (prohlížeč si M uloží do localStorage pod id do expirace zprávy plus 7 dní náhrobku; stránka /sent zobrazí seznam odeslaných zpráv z localStorage s jejich stavem přes endpoint status a umožní záznam smazat ručně; CLI vypíše M jen na výslovný přepínač).
 
 ### Metadata (nekonzumující)
 

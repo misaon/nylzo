@@ -15,7 +15,6 @@ import {
   formatLink,
   fragment,
   idToString,
-  newId,
   newSecret,
   parseFragment,
   parseId,
@@ -23,6 +22,7 @@ import {
   parseLink,
   parsePath,
 } from '../src/index.ts';
+import { newId } from '../src/ids.ts';
 
 const base = 'https://nylzo.example';
 
@@ -178,5 +178,13 @@ describe('kdf identifiers', () => {
     for (const text of ['3', '01', '', ' 1', '1 ', '-1', '1.0']) {
       expect(() => parseKdfId(text), text).toThrow(KdfError);
     }
+  });
+});
+
+describe('message ids', () => {
+  it('the public API offers no way to mint a message id, the server issues them', async () => {
+    const api: Record<string, unknown> = await import('../src/index.ts');
+    expect(api['newId']).toBeUndefined();
+    expect(typeof api['parseId']).toBe('function');
   });
 });

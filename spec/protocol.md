@@ -35,7 +35,7 @@ A canonical 43-character encoding of 32 bytes never ends in `-` or `_`, so the d
 
 ### 1.2 Identifiers and secrets
 
-- `id`: 16 bytes from the client CSPRNG. Appears in the URL path and MAY appear in logs.
+- `id`: 16 bytes from the server CSPRNG, issued together with an id token by `GET /api/v1/instance` (§5.4, §6.6). Appears in the URL path and never in logs.
 - `S`: 32 bytes from the client CSPRNG. Appears only in the URL fragment. The server MUST never receive `S`.
 - `M`: 32 bytes from the client CSPRNG (manage token). The client sends `h(M)` at creation and `M` on cancel and status.
 - `L`: 32 bytes from the server CSPRNG (lease token), issued by claim.
@@ -116,7 +116,7 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 ### 5.1 Pepper and purpose keys
 
 - `pepper`: 32 bytes of configuration (`NYLZO_PEPPER`), never stored in the database.
-- `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `ip`, `pow`.
+- `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `ip`, `pow`, `id`.
 - `mac_purpose(x) = HMAC-SHA-256(k_purpose, x)`.
 - `pepper_id = SHA-256("nylzo/v1/pepper-id" || pepper)[0]` (one byte). Every row that stores a mac carries the `pepper_id` of the key that produced it.
 - Rotation: `NYLZO_PEPPER_PREVIOUS` holds the previous pepper. The server writes with the current pepper and verifies each row with the pepper whose `pepper_id` matches the row; a row whose `pepper_id` matches neither verifies as invalid (with the same work as a valid row). The server MUST refuse to start when both peppers share a `pepper_id`. The maximum TTL is 7 days, so no rewriting is needed: after 7 days no live message carries the previous `pepper_id`. Tombstones keep it for another 7 days; dropping the previous pepper earlier turns those tombstones into unknown ids (404) without affecting any live message. An expired message becomes a tombstone when the next request or sweep ends it, so keeping the previous pepper for 14 days plus one sweep interval preserves every tombstone state. A rotation also changes `k_ip` and with it every address bucket (§5.3).
@@ -153,6 +153,18 @@ bucket    = HMAC-SHA-256(k_ip, input)[0:3]
 
 The date rotates at 00:00 UTC; all instances share the derivation because they share the pepper. Backoff state keyed on a bucket resets at that rotation (accepted). `k_ip` comes from the current pepper only, so a pepper rotation resets every bucket in the same way: the rate counters, the passphrase backoff and the abuse cap per range start again. This is accepted too, because the daily cap of 100 failures per message still holds. With `NYLZO_PASSPHRASE_IP_SCOPE=off` the passphrase backoff uses a constant bucket (per message only).
 
+### 5.4 Id tokens
+
+The server issues every message id, so nobody can choose the id of an earlier message and publish new content under its old link once its tombstone is gone, and a create cannot test whether an arbitrary id exists.
+
+```
+id_token = base64url( u32be(expires_at) || HMAC-SHA-256(k_id, id || u32be(expires_at))[0:16] )      20 bytes, 27 characters
+```
+
+- `expires_at` is the issue time plus 600 s, in Unix seconds. The id is 16 bytes from the server CSPRNG.
+- A token is valid when the tag verifies in constant time under the current pepper and `0 ≤ expires_at − now ≤ 605 s` (5 s for clock differences between instances). A pepper rotation invalidates tokens issued before it; the client fetches a new one.
+- The server keeps no record of issued ids. A token is not single-use, but its id can be stored only once: a second create with the same id answers 409.
+
 ## 6. HTTP API
 
 Base path `/api/v1`. Request and response bodies are JSON (`application/json; charset=utf-8`) except where noted. Timestamps are RFC 3339 in UTC. Binary values use canonical base64url (§1.1). `Authorization: Bearer {token}` carries `R` or `M` as 43 base64url characters.
@@ -179,6 +191,7 @@ No endpoint accepts or returns plaintext, `S`, `K` or a passphrase.
 | 400 | `{"error":"bad_request"}` | malformed `X-Nylzo-Create` (including the id inside it) or request body, policy outside instance limits, `size` ≠ Content-Length, version or kdf mismatch, an abuse report without `Content-Type: application/json` |
 | 403 | `{"error":"passphrase","retry_after":N,"attempts_left":N}` | wrong verifier or backoff active; no open consumed |
 | 403 | `{"error":"pow"}` | PoW required and missing, invalid or already used |
+| 403 | `{"error":"id_token"}` | create with an id token that is missing, invalid or expired; the client fetches a new id from `GET /api/v1/instance` |
 | 404 | `{"error":"not_found"}` | unknown id, wrong R, wrong M, and a malformed id or token in the path or `Authorization` (indistinguishable) |
 | 409 | `{"error":"conflict"}` | id exists in `messages` or `tombstones` (identical for both) |
 | 410 | `{"error":"gone","state":"opened\|expired\|cancelled\|deleted"}` | message ended |
@@ -197,17 +210,18 @@ The 404 response (status, headers, body bytes) MUST be byte-identical for an unk
 POST /api/v1/messages
 Content-Type: application/octet-stream
 Content-Length: {size}
-X-Nylzo-Create: base64url(JSON {id, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
+X-Nylzo-Create: base64url(JSON {id, id_token, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
 X-Nylzo-Pow: {token}            only when the instance reports pow.required
 body: object (§3)
 ```
 
-Server order of checks, each before reading the body: (1) parse the header and the id syntax; (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap: 503 when the counter has reached the cap, PoW when it is at or above 50 % (403, §8.1), then one conditional increment reserves a slot (503 when none is left by then). A request that reserved a slot at or above 50 % without a verified PoW returns the slot and answers 403 `pow`; (5) id absent from `messages` and `tombstones` (409, same for both). The body may take `max(120 s, size / 16000 s)` to arrive, which is 128 kbit/s for the whole object. The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `created_at` and `expires_at = created_at + ttl_s` taken when the upload has been stored, so a slow upload does not use up the TTL, and answers:
+Server order of checks, each before reading the body: (1) parse the header and the id syntax, then verify the id token (§5.4, 403 `id_token`); (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap: 503 when the counter has reached the cap, PoW when it is at or above 50 % (403, §8.1), then one conditional increment reserves a slot (503 when none is left by then). A request that reserved a slot at or above 50 % without a verified PoW returns the slot and answers 403 `pow`; (5) id absent from `messages` and `tombstones` (409, same for both). The body may take `max(120 s, size / 16000 s)` to arrive, which is 128 kbit/s for the whole object. The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `created_at` and `expires_at = created_at + ttl_s` taken when the upload has been stored, so a slow upload does not use up the TTL, and answers:
 
 ```
 201 {"id":"…","expires_at":"…"}
 ```
 
+- `id` and `id_token` MUST come from one `GET /api/v1/instance` response (§5.4). A client never generates an id.
 - `verifier_hash` MUST be present exactly when `kdf_id ≠ 0`.
 - `opens_max` MUST be between 1 and the instance maximum; `ttl_s` between 60 and the instance maximum. The server MUST NOT clamp a policy; it rejects with 400.
 - The header JSON MUST NOT contain unknown keys.
@@ -270,7 +284,7 @@ Blob downloads count in the read rate limit and are capped at 3 per lease. The b
 POST /api/v1/messages/{id}/burn     Bearer R → 204; state = deleted, blob deleted
 POST /api/v1/messages/{id}/cancel   Bearer M → 204; state = cancelled, blob deleted
 GET  /api/v1/messages/{id}/status   Bearer M → 200 {"state":"…","opens_used":N,"opens_max":N,"created_at":"…","expires_at":"…","first_opened_at":"…"?,"ended_at":"…"?,"failed_passphrase_attempts":N}
-GET  /api/v1/instance               → 200 {"limits":{"max_file_bytes":N,"max_text_bytes":N,"max_object_bytes":N,"max_ttl_s":N,"default_ttl_s":N,"max_opens":N,"default_kdf_id":N},"pow":{"required":bool,"difficulty":N,"challenge":"…"?},"versions":{"api":1,"envelope":1,"fragment":1,"server":"…"}}
+GET  /api/v1/instance               → 200 {"limits":{"max_file_bytes":N,"max_text_bytes":N,"max_object_bytes":N,"max_ttl_s":N,"default_ttl_s":N,"max_opens":N,"default_kdf_id":N},"pow":{"required":bool,"difficulty":N,"challenge":"…"?},"create":{"id":"…","id_token":"…","expires_at":"…"},"versions":{"api":1,"envelope":1,"fragment":1,"server":"…"}}
 POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…"?} → 202 {"status":"accepted"} for known, unknown and malformed ids alike; a malformed id is answered before any rate counter
 ```
 
@@ -299,7 +313,7 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 - `ReleaseIfDone(id)` is idempotent: when `opens_remaining == 0`, no lease is active and `blob_ref` is set, it returns `blob_ref`, and keeps returning it until the caller, after a successful `Blobs.Delete`, clears it with `ClearBlob(id, blob_ref)`. `Blobs.Delete` is idempotent and treats a missing object as success. Callers: ack, the lease-end timer, every request on the id, and the sweep.
 - Sweep (built-in goroutine every `NYLZO_SWEEP_INTERVAL`, default 5 min; or `nylzod sweep-once` from an external scheduler) ends expired messages, deletes expired leases, calls `ReleaseIfDone` for every message with `opens_remaining == 0` and a blob, finishes every recorded ending that a crash interrupted, purges tombstones after `purge_at`, purges expired `rate_counters` and `passphrase_attempts`, in batches of 1000 rows paged by key, so rows that keep failing never hide the rows after them. Every sweep also deletes temporary upload files older than 15 minutes. Once per UTC day the sweep lists the blob store and deletes objects older than 15 minutes whose ref no row holds. A counter in `rate_counters` records the day once a reconcile has listed both the rows and the blob store, so later sweeps that day, including separate `sweep-once` runs, skip it. A reconcile whose listing failed runs again on the next sweep; objects that failed to delete wait for the next day. The built-in sweeper also runs once at startup. Two sweeps that overlap may both reconcile, which is harmless. One failing item never stops the remaining steps, and `sweep-once` exits non-zero when any step failed.
 - Clocks: every comparison of times (expiry, leases, backoff, counter windows, PoW windows) uses the clock of the process that handles the request or runs the sweep. All instances and sweep jobs MUST run with synchronised clocks; the reference store does not read a clock of its own. A claim passes its clock to the store, which reads it after the transaction holds the write lock, so a claim that waited for the writer never starts a lease after `expires_at`.
-- Reuse of an ended id: once the tombstone is purged, the id is unknown again and a new create may use it. Anyone who still holds the old link knows `S` and could publish new content under the same link. This is an accepted risk: the server keeps no trace of a message longer than 7 days after it ends.
+- Ids are never reused. The server issues every id from its CSPRNG with a short-lived token (§5.4), so after a tombstone is purged nobody can create a message under the old id, and the server still keeps no trace of a message longer than 7 days after it ends.
 - Guarantees: access ends immediately (every request checks state, expiry and leases). Active data is deleted immediately on burn, cancel and the ack of the last lease; after the last lease expires without ack, at the end of the lease on a best-effort timer and at the latest by the next sweep.
 
 ## 8. Rate limits, caps, proof of work

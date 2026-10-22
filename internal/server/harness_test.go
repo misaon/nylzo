@@ -194,6 +194,7 @@ func (h *harness) startOfNextUTCDay() {
 func (h *harness) listen() string {
 	h.t.Helper()
 	httpServer := h.srv.HTTPServer()
+	httpServer.Handler = h.withIDTokens(httpServer.Handler)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		h.t.Fatal(err)
@@ -251,7 +252,7 @@ func (h *harness) open() {
 			h.capture.last = dump.Bytes()
 			h.capture.mu.Unlock()
 		}
-		inner.ServeHTTP(w, r)
+		h.withIDTokens(inner).ServeHTTP(w, r)
 	}))
 	h.t.Cleanup(h.ts.Close)
 	h.client = h.ts.Client()
@@ -350,7 +351,11 @@ func (h *harness) do(req request) (*http.Response, []byte) {
 }
 
 func buildMessage(kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) (*message, error) {
-	m := &message{id: core.NewID(), secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
+	return buildMessageWithID(core.NewID(), kdf, passphrase, opens, ttl, text)
+}
+
+func buildMessageWithID(id core.ID, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) (*message, error) {
+	m := &message{id: id, secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
 	link, content, err := core.DeriveAll(m.id, m.secret, kdf, passphrase)
 	if err != nil {
 		return nil, err
@@ -502,4 +507,45 @@ func decodePolicy(header string) (core.Policy, error) {
 		return core.Policy{}, errors.New("policy header without opens_max")
 	}
 	return core.Policy{OpensMax: uint16(pol.OpensMax), TTLSeconds: uint32(pol.TTL)}, nil
+}
+
+const rawCreateHeader = "X-Test-Raw-Create"
+
+func (h *harness) withIDTokens(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/api/v1/messages" && r.Header.Get(rawCreateHeader) == "" {
+			r.Header.Set("X-Nylzo-Create", withIDToken(h.srv, r.Header.Get("X-Nylzo-Create")))
+		}
+		r.Header.Del(rawCreateHeader)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func withIDToken(srv *server.Server, header string) string {
+	data, err := base64.RawURLEncoding.DecodeString(header)
+	if err != nil {
+		return header
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil || fields == nil {
+		return header
+	}
+	if _, ok := fields["id_token"]; ok {
+		return header
+	}
+	var idText string
+	if json.Unmarshal(fields["id"], &idText) != nil {
+		return header
+	}
+	id, err := core.ParseID(idText)
+	if err != nil {
+		return header
+	}
+	token, _ := json.Marshal(srv.IDTokenForTest(id))
+	fields["id_token"] = token
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return header
+	}
+	return core.Encode(out)
 }

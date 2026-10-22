@@ -15,7 +15,6 @@ import {
   hsalt,
   kdfRequiresPassphrase,
   newHeader,
-  newId,
   newSecret,
   normalizePassphrase,
   open,
@@ -23,6 +22,7 @@ import {
   utf8,
   type KdfId,
 } from '../src/index.ts';
+import { newId } from '../src/ids.ts';
 import { bytesToHex } from './helpers.ts';
 
 const composed = 'héslo s češtinou';

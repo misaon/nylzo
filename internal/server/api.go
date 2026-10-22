@@ -47,6 +47,7 @@ const (
 
 type createHeader struct {
 	ID           string  `json:"id"`
+	IDToken      string  `json:"id_token"`
 	ReadHash     string  `json:"read_hash"`
 	VerifierHash *string `json:"verifier_hash"`
 	ManageHash   string  `json:"manage_hash"`
@@ -56,7 +57,7 @@ type createHeader struct {
 	Size         int64   `json:"size"`
 }
 
-var createHeaderKeys = map[string]bool{"id": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
+var createHeaderKeys = map[string]bool{"id": true, "id_token": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
 
 type policyHeader struct {
 	OpensMax int `json:"opens_max"`
@@ -93,7 +94,14 @@ type statusResponse struct {
 type instanceResponse struct {
 	Limits   instanceLimits   `json:"limits"`
 	PoW      instancePoW      `json:"pow"`
+	Create   instanceCreate   `json:"create"`
 	Versions instanceVersions `json:"versions"`
+}
+
+type instanceCreate struct {
+	ID        string `json:"id"`
+	IDToken   string `json:"id_token"`
+	ExpiresAt string `json:"expires_at"`
 }
 
 type instanceLimits struct {
@@ -243,6 +251,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 		Versions: instanceVersions{API: 1, Envelope: core.Version, Fragment: core.FragmentVersion, Server: s.cfg.Version},
 	}
 	now := s.clock()
+	resp.Create = s.issueID(now)
 	gate, err := s.globalGate(r.Context(), now)
 	if err != nil {
 		s.internal(w, r, err)
@@ -334,6 +343,10 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	h, id, readHash, verifierHash, manageHash, ok := s.parseCreateHeader(r)
 	if !ok {
 		s.rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
+		return
+	}
+	if !s.validIDToken(id, h.IDToken, s.clock()) {
+		s.rejectCreate(w, r, http.StatusForbidden, errIDToken)
 		return
 	}
 	if r.ContentLength < 0 || r.Header.Get("Content-Length") == "" {

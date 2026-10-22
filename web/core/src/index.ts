@@ -41,7 +41,7 @@ export {
   TooLargeError,
   VersionError,
 } from './errors.ts';
-export { hash, idToString, newId, newSecret, parseId } from './ids.ts';
+export { hash, idToString, newSecret, parseId } from './ids.ts';
 export {
   KDF_NONE,
   KDF_PBKDF2,

@@ -21,6 +21,7 @@ const (
 	Lease    Purpose = "lease"
 	IP       Purpose = "ip"
 	PoW      Purpose = "pow"
+	ID       Purpose = "id"
 )
 
 const (
@@ -32,7 +33,7 @@ const (
 	infoBase = "nylzo/v1/mac/"
 )
 
-var purposes = []Purpose{Read, Verifier, Manage, Lease, IP, PoW}
+var purposes = []Purpose{Read, Verifier, Manage, Lease, IP, PoW, ID}
 
 var (
 	ErrSecret    = errors.New("pepper: secret must be 32 bytes in hex or base64url")

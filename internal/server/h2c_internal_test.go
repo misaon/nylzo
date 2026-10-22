@@ -64,7 +64,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	id := core.NewID()
 	h := core.Hash([]byte("x"))
 	size := int64(256 << 10)
-	hdr, _ := json.Marshal(map[string]any{"id": id.String(), "read_hash": core.Encode(h[:]), "manage_hash": core.Encode(h[:]), "kdf_id": 0, "opens_max": 1, "ttl_s": 60, "size": size})
+	hdr, _ := json.Marshal(map[string]any{"id": id.String(), "id_token": s.idToken(id, s.clock()), "read_hash": core.Encode(h[:]), "manage_hash": core.Encode(h[:]), "kdf_id": 0, "opens_max": 1, "ttl_s": 60, "size": size})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -141,7 +141,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	}
 	id := core.NewID()
 	h := core.Hash([]byte("x"))
-	hdr, _ := json.Marshal(map[string]any{"id": id.String(), "read_hash": core.Encode(h[:]), "manage_hash": core.Encode(h[:]), "kdf_id": 0, "opens_max": 1, "ttl_s": 60, "size": size})
+	hdr, _ := json.Marshal(map[string]any{"id": id.String(), "id_token": cs.idToken(id, cs.clock()), "read_hash": core.Encode(h[:]), "manage_hash": core.Encode(h[:]), "kdf_id": 0, "opens_max": 1, "ttl_s": 60, "size": size})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(""))
 	req.ContentLength = size
 	req.Header.Set("Content-Length", strconv.Itoa(size))

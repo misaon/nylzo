@@ -23,7 +23,6 @@ import {
   deriveAll,
   headerBytes,
   newHeader,
-  newId,
   newSecret,
   open,
   paddedLen,
@@ -34,6 +33,7 @@ import {
   type Meta,
   type Policy,
 } from '../src/index.ts';
+import { newId } from '../src/ids.ts';
 import { withByteFlipped } from './helpers.ts';
 
 interface Sample {

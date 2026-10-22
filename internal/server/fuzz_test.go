@@ -19,7 +19,7 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("")
 	f.Add("not base64!")
 	cfg := server.Defaults()
-	allowed := map[string]bool{"id": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
+	allowed := map[string]bool{"id": true, "id_token": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
 	f.Fuzz(func(t *testing.T, value string) {
 		if !server.ParseCreateHeaderForTest(cfg, value) {
 			return

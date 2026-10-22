@@ -63,3 +63,7 @@ func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
 		}
 	}
 }
+
+func (s *Server) IDTokenForTest(id core.ID) string {
+	return s.idToken(id, s.clock())
+}

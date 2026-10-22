@@ -89,7 +89,7 @@ Velká zpráva má na nahrání i stažení čas podle velikosti: nejméně 120 
 
 Po signálu SIGTERM server 30 s čeká na rozběhnuté požadavky, pak zbylá spojení zavře a skončí s kódem 0.
 
-Ukončená zpráva zmizí i s náhrobkem 7 dní po konci a její id je pak znovu volné. Kdo má starý odkaz, může pod ním vytvořit nový obsah. Je to vědomě přijaté riziko, server o zprávě nic nedrží déle.
+Id zprávy vydává server: `GET /api/v1/instance` vrací v poli `create` náhodné id a token platný 10 minut a vytvoření bez platného tokenu skončí 403 `id_token`. Ukončená zpráva zmizí i s náhrobkem 7 dní po konci, ale její id už nikdo znovu nezíská, takže pod starým odkazem nejde vytvořit nový obsah. Vydaná id server neukládá.
 
 Logy obsahují čas, metodu, vzor cesty, stav, latenci a velikost odpovědi. Id zprávy v nich není, takže řádek logu nejde spojit s konkrétní zprávou ani s databází a pepperem. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
 
