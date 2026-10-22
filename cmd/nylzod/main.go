@@ -76,7 +76,6 @@ func serve(logger *slog.Logger) error {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 	sweeper := make(chan struct{})
 	go func() {
 		defer close(sweeper)

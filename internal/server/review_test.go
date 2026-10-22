@@ -594,6 +594,9 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "deleted" {
 		t.Fatalf("download racing a burn: %d %s", resp.StatusCode, body)
 	}
+	if rec, err := inner.Get(context.Background(), downloaded.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+		t.Fatalf("the download must finish the interrupted burn: %+v %v", rec, err)
+	}
 }
 
 func TestClaimKeepsLeaseWhenBlobOpenFails(t *testing.T) {
@@ -1260,5 +1263,32 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	resp, body := h.claim(m, "", "")
 	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "cancelled" {
 		t.Fatalf("an ending that cannot finish must still report its recorded state: %d %s", resp.StatusCode, body)
+	}
+}
+
+type staleGateStore struct{ store.Store }
+
+func (s staleGateStore) RateGet(ctx context.Context, key string, ws time.Time) (store.RateCount, error) {
+	if key == "global:d" {
+		return store.RateCount{}, nil
+	}
+	return s.Store.RateGet(ctx, key, ws)
+}
+
+func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 4
+	h := newHarness(t, cfg)
+	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
+	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "b"))
+	inner := h.store
+	h.store = staleGateStore{Store: inner}
+	h.reopen(h.cfg)
+	if resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "c")); resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "pow" {
+		t.Fatalf("the third of four slots was taken without PoW: %d %s", resp.StatusCode, body)
+	}
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	if c, err := inner.RateGet(t.Context(), "global:d", day); err != nil || c.Count != 2 {
+		t.Fatalf("the refused create must return its slot: %+v %v", c, err)
 	}
 }

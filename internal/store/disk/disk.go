@@ -168,14 +168,25 @@ func (b *Blobs) PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
 		return 0, err
 	}
 	n := 0
+	var errs []error
 	for _, e := range entries {
 		info, err := e.Info()
-		if err != nil || info.ModTime().After(olderThan) {
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
-		if err := os.Remove(filepath.Join(b.root, tempDir, e.Name())); err == nil {
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if info.ModTime().After(olderThan) {
+			continue
+		}
+		switch err := os.Remove(filepath.Join(b.root, tempDir, e.Name())); {
+		case err == nil:
 			n++
+		case !errors.Is(err, os.ErrNotExist):
+			errs = append(errs, err)
 		}
 	}
-	return n, nil
+	return n, errors.Join(errs...)
 }

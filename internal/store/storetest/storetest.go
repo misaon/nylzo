@@ -34,6 +34,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK6CrashBetweenDeleteAndEnd", func(t *testing.T) { testCrashBeforeEnd(t, open) })
 	t.Run("EndMessageRetriesFailedDelete", func(t *testing.T) { testEndMessageDeleteFails(t, open) })
 	t.Run("ReleaseKeepsRecordedEnding", func(t *testing.T) { testReleaseKeepsRecordedEnding(t, open) })
+	t.Run("ReleaseAfterExpiryRecordsNothing", func(t *testing.T) { testReleaseAfterExpiryRecordsNothing(t, open) })
 	t.Run("ExpiryOfSpentMessage", func(t *testing.T) { testExpiryOfSpentMessage(t, open) })
 	t.Run("RateReserveIsAtomic", func(t *testing.T) { testRateReserve(t, open) })
 	t.Run("ReconcileOrphans", func(t *testing.T) { testReconcileOrphans(t, open) })
@@ -44,6 +45,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK7Expiry", func(t *testing.T) { testExpiry(t, open) })
 	t.Run("BurnAndCancel", func(t *testing.T) { testBurnCancel(t, open) })
 	t.Run("RateHitAtomic", func(t *testing.T) { testRateHit(t, open) })
+	t.Run("RateHitStopsAtFirstRefusal", func(t *testing.T) { testRateHitOrder(t, open) })
 	t.Run("SweepBatches", func(t *testing.T) { testSweepBatches(t, open) })
 	t.Run("BlobsIdempotentDelete", func(t *testing.T) { testBlobsDelete(t, open) })
 }
@@ -575,25 +577,27 @@ func testExpiryOfSpentMessage(t *testing.T, open Factory) {
 
 func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 	f := newFixture(t, open)
-	m := f.create(1, time.Hour, false)
-	res, err := f.claim(m, baseTime, 1, false, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateDeleted, baseTime); err != nil {
-		t.Fatal(err)
-	}
-	if released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime); err != nil || !released {
-		t.Fatalf("release: %v %v", released, err)
-	}
-	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
-		t.Fatalf("a release must keep the recorded burn: %+v", rec)
+	for _, recorded := range []store.State{store.StateDeleted, store.StateCancelled} {
+		m := f.create(1, time.Hour, false)
+		res, err := f.claim(m, baseTime, 1, false, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := f.s.MarkEnding(f.ctx, m.ID, recorded, baseTime); err != nil {
+			t.Fatal(err)
+		}
+		if released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime); err != nil || !released {
+			t.Fatalf("release: %v %v", released, err)
+		}
+		if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != recorded || f.blobExists(m.ID) {
+			t.Fatalf("a release must keep the recorded %s: %+v", recorded, rec)
+		}
 	}
 	opened := f.create(1, time.Hour, false)
-	res, err = f.claim(opened, baseTime, 1, false, false)
+	res, err := f.claim(opened, baseTime, 1, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -606,6 +610,32 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 	state, err := store.EndMessage(f.ctx, f.s, f.b, opened.ID, store.StateCancelled, baseTime)
 	if err != nil || state != store.StateOpened {
 		t.Fatalf("a cancel racing the last release must report opened: %s %v", state, err)
+	}
+	if rec := f.get(opened.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateOpened || f.blobExists(opened.ID) {
+		t.Fatalf("a cancel after the recorded release must leave an opened tombstone: %+v", rec)
+	}
+}
+
+func testReleaseAfterExpiryRecordsNothing(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	m := f.create(1, time.Hour, false)
+	if _, err := f.claim(m, baseTime.Add(59*time.Minute), 1, false, false); err != nil {
+		t.Fatal(err)
+	}
+	late := baseTime.Add(59*time.Minute + store.LeaseDuration + store.LeaseTimerSlack)
+	fb := newFailingBlobs(f.b)
+	fb.failOnce(m.ID)
+	if _, err := store.Release(f.ctx, f.s, fb, m.ID, late); !errors.Is(err, errDisk) {
+		t.Fatalf("release: %v", err)
+	}
+	if rec := f.get(m.ID); rec.Message == nil || rec.Message.Ending != "" {
+		t.Fatalf("an expired row records nothing: %+v", rec.Message)
+	}
+	if released, err := store.Release(f.ctx, f.s, f.b, m.ID, late); err != nil || !released {
+		t.Fatalf("release retry: %v %v", released, err)
+	}
+	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateOpened {
+		t.Fatalf("tombstone: %+v", rec)
 	}
 }
 
@@ -883,6 +913,29 @@ func testRateHit(t *testing.T, open Factory) {
 	report, err := store.SweepAll(f.ctx, f.s, f.b, window.Add(2*time.Hour))
 	if err != nil || report.Counters != 1 {
 		t.Fatalf("counter purge: %+v %v", report, err)
+	}
+}
+
+func testRateHitOrder(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	window := baseTime.Truncate(time.Hour)
+	hits := []store.RateHit{
+		{Key: "fine", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 40, Limit: 2, BytesLimit: 100},
+		{Key: "coarse", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 40, Limit: 10},
+	}
+	for i, want := range []int{2, 2, 1, 1} {
+		counts, err := f.s.RateHit(f.ctx, hits)
+		if err != nil || len(counts) != want {
+			t.Fatalf("hit %d: %+v %v, want %d counts", i+1, counts, err, want)
+		}
+		if want == 1 && !hits[0].Over(counts[0]) {
+			t.Fatalf("hit %d must be over the first limit: %+v", i+1, counts[0])
+		}
+	}
+	fine, _ := f.s.RateGet(f.ctx, "fine", window)
+	coarse, _ := f.s.RateGet(f.ctx, "coarse", window)
+	if fine.Count != 4 || fine.Bytes != 160 || coarse.Count != 2 || coarse.Bytes != 80 {
+		t.Fatalf("a refused hit must not count against later ones: fine %+v coarse %+v", fine, coarse)
 	}
 }
 

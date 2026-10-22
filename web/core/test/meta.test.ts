@@ -28,9 +28,9 @@ function decodeText(json: string): Meta {
 
 describe('canonical encoding', () => {
   it('applies the escaping table of the spec', () => {
-    const text = 'q"b\\s\b\t\n\f\r\u0001\u001f/é  \u007f😀';
+    const text = 'q"b\\s\b\t\n\f\r\u0001\u001f/é\u2028\u2029\u007f😀';
     expect(canonical({ text })).toBe(
-      '{"v":1,"text":"q\\"b\\\\s\\b\\t\\n\\f\\r\\u0001\\u001f/é  \u007f😀"}',
+      '{"v":1,"text":"q\\"b\\\\s\\b\\t\\n\\f\\r\\u0001\\u001f/é\u2028\u2029\u007f😀"}',
     );
   });
 
@@ -186,7 +186,7 @@ describe('decoding', () => {
       'null',
       '{"v":1,"text":"x"} {}',
       '{"v":1,"text":"x"}x',
-      '﻿{"v":1,"text":"x"}',
+      '\ufeff{"v":1,"text":"x"}',
       '{"v":1,"text":"x",}',
       '{"v":1,"text":"x"',
       '{"v":1,"text":"x\n"}',

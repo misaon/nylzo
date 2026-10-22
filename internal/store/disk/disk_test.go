@@ -95,3 +95,30 @@ func TestPurgeTempKeepsFreshFiles(t *testing.T) {
 		t.Fatal("fresh temp file removed")
 	}
 }
+
+func TestPurgeTempReportsFailedRemovals(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	dir := t.TempDir()
+	b, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(dir, "blobs", "tmp")
+	stale := filepath.Join(tmp, "blob-stale")
+	if err := os.WriteFile(stale, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(stale, past, past); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(tmp, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(tmp, 0o700) })
+	if n, err := b.PurgeTemp(t.Context(), time.Now().Add(-30*time.Minute)); err == nil || n != 0 {
+		t.Fatalf("a temp file that cannot be removed must fail the sweep step: %d %v", n, err)
+	}
+}

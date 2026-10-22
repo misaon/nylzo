@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"net/url"
 	"time"
 
-	_ "modernc.org/sqlite"
+	driver "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -87,7 +89,11 @@ CREATE INDEX IF NOT EXISTS messages_releasable ON messages(id) WHERE opens_remai
 CREATE INDEX IF NOT EXISTS messages_ending ON messages(id) WHERE ending IS NOT NULL;
 `
 
-const readerConns = 8
+const (
+	readerConns  = 8
+	openAttempts = 10
+	openBackoff  = 20 * time.Millisecond
+)
 
 func migrate(db *sql.DB) error {
 	tx, err := db.Begin()
@@ -128,6 +134,21 @@ func dsn(path string, write bool) string {
 }
 
 func Open(path string) (*Store, error) {
+	for attempt := 1; ; attempt++ {
+		s, err := open(path)
+		if err == nil || !busy(err) || attempt == openAttempts {
+			return s, err
+		}
+		time.Sleep(time.Duration(attempt)*openBackoff + rand.N(openBackoff))
+	}
+}
+
+func busy(err error) bool {
+	var e *driver.Error
+	return errors.As(err, &e) && e.Code()&0xff == sqlite3.SQLITE_BUSY
+}
+
+func open(path string) (*Store, error) {
 	w, err := sql.Open("sqlite", dsn(path, true))
 	if err != nil {
 		return nil, err
@@ -461,7 +482,7 @@ func (s *Store) ReleaseIfDone(ctx context.Context, id string, now time.Time) (st
 			return nil
 		}
 		ref = blobRef.String
-		_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ? AND ending IS NULL`, string(store.StateOpened), id)
+		_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ? AND ending IS NULL AND expires_at > ?`, string(store.StateOpened), id, ms(now))
 		return err
 	})
 	return ref, err
@@ -562,6 +583,9 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 				return err
 			}
 			out = append(out, c)
+			if h.Over(c) {
+				return nil
+			}
 		}
 		return nil
 	})

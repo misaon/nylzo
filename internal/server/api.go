@@ -180,7 +180,10 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 	case ended(m, now):
 		_, err = store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
 	case m.OpensRemaining == 0:
-		_, err = store.Release(ctx, s.store, s.blobs, id, now)
+		var released bool
+		if released, err = store.Release(ctx, s.store, s.blobs, id, now); err == nil && !released {
+			return store.Record{}, false
+		}
 	default:
 		return store.Record{}, false
 	}
@@ -189,7 +192,11 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 		return store.Record{}, false
 	}
 	rec, err := s.store.Get(ctx, id)
-	return rec, err == nil
+	if err != nil {
+		s.log.Error("settle", "err", err.Error())
+		return store.Record{}, false
+	}
+	return rec, true
 }
 
 func ended(m *store.Message, now time.Time) bool {
@@ -357,7 +364,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	reserved, err := s.reserveGlobalCreate(ctx, now)
+	slot, reserved, err := s.reserveGlobalCreate(ctx, now)
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -374,6 +381,10 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
+	if !gate.powNeeded && s.powNeededAfter(slot-1) {
+		s.rejectCreate(w, r, http.StatusForbidden, errPoWRequired)
+		return
+	}
 	if _, err := s.store.Get(ctx, id.String()); err == nil {
 		s.rejectCreate(w, r, http.StatusConflict, errConflict)
 		return
@@ -615,8 +626,8 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 	f, size, err := s.blobs.Open(r.Context(), m.BlobRef)
 	if errors.Is(err, store.ErrBlobMissing) {
 		var state store.State
-		var ended bool
-		if state, ended, err = s.finishMissingBlob(r.Context(), m.ID); ended {
+		var gone bool
+		if state, gone, err = s.finishMissingBlob(r.Context(), m.ID); gone {
 			w.Header().Del(headerLease)
 			writeGone(w, string(state))
 			return
@@ -663,16 +674,17 @@ func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State,
 	if rec.Tombstone != nil {
 		return rec.Tombstone.State, true, nil
 	}
-	if rec.Message.Ending == "" {
+	now := s.clock()
+	if !ended(rec.Message, now) {
 		return "", false, store.ErrBlobMissing
 	}
-	state, err := store.EndMessage(ctx, s.store, s.blobs, id, rec.Message.Ending, s.clock())
+	state, err := store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return s.endedState(ctx, id), true, nil
 	case err != nil:
 		s.log.Error("finish-ending", "err", err.Error())
-		return rec.Message.Ending, true, nil
+		return liveState(rec.Message, now), true, nil
 	}
 	return state, true, nil
 }
@@ -767,14 +779,14 @@ func (s *Server) endWith(w http.ResponseWriter, r *http.Request, purpose pepper.
 	if !ok {
 		return
 	}
-	ended, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock())
+	final, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeGone(w, string(s.endedState(ctx, id.String())))
 	case err != nil:
 		s.internal(w, r, err)
-	case ended != state:
-		writeGone(w, string(ended))
+	case final != state:
+		writeGone(w, string(final))
 	default:
 		w.WriteHeader(http.StatusNoContent)
 	}

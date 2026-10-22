@@ -105,11 +105,7 @@ func TestAK23PrefixBuckets(t *testing.T) {
 		t.Fatalf("second address in the same /64 must share the bucket: %d", resp.StatusCode)
 	}
 	for sub := 3; sub <= 6; sub++ {
-		perSub := 20
-		if sub == 6 {
-			perSub = 19
-		}
-		for i := 1; i <= perSub; i++ {
+		for i := 1; i <= 20; i++ {
 			m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 			m.ip = fmt.Sprintf("2001:db8:1:%d::%x", sub, i)
 			h.mustCreate(m)
@@ -258,5 +254,30 @@ func TestAbuseReports(t *testing.T) {
 	}
 	if report(m.id.String(), m.readToken) != http.StatusTooManyRequests {
 		t.Fatal("sixth report per hour must be limited")
+	}
+}
+
+func TestRefusedSourceDoesNotSpendItsRange(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.CreatePerHour = 1
+	cfg.Rates.CoarseMultiplier = 2
+	h := newHarness(t, cfg)
+	for i := range 4 {
+		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+		m.ip = "198.51.100.1"
+		resp, _ := h.create(m)
+		if want := map[bool]int{true: 201, false: 429}[i == 0]; resp.StatusCode != want {
+			t.Fatalf("create %d from one source: %d, want %d", i+1, resp.StatusCode, want)
+		}
+	}
+	neighbour := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	neighbour.ip = "198.51.100.2"
+	if resp, body := h.create(neighbour); resp.StatusCode != 201 {
+		t.Fatalf("a refused source must not use up its /24: %d %s", resp.StatusCode, body)
+	}
+	third := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	third.ip = "198.51.100.3"
+	if resp, _ := h.create(third); resp.StatusCode != 429 {
+		t.Fatalf("the /24 budget still applies: %d", resp.StatusCode)
 	}
 }

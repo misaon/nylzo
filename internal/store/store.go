@@ -153,6 +153,12 @@ type RateHit struct {
 	WindowStart time.Time
 	PurgeAt     time.Time
 	Bytes       int64
+	Limit       int64
+	BytesLimit  int64
+}
+
+func (h RateHit) Over(c RateCount) bool {
+	return (h.Limit > 0 && c.Count > h.Limit) || (h.BytesLimit > 0 && c.Bytes > h.BytesLimit)
 }
 
 type RateCount struct {
