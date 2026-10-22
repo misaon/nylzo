@@ -56,7 +56,7 @@ type keyedBucket struct {
 
 const (
 	maxKeyedBuckets = 1 << 16
-	evictShare      = 8
+	evictDivisor    = 8
 	prefixShare     = 0.5
 )
 
@@ -95,7 +95,7 @@ func (l *keyedLimiter) evict(at int64) {
 		}
 	}
 	for k := range l.buckets {
-		if len(l.buckets) < l.max-l.max/evictShare {
+		if len(l.buckets) < l.max-l.max/evictDivisor {
 			return
 		}
 		delete(l.buckets, k)
@@ -198,6 +198,15 @@ func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (slot i
 	return s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt()}, limit)
 }
 
+func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
+	if s.cfg.Rates.GlobalDailyCreates <= 0 {
+		return
+	}
+	if err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, dayWindow(now).start); err != nil {
+		s.log.Error("global-release", "err", err.Error())
+	}
+}
+
 func (s *Server) countStoredCreate(ctx context.Context, now time.Time) {
 	if s.cfg.Rates.GlobalDailyCreates <= 0 {
 		return
@@ -208,22 +217,11 @@ func (s *Server) countStoredCreate(ctx context.Context, now time.Time) {
 	}
 }
 
-func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {
+func (s *Server) limitHourly(ctx context.Context, now time.Time, addr netip.Addr, kind string, limit int64) (time.Duration, error) {
 	fine, coarse := s.bucketKeys(now, addr)
 	h := hourWindow(now)
-	r := s.cfg.Rates
 	return s.checkLimits(ctx, []limitCheck{
-		{hit: store.RateHit{Key: "read:h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: r.ReadPerHour}, end: h.end},
-		{hit: store.RateHit{Key: "read:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: r.ReadPerHour * r.CoarseMultiplier}, end: h.end},
-	})
-}
-
-func (s *Server) limitAbuse(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {
-	fine, coarse := s.bucketKeys(now, addr)
-	h := hourWindow(now)
-	r := s.cfg.Rates
-	return s.checkLimits(ctx, []limitCheck{
-		{hit: store.RateHit{Key: "abuse:h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: r.AbusePerHour}, end: h.end},
-		{hit: store.RateHit{Key: "abuse:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: r.AbusePerHour * r.CoarseMultiplier}, end: h.end},
+		{hit: store.RateHit{Key: kind + ":h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: limit}, end: h.end},
+		{hit: store.RateHit{Key: kind + ":h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: limit * s.cfg.Rates.CoarseMultiplier}, end: h.end},
 	})
 }

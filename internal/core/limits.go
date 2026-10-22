@@ -16,9 +16,6 @@ const (
 	MetaLenPrefix = 4
 	ObjectSlack   = 64
 
-	IDChars    = 22
-	TokenChars = 43
-
 	MaxTextBytes   = 100 * 1024
 	MaxFileBytes   = 5 * 1024 * 1024
 	MaxMetaBytes   = 102 * 1024

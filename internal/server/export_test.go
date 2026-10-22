@@ -10,6 +10,11 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 )
 
+const (
+	GlobalCreatesKey = globalCreatesKey
+	GlobalStoredKey  = globalStoredKey
+)
+
 func ClientAddrForTest(cfg Config, mode, remote, xff, realIP string) netip.Addr {
 	cfg.ProxyMode = mode
 	s := &Server{cfg: cfg}

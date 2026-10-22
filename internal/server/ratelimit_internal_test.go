@@ -1,10 +1,14 @@
 package server
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/store"
+	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
 func TestSourceLimiterEvictsIdleSourcesFirst(t *testing.T) {
@@ -47,5 +51,29 @@ func TestSourceLimiterKeepsMostSourcesWhenFull(t *testing.T) {
 	}
 	if throttled < 48 || throttled == 64 {
 		t.Fatalf("a full table must drop a small share of sources, kept %d of 64", throttled)
+	}
+}
+
+type cancelAfterCommit struct{ store.Store }
+
+func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit, limit int64) (int64, bool, error) {
+	n, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit, limit)
+	if ctx.Err() != nil {
+		return 0, false, ctx.Err()
+	}
+	return n, ok, err
+}
+
+func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	s := &Server{cfg: Config{Rates: Rates{GlobalDailyCreates: 3}}, store: cancelAfterCommit{st}}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if slot, ok, err := s.reserveGlobalCreate(ctx, time.Unix(1_800_000_000, 0)); err != nil || !ok || slot != 1 {
+		t.Fatalf("a canceled request must still learn about the slot it reserved: %d %v %v", slot, ok, err)
 	}
 }

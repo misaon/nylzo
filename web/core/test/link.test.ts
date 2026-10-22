@@ -2,19 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EncodingError,
-  ID_CHARS,
   KDF_NONE,
   KDF_PBKDF2,
   KDF_SCRYPT,
   KdfError,
   KdfMismatchError,
   LinkError,
-  TOKEN_CHARS,
   assertProfile,
   decode32,
   decodeBase64urlExact,
   encodeBase64url,
-  equalBytes,
   formatLink,
   fragment,
   idToString,
@@ -43,8 +40,8 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
     const link = parseLink(formatLink(base, id, KDF_SCRYPT, s));
     expect(link.kdfId).toBe(KDF_SCRYPT);
     expect(Object.keys(link).sort()).toEqual(['id', 'kdfId', 's']);
-    expect(equalBytes(link.id, id)).toBe(true);
-    expect(equalBytes(link.s, s)).toBe(true);
+    expect(link.id).toEqual(id);
+    expect(link.s).toEqual(s);
     expect(() => assertProfile(link.kdfId, KDF_PBKDF2)).toThrow(KdfMismatchError);
   });
 });
@@ -55,14 +52,14 @@ describe('fragment', () => {
 
   it('formats as 1.{kdf}.{S}', () => {
     expect(fragment(KDF_PBKDF2, s)).toBe(`1.2.${encoded}`);
-    expect(encoded).toHaveLength(TOKEN_CHARS);
+    expect(encoded).toHaveLength(43);
   });
 
   it('parses with and without the leading hash sign', () => {
     for (const text of [`1.1.${encoded}`, `#1.1.${encoded}`]) {
       const parsed = parseFragment(text);
       expect(parsed.kdfId).toBe(KDF_SCRYPT);
-      expect(equalBytes(parsed.s, s)).toBe(true);
+      expect(parsed.s).toEqual(s);
     }
   });
 
@@ -126,7 +123,7 @@ describe('canonical base64url', () => {
   it('ids are 22 characters ending in A, Q, g or w', () => {
     for (let i = 0; i < 200; i++) {
       const text = idToString(newId());
-      expect(text).toHaveLength(ID_CHARS);
+      expect(text).toHaveLength(22);
       expect('AQgw').toContain(text.slice(-1));
       expect(() => parseId(text)).not.toThrow();
     }
@@ -135,7 +132,7 @@ describe('canonical base64url', () => {
   it('secrets are 43 characters never ending in - or _', () => {
     for (let i = 0; i < 200; i++) {
       const text = encodeBase64url(newSecret());
-      expect(text).toHaveLength(TOKEN_CHARS);
+      expect(text).toHaveLength(43);
       expect('AEIMQUYcgkosw048').toContain(text.slice(-1));
       expect(() => decode32(text)).not.toThrow();
     }
@@ -163,7 +160,7 @@ describe('canonical base64url', () => {
     for (let length = 0; length <= 64; length++) {
       const bytes = crypto.getRandomValues(new Uint8Array(length));
       const text = encodeBase64url(bytes);
-      expect(equalBytes(decodeBase64urlExact(text, length), bytes)).toBe(true);
+      expect(decodeBase64urlExact(text, length)).toEqual(bytes);
     }
     expect(encodeBase64url(new Uint8Array([0xfb, 0xff]))).toBe('-_8');
     expect(Array.from(decodeBase64urlExact('-_8', 2))).toEqual([0xfb, 0xff]);

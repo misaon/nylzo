@@ -187,7 +187,7 @@ type Store interface {
 	Get(ctx context.Context, id string) (Record, error)
 	Claim(ctx context.Context, p ClaimParams) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
-	RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) (int, error)
+	RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) error
 	Ack(ctx context.Context, leaseRowID int64) error
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
 	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error

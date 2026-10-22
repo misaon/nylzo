@@ -58,6 +58,7 @@ V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  verifier
 ```
 
 - `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. An empty passphrase with `kdf_id` 1 or 2 is permitted by the protocol; user interfaces SHOULD warn.
+- The passphrase MUST be well-formed Unicode. A core rejects invalid UTF-8 or a lone surrogate before it derives anything, so two cores never derive different keys from the same input.
 - The string literals are ASCII without a terminating NUL. `info` strings are passed to HKDF-Expand verbatim.
 - `S || P` has a fixed length per profile (32 or 64 bytes), so the concatenation is unambiguous.
 - `K` MUST never leave the client. In the browser the client MUST derive `K` as a non-extractable `CryptoKey` (`deriveKey`, `extractable = false`) and use `deriveBits` only for `R`, `salt_pw` and `V`.
@@ -118,7 +119,7 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 - `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `ip`, `pow`.
 - `mac_purpose(x) = HMAC-SHA-256(k_purpose, x)`.
 - `pepper_id = SHA-256("nylzo/v1/pepper-id" || pepper)[0]` (one byte). Every row that stores a mac carries the `pepper_id` of the key that produced it.
-- Rotation: `NYLZO_PEPPER_PREVIOUS` holds the previous pepper. The server writes with the current pepper and verifies each row with the pepper whose `pepper_id` matches the row; a row whose `pepper_id` matches neither verifies as invalid (with the same work as a valid row). The server MUST refuse to start when both peppers share a `pepper_id`. The maximum TTL is 7 days, so no rewriting is needed: after 7 days no live message carries the previous `pepper_id`. Tombstones keep it for another 7 days; dropping the previous pepper earlier turns those tombstones into unknown ids (404) without affecting any live message. An expired message becomes a tombstone when the next request or sweep ends it, so keeping the previous pepper for 14 days plus one sweep interval preserves every tombstone state.
+- Rotation: `NYLZO_PEPPER_PREVIOUS` holds the previous pepper. The server writes with the current pepper and verifies each row with the pepper whose `pepper_id` matches the row; a row whose `pepper_id` matches neither verifies as invalid (with the same work as a valid row). The server MUST refuse to start when both peppers share a `pepper_id`. The maximum TTL is 7 days, so no rewriting is needed: after 7 days no live message carries the previous `pepper_id`. Tombstones keep it for another 7 days; dropping the previous pepper earlier turns those tombstones into unknown ids (404) without affecting any live message. An expired message becomes a tombstone when the next request or sweep ends it, so keeping the previous pepper for 14 days plus one sweep interval preserves every tombstone state. A rotation also changes `k_ip` and with it every address bucket (§5.3).
 - `sweep-once` does not need a pepper.
 
 ### 5.2 What the server stores
@@ -135,6 +136,8 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 
 All comparisons MUST be constant-time. When a row does not exist, the server MUST still compute a mac and compare it against a dummy value so that the work and the response are identical.
 
+Tombstones round `first_opened_at` and `ended_at` down to the minute. A lease row keeps `lease_expires_at` to the millisecond, so while it exists (the 120 s lease, until the ack or the next sweep) it reveals the claim time that precisely; this is accepted.
+
 ### 5.3 Address buckets
 
 Addresses never reach a persistent log. For rate limits and passphrase backoff the server derives a 24-bit bucket:
@@ -146,7 +149,7 @@ input     = date_utc ("YYYY-MM-DD", ASCII) || 0x00 || family (0x04 or 0x06) || p
 bucket    = HMAC-SHA-256(k_ip, input)[0:3]
 ```
 
-The date rotates at 00:00 UTC; all instances share the derivation because they share the pepper. Backoff state keyed on a bucket resets at that rotation (accepted). With `NYLZO_PASSPHRASE_IP_SCOPE=off` the passphrase backoff uses a constant bucket (per message only).
+The date rotates at 00:00 UTC; all instances share the derivation because they share the pepper. Backoff state keyed on a bucket resets at that rotation (accepted). `k_ip` comes from the current pepper only, so a pepper rotation resets every bucket in the same way: the rate counters, the passphrase backoff and the abuse cap per range start again. This is accepted too, because the daily cap of 100 failures per message still holds. With `NYLZO_PASSPHRASE_IP_SCOPE=off` the passphrase backoff uses a constant bucket (per message only).
 
 ## 6. HTTP API
 
@@ -271,10 +274,10 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 
 - `failed_passphrase_attempts` is cumulative over the message lifetime (`fail_count_total`), not per day.
 - After the message ends, status reads the tombstone: only `state`, `first_opened_at` and `ended_at` are meaningful; `created_at` and `expires_at` are absent and the counters are 0.
-- `first_opened_at` is rounded down to the minute.
+- `first_opened_at` and `ended_at` are rounded down to the minute.
 - A wrong `M` on cancel or status answers the same 404 as an unknown id.
 - Abuse reports are rate limited to 5 per hour per bucket, reviewed by a human, and never delete anything automatically.
-- An abuse report MUST carry `Content-Type: application/json`, so a cross-site page needs a CORS preflight, which the server never grants. Before storing `reason`, the server percent-decodes it up to three times, replaces every `#…` run and every run of 22 or more base64url characters with `[redacted]`, then cuts it to 1000 bytes and further until its JSON encoding fits in 1200 bytes. It stores at most 3 reports per message and reporter range (the /24 or /48 bucket, §5.3) per UTC day and answers 202 for the rest, so one range cannot use up the budget of others. The server reserves the count before it writes a report and returns it when the write fails. A valid report that would be stored but would push the report file past 16 MiB answers 503, and the server logs the error `abuse-file-full` for the operator.
+- An abuse report MUST carry `Content-Type: application/json`, so a cross-site page needs a CORS preflight, which the server never grants. Before storing `reason`, the server percent-decodes it up to three times, replaces control characters with spaces, drops format characters such as bidi controls, replaces every `#…` run and every run of 22 or more base64url characters with `[redacted]`, then cuts it to 1000 bytes and further until its JSON encoding fits in 1200 bytes. It stores at most 3 reports per message and reporter range (the /24 or /48 bucket, §5.3) per UTC day and answers 202 for the rest, so one range cannot use up the budget of others. The server reserves the count before it writes a report and returns it when the write fails. A valid report that would be stored but would push the report file past 16 MiB answers 503, and the server logs the error `abuse-file-full` for the operator.
 
 ## 7. Lifecycle, leases, tombstones, sweep
 
@@ -327,7 +330,7 @@ valid     = HMAC tag verifies, now − window_start ≤ 120 s,
 - `GET /api/v1/instance` returns `pow.required`, `pow.difficulty` (default 4, at most 8) and, when required, a fresh `pow.challenge`. A client needs about 2^difficulty scrypt evaluations on average, so operators should keep the difficulty low enough for phones to finish within the 120 s window.
 - A challenge is single-use. After the tag and window checks pass, the server records the nonce in `rate_counters`, then waits up to 10 s for a verifier slot and runs scrypt. A second token for the same challenge answers 403 without running scrypt. A failed create after that point, including a 503 because no slot freed up in time, needs a fresh challenge.
 - The counter MUST be lowercase hex; a token with `A`–`F` in the counter is invalid.
-- The server verifies with one scrypt call and bounds concurrent verifications (`NYLZO_POW_CONCURRENCY`, default 4). A verification above that bound waits up to 10 s for a slot and then answers 503 with `Retry-After`.
+- The server verifies with one scrypt call and bounds concurrent verifications (`NYLZO_POW_CONCURRENCY`, default 4, at most 8, since each one holds 16 MiB). A verification above that bound waits up to 10 s for a slot and then answers 503 with `Retry-After`.
 - Clients that do not implement PoW receive 403 `{"error":"pow"}` while it is required.
 
 ## 9. Transport and headers

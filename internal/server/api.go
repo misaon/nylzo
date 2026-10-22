@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
@@ -22,21 +24,21 @@ import (
 )
 
 const (
-	headerCreate      = "X-Nylzo-Create"
-	headerPoW         = "X-Nylzo-Pow"
-	headerLease       = "X-Nylzo-Lease"
-	headerPolicy      = "X-Nylzo-Policy"
-	maxCreateHeader   = 1024
-	maxJSONBody       = 4096
-	constantBucket    = "nylzo/v1/no-ip-scope"
-	timeFormat        = time.RFC3339
-	octetStream       = "application/octet-stream"
-	abuseReasonLimit  = 1000
-	abuseReasonBytes  = 1200
-	abuseFileLimit    = 16 << 20
-	abusePerRange     = 3
-	abuseDecodePasses = 3
-	maxJSONEscape     = len(`\u0000`)
+	headerCreate         = "X-Nylzo-Create"
+	headerPoW            = "X-Nylzo-Pow"
+	headerLease          = "X-Nylzo-Lease"
+	headerPolicy         = "X-Nylzo-Policy"
+	maxCreateHeader      = 1024
+	maxJSONBody          = 4096
+	constantBucket       = "nylzo/v1/no-ip-scope"
+	timeFormat           = time.RFC3339
+	octetStream          = "application/octet-stream"
+	abuseReasonRawBytes  = 1000
+	abuseReasonJSONBytes = 1200
+	abuseFileLimit       = 16 << 20
+	abusePerRange        = 3
+	abuseDecodePasses    = 3
+	maxJSONEscape        = len(`\u0000`)
 )
 
 type createHeader struct {
@@ -180,6 +182,12 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 	case ended(m, now):
 		_, err = store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
 	case m.OpensRemaining == 0:
+		if leased, lerr := s.leaseActive(ctx, id, now); lerr != nil || leased {
+			if lerr != nil {
+				s.log.Error("settle", "err", lerr.Error())
+			}
+			return store.Record{}, false
+		}
 		var released bool
 		if released, err = store.Release(ctx, s.store, s.blobs, id, now); err == nil && !released {
 			return store.Record{}, false
@@ -197,6 +205,14 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 		return store.Record{}, false
 	}
 	return rec, true
+}
+
+func (s *Server) leaseActive(ctx context.Context, id string, now time.Time) (bool, error) {
+	leases, err := s.store.Leases(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(leases, func(l store.Lease) bool { return l.Active(now) }), nil
 }
 
 func ended(m *store.Message, now time.Time) bool {
@@ -353,7 +369,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		err := s.powVerify(ctx, r.Header.Get(headerPoW), id, now)
 		switch {
 		case errors.Is(err, errPoWBusy):
-			w.Header().Set("Retry-After", "5")
+			setRetryAfter(w, powBusyRetry)
 			s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 			return
 		case errors.Is(err, ErrPoW):
@@ -375,10 +391,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	stored := false
 	defer func() {
-		if s.cfg.Rates.GlobalDailyCreates > 0 && !stored {
-			if err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, dayWindow(now).start); err != nil {
-				s.log.Error("global-release", "err", err.Error())
-			}
+		if !stored {
+			s.releaseGlobalCreate(ctx, now)
 		}
 	}()
 	if !gate.powNeeded && s.powNeededAfter(slot-1) {
@@ -441,8 +455,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stored = true
-	s.countStoredCreate(context.WithoutCancel(ctx), now)
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
+	s.countStoredCreate(context.WithoutCancel(ctx), now)
 }
 
 func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.Time) {
@@ -450,12 +464,12 @@ func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.T
 	if c, err := s.store.RateGet(r.Context(), globalStoredKey, dayWindow(now).start); err == nil && c.Count >= s.cfg.Rates.GlobalDailyCreates {
 		retry = dayWindow(now).end.Sub(now) + time.Second
 	}
-	w.Header().Set("Retry-After", strconv.FormatInt(int64(retry/time.Second), 10))
+	setRetryAfter(w, retry)
 	s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 }
 
 func (s *Server) readLimited(w http.ResponseWriter, r *http.Request) bool {
-	retry, err := s.limitRead(r.Context(), s.clock(), s.clientAddr(r))
+	retry, err := s.limitHourly(r.Context(), s.clock(), s.clientAddr(r), "read", s.cfg.Rates.ReadPerHour)
 	if err != nil {
 		s.internal(w, r, err)
 		return false
@@ -548,9 +562,14 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m, id, ok := s.authorizedLive(w, r, pepper.Read)
-	if !ok || !s.blobPresent(w, r, m) {
+	if !ok {
 		return
 	}
+	blob, size, ok := s.openBlob(w, r, m)
+	if !ok {
+		return
+	}
+	defer blob.Close()
 	var verifier []byte
 	var err error
 	verifierSent := false
@@ -605,7 +624,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 	}
-	s.serveBlob(w, r, result.Message, core.Encode(lease[:]))
+	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob, size)
 }
 
 func ceilSeconds(d time.Duration) int64 {
@@ -615,85 +634,73 @@ func ceilSeconds(d time.Duration) int64 {
 	return int64((d + time.Second - 1) / time.Second)
 }
 
-func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message, lease string) {
+func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, m *store.Message) (io.ReadSeekCloser, int64, bool) {
 	if m.BlobRef == "" {
 		writeGone(w, string(m.State))
-		return
-	}
-	if lease != "" {
-		w.Header().Set(headerLease, lease)
+		return nil, 0, false
 	}
 	f, size, err := s.blobs.Open(r.Context(), m.BlobRef)
 	if errors.Is(err, store.ErrBlobMissing) {
 		var state store.State
-		var gone bool
-		if state, gone, err = s.finishMissingBlob(r.Context(), m.ID); gone {
-			w.Header().Del(headerLease)
+		if state, err = s.finishMissingBlob(r.Context(), m.ID); err == nil {
 			writeGone(w, string(state))
-			return
+			return nil, 0, false
 		}
 	}
 	if err != nil {
 		s.internal(w, r, err)
-		return
+		return nil, 0, false
 	}
-	defer f.Close()
+	return f, size, true
+}
+
+func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message, lease string, f io.Reader, size int64) {
+	if lease != "" {
+		w.Header().Set(headerLease, lease)
+	}
 	w.Header().Set(headerPolicy, s.policyHeader(m))
 	w.Header().Set("Content-Type", octetStream)
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, f)
+	if n, err := io.Copy(w, f); (err != nil || n != size) && r.Context().Err() == nil {
+		s.log.Warn("blob-stream", "id", m.ID, "sent", n, "size", size)
+	}
 }
 
-func (s *Server) blobPresent(w http.ResponseWriter, r *http.Request, m *store.Message) bool {
-	if m.BlobRef == "" {
-		return true
-	}
-	f, _, err := s.blobs.Open(r.Context(), m.BlobRef)
-	if err == nil {
-		f.Close()
-		return true
-	}
-	if errors.Is(err, store.ErrBlobMissing) {
-		var state store.State
-		var gone bool
-		if state, gone, err = s.finishMissingBlob(r.Context(), m.ID); gone {
-			writeGone(w, string(state))
-			return false
-		}
-	}
-	s.internal(w, r, err)
-	return false
-}
-
-func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State, bool, error) {
+func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State, error) {
 	rec, err := s.store.Get(ctx, id)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	if rec.Tombstone != nil {
-		return rec.Tombstone.State, true, nil
+		return rec.Tombstone.State, nil
 	}
 	now := s.clock()
 	if !ended(rec.Message, now) {
-		return "", false, store.ErrBlobMissing
+		return "", store.ErrBlobMissing
 	}
 	state, err := store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return s.endedState(ctx, id), true, nil
+		return s.endedState(ctx, id)
 	case err != nil:
 		s.log.Error("finish-ending", "err", err.Error())
-		return liveState(rec.Message, now), true, nil
+		return liveState(rec.Message, now), nil
 	}
-	return state, true, nil
+	return state, nil
 }
 
-func (s *Server) endedState(ctx context.Context, id string) store.State {
-	if rec, err := s.store.Get(ctx, id); err == nil && rec.Tombstone != nil {
-		return rec.Tombstone.State
+func (s *Server) endedState(ctx context.Context, id string) (store.State, error) {
+	rec, err := s.store.Get(ctx, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return store.StateDeleted, nil
+	case err != nil:
+		return "", err
+	case rec.Tombstone != nil:
+		return rec.Tombstone.State, nil
 	}
-	return store.StateDeleted
+	return store.StateDeleted, nil
 }
 
 func (s *Server) findLease(ctx context.Context, r *http.Request, id string, now time.Time) (store.Lease, bool, error) {
@@ -732,7 +739,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		writeGone(w, string(m.State))
 		return
 	}
-	if _, err := s.store.RecordDownload(ctx, lease.RowID, now); err != nil {
+	if err := s.store.RecordDownload(ctx, lease.RowID, now); err != nil {
 		switch {
 		case errors.Is(err, store.ErrLeaseLimit):
 			writeRateLimited(w, ceilSeconds(lease.ExpiresAt.Sub(now)))
@@ -743,7 +750,12 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.serveBlob(w, r, m, "")
+	blob, size, ok := s.openBlob(w, r, m)
+	if !ok {
+		return
+	}
+	defer blob.Close()
+	s.serveBlob(w, r, m, "", blob, size)
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
@@ -782,7 +794,11 @@ func (s *Server) endWith(w http.ResponseWriter, r *http.Request, purpose pepper.
 	final, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeGone(w, string(s.endedState(ctx, id.String())))
+		if state, err := s.endedState(ctx, id.String()); err != nil {
+			s.internal(w, r, err)
+		} else {
+			writeGone(w, string(state))
+		}
 	case err != nil:
 		s.internal(w, r, err)
 	case final != state:
@@ -830,7 +846,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.clock()
-	retry, err := s.limitAbuse(ctx, now, s.clientAddr(r))
+	retry, err := s.limitHourly(ctx, now, s.clientAddr(r), "abuse", s.cfg.Rates.AbusePerHour)
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -853,7 +869,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		err := s.recordAbuse(ctx, now, id.String(), s.ring.Bucket(now, s.clientAddr(r), true), body.Reason)
 		if errors.Is(err, errAbuseFull) {
 			s.log.Error("abuse-file-full")
-			w.Header().Set("Retry-After", "3600")
+			setRetryAfter(w, abuseFullRetry)
 			writeError(w, http.StatusServiceUnavailable, errUnavailable)
 			return
 		}
@@ -885,20 +901,30 @@ func percentDecode(text string) string {
 	return strings.ToValidUTF8(text, "")
 }
 
+func visibleRune(r rune) rune {
+	switch {
+	case unicode.Is(unicode.Cf, r):
+		return -1
+	case unicode.IsControl(r):
+		return ' '
+	}
+	return r
+}
+
 func redactReason(reason string) string {
-	reason = percentDecode(reason)
+	reason = strings.Map(visibleRune, percentDecode(reason))
 	reason = linkFragment.ReplaceAllString(reason, "[redacted]")
 	reason = tokenRun.ReplaceAllString(reason, "[redacted]")
-	if len(reason) > abuseReasonLimit {
-		reason = strings.ToValidUTF8(reason[:abuseReasonLimit], "")
+	if len(reason) > abuseReasonRawBytes {
+		reason = strings.ToValidUTF8(reason[:abuseReasonRawBytes], "")
 	}
 	for {
 		encoded, _ := json.Marshal(reason)
-		if len(encoded) <= abuseReasonBytes {
+		if len(encoded) <= abuseReasonJSONBytes {
 			return reason
 		}
 		runes := []rune(reason)
-		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonBytes)/maxJSONEscape)])
+		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonJSONBytes)/maxJSONEscape)])
 	}
 }
 

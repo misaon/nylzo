@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
 	"io"
 	"net/http"
 	"strings"
@@ -31,7 +30,7 @@ func (s *Server) prefetchGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		guarded := strings.HasPrefix(r.URL.Path, "/m/") || strings.HasPrefix(r.URL.Path, "/api/")
 		if guarded && r.Header.Get("Sec-Purpose") != "" {
-			w.Header().Set("Retry-After", "60")
+			setRetryAfter(w, prefetchRetry)
 			writeError(w, http.StatusServiceUnavailable, errUnavailable)
 			return
 		}
@@ -42,8 +41,7 @@ func (s *Server) prefetchGuard(next http.Handler) http.Handler {
 func (s *Server) throttle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") && !s.allowAPI(r) {
-			w.Header().Set("Retry-After", "1")
-			writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: 1})
+			writeRateLimited(w, int64(throttleRetry/time.Second))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -107,10 +105,6 @@ func (s *Server) logging(next http.Handler) http.Handler {
 			"bytes", sw.bytes,
 		)
 	})
-}
-
-func newNonce() string {
-	return rand.Text()
 }
 
 func loggableID(r *http.Request) string {

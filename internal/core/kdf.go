@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/scrypt"
 	"golang.org/x/text/unicode/norm"
@@ -25,7 +26,10 @@ const (
 	PBKDF2Iterations = 600000
 )
 
-var ErrKDF = errors.New("core: unknown kdf profile")
+var (
+	ErrKDF        = errors.New("core: unknown kdf profile")
+	ErrPassphrase = errors.New("core: passphrase is not well-formed Unicode")
+)
 
 func (k KDF) Valid() bool {
 	return k <= KDFPBKDF2
@@ -56,6 +60,9 @@ func NormalizePassphrase(passphrase string) []byte {
 }
 
 func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, error) {
+	if kdf != KDFNone && !utf8.ValidString(passphrase) {
+		return nil, ErrPassphrase
+	}
 	switch kdf {
 	case KDFNone:
 		return nil, nil

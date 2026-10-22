@@ -1,7 +1,7 @@
 import { scryptAsync } from '@noble/hashes/scrypt.js';
 
 import { arrayBufferBacked, utf8 } from './bytes.ts';
-import { KdfError } from './errors.ts';
+import { KdfError, PassphraseError } from './errors.ts';
 import { KEY_LEN } from './limits.ts';
 
 export const KDF_NONE = 0;
@@ -47,6 +47,9 @@ export async function derivePassphraseKey(
 ): Promise<Uint8Array<ArrayBuffer>> {
   if (kdfId === KDF_NONE) {
     return new Uint8Array(0);
+  }
+  if (!passphrase.isWellFormed()) {
+    throw new PassphraseError();
   }
   if (kdfId === KDF_SCRYPT) {
     return scrypt(normalizePassphrase(passphrase), saltPw);

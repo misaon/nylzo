@@ -31,13 +31,13 @@ func New(dataDir string) (*Blobs, error) {
 		return nil, err
 	}
 	b := &Blobs{root: root}
-	if err := b.probeLink(); err != nil {
-		return nil, fmt.Errorf("disk: the blob directory must support hard links: %w", err)
+	if err := b.probe(); err != nil {
+		return nil, fmt.Errorf("disk: the blob directory must support hard links and directory sync: %w", err)
 	}
 	return b, nil
 }
 
-func (b *Blobs) probeLink() error {
+func (b *Blobs) probe() error {
 	f, err := os.CreateTemp(filepath.Join(b.root, tempDir), "probe-*")
 	if err != nil {
 		return err
@@ -49,7 +49,10 @@ func (b *Blobs) probeLink() error {
 	if err := os.Link(tmp, probe); err != nil {
 		return err
 	}
-	return os.Remove(probe)
+	if err := os.Remove(probe); err != nil {
+		return err
+	}
+	return b.syncDir()
 }
 
 func (b *Blobs) path(ref string) (string, error) {
@@ -130,10 +133,7 @@ func (b *Blobs) Delete(ctx context.Context, ref string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return b.syncDir()

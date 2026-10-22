@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -186,7 +187,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 		h.create(m)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, err := h.store.RateGet(t.Context(), "global:d", day); err != nil || c.Count != 20 {
+	if c, err := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); err != nil || c.Count != 20 {
 		t.Fatalf("rate-limited attempts moved the global counter: %+v %v", c, err)
 	}
 	small := baseConfig(pepperA, nil)
@@ -199,7 +200,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 			t.Fatalf("create without pow at 50 percent: %d", resp.StatusCode)
 		}
 	}
-	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 20 {
+	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 20 {
 		t.Fatalf("PoW failures moved the global counter: %+v", c)
 	}
 	h.reopen(cfg)
@@ -215,7 +216,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF2}}); resp.StatusCode != 400 {
 		t.Fatalf("body kdf differs from the header: %d", resp.StatusCode)
 	}
-	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 21 {
+	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 21 {
 		t.Fatalf("only stored messages may move the global counter: %+v", c)
 	}
 }
@@ -253,7 +254,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 		t.Fatalf("replayed token: %d", code)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 2 {
+	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 2 {
 		t.Fatalf("failed and replayed creates moved the global counter: %+v", c)
 	}
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
@@ -599,18 +600,32 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	}
 }
 
-func TestClaimKeepsLeaseWhenBlobOpenFails(t *testing.T) {
+func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
-	fb.set(func(b *faultyBlobs) { b.failOpen = errInjected; b.passOpens = 1 })
-	resp, _ := h.claim(m, "", "")
-	lease := resp.Header.Get("X-Nylzo-Lease")
-	if resp.StatusCode != 500 || lease == "" {
-		t.Fatalf("a failed open after the claim must still return the lease: %d %q", resp.StatusCode, lease)
+	fb.set(func(b *faultyBlobs) { b.failRead = errInjected })
+	req, err := http.NewRequest("POST", h.ts.URL+"/api/v1/messages/"+m.id.String()+"/claim", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	fb.set(func(b *faultyBlobs) { b.failOpen = nil })
+	req.Header.Set("Authorization", "Bearer "+m.readToken)
+	req.Header.Set("X-Forwarded-For", m.ip)
+	resp, err := h.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	if resp.StatusCode != 200 || lease == "" || readErr == nil {
+		t.Fatalf("a stream that fails after the claim must still carry the lease: %d %q %v", resp.StatusCode, lease, readErr)
+	}
+	if !strings.Contains(h.logBuf.String(), `"msg":"blob-stream"`) {
+		t.Fatalf("a failed stream must be logged: %s", h.logBuf.String())
+	}
+	fb.set(func(b *faultyBlobs) { b.failRead = nil })
 	resp, object := h.blob(m, lease)
 	if resp.StatusCode != 200 || !bytes.Equal(object, m.object) {
 		t.Fatalf("retry through the lease: %d", resp.StatusCode)
@@ -975,6 +990,7 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 		"see p%2523token-abc def",
 		"see p%252523token-abc def",
 		"see p%25252523token-abc def",
+		"a\u009bb\u202ec\u007fd\u2066e%E2%80%AEf\nnext",
 	}
 	for i, reason := range reasons {
 		body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": reason})
@@ -1004,7 +1020,7 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 	if got := reason(6); got != "see https://x.example/p[redacted] def" {
 		t.Fatalf("percent-encoded hash run: %q", got)
 	}
-	for i, want := range map[int]string{7: "see p[redacted] def", 8: "see p[redacted] def", 9: "see p%23token-abc def"} {
+	for i, want := range map[int]string{7: "see p[redacted] def", 8: "see p[redacted] def", 9: "see p%23token-abc def", 10: "a bc def next"} {
 		if got := reason(i); got != want {
 			t.Fatalf("reason %d: %q, want %q", i, got, want)
 		}
@@ -1170,10 +1186,35 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	}
 }
 
+type slotSignals struct {
+	store.Store
+	reserved chan struct{}
+	released chan struct{}
+}
+
+func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit, limit int64) (int64, bool, error) {
+	n, ok, err := s.Store.RateReserve(ctx, hit, limit)
+	if hit.Key == server.GlobalCreatesKey {
+		s.reserved <- struct{}{}
+	}
+	return n, ok, err
+}
+
+func (s *slotSignals) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
+	err := s.Store.RateRelease(ctx, key, windowStart)
+	if key == server.GlobalCreatesKey {
+		s.released <- struct{}{}
+	}
+	return err
+}
+
 func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 10
 	h := newHarness(t, cfg)
+	signals := &slotSignals{Store: h.store, reserved: make(chan struct{}, 1), released: make(chan struct{}, 1)}
+	h.store = signals
+	h.reopen(h.cfg)
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	conn, err := net.Dial("tcp", h.listen())
 	if err != nil {
@@ -1181,35 +1222,20 @@ func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	}
 	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), m.createHeader(0))
 	conn.Write(m.object[:100])
-	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		c, err := h.store.RateGet(t.Context(), "global:d", day)
-		if err != nil {
-			t.Fatal(err)
+	wait := func(ch chan struct{}, what string) {
+		select {
+		case <-ch:
+		// gstack-timing-ok: an upper bound on waiting for the event, not a measurement
+		case <-time.After(5 * time.Second):
+			t.Fatalf("the create never %s its cap slot", what)
 		}
-		if c.Count == 1 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the slot was never reserved: %+v", c)
-		}
-		time.Sleep(5 * time.Millisecond)
 	}
+	wait(signals.reserved, "reserved")
 	conn.Close()
-	deadline = time.Now().Add(5 * time.Second)
-	for {
-		c, err := h.store.RateGet(t.Context(), "global:d", day)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if c.Count == 0 {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("a disconnected create kept its cap slot: %+v", c)
-		}
-		time.Sleep(5 * time.Millisecond)
+	wait(signals.released, "released")
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	if c, err := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); err != nil || c.Count != 0 {
+		t.Fatalf("a disconnected create kept its cap slot: %+v %v", c, err)
 	}
 }
 
@@ -1218,7 +1244,7 @@ func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
 	cfg.Rates.GlobalDailyCreates = 2
 	h := newHarness(t, cfg)
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	hit := store.RateHit{Key: "global:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
+	hit := store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
 	for range 2 {
 		if _, ok, err := h.store.RateReserve(t.Context(), hit, 2); err != nil || !ok {
 			t.Fatal(err)
@@ -1229,7 +1255,7 @@ func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
 	if resp.StatusCode != 503 || resp.Header.Get("Retry-After") != "60" {
 		t.Fatalf("pending creates must ask for a short retry: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
-	if _, err := h.store.RateHit(t.Context(), []store.RateHit{{Key: "global:stored:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}, {Key: "global:stored:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}}); err != nil {
+	if _, err := h.store.RateHit(t.Context(), []store.RateHit{{Key: server.GlobalStoredKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}, {Key: server.GlobalStoredKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}}); err != nil {
 		t.Fatal(err)
 	}
 	resp, _ = h.create(m)
@@ -1269,7 +1295,7 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 type staleGateStore struct{ store.Store }
 
 func (s staleGateStore) RateGet(ctx context.Context, key string, ws time.Time) (store.RateCount, error) {
-	if key == "global:d" {
+	if key == server.GlobalCreatesKey {
 		return store.RateCount{}, nil
 	}
 	return s.Store.RateGet(ctx, key, ws)
@@ -1288,7 +1314,183 @@ func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
 		t.Fatalf("the third of four slots was taken without PoW: %d %s", resp.StatusCode, body)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, err := inner.RateGet(t.Context(), "global:d", day); err != nil || c.Count != 2 {
+	if c, err := inner.RateGet(t.Context(), server.GlobalCreatesKey, day); err != nil || c.Count != 2 {
 		t.Fatalf("the refused create must return its slot: %+v %v", c, err)
+	}
+}
+
+type endingThenFailingGet struct {
+	store.Store
+	armed atomic.Bool
+}
+
+func (s *endingThenFailingGet) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, error) {
+	if err := s.Store.End(ctx, id, store.StateCancelled, now); err != nil {
+		return "", "", err
+	}
+	s.armed.Store(true)
+	return s.Store.MarkEnding(ctx, id, state, now)
+}
+
+func (s *endingThenFailingGet) Get(ctx context.Context, id string) (store.Record, error) {
+	if s.armed.Load() {
+		return store.Record{}, errInjected
+	}
+	return s.Store.Get(ctx, id)
+}
+
+func TestBurnWithUnreadableEndAnswers500(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	h.store = &endingThenFailingGet{Store: h.store}
+	h.reopen(h.cfg)
+	if resp, body := h.post(m, "burn", m.readToken); resp.StatusCode != 500 {
+		t.Fatalf("a burn that cannot read the final state must not guess it: %d %s", resp.StatusCode, body)
+	}
+}
+
+type countingReleaseStore struct {
+	store.Store
+	releases atomic.Int32
+}
+
+func (s *countingReleaseStore) ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error) {
+	s.releases.Add(1)
+	return s.Store.ReleaseIfDone(ctx, id, now)
+}
+
+func TestRequestDuringTheLeaseTakesNoWriteLock(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	if resp, _ := h.claim(m, "", ""); resp.StatusCode != 200 {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	counting := &countingReleaseStore{Store: h.store}
+	h.store = counting
+	h.reopen(h.cfg)
+	wrong := *m
+	wrong.readToken = core.Encode(core.NewSecret()[:])
+	h.metadata(m)
+	h.metadata(&wrong)
+	if n := counting.releases.Load(); n != 0 {
+		t.Fatalf("requests during the lease tried to release the blob %d times", n)
+	}
+}
+
+func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	unspent := newMessage(t, core.KDFNone, "", 2, 60, "x")
+	spent := newMessage(t, core.KDFNone, "", 1, 3600, "y")
+	h.mustCreate(unspent)
+	h.mustCreate(spent)
+	if resp, _ := h.claim(spent, "", ""); resp.StatusCode != 200 {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	fb.set(func(b *faultyBlobs) {
+		b.failDelete[unspent.id.String()] = true
+		b.failDelete[spent.id.String()] = true
+	})
+	h.clock.Advance(time.Hour)
+	if _, meta := h.metadata(unspent); meta["state"] != "expired" {
+		t.Fatalf("unspent: %v", meta)
+	}
+	if _, meta := h.metadata(spent); meta["state"] != "opened" {
+		t.Fatalf("spent: %v", meta)
+	}
+	if resp, body := h.claim(unspent, "", ""); resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "expired" {
+		t.Fatalf("claim: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestStoredCapPointsToTheNextDay(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 1
+	h := newHarness(t, cfg)
+	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
+	resp, _ := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "y"))
+	if retry, _ := strconv.Atoi(resp.Header.Get("Retry-After")); resp.StatusCode != 503 || retry < 3600 {
+		t.Fatalf("a cap filled by stored messages: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+}
+
+type fillingStore struct {
+	store.Store
+	once sync.Once
+	fill func()
+}
+
+func (s *fillingStore) RateGet(ctx context.Context, key string, ws time.Time) (store.RateCount, error) {
+	c, err := s.Store.RateGet(ctx, key, ws)
+	if key == server.GlobalCreatesKey {
+		s.once.Do(s.fill)
+	}
+	return c, err
+}
+
+func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 1
+	h := newHarness(t, cfg)
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	inner := h.store
+	h.store = &fillingStore{Store: inner, fill: func() {
+		if _, ok, err := inner.RateReserve(context.Background(), store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}, 1); err != nil || !ok {
+			t.Error(ok, err)
+		}
+	}}
+	h.reopen(h.cfg)
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	if resp, _ := h.create(m); resp.StatusCode != 503 {
+		t.Fatalf("a create that lost its reservation: %d", resp.StatusCode)
+	}
+	if c, _ := inner.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 1 {
+		t.Fatalf("the cap was exceeded: %+v", c)
+	}
+	if resp, _ := h.metadata(m); resp.StatusCode != 404 {
+		t.Fatalf("a refused create stored a row: %d", resp.StatusCode)
+	}
+}
+
+func TestOverBudgetReportWithAFullFileIsAccepted(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	report := func(ip string) int {
+		body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "spam"})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, headers: map[string]string{"Content-Type": "application/json"}})
+		return resp.StatusCode
+	}
+	for i := range 3 {
+		if code := report(fmt.Sprintf("198.51.7.%d", i+1)); code != 202 {
+			t.Fatalf("report %d: %d", i+1, code)
+		}
+	}
+	if err := os.Truncate(filepath.Join(h.dir, "abuse-reports.jsonl"), 16<<20); err != nil {
+		t.Fatal(err)
+	}
+	if code := report("198.51.7.9"); code != 202 {
+		t.Fatalf("an over-budget report with a full file: %d", code)
+	}
+	if code := report("198.51.8.1"); code != 503 {
+		t.Fatalf("a report that would be stored in a full file: %d", code)
+	}
+}
+
+func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	fb.set(func(b *faultyBlobs) { b.failOpen = errInjected })
+	resp, _ := h.claim(m, "", "")
+	if resp.StatusCode != 500 || resp.Header.Get("X-Nylzo-Lease") != "" {
+		t.Fatalf("a blob open error before the claim: %d lease=%q", resp.StatusCode, resp.Header.Get("X-Nylzo-Lease"))
+	}
+	fb.set(func(b *faultyBlobs) { b.failOpen = nil })
+	if _, meta := h.metadata(m); meta["opens_remaining"] != float64(1) {
+		t.Fatalf("an open error spent an open: %v", meta)
 	}
 }

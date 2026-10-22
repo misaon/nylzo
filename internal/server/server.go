@@ -105,13 +105,17 @@ func (s *Server) HTTPServer() *http.Server {
 	}
 }
 
+type sinkLevel struct {
+	bucket  *tokenBucket
+	dropped int
+}
+
 type httpErrorSink struct {
-	log     *slog.Logger
-	clock   func() time.Time
-	mu      sync.Mutex
-	warn    *tokenBucket
-	error   *tokenBucket
-	dropped [2]int
+	log   *slog.Logger
+	clock func() time.Time
+	mu    sync.Mutex
+	warn  sinkLevel
+	err   sinkLevel
 }
 
 func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
@@ -119,8 +123,8 @@ func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
 	return &httpErrorSink{
 		log:   l,
 		clock: clock,
-		warn:  newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now),
-		error: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now),
+		warn:  sinkLevel{bucket: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now)},
+		err:   sinkLevel{bucket: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now)},
 	}
 }
 
@@ -145,18 +149,18 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 			break
 		}
 	}
-	bucket, slot := h.warn, 0
+	sink := &h.warn
 	if level >= slog.LevelError {
-		bucket, slot = h.error, 1
+		sink = &h.err
 	}
 	h.mu.Lock()
-	if !bucket.allow(h.clock()) {
-		h.dropped[slot]++
+	if !sink.bucket.allow(h.clock()) {
+		sink.dropped++
 		h.mu.Unlock()
 		return len(p), nil
 	}
-	dropped := h.dropped[slot]
-	h.dropped[slot] = 0
+	dropped := sink.dropped
+	sink.dropped = 0
 	h.mu.Unlock()
 	h.log.Log(context.Background(), level, "net/http error", "category", name, "dropped", dropped)
 	return len(p), nil

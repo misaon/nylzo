@@ -1,9 +1,11 @@
 package server
 
 import (
+	"crypto/rand"
 	_ "embed"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -24,12 +26,7 @@ var previewAgents = []string{
 
 func isPreviewAgent(ua string) bool {
 	ua = strings.ToLower(ua)
-	for _, a := range previewAgents {
-		if strings.Contains(ua, a) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(previewAgents, func(a string) bool { return strings.Contains(ua, a) })
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +36,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	nonce := newNonce()
+	nonce := rand.Text()
 	w.Header().Set("Content-Security-Policy", fmt.Sprintf(cspTemplate, nonce, nonce))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if isPreviewAgent(r.UserAgent()) {

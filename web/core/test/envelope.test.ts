@@ -21,7 +21,6 @@ import {
   VersionError,
   aad,
   deriveAll,
-  equalBytes,
   headerBytes,
   newHeader,
   newId,
@@ -243,7 +242,7 @@ describe('seal validates its inputs', () => {
     expect(object.length).toBeLessThanOrEqual(MAX_OBJECT_BYTES);
     const opened = await open(content.k, id, policy, KDF_NONE, object);
     expect(opened.payload.meta.text).toBe(meta.text);
-    expect(opened.payload.file !== undefined && equalBytes(opened.payload.file, file)).toBe(true);
+    expect(opened.payload.file).toEqual(file);
   }, 60_000);
 });
 
@@ -254,7 +253,7 @@ describe('header and aad', () => {
     expect(parsed.version).toBe(VERSION);
     expect(parsed.kdfId).toBe(KDF_SCRYPT);
     expect(parsed.flags).toBe(0);
-    expect(equalBytes(parsed.iv, header.iv)).toBe(true);
+    expect(parsed.iv).toEqual(header.iv);
   });
 
   it('prefixes the aad with the header bytes', () => {
@@ -262,14 +261,14 @@ describe('header and aad', () => {
     const id = newId();
     const bytes = aad(header, id, { opensMax: 1, ttlSeconds: 60 });
     expect(bytes.length).toBe(AAD_LEN);
-    expect(equalBytes(bytes.subarray(0, HEADER_LEN), headerBytes(header))).toBe(true);
-    expect(equalBytes(bytes.subarray(HEADER_LEN, HEADER_LEN + 16), id)).toBe(true);
+    expect(bytes.subarray(0, HEADER_LEN)).toEqual(headerBytes(header));
+    expect(bytes.subarray(HEADER_LEN, HEADER_LEN + 16)).toEqual(id);
     expect(Array.from(bytes.subarray(HEADER_LEN + 16))).toEqual([0, 1, 0, 0, 0, 60]);
   });
 
   it('starts every sealed object with the header', async () => {
     const m = await sample(KDF_NONE, '');
-    expect(equalBytes(m.object.subarray(0, HEADER_LEN), headerBytes(m.header))).toBe(true);
+    expect(m.object.subarray(0, HEADER_LEN)).toEqual(headerBytes(m.header));
     const opened = await open(m.k, m.id, m.policy, KDF_NONE, m.object);
     expect(opened.payload.meta).toEqual({ text: 'integrity' });
     expect(opened.payload.file).toBeUndefined();

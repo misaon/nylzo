@@ -183,17 +183,18 @@ func TestSealRejectsLimits(t *testing.T) {
 func TestCanonicalBase64(t *testing.T) {
 	id := core.NewID()
 	enc := id.String()
-	if len(enc) != core.IDChars {
+	idChars := len(enc)
+	if idChars != 22 {
 		t.Fatal("id length")
 	}
 	if _, err := core.ParseID(enc); err != nil {
 		t.Fatal(err)
 	}
-	last := enc[core.IDChars-1]
+	last := enc[idChars-1]
 	if !strings.ContainsRune("AQgw", rune(last)) {
 		t.Fatalf("canonical id ends with %q", last)
 	}
-	bad := enc[:core.IDChars-1] + "B"
+	bad := enc[:idChars-1] + "B"
 	if _, err := core.ParseID(bad); !errors.Is(err, core.ErrEncoding) {
 		t.Fatalf("non-canonical id accepted: %v", err)
 	}
@@ -225,12 +226,12 @@ func TestKDFNoneIgnoresPassphrase(t *testing.T) {
 	}
 }
 
-func TestAssertProfile(t *testing.T) {
-	if err := core.AssertProfile(core.KDFScrypt, core.KDFPBKDF2); !errors.Is(err, core.ErrKDFMismatch) {
-		t.Fatal("downgrade accepted")
-	}
-	if err := core.AssertProfile(core.KDFScrypt, core.KDFScrypt); err != nil {
-		t.Fatal(err)
+func TestIllFormedPassphraseIsRejected(t *testing.T) {
+	var salt [32]byte
+	for _, kdf := range []core.KDF{core.KDFScrypt, core.KDFPBKDF2} {
+		if _, err := core.DerivePassphraseKey(kdf, "caf\xe9", &salt); !errors.Is(err, core.ErrPassphrase) {
+			t.Fatalf("kdf %s accepted invalid UTF-8: %v", kdf, err)
+		}
 	}
 }
 

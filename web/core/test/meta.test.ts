@@ -9,8 +9,6 @@ import {
   MetaError,
   decodeMeta,
   encodeMeta,
-  equalBytes,
-  hasFile,
   utf8,
   validateMeta,
   type Meta,
@@ -68,14 +66,9 @@ describe('canonical encoding', () => {
     for (const meta of metas) {
       const once = encodeMeta(meta);
       const twice = encodeMeta(decodeMeta(once));
-      expect(equalBytes(once, twice)).toBe(true);
+      expect(once).toEqual(twice);
       expect(decodeMeta(twice)).toEqual(meta);
     }
-  });
-
-  it('reports whether a file is present', () => {
-    expect(hasFile({ text: 'x' })).toBe(false);
-    expect(hasFile({ file: { name: 'a', mime: '', size: 0 } })).toBe(true);
   });
 });
 

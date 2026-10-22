@@ -12,6 +12,13 @@ export class KdfError extends Error {
   }
 }
 
+export class PassphraseError extends Error {
+  override readonly name = 'PassphraseError';
+  constructor(message = 'passphrase is not well-formed Unicode') {
+    super(message);
+  }
+}
+
 export class HeaderError extends Error {
   override readonly name = 'HeaderError';
   constructor(message = 'invalid envelope header') {

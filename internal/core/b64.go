@@ -38,7 +38,5 @@ func Decode32(s string) (*[32]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out [32]byte
-	copy(out[:], b)
-	return &out, nil
+	return (*[32]byte)(b), nil
 }

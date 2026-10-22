@@ -316,12 +316,15 @@ func testLeasesAck(t *testing.T, open Factory) {
 			t.Fatal("lease not active before expiry")
 		}
 		for i := 1; i <= store.MaxLeaseDownload; i++ {
-			n, err := f.s.RecordDownload(f.ctx, l.RowID, baseTime.Add(time.Minute))
-			if err != nil || n != i {
-				t.Fatalf("download %d: %d %v", i, n, err)
+			if err := f.s.RecordDownload(f.ctx, l.RowID, baseTime.Add(time.Minute)); err != nil {
+				t.Fatalf("download %d: %v", i, err)
+			}
+			all, err := f.s.Leases(f.ctx, m.ID)
+			if err != nil || !slices.ContainsFunc(all, func(x store.Lease) bool { return x.RowID == l.RowID && x.Downloads == i }) {
+				t.Fatalf("download %d was not counted: %+v %v", i, all, err)
 			}
 		}
-		if _, err := f.s.RecordDownload(f.ctx, l.RowID, baseTime.Add(time.Minute)); !errors.Is(err, store.ErrLeaseLimit) {
+		if err := f.s.RecordDownload(f.ctx, l.RowID, baseTime.Add(time.Minute)); !errors.Is(err, store.ErrLeaseLimit) {
 			t.Fatalf("fourth download: %v", err)
 		}
 	}
@@ -350,7 +353,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime.Add(time.Hour)); ref != "" {
 		t.Fatal("release after tombstone")
 	}
-	if _, err := f.s.RecordDownload(f.ctx, leases[0].RowID, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(f.ctx, leases[0].RowID, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download on acked lease: %v", err)
 	}
 }
@@ -366,7 +369,7 @@ func testLeaseExpiry(t *testing.T, open Factory) {
 	if res.Lease.Active(atExpiry) || !res.Lease.Active(atExpiry.Add(-time.Millisecond)) {
 		t.Fatal("lease boundary must be exclusive at lease_expires_at")
 	}
-	if _, err := f.s.RecordDownload(f.ctx, res.Lease.RowID, atExpiry); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(f.ctx, res.Lease.RowID, atExpiry); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download at expiry: %v", err)
 	}
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, atExpiry.Add(-time.Second)); ref != "" {
@@ -860,7 +863,7 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateCancelled, baseTime.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.RecordDownload(f.ctx, res.Lease.RowID, baseTime.Add(2*time.Second)); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(f.ctx, res.Lease.RowID, baseTime.Add(2*time.Second)); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("lease survived cancel: %v", err)
 	}
 	if rec := f.get(cancel.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || rec.Tombstone.FirstOpenedAt == nil {
@@ -868,6 +871,14 @@ func testBurnCancel(t *testing.T, open Factory) {
 	}
 	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateDeleted, baseTime); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("end twice: %v", err)
+	}
+	late := f.create(1, time.Hour, false)
+	endedAt := baseTime.Add(95*time.Second + 300*time.Millisecond)
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, late.ID, store.StateDeleted, endedAt); err != nil {
+		t.Fatal(err)
+	}
+	if rec := f.get(late.ID); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Minute)) || !rec.Tombstone.PurgeAt.Equal(endedAt.Add(store.TombstoneTTL)) {
+		t.Fatalf("ended_at must be rounded down to the minute and purge_at kept exact: %+v", rec.Tombstone)
 	}
 }
 

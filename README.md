@@ -55,9 +55,9 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | Proměnná | Výchozí | Význam |
 |---|---|---|
 | `NYLZO_PEPPER` | povinná pro `serve` | 32 bajtů v hex nebo base64url |
-| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje. Náhrobky ho drží ještě 7 dní a vyexpirovaná zpráva se stane náhrobkem až při dalším požadavku nebo úklidu, takže pro úplné stavy ho nechte 14 dní a jeden interval úklidu |
+| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje. Náhrobky ho drží ještě 7 dní a vyexpirovaná zpráva se stane náhrobkem až při dalším požadavku nebo úklidu, takže pro úplné stavy ho nechte 14 dní a jeden interval úklidu. Rotace zároveň vynuluje čítače limitů, backoff hesel a limit hlášení na rozsah adres, stejně jako půlnoc UTC; denní strop 100 selhání na zprávu platí dál |
 | `NYLZO_LISTEN`, `PORT` | `:8080` | adresa naslouchání |
-| `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky (server to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují |
+| `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky (server to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují. `sweep-once` adresář nezakládá: bez existující databáze a adresáře `blobs` skončí chybou, proto mu v plánovači dejte absolutní cestu |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |
 | `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP` |
 | `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy |
@@ -73,13 +73,13 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_RATE_SOURCE_RPS`, `NYLZO_RATE_SOURCE_BURST` | `10`, `20` | paměťový token bucket jednoho zdroje (kyblík /32 nebo /64) pro `/api/*`. Za ním následuje bucket rozsahu /24 nebo /48 s polovinou kapacity instance, takže jeden zdroj ani jeden rozsah nevezme víc než polovinu bucketu instance |
 | `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `50`, `100` | paměťový token bucket instance pro `/api/*` |
 | `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; od 50 % vyžaduje PoW, při 100 % vrací 503. Místo se rezervuje atomicky až po PoW a při každém selhání se vrátí, takže souběh strop nepřekročí. Dokud uložené zprávy samy strop nezaplní, 503 radí zkusit to za 60 s. Platí to i pro místa, která drží nahrávání přerušené pádem procesu, takže rada na 60 s se může opakovat až do konce dne UTC. Jakmile strop zaplní uložené zprávy, radí počkat do dalšího dne |
-| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost (nejvýš 8) a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 16). Každou výzvu lze použít jen jednou |
+| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost (nejvýš 8) a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 8). Každou výzvu lze použít jen jednou |
 
 Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez nich server vidí jen adresu proxy a všichni klienti sdílejí jeden kyblík, včetně limitu na zdroj.
 
 Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
 
-Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, vymaže z něj fragmenty odkazů a dlouhé tokeny a zkrátí ho. Na jednu zprávu a jeden rozsah adres /24 nebo /48 uloží nejvýš 3 hlášení denně, takže odesílatel zprávy nemůže limit vyčerpat ostatním. Když by hlášení soubor zvětšilo nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit.
+Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Na jednu zprávu a jeden rozsah adres /24 nebo /48 uloží nejvýš 3 hlášení denně, takže odesílatel zprávy nemůže limit vyčerpat ostatním. Když by hlášení soubor zvětšilo nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit.
 
 Logy obsahují čas, metodu, vzor cesty, id zprávy (jen platné), stav, latenci a velikost odpovědi. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
 

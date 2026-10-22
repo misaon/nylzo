@@ -4,7 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 )
+
+const (
+	powBusyRetry   = 5 * time.Second
+	abuseFullRetry = time.Hour
+	prefetchRetry  = time.Minute
+	throttleRetry  = time.Second
+)
+
+func setRetryAfter(w http.ResponseWriter, d time.Duration) {
+	w.Header().Set("Retry-After", strconv.FormatInt(int64(d/time.Second), 10))
+}
 
 type apiError struct {
 	Error string `json:"error"`
@@ -62,9 +74,7 @@ func writeGone(w http.ResponseWriter, state string) {
 }
 
 func writeRateLimited(w http.ResponseWriter, retryAfterSeconds int64) {
-	if retryAfterSeconds < 1 {
-		retryAfterSeconds = 1
-	}
+	retryAfterSeconds = max(1, retryAfterSeconds)
 	w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retryAfterSeconds})
 }

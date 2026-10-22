@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -60,6 +61,19 @@ func open(cfg server.Config) (*sqlite.Store, *disk.Blobs, error) {
 	return st, blobs, nil
 }
 
+func existingStore(dataDir string) error {
+	dir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{"nylzo.db", "blobs"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			return fmt.Errorf("sweep-once found no store: %w", err)
+		}
+	}
+	return nil
+}
+
 func serve(logger *slog.Logger) error {
 	cfg, err := server.FromEnv(os.Getenv, true)
 	if err != nil {
@@ -76,14 +90,11 @@ func serve(logger *slog.Logger) error {
 		return err
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	sweeper := make(chan struct{})
-	go func() {
-		defer close(sweeper)
-		srv.RunSweeper(ctx)
-	}()
+	var sweeper sync.WaitGroup
+	sweeper.Go(func() { srv.RunSweeper(ctx) })
 	defer func() {
 		stop()
-		<-sweeper
+		sweeper.Wait()
 	}()
 	httpServer := srv.HTTPServer()
 	errCh := make(chan error, 1)
@@ -105,6 +116,9 @@ func serve(logger *slog.Logger) error {
 func sweepOnce(logger *slog.Logger) error {
 	cfg, err := server.FromEnv(os.Getenv, false)
 	if err != nil {
+		return err
+	}
+	if err := existingStore(cfg.DataDir); err != nil {
 		return err
 	}
 	st, blobs, err := open(cfg)

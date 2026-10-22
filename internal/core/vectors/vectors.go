@@ -158,21 +158,15 @@ func det(label string, n int) []byte {
 }
 
 func detID(label string) core.ID {
-	var id core.ID
-	copy(id[:], det("id/"+label, core.IDLen))
-	return id
+	return core.ID(det("id/"+label, core.IDLen))
 }
 
 func det32(label string) *[32]byte {
-	var s [32]byte
-	copy(s[:], det(label, 32))
-	return &s
+	return (*[32]byte)(det(label, 32))
 }
 
 func detIV(label string) [core.IVLen]byte {
-	var iv [core.IVLen]byte
-	copy(iv[:], det("iv/"+label, core.IVLen))
-	return iv
+	return [core.IVLen]byte(det("iv/"+label, core.IVLen))
 }
 
 func counterBytes(n int) []byte {
@@ -185,23 +179,10 @@ func counterBytes(n int) []byte {
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
-	if err := f.scrypt(); err != nil {
-		return nil, err
-	}
-	if err := f.derive(); err != nil {
-		return nil, err
-	}
-	if err := f.envelope(); err != nil {
-		return nil, err
-	}
-	if err := f.link(); err != nil {
-		return nil, err
-	}
-	if err := f.meta(); err != nil {
-		return nil, err
-	}
-	if err := f.server(); err != nil {
-		return nil, err
+	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.server} {
+		if err := step(); err != nil {
+			return nil, err
+		}
 	}
 	return f, nil
 }

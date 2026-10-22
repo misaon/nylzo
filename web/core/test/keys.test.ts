@@ -6,12 +6,12 @@ import {
   KDF_SCRYPT,
   KEY_LEN,
   KdfError,
+  PassphraseError,
   TOKEN_LEN,
   deriveAll,
   deriveContent,
   deriveLink,
   derivePassphraseKey,
-  equalBytes,
   hsalt,
   kdfRequiresPassphrase,
   newHeader,
@@ -50,7 +50,7 @@ describe('tokens', () => {
       expect(bytes).toBeInstanceOf(Uint8Array);
       expect(bytes).toHaveLength(TOKEN_LEN);
     }
-    expect(equalBytes(link.r, content.v)).toBe(false);
+    expect(link.r).not.toEqual(content.v);
   });
 
   it('differ per id and per secret', async () => {
@@ -59,9 +59,9 @@ describe('tokens', () => {
     const a = await deriveLink(id, s);
     const b = await deriveLink(newId(), s);
     const c = await deriveLink(id, newSecret());
-    expect(equalBytes(a.r, b.r)).toBe(false);
-    expect(equalBytes(a.r, c.r)).toBe(false);
-    expect(equalBytes(a.saltPw, b.saltPw)).toBe(false);
+    expect(a.r).not.toEqual(b.r);
+    expect(a.r).not.toEqual(c.r);
+    expect(a.saltPw).not.toEqual(b.saltPw);
   });
 
   it('reject an id or secret of the wrong length', async () => {
@@ -72,6 +72,14 @@ describe('tokens', () => {
 });
 
 describe('passphrase normalisation', () => {
+  it('rejects a passphrase that is not well-formed Unicode', async () => {
+    const salt = new Uint8Array(32);
+    for (const kdfId of [KDF_SCRYPT, KDF_PBKDF2] as const) {
+      await expect(derivePassphraseKey(kdfId, 'caf\ud800', salt)).rejects.toBeInstanceOf(PassphraseError);
+    }
+    await expect(derivePassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
+  });
+
   it('encodes the NFC form as UTF-8', () => {
     expect(composed).not.toBe(decomposed);
     expect(bytesToHex(normalizePassphrase(decomposed))).toBe(bytesToHex(utf8(composed)));
@@ -83,7 +91,7 @@ describe('passphrase normalisation', () => {
     const s = newSecret();
     const a = await deriveAll(id, s, KDF_PBKDF2, composed);
     const b = await deriveAll(id, s, KDF_PBKDF2, decomposed);
-    expect(equalBytes(a.content.v, b.content.v)).toBe(true);
+    expect(a.content.v).toEqual(b.content.v);
     expect(bytesToHex(a.content.v)).not.toBe(bytesToHex((await deriveAll(id, s, KDF_PBKDF2, 'other')).content.v));
     const header = newHeader(KDF_PBKDF2);
     const policy = { opensMax: 1, ttlSeconds: 3600 };
@@ -99,7 +107,7 @@ describe('passphrase normalisation', () => {
     const a = await derivePassphraseKey(KDF_SCRYPT, composed, saltPw);
     const b = await derivePassphraseKey(KDF_SCRYPT, decomposed, saltPw);
     expect(a).toHaveLength(KEY_LEN);
-    expect(equalBytes(a, b)).toBe(true);
+    expect(a).toEqual(b);
   }, 60_000);
 });
 
@@ -114,7 +122,7 @@ describe('kdf profiles', () => {
     const s = newSecret();
     const a = await deriveAll(id, s, KDF_NONE, 'a');
     const b = await deriveAll(id, s, KDF_NONE, 'b');
-    expect(equalBytes(a.content.v, b.content.v)).toBe(true);
+    expect(a.content.v).toEqual(b.content.v);
   });
 
   it('rejects an unknown profile', async () => {

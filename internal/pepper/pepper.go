@@ -55,9 +55,7 @@ func New(secret []byte) (*Key, error) {
 		if err != nil {
 			return nil, err
 		}
-		var kk [32]byte
-		copy(kk[:], derived)
-		k.keys[p] = kk
+		k.keys[p] = [32]byte(derived)
 	}
 	return k, nil
 }
@@ -81,9 +79,7 @@ func (k *Key) MAC(p Purpose, input []byte) [MACLen]byte {
 	key := k.keys[p]
 	m := hmac.New(sha256.New, key[:])
 	m.Write(input)
-	var out [MACLen]byte
-	copy(out[:], m.Sum(nil))
-	return out
+	return [MACLen]byte(m.Sum(nil))
 }
 
 type Ring struct {

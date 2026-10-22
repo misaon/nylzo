@@ -14,13 +14,11 @@ func NewID() ID {
 }
 
 func ParseID(s string) (ID, error) {
-	var id ID
 	b, err := DecodeExact(s, IDLen)
 	if err != nil {
-		return id, err
+		return ID{}, err
 	}
-	copy(id[:], b)
-	return id, nil
+	return ID(b), nil
 }
 
 func (id ID) String() string {

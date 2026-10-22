@@ -14,7 +14,6 @@ import {
   derivePassphraseKey,
   encodeBase64url,
   encodeMeta,
-  equalBytes,
   formatLink,
   fragment,
   hash,
@@ -151,9 +150,7 @@ describe('envelope', () => {
       } else {
         expect(opened.payload.meta.file).toEqual({ name: v.file.name, mime: v.file.mime, size: v.file.size });
         expect(opened.payload.file).toBeInstanceOf(Uint8Array);
-        expect(file !== undefined && opened.payload.file !== undefined && equalBytes(opened.payload.file, file)).toBe(
-          true,
-        );
+        expect(opened.payload.file).toEqual(file);
       }
     });
   }
@@ -197,7 +194,7 @@ describe('meta', () => {
       } else {
         expect(meta.file).toEqual({ name: v.file_name, mime: v.file_mime, size: v.file_size });
       }
-      expect(equalBytes(encodeMeta(decodeMeta(canonical)), canonical)).toBe(true);
+      expect(encodeMeta(decodeMeta(canonical))).toEqual(canonical);
     });
   }
 });

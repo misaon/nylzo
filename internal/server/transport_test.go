@@ -297,3 +297,20 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Fatalf("lower file limit: %v %d", err, lower.Limits.MaxObjectBytes)
 	}
 }
+
+func TestTrustedProxyInMappedForm(t *testing.T) {
+	cfg, err := server.FromEnv(func(k string) string {
+		if k == "NYLZO_TRUSTED_PROXIES" {
+			return "::ffff:172.17.0.1, ::ffff:10.0.0.0/104"
+		}
+		return ""
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, remote := range []string{"172.17.0.1:1234", "10.9.8.7:1234"} {
+		if got := server.ClientAddrForTest(cfg, "", remote, "198.51.100.9", ""); got.String() != "198.51.100.9" {
+			t.Fatalf("proxy %s written in mapped form must be trusted: %s", remote, got)
+		}
+	}
+}

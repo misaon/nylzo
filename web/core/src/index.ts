@@ -1,5 +1,5 @@
 export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './base64url.ts';
-export { concat, equalBytes, utf8 } from './bytes.ts';
+export { concat, utf8 } from './bytes.ts';
 export {
   deriveAll,
   deriveContent,
@@ -35,6 +35,7 @@ export {
   KdfMismatchError,
   LinkError,
   MetaError,
+  PassphraseError,
   PlaintextError,
   PolicyError,
   TooLargeError,
@@ -68,4 +69,4 @@ export {
   type Fragment,
   type Link,
 } from './link.ts';
-export { decodeMeta, encodeMeta, hasFile, validateMeta, type FileMeta, type Meta } from './meta.ts';
+export { decodeMeta, encodeMeta, validateMeta, type FileMeta, type Meta } from './meta.ts';

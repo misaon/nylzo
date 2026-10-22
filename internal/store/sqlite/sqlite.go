@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"math/rand/v2"
 	"net/url"
 	"time"
@@ -173,12 +172,7 @@ func open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error {
-	rerr := s.r.Close()
-	werr := s.w.Close()
-	if werr != nil {
-		return werr
-	}
-	return rerr
+	return errors.Join(s.r.Close(), s.w.Close())
 }
 
 func ms(t time.Time) int64 {
@@ -305,15 +299,7 @@ func backoff(failCount int) time.Duration {
 	if failCount <= store.FreeAttempts {
 		return 0
 	}
-	exp := failCount - store.FreeAttempts
-	if exp > 20 {
-		return store.MaxBackoff
-	}
-	d := time.Duration(math.Pow(2, float64(exp))) * time.Second
-	if d > store.MaxBackoff {
-		return store.MaxBackoff
-	}
-	return d
+	return min(store.MaxBackoff, time.Second<<min(failCount-store.FreeAttempts, 20))
 }
 
 func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResult, error) {
@@ -373,11 +359,7 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 					m.ID, p.Bucket, failCount, ms(next), ms(purge)); err != nil {
 					return err
 				}
-				left := store.FreeAttempts - failCount
-				if left < 0 {
-					left = 0
-				}
-				passErr = &store.PassphraseError{RetryAfter: wait, AttemptsLeft: left}
+				passErr = &store.PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, store.FreeAttempts-failCount)}
 				return nil
 			}
 		}
@@ -433,10 +415,10 @@ func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) (int, error) {
-	var downloads int
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
 		var expires int64
+		var downloads int
 		err := tx.QueryRowContext(ctx, `SELECT lease_expires_at, downloads FROM leases WHERE row_id = ?`, leaseRowID).Scan(&expires, &downloads)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && expires <= ms(now)) {
 			return store.ErrLeaseInvalid
@@ -447,11 +429,9 @@ func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.T
 		if downloads >= store.MaxLeaseDownload {
 			return store.ErrLeaseLimit
 		}
-		downloads++
-		_, err = tx.ExecContext(ctx, `UPDATE leases SET downloads = ? WHERE row_id = ?`, downloads, leaseRowID)
+		_, err = tx.ExecContext(ctx, `UPDATE leases SET downloads = ? WHERE row_id = ?`, downloads+1, leaseRowID)
 		return err
 	})
-	return downloads, err
 }
 
 func (s *Store) Ack(ctx context.Context, leaseRowID int64) error {
@@ -567,7 +547,7 @@ func endInTx(ctx context.Context, tx *sql.Tx, m *store.Message, state store.Stat
 		firstOpened = ms(*m.FirstOpenedAt)
 	}
 	_, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO tombstones (id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.PepperID, m.ReadMAC, m.ManageMAC, string(state), firstOpened, ms(now), ms(now.Add(store.TombstoneTTL)))
+		m.ID, m.PepperID, m.ReadMAC, m.ManageMAC, string(state), firstOpened, ms(now.UTC().Truncate(time.Minute)), ms(now.Add(store.TombstoneTTL)))
 	return err
 }
 

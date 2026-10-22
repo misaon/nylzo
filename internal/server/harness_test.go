@@ -109,8 +109,17 @@ type faultyBlobs struct {
 	failOpen   error
 	failPut    error
 	failList   error
-	passOpens  int
+	failRead   error
 	onOpen     func(ref string)
+}
+
+type failingReader struct {
+	io.ReadSeekCloser
+	err error
+}
+
+func (f failingReader) Read([]byte) (int, error) {
+	return 0, f.err
 }
 
 var errInjected = errors.New("test: injected storage failure")
@@ -133,11 +142,7 @@ func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
 
 func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {
 	b.mu.Lock()
-	err, hook := b.failOpen, b.onOpen
-	if err != nil && b.passOpens > 0 {
-		b.passOpens--
-		err = nil
-	}
+	err, readErr, hook := b.failOpen, b.failRead, b.onOpen
 	b.mu.Unlock()
 	if hook != nil {
 		hook(ref)
@@ -145,7 +150,11 @@ func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, 
 	if err != nil {
 		return nil, 0, err
 	}
-	return b.Blobs.Open(ctx, ref)
+	f, size, err := b.Blobs.Open(ctx, ref)
+	if err == nil && readErr != nil {
+		return failingReader{ReadSeekCloser: f, err: readErr}, size, nil
+	}
+	return f, size, err
 }
 
 func (b *faultyBlobs) Put(ctx context.Context, ref string, r io.Reader, size int64) error {

@@ -16,7 +16,7 @@ import (
 const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
-	MaxPoWConcurrency = 16
+	MaxPoWConcurrency = 8
 	MaxPoWDifficulty  = 8
 	MaxTTL            = 7 * 24 * time.Hour
 )
@@ -145,7 +145,10 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 			if perr != nil {
 				return perr
 			}
-			c.TrustedProxies = append(c.TrustedProxies, p.Masked())
+			if p = p.Masked(); p.Addr().Is4In6() {
+				p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+			}
+			c.TrustedProxies = append(c.TrustedProxies, p)
 		}
 		return nil
 	})
