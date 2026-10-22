@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -68,8 +67,4 @@ func writeRateLimited(w http.ResponseWriter, retryAfterSeconds int64) {
 	}
 	w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retryAfterSeconds})
-}
-
-func encodeNonce(b []byte) string {
-	return base64.RawURLEncoding.EncodeToString(b)
 }

@@ -149,13 +149,8 @@ func det(label string, n int) []byte {
 	out := make([]byte, 0, n+32)
 	var ctr uint32
 	for len(out) < n {
-		h := sha256.New()
-		h.Write([]byte(seed))
-		h.Write([]byte(label))
-		var c [4]byte
-		binary.BigEndian.PutUint32(c[:], ctr)
-		h.Write(c[:])
-		out = append(out, h.Sum(nil)...)
+		sum := sha256.Sum256(binary.BigEndian.AppendUint32([]byte(seed+label), ctr))
+		out = append(out, sum[:]...)
 		ctr++
 	}
 	return out[:n]
@@ -186,8 +181,6 @@ func counterBytes(n int) []byte {
 	}
 	return b
 }
-
-func strp(s string) *string { return &s }
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
@@ -253,12 +246,12 @@ type deriveCase struct {
 func deriveCases() []deriveCase {
 	return []deriveCase{
 		{"no-passphrase", core.KDFNone, nil},
-		{"scrypt-ascii", core.KDFScrypt, strp("correct horse battery staple")},
-		{"scrypt-nfc-composed", core.KDFScrypt, strp("héslo s češtinou")},
-		{"scrypt-nfc-decomposed", core.KDFScrypt, strp("héslo s češtinou")},
-		{"pbkdf2-ascii", core.KDFPBKDF2, strp("password")},
-		{"pbkdf2-emoji", core.KDFPBKDF2, strp("\U0001F510 tajné heslo")},
-		{"pbkdf2-empty", core.KDFPBKDF2, strp("")},
+		{"scrypt-ascii", core.KDFScrypt, new("correct horse battery staple")},
+		{"scrypt-nfc-composed", core.KDFScrypt, new("héslo s češtinou")},
+		{"scrypt-nfc-decomposed", core.KDFScrypt, new("héslo s češtinou")},
+		{"pbkdf2-ascii", core.KDFPBKDF2, new("password")},
+		{"pbkdf2-emoji", core.KDFPBKDF2, new("\U0001F510 tajné heslo")},
+		{"pbkdf2-empty", core.KDFPBKDF2, new("")},
 	}
 }
 
@@ -300,9 +293,9 @@ func (f *File) derive() error {
 		}
 		if c.kdf != core.KDFNone {
 			vh := core.Hash(content.V[:])
-			d.VerifierHash = strp(hex.EncodeToString(vh[:]))
-			d.Wire.V = strp(core.Encode(content.V[:]))
-			d.Wire.VerifierHash = strp(core.Encode(vh[:]))
+			d.VerifierHash = new(hex.EncodeToString(vh[:]))
+			d.Wire.V = new(core.Encode(content.V[:]))
+			d.Wire.VerifierHash = new(core.Encode(vh[:]))
 		}
 		f.Derive = append(f.Derive, d)
 	}
@@ -324,19 +317,19 @@ type envCase struct {
 
 func envCases() []envCase {
 	return []envCase{
-		{name: "text-ascii", kdf: core.KDFNone, opens: 1, ttl: 86400, text: strp("hello nylzo")},
-		{name: "text-escapes", kdf: core.KDFNone, opens: 2, ttl: 3600, text: strp("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash   line sep \U0001F600")},
-		{name: "text-exact-4096", kdf: core.KDFNone, opens: 1, ttl: 86400, text: strp(strings.Repeat("a", 4075))},
-		{name: "text-4097", kdf: core.KDFNone, opens: 1, ttl: 86400, text: strp(strings.Repeat("a", 4076))},
+		{name: "text-ascii", kdf: core.KDFNone, opens: 1, ttl: 86400, text: new("hello nylzo")},
+		{name: "text-escapes", kdf: core.KDFNone, opens: 2, ttl: 3600, text: new("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash   line sep \U0001F600")},
+		{name: "text-exact-4096", kdf: core.KDFNone, opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4075))},
+		{name: "text-4097", kdf: core.KDFNone, opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4076))},
 		{name: "file-empty", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "empty.bin", fileMime: "application/octet-stream", fileSize: 0},
 		{name: "file-one-byte", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "b.bin", fileMime: "application/octet-stream", fileSize: 1, fileHex: true},
 		{name: "file-65536", kdf: core.KDFNone, opens: 3, ttl: 259200, fileName: "block.bin", fileMime: "", fileSize: 65536},
-		{name: "file-and-text-pbkdf2", kdf: core.KDFPBKDF2, pw: strp("password"), opens: 1, ttl: 86400, text: strp("příloha v příloze"), fileName: "příloha č.1.pdf", fileMime: "application/pdf", fileSize: 1000, fileHex: true},
+		{name: "file-and-text-pbkdf2", kdf: core.KDFPBKDF2, pw: new("password"), opens: 1, ttl: 86400, text: new("příloha v příloze"), fileName: "příloha č.1.pdf", fileMime: "application/pdf", fileSize: 1000, fileHex: true},
 		{name: "file-5mib", kdf: core.KDFNone, opens: 1, ttl: 604800, fileName: "big.bin", fileMime: "application/octet-stream", fileSize: core.MaxFileBytes},
-		{name: "scrypt-text", kdf: core.KDFScrypt, pw: strp("correct horse battery staple"), opens: 1, ttl: 86400, text: strp("scrypt protected")},
-		{name: "scrypt-nfc-decomposed", kdf: core.KDFScrypt, pw: strp("héslo s češtinou"), opens: 1, ttl: 86400, text: strp("nfc")},
-		{name: "pbkdf2-empty-passphrase", kdf: core.KDFPBKDF2, pw: strp(""), opens: 1, ttl: 86400, text: strp("empty passphrase")},
-		{name: "opens-10-ttl-7d", kdf: core.KDFNone, opens: 10, ttl: 604800, text: strp("many opens")},
+		{name: "scrypt-text", kdf: core.KDFScrypt, pw: new("correct horse battery staple"), opens: 1, ttl: 86400, text: new("scrypt protected")},
+		{name: "scrypt-nfc-decomposed", kdf: core.KDFScrypt, pw: new("héslo s češtinou"), opens: 1, ttl: 86400, text: new("nfc")},
+		{name: "pbkdf2-empty-passphrase", kdf: core.KDFPBKDF2, pw: new(""), opens: 1, ttl: 86400, text: new("empty passphrase")},
+		{name: "opens-10-ttl-7d", kdf: core.KDFNone, opens: 10, ttl: 604800, text: new("many opens")},
 	}
 }
 
@@ -380,7 +373,7 @@ func (f *File) envelope() error {
 			AAD: hex.EncodeToString(core.AAD(h, id, pol)), ObjectLen: len(object), ObjectSHA256: hex.EncodeToString(sum[:]),
 		}
 		if len(object) <= inlineMax {
-			e.Object = strp(core.Encode(object))
+			e.Object = new(core.Encode(object))
 		}
 		f.Envelope = append(f.Envelope, e)
 	}
@@ -393,7 +386,7 @@ func (f *File) link() error {
 	base := "https://nylzo.example"
 	valid := func(name string, kdf core.KDF) {
 		k := int(kdf)
-		f.Link = append(f.Link, Link{Name: name, Input: core.FormatLink(base, id, kdf, s), Valid: true, ID: strp(id.String()), KDFID: &k, S: strp(hex.EncodeToString(s[:]))})
+		f.Link = append(f.Link, Link{Name: name, Input: core.FormatLink(base, id, kdf, s), Valid: true, ID: new(id.String()), KDFID: &k, S: new(hex.EncodeToString(s[:]))})
 	}
 	valid("valid-kdf0", core.KDFNone)
 	valid("valid-kdf1", core.KDFScrypt)
@@ -428,6 +421,22 @@ func (f *File) link() error {
 	invalid("secret-percent-encoded", base+"/m/"+idEnc+"#1.1.%"+fmt.Sprintf("%02X", sEnc[0])+sEnc[1:])
 	invalid("path-not-m", base+"/x/"+idEnc+"#"+frag)
 	invalid("path-trailing-slash", base+"/m/"+idEnc+"/#"+frag)
+	invalid("relative-reference", "/m/"+idEnc+"#"+frag)
+	invalid("scheme-relative", "//nylzo.example/m/"+idEnc+"#"+frag)
+	invalid("scheme-ftp", "ftp://nylzo.example/m/"+idEnc+"#"+frag)
+	invalid("dot-segment", base+"/x/../m/"+idEnc+"#"+frag)
+	invalid("dot-segment-encoded", base+"/x/%2e%2e/m/"+idEnc+"#"+frag)
+	invalid("backslash-path", "https://nylzo.example\\m\\"+idEnc+"#"+frag)
+	invalid("userinfo", "https://user@nylzo.example/m/"+idEnc+"#"+frag)
+	invalid("leading-space", " "+base+"/m/"+idEnc+"#"+frag)
+	invalid("trailing-space", base+"/m/"+idEnc+"#"+frag+" ")
+	invalid("tab-in-id", base+"/m/"+idEnc[:11]+"\t"+idEnc[11:]+"#"+frag)
+	invalid("second-fragment", base+"/m/"+idEnc+"#"+frag+"#x")
+	k := int(core.KDFScrypt)
+	f.Link = append(f.Link,
+		Link{Name: "uppercase-scheme-and-port", Input: "HTTPS://nylzo.example:8443/m/" + idEnc + "#" + frag, Valid: true, ID: new(idEnc), KDFID: &k, S: new(hex.EncodeToString(s[:]))},
+		Link{Name: "query-ignored", Input: base + "/m/" + idEnc + "?utm=x#" + frag, Valid: true, ID: new(idEnc), KDFID: &k, S: new(hex.EncodeToString(s[:]))},
+	)
 	return nil
 }
 
@@ -449,11 +458,11 @@ func (f *File) meta() error {
 			if err != nil {
 				panic(fmt.Sprintf("vectors: meta %q must encode: %v", name, err))
 			}
-			mc.Canonical = strp(string(can))
+			mc.Canonical = new(string(can))
 			mc.Text = m.Text
 			if m.File != nil {
-				mc.FileName = strp(m.File.Name)
-				mc.FileMime = strp(m.File.Mime)
+				mc.FileName = new(m.File.Name)
+				mc.FileMime = new(m.File.Mime)
 				size := m.File.Size
 				mc.FileSize = &size
 			}
@@ -475,6 +484,7 @@ func (f *File) meta() error {
 	add("top-level-case-variant-v", `{"V":1,"text":"x"}`, false)
 	add("trailing-brace", `{"v":1,"text":"x"}}`, false)
 	add("trailing-bracket", `{"v":1,"text":"x"}]`, false)
+	add("trailing-whitespace", `{"v":1,"text":"x"} `+"\n", true)
 	add("name-del", `{"v":1,"file":{"name":"a\u007fb","mime":"","size":1}}`, false)
 	add("name-unit-separator", `{"v":1,"file":{"name":"a\u001fb","mime":"","size":1}}`, false)
 	add("mime-null", `{"v":1,"file":{"name":"a","mime":null,"size":1}}`, true)

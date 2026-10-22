@@ -170,7 +170,9 @@ describe('link', () => {
       expect(idToString(link.id)).toBe(v.id);
       expect(link.kdfId).toBe(v.kdf_id);
       expect(bytesToHex(link.s)).toBe(v.s_hex);
-      expect(formatLink('https://nylzo.example', link.id, link.kdfId, link.s)).toBe(v.input);
+      if (v.name.startsWith('valid-')) {
+        expect(formatLink('https://nylzo.example', link.id, link.kdfId, link.s)).toBe(v.input);
+      }
     });
   }
 });

@@ -25,12 +25,7 @@ type ContentKeys struct {
 }
 
 func HSalt(id ID) [32]byte {
-	h := sha256.New()
-	h.Write([]byte(labelHSalt))
-	h.Write(id[:])
-	var out [32]byte
-	copy(out[:], h.Sum(nil))
-	return out
+	return sha256.Sum256(append([]byte(labelHSalt), id[:]...))
 }
 
 func DeriveLink(id ID, s *[SecretLen]byte) (LinkKeys, error) {

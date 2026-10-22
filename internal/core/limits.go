@@ -33,5 +33,5 @@ const (
 )
 
 func ObjectLimit(maxFileBytes int64) int64 {
-	return maxFileBytes + MaxTextBytes + PadFile + ObjectSlack
+	return min(MaxObjectBytes, int64(HeaderLen+TagLen+PaddedLen(MetaLenPrefix+MaxMetaBytes+int(maxFileBytes), true)))
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
@@ -48,7 +49,7 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 		return ErrPoW
 	}
 	counter, err := hex.DecodeString(counterStr)
-	if err != nil || len(counter) != powCounterLen {
+	if err != nil || len(counter) != powCounterLen || strings.ContainsAny(counterStr, "ABCDEF") {
 		return ErrPoW
 	}
 	tag, _ := s.ring.MAC(pepper.PoW, chal[:4+powNonceLen])
@@ -65,6 +66,14 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 		defer func() { <-s.powSlots }()
 	default:
 		return errPoWBusy
+	}
+	issuedAt := time.Unix(issued, 0)
+	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: "pow:" + hex.EncodeToString(chal[4:4+powNonceLen]), WindowStart: issuedAt, PurgeAt: issuedAt.Add(2 * powWindow)}})
+	if err != nil {
+		return err
+	}
+	if used[0].Count > 1 {
+		return ErrPoW
 	}
 	if !powSatisfies(chal, counter, id, s.cfg.PoWDifficulty) {
 		return ErrPoW

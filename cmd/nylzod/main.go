@@ -19,6 +19,8 @@ import (
 
 var version = "dev"
 
+var errSweepFailed = errors.New("sweep failed; see the sweep-once log line")
+
 func main() {
 	cmd := "serve"
 	if len(os.Args) > 1 {
@@ -103,13 +105,10 @@ func sweepOnce(logger *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-	srv, err := server.NewSweeper(cfg, st, blobs, logger)
+	report, err := server.NewSweeper(cfg, st, blobs, logger).SweepOnce(context.Background())
 	if err != nil {
-		return err
-	}
-	report, err := srv.SweepOnce(context.Background())
-	if err != nil {
-		return err
+		logger.Error("sweep-once", server.SweepLogAttrs(report, err)...)
+		return errSweepFailed
 	}
 	logger.Info("sweep-once", report.LogAttrs()...)
 	return nil

@@ -51,23 +51,21 @@ export function parsePath(path: string): Uint8Array<ArrayBuffer> {
   }
 }
 
+const LINK_HEAD = /^[Hh][Tt][Tt][Pp][Ss]?:\/\/[A-Za-z0-9.:[\]-]+(\/[^?#]*)(\?[^#]*)?$/;
+
 export function parseLink(raw: string): Link {
-  const url = parseUrl(raw);
-  const id = parsePath(url.pathname);
-  const { kdfId, s } = parseFragment(url.hash);
+  const hash = raw.indexOf('#');
+  const path = hash < 0 ? undefined : LINK_HEAD.exec(raw.slice(0, hash))?.[1];
+  if (path === undefined) {
+    throw new LinkError();
+  }
+  const id = parsePath(path);
+  const { kdfId, s } = parseFragment(raw.slice(hash + 1));
   return { id, kdfId, s };
 }
 
 export function assertProfile(fragmentKdfId: KdfId, serverKdfId: number): void {
   if (fragmentKdfId !== serverKdfId) {
     throw new KdfMismatchError();
-  }
-}
-
-function parseUrl(raw: string): URL {
-  try {
-    return new URL(raw);
-  } catch {
-    throw new LinkError();
   }
 }

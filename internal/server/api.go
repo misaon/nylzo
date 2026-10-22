@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +31,7 @@ const (
 	timeFormat       = time.RFC3339
 	octetStream      = "application/octet-stream"
 	abuseReasonLimit = 1000
+	abuseFileLimit   = 16 << 20
 )
 
 type createHeader struct {
@@ -125,7 +128,8 @@ func bearer(r *http.Request) string {
 }
 
 func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, context.Canceled) {
+	if r.Context().Err() != nil && errors.Is(err, context.Canceled) {
+		s.log.Info("handler", "route", r.Pattern, "err", "client went away")
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
@@ -208,7 +212,7 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 		return h, core.ID{}, nil, nil, nil, false
 	}
 	var fields map[string]json.RawMessage
-	if err := core.UnmarshalStrict(data, &fields); err != nil || fields == nil {
+	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
 		return h, core.ID{}, nil, nil, nil, false
 	}
 	for key := range fields {
@@ -314,19 +318,18 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if global.powNeeded {
 		err := s.powVerify(ctx, r.Header.Get(headerPoW), id, now)
-		if errors.Is(err, errPoWBusy) {
+		switch {
+		case errors.Is(err, errPoWBusy):
 			w.Header().Set("Retry-After", "5")
 			s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 			return
-		}
-		if err != nil {
+		case errors.Is(err, ErrPoW):
 			s.rejectCreate(w, r, http.StatusForbidden, errPoWRequired)
 			return
+		case err != nil:
+			s.internal(w, r, err)
+			return
 		}
-	}
-	if err := s.countGlobalCreate(ctx, now); err != nil {
-		s.internal(w, r, err)
-		return
 	}
 	if _, err := s.store.Get(ctx, id.String()); err == nil {
 		s.rejectCreate(w, r, http.StatusConflict, errConflict)
@@ -350,7 +353,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		var tooLarge *http.MaxBytesError
 		switch {
 		case errors.Is(err, store.ErrConflict):
-			writeError(w, http.StatusConflict, errConflict)
+			s.rejectCreate(w, r, http.StatusConflict, errConflict)
 		case errors.As(body.err, &tooLarge):
 			writeError(w, http.StatusRequestEntityTooLarge, errTooLarge)
 		case body.err != nil || errors.Is(err, io.ErrUnexpectedEOF):
@@ -373,13 +376,18 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		m.VerifierMAC = verifierMAC[:]
 	}
 	if err := s.store.Create(ctx, m); err != nil {
-		s.blobs.Delete(ctx, id.String())
+		if derr := s.blobs.Delete(context.WithoutCancel(ctx), id.String()); derr != nil {
+			s.log.Error("create-cleanup", "err", derr.Error())
+		}
 		if errors.Is(err, store.ErrConflict) {
-			writeError(w, http.StatusConflict, errConflict)
+			s.rejectCreate(w, r, http.StatusConflict, errConflict)
 			return
 		}
 		s.internal(w, r, err)
 		return
+	}
+	if err := s.countGlobalCreate(context.WithoutCancel(ctx), now); err != nil {
+		s.log.Error("global-count", "err", err.Error())
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
 }
@@ -397,6 +405,31 @@ func (s *Server) readLimited(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose) (store.Record, core.ID, bool) {
+	rec, id, ok, err := s.authorize(r.Context(), r.PathValue("id"), bearer(r), purpose)
+	if err != nil {
+		s.internal(w, r, err)
+		return rec, id, false
+	}
+	if !ok {
+		writeNotFound(w)
+		return rec, id, false
+	}
+	return rec, id, true
+}
+
+func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose) (*store.Message, core.ID, bool) {
+	rec, id, ok := s.authorized(w, r, purpose)
+	if !ok {
+		return nil, id, false
+	}
+	if rec.Tombstone != nil {
+		writeGone(w, string(rec.Tombstone.State))
+		return nil, id, false
+	}
+	return rec.Message, id, true
+}
+
 func validPathID(w http.ResponseWriter, r *http.Request) bool {
 	if _, err := core.ParseID(r.PathValue("id")); err != nil {
 		writeNotFound(w)
@@ -409,13 +442,8 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
-	rec, _, ok, err := s.authorize(r.Context(), r.PathValue("id"), bearer(r), pepper.Read)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
+	rec, _, ok := s.authorized(w, r, pepper.Read)
 	if !ok {
-		writeNotFound(w)
 		return
 	}
 	if t := rec.Tombstone; t != nil {
@@ -453,20 +481,12 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
-	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
+	_, id, ok := s.authorizedLive(w, r, pepper.Read)
 	if !ok {
-		writeNotFound(w)
-		return
-	}
-	if rec.Tombstone != nil {
-		writeGone(w, string(rec.Tombstone.State))
 		return
 	}
 	var verifier []byte
+	var err error
 	verifierSent := false
 	var body claimBody
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
@@ -534,9 +554,13 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 		writeGone(w, string(m.State))
 		return
 	}
+	if lease != "" {
+		w.Header().Set(headerLease, lease)
+	}
 	f, size, err := s.blobs.Open(r.Context(), m.BlobRef)
 	if errors.Is(err, store.ErrBlobMissing) {
-		writeGone(w, string(s.endedState(r.Context(), m.ID)))
+		w.Header().Del(headerLease)
+		writeGone(w, string(s.endMissingBlob(r.Context(), m, lease != "")))
 		return
 	}
 	if err != nil {
@@ -544,14 +568,26 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 		return
 	}
 	defer f.Close()
-	if lease != "" {
-		w.Header().Set(headerLease, lease)
-	}
 	w.Header().Set(headerPolicy, s.policyHeader(m))
 	w.Header().Set("Content-Type", octetStream)
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, f)
+}
+
+func (s *Server) endMissingBlob(ctx context.Context, m *store.Message, claimed bool) store.State {
+	now := s.clock()
+	state := store.StateDeleted
+	switch {
+	case !now.Before(m.ExpiresAt):
+		state = store.StateExpired
+	case !claimed && m.OpensRemaining == 0:
+		state = store.StateOpened
+	}
+	if err := store.EndMessage(ctx, s.store, s.blobs, m.ID, state, now); err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.log.Error("end-missing-blob", "err", err.Error())
+	}
+	return s.endedState(ctx, m.ID)
 }
 
 func (s *Server) endedState(ctx context.Context, id string) store.State {
@@ -583,17 +619,8 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
-	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
+	m, id, ok := s.authorizedLive(w, r, pepper.Read)
 	if !ok {
-		writeNotFound(w)
-		return
-	}
-	if rec.Tombstone != nil {
-		writeGone(w, string(rec.Tombstone.State))
 		return
 	}
 	now := s.clock()
@@ -603,7 +630,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !active {
-		writeGone(w, string(rec.Message.State))
+		writeGone(w, string(m.State))
 		return
 	}
 	if _, err := s.store.RecordDownload(ctx, lease.RowID, now); err != nil {
@@ -611,28 +638,19 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, store.ErrLeaseLimit):
 			writeRateLimited(w, ceilSeconds(lease.ExpiresAt.Sub(now)))
 		case errors.Is(err, store.ErrLeaseInvalid):
-			writeGone(w, string(rec.Message.State))
+			writeGone(w, string(m.State))
 		default:
 			s.internal(w, r, err)
 		}
 		return
 	}
-	s.serveBlob(w, r, rec.Message, "")
+	s.serveBlob(w, r, m, "")
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
+	m, id, ok := s.authorizedLive(w, r, pepper.Read)
 	if !ok {
-		writeNotFound(w)
-		return
-	}
-	if rec.Tombstone != nil {
-		writeGone(w, string(rec.Tombstone.State))
 		return
 	}
 	now := s.clock()
@@ -642,7 +660,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !active {
-		writeGone(w, string(rec.Message.State))
+		writeGone(w, string(m.State))
 		return
 	}
 	if err := s.store.Ack(ctx, lease.RowID); err != nil {
@@ -658,22 +676,13 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) endWith(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose, state store.State) {
 	ctx := r.Context()
-	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), purpose)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
+	_, id, ok := s.authorizedLive(w, r, purpose)
 	if !ok {
-		writeNotFound(w)
-		return
-	}
-	if rec.Tombstone != nil {
-		writeGone(w, string(rec.Tombstone.State))
 		return
 	}
 	if err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock()); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeGone(w, string(store.StateDeleted))
+			writeGone(w, string(s.endedState(ctx, id.String())))
 			return
 		}
 		s.internal(w, r, err)
@@ -691,13 +700,8 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	rec, _, ok, err := s.authorize(r.Context(), r.PathValue("id"), bearer(r), pepper.Manage)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
+	rec, _, ok := s.authorized(w, r, pepper.Manage)
 	if !ok {
-		writeNotFound(w)
 		return
 	}
 	if t := rec.Tombstone; t != nil {
@@ -720,6 +724,10 @@ type abuseBody struct {
 
 func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return
+	}
 	now := s.clock()
 	retry, err := s.limitAbuse(ctx, now, s.clientAddr(r))
 	if err != nil {
@@ -748,11 +756,23 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
-func (s *Server) recordAbuse(now time.Time, id, reason string) error {
+var (
+	linkFragment   = regexp.MustCompile(`#[^\s]*`)
+	secretFragment = regexp.MustCompile(`\b1\.[0-9]\.[A-Za-z0-9_-]{8,}`)
+	errAbuseFull   = errors.New("server: abuse report file reached its size limit")
+)
+
+func redactReason(reason string) string {
+	reason = linkFragment.ReplaceAllString(reason, "#[redacted]")
+	reason = secretFragment.ReplaceAllString(reason, "[redacted]")
 	if len(reason) > abuseReasonLimit {
-		reason = reason[:abuseReasonLimit]
+		reason = strings.ToValidUTF8(reason[:abuseReasonLimit], "")
 	}
-	line, err := json.Marshal(map[string]string{"time": formatTime(now), "id": id, "reason": reason})
+	return reason
+}
+
+func (s *Server) recordAbuse(now time.Time, id, reason string) error {
+	line, err := json.Marshal(map[string]string{"time": formatTime(now), "id": id, "reason": redactReason(reason)})
 	if err != nil {
 		return err
 	}
@@ -763,6 +783,13 @@ func (s *Server) recordAbuse(now time.Time, id, reason string) error {
 		return err
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size()+int64(len(line))+1 > abuseFileLimit {
+		return errAbuseFull
+	}
 	_, err = f.Write(append(line, '\n'))
 	return err
 }

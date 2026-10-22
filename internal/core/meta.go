@@ -139,15 +139,15 @@ func DecodeMeta(b []byte) (Meta, error) {
 		return Meta{}, ErrMeta
 	}
 	var fields map[string]json.RawMessage
-	if err := UnmarshalStrict(b, &fields); err != nil || fields == nil {
+	if err := json.Unmarshal(b, &fields); err != nil || fields == nil {
 		return Meta{}, ErrMeta
 	}
 	var v *int
-	if raw, ok := fields["v"]; !ok || isNull(raw) || decodeField(raw, &v) != nil || v == nil || *v != 1 {
+	if raw, ok := field(fields, "v"); !ok || decodeField(raw, &v) != nil || v == nil || *v != 1 {
 		return Meta{}, ErrMeta
 	}
 	var m Meta
-	if raw, ok := fields["text"]; ok && !isNull(raw) {
+	if raw, ok := field(fields, "text"); ok {
 		if err := decodeField(raw, &m.Text); err != nil {
 			return Meta{}, err
 		}

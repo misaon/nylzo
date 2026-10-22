@@ -49,10 +49,7 @@ func New(secret []byte) (*Key, error) {
 		return nil, ErrSecret
 	}
 	k := &Key{keys: make(map[Purpose][32]byte, len(purposes))}
-	idh := sha256.New()
-	idh.Write([]byte(labelID))
-	idh.Write(secret)
-	k.id = idh.Sum(nil)[0]
+	k.id = sha256.Sum256(append([]byte(labelID), secret...))[0]
 	for _, p := range purposes {
 		derived, err := hkdf.Key(sha256.New, secret, nil, infoBase+string(p), 32)
 		if err != nil {
@@ -154,47 +151,24 @@ func (r *Ring) Bucket(day time.Time, addr netip.Addr, coarse bool) [BucketLen]by
 
 func (k *Key) Bucket(day time.Time, addr netip.Addr, coarse bool) [BucketLen]byte {
 	addr = addr.Unmap()
-	var family, plen byte
-	var masked []byte
+	family, plen := byte(6), 64
+	if coarse {
+		plen = 48
+	}
 	if addr.Is4() {
-		family = 4
-		plen = 32
+		family, plen = 4, 32
 		if coarse {
 			plen = 24
 		}
-		a4 := addr.As4()
-		masked = mask(a4[:], int(plen))
-	} else {
-		family = 6
-		plen = 64
-		if coarse {
-			plen = 48
-		}
-		a16 := addr.As16()
-		masked = mask(a16[:], int(plen))
 	}
+	prefix, _ := addr.Prefix(plen)
+	masked := prefix.Addr().AsSlice()
 	input := make([]byte, 0, 10+3+len(masked))
 	input = append(input, day.UTC().Format("2006-01-02")...)
-	input = append(input, 0, family, plen)
+	input = append(input, 0, family, byte(plen))
 	input = append(input, masked...)
 	m := k.MAC(IP, input)
 	var out [BucketLen]byte
 	copy(out[:], m[:BucketLen])
-	return out
-}
-
-func mask(b []byte, bits int) []byte {
-	out := append([]byte(nil), b...)
-	for i := range out {
-		switch {
-		case bits >= 8:
-			bits -= 8
-		case bits > 0:
-			out[i] &= byte(0xff << (8 - bits))
-			bits = 0
-		default:
-			out[i] = 0
-		}
-	}
 	return out
 }

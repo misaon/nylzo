@@ -2,7 +2,7 @@ package core
 
 import (
 	"errors"
-	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -52,16 +52,22 @@ func ParsePath(path string) (ID, error) {
 	return id, nil
 }
 
+var linkHead = regexp.MustCompile(`^[Hh][Tt][Tt][Pp][Ss]?://[A-Za-z0-9.:\[\]-]+(/[^?#]*)(\?[^#]*)?$`)
+
 func ParseLink(raw string) (Link, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
+	head, fragment, ok := strings.Cut(raw, "#")
+	if !ok {
 		return Link{}, ErrLink
 	}
-	id, err := ParsePath(u.EscapedPath())
+	m := linkHead.FindStringSubmatch(head)
+	if m == nil {
+		return Link{}, ErrLink
+	}
+	id, err := ParsePath(m[1])
 	if err != nil {
 		return Link{}, err
 	}
-	kdf, s, err := ParseFragment(u.EscapedFragment())
+	kdf, s, err := ParseFragment(fragment)
 	if err != nil {
 		return Link{}, err
 	}

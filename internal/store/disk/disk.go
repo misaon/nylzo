@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,22 +30,42 @@ func New(dataDir string) (*Blobs, error) {
 	if err := os.MkdirAll(filepath.Join(root, tempDir), 0o700); err != nil {
 		return nil, err
 	}
-	return &Blobs{root: root}, nil
+	b := &Blobs{root: root}
+	if err := b.probeLink(); err != nil {
+		return nil, fmt.Errorf("disk: the blob directory must support hard links: %w", err)
+	}
+	return b, nil
 }
 
-func fileName(ref string) (string, error) {
-	if ref == "" || len(ref) > maxRefLen {
-		return "", ErrRef
+func (b *Blobs) probeLink() error {
+	f, err := os.CreateTemp(filepath.Join(b.root, tempDir), "probe-*")
+	if err != nil {
+		return err
 	}
-	return hex.EncodeToString([]byte(ref)), nil
+	tmp := f.Name()
+	f.Close()
+	defer os.Remove(tmp)
+	probe := filepath.Join(b.root, tempDir, filepath.Base(tmp)+".link")
+	if err := os.Link(tmp, probe); err != nil {
+		return err
+	}
+	return os.Remove(probe)
 }
 
 func (b *Blobs) path(ref string) (string, error) {
-	name, err := fileName(ref)
-	if err != nil {
-		return "", err
+	if ref == "" || len(ref) > maxRefLen {
+		return "", ErrRef
 	}
-	return filepath.Join(b.root, name), nil
+	return filepath.Join(b.root, hex.EncodeToString([]byte(ref))), nil
+}
+
+func (b *Blobs) syncDir() error {
+	d, err := os.Open(b.root)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
@@ -77,7 +98,8 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 		}
 		return err
 	}
-	return nil
+	os.Remove(tmp)
+	return b.syncDir()
 }
 
 func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {
@@ -105,10 +127,13 @@ func (b *Blobs) Delete(ctx context.Context, ref string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(p); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		return err
 	}
-	return nil
+	return b.syncDir()
 }
 
 func (b *Blobs) List(ctx context.Context) ([]store.BlobInfo, error) {

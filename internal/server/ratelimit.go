@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -40,6 +41,59 @@ func (b *tokenBucket) allow(now time.Time) bool {
 	return true
 }
 
+type sourceLimiter struct {
+	mu      sync.Mutex
+	rate    float64
+	burst   float64
+	max     int
+	buckets map[[pepper.BucketLen]byte]*sourceBucket
+}
+
+type sourceBucket struct {
+	tokens float64
+	last   time.Time
+}
+
+const maxSources = 1 << 16
+
+func newSourceLimiter(rate, burst float64) *sourceLimiter {
+	return &sourceLimiter{rate: rate, burst: burst, max: maxSources, buckets: map[[pepper.BucketLen]byte]*sourceBucket{}}
+}
+
+func (l *sourceLimiter) allow(key [pepper.BucketLen]byte, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[key]
+	if !ok {
+		if len(l.buckets) >= l.max {
+			l.evict(now)
+		}
+		b = &sourceBucket{tokens: l.burst, last: now}
+		l.buckets[key] = b
+	}
+	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
+		b.tokens = min(l.burst, b.tokens+elapsed*l.rate)
+		b.last = now
+	}
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
+}
+
+func (l *sourceLimiter) evict(now time.Time) {
+	refill := time.Duration(l.burst / l.rate * float64(time.Second))
+	for k, b := range l.buckets {
+		if now.Sub(b.last) >= refill {
+			delete(l.buckets, k)
+		}
+	}
+	if len(l.buckets) >= l.max {
+		clear(l.buckets)
+	}
+}
+
 type window struct {
 	start time.Time
 	end   time.Time
@@ -69,14 +123,14 @@ func (s *Server) bucketKeys(now time.Time, addr netip.Addr) (fine string, coarse
 	return hex.EncodeToString(f[:]), hex.EncodeToString(c[:])
 }
 
-func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Duration, []store.RateCount, error) {
+func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Duration, error) {
 	hits := make([]store.RateHit, len(checks))
 	for i, c := range checks {
 		hits[i] = c.hit
 	}
 	counts, err := s.store.RateHit(ctx, hits)
 	if err != nil {
-		return 0, nil, err
+		return 0, err
 	}
 	now := s.clock()
 	var retry time.Duration
@@ -91,7 +145,7 @@ func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Dur
 			}
 		}
 	}
-	return retry, counts, nil
+	return retry, nil
 }
 
 const globalCreatesKey = "global:d"
@@ -107,8 +161,7 @@ func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr
 		{hit: store.RateHit{Key: "create:d:" + fine, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay, bytes: r.CreateBytesPerDay, end: d.end},
 		{hit: store.RateHit{Key: "create:d:c:" + coarse, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay * m, bytes: r.CreateBytesPerDay * m, end: d.end},
 	}
-	retry, _, err := s.checkLimits(ctx, checks)
-	return retry, err
+	return s.checkLimits(ctx, checks)
 }
 
 type globalState struct {
@@ -141,20 +194,18 @@ func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) 
 	fine, coarse := s.bucketKeys(now, addr)
 	h := hourWindow(now)
 	r := s.cfg.Rates
-	retry, _, err := s.checkLimits(ctx, []limitCheck{
+	return s.checkLimits(ctx, []limitCheck{
 		{hit: store.RateHit{Key: "read:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.ReadPerHour, end: h.end},
 		{hit: store.RateHit{Key: "read:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.ReadPerHour * r.CoarseMultiplier, end: h.end},
 	})
-	return retry, err
 }
 
 func (s *Server) limitAbuse(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {
 	fine, coarse := s.bucketKeys(now, addr)
 	h := hourWindow(now)
 	r := s.cfg.Rates
-	retry, _, err := s.checkLimits(ctx, []limitCheck{
+	return s.checkLimits(ctx, []limitCheck{
 		{hit: store.RateHit{Key: "abuse:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour, end: h.end},
 		{hit: store.RateHit{Key: "abuse:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour * r.CoarseMultiplier, end: h.end},
 	})
-	return retry, err
 }

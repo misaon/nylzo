@@ -41,13 +41,18 @@ func (s *Server) prefetchGuard(next http.Handler) http.Handler {
 
 func (s *Server) throttle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") && !s.bucket.allow(s.clock()) {
+		if strings.HasPrefix(r.URL.Path, "/api/") && !s.allowAPI(r) {
 			w.Header().Set("Retry-After", "1")
 			writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: 1})
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) allowAPI(r *http.Request) bool {
+	now := s.clock()
+	return s.sources.allow(s.ring.Bucket(now, s.clientAddr(r), false), now) && s.bucket.allow(now)
 }
 
 type statusWriter struct {
@@ -102,9 +107,7 @@ func (s *Server) logging(next http.Handler) http.Handler {
 }
 
 func newNonce() string {
-	var b [16]byte
-	rand.Read(b[:])
-	return encodeNonce(b[:])
+	return rand.Text()
 }
 
 func loggableID(r *http.Request) string {

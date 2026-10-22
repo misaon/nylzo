@@ -14,16 +14,6 @@ export interface Meta {
   readonly file?: FileMeta | undefined;
 }
 
-const JSON_ESCAPES: ReadonlyMap<string, string> = new Map([
-  ['"', '\\"'],
-  ['\\', '\\\\'],
-  ['\b', '\\b'],
-  ['\t', '\\t'],
-  ['\n', '\\n'],
-  ['\f', '\\f'],
-  ['\r', '\\r'],
-]);
-const NEEDS_ESCAPE = /["\\\u0000-\u001f]/g;
 const FORBIDDEN_IN_FILE_NAME = /[\u0000-\u001f\u007f/\\]/;
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
@@ -89,21 +79,13 @@ function validateFileName(name: string): void {
 function metaJson(meta: Meta): string {
   let json = '{"v":1';
   if (meta.text !== undefined) {
-    json += `,"text":${quoteJsonString(meta.text)}`;
+    json += `,"text":${JSON.stringify(meta.text)}`;
   }
   if (meta.file !== undefined) {
     const { name, mime, size } = meta.file;
-    json += `,"file":{"name":${quoteJsonString(name)},"mime":${quoteJsonString(mime)},"size":${String(size)}}`;
+    json += `,"file":{"name":${JSON.stringify(name)},"mime":${JSON.stringify(mime)},"size":${String(size)}}`;
   }
   return `${json}}`;
-}
-
-function quoteJsonString(text: string): string {
-  return `"${text.replace(NEEDS_ESCAPE, escapeJsonChar)}"`;
-}
-
-function escapeJsonChar(char: string): string {
-  return JSON_ESCAPES.get(char) ?? `\\u00${char.charCodeAt(0).toString(16).padStart(2, '0')}`;
 }
 
 function parseMetaJson(bytes: Uint8Array): JsonValue {

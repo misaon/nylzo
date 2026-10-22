@@ -275,3 +275,15 @@ func TestOpenRejectsMalformedPlaintext(t *testing.T) {
 		}
 	}
 }
+
+func TestObjectLimitFitsLargestObject(t *testing.T) {
+	for _, maxFile := range []int64{1, 26621, core.PadFile, 1 << 20, core.MaxFileBytes} {
+		largest := int64(core.HeaderLen + core.TagLen + core.PaddedLen(core.MetaLenPrefix+core.MaxMetaBytes+int(maxFile), true))
+		if got := core.ObjectLimit(maxFile); got < largest || got > core.MaxObjectBytes {
+			t.Errorf("ObjectLimit(%d) = %d, the largest valid object is %d", maxFile, got, largest)
+		}
+	}
+	if got := core.ObjectLimit(26621); got != 196639 {
+		t.Errorf("ObjectLimit(26621) = %d, want 196639", got)
+	}
+}

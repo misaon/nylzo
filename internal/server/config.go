@@ -16,6 +16,7 @@ const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 16
+	MaxPoWDifficulty  = 8
 	MaxTTL            = 7 * 24 * time.Hour
 )
 
@@ -38,6 +39,8 @@ type Rates struct {
 	CoarseMultiplier   int64
 	BucketPerSecond    float64
 	BucketBurst        float64
+	SourcePerSecond    float64
+	SourceBurst        float64
 	GlobalDailyCreates int64
 }
 
@@ -67,7 +70,7 @@ func Defaults() Config {
 			MaxFileBytes:   core.MaxFileBytes,
 			MaxTextBytes:   core.MaxTextBytes,
 			MaxObjectBytes: core.MaxObjectBytes,
-			MaxTTL:         7 * 24 * time.Hour,
+			MaxTTL:         MaxTTL,
 			DefaultTTL:     24 * time.Hour,
 			MaxOpens:       10,
 			DefaultKDF:     core.KDFScrypt,
@@ -81,6 +84,8 @@ func Defaults() Config {
 			CoarseMultiplier:  5,
 			BucketPerSecond:   50,
 			BucketBurst:       100,
+			SourcePerSecond:   10,
+			SourceBurst:       20,
 		},
 		PoWDifficulty:  4,
 		PoWConcurrency: 4,
@@ -180,6 +185,9 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_MAX_OPENS", func(v string) error { return parseInt(v, &c.Limits.MaxOpens) })
 	set("NYLZO_DEFAULT_KDF", func(v string) error {
 		k, kerr := core.ParseKDF(v)
+		if kerr == nil && !k.RequiresPassphrase() {
+			return fmt.Errorf("want 1 (scrypt) or 2 (PBKDF2), got %q", v)
+		}
 		c.Limits.DefaultKDF = k
 		return kerr
 	})
@@ -191,6 +199,8 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_RATE_COARSE_MULTIPLIER", func(v string) error { return parseInt64(v, &c.Rates.CoarseMultiplier) })
 	set("NYLZO_RATE_BUCKET_RPS", func(v string) error { return parseFloat(v, &c.Rates.BucketPerSecond) })
 	set("NYLZO_RATE_BUCKET_BURST", func(v string) error { return parseFloat(v, &c.Rates.BucketBurst) })
+	set("NYLZO_RATE_SOURCE_RPS", func(v string) error { return parseFloat(v, &c.Rates.SourcePerSecond) })
+	set("NYLZO_RATE_SOURCE_BURST", func(v string) error { return parseFloat(v, &c.Rates.SourceBurst) })
 	set("NYLZO_GLOBAL_DAILY_CREATES", func(v string) error { return parseInt64(v, &c.Rates.GlobalDailyCreates) })
 	set("NYLZO_POW_DIFFICULTY", func(v string) error { return parseInt(v, &c.PoWDifficulty) })
 	set("NYLZO_POW_CONCURRENCY", func(v string) error { return parseInt(v, &c.PoWConcurrency) })
@@ -201,7 +211,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	if needPepper && len(c.Pepper) == 0 {
 		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
 	}
-	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.MaxTTL > MaxTTL || c.Limits.DefaultTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > 32 || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency {
+	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.MaxTTL > MaxTTL || c.Limits.DefaultTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > MaxPoWDifficulty || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency {
 		return c, fmt.Errorf("%w: limits out of range", ErrConfig)
 	}
 	return c, nil

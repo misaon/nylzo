@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -17,6 +18,7 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 }
 
 func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) error {
+	ctx = context.WithoutCancel(ctx)
 	rec, err := s.Get(ctx, id)
 	if err != nil {
 		return err
@@ -29,20 +31,21 @@ func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, n
 			return err
 		}
 	}
-	_, err = s.End(ctx, id, state, now)
-	return err
+	return s.End(ctx, id, state, now)
 }
 
-func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans int, temp int, err error) {
+func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (int, error) {
 	known, err := s.KnownBlobRefs(ctx)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	objects, err := b.List(ctx)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	cutoff := now.Add(-ReconcileGrace)
+	orphans := 0
+	var errs []error
 	for _, o := range objects {
 		if o.Modified.After(cutoff) {
 			continue
@@ -51,26 +54,17 @@ func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans in
 			continue
 		}
 		if err := b.Delete(ctx, o.Ref); err != nil {
-			return orphans, temp, err
+			errs = append(errs, err)
+			continue
 		}
 		orphans++
 	}
-	temp, err = b.PurgeTemp(ctx, cutoff)
-	return orphans, temp, err
+	return orphans, errors.Join(errs...)
 }
 
-func SweepAll(ctx context.Context, s Store, b Blobs, now time.Time, reconcile bool) (SweepReport, error) {
+func SweepAll(ctx context.Context, s Store, b Blobs, now time.Time) (SweepReport, error) {
 	report, err := s.Sweep(ctx, now, func(ref string) error { return b.Delete(ctx, ref) })
-	if err != nil {
-		return report, err
-	}
-	if reconcile {
-		orphans, temp, err := Reconcile(ctx, s, b, now)
-		report.OrphanedBlobs = orphans
-		report.StaleTempFiles = temp
-		if err != nil {
-			return report, err
-		}
-	}
-	return report, nil
+	temp, terr := b.PurgeTemp(ctx, now.Add(-ReconcileGrace))
+	report.StaleTempFiles = temp
+	return report, errors.Join(err, terr)
 }

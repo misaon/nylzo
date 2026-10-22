@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
@@ -46,6 +48,7 @@ type Server struct {
 	afterFunc func(time.Duration, func())
 	log       *slog.Logger
 	bucket    *tokenBucket
+	sources   *sourceLimiter
 	powSlots  chan struct{}
 	handler   http.Handler
 	abuseMu   sync.Mutex
@@ -71,6 +74,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		o(s)
 	}
 	s.bucket = newTokenBucket(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst, s.clock())
+	s.sources = newSourceLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.handler = s.routes()
 	return s, nil
@@ -93,35 +97,71 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		ErrorLog:          log.New(httpErrorSink{log: s.log}, "", 0),
+		ErrorLog:          log.New(&httpErrorSink{log: s.log, bucket: newTokenBucket(1, 20, time.Now())}, "", 0),
 	}
 }
 
 type httpErrorSink struct {
-	log *slog.Logger
+	log    *slog.Logger
+	bucket *tokenBucket
 }
 
-func (h httpErrorSink) Write(p []byte) (int, error) {
-	h.log.Warn("net/http error")
+var httpErrorCategories = []struct {
+	prefix string
+	name   string
+	level  slog.Level
+}{
+	{"http: Accept error", "accept", slog.LevelError},
+	{"http: panic serving", "panic", slog.LevelError},
+	{"http: TLS handshake error", "tls-handshake", slog.LevelWarn},
+	{"http2: ", "http2", slog.LevelWarn},
+	{"http: superfluous response.WriteHeader", "superfluous-write-header", slog.LevelWarn},
+}
+
+func (h *httpErrorSink) Write(p []byte) (int, error) {
+	if !h.bucket.allow(time.Now()) {
+		return len(p), nil
+	}
+	name, level := "other", slog.LevelWarn
+	for _, c := range httpErrorCategories {
+		if bytes.HasPrefix(p, []byte(c.prefix)) {
+			name, level = c.name, c.level
+			break
+		}
+	}
+	h.log.Log(context.Background(), level, "net/http error", "category", name)
 	return len(p), nil
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := s.clock()
-	reconcile, err := s.firstSweepToday(ctx, now)
-	if err != nil {
-		return store.SweepReport{}, err
+	report, err := store.SweepAll(ctx, s.store, s.blobs, now)
+	done, derr := s.store.RateGet(ctx, reconcileKey, dayWindow(now).start)
+	if derr != nil {
+		return report, errors.Join(err, derr)
 	}
-	return store.SweepAll(ctx, s.store, s.blobs, now, reconcile)
+	if done.Count == 0 {
+		orphans, rerr := store.Reconcile(ctx, s.store, s.blobs, now)
+		report.OrphanedBlobs = orphans
+		if rerr == nil {
+			d := dayWindow(now)
+			_, rerr = s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
+		}
+		err = errors.Join(err, rerr)
+	}
+	return report, err
 }
 
-func (s *Server) firstSweepToday(ctx context.Context, now time.Time) (bool, error) {
-	d := dayWindow(now)
-	counts, err := s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
-	if err != nil {
-		return false, err
+func SweepLogAttrs(report store.SweepReport, err error) []any {
+	attrs := report.LogAttrs()
+	if err == nil {
+		return attrs
 	}
-	return counts[0].Count == 1, nil
+	errs := []error{err}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		errs = joined.Unwrap()
+	}
+	return append(attrs, "errors", len(errs), "err", errs[0].Error())
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
@@ -137,7 +177,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 		case <-ticker.C:
 			report, err := s.SweepOnce(ctx)
 			if err != nil {
-				s.log.Error("sweep", "err", err.Error())
+				s.log.Error("sweep", SweepLogAttrs(report, err)...)
 				continue
 			}
 			s.log.Info("sweep", report.LogAttrs()...)
@@ -161,13 +201,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /m/{id}", s.handlePage)
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	mux.HandleFunc("GET /assets/{file}", s.handleAsset)
 	return s.logging(s.securityHeaders(s.prefetchGuard(s.throttle(mux))))
 }
 
-func NewSweeper(cfg Config, st store.Store, blobs store.Blobs, log *slog.Logger) (*Server, error) {
+func NewSweeper(cfg Config, st store.Store, blobs store.Blobs, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	}
-	return &Server{cfg: cfg, store: st, blobs: blobs, clock: time.Now, log: log}, nil
+	return &Server{cfg: cfg, store: st, blobs: blobs, clock: time.Now, log: log}
 }

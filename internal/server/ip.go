@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 )
 
@@ -33,12 +34,7 @@ func (s *Server) clientAddr(r *http.Request) netip.Addr {
 }
 
 func (s *Server) trusted(a netip.Addr) bool {
-	for _, p := range s.cfg.TrustedProxies {
-		if p.Contains(a) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(s.cfg.TrustedProxies, func(p netip.Prefix) bool { return p.Contains(a) })
 }
 
 func peerAddr(remote string) netip.Addr {
@@ -62,8 +58,6 @@ func splitForwardedFor(values []string) []string {
 			}
 		}
 	}
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
+	slices.Reverse(out)
 	return out
 }

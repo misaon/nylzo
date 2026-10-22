@@ -211,12 +211,17 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, body = h.do(request{method: "GET", path: "/api/v1/instance"})
+	other, err := server.SolvePoW(decodeJSON(t, body)["pow"].(map[string]any)["challenge"].(string), m.id, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
 	bad := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
-	for server.PoWSatisfiesForTest(token, bad.id, 3) {
+	for server.PoWSatisfiesForTest(other, bad.id, 3) {
 		bad = newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	}
 	bad.ip = "203.0.113.9"
-	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: bad.object, ip: bad.ip, headers: map[string]string{"X-Nylzo-Create": bad.createHeader(0), "X-Nylzo-Pow": token}})
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: bad.object, ip: bad.ip, headers: map[string]string{"X-Nylzo-Create": bad.createHeader(0), "X-Nylzo-Pow": other}})
 	if resp.StatusCode != 403 {
 		t.Fatalf("token bound to another id accepted: %d", resp.StatusCode)
 	}

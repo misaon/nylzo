@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,7 +31,12 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK6LeaseExpiry", func(t *testing.T) { testLeaseExpiry(t, open) })
 	t.Run("AK6CrashBetweenReleaseAndDelete", func(t *testing.T) { testCrashBeforeDelete(t, open) })
 	t.Run("AK6CrashBetweenDeleteAndClear", func(t *testing.T) { testCrashBeforeClear(t, open) })
-	t.Run("AK6CrashBetweenEndAndDelete", func(t *testing.T) { testCrashBeforeEndDelete(t, open) })
+	t.Run("AK6CrashBetweenDeleteAndEnd", func(t *testing.T) { testCrashBeforeEnd(t, open) })
+	t.Run("EndMessageRetriesFailedDelete", func(t *testing.T) { testEndMessageDeleteFails(t, open) })
+	t.Run("ReconcileOrphans", func(t *testing.T) { testReconcileOrphans(t, open) })
+	t.Run("ReconcileContinuesPastErrors", func(t *testing.T) { testReconcileErrors(t, open) })
+	t.Run("SweepSurvivesBlobErrors", func(t *testing.T) { testSweepSurvivesBlobErrors(t, open) })
+	t.Run("SweepPagesPastFailures", func(t *testing.T) { testSweepPagesPastFailures(t, open) })
 	t.Run("AK6BlobStaysWhileOpensRemain", func(t *testing.T) { testBlobStays(t, open) })
 	t.Run("AK7Expiry", func(t *testing.T) { testExpiry(t, open) })
 	t.Run("BurnAndCancel", func(t *testing.T) { testBurnCancel(t, open) })
@@ -369,7 +375,7 @@ func testLeaseExpiry(t *testing.T, open Factory) {
 	if again != ref {
 		t.Fatal("ReleaseIfDone must keep returning the ref until ClearBlob")
 	}
-	report, err := store.SweepAll(f.ctx, f.s, f.b, atExpiry.Add(store.LeaseTimerSlack), false)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, atExpiry.Add(store.LeaseTimerSlack))
 	if err != nil || report.BlobsReleased != 1 || report.ExpiredLeases != 1 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
@@ -397,7 +403,7 @@ func testCrashBeforeDelete(t *testing.T, open Factory) {
 	if !f.blobExists(m.ID) {
 		t.Fatal("blob must still exist after the simulated crash")
 	}
-	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Second), false)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Second))
 	if err != nil || report.BlobsReleased != 1 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
@@ -429,7 +435,7 @@ func testCrashBeforeClear(t *testing.T, open Factory) {
 	if rec := f.get(m.ID); rec.Message == nil || rec.Message.BlobRef != ref {
 		t.Fatal("row must still carry blob_ref before ClearBlob")
 	}
-	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Second), false)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Second))
 	if err != nil || report.BlobsReleased != 1 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
@@ -438,31 +444,174 @@ func testCrashBeforeClear(t *testing.T, open Factory) {
 	}
 }
 
-func testCrashBeforeEndDelete(t *testing.T, open Factory) {
+type failingBlobs struct {
+	store.Blobs
+	mu   sync.Mutex
+	fail map[string]int
+}
+
+var errDisk = errors.New("storetest: injected blob failure")
+
+func newFailingBlobs(b store.Blobs, refs ...string) *failingBlobs {
+	fb := &failingBlobs{Blobs: b, fail: map[string]int{}}
+	for _, r := range refs {
+		fb.fail[r] = -1
+	}
+	return fb
+}
+
+func (b *failingBlobs) failOnce(ref string) {
+	b.mu.Lock()
+	b.fail[ref] = 1
+	b.mu.Unlock()
+}
+
+func (b *failingBlobs) Delete(ctx context.Context, ref string) error {
+	b.mu.Lock()
+	n, ok := b.fail[ref]
+	if ok && n > 0 {
+		if n == 1 {
+			delete(b.fail, ref)
+		} else {
+			b.fail[ref] = n - 1
+		}
+	}
+	b.mu.Unlock()
+	if ok {
+		return errDisk
+	}
+	return b.Blobs.Delete(ctx, ref)
+}
+
+func (f *fixture) createRow(ttl time.Duration) *store.Message {
+	f.t.Helper()
+	id := core.NewID().String()
+	m := &store.Message{
+		ID: id, Version: 1, State: store.StateAvailable,
+		CreatedAt: baseTime, ExpiresAt: baseTime.Add(ttl), TTLSeconds: uint32(ttl / time.Second),
+		OpensMax: 1, OpensRemaining: 1, PepperID: 7,
+		ReadMAC: mac("read/" + id), ManageMAC: mac("manage/" + id), Size: 64, BlobRef: id,
+	}
+	if err := f.s.Create(f.ctx, m); err != nil {
+		f.t.Fatal(err)
+	}
+	return m
+}
+
+func testCrashBeforeEnd(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(1, time.Hour, false)
-	ref, err := f.s.End(f.ctx, m.ID, store.StateDeleted, baseTime)
-	if err != nil || ref != m.ID {
-		t.Fatalf("end: %q %v", ref, err)
+	if err := f.b.Delete(f.ctx, m.BlobRef); err != nil {
+		t.Fatal(err)
 	}
-	if !f.blobExists(m.ID) {
-		t.Fatal("blob must still exist after the simulated crash")
+	if rec := f.get(m.ID); rec.Message == nil || rec.Message.BlobRef != m.ID {
+		t.Fatal("the row stays live until End commits")
 	}
-	orphans, _, err := store.Reconcile(f.ctx, f.s, f.b, time.Now())
-	if err != nil || orphans != 0 {
-		t.Fatalf("reconcile inside the grace window must keep fresh objects: %d %v", orphans, err)
+	if err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateDeleted, baseTime); err != nil {
+		t.Fatalf("retry after a crash between Blobs.Delete and End: %v", err)
 	}
-	orphans, _, err = store.Reconcile(f.ctx, f.s, f.b, time.Now().Add(store.ReconcileGrace+time.Minute))
-	if err != nil || orphans != 1 {
-		t.Fatalf("reconcile: %d %v", orphans, err)
+	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+		t.Fatalf("retry must leave a deleted tombstone: %+v", rec)
 	}
-	if f.blobExists(m.ID) {
-		t.Fatal("orphan survived reconcile")
+}
+
+func testEndMessageDeleteFails(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	m := f.create(1, time.Hour, false)
+	fb := newFailingBlobs(f.b)
+	fb.failOnce(m.ID)
+	if err := store.EndMessage(f.ctx, f.s, fb, m.ID, store.StateCancelled, baseTime); !errors.Is(err, errDisk) {
+		t.Fatalf("a failed blob delete must surface: %v", err)
+	}
+	if rec := f.get(m.ID); rec.Message == nil || rec.Message.BlobRef != m.ID || !f.blobExists(m.ID) {
+		t.Fatal("a failed blob delete must leave the message live with its blob")
+	}
+	ctx, cancel := context.WithCancel(f.ctx)
+	cancel()
+	if err := store.EndMessage(ctx, f.s, fb, m.ID, store.StateCancelled, baseTime); err != nil {
+		t.Fatalf("EndMessage must finish even when the caller has gone: %v", err)
+	}
+	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || f.blobExists(m.ID) {
+		t.Fatalf("retry: %+v", rec)
+	}
+}
+
+func testReconcileOrphans(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	orphan := core.NewID().String()
+	if err := f.b.Put(f.ctx, orphan, strings.NewReader("x"), 1); err != nil {
+		t.Fatal(err)
 	}
 	live := f.create(1, time.Hour, false)
-	orphans, _, err = store.Reconcile(f.ctx, f.s, f.b, time.Now().Add(store.ReconcileGrace+time.Minute))
-	if err != nil || orphans != 0 || !f.blobExists(live.ID) {
-		t.Fatalf("reconcile deleted a live blob: %d %v", orphans, err)
+	orphans, err := store.Reconcile(f.ctx, f.s, f.b, time.Now())
+	if err != nil || orphans != 0 || !f.blobExists(orphan) {
+		t.Fatalf("reconcile inside the grace window must keep fresh objects: %d %v", orphans, err)
+	}
+	orphans, err = store.Reconcile(f.ctx, f.s, f.b, time.Now().Add(store.ReconcileGrace+time.Minute))
+	if err != nil || orphans != 1 || f.blobExists(orphan) {
+		t.Fatalf("reconcile: %d %v", orphans, err)
+	}
+	if !f.blobExists(live.ID) {
+		t.Fatal("reconcile deleted a live blob")
+	}
+}
+
+func testReconcileErrors(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	stuck, gone := core.NewID().String(), core.NewID().String()
+	for _, ref := range []string{stuck, gone} {
+		if err := f.b.Put(f.ctx, ref, strings.NewReader("x"), 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fb := newFailingBlobs(f.b, stuck)
+	orphans, err := store.Reconcile(f.ctx, f.s, fb, time.Now().Add(store.ReconcileGrace+time.Minute))
+	if !errors.Is(err, errDisk) || orphans != 1 || f.blobExists(gone) || !f.blobExists(stuck) {
+		t.Fatalf("one failing delete must not stop the others: %d %v", orphans, err)
+	}
+}
+
+func testSweepSurvivesBlobErrors(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	bad := f.create(1, time.Minute, false)
+	good := f.create(1, time.Minute, false)
+	window := baseTime.Truncate(time.Hour)
+	if _, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "k", WindowStart: window, PurgeAt: window.Add(time.Minute)}}); err != nil {
+		t.Fatal(err)
+	}
+	fb := newFailingBlobs(f.b, bad.ID)
+	report, err := store.SweepAll(f.ctx, f.s, fb, baseTime.Add(2*time.Minute))
+	if !errors.Is(err, errDisk) || report.Expired != 1 || report.Counters != 1 {
+		t.Fatalf("%+v %v", report, err)
+	}
+	if rec := f.get(bad.ID); rec.Message == nil || !f.blobExists(bad.ID) {
+		t.Fatal("the row ended although its blob is still there")
+	}
+	if rec := f.get(good.ID); rec.Tombstone == nil || f.blobExists(good.ID) {
+		t.Fatal("one failing blob blocked the rest of the batch")
+	}
+	report, err = store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(3*time.Minute))
+	if err != nil || report.Expired != 1 || f.blobExists(bad.ID) {
+		t.Fatalf("the next sweep must retry: %+v %v", report, err)
+	}
+}
+
+func testSweepPagesPastFailures(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	rows := make([]string, 0, store.SweepBatch+1)
+	for range store.SweepBatch + 1 {
+		rows = append(rows, f.createRow(time.Minute).ID)
+	}
+	slices.Sort(rows)
+	fb := newFailingBlobs(f.b, rows[:store.SweepBatch]...)
+	ctx, cancel := context.WithTimeout(f.ctx, time.Minute)
+	defer cancel()
+	report, err := store.SweepAll(ctx, f.s, fb, baseTime.Add(2*time.Minute))
+	if !errors.Is(err, errDisk) || report.Expired != 1 {
+		t.Fatalf("a full batch of failures must not hide later rows: %+v", report)
+	}
+	if rec := f.get(rows[store.SweepBatch]); rec.Tombstone == nil {
+		t.Fatal("the row behind a full batch of failures was not swept")
 	}
 }
 
@@ -480,7 +629,7 @@ func testBlobStays(t *testing.T, open Factory) {
 	if err != nil || released || !f.blobExists(m.ID) {
 		t.Fatal("blob must stay while opens remain")
 	}
-	report, _ := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(10*time.Minute), false)
+	report, _ := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(10*time.Minute))
 	if report.BlobsReleased != 0 || !f.blobExists(m.ID) {
 		t.Fatal("sweep removed a blob with opens remaining")
 	}
@@ -489,11 +638,11 @@ func testBlobStays(t *testing.T, open Factory) {
 func testExpiry(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(1, time.Minute, false)
-	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(59*time.Second), false)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(59*time.Second))
 	if err != nil || report.Expired != 0 {
 		t.Fatalf("early sweep: %+v %v", report, err)
 	}
-	report, err = store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(61*time.Second), false)
+	report, err = store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(61*time.Second))
 	if err != nil || report.Expired != 1 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
@@ -511,7 +660,7 @@ func testExpiry(t *testing.T, open Factory) {
 	if _, err := f.claim(m, baseTime.Add(2*time.Minute), 1, false, false); !errors.As(err, &g) || g.State != store.StateExpired {
 		t.Fatalf("claim on tombstone: %v", err)
 	}
-	report, err = store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(61*time.Second).Add(store.TombstoneTTL), false)
+	report, err = store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(61*time.Second).Add(store.TombstoneTTL))
 	if err != nil || report.Tombstones != 1 {
 		t.Fatalf("tombstone purge: %+v %v", report, err)
 	}
@@ -595,7 +744,7 @@ func testRateHit(t *testing.T, open Factory) {
 	if other[0].Count != 1 {
 		t.Fatal("new window must start at 1")
 	}
-	report, err := store.SweepAll(f.ctx, f.s, f.b, window.Add(2*time.Hour), false)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, window.Add(2*time.Hour))
 	if err != nil || report.Counters != 1 {
 		t.Fatalf("counter purge: %+v %v", report, err)
 	}
@@ -611,7 +760,7 @@ func testSweepBatches(t *testing.T, open Factory) {
 	if _, err := f.s.RateHit(f.ctx, hits); err != nil {
 		t.Fatal(err)
 	}
-	report, err := store.SweepAll(f.ctx, f.s, f.b, window.Add(2*time.Hour), false)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, window.Add(2*time.Hour))
 	if err != nil || report.Counters != 2500 {
 		t.Fatalf("batched purge: %+v %v", report, err)
 	}

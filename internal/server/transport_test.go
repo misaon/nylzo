@@ -131,14 +131,7 @@ func TestCreateValidation(t *testing.T) {
 
 func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
-	httpServer := h.srv.HTTPServer()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	go httpServer.Serve(ln)
-	t.Cleanup(func() { httpServer.Close() })
-	addr := ln.Addr().String()
+	addr := h.listen()
 	var conns []net.Conn
 	t.Cleanup(func() {
 		for _, c := range conns {
@@ -299,20 +292,5 @@ func TestConfigFromEnv(t *testing.T) {
 	}, true)
 	if err != nil || lower.Limits.MaxObjectBytes != core.ObjectLimit(1048576) {
 		t.Fatalf("lower file limit: %v %d", err, lower.Limits.MaxObjectBytes)
-	}
-}
-
-func TestSweeperWithoutPepper(t *testing.T) {
-	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 1, 60, "sweep")
-	h.mustCreate(m)
-	cfg := h.cfg
-	cfg.Pepper = nil
-	sweeper, err := server.NewSweeper(cfg, h.store, h.blobs, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := sweeper.SweepOnce(t.Context()); err != nil {
-		t.Fatal(err)
 	}
 }

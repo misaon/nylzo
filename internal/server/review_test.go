@@ -2,6 +2,8 @@ package server_test
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -9,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,14 +161,11 @@ func TestPoWRejectsForgedAndMalformedTokens(t *testing.T) {
 	}
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "forged")
 	m.ip = "203.0.113.2"
-	tokens := map[string]string{"no-dot": "abc", "short-counter": forge(h.clock.Now()) + ".00"}
-	for name, issued := range map[string]time.Time{"zero-tag": h.clock.Now(), "future-window": h.clock.Now().Add(time.Hour)} {
-		token, err := server.SolvePoW(forge(issued), m.id, 1)
-		if err != nil {
-			t.Fatal(err)
-		}
-		tokens[name] = token
+	zeroTag, err := server.SolvePoW(forge(h.clock.Now()), m.id, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
+	tokens := map[string]string{"no-dot": "abc", "short-counter": forge(h.clock.Now()) + ".00", "zero-tag": zeroTag}
 	for name, token := range tokens {
 		resp, body := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": m.createHeader(0), "X-Nylzo-Pow": token}})
 		if resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "pow" {
@@ -199,6 +199,63 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	}
 	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 20 {
 		t.Fatalf("PoW failures moved the global counter: %+v", c)
+	}
+	h.reopen(cfg)
+	existing := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	existing.ip = "198.51.100.10"
+	h.mustCreate(existing)
+	if resp, _ := h.create(existing); resp.StatusCode != 409 {
+		t.Fatalf("duplicate id: %d", resp.StatusCode)
+	}
+	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	wrongKDF.ip = "198.51.100.11"
+	headerKDF2 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_hash"] = core.Encode(make([]byte, 32)) })
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF2}}); resp.StatusCode != 400 {
+		t.Fatalf("body kdf differs from the header: %d", resp.StatusCode)
+	}
+	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 21 {
+		t.Fatalf("only stored messages may move the global counter: %+v", c)
+	}
+}
+
+func TestPoWTokenIsSingleUse(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 4
+	cfg.PoWDifficulty = 1
+	h := newHarness(t, cfg)
+	for i := range 2 {
+		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+		m.ip = fmt.Sprintf("203.0.113.%d", i+1)
+		h.mustCreate(m)
+	}
+	solve := func(m *message) string {
+		_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+		token, err := server.SolvePoW(decodeJSON(t, body)["pow"].(map[string]any)["challenge"].(string), m.id, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
+	m.ip = "203.0.113.9"
+	token := solve(m)
+	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_hash"] = core.Encode(make([]byte, 32)) })
+	send := func(header, pow string) int {
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow}})
+		return resp.StatusCode
+	}
+	if code := send(badHeader, token); code != 400 {
+		t.Fatalf("first use with a mismatched body: %d", code)
+	}
+	if code := send(m.createHeader(0), token); code != 403 {
+		t.Fatalf("replayed token: %d", code)
+	}
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 2 {
+		t.Fatalf("failed and replayed creates moved the global counter: %+v", c)
+	}
+	if code := send(m.createHeader(0), solve(m)); code != 201 {
+		t.Fatalf("fresh challenge: %d", code)
 	}
 }
 
@@ -377,7 +434,7 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 func TestTruncatedCreateStoresNothing(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "short")
-	conn, err := net.Dial("tcp", h.ts.Listener.Addr().String())
+	conn, err := net.Dial("tcp", h.listen())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,11 +464,7 @@ func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
 	h.mustCreate(m)
 	cfg := h.cfg
 	cfg.Pepper = nil
-	sweeper, err := server.NewSweeper(cfg, h.store, h.blobs, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, err := sweeper.SweepOnce(t.Context())
+	report, err := server.NewSweeper(cfg, h.store, h.blobs, nil).SweepOnce(t.Context())
 	if err != nil || report.Expired != 1 || h.blobExists(m.id) {
 		t.Fatalf("sweep without pepper: %+v %v", report, err)
 	}
@@ -419,6 +472,7 @@ func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
 
 func TestSweepReconcilesOncePerDay(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
+	h.startOfNextUTCDay()
 	put := func(ref string) {
 		if err := h.blobs.Put(t.Context(), ref, strings.NewReader("x"), 1); err != nil {
 			t.Fatal(err)
@@ -430,12 +484,239 @@ func TestSweepReconcilesOncePerDay(t *testing.T) {
 		t.Fatalf("first sweep of the day: %+v %v", report, err)
 	}
 	put("orphan-two")
+	h.reopen(h.cfg)
 	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.OrphanedBlobs != 0 {
-		t.Fatalf("second sweep of the day must not list the store: %+v %v", report, err)
+		t.Fatalf("a restarted server reconciled twice in one day: %+v %v", report, err)
 	}
 	h.clock.Advance(24 * time.Hour)
 	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.OrphanedBlobs != 1 {
 		t.Fatalf("first sweep of the next day: %+v %v", report, err)
+	}
+}
+
+func TestSweepRetriesReconcileAfterFailure(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	h.startOfNextUTCDay()
+	fb := h.withFaultyBlobs()
+	for _, ref := range []string{"stuck", "orphan"} {
+		if err := h.blobs.Put(t.Context(), ref, strings.NewReader("x"), 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := newMessage(t, core.KDFNone, "", 1, 60, "expiring")
+	h.mustCreate(m)
+	h.clock.Advance(2 * time.Minute)
+	fb.set(func(b *faultyBlobs) { b.failDelete["stuck"] = true; b.failDelete[m.id.String()] = true })
+	report, err := h.srv.SweepOnce(t.Context())
+	if err == nil || report.Expired != 0 || report.OrphanedBlobs != 1 {
+		t.Fatalf("a failing expiry must not stop the reconcile: %+v %v", report, err)
+	}
+	fb.set(func(b *faultyBlobs) { clear(b.failDelete) })
+	report, err = h.srv.SweepOnce(t.Context())
+	if err != nil || report.Expired != 1 || report.OrphanedBlobs != 1 {
+		t.Fatalf("a failed reconcile must run again the same day: %+v %v", report, err)
+	}
+	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.OrphanedBlobs != 0 {
+		t.Fatalf("a successful reconcile must be recorded for the day: %+v %v", report, err)
+	}
+}
+
+func TestClaimAfterBlobVanishedEndsMessage(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(m)
+	if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
+		t.Fatal(err)
+	}
+	resp, body := h.claim(m, "", "")
+	if resp.StatusCode != 410 || resp.Header.Get("X-Nylzo-Lease") != "" || decodeJSON(t, body)["state"] != "deleted" {
+		t.Fatalf("%d %s lease=%q", resp.StatusCode, body, resp.Header.Get("X-Nylzo-Lease"))
+	}
+	if _, meta := h.metadata(m); meta["state"] != "deleted" {
+		t.Fatalf("the row must end once its blob is gone: %v", meta)
+	}
+	if resp, _ := h.post(m, "burn", m.readToken); resp.StatusCode != 410 {
+		t.Fatalf("burn after the repair: %d", resp.StatusCode)
+	}
+}
+
+func TestDownloadAfterBlobVanishedEndsMessage(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	for _, c := range []struct {
+		opens uint16
+		state string
+	}{{1, "opened"}, {2, "deleted"}} {
+		m := newMessage(t, core.KDFNone, "", c.opens, 3600, "x")
+		h.mustCreate(m)
+		resp, _ := h.claim(m, "", "")
+		lease := resp.Header.Get("X-Nylzo-Lease")
+		if resp.StatusCode != 200 || lease == "" {
+			t.Fatalf("claim: %d", resp.StatusCode)
+		}
+		if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
+			t.Fatal(err)
+		}
+		resp, body := h.blob(m, lease)
+		if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != c.state {
+			t.Fatalf("opens %d: %d %s", c.opens, resp.StatusCode, body)
+		}
+		if _, st := h.status(m); st["state"] != c.state {
+			t.Fatalf("opens %d: status %v", c.opens, st)
+		}
+	}
+}
+
+func TestClaimKeepsLeaseWhenBlobOpenFails(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	fb.set(func(b *faultyBlobs) { b.failOpen = errInjected })
+	resp, _ := h.claim(m, "", "")
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	if resp.StatusCode != 500 || lease == "" {
+		t.Fatalf("a failed open after the claim must still return the lease: %d %q", resp.StatusCode, lease)
+	}
+	fb.set(func(b *faultyBlobs) { b.failOpen = nil })
+	resp, object := h.blob(m, lease)
+	if resp.StatusCode != 200 || !bytes.Equal(object, m.object) {
+		t.Fatalf("retry through the lease: %d", resp.StatusCode)
+	}
+}
+
+func TestCreateStorageFailureAnswers500(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	fb.set(func(b *faultyBlobs) { b.failPut = errInjected })
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	if resp, _ := h.create(m); resp.StatusCode != 500 {
+		t.Fatalf("storage failure: %d", resp.StatusCode)
+	}
+	if resp, _ := h.metadata(m); resp.StatusCode != 404 {
+		t.Fatal("a failed Put created a row")
+	}
+}
+
+type racingStore struct {
+	store.Store
+	once sync.Once
+	race func(id string)
+}
+
+func (s *racingStore) Get(ctx context.Context, id string) (store.Record, error) {
+	rec, err := s.Store.Get(ctx, id)
+	if err == nil && rec.Message != nil {
+		s.once.Do(func() { s.race(id) })
+	}
+	return rec, err
+}
+
+func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func(id string) {
+		if err := inner.End(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	resp, body := h.post(m, "burn", m.readToken)
+	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "cancelled" {
+		t.Fatalf("burn that lost the race: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	addr := h.listen()
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
+	var reused []bool
+	trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused = append(reused, info.Reused) }}
+	send := func(method, path string) *http.Response {
+		r, _ := http.NewRequestWithContext(httptrace.WithClientTrace(t.Context(), trace), method, "http://"+addr+path, nil)
+		resp, err := client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp
+	}
+	if resp := send("POST", "/api/v1/messages"); resp.StatusCode != 400 || resp.ProtoMajor != 2 {
+		t.Fatalf("rejected create over h2c: %d HTTP/%d", resp.StatusCode, resp.ProtoMajor)
+	}
+	if resp := send("GET", "/healthz"); resp.StatusCode != 200 || resp.ProtoMajor != 2 {
+		t.Fatalf("follow-up over h2c: %d HTTP/%d", resp.StatusCode, resp.ProtoMajor)
+	}
+	if len(reused) != 2 || !reused[1] {
+		t.Fatalf("a rejected create closed the shared h2c connection: %v", reused)
+	}
+}
+
+func TestSourceLimiterIsolatesClients(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.SourcePerSecond = 1
+	cfg.Rates.SourceBurst = 2
+	h := newHarness(t, cfg)
+	get := func(ip string) int {
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: ip})
+		return resp.StatusCode
+	}
+	if get("203.0.113.1") != 200 || get("203.0.113.1") != 200 || get("203.0.113.1") != 429 {
+		t.Fatal("one source must be limited after its burst")
+	}
+	if get("2001:db8:1:1::1") != 200 || get("2001:db8:1:1::2") != 200 || get("2001:db8:1:1::3") != 429 {
+		t.Fatal("addresses in one /64 must share a bucket")
+	}
+	if get("203.0.113.2") != 200 {
+		t.Fatal("a busy source must not throttle other clients")
+	}
+	if resp, _ := h.do(request{method: "GET", path: "/healthz", ip: "203.0.113.1"}); resp.StatusCode != 200 {
+		t.Fatal("non-API paths are not throttled")
+	}
+	h.clock.Advance(time.Second)
+	if get("203.0.113.1") != 200 {
+		t.Fatal("the source bucket did not refill")
+	}
+}
+
+func TestAbuseReportHardening(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	link := core.FormatLink("https://nylzo.example", m.id, m.kdf, m.secret)
+	_, fragment, _ := strings.Cut(link, "#")
+	body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":%q}`, m.id.String(), m.readToken, "malware at "+link+" and again "+fragment)
+	for _, ct := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.80", body: []byte(body), headers: map[string]string{"Content-Type": ct}})
+		if resp.StatusCode != 400 {
+			t.Fatalf("content type %q: %d", ct, resp.StatusCode)
+		}
+	}
+	resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.81", body: []byte(body), headers: map[string]string{"Content-Type": "application/json; charset=utf-8"}})
+	if resp.StatusCode != 202 {
+		t.Fatalf("json report: %d", resp.StatusCode)
+	}
+	path := filepath.Join(h.dir, "abuse-reports.jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := core.Encode(m.secret[:])
+	if strings.Contains(string(data), secret) || !strings.Contains(string(data), "[redacted]") {
+		t.Fatalf("the report kept the link secret: %s", data)
+	}
+	if err := os.Truncate(path, 16<<20); err != nil {
+		t.Fatal(err)
+	}
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.82", body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
+	info, err := os.Stat(path)
+	if resp.StatusCode != 202 || err != nil || info.Size() != 16<<20 {
+		t.Fatalf("a full report file must not grow: %d %v %d", resp.StatusCode, err, info.Size())
 	}
 }
 
@@ -450,11 +731,14 @@ func TestConfigBounds(t *testing.T) {
 		}
 	}
 	for name, env := range map[string]func(string) string{
-		"max-ttl-over-7d":      with("NYLZO_MAX_TTL", "8d"),
+		"max-ttl-over-7d":      with("NYLZO_MAX_TTL", "169h"),
 		"max-ttl-over-7d-sec":  with("NYLZO_MAX_TTL", "604801"),
 		"default-ttl-under-60": with("NYLZO_DEFAULT_TTL", "59"),
 		"pow-concurrency-17":   with("NYLZO_POW_CONCURRENCY", "17"),
 		"ip-scope-garbage":     with("NYLZO_PASSPHRASE_IP_SCOPE", "maybe"),
+		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
+		"default-kdf-none":     with("NYLZO_DEFAULT_KDF", "0"),
+		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
 	} {
 		if _, err := server.FromEnv(env, true); err == nil {
 			t.Errorf("%s accepted", name)

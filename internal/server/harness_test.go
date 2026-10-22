@@ -2,12 +2,14 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -95,7 +97,81 @@ func baseConfig(pepper, previous []byte) server.Config {
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
 	cfg.Rates.BucketPerSecond = 1 << 20
 	cfg.Rates.BucketBurst = 1 << 20
+	cfg.Rates.SourcePerSecond = 1 << 20
+	cfg.Rates.SourceBurst = 1 << 20
 	return cfg
+}
+
+type faultyBlobs struct {
+	store.Blobs
+	mu         sync.Mutex
+	failDelete map[string]bool
+	failOpen   error
+	failPut    error
+}
+
+var errInjected = errors.New("test: injected storage failure")
+
+func (b *faultyBlobs) set(fn func(*faultyBlobs)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	fn(b)
+}
+
+func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
+	b.mu.Lock()
+	fail := b.failDelete[ref]
+	b.mu.Unlock()
+	if fail {
+		return errInjected
+	}
+	return b.Blobs.Delete(ctx, ref)
+}
+
+func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {
+	b.mu.Lock()
+	err := b.failOpen
+	b.mu.Unlock()
+	if err != nil {
+		return nil, 0, err
+	}
+	return b.Blobs.Open(ctx, ref)
+}
+
+func (b *faultyBlobs) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
+	b.mu.Lock()
+	err := b.failPut
+	b.mu.Unlock()
+	if err != nil {
+		io.Copy(io.Discard, r)
+		return err
+	}
+	return b.Blobs.Put(ctx, ref, r, size)
+}
+
+func (h *harness) withFaultyBlobs() *faultyBlobs {
+	fb := &faultyBlobs{Blobs: h.blobs, failDelete: map[string]bool{}}
+	h.blobs = fb
+	h.reopen(h.cfg)
+	return fb
+}
+
+func (h *harness) startOfNextUTCDay() {
+	h.clock.mu.Lock()
+	h.clock.now = time.Now().UTC().Truncate(24 * time.Hour).Add(25 * time.Hour)
+	h.clock.mu.Unlock()
+}
+
+func (h *harness) listen() string {
+	h.t.Helper()
+	httpServer := h.srv.HTTPServer()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	go httpServer.Serve(ln)
+	h.t.Cleanup(func() { httpServer.Close() })
+	return ln.Addr().String()
 }
 
 func newHarness(t *testing.T, cfg server.Config) *harness {

@@ -582,6 +582,77 @@
       "name": "path-trailing-slash",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA/#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": false
+    },
+    {
+      "name": "relative-reference",
+      "input": "/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "scheme-relative",
+      "input": "//nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "scheme-ftp",
+      "input": "ftp://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "dot-segment",
+      "input": "https://nylzo.example/x/../m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "dot-segment-encoded",
+      "input": "https://nylzo.example/x/%2e%2e/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "backslash-path",
+      "input": "https://nylzo.example\\m\\VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "userinfo",
+      "input": "https://user@nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "leading-space",
+      "input": " https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "trailing-space",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI ",
+      "valid": false
+    },
+    {
+      "name": "tab-in-id",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM\t238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "second-fragment",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI#x",
+      "valid": false
+    },
+    {
+      "name": "uppercase-scheme-and-port",
+      "input": "HTTPS://nylzo.example:8443/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": true,
+      "id": "VYkVuDHE8iM238s_29iTmA",
+      "kdf_id": 1,
+      "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
+    },
+    {
+      "name": "query-ignored",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA?utm=x#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": true,
+      "id": "VYkVuDHE8iM238s_29iTmA",
+      "kdf_id": 1,
+      "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
     }
   ],
   "meta": [
@@ -678,6 +749,13 @@
       "name": "trailing-bracket",
       "input": "{\"v\":1,\"text\":\"x\"}]",
       "valid": false
+    },
+    {
+      "name": "trailing-whitespace",
+      "input": "{\"v\":1,\"text\":\"x\"} \n",
+      "valid": true,
+      "canonical": "{\"v\":1,\"text\":\"x\"}",
+      "text": "x"
     },
     {
       "name": "name-del",

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -54,32 +53,6 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write([]byte(strings.ReplaceAll(string(page), noncePlaceholder, nonce)))
-}
-
-func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
-	name := path.Base(r.PathValue("file"))
-	if name == "index.html" || strings.HasPrefix(name, ".") {
-		http.NotFound(w, r)
-		return
-	}
-	data, err := fs.ReadFile(assets, "assets/"+name)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	switch path.Ext(name) {
-	case ".js":
-		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	case ".css":
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	case ".woff2":
-		w.Header().Set("Content-Type", "font/woff2")
-	case ".svg":
-		w.Header().Set("Content-Type", "image/svg+xml")
-	default:
-		w.Header().Set("Content-Type", "application/octet-stream")
-	}
-	w.Write(data)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

@@ -55,9 +55,9 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | Proměnná | Výchozí | Význam |
 |---|---|---|
 | `NYLZO_PEPPER` | povinná pro `serve` | 32 bajtů v hex nebo base64url |
-| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje; náhrobky ho drží ještě 7 dní, takže pro úplné stavy ho nechte 14 dní |
+| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje. Náhrobky ho drží ještě 7 dní a vyexpirovaná zpráva se stane náhrobkem až při dalším požadavku nebo úklidu, takže pro úplné stavy ho nechte 14 dní a jeden interval úklidu |
 | `NYLZO_LISTEN`, `PORT` | `:8080` | adresa naslouchání |
-| `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby |
+| `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky (server to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |
 | `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP` |
 | `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy |
@@ -65,18 +65,25 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření |
-| `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2) |
+| `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2); jiné hodnoty server odmítne |
 | `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek |
 | `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | násobek limitů pro hrubý kyblík /24 nebo /48 |
 | `NYLZO_RATE_READ_HOUR` | `300` | metadata, claim a blob na kyblík |
 | `NYLZO_RATE_ABUSE_HOUR` | `5` | hlášení zneužití na kyblík |
+| `NYLZO_RATE_SOURCE_RPS`, `NYLZO_RATE_SOURCE_BURST` | `10`, `20` | paměťový token bucket jednoho zdroje (kyblík /32 nebo /64) pro `/api/*`; běží před bucketem instance, takže jeden klient ho nevyčerpá ostatním |
 | `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `50`, `100` | paměťový token bucket instance pro `/api/*` |
-| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; počítá jen pokusy, které prošly limity kyblíku a PoW; od 50 % vyžaduje PoW, při 100 % vrací 503 |
-| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 16) |
+| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; počítá jen uložené zprávy; od 50 % vyžaduje PoW, při 100 % vrací 503. Souběžné požadavky ho mohou překročit o počet rozběhnutých vytvoření |
+| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost (nejvýš 8) a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 16). Každou výzvu lze použít jen jednou |
 
-Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení.
+Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez nich server vidí jen adresu proxy a všichni klienti sdílejí jeden kyblík, včetně limitu na zdroj.
 
-Logy obsahují čas, metodu, cestu, stav, latenci a velikost odpovědi; nikdy hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů.
+Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
+
+Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Server z důvodu hlášení vymaže fragmenty odkazů, zkrátí ho na 1000 bajtů a po dosažení 16 MiB přestane do souboru zapisovat. Hlášení musí mít `Content-Type: application/json`.
+
+Logy obsahují čas, metodu, vzor cesty, id zprávy (jen platné), stav, latenci a velikost odpovědi. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
+
+`nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud jednou za den neprojde.
 
 ## Generování vektorů
 
