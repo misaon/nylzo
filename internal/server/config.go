@@ -16,6 +16,7 @@ const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 16
+	MaxTTL            = 7 * 24 * time.Hour
 )
 
 type Limits struct {
@@ -200,7 +201,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	if needPepper && len(c.Pepper) == 0 {
 		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
 	}
-	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > 32 || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency {
+	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.MaxTTL > MaxTTL || c.Limits.DefaultTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > 32 || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency {
 		return c, fmt.Errorf("%w: limits out of range", ErrConfig)
 	}
 	return c, nil

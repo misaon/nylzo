@@ -2,6 +2,9 @@ package core_test
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/binary"
 	"errors"
 	"strings"
 	"testing"
@@ -157,8 +160,11 @@ func TestSealRejectsLimits(t *testing.T) {
 	if _, err := core.Seal(&content.K, h, id, pol, mismatch); !errors.Is(err, core.ErrMeta) {
 		t.Fatalf("size mismatch: got %v", err)
 	}
-	if _, err := core.Seal(&content.K, h, id, core.Policy{OpensMax: 0, TTLSeconds: 60}, core.Payload{Meta: core.Meta{Text: &text}}); err == nil {
-		t.Fatal("opens_max 0 accepted")
+	ok := "ok"
+	for _, p := range []core.Policy{{OpensMax: 0, TTLSeconds: 60}, {OpensMax: 1, TTLSeconds: 59}} {
+		if _, err := core.Seal(&content.K, h, id, p, core.Payload{Meta: core.Meta{Text: &ok}}); !errors.Is(err, core.ErrPolicy) {
+			t.Fatalf("policy %+v: want ErrPolicy, got %v", p, err)
+		}
 	}
 	if _, err := core.Seal(&content.K, core.Header{Version: 1, Flags: 1}, id, pol, core.Payload{Meta: core.Meta{Text: &text}}); !errors.Is(err, core.ErrFlags) {
 		t.Fatalf("flags: got %v", err)
@@ -236,5 +242,36 @@ func TestHeaderRoundTrip(t *testing.T) {
 	}
 	if !bytes.Equal(core.AAD(h, core.ID{}, core.Policy{OpensMax: 1, TTLSeconds: 60})[:core.HeaderLen], h.Bytes()) {
 		t.Fatal("aad prefix")
+	}
+}
+
+func TestOpenRejectsMalformedPlaintext(t *testing.T) {
+	id := core.NewID()
+	_, content, err := core.DeriveAll(id, core.NewSecret(), core.KDFNone, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := core.NewHeader(core.KDFNone)
+	pol := core.Policy{OpensMax: 1, TTLSeconds: 60}
+	block, _ := aes.NewCipher(content.K[:])
+	gcm, _ := cipher.NewGCM(block)
+	seal := func(pt []byte) []byte { return gcm.Seal(h.Bytes(), h.IV[:], pt, core.AAD(h, id, pol)) }
+	withMeta := func(lenMeta uint32, meta string) []byte {
+		pt := make([]byte, 4096)
+		binary.BigEndian.PutUint32(pt, lenMeta)
+		copy(pt[4:], meta)
+		return pt
+	}
+	fileMeta := `{"v":1,"file":{"name":"a","mime":"","size":9999}}`
+	cases := map[string][]byte{
+		"len-meta-beyond-plaintext": withMeta(5000, ""),
+		"len-meta-above-limit":      append(withMeta(core.MaxMetaBytes+1, ""), make([]byte, core.MaxMetaBytes+4096)...),
+		"file-beyond-plaintext":     withMeta(uint32(len(fileMeta)), fileMeta),
+		"too-short":                 {0, 0},
+	}
+	for name, pt := range cases {
+		if _, _, err := core.Open(&content.K, id, pol, core.KDFNone, seal(pt)); !errors.Is(err, core.ErrPlaintext) {
+			t.Fatalf("%s: want ErrPlaintext, got %v", name, err)
+		}
 	}
 }

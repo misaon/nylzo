@@ -115,15 +115,8 @@ func writeJSONString(b *bytes.Buffer, s string) {
 	b.WriteByte('"')
 }
 
-type fileWire struct {
-	Name *string `json:"name"`
-	Mime *string `json:"mime"`
-	Size *int64  `json:"size"`
-}
-
 func decodeField(raw json.RawMessage, v any) error {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := dec.Decode(v); err != nil {
+	if err := json.Unmarshal(raw, v); err != nil {
 		return ErrMeta
 	}
 	return nil
@@ -133,13 +126,20 @@ func isNull(raw json.RawMessage) bool {
 	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
 }
 
+func field(fields map[string]json.RawMessage, key string) (json.RawMessage, bool) {
+	raw, ok := fields[key]
+	if !ok || isNull(raw) {
+		return nil, false
+	}
+	return raw, true
+}
+
 func DecodeMeta(b []byte) (Meta, error) {
 	if len(b) > MaxMetaBytes || !utf8.Valid(b) {
 		return Meta{}, ErrMeta
 	}
 	var fields map[string]json.RawMessage
-	dec := json.NewDecoder(bytes.NewReader(b))
-	if err := dec.Decode(&fields); err != nil || dec.More() || fields == nil {
+	if err := UnmarshalStrict(b, &fields); err != nil || fields == nil {
 		return Meta{}, ErrMeta
 	}
 	var v *int
@@ -152,19 +152,29 @@ func DecodeMeta(b []byte) (Meta, error) {
 			return Meta{}, err
 		}
 	}
-	if raw, ok := fields["file"]; ok && !isNull(raw) {
-		var f fileWire
-		if err := decodeField(raw, &f); err != nil {
-			return Meta{}, err
-		}
-		if f.Name == nil || f.Size == nil {
+	if raw, ok := field(fields, "file"); ok {
+		var fileFields map[string]json.RawMessage
+		if err := decodeField(raw, &fileFields); err != nil || fileFields == nil {
 			return Meta{}, ErrMeta
 		}
-		mime := ""
-		if f.Mime != nil {
-			mime = *f.Mime
+		nameRaw, okName := field(fileFields, "name")
+		sizeRaw, okSize := field(fileFields, "size")
+		if !okName || !okSize {
+			return Meta{}, ErrMeta
 		}
-		m.File = &FileMeta{Name: *f.Name, Mime: mime, Size: *f.Size}
+		f := &FileMeta{}
+		if err := decodeField(nameRaw, &f.Name); err != nil {
+			return Meta{}, err
+		}
+		if err := decodeField(sizeRaw, &f.Size); err != nil {
+			return Meta{}, err
+		}
+		if mimeRaw, ok := field(fileFields, "mime"); ok {
+			if err := decodeField(mimeRaw, &f.Mime); err != nil {
+				return Meta{}, err
+			}
+		}
+		m.File = f
 	}
 	if err := m.Validate(); err != nil {
 		return Meta{}, err

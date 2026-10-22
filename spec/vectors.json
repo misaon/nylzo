@@ -656,6 +656,58 @@
       "file_size": 1
     },
     {
+      "name": "file-key-case-variants-ignored",
+      "input": "{\"v\":1,\"file\":{\"name\":\"a.txt\",\"NAME\":\"b.exe\",\"mime\":\"text/plain\",\"Mime\":\"x\",\"size\":3,\"SIZE\":9}}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"file\":{\"name\":\"a.txt\",\"mime\":\"text/plain\",\"size\":3}}",
+      "file_name": "a.txt",
+      "file_mime": "text/plain",
+      "file_size": 3
+    },
+    {
+      "name": "top-level-case-variant-v",
+      "input": "{\"V\":1,\"text\":\"x\"}",
+      "valid": false
+    },
+    {
+      "name": "trailing-brace",
+      "input": "{\"v\":1,\"text\":\"x\"}}",
+      "valid": false
+    },
+    {
+      "name": "trailing-bracket",
+      "input": "{\"v\":1,\"text\":\"x\"}]",
+      "valid": false
+    },
+    {
+      "name": "name-del",
+      "input": "{\"v\":1,\"file\":{\"name\":\"a\\u007fb\",\"mime\":\"\",\"size\":1}}",
+      "valid": false
+    },
+    {
+      "name": "name-unit-separator",
+      "input": "{\"v\":1,\"file\":{\"name\":\"a\\u001fb\",\"mime\":\"\",\"size\":1}}",
+      "valid": false
+    },
+    {
+      "name": "mime-null",
+      "input": "{\"v\":1,\"file\":{\"name\":\"a\",\"mime\":null,\"size\":1}}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"file\":{\"name\":\"a\",\"mime\":\"\",\"size\":1}}",
+      "file_name": "a",
+      "file_mime": "",
+      "file_size": 1
+    },
+    {
+      "name": "size-negative-zero",
+      "input": "{\"v\":1,\"file\":{\"name\":\"a\",\"mime\":\"\",\"size\":-0}}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"file\":{\"name\":\"a\",\"mime\":\"\",\"size\":0}}",
+      "file_name": "a",
+      "file_mime": "",
+      "file_size": 0
+    },
+    {
       "name": "duplicate-file-last-wins",
       "input": "{\"v\":1,\"file\":{\"name\":\"first\",\"mime\":\"x\",\"size\":1},\"file\":{\"name\":\"second\",\"mime\":\"y\",\"size\":2}}",
       "valid": true,

@@ -82,7 +82,9 @@ func TestCreateValidation(t *testing.T) {
 	}{
 		{"no-header", func(r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
 		{"bad-base64", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
-		{"unknown-field", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", core.Encode([]byte(`{"id":"x","extra":1}`))) }, 400, "bad_request"},
+		{"unknown-field", func(r *http.Request) {
+			r.Header.Set("X-Nylzo-Create", mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 }))
+		}, 400, "bad_request"},
 		{"size-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1))) }, 400, "bad_request"},
 		{"size-above-limit-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(core.MaxObjectBytes+1)) }, 400, "bad_request"},
 		{"chunked", func(r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
@@ -124,19 +126,6 @@ func TestCreateValidation(t *testing.T) {
 	h.mustCreate(m)
 	if resp, _ := h.create(m); resp.StatusCode != 409 {
 		t.Fatal("duplicate id")
-	}
-	short := newMessage(t, core.KDFNone, "", 1, 3600, "v")
-	r, _ := http.NewRequest("POST", h.ts.URL+"/api/v1/messages", strings.NewReader(string(short.object[:100])))
-	r.Header.Set("X-Nylzo-Create", short.createHeader(0))
-	r.ContentLength = int64(len(short.object))
-	if _, err := h.client.Do(r); err == nil {
-		t.Log("client did not detect the short body; the server must still reject it")
-	}
-	if h.blobExists(short.id) {
-		t.Fatal("short body stored")
-	}
-	if resp, _ := h.metadata(short); resp.StatusCode != 404 {
-		t.Fatal("short body created a row")
 	}
 }
 
@@ -224,7 +213,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 func TestClientAddr(t *testing.T) {
 	cfg := server.Defaults()
 	cfg.Pepper = pepperA
-	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("fd00::/8")}
 	cases := []struct {
 		remote, xff, realIP, mode, want string
 	}{
@@ -236,6 +225,10 @@ func TestClientAddr(t *testing.T) {
 		{"10.0.0.5:1234", "garbage", "", "", "10.0.0.5"},
 		{"10.0.0.5:1234", "", "", "", "10.0.0.5"},
 		{"[::ffff:203.0.113.7]:1234", "", "", "", "203.0.113.7"},
+		{"203.0.113.1:1234", "", "198.51.100.2", "", "203.0.113.1"},
+		{"10.0.0.5:1234", "", "198.51.100.2", "", "10.0.0.5"},
+		{"[fd00::5]:1234", "2001:db8::7, fd00::9", "", "", "2001:db8::7"},
+		{"[2001:db8::1]:1234", "2001:db8::7", "", "", "2001:db8::1"},
 		{"203.0.113.1:1234", "198.51.100.1", "198.51.100.2", "scaleway", "198.51.100.2"},
 		{"203.0.113.1:1234", "", "", "scaleway", "203.0.113.1"},
 	}

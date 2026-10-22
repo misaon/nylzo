@@ -55,7 +55,7 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | Proměnná | Výchozí | Význam |
 |---|---|---|
 | `NYLZO_PEPPER` | povinná pro `serve` | 32 bajtů v hex nebo base64url |
-| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním |
+| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje; náhrobky ho drží ještě 7 dní, takže pro úplné stavy ho nechte 14 dní |
 | `NYLZO_LISTEN`, `PORT` | `:8080` | adresa naslouchání |
 | `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |
@@ -63,7 +63,7 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy |
 | `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne |
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
-| `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy |
+| `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření |
 | `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2) |
 | `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek |
@@ -71,7 +71,7 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_RATE_READ_HOUR` | `300` | metadata, claim a blob na kyblík |
 | `NYLZO_RATE_ABUSE_HOUR` | `5` | hlášení zneužití na kyblík |
 | `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `50`, `100` | paměťový token bucket instance pro `/api/*` |
-| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; od 50 % vyžaduje PoW, nad 100 % vrací 503 |
+| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; počítá jen pokusy, které prošly limity kyblíku a PoW; od 50 % vyžaduje PoW, při 100 % vrací 503 |
 | `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 16) |
 
 Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení.

@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,8 +21,12 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 	if !strings.Contains(string(captured), "X-Nylzo-Create: "+m.createHeader(0)) || !strings.Contains(string(captured), string(m.object)) {
 		t.Fatal("wire capture missing the create request")
 	}
+	p, err := core.DerivePassphraseKey(m.kdf, "tajná fráze", &m.link.SaltPW)
+	if err != nil {
+		t.Fatal(err)
+	}
 	secrets := map[string][]byte{
-		"S": m.secret[:], "K": m.content.K[:], "R": m.link.R[:], "V": m.content.V[:], "M": m.manage[:],
+		"S": m.secret[:], "K": m.content.K[:], "P": p, "R": m.link.R[:], "V": m.content.V[:], "M": m.manage[:],
 	}
 	for name, b := range secrets {
 		for _, enc := range []string{core.Encode(b), hex.EncodeToString(b)} {
@@ -46,6 +51,9 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "hello")
 	h.mustCreate(m)
+	for _, ua := range []string{"", "Slackbot-LinkExpanding 1.0"} {
+		h.do(request{method: "GET", path: "/m/" + m.id.String(), headers: map[string]string{"User-Agent": ua}})
+	}
 	for i := 0; i < 5; i++ {
 		resp, meta := h.metadata(m)
 		if resp.StatusCode != 200 || meta["opens_remaining"].(float64) != 1 || meta["state"] != "available" || meta["passphrase_required"] != false || meta["kdf_id"].(float64) != 0 {
@@ -65,9 +73,14 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	if err != nil || payload.Meta.Text == nil || *payload.Meta.Text != "hello" {
 		t.Fatalf("decrypt: %v", err)
 	}
-	tampered := strings.Replace(policy, "1", "2", 1)
-	if _, err := h.openObject(m, object, tampered); err == nil {
-		t.Fatal("tampered policy header decrypted")
+	pol, err := decodePolicy(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []core.Policy{{OpensMax: pol.OpensMax + 1, TTLSeconds: pol.TTLSeconds}, {OpensMax: pol.OpensMax, TTLSeconds: pol.TTLSeconds - 1}} {
+		if _, _, err := core.Open(&m.content.K, m.id, bad, m.kdf, object); !errors.Is(err, core.ErrIntegrity) {
+			t.Fatalf("changed policy %+v: want ErrIntegrity, got %v", bad, err)
+		}
 	}
 	resp, meta := h.metadata(m)
 	if meta["state"] != "opened" || meta["opens_remaining"].(float64) != 0 || meta["first_opened_at"] == nil {
@@ -198,9 +211,15 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	if st["failed_passphrase_attempts"].(float64) != 100 {
 		t.Fatalf("status after cap: %v", st)
 	}
-	resp, _ = h.claim(m, "", "192.0.2.78")
-	if resp.StatusCode != 403 {
-		t.Fatalf("missing verifier: %d", resp.StatusCode)
+	fresh := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
+	h.mustCreate(fresh)
+	resp, body = h.claim(fresh, "", "192.0.2.78")
+	j = decodeJSON(t, body)
+	if resp.StatusCode != 403 || j["attempts_left"].(float64) != 4 || j["retry_after"].(float64) != 0 {
+		t.Fatalf("missing verifier: %d %s", resp.StatusCode, body)
+	}
+	if _, st := h.status(fresh); st["failed_passphrase_attempts"].(float64) != 1 {
+		t.Fatalf("status after missing verifier: %v", st)
 	}
 }
 
@@ -229,8 +248,12 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if len(leases) != 3 || leases[0] == leases[1] || leases[1] == leases[2] {
-		t.Fatalf("leases: %v", leases)
+	distinct := map[string]bool{}
+	for _, l := range leases {
+		distinct[l] = true
+	}
+	if len(distinct) != 3 {
+		t.Fatalf("leases not distinct: %v", leases)
 	}
 	h.clock.Advance(store.LeaseDuration - time.Second)
 	for _, l := range leases {

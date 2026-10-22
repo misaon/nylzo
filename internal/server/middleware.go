@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/misaon/nylzo/internal/core"
 )
 
 const cspTemplate = "default-src 'none'; script-src 'nonce-%s'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'"
@@ -91,7 +93,7 @@ func (s *Server) logging(next http.Handler) http.Handler {
 		s.log.Info("request",
 			"method", r.Method,
 			"route", r.Pattern,
-			"path", r.URL.Path,
+			"id", loggableID(r),
 			"status", sw.status,
 			"duration_ms", float64(time.Since(start).Microseconds())/1000,
 			"bytes", sw.bytes,
@@ -103,4 +105,12 @@ func newNonce() string {
 	var b [16]byte
 	rand.Read(b[:])
 	return encodeNonce(b[:])
+}
+
+func loggableID(r *http.Request) string {
+	id, err := core.ParseID(r.PathValue("id"))
+	if err != nil {
+		return ""
+	}
+	return id.String()
 }

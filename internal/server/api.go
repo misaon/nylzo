@@ -42,6 +42,8 @@ type createHeader struct {
 	Size         int64   `json:"size"`
 }
 
+var createHeaderKeys = map[string]bool{"id": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
+
 type policyHeader struct {
 	OpensMax int `json:"opens_max"`
 	TTL      int `json:"ttl_s"`
@@ -123,6 +125,10 @@ func bearer(r *http.Request) string {
 }
 
 func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, context.Canceled) {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return
+	}
 	s.log.Error("handler", "route", r.Pattern, "err", err.Error())
 	writeError(w, http.StatusInternalServerError, errInternal)
 }
@@ -175,11 +181,18 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	l := s.cfg.Limits
 	resp := instanceResponse{
 		Limits:   instanceLimits{MaxFileBytes: l.MaxFileBytes, MaxTextBytes: l.MaxTextBytes, MaxObjectBytes: l.MaxObjectBytes, MaxTTL: int64(l.MaxTTL / time.Second), DefaultTTL: int64(l.DefaultTTL / time.Second), MaxOpens: l.MaxOpens, DefaultKDF: int(l.DefaultKDF)},
-		PoW:      instancePoW{Required: s.powRequired(), Difficulty: s.cfg.PoWDifficulty},
+		PoW:      instancePoW{Difficulty: s.cfg.PoWDifficulty},
 		Versions: instanceVersions{API: 1, Envelope: core.Version, Fragment: core.FragmentVersion, Server: s.cfg.Version},
 	}
-	if resp.PoW.Required {
-		resp.PoW.Challenge = s.powChallenge(s.clock())
+	now := s.clock()
+	global, err := s.globalCreates(r.Context(), now)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	if global.powNeeded {
+		resp.PoW.Required = true
+		resp.PoW.Challenge = s.powChallenge(now)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -194,9 +207,16 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 	if err != nil {
 		return h, core.ID{}, nil, nil, nil, false
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&h); err != nil || dec.More() {
+	var fields map[string]json.RawMessage
+	if err := core.UnmarshalStrict(data, &fields); err != nil || fields == nil {
+		return h, core.ID{}, nil, nil, nil, false
+	}
+	for key := range fields {
+		if !createHeaderKeys[key] {
+			return h, core.ID{}, nil, nil, nil, false
+		}
+	}
+	if err := json.Unmarshal(data, &h); err != nil {
 		return h, core.ID{}, nil, nil, nil, false
 	}
 	id, err := core.ParseID(h.ID)
@@ -231,68 +251,91 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 	return h, id, readHash, verifierHash, manageHash, true
 }
 
-func (s *Server) rejectCreate(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Connection", "close")
+func (s *Server) rejectCreate(w http.ResponseWriter, r *http.Request, status int, v any) {
+	if r.ProtoMajor == 1 {
+		w.Header().Set("Connection", "close")
+	}
 	writeJSON(w, status, v)
+}
+
+type trackingReader struct {
+	r   io.Reader
+	err error
+}
+
+func (t *trackingReader) Read(p []byte) (int, error) {
+	n, err := t.r.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.err = err
+	}
+	return n, err
 }
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	h, id, readHash, verifierHash, manageHash, ok := s.parseCreateHeader(r)
 	if !ok {
-		s.rejectCreate(w, http.StatusBadRequest, errBadRequest)
+		s.rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 		return
 	}
 	if r.ContentLength < 0 || r.Header.Get("Content-Length") == "" {
-		s.rejectCreate(w, http.StatusLengthRequired, errLengthRequired)
+		s.rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
 		return
 	}
 	if r.ContentLength != h.Size {
-		s.rejectCreate(w, http.StatusBadRequest, errBadRequest)
+		s.rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 		return
 	}
 	if h.Size > s.cfg.Limits.MaxObjectBytes {
-		s.rejectCreate(w, http.StatusRequestEntityTooLarge, errTooLarge)
+		s.rejectCreate(w, r, http.StatusRequestEntityTooLarge, errTooLarge)
 		return
 	}
 	now := s.clock()
-	addr := s.clientAddr(r)
-	verdict, err := s.limitCreate(ctx, now, addr, h.Size)
+	retry, err := s.limitCreate(ctx, now, s.clientAddr(r), h.Size)
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
-	if verdict.retry > 0 {
-		retry := int64(verdict.retry/time.Second) + 1
-		w.Header().Set("Retry-After", strconv.FormatInt(retry, 10))
-		s.rejectCreate(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retry})
+	if retry > 0 {
+		seconds := int64(retry/time.Second) + 1
+		w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+		s.rejectCreate(w, r, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: seconds})
 		return
 	}
-	if verdict.capped {
+	global, err := s.globalCreates(ctx, now)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	if global.capped {
 		w.Header().Set("Retry-After", strconv.FormatInt(int64(dayWindow(now).end.Sub(now)/time.Second)+1, 10))
-		s.rejectCreate(w, http.StatusServiceUnavailable, errUnavailable)
+		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 		return
 	}
-	if verdict.powNeeded {
+	if global.powNeeded {
 		err := s.powVerify(ctx, r.Header.Get(headerPoW), id, now)
 		if errors.Is(err, errPoWBusy) {
 			w.Header().Set("Retry-After", "5")
-			s.rejectCreate(w, http.StatusServiceUnavailable, errUnavailable)
+			s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 			return
 		}
 		if err != nil {
-			s.rejectCreate(w, http.StatusForbidden, errPoWRequired)
+			s.rejectCreate(w, r, http.StatusForbidden, errPoWRequired)
 			return
 		}
 	}
+	if err := s.countGlobalCreate(ctx, now); err != nil {
+		s.internal(w, r, err)
+		return
+	}
 	if _, err := s.store.Get(ctx, id.String()); err == nil {
-		s.rejectCreate(w, http.StatusConflict, errConflict)
+		s.rejectCreate(w, r, http.StatusConflict, errConflict)
 		return
 	} else if !errors.Is(err, store.ErrNotFound) {
 		s.internal(w, r, err)
 		return
 	}
-	body := http.MaxBytesReader(w, r.Body, h.Size)
+	body := &trackingReader{r: http.MaxBytesReader(w, r.Body, h.Size)}
 	var header [core.HeaderLen]byte
 	if _, err := io.ReadFull(body, header[:]); err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
@@ -305,11 +348,16 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.blobs.Put(ctx, id.String(), io.MultiReader(bytes.NewReader(header[:]), body), h.Size); err != nil {
 		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		switch {
+		case errors.Is(err, store.ErrConflict):
+			writeError(w, http.StatusConflict, errConflict)
+		case errors.As(body.err, &tooLarge):
 			writeError(w, http.StatusRequestEntityTooLarge, errTooLarge)
-			return
+		case body.err != nil || errors.Is(err, io.ErrUnexpectedEOF):
+			writeError(w, http.StatusBadRequest, errBadRequest)
+		default:
+			s.internal(w, r, err)
 		}
-		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
 	readMAC, pepperID := s.ring.MAC(pepper.Read, readHash)
@@ -349,8 +397,16 @@ func (s *Server) readLimited(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func validPathID(w http.ResponseWriter, r *http.Request) bool {
+	if _, err := core.ParseID(r.PathValue("id")); err != nil {
+		writeNotFound(w)
+		return false
+	}
+	return true
+}
+
 func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
-	if !s.readLimited(w, r) {
+	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
 	rec, _, ok, err := s.authorize(r.Context(), r.PathValue("id"), bearer(r), pepper.Read)
@@ -394,7 +450,7 @@ func (s *Server) policyHeader(m *store.Message) string {
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !s.readLimited(w, r) {
+	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
 	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)
@@ -463,8 +519,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 			}
 		})
 	}
-	w.Header().Set(headerLease, core.Encode(lease[:]))
-	s.serveBlob(w, r, result.Message)
+	s.serveBlob(w, r, result.Message, core.Encode(lease[:]))
 }
 
 func ceilSeconds(d time.Duration) int64 {
@@ -474,22 +529,36 @@ func ceilSeconds(d time.Duration) int64 {
 	return int64((d + time.Second - 1) / time.Second)
 }
 
-func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message) {
+func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message, lease string) {
 	if m.BlobRef == "" {
 		writeGone(w, string(m.State))
 		return
 	}
 	f, size, err := s.blobs.Open(r.Context(), m.BlobRef)
+	if errors.Is(err, store.ErrBlobMissing) {
+		writeGone(w, string(s.endedState(r.Context(), m.ID)))
+		return
+	}
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
 	defer f.Close()
+	if lease != "" {
+		w.Header().Set(headerLease, lease)
+	}
 	w.Header().Set(headerPolicy, s.policyHeader(m))
 	w.Header().Set("Content-Type", octetStream)
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, f)
+}
+
+func (s *Server) endedState(ctx context.Context, id string) store.State {
+	if rec, err := s.store.Get(ctx, id); err == nil && rec.Tombstone != nil {
+		return rec.Tombstone.State
+	}
+	return store.StateDeleted
 }
 
 func (s *Server) findLease(ctx context.Context, r *http.Request, id string, now time.Time) (store.Lease, bool, error) {
@@ -511,7 +580,7 @@ func (s *Server) findLease(ctx context.Context, r *http.Request, id string, now 
 
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !s.readLimited(w, r) {
+	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
 	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)
@@ -548,7 +617,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	s.serveBlob(w, r, rec.Message)
+	s.serveBlob(w, r, rec.Message, "")
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {

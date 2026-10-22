@@ -94,13 +94,9 @@ func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Dur
 	return retry, counts, nil
 }
 
-type createVerdict struct {
-	retry     time.Duration
-	capped    bool
-	powNeeded bool
-}
+const globalCreatesKey = "global:d"
 
-func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr, size int64) (createVerdict, error) {
+func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr, size int64) (time.Duration, error) {
 	fine, coarse := s.bucketKeys(now, addr)
 	h, d := hourWindow(now), dayWindow(now)
 	r := s.cfg.Rates
@@ -110,20 +106,35 @@ func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr
 		{hit: store.RateHit{Key: "create:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.CreatePerHour * m, end: h.end},
 		{hit: store.RateHit{Key: "create:d:" + fine, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay, bytes: r.CreateBytesPerDay, end: d.end},
 		{hit: store.RateHit{Key: "create:d:c:" + coarse, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay * m, bytes: r.CreateBytesPerDay * m, end: d.end},
-		{hit: store.RateHit{Key: "global:d", WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}, end: d.end},
 	}
-	retry, counts, err := s.checkLimits(ctx, checks)
+	retry, _, err := s.checkLimits(ctx, checks)
+	return retry, err
+}
+
+type globalState struct {
+	capped    bool
+	powNeeded bool
+}
+
+func (s *Server) globalCreates(ctx context.Context, now time.Time) (globalState, error) {
+	limit := s.cfg.Rates.GlobalDailyCreates
+	if limit <= 0 {
+		return globalState{}, nil
+	}
+	c, err := s.store.RateGet(ctx, globalCreatesKey, dayWindow(now).start)
 	if err != nil {
-		return createVerdict{}, err
+		return globalState{}, err
 	}
-	count := counts[4].Count
-	s.globalCount.Store(count)
-	v := createVerdict{retry: retry}
-	if cap := r.GlobalDailyCreates; cap > 0 {
-		v.capped = count > cap
-		v.powNeeded = (count-1)*2 >= cap
+	return globalState{capped: c.Count >= limit, powNeeded: c.Count*2 >= limit}, nil
+}
+
+func (s *Server) countGlobalCreate(ctx context.Context, now time.Time) error {
+	if s.cfg.Rates.GlobalDailyCreates <= 0 {
+		return nil
 	}
-	return v, nil
+	d := dayWindow(now)
+	_, err := s.store.RateHit(ctx, []store.RateHit{{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
+	return err
 }
 
 func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {
@@ -146,12 +157,4 @@ func (s *Server) limitAbuse(ctx context.Context, now time.Time, addr netip.Addr)
 		{hit: store.RateHit{Key: "abuse:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour * r.CoarseMultiplier, end: h.end},
 	})
 	return retry, err
-}
-
-func (s *Server) powRequired() bool {
-	cap := s.cfg.Rates.GlobalDailyCreates
-	if cap <= 0 {
-		return false
-	}
-	return s.globalCount.Load()*2 >= cap
 }

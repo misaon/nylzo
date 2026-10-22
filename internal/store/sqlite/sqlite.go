@@ -503,64 +503,95 @@ func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) 
 
 func (s *Store) Sweep(ctx context.Context, now time.Time, deleteBlob func(ref string) error) (store.SweepReport, error) {
 	var r store.SweepReport
+	var errs []error
 	for {
-		ids, err := s.queryIDs(ctx, `SELECT id FROM messages WHERE expires_at <= ? LIMIT ?`, ms(now), store.SweepBatch)
+		rows, err := s.expiredRows(ctx, now)
 		if err != nil {
-			return r, err
+			errs = append(errs, err)
+			break
 		}
-		for _, id := range ids {
-			ref, err := s.End(ctx, id, store.StateExpired, now)
-			if err != nil && !errors.Is(err, store.ErrNotFound) {
-				return r, err
-			}
-			if err == nil {
-				r.Expired++
-			}
-			if ref != "" {
-				if err := deleteBlob(ref); err != nil {
-					return r, err
+		ended := 0
+		for _, row := range rows {
+			if row.blobRef != "" {
+				if err := deleteBlob(row.blobRef); err != nil {
+					errs = append(errs, err)
+					continue
 				}
 			}
+			if _, err := s.End(ctx, row.id, store.StateExpired, now); err != nil && !errors.Is(err, store.ErrNotFound) {
+				errs = append(errs, err)
+				continue
+			}
+			ended++
 		}
-		if len(ids) < store.SweepBatch {
+		r.Expired += ended
+		if len(rows) < store.SweepBatch || ended == 0 {
 			break
 		}
 	}
 	n, err := s.purge(ctx, "leases", "row_id", "lease_expires_at", now)
 	if err != nil {
-		return r, err
+		errs = append(errs, err)
 	}
 	r.ExpiredLeases = n
-	ids, err := s.queryIDs(ctx, `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL`)
+	ids, err := s.queryIDs(ctx, `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL LIMIT ?`, store.SweepBatch)
 	if err != nil {
-		return r, err
+		errs = append(errs, err)
 	}
 	for _, id := range ids {
 		ref, err := s.ReleaseIfDone(ctx, id, now)
 		if err != nil {
-			return r, err
+			errs = append(errs, err)
+			continue
 		}
 		if ref == "" {
 			continue
 		}
 		if err := deleteBlob(ref); err != nil {
-			return r, err
+			errs = append(errs, err)
+			continue
 		}
 		if err := s.ClearBlob(ctx, id, ref, now); err != nil {
-			return r, err
+			errs = append(errs, err)
+			continue
 		}
 		r.BlobsReleased++
 	}
-	if r.Tombstones, err = s.purge(ctx, "tombstones", "rowid", "purge_at", now); err != nil {
-		return r, err
+	for _, p := range []struct {
+		table string
+		out   *int
+	}{{"tombstones", &r.Tombstones}, {"rate_counters", &r.Counters}, {"passphrase_attempts", &r.Attempts}} {
+		n, err := s.purge(ctx, p.table, "rowid", "purge_at", now)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		*p.out = n
 	}
-	if r.Counters, err = s.purge(ctx, "rate_counters", "rowid", "purge_at", now); err != nil {
-		return r, err
+	return r, errors.Join(errs...)
+}
+
+type expiredRow struct {
+	id      string
+	blobRef string
+}
+
+func (s *Store) expiredRows(ctx context.Context, now time.Time) ([]expiredRow, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT id, blob_ref FROM messages WHERE expires_at <= ? LIMIT ?`, ms(now), store.SweepBatch)
+	if err != nil {
+		return nil, err
 	}
-	if r.Attempts, err = s.purge(ctx, "passphrase_attempts", "rowid", "purge_at", now); err != nil {
-		return r, err
+	defer rows.Close()
+	var out []expiredRow
+	for rows.Next() {
+		var row expiredRow
+		var ref sql.NullString
+		if err := rows.Scan(&row.id, &ref); err != nil {
+			return nil, err
+		}
+		row.blobRef = ref.String
+		out = append(out, row)
 	}
-	return r, nil
+	return out, rows.Err()
 }
 
 func (s *Store) queryIDs(ctx context.Context, query string, args ...any) ([]string, error) {

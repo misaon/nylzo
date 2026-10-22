@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK4ConcurrentClaims", func(t *testing.T) { testConcurrentClaims(t, open) })
 	t.Run("AK5PassphrasePolicy", func(t *testing.T) { testPassphrasePolicy(t, open) })
 	t.Run("AK5DailyCap", func(t *testing.T) { testDailyCap(t, open) })
+	t.Run("AK5BackoffCap", func(t *testing.T) { testBackoffCap(t, open) })
 	t.Run("AK6LeasesAck", func(t *testing.T) { testLeasesAck(t, open) })
 	t.Run("AK6LeaseExpiry", func(t *testing.T) { testLeaseExpiry(t, open) })
 	t.Run("AK6CrashBetweenReleaseAndDelete", func(t *testing.T) { testCrashBeforeDelete(t, open) })
@@ -233,14 +235,6 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 	rec := f.get(m.ID)
 	if rec.Message.OpensRemaining != 0 || rec.Message.FailCountTotal != 10 {
 		t.Fatalf("final counters: opens %d total %d", rec.Message.OpensRemaining, rec.Message.FailCountTotal)
-	}
-	for i := 12; i < 40; i++ {
-		now = now.Add(time.Hour)
-		_, err := f.claim(m, now, 9, false, true)
-		var pe *store.PassphraseError
-		if errors.As(err, &pe) && pe.RetryAfter > store.MaxBackoff {
-			t.Fatalf("backoff above one hour: %s", pe.RetryAfter)
-		}
 	}
 	m2 := f.create(1, 24*time.Hour, true)
 	if _, err := f.claim(m2, baseTime, 1, false, false); err == nil {
@@ -634,11 +628,11 @@ func testBlobsDelete(t *testing.T, open Factory) {
 	if f.blobExists("x") {
 		t.Fatal("partial object left behind")
 	}
-	if err := f.b.Put(f.ctx, "../escape", bytes.NewReader([]byte("x")), 1); err == nil {
-		t.Fatal("path traversal accepted")
-	}
 	if err := f.b.Put(f.ctx, "y", bytes.NewReader([]byte("hello")), 5); err != nil {
 		t.Fatal(err)
+	}
+	if err := f.b.Put(f.ctx, "y", bytes.NewReader([]byte("other")), 5); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("second Put of an existing ref must not replace it: %v", err)
 	}
 	r, size, err := f.b.Open(f.ctx, "y")
 	if err != nil || size != 5 {
@@ -652,5 +646,59 @@ func testBlobsDelete(t *testing.T, open Factory) {
 	infos, err := f.b.List(f.ctx)
 	if err != nil || len(infos) != 1 || infos[0].Ref != "y" {
 		t.Fatalf("list: %+v %v", infos, err)
+	}
+	upper, lower := "AbCdEfGhIjKlMnOpQrStUw", "abcdefghijklmnopqrstuw"
+	for ref, content := range map[string]string{upper: "upper!", lower: "lower!"} {
+		if err := f.b.Put(f.ctx, ref, strings.NewReader(content), 6); err != nil {
+			t.Fatalf("case-variant ref %s: %v", ref, err)
+		}
+	}
+	if err := f.b.Delete(f.ctx, lower); err != nil {
+		t.Fatal(err)
+	}
+	r, _, err = f.b.Open(f.ctx, upper)
+	if err != nil {
+		t.Fatalf("deleting a case-variant ref removed another object: %v", err)
+	}
+	data, _ = io.ReadAll(r)
+	r.Close()
+	if string(data) != "upper!" {
+		t.Fatalf("case-variant refs share storage: %q", data)
+	}
+	if err := f.b.Put(f.ctx, "../escape", strings.NewReader("x"), 1); err != nil {
+		t.Fatal(err)
+	}
+	infos, err = f.b.List(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, info := range infos {
+		found = found || info.Ref == "../escape"
+	}
+	if !found {
+		t.Fatal("a ref with path characters must be stored inside the blob store")
+	}
+}
+
+func testBackoffCap(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	m := f.create(1, 7*24*time.Hour, true)
+	now := baseTime
+	var last time.Duration
+	for i := 1; i <= 17; i++ {
+		_, err := f.claim(m, now, 9, false, true)
+		var pe *store.PassphraseError
+		if !errors.As(err, &pe) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+		if pe.RetryAfter > store.MaxBackoff {
+			t.Fatalf("attempt %d waits %s", i, pe.RetryAfter)
+		}
+		last = pe.RetryAfter
+		now = now.Add(last)
+	}
+	if last != store.MaxBackoff {
+		t.Fatalf("17th failure waits %s, want %s", last, store.MaxBackoff)
 	}
 }

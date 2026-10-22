@@ -42,6 +42,16 @@ func TestAK12GlobalCap(t *testing.T) {
 	if resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "pow" {
 		t.Fatalf("at 50 percent PoW must be required: %d %s", resp.StatusCode, body)
 	}
+	_, body = h.do(request{method: "GET", path: "/api/v1/instance"})
+	challenge := decodeJSON(t, body)["pow"].(map[string]any)["challenge"].(string)
+	token, err := server.SolvePoW(challenge, second.id, h.cfg.PoWDifficulty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, body = h.do(request{method: "POST", path: "/api/v1/messages", body: second.object, ip: second.ip, headers: map[string]string{"X-Nylzo-Create": second.createHeader(0), "X-Nylzo-Pow": token}})
+	if resp.StatusCode != 201 {
+		t.Fatalf("second create with pow: %d %s", resp.StatusCode, body)
+	}
 	third := newMessage(t, core.KDFNone, "", 1, 3600, "three")
 	third.ip = "192.0.2.3"
 	resp, body = h.create(third)

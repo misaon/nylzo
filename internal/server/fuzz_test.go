@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -17,7 +19,36 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("")
 	f.Add("not base64!")
 	cfg := server.Defaults()
+	allowed := map[string]bool{"id": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
 	f.Fuzz(func(t *testing.T, value string) {
-		server.ParseCreateHeaderForTest(cfg, value)
+		if !server.ParseCreateHeaderForTest(cfg, value) {
+			return
+		}
+		data, err := base64.RawURLEncoding.Strict().DecodeString(value)
+		if err != nil {
+			t.Fatal("accepted non-canonical base64url")
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatalf("accepted invalid JSON: %v", err)
+		}
+		for k := range fields {
+			if !allowed[k] {
+				t.Fatalf("accepted key %q", k)
+			}
+		}
+		var h struct {
+			KDFID        int     `json:"kdf_id"`
+			VerifierHash *string `json:"verifier_hash"`
+			OpensMax     int     `json:"opens_max"`
+			TTL          int64   `json:"ttl_s"`
+		}
+		json.Unmarshal(data, &h)
+		if (h.KDFID != 0) != (h.VerifierHash != nil) {
+			t.Fatal("verifier_hash does not match kdf_id")
+		}
+		if h.OpensMax < 1 || h.OpensMax > cfg.Limits.MaxOpens || h.TTL < core.MinTTLSeconds || h.TTL > int64(cfg.Limits.MaxTTL.Seconds()) {
+			t.Fatal("accepted a policy outside the limits")
+		}
 	})
 }

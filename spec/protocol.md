@@ -117,7 +117,7 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 - `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `ip`, `pow`.
 - `mac_purpose(x) = HMAC-SHA-256(k_purpose, x)`.
 - `pepper_id = SHA-256("nylzo/v1/pepper-id" || pepper)[0]` (one byte). Every row that stores a mac carries the `pepper_id` of the key that produced it.
-- Rotation: `NYLZO_PEPPER_PREVIOUS` holds the previous pepper. The server writes with the current pepper and verifies each row with the pepper whose `pepper_id` matches the row; a row whose `pepper_id` matches neither verifies as invalid (with the same work as a valid row). The server MUST refuse to start when both peppers share a `pepper_id`. Rows expire within 7 days, so no rewriting is needed and the previous pepper can be dropped after 7 days.
+- Rotation: `NYLZO_PEPPER_PREVIOUS` holds the previous pepper. The server writes with the current pepper and verifies each row with the pepper whose `pepper_id` matches the row; a row whose `pepper_id` matches neither verifies as invalid (with the same work as a valid row). The server MUST refuse to start when both peppers share a `pepper_id`. The maximum TTL is 7 days, so no rewriting is needed: after 7 days no live message carries the previous `pepper_id`. Tombstones keep it for another 7 days; dropping the previous pepper earlier turns those tombstones into unknown ids (404) without affecting any live message. Keeping the previous pepper for 14 days preserves every tombstone state.
 - `sweep-once` does not need a pepper.
 
 ### 5.2 What the server stores
@@ -179,7 +179,7 @@ No endpoint accepts or returns plaintext, `S`, `K` or a passphrase.
 | 411 | `{"error":"length_required"}` | create without Content-Length |
 | 413 | `{"error":"too_large"}` | Content-Length above the instance limit |
 | 429 | `{"error":"rate_limited","retry_after":N}` + `Retry-After` header | bucket limit, token bucket, 4th blob download in a lease |
-| 500 | `{"error":"internal"}` | storage or blob failure; the body never carries details |
+| 500 | `{"error":"internal"}` | storage or blob failure; the body never carries details. A request whose client went away answers 400 instead |
 | 503 | `{"error":"unavailable"}` + `Retry-After` | global creation cap, `Sec-Purpose` requests, PoW verifier saturated |
 
 The 404 response (status, headers, body bytes) MUST be byte-identical for an unknown id, a wrong `R` and a wrong `M`. The 409 response MUST be identical for a live id and a tombstone.
@@ -195,7 +195,7 @@ X-Nylzo-Pow: {token}            only when the instance reports pow.required
 body: object (§3)
 ```
 
-Server order of checks, each before reading the body: (1) parse the header and the id syntax; (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic rate counters, counting the attempt even if it fails later; (4) PoW when required; (5) id absent from `messages` and `tombstones` (409, same for both). The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `expires_at = now + ttl_s`, and answers:
+Server order of checks, each before reading the body: (1) parse the header and the id syntax; (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap (503 when reached) and PoW when required (403); (5) count the attempt toward the global cap, so attempts rejected in (3) or (4) never move it; (6) id absent from `messages` and `tombstones` (409, same for both). The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `expires_at = now + ttl_s`, and answers:
 
 ```
 201 {"id":"…","expires_at":"…"}
@@ -252,7 +252,7 @@ POST /api/v1/messages/{id}/ack     Authorization: Bearer {R}, X-Nylzo-Lease: {L}
   204; ends the lease early and calls ReleaseIfDone
 ```
 
-Blob downloads count in the read rate limit and are capped at 3 per lease. The blob is deleted as soon as `opens_remaining == 0` and no lease is active.
+Blob downloads count in the read rate limit and are capped at 3 per lease. The blob is deleted as soon as `opens_remaining == 0` and no lease is active. A claim or download that finds the blob already deleted by a concurrent burn, cancel or expiry answers 410.
 
 ### 6.6 Burn, cancel, status, instance, abuse
 
@@ -284,9 +284,9 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 ```
 
 - Every request checks `expires_at` and ends an expired message (lazy sweep).
-- Ending a message is one transaction: delete the `messages` row and its `leases` and `passphrase_attempts`, insert the tombstone. The blob is deleted before that transaction (`ReleaseIfDone`, `Blobs.Delete`, `ClearBlob`) or within it for burn and cancel.
+- Ending a message is one transaction: delete the `messages` row and its `leases` and `passphrase_attempts`, insert the tombstone. The blob is deleted before that transaction for every ending: `ReleaseIfDone`, `Blobs.Delete`, `ClearBlob` after the last lease, and `Blobs.Delete` before the tombstone transaction for burn, cancel and expiry. A failed delete leaves the message alive, so a retry or the next sweep deletes it.
 - `ReleaseIfDone(id)` is idempotent: when `opens_remaining == 0`, no lease is active and `blob_ref` is set, it returns `blob_ref`, and keeps returning it until the caller, after a successful `Blobs.Delete`, clears it with `ClearBlob(id, blob_ref)`. `Blobs.Delete` is idempotent and treats a missing object as success. Callers: ack, the lease-end timer, every request on the id, and the sweep.
-- Sweep (built-in goroutine every `NYLZO_SWEEP_INTERVAL`, default 5 min; or `nylzod sweep-once` from an external scheduler) ends expired messages, deletes expired leases, calls `ReleaseIfDone` for every message with `opens_remaining == 0` and a blob, purges tombstones after `purge_at`, purges expired `rate_counters` and `passphrase_attempts`, in batches of 1000 rows; once a day it lists the blob store and deletes objects whose id has no row with that `blob_ref`.
+- Sweep (built-in goroutine every `NYLZO_SWEEP_INTERVAL`, default 5 min; or `nylzod sweep-once` from an external scheduler) ends expired messages, deletes expired leases, calls `ReleaseIfDone` for every message with `opens_remaining == 0` and a blob, purges tombstones after `purge_at`, purges expired `rate_counters` and `passphrase_attempts`, in batches of 1000 rows; the first sweep of each UTC day (marked by a counter in `rate_counters`, so separate `sweep-once` runs share it) lists the blob store and deletes objects older than 15 minutes whose ref no row holds. One failing item never stops the remaining steps.
 - Guarantees: access ends immediately (every request checks state, expiry and leases). Active data is deleted immediately on burn, cancel and the ack of the last lease; after the last lease expires without ack, at the end of the lease on a best-effort timer and at the latest by the next sweep.
 
 ## 8. Rate limits, caps, proof of work
@@ -302,7 +302,7 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 | metadata + claim + blob per hour | 300 | 1500 |
 | abuse reports per hour | 5 | 25 |
 
-- Global daily creation cap (`NYLZO_GLOBAL_DAILY_CREATES`, 0 = off): at 50 % PoW becomes required for creation; at 100 % creation answers 503 while reading continues.
+- Global daily creation cap (`NYLZO_GLOBAL_DAILY_CREATES`, 0 = off): it counts only creates admitted by the per-bucket limits and, when required, by PoW. From 50 % of the cap PoW is required for creation; at 100 % creation answers 503 while reading continues. `/api/v1/instance` reads the shared counter, so every instance reports the same state.
 - Counter rows expire one hour after an hourly window and 24 hours after a daily window; the sweep deletes them in batches of 1000.
 
 ### 8.1 Proof of work **[detail]**
@@ -331,7 +331,7 @@ valid     = HMAC tag verifies, now − window_start ≤ 120 s,
 
 ## 10. Logging
 
-The server logs time, method, route pattern or path (which contains the id, never `S`), status, latency and response size. It MUST NOT log `Authorization`, `X-Nylzo-Create`, `X-Nylzo-Lease`, `X-Nylzo-Pow`, request or response bodies, query strings, or client addresses. Addresses exist only inside bucket hashes in `rate_counters` and `passphrase_attempts`.
+The server logs time, method, route pattern, the message id when the path carries a valid one, status, latency and response size. It never logs the raw path, so a mangled link whose fragment reached the path is not logged. Internal `net/http` errors are logged as a fixed message without their text, because that text can carry a peer address. It MUST NOT log `Authorization`, `X-Nylzo-Create`, `X-Nylzo-Lease`, `X-Nylzo-Pow`, request or response bodies, query strings, or client addresses. Addresses exist only inside bucket hashes in `rate_counters` and `passphrase_attempts`.
 
 ## 11. Versioning
 
@@ -349,4 +349,4 @@ tombstones(id TEXT PK, pepper_id, read_mac, manage_mac, state, first_opened_at N
 rate_counters(key TEXT, window_start, count, bytes, purge_at)
 ```
 
-Blob store: one object per message, `data/blobs/{id}` on disk (object key `{id}` on S3). `blob_ref` is the object name.
+Blob store: one object per message. `blob_ref` is the message id. On disk the file name is the lowercase hex of the ref bytes (`data/blobs/{hex(ref)}`), so case-insensitive file systems cannot merge two ids; on S3 the object key is the ref. Publishing an object never replaces an existing one: a second create with the same id answers 409 and leaves the first object intact.

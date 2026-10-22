@@ -2,21 +2,20 @@ package disk
 
 import (
 	"context"
-	"crypto/rand"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	blobDir = "blobs"
-	tempDir = "tmp"
+	blobDir   = "blobs"
+	tempDir   = "tmp"
+	maxRefLen = 64
 )
 
 var ErrRef = errors.New("disk: invalid blob reference")
@@ -33,11 +32,19 @@ func New(dataDir string) (*Blobs, error) {
 	return &Blobs{root: root}, nil
 }
 
-func (b *Blobs) path(ref string) (string, error) {
-	if ref == "" || len(ref) > 64 || strings.ContainsAny(ref, "/\\") || strings.HasPrefix(ref, ".") {
+func fileName(ref string) (string, error) {
+	if ref == "" || len(ref) > maxRefLen {
 		return "", ErrRef
 	}
-	return filepath.Join(b.root, ref), nil
+	return hex.EncodeToString([]byte(ref)), nil
+}
+
+func (b *Blobs) path(ref string) (string, error) {
+	name, err := fileName(ref)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(b.root, name), nil
 }
 
 func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
@@ -45,13 +52,12 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 	if err != nil {
 		return err
 	}
-	var suffix [8]byte
-	rand.Read(suffix[:])
-	tmp := filepath.Join(b.root, tempDir, fmt.Sprintf("%s.%x", ref, suffix))
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	f, err := os.CreateTemp(filepath.Join(b.root, tempDir), "blob-*")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
 	n, err := io.Copy(f, r)
 	if err == nil && n != size {
 		err = io.ErrUnexpectedEOF
@@ -62,11 +68,13 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
-	if err == nil {
-		err = os.Rename(tmp, final)
-	}
 	if err != nil {
-		os.Remove(tmp)
+		return err
+	}
+	if err := os.Link(tmp, final); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return store.ErrConflict
+		}
 		return err
 	}
 	return nil
@@ -113,11 +121,15 @@ func (b *Blobs) List(ctx context.Context) ([]store.BlobInfo, error) {
 		if e.IsDir() {
 			continue
 		}
+		ref, err := hex.DecodeString(e.Name())
+		if err != nil {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil {
 			continue
 		}
-		out = append(out, store.BlobInfo{Ref: e.Name(), Modified: info.ModTime()})
+		out = append(out, store.BlobInfo{Ref: string(ref), Modified: info.ModTime()})
 	}
 	return out, nil
 }

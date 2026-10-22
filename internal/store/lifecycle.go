@@ -17,14 +17,20 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 }
 
 func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) error {
-	ref, err := s.End(ctx, id, state, now)
+	rec, err := s.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	if ref == "" {
-		return nil
+	if rec.Message == nil {
+		return ErrNotFound
 	}
-	return b.Delete(ctx, ref)
+	if ref := rec.Message.BlobRef; ref != "" {
+		if err := b.Delete(ctx, ref); err != nil {
+			return err
+		}
+	}
+	_, err = s.End(ctx, id, state, now)
+	return err
 }
 
 func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans int, temp int, err error) {

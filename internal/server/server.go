@@ -2,12 +2,12 @@ package server
 
 import (
 	"context"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
@@ -20,7 +20,7 @@ const (
 	writeTimeout      = 120 * time.Second
 	idleTimeout       = 30 * time.Second
 	maxHeaderBytes    = 8 << 10
-	reconcileEvery    = 24 * time.Hour
+	reconcileKey      = "sweep:reconcile:d"
 )
 
 type Option func(*Server)
@@ -38,20 +38,18 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 type Server struct {
-	cfg         Config
-	store       store.Store
-	blobs       store.Blobs
-	ring        *pepper.Ring
-	clock       func() time.Time
-	afterFunc   func(time.Duration, func())
-	log         *slog.Logger
-	bucket      *tokenBucket
-	powSlots    chan struct{}
-	globalCount atomic.Int64
-	handler     http.Handler
-	abuseMu     sync.Mutex
-	abusePath   string
-	lastRecon   atomic.Int64
+	cfg       Config
+	store     store.Store
+	blobs     store.Blobs
+	ring      *pepper.Ring
+	clock     func() time.Time
+	afterFunc func(time.Duration, func())
+	log       *slog.Logger
+	bucket    *tokenBucket
+	powSlots  chan struct{}
+	handler   http.Handler
+	abuseMu   sync.Mutex
+	abusePath string
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
@@ -74,13 +72,6 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	}
 	s.bucket = newTokenBucket(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst, s.clock())
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
-	if cfg.Rates.GlobalDailyCreates > 0 {
-		c, err := st.RateGet(context.Background(), "global:d", dayWindow(s.clock()).start)
-		if err != nil {
-			return nil, err
-		}
-		s.globalCount.Store(c.Count)
-	}
 	s.handler = s.routes()
 	return s, nil
 }
@@ -102,17 +93,35 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
+		ErrorLog:          log.New(httpErrorSink{log: s.log}, "", 0),
 	}
+}
+
+type httpErrorSink struct {
+	log *slog.Logger
+}
+
+func (h httpErrorSink) Write(p []byte) (int, error) {
+	h.log.Warn("net/http error")
+	return len(p), nil
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := s.clock()
-	reconcile := now.UnixNano()-s.lastRecon.Load() >= int64(reconcileEvery)
-	report, err := store.SweepAll(ctx, s.store, s.blobs, now, reconcile)
-	if err == nil && reconcile {
-		s.lastRecon.Store(now.UnixNano())
+	reconcile, err := s.firstSweepToday(ctx, now)
+	if err != nil {
+		return store.SweepReport{}, err
 	}
-	return report, err
+	return store.SweepAll(ctx, s.store, s.blobs, now, reconcile)
+}
+
+func (s *Server) firstSweepToday(ctx context.Context, now time.Time) (bool, error) {
+	d := dayWindow(now)
+	counts, err := s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
+	if err != nil {
+		return false, err
+	}
+	return counts[0].Count == 1, nil
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {

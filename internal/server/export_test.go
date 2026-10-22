@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"net/http"
 	"net/netip"
@@ -42,4 +43,18 @@ func PoWSatisfiesForTest(token string, id core.ID, difficulty int) bool {
 		return false
 	}
 	return powSatisfies(chal, counter, id, difficulty)
+}
+
+func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
+	chal, err := core.DecodeExact(challenge, powChalLen)
+	if err != nil {
+		return "", err
+	}
+	counter := make([]byte, powCounterLen)
+	for i := uint64(0); ; i++ {
+		binary.BigEndian.PutUint64(counter, i)
+		if powSatisfies(chal, counter, id, difficulty) {
+			return challenge + "." + hex.EncodeToString(counter), nil
+		}
+	}
 }
