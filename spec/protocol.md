@@ -125,6 +125,8 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 
 ### 5.2 What the server stores
 
+§13 lists everything the server keeps and what each item reveals.
+
 | Client sends | Server stores |
 |---|---|
 | `read_hash = h(R)` at creation | `read_mac = mac_read(h(R))` |
@@ -379,3 +381,29 @@ rate_counters(key TEXT, window_start, count, bytes, purge_at)   WITHOUT ROWID
 ```
 
 Blob store: one object per message. `blob_ref` is the message id. On disk the file name is the lowercase hex of the ref bytes (`data/blobs/{hex(ref)}`), so case-insensitive file systems cannot merge two ids; on S3 the object key is the ref. Publishing an object never replaces an existing one: a second create with the same id answers 409 and leaves the first object intact.
+
+## 13. What a stolen server reveals
+
+This section lists everything the server keeps, so an operator, an auditor or an attacker who copies the server sees the same picture. "Stolen" means a copy of the data directory (SQLite database with its WAL, the blob directory with its temporary uploads, the abuse report file), the logs and the configuration including the pepper. `TestStolenServerRevealsNothing` runs every flow (with and without passphrase, with a file, opened, leased, expired, burned, cancelled, reported), copies these files and the log, and checks that none of them contains `S`, `K`, `P`, a passphrase, plaintext, a file name, raw `R`, `V`, `M` or `L`, the hashes `h(R)`, `h(V)` or `h(M)`, a client address, or a time finer than the minute.
+
+| Item | Kept | What it reveals | Why it does not help to reach content |
+|---|---|---|---|
+| Pepper (`NYLZO_PEPPER`, previous pepper) | configuration | With it, candidate tokens can be checked against the stored macs, address buckets recomputed for a candidate address, and id tokens and PoW challenges minted | Every token the macs protect comes from `S` (and `P`) or from 256 random bits (`M`, `L`); without the link there is nothing to test |
+| `messages`: id, version, `kdf_id`, flags, state, `opens_max`, `opens_remaining`, `ttl_s`, size, ending | until the message ends | That a message with this id exists, whether it needs a passphrase, its policy and its padded size (text to 4 KiB, file to 64 KiB) | The id is public in the link; none of these values enters a key |
+| `messages`: `created_at`, `expires_at`, `first_opened_at`, `next_attempt_at` | until the message ends | Times to the minute (§5.2) | No time enters a key |
+| `messages`: `fail_count_total` | until the message ends | How many wrong passphrases were tried | Says nothing about the passphrase |
+| `messages`: `read_mac`, `manage_mac`, `verifier_mac`, `pepper_id` | until the message ends, the first two also in the tombstone | `HMAC(k_purpose, h(token))` | Without the pepper the values are random to the attacker; with it they only confirm a token the attacker already has |
+| `leases`: `lease_mac`, `lease_expires_at`, downloads | until the ack, the end of the lease or the next sweep | That a claim happened, to the minute | `L` is random and only the mac is kept |
+| `tombstones`: id, state, `first_opened_at`, `ended_at`, `purge_at`, `read_mac`, `manage_mac` | 7 days after the end | How and roughly when a message ended | Same as above; no content and no key material |
+| `rate_counters` | the window plus one window | Counts per 24-bit address bucket and per window, global counters, used PoW nonces, the number of abuse reports per message and day | Buckets never stand next to a message id; with the pepper an attacker can test whether a candidate address was active in a window, which tells nothing about content |
+| `blobs/{hex(id)}`, `blobs/tmp/*` | until the last lease ends, the message is burned or cancelled, or it expires | The envelope: header (version, `kdf_id`, flags, IV) and AES-256-GCM ciphertext of padded plaintext | Decryption needs `K`, which needs `S` (and `P`) |
+| `abuse-reports.jsonl` | 14 days | The UTC date, the id and the redacted reason of each stored report | No address, no time of day; links and long tokens are removed from the reason |
+| Request log | as long as the operator keeps it | Time, method, route pattern, status, latency, size | No id, no address, no token, no body (§10) |
+| File system metadata | as long as the file exists | `ctime` and `mtime` of a blob file show when it was uploaded, to the nanosecond; freed blocks may keep old ciphertext | Outside the server's control; an encrypted volume limits it. Ciphertext without `S` stays useless |
+
+What goes beyond stolen data, stated plainly:
+
+- An attacker who controls the running server or the provider edge (T3, T13) can serve a modified web client to a chosen victim and read that victim's links and passphrases. No server design prevents this. The CLI, a separate static origin for the web client (OD23, planned for the web client milestone), a published manifest of the client files and an independent monitor make it harder or visible.
+- While the server runs, it sees `R`, `V`, `M` and `L` in requests, and an observer of the unencrypted h2c hop between the provider edge and the container sees them too. Such an observer can replay them to spend an open, burn or cancel a message, though never to read it. Challenge-response with keys derived from `S` replaces these tokens before v1 is released (OD18, decided 22. 10. 2026).
+- Someone who has a link and also steals the server (T14) can guess the passphrase offline against the ciphertext at the cost of scrypt `N = 2^17` per guess; only the strength of the passphrase protects it, which is why clients refuse passphrases shorter than 12 characters (§2).
+- The provider in front of the public instance sees client addresses, request times and sizes in its own logs.
