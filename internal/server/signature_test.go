@@ -89,12 +89,16 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "bound")
 	h.mustCreate(m)
 	path := "/api/v1/messages/" + m.id.String()
-	meta := signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)
+	moved := func(method, to string) request {
+		req := signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)
+		req.method, req.path = method, to
+		return req
+	}
 	for name, req := range map[string]request{
-		"blob path":  {method: "GET", path: path + "/blob", headers: meta.headers},
-		"claim":      {method: "POST", path: path + "/claim", headers: meta.headers},
-		"burn":       {method: "POST", path: path + "/burn", headers: meta.headers},
-		"status":     {method: "GET", path: path + "/status", headers: meta.headers},
+		"blob path":  moved("GET", path+"/blob"),
+		"claim":      moved("POST", path+"/claim"),
+		"burn":       moved("POST", path+"/burn"),
+		"status":     moved("GET", path+"/status"),
 		"manage key": signedRequest(&m.link.R, core.PurposeManage, "GET", path+"/status", h.srv.ChallengeForTest(), nil),
 		"read as M":  signedRequest(m.manage, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil),
 		"bad sig":    rawAuth(request{method: "GET", path: path}, badSignature(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest())),
@@ -103,8 +107,17 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 			t.Fatalf("%s: %d %s", name, resp.StatusCode, body)
 		}
 	}
-	if resp, body := h.do(meta); resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"state":"available"`) {
-		t.Fatalf("failed attempts must leave the challenge and the message alone: %d %s", resp.StatusCode, body)
+	if _, st := h.status(m); st["state"] != "available" || st["opens_used"] != 0.0 {
+		t.Fatalf("a signature moved to another request changed the message: %v", st)
+	}
+	spent := moved("POST", path+"/burn")
+	h.do(spent)
+	spent.method, spent.path = "GET", path
+	if resp, _ := h.do(spent); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("a failed attempt must spend its challenge: %d", resp.StatusCode)
+	}
+	if resp, body := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)); resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"state":"available"`) {
+		t.Fatalf("a fresh signature: %d %s", resp.StatusCode, body)
 	}
 
 	body := []byte(`{"id":"` + m.id.String() + `","reason":"first"}`)

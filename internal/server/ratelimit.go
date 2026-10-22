@@ -2,23 +2,21 @@ package server
 
 import (
 	"context"
-	"encoding/hex"
 	"net/netip"
 	"sync"
 	"time"
 
-	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-var singleKey [pepper.BucketLen]byte
+var singleKey bucket
 
 type keyedLimiter struct {
 	mu      sync.Mutex
 	rate    float64
 	burst   float64
 	max     int
-	buckets map[[pepper.BucketLen]byte]keyedBucket
+	buckets map[bucket]keyedBucket
 }
 
 type keyedBucket struct {
@@ -33,10 +31,10 @@ const (
 )
 
 func newKeyedLimiter(rate, burst float64) *keyedLimiter {
-	return &keyedLimiter{rate: rate, burst: burst, max: maxKeyedBuckets, buckets: map[[pepper.BucketLen]byte]keyedBucket{}}
+	return &keyedLimiter{rate: rate, burst: burst, max: maxKeyedBuckets, buckets: map[bucket]keyedBucket{}}
 }
 
-func (l *keyedLimiter) allow(key [pepper.BucketLen]byte, now time.Time) bool {
+func (l *keyedLimiter) allow(key bucket, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	at := now.UnixNano()
@@ -94,51 +92,22 @@ func dayWindow(now time.Time) window {
 	return window{start: start, end: start.Add(24 * time.Hour)}
 }
 
-type limitCheck struct {
-	hit store.RateHit
-	end time.Time
-}
-
-func (s *Server) bucketKeys(now time.Time, addr netip.Addr) (fine string, coarse string) {
-	f := s.ring.Bucket(now, addr, false)
-	c := s.ring.Bucket(now, addr, true)
-	return hex.EncodeToString(f[:]), hex.EncodeToString(c[:])
-}
-
-func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Duration, error) {
-	hits := make([]store.RateHit, len(checks))
-	for i, c := range checks {
-		hits[i] = c.hit
-	}
-	counts, err := s.store.RateHit(ctx, hits)
-	if err != nil {
-		return 0, err
-	}
-	for i, c := range counts {
-		if checks[i].hit.Over(c) {
-			return max(checks[i].end.Sub(s.clock()), time.Second), nil
-		}
-	}
-	return 0, nil
-}
-
 const (
 	globalCreatesKey = "global:d"
 	globalStoredKey  = "global:stored:d"
 )
 
-func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr, size int64) (time.Duration, error) {
-	fine, coarse := s.bucketKeys(now, addr)
+func (s *Server) limitCreate(now time.Time, addr netip.Addr, size int64) time.Duration {
+	fine, coarse := s.addrKey.bucket(addr, false), s.addrKey.bucket(addr, true)
 	h, d := hourWindow(now), dayWindow(now)
 	r := s.cfg.Rates
 	m := r.CoarseMultiplier
-	checks := []limitCheck{
-		{hit: store.RateHit{Key: "create:h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: r.CreatePerHour}, end: h.end},
-		{hit: store.RateHit{Key: "create:d:" + fine, WindowStart: d.start, PurgeAt: d.purgeAt(), Bytes: size, Limit: r.CreatePerDay, BytesLimit: r.CreateBytesPerDay}, end: d.end},
-		{hit: store.RateHit{Key: "create:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: r.CreatePerHour * m}, end: h.end},
-		{hit: store.RateHit{Key: "create:d:c:" + coarse, WindowStart: d.start, PurgeAt: d.purgeAt(), Bytes: size, Limit: r.CreatePerDay * m, BytesLimit: r.CreateBytesPerDay * m}, end: d.end},
-	}
-	return s.checkLimits(ctx, checks)
+	return s.counters.hit([]addrHit{
+		{kind: "create:h", bucket: fine, window: h, limit: r.CreatePerHour},
+		{kind: "create:d", bucket: fine, window: d, bytes: size, limit: r.CreatePerDay, bytesLimit: r.CreateBytesPerDay},
+		{kind: "create:h:c", bucket: coarse, window: h, limit: r.CreatePerHour * m},
+		{kind: "create:d:c", bucket: coarse, window: d, bytes: size, limit: r.CreatePerDay * m, bytesLimit: r.CreateBytesPerDay * m},
+	}, now)
 }
 
 type globalState struct {
@@ -174,7 +143,7 @@ func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
 		return
 	}
 	if err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, dayWindow(now).start); err != nil {
-		s.log.Error("global-release", "err", err.Error())
+		s.log.Error("global-release", "err", ErrorText(err))
 	}
 }
 
@@ -186,11 +155,10 @@ func (s *Server) storedCreateCounters(now time.Time) []store.RateHit {
 	return []store.RateHit{{Key: globalStoredKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}
 }
 
-func (s *Server) limitHourly(ctx context.Context, now time.Time, addr netip.Addr, kind string, limit int64) (time.Duration, error) {
-	fine, coarse := s.bucketKeys(now, addr)
+func (s *Server) limitHourly(now time.Time, addr netip.Addr, kind string, limit int64) time.Duration {
 	h := hourWindow(now)
-	return s.checkLimits(ctx, []limitCheck{
-		{hit: store.RateHit{Key: kind + ":h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: limit}, end: h.end},
-		{hit: store.RateHit{Key: kind + ":h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt(), Limit: limit * s.cfg.Rates.CoarseMultiplier}, end: h.end},
-	})
+	return s.counters.hit([]addrHit{
+		{kind: kind + ":h", bucket: s.addrKey.bucket(addr, false), window: h, limit: limit},
+		{kind: kind + ":h:c", bucket: s.addrKey.bucket(addr, true), window: h, limit: limit * s.cfg.Rates.CoarseMultiplier},
+	}, now)
 }

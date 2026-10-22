@@ -44,7 +44,8 @@ export interface RequestVector {
   readonly body_hex: string;
   readonly message_hex: string;
   readonly signature: string;
-  readonly authorization: string;
+  readonly authorization?: string;
+  readonly verifier_header?: string;
 }
 
 export interface FileVector {

@@ -979,7 +979,7 @@
       "body_hex": "",
       "message_hex": "6e796c7a6f2f76312f7265717565737400766572696669657200504f5354002f6170692f76312f6d657373616765732f79653065494f7338764c6a734a534b614646424679672f636c61696d0075d99d192a8b11a787e3c092c04fdff90386201fe455c683527e965d3900d65c5fe825d4e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "signature": "w14ZlmW65WJ0gAbTvbjIfWXV5pVVzndJ_8xw8zx6DgPN1imwnPNEwf7V1CqAOs7RUp_ujIPOvs_q3XLi4sx7AA",
-      "authorization": "Nylzo-Sig wRSIuRuexKtM1l-xt4ZXvAI4PJDPUbCahWfU1u9dPao.ddmdGSqLEaeH48CSwE_f-QOGIB_kVcaDUn6WXTkA1lxf6CXU.w14ZlmW65WJ0gAbTvbjIfWXV5pVVzndJ_8xw8zx6DgPN1imwnPNEwf7V1CqAOs7RUp_ujIPOvs_q3XLi4sx7AA"
+      "verifier_header": "wRSIuRuexKtM1l-xt4ZXvAI4PJDPUbCahWfU1u9dPao.w14ZlmW65WJ0gAbTvbjIfWXV5pVVzndJ_8xw8zx6DgPN1imwnPNEwf7V1CqAOs7RUp_ujIPOvs_q3XLi4sx7AA"
     },
     {
       "name": "status manage",
@@ -1035,112 +1035,19 @@
         "mac_hex": "719ece49cff3bd5e435c33654df7e794963e2a631ca4a48fa03c703e5a4017b6"
       },
       {
-        "purpose": "ip",
-        "input_hex": "b2ae3c70c9cef97be7fdf0ef124a6f2e0a743b7cf05bece088b58b1e784e8478",
-        "mac_hex": "9e2046bff301003e85485852c05c450e090326b89c45ce3ff49e6075210f2fba"
-      },
-      {
         "purpose": "pow",
         "input_hex": "e02c1d882246ce6a23e46579a2cc9f120d83bab0637b038e222fbcb493e8dbb5",
         "mac_hex": "6eefb458aff5a77dadcf0d8ad08cc66e003f8fa6510ff33557a47c332119a027"
-      }
-    ],
-    "buckets": [
-      {
-        "date": "2026-10-22",
-        "addr": "203.0.113.77",
-        "coarse": false,
-        "bucket_hex": "997a05"
       },
       {
-        "date": "2026-10-22",
-        "addr": "203.0.113.77",
-        "coarse": true,
-        "bucket_hex": "2d86dd"
+        "purpose": "id",
+        "input_hex": "1de9cadb95d6ca03e76bbdfbf2a2a60b753f49ce9d9e83abefca9dbf04c204ff",
+        "mac_hex": "a30e3f0e2edc618e17195c676a6810a777c4003072482e8185bda015adbbf754"
       },
       {
-        "date": "2026-10-22",
-        "addr": "203.0.113.78",
-        "coarse": false,
-        "bucket_hex": "c4596e"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "203.0.113.78",
-        "coarse": true,
-        "bucket_hex": "2d86dd"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "203.0.113.200",
-        "coarse": false,
-        "bucket_hex": "4b9769"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "203.0.113.200",
-        "coarse": true,
-        "bucket_hex": "2d86dd"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "::ffff:203.0.113.77",
-        "coarse": false,
-        "bucket_hex": "997a05"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "::ffff:203.0.113.77",
-        "coarse": true,
-        "bucket_hex": "2d86dd"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:1:2:3:4:5:6",
-        "coarse": false,
-        "bucket_hex": "774305"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:1:2:3:4:5:6",
-        "coarse": true,
-        "bucket_hex": "8db816"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:1:2:ffff:ffff:ffff:ffff",
-        "coarse": false,
-        "bucket_hex": "774305"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:1:2:ffff:ffff:ffff:ffff",
-        "coarse": true,
-        "bucket_hex": "8db816"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:1:3::1",
-        "coarse": false,
-        "bucket_hex": "750b1a"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:1:3::1",
-        "coarse": true,
-        "bucket_hex": "8db816"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:2::1",
-        "coarse": false,
-        "bucket_hex": "da48d7"
-      },
-      {
-        "date": "2026-10-22",
-        "addr": "2001:db8:2::1",
-        "coarse": true,
-        "bucket_hex": "7717d8"
+        "purpose": "challenge",
+        "input_hex": "10a9e4b6f9e60821f0fa7aca3161857e304cbe4f881784e119f26c9047840340",
+        "mac_hex": "57d4b8d214ce88a6ccaf4aad37562783b7a151d39e67b3d18f9375f4b547a01d"
       }
     ]
   }

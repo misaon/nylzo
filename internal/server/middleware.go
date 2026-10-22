@@ -49,8 +49,8 @@ func (s *Server) throttle(next http.Handler) http.Handler {
 func (s *Server) allowAPI(r *http.Request) bool {
 	now := s.clock()
 	addr := s.clientAddr(r)
-	return s.sources.allow(s.ring.Bucket(now, addr, false), now) &&
-		s.prefixes.allow(s.ring.Bucket(now, addr, true), now) &&
+	return s.sources.allow(s.addrKey.bucket(addr, false), now) &&
+		s.prefixes.allow(s.addrKey.bucket(addr, true), now) &&
 		s.bucket.allow(singleKey, now)
 }
 
@@ -89,17 +89,21 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+var objectRoutes = map[string]bool{
+	"POST /api/v1/messages":            true,
+	"POST /api/v1/messages/{id}/claim": true,
+	"GET /api/v1/messages/{id}/blob":   true,
+}
+
 func (s *Server) logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
 		next.ServeHTTP(sw, r)
-		s.log.Info("request",
-			"method", r.Method,
-			"route", r.Pattern,
-			"status", sw.status,
-			"duration_ms", float64(time.Since(start).Microseconds())/1000,
-			"bytes", sw.bytes,
-		)
+		attrs := []any{"method", r.Method, "route", r.Pattern, "status", sw.status}
+		if !objectRoutes[r.Pattern] {
+			attrs = append(attrs, "duration_ms", float64(time.Since(start).Microseconds())/1000, "bytes", sw.bytes)
+		}
+		s.log.Info("request", attrs...)
 	})
 }

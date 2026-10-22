@@ -47,7 +47,7 @@ func main() {
 		err = fmt.Errorf("unknown command %q (use serve, sweep-once or version)", cmd)
 	}
 	if err != nil {
-		logger.Error("nylzod", "err", err.Error())
+		logger.Error("nylzod", "err", server.ErrorText(err))
 		os.Exit(1)
 	}
 }

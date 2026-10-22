@@ -1,7 +1,6 @@
 package server_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
-	"github.com/misaon/nylzo/internal/store"
 )
 
 func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
@@ -282,30 +280,6 @@ func TestRefusedSourceDoesNotSpendItsRange(t *testing.T) {
 	third.ip = "198.51.100.3"
 	if resp, _ := h.create(third); resp.StatusCode != 429 {
 		t.Fatalf("the /24 budget still applies: %d", resp.StatusCode)
-	}
-}
-
-type windowEndingStore struct {
-	store.Store
-	clock *fakeClock
-	after time.Duration
-}
-
-func (s windowEndingStore) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
-	counts, err := s.Store.RateHit(ctx, hits)
-	s.clock.Advance(s.after)
-	return counts, err
-}
-
-func TestOverLimitRequestAtTheWindowEndIsRefused(t *testing.T) {
-	cfg := baseConfig(pepperA, nil)
-	cfg.Rates.CreatePerHour = 1
-	h := newHarness(t, cfg)
-	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
-	h.store = windowEndingStore{Store: h.store, clock: h.clock, after: time.Hour}
-	h.reopen(h.cfg)
-	if resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b")); resp.StatusCode != 429 || resp.Header.Get("Retry-After") != "1" || decodeJSON(t, body)["retry_after"] != float64(1) {
-		t.Fatalf("a request counted over the limit must be refused with Retry-After 1 even when its window ends meanwhile: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
 	}
 }
 

@@ -5,9 +5,13 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"filippo.io/edwards25519"
 
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -348,5 +352,68 @@ func TestRequestSignatureBindsEveryField(t *testing.T) {
 	v, err := core.ParseVerifierHeader(sig.VerifierHeader(), challenge)
 	if err != nil || v != sig {
 		t.Fatalf("verifier header round trip: %v", err)
+	}
+}
+
+func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
+	ff := func(first, last byte) []byte {
+		b := bytes.Repeat([]byte{0xff}, 32)
+		b[0], b[31] = first, last
+		return b
+	}
+	withSign := func(b []byte) []byte {
+		out := append([]byte(nil), b...)
+		out[31] |= 0x80
+		return out
+	}
+	zero := make([]byte, 32)
+	identity := append([]byte{1}, make([]byte, 31)...)
+	order8a, _ := hex.DecodeString("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05")
+	order8b, _ := hex.DecodeString("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a")
+	smallOrder := map[string][]byte{"identity": identity, "order 2": ff(0xec, 0x7f), "order 4": zero, "order 8 a": order8a, "order 8 b": order8b}
+	nonCanonical := map[string][]byte{"y = p": ff(0xed, 0x7f), "y = p + 1": ff(0xee, 0x7f), "identity with sign": withSign(identity), "order 2 with sign": withSign(ff(0xec, 0x7f))}
+	for name, pk := range smallOrder {
+		p, err := new(edwards25519.Point).SetBytes(pk)
+		if err != nil || new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) != 1 {
+			t.Fatalf("%s is not a small-order point, the test data is wrong", name)
+		}
+		if core.ValidPublicKey(pk) {
+			t.Fatalf("accepted the small-order key %s", name)
+		}
+	}
+	for k := byte(2); k <= 18; k++ {
+		pk := ff(0xed+k, 0x7f)
+		if p, err := new(edwards25519.Point).SetBytes(pk); err == nil && new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) == 0 {
+			nonCanonical[fmt.Sprintf("y = p + %d", k)] = pk
+		}
+	}
+	if len(nonCanonical) == 4 {
+		t.Fatal("no non-canonical encoding of a point outside the small-order group, the test data is wrong")
+	}
+	for name, pk := range nonCanonical {
+		if core.ValidPublicKey(pk) {
+			t.Fatalf("accepted the non-canonical key %s", name)
+		}
+	}
+	notOnCurve := make([]byte, 32)
+	for i := byte(2); ; i++ {
+		notOnCurve[0] = i
+		if _, err := new(edwards25519.Point).SetBytes(notOnCurve); err != nil {
+			break
+		}
+	}
+	if core.ValidPublicKey(notOnCurve) || core.ValidPublicKey(identity[:31]) {
+		t.Fatal("accepted a value that is not a point or not 32 bytes")
+	}
+	for range 64 {
+		pk := core.PublicKey(core.NewSecret())
+		if !core.ValidPublicKey(pk[:]) {
+			t.Fatalf("rejected a derived key %x", pk)
+		}
+	}
+	mixed, _ := new(edwards25519.Point).SetBytes(func() []byte { pk := core.PublicKey(core.NewSecret()); return pk[:] }())
+	torsion, _ := new(edwards25519.Point).SetBytes(order8a)
+	if !core.ValidPublicKey(new(edwards25519.Point).Add(mixed, torsion).Bytes()) {
+		t.Fatal("rejected a key of mixed order, which no third party can forge for")
 	}
 }

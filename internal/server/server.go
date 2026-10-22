@@ -54,6 +54,9 @@ type Server struct {
 	bucket    *keyedLimiter
 	sources   *keyedLimiter
 	prefixes  *keyedLimiter
+	addrKey   *addrKey
+	counters  *addrCounters
+	spent     *spentChallenges
 	powSlots  chan struct{}
 	handler   http.Handler
 	abuseMu   sync.Mutex
@@ -81,6 +84,9 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
+	s.addrKey = newAddrKey()
+	s.counters = newAddrCounters()
+	s.spent = newSpentChallenges()
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.handler = s.routes()
 	return s, nil
@@ -211,7 +217,7 @@ func SweepLogAttrs(report store.SweepReport, err error) []any {
 		return attrs
 	}
 	leaves := leafErrors(err)
-	return append(attrs, "errors", len(leaves), "err", leaves[0].Error())
+	return append(attrs, "errors", len(leaves), "err", ErrorText(leaves[0]))
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
@@ -241,6 +247,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
 	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
 	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
+	mux.HandleFunc("HEAD /api/v1/messages/{id}", s.handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
 	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
 	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", s.handleAPINotFound)
@@ -248,10 +255,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
 	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
 	mux.HandleFunc("GET /api/v1/messages/{id}/status", s.handleStatus)
+	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", s.handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
 	mux.HandleFunc("/api/", s.handleAPINotFound)
 	mux.HandleFunc("GET /m/{id}", s.handlePage)
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return s.logging(s.securityHeaders(s.prefetchGuard(s.throttle(mux))))
+	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(mux)))))
 }

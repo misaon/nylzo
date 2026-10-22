@@ -7,9 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"net/netip"
 	"strings"
-	"time"
 )
 
 type Purpose string
@@ -19,7 +17,6 @@ const (
 	Verifier  Purpose = "verifier"
 	Manage    Purpose = "manage"
 	Lease     Purpose = "lease"
-	IP        Purpose = "ip"
 	PoW       Purpose = "pow"
 	ID        Purpose = "id"
 	Challenge Purpose = "challenge"
@@ -28,13 +25,12 @@ const (
 const (
 	SecretLen = 32
 	MACLen    = 32
-	BucketLen = 3
 
 	labelID  = "nylzo/v1/pepper-id"
 	infoBase = "nylzo/v1/mac/"
 )
 
-var purposes = []Purpose{Read, Verifier, Manage, Lease, IP, PoW, ID, Challenge}
+var purposes = []Purpose{Read, Verifier, Manage, Lease, PoW, ID, Challenge}
 
 var (
 	ErrSecret    = errors.New("pepper: secret must be 32 bytes in hex or base64url")
@@ -141,30 +137,4 @@ func (r *Ring) Verify(p Purpose, input []byte, expected []byte, id byte) bool {
 
 func (r *Ring) Dummy() []byte {
 	return append([]byte(nil), r.dummy[:]...)
-}
-
-func (r *Ring) Bucket(day time.Time, addr netip.Addr, coarse bool) [BucketLen]byte {
-	return r.current.Bucket(day, addr, coarse)
-}
-
-func (k *Key) Bucket(day time.Time, addr netip.Addr, coarse bool) [BucketLen]byte {
-	addr = addr.Unmap()
-	family, plen := byte(6), 64
-	if coarse {
-		plen = 48
-	}
-	if addr.Is4() {
-		family, plen = 4, 32
-		if coarse {
-			plen = 24
-		}
-	}
-	prefix, _ := addr.Prefix(plen)
-	masked := prefix.Addr().AsSlice()
-	input := make([]byte, 0, 10+3+len(masked))
-	input = append(input, day.UTC().Format("2006-01-02")...)
-	input = append(input, 0, family, byte(plen))
-	input = append(input, masked...)
-	m := k.MAC(IP, input)
-	return [BucketLen]byte(m[:BucketLen])
 }

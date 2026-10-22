@@ -108,7 +108,7 @@ func TestCreateHeaderRules(t *testing.T) {
 	cases := map[string]string{
 		"unknown-key":           mutateHeader(t, none, func(f map[string]any) { f["extra"] = 1 }),
 		"case-variant-key":      mutateHeader(t, none, func(f map[string]any) { f["ID"] = f["id"]; delete(f, "id") }),
-		"verifier-with-kdf0":    mutateHeader(t, none, func(f map[string]any) { f["verifier_key"] = core.Encode(make([]byte, 32)) }),
+		"verifier-with-kdf0":    mutateHeader(t, none, func(f map[string]any) { f["verifier_key"] = publicKey(core.NewSecret()) }),
 		"no-verifier-with-kdf2": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_key") }),
 		"opens-0":               mutateHeader(t, none, func(f map[string]any) { f["opens_max"] = 0 }),
 		"ttl-59":                mutateHeader(t, none, func(f map[string]any) { f["ttl_s"] = 59 }),
@@ -218,7 +218,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	wrongKDF.ip = "198.51.100.11"
-	headerKDF2 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = core.Encode(make([]byte, 32)) })
+	headerKDF2 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = publicKey(core.NewSecret()) })
 	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF2}}); resp.StatusCode != 400 {
 		t.Fatalf("body kdf differs from the header: %d", resp.StatusCode)
 	}
@@ -248,7 +248,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	m.ip = "203.0.113.9"
 	token := solve(m)
-	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = core.Encode(make([]byte, 32)) })
+	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = publicKey(core.NewSecret()) })
 	send := func(header, pow string) int {
 		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow}})
 		return resp.StatusCode

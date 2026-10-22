@@ -7,9 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/netip"
 	"strings"
-	"time"
 
 	"golang.org/x/crypto/scrypt"
 
@@ -85,7 +83,8 @@ type Request struct {
 	Body          string `json:"body_hex"`
 	Message       string `json:"message_hex"`
 	Signature     string `json:"signature"`
-	Authorization string `json:"authorization"`
+	Authorization string `json:"authorization,omitempty"`
+	Verifier      string `json:"verifier_header,omitempty"`
 }
 
 type Envelope struct {
@@ -137,25 +136,17 @@ type MetaCase struct {
 }
 
 type Server struct {
-	Pepper           string      `json:"pepper_hex"`
-	PepperID         int         `json:"pepper_id"`
-	PreviousPepper   string      `json:"previous_pepper_hex"`
-	PreviousPepperID int         `json:"previous_pepper_id"`
-	MACs             []MACCase   `json:"macs"`
-	Buckets          []BucketOut `json:"buckets"`
+	Pepper           string    `json:"pepper_hex"`
+	PepperID         int       `json:"pepper_id"`
+	PreviousPepper   string    `json:"previous_pepper_hex"`
+	PreviousPepperID int       `json:"previous_pepper_id"`
+	MACs             []MACCase `json:"macs"`
 }
 
 type MACCase struct {
 	Purpose string `json:"purpose"`
 	Input   string `json:"input_hex"`
 	MAC     string `json:"mac_hex"`
-}
-
-type BucketOut struct {
-	Date   string `json:"date"`
-	Addr   string `json:"addr"`
-	Coarse bool   `json:"coarse"`
-	Bucket string `json:"bucket_hex"`
 }
 
 func det(label string, n int) []byte {
@@ -533,9 +524,14 @@ func (f *File) request() error {
 		f.Request = append(f.Request, Request{
 			Name: c.name, Seed: hex.EncodeToString(seed[:]), PublicKey: core.Encode(sig.PublicKey[:]),
 			Purpose: c.purpose, Method: c.method, Path: c.path, Challenge: core.Encode(challenge[:]),
-			Body: hex.EncodeToString(c.body), Message: hex.EncodeToString(core.RequestMessage(c.purpose, c.method, c.path, challenge[:], c.body)),
-			Signature: core.Encode(sig.Sig[:]), Authorization: sig.Authorization(),
+			Body: hex.EncodeToString(c.body), Message: hex.EncodeToString(core.RequestMessage(c.purpose, c.method, c.path, &challenge, c.body)),
+			Signature: core.Encode(sig.Sig[:]),
 		})
+		if c.purpose == core.PurposeVerifier {
+			f.Request[len(f.Request)-1].Verifier = sig.VerifierHeader()
+		} else {
+			f.Request[len(f.Request)-1].Authorization = sig.Authorization()
+		}
 	}
 	return nil
 }
@@ -569,18 +565,10 @@ func (f *File) server() error {
 	curKey, _ := pepper.New(cur)
 	prevKey, _ := pepper.New(prev)
 	f.Server = Server{Pepper: hex.EncodeToString(cur), PepperID: int(curKey.ID()), PreviousPepper: hex.EncodeToString(prev), PreviousPepperID: int(prevKey.ID())}
-	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.IP, pepper.PoW} {
+	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.ID, pepper.Challenge} {
 		input := det("mac-input/"+string(p), 32)
 		mac, _ := ring.MAC(p, input)
 		f.Server.MACs = append(f.Server.MACs, MACCase{Purpose: string(p), Input: hex.EncodeToString(input), MAC: hex.EncodeToString(mac[:])})
-	}
-	day := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
-	for _, a := range []string{"203.0.113.77", "203.0.113.78", "203.0.113.200", "::ffff:203.0.113.77", "2001:db8:1:2:3:4:5:6", "2001:db8:1:2:ffff:ffff:ffff:ffff", "2001:db8:1:3::1", "2001:db8:2::1"} {
-		addr := netip.MustParseAddr(a)
-		for _, coarse := range []bool{false, true} {
-			b := ring.Bucket(day, addr, coarse)
-			f.Server.Buckets = append(f.Server.Buckets, BucketOut{Date: "2026-10-22", Addr: a, Coarse: coarse, Bucket: hex.EncodeToString(b[:])})
-		}
 	}
 	return nil
 }

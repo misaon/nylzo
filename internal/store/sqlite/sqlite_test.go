@@ -375,3 +375,114 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	old, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const id = "AAAAAAAAAAAAAAAAAAAAAA"
+	if _, err := old.Exec(`CREATE TABLE messages (id TEXT PRIMARY KEY, version INTEGER NOT NULL, kdf_id INTEGER NOT NULL, flags INTEGER NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ttl_s INTEGER NOT NULL, opens_max INTEGER NOT NULL, opens_remaining INTEGER NOT NULL, pepper_id INTEGER NOT NULL, read_mac BLOB NOT NULL, manage_mac BLOB NOT NULL, verifier_mac BLOB, size INTEGER NOT NULL, blob_ref TEXT, fail_count_total INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL DEFAULT 0, first_opened_at INTEGER, ending TEXT);
+		CREATE TABLE leases (row_id INTEGER PRIMARY KEY, id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE, lease_mac BLOB NOT NULL, pepper_id INTEGER NOT NULL, lease_expires_at INTEGER NOT NULL, downloads INTEGER NOT NULL DEFAULT 0);
+		CREATE TABLE rate_counters (key TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL, bytes INTEGER NOT NULL, purge_at INTEGER NOT NULL, PRIMARY KEY (key, window_start)) WITHOUT ROWID;
+		INSERT INTO messages VALUES ('` + id + `', 1, 0, 0, 'available', 1800000000000, 4102444800000, 3600, 2, 1, 7, x'00', x'00', NULL, 64, '` + id + `', 0, 0, 1800000000000, NULL);
+		INSERT INTO leases VALUES (1, '` + id + `', x'0102', 7, 4102444800000, 0);
+		INSERT INTO rate_counters VALUES ('create:h:0a1b2c', 0, 1, 0, 4102444800000), ('create:d:c:0a1b2c', 0, 1, 4096, 4102444800000), ('read:h:ffffff', 0, 1, 0, 4102444800000), ('abuse:h:c:123456', 0, 1, 0, 4102444800000),
+			('abuse:id:` + id + `', 0, 1, 0, 4102444800000), ('global:d', 0, 5, 0, 4102444800000), ('challenge:00112233445566778899aabbccddeeff', 0, 1, 0, 4102444800000), ('create:h:abc', 0, 1, 0, 4102444800000);
+		PRAGMA user_version = 2;`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Get(t.Context(), id)
+	if err != nil || rec.Message == nil || rec.Message.OpensRemaining != 1 {
+		t.Fatalf("message lost in the rebuild: %+v %v", rec, err)
+	}
+	if leases, err := s.Leases(t.Context(), id); err != nil || len(leases) != 1 {
+		t.Fatalf("the rebuild dropped the lease through its foreign key: %v %v", leases, err)
+	}
+	s.Close()
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`SELECT rowid FROM messages`); err == nil {
+		t.Fatal("messages keeps an insertion-order rowid")
+	}
+	rows, err := db.Query(`SELECT key FROM rate_counters ORDER BY key`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var kept []string
+	for rows.Next() {
+		var k string
+		rows.Scan(&k)
+		kept = append(kept, k)
+	}
+	want := []string{"abuse:id:" + id, "challenge:00112233445566778899aabbccddeeff", "create:h:abc", "global:d"}
+	if strings.Join(kept, ",") != strings.Join(want, ",") {
+		t.Fatalf("counters after the upgrade: %v, want %v", kept, want)
+	}
+}
+
+func TestLeaseRowIDsAreRandom(t *testing.T) {
+	s, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	id := core.NewID().String()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 3, OpensRemaining: 3, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		res, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: []byte{byte(i)}, LeasePepperID: 7})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Lease.RowID < 1<<32 {
+			t.Fatalf("lease row id %d looks sequential", res.Lease.RowID)
+		}
+	}
+}
+
+func TestSweepReportsABlockedCheckpoint(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	tx, err := reader.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM rate_counters`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Sweep(t.Context(), time.Now(), nil); !errors.Is(err, sqlite.ErrCheckpointBusy) {
+		t.Fatalf("sweep with a reader holding the WAL: %v", err)
+	}
+	tx.Rollback()
+	if _, err := s.Sweep(t.Context(), time.Now(), nil); err != nil {
+		t.Fatalf("sweep after the reader left: %v", err)
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -19,7 +21,74 @@ const (
 	challengeNonceLen = 16
 	challengeSigned   = 4 + challengeNonceLen
 	challengeSpentKey = "challenge:"
+	maxSpentNonces    = 1 << 16
 )
+
+type spentChallenges struct {
+	mu      sync.Mutex
+	max     int
+	expires map[[challengeNonceLen]byte]int64
+}
+
+func newSpentChallenges() *spentChallenges {
+	return &spentChallenges{max: maxSpentNonces, expires: map[[challengeNonceLen]byte]int64{}}
+}
+
+func (c *spentChallenges) seen(nonce [challengeNonceLen]byte, expires int64, now int64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.expires[nonce]; ok {
+		return true
+	}
+	if len(c.expires) >= c.max {
+		c.evict(now)
+	}
+	c.expires[nonce] = expires
+	return false
+}
+
+func (c *spentChallenges) evict(now int64) {
+	for n, exp := range c.expires {
+		if now > exp+int64(powClockSkew/time.Second) {
+			delete(c.expires, n)
+		}
+	}
+	for n := range c.expires {
+		if len(c.expires) < c.max-c.max/evictDivisor {
+			return
+		}
+		delete(c.expires, n)
+	}
+}
+
+type spentKey struct{}
+
+func (s *Server) spendChallenges(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sig, err := core.ParseAuthorization(r.Header.Get("Authorization"))
+		if !strings.HasPrefix(r.URL.Path, "/api/") || err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		spent, err := s.spendChallenge(r.Context(), sig.Challenge)
+		if err != nil {
+			s.log.Error("challenge-spend", "err", ErrorText(err))
+			writeError(w, http.StatusInternalServerError, errInternal)
+			return
+		}
+		inner := r
+		if spent {
+			inner = r.WithContext(context.WithValue(r.Context(), spentKey{}, &sig.Challenge))
+		}
+		next.ServeHTTP(w, inner)
+		r.Pattern = inner.Pattern
+	})
+}
+
+func spentBy(r *http.Request, c [core.ChallengeLen]byte) bool {
+	spent, ok := r.Context().Value(spentKey{}).(*[core.ChallengeLen]byte)
+	return ok && *spent == c
+}
 
 type challengeResponse struct {
 	Challenge string `json:"challenge"`
@@ -52,11 +121,18 @@ func (s *Server) validChallenge(c [core.ChallengeLen]byte, now time.Time) bool {
 }
 
 func (s *Server) spendChallenge(ctx context.Context, c [core.ChallengeLen]byte) (bool, error) {
-	expires := time.Unix(int64(binary.BigEndian.Uint32(c[:4])), 0)
+	now := s.clock()
+	if !s.validChallenge(c, now) {
+		return false, nil
+	}
+	expires := int64(binary.BigEndian.Uint32(c[:4]))
+	if s.spent.seen([challengeNonceLen]byte(c[4:challengeSigned]), expires, now.Unix()) {
+		return false, nil
+	}
 	_, ok, err := s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{
 		Key:         challengeSpentKey + hex.EncodeToString(c[4:challengeSigned]),
 		WindowStart: time.Unix(0, 0),
-		PurgeAt:     store.CeilMinute(expires.Add(challengeTTL)),
+		PurgeAt:     store.CeilMinute(time.Unix(expires, 0).Add(challengeTTL)),
 		Limit:       1,
 	})
 	return ok, err

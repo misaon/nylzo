@@ -11,7 +11,7 @@ Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScri
 | `spec/protocol.md` | normativní protokol v1 |
 | `spec/vectors.json` | testovací vektory generované z Go jádra |
 | `internal/core` | Go jádro: odvození klíčů, KDF profily, obálka, meta JSON, odkaz |
-| `internal/pepper` | serverové klíče podle účelu z pepperu, rotace, kyblíky adres |
+| `internal/pepper` | serverové klíče podle účelu z pepperu a rotace |
 | `internal/store` | rozhraní úložiště, adaptér `sqlite` a `disk`, sdílená testovací sada |
 | `internal/server` | HTTP server: endpointy, limity, PoW, hlavičky, úklid |
 | `cmd/nylzod` | binárka serveru (`serve`, `sweep-once`, `version`) |
@@ -76,6 +76,8 @@ Příkaz `sweep-once` pepper nepotřebuje.
 
 Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez nich server vidí jen adresu proxy a všichni klienti sdílejí jeden kyblík, včetně limitu na zdroj.
 
+Všechny limity na kyblík adresy drží každý proces jen v paměti, s klíčem, který si vylosuje při startu. Databáze, záloha, logy ani pepper proto o adresách klientů nic neobsahují. Limity na adresu ale platí pro jednu instanci a po restartu nebo probuzení kontejneru začínají od nuly. Globální denní strop, PoW, backoff passphrase a limit hlášení na zprávu jsou v databázi a platí napříč instancemi.
+
 Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
 
 Hlášení zneužití podepsaná klíčem čtení zprávy se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Na jednu zprávu uloží nejvýš 3 hlášení denně. Limit platí jen na zprávu, aby žádný řádek nespojoval zprávu s adresou, a jeden ohlašovatel ho proto může vyčerpat. Když by hlášení soubor zvětšilo nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit. Hlášení obsahuje jen datum UTC, id a upravený důvod, čas dne v něm není. Hlášení starší než 14 dní server smaže při každém úklidu a před každým novým hlášením.
@@ -92,13 +94,13 @@ Po signálu SIGTERM server 30 s čeká na rozběhnuté požadavky, pak zbylá sp
 
 Id zprávy vydává server: `GET /api/v1/instance` vrací v poli `create` náhodné id a token platný 10 minut a vytvoření bez platného tokenu skončí 403 `id_token`. Ukončená zpráva zmizí i s náhrobkem 7 dní po konci, ale její id už nikdo znovu nezíská, takže pod starým odkazem nejde vytvořit nový obsah. Vydaná id server neukládá.
 
-Klient nikdy neposílá R, V ani M. Jsou to semínka klíčů Ed25519: při vytvoření klient pošle jejich veřejné klíče a každý další požadavek podepíše nad jednorázovou výzvou z `GET /api/v1/challenge` (platí 60 s). Server ukládá jen HMAC veřejných klíčů s pepperem a každou výzvu přijme jednou, takže zachycený požadavek nejde zopakovat. Neplatný podpis, prošlá nebo použitá výzva i neznámé id dostanou stejnou odpověď 404. Podrobnosti jsou ve [spec §5.5](spec/protocol.md#55-request-signatures).
+Klient nikdy neposílá R, V ani M. Jsou to semínka klíčů Ed25519: při vytvoření klient pošle jejich veřejné klíče a každý další požadavek podepíše nad jednorázovou výzvou z `GET /api/v1/challenge` (platí 60 s). Server ukládá jen HMAC veřejných klíčů s pepperem. Výzvu spotřebuje první požadavek, který ji předloží, ať server odpoví čímkoli, takže zachycený požadavek nejde zopakovat, ani když ho server předtím odmítl kvůli limitu. Neplatný podpis, prošlá nebo použitá výzva i neznámé id dostanou stejnou odpověď 404. Veřejný klíč, který není kanonickým bodem křivky, má malý řád nebo se shoduje s jiným klíčem téže zprávy, server při vytvoření odmítne s 400. Podrobnosti jsou ve [spec §5.5](spec/protocol.md#55-request-signatures).
 
-Logy obsahují čas, metodu, vzor cesty, stav, latenci a velikost odpovědi. Id zprávy v nich není, takže řádek logu nejde spojit s konkrétní zprávou ani s databází a pepperem. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
+Logy obsahují čas, metodu, vzor cesty a stav, u všech cest kromě vytvoření, claimu a blobu i latenci a velikost odpovědi; u těch tří obojí sleduje velikost zprávy. Id zprávy v nich není. Nikdy neobsahují surovou cestu, cestu k souboru blobu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Chyby úložiště se logují jen jako operace a systémová chyba. Při velmi malém provozu může čas řádku sedět na minutu vytvoření nebo otevření některé zprávy. Interní chyby `net/http` se logují jen jako kategorie bez textu.
 
 `nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn a cancel si před smazáním blobu zapíšou zamýšlený stav. Expirovaná zpráva zápis nepotřebuje, protože ji ukončuje samo `expires_at`. Po pádu procesu konec dokončí další požadavek nebo úklid. Chybějící blob u neexpirované zprávy bez zapsaného stavu server hlásí jako chybu 500, zprávu nesmaže a claim kvůli němu nespotřebuje otevření.
 
-Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupce `ending` a `next_attempt_at`, odstraní tabulku `passphrase_attempts` a sloupce `day_fail_count` a `day_fail_date`, přestaví tabulky `tombstones` a `rate_counters` bez rowid a jednou spustí `VACUUM`. Starší verze s takovou databází nepracují, protože jejich úklid maže podle rowid, proto se po tomto upgradu ke starší verzi nevracejte. Zprávy vytvořené verzí, která ještě posílala R, V a M jako tokeny, po upgradu nejde otevřít ani spravovat; vyprší nejpozději za 7 dní.
+Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupce `ending` a `next_attempt_at`, odstraní tabulku `passphrase_attempts` a sloupce `day_fail_count` a `day_fail_date`, přestaví tabulky `messages`, `tombstones` a `rate_counters` bez rowid, smaže z `rate_counters` čítače podle adres a jednou spustí `VACUUM`. Starší verze s takovou databází nepracují, protože jejich úklid maže podle rowid, proto se po tomto upgradu ke starší verzi nevracejte. Zprávy vytvořené verzí, která ještě posílala R, V a M jako tokeny, po upgradu nejde otevřít ani spravovat; vyprší nejpozději za 7 dní.
 
 ## Generování vektorů
 

@@ -349,14 +349,25 @@ func TestVectorsRequestSignatures(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := mustHex(t, v.Body)
-			if hex.EncodeToString(core.RequestMessage(v.Purpose, v.Method, v.Path, challenge, body)) != v.Message {
+			if hex.EncodeToString(core.RequestMessage(v.Purpose, v.Method, v.Path, (*[core.ChallengeLen]byte)(challenge), body)) != v.Message {
 				t.Fatal("request message mismatch")
 			}
 			sig := core.SignRequest(seed, v.Purpose, v.Method, v.Path, [core.ChallengeLen]byte(challenge), body)
-			if core.Encode(sig.PublicKey[:]) != v.PublicKey || core.Encode(sig.Sig[:]) != v.Signature || sig.Authorization() != v.Authorization {
+			if core.Encode(sig.PublicKey[:]) != v.PublicKey || core.Encode(sig.Sig[:]) != v.Signature {
 				t.Fatal("signature mismatch")
 			}
-			parsed, err := core.ParseAuthorization(v.Authorization)
+			var parsed core.Signature
+			if v.Purpose == core.PurposeVerifier {
+				if v.Authorization != "" || sig.VerifierHeader() != v.Verifier {
+					t.Fatal("verifier header mismatch")
+				}
+				parsed, err = core.ParseVerifierHeader(v.Verifier, [core.ChallengeLen]byte(challenge))
+			} else {
+				if v.Verifier != "" || sig.Authorization() != v.Authorization {
+					t.Fatal("authorization header mismatch")
+				}
+				parsed, err = core.ParseAuthorization(v.Authorization)
+			}
 			if err != nil || !parsed.Verify(v.Purpose, v.Method, v.Path, body) {
 				t.Fatalf("the vector header does not verify: %v", err)
 			}

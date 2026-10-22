@@ -107,6 +107,7 @@ type faultyBlobs struct {
 	store.Blobs
 	mu         sync.Mutex
 	failDelete map[string]bool
+	deleteErr  map[string]error
 	failOpen   error
 	failPut    error
 	failList   error
@@ -133,8 +134,11 @@ func (b *faultyBlobs) set(fn func(*faultyBlobs)) {
 
 func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
 	b.mu.Lock()
-	fail := b.failDelete[ref]
+	fail, err := b.failDelete[ref], b.deleteErr[ref]
 	b.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	if fail {
 		return errInjected
 	}
@@ -180,7 +184,7 @@ func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
 }
 
 func (h *harness) withFaultyBlobs() *faultyBlobs {
-	fb := &faultyBlobs{Blobs: h.blobs, failDelete: map[string]bool{}}
+	fb := &faultyBlobs{Blobs: h.blobs, failDelete: map[string]bool{}, deleteErr: map[string]error{}}
 	h.blobs = fb
 	h.reopen(h.cfg)
 	return fb

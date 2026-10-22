@@ -31,6 +31,7 @@ import {
   seal,
   signRequest,
   utf8,
+  verifierHeader,
   type Header,
   type KdfId,
   type Meta,
@@ -229,7 +230,13 @@ describe('request', () => {
 
       const sig = await signRequest(key, v.purpose, v.method, v.path, challenge, body);
       expect(encodeBase64url(sig.signature)).toBe(v.signature);
-      expect(authorizationHeader(sig)).toBe(v.authorization);
+      if (v.purpose === 'verifier') {
+        expect(v.authorization).toBeUndefined();
+        expect(verifierHeader(sig)).toBe(v.verifier_header);
+      } else {
+        expect(v.verifier_header).toBeUndefined();
+        expect(authorizationHeader(sig)).toBe(v.authorization);
+      }
     });
   }
 });

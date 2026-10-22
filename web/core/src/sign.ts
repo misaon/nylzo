@@ -36,6 +36,7 @@ export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
   const jwk = await crypto.subtle.exportKey('jwk', exportable);
   const publicKey = decodeBase64urlExact(jwk.x ?? '', PUBLIC_KEY_LEN);
   const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
+  pkcs8.fill(0);
   return { privateKey, publicKey };
 }
 

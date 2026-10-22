@@ -66,8 +66,8 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 	if age < -int64(powClockSkew/time.Second) || age > int64(powWindow/time.Second) {
 		return ErrPoW
 	}
-	issuedAt := time.Unix(issued, 0)
-	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: powNonceKey + hex.EncodeToString(chal[4:4+powNonceLen]), WindowStart: issuedAt, PurgeAt: issuedAt.Add(powNonceTTL)}})
+	purge := store.CeilMinute(time.Unix(issued, 0).Add(powNonceTTL))
+	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: powNonceKey + hex.EncodeToString(chal[4:4+powNonceLen]), WindowStart: time.Unix(0, 0), PurgeAt: purge}})
 	if err != nil {
 		return err
 	}

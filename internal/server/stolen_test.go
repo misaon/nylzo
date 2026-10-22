@@ -10,11 +10,14 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server"
 )
 
 type stolenNeedles struct {
@@ -72,7 +75,11 @@ func fileMessage(t *testing.T, content []byte) *message {
 }
 
 func TestStolenServerRevealsNothing(t *testing.T) {
-	h := newHarness(t, baseConfig(pepperA, nil))
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 16
+	cfg.PoWDifficulty = 1
+	h := newHarness(t, cfg)
+	fb := h.withFaultyBlobs()
 	needles := &stolenNeedles{t: t, named: map[string][]byte{}}
 	const ip4, ip6 = "203.0.113.77", "2001:db8:77::1"
 	needles.text("IPv4 address", ip4)
@@ -145,6 +152,39 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		t.Fatalf("cancel: %d", resp.StatusCode)
 	}
 
+	stuck := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext stuck sentinel")
+	stuck.ip = ip4
+	h.mustCreate(stuck)
+	needles.message("stuck", stuck, "")
+	fb.set(func(b *faultyBlobs) {
+		b.deleteErr[stuck.id.String()] = &fs.PathError{Op: "remove", Path: filepath.Join(h.dir, "blobs", hex.EncodeToString(stuck.id[:])), Err: syscall.EROFS}
+	})
+	if resp, _ := h.post(stuck, "burn", stuck.readToken); resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("burn with a failing blob store: %d", resp.StatusCode)
+	}
+	if !strings.Contains(h.logBuf.String(), "remove: "+syscall.EROFS.Error()) {
+		t.Fatal("the failing delete was not logged")
+	}
+
+	pow := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext pow sentinel")
+	pow.ip = ip6
+	filler := newMessage(t, core.KDFNone, "", 1, 3600, "filler")
+	filler.ip = ip4
+	h.mustCreate(filler)
+	_, instance := h.do(request{method: "GET", path: "/api/v1/instance"})
+	powInfo := decodeJSON(t, instance)["pow"].(map[string]any)
+	if powInfo["required"] != true {
+		t.Fatalf("PoW is not required yet: %v", powInfo)
+	}
+	token, err := server.SolvePoW(powInfo["challenge"].(string), pow.id, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, body := h.do(request{method: "POST", path: "/api/v1/messages", body: pow.object, ip: pow.ip, headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": pow.createHeader(0), "X-Nylzo-Pow": token}}); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create with PoW: %d %s", resp.StatusCode, body)
+	}
+	needles.message("pow", pow, "")
+
 	link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
 	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "read_token": leased.readToken, "reason": "spam, see " + link})
 	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip4, body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
@@ -178,8 +218,9 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			}
 		}
 	}
-	for _, m := range []*message{expired, opened, leased, file, burned, cancelled} {
-		if bytes.Contains(stolen["log"], []byte(m.id.String())) {
+	everyone := []*message{expired, opened, leased, file, burned, cancelled, stuck, pow}
+	for _, m := range everyone {
+		if bytes.Contains(stolen["log"], []byte(m.id.String())) || bytes.Contains(stolen["log"], []byte(hex.EncodeToString(m.id[:]))) {
 			t.Errorf("the log names message %s", m.id)
 		}
 	}
@@ -211,12 +252,13 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		rows.Close()
 	}
-	var tombstones, leases, spent int
+	var tombstones, leases, spent, nonces int
 	db.QueryRow(`SELECT COUNT(*) FROM tombstones`).Scan(&tombstones)
 	db.QueryRow(`SELECT COUNT(*) FROM leases`).Scan(&leases)
 	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`).Scan(&spent)
-	if tombstones != 4 || leases != 1 || spent == 0 {
-		t.Fatalf("the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges", tombstones, leases, spent)
+	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`).Scan(&nonces)
+	if tombstones != 4 || leases != 1 || spent == 0 || nonces != 1 {
+		t.Fatalf("the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges, %d PoW nonces", tombstones, leases, spent, nonces)
 	}
 	rows, err := db.Query(`SELECT key FROM rate_counters`)
 	if err != nil {
@@ -228,7 +270,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		if err := rows.Scan(&key); err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range []*message{expired, opened, leased, file, burned, cancelled} {
+		if !slices.ContainsFunc([]string{"global:", "pow:", "challenge:", "abuse:id:", "sweep:reconcile:"}, func(p string) bool { return strings.HasPrefix(key, p) }) {
+			t.Errorf("counter %q is not one of the address-free keys", key)
+		}
+		for _, m := range everyone {
 			if strings.Contains(key, m.id.String()) && key != "abuse:id:"+m.id.String() {
 				t.Errorf("counter %q ties message %s to something else", key, m.id)
 			}

@@ -144,7 +144,7 @@ func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
-	s.log.Error("handler", "route", r.Pattern, "err", err.Error())
+	s.log.Error("handler", "route", r.Pattern, "err", ErrorText(err))
 	writeError(w, http.StatusInternalServerError, errInternal)
 }
 
@@ -170,9 +170,8 @@ func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, p
 	if sigErr != nil {
 		sig = core.Signature{PublicKey: dummyPublicKey}
 	}
-	now := s.clock()
+	fresh := spentBy(r, sig.Challenge)
 	a := access{id: id, sig: sig}
-	fresh := s.validChallenge(sig.Challenge, now)
 	mac, pepperID, found := s.ring.Dummy(), s.ring.CurrentID(), false
 	if idErr == nil {
 		rec, err := s.store.Get(ctx, id.String())
@@ -182,14 +181,9 @@ func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, p
 			return a, false, err
 		default:
 			a.rec, found = rec, true
-			if settled, leases, ok := s.settle(ctx, id.String(), rec.Message, now); ok {
-				a.rec = settled
-			} else {
-				a.leases = leases
-			}
-			mac, pepperID = a.rec.ReadMAC(), a.rec.PepperID()
+			mac, pepperID = rec.ReadMAC(), rec.PepperID()
 			if purpose == pepper.Manage {
-				mac = a.rec.ManageMAC()
+				mac = rec.ManageMAC()
 			}
 		}
 	}
@@ -198,8 +192,12 @@ func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, p
 	if !found || sigErr != nil || !fresh || !macOK || !sigOK {
 		return a, false, nil
 	}
-	spent, err := s.spendChallenge(ctx, sig.Challenge)
-	return a, spent, err
+	if settled, leases, ok := s.settle(ctx, id.String(), a.rec.Message, s.clock()); ok {
+		a.rec = settled
+	} else {
+		a.leases = leases
+	}
+	return a, true, nil
 }
 
 func (s *Server) settle(ctx context.Context, id string, m *store.Message, now time.Time) (store.Record, []store.Lease, bool) {
@@ -213,7 +211,7 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 	case m.OpensRemaining == 0:
 		leases, lerr := s.store.Leases(ctx, id)
 		if lerr != nil {
-			s.log.Error("settle", "err", lerr.Error())
+			s.log.Error("settle", "err", ErrorText(lerr))
 			return store.Record{}, nil, false
 		}
 		if slices.ContainsFunc(leases, func(l store.Lease) bool { return l.Active(now) }) {
@@ -224,12 +222,12 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 		return store.Record{}, nil, false
 	}
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.log.Error("settle", "err", err.Error())
+		s.log.Error("settle", "err", ErrorText(err))
 		return store.Record{}, nil, false
 	}
 	rec, err := s.store.Get(ctx, id)
 	if err != nil {
-		s.log.Error("settle", "err", err.Error())
+		s.log.Error("settle", "err", ErrorText(err))
 		return store.Record{}, nil, false
 	}
 	return rec, nil, true
@@ -307,7 +305,7 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 		return h, id, nil, nil, nil, false
 	}
 	kdf := core.KDF(h.KDFID)
-	if h.KDFID < 0 || h.KDFID > 255 || !kdf.Valid() {
+	if h.KDFID < 0 || h.KDFID > 255 || !kdf.Valid() || !core.ValidPublicKey(readKey) || !core.ValidPublicKey(manageKey) || bytes.Equal(readKey, manageKey) {
 		return h, id, nil, nil, nil, false
 	}
 	var verifierKey []byte
@@ -315,7 +313,8 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 		return h, id, nil, nil, nil, false
 	}
 	if h.VerifierKey != nil {
-		if verifierKey, err = core.DecodeExact(*h.VerifierKey, core.PublicKeyLen); err != nil {
+		verifierKey, err = core.DecodeExact(*h.VerifierKey, core.PublicKeyLen)
+		if err != nil || !core.ValidPublicKey(verifierKey) || bytes.Equal(verifierKey, readKey) || bytes.Equal(verifierKey, manageKey) {
 			return h, id, nil, nil, nil, false
 		}
 	}
@@ -371,12 +370,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	http.NewResponseController(w).SetReadDeadline(time.Now().Add(max(readTimeout, store.TransferTime(h.Size))))
 	now := s.clock()
-	retry, err := s.limitCreate(ctx, now, s.clientAddr(r), h.Size)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	if retry > 0 {
+	if retry := s.limitCreate(now, s.clientAddr(r), h.Size); retry > 0 {
 		setRetryAfter(w, retry)
 		s.rejectCreate(w, r, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(retry)})
 		return
@@ -471,7 +465,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.store.Create(ctx, m, s.storedCreateCounters(now)...); err != nil {
 		if derr := s.blobs.Delete(context.WithoutCancel(ctx), id.String()); derr != nil {
-			s.log.Error("create-cleanup", "err", derr.Error())
+			s.log.Error("create-cleanup", "err", ErrorText(derr))
 		}
 		if errors.Is(err, store.ErrConflict) {
 			s.rejectCreate(w, r, http.StatusConflict, errConflict)
@@ -498,12 +492,7 @@ func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string, limit int64) bool {
-	retry, err := s.limitHourly(r.Context(), s.clock(), s.clientAddr(r), kind, limit)
-	if err != nil {
-		s.internal(w, r, err)
-		return false
-	}
-	if retry > 0 {
+	if retry := s.limitHourly(s.clock(), s.clientAddr(r), kind, limit); retry > 0 {
 		writeRateLimited(w, retry)
 		return false
 	}
@@ -592,7 +581,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	verifierHeader := r.Header.Get(headerVerifier)
 	verifierSent := verifierHeader != ""
-	var verifier core.Signature
+	verifier := core.Signature{PublicKey: dummyPublicKey}
 	if verifierSent {
 		var err error
 		if verifier, err = core.ParseVerifierHeader(verifierHeader, [core.ChallengeLen]byte{}); err != nil {
@@ -643,7 +632,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		msgID := id.String()
 		s.afterFunc(result.Lease.ExpiresAt.Add(store.LeaseTimerSlack).Sub(s.clock()), func() {
 			if _, err := store.Release(context.Background(), s.store, s.blobs, msgID, s.clock()); err != nil {
-				s.log.Error("lease-timer", "err", err.Error())
+				s.log.Error("lease-timer", "err", ErrorText(err))
 			}
 		})
 	}
@@ -712,7 +701,7 @@ func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State,
 	case errors.Is(err, store.ErrNotFound):
 		return s.endedState(ctx, id)
 	case err != nil:
-		s.log.Error("finish-ending", "err", err.Error())
+		s.log.Error("finish-ending", "err", ErrorText(err))
 		return liveState(rec.Message, now), nil
 	}
 	return state, nil
@@ -742,7 +731,7 @@ func (s *Server) writeCurrentGone(w http.ResponseWriter, r *http.Request, id str
 
 func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, id string, state store.State, now time.Time) {
 	if _, err := store.EndMessage(r.Context(), s.store, s.blobs, id, state, now); err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.log.Error("finish-ending", "err", err.Error())
+		s.log.Error("finish-ending", "err", ErrorText(err))
 	}
 	writeGone(w, string(state))
 }
@@ -927,7 +916,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
-			s.log.Error("abuse-record", "err", err.Error())
+			s.log.Error("abuse-record", "err", ErrorText(err))
 		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
@@ -991,7 +980,7 @@ func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reas
 	}
 	if err := s.appendAbuse(now, id, reason); err != nil {
 		if rerr := s.store.RateRelease(context.WithoutCancel(ctx), key, d.start); rerr != nil {
-			s.log.Error("abuse-release", "err", rerr.Error())
+			s.log.Error("abuse-release", "err", ErrorText(rerr))
 		}
 		return err
 	}
