@@ -202,6 +202,9 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	bad := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
+	for server.PoWSatisfiesForTest(token, bad.id, 3) {
+		bad = newMessage(t, core.KDFNone, "", 1, 3600, "pow")
+	}
 	bad.ip = "203.0.113.9"
 	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: bad.object, ip: bad.ip, headers: map[string]string{"X-Nylzo-Create": bad.createHeader(0), "X-Nylzo-Pow": token}})
 	if resp.StatusCode != 403 {

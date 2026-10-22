@@ -165,7 +165,15 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 		return nil
 	})
 	set("NYLZO_SWEEP_INTERVAL", func(v string) error { return parseDuration(v, &c.SweepInterval) })
-	set("NYLZO_MAX_FILE_BYTES", func(v string) error { return parseInt64(v, &c.Limits.MaxFileBytes) })
+	set("NYLZO_MAX_FILE_BYTES", func(v string) error {
+		if err := parseInt64(v, &c.Limits.MaxFileBytes); err != nil {
+			return err
+		}
+		if c.Limits.MaxFileBytes < 1 || c.Limits.MaxFileBytes > core.MaxFileBytes {
+			return fmt.Errorf("must be between 1 and %d (the protocol limit both cores enforce)", core.MaxFileBytes)
+		}
+		return nil
+	})
 	set("NYLZO_MAX_TTL", func(v string) error { return parseDuration(v, &c.Limits.MaxTTL) })
 	set("NYLZO_DEFAULT_TTL", func(v string) error { return parseDuration(v, &c.Limits.DefaultTTL) })
 	set("NYLZO_MAX_OPENS", func(v string) error { return parseInt(v, &c.Limits.MaxOpens) })

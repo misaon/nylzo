@@ -83,7 +83,7 @@ object     = header || ciphertext
 - `len_meta` is the byte length of `meta`.
 - `file_bytes` are present exactly when `meta.file` is present and have length `meta.file.size`.
 - `padding` is zero bytes. The plaintext length (`4 + len_meta + len(file_bytes) + len(padding)`) MUST be a multiple of 4096 bytes; when `meta.file` is present it MUST be a multiple of 65536 bytes. The decoder MUST derive the content length from `len_meta` and `meta.file.size`, MUST NOT depend on the padding content, and MAY ignore it.
-- Limits (defaults of the design; instances report theirs in `/api/v1/instance`): `meta.text` at most 102400 bytes of UTF-8; `meta.file.size` at most 5242880; `len_meta` at most 104448; `object` at most 5410880 bytes (5 MiB + 100 KiB + 64 KiB + 64 B).
+- Limits: `meta.text` at most 102400 bytes of UTF-8; `meta.file.size` at most 5242880; `len_meta` at most 104448; `object` at most 5410880 bytes (5 MiB + 100 KiB + 64 KiB + 64 B). These are protocol maxima that both reference cores enforce. An instance MAY report lower limits in `/api/v1/instance` and MUST NOT report higher ones.
 
 ### 3.1 meta **[detail]**
 
@@ -94,7 +94,7 @@ object     = header || ciphertext
 ```
 
 - `v` MUST be 1. `text` and `file` are each optional; at least one MUST be present.
-- `file.name`: 1 to 255 bytes of UTF-8, no `/`, `\`, NUL or other C0 control characters. Clients MUST additionally sanitise the name before display and download.
+- `file.name`: 1 to 255 bytes of UTF-8, no `/`, `\`, C0 control characters (U+0000 to U+001F) or DEL (U+007F). Clients MUST additionally sanitise the name before display and download.
 - `file.mime`: 0 to 255 bytes. `file.size`: non-negative integer equal to the length of `file_bytes`.
 - Encoders MUST produce the canonical form so both cores emit identical bytes: UTF-8, no whitespace, keys in the order `v`, `text`, `file` (and `name`, `mime`, `size` inside `file`), absent keys omitted, integers in decimal without sign, exponent or fraction. String escaping: `"` → `\"`, `\` → `\\`, U+0008 → `\b`, U+0009 → `\t`, U+000A → `\n`, U+000C → `\f`, U+000D → `\r`, every other code point below U+0020 → `\u00XX` with lowercase hex, every other code point literal UTF-8 (including `/`, U+2028 and U+2029).
 - Decoders MUST accept any RFC 8259 JSON object that satisfies the constraints above, MUST ignore unknown keys, and take the last occurrence of a duplicated key.
@@ -170,15 +170,16 @@ No endpoint accepts or returns plaintext, `S`, `K` or a passphrase.
 
 | Status | Body | When |
 |---|---|---|
-| 400 | `{"error":"bad_request"}` | malformed header, body, id syntax, policy outside instance limits, `size` ≠ Content-Length, version or kdf mismatch |
+| 400 | `{"error":"bad_request"}` | malformed `X-Nylzo-Create` (including the id inside it) or request body, policy outside instance limits, `size` ≠ Content-Length, version or kdf mismatch |
 | 403 | `{"error":"passphrase","retry_after":N,"attempts_left":N}` | wrong verifier or backoff active; no open consumed |
 | 403 | `{"error":"pow"}` | PoW required and missing or invalid |
-| 404 | `{"error":"not_found"}` | unknown id, wrong R, wrong M (indistinguishable) |
+| 404 | `{"error":"not_found"}` | unknown id, wrong R, wrong M, and a malformed id or token in the path or `Authorization` (indistinguishable) |
 | 409 | `{"error":"conflict"}` | id exists in `messages` or `tombstones` (identical for both) |
 | 410 | `{"error":"gone","state":"opened\|expired\|cancelled\|deleted"}` | message ended |
 | 411 | `{"error":"length_required"}` | create without Content-Length |
 | 413 | `{"error":"too_large"}` | Content-Length above the instance limit |
 | 429 | `{"error":"rate_limited","retry_after":N}` + `Retry-After` header | bucket limit, token bucket, 4th blob download in a lease |
+| 500 | `{"error":"internal"}` | storage or blob failure; the body never carries details |
 | 503 | `{"error":"unavailable"}` + `Retry-After` | global creation cap, `Sec-Purpose` requests, PoW verifier saturated |
 
 The 404 response (status, headers, body bytes) MUST be byte-identical for an unknown id, a wrong `R` and a wrong `M`. The 409 response MUST be identical for a live id and a tombstone.
@@ -213,7 +214,7 @@ Authorization: Bearer {R}
 404 for unknown id and for a wrong R
 ```
 
-Metadata never changes `opens_remaining` or the state. It MAY complete the deletion of a blob that is already unreachable (expired message, or `opens_remaining == 0` with no active lease). Tombstones answer 200 with their state, `first_opened_at` (rounded to the minute) and `ended_at`; `size`, `opens_remaining` and `ttl_s` are then 0.
+Metadata never changes `opens_remaining` or the state. It MAY complete the deletion of a blob that is already unreachable (expired message, or `opens_remaining == 0` with no active lease). Tombstones answer 200 with their state, `first_opened_at` (rounded to the minute, absent when the message was never opened) and `ended_at`. A tombstone keeps no policy or times, so `created_at` and `expires_at` are absent, `opens_max`, `opens_remaining`, `ttl_s`, `kdf_id` and `size` are 0 and `passphrase_required` is false.
 
 ### 6.4 Claim
 
@@ -264,6 +265,7 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 ```
 
 - `failed_passphrase_attempts` is cumulative over the message lifetime (`fail_count_total`), not per day.
+- After the message ends, status reads the tombstone: only `state`, `first_opened_at` and `ended_at` are meaningful; `created_at` and `expires_at` are absent and the counters are 0.
 - `first_opened_at` is rounded down to the minute.
 - A wrong `M` on cancel or status answers the same 404 as an unknown id.
 - Abuse reports are rate limited to 5 per hour per bucket, reviewed by a human, and never delete anything automatically.

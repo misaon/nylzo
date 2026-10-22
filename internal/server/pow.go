@@ -66,17 +66,18 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 	default:
 		return errPoWBusy
 	}
+	if !powSatisfies(chal, counter, id, s.cfg.PoWDifficulty) {
+		return ErrPoW
+	}
+	return nil
+}
+
+func powSatisfies(chal, counter []byte, id core.ID, difficulty int) bool {
 	password := make([]byte, 0, powNonceLen+core.IDLen)
 	password = append(password, chal[4:4+powNonceLen]...)
 	password = append(password, id[:]...)
 	out, err := scrypt.Key(password, counter, powN, powR, powP, 32)
-	if err != nil {
-		return ErrPoW
-	}
-	if !leadingZeroBits(out, s.cfg.PoWDifficulty) {
-		return ErrPoW
-	}
-	return nil
+	return err == nil && leadingZeroBits(out, difficulty)
 }
 
 var errPoWBusy = errors.New("server: proof-of-work verifier is saturated")
@@ -95,15 +96,10 @@ func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	password := append(append([]byte(nil), chal[4:4+powNonceLen]...), id[:]...)
 	counter := make([]byte, powCounterLen)
 	for i := uint64(0); ; i++ {
 		binary.BigEndian.PutUint64(counter, i)
-		out, err := scrypt.Key(password, counter, powN, powR, powP, 32)
-		if err != nil {
-			return "", err
-		}
-		if leadingZeroBits(out, difficulty) {
+		if powSatisfies(chal, counter, id, difficulty) {
 			return challenge + "." + hex.EncodeToString(counter), nil
 		}
 	}

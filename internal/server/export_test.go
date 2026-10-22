@@ -1,8 +1,12 @@
 package server
 
 import (
+	"encoding/hex"
 	"net/http"
 	"net/netip"
+	"strings"
+
+	"github.com/misaon/nylzo/internal/core"
 )
 
 func ClientAddrForTest(cfg Config, mode, remote, xff, realIP string) netip.Addr {
@@ -25,4 +29,17 @@ func ParseCreateHeaderForTest(cfg Config, value string) bool {
 	r.Header.Set(headerCreate, value)
 	_, _, _, _, _, ok := s.parseCreateHeader(r)
 	return ok
+}
+
+func PoWSatisfiesForTest(token string, id core.ID, difficulty int) bool {
+	chalStr, counterStr, _ := strings.Cut(token, ".")
+	chal, err := core.DecodeExact(chalStr, powChalLen)
+	if err != nil {
+		return false
+	}
+	counter, err := hex.DecodeString(counterStr)
+	if err != nil {
+		return false
+	}
+	return powSatisfies(chal, counter, id, difficulty)
 }

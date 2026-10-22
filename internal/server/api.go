@@ -247,12 +247,12 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, http.StatusLengthRequired, errLengthRequired)
 		return
 	}
-	if r.ContentLength > s.cfg.Limits.MaxObjectBytes || h.Size > s.cfg.Limits.MaxObjectBytes {
-		s.rejectCreate(w, http.StatusRequestEntityTooLarge, errTooLarge)
-		return
-	}
 	if r.ContentLength != h.Size {
 		s.rejectCreate(w, http.StatusBadRequest, errBadRequest)
+		return
+	}
+	if h.Size > s.cfg.Limits.MaxObjectBytes {
+		s.rejectCreate(w, http.StatusRequestEntityTooLarge, errTooLarge)
 		return
 	}
 	now := s.clock()

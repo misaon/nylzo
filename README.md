@@ -62,7 +62,7 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP` |
 | `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy |
 | `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne |
-| `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru |
+| `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření |
 | `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2) |

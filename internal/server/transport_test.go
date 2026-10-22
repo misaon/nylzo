@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -64,6 +65,10 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	if resp, _ := h.do(request{method: "GET", path: "/m/not-an-id"}); resp.StatusCode != 404 {
 		t.Fatal("malformed page id")
 	}
+	resp, body = h.do(request{method: "GET", path: "/api/v1/messages/not-an-id", headers: map[string]string{"Authorization": "Bearer short"}})
+	if resp.StatusCode != 404 || string(body) != `{"error":"not_found"}` {
+		t.Fatalf("malformed API id: %d %s", resp.StatusCode, body)
+	}
 }
 
 func TestCreateValidation(t *testing.T) {
@@ -79,7 +84,7 @@ func TestCreateValidation(t *testing.T) {
 		{"bad-base64", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
 		{"unknown-field", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", core.Encode([]byte(`{"id":"x","extra":1}`))) }, 400, "bad_request"},
 		{"size-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1))) }, 400, "bad_request"},
-		{"too-large-size", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(core.MaxObjectBytes+1)) }, 413, "too_large"},
+		{"size-above-limit-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(core.MaxObjectBytes+1)) }, 400, "bad_request"},
 		{"chunked", func(r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
 	}
 	for _, c := range cases {
@@ -190,13 +195,15 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	}
 	resp.Body.Close()
 	checks := []struct {
-		name   string
-		header string
-		status string
+		name         string
+		header       string
+		sizeOverride int64
+		status       string
 	}{
-		{"no-content-length", "", "411"},
-		{"size-mismatch", "Content-Length: 5\r\n", "400"},
-		{"too-large", fmt.Sprintf("Content-Length: %d\r\n", core.MaxObjectBytes+1), "413"},
+		{"no-content-length", "", 0, "411"},
+		{"size-mismatch", "Content-Length: 5\r\n", 0, "400"},
+		{"too-large", fmt.Sprintf("Content-Length: %d\r\n", core.MaxObjectBytes+1), core.MaxObjectBytes + 1, "413"},
+		{"too-large-mismatch", fmt.Sprintf("Content-Length: %d\r\n", core.MaxObjectBytes+1), 0, "400"},
 	}
 	for _, c := range checks {
 		conn, err := net.Dial("tcp", addr)
@@ -205,7 +212,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		}
 		probe := newMessage(t, core.KDFNone, "", 1, 3600, "probe")
 		conn.SetDeadline(time.Now().Add(2 * time.Second))
-		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, probe.createHeader(0))
+		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, probe.createHeader(c.sizeOverride))
 		line, err := bufio.NewReader(conn).ReadString('\n')
 		conn.Close()
 		if err != nil || !strings.Contains(line, " "+c.status+" ") {
@@ -281,6 +288,24 @@ func TestConfigFromEnv(t *testing.T) {
 		return env[k]
 	}, true); err == nil {
 		t.Fatal("unknown proxy mode accepted")
+	}
+	tooBig := strconv.Itoa(core.MaxFileBytes + 1)
+	if _, err := server.FromEnv(func(k string) string {
+		if k == "NYLZO_MAX_FILE_BYTES" {
+			return tooBig
+		}
+		return env[k]
+	}, true); err == nil {
+		t.Fatal("NYLZO_MAX_FILE_BYTES above the protocol limit accepted")
+	}
+	lower, err := server.FromEnv(func(k string) string {
+		if k == "NYLZO_MAX_FILE_BYTES" {
+			return "1048576"
+		}
+		return env[k]
+	}, true)
+	if err != nil || lower.Limits.MaxObjectBytes != core.ObjectLimit(1048576) {
+		t.Fatalf("lower file limit: %v %d", err, lower.Limits.MaxObjectBytes)
 	}
 }
 
