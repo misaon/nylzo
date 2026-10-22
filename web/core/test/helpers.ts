@@ -99,6 +99,13 @@ export interface VectorFile {
   readonly envelope: readonly EnvelopeVector[];
   readonly link: readonly LinkVector[];
   readonly meta: readonly MetaVector[];
+  readonly passphrase_strength: readonly StrengthVector[];
+}
+
+export interface StrengthVector {
+  readonly name: string;
+  readonly passphrase: string;
+  readonly accepted: boolean;
 }
 
 export function loadVectors(): VectorFile {

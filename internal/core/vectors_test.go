@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 
@@ -325,5 +326,18 @@ func TestMetaVectors(t *testing.T) {
 				t.Fatal("canonical form is not a fixed point")
 			}
 		})
+	}
+}
+
+func TestVectorsPassphraseStrength(t *testing.T) {
+	f := loadVectors(t)
+	if len(f.Strength) == 0 {
+		t.Fatal("no passphrase strength vectors")
+	}
+	for _, v := range f.Strength {
+		err := core.CheckPassphraseStrength(v.Passphrase)
+		if (err == nil) != v.Accepted || (err != nil && !errors.Is(err, core.ErrWeakPassphrase)) {
+			t.Fatalf("%s: %v", v.Name, err)
+		}
 	}
 }

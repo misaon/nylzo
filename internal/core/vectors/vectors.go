@@ -32,7 +32,14 @@ type File struct {
 	Envelope  []Envelope `json:"envelope"`
 	Link      []Link     `json:"link"`
 	Meta      []MetaCase `json:"meta"`
+	Strength  []Strength `json:"passphrase_strength"`
 	Server    Server     `json:"server"`
+}
+
+type Strength struct {
+	Name       string `json:"name"`
+	Passphrase string `json:"passphrase"`
+	Accepted   bool   `json:"accepted"`
 }
 
 type Scrypt struct {
@@ -179,7 +186,7 @@ func counterBytes(n int) []byte {
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
-	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.server} {
+	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.server} {
 		if err := step(); err != nil {
 			return nil, err
 		}
@@ -502,6 +509,25 @@ func (f *File) meta() error {
 	add("text-over-limit", `{"v":1,"text":"`+strings.Repeat("x", core.MaxTextBytes+1)+`"}`, false)
 	add("text-at-limit", `{"v":1,"text":"`+strings.Repeat("x", core.MaxTextBytes)+`"}`, true)
 	add("mime-256-bytes", `{"v":1,"file":{"name":"a","mime":"`+strings.Repeat("m", 256)+`","size":1}}`, false)
+	return nil
+}
+
+func (f *File) strength() error {
+	face := "\U0001F600"
+	for _, c := range []Strength{
+		{"empty", "", false},
+		{"eleven ASCII characters", "eleven char", false},
+		{"twelve ASCII characters", "twelve chars", true},
+		{"eleven characters after NFC, twelve code points before", "cafe\u0301 au lai", false},
+		{"twelve characters after NFC", "cafe\u0301 au lait", true},
+		{"eleven astral characters", strings.Repeat(face, 11), false},
+		{"twelve astral characters", strings.Repeat(face, 12), true},
+	} {
+		if err := core.CheckPassphraseStrength(c.Passphrase); (err == nil) != c.Accepted {
+			return fmt.Errorf("vectors: strength case %q disagrees with the core: %v", c.Name, err)
+		}
+		f.Strength = append(f.Strength, c)
+	}
 	return nil
 }
 

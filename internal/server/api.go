@@ -33,7 +33,6 @@ const (
 	headerPolicy         = "X-Nylzo-Policy"
 	maxCreateHeader      = 1024
 	maxJSONBody          = 4096
-	constantBucket       = "nylzo/v1/no-ip-scope"
 	timeFormat           = time.RFC3339
 	octetStream          = "application/octet-stream"
 	abuseReasonRawBytes  = 1000
@@ -453,7 +452,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	uploaded := s.clock()
 	m := &store.Message{
 		ID: id.String(), Version: parsed.Version, KDF: uint8(parsed.KDF), Flags: parsed.Flags, State: store.StateAvailable,
-		CreatedAt: uploaded, ExpiresAt: uploaded.Add(time.Duration(h.TTLSeconds) * time.Second), TTLSeconds: uint32(h.TTLSeconds),
+		CreatedAt: uploaded.UTC().Truncate(time.Minute), ExpiresAt: store.CeilMinute(uploaded.UTC().Add(time.Duration(h.TTLSeconds) * time.Second)), TTLSeconds: uint32(h.TTLSeconds),
 		OpensMax: uint16(h.OpensMax), OpensRemaining: uint16(h.OpensMax), PepperID: pepperID,
 		ReadMAC: readMAC[:], ManageMAC: manageMAC[:], Size: h.Size, BlobRef: id.String(),
 	}
@@ -564,15 +563,6 @@ type claimBody struct {
 	Verifier string `json:"verifier"`
 }
 
-func (s *Server) passphraseBucket(now time.Time, r *http.Request) []byte {
-	if !s.cfg.PassphraseIPScope {
-		h := core.Hash([]byte(constantBucket))
-		return h[:3]
-	}
-	b := s.ring.Bucket(now, s.clientAddr(r), false)
-	return b[:]
-}
-
 func (s *Server) policyHeader(m *store.Message) string {
 	data, _ := json.Marshal(policyHeader{OpensMax: int(m.OpensMax), TTL: int(m.TTLSeconds), KDFID: int(m.KDF), Flags: int(m.Flags)})
 	return core.Encode(data)
@@ -608,7 +598,6 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer blob.Close()
-	now := s.clock()
 	lease := core.NewSecret()
 	leaseMAC, leasePepper := s.ring.MAC(pepper.Lease, lease[:])
 	var verifierHash [32]byte
@@ -616,7 +605,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		verifierHash = core.Hash(verifier)
 	}
 	result, err := s.store.Claim(ctx, store.ClaimParams{
-		ID: id.String(), Clock: s.clock, Bucket: s.passphraseBucket(now, r), VerifierSent: verifierSent,
+		ID: id.String(), Clock: s.clock, VerifierSent: verifierSent,
 		VerifyMAC: func(pepperID byte, stored []byte) bool {
 			return s.ring.Verify(pepper.Verifier, verifierHash[:], stored, pepperID)
 		},
@@ -919,7 +908,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok {
-		err := s.recordAbuse(ctx, now, id.String(), s.ring.Bucket(now, s.clientAddr(r), true), body.Reason)
+		err := s.recordAbuse(ctx, now, id.String(), body.Reason)
 		if errors.Is(err, errAbuseFull) {
 			s.log.Error("abuse-file-full")
 			setRetryAfter(w, abuseFullRetry)
@@ -982,9 +971,9 @@ func redactReason(reason string) string {
 	}
 }
 
-func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reporter [pepper.BucketLen]byte, reason string) error {
+func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reason string) error {
 	d := dayWindow(now)
-	key := "abuse:id:" + id + ":" + hex.EncodeToString(reporter[:])
+	key := "abuse:id:" + id
 	_, ok, err := s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: key, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: abusePerRange})
 	if err != nil || !ok {
 		return err

@@ -258,7 +258,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimed := created.Add(time.Minute)
-	res, err := st.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return claimed }, Bucket: []byte{1, 2, 3}, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return true }, LeaseMAC: mac, LeasePepperID: 7})
+	res, err := st.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return claimed }, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return true }, LeaseMAC: mac, LeasePepperID: 7})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,10 +329,14 @@ func assertNoRowid(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	for _, table := range []string{"tombstones", "passphrase_attempts", "rate_counters"} {
+	for _, table := range []string{"tombstones", "rate_counters"} {
 		if _, err := db.Exec(`SELECT rowid FROM ` + table); err == nil {
 			t.Fatalf("%s keeps an insertion-order rowid", table)
 		}
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'passphrase_attempts' OR sql LIKE '%day_fail%'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("per-address attempt rows survive: %d %v", n, err)
 	}
 }
 
@@ -357,13 +361,13 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 	defer db.Close()
 	at := created.Add(17*time.Second + 123*time.Millisecond)
 	for i := 1; i <= store.FreeAttempts+1; i++ {
-		_, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return at }, Bucket: []byte{1, 2, 3}, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return false }, LeaseMAC: mac, LeasePepperID: 7})
+		_, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return at }, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return false }, LeaseMAC: mac, LeasePepperID: 7})
 		var pe *store.PassphraseError
 		if !errors.As(err, &pe) {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
 		var next int64
-		if err := db.QueryRow(`SELECT next_attempt_at FROM passphrase_attempts WHERE id = ?`, id).Scan(&next); err != nil {
+		if err := db.QueryRow(`SELECT next_attempt_at FROM messages WHERE id = ?`, id).Scan(&next); err != nil {
 			t.Fatal(err)
 		}
 		if i <= store.FreeAttempts && next != 0 || i > store.FreeAttempts && (next%time.Minute.Milliseconds() != 0 || next <= at.UnixMilli()) {

@@ -60,11 +60,10 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky a fsync adresáře (`serve` i `sweep-once` to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují. `sweep-once` adresář nezakládá: bez existující databáze a adresáře `blobs` skončí chybou, proto mu v plánovači dejte absolutní cestu |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |
 | `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP` |
-| `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy. Po pěti chybných pokusech se čeká 2^(n − 5) s zaokrouhleno nahoru na celou minutu, takže databáze nenese přesný čas pokusu |
 | `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne |
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
-| `NYLZO_MAX_OPENS` | `10` | maximum otevření |
+| `NYLZO_MAX_OPENS` | `10` | maximum otevření, nejvýš 100 |
 | `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2); jiné hodnoty server odmítne |
 | `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek |
 | `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | násobek limitů pro hrubý kyblík /24 nebo /48. Požadavek, který odmítne limit /32 nebo /64, se do limitu /24 nebo /48 nezapočítá |
@@ -87,6 +86,8 @@ Soubory databáze (`nylzo.db` a jeho `-wal` a `-shm`) vznikají s právy 0600. E
 
 Velká zpráva má na nahrání i stažení čas podle velikosti: nejméně 120 s, jinak tolik, kolik trvá přenos při 128 kbit/s (u největšího objektu asi 5,6 minuty). Stejně dlouho platí lease, takže příjemce na pomalé lince o zprávu nepřijde.
 
+Pokusy o passphrase se počítají na zprávu, ne na adresu. Prvních 5 chybných pokusů je bez čekání, potom se čeká 2^(n − 5) s (nejvýš 1 h) zaokrouhleno nahoru na celou minutu. Po 100 chybných pokusech za celou životnost je zpráva zamčená do konce platnosti a odesílatel to vidí ve status. Klienti musí odmítnout passphrase kratší než 12 znaků. Žádný čas v databázi není přesnější než na minutu, proto zpráva i lease žijí o 0 až 60 s déle, než bylo nastaveno.
+
 Po signálu SIGTERM server 30 s čeká na rozběhnuté požadavky, pak zbylá spojení zavře a skončí s kódem 0.
 
 Id zprávy vydává server: `GET /api/v1/instance` vrací v poli `create` náhodné id a token platný 10 minut a vytvoření bez platného tokenu skončí 403 `id_token`. Ukončená zpráva zmizí i s náhrobkem 7 dní po konci, ale její id už nikdo znovu nezíská, takže pod starým odkazem nejde vytvořit nový obsah. Vydaná id server neukládá.
@@ -95,7 +96,7 @@ Logy obsahují čas, metodu, vzor cesty, stav, latenci a velikost odpovědi. Id 
 
 `nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn a cancel si před smazáním blobu zapíšou zamýšlený stav. Expirovaná zpráva zápis nepotřebuje, protože ji ukončuje samo `expires_at`. Po pádu procesu konec dokončí další požadavek nebo úklid. Chybějící blob u neexpirované zprávy bez zapsaného stavu server hlásí jako chybu 500, zprávu nesmaže a claim kvůli němu nespotřebuje otevření.
 
-Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupec `ending`, přestaví tabulky `tombstones`, `passphrase_attempts` a `rate_counters` bez rowid a jednou spustí `VACUUM`. Starší verze s takovou databází nepracují, protože jejich úklid maže podle rowid, proto se po tomto upgradu ke starší verzi nevracejte.
+Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupce `ending` a `next_attempt_at`, odstraní tabulku `passphrase_attempts` a sloupce `day_fail_count` a `day_fail_date`, přestaví tabulky `tombstones` a `rate_counters` bez rowid a jednou spustí `VACUUM`. Starší verze s takovou databází nepracují, protože jejich úklid maže podle rowid, proto se po tomto upgradu ke starší verzi nevracejte.
 
 ## Generování vektorů
 

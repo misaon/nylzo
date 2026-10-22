@@ -19,17 +19,24 @@ const (
 )
 
 const (
-	LeaseDuration    = 120 * time.Second
-	LeaseTimerSlack  = time.Second
-	MaxLeaseDownload = 3
-	TombstoneTTL     = 7 * 24 * time.Hour
-	DailyFailCap     = 100
-	FreeAttempts     = 5
-	MaxBackoff       = time.Hour
-	SweepBatch       = 1000
-	BlobGrace        = 15 * time.Minute
-	MinTransferRate  = 16000
+	LeaseDuration     = 120 * time.Second
+	LeaseTimerSlack   = time.Second
+	MaxLeaseDownload  = 3
+	TombstoneTTL      = 7 * 24 * time.Hour
+	MaxFailedAttempts = 100
+	FreeAttempts      = 5
+	MaxBackoff        = time.Hour
+	SweepBatch        = 1000
+	BlobGrace         = 15 * time.Minute
+	MinTransferRate   = 16000
 )
+
+func CeilMinute(t time.Time) time.Time {
+	if r := t.Truncate(time.Minute); !r.Equal(t) {
+		return r.Add(time.Minute)
+	}
+	return t
+}
 
 func TransferTime(size int64) time.Duration {
 	return time.Duration(size) * time.Second / MinTransferRate
@@ -81,9 +88,8 @@ type Message struct {
 	VerifierMAC    []byte
 	Size           int64
 	BlobRef        string
-	DayFailCount   int
-	DayFailDate    string
 	FailCountTotal int
+	NextAttemptAt  time.Time
 	FirstOpenedAt  *time.Time
 	Ending         State
 }
@@ -145,7 +151,6 @@ func (l Lease) Active(now time.Time) bool {
 type ClaimParams struct {
 	ID            string
 	Clock         func() time.Time
-	Bucket        []byte
 	VerifierSent  bool
 	VerifyMAC     func(pepperID byte, storedMAC []byte) bool
 	LeaseMAC      []byte
@@ -181,14 +186,13 @@ type SweepReport struct {
 	BlobsReleased  int
 	Tombstones     int
 	Counters       int
-	Attempts       int
 	Resumed        int
 	OrphanedBlobs  int
 	StaleTempFiles int
 }
 
 func (r SweepReport) LogAttrs() []any {
-	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "attempts", r.Attempts, "resumed", r.Resumed, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
+	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "resumed", r.Resumed, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
 }
 
 type Store interface {

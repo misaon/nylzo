@@ -40,16 +40,19 @@ export {
   PolicyError,
   TooLargeError,
   VersionError,
+  WeakPassphraseError,
 } from './errors.ts';
 export { hash, idToString, newSecret, parseId } from './ids.ts';
 export {
   KDF_NONE,
   KDF_PBKDF2,
   KDF_SCRYPT,
+  MIN_PASSPHRASE_CHARS,
   PBKDF2_ITERATIONS,
   SCRYPT_N,
   SCRYPT_P,
   SCRYPT_R,
+  assertStrongPassphrase,
   derivePassphraseKey,
   isKdfId,
   kdfRequiresPassphrase,

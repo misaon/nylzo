@@ -6,7 +6,9 @@ import {
   KDF_NONE,
   TAG_LEN,
   VERSION,
+  WeakPassphraseError,
   aad,
+  assertStrongPassphrase,
   decodeMeta,
   deriveAll,
   deriveContent,
@@ -195,6 +197,21 @@ describe('meta', () => {
         expect(meta.file).toEqual({ name: v.file_name, mime: v.file_mime, size: v.file_size });
       }
       expect(encodeMeta(decodeMeta(canonical))).toEqual(canonical);
+    });
+  }
+});
+
+describe('passphrase_strength', () => {
+  it('has cases', () => {
+    expect(vectors.passphrase_strength.length).toBeGreaterThan(0);
+  });
+  for (const v of vectors.passphrase_strength) {
+    it(v.name, () => {
+      if (v.accepted) {
+        expect(() => assertStrongPassphrase(v.passphrase)).not.toThrow();
+      } else {
+        expect(() => assertStrongPassphrase(v.passphrase)).toThrow(WeakPassphraseError);
+      }
     });
   }
 });

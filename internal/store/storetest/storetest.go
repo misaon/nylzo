@@ -25,7 +25,8 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK3MetadataDoesNotConsume", func(t *testing.T) { testMetadataDoesNotConsume(t, open) })
 	t.Run("AK4ConcurrentClaims", func(t *testing.T) { testConcurrentClaims(t, open) })
 	t.Run("AK5PassphrasePolicy", func(t *testing.T) { testPassphrasePolicy(t, open) })
-	t.Run("AK5DailyCap", func(t *testing.T) { testDailyCap(t, open) })
+	t.Run("AK5LifetimeCap", func(t *testing.T) { testLifetimeCap(t, open) })
+	t.Run("LeaseExpiryIsAWholeMinute", func(t *testing.T) { testLeaseExpiryRounded(t, open) })
 	t.Run("AK5BackoffCap", func(t *testing.T) { testBackoffCap(t, open) })
 	t.Run("AK6LeasesAck", func(t *testing.T) { testLeasesAck(t, open) })
 	t.Run("AK6LeaseExpiry", func(t *testing.T) { testLeaseExpiry(t, open) })
@@ -109,12 +110,12 @@ func (f *fixture) blobExists(ref string) bool {
 	return true
 }
 
-func (f *fixture) claim(m *store.Message, now time.Time, bucket byte, verifierOK bool, verifierSent bool) (store.ClaimResult, error) {
+func (f *fixture) claim(m *store.Message, now time.Time, seed byte, verifierOK bool, verifierSent bool) (store.ClaimResult, error) {
 	f.t.Helper()
 	return f.s.Claim(f.ctx, store.ClaimParams{
-		ID: m.ID, Clock: func() time.Time { return now }, Bucket: []byte{bucket, 0, 0}, VerifierSent: verifierSent,
+		ID: m.ID, Clock: func() time.Time { return now }, VerifierSent: verifierSent,
 		VerifyMAC:     func(pepperID byte, stored []byte) bool { return verifierOK && bytes.Equal(stored, m.VerifierMAC) },
-		LeaseMAC:      mac(fmt.Sprintf("lease/%s/%d/%d", m.ID, now.UnixNano(), bucket)),
+		LeaseMAC:      mac(fmt.Sprintf("lease/%s/%d/%d", m.ID, now.UnixNano(), seed)),
 		LeasePepperID: 7,
 	})
 }
@@ -223,7 +224,7 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 		expectFail(1, 0, 5-i)
 	}
 	expectFail(1, time.Minute, 0)
-	expectFail(1, time.Minute, 0)
+	expectFail(2, time.Minute, 0)
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != 6 || rec.Message.OpensRemaining != 2 {
 		t.Fatalf("counters after backoff probe: total %d opens %d", rec.Message.FailCountTotal, rec.Message.OpensRemaining)
 	}
@@ -234,17 +235,14 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != 10 || rec.Message.OpensRemaining != 2 {
 		t.Fatalf("counters after tenth failure: total %d opens %d", rec.Message.FailCountTotal, rec.Message.OpensRemaining)
 	}
-	if _, err := f.claim(m, now, 2, true, true); err != nil {
-		t.Fatalf("correct passphrase from another bucket: %v", err)
+	if _, err := f.claim(m, now, 2, true, true); err == nil {
+		t.Fatal("the backoff belongs to the message, so every reader waits, even with the right passphrase")
 	}
-	if _, err := f.claim(m, now, 1, true, true); err == nil {
-		t.Fatal("backoff bucket must still wait even with the right passphrase")
-	}
-	if _, err := f.claim(m, now.Add(time.Minute), 1, true, true); err != nil {
+	if _, err := f.claim(m, now.Add(time.Minute), 2, true, true); err != nil {
 		t.Fatalf("after backoff: %v", err)
 	}
 	rec := f.get(m.ID)
-	if rec.Message.OpensRemaining != 0 || rec.Message.FailCountTotal != 10 {
+	if rec.Message.OpensRemaining != 1 || rec.Message.FailCountTotal != 10 {
 		t.Fatalf("final counters: opens %d total %d", rec.Message.OpensRemaining, rec.Message.FailCountTotal)
 	}
 	m2 := f.create(1, 24*time.Hour, true)
@@ -256,27 +254,38 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 	}
 }
 
-func testDailyCap(t *testing.T, open Factory) {
+func testLifetimeCap(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(1, 7*24*time.Hour, true)
-	now := time.Date(2026, 10, 22, 23, 0, 0, 0, time.UTC)
-	for i := 0; i < store.DailyFailCap; i++ {
-		_, err := f.claim(m, now, byte(i%200), false, true)
+	now := baseTime
+	for i := 0; i < store.MaxFailedAttempts; i++ {
+		_, err := f.claim(m, now, byte(i), false, true)
 		var pe *store.PassphraseError
 		if !errors.As(err, &pe) {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
+		now = now.Add(pe.RetryAfter)
 	}
-	_, err := f.claim(m, now, 201, true, true)
+	later := now.Add(24 * time.Hour)
+	_, err := f.claim(m, later, 201, true, true)
 	var pe *store.PassphraseError
-	if !errors.As(err, &pe) || pe.RetryAfter != time.Hour || pe.AttemptsLeft != 0 {
-		t.Fatalf("daily cap: %v", err)
+	if !errors.As(err, &pe) || pe.RetryAfter != m.ExpiresAt.Sub(later) || pe.AttemptsLeft != 0 {
+		t.Fatalf("after %d failed attempts the message must stay locked until it expires: %v", store.MaxFailedAttempts, err)
 	}
-	if rec := f.get(m.ID); rec.Message.FailCountTotal != store.DailyFailCap || rec.Message.OpensRemaining != 1 {
-		t.Fatal("daily cap counters")
+	if rec := f.get(m.ID); rec.Message.FailCountTotal != store.MaxFailedAttempts || rec.Message.OpensRemaining != 1 {
+		t.Fatal("lifetime cap counters")
 	}
-	if _, err := f.claim(m, now.Add(time.Hour), 201, true, true); err != nil {
-		t.Fatalf("after midnight: %v", err)
+}
+
+func testLeaseExpiryRounded(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	m := f.create(1, time.Hour, false)
+	res, err := f.claim(m, baseTime.Add(17*time.Second), 1, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := baseTime.Add(3 * time.Minute); !res.Lease.ExpiresAt.Equal(want) {
+		t.Fatalf("a lease from 10:00:17 must end at the full minute %v, got %v", want, res.Lease.ExpiresAt)
 	}
 }
 

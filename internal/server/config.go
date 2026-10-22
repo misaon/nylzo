@@ -18,6 +18,7 @@ const (
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 4
 	MaxPoWDifficulty  = 8
+	MaxOpens          = 100
 	MaxTTL            = 7 * 24 * time.Hour
 )
 
@@ -45,27 +46,25 @@ type Rates struct {
 }
 
 type Config struct {
-	Listen            string
-	DataDir           string
-	Pepper            []byte
-	PepperPrevious    []byte
-	TrustedProxies    []netip.Prefix
-	ProxyMode         string
-	PassphraseIPScope bool
-	SweepInterval     time.Duration
-	Limits            Limits
-	Rates             Rates
-	PoWDifficulty     int
-	PoWConcurrency    int
-	Version           string
+	Listen         string
+	DataDir        string
+	Pepper         []byte
+	PepperPrevious []byte
+	TrustedProxies []netip.Prefix
+	ProxyMode      string
+	SweepInterval  time.Duration
+	Limits         Limits
+	Rates          Rates
+	PoWDifficulty  int
+	PoWConcurrency int
+	Version        string
 }
 
 func Defaults() Config {
 	return Config{
-		Listen:            ":8080",
-		DataDir:           "data",
-		PassphraseIPScope: true,
-		SweepInterval:     5 * time.Minute,
+		Listen:        ":8080",
+		DataDir:       "data",
+		SweepInterval: 5 * time.Minute,
 		Limits: Limits{
 			MaxFileBytes:   core.MaxFileBytes,
 			MaxObjectBytes: core.ObjectLimit(core.MaxFileBytes),
@@ -161,16 +160,8 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 		}
 		return fmt.Errorf("unknown mode %q", v)
 	})
-	set("NYLZO_PASSPHRASE_IP_SCOPE", func(v string) error {
-		switch v {
-		case "on", "true", "1":
-			c.PassphraseIPScope = true
-		case "off", "false", "0":
-			c.PassphraseIPScope = false
-		default:
-			return fmt.Errorf("want on or off, got %q", v)
-		}
-		return nil
+	set("NYLZO_PASSPHRASE_IP_SCOPE", func(string) error {
+		return errors.New("removed: passphrase limits are kept per message, without address buckets")
 	})
 	set("NYLZO_SWEEP_INTERVAL", func(v string) error { return parseDuration(v, &c.SweepInterval) })
 	set("NYLZO_MAX_FILE_BYTES", func(v string) error {
@@ -218,7 +209,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 		name string
 		ok   bool
 	}{
-		{"NYLZO_MAX_OPENS must be between 1 and 65535", c.Limits.MaxOpens >= 1 && c.Limits.MaxOpens <= 65535},
+		{fmt.Sprintf("NYLZO_MAX_OPENS must be between 1 and %d", MaxOpens), c.Limits.MaxOpens >= 1 && c.Limits.MaxOpens <= MaxOpens},
 		{fmt.Sprintf("NYLZO_MAX_TTL must be between %s and %s", minTTL, MaxTTL), c.Limits.MaxTTL >= minTTL && c.Limits.MaxTTL <= MaxTTL},
 		{fmt.Sprintf("NYLZO_DEFAULT_TTL must be between %s and NYLZO_MAX_TTL", minTTL), c.Limits.DefaultTTL >= minTTL && c.Limits.DefaultTTL <= c.Limits.MaxTTL},
 		{fmt.Sprintf("NYLZO_POW_DIFFICULTY must be between 0 and %d", MaxPoWDifficulty), c.PoWDifficulty >= 0 && c.PoWDifficulty <= MaxPoWDifficulty},

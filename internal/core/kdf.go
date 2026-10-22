@@ -29,7 +29,10 @@ const (
 var (
 	ErrKDF                 = errors.New("core: unknown kdf profile")
 	ErrMalformedPassphrase = errors.New("core: passphrase is not well-formed Unicode")
+	ErrWeakPassphrase      = errors.New("core: passphrase is shorter than 12 characters")
 )
+
+const MinPassphraseChars = 12
 
 func (k KDF) Valid() bool {
 	return k <= KDFPBKDF2
@@ -62,6 +65,16 @@ func NormalizePassphrase(passphrase string) []byte {
 func checkPassphrase(kdf KDF, passphrase string) error {
 	if kdf != KDFNone && !utf8.ValidString(passphrase) {
 		return ErrMalformedPassphrase
+	}
+	return nil
+}
+
+func CheckPassphraseStrength(passphrase string) error {
+	if !utf8.ValidString(passphrase) {
+		return ErrMalformedPassphrase
+	}
+	if utf8.RuneCountInString(norm.NFC.String(passphrase)) < MinPassphraseChars {
+		return ErrWeakPassphrase
 	}
 	return nil
 }

@@ -57,7 +57,7 @@ K       = HKDF-Expand(PRK_SP, "nylzo/v1/content",  32)                  content 
 V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  verifier
 ```
 
-- `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. An empty passphrase with `kdf_id` 1 or 2 is permitted by the protocol; user interfaces SHOULD warn.
+- `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. Derivation accepts any well-formed passphrase, so a recipient can always open a message and the vectors stay valid. A client MUST refuse to create a message with a passphrase shorter than 12 characters (Unicode code points after NFC) and SHOULD warn below 4 words or 16 characters; both cores expose this check.
 - The passphrase MUST be well-formed Unicode. A core rejects invalid UTF-8 or a lone surrogate before it derives anything, so two cores never derive different keys from the same input.
 - The string literals are ASCII without a terminating NUL. `info` strings are passed to HKDF-Expand verbatim.
 - `S || P` has a fixed length per profile (32 or 64 bytes), so the concatenation is unambiguous.
@@ -83,7 +83,8 @@ object     = header || ciphertext
 - `opens_max` and `ttl_s` are the sender's policy. The recipient obtains them from `X-Nylzo-Policy` (§6.4) and the metadata response and decrypts with them; any change by the server or an intermediary fails authentication.
 - `len_meta` is the byte length of `meta`.
 - `file_bytes` are present exactly when `meta.file` is present and have length `meta.file.size`.
-- `padding` is zero bytes. The plaintext length (`4 + len_meta + len(file_bytes) + len(padding)`) MUST be a multiple of 4096 bytes; when `meta.file` is present it MUST be a multiple of 65536 bytes. The decoder MUST derive the content length from `len_meta` and `meta.file.size`, MUST NOT depend on the padding content, and MAY ignore it.
+- `padding` is zero bytes. The padded length is visible to the server, so the size of a file is known to 64 KiB and the size of a text to 4 KiB.
+- The plaintext length (`4 + len_meta + len(file_bytes) + len(padding)`) MUST be a multiple of 4096 bytes; when `meta.file` is present it MUST be a multiple of 65536 bytes. The decoder MUST derive the content length from `len_meta` and `meta.file.size`, MUST NOT depend on the padding content, and MAY ignore it.
 - Limits: `meta.text` at most 102400 bytes of UTF-8; `meta.file.size` at most 5242880; `len_meta` at most 104448; `object` at most 5410880 bytes (5 MiB + 100 KiB + 64 KiB + 64 B). These are protocol maxima that both reference cores enforce. An instance MAY report lower limits in `/api/v1/instance` and MUST NOT report higher ones. An instance derives `max_object_bytes` from its file limit as the largest object a valid meta and file can produce: `min(5410880, 15 + 16 + pad65536(4 + 104448 + max_file_bytes))`, where `pad65536` rounds up to a multiple of 65536. With the default file limit that is 5373983.
 
 ### 3.1 meta **[detail]**
@@ -136,13 +137,13 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 
 All comparisons MUST be constant-time. When a row does not exist, the server MUST still compute a mac and compare it against a dummy value so that the work and the response are identical.
 
-Tombstones round `first_opened_at` and `ended_at` down to the minute, and `purge_at` is `ended_at + 7 d` from the rounded value. An ending finished at or after `expires_at` records `expires_at` as its end, so a tombstone never reveals when someone touched an expired link. A lease row keeps `lease_expires_at` to the millisecond, so while it exists (the 120 s lease, until the ack or the next sweep) it reveals the claim time that precisely; this is accepted.
+Tombstones round `first_opened_at` and `ended_at` down to the minute, and `purge_at` is `ended_at + 7 d` from the rounded value. An ending finished at or after `expires_at` records `expires_at` as its end, so a tombstone never reveals when someone touched an expired link. No time in the database is more precise than the minute: `created_at` is rounded down, `expires_at` and `lease_expires_at` up to the next full minute, so a message and a lease live 0 to 60 s longer than requested.
 
-Deleted rows leave no readable trace in the store. SQLite runs with `secure_delete` and `journal_size_limit = 0`, every sweep ends with `wal_checkpoint(TRUNCATE)`, and a database created by an older build is vacuumed once when it is first opened. `tombstones`, `passphrase_attempts` and `rate_counters` are tables without rowid, so their row order does not reveal the order of events. `passphrase_attempts.next_attempt_at` is 0 while no wait applies and is otherwise rounded up to the next full minute. Reading a blob does not update the access time of its file (`O_NOATIME` on Linux). What the file system or the storage provider keeps of deleted data is outside the server's control.
+Deleted rows leave no readable trace in the store. SQLite runs with `secure_delete` and `journal_size_limit = 0`, every sweep ends with `wal_checkpoint(TRUNCATE)`, and a database created by an older build is vacuumed once when it is first opened. `tombstones` and `rate_counters` are tables without rowid, so their row order does not reveal the order of events. `messages.next_attempt_at` is 0 while no wait applies and is otherwise rounded up to the next full minute. No row ties a message id to an address bucket. Reading a blob does not update the access time of its file (`O_NOATIME` on Linux). What the file system or the storage provider keeps of deleted data is outside the server's control.
 
 ### 5.3 Address buckets
 
-Addresses never reach a persistent log. For rate limits and passphrase backoff the server derives a 24-bit bucket:
+Addresses never reach a persistent log. For rate limits the server derives a 24-bit bucket:
 
 ```
 addr      = canonical IP (netip.ParseAddr; IPv4-mapped IPv6 unmapped to IPv4)
@@ -151,7 +152,7 @@ input     = date_utc ("YYYY-MM-DD", ASCII) || 0x00 || family (0x04 or 0x06) || p
 bucket    = HMAC-SHA-256(k_ip, input)[0:3]
 ```
 
-The date rotates at 00:00 UTC; all instances share the derivation because they share the pepper. Backoff state keyed on a bucket resets at that rotation (accepted). `k_ip` comes from the current pepper only, so a pepper rotation resets every bucket in the same way: the rate counters, the passphrase backoff and the abuse cap per range start again. This is accepted too, because the daily cap of 100 failures per message still holds. With `NYLZO_PASSPHRASE_IP_SCOPE=off` the passphrase backoff uses a constant bucket (per message only).
+The date rotates at 00:00 UTC; all instances share the derivation because they share the pepper. `k_ip` comes from the current pepper only, so the rate counters restart at that rotation and at a pepper rotation. Passphrase backoff and the abuse report cap are kept per message, never per bucket, so neither resets and no row ties a message to an address.
 
 ### 5.4 Id tokens
 
@@ -215,7 +216,7 @@ X-Nylzo-Pow: {token}            only when the instance reports pow.required
 body: object (§3)
 ```
 
-Server order of checks, each before reading the body: (1) parse the header and the id syntax, then verify the id token (§5.4, 403 `id_token`); (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap: 503 when the counter has reached the cap, PoW when it is at or above 50 % (403, §8.1), then one conditional increment reserves a slot (503 when none is left by then). A request that reserved a slot at or above 50 % without a verified PoW returns the slot and answers 403 `pow`; (5) id absent from `messages` and `tombstones` (409, same for both). The body may take `max(120 s, size / 16000 s)` to arrive, which is 128 kbit/s for the whole object. The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `created_at` and `expires_at = created_at + ttl_s` taken when the upload has been stored, so a slow upload does not use up the TTL, and answers:
+Server order of checks, each before reading the body: (1) parse the header and the id syntax, then verify the id token (§5.4, 403 `id_token`); (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap: 503 when the counter has reached the cap, PoW when it is at or above 50 % (403, §8.1), then one conditional increment reserves a slot (503 when none is left by then). A request that reserved a slot at or above 50 % without a verified PoW returns the slot and answers 403 `pow`; (5) id absent from `messages` and `tombstones` (409, same for both). The body may take `max(120 s, size / 16000 s)` to arrive, which is 128 kbit/s for the whole object. The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `created_at` and `expires_at = created_at + ttl_s` taken when the upload has been stored, so a slow upload does not use up the TTL (`created_at` rounded down, `expires_at` up to the full minute, §5.2), and answers:
 
 ```
 201 {"id":"…","expires_at":"…"}
@@ -259,8 +260,8 @@ After it has read and checked the request body, and before the transaction, the 
 In one storage transaction:
 
 1. Read `now` from the process clock, after the transaction holds the write lock, and load the row. A recorded ending, `state ≠ available` or `expires_at ≤ now` → 410.
-2. With a passphrase: if the message's daily cap (100 failures per UTC day) is reached, or `next_attempt_at` for `(id, bucket)` is in the future → 403 with `retry_after` (seconds; until the next UTC midnight for the daily cap) and `attempts_left`. Otherwise compare `mac_verifier(h(V))` in constant time. On mismatch: `fail_count(id, bucket) += 1`, `day_fail_count(id) += 1`, `fail_count_total(id) += 1`; when `fail_count ≤ 5` answer 403 with `retry_after = 0` and `attempts_left = 5 − fail_count`; from the 6th failure set `next_attempt_at` to `now + min(2^(fail_count − 5), 3600)` seconds rounded up to the next full minute, and answer 403 with the resulting `retry_after` and `attempts_left = 0`. No open is consumed. A claim without a verifier on a message with a passphrase counts as a mismatch.
-3. `opens_remaining −= 1`; insert a lease `(id, mac_lease(L), lease_expires_at = now + max(120 s, size / 16000 s), downloads = 0)`. When `opens_remaining == 0` set `state = opened`.
+2. With a passphrase: if the message has 100 failed attempts over its whole life, every claim answers 403 with `retry_after` until `expires_at` and `attempts_left = 0`; if `next_attempt_at` is in the future → 403 with that `retry_after`. Otherwise compare `mac_verifier(h(V))` in constant time. On mismatch `fail_count_total += 1`; while `fail_count_total ≤ 5` answer 403 with `retry_after = 0` and `attempts_left = 5 − fail_count_total`; from the 6th failure set `next_attempt_at` to `now + min(2^(fail_count_total − 5), 3600)` seconds rounded up to the next full minute, and answer 403 with the resulting `retry_after` and `attempts_left = 0`. The counters belong to the message, not to an address, so a wait applies to every reader. No open is consumed. A claim without a verifier on a message with a passphrase counts as a mismatch.
+3. `opens_remaining −= 1`; insert a lease `(id, mac_lease(L), lease_expires_at = now + max(120 s, size / 16000 s) rounded up to the next full minute, downloads = 0)`. When `opens_remaining == 0` set `state = opened`.
 4. Return the object with the lease and the policy.
 
 A lease is active while `now < lease_expires_at`. The instance that served the claim schedules `ReleaseIfDone(id)` at `lease_expires_at + 1 s`. A claim or blob response may take as long as its lease: the write deadline is `max(120 s, size / 16000 s)` from the start of the response, so a recipient on a 128 kbit/s link still receives the largest object.
@@ -293,7 +294,7 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 - `first_opened_at` and `ended_at` are rounded down to the minute.
 - A wrong `M` on cancel or status answers the same 404 as an unknown id.
 - Abuse reports are rate limited to 5 per hour per bucket, reviewed by a human, and never delete anything automatically.
-- An abuse report MUST carry `Content-Type: application/json`, so a cross-site page needs a CORS preflight, which the server never grants. Before storing `reason`, the server percent-decodes it up to three times, replaces control characters with spaces, drops format characters such as bidi controls, replaces every `#…` run and every run of 22 or more base64url characters with `[redacted]`, then cuts it to 1000 bytes and further until its JSON encoding fits in 1200 bytes. It stores at most 3 reports per message and reporter range (the /24 or /48 bucket, §5.3) per UTC day and answers 202 for the rest, so one range cannot use up the budget of others. The server reserves the count before it writes a report and returns it when the write fails. A valid report that would be stored but would push the report file past 16 MiB answers 503, and the server logs the error `abuse-file-full` for the operator. A stored report holds the UTC date, the id and the redacted reason, never the time of day. Reports older than 14 days (the 7-day maximum TTL plus the 7-day tombstone) are dropped by every sweep of the server and before every new report.
+- An abuse report MUST carry `Content-Type: application/json`, so a cross-site page needs a CORS preflight, which the server never grants. Before storing `reason`, the server percent-decodes it up to three times, replaces control characters with spaces, drops format characters such as bidi controls, replaces every `#…` run and every run of 22 or more base64url characters with `[redacted]`, then cuts it to 1000 bytes and further until its JSON encoding fits in 1200 bytes. It stores at most 3 reports per message per UTC day and answers 202 for the rest. The cap is per message only, so no row ties a message to a reporter's address; one reporter can therefore use up the daily budget of a message. The server reserves the count before it writes a report and returns it when the write fails. A valid report that would be stored but would push the report file past 16 MiB answers 503, and the server logs the error `abuse-file-full` for the operator. A stored report holds the UTC date, the id and the redacted reason, never the time of day. Reports older than 14 days (the 7-day maximum TTL plus the 7-day tombstone) are dropped by every sweep of the server and before every new report.
 
 ## 7. Lifecycle, leases, tombstones, sweep
 
@@ -360,7 +361,7 @@ valid     = HMAC tag verifies, −5 s ≤ now − window_start ≤ 120 s,
 
 ## 10. Logging
 
-The server logs time, method, route pattern, status, latency and response size. It never logs a message id, so a log line cannot be joined with a message even by someone who holds the database and the pepper. It never logs the raw path, so a mangled link whose fragment reached the path is not logged. Requests that a middleware answers before routing (token-bucket 429s and `Sec-Purpose` 503s) are logged without route. Internal `net/http` errors are logged as a fixed message with a category (`accept`, `panic`, `tls-handshake`, `http2`, `superfluous-write-header`, `other`; HTTP/2 handler panics count as `panic`) and without their text, because that text can carry a peer address. Warning and error categories are rate limited separately, each to a burst of 20 and 1 per second, and the next logged line reports how many were dropped. A failed sweep logs its report, the number of failed items and the first error. It MUST NOT log `Authorization`, `X-Nylzo-Create`, `X-Nylzo-Lease`, `X-Nylzo-Pow`, request or response bodies, query strings, or client addresses. Addresses exist only inside bucket hashes in `rate_counters` and `passphrase_attempts`.
+The server logs time, method, route pattern, status, latency and response size. It never logs a message id, so a log line cannot be joined with a message even by someone who holds the database and the pepper. It never logs the raw path, so a mangled link whose fragment reached the path is not logged. Requests that a middleware answers before routing (token-bucket 429s and `Sec-Purpose` 503s) are logged without route. Internal `net/http` errors are logged as a fixed message with a category (`accept`, `panic`, `tls-handshake`, `http2`, `superfluous-write-header`, `other`; HTTP/2 handler panics count as `panic`) and without their text, because that text can carry a peer address. Warning and error categories are rate limited separately, each to a burst of 20 and 1 per second, and the next logged line reports how many were dropped. A failed sweep logs its report, the number of failed items and the first error. It MUST NOT log `Authorization`, `X-Nylzo-Create`, `X-Nylzo-Lease`, `X-Nylzo-Pow`, request or response bodies, query strings, or client addresses. Addresses exist only inside bucket hashes in `rate_counters`, never next to a message id.
 
 ## 11. Versioning
 
@@ -371,9 +372,8 @@ Envelope version in the first byte, fragment version before the first dot, API u
 ```
 messages(id TEXT PK, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining,
          pepper_id, read_mac BLOB, manage_mac BLOB, verifier_mac BLOB NULL, size, blob_ref TEXT NULL,
-         day_fail_count, day_fail_date, fail_count_total, first_opened_at NULL, ending TEXT NULL)
+         fail_count_total, next_attempt_at, first_opened_at NULL, ending TEXT NULL)
 leases(row_id INTEGER PK, id FK, lease_mac BLOB, pepper_id, lease_expires_at, downloads)
-passphrase_attempts(id, bucket BLOB(3), fail_count, next_attempt_at, purge_at)   WITHOUT ROWID
 tombstones(id TEXT PK, pepper_id, read_mac, manage_mac, state, first_opened_at NULL, ended_at, purge_at)   WITHOUT ROWID
 rate_counters(key TEXT, window_start, count, bytes, purge_at)   WITHOUT ROWID
 ```

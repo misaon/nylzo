@@ -12,6 +12,13 @@ export class KdfError extends Error {
   }
 }
 
+export class WeakPassphraseError extends Error {
+  override readonly name = 'WeakPassphraseError';
+  constructor(message = 'passphrase is shorter than 12 characters') {
+    super(message);
+  }
+}
+
 export class MalformedPassphraseError extends Error {
   override readonly name = 'MalformedPassphraseError';
   constructor(message = 'passphrase is not well-formed Unicode') {

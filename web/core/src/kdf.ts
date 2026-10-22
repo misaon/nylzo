@@ -1,7 +1,7 @@
 import { scryptAsync } from '@noble/hashes/scrypt.js';
 
 import { arrayBufferBacked, utf8 } from './bytes.ts';
-import { KdfError, MalformedPassphraseError } from './errors.ts';
+import { KdfError, MalformedPassphraseError, WeakPassphraseError } from './errors.ts';
 import { KEY_LEN } from './limits.ts';
 
 export const KDF_NONE = 0;
@@ -38,6 +38,17 @@ export function kdfRequiresPassphrase(kdfId: KdfId): boolean {
 
 export function normalizePassphrase(passphrase: string): Uint8Array<ArrayBuffer> {
   return utf8(passphrase.normalize('NFC'));
+}
+
+export const MIN_PASSPHRASE_CHARS = 12;
+
+export function assertStrongPassphrase(passphrase: string): void {
+  if (!passphrase.isWellFormed()) {
+    throw new MalformedPassphraseError();
+  }
+  if ([...passphrase.normalize('NFC')].length < MIN_PASSPHRASE_CHARS) {
+    throw new WeakPassphraseError();
+  }
 }
 
 export function assertWellFormedPassphrase(kdfId: KdfId, passphrase: string): void {

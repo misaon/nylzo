@@ -35,9 +35,8 @@ CREATE TABLE IF NOT EXISTS messages (
 	verifier_mac BLOB,
 	size INTEGER NOT NULL,
 	blob_ref TEXT,
-	day_fail_count INTEGER NOT NULL DEFAULT 0,
-	day_fail_date TEXT NOT NULL DEFAULT '',
 	fail_count_total INTEGER NOT NULL DEFAULT 0,
+	next_attempt_at INTEGER NOT NULL DEFAULT 0,
 	first_opened_at INTEGER,
 	ending TEXT
 );
@@ -52,15 +51,6 @@ CREATE TABLE IF NOT EXISTS leases (
 );
 CREATE INDEX IF NOT EXISTS leases_id ON leases(id);
 CREATE INDEX IF NOT EXISTS leases_expires_at ON leases(lease_expires_at);
-CREATE TABLE IF NOT EXISTS passphrase_attempts (
-	id TEXT NOT NULL,
-	bucket BLOB NOT NULL,
-	fail_count INTEGER NOT NULL,
-	next_attempt_at INTEGER NOT NULL,
-	purge_at INTEGER NOT NULL,
-	PRIMARY KEY (id, bucket)
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS passphrase_attempts_purge_at ON passphrase_attempts(purge_at);
 CREATE TABLE IF NOT EXISTS tombstones (
 	id TEXT PRIMARY KEY,
 	pepper_id INTEGER NOT NULL,
@@ -95,7 +85,7 @@ const (
 	openAttempts  = 10
 	openBackoff   = 20 * time.Millisecond
 	openFastFail  = 200 * time.Millisecond
-	schemaVersion = 1
+	schemaVersion = 2
 	maxCacheKiB   = 512
 )
 
@@ -118,6 +108,9 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if err := dropPerAddressAttempts(tx); err != nil {
+		return err
+	}
 	for _, t := range unorderedTables {
 		if err := dropRowid(tx, t); err != nil {
 			return err
@@ -139,13 +132,47 @@ func migrate(db *sql.DB) error {
 	return err
 }
 
+func dropPerAddressAttempts(tx *sql.Tx) error {
+	columns := map[string]bool{}
+	rows, err := tx.Query(`SELECT name FROM pragma_table_info('messages')`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		columns[name] = true
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	var stmts []string
+	if !columns["next_attempt_at"] {
+		stmts = append(stmts, `ALTER TABLE messages ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0`)
+	}
+	for _, c := range []string{"day_fail_count", "day_fail_date"} {
+		if columns[c] {
+			stmts = append(stmts, `ALTER TABLE messages DROP COLUMN `+c)
+		}
+	}
+	stmts = append(stmts, `DROP TABLE IF EXISTS passphrase_attempts`)
+	for _, stmt := range stmts {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type unorderedTable struct {
 	name, columns, purgeKey string
 }
 
 var unorderedTables = []unorderedTable{
 	{"tombstones", "id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at", "id"},
-	{"passphrase_attempts", "id, bucket, fail_count, next_attempt_at, purge_at", "id, bucket"},
 	{"rate_counters", "key, window_start, count, bytes, purge_at", "key, window_start"},
 }
 
@@ -308,9 +335,9 @@ func (s *Store) Create(ctx context.Context, m *store.Message, counters ...store.
 	})
 }
 
-const recordQuery = `SELECT 'm' AS kind, id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref, day_fail_count, day_fail_date, fail_count_total, first_opened_at, NULL AS ended_at, NULL AS purge_at, ending FROM messages WHERE id = ?
+const recordQuery = `SELECT 'm' AS kind, id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref, fail_count_total, next_attempt_at, first_opened_at, NULL AS ended_at, NULL AS purge_at, ending FROM messages WHERE id = ?
 UNION ALL
-SELECT 't', id, 0, 0, 0, state, 0, 0, 0, 0, 0, pepper_id, read_mac, manage_mac, NULL, 0, NULL, 0, '', 0, first_opened_at, ended_at, purge_at, NULL FROM tombstones WHERE id = ?`
+SELECT 't', id, 0, 0, 0, state, 0, 0, 0, 0, 0, pepper_id, read_mac, manage_mac, NULL, 0, NULL, 0, 0, first_opened_at, ended_at, purge_at, NULL FROM tombstones WHERE id = ?`
 
 type querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
@@ -326,11 +353,10 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 		blobRef, ending                         sql.NullString
 		firstOpened, endedAt, purgeAt           sql.NullInt64
 		version, kdf, flags, opensMax, opensRem int
-		pepperID, ttl, size, dayFail, total     int64
-		dayFailDate                             string
+		pepperID, ttl, size, total, nextAttempt int64
 	)
 	row := q.QueryRowContext(ctx, recordQuery, id, id)
-	err := row.Scan(&kind, &m.ID, &version, &kdf, &flags, &state, &createdAt, &expiresAt, &ttl, &opensMax, &opensRem, &pepperID, &m.ReadMAC, &m.ManageMAC, &verifier, &size, &blobRef, &dayFail, &dayFailDate, &total, &firstOpened, &endedAt, &purgeAt, &ending)
+	err := row.Scan(&kind, &m.ID, &version, &kdf, &flags, &state, &createdAt, &expiresAt, &ttl, &opensMax, &opensRem, &pepperID, &m.ReadMAC, &m.ManageMAC, &verifier, &size, &blobRef, &total, &nextAttempt, &firstOpened, &endedAt, &purgeAt, &ending)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Record{}, store.ErrNotFound
 	}
@@ -353,9 +379,10 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 	m.VerifierMAC = verifier
 	m.Size = size
 	m.BlobRef = blobRef.String
-	m.DayFailCount = int(dayFail)
-	m.DayFailDate = dayFailDate
 	m.FailCountTotal = int(total)
+	if nextAttempt > 0 {
+		m.NextAttemptAt = fromMS(nextAttempt)
+	}
 	m.FirstOpenedAt = optTime(firstOpened)
 	m.Ending = store.State(ending.String)
 	return store.Record{Message: &m}, nil
@@ -363,23 +390,6 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 
 func (s *Store) Get(ctx context.Context, id string) (store.Record, error) {
 	return scanRecord(ctx, s.r, id)
-}
-
-func dayKey(t time.Time) string {
-	return t.UTC().Format("2006-01-02")
-}
-
-func untilMidnight(now time.Time) time.Duration {
-	u := now.UTC()
-	next := time.Date(u.Year(), u.Month(), u.Day()+1, 0, 0, 0, 0, time.UTC)
-	return next.Sub(u)
-}
-
-func ceilMinute(t time.Time) time.Time {
-	if r := t.Truncate(time.Minute); !r.Equal(t) {
-		return r.Add(time.Minute)
-	}
-	return t
 }
 
 func attemptMS(t time.Time) int64 {
@@ -419,46 +429,26 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 			return &store.GoneError{State: store.StateExpired}
 		}
 		if m.PassphraseRequired() {
-			today := dayKey(now)
-			dayCount := 0
-			if m.DayFailDate == today {
-				dayCount = m.DayFailCount
-			}
-			if dayCount >= store.DailyFailCap {
-				passErr = &store.PassphraseError{RetryAfter: untilMidnight(now)}
+			if m.FailCountTotal >= store.MaxFailedAttempts {
+				passErr = &store.PassphraseError{RetryAfter: m.ExpiresAt.Sub(now)}
 				return nil
 			}
-			var failCount int
-			var nextAttempt int64
-			err := tx.QueryRowContext(ctx, `SELECT fail_count, next_attempt_at FROM passphrase_attempts WHERE id = ? AND bucket = ?`, m.ID, p.Bucket).Scan(&failCount, &nextAttempt)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-			if nextAttempt > ms(now) {
-				passErr = &store.PassphraseError{RetryAfter: fromMS(nextAttempt).Sub(now)}
+			if m.NextAttemptAt.After(now) {
+				passErr = &store.PassphraseError{RetryAfter: m.NextAttemptAt.Sub(now)}
 				return nil
 			}
-			ok := p.VerifierSent && p.VerifyMAC(m.PepperID, m.VerifierMAC)
-			if !ok {
-				failCount++
-				dayCount++
+			if !p.VerifierSent || !p.VerifyMAC(m.PepperID, m.VerifierMAC) {
 				total := m.FailCountTotal + 1
-				wait := backoff(failCount)
+				wait := backoff(total)
 				var next time.Time
 				if wait > 0 {
-					next = ceilMinute(now.Add(wait))
+					next = store.CeilMinute(now.Add(wait))
 					wait = next.Sub(now)
 				}
-				purge := m.ExpiresAt.Add(store.TombstoneTTL)
-				if _, err := tx.ExecContext(ctx, `UPDATE messages SET day_fail_count = ?, day_fail_date = ?, fail_count_total = ? WHERE id = ?`, dayCount, today, total, m.ID); err != nil {
+				if _, err := tx.ExecContext(ctx, `UPDATE messages SET fail_count_total = ?, next_attempt_at = ? WHERE id = ?`, total, attemptMS(next), m.ID); err != nil {
 					return err
 				}
-				if _, err := tx.ExecContext(ctx, `INSERT INTO passphrase_attempts (id, bucket, fail_count, next_attempt_at, purge_at) VALUES (?, ?, ?, ?, ?)
-					ON CONFLICT(id, bucket) DO UPDATE SET fail_count = excluded.fail_count, next_attempt_at = excluded.next_attempt_at, purge_at = excluded.purge_at`,
-					m.ID, p.Bucket, failCount, attemptMS(next), ms(purge)); err != nil {
-					return err
-				}
-				passErr = &store.PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, store.FreeAttempts-failCount)}
+				passErr = &store.PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, store.FreeAttempts-total)}
 				return nil
 			}
 		}
@@ -473,7 +463,7 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 		if _, err := tx.ExecContext(ctx, `UPDATE messages SET opens_remaining = ?, state = ?, first_opened_at = ? WHERE id = ?`, m.OpensRemaining, string(m.State), ms(*m.FirstOpenedAt), m.ID); err != nil {
 			return err
 		}
-		expires := now.Add(store.LeaseFor(m.Size))
+		expires := store.CeilMinute(now.Add(store.LeaseFor(m.Size)))
 		res, err := tx.ExecContext(ctx, `INSERT INTO leases (id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES (?, ?, ?, ?, 0)`, m.ID, p.LeaseMAC, p.LeasePepperID, ms(expires))
 		if err != nil {
 			return err
@@ -669,9 +659,6 @@ func endInTx(ctx context.Context, tx *sql.Tx, m *store.Message, state store.Stat
 	if _, err := tx.ExecContext(ctx, `DELETE FROM messages WHERE id = ?`, m.ID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM passphrase_attempts WHERE id = ?`, m.ID); err != nil {
-		return err
-	}
 	var firstOpened any
 	if m.FirstOpenedAt != nil {
 		firstOpened = ms(*m.FirstOpenedAt)
@@ -778,7 +765,7 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 	})
 	r.Resumed = resumed
 	errs = append(errs, rerrs...)
-	counts := map[string]*int{"tombstones": &r.Tombstones, "rate_counters": &r.Counters, "passphrase_attempts": &r.Attempts}
+	counts := map[string]*int{"tombstones": &r.Tombstones, "rate_counters": &r.Counters}
 	for _, t := range unorderedTables {
 		n, err := s.purge(ctx, t.name, t.purgeKey, "purge_at", now)
 		if err != nil {

@@ -971,6 +971,43 @@
       "valid": false
     }
   ],
+  "passphrase_strength": [
+    {
+      "name": "empty",
+      "passphrase": "",
+      "accepted": false
+    },
+    {
+      "name": "eleven ASCII characters",
+      "passphrase": "eleven char",
+      "accepted": false
+    },
+    {
+      "name": "twelve ASCII characters",
+      "passphrase": "twelve chars",
+      "accepted": true
+    },
+    {
+      "name": "eleven characters after NFC, twelve code points before",
+      "passphrase": "café au lai",
+      "accepted": false
+    },
+    {
+      "name": "twelve characters after NFC",
+      "passphrase": "café au lait",
+      "accepted": true
+    },
+    {
+      "name": "eleven astral characters",
+      "passphrase": "😀😀😀😀😀😀😀😀😀😀😀",
+      "accepted": false
+    },
+    {
+      "name": "twelve astral characters",
+      "passphrase": "😀😀😀😀😀😀😀😀😀😀😀😀",
+      "accepted": true
+    }
+  ],
   "server": {
     "pepper_hex": "a59a077138be894c1284db9057e9c47ddf644cf703cd821b445445c1dd3e409f",
     "pepper_id": 122,

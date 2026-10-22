@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -310,10 +311,8 @@ func TestReadRateLimitCountsBlob(t *testing.T) {
 	}
 }
 
-func TestPassphraseBackoffWithoutIPScope(t *testing.T) {
-	cfg := baseConfig(pepperA, nil)
-	cfg.PassphraseIPScope = false
-	h := newHarness(t, cfg)
+func TestPassphraseBackoffIsSharedByEveryReader(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
 	h.mustCreate(m)
 	wrong := core.Encode(make([]byte, 32))
@@ -322,7 +321,7 @@ func TestPassphraseBackoffWithoutIPScope(t *testing.T) {
 	}
 	resp, body := h.claim(m, m.verifier, "198.51.100.1")
 	if resp.StatusCode != 403 || decodeJSON(t, body)["retry_after"].(float64) != 60 {
-		t.Fatalf("one shared bucket must apply the backoff, rounded up to the minute, across addresses: %d %s", resp.StatusCode, body)
+		t.Fatalf("the backoff must apply to every address, rounded up to the minute: %d %s", resp.StatusCode, body)
 	}
 }
 
@@ -783,7 +782,8 @@ func TestConfigBounds(t *testing.T) {
 		"max-ttl-over-7d-sec":  with("NYLZO_MAX_TTL", "604801"),
 		"default-ttl-under-60": with("NYLZO_DEFAULT_TTL", "59"),
 		"pow-concurrency-17":   with("NYLZO_POW_CONCURRENCY", "17"),
-		"ip-scope-garbage":     with("NYLZO_PASSPHRASE_IP_SCOPE", "maybe"),
+		"ip-scope-removed":     with("NYLZO_PASSPHRASE_IP_SCOPE", "on"),
+		"max-opens-above-100":  with("NYLZO_MAX_OPENS", "101"),
 		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
 		"default-kdf-none":     with("NYLZO_DEFAULT_KDF", "0"),
 		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
@@ -796,11 +796,7 @@ func TestConfigBounds(t *testing.T) {
 			t.Errorf("%s accepted", name)
 		}
 	}
-	cfg, err := server.FromEnv(with("NYLZO_PASSPHRASE_IP_SCOPE", "off"), true)
-	if err != nil || cfg.PassphraseIPScope {
-		t.Fatalf("ip scope off: %v %v", err, cfg.PassphraseIPScope)
-	}
-	cfg, err = server.FromEnv(with("NYLZO_MAX_TTL", "604800"), true)
+	cfg, err := server.FromEnv(with("NYLZO_MAX_TTL", "604800"), true)
 	if err != nil || cfg.Limits.MaxTTL != store.TombstoneTTL {
 		t.Fatalf("max ttl of 7 days: %v %v", err, cfg.Limits.MaxTTL)
 	}
@@ -993,7 +989,9 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 		"a\u009bb\u202ec\u007fd\u2066e%E2%80%AEf\nnext",
 	}
 	for i, reason := range reasons {
-		body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": reason})
+		reported := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		h.mustCreate(reported)
+		body, _ := json.Marshal(map[string]string{"id": reported.id.String(), "read_token": reported.readToken, "reason": reason})
 		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: fmt.Sprintf("203.0.%d.1", 90+i), body: body, headers: map[string]string{"Content-Type": "application/json"}})
 		if resp.StatusCode != 202 {
 			t.Fatalf("report %d: %d", i, resp.StatusCode)
@@ -1035,12 +1033,14 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 	}
 }
 
-func TestAbuseReportsCappedPerReporterRange(t *testing.T) {
+func TestAbuseReportsCappedPerMessage(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	third := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	h.mustCreate(other)
+	h.mustCreate(third)
 	path := filepath.Join(h.dir, "abuse-reports.jsonl")
 	report := func(msg *message, ip string) int {
 		body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam"}`, msg.id.String(), msg.readToken)
@@ -1051,38 +1051,46 @@ func TestAbuseReportsCappedPerReporterRange(t *testing.T) {
 		data, _ := os.ReadFile(path)
 		return strings.Count(string(data), "\n")
 	}
-	for i := range 5 {
-		if code := report(m, fmt.Sprintf("198.51.7.%d", i+1)); code != 202 {
+	for i := range 4 {
+		if code := report(m, fmt.Sprintf("198.51.%d.1", 7+i)); code != 202 {
 			t.Fatalf("report %d: %d", i, code)
 		}
 	}
 	if n := stored(); n != 3 {
-		t.Fatalf("one /24 stored %d reports for one message, want 3", n)
+		t.Fatalf("one message stored %d reports from different ranges, want 3", n)
 	}
-	report(m, "203.0.113.1")
 	report(other, "198.51.7.9")
-	if n := stored(); n != 5 {
-		t.Fatalf("other ranges and other messages must keep their own budget: %d", n)
+	if n := stored(); n != 4 {
+		t.Fatalf("another message must keep its own budget: %d", n)
 	}
 	if err := os.Truncate(path, 16<<20); err != nil {
 		t.Fatal(err)
 	}
-	if code := report(m, "192.0.2.1"); code != 503 {
+	if code := report(third, "192.0.2.1"); code != 503 {
 		t.Fatalf("full file: %d", code)
 	}
 	if err := os.Truncate(path, 0); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 3 {
-		report(m, fmt.Sprintf("192.0.2.%d", i+2))
+		report(third, fmt.Sprintf("192.0.2.%d", i+2))
 	}
 	if n := stored(); n != 3 {
-		t.Fatalf("a report refused for a full file must not use up the range budget: %d", n)
+		t.Fatalf("a report refused for a full file must not use up the message budget: %d", n)
 	}
 	h.clock.Advance(24 * time.Hour)
 	report(m, "198.51.7.20")
 	if n := stored(); n != 4 {
 		t.Fatalf("the budget must reset the next UTC day: %d", n)
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(h.dir, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var tied int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'abuse:id:%:%'`).Scan(&tied); err != nil || tied != 0 {
+		t.Fatalf("a counter ties a message to a reporter range: %d %v", tied, err)
 	}
 }
 
@@ -1458,24 +1466,26 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 func TestOverBudgetReportWithAFullFileIsAccepted(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	fresh := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
-	report := func(ip string) int {
-		body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "spam"})
+	h.mustCreate(fresh)
+	report := func(msg *message, ip string) int {
+		body, _ := json.Marshal(map[string]string{"id": msg.id.String(), "read_token": msg.readToken, "reason": "spam"})
 		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	for i := range 3 {
-		if code := report(fmt.Sprintf("198.51.7.%d", i+1)); code != 202 {
+		if code := report(m, fmt.Sprintf("198.51.7.%d", i+1)); code != 202 {
 			t.Fatalf("report %d: %d", i+1, code)
 		}
 	}
 	if err := os.Truncate(filepath.Join(h.dir, "abuse-reports.jsonl"), 16<<20); err != nil {
 		t.Fatal(err)
 	}
-	if code := report("198.51.7.9"); code != 202 {
+	if code := report(m, "198.51.7.9"); code != 202 {
 		t.Fatalf("an over-budget report with a full file: %d", code)
 	}
-	if code := report("198.51.8.1"); code != 503 {
+	if code := report(fresh, "198.51.8.1"); code != 503 {
 		t.Fatalf("a report that would be stored in a full file: %d", code)
 	}
 }

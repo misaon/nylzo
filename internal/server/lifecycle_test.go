@@ -3,6 +3,7 @@ package server_test
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -589,5 +590,34 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 	}
 	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("report file mode: %v %v", info, err)
+	}
+}
+
+func TestStoredTimesAreWholeMinutes(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	h.clock.Advance(17*time.Second + 123*time.Millisecond)
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "minute")
+	resp, body := h.create(m)
+	if resp.StatusCode != http.StatusCreated || decodeJSON(t, body)["expires_at"] != "2026-10-22T11:01:00Z" {
+		t.Fatalf("expires_at must be rounded up to the full minute: %d %s", resp.StatusCode, body)
+	}
+	if resp, _ := h.claim(m, "", ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(h.dir, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var created, expires, lease int64
+	if err := db.QueryRow(`SELECT m.created_at, m.expires_at, l.lease_expires_at FROM messages m JOIN leases l ON l.id = m.id WHERE m.id = ?`, m.id.String()).Scan(&created, &expires, &lease); err != nil {
+		t.Fatal(err)
+	}
+	minute := time.Minute.Milliseconds()
+	if created%minute != 0 || expires%minute != 0 || lease%minute != 0 {
+		t.Fatalf("stored times must be whole minutes: created %d, expires %d, lease %d", created, expires, lease)
+	}
+	if created != time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC).UnixMilli() || lease < h.clock.Now().Add(store.LeaseDuration).UnixMilli() {
+		t.Fatalf("created_at rounds down, the lease rounds up: created %d, lease %d", created, lease)
 	}
 }

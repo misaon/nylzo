@@ -90,7 +90,7 @@ func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 	s := &Server{store: cancelAfterCommit{st}, abusePath: filepath.Join(t.TempDir(), "abuse-reports.jsonl"), log: slog.New(slog.DiscardHandler)}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := s.recordAbuse(ctx, time.Unix(1_800_000_000, 0), core.NewID().String(), [pepper.BucketLen]byte{}, "spam"); err != nil {
+	if err := s.recordAbuse(ctx, time.Unix(1_800_000_000, 0), core.NewID().String(), "spam"); err != nil {
 		t.Fatalf("a report whose slot was reserved must be stored even if the client left: %v", err)
 	}
 	if data, err := os.ReadFile(s.abusePath); err != nil || len(data) == 0 {

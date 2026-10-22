@@ -159,7 +159,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
 	h.reopen(cfg)
-	m := newMessage(t, core.KDFPBKDF2, "correct", 2, 86400, "guarded")
+	m := newMessage(t, core.KDFPBKDF2, "correct", 2, 604800, "guarded")
 	m.ip = "203.0.113.10"
 	h.mustCreate(m)
 	wrong := core.Encode(make([]byte, 32))
@@ -183,25 +183,33 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	if meta["opens_remaining"].(float64) != 2 {
 		t.Fatalf("wrong passphrase consumed an open: %v", meta)
 	}
+	if resp, _ = h.claim(m, m.verifier, "203.0.113.99"); resp.StatusCode != 403 {
+		t.Fatalf("the backoff belongs to the message, so another address waits too: %d", resp.StatusCode)
+	}
+	h.clock.Advance(time.Minute)
 	resp, _ = h.claim(m, m.verifier, "203.0.113.99")
 	if resp.StatusCode != 200 {
-		t.Fatalf("correct passphrase from another address: %d", resp.StatusCode)
+		t.Fatalf("correct passphrase after the wait: %d", resp.StatusCode)
 	}
 	_, st := h.status(m)
 	if st["failed_passphrase_attempts"].(float64) != 10 || st["opens_used"].(float64) != 1 {
 		t.Fatalf("status: %v", st)
 	}
 	for i := 0; i < 90; i++ {
-		ip := "198.51.100." + strconv.Itoa(i%250)
-		resp, _ := h.claim(m, wrong, ip)
+		resp, body := h.claim(m, wrong, "198.51.100."+strconv.Itoa(i%250))
 		if resp.StatusCode != 403 {
 			t.Fatalf("flood attempt %d: %d", i, resp.StatusCode)
 		}
+		h.clock.Advance(time.Duration(decodeJSON(t, body)["retry_after"].(float64)) * time.Second)
 	}
 	resp, body := h.claim(m, m.verifier, "192.0.2.77")
 	j := decodeJSON(t, body)
-	if resp.StatusCode != 403 || j["retry_after"].(float64) <= 0 {
-		t.Fatalf("daily cap must lock every address: %d %s", resp.StatusCode, body)
+	if resp.StatusCode != 403 || j["retry_after"].(float64) <= 0 || j["attempts_left"].(float64) != 0 {
+		t.Fatalf("100 failed attempts must lock the message for every address: %d %s", resp.StatusCode, body)
+	}
+	h.clock.Advance(24 * time.Hour)
+	if resp, _ := h.claim(m, m.verifier, "192.0.2.78"); resp.StatusCode != 403 {
+		t.Fatalf("the lock must outlast the UTC day: %d", resp.StatusCode)
 	}
 	_, st = h.status(m)
 	if st["failed_passphrase_attempts"].(float64) != 100 {
@@ -340,7 +348,7 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 	}
 	m2 := newMessage(t, core.KDFNone, "", 1, 60, "swept")
 	h.mustCreate(m2)
-	h.clock.Advance(61 * time.Second)
+	h.clock.Advance(2 * time.Minute)
 	report, err := h.srv.SweepOnce(t.Context())
 	if err != nil || report.Expired != 1 || h.blobExists(m2.id) {
 		t.Fatalf("sweep: %+v %v", report, err)
@@ -352,8 +360,8 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 	if resp, _ := h.metadata(m); resp.StatusCode != 404 {
 		t.Fatalf("after tombstone purge: %d", resp.StatusCode)
 	}
-	if resp, _ := h.create(m); resp.StatusCode != 201 {
-		t.Fatalf("id reusable after purge: %d", resp.StatusCode)
+	if resp, body := createWithToken(t, h, m, nil); resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "id_token" {
+		t.Fatalf("an ended id must not be registered again without a token the server issued: %d %s", resp.StatusCode, body)
 	}
 }
 
