@@ -492,6 +492,8 @@ func (f *File) meta() error {
 	add("depth-32", `{"v":1,"text":"x","extra":`+strings.Repeat("[", 31)+strings.Repeat("]", 31)+`}`, true)
 	add("depth-33", `{"v":1,"text":"x","extra":`+strings.Repeat("[", 32)+strings.Repeat("]", 32)+`}`, false)
 	add("depth-brackets-in-string", `{"v":1,"text":"`+strings.Repeat("[", 40)+`"}`, true)
+	add("depth-escaped-quote-then-brackets", `{"v":1,"text":"\"`+strings.Repeat("[", 40)+`"}`, true)
+	add("depth-escaped-backslash-then-nesting", `{"v":1,"text":"\\","extra":`+strings.Repeat("[", 32)+strings.Repeat("]", 32)+`}`, false)
 	add("name-del", `{"v":1,"file":{"name":"a\u007fb","mime":"","size":1}}`, false)
 	add("name-unit-separator", `{"v":1,"file":{"name":"a\u001fb","mime":"","size":1}}`, false)
 	add("mime-null", `{"v":1,"file":{"name":"a","mime":null,"size":1}}`, true)

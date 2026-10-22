@@ -14,6 +14,7 @@ import (
 	"net/http/httptrace"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -542,11 +543,15 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 			t.Fatal(err)
 		}
 		resp, _ := h.claim(m, "", "")
-		if resp.StatusCode != 500 || resp.Header.Get("X-Nylzo-Lease") == "" {
-			t.Fatalf("opens %d: a lost blob must answer 500 with the lease: %d", opens, resp.StatusCode)
+		if resp.StatusCode != 500 || resp.Header.Get("X-Nylzo-Lease") != "" {
+			t.Fatalf("opens %d: a lost blob must answer 500 before any open is spent: %d", opens, resp.StatusCode)
 		}
-		if resp, meta := h.metadata(m); resp.StatusCode != 200 || meta["ended_at"] != nil {
-			t.Fatalf("opens %d: a lost blob must not end the message: %v", opens, meta)
+		h.clock.Advance(store.LeaseDuration + time.Minute)
+		if _, err := h.srv.SweepOnce(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if resp, meta := h.metadata(m); resp.StatusCode != 200 || meta["state"] != "available" || meta["opens_remaining"] != float64(opens) {
+			t.Fatalf("opens %d: a lost blob must not spend an open or end the message: %v", opens, meta)
 		}
 	}
 }
@@ -554,11 +559,11 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	crash := func(m *message, state store.State) {
-		if _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), state); err != nil {
-			t.Fatal(err)
+		if _, _, err := h.store.MarkEnding(context.Background(), m.id.String(), state, h.clock.Now()); err != nil {
+			t.Error(err)
 		}
-		if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
-			t.Fatal(err)
+		if err := h.blobs.Delete(context.Background(), m.id.String()); err != nil {
+			t.Error(err)
 		}
 	}
 	claimed := newMessage(t, core.KDFNone, "", 2, 3600, "x")
@@ -596,7 +601,7 @@ func TestClaimKeepsLeaseWhenBlobOpenFails(t *testing.T) {
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
-	fb.set(func(b *faultyBlobs) { b.failOpen = errInjected })
+	fb.set(func(b *faultyBlobs) { b.failOpen = errInjected; b.passOpens = 1 })
 	resp, _ := h.claim(m, "", "")
 	lease := resp.Header.Get("X-Nylzo-Lease")
 	if resp.StatusCode != 500 || lease == "" {
@@ -964,6 +969,9 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 		"bare " + secret + " end",
 		strings.Repeat("<", 600),
 		"see https%3A%2F%2Fx.example%2Fp%23token-abc def",
+		"see p%2523token-abc def",
+		"see p%252523token-abc def",
+		"see p%25252523token-abc def",
 	}
 	for i, reason := range reasons {
 		body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": reason})
@@ -993,6 +1001,11 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 	if got := reason(6); got != "see https://x.example/p[redacted] def" {
 		t.Fatalf("percent-encoded hash run: %q", got)
 	}
+	for i, want := range map[int]string{7: "see p[redacted] def", 8: "see p[redacted] def", 9: "see p%23token-abc def"} {
+		if got := reason(i); got != want {
+			t.Fatalf("reason %d: %q, want %q", i, got, want)
+		}
+	}
 	if got := reason(1); len(got) != 999 || strings.ContainsRune(got, utf8.RuneError) {
 		t.Fatalf("cut is not UTF-8 safe: %d", len(got))
 	}
@@ -1003,21 +1016,249 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 	}
 }
 
-func TestAbuseReportsCappedPerMessage(t *testing.T) {
+func TestAbuseReportsCappedPerReporterRange(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	other := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
-	for i := range 12 {
-		body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam %d"}`, m.id.String(), m.readToken, i)
-		if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: fmt.Sprintf("198.51.%d.1", i), body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
-			t.Fatalf("report %d: %d", i, resp.StatusCode)
+	h.mustCreate(other)
+	path := filepath.Join(h.dir, "abuse-reports.jsonl")
+	report := func(msg *message, ip string) int {
+		body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam"}`, msg.id.String(), msg.readToken)
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
+		return resp.StatusCode
+	}
+	stored := func() int {
+		data, _ := os.ReadFile(path)
+		return strings.Count(string(data), "\n")
+	}
+	for i := range 5 {
+		if code := report(m, fmt.Sprintf("198.51.7.%d", i+1)); code != 202 {
+			t.Fatalf("report %d: %d", i, code)
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	if n := stored(); n != 3 {
+		t.Fatalf("one /24 stored %d reports for one message, want 3", n)
+	}
+	report(m, "203.0.113.1")
+	report(other, "198.51.7.9")
+	if n := stored(); n != 5 {
+		t.Fatalf("other ranges and other messages must keep their own budget: %d", n)
+	}
+	if err := os.Truncate(path, 16<<20); err != nil {
+		t.Fatal(err)
+	}
+	if code := report(m, "192.0.2.1"); code != 503 {
+		t.Fatalf("full file: %d", code)
+	}
+	if err := os.Truncate(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 3 {
+		report(m, fmt.Sprintf("192.0.2.%d", i+2))
+	}
+	if n := stored(); n != 3 {
+		t.Fatalf("a report refused for a full file must not use up the range budget: %d", n)
+	}
+	h.clock.Advance(24 * time.Hour)
+	report(m, "198.51.7.20")
+	if n := stored(); n != 4 {
+		t.Fatalf("the budget must reset the next UTC day: %d", n)
+	}
+}
+
+func TestBurnFinishesRecordedCancel(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func(id string) {
+		if _, _, err := inner.MarkEnding(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	resp, body := h.post(m, "burn", m.readToken)
+	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "cancelled" {
+		t.Fatalf("burn after a recorded cancel: %d %s", resp.StatusCode, body)
+	}
+	if _, st := h.status(m); st["state"] != "cancelled" {
+		t.Fatalf("status: %v", st)
+	}
+}
+
+func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(m)
+	if _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), store.StateCancelled, h.clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fb.set(func(b *faultyBlobs) { b.failDelete[m.id.String()] = true })
+	unknown, unknownBody := h.do(request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
+	wrong, wrongBody := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), headers: map[string]string{"Authorization": "Bearer " + core.Encode(make([]byte, 32))}})
+	if unknown.StatusCode != 404 || wrong.StatusCode != 404 || !bytes.Equal(unknownBody, wrongBody) {
+		t.Fatalf("a storage fault must not change the 404 for a wrong token: %d %d", unknown.StatusCode, wrong.StatusCode)
+	}
+	resp, body := h.claim(m, "", "")
+	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "cancelled" {
+		t.Fatalf("claim on a recorded cancel whose delete keeps failing: %d %s", resp.StatusCode, body)
+	}
+	if _, meta := h.metadata(m); meta["state"] != "cancelled" {
+		t.Fatalf("metadata: %v", meta)
+	}
+}
+
+func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	inner := h.store
+	fb.set(func(b *faultyBlobs) {
+		b.onOpen = func(ref string) {
+			if _, err := store.EndMessage(context.Background(), inner, b.Blobs, ref, store.StateDeleted, h.clock.Now()); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	resp, body := h.claim(m, "", "")
+	if resp.StatusCode != 410 || resp.Header.Get("X-Nylzo-Lease") != "" || decodeJSON(t, body)["state"] != "deleted" {
+		t.Fatalf("claim racing a committed burn: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestHTTPErrorLogReportsDrops(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	errLog := h.srv.HTTPServer().ErrorLog
+	for range 41 {
+		errLog.Printf("http2: server: error reading preface")
+	}
+	h.clock.Advance(time.Second)
+	errLog.Printf("http2: server: error reading preface")
+	if !strings.Contains(h.logBuf.String(), `"dropped":21`) {
+		t.Fatalf("drop count not reported: %s", h.logBuf.String())
+	}
+}
+
+func TestRefusedPrefixTakesNoInstanceToken(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 10, 10
+	h := newHarness(t, cfg)
+	for i := range 20 {
+		h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:1:%x::1", i)})
+	}
+	for i := range 5 {
+		if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:%x::1", i+2)}); resp.StatusCode != 200 {
+			t.Fatalf("a refused /48 drained the instance bucket: request %d got %d", i, resp.StatusCode)
+		}
+	}
+}
+
+func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
+	if got := server.Defaults().Limits.MaxObjectBytes; got != 5373983 {
+		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
+	}
+	h := newHarness(t, baseConfig(pepperA, nil))
+	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+	if got := decodeJSON(t, body)["limits"].(map[string]any)["max_object_bytes"]; got != float64(5373983) {
+		t.Fatalf("instance reports %v", got)
+	}
+}
+
+func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 10
+	h := newHarness(t, cfg)
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	conn, err := net.Dial("tcp", h.listen())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(data), "\n"); n != 10 {
-		t.Fatalf("stored %d reports for one message in a day, want 10", n)
+	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), m.createHeader(0))
+	conn.Write(m.object[:100])
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c, err := h.store.RateGet(t.Context(), "global:d", day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.Count == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the slot was never reserved: %+v", c)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	conn.Close()
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		c, err := h.store.RateGet(t.Context(), "global:d", day)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.Count == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a disconnected create kept its cap slot: %+v", c)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 2
+	h := newHarness(t, cfg)
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	hit := store.RateHit{Key: "global:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
+	for range 2 {
+		if _, ok, err := h.store.RateReserve(t.Context(), hit, 2); err != nil || !ok {
+			t.Fatal(err)
+		}
+	}
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	resp, _ := h.create(m)
+	if resp.StatusCode != 503 || resp.Header.Get("Retry-After") != "60" {
+		t.Fatalf("pending creates must ask for a short retry: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+	if _, err := h.store.RateHit(t.Context(), []store.RateHit{{Key: "global:stored:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}, {Key: "global:stored:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
+	resp, _ = h.create(m)
+	if retry, _ := strconv.Atoi(resp.Header.Get("Retry-After")); resp.StatusCode != 503 || retry < 3600 {
+		t.Fatalf("a cap full of stored messages must point to the next day: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+}
+
+type failingEndStore struct {
+	store.Store
+}
+
+func (s failingEndStore) End(ctx context.Context, id string, state store.State, now time.Time) error {
+	return errInjected
+}
+
+func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(m)
+	inner := h.store
+	h.store = &racingStore{Store: failingEndStore{Store: inner}, race: func(id string) {
+		if _, _, err := inner.MarkEnding(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+		if err := h.blobs.Delete(context.Background(), id); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	resp, body := h.claim(m, "", "")
+	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "cancelled" {
+		t.Fatalf("an ending that cannot finish must still report its recorded state: %d %s", resp.StatusCode, body)
 	}
 }

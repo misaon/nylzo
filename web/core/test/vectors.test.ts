@@ -160,6 +160,9 @@ describe('envelope', () => {
 });
 
 describe('link', () => {
+  it('has canonical vectors for the format round trip', () => {
+    expect(vectors.link.filter((v) => v.canonical === true).length).toBeGreaterThan(0);
+  });
   for (const v of vectors.link) {
     it(v.name, () => {
       if (!v.valid) {

@@ -109,6 +109,8 @@ type faultyBlobs struct {
 	failOpen   error
 	failPut    error
 	failList   error
+	passOpens  int
+	onOpen     func(ref string)
 }
 
 var errInjected = errors.New("test: injected storage failure")
@@ -131,8 +133,15 @@ func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
 
 func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {
 	b.mu.Lock()
-	err := b.failOpen
+	err, hook := b.failOpen, b.onOpen
+	if err != nil && b.passOpens > 0 {
+		b.passOpens--
+		err = nil
+	}
 	b.mu.Unlock()
+	if hook != nil {
+		hook(ref)
+	}
 	if err != nil {
 		return nil, 0, err
 	}

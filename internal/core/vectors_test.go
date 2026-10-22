@@ -254,6 +254,15 @@ func TestEnvelopeVectors(t *testing.T) {
 
 func TestLinkVectors(t *testing.T) {
 	f := loadVectors(t)
+	canonical := 0
+	for _, v := range f.Link {
+		if v.Canonical {
+			canonical++
+		}
+	}
+	if canonical == 0 {
+		t.Fatal("no canonical link vectors: the format round trip would never run")
+	}
 	for _, v := range f.Link {
 		t.Run(v.Name, func(t *testing.T) {
 			link, err := core.ParseLink(v.Input)

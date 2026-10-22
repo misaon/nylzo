@@ -185,7 +185,7 @@ type Store interface {
 	Ack(ctx context.Context, leaseRowID int64) error
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
 	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
-	MarkEnding(ctx context.Context, id string, state State) (State, string, error)
+	MarkEnding(ctx context.Context, id string, state State, now time.Time) (State, string, error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)

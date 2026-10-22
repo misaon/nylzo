@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -49,7 +50,7 @@ func TestOpenMigratesOlderSchema(t *testing.T) {
 	}
 	defer s.Close()
 	ctx := t.Context()
-	state, ref, err := s.MarkEnding(ctx, "AAAAAAAAAAAAAAAAAAAAAA", store.StateCancelled)
+	state, ref, err := s.MarkEnding(ctx, "AAAAAAAAAAAAAAAAAAAAAA", store.StateCancelled, time.Unix(0, 0))
 	if err != nil || state != store.StateCancelled || ref == "" {
 		t.Fatalf("mark ending after migration: %s %q %v", state, ref, err)
 	}

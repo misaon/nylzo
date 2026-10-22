@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"strconv"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -83,24 +82,32 @@ CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at);
 
 const indexes = `
 DROP INDEX IF EXISTS messages_release;
-CREATE INDEX IF NOT EXISTS messages_release_id ON messages(opens_remaining, id) WHERE blob_ref IS NOT NULL;
+DROP INDEX IF EXISTS messages_release_id;
+CREATE INDEX IF NOT EXISTS messages_releasable ON messages(id) WHERE opens_remaining = 0 AND blob_ref IS NOT NULL;
 CREATE INDEX IF NOT EXISTS messages_ending ON messages(id) WHERE ending IS NOT NULL;
 `
 
 const readerConns = 8
 
 func migrate(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	var has int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'ending'`).Scan(&has); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'ending'`).Scan(&has); err != nil {
 		return err
 	}
 	if has == 0 {
-		if _, err := db.Exec(`ALTER TABLE messages ADD COLUMN ending TEXT`); err != nil {
+		if _, err := tx.Exec(`ALTER TABLE messages ADD COLUMN ending TEXT`); err != nil {
 			return err
 		}
 	}
-	_, err := db.Exec(indexes)
-	return err
+	if _, err := tx.Exec(indexes); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 type Store struct {
@@ -480,7 +487,7 @@ func endingOr(m *store.Message, state store.State) store.State {
 	return state
 }
 
-func (s *Store) MarkEnding(ctx context.Context, id string, state store.State) (store.State, string, error) {
+func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, error) {
 	var ending store.State
 	var ref string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
@@ -488,14 +495,27 @@ func (s *Store) MarkEnding(ctx context.Context, id string, state store.State) (s
 		if err != nil {
 			return err
 		}
-		if rec.Message == nil {
+		m := rec.Message
+		if m == nil {
 			return store.ErrNotFound
 		}
-		ending, ref = endingOr(rec.Message, state), rec.Message.BlobRef
-		if rec.Message.Ending != "" {
+		ref = m.BlobRef
+		expired := !now.Before(m.ExpiresAt)
+		switch {
+		case m.Ending != "":
+			ending = m.Ending
+			return nil
+		case m.OpensRemaining == 0 && (expired || state == store.StateExpired):
+			ending = store.StateOpened
+		case expired:
+			ending = store.StateExpired
+		default:
+			ending = state
+		}
+		if expired {
 			return nil
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ?`, string(state), id)
+		_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ?`, string(ending), id)
 		return err
 	})
 	return ending, ref, err
@@ -600,12 +620,12 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 		errs = append(errs, err)
 	}
 	r.ExpiredLeases = n
-	released, rerrs := s.eachID(ctx, `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`, func(id string) (bool, error) {
+	released, rerrs := s.eachID(ctx, `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`, nil, func(id string) (bool, error) {
 		return store.Release(ctx, s, b, id, now)
 	})
 	r.BlobsReleased = released
 	errs = append(errs, rerrs...)
-	resumed, rerrs := s.eachID(ctx, `SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > `+strconv.FormatInt(ms(now), 10)+` AND id > ? ORDER BY id LIMIT ?`, func(id string) (bool, error) {
+	resumed, rerrs := s.eachID(ctx, `SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`, []any{ms(now)}, func(id string) (bool, error) {
 		_, err := store.EndMessage(ctx, s, b, id, store.StateDeleted, now)
 		if errors.Is(err, store.ErrNotFound) {
 			return false, nil
@@ -627,12 +647,12 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 	return r, errors.Join(errs...)
 }
 
-func (s *Store) eachID(ctx context.Context, query string, fn func(id string) (bool, error)) (int, []error) {
+func (s *Store) eachID(ctx context.Context, query string, args []any, fn func(id string) (bool, error)) (int, []error) {
 	var errs []error
 	done := 0
 	last := ""
 	for ctx.Err() == nil {
-		ids, err := s.queryIDs(ctx, query, last, store.SweepBatch)
+		ids, err := s.queryIDs(ctx, query, append(args[:len(args):len(args)], last, store.SweepBatch)...)
 		if err != nil {
 			return done, append(errs, err)
 		}
@@ -656,12 +676,11 @@ func (s *Store) eachID(ctx context.Context, query string, fn func(id string) (bo
 
 type expiredRow struct {
 	id        string
-	blobRef   string
 	expiresAt int64
 }
 
 func (s *Store) expiredRows(ctx context.Context, now time.Time, after expiredRow) ([]expiredRow, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT id, blob_ref, expires_at FROM messages WHERE expires_at <= ? AND (expires_at, id) > (?, ?) ORDER BY expires_at, id LIMIT ?`,
+	rows, err := s.r.QueryContext(ctx, `SELECT id, expires_at FROM messages WHERE expires_at <= ? AND (expires_at, id) > (?, ?) ORDER BY expires_at, id LIMIT ?`,
 		ms(now), after.expiresAt, after.id, store.SweepBatch)
 	if err != nil {
 		return nil, err
@@ -670,11 +689,9 @@ func (s *Store) expiredRows(ctx context.Context, now time.Time, after expiredRow
 	var out []expiredRow
 	for rows.Next() {
 		var row expiredRow
-		var ref sql.NullString
-		if err := rows.Scan(&row.id, &ref, &row.expiresAt); err != nil {
+		if err := rows.Scan(&row.id, &row.expiresAt); err != nil {
 			return nil, err
 		}
-		row.blobRef = ref.String
 		out = append(out, row)
 	}
 	return out, rows.Err()

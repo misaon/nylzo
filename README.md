@@ -72,18 +72,20 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_RATE_ABUSE_HOUR` | `5` | hlášení zneužití na kyblík |
 | `NYLZO_RATE_SOURCE_RPS`, `NYLZO_RATE_SOURCE_BURST` | `10`, `20` | paměťový token bucket jednoho zdroje (kyblík /32 nebo /64) pro `/api/*`. Za ním následuje bucket rozsahu /24 nebo /48 s polovinou kapacity instance, takže jeden zdroj ani jeden rozsah nevezme víc než polovinu bucketu instance |
 | `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `50`, `100` | paměťový token bucket instance pro `/api/*` |
-| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; místo se rezervuje atomicky a při každém selhání se vrátí, takže se počítají jen uložené zprávy a souběh strop nepřekročí; od 50 % vyžaduje PoW, při 100 % vrací 503 |
+| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; od 50 % vyžaduje PoW, při 100 % vrací 503. Místo se rezervuje atomicky až po PoW a při každém selhání se vrátí, takže souběh strop nepřekročí. Když strop zaplní jen rozběhnutá nahrávání, 503 radí zkusit to za 60 s, jinak až další den |
 | `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost (nejvýš 8) a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 16). Každou výzvu lze použít jen jednou |
 
 Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez nich server vidí jen adresu proxy a všichni klienti sdílejí jeden kyblík, včetně limitu na zdroj.
 
 Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
 
-Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, vymaže z něj fragmenty odkazů a dlouhé tokeny a zkrátí ho. Na jednu zprávu uloží nejvýš 10 hlášení denně. Když soubor dosáhne 16 MiB, server odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit.
+Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, vymaže z něj fragmenty odkazů a dlouhé tokeny a zkrátí ho. Na jednu zprávu a jeden rozsah adres /24 nebo /48 uloží nejvýš 3 hlášení denně, takže odesílatel zprávy nemůže limit vyčerpat ostatním. Když soubor dosáhne 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit.
 
 Logy obsahují čas, metodu, vzor cesty, id zprávy (jen platné), stav, latenci a velikost odpovědi. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
 
-`nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn, cancel a expirace si před smazáním blobu zapíšou zamýšlený stav, takže po pádu procesu je dokončí další požadavek nebo úklid. Chybějící blob bez zapsaného stavu server hlásí jako chybu 500 a zprávu nesmaže.
+`nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn, cancel a expirace si před smazáním blobu zapíšou zamýšlený stav, takže po pádu procesu je dokončí další požadavek nebo úklid. Chybějící blob bez zapsaného stavu server hlásí jako chybu 500, zprávu nesmaže a claim kvůli němu nespotřebuje otevření.
+
+Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupec `ending`, který starší verze nečtou. Před návratem ke starší verzi nechte doběhnout úklid, aby žádná zpráva neměla rozpracovaný konec.
 
 ## Generování vektorů
 

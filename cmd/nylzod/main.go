@@ -77,7 +77,15 @@ func serve(logger *slog.Logger) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	go srv.RunSweeper(ctx)
+	sweeper := make(chan struct{})
+	go func() {
+		defer close(sweeper)
+		srv.RunSweeper(ctx)
+	}()
+	defer func() {
+		stop()
+		<-sweeper
+	}()
 	httpServer := srv.HTTPServer()
 	errCh := make(chan error, 1)
 	go func() { errCh <- httpServer.ListenAndServe() }()

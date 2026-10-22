@@ -34,6 +34,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK6CrashBetweenDeleteAndEnd", func(t *testing.T) { testCrashBeforeEnd(t, open) })
 	t.Run("EndMessageRetriesFailedDelete", func(t *testing.T) { testEndMessageDeleteFails(t, open) })
 	t.Run("ReleaseKeepsRecordedEnding", func(t *testing.T) { testReleaseKeepsRecordedEnding(t, open) })
+	t.Run("ExpiryOfSpentMessage", func(t *testing.T) { testExpiryOfSpentMessage(t, open) })
 	t.Run("RateReserveIsAtomic", func(t *testing.T) { testRateReserve(t, open) })
 	t.Run("ReconcileOrphans", func(t *testing.T) { testReconcileOrphans(t, open) })
 	t.Run("ReconcileContinuesPastErrors", func(t *testing.T) { testReconcileErrors(t, open) })
@@ -504,7 +505,7 @@ func (f *fixture) createRow(ttl time.Duration) *store.Message {
 
 func (f *fixture) crashAfterDelete(m *store.Message, state store.State) {
 	f.t.Helper()
-	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, state); err != nil {
+	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, state, baseTime); err != nil {
 		f.t.Fatal(err)
 	}
 	if err := f.b.Delete(f.ctx, m.BlobRef); err != nil {
@@ -531,13 +532,44 @@ func testCrashBeforeEnd(t *testing.T, open Factory) {
 		t.Fatalf("tombstone: %+v", rec)
 	}
 	swept := f.create(1, time.Hour, false)
-	f.crashAfterDelete(swept, store.StateDeleted)
-	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Second))
-	if err != nil || report.Resumed != 1 {
+	f.crashAfterDelete(swept, store.StateCancelled)
+	burnedThenExpired := f.create(1, time.Minute, false)
+	f.crashAfterDelete(burnedThenExpired, store.StateDeleted)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(2*time.Minute))
+	if err != nil || report.Resumed != 1 || report.Expired != 1 {
 		t.Fatalf("the sweep must finish interrupted endings: %+v %v", report, err)
 	}
-	if rec := f.get(swept.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+	if rec := f.get(swept.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled {
 		t.Fatalf("swept tombstone: %+v", rec)
+	}
+	if rec := f.get(burnedThenExpired.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+		t.Fatalf("a recorded burn must win over a later expiry: %+v", rec)
+	}
+}
+
+func testExpiryOfSpentMessage(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	unspent := f.create(2, time.Minute, false)
+	fb := newFailingBlobs(f.b, unspent.ID)
+	if _, err := store.SweepAll(f.ctx, f.s, fb, baseTime.Add(2*time.Minute)); !errors.Is(err, errDisk) {
+		t.Fatalf("sweep with a failing delete: %v", err)
+	}
+	if rec := f.get(unspent.ID); rec.Message == nil || rec.Message.Ending != "" {
+		t.Fatalf("an expired row needs no recorded ending: %+v", rec.Message)
+	}
+	spent := f.create(1, time.Hour, false)
+	if _, err := f.claim(spent, baseTime.Add(59*time.Minute), 1, false, false); err != nil {
+		t.Fatal(err)
+	}
+	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Hour))
+	if err != nil || report.Expired != 2 {
+		t.Fatalf("sweep: %+v %v", report, err)
+	}
+	if rec := f.get(unspent.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateExpired {
+		t.Fatalf("unspent: %+v", rec)
+	}
+	if rec := f.get(spent.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateOpened {
+		t.Fatalf("a spent message that expires during its lease must end as opened: %+v", rec)
 	}
 }
 
@@ -551,7 +583,7 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateDeleted); err != nil {
+	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateDeleted, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	if released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime); err != nil || !released {

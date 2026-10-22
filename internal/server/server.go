@@ -50,8 +50,8 @@ type Server struct {
 	afterFunc func(time.Duration, func())
 	log       *slog.Logger
 	bucket    *tokenBucket
-	sources   *sourceLimiter
-	prefixes  *sourceLimiter
+	sources   *keyedLimiter
+	prefixes  *keyedLimiter
 	powSlots  chan struct{}
 	handler   http.Handler
 	abuseMu   sync.Mutex
@@ -77,8 +77,8 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		o(s)
 	}
 	s.bucket = newTokenBucket(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst, s.clock())
-	s.sources = newSourceLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
-	s.prefixes = newSourceLimiter(cfg.Rates.BucketPerSecond/2, max(1, cfg.Rates.BucketBurst/2))
+	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
+	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.handler = s.routes()
 	return s, nil
@@ -101,23 +101,26 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		ErrorLog:          log.New(newHTTPErrorSink(s.log), "", 0),
+		ErrorLog:          log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
 	}
 }
 
 type httpErrorSink struct {
 	log     *slog.Logger
+	clock   func() time.Time
 	mu      sync.Mutex
-	buckets map[slog.Level]*tokenBucket
-	dropped map[slog.Level]int
+	warn    *tokenBucket
+	error   *tokenBucket
+	dropped [2]int
 }
 
-func newHTTPErrorSink(l *slog.Logger) *httpErrorSink {
-	now := time.Now()
+func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
+	now := clock()
 	return &httpErrorSink{
-		log:     l,
-		buckets: map[slog.Level]*tokenBucket{slog.LevelWarn: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now), slog.LevelError: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now)},
-		dropped: map[slog.Level]int{},
+		log:   l,
+		clock: clock,
+		warn:  newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now),
+		error: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now),
 	}
 }
 
@@ -142,14 +145,18 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 			break
 		}
 	}
+	bucket, slot := h.warn, 0
+	if level >= slog.LevelError {
+		bucket, slot = h.error, 1
+	}
 	h.mu.Lock()
-	if !h.buckets[level].allow(time.Now()) {
-		h.dropped[level]++
+	if !bucket.allow(h.clock()) {
+		h.dropped[slot]++
 		h.mu.Unlock()
 		return len(p), nil
 	}
-	dropped := h.dropped[level]
-	h.dropped[level] = 0
+	dropped := h.dropped[slot]
+	h.dropped[slot] = 0
 	h.mu.Unlock()
 	h.log.Log(context.Background(), level, "net/http error", "category", name, "dropped", dropped)
 	return len(p), nil
@@ -167,7 +174,7 @@ func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
 		report.OrphanedBlobs = orphans
 		if listed {
 			d := dayWindow(now)
-			if _, merr := s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}}); merr != nil {
+			if _, merr := s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); merr != nil {
 				rerr = errors.Join(rerr, merr)
 			}
 		}

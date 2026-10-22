@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -63,6 +64,17 @@ func TestPoWVerifierSaturated(t *testing.T) {
 	}()
 	if err := s.powVerify(t.Context(), fresh, id, now); err != nil {
 		t.Fatalf("a slot that frees up within the wait must be used: %v", err)
+	}
+	gone, err := SolvePoW(s.powChallenge(now), id, s.cfg.PoWDifficulty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.powSlots <- struct{}{}
+	defer func() { <-s.powSlots }()
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if err := s.powVerify(ctx, gone, id, now); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("a client that went away must stop waiting for a slot: %v", err)
 	}
 }
 

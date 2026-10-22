@@ -8,25 +8,31 @@ import (
 )
 
 func TestSourceLimiterEvictsIdleSourcesFirst(t *testing.T) {
-	l := newSourceLimiter(1, 1)
-	l.max = 2
+	l := newKeyedLimiter(1, 1)
+	l.max = 16
 	now := time.Unix(1_800_000_000, 0)
-	busy, idle, fresh := [pepper.BucketLen]byte{1}, [pepper.BucketLen]byte{2}, [pepper.BucketLen]byte{3}
-	l.allow(idle, now)
-	later := now.Add(2 * time.Second)
-	if !l.allow(busy, later) || l.allow(busy, later) {
-		t.Fatal("busy source burst")
+	for i := range 3 {
+		l.allow([pepper.BucketLen]byte{1, byte(i)}, now)
 	}
-	if !l.allow(fresh, later) {
+	later := now.Add(2 * time.Second)
+	for i := range 13 {
+		key := [pepper.BucketLen]byte{2, byte(i)}
+		if !l.allow(key, later) || l.allow(key, later) {
+			t.Fatal("throttled source burst")
+		}
+	}
+	if !l.allow([pepper.BucketLen]byte{3}, later) {
 		t.Fatal("a new source was refused at the cap")
 	}
-	if l.allow(busy, later) {
-		t.Fatal("eviction reset a throttled source")
+	for i := range 13 {
+		if l.allow([pepper.BucketLen]byte{2, byte(i)}, later) {
+			t.Fatalf("eviction reset throttled source %d while idle sources were available", i)
+		}
 	}
 }
 
 func TestSourceLimiterKeepsMostSourcesWhenFull(t *testing.T) {
-	l := newSourceLimiter(1, 1)
+	l := newKeyedLimiter(1, 1)
 	l.max = 64
 	now := time.Unix(1_800_000_000, 0)
 	for i := range 64 {

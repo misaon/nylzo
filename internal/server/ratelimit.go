@@ -41,43 +41,61 @@ func (b *tokenBucket) allow(now time.Time) bool {
 	return true
 }
 
-type sourceLimiter struct {
+type keyedLimiter struct {
 	mu      sync.Mutex
 	rate    float64
 	burst   float64
 	max     int
-	buckets map[[pepper.BucketLen]byte]*tokenBucket
+	buckets map[[pepper.BucketLen]byte]keyedBucket
 }
 
-const maxSources = 1 << 16
-
-func newSourceLimiter(rate, burst float64) *sourceLimiter {
-	return &sourceLimiter{rate: rate, burst: burst, max: maxSources, buckets: map[[pepper.BucketLen]byte]*tokenBucket{}}
+type keyedBucket struct {
+	tokens float64
+	last   int64
 }
 
-func (l *sourceLimiter) allow(key [pepper.BucketLen]byte, now time.Time) bool {
+const (
+	maxKeyedBuckets = 1 << 16
+	evictShare      = 8
+	prefixShare     = 0.5
+)
+
+func newKeyedLimiter(rate, burst float64) *keyedLimiter {
+	return &keyedLimiter{rate: rate, burst: burst, max: maxKeyedBuckets, buckets: map[[pepper.BucketLen]byte]keyedBucket{}}
+}
+
+func (l *keyedLimiter) allow(key [pepper.BucketLen]byte, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	at := now.UnixNano()
 	b, ok := l.buckets[key]
 	if !ok {
 		if len(l.buckets) >= l.max {
-			l.evict(now)
+			l.evict(at)
 		}
-		b = newTokenBucket(l.rate, l.burst, now)
-		l.buckets[key] = b
+		b = keyedBucket{tokens: l.burst, last: at}
 	}
-	return b.allow(now)
+	if elapsed := time.Duration(at - b.last).Seconds(); elapsed > 0 {
+		b.tokens = min(l.burst, b.tokens+elapsed*l.rate)
+		b.last = at
+	}
+	allowed := b.tokens >= 1
+	if allowed {
+		b.tokens--
+	}
+	l.buckets[key] = b
+	return allowed
 }
 
-func (l *sourceLimiter) evict(now time.Time) {
-	refill := time.Duration(l.burst / l.rate * float64(time.Second))
+func (l *keyedLimiter) evict(at int64) {
+	refill := int64(l.burst / l.rate * float64(time.Second))
 	for k, b := range l.buckets {
-		if now.Sub(b.last) >= refill {
+		if at-b.last >= refill {
 			delete(l.buckets, k)
 		}
 	}
 	for k := range l.buckets {
-		if len(l.buckets) < l.max-l.max/8 {
+		if len(l.buckets) < l.max-l.max/evictShare {
 			return
 		}
 		delete(l.buckets, k)
@@ -87,6 +105,10 @@ func (l *sourceLimiter) evict(now time.Time) {
 type window struct {
 	start time.Time
 	end   time.Time
+}
+
+func (w window) purgeAt() time.Time {
+	return w.end.Add(w.end.Sub(w.start))
 }
 
 func hourWindow(now time.Time) window {
@@ -138,7 +160,11 @@ func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Dur
 	return retry, nil
 }
 
-const globalCreatesKey = "global:d"
+const (
+	globalCreatesKey = "global:d"
+	globalStoredKey  = "global:stored:d"
+	pendingRetry     = time.Minute
+)
 
 func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr, size int64) (time.Duration, error) {
 	fine, coarse := s.bucketKeys(now, addr)
@@ -146,52 +172,46 @@ func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr
 	r := s.cfg.Rates
 	m := r.CoarseMultiplier
 	checks := []limitCheck{
-		{hit: store.RateHit{Key: "create:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.CreatePerHour, end: h.end},
-		{hit: store.RateHit{Key: "create:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.CreatePerHour * m, end: h.end},
-		{hit: store.RateHit{Key: "create:d:" + fine, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay, bytes: r.CreateBytesPerDay, end: d.end},
-		{hit: store.RateHit{Key: "create:d:c:" + coarse, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay * m, bytes: r.CreateBytesPerDay * m, end: d.end},
+		{hit: store.RateHit{Key: "create:h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt()}, limit: r.CreatePerHour, end: h.end},
+		{hit: store.RateHit{Key: "create:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt()}, limit: r.CreatePerHour * m, end: h.end},
+		{hit: store.RateHit{Key: "create:d:" + fine, WindowStart: d.start, PurgeAt: d.purgeAt(), Bytes: size}, limit: r.CreatePerDay, bytes: r.CreateBytesPerDay, end: d.end},
+		{hit: store.RateHit{Key: "create:d:c:" + coarse, WindowStart: d.start, PurgeAt: d.purgeAt(), Bytes: size}, limit: r.CreatePerDay * m, bytes: r.CreateBytesPerDay * m, end: d.end},
 	}
 	return s.checkLimits(ctx, checks)
 }
 
 type globalState struct {
-	capped    bool
+	full      bool
 	powNeeded bool
 }
 
-func (s *Server) globalCreates(ctx context.Context, now time.Time) (globalState, error) {
+func (s *Server) globalGate(ctx context.Context, now time.Time) (globalState, error) {
 	limit := s.cfg.Rates.GlobalDailyCreates
 	if limit <= 0 {
 		return globalState{}, nil
 	}
 	c, err := s.store.RateGet(ctx, globalCreatesKey, dayWindow(now).start)
-	if err != nil {
-		return globalState{}, err
-	}
-	return globalState{capped: c.Count >= limit, powNeeded: c.Count*2 >= limit}, nil
+	return globalState{full: c.Count >= limit, powNeeded: c.Count*2 >= limit}, err
 }
 
-type globalSlot struct {
-	reserved  bool
-	full      bool
-	powNeeded bool
-}
-
-func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (globalSlot, error) {
+func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (bool, error) {
 	limit := s.cfg.Rates.GlobalDailyCreates
 	if limit <= 0 {
-		return globalSlot{}, nil
+		return true, nil
 	}
 	d := dayWindow(now)
-	count, ok, err := s.store.RateReserve(ctx, store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}, limit)
-	if err != nil || !ok {
-		return globalSlot{full: err == nil}, err
-	}
-	return globalSlot{reserved: true, powNeeded: (count-1)*2 >= limit}, nil
+	_, ok, err := s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt()}, limit)
+	return ok, err
 }
 
-func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) error {
-	return s.store.RateRelease(ctx, globalCreatesKey, dayWindow(now).start)
+func (s *Server) countStoredCreate(ctx context.Context, now time.Time) {
+	if s.cfg.Rates.GlobalDailyCreates <= 0 {
+		return
+	}
+	d := dayWindow(now)
+	if _, err := s.store.RateHit(ctx, []store.RateHit{{Key: globalStoredKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); err != nil {
+		s.log.Error("global-stored", "err", err.Error())
+	}
 }
 
 func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {
@@ -199,8 +219,8 @@ func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) 
 	h := hourWindow(now)
 	r := s.cfg.Rates
 	return s.checkLimits(ctx, []limitCheck{
-		{hit: store.RateHit{Key: "read:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.ReadPerHour, end: h.end},
-		{hit: store.RateHit{Key: "read:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.ReadPerHour * r.CoarseMultiplier, end: h.end},
+		{hit: store.RateHit{Key: "read:h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt()}, limit: r.ReadPerHour, end: h.end},
+		{hit: store.RateHit{Key: "read:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt()}, limit: r.ReadPerHour * r.CoarseMultiplier, end: h.end},
 	})
 }
 
@@ -209,7 +229,7 @@ func (s *Server) limitAbuse(ctx context.Context, now time.Time, addr netip.Addr)
 	h := hourWindow(now)
 	r := s.cfg.Rates
 	return s.checkLimits(ctx, []limitCheck{
-		{hit: store.RateHit{Key: "abuse:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour, end: h.end},
-		{hit: store.RateHit{Key: "abuse:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour * r.CoarseMultiplier, end: h.end},
+		{hit: store.RateHit{Key: "abuse:h:" + fine, WindowStart: h.start, PurgeAt: h.purgeAt()}, limit: r.AbusePerHour, end: h.end},
+		{hit: store.RateHit{Key: "abuse:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.purgeAt()}, limit: r.AbusePerHour * r.CoarseMultiplier, end: h.end},
 	})
 }

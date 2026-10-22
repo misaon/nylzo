@@ -19,7 +19,7 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 
 func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) (State, error) {
 	ctx = context.WithoutCancel(ctx)
-	ending, ref, err := s.MarkEnding(ctx, id, state)
+	ending, ref, err := s.MarkEnding(ctx, id, state, now)
 	if err != nil {
 		return "", err
 	}

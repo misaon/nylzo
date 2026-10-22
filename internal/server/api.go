@@ -22,20 +22,21 @@ import (
 )
 
 const (
-	headerCreate     = "X-Nylzo-Create"
-	headerPoW        = "X-Nylzo-Pow"
-	headerLease      = "X-Nylzo-Lease"
-	headerPolicy     = "X-Nylzo-Policy"
-	maxCreateHeader  = 1024
-	maxJSONBody      = 4096
-	constantBucket   = "nylzo/v1/no-ip-scope"
-	timeFormat       = time.RFC3339
-	octetStream      = "application/octet-stream"
-	abuseReasonLimit = 1000
-	abuseReasonJSON  = 1200
-	abuseFileLimit   = 16 << 20
-	abusePerMessage  = 10
-	abuseDecodeDepth = 3
+	headerCreate      = "X-Nylzo-Create"
+	headerPoW         = "X-Nylzo-Pow"
+	headerLease       = "X-Nylzo-Lease"
+	headerPolicy      = "X-Nylzo-Policy"
+	maxCreateHeader   = 1024
+	maxJSONBody       = 4096
+	constantBucket    = "nylzo/v1/no-ip-scope"
+	timeFormat        = time.RFC3339
+	octetStream       = "application/octet-stream"
+	abuseReasonLimit  = 1000
+	abuseReasonBytes  = 1200
+	abuseFileLimit    = 16 << 20
+	abusePerRange     = 3
+	abuseDecodePasses = 3
+	maxJSONEscape     = len(`\u0000`)
 )
 
 type createHeader struct {
@@ -158,23 +159,8 @@ func (s *Server) authorize(ctx context.Context, idStr, token string, purpose pep
 	if err != nil {
 		return store.Record{}, id, false, err
 	}
-	if m := rec.Message; m != nil && (m.Ending != "" || !now.Before(m.ExpiresAt)) {
-		if _, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), store.StateExpired, now); err != nil && !errors.Is(err, store.ErrNotFound) {
-			return store.Record{}, id, false, err
-		}
-		if rec, err = s.store.Get(ctx, id.String()); err != nil {
-			return store.Record{}, id, false, err
-		}
-	} else if rec.Message != nil && rec.Message.OpensRemaining == 0 {
-		released, err := store.Release(ctx, s.store, s.blobs, id.String(), now)
-		if err != nil {
-			return store.Record{}, id, false, err
-		}
-		if released {
-			if rec, err = s.store.Get(ctx, id.String()); err != nil {
-				return store.Record{}, id, false, err
-			}
-		}
+	if fresh, ok := s.settle(ctx, id.String(), rec.Message, now); ok {
+		rec = fresh
 	}
 	mac := rec.ReadMAC()
 	if purpose == pepper.Manage {
@@ -185,6 +171,43 @@ func (s *Server) authorize(ctx context.Context, idStr, token string, purpose pep
 	return rec, id, ok, nil
 }
 
+func (s *Server) settle(ctx context.Context, id string, m *store.Message, now time.Time) (store.Record, bool) {
+	if m == nil {
+		return store.Record{}, false
+	}
+	var err error
+	switch {
+	case ended(m, now):
+		_, err = store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
+	case m.OpensRemaining == 0:
+		_, err = store.Release(ctx, s.store, s.blobs, id, now)
+	default:
+		return store.Record{}, false
+	}
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.log.Error("settle", "err", err.Error())
+		return store.Record{}, false
+	}
+	rec, err := s.store.Get(ctx, id)
+	return rec, err == nil
+}
+
+func ended(m *store.Message, now time.Time) bool {
+	return m.Ending != "" || !now.Before(m.ExpiresAt)
+}
+
+func liveState(m *store.Message, now time.Time) store.State {
+	switch {
+	case m.Ending != "":
+		return m.Ending
+	case !now.Before(m.ExpiresAt) && m.OpensRemaining == 0:
+		return store.StateOpened
+	case !now.Before(m.ExpiresAt):
+		return store.StateExpired
+	}
+	return m.State
+}
+
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	l := s.cfg.Limits
 	resp := instanceResponse{
@@ -193,12 +216,12 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 		Versions: instanceVersions{API: 1, Envelope: core.Version, Fragment: core.FragmentVersion, Server: s.cfg.Version},
 	}
 	now := s.clock()
-	global, err := s.globalCreates(r.Context(), now)
+	gate, err := s.globalGate(r.Context(), now)
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
-	if global.powNeeded {
+	if gate.powNeeded {
 		resp.PoW.Required = true
 		resp.PoW.Challenge = s.powChallenge(now)
 	}
@@ -310,25 +333,16 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, r, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: seconds})
 		return
 	}
-	slot, err := s.reserveGlobalCreate(ctx, now)
+	gate, err := s.globalGate(ctx, now)
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
-	if slot.full {
-		w.Header().Set("Retry-After", strconv.FormatInt(int64(dayWindow(now).end.Sub(now)/time.Second)+1, 10))
-		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+	if gate.full {
+		s.rejectCapped(w, r, now)
 		return
 	}
-	stored := false
-	defer func() {
-		if slot.reserved && !stored {
-			if err := s.releaseGlobalCreate(context.WithoutCancel(ctx), now); err != nil {
-				s.log.Error("global-release", "err", err.Error())
-			}
-		}
-	}()
-	if slot.powNeeded {
+	if gate.powNeeded {
 		err := s.powVerify(ctx, r.Header.Get(headerPoW), id, now)
 		switch {
 		case errors.Is(err, errPoWBusy):
@@ -343,6 +357,23 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	reserved, err := s.reserveGlobalCreate(ctx, now)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	if !reserved {
+		s.rejectCapped(w, r, now)
+		return
+	}
+	stored := false
+	defer func() {
+		if s.cfg.Rates.GlobalDailyCreates > 0 && !stored {
+			if err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, dayWindow(now).start); err != nil {
+				s.log.Error("global-release", "err", err.Error())
+			}
+		}
+	}()
 	if _, err := s.store.Get(ctx, id.String()); err == nil {
 		s.rejectCreate(w, r, http.StatusConflict, errConflict)
 		return
@@ -399,7 +430,17 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stored = true
+	s.countStoredCreate(context.WithoutCancel(ctx), now)
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
+}
+
+func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.Time) {
+	retry := pendingRetry
+	if c, err := s.store.RateGet(r.Context(), globalStoredKey, dayWindow(now).start); err == nil && c.Count >= s.cfg.Rates.GlobalDailyCreates {
+		retry = dayWindow(now).end.Sub(now) + time.Second
+	}
+	w.Header().Set("Retry-After", strconv.FormatInt(int64(retry/time.Second), 10))
+	s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 }
 
 func (s *Server) readLimited(w http.ResponseWriter, r *http.Request) bool {
@@ -437,6 +478,10 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 		writeGone(w, string(rec.Tombstone.State))
 		return nil, id, false
 	}
+	if now := s.clock(); ended(rec.Message, now) {
+		writeGone(w, string(liveState(rec.Message, now)))
+		return nil, id, false
+	}
 	return rec.Message, id, true
 }
 
@@ -462,7 +507,7 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	m := rec.Message
 	writeJSON(w, http.StatusOK, metadataResponse{
-		State: string(m.State), CreatedAt: formatTime(m.CreatedAt), ExpiresAt: formatTime(m.ExpiresAt),
+		State: string(liveState(m, s.clock())), CreatedAt: formatTime(m.CreatedAt), ExpiresAt: formatTime(m.ExpiresAt),
 		OpensMax: int(m.OpensMax), OpensRemaining: int(m.OpensRemaining), TTL: int(m.TTLSeconds),
 		PassphraseRequired: m.PassphraseRequired(), KDFID: int(m.KDF), Size: m.Size, FirstOpenedAt: formatOptTime(m.FirstOpenedAt),
 	})
@@ -491,8 +536,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.readLimited(w, r) {
 		return
 	}
-	_, id, ok := s.authorizedLive(w, r, pepper.Read)
-	if !ok {
+	m, id, ok := s.authorizedLive(w, r, pepper.Read)
+	if !ok || !s.blobPresent(w, r, m) {
 		return
 	}
 	var verifier []byte
@@ -569,7 +614,9 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 	}
 	f, size, err := s.blobs.Open(r.Context(), m.BlobRef)
 	if errors.Is(err, store.ErrBlobMissing) {
-		if state, ended := s.finishMissingBlob(r.Context(), m.ID); ended {
+		var state store.State
+		var ended bool
+		if state, ended, err = s.finishMissingBlob(r.Context(), m.ID); ended {
 			w.Header().Del(headerLease)
 			writeGone(w, string(state))
 			return
@@ -587,21 +634,47 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 	io.Copy(w, f)
 }
 
-func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State, bool) {
+func (s *Server) blobPresent(w http.ResponseWriter, r *http.Request, m *store.Message) bool {
+	if m.BlobRef == "" {
+		return true
+	}
+	f, _, err := s.blobs.Open(r.Context(), m.BlobRef)
+	if err == nil {
+		f.Close()
+		return true
+	}
+	if errors.Is(err, store.ErrBlobMissing) {
+		var state store.State
+		var gone bool
+		if state, gone, err = s.finishMissingBlob(r.Context(), m.ID); gone {
+			writeGone(w, string(state))
+			return false
+		}
+	}
+	s.internal(w, r, err)
+	return false
+}
+
+func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State, bool, error) {
 	rec, err := s.store.Get(ctx, id)
 	if err != nil {
-		return "", false
+		return "", false, err
 	}
 	if rec.Tombstone != nil {
-		return rec.Tombstone.State, true
+		return rec.Tombstone.State, true, nil
 	}
 	if rec.Message.Ending == "" {
-		return "", false
+		return "", false, store.ErrBlobMissing
 	}
-	if _, err := store.EndMessage(ctx, s.store, s.blobs, id, rec.Message.Ending, s.clock()); err != nil && !errors.Is(err, store.ErrNotFound) {
+	state, err := store.EndMessage(ctx, s.store, s.blobs, id, rec.Message.Ending, s.clock())
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return s.endedState(ctx, id), true, nil
+	case err != nil:
 		s.log.Error("finish-ending", "err", err.Error())
+		return rec.Message.Ending, true, nil
 	}
-	return s.endedState(ctx, id), true
+	return state, true, nil
 }
 
 func (s *Server) endedState(ctx context.Context, id string) store.State {
@@ -726,7 +799,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	m := rec.Message
 	writeJSON(w, http.StatusOK, statusResponse{
-		State: string(m.State), OpensUsed: int(m.OpensMax - m.OpensRemaining), OpensMax: int(m.OpensMax),
+		State: string(liveState(m, s.clock())), OpensUsed: int(m.OpensMax - m.OpensRemaining), OpensMax: int(m.OpensMax),
 		CreatedAt: formatTime(m.CreatedAt), ExpiresAt: formatTime(m.ExpiresAt), FirstOpenedAt: formatOptTime(m.FirstOpenedAt),
 		FailedPassphraseAttempts: m.FailCountTotal,
 	})
@@ -765,7 +838,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok {
-		err := s.recordAbuse(ctx, now, id.String(), body.Reason)
+		err := s.recordAbuse(ctx, now, id.String(), s.ring.Bucket(now, s.clientAddr(r), true), body.Reason)
 		if errors.Is(err, errAbuseFull) {
 			s.log.Error("abuse-file-full")
 			w.Header().Set("Retry-After", "3600")
@@ -787,7 +860,7 @@ var (
 )
 
 func percentDecode(text string) string {
-	for range abuseDecodeDepth {
+	for range abuseDecodePasses {
 		decoded := percentEscape.ReplaceAllStringFunc(text, func(esc string) string {
 			b, _ := hex.DecodeString(esc[1:])
 			return string(b)
@@ -809,23 +882,31 @@ func redactReason(reason string) string {
 	}
 	for {
 		encoded, _ := json.Marshal(reason)
-		if len(encoded) <= abuseReasonJSON {
+		if len(encoded) <= abuseReasonBytes {
 			return reason
 		}
 		runes := []rune(reason)
-		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonJSON)/6)])
+		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonBytes)/maxJSONEscape)])
 	}
 }
 
-func (s *Server) recordAbuse(ctx context.Context, now time.Time, id, reason string) error {
+func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reporter [pepper.BucketLen]byte, reason string) error {
 	d := dayWindow(now)
-	counts, err := s.store.RateHit(ctx, []store.RateHit{{Key: "abuse:id:" + id, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
-	if err != nil {
+	key := "abuse:id:" + id + ":" + hex.EncodeToString(reporter[:])
+	_, ok, err := s.store.RateReserve(ctx, store.RateHit{Key: key, WindowStart: d.start, PurgeAt: d.purgeAt()}, abusePerRange)
+	if err != nil || !ok {
 		return err
 	}
-	if counts[0].Count > abusePerMessage {
-		return nil
+	if err := s.appendAbuse(now, id, reason); err != nil {
+		if rerr := s.store.RateRelease(context.WithoutCancel(ctx), key, d.start); rerr != nil {
+			s.log.Error("abuse-release", "err", rerr.Error())
+		}
+		return err
 	}
+	return nil
+}
+
+func (s *Server) appendAbuse(now time.Time, id, reason string) error {
 	line, err := json.Marshal(map[string]string{"time": formatTime(now), "id": id, "reason": redactReason(reason)})
 	if err != nil {
 		return err
