@@ -33,6 +33,8 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK6CrashBetweenDeleteAndClear", func(t *testing.T) { testCrashBeforeClear(t, open) })
 	t.Run("AK6CrashBetweenDeleteAndEnd", func(t *testing.T) { testCrashBeforeEnd(t, open) })
 	t.Run("EndMessageRetriesFailedDelete", func(t *testing.T) { testEndMessageDeleteFails(t, open) })
+	t.Run("ReleaseKeepsRecordedEnding", func(t *testing.T) { testReleaseKeepsRecordedEnding(t, open) })
+	t.Run("RateReserveIsAtomic", func(t *testing.T) { testRateReserve(t, open) })
 	t.Run("ReconcileOrphans", func(t *testing.T) { testReconcileOrphans(t, open) })
 	t.Run("ReconcileContinuesPastErrors", func(t *testing.T) { testReconcileErrors(t, open) })
 	t.Run("SweepSurvivesBlobErrors", func(t *testing.T) { testSweepSurvivesBlobErrors(t, open) })
@@ -132,7 +134,7 @@ func testCreateGetConflict(t *testing.T, open Factory) {
 	if _, err := f.s.Get(f.ctx, core.NewID().String()); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("unknown id: %v", err)
 	}
-	if err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateCancelled, baseTime); err != nil {
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateCancelled, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.s.Create(f.ctx, m); !errors.Is(err, store.ErrConflict) {
@@ -446,14 +448,15 @@ func testCrashBeforeClear(t *testing.T, open Factory) {
 
 type failingBlobs struct {
 	store.Blobs
-	mu   sync.Mutex
-	fail map[string]int
+	mu       sync.Mutex
+	fail     map[string]int
+	attempts map[string]int
 }
 
 var errDisk = errors.New("storetest: injected blob failure")
 
 func newFailingBlobs(b store.Blobs, refs ...string) *failingBlobs {
-	fb := &failingBlobs{Blobs: b, fail: map[string]int{}}
+	fb := &failingBlobs{Blobs: b, fail: map[string]int{}, attempts: map[string]int{}}
 	for _, r := range refs {
 		fb.fail[r] = -1
 	}
@@ -468,6 +471,7 @@ func (b *failingBlobs) failOnce(ref string) {
 
 func (b *failingBlobs) Delete(ctx context.Context, ref string) error {
 	b.mu.Lock()
+	b.attempts[ref]++
 	n, ok := b.fail[ref]
 	if ok && n > 0 {
 		if n == 1 {
@@ -498,20 +502,78 @@ func (f *fixture) createRow(ttl time.Duration) *store.Message {
 	return m
 }
 
+func (f *fixture) crashAfterDelete(m *store.Message, state store.State) {
+	f.t.Helper()
+	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, state); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := f.b.Delete(f.ctx, m.BlobRef); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 func testCrashBeforeEnd(t *testing.T, open Factory) {
 	f := newFixture(t, open)
+	m := f.create(2, time.Hour, false)
+	f.crashAfterDelete(m, store.StateCancelled)
+	if rec := f.get(m.ID); rec.Message == nil || rec.Message.Ending != store.StateCancelled {
+		t.Fatalf("the recorded ending must survive the crash: %+v", rec.Message)
+	}
+	var gone *store.GoneError
+	if _, err := f.claim(m, baseTime, 1, false, false); !errors.As(err, &gone) || gone.State != store.StateCancelled {
+		t.Fatalf("a claim on an interrupted ending: %v", err)
+	}
+	state, err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateDeleted, baseTime)
+	if err != nil || state != store.StateCancelled {
+		t.Fatalf("a later ending must finish the recorded one: %s %v", state, err)
+	}
+	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled {
+		t.Fatalf("tombstone: %+v", rec)
+	}
+	swept := f.create(1, time.Hour, false)
+	f.crashAfterDelete(swept, store.StateDeleted)
+	report, err := store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(time.Second))
+	if err != nil || report.Resumed != 1 {
+		t.Fatalf("the sweep must finish interrupted endings: %+v %v", report, err)
+	}
+	if rec := f.get(swept.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+		t.Fatalf("swept tombstone: %+v", rec)
+	}
+}
+
+func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
+	f := newFixture(t, open)
 	m := f.create(1, time.Hour, false)
-	if err := f.b.Delete(f.ctx, m.BlobRef); err != nil {
+	res, err := f.claim(m, baseTime, 1, false, false)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if rec := f.get(m.ID); rec.Message == nil || rec.Message.BlobRef != m.ID {
-		t.Fatal("the row stays live until End commits")
+	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+		t.Fatal(err)
 	}
-	if err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateDeleted, baseTime); err != nil {
-		t.Fatalf("retry after a crash between Blobs.Delete and End: %v", err)
+	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateDeleted); err != nil {
+		t.Fatal(err)
+	}
+	if released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime); err != nil || !released {
+		t.Fatalf("release: %v %v", released, err)
 	}
 	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
-		t.Fatalf("retry must leave a deleted tombstone: %+v", rec)
+		t.Fatalf("a release must keep the recorded burn: %+v", rec)
+	}
+	opened := f.create(1, time.Hour, false)
+	res, err = f.claim(opened, baseTime, 1, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+		t.Fatal(err)
+	}
+	if ref, err := f.s.ReleaseIfDone(f.ctx, opened.ID, baseTime); err != nil || ref == "" {
+		t.Fatalf("release: %q %v", ref, err)
+	}
+	state, err := store.EndMessage(f.ctx, f.s, f.b, opened.ID, store.StateCancelled, baseTime)
+	if err != nil || state != store.StateOpened {
+		t.Fatalf("a cancel racing the last release must report opened: %s %v", state, err)
 	}
 }
 
@@ -520,7 +582,7 @@ func testEndMessageDeleteFails(t *testing.T, open Factory) {
 	m := f.create(1, time.Hour, false)
 	fb := newFailingBlobs(f.b)
 	fb.failOnce(m.ID)
-	if err := store.EndMessage(f.ctx, f.s, fb, m.ID, store.StateCancelled, baseTime); !errors.Is(err, errDisk) {
+	if _, err := store.EndMessage(f.ctx, f.s, fb, m.ID, store.StateCancelled, baseTime); !errors.Is(err, errDisk) {
 		t.Fatalf("a failed blob delete must surface: %v", err)
 	}
 	if rec := f.get(m.ID); rec.Message == nil || rec.Message.BlobRef != m.ID || !f.blobExists(m.ID) {
@@ -528,11 +590,50 @@ func testEndMessageDeleteFails(t *testing.T, open Factory) {
 	}
 	ctx, cancel := context.WithCancel(f.ctx)
 	cancel()
-	if err := store.EndMessage(ctx, f.s, fb, m.ID, store.StateCancelled, baseTime); err != nil {
-		t.Fatalf("EndMessage must finish even when the caller has gone: %v", err)
+	state, err := store.EndMessage(ctx, f.s, fb, m.ID, store.StateDeleted, baseTime)
+	if err != nil || state != store.StateCancelled {
+		t.Fatalf("EndMessage must finish the recorded ending even when the caller has gone: %s %v", state, err)
 	}
 	if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || f.blobExists(m.ID) {
 		t.Fatalf("retry: %+v", rec)
+	}
+}
+
+func testRateReserve(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	day := baseTime.Truncate(24 * time.Hour)
+	hit := store.RateHit{Key: "global:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	granted := 0
+	for range 40 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, ok, err := f.s.RateReserve(f.ctx, hit, 10)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if ok {
+				mu.Lock()
+				granted++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if granted != 10 {
+		t.Fatalf("concurrent reservations: %d granted, want exactly 10", granted)
+	}
+	if err := f.s.RateRelease(f.ctx, hit.Key, hit.WindowStart); err != nil {
+		t.Fatal(err)
+	}
+	if c, ok, err := f.s.RateReserve(f.ctx, hit, 10); err != nil || !ok || c != 10 {
+		t.Fatalf("a released slot must be reusable: %d %v %v", c, ok, err)
+	}
+	if got, _ := f.s.RateGet(f.ctx, hit.Key, hit.WindowStart); got.Count != 10 {
+		t.Fatalf("count: %+v", got)
 	}
 }
 
@@ -543,12 +644,12 @@ func testReconcileOrphans(t *testing.T, open Factory) {
 		t.Fatal(err)
 	}
 	live := f.create(1, time.Hour, false)
-	orphans, err := store.Reconcile(f.ctx, f.s, f.b, time.Now())
+	orphans, _, err := store.Reconcile(f.ctx, f.s, f.b, time.Now())
 	if err != nil || orphans != 0 || !f.blobExists(orphan) {
 		t.Fatalf("reconcile inside the grace window must keep fresh objects: %d %v", orphans, err)
 	}
-	orphans, err = store.Reconcile(f.ctx, f.s, f.b, time.Now().Add(store.ReconcileGrace+time.Minute))
-	if err != nil || orphans != 1 || f.blobExists(orphan) {
+	orphans, listed, err := store.Reconcile(f.ctx, f.s, f.b, time.Now().Add(store.BlobGrace+time.Minute))
+	if err != nil || !listed || orphans != 1 || f.blobExists(orphan) {
 		t.Fatalf("reconcile: %d %v", orphans, err)
 	}
 	if !f.blobExists(live.ID) {
@@ -558,16 +659,19 @@ func testReconcileOrphans(t *testing.T, open Factory) {
 
 func testReconcileErrors(t *testing.T, open Factory) {
 	f := newFixture(t, open)
-	stuck, gone := core.NewID().String(), core.NewID().String()
-	for _, ref := range []string{stuck, gone} {
+	stuckA, stuckB, gone := core.NewID().String(), core.NewID().String(), core.NewID().String()
+	for _, ref := range []string{stuckA, stuckB, gone} {
 		if err := f.b.Put(f.ctx, ref, strings.NewReader("x"), 1); err != nil {
 			t.Fatal(err)
 		}
 	}
-	fb := newFailingBlobs(f.b, stuck)
-	orphans, err := store.Reconcile(f.ctx, f.s, fb, time.Now().Add(store.ReconcileGrace+time.Minute))
-	if !errors.Is(err, errDisk) || orphans != 1 || f.blobExists(gone) || !f.blobExists(stuck) {
-		t.Fatalf("one failing delete must not stop the others: %d %v", orphans, err)
+	fb := newFailingBlobs(f.b, stuckA, stuckB)
+	orphans, listed, err := store.Reconcile(f.ctx, f.s, fb, time.Now().Add(store.BlobGrace+time.Minute))
+	if !errors.Is(err, errDisk) || !listed || orphans != 1 || f.blobExists(gone) {
+		t.Fatalf("one failing delete must not stop the others: %d %v %v", orphans, listed, err)
+	}
+	if fb.attempts[stuckA] != 1 || fb.attempts[stuckB] != 1 {
+		t.Fatalf("reconcile stopped after the first failure: %v", fb.attempts)
 	}
 }
 
@@ -677,7 +781,7 @@ func testExpiry(t *testing.T, open Factory) {
 func testBurnCancel(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	burn := f.create(1, time.Hour, false)
-	if err := store.EndMessage(f.ctx, f.s, f.b, burn.ID, store.StateDeleted, baseTime); err != nil {
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, burn.ID, store.StateDeleted, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	if f.blobExists(burn.ID) {
@@ -691,7 +795,7 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateCancelled, baseTime.Add(time.Second)); err != nil {
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateCancelled, baseTime.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.s.RecordDownload(f.ctx, res.Lease.RowID, baseTime.Add(2*time.Second)); !errors.Is(err, store.ErrLeaseInvalid) {
@@ -700,7 +804,7 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if rec := f.get(cancel.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || rec.Tombstone.FirstOpenedAt == nil {
 		t.Fatal("cancel tombstone")
 	}
-	if err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateDeleted, baseTime); !errors.Is(err, store.ErrNotFound) {
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateDeleted, baseTime); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("end twice: %v", err)
 	}
 }

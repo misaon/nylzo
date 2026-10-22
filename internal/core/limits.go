@@ -25,6 +25,7 @@ const (
 	MaxObjectBytes = MaxFileBytes + MaxTextBytes + PadFile + ObjectSlack
 	MaxFileName    = 255
 	MaxMime        = 255
+	MaxJSONDepth   = 32
 
 	PadText = 4096
 	PadFile = 65536

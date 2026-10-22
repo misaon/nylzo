@@ -170,7 +170,7 @@ describe('link', () => {
       expect(idToString(link.id)).toBe(v.id);
       expect(link.kdfId).toBe(v.kdf_id);
       expect(bytesToHex(link.s)).toBe(v.s_hex);
-      if (v.name.startsWith('valid-')) {
+      if (v.canonical === true) {
         expect(formatLink('https://nylzo.example', link.id, link.kdfId, link.s)).toBe(v.input);
       }
     });

@@ -78,7 +78,6 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp)
 	n, err := io.Copy(f, r)
 	if err == nil && n != size {
 		err = io.ErrUnexpectedEOF
@@ -89,17 +88,21 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
+	if err == nil {
+		err = os.Link(tmp, final)
+	}
+	os.Remove(tmp)
+	if errors.Is(err, os.ErrExist) {
+		return store.ErrConflict
+	}
 	if err != nil {
 		return err
 	}
-	if err := os.Link(tmp, final); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return store.ErrConflict
-		}
+	if err := b.syncDir(); err != nil {
+		os.Remove(final)
 		return err
 	}
-	os.Remove(tmp)
-	return b.syncDir()
+	return nil
 }
 
 func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {

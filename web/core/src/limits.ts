@@ -20,6 +20,7 @@ export const MAX_META_BYTES = 102 * 1024;
 export const MAX_OBJECT_BYTES = MAX_FILE_BYTES + MAX_TEXT_BYTES + 64 * 1024 + 64;
 export const MAX_FILE_NAME = 255;
 export const MAX_MIME = 255;
+export const MAX_JSON_DEPTH = 32;
 
 export const PAD_TEXT = 4096;
 export const PAD_FILE = 65536;

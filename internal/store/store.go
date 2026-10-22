@@ -27,7 +27,7 @@ const (
 	FreeAttempts     = 5
 	MaxBackoff       = time.Hour
 	SweepBatch       = 1000
-	ReconcileGrace   = 15 * time.Minute
+	BlobGrace        = 15 * time.Minute
 )
 
 var (
@@ -76,6 +76,7 @@ type Message struct {
 	DayFailDate    string
 	FailCountTotal int
 	FirstOpenedAt  *time.Time
+	Ending         State
 }
 
 func (m *Message) PassphraseRequired() bool {
@@ -166,12 +167,13 @@ type SweepReport struct {
 	Tombstones     int
 	Counters       int
 	Attempts       int
+	Resumed        int
 	OrphanedBlobs  int
 	StaleTempFiles int
 }
 
 func (r SweepReport) LogAttrs() []any {
-	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "attempts", r.Attempts, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
+	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "attempts", r.Attempts, "resumed", r.Resumed, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
 }
 
 type Store interface {
@@ -183,10 +185,13 @@ type Store interface {
 	Ack(ctx context.Context, leaseRowID int64) error
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
 	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
+	MarkEnding(ctx context.Context, id string, state State) (State, string, error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)
-	Sweep(ctx context.Context, now time.Time, deleteBlob func(ref string) error) (SweepReport, error)
+	RateReserve(ctx context.Context, hit RateHit, limit int64) (int64, bool, error)
+	RateRelease(ctx context.Context, key string, windowStart time.Time) error
+	Sweep(ctx context.Context, now time.Time, b Blobs) (SweepReport, error)
 	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
 	Close() error
 }

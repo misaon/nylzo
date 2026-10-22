@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -69,7 +70,7 @@ func Defaults() Config {
 		Limits: Limits{
 			MaxFileBytes:   core.MaxFileBytes,
 			MaxTextBytes:   core.MaxTextBytes,
-			MaxObjectBytes: core.MaxObjectBytes,
+			MaxObjectBytes: core.ObjectLimit(core.MaxFileBytes),
 			MaxTTL:         MaxTTL,
 			DefaultTTL:     24 * time.Hour,
 			MaxOpens:       10,
@@ -211,7 +212,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	if needPepper && len(c.Pepper) == 0 {
 		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
 	}
-	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.MaxTTL > MaxTTL || c.Limits.DefaultTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > MaxPoWDifficulty || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency {
+	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.MaxTTL > MaxTTL || c.Limits.DefaultTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > MaxPoWDifficulty || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency || c.Rates.BucketBurst < 1 || c.Rates.SourceBurst < 1 {
 		return c, fmt.Errorf("%w: limits out of range", ErrConfig)
 	}
 	return c, nil
@@ -250,7 +251,7 @@ func parseInt(v string, out *int) error {
 
 func parseFloat(v string, out *float64) error {
 	f, err := strconv.ParseFloat(v, 64)
-	if err != nil || f <= 0 {
+	if err != nil || f <= 0 || math.IsInf(f, 0) || math.IsNaN(f) {
 		return fmt.Errorf("want a positive number, got %q", v)
 	}
 	*out = f

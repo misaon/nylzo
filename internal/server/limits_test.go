@@ -171,7 +171,7 @@ func TestTokenBucketThrottlesAPIPaths(t *testing.T) {
 	h := newHarness(t, cfg)
 	codes := []int{}
 	for i := 0; i < 5; i++ {
-		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance"})
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("203.0.%d.1", i)})
 		codes = append(codes, resp.StatusCode)
 	}
 	if codes[0] != 200 || codes[2] != 200 || codes[3] != 429 || codes[4] != 429 {
@@ -181,7 +181,7 @@ func TestTokenBucketThrottlesAPIPaths(t *testing.T) {
 		t.Fatal("non-API path throttled")
 	}
 	h.clock.Advance(2 * time.Second)
-	if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance"}); resp.StatusCode != 200 {
+	if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: "203.0.9.1"}); resp.StatusCode != 200 {
 		t.Fatal("bucket did not refill")
 	}
 }

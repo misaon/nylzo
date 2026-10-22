@@ -108,6 +108,7 @@ type faultyBlobs struct {
 	failDelete map[string]bool
 	failOpen   error
 	failPut    error
+	failList   error
 }
 
 var errInjected = errors.New("test: injected storage failure")
@@ -147,6 +148,16 @@ func (b *faultyBlobs) Put(ctx context.Context, ref string, r io.Reader, size int
 		return err
 	}
 	return b.Blobs.Put(ctx, ref, r, size)
+}
+
+func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
+	b.mu.Lock()
+	err := b.failList
+	b.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return b.Blobs.List(ctx)
 }
 
 func (h *harness) withFaultyBlobs() *faultyBlobs {

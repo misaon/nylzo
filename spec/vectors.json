@@ -483,6 +483,7 @@
       "name": "valid-kdf0",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.0.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": true,
+      "canonical": true,
       "id": "VYkVuDHE8iM238s_29iTmA",
       "kdf_id": 0,
       "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
@@ -491,6 +492,7 @@
       "name": "valid-kdf1",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": true,
+      "canonical": true,
       "id": "VYkVuDHE8iM238s_29iTmA",
       "kdf_id": 1,
       "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
@@ -499,6 +501,7 @@
       "name": "valid-kdf2",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.2.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": true,
+      "canonical": true,
       "id": "VYkVuDHE8iM238s_29iTmA",
       "kdf_id": 2,
       "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
@@ -639,6 +642,16 @@
       "valid": false
     },
     {
+      "name": "double-hash",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA##1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "scheme-httpss",
+      "input": "httpss://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
       "name": "uppercase-scheme-and-port",
       "input": "HTTPS://nylzo.example:8443/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": true,
@@ -649,6 +662,22 @@
     {
       "name": "query-ignored",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA?utm=x#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": true,
+      "id": "VYkVuDHE8iM238s_29iTmA",
+      "kdf_id": 1,
+      "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
+    },
+    {
+      "name": "http-localhost-port",
+      "input": "http://localhost:8080/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": true,
+      "id": "VYkVuDHE8iM238s_29iTmA",
+      "kdf_id": 1,
+      "s_hex": "cef9e45d14f3c152697e39b57bba3c24168046af611e1e8dc3cc35a4d5fa5232"
+    },
+    {
+      "name": "ipv6-literal",
+      "input": "http://[::1]:8080/m/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": true,
       "id": "VYkVuDHE8iM238s_29iTmA",
       "kdf_id": 1,
@@ -756,6 +785,25 @@
       "valid": true,
       "canonical": "{\"v\":1,\"text\":\"x\"}",
       "text": "x"
+    },
+    {
+      "name": "depth-32",
+      "input": "{\"v\":1,\"text\":\"x\",\"extra\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"text\":\"x\"}",
+      "text": "x"
+    },
+    {
+      "name": "depth-33",
+      "input": "{\"v\":1,\"text\":\"x\",\"extra\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
+      "valid": false
+    },
+    {
+      "name": "depth-brackets-in-string",
+      "input": "{\"v\":1,\"text\":\"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\"}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"text\":\"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\"}",
+      "text": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[["
     },
     {
       "name": "name-del",

@@ -26,9 +26,13 @@ const (
 	powTagLen     = 16
 	powCounterLen = 8
 	powChalLen    = 4 + powNonceLen + powTagLen
+	powNonceKey   = "pow:"
+	powNonceTTL   = 2 * powWindow
 )
 
 var ErrPoW = errors.New("server: invalid proof of work")
+
+var powSlotWait = 10 * time.Second
 
 func (s *Server) powChallenge(now time.Time) string {
 	buf := make([]byte, powChalLen)
@@ -61,19 +65,23 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 	if age < 0 || age > int64(powWindow/time.Second) {
 		return ErrPoW
 	}
-	select {
-	case s.powSlots <- struct{}{}:
-		defer func() { <-s.powSlots }()
-	default:
-		return errPoWBusy
-	}
 	issuedAt := time.Unix(issued, 0)
-	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: "pow:" + hex.EncodeToString(chal[4:4+powNonceLen]), WindowStart: issuedAt, PurgeAt: issuedAt.Add(2 * powWindow)}})
+	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: powNonceKey + hex.EncodeToString(chal[4:4+powNonceLen]), WindowStart: issuedAt, PurgeAt: issuedAt.Add(powNonceTTL)}})
 	if err != nil {
 		return err
 	}
 	if used[0].Count > 1 {
 		return ErrPoW
+	}
+	wait := time.NewTimer(powSlotWait)
+	defer wait.Stop()
+	select {
+	case s.powSlots <- struct{}{}:
+		defer func() { <-s.powSlots }()
+	case <-wait.C:
+		return errPoWBusy
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	if !powSatisfies(chal, counter, id, s.cfg.PoWDifficulty) {
 		return ErrPoW

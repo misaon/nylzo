@@ -17,34 +17,30 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 	return true, s.ClearBlob(ctx, id, ref, now)
 }
 
-func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) error {
+func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) (State, error) {
 	ctx = context.WithoutCancel(ctx)
-	rec, err := s.Get(ctx, id)
+	ending, ref, err := s.MarkEnding(ctx, id, state)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if rec.Message == nil {
-		return ErrNotFound
-	}
-	if ref := rec.Message.BlobRef; ref != "" {
+	if ref != "" {
 		if err := b.Delete(ctx, ref); err != nil {
-			return err
+			return ending, err
 		}
 	}
-	return s.End(ctx, id, state, now)
+	return ending, s.End(ctx, id, ending, now)
 }
 
-func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (int, error) {
+func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans int, listed bool, err error) {
 	known, err := s.KnownBlobRefs(ctx)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	objects, err := b.List(ctx)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	cutoff := now.Add(-ReconcileGrace)
-	orphans := 0
+	cutoff := now.Add(-BlobGrace)
 	var errs []error
 	for _, o := range objects {
 		if o.Modified.After(cutoff) {
@@ -59,12 +55,12 @@ func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (int, error
 		}
 		orphans++
 	}
-	return orphans, errors.Join(errs...)
+	return orphans, true, errors.Join(errs...)
 }
 
 func SweepAll(ctx context.Context, s Store, b Blobs, now time.Time) (SweepReport, error) {
-	report, err := s.Sweep(ctx, now, func(ref string) error { return b.Delete(ctx, ref) })
-	temp, terr := b.PurgeTemp(ctx, now.Add(-ReconcileGrace))
+	report, err := s.Sweep(ctx, now, b)
+	temp, terr := b.PurgeTemp(ctx, now.Add(-BlobGrace))
 	report.StaleTempFiles = temp
 	return report, errors.Join(err, terr)
 }

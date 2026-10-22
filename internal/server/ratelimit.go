@@ -46,18 +46,13 @@ type sourceLimiter struct {
 	rate    float64
 	burst   float64
 	max     int
-	buckets map[[pepper.BucketLen]byte]*sourceBucket
-}
-
-type sourceBucket struct {
-	tokens float64
-	last   time.Time
+	buckets map[[pepper.BucketLen]byte]*tokenBucket
 }
 
 const maxSources = 1 << 16
 
 func newSourceLimiter(rate, burst float64) *sourceLimiter {
-	return &sourceLimiter{rate: rate, burst: burst, max: maxSources, buckets: map[[pepper.BucketLen]byte]*sourceBucket{}}
+	return &sourceLimiter{rate: rate, burst: burst, max: maxSources, buckets: map[[pepper.BucketLen]byte]*tokenBucket{}}
 }
 
 func (l *sourceLimiter) allow(key [pepper.BucketLen]byte, now time.Time) bool {
@@ -68,18 +63,10 @@ func (l *sourceLimiter) allow(key [pepper.BucketLen]byte, now time.Time) bool {
 		if len(l.buckets) >= l.max {
 			l.evict(now)
 		}
-		b = &sourceBucket{tokens: l.burst, last: now}
+		b = newTokenBucket(l.rate, l.burst, now)
 		l.buckets[key] = b
 	}
-	if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
-		b.tokens = min(l.burst, b.tokens+elapsed*l.rate)
-		b.last = now
-	}
-	if b.tokens < 1 {
-		return false
-	}
-	b.tokens--
-	return true
+	return b.allow(now)
 }
 
 func (l *sourceLimiter) evict(now time.Time) {
@@ -89,8 +76,11 @@ func (l *sourceLimiter) evict(now time.Time) {
 			delete(l.buckets, k)
 		}
 	}
-	if len(l.buckets) >= l.max {
-		clear(l.buckets)
+	for k := range l.buckets {
+		if len(l.buckets) < l.max-l.max/8 {
+			return
+		}
+		delete(l.buckets, k)
 	}
 }
 
@@ -181,13 +171,27 @@ func (s *Server) globalCreates(ctx context.Context, now time.Time) (globalState,
 	return globalState{capped: c.Count >= limit, powNeeded: c.Count*2 >= limit}, nil
 }
 
-func (s *Server) countGlobalCreate(ctx context.Context, now time.Time) error {
-	if s.cfg.Rates.GlobalDailyCreates <= 0 {
-		return nil
+type globalSlot struct {
+	reserved  bool
+	full      bool
+	powNeeded bool
+}
+
+func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (globalSlot, error) {
+	limit := s.cfg.Rates.GlobalDailyCreates
+	if limit <= 0 {
+		return globalSlot{}, nil
 	}
 	d := dayWindow(now)
-	_, err := s.store.RateHit(ctx, []store.RateHit{{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
-	return err
+	count, ok, err := s.store.RateReserve(ctx, store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}, limit)
+	if err != nil || !ok {
+		return globalSlot{full: err == nil}, err
+	}
+	return globalSlot{reserved: true, powNeeded: (count-1)*2 >= limit}, nil
+}
+
+func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) error {
+	return s.store.RateRelease(ctx, globalCreatesKey, dayWindow(now).start)
 }
 
 func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {

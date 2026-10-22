@@ -11,7 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/store/disk"
 )
 
-func TestPutLeavesNoTempLink(t *testing.T) {
+func TestTempDirStaysEmptyAfterPut(t *testing.T) {
 	dir := t.TempDir()
 	b, err := disk.New(dir)
 	if err != nil {

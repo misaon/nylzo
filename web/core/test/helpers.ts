@@ -74,6 +74,7 @@ export interface LinkVector {
   readonly name: string;
   readonly input: string;
   readonly valid: boolean;
+  readonly canonical?: boolean;
   readonly id?: string;
   readonly kdf_id?: number;
   readonly s_hex?: string;

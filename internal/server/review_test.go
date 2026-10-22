@@ -18,6 +18,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
@@ -253,6 +254,16 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	if c, _ := h.store.RateGet(t.Context(), "global:d", day); c.Count != 2 {
 		t.Fatalf("failed and replayed creates moved the global counter: %+v", c)
+	}
+	other := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
+	other.ip = "203.0.113.10"
+	challenge, _, _ := strings.Cut(token, ".")
+	reuse, err := server.SolvePoW(challenge, other.id, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: other.object, ip: other.ip, headers: map[string]string{"X-Nylzo-Create": other.createHeader(0), "X-Nylzo-Pow": reuse}}); resp.StatusCode != 403 {
+		t.Fatalf("a second token for a used challenge: %d", resp.StatusCode)
 	}
 	if code := send(m.createHeader(0), solve(m)); code != 201 {
 		t.Fatalf("fresh challenge: %d", code)
@@ -498,7 +509,7 @@ func TestSweepRetriesReconcileAfterFailure(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.startOfNextUTCDay()
 	fb := h.withFaultyBlobs()
-	for _, ref := range []string{"stuck", "orphan"} {
+	for _, ref := range []string{"0-stuck", "orphan"} {
 		if err := h.blobs.Put(t.Context(), ref, strings.NewReader("x"), 1); err != nil {
 			t.Fatal(err)
 		}
@@ -506,63 +517,77 @@ func TestSweepRetriesReconcileAfterFailure(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 60, "expiring")
 	h.mustCreate(m)
 	h.clock.Advance(2 * time.Minute)
-	fb.set(func(b *faultyBlobs) { b.failDelete["stuck"] = true; b.failDelete[m.id.String()] = true })
+	fb.set(func(b *faultyBlobs) { b.failList = errInjected; b.failDelete[m.id.String()] = true })
 	report, err := h.srv.SweepOnce(t.Context())
-	if err == nil || report.Expired != 0 || report.OrphanedBlobs != 1 {
-		t.Fatalf("a failing expiry must not stop the reconcile: %+v %v", report, err)
+	if err == nil || report.Expired != 0 || report.OrphanedBlobs != 0 {
+		t.Fatalf("a failed listing: %+v %v", report, err)
 	}
-	fb.set(func(b *faultyBlobs) { clear(b.failDelete) })
+	fb.set(func(b *faultyBlobs) { b.failList = nil; clear(b.failDelete); b.failDelete["0-stuck"] = true })
 	report, err = h.srv.SweepOnce(t.Context())
-	if err != nil || report.Expired != 1 || report.OrphanedBlobs != 1 {
-		t.Fatalf("a failed reconcile must run again the same day: %+v %v", report, err)
+	if err == nil || report.Expired != 1 || report.OrphanedBlobs != 1 {
+		t.Fatalf("a reconcile whose listing failed must run again the same day and skip past a failed delete: %+v %v", report, err)
 	}
-	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.OrphanedBlobs != 0 {
-		t.Fatalf("a successful reconcile must be recorded for the day: %+v %v", report, err)
-	}
-}
-
-func TestClaimAfterBlobVanishedEndsMessage(t *testing.T) {
-	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
-	h.mustCreate(m)
-	if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
-		t.Fatal(err)
-	}
-	resp, body := h.claim(m, "", "")
-	if resp.StatusCode != 410 || resp.Header.Get("X-Nylzo-Lease") != "" || decodeJSON(t, body)["state"] != "deleted" {
-		t.Fatalf("%d %s lease=%q", resp.StatusCode, body, resp.Header.Get("X-Nylzo-Lease"))
-	}
-	if _, meta := h.metadata(m); meta["state"] != "deleted" {
-		t.Fatalf("the row must end once its blob is gone: %v", meta)
-	}
-	if resp, _ := h.post(m, "burn", m.readToken); resp.StatusCode != 410 {
-		t.Fatalf("burn after the repair: %d", resp.StatusCode)
+	report, err = h.srv.SweepOnce(t.Context())
+	if err != nil || report.OrphanedBlobs != 0 {
+		t.Fatalf("a reconcile that listed the store must be recorded for the day: %+v %v", report, err)
 	}
 }
 
-func TestDownloadAfterBlobVanishedEndsMessage(t *testing.T) {
+func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
-	for _, c := range []struct {
-		opens uint16
-		state string
-	}{{1, "opened"}, {2, "deleted"}} {
-		m := newMessage(t, core.KDFNone, "", c.opens, 3600, "x")
+	for _, opens := range []uint16{1, 2} {
+		m := newMessage(t, core.KDFNone, "", opens, 3600, "x")
 		h.mustCreate(m)
+		if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
+			t.Fatal(err)
+		}
 		resp, _ := h.claim(m, "", "")
-		lease := resp.Header.Get("X-Nylzo-Lease")
-		if resp.StatusCode != 200 || lease == "" {
-			t.Fatalf("claim: %d", resp.StatusCode)
+		if resp.StatusCode != 500 || resp.Header.Get("X-Nylzo-Lease") == "" {
+			t.Fatalf("opens %d: a lost blob must answer 500 with the lease: %d", opens, resp.StatusCode)
+		}
+		if resp, meta := h.metadata(m); resp.StatusCode != 200 || meta["ended_at"] != nil {
+			t.Fatalf("opens %d: a lost blob must not end the message: %v", opens, meta)
+		}
+	}
+}
+
+func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	crash := func(m *message, state store.State) {
+		if _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), state); err != nil {
+			t.Fatal(err)
 		}
 		if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
 			t.Fatal(err)
 		}
-		resp, body := h.blob(m, lease)
-		if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != c.state {
-			t.Fatalf("opens %d: %d %s", c.opens, resp.StatusCode, body)
+	}
+	claimed := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(claimed)
+	crash(claimed, store.StateCancelled)
+	resp, body := h.claim(claimed, "", "")
+	if resp.StatusCode != 410 || resp.Header.Get("X-Nylzo-Lease") != "" || decodeJSON(t, body)["state"] != "cancelled" {
+		t.Fatalf("claim after an interrupted cancel: %d %s", resp.StatusCode, body)
+	}
+	if _, st := h.status(claimed); st["state"] != "cancelled" {
+		t.Fatalf("status: %v", st)
+	}
+	downloaded := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(downloaded)
+	resp, _ = h.claim(downloaded, "", "")
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	if resp.StatusCode != 200 || lease == "" {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func(id string) {
+		if id == downloaded.id.String() {
+			crash(downloaded, store.StateDeleted)
 		}
-		if _, st := h.status(m); st["state"] != c.state {
-			t.Fatalf("opens %d: status %v", c.opens, st)
-		}
+	}}
+	h.reopen(h.cfg)
+	resp, body = h.blob(downloaded, lease)
+	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "deleted" {
+		t.Fatalf("download racing a burn: %d %s", resp.StatusCode, body)
 	}
 }
 
@@ -715,8 +740,8 @@ func TestAbuseReportHardening(t *testing.T) {
 	}
 	resp, _ = h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.82", body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
 	info, err := os.Stat(path)
-	if resp.StatusCode != 202 || err != nil || info.Size() != 16<<20 {
-		t.Fatalf("a full report file must not grow: %d %v %d", resp.StatusCode, err, info.Size())
+	if resp.StatusCode != 503 || err != nil || info.Size() != 16<<20 || !strings.Contains(h.logBuf.String(), "abuse-file-full") {
+		t.Fatalf("a full report file must answer 503, log an error and not grow: %d %v %d", resp.StatusCode, err, info.Size())
 	}
 }
 
@@ -739,6 +764,10 @@ func TestConfigBounds(t *testing.T) {
 		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
 		"default-kdf-none":     with("NYLZO_DEFAULT_KDF", "0"),
 		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
+		"source-rps-nan":       with("NYLZO_RATE_SOURCE_RPS", "NaN"),
+		"source-burst-inf":     with("NYLZO_RATE_SOURCE_BURST", "+Inf"),
+		"source-burst-half":    with("NYLZO_RATE_SOURCE_BURST", "0.5"),
+		"bucket-burst-half":    with("NYLZO_RATE_BUCKET_BURST", "0.5"),
 	} {
 		if _, err := server.FromEnv(env, true); err == nil {
 			t.Errorf("%s accepted", name)
@@ -797,5 +826,198 @@ func TestMalformedIDsDoNotSpendReadLimit(t *testing.T) {
 	}
 	if resp, _ := h.metadata(m); resp.StatusCode != 200 {
 		t.Fatalf("malformed ids spent the read limit: %d", resp.StatusCode)
+	}
+}
+
+func TestSweepLogAttrsCountsEveryFailedItem(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	for range 2 {
+		m := newMessage(t, core.KDFNone, "", 1, 60, "x")
+		h.mustCreate(m)
+		fb.set(func(b *faultyBlobs) { b.failDelete[m.id.String()] = true })
+	}
+	h.clock.Advance(2 * time.Minute)
+	report, err := h.srv.SweepOnce(t.Context())
+	attrs := server.SweepLogAttrs(report, err)
+	got := map[any]any{}
+	for i := 0; i+1 < len(attrs); i += 2 {
+		got[attrs[i]] = attrs[i+1]
+	}
+	if got["errors"] != 2 || strings.Contains(fmt.Sprint(got["err"]), "\n") {
+		t.Fatalf("want 2 failed items and only the first error: %v", got)
+	}
+}
+
+func TestRefusedSourceTakesNoInstanceToken(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1, 1
+	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 1, 3
+	h := newHarness(t, cfg)
+	get := func(ip string) int {
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: ip})
+		return resp.StatusCode
+	}
+	if get("203.0.113.1") != 200 {
+		t.Fatal("first request")
+	}
+	for range 5 {
+		if get("203.0.113.1") != 429 {
+			t.Fatal("source not limited")
+		}
+	}
+	if get("198.51.100.2") != 200 || get("192.0.2.3") != 200 {
+		t.Fatal("a refused source drained the instance bucket")
+	}
+}
+
+func TestPrefixTierLimitsOneRange(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 10, 10
+	h := newHarness(t, cfg)
+	codes := []int{}
+	for i := range 8 {
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:1:%x::1", i)})
+		codes = append(codes, resp.StatusCode)
+	}
+	if codes[4] != 200 || codes[5] != 429 || codes[7] != 429 {
+		t.Fatalf("one /48 must get at most half of the instance bucket: %v", codes)
+	}
+	if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: "2001:db8:2::1"}); resp.StatusCode != 200 {
+		t.Fatal("another /48 was throttled")
+	}
+}
+
+func TestEverySweepPurgesStaleTempFiles(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	h.startOfNextUTCDay()
+	stale := func(name string) {
+		if err := os.WriteFile(filepath.Join(h.dir, "blobs", "tmp", name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale("blob-first")
+	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.StaleTempFiles != 1 {
+		t.Fatalf("first sweep: %+v %v", report, err)
+	}
+	stale("blob-second")
+	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.OrphanedBlobs != 0 || report.StaleTempFiles != 1 {
+		t.Fatalf("a sweep after the daily reconcile must still purge temp files: %+v %v", report, err)
+	}
+}
+
+func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	existing := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(existing)
+	early, earlyBody := h.create(existing)
+	fb := h.withFaultyBlobs()
+	fb.set(func(b *faultyBlobs) { b.failPut = store.ErrConflict })
+	late, lateBody := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
+	if early.StatusCode != 409 || late.StatusCode != 409 || late.Close != early.Close || !bytes.Equal(earlyBody, lateBody) {
+		t.Fatalf("early %d close=%v, late %d close=%v", early.StatusCode, early.Close, late.StatusCode, late.Close)
+	}
+}
+
+func TestStorageCancellationIsInternalWhileClientWaits(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	fb.set(func(b *faultyBlobs) { b.failPut = context.Canceled })
+	if resp, _ := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "x")); resp.StatusCode != 500 {
+		t.Fatalf("storage cancellation with a live client: %d", resp.StatusCode)
+	}
+}
+
+func TestHTTPErrorLogCategoriesAndLimit(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	errLog := h.srv.HTTPServer().ErrorLog
+	errLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
+	for range 40 {
+		errLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
+	}
+	errLog.Printf("http2: panic serving 203.0.113.99:4242: boom")
+	logs := h.logBuf.String()
+	for _, want := range []string{`"category":"tls-handshake"`, `"category":"http2"`, `"category":"panic"`} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("%s missing: %s", want, logs)
+		}
+	}
+	if n := strings.Count(logs, `"level":"WARN","msg":"net/http error"`); n > 25 {
+		t.Fatalf("net/http warnings are not rate limited: %d", n)
+	}
+	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, "boom") {
+		t.Fatal("net/http error text reached the log")
+	}
+}
+
+func TestAbuseReasonRedactionEdges(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	secret := core.Encode(m.secret[:])
+	link := core.FormatLink("https://nylzo.example", m.id, m.kdf, m.secret)
+	reasons := []string{
+		"see https://x.example/p#token-abc def",
+		strings.Repeat("a ", 499) + "aé tail",
+		"https://safelinks.example/?url=" + strings.NewReplacer(":", "%3A", "/", "%2F", "#", "%23").Replace(link),
+		"double %2523" + secret[:30] + " and glued key_1.0." + secret,
+		"bare " + secret + " end",
+		strings.Repeat("<", 600),
+		"see https%3A%2F%2Fx.example%2Fp%23token-abc def",
+	}
+	for i, reason := range reasons {
+		body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": reason})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: fmt.Sprintf("203.0.%d.1", 90+i), body: body, headers: map[string]string{"Content-Type": "application/json"}})
+		if resp.StatusCode != 202 {
+			t.Fatalf("report %d: %d", i, resp.StatusCode)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), secret[:22]) {
+		t.Fatalf("a link secret reached the report file: %s", data)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	reason := func(i int) string {
+		var row struct{ Reason string }
+		if err := json.Unmarshal([]byte(lines[i]), &row); err != nil {
+			t.Fatal(err)
+		}
+		return row.Reason
+	}
+	if got := reason(0); got != "see https://x.example/p[redacted] def" {
+		t.Fatalf("hash run: %q", got)
+	}
+	if got := reason(6); got != "see https://x.example/p[redacted] def" {
+		t.Fatalf("percent-encoded hash run: %q", got)
+	}
+	if got := reason(1); len(got) != 999 || strings.ContainsRune(got, utf8.RuneError) {
+		t.Fatalf("cut is not UTF-8 safe: %d", len(got))
+	}
+	for i, line := range lines {
+		if len(line) > 1400 {
+			t.Fatalf("line %d is %d bytes after escaping", i, len(line))
+		}
+	}
+}
+
+func TestAbuseReportsCappedPerMessage(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	for i := range 12 {
+		body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam %d"}`, m.id.String(), m.readToken, i)
+		if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: fmt.Sprintf("198.51.%d.1", i), body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
+			t.Fatalf("report %d: %d", i, resp.StatusCode)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(data), "\n"); n != 10 {
+		t.Fatalf("stored %d reports for one message in a day, want 10", n)
 	}
 }

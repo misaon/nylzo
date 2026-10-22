@@ -52,7 +52,10 @@ func (s *Server) throttle(next http.Handler) http.Handler {
 
 func (s *Server) allowAPI(r *http.Request) bool {
 	now := s.clock()
-	return s.sources.allow(s.ring.Bucket(now, s.clientAddr(r), false), now) && s.bucket.allow(now)
+	addr := s.clientAddr(r)
+	return s.sources.allow(s.ring.Bucket(now, addr, false), now) &&
+		s.prefixes.allow(s.ring.Bucket(now, addr, true), now) &&
+		s.bucket.allow(now)
 }
 
 type statusWriter struct {

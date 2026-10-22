@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -31,7 +32,10 @@ const (
 	timeFormat       = time.RFC3339
 	octetStream      = "application/octet-stream"
 	abuseReasonLimit = 1000
+	abuseReasonJSON  = 1200
 	abuseFileLimit   = 16 << 20
+	abusePerMessage  = 10
+	abuseDecodeDepth = 3
 )
 
 type createHeader struct {
@@ -154,8 +158,8 @@ func (s *Server) authorize(ctx context.Context, idStr, token string, purpose pep
 	if err != nil {
 		return store.Record{}, id, false, err
 	}
-	if rec.Message != nil && !now.Before(rec.Message.ExpiresAt) {
-		if err := store.EndMessage(ctx, s.store, s.blobs, id.String(), store.StateExpired, now); err != nil && !errors.Is(err, store.ErrNotFound) {
+	if m := rec.Message; m != nil && (m.Ending != "" || !now.Before(m.ExpiresAt)) {
+		if _, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), store.StateExpired, now); err != nil && !errors.Is(err, store.ErrNotFound) {
 			return store.Record{}, id, false, err
 		}
 		if rec, err = s.store.Get(ctx, id.String()); err != nil {
@@ -306,17 +310,25 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, r, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: seconds})
 		return
 	}
-	global, err := s.globalCreates(ctx, now)
+	slot, err := s.reserveGlobalCreate(ctx, now)
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
-	if global.capped {
+	if slot.full {
 		w.Header().Set("Retry-After", strconv.FormatInt(int64(dayWindow(now).end.Sub(now)/time.Second)+1, 10))
 		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 		return
 	}
-	if global.powNeeded {
+	stored := false
+	defer func() {
+		if slot.reserved && !stored {
+			if err := s.releaseGlobalCreate(context.WithoutCancel(ctx), now); err != nil {
+				s.log.Error("global-release", "err", err.Error())
+			}
+		}
+	}()
+	if slot.powNeeded {
 		err := s.powVerify(ctx, r.Header.Get(headerPoW), id, now)
 		switch {
 		case errors.Is(err, errPoWBusy):
@@ -386,9 +398,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, err)
 		return
 	}
-	if err := s.countGlobalCreate(context.WithoutCancel(ctx), now); err != nil {
-		s.log.Error("global-count", "err", err.Error())
-	}
+	stored = true
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
 }
 
@@ -559,9 +569,11 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 	}
 	f, size, err := s.blobs.Open(r.Context(), m.BlobRef)
 	if errors.Is(err, store.ErrBlobMissing) {
-		w.Header().Del(headerLease)
-		writeGone(w, string(s.endMissingBlob(r.Context(), m, lease != "")))
-		return
+		if state, ended := s.finishMissingBlob(r.Context(), m.ID); ended {
+			w.Header().Del(headerLease)
+			writeGone(w, string(state))
+			return
+		}
 	}
 	if err != nil {
 		s.internal(w, r, err)
@@ -575,19 +587,21 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 	io.Copy(w, f)
 }
 
-func (s *Server) endMissingBlob(ctx context.Context, m *store.Message, claimed bool) store.State {
-	now := s.clock()
-	state := store.StateDeleted
-	switch {
-	case !now.Before(m.ExpiresAt):
-		state = store.StateExpired
-	case !claimed && m.OpensRemaining == 0:
-		state = store.StateOpened
+func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State, bool) {
+	rec, err := s.store.Get(ctx, id)
+	if err != nil {
+		return "", false
 	}
-	if err := store.EndMessage(ctx, s.store, s.blobs, m.ID, state, now); err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.log.Error("end-missing-blob", "err", err.Error())
+	if rec.Tombstone != nil {
+		return rec.Tombstone.State, true
 	}
-	return s.endedState(ctx, m.ID)
+	if rec.Message.Ending == "" {
+		return "", false
+	}
+	if _, err := store.EndMessage(ctx, s.store, s.blobs, id, rec.Message.Ending, s.clock()); err != nil && !errors.Is(err, store.ErrNotFound) {
+		s.log.Error("finish-ending", "err", err.Error())
+	}
+	return s.endedState(ctx, id), true
 }
 
 func (s *Server) endedState(ctx context.Context, id string) store.State {
@@ -680,15 +694,17 @@ func (s *Server) endWith(w http.ResponseWriter, r *http.Request, purpose pepper.
 	if !ok {
 		return
 	}
-	if err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock()); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeGone(w, string(s.endedState(ctx, id.String())))
-			return
-		}
+	ended, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock())
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		writeGone(w, string(s.endedState(ctx, id.String())))
+	case err != nil:
 		s.internal(w, r, err)
-		return
+	case ended != state:
+		writeGone(w, string(ended))
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
@@ -749,7 +765,14 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ok {
-		if err := s.recordAbuse(now, id.String(), body.Reason); err != nil {
+		err := s.recordAbuse(ctx, now, id.String(), body.Reason)
+		if errors.Is(err, errAbuseFull) {
+			s.log.Error("abuse-file-full")
+			w.Header().Set("Retry-After", "3600")
+			writeError(w, http.StatusServiceUnavailable, errUnavailable)
+			return
+		}
+		if err != nil {
 			s.log.Error("abuse-record", "err", err.Error())
 		}
 	}
@@ -757,21 +780,52 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	linkFragment   = regexp.MustCompile(`#[^\s]*`)
-	secretFragment = regexp.MustCompile(`\b1\.[0-9]\.[A-Za-z0-9_-]{8,}`)
-	errAbuseFull   = errors.New("server: abuse report file reached its size limit")
+	percentEscape = regexp.MustCompile(`%[0-9A-Fa-f]{2}`)
+	linkFragment  = regexp.MustCompile(`#\S*`)
+	tokenRun      = regexp.MustCompile(`[A-Za-z0-9_-]{22,}`)
+	errAbuseFull  = errors.New("server: abuse report file reached its size limit")
 )
 
+func percentDecode(text string) string {
+	for range abuseDecodeDepth {
+		decoded := percentEscape.ReplaceAllStringFunc(text, func(esc string) string {
+			b, _ := hex.DecodeString(esc[1:])
+			return string(b)
+		})
+		if decoded == text {
+			break
+		}
+		text = decoded
+	}
+	return strings.ToValidUTF8(text, "")
+}
+
 func redactReason(reason string) string {
-	reason = linkFragment.ReplaceAllString(reason, "#[redacted]")
-	reason = secretFragment.ReplaceAllString(reason, "[redacted]")
+	reason = percentDecode(reason)
+	reason = linkFragment.ReplaceAllString(reason, "[redacted]")
+	reason = tokenRun.ReplaceAllString(reason, "[redacted]")
 	if len(reason) > abuseReasonLimit {
 		reason = strings.ToValidUTF8(reason[:abuseReasonLimit], "")
 	}
-	return reason
+	for {
+		encoded, _ := json.Marshal(reason)
+		if len(encoded) <= abuseReasonJSON {
+			return reason
+		}
+		runes := []rune(reason)
+		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonJSON)/6)])
+	}
 }
 
-func (s *Server) recordAbuse(now time.Time, id, reason string) error {
+func (s *Server) recordAbuse(ctx context.Context, now time.Time, id, reason string) error {
+	d := dayWindow(now)
+	counts, err := s.store.RateHit(ctx, []store.RateHit{{Key: "abuse:id:" + id, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
+	if err != nil {
+		return err
+	}
+	if counts[0].Count > abusePerMessage {
+		return nil
+	}
 	line, err := json.Marshal(map[string]string{"time": formatTime(now), "id": id, "reason": redactReason(reason)})
 	if err != nil {
 		return err

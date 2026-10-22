@@ -22,6 +22,8 @@ const (
 	writeTimeout      = 120 * time.Second
 	idleTimeout       = 30 * time.Second
 	maxHeaderBytes    = 8 << 10
+	httpErrorLogRate  = 1
+	httpErrorLogBurst = 20
 	reconcileKey      = "sweep:reconcile:d"
 )
 
@@ -49,6 +51,7 @@ type Server struct {
 	log       *slog.Logger
 	bucket    *tokenBucket
 	sources   *sourceLimiter
+	prefixes  *sourceLimiter
 	powSlots  chan struct{}
 	handler   http.Handler
 	abuseMu   sync.Mutex
@@ -75,6 +78,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	}
 	s.bucket = newTokenBucket(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst, s.clock())
 	s.sources = newSourceLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
+	s.prefixes = newSourceLimiter(cfg.Rates.BucketPerSecond/2, max(1, cfg.Rates.BucketBurst/2))
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.handler = s.routes()
 	return s, nil
@@ -97,13 +101,24 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		ErrorLog:          log.New(&httpErrorSink{log: s.log, bucket: newTokenBucket(1, 20, time.Now())}, "", 0),
+		ErrorLog:          log.New(newHTTPErrorSink(s.log), "", 0),
 	}
 }
 
 type httpErrorSink struct {
-	log    *slog.Logger
-	bucket *tokenBucket
+	log     *slog.Logger
+	mu      sync.Mutex
+	buckets map[slog.Level]*tokenBucket
+	dropped map[slog.Level]int
+}
+
+func newHTTPErrorSink(l *slog.Logger) *httpErrorSink {
+	now := time.Now()
+	return &httpErrorSink{
+		log:     l,
+		buckets: map[slog.Level]*tokenBucket{slog.LevelWarn: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now), slog.LevelError: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now)},
+		dropped: map[slog.Level]int{},
+	}
 }
 
 var httpErrorCategories = []struct {
@@ -113,15 +128,13 @@ var httpErrorCategories = []struct {
 }{
 	{"http: Accept error", "accept", slog.LevelError},
 	{"http: panic serving", "panic", slog.LevelError},
+	{"http2: panic serving", "panic", slog.LevelError},
 	{"http: TLS handshake error", "tls-handshake", slog.LevelWarn},
 	{"http2: ", "http2", slog.LevelWarn},
 	{"http: superfluous response.WriteHeader", "superfluous-write-header", slog.LevelWarn},
 }
 
 func (h *httpErrorSink) Write(p []byte) (int, error) {
-	if !h.bucket.allow(time.Now()) {
-		return len(p), nil
-	}
 	name, level := "other", slog.LevelWarn
 	for _, c := range httpErrorCategories {
 		if bytes.HasPrefix(p, []byte(c.prefix)) {
@@ -129,7 +142,16 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 			break
 		}
 	}
-	h.log.Log(context.Background(), level, "net/http error", "category", name)
+	h.mu.Lock()
+	if !h.buckets[level].allow(time.Now()) {
+		h.dropped[level]++
+		h.mu.Unlock()
+		return len(p), nil
+	}
+	dropped := h.dropped[level]
+	h.dropped[level] = 0
+	h.mu.Unlock()
+	h.log.Log(context.Background(), level, "net/http error", "category", name, "dropped", dropped)
 	return len(p), nil
 }
 
@@ -141,15 +163,28 @@ func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
 		return report, errors.Join(err, derr)
 	}
 	if done.Count == 0 {
-		orphans, rerr := store.Reconcile(ctx, s.store, s.blobs, now)
+		orphans, listed, rerr := store.Reconcile(ctx, s.store, s.blobs, now)
 		report.OrphanedBlobs = orphans
-		if rerr == nil {
+		if listed {
 			d := dayWindow(now)
-			_, rerr = s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}})
+			if _, merr := s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}}); merr != nil {
+				rerr = errors.Join(rerr, merr)
+			}
 		}
 		err = errors.Join(err, rerr)
 	}
 	return report, err
+}
+
+func leafErrors(err error) []error {
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		var out []error
+		for _, e := range joined.Unwrap() {
+			out = append(out, leafErrors(e)...)
+		}
+		return out
+	}
+	return []error{err}
 }
 
 func SweepLogAttrs(report store.SweepReport, err error) []any {
@@ -157,11 +192,8 @@ func SweepLogAttrs(report store.SweepReport, err error) []any {
 	if err == nil {
 		return attrs
 	}
-	errs := []error{err}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		errs = joined.Unwrap()
-	}
-	return append(attrs, "errors", len(errs), "err", errs[0].Error())
+	leaves := leafErrors(err)
+	return append(attrs, "errors", len(leaves), "err", leaves[0].Error())
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
@@ -171,16 +203,16 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.SweepInterval)
 	defer ticker.Stop()
 	for {
+		report, err := s.SweepOnce(ctx)
+		if err != nil {
+			s.log.Error("sweep", SweepLogAttrs(report, err)...)
+		} else {
+			s.log.Info("sweep", report.LogAttrs()...)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			report, err := s.SweepOnce(ctx)
-			if err != nil {
-				s.log.Error("sweep", SweepLogAttrs(report, err)...)
-				continue
-			}
-			s.log.Info("sweep", report.LogAttrs()...)
 		}
 	}
 }

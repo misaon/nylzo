@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"strings"
 	"testing"
 
 	"golang.org/x/crypto/scrypt"
@@ -271,7 +270,7 @@ func TestLinkVectors(t *testing.T) {
 				t.Fatal("parsed link mismatch")
 			}
 			s := link.Secret
-			if strings.HasPrefix(v.Name, "valid-") && core.FormatLink("https://nylzo.example", link.ID, link.KDF, &s) != v.Input {
+			if v.Canonical && core.FormatLink("https://nylzo.example", link.ID, link.KDF, &s) != v.Input {
 				t.Fatal("format round trip mismatch")
 			}
 		})

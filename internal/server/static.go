@@ -1,17 +1,16 @@
 package server
 
 import (
-	"embed"
+	_ "embed"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
 )
 
-//go:embed assets
-var assets embed.FS
+//go:embed assets/index.html
+var indexHTML string
 
 const noncePlaceholder = "__NYLZO_CSP_NONCE__"
 
@@ -47,12 +46,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(previewHTML))
 		return
 	}
-	page, err := fs.ReadFile(assets, "assets/index.html")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, errInternal)
-		return
-	}
-	w.Write([]byte(strings.ReplaceAll(string(page), noncePlaceholder, nonce)))
+	w.Write([]byte(strings.ReplaceAll(indexHTML, noncePlaceholder, nonce)))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

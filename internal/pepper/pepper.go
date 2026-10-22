@@ -168,7 +168,5 @@ func (k *Key) Bucket(day time.Time, addr netip.Addr, coarse bool) [BucketLen]byt
 	input = append(input, 0, family, byte(plen))
 	input = append(input, masked...)
 	m := k.MAC(IP, input)
-	var out [BucketLen]byte
-	copy(out[:], m[:BucketLen])
-	return out
+	return [BucketLen]byte(m[:BucketLen])
 }

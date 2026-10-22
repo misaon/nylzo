@@ -21,7 +21,10 @@ func Fragment(kdf KDF, s *[SecretLen]byte) string {
 }
 
 func ParseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
-	fragment = strings.TrimPrefix(fragment, "#")
+	return parseFragment(strings.TrimPrefix(fragment, "#"))
+}
+
+func parseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
 	parts := strings.Split(fragment, ".")
 	if len(parts) != 3 || parts[0] != FragmentLabel {
 		return 0, nil, ErrLink
@@ -67,7 +70,7 @@ func ParseLink(raw string) (Link, error) {
 	if err != nil {
 		return Link{}, err
 	}
-	kdf, s, err := ParseFragment(fragment)
+	kdf, s, err := parseFragment(fragment)
 	if err != nil {
 		return Link{}, err
 	}

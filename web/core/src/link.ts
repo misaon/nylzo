@@ -23,7 +23,11 @@ export function fragment(kdfId: KdfId, s: Uint8Array): string {
 }
 
 export function parseFragment(text: string): Fragment {
-  const parts = (text.startsWith('#') ? text.slice(1) : text).split('.');
+  return parseFragmentBody(text.startsWith('#') ? text.slice(1) : text);
+}
+
+function parseFragmentBody(text: string): Fragment {
+  const parts = text.split('.');
   const [label, kdfText = '', secretText = ''] = parts;
   if (parts.length !== 3 || label !== FRAGMENT_LABEL) {
     throw new LinkError();
@@ -60,7 +64,7 @@ export function parseLink(raw: string): Link {
     throw new LinkError();
   }
   const id = parsePath(path);
-  const { kdfId, s } = parseFragment(raw.slice(hash + 1));
+  const { kdfId, s } = parseFragmentBody(raw.slice(hash + 1));
   return { id, kdfId, s };
 }
 

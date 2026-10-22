@@ -1,3 +1,5 @@
+import { MAX_JSON_DEPTH } from './limits.ts';
+
 export type JsonValue =
   | { readonly kind: 'null' }
   | { readonly kind: 'boolean'; readonly value: boolean }
@@ -40,7 +42,7 @@ class JsonReader {
   }
 
   readDocument(): JsonValue {
-    const value = this.readValue();
+    const value = this.readValue(1);
     this.skipWhitespace();
     if (this.#pos !== this.#text.length) {
       throw this.error();
@@ -48,13 +50,17 @@ class JsonReader {
     return value;
   }
 
-  private readValue(): JsonValue {
+  private readValue(depth: number): JsonValue {
     this.skipWhitespace();
-    switch (this.#text[this.#pos]) {
+    const next = this.#text[this.#pos];
+    if ((next === '{' || next === '[') && depth > MAX_JSON_DEPTH) {
+      throw this.error();
+    }
+    switch (next) {
       case '{':
-        return this.readObject();
+        return this.readObject(depth);
       case '[':
-        return this.readArray();
+        return this.readArray(depth);
       case '"':
         return { kind: 'string', value: this.readString() };
       case 't':
@@ -71,7 +77,7 @@ class JsonReader {
     }
   }
 
-  private readObject(): JsonValue {
+  private readObject(depth: number): JsonValue {
     this.#pos += 1;
     const members = new Map<string, JsonValue>();
     this.skipWhitespace();
@@ -88,7 +94,7 @@ class JsonReader {
       if (!this.consume(':')) {
         throw this.error();
       }
-      members.set(key, this.readValue());
+      members.set(key, this.readValue(depth + 1));
       this.skipWhitespace();
       if (this.consume('}')) {
         return { kind: 'object', members };
@@ -99,7 +105,7 @@ class JsonReader {
     }
   }
 
-  private readArray(): JsonValue {
+  private readArray(depth: number): JsonValue {
     this.#pos += 1;
     const items: JsonValue[] = [];
     this.skipWhitespace();
@@ -107,7 +113,7 @@ class JsonReader {
       return { kind: 'array', items };
     }
     for (;;) {
-      items.push(this.readValue());
+      items.push(this.readValue(depth + 1));
       this.skipWhitespace();
       if (this.consume(']')) {
         return { kind: 'array', items };

@@ -35,6 +35,8 @@ func powServer(t *testing.T, concurrency int) *Server {
 
 func TestPoWVerifierSaturated(t *testing.T) {
 	s := powServer(t, 1)
+	defer func(d time.Duration) { powSlotWait = d }(powSlotWait)
+	powSlotWait = 50 * time.Millisecond
 	now := time.Now()
 	id := core.NewID()
 	token, err := SolvePoW(s.powChallenge(now), id, s.cfg.PoWDifficulty)
@@ -46,11 +48,21 @@ func TestPoWVerifierSaturated(t *testing.T) {
 		t.Fatalf("saturated verifier: want errPoWBusy, got %v", err)
 	}
 	<-s.powSlots
-	if err := s.powVerify(t.Context(), token, id, now); err != nil {
-		t.Fatalf("a busy answer must not use up the challenge: %v", err)
-	}
 	if err := s.powVerify(t.Context(), token, id, now); !errors.Is(err, ErrPoW) {
-		t.Fatalf("replayed token: %v", err)
+		t.Fatalf("a challenge is used once it is recorded, even after a busy answer: %v", err)
+	}
+	fresh, err := SolvePoW(s.powChallenge(now), id, s.cfg.PoWDifficulty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	powSlotWait = 5 * time.Second
+	s.powSlots <- struct{}{}
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		<-s.powSlots
+	}()
+	if err := s.powVerify(t.Context(), fresh, id, now); err != nil {
+		t.Fatalf("a slot that frees up within the wait must be used: %v", err)
 	}
 }
 

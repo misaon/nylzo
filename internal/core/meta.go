@@ -122,20 +122,38 @@ func decodeField(raw json.RawMessage, v any) error {
 	return nil
 }
 
-func isNull(raw json.RawMessage) bool {
-	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
-}
-
 func field(fields map[string]json.RawMessage, key string) (json.RawMessage, bool) {
 	raw, ok := fields[key]
-	if !ok || isNull(raw) {
+	if !ok || string(raw) == "null" {
 		return nil, false
 	}
 	return raw, true
 }
 
+func jsonDepth(b []byte) int {
+	depth, deepest := 0, 0
+	inString, escaped := false, false
+	for _, c := range b {
+		switch {
+		case escaped:
+			escaped = false
+		case inString && c == '\\':
+			escaped = true
+		case c == '"':
+			inString = !inString
+		case inString:
+		case c == '{' || c == '[':
+			depth++
+			deepest = max(deepest, depth)
+		case c == '}' || c == ']':
+			depth--
+		}
+	}
+	return deepest
+}
+
 func DecodeMeta(b []byte) (Meta, error) {
-	if len(b) > MaxMetaBytes || !utf8.Valid(b) {
+	if len(b) > MaxMetaBytes || !utf8.Valid(b) || jsonDepth(b) > MaxJSONDepth {
 		return Meta{}, ErrMeta
 	}
 	var fields map[string]json.RawMessage

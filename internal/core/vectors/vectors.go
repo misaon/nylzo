@@ -104,12 +104,13 @@ type FileContent struct {
 }
 
 type Link struct {
-	Name  string  `json:"name"`
-	Input string  `json:"input"`
-	Valid bool    `json:"valid"`
-	ID    *string `json:"id,omitempty"`
-	KDFID *int    `json:"kdf_id,omitempty"`
-	S     *string `json:"s_hex,omitempty"`
+	Name      string  `json:"name"`
+	Input     string  `json:"input"`
+	Valid     bool    `json:"valid"`
+	Canonical bool    `json:"canonical,omitempty"`
+	ID        *string `json:"id,omitempty"`
+	KDFID     *int    `json:"kdf_id,omitempty"`
+	S         *string `json:"s_hex,omitempty"`
 }
 
 type MetaCase struct {
@@ -385,8 +386,7 @@ func (f *File) link() error {
 	s := det32("link/s")
 	base := "https://nylzo.example"
 	valid := func(name string, kdf core.KDF) {
-		k := int(kdf)
-		f.Link = append(f.Link, Link{Name: name, Input: core.FormatLink(base, id, kdf, s), Valid: true, ID: new(id.String()), KDFID: &k, S: new(hex.EncodeToString(s[:]))})
+		f.Link = append(f.Link, Link{Name: name, Input: core.FormatLink(base, id, kdf, s), Valid: true, Canonical: true, ID: new(id.String()), KDFID: new(int(kdf)), S: new(hex.EncodeToString(s[:]))})
 	}
 	valid("valid-kdf0", core.KDFNone)
 	valid("valid-kdf1", core.KDFScrypt)
@@ -432,11 +432,16 @@ func (f *File) link() error {
 	invalid("trailing-space", base+"/m/"+idEnc+"#"+frag+" ")
 	invalid("tab-in-id", base+"/m/"+idEnc[:11]+"\t"+idEnc[11:]+"#"+frag)
 	invalid("second-fragment", base+"/m/"+idEnc+"#"+frag+"#x")
-	k := int(core.KDFScrypt)
-	f.Link = append(f.Link,
-		Link{Name: "uppercase-scheme-and-port", Input: "HTTPS://nylzo.example:8443/m/" + idEnc + "#" + frag, Valid: true, ID: new(idEnc), KDFID: &k, S: new(hex.EncodeToString(s[:]))},
-		Link{Name: "query-ignored", Input: base + "/m/" + idEnc + "?utm=x#" + frag, Valid: true, ID: new(idEnc), KDFID: &k, S: new(hex.EncodeToString(s[:]))},
-	)
+	invalid("double-hash", base+"/m/"+idEnc+"##"+frag)
+	invalid("scheme-httpss", "httpss://nylzo.example/m/"+idEnc+"#"+frag)
+	for _, c := range [][2]string{
+		{"uppercase-scheme-and-port", "HTTPS://nylzo.example:8443/m/" + idEnc + "#" + frag},
+		{"query-ignored", base + "/m/" + idEnc + "?utm=x#" + frag},
+		{"http-localhost-port", "http://localhost:8080/m/" + idEnc + "#" + frag},
+		{"ipv6-literal", "http://[::1]:8080/m/" + idEnc + "#" + frag},
+	} {
+		f.Link = append(f.Link, Link{Name: c[0], Input: c[1], Valid: true, ID: new(idEnc), KDFID: new(int(core.KDFScrypt)), S: new(hex.EncodeToString(s[:]))})
+	}
 	return nil
 }
 
@@ -463,8 +468,7 @@ func (f *File) meta() error {
 			if m.File != nil {
 				mc.FileName = new(m.File.Name)
 				mc.FileMime = new(m.File.Mime)
-				size := m.File.Size
-				mc.FileSize = &size
+				mc.FileSize = new(m.File.Size)
 			}
 		} else if _, err := core.DecodeMeta([]byte(input)); err == nil {
 			panic(fmt.Sprintf("vectors: meta %q must be rejected", name))
@@ -485,6 +489,9 @@ func (f *File) meta() error {
 	add("trailing-brace", `{"v":1,"text":"x"}}`, false)
 	add("trailing-bracket", `{"v":1,"text":"x"}]`, false)
 	add("trailing-whitespace", `{"v":1,"text":"x"} `+"\n", true)
+	add("depth-32", `{"v":1,"text":"x","extra":`+strings.Repeat("[", 31)+strings.Repeat("]", 31)+`}`, true)
+	add("depth-33", `{"v":1,"text":"x","extra":`+strings.Repeat("[", 32)+strings.Repeat("]", 32)+`}`, false)
+	add("depth-brackets-in-string", `{"v":1,"text":"`+strings.Repeat("[", 40)+`"}`, true)
 	add("name-del", `{"v":1,"file":{"name":"a\u007fb","mime":"","size":1}}`, false)
 	add("name-unit-separator", `{"v":1,"file":{"name":"a\u001fb","mime":"","size":1}}`, false)
 	add("mime-null", `{"v":1,"file":{"name":"a","mime":null,"size":1}}`, true)

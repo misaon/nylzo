@@ -86,7 +86,9 @@ func TestCreateValidation(t *testing.T) {
 			r.Header.Set("X-Nylzo-Create", mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 }))
 		}, 400, "bad_request"},
 		{"size-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1))) }, 400, "bad_request"},
-		{"size-above-limit-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(core.MaxObjectBytes+1)) }, 400, "bad_request"},
+		{"size-above-limit-mismatch", func(r *http.Request) {
+			r.Header.Set("X-Nylzo-Create", m.createHeader(server.Defaults().Limits.MaxObjectBytes+1))
+		}, 400, "bad_request"},
 		{"chunked", func(r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
 	}
 	for _, c := range cases {
@@ -176,6 +178,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("create during slowloris: %v %v", err, resp)
 	}
 	resp.Body.Close()
+	tooLarge := h.cfg.Limits.MaxObjectBytes + 1
 	checks := []struct {
 		name         string
 		header       string
@@ -184,8 +187,8 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	}{
 		{"no-content-length", "", 0, "411"},
 		{"size-mismatch", "Content-Length: 5\r\n", 0, "400"},
-		{"too-large", fmt.Sprintf("Content-Length: %d\r\n", core.MaxObjectBytes+1), core.MaxObjectBytes + 1, "413"},
-		{"too-large-mismatch", fmt.Sprintf("Content-Length: %d\r\n", core.MaxObjectBytes+1), 0, "400"},
+		{"too-large", fmt.Sprintf("Content-Length: %d\r\n", tooLarge), tooLarge, "413"},
+		{"too-large-mismatch", fmt.Sprintf("Content-Length: %d\r\n", tooLarge), 0, "400"},
 	}
 	for _, c := range checks {
 		conn, err := net.Dial("tcp", addr)
