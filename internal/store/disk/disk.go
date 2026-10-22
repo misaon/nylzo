@@ -113,7 +113,7 @@ func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, err
 	if err != nil {
 		return nil, 0, err
 	}
-	f, err := os.Open(p)
+	f, err := openBlob(p)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, 0, store.ErrBlobMissing

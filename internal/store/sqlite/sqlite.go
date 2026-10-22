@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	driver "modernc.org/sqlite"
@@ -58,7 +59,7 @@ CREATE TABLE IF NOT EXISTS passphrase_attempts (
 	next_attempt_at INTEGER NOT NULL,
 	purge_at INTEGER NOT NULL,
 	PRIMARY KEY (id, bucket)
-);
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS passphrase_attempts_purge_at ON passphrase_attempts(purge_at);
 CREATE TABLE IF NOT EXISTS tombstones (
 	id TEXT PRIMARY KEY,
@@ -69,7 +70,7 @@ CREATE TABLE IF NOT EXISTS tombstones (
 	first_opened_at INTEGER,
 	ended_at INTEGER NOT NULL,
 	purge_at INTEGER NOT NULL
-);
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS tombstones_purge_at ON tombstones(purge_at);
 CREATE TABLE IF NOT EXISTS rate_counters (
 	key TEXT NOT NULL,
@@ -78,7 +79,7 @@ CREATE TABLE IF NOT EXISTS rate_counters (
 	bytes INTEGER NOT NULL,
 	purge_at INTEGER NOT NULL,
 	PRIMARY KEY (key, window_start)
-);
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at);
 `
 
@@ -90,13 +91,19 @@ CREATE INDEX IF NOT EXISTS messages_ending ON messages(id) WHERE ending IS NOT N
 `
 
 const (
-	readerConns  = 8
-	openAttempts = 10
-	openBackoff  = 20 * time.Millisecond
-	openFastFail = 200 * time.Millisecond
+	readerConns   = 8
+	openAttempts  = 10
+	openBackoff   = 20 * time.Millisecond
+	openFastFail  = 200 * time.Millisecond
+	schemaVersion = 1
+	maxCacheKiB   = 512
 )
 
 func migrate(db *sql.DB) error {
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -111,10 +118,59 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	for _, t := range unorderedTables {
+		if err := dropRowid(tx, t); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.Exec(indexes); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if version >= schemaVersion {
+		return nil
+	}
+	if _, err := db.Exec(`VACUUM`); err != nil {
+		return err
+	}
+	_, err = db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
+	return err
+}
+
+type unorderedTable struct {
+	name, columns, purgeKey string
+}
+
+var unorderedTables = []unorderedTable{
+	{"tombstones", "id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at", "id"},
+	{"passphrase_attempts", "id, bucket, fail_count, next_attempt_at, purge_at", "id, bucket"},
+	{"rate_counters", "key, window_start, count, bytes, purge_at", "key, window_start"},
+}
+
+func dropRowid(tx *sql.Tx, t unorderedTable) error {
+	var ddl string
+	if err := tx.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, t.name).Scan(&ddl); err != nil {
+		return err
+	}
+	if strings.HasSuffix(strings.TrimSpace(ddl), "WITHOUT ROWID") {
+		return nil
+	}
+	rebuilt := t.name + "_rebuilt"
+	create := strings.Replace(ddl, t.name, rebuilt, 1) + " WITHOUT ROWID"
+	for _, stmt := range []string{
+		create,
+		fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s FROM %s`, rebuilt, t.columns, t.columns, t.name),
+		fmt.Sprintf(`DROP TABLE %s`, t.name),
+		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, rebuilt, t.name),
+		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_purge_at ON %s(purge_at)`, t.name, t.name),
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type Store struct {
@@ -131,7 +187,10 @@ func dsn(path string, write bool) string {
 	q.Set("_journal_mode", "WAL")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(FULL)")
-	return "file:" + path + "?" + q.Encode()
+	q.Add("_pragma", "secure_delete(1)")
+	q.Add("_pragma", "journal_size_limit(0)")
+	q.Add("_pragma", fmt.Sprintf("cache_size(-%d)", maxCacheKiB))
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + q.Encode()
 }
 
 func Open(path string) (*Store, error) {
@@ -316,6 +375,20 @@ func untilMidnight(now time.Time) time.Duration {
 	return next.Sub(u)
 }
 
+func ceilMinute(t time.Time) time.Time {
+	if r := t.Truncate(time.Minute); !r.Equal(t) {
+		return r.Add(time.Minute)
+	}
+	return t
+}
+
+func attemptMS(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return ms(t)
+}
+
 func backoff(failCount int) time.Duration {
 	if failCount <= store.FreeAttempts {
 		return 0
@@ -327,6 +400,7 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 	var result store.ClaimResult
 	var passErr *store.PassphraseError
 	err := s.tx(ctx, func(tx *sql.Tx) error {
+		now := p.Clock()
 		rec, err := scanRecord(ctx, tx, p.ID)
 		if err != nil {
 			return err
@@ -341,17 +415,17 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 		if m.State != store.StateAvailable {
 			return &store.GoneError{State: m.State}
 		}
-		if !p.Now.Before(m.ExpiresAt) {
+		if !now.Before(m.ExpiresAt) {
 			return &store.GoneError{State: store.StateExpired}
 		}
 		if m.PassphraseRequired() {
-			today := dayKey(p.Now)
+			today := dayKey(now)
 			dayCount := 0
 			if m.DayFailDate == today {
 				dayCount = m.DayFailCount
 			}
 			if dayCount >= store.DailyFailCap {
-				passErr = &store.PassphraseError{RetryAfter: untilMidnight(p.Now)}
+				passErr = &store.PassphraseError{RetryAfter: untilMidnight(now)}
 				return nil
 			}
 			var failCount int
@@ -360,8 +434,8 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			if nextAttempt > ms(p.Now) {
-				passErr = &store.PassphraseError{RetryAfter: fromMS(nextAttempt).Sub(p.Now)}
+			if nextAttempt > ms(now) {
+				passErr = &store.PassphraseError{RetryAfter: fromMS(nextAttempt).Sub(now)}
 				return nil
 			}
 			ok := p.VerifierSent && p.VerifyMAC(m.PepperID, m.VerifierMAC)
@@ -370,14 +444,18 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 				dayCount++
 				total := m.FailCountTotal + 1
 				wait := backoff(failCount)
-				next := p.Now.Add(wait)
+				var next time.Time
+				if wait > 0 {
+					next = ceilMinute(now.Add(wait))
+					wait = next.Sub(now)
+				}
 				purge := m.ExpiresAt.Add(store.TombstoneTTL)
 				if _, err := tx.ExecContext(ctx, `UPDATE messages SET day_fail_count = ?, day_fail_date = ?, fail_count_total = ? WHERE id = ?`, dayCount, today, total, m.ID); err != nil {
 					return err
 				}
 				if _, err := tx.ExecContext(ctx, `INSERT INTO passphrase_attempts (id, bucket, fail_count, next_attempt_at, purge_at) VALUES (?, ?, ?, ?, ?)
 					ON CONFLICT(id, bucket) DO UPDATE SET fail_count = excluded.fail_count, next_attempt_at = excluded.next_attempt_at, purge_at = excluded.purge_at`,
-					m.ID, p.Bucket, failCount, ms(next), ms(purge)); err != nil {
+					m.ID, p.Bucket, failCount, attemptMS(next), ms(purge)); err != nil {
 					return err
 				}
 				passErr = &store.PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, store.FreeAttempts-failCount)}
@@ -389,13 +467,13 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 			m.State = store.StateOpened
 		}
 		if m.FirstOpenedAt == nil {
-			t := p.Now.UTC().Truncate(time.Minute)
+			t := now.UTC().Truncate(time.Minute)
 			m.FirstOpenedAt = &t
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE messages SET opens_remaining = ?, state = ?, first_opened_at = ? WHERE id = ?`, m.OpensRemaining, string(m.State), ms(*m.FirstOpenedAt), m.ID); err != nil {
 			return err
 		}
-		expires := p.Now.Add(store.LeaseDuration)
+		expires := now.Add(store.LeaseFor(m.Size))
 		res, err := tx.ExecContext(ctx, `INSERT INTO leases (id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES (?, ?, ?, ?, 0)`, m.ID, p.LeaseMAC, p.LeasePepperID, ms(expires))
 		if err != nil {
 			return err
@@ -436,12 +514,12 @@ func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) error {
+func (s *Store) RecordDownload(ctx context.Context, l store.Lease, now time.Time) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var expires int64
 		var downloads int
 		var ending sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT l.lease_expires_at, l.downloads, m.ending FROM leases l JOIN messages m ON m.id = l.id WHERE l.row_id = ?`, leaseRowID).Scan(&expires, &downloads, &ending)
+		err := tx.QueryRowContext(ctx, `SELECT l.lease_expires_at, l.downloads, m.ending FROM leases l JOIN messages m ON m.id = l.id WHERE l.row_id = ? AND l.id = ? AND l.lease_mac = ?`, l.RowID, l.ID, l.MAC).Scan(&expires, &downloads, &ending)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && expires <= ms(now)) {
 			return store.ErrLeaseInvalid
 		}
@@ -454,23 +532,29 @@ func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.T
 		if downloads >= store.MaxLeaseDownload {
 			return store.ErrLeaseLimit
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE leases SET downloads = ? WHERE row_id = ?`, downloads+1, leaseRowID)
+		_, err = tx.ExecContext(ctx, `UPDATE leases SET downloads = ? WHERE row_id = ?`, downloads+1, l.RowID)
 		return err
 	})
 }
 
-func (s *Store) Ack(ctx context.Context, leaseRowID int64, now time.Time) (string, error) {
+func (s *Store) Ack(ctx context.Context, l store.Lease, now time.Time) (string, error) {
 	var ref string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		var id string
-		err := tx.QueryRowContext(ctx, `DELETE FROM leases WHERE row_id = ? RETURNING id`, leaseRowID).Scan(&id)
+		var ending sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT m.ending FROM leases l JOIN messages m ON m.id = l.id WHERE l.row_id = ? AND l.id = ? AND l.lease_mac = ?`, l.RowID, l.ID, l.MAC).Scan(&ending)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		ref, err = releaseInTx(ctx, tx, id, now)
+		if ending.Valid {
+			return &store.GoneError{State: store.State(ending.String)}
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM leases WHERE row_id = ?`, l.RowID); err != nil {
+			return err
+		}
+		ref, err = releaseInTx(ctx, tx, l.ID, now)
 		return err
 	})
 	return ref, err
@@ -530,9 +614,10 @@ func endingOr(m *store.Message, state store.State) store.State {
 	return state
 }
 
-func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, error) {
+func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, bool, error) {
 	var ending store.State
 	var ref string
+	recorded := false
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		rec, err := scanRecord(ctx, tx, id)
 		if err != nil {
@@ -558,10 +643,13 @@ func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, no
 		if expired {
 			return nil
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ?`, string(ending), id)
-		return err
+		if _, err := tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ?`, string(ending), id); err != nil {
+			return err
+		}
+		recorded = true
+		return nil
 	})
-	return ending, ref, err
+	return ending, ref, recorded && err == nil, err
 }
 
 func (s *Store) End(ctx context.Context, id string, state store.State, now time.Time) error {
@@ -589,7 +677,7 @@ func endInTx(ctx context.Context, tx *sql.Tx, m *store.Message, state store.Stat
 		firstOpened = ms(*m.FirstOpenedAt)
 	}
 	ended := now
-	if m.Ending == "" && !now.Before(m.ExpiresAt) {
+	if !now.Before(m.ExpiresAt) {
 		ended = m.ExpiresAt
 	}
 	ended = ended.UTC().Truncate(time.Minute)
@@ -690,15 +778,16 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 	})
 	r.Resumed = resumed
 	errs = append(errs, rerrs...)
-	for _, p := range []struct {
-		table string
-		out   *int
-	}{{"tombstones", &r.Tombstones}, {"rate_counters", &r.Counters}, {"passphrase_attempts", &r.Attempts}} {
-		n, err := s.purge(ctx, p.table, "rowid", "purge_at", now)
+	counts := map[string]*int{"tombstones": &r.Tombstones, "rate_counters": &r.Counters, "passphrase_attempts": &r.Attempts}
+	for _, t := range unorderedTables {
+		n, err := s.purge(ctx, t.name, t.purgeKey, "purge_at", now)
 		if err != nil {
 			errs = append(errs, err)
 		}
-		*p.out = n
+		*counts[t.name] = n
+	}
+	if _, err := s.w.ExecContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		errs = append(errs, err)
 	}
 	return r, errors.Join(errs...)
 }
@@ -773,7 +862,7 @@ func (s *Store) queryIDs(ctx context.Context, query string, args ...any) ([]stri
 func (s *Store) purge(ctx context.Context, table, key, column string, now time.Time) (int, error) {
 	total := 0
 	for {
-		res, err := s.w.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE %s IN (SELECT %s FROM %s WHERE %s <= ? LIMIT %d)`, table, key, key, table, column, store.SweepBatch), ms(now))
+		res, err := s.w.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE (%s) IN (SELECT %s FROM %s WHERE %s <= ? LIMIT %d)`, table, key, key, table, column, store.SweepBatch), ms(now))
 		if err != nil {
 			return total, err
 		}

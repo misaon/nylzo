@@ -15,8 +15,12 @@ const (
 	throttleRetry  = time.Second
 )
 
+func retrySeconds(d time.Duration) int64 {
+	return max(1, ceilSeconds(d))
+}
+
 func setRetryAfter(w http.ResponseWriter, d time.Duration) {
-	w.Header().Set("Retry-After", strconv.FormatInt(max(1, ceilSeconds(d)), 10))
+	w.Header().Set("Retry-After", strconv.FormatInt(retrySeconds(d), 10))
 }
 
 type apiError struct {
@@ -74,8 +78,7 @@ func writeGone(w http.ResponseWriter, state string) {
 	writeJSON(w, http.StatusGone, gone{Error: "gone", State: state})
 }
 
-func writeRateLimited(w http.ResponseWriter, retryAfterSeconds int64) {
-	retryAfterSeconds = max(1, retryAfterSeconds)
-	w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
-	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retryAfterSeconds})
+func writeRateLimited(w http.ResponseWriter, d time.Duration) {
+	setRetryAfter(w, d)
+	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(d)})
 }

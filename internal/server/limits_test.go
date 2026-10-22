@@ -304,8 +304,8 @@ func TestOverLimitRequestAtTheWindowEndIsRefused(t *testing.T) {
 	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
 	h.store = windowEndingStore{Store: h.store, clock: h.clock, after: time.Hour}
 	h.reopen(h.cfg)
-	if resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b")); resp.StatusCode != 429 {
-		t.Fatalf("a request counted over the limit must be refused even when its window ends meanwhile: %d %s", resp.StatusCode, body)
+	if resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b")); resp.StatusCode != 429 || resp.Header.Get("Retry-After") != "1" || decodeJSON(t, body)["retry_after"] != float64(1) {
+		t.Fatalf("a request counted over the limit must be refused with Retry-After 1 even when its window ends meanwhile: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
 	}
 }
 
@@ -364,7 +364,7 @@ func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
 	h := newHarness(t, cfg)
 	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
 	resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b"))
-	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "3601" || decodeJSON(t, body)["retry_after"] != float64(3601) {
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "3600" || decodeJSON(t, body)["retry_after"] != float64(3600) {
 		t.Fatalf("an hourly refusal at 10:00 must point to 11:00: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
 	}
 	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})

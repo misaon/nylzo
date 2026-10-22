@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/store/disk"
 )
 
 func TestSweepOnceNeedsAnExistingStore(t *testing.T) {
@@ -26,7 +28,7 @@ func TestSweepOnceNeedsAnExistingStore(t *testing.T) {
 	if err := requireStore(dir); err == nil {
 		t.Fatal("sweep-once accepted a store without a blob directory")
 	}
-	if err := os.Mkdir(filepath.Join(dir, "blobs"), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(dir, disk.Dir), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := requireStore(dir); err != nil {
@@ -58,7 +60,20 @@ func TestShutdownPastItsTimeoutIsAnOrderlyExit(t *testing.T) {
 	}
 }
 
-func TestServeSetsASoftMemoryLimit(t *testing.T) {
+func TestServeConfigSetsASoftMemoryLimit(t *testing.T) {
+	previous := debug.SetMemoryLimit(-1)
+	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
+	debug.SetMemoryLimit(math.MaxInt64)
+	env := map[string]string{"NYLZO_PEPPER": strings.Repeat("01", 32), "NYLZO_DATA_DIR": t.TempDir()}
+	if _, err := serveConfig(func(k string) string { return env[k] }); err != nil {
+		t.Fatal(err)
+	}
+	if got := debug.SetMemoryLimit(-1); got != defaultMemoryLimit {
+		t.Fatalf("serve must set the soft memory limit, got %d", got)
+	}
+}
+
+func TestMemoryLimitYieldsToGOMEMLIMIT(t *testing.T) {
 	previous := debug.SetMemoryLimit(-1)
 	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
 	debug.SetMemoryLimit(math.MaxInt64)

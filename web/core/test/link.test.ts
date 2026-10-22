@@ -30,6 +30,7 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
   it('assertProfile rejects a server-reported profile that differs from the fragment', () => {
     expect(() => assertProfile(KDF_SCRYPT, KDF_PBKDF2)).toThrow(KdfMismatchError);
     expect(() => assertProfile(KDF_SCRYPT, 3)).toThrow(KdfMismatchError);
+    expect(() => assertProfile(KDF_SCRYPT, 257)).toThrow(KdfMismatchError);
     expect(() => assertProfile(KDF_SCRYPT, KDF_SCRYPT)).not.toThrow();
     expect(() => assertProfile(KDF_NONE, KDF_NONE)).not.toThrow();
   });

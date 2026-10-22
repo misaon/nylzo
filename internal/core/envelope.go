@@ -11,7 +11,7 @@ var (
 	ErrHeader      = errors.New("core: invalid envelope header")
 	ErrFlags       = errors.New("core: unsupported envelope flags")
 	ErrVersion     = errors.New("core: unsupported envelope version")
-	ErrKDFMismatch = errors.New("core: envelope kdf does not match the link")
+	ErrKDFMismatch = errors.New("core: kdf profile does not match the link fragment")
 	ErrIntegrity   = errors.New("core: envelope integrity check failed")
 	ErrPlaintext   = errors.New("core: malformed plaintext")
 	ErrTooLarge    = errors.New("core: content exceeds limits")

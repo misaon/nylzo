@@ -28,7 +28,16 @@ const (
 	MaxBackoff       = time.Hour
 	SweepBatch       = 1000
 	BlobGrace        = 15 * time.Minute
+	MinTransferRate  = 16000
 )
+
+func TransferTime(size int64) time.Duration {
+	return time.Duration(size) * time.Second / MinTransferRate
+}
+
+func LeaseFor(size int64) time.Duration {
+	return max(LeaseDuration, TransferTime(size))
+}
 
 var (
 	ErrNotFound     = errors.New("store: not found")
@@ -135,7 +144,7 @@ func (l Lease) Active(now time.Time) bool {
 
 type ClaimParams struct {
 	ID            string
-	Now           time.Time
+	Clock         func() time.Time
 	Bucket        []byte
 	VerifierSent  bool
 	VerifyMAC     func(pepperID byte, storedMAC []byte) bool
@@ -187,11 +196,11 @@ type Store interface {
 	Get(ctx context.Context, id string) (Record, error)
 	Claim(ctx context.Context, p ClaimParams) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
-	RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) error
-	Ack(ctx context.Context, leaseRowID int64, now time.Time) (string, error)
+	RecordDownload(ctx context.Context, lease Lease, now time.Time) error
+	Ack(ctx context.Context, lease Lease, now time.Time) (string, error)
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
 	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
-	MarkEnding(ctx context.Context, id string, state State, now time.Time) (State, string, error)
+	MarkEnding(ctx context.Context, id string, state State, now time.Time) (ending State, ref string, recorded bool, err error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)

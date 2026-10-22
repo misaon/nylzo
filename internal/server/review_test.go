@@ -321,8 +321,8 @@ func TestPassphraseBackoffWithoutIPScope(t *testing.T) {
 		h.claim(m, wrong, fmt.Sprintf("203.0.113.%d", i))
 	}
 	resp, body := h.claim(m, m.verifier, "198.51.100.1")
-	if resp.StatusCode != 403 || decodeJSON(t, body)["retry_after"].(float64) != 2 {
-		t.Fatalf("one shared bucket must apply the backoff across addresses: %d %s", resp.StatusCode, body)
+	if resp.StatusCode != 403 || decodeJSON(t, body)["retry_after"].(float64) != 60 {
+		t.Fatalf("one shared bucket must apply the backoff, rounded up to the minute, across addresses: %d %s", resp.StatusCode, body)
 	}
 }
 
@@ -477,7 +477,7 @@ func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
 	h.mustCreate(m)
 	cfg := h.cfg
 	cfg.Pepper = nil
-	report, err := server.NewSweeper(h.store, h.blobs).SweepOnce(t.Context())
+	report, err := server.SweepOnce(t.Context(), h.store, h.blobs, time.Now())
 	if err != nil || report.Expired != 1 || h.blobExists(m.id) {
 		t.Fatalf("sweep without pepper: %+v %v", report, err)
 	}
@@ -560,7 +560,7 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	crash := func(m *message, state store.State) {
-		if _, _, err := h.store.MarkEnding(context.Background(), m.id.String(), state, h.clock.Now()); err != nil {
+		if _, _, _, err := h.store.MarkEnding(context.Background(), m.id.String(), state, h.clock.Now()); err != nil {
 			t.Error(err)
 		}
 		if err := h.blobs.Delete(context.Background(), m.id.String()); err != nil {
@@ -1092,7 +1092,7 @@ func TestBurnFinishesRecordedCancel(t *testing.T) {
 	h.mustCreate(m)
 	inner := h.store
 	h.store = &racingStore{Store: inner, race: func(id string) {
-		if _, _, err := inner.MarkEnding(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
+		if _, _, _, err := inner.MarkEnding(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
 			t.Error(err)
 		}
 	}}
@@ -1111,7 +1111,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
-	if _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), store.StateCancelled, h.clock.Now()); err != nil {
+	if _, _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), store.StateCancelled, h.clock.Now()); err != nil {
 		t.Fatal(err)
 	}
 	fb.set(func(b *faultyBlobs) { b.failDelete[m.id.String()] = true })
@@ -1181,8 +1181,9 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	}
 	h := newHarness(t, baseConfig(pepperA, nil))
 	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
-	if got := decodeJSON(t, body)["limits"].(map[string]any)["max_object_bytes"]; got != float64(5373983) {
-		t.Fatalf("instance reports %v", got)
+	limits := decodeJSON(t, body)["limits"].(map[string]any)
+	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
+		t.Fatalf("instance reports %v", limits)
 	}
 }
 
@@ -1278,7 +1279,7 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	h.mustCreate(m)
 	inner := h.store
 	h.store = &racingStore{Store: failingEndStore{Store: inner}, race: func(id string) {
-		if _, _, err := inner.MarkEnding(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
+		if _, _, _, err := inner.MarkEnding(context.Background(), id, store.StateCancelled, h.clock.Now()); err != nil {
 			t.Error(err)
 		}
 		if err := h.blobs.Delete(context.Background(), id); err != nil {
@@ -1324,9 +1325,9 @@ type endingThenFailingGet struct {
 	armed atomic.Bool
 }
 
-func (s *endingThenFailingGet) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, error) {
+func (s *endingThenFailingGet) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, bool, error) {
 	if err := s.Store.End(ctx, id, store.StateCancelled, now); err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	s.armed.Store(true)
 	return s.Store.MarkEnding(ctx, id, state, now)
@@ -1527,5 +1528,20 @@ func TestHTTPErrorLogReportsAndResetsDroppedLines(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(h.logBuf.String()), "\n")
 	if n := len(lines); n < 2 || !strings.Contains(lines[n-2], `"dropped":20`) || !strings.Contains(lines[n-1], `"dropped":0`) {
 		t.Fatalf("dropped lines must be reported once and then reset: %v", lines[max(0, len(lines)-2):])
+	}
+}
+
+func TestAbuseRedactsRunsFromTwentyTwoCharacters(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	run21, run22 := strings.Repeat("a", 21), strings.Repeat("b", 22)
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": run21 + " " + run22})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.9", body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
+		t.Fatalf("report: %d", resp.StatusCode)
+	}
+	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	if err != nil || !strings.Contains(string(data), `"`+run21+` [redacted]"`) {
+		t.Fatalf("runs of 22 or more base64url characters must be redacted and shorter ones kept: %s %v", data, err)
 	}
 }

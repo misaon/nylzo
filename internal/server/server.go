@@ -22,7 +22,8 @@ const (
 	writeTimeout      = 120 * time.Second
 	idleTimeout       = 30 * time.Second
 	maxHeaderBytes    = 8 << 10
-	h2cReceiveBuffer  = 128 << 10
+	h2cStreamBuffer   = 64 << 10
+	h2cConnBuffer     = 1 << 20
 	httpErrorLogRate  = 1
 	httpErrorLogBurst = 20
 	reconcileKey      = "sweep:reconcile:d"
@@ -50,7 +51,7 @@ type Server struct {
 	clock     func() time.Time
 	afterFunc func(time.Duration, func())
 	log       *slog.Logger
-	bucket    *tokenBucket
+	bucket    *keyedLimiter
 	sources   *keyedLimiter
 	prefixes  *keyedLimiter
 	powSlots  chan struct{}
@@ -77,7 +78,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	for _, o := range opts {
 		o(s)
 	}
-	s.bucket = newTokenBucket(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst, s.clock())
+	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
@@ -102,13 +103,13 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cReceiveBuffer, MaxReceiveBufferPerStream: h2cReceiveBuffer},
+		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cConnBuffer, MaxReceiveBufferPerStream: h2cStreamBuffer},
 		ErrorLog:          log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
 	}
 }
 
 type sinkLevel struct {
-	bucket  *tokenBucket
+	bucket  *keyedLimiter
 	dropped int
 }
 
@@ -121,12 +122,11 @@ type httpErrorSink struct {
 }
 
 func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
-	now := clock()
 	return &httpErrorSink{
 		log:   l,
 		clock: clock,
-		warn:  sinkLevel{bucket: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now)},
-		err:   sinkLevel{bucket: newTokenBucket(httpErrorLogRate, httpErrorLogBurst, now)},
+		warn:  sinkLevel{bucket: newKeyedLimiter(httpErrorLogRate, httpErrorLogBurst)},
+		err:   sinkLevel{bucket: newKeyedLimiter(httpErrorLogRate, httpErrorLogBurst)},
 	}
 }
 
@@ -156,7 +156,7 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 		sink = &h.err
 	}
 	h.mu.Lock()
-	if !sink.bucket.allow(h.clock()) {
+	if !sink.bucket.allow(singleKey, h.clock()) {
 		sink.dropped++
 		h.mu.Unlock()
 		return len(p), nil
@@ -170,17 +170,22 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := s.clock()
-	report, err := store.SweepAll(ctx, s.store, s.blobs, now)
-	done, derr := s.store.RateGet(ctx, reconcileKey, dayWindow(now).start)
+	report, err := SweepOnce(ctx, s.store, s.blobs, now)
+	return report, errors.Join(err, s.pruneAbuse(now))
+}
+
+func SweepOnce(ctx context.Context, st store.Store, blobs store.Blobs, now time.Time) (store.SweepReport, error) {
+	report, err := store.SweepAll(ctx, st, blobs, now)
+	done, derr := st.RateGet(ctx, reconcileKey, dayWindow(now).start)
 	if derr != nil {
 		return report, errors.Join(err, derr)
 	}
 	if done.Count == 0 {
-		orphans, listed, rerr := store.Reconcile(ctx, s.store, s.blobs, now)
+		orphans, listed, rerr := store.Reconcile(ctx, st, blobs, now)
 		report.OrphanedBlobs = orphans
 		if listed {
 			d := dayWindow(now)
-			if _, merr := s.store.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); merr != nil {
+			if _, merr := st.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); merr != nil {
 				rerr = errors.Join(rerr, merr)
 			}
 		}
@@ -248,8 +253,4 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	return s.logging(s.securityHeaders(s.prefetchGuard(s.throttle(mux))))
-}
-
-func NewSweeper(st store.Store, blobs store.Blobs) *Server {
-	return &Server{store: st, blobs: blobs, clock: time.Now}
 }

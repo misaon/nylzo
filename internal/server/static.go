@@ -16,7 +16,7 @@ var indexHTML string
 
 const noncePlaceholder = "__NYLZO_CSP_NONCE__"
 
-const previewHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Nylzo</title></head><body><p>This link opens a one-time message. Open it in a browser.</p></body></html>`
+const previewHTML = `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Nylzo</title></head><body><p>Odkaz vede na jednorázovou zprávu. Otevřete ho v prohlížeči zařízení, ne v náhledu aplikace.</p></body></html>`
 
 var previewAgents = []string{
 	"slackbot", "twitterbot", "facebookexternalhit", "facebot", "whatsapp", "telegrambot", "discordbot",

@@ -14,12 +14,12 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 	return true, clearReleased(ctx, s, b, id, ref, now)
 }
 
-func AckLease(ctx context.Context, s Store, b Blobs, id string, leaseRowID int64, now time.Time) error {
-	ref, err := s.Ack(ctx, leaseRowID, now)
+func AckLease(ctx context.Context, s Store, b Blobs, l Lease, now time.Time) error {
+	ref, err := s.Ack(ctx, l, now)
 	if err != nil || ref == "" {
 		return err
 	}
-	return clearReleased(ctx, s, b, id, ref, now)
+	return clearReleased(ctx, s, b, l.ID, ref, now)
 }
 
 func clearReleased(ctx context.Context, s Store, b Blobs, id, ref string, now time.Time) error {
@@ -31,7 +31,7 @@ func clearReleased(ctx context.Context, s Store, b Blobs, id, ref string, now ti
 
 func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) (State, error) {
 	ctx = context.WithoutCancel(ctx)
-	ending, ref, err := s.MarkEnding(ctx, id, state, now)
+	ending, ref, recorded, err := s.MarkEnding(ctx, id, state, now)
 	if err != nil {
 		return "", err
 	}
@@ -40,7 +40,11 @@ func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, n
 			return ending, err
 		}
 	}
-	return ending, s.End(ctx, id, ending, now)
+	err = s.End(ctx, id, ending, now)
+	if recorded && errors.Is(err, ErrNotFound) {
+		return ending, nil
+	}
+	return ending, err
 }
 
 func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans int, listed bool, err error) {

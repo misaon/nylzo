@@ -213,8 +213,22 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	if needPepper && len(c.Pepper) == 0 {
 		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
 	}
-	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.MaxTTL > MaxTTL || c.Limits.DefaultTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > MaxPoWDifficulty || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency || c.Rates.BucketBurst < 1 || c.Rates.SourceBurst < 1 {
-		return c, fmt.Errorf("%w: limits out of range", ErrConfig)
+	minTTL := core.MinTTLSeconds * time.Second
+	for _, r := range []struct {
+		name string
+		ok   bool
+	}{
+		{"NYLZO_MAX_OPENS must be between 1 and 65535", c.Limits.MaxOpens >= 1 && c.Limits.MaxOpens <= 65535},
+		{fmt.Sprintf("NYLZO_MAX_TTL must be between %s and %s", minTTL, MaxTTL), c.Limits.MaxTTL >= minTTL && c.Limits.MaxTTL <= MaxTTL},
+		{fmt.Sprintf("NYLZO_DEFAULT_TTL must be between %s and NYLZO_MAX_TTL", minTTL), c.Limits.DefaultTTL >= minTTL && c.Limits.DefaultTTL <= c.Limits.MaxTTL},
+		{fmt.Sprintf("NYLZO_POW_DIFFICULTY must be between 0 and %d", MaxPoWDifficulty), c.PoWDifficulty >= 0 && c.PoWDifficulty <= MaxPoWDifficulty},
+		{fmt.Sprintf("NYLZO_POW_CONCURRENCY must be between 1 and %d", MaxPoWConcurrency), c.PoWConcurrency >= 1 && c.PoWConcurrency <= MaxPoWConcurrency},
+		{"NYLZO_RATE_BUCKET_BURST must be at least 1", c.Rates.BucketBurst >= 1},
+		{"NYLZO_RATE_SOURCE_BURST must be at least 1", c.Rates.SourceBurst >= 1},
+	} {
+		if !r.ok {
+			return c, fmt.Errorf("%w: %s", ErrConfig, r.name)
+		}
 	}
 	return c, nil
 }

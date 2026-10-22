@@ -2,11 +2,13 @@ package server_test
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -53,11 +55,13 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 		}
 	}
 	resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String(), headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}})
-	if resp.StatusCode != 200 || strings.Contains(string(body), "<script") || strings.Contains(string(body), "<style") {
+	if resp.StatusCode != 200 || strings.Contains(string(body), "<script") || strings.Contains(string(body), "<style") || !strings.Contains(string(body), `name="viewport"`) {
 		t.Fatalf("preview agent page: %d %s", resp.StatusCode, body)
 	}
-	if _, home := h.do(request{method: "GET", path: "/", headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}}); strings.Contains(string(home), "one-time message") {
-		t.Fatalf("the home page must not tell a preview agent it opens a message: %s", home)
+	nonceAttr := regexp.MustCompile(`nonce="[^"]*"`)
+	_, home := h.do(request{method: "GET", path: "/"})
+	if _, botHome := h.do(request{method: "GET", path: "/", headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}}); nonceAttr.ReplaceAllString(string(botHome), "") != nonceAttr.ReplaceAllString(string(home), "") {
+		t.Fatalf("a preview agent must get the normal home page: %s", botHome)
 	}
 	for _, path := range []string{"/m/" + core.NewID().String(), "/api/v1/instance"} {
 		resp, _ := h.do(request{method: "GET", path: path, headers: map[string]string{"Sec-Purpose": "prefetch"}})
@@ -320,9 +324,9 @@ func TestTrustedProxyInMappedForm(t *testing.T) {
 
 func TestH2CReceiveBufferIsBounded(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
-	hs := h.srv.HTTPServer()
-	if hs.HTTP2 == nil || hs.HTTP2.MaxReceiveBufferPerConnection == 0 || hs.HTTP2.MaxReceiveBufferPerConnection > 256<<10 || hs.HTTP2.MaxReceiveBufferPerStream > 256<<10 {
-		t.Fatal("h2c must not buffer up to 1 MiB of unread request body per stream")
+	c := h.srv.HTTPServer().HTTP2
+	if c == nil || c.MaxReceiveBufferPerStream < 64<<10 || c.MaxReceiveBufferPerStream > 256<<10 || c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream || c.MaxReceiveBufferPerConnection > 1<<20 {
+		t.Fatalf("h2c must bound unread body per stream and leave the connection room for other streams: %+v", c)
 	}
 }
 
@@ -340,5 +344,19 @@ func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
 	}
 	if _, err := server.FromEnv(env("5"), false); err == nil {
 		t.Fatal("NYLZO_POW_CONCURRENCY above 4 accepted")
+	}
+}
+
+func TestConfigErrorNamesTheVariable(t *testing.T) {
+	for name, value := range map[string]string{"NYLZO_POW_CONCURRENCY": "8", "NYLZO_MAX_OPENS": "0", "NYLZO_POW_DIFFICULTY": "9", "NYLZO_DEFAULT_TTL": "30s"} {
+		_, err := server.FromEnv(func(k string) string {
+			if k == name {
+				return value
+			}
+			return ""
+		}, false)
+		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), name) {
+			t.Fatalf("%s=%s: the error must name the variable: %v", name, value, err)
+		}
 	}
 }

@@ -60,7 +60,7 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky a fsync adresáře (`serve` i `sweep-once` to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují. `sweep-once` adresář nezakládá: bez existující databáze a adresáře `blobs` skončí chybou, proto mu v plánovači dejte absolutní cestu |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |
 | `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP` |
-| `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy |
+| `NYLZO_PASSPHRASE_IP_SCOPE` | `on` | `off` váže backoff passphrase jen na zprávu, ne na kyblík adresy. Po pěti chybných pokusech se čeká 2^(n − 5) s zaokrouhleno nahoru na celou minutu, takže databáze nenese přesný čas pokusu |
 | `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne |
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
@@ -79,21 +79,23 @@ Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez
 
 Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
 
-Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Na jednu zprávu a jeden rozsah adres /24 nebo /48 uloží nejvýš 3 hlášení denně, takže odesílatel zprávy nemůže limit vyčerpat ostatním. Když by hlášení soubor zvětšilo nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit.
+Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Na jednu zprávu a jeden rozsah adres /24 nebo /48 uloží nejvýš 3 hlášení denně, takže odesílatel zprávy nemůže limit vyčerpat ostatním. Když by hlášení soubor zvětšilo nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit. Hlášení obsahuje jen datum UTC, id a upravený důvod, čas dne v něm není. Hlášení starší než 14 dní server smaže při každém úklidu a před každým novým hlášením.
 
-Paměť: bez proměnné `GOMEMLIMIT` si `nylzod serve` nastaví měkký limit paměti 192 MiB, aby se ověřování PoW a čekající uploady vešly do kontejneru s 256 MB. Vlastní `GOMEMLIMIT` má přednost.
+Paměť: bez proměnné `GOMEMLIMIT` si `nylzod serve` nastaví měkký limit paměti 192 MiB, aby se ověřování PoW a čekající uploady vešly do kontejneru s 256 MB. Vlastní `GOMEMLIMIT` má přednost. Mezipaměť SQLite leží mimo tento limit, proto je omezená na 512 KiB na spojení. Přes nešifrované HTTP/2 (h2c) drží server nejvýš 64 KiB nepřečteného těla na stream a 1 MiB na spojení.
 
-Soubory databáze (`nylzo.db` a jeho `-wal` a `-shm`) vznikají s právy 0600. Existující soubor server nepřenastavuje, proto adresář dat nedávejte do sdíleného umístění.
+Soubory databáze (`nylzo.db` a jeho `-wal` a `-shm`) vznikají s právy 0600. Existující soubor server nepřenastavuje, proto adresář dat nedávejte do sdíleného umístění. Smazané řádky SQLite přepisuje nulami (`secure_delete`), WAL server po každém úklidu zkrátí na nulu a databázi ze starší verze při prvním otevření jednou zkompaktuje (`VACUUM`). Čtení blobu nemění čas přístupu k souboru (na Linuxu `O_NOATIME`); svazek s daty přesto připojte s `noatime`. Co si po smazání pamatuje souborový systém nebo poskytovatel úložiště, server neovlivní.
+
+Velká zpráva má na nahrání i stažení čas podle velikosti: nejméně 120 s, jinak tolik, kolik trvá přenos při 128 kbit/s (u největšího objektu asi 5,6 minuty). Stejně dlouho platí lease, takže příjemce na pomalé lince o zprávu nepřijde.
 
 Po signálu SIGTERM server 30 s čeká na rozběhnuté požadavky, pak zbylá spojení zavře a skončí s kódem 0.
 
 Ukončená zpráva zmizí i s náhrobkem 7 dní po konci a její id je pak znovu volné. Kdo má starý odkaz, může pod ním vytvořit nový obsah. Je to vědomě přijaté riziko, server o zprávě nic nedrží déle.
 
-Logy obsahují čas, metodu, vzor cesty, id zprávy (jen platné), stav, latenci a velikost odpovědi. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
+Logy obsahují čas, metodu, vzor cesty, stav, latenci a velikost odpovědi. Id zprávy v nich není, takže řádek logu nejde spojit s konkrétní zprávou ani s databází a pepperem. Nikdy neobsahují surovou cestu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Interní chyby `net/http` se logují jen jako kategorie bez textu.
 
 `nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn a cancel si před smazáním blobu zapíšou zamýšlený stav. Expirovaná zpráva zápis nepotřebuje, protože ji ukončuje samo `expires_at`. Po pádu procesu konec dokončí další požadavek nebo úklid. Chybějící blob u neexpirované zprávy bez zapsaného stavu server hlásí jako chybu 500, zprávu nesmaže a claim kvůli němu nespotřebuje otevření.
 
-Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupec `ending`, který starší verze nečtou. Před návratem ke starší verzi nechte doběhnout úklid, aby žádná zpráva neměla rozpracovaný konec.
+Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupec `ending`, přestaví tabulky `tombstones`, `passphrase_attempts` a `rate_counters` bez rowid a jednou spustí `VACUUM`. Starší verze s takovou databází nepracují, protože jejich úklid maže podle rowid, proto se po tomto upgradu ke starší verzi nevracejte.
 
 ## Generování vektorů
 

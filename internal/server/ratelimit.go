@@ -11,35 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-type tokenBucket struct {
-	mu     sync.Mutex
-	rate   float64
-	burst  float64
-	tokens float64
-	last   time.Time
-}
-
-func newTokenBucket(rate, burst float64, now time.Time) *tokenBucket {
-	return &tokenBucket{rate: rate, burst: burst, tokens: burst, last: now}
-}
-
-func (b *tokenBucket) allow(now time.Time) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	elapsed := now.Sub(b.last).Seconds()
-	if elapsed > 0 {
-		b.tokens += elapsed * b.rate
-		if b.tokens > b.burst {
-			b.tokens = b.burst
-		}
-		b.last = now
-	}
-	if b.tokens < 1 {
-		return false
-	}
-	b.tokens--
-	return true
-}
+var singleKey [pepper.BucketLen]byte
 
 type keyedLimiter struct {
 	mu      sync.Mutex

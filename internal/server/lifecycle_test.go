@@ -3,7 +3,6 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -27,34 +26,34 @@ type lifecycleKind struct {
 	ending store.State
 	after  time.Duration
 	opened bool
-	expect [10]string
+	expect [11]string
 }
 
-var lifecycleActions = [10]string{"burn", "cancel", "expiry by request", "expiry by sweep", "release", "resume by request", "resume by sweep", "claim", "lease download", "blob vanished"}
+var lifecycleActions = [11]string{"burn", "cancel", "expiry by request", "expiry by sweep", "release", "resume by request", "resume by sweep", "claim", "lease download", "blob vanished", "ack"}
 
-func recordedRow(state store.State) [10]string {
+func recordedRow(state store.State) [11]string {
 	s := string(state)
-	return [10]string{"410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "200 " + s + " tomb:" + s, "- - tomb:" + s, "- - live:" + s,
-		"200 " + s + " tomb:" + s, "- - tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s}
+	return [11]string{"410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "200 " + s + " tomb:" + s, "- - tomb:" + s, "- - live:" + s,
+		"200 " + s + " tomb:" + s, "- - tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s}
 }
 
-func expiredRow(state store.State) [10]string {
+func expiredRow(state store.State) [11]string {
 	row := recordedRow(state)
 	row[4] = "- - live:"
 	return row
 }
 
-func openedRow() [10]string {
+func openedRow() [11]string {
 	row := recordedRow(store.StateOpened)
 	row[4] = "- - tomb:opened"
 	return row
 }
 
 var lifecycleKinds = []lifecycleKind{
-	{name: "unspent", opens: 2, ttl: 3600, expect: [10]string{"204 - tomb:deleted", "204 - tomb:cancelled", "200 expired tomb:expired", "- - tomb:expired", "- - live:",
-		"200 available live:", "- - live:", "200 - live:", "200 - live:", "500 - live:"}},
-	{name: "spent during the lease", opens: 1, ttl: 3600, expect: [10]string{"204 - tomb:deleted", "204 - tomb:cancelled", "200 opened tomb:opened", "- - tomb:opened", "- - live:",
-		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "500 - live:"}},
+	{name: "unspent", opens: 2, ttl: 3600, expect: [11]string{"204 - tomb:deleted", "204 - tomb:cancelled", "200 expired tomb:expired", "- - tomb:expired", "- - live:",
+		"200 available live:", "- - live:", "200 - live:", "200 - live:", "500 - live:", "204 - live:"}},
+	{name: "spent during the lease", opens: 1, ttl: 3600, expect: [11]string{"204 - tomb:deleted", "204 - tomb:cancelled", "200 opened tomb:opened", "- - tomb:opened", "- - live:",
+		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "500 - live:", "204 - tomb:opened"}},
 	{name: "spent after the lease", opens: 1, ttl: 3600, after: store.LeaseDuration + store.LeaseTimerSlack, expect: openedRow()},
 	{name: "unspent and expired", opens: 2, ttl: 60, after: 61 * time.Second, expect: expiredRow(store.StateExpired)},
 	{name: "spent and expired", opens: 1, ttl: 60, after: 61 * time.Second, expect: expiredRow(store.StateOpened)},
@@ -90,7 +89,7 @@ func setupLifecycleKind(t *testing.T, h *harness, kind lifecycleKind) (*message,
 	h.clock.Advance(kind.after)
 	ctx := t.Context()
 	if kind.ending != "" {
-		if _, _, err := h.store.MarkEnding(ctx, m.id.String(), kind.ending, h.clock.Now()); err != nil {
+		if _, _, _, err := h.store.MarkEnding(ctx, m.id.String(), kind.ending, h.clock.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -137,6 +136,8 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 			t.Fatal(err)
 		}
 		return h.claim(m, "", "")
+	case "ack":
+		return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
 	}
 	return nil, nil
 }
@@ -262,7 +263,11 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
-	if err := os.Truncate(filepath.Join(h.dir, "blobs", hex.EncodeToString([]byte(m.id.String()))), int64(len(m.object)-1)); err != nil {
+	short := m.object[:len(m.object)-1]
+	if err := h.blobs.Delete(t.Context(), m.id.String()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.blobs.Put(t.Context(), m.id.String(), bytes.NewReader(short), int64(len(short))); err != nil {
 		t.Fatal(err)
 	}
 	resp, _ := h.claim(m, "", "")
@@ -350,7 +355,7 @@ type burnAfterClaim struct {
 func (s burnAfterClaim) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResult, error) {
 	res, err := s.Store.Claim(ctx, p)
 	if err == nil {
-		if _, err := store.EndMessage(ctx, s.Store, s.blobs, p.ID, store.StateDeleted, p.Now); err != nil {
+		if _, err := store.EndMessage(ctx, s.Store, s.blobs, p.ID, store.StateDeleted, p.Clock()); err != nil {
 			return res, err
 		}
 	}
@@ -420,7 +425,7 @@ func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
 	if resp, _ := h.claim(m, "", ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("claim: %d", resp.StatusCode)
 	}
-	if _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), store.StateExpired, h.clock.Now()); err != nil {
+	if _, _, _, err := h.store.MarkEnding(t.Context(), m.id.String(), store.StateExpired, h.clock.Now()); err != nil {
 		t.Fatal(err)
 	}
 	h.clock.Advance(store.LeaseDuration + store.LeaseTimerSlack)
@@ -430,5 +435,159 @@ func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
 	rec, err := h.store.Get(t.Context(), m.id.String())
 	if err != nil || rec.Message == nil || rec.Message.Ending != store.StateExpired || rec.Message.OpensRemaining != 1 || !h.blobExists(m.id) {
 		t.Fatalf("row %+v %v", rec.Message, err)
+	}
+}
+
+func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(m)
+	resp, _ := h.claim(m, "", "")
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func(id string) {
+		if _, err := store.EndMessage(context.Background(), inner, h.blobs, id, store.StateDeleted, h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	for _, action := range []string{"lease download", "ack"} {
+		resp, body := runLifecycleAction(t, h, m, lease, action)
+		if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
+			t.Fatalf("%s after a finished concurrent burn: %d %s", action, resp.StatusCode, body)
+		}
+	}
+}
+
+func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(m)
+	resp, _ := h.claim(m, "", "")
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func(id string) {
+		if _, _, _, err := inner.MarkEnding(context.Background(), id, store.StateDeleted, h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	resp, body := runLifecycleAction(t, h, m, lease, "ack")
+	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
+		t.Fatalf("an ack after a recorded burn: %d %s", resp.StatusCode, body)
+	}
+	if rec, err := inner.Get(t.Context(), m.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted || h.blobExists(m.id) {
+		t.Fatalf("the ack must finish the recorded burn: %+v %v", rec, err)
+	}
+}
+
+type slowWriterStore struct {
+	store.Store
+	clock *fakeClock
+	wait  time.Duration
+}
+
+func (s slowWriterStore) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResult, error) {
+	s.clock.Advance(s.wait)
+	return s.Store.Claim(ctx, p)
+}
+
+func TestClaimThatWaitsPastExpiryIsRefused(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 60, "x")
+	h.mustCreate(m)
+	h.clock.Advance(59 * time.Second)
+	h.store = slowWriterStore{Store: h.store, clock: h.clock, wait: 2 * time.Second}
+	h.reopen(h.cfg)
+	resp, body := h.claim(m, "", "")
+	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" || resp.Header.Get("X-Nylzo-Lease") != "" {
+		t.Fatalf("a claim that reached the store after expires_at must be refused: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+}
+
+type deleteHookBlobs struct {
+	store.Blobs
+	once sync.Once
+	hook func()
+}
+
+func (b *deleteHookBlobs) Delete(ctx context.Context, ref string) error {
+	b.once.Do(b.hook)
+	return b.Blobs.Delete(ctx, ref)
+}
+
+func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(m)
+	if resp, _ := h.claim(m, "", ""); resp.StatusCode != http.StatusOK {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	raw := h.blobs
+	h.blobs = &deleteHookBlobs{Blobs: raw, hook: func() {
+		h.clock.Advance(store.LeaseDuration)
+		if _, err := store.Release(context.Background(), h.store, raw, m.id.String(), h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	if resp, body := h.post(m, "burn", m.readToken); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("the burn that recorded the first ending must answer 204 when a release finishes it: %d %s", resp.StatusCode, body)
+	}
+	if rec, err := h.store.Get(t.Context(), m.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+		t.Fatalf("tombstone: %+v %v", rec, err)
+	}
+}
+
+func abuseReport(t *testing.T, h *harness, m *message, ip string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "spam"})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("report: %d", resp.StatusCode)
+	}
+}
+
+func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	h.clock.Advance(3*time.Hour + 17*time.Minute + 5*time.Second)
+	abuseReport(t, h, m, "203.0.113.44")
+	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var line map[string]string
+	if err := json.Unmarshal(bytes.TrimSpace(data), &line); err != nil || line["date"] != "2026-10-22" || line["id"] != m.id.String() || len(line) != 3 {
+		t.Fatalf("a stored report must carry only the day, the id and the reason: %s %v", data, err)
+	}
+}
+
+func TestOldAbuseReportsAreDropped(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	path := filepath.Join(h.dir, "abuse-reports.jsonl")
+	old := `{"date":"2026-10-01","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"old"}` + "\n" + `{"id":"AAAAAAAAAAAAAAAAAAAAAQ","reason":"older format","time":"2026-10-02T10:00:00Z"}` + "\n"
+	recent := `{"date":"2026-10-21","id":"AAAAAAAAAAAAAAAAAAAAAg","reason":"recent"}` + "\n"
+	if err := os.WriteFile(path, []byte(old+recent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.srv.SweepOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != recent {
+		t.Fatalf("the sweep must drop reports older than 14 days: %q %v", data, err)
+	}
+	if err := os.WriteFile(path, []byte(old+recent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	abuseReport(t, h, m, "203.0.113.45")
+	data, err := os.ReadFile(path)
+	if err != nil || strings.Contains(string(data), "old") || !strings.HasPrefix(string(data), recent) {
+		t.Fatalf("a new report must drop reports older than 14 days: %q %v", data, err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("report file mode: %v %v", info, err)
 	}
 }

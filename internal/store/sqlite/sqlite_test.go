@@ -1,6 +1,7 @@
 package sqlite_test
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -64,7 +66,7 @@ func TestOpenMigratesOlderSchema(t *testing.T) {
 			}
 			defer s.Close()
 			ctx := t.Context()
-			state, ref, err := s.MarkEnding(ctx, "AAAAAAAAAAAAAAAAAAAAAA", store.StateCancelled, time.Unix(0, 0))
+			state, ref, _, err := s.MarkEnding(ctx, "AAAAAAAAAAAAAAAAAAAAAA", store.StateCancelled, time.Unix(0, 0))
 			if err != nil || state != store.StateCancelled || ref == "" {
 				t.Fatalf("mark ending after migration: %s %q %v", state, ref, err)
 			}
@@ -204,6 +206,168 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 		}
 		if info.Mode().Perm()&0o077 != 0 {
 			t.Fatalf("%s is readable by other users: %v", filepath.Base(name), info.Mode().Perm())
+		}
+	}
+}
+func TestOpenKeepsTheDatabaseAtItsPath(t *testing.T) {
+	for _, name := range []string{"a#b", "a?b", "a%41b", "a b"} {
+		parent := t.TempDir()
+		dir := filepath.Join(parent, name)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "nylzo.db")
+		s, err := sqlite.Open(path)
+		if err != nil {
+			t.Fatalf("%q: %v", name, err)
+		}
+		if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(60, 0)}}); err != nil {
+			t.Fatal(err)
+		}
+		s.Close()
+		if info, err := os.Stat(path); err != nil || info.Size() == 0 {
+			t.Fatalf("%q: database not written at its path: %v", name, err)
+		}
+		if entries, _ := os.ReadDir(parent); len(entries) != 1 {
+			t.Fatalf("%q: files created outside the data directory: %v", name, entries)
+		}
+	}
+}
+
+func TestPurgedMessageLeavesNoResidue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nylzo.db")
+	st, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	blobs, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	id := core.NewID().String()
+	created := time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	m := &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, KDF: 2, Size: 64, BlobRef: id}
+	if err := blobs.Put(ctx, id, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Create(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	claimed := created.Add(time.Minute)
+	res, err := st.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return claimed }, Bucket: []byte{1, 2, 3}, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return true }, LeaseMAC: mac, LeasePepperID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AckLease(ctx, st, blobs, res.Lease, claimed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Sweep(ctx, created.Add(9*24*time.Hour), blobs); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Get(ctx, id); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the tombstone was not purged: %v", err)
+	}
+	for _, name := range []string{path, path + "-wal"} {
+		data, err := os.ReadFile(name)
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte(id)) {
+			t.Fatalf("%s still holds the id of a purged message", filepath.Base(name))
+		}
+	}
+}
+
+func TestOrderedTablesKeepNoInsertionOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	assertNoRowid(t, path)
+}
+
+func TestOpenRebuildsRowidTables(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.Exec(`CREATE TABLE tombstones (id TEXT PRIMARY KEY, pepper_id INTEGER NOT NULL, read_mac BLOB NOT NULL, manage_mac BLOB NOT NULL, state TEXT NOT NULL, first_opened_at INTEGER, ended_at INTEGER NOT NULL, purge_at INTEGER NOT NULL);
+		CREATE TABLE passphrase_attempts (id TEXT NOT NULL, bucket BLOB NOT NULL, fail_count INTEGER NOT NULL, next_attempt_at INTEGER NOT NULL, purge_at INTEGER NOT NULL, PRIMARY KEY (id, bucket));
+		CREATE TABLE rate_counters (key TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL, bytes INTEGER NOT NULL, purge_at INTEGER NOT NULL, PRIMARY KEY (key, window_start));
+		INSERT INTO tombstones VALUES ('AAAAAAAAAAAAAAAAAAAAAA', 7, x'00', x'00', 'deleted', NULL, 1800000000000, 1800604800000);
+		INSERT INTO passphrase_attempts VALUES ('AAAAAAAAAAAAAAAAAAAAAA', x'010203', 2, 0, 1800604800000);
+		INSERT INTO rate_counters VALUES ('k', 0, 3, 0, 1800604800000);`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Get(t.Context(), "AAAAAAAAAAAAAAAAAAAAAA")
+	if err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+		t.Fatalf("tombstone lost in the rebuild: %+v %v", rec, err)
+	}
+	if c, err := s.RateGet(t.Context(), "k", time.UnixMilli(0)); err != nil || c.Count != 3 {
+		t.Fatalf("counter lost in the rebuild: %+v %v", c, err)
+	}
+	s.Close()
+	assertNoRowid(t, path)
+}
+
+func assertNoRowid(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, table := range []string{"tombstones", "passphrase_attempts", "rate_counters"} {
+		if _, err := db.Exec(`SELECT rowid FROM ` + table); err == nil {
+			t.Fatalf("%s keeps an insertion-order rowid", table)
+		}
+	}
+}
+
+func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	id := core.NewID().String()
+	created := time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, KDF: 2, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	at := created.Add(17*time.Second + 123*time.Millisecond)
+	for i := 1; i <= store.FreeAttempts+1; i++ {
+		_, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return at }, Bucket: []byte{1, 2, 3}, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return false }, LeaseMAC: mac, LeasePepperID: 7})
+		var pe *store.PassphraseError
+		if !errors.As(err, &pe) {
+			t.Fatalf("attempt %d: %v", i, err)
+		}
+		var next int64
+		if err := db.QueryRow(`SELECT next_attempt_at FROM passphrase_attempts WHERE id = ?`, id).Scan(&next); err != nil {
+			t.Fatal(err)
+		}
+		if i <= store.FreeAttempts && next != 0 || i > store.FreeAttempts && (next%time.Minute.Milliseconds() != 0 || next <= at.UnixMilli()) {
+			t.Fatalf("attempt %d stored next_attempt_at %d, which reveals the attempt time", i, next)
 		}
 	}
 }

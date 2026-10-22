@@ -174,15 +174,11 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	for i := 1; i <= 5; i++ {
 		expect("203.0.113.10", 0, float64(5-i))
 	}
-	expect("203.0.113.10", 2, 0)
-	h.clock.Advance(2 * time.Second)
-	expect("203.0.113.10", 4, 0)
-	h.clock.Advance(4 * time.Second)
-	expect("203.0.113.10", 8, 0)
-	h.clock.Advance(8 * time.Second)
-	expect("203.0.113.10", 16, 0)
-	h.clock.Advance(16 * time.Second)
-	expect("203.0.113.10", 32, 0)
+	expect("203.0.113.10", 60, 0)
+	for range 4 {
+		h.clock.Advance(time.Minute)
+		expect("203.0.113.10", 60, 0)
+	}
 	resp, meta := h.metadata(m)
 	if meta["opens_remaining"].(float64) != 2 {
 		t.Fatalf("wrong passphrase consumed an open: %v", meta)
@@ -373,9 +369,13 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 	h.ack(m, lease)
 	h.status(m)
 	h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+	h.do(request{method: "GET", path: "/m/" + m.id.String()})
 	logs := h.logBuf.String()
-	if !strings.Contains(logs, m.id.String()) {
-		t.Fatal("log should contain the request path with the id")
+	if !strings.Contains(logs, "POST /api/v1/messages/{id}/claim") {
+		t.Fatal("log should contain the route pattern")
+	}
+	if strings.Contains(logs, m.id.String()) || strings.Contains(logs, hex.EncodeToString(m.id[:])) {
+		t.Fatal("a log line must not name the message, so a stolen log cannot be joined with the database")
 	}
 	leaseBytes, _ := core.DecodeExact(lease, 32)
 	forbidden := map[string][]byte{"S": m.secret[:], "R": m.link.R[:], "V": m.content.V[:], "M": m.manage[:], "K": m.content.K[:], "L": leaseBytes}

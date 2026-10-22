@@ -87,13 +87,21 @@ func applyMemoryLimit(getenv func(string) string) {
 	}
 }
 
+func serveConfig(getenv func(string) string) (server.Config, error) {
+	cfg, err := server.FromEnv(getenv, true)
+	if err != nil {
+		return cfg, err
+	}
+	applyMemoryLimit(getenv)
+	cfg.Version = version
+	return cfg, nil
+}
+
 func serve(logger *slog.Logger) error {
-	cfg, err := server.FromEnv(os.Getenv, true)
+	cfg, err := serveConfig(os.Getenv)
 	if err != nil {
 		return err
 	}
-	applyMemoryLimit(os.Getenv)
-	cfg.Version = version
 	st, blobs, err := open(cfg)
 	if err != nil {
 		return err
@@ -149,7 +157,7 @@ func sweepOnce(logger *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-	report, err := server.NewSweeper(st, blobs).SweepOnce(context.Background())
+	report, err := server.SweepOnce(context.Background(), st, blobs, time.Now())
 	if err != nil {
 		logger.Error("sweep-once", server.SweepLogAttrs(report, err)...)
 		return errSweepFailed

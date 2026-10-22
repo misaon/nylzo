@@ -77,8 +77,8 @@ func ParseLink(raw string) (Link, error) {
 	return Link{ID: id, KDF: kdf, Secret: *s}, nil
 }
 
-func AssertProfile(fragmentKDF KDF, serverKDF KDF) error {
-	if fragmentKDF != serverKDF {
+func AssertProfile(fragmentKDF KDF, serverKDF int) error {
+	if int(fragmentKDF) != serverKDF {
 		return ErrKDFMismatch
 	}
 	return nil

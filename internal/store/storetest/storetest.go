@@ -50,6 +50,8 @@ func Run(t *testing.T, open Factory) {
 	t.Run("RateHitStopsAtFirstRefusal", func(t *testing.T) { testRateHitOrder(t, open) })
 	t.Run("SweepBatches", func(t *testing.T) { testSweepBatches(t, open) })
 	t.Run("BlobsIdempotentDelete", func(t *testing.T) { testBlobsDelete(t, open) })
+	t.Run("StaleLeaseLeavesOtherMessages", func(t *testing.T) { testStaleLease(t, open) })
+	t.Run("RecordedEndingFinishedAfterExpiry", func(t *testing.T) { testRecordedEndingFinishedAfterExpiry(t, open) })
 }
 
 type fixture struct {
@@ -110,7 +112,7 @@ func (f *fixture) blobExists(ref string) bool {
 func (f *fixture) claim(m *store.Message, now time.Time, bucket byte, verifierOK bool, verifierSent bool) (store.ClaimResult, error) {
 	f.t.Helper()
 	return f.s.Claim(f.ctx, store.ClaimParams{
-		ID: m.ID, Now: now, Bucket: []byte{bucket, 0, 0}, VerifierSent: verifierSent,
+		ID: m.ID, Clock: func() time.Time { return now }, Bucket: []byte{bucket, 0, 0}, VerifierSent: verifierSent,
 		VerifyMAC:     func(pepperID byte, stored []byte) bool { return verifierOK && bytes.Equal(stored, m.VerifierMAC) },
 		LeaseMAC:      mac(fmt.Sprintf("lease/%s/%d/%d", m.ID, now.UnixNano(), bucket)),
 		LeasePepperID: 7,
@@ -220,19 +222,15 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 	for i := 1; i <= 5; i++ {
 		expectFail(1, 0, 5-i)
 	}
-	expectFail(1, 2*time.Second, 0)
-	expectFail(1, 2*time.Second, 0)
+	expectFail(1, time.Minute, 0)
+	expectFail(1, time.Minute, 0)
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != 6 || rec.Message.OpensRemaining != 2 {
 		t.Fatalf("counters after backoff probe: total %d opens %d", rec.Message.FailCountTotal, rec.Message.OpensRemaining)
 	}
-	now = now.Add(2 * time.Second)
-	expectFail(1, 4*time.Second, 0)
-	now = now.Add(4 * time.Second)
-	expectFail(1, 8*time.Second, 0)
-	now = now.Add(8 * time.Second)
-	expectFail(1, 16*time.Second, 0)
-	now = now.Add(16 * time.Second)
-	expectFail(1, 32*time.Second, 0)
+	for range 4 {
+		now = now.Add(time.Minute)
+		expectFail(1, time.Minute, 0)
+	}
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != 10 || rec.Message.OpensRemaining != 2 {
 		t.Fatalf("counters after tenth failure: total %d opens %d", rec.Message.FailCountTotal, rec.Message.OpensRemaining)
 	}
@@ -242,7 +240,7 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 	if _, err := f.claim(m, now, 1, true, true); err == nil {
 		t.Fatal("backoff bucket must still wait even with the right passphrase")
 	}
-	if _, err := f.claim(m, now.Add(32*time.Second), 1, true, true); err != nil {
+	if _, err := f.claim(m, now.Add(time.Minute), 1, true, true); err != nil {
 		t.Fatalf("after backoff: %v", err)
 	}
 	rec := f.get(m.ID)
@@ -318,7 +316,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 			t.Fatal("lease not active before expiry")
 		}
 		for i := 1; i <= store.MaxLeaseDownload; i++ {
-			if err := f.s.RecordDownload(f.ctx, l.RowID, baseTime.Add(time.Minute)); err != nil {
+			if err := f.s.RecordDownload(f.ctx, l, baseTime.Add(time.Minute)); err != nil {
 				t.Fatalf("download %d: %v", i, err)
 			}
 			all, err := f.s.Leases(f.ctx, m.ID)
@@ -326,7 +324,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 				t.Fatalf("download %d was not counted: %+v %v", i, all, err)
 			}
 		}
-		if err := f.s.RecordDownload(f.ctx, l.RowID, baseTime.Add(time.Minute)); !errors.Is(err, store.ErrLeaseLimit) {
+		if err := f.s.RecordDownload(f.ctx, l, baseTime.Add(time.Minute)); !errors.Is(err, store.ErrLeaseLimit) {
 			t.Fatalf("fourth download: %v", err)
 		}
 	}
@@ -334,7 +332,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 		t.Fatal("released while leases active")
 	}
 	for i, l := range leases {
-		if _, err := f.s.Ack(f.ctx, l.RowID, baseTime.Add(time.Minute)); err != nil {
+		if _, err := f.s.Ack(f.ctx, l, baseTime.Add(time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 		released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime.Add(time.Minute))
@@ -355,7 +353,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime.Add(time.Hour)); ref != "" {
 		t.Fatal("release after tombstone")
 	}
-	if err := f.s.RecordDownload(f.ctx, leases[0].RowID, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(f.ctx, leases[0], baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download on acked lease: %v", err)
 	}
 }
@@ -371,7 +369,7 @@ func testLeaseExpiry(t *testing.T, open Factory) {
 	if res.Lease.Active(atExpiry) || !res.Lease.Active(atExpiry.Add(-time.Millisecond)) {
 		t.Fatal("lease boundary must be exclusive at lease_expires_at")
 	}
-	if err := f.s.RecordDownload(f.ctx, res.Lease.RowID, atExpiry); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(f.ctx, res.Lease, atExpiry); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download at expiry: %v", err)
 	}
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, atExpiry.Add(-time.Second)); ref != "" {
@@ -404,7 +402,7 @@ func testCrashBeforeDelete(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ref, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil || ref != m.ID {
+	if ref, err := f.s.Ack(f.ctx, res.Lease, baseTime); err != nil || ref != m.ID {
 		t.Fatalf("the ack of the last lease must hand out the blob in the same transaction: %q %v", ref, err)
 	}
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime); ref != m.ID {
@@ -432,7 +430,7 @@ func testCrashBeforeClear(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
+	if _, err := f.s.Ack(f.ctx, res.Lease, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime)
@@ -512,7 +510,7 @@ func (f *fixture) createRow(ttl time.Duration) *store.Message {
 
 func (f *fixture) crashAfterDelete(m *store.Message, state store.State) {
 	f.t.Helper()
-	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, state, baseTime); err != nil {
+	if _, _, _, err := f.s.MarkEnding(f.ctx, m.ID, state, baseTime); err != nil {
 		f.t.Fatal(err)
 	}
 	if err := f.b.Delete(f.ctx, m.BlobRef); err != nil {
@@ -588,14 +586,15 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := f.s.MarkEnding(f.ctx, m.ID, recorded, baseTime); err != nil {
+		if _, _, _, err := f.s.MarkEnding(f.ctx, m.ID, recorded, baseTime); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
-			t.Fatal(err)
+		var gone *store.GoneError
+		if _, err := f.s.Ack(f.ctx, res.Lease, baseTime); !errors.As(err, &gone) || gone.State != recorded {
+			t.Fatalf("an ack after a recorded %s must report it: %v", recorded, err)
 		}
-		if released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime); err != nil || !released {
-			t.Fatalf("release: %v %v", released, err)
+		if state, err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateExpired, baseTime); err != nil || state != recorded {
+			t.Fatalf("finishing: %s %v", state, err)
 		}
 		if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != recorded || f.blobExists(m.ID) {
 			t.Fatalf("a release must keep the recorded %s: %+v", recorded, rec)
@@ -606,7 +605,7 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
+	if _, err := f.s.Ack(f.ctx, res.Lease, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	if ref, err := f.s.ReleaseIfDone(f.ctx, opened.ID, baseTime); err != nil || ref == "" {
@@ -793,7 +792,7 @@ func testBlobStays(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
+	if _, err := f.s.Ack(f.ctx, res.Lease, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime.Add(time.Hour))
@@ -865,7 +864,7 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateCancelled, baseTime.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.RecordDownload(f.ctx, res.Lease.RowID, baseTime.Add(2*time.Second)); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(f.ctx, res.Lease, baseTime.Add(2*time.Second)); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("lease survived cancel: %v", err)
 	}
 	if rec := f.get(cancel.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || rec.Tombstone.FirstOpenedAt == nil {
@@ -917,11 +916,11 @@ func testDownloadAfterRecordedEnding(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateCancelled, baseTime); err != nil {
+	if _, _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateCancelled, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	var gone *store.GoneError
-	if err := f.s.RecordDownload(f.ctx, res.Lease.RowID, baseTime.Add(time.Second)); !errors.As(err, &gone) || gone.State != store.StateCancelled {
+	if err := f.s.RecordDownload(f.ctx, res.Lease, baseTime.Add(time.Second)); !errors.As(err, &gone) || gone.State != store.StateCancelled {
 		t.Fatalf("a download after a recorded ending must report it: %v", err)
 	}
 }
@@ -1093,5 +1092,50 @@ func testBackoffCap(t *testing.T, open Factory) {
 	}
 	if last != store.MaxBackoff {
 		t.Fatalf("17th failure waits %s, want %s", last, store.MaxBackoff)
+	}
+}
+
+func testStaleLease(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	first := f.create(1, time.Hour, false)
+	res, err := f.claim(first, baseTime, 1, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := res.Lease
+	if _, err := f.s.Ack(f.ctx, stale, baseTime); err != nil {
+		t.Fatal(err)
+	}
+	victim := f.create(1, time.Hour, false)
+	if _, err := f.claim(victim, baseTime, 2, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.s.Ack(f.ctx, stale, baseTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.RecordDownload(f.ctx, stale, baseTime); err == nil {
+		t.Fatal("a download on a lease that was acked must fail")
+	}
+	leases, err := f.s.Leases(f.ctx, victim.ID)
+	if err != nil || len(leases) != 1 || leases[0].Downloads != 0 {
+		t.Fatalf("a stale lease of another message touched this one: %+v %v", leases, err)
+	}
+	if rec := f.get(victim.ID); rec.Message == nil || rec.Message.Ending != "" || !f.blobExists(victim.ID) {
+		t.Fatalf("a stale lease of another message ended this one: %+v", rec)
+	}
+}
+
+func testRecordedEndingFinishedAfterExpiry(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	m := f.create(1, time.Hour, false)
+	if _, _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateCancelled, baseTime); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateExpired, baseTime.Add(3*time.Hour+17*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.get(m.ID)
+	if rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || !rec.Tombstone.EndedAt.Equal(m.ExpiresAt) || !rec.Tombstone.PurgeAt.Equal(m.ExpiresAt.Add(store.TombstoneTTL)) {
+		t.Fatalf("a recorded ending finished after expiry must end at expires_at: %+v", rec.Tombstone)
 	}
 }

@@ -227,11 +227,16 @@ func TestKDFNoneIgnoresPassphrase(t *testing.T) {
 }
 
 func TestAssertProfile(t *testing.T) {
-	if err := core.AssertProfile(core.KDFScrypt, core.KDFPBKDF2); !errors.Is(err, core.ErrKDFMismatch) {
-		t.Fatal("downgrade accepted")
+	for _, reported := range []int{int(core.KDFPBKDF2), 3, 257, -255} {
+		if err := core.AssertProfile(core.KDFScrypt, reported); !errors.Is(err, core.ErrKDFMismatch) {
+			t.Fatalf("server-reported kdf_id %d accepted for a scrypt link", reported)
+		}
 	}
-	if err := core.AssertProfile(core.KDFScrypt, core.KDFScrypt); err != nil {
+	if err := core.AssertProfile(core.KDFScrypt, int(core.KDFScrypt)); err != nil {
 		t.Fatal(err)
+	}
+	if err := core.AssertProfile(core.KDFScrypt, int(core.KDFPBKDF2)); strings.Contains(err.Error(), "envelope") {
+		t.Fatalf("a server-reported mismatch must not be reported as an envelope error: %v", err)
 	}
 }
 
