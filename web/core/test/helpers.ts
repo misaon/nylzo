@@ -14,15 +14,6 @@ export interface ScryptVector {
   readonly heavy: boolean;
 }
 
-export interface WireVector {
-  readonly r: string;
-  readonly v?: string;
-  readonly m: string;
-  readonly read_hash: string;
-  readonly verifier_hash?: string;
-  readonly manage_hash: string;
-}
-
 export interface DeriveVector {
   readonly name: string;
   readonly id: string;
@@ -36,11 +27,24 @@ export interface DeriveVector {
   readonly k_hex: string;
   readonly v_hex: string;
   readonly m_hex: string;
-  readonly wire: WireVector;
   readonly fragment: string;
-  readonly read_hash_hex: string;
-  readonly manage_hash_hex: string;
-  readonly verifier_hash_hex?: string;
+  readonly read_key: string;
+  readonly verifier_key?: string;
+  readonly manage_key: string;
+}
+
+export interface RequestVector {
+  readonly name: string;
+  readonly seed_hex: string;
+  readonly public_key: string;
+  readonly purpose: 'read' | 'verifier' | 'manage';
+  readonly method: string;
+  readonly path: string;
+  readonly challenge: string;
+  readonly body_hex: string;
+  readonly message_hex: string;
+  readonly signature: string;
+  readonly authorization: string;
 }
 
 export interface FileVector {
@@ -100,6 +104,7 @@ export interface VectorFile {
   readonly link: readonly LinkVector[];
   readonly meta: readonly MetaVector[];
   readonly passphrase_strength: readonly StrengthVector[];
+  readonly request: readonly RequestVector[];
 }
 
 export interface StrengthVector {

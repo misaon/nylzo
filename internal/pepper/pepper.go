@@ -15,13 +15,14 @@ import (
 type Purpose string
 
 const (
-	Read     Purpose = "read"
-	Verifier Purpose = "verifier"
-	Manage   Purpose = "manage"
-	Lease    Purpose = "lease"
-	IP       Purpose = "ip"
-	PoW      Purpose = "pow"
-	ID       Purpose = "id"
+	Read      Purpose = "read"
+	Verifier  Purpose = "verifier"
+	Manage    Purpose = "manage"
+	Lease     Purpose = "lease"
+	IP        Purpose = "ip"
+	PoW       Purpose = "pow"
+	ID        Purpose = "id"
+	Challenge Purpose = "challenge"
 )
 
 const (
@@ -33,7 +34,7 @@ const (
 	infoBase = "nylzo/v1/mac/"
 )
 
-var purposes = []Purpose{Read, Verifier, Manage, Lease, IP, PoW, ID}
+var purposes = []Purpose{Read, Verifier, Manage, Lease, IP, PoW, ID, Challenge}
 
 var (
 	ErrSecret    = errors.New("pepper: secret must be 32 bytes in hex or base64url")

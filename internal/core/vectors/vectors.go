@@ -33,6 +33,7 @@ type File struct {
 	Link      []Link     `json:"link"`
 	Meta      []MetaCase `json:"meta"`
 	Strength  []Strength `json:"passphrase_strength"`
+	Request   []Request  `json:"request"`
 	Server    Server     `json:"server"`
 }
 
@@ -55,32 +56,36 @@ type Scrypt struct {
 }
 
 type Derive struct {
-	Name         string  `json:"name"`
-	ID           string  `json:"id"`
-	S            string  `json:"s"`
-	KDFID        int     `json:"kdf_id"`
-	Passphrase   *string `json:"passphrase,omitempty"`
-	HSalt        string  `json:"hsalt_hex"`
-	R            string  `json:"r_hex"`
-	SaltPW       string  `json:"salt_pw_hex"`
-	P            string  `json:"p_hex"`
-	K            string  `json:"k_hex"`
-	V            string  `json:"v_hex"`
-	M            string  `json:"m_hex"`
-	Wire         Wire    `json:"wire"`
-	Fragment     string  `json:"fragment"`
-	ReadHashHex  string  `json:"read_hash_hex"`
-	ManageHash   string  `json:"manage_hash_hex"`
-	VerifierHash *string `json:"verifier_hash_hex,omitempty"`
+	Name        string  `json:"name"`
+	ID          string  `json:"id"`
+	S           string  `json:"s"`
+	KDFID       int     `json:"kdf_id"`
+	Passphrase  *string `json:"passphrase,omitempty"`
+	HSalt       string  `json:"hsalt_hex"`
+	R           string  `json:"r_hex"`
+	SaltPW      string  `json:"salt_pw_hex"`
+	P           string  `json:"p_hex"`
+	K           string  `json:"k_hex"`
+	V           string  `json:"v_hex"`
+	M           string  `json:"m_hex"`
+	Fragment    string  `json:"fragment"`
+	ReadKey     string  `json:"read_key"`
+	VerifierKey *string `json:"verifier_key,omitempty"`
+	ManageKey   string  `json:"manage_key"`
 }
 
-type Wire struct {
-	R            string  `json:"r"`
-	V            *string `json:"v,omitempty"`
-	M            string  `json:"m"`
-	ReadHash     string  `json:"read_hash"`
-	VerifierHash *string `json:"verifier_hash,omitempty"`
-	ManageHash   string  `json:"manage_hash"`
+type Request struct {
+	Name          string `json:"name"`
+	Seed          string `json:"seed_hex"`
+	PublicKey     string `json:"public_key"`
+	Purpose       string `json:"purpose"`
+	Method        string `json:"method"`
+	Path          string `json:"path"`
+	Challenge     string `json:"challenge"`
+	Body          string `json:"body_hex"`
+	Message       string `json:"message_hex"`
+	Signature     string `json:"signature"`
+	Authorization string `json:"authorization"`
 }
 
 type Envelope struct {
@@ -186,7 +191,7 @@ func counterBytes(n int) []byte {
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
-	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.server} {
+	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.server} {
 		if err := step(); err != nil {
 			return nil, err
 		}
@@ -270,21 +275,17 @@ func (f *File) derive() error {
 			return err
 		}
 		hs := core.HSalt(id)
-		rh := core.Hash(link.R[:])
-		mh := core.Hash(m[:])
+		readKey, manageKey := core.PublicKey(&link.R), core.PublicKey(m)
 		d := Derive{
 			Name: c.name, ID: id.String(), S: hex.EncodeToString(s[:]), KDFID: int(c.kdf), Passphrase: c.pw,
 			HSalt: hex.EncodeToString(hs[:]), R: hex.EncodeToString(link.R[:]), SaltPW: hex.EncodeToString(link.SaltPW[:]),
 			P: hex.EncodeToString(p), K: hex.EncodeToString(content.K[:]), V: hex.EncodeToString(content.V[:]), M: hex.EncodeToString(m[:]),
-			Fragment:    core.Fragment(c.kdf, s),
-			ReadHashHex: hex.EncodeToString(rh[:]), ManageHash: hex.EncodeToString(mh[:]),
-			Wire: Wire{R: core.Encode(link.R[:]), M: core.Encode(m[:]), ReadHash: core.Encode(rh[:]), ManageHash: core.Encode(mh[:])},
+			Fragment: core.Fragment(c.kdf, s),
+			ReadKey:  core.Encode(readKey[:]), ManageKey: core.Encode(manageKey[:]),
 		}
 		if c.kdf != core.KDFNone {
-			vh := core.Hash(content.V[:])
-			d.VerifierHash = new(hex.EncodeToString(vh[:]))
-			d.Wire.V = new(core.Encode(content.V[:]))
-			d.Wire.VerifierHash = new(core.Encode(vh[:]))
+			verifierKey := core.PublicKey(&content.V)
+			d.VerifierKey = new(core.Encode(verifierKey[:]))
 		}
 		f.Derive = append(f.Derive, d)
 	}
@@ -509,6 +510,33 @@ func (f *File) meta() error {
 	add("text-over-limit", `{"v":1,"text":"`+strings.Repeat("x", core.MaxTextBytes+1)+`"}`, false)
 	add("text-at-limit", `{"v":1,"text":"`+strings.Repeat("x", core.MaxTextBytes)+`"}`, true)
 	add("mime-256-bytes", `{"v":1,"file":{"name":"a","mime":"`+strings.Repeat("m", 256)+`","size":1}}`, false)
+	return nil
+}
+
+func (f *File) request() error {
+	id := detID("request")
+	for _, c := range []struct {
+		name, purpose, method, path string
+		body                        []byte
+	}{
+		{"metadata read", core.PurposeRead, "GET", "/api/v1/messages/" + id.String(), nil},
+		{"claim verifier", core.PurposeVerifier, "POST", "/api/v1/messages/" + id.String() + "/claim", nil},
+		{"status manage", core.PurposeManage, "GET", "/api/v1/messages/" + id.String() + "/status", nil},
+		{"abuse report with a body", core.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"` + id.String() + `","reason":"spam"}`)},
+	} {
+		seed := det32("request-seed/" + c.name)
+		challenge := [core.ChallengeLen]byte(det("request-challenge/"+c.name, core.ChallengeLen))
+		sig := core.SignRequest(seed, c.purpose, c.method, c.path, challenge, c.body)
+		if !sig.Verify(c.purpose, c.method, c.path, c.body) {
+			return fmt.Errorf("vectors: request signature %q does not verify", c.name)
+		}
+		f.Request = append(f.Request, Request{
+			Name: c.name, Seed: hex.EncodeToString(seed[:]), PublicKey: core.Encode(sig.PublicKey[:]),
+			Purpose: c.purpose, Method: c.method, Path: c.path, Challenge: core.Encode(challenge[:]),
+			Body: hex.EncodeToString(c.body), Message: hex.EncodeToString(core.RequestMessage(c.purpose, c.method, c.path, challenge[:], c.body)),
+			Signature: core.Encode(sig.Sig[:]), Authorization: sig.Authorization(),
+		})
+	}
 	return nil
 }
 

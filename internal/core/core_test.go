@@ -313,3 +313,40 @@ func TestKDFNoneIgnoresAnIllFormedPassphrase(t *testing.T) {
 		t.Fatalf("kdf 0 must ignore the passphrase: %v %v", key, err)
 	}
 }
+
+func TestRequestSignatureBindsEveryField(t *testing.T) {
+	seed := core.NewSecret()
+	var challenge [core.ChallengeLen]byte
+	copy(challenge[:], bytes.Repeat([]byte{7}, core.ChallengeLen))
+	body := []byte(`{"id":"x"}`)
+	sig := core.SignRequest(seed, core.PurposeRead, "POST", "/api/v1/abuse", challenge, body)
+	if !sig.Verify(core.PurposeRead, "POST", "/api/v1/abuse", body) {
+		t.Fatal("own signature rejected")
+	}
+	other := sig
+	other.Challenge[0] ^= 1
+	for name, ok := range map[string]bool{
+		"purpose":   sig.Verify(core.PurposeManage, "POST", "/api/v1/abuse", body),
+		"method":    sig.Verify(core.PurposeRead, "GET", "/api/v1/abuse", body),
+		"path":      sig.Verify(core.PurposeRead, "POST", "/api/v1/abuses", body),
+		"body":      sig.Verify(core.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"y"}`)),
+		"challenge": other.Verify(core.PurposeRead, "POST", "/api/v1/abuse", body),
+	} {
+		if ok {
+			t.Fatalf("a signature verified with another %s", name)
+		}
+	}
+	parsed, err := core.ParseAuthorization(sig.Authorization())
+	if err != nil || parsed != sig {
+		t.Fatalf("authorization round trip: %v", err)
+	}
+	for _, bad := range []string{"", "Bearer x", core.AuthScheme + " a.b", core.AuthScheme + " " + strings.Repeat("A", 43) + "." + strings.Repeat("A", 48) + "." + strings.Repeat("A", 85) + "B"} {
+		if _, err := core.ParseAuthorization(bad); !errors.Is(err, core.ErrAuthorization) {
+			t.Fatalf("%q accepted", bad)
+		}
+	}
+	v, err := core.ParseVerifierHeader(sig.VerifierHeader(), challenge)
+	if err != nil || v != sig {
+		t.Fatalf("verifier header round trip: %v", err)
+	}
+}

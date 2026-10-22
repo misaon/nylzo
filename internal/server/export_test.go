@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -66,4 +67,14 @@ func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
 
 func (s *Server) IDTokenForTest(id core.ID) string {
 	return s.idToken(id, s.clock())
+}
+
+func (s *Server) ChallengeForTest() [core.ChallengeLen]byte {
+	c, _ := s.issueChallenge(s.clock())
+	return c
+}
+
+func (s *Server) ChallengeAtForTest(now time.Time) [core.ChallengeLen]byte {
+	c, _ := s.issueChallenge(now)
+	return c
 }

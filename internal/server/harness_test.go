@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -194,7 +195,7 @@ func (h *harness) startOfNextUTCDay() {
 func (h *harness) listen() string {
 	h.t.Helper()
 	httpServer := h.srv.HTTPServer()
-	httpServer.Handler = h.withIDTokens(httpServer.Handler)
+	httpServer.Handler = h.asClient(httpServer.Handler)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		h.t.Fatal(err)
@@ -252,7 +253,7 @@ func (h *harness) open() {
 			h.capture.last = dump.Bytes()
 			h.capture.mu.Unlock()
 		}
-		h.withIDTokens(inner).ServeHTTP(w, r)
+		h.asClient(inner).ServeHTTP(w, r)
 	}))
 	h.t.Cleanup(h.ts.Close)
 	h.client = h.ts.Client()
@@ -389,19 +390,21 @@ func (h *harness) lastCreateRequest() []byte {
 	return append([]byte(nil), h.capture.last...)
 }
 
+func publicKey(seed *[core.TokenLen]byte) string {
+	pk := core.PublicKey(seed)
+	return core.Encode(pk[:])
+}
+
 func (m *message) createHeader(sizeOverride int64) string {
-	rh := core.Hash(m.link.R[:])
-	mh := core.Hash(m.manage[:])
 	fields := map[string]any{
-		"id": m.id.String(), "read_hash": core.Encode(rh[:]), "manage_hash": core.Encode(mh[:]),
+		"id": m.id.String(), "read_key": publicKey(&m.link.R), "manage_key": publicKey(m.manage),
 		"kdf_id": int(m.kdf), "opens_max": int(m.policy.OpensMax), "ttl_s": int(m.policy.TTLSeconds), "size": len(m.object),
 	}
 	if sizeOverride > 0 {
 		fields["size"] = sizeOverride
 	}
 	if m.kdf != core.KDFNone {
-		vh := core.Hash(m.content.V[:])
-		fields["verifier_hash"] = core.Encode(vh[:])
+		fields["verifier_key"] = publicKey(&m.content.V)
 	}
 	data, _ := json.Marshal(fields)
 	return core.Encode(data)
@@ -509,16 +512,119 @@ func decodePolicy(header string) (core.Policy, error) {
 	return core.Policy{OpensMax: uint16(pol.OpensMax), TTLSeconds: uint32(pol.TTL)}, nil
 }
 
-const rawCreateHeader = "X-Test-Raw-Create"
+const (
+	rawCreateHeader = "X-Test-Raw-Create"
+	rawAuthHeader   = "X-Test-Raw-Auth"
+)
 
-func (h *harness) withIDTokens(next http.Handler) http.Handler {
+func (h *harness) asClient(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/api/v1/messages" && r.Header.Get(rawCreateHeader) == "" {
 			r.Header.Set("X-Nylzo-Create", withIDToken(h.srv, r.Header.Get("X-Nylzo-Create")))
 		}
+		if r.Header.Get(rawAuthHeader) == "" {
+			signAsClient(h.srv, r)
+		}
 		r.Header.Del(rawCreateHeader)
+		r.Header.Del(rawAuthHeader)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func signAsClient(srv *server.Server, r *http.Request) {
+	path := r.URL.EscapedPath()
+	if path == "/api/v1/abuse" {
+		signAbuse(srv, r)
+		return
+	}
+	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok {
+		return
+	}
+	purpose := core.PurposeRead
+	if strings.HasSuffix(path, "/status") || strings.HasSuffix(path, "/cancel") {
+		purpose = core.PurposeManage
+	}
+	body, _ := io.ReadAll(r.Body)
+	challenge := srv.ChallengeForTest()
+	if strings.HasSuffix(path, "/claim") {
+		body = moveVerifier(r, challenge, body)
+	}
+	setBody(r, body)
+	r.Header.Set("Authorization", signedHeader(token, purpose, r.Method, path, challenge, body))
+}
+
+func signedHeader(token, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) string {
+	seed, err := core.DecodeExact(token, core.TokenLen)
+	if err != nil {
+		return core.AuthScheme + " " + token
+	}
+	return core.SignRequest((*[core.TokenLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
+}
+
+func moveVerifier(r *http.Request, challenge [core.ChallengeLen]byte, body []byte) []byte {
+	var fields map[string]string
+	if json.Unmarshal(body, &fields) != nil || len(fields) != 1 {
+		return body
+	}
+	verifier, ok := fields["verifier"]
+	if !ok {
+		return body
+	}
+	seed, err := core.DecodeExact(verifier, core.TokenLen)
+	if err != nil {
+		r.Header.Set("X-Nylzo-Verifier", verifier)
+		return nil
+	}
+	sig := core.SignRequest((*[core.TokenLen]byte)(seed), core.PurposeVerifier, r.Method, r.URL.EscapedPath(), challenge, nil)
+	r.Header.Set("X-Nylzo-Verifier", sig.VerifierHeader())
+	return nil
+}
+
+func signAbuse(srv *server.Server, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	setBody(r, body)
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(body, &fields) != nil || fields == nil {
+		return
+	}
+	rawToken, ok := fields["read_token"]
+	if !ok {
+		return
+	}
+	var token string
+	if json.Unmarshal(rawToken, &token) != nil {
+		return
+	}
+	delete(fields, "read_token")
+	var out bytes.Buffer
+	enc := json.NewEncoder(&out)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(fields) != nil {
+		return
+	}
+	body = bytes.TrimSuffix(out.Bytes(), []byte("\n"))
+	setBody(r, body)
+	r.Header.Set("Authorization", signedHeader(token, core.PurposeRead, r.Method, r.URL.EscapedPath(), srv.ChallengeForTest(), body))
+}
+
+func signedRequest(seed *[core.TokenLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) request {
+	sig := core.SignRequest(seed, purpose, method, path, challenge, body)
+	return rawAuth(request{method: method, path: path, body: body}, sig.Authorization())
+}
+
+func rawAuth(req request, authorization string) request {
+	if req.headers == nil {
+		req.headers = map[string]string{}
+	}
+	req.headers["Authorization"] = authorization
+	req.headers[rawAuthHeader] = "1"
+	return req
+}
+
+func setBody(r *http.Request, body []byte) {
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
 }
 
 func withIDToken(srv *server.Server, header string) string {

@@ -108,8 +108,8 @@ func TestCreateHeaderRules(t *testing.T) {
 	cases := map[string]string{
 		"unknown-key":           mutateHeader(t, none, func(f map[string]any) { f["extra"] = 1 }),
 		"case-variant-key":      mutateHeader(t, none, func(f map[string]any) { f["ID"] = f["id"]; delete(f, "id") }),
-		"verifier-with-kdf0":    mutateHeader(t, none, func(f map[string]any) { f["verifier_hash"] = core.Encode(make([]byte, 32)) }),
-		"no-verifier-with-kdf2": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_hash") }),
+		"verifier-with-kdf0":    mutateHeader(t, none, func(f map[string]any) { f["verifier_key"] = core.Encode(make([]byte, 32)) }),
+		"no-verifier-with-kdf2": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_key") }),
 		"opens-0":               mutateHeader(t, none, func(f map[string]any) { f["opens_max"] = 0 }),
 		"ttl-59":                mutateHeader(t, none, func(f map[string]any) { f["ttl_s"] = 59 }),
 		"kdf-3":                 mutateHeader(t, none, func(f map[string]any) { f["kdf_id"] = 3 }),
@@ -137,16 +137,21 @@ func TestClaimBodyVariants(t *testing.T) {
 	if _, st := h.status(m); st["failed_passphrase_attempts"].(float64) != 0 || st["opens_used"].(float64) != 0 {
 		t.Fatalf("malformed claim bodies changed the message: %v", st)
 	}
-	r, _ := http.NewRequest("POST", h.ts.URL+"/api/v1/messages/"+m.id.String()+"/claim", io.MultiReader(strings.NewReader(`{"verifier":"`+m.verifier+`"}`)))
-	r.Header.Set("Authorization", "Bearer "+m.readToken)
+	path := "/api/v1/messages/" + m.id.String() + "/claim"
+	r, _ := http.NewRequest("POST", h.ts.URL+path, io.MultiReader(strings.NewReader(`{"verifier":"`+m.verifier+`"}`)))
+	r.Header.Set("Authorization", core.SignRequest(&m.link.R, core.PurposeRead, "POST", path, h.srv.ChallengeForTest(), nil).Authorization())
+	r.Header.Set(rawAuthHeader, "1")
 	r.Header.Set("X-Forwarded-For", "203.0.113.4")
 	resp, err := h.client.Do(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
-	if resp.StatusCode != 200 || r.ContentLength != 0 {
+	if resp.StatusCode != 400 || r.ContentLength != 0 {
 		t.Fatalf("claim with a chunked body: %d (content length %d)", resp.StatusCode, r.ContentLength)
+	}
+	if _, st := h.status(m); st["opens_used"].(float64) != 0 {
+		t.Fatalf("a chunked claim body spent an open: %v", st)
 	}
 }
 
@@ -213,7 +218,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	wrongKDF.ip = "198.51.100.11"
-	headerKDF2 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_hash"] = core.Encode(make([]byte, 32)) })
+	headerKDF2 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = core.Encode(make([]byte, 32)) })
 	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF2}}); resp.StatusCode != 400 {
 		t.Fatalf("body kdf differs from the header: %d", resp.StatusCode)
 	}
@@ -243,7 +248,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	m.ip = "203.0.113.9"
 	token := solve(m)
-	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_hash"] = core.Encode(make([]byte, 32)) })
+	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = core.Encode(make([]byte, 32)) })
 	send := func(header, pow string) int {
 		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow}})
 		return resp.StatusCode

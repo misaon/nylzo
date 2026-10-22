@@ -16,11 +16,12 @@ Test vectors for every client-side construction live in `spec/vectors.json`. Bot
 | scrypt | RFC 7914 |
 | PBKDF2 | PBKDF2-HMAC-SHA-256 (RFC 8018) |
 | HMAC | HMAC-SHA-256 (RFC 2104) |
+| Ed25519 | EdDSA over edwards25519 (RFC 8032), 32-byte seed, 32-byte public key, 64-byte signature |
 | CSPRNG | `crypto.getRandomValues` in browsers, `crypto/rand` in Go |
 | `a \|\| b` | byte concatenation |
 | `u16be(n)`, `u32be(n)`, `u64be(n)` | unsigned big-endian integers of 2, 4 and 8 bytes |
 
-No other cryptographic construction is used. The protocol has no asymmetric cryptography; flags bit 0 is reserved for a future HPKE mode.
+No other cryptographic construction is used. Ed25519 only signs requests (§5.5); content encryption stays symmetric, and flags bit 0 is reserved for a future HPKE mode.
 
 ### 1.1 base64url
 
@@ -29,7 +30,10 @@ All binary values carried in URLs, headers and JSON use base64url (RFC 4648 §5)
 | Value | Bytes | Characters | Allowed final characters |
 |---|---|---|---|
 | `id` | 16 | 22 | `A Q g w` |
-| `S`, `R`, `V`, `M`, `L`, hashes | 32 | 43 | `A E I M Q U Y c g k o s w 0 4 8` |
+| `S`, `L`, public keys, hashes | 32 | 43 | `A E I M Q U Y c g k o s w 0 4 8` |
+| id token (§5.4) | 20 | 27 | `A E I M Q U Y c g k o s w 0 4 8` |
+| challenge (§5.5) | 36 | 48 | any |
+| signature | 64 | 86 | `A Q g w` |
 
 A canonical 43-character encoding of 32 bytes never ends in `-` or `_`, so the design's rule "regenerate `S` when its last character is `-` or `_`" holds by construction.
 
@@ -37,7 +41,7 @@ A canonical 43-character encoding of 32 bytes never ends in `-` or `_`, so the d
 
 - `id`: 16 bytes from the server CSPRNG, issued together with an id token by `GET /api/v1/instance` (§5.4, §6.6). Appears in the URL path and never in logs.
 - `S`: 32 bytes from the client CSPRNG. Appears only in the URL fragment. The server MUST never receive `S`.
-- `M`: 32 bytes from the client CSPRNG (manage token). The client sends `h(M)` at creation and `M` on cancel and status.
+- `M`: 32 bytes from the client CSPRNG, the seed of the manage key. The client sends the public key `pk_M` at creation and signs cancel and status with `M`; `M` never leaves the client.
 - `L`: 32 bytes from the server CSPRNG (lease token), issued by claim.
 
 ## 2. Key derivation (client)
@@ -47,14 +51,15 @@ Inputs: `id` (16 raw bytes), `S` (32 bytes), `kdf_id` (from the URL fragment, §
 ```
 hsalt   = SHA-256("nylzo/v1/hkdf-salt" || id)                            32 bytes
 PRK_S   = HKDF-Extract(salt = hsalt, IKM = S)
-R       = HKDF-Expand(PRK_S,  "nylzo/v1/read",     32)                  read token
+R       = HKDF-Expand(PRK_S,  "nylzo/v1/read",     32)                  seed of the read key
 salt_pw = HKDF-Expand(PRK_S,  "nylzo/v1/pw-salt",  32)                  passphrase salt
 P       = kdf_id 0: empty (0 bytes)
           kdf_id 1: scrypt(pw, salt_pw, N = 2^17, r = 8, p = 1, dkLen = 32)
           kdf_id 2: PBKDF2-HMAC-SHA-256(pw, salt_pw, iterations = 600000, dkLen = 32)
 PRK_SP  = HKDF-Extract(salt = hsalt, IKM = S || P)
 K       = HKDF-Expand(PRK_SP, "nylzo/v1/content",  32)                  content key
-V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  verifier
+V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  seed of the verifier key
+pk_X    = Ed25519 public key of seed X (RFC 8032 §5.1.5), for X in R, V, M
 ```
 
 - `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. Derivation accepts any well-formed passphrase, so a recipient can always open a message and the vectors stay valid. A client MUST refuse to create a message with a passphrase shorter than 12 characters (Unicode code points after NFC) and SHOULD warn below 4 words or 16 characters; both cores expose this check.
@@ -62,8 +67,8 @@ V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  verifier
 - The string literals are ASCII without a terminating NUL. `info` strings are passed to HKDF-Expand verbatim.
 - `S || P` has a fixed length per profile (32 or 64 bytes), so the concatenation is unambiguous.
 - `K` MUST never leave the client. In the browser the client MUST derive `K` as a non-extractable `CryptoKey` (`deriveKey`, `extractable = false`) and use `deriveBits` only for `R`, `salt_pw` and `V`.
-- `h(R)`, `h(V)` and `h(M)` are sent at creation; `R` and `V` are sent only at claim; `M` only at cancel and status.
-- `kdf_id` for derivation MUST come from the URL fragment. A client MUST NOT derive `V` with a profile supplied by the server; when the server reports a different profile for a live message (metadata in state `available` or `opened`, or `X-Nylzo-Policy`), the client MUST stop and MUST NOT send any verifier. Tombstone metadata reports `kdf_id` 0, which is no profile; a client MUST NOT compare it.
+- `pk_R`, `pk_V` and `pk_M` are sent at creation. `R`, `V` and `M` never leave the client; every authenticated request carries a public key and a signature over a single-use server challenge instead (§5.5), so a recorded request cannot be replayed.
+- `kdf_id` for derivation MUST come from the URL fragment. A client MUST NOT derive `V` with a profile supplied by the server; when the server reports a different profile for a live message (metadata in state `available` or `opened`, or `X-Nylzo-Policy`), the client MUST stop and MUST NOT send any verifier signature. Tombstone metadata reports `kdf_id` 0, which is no profile; a client MUST NOT compare it.
 
 ## 3. Envelope
 
@@ -117,7 +122,7 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 ### 5.1 Pepper and purpose keys
 
 - `pepper`: 32 bytes of configuration (`NYLZO_PEPPER`), never stored in the database.
-- `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `ip`, `pow`, `id`.
+- `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `ip`, `pow`, `id`, `challenge`.
 - `mac_purpose(x) = HMAC-SHA-256(k_purpose, x)`.
 - `pepper_id = SHA-256("nylzo/v1/pepper-id" || pepper)[0]` (one byte). Every row that stores a mac carries the `pepper_id` of the key that produced it.
 - Rotation: `NYLZO_PEPPER_PREVIOUS` holds the previous pepper. The server writes with the current pepper and verifies each row with the pepper whose `pepper_id` matches the row; a row whose `pepper_id` matches neither verifies as invalid (with the same work as a valid row). The server MUST refuse to start when both peppers share a `pepper_id`. The maximum TTL is 7 days, so no rewriting is needed: after 7 days no live message carries the previous `pepper_id`. Tombstones keep it for another 7 days; dropping the previous pepper earlier turns those tombstones into unknown ids (404) without affecting any live message. An expired message becomes a tombstone when the next request or sweep ends it, so keeping the previous pepper for 14 days plus one sweep interval preserves every tombstone state. A rotation also changes `k_ip` and with it every address bucket (§5.3).
@@ -127,15 +132,17 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 
 §13 lists everything the server keeps and what each item reveals.
 
-| Client sends | Server stores |
+| Client sends | Server stores or checks |
 |---|---|
-| `read_hash = h(R)` at creation | `read_mac = mac_read(h(R))` |
-| `verifier_hash = h(V)` at creation (passphrase only) | `verifier_mac = mac_verifier(h(V))` |
-| `manage_hash = h(M)` at creation | `manage_mac = mac_manage(h(M))` |
-| `R` at metadata, claim, blob, ack, burn, abuse | server computes `mac_read(h(R))` and compares |
-| `V` at claim | server computes `mac_verifier(h(V))` and compares |
-| `M` at cancel, status | server computes `mac_manage(h(M))` and compares |
-| (server issues `L` at claim) | `lease_mac = mac_lease(L)` |
+| `read_key = pk_R` at creation | stores `read_mac = mac_read(pk_R)` |
+| `verifier_key = pk_V` at creation (passphrase only) | stores `verifier_mac = mac_verifier(pk_V)` |
+| `manage_key = pk_M` at creation | stores `manage_mac = mac_manage(pk_M)` |
+| `pk_R` and a signature with `R` at metadata, claim, blob, ack, burn, abuse | checks `mac_read(pk_R)` against the row, then the signature (§5.5) |
+| `pk_V` and a signature with `V` at claim | checks `mac_verifier(pk_V)`, then the signature |
+| `pk_M` and a signature with `M` at cancel, status | checks `mac_manage(pk_M)`, then the signature |
+| (server issues `L` at claim) | stores `lease_mac = mac_lease(L)` |
+
+The macs keep a copied database without the pepper from serving as a test for guessed keys: someone who has `S` and guesses a passphrase cannot compare `pk_V` without the pepper.
 
 All comparisons MUST be constant-time. When a row does not exist, the server MUST still compute a mac and compare it against a dummy value so that the work and the response are identical.
 
@@ -168,22 +175,41 @@ id_token = base64url( u32be(expires_at) || HMAC-SHA-256(k_id, id || u32be(expire
 - A token is valid when the tag verifies in constant time under the current pepper and `0 ≤ expires_at − now ≤ 605 s` (5 s for clock differences between instances). A pepper rotation invalidates tokens issued before it; the client fetches a new one.
 - The server keeps no record of issued ids. A token is not single-use, but its id can be stored only once: a second create with the same id answers 409.
 
+### 5.5 Request signatures
+
+Every request that proves possession of a link or of the manage key carries a signature over a fresh server challenge. A recorded request is worthless: its challenge is spent and a new one needs a new signature, which only the holder of the seed can make.
+
+```
+challenge = base64url( u32be(expires_at) || nonce (16 bytes) || HMAC-SHA-256(k_challenge, u32be(expires_at) || nonce)[0:16] )     36 bytes, 48 characters
+message   = "nylzo/v1/request" || 0x00 || purpose || 0x00 || method || 0x00 || path || 0x00 || challenge (36 raw bytes) || SHA-256(body)
+Authorization:    Nylzo-Sig {pk}.{challenge}.{signature}          signature = Ed25519(seed, message), purpose "read" or "manage"
+X-Nylzo-Verifier: {pk_V}.{signature}                               claim with a passphrase only, purpose "verifier", same challenge
+```
+
+- `GET /api/v1/challenge` answers `{"challenge":"…","expires_at":"…"}`. `expires_at` is 60 s after issue, in RFC 3339 in the JSON and in Unix seconds inside the challenge. A challenge is valid when its tag verifies in constant time under the current pepper and `0 ≤ expires_at − now ≤ 65 s`.
+- `purpose` is ASCII `read`, `verifier` or `manage`; `method` is the uppercase HTTP method; `path` is the request path without query, as sent (`/api/v1/messages/{id}/claim`); `body` is the raw request body, empty for GET.
+- The server parses the header, checks the challenge, loads the row, compares the mac of `pk` with the stored mac and verifies the signature. It does all of this for every request, with a dummy row for an unknown id and a dummy key for a malformed one, so every failure takes the same work and answers the same 404.
+- Every signed request except `POST /api/v1/abuse` has an empty body. A body, or a malformed `X-Nylzo-Verifier`, answers 400 before the signature is checked.
+- After a request passes, the server records the challenge nonce in `rate_counters` with `window_start = 0` and `purge_at = expires_at + 60 s` rounded up to the full minute, so every instance, even with its clock 5 s off, has stopped accepting the challenge before the row is purged. A second request with the same challenge fails like a wrong key. A failed request does not spend its challenge. A claim spends its challenge once for both signatures.
+- Pepper rotation invalidates challenges issued before it; the client fetches a new one.
+
 ## 6. HTTP API
 
-Base path `/api/v1`. Request and response bodies are JSON (`application/json; charset=utf-8`) except where noted. Timestamps are RFC 3339 in UTC. Binary values use canonical base64url (§1.1). `Authorization: Bearer {token}` carries `R` or `M` as 43 base64url characters.
+Base path `/api/v1`. Request and response bodies are JSON (`application/json; charset=utf-8`) except where noted. Timestamps are RFC 3339 in UTC. Binary values use canonical base64url (§1.1). "Signed with R" means an `Authorization: Nylzo-Sig` header made with the seed `R` (§5.5).
 
 | Method and path | Auth | Consumes an open |
 |---|---|---|
 | `POST /api/v1/messages` | none (rate limit, PoW under load) | no |
-| `GET /api/v1/messages/{id}` | Bearer R | no |
-| `POST /api/v1/messages/{id}/claim` | Bearer R (+ verifier) | yes |
-| `GET /api/v1/messages/{id}/blob` | Bearer R + `X-Nylzo-Lease` | no |
-| `POST /api/v1/messages/{id}/ack` | Bearer R + `X-Nylzo-Lease` | no |
-| `POST /api/v1/messages/{id}/burn` | Bearer R | ends the message |
-| `POST /api/v1/messages/{id}/cancel` | Bearer M | ends the message |
-| `GET /api/v1/messages/{id}/status` | Bearer M | no |
+| `GET /api/v1/messages/{id}` | signed with R | no |
+| `POST /api/v1/messages/{id}/claim` | signed with R (+ `X-Nylzo-Verifier` signed with V) | yes |
+| `GET /api/v1/messages/{id}/blob` | signed with R + `X-Nylzo-Lease` | no |
+| `POST /api/v1/messages/{id}/ack` | signed with R + `X-Nylzo-Lease` | no |
+| `POST /api/v1/messages/{id}/burn` | signed with R | ends the message |
+| `POST /api/v1/messages/{id}/cancel` | signed with M | ends the message |
+| `GET /api/v1/messages/{id}/status` | signed with M | no |
 | `GET /api/v1/instance` | none | no |
-| `POST /api/v1/abuse` | none (rate limit; needs R in the body) | no |
+| `GET /api/v1/challenge` | none | no |
+| `POST /api/v1/abuse` | signed with R (rate limit) | no |
 
 No endpoint accepts or returns plaintext, `S`, `K` or a passphrase.
 
@@ -191,11 +217,11 @@ No endpoint accepts or returns plaintext, `S`, `K` or a passphrase.
 
 | Status | Body | When |
 |---|---|---|
-| 400 | `{"error":"bad_request"}` | malformed `X-Nylzo-Create` (including the id inside it) or request body, policy outside instance limits, `size` ≠ Content-Length, version or kdf mismatch, an abuse report without `Content-Type: application/json` |
+| 400 | `{"error":"bad_request"}` | malformed `X-Nylzo-Create` (including the id inside it), request body or `X-Nylzo-Verifier`, a body on a signed request other than abuse (§5.5), policy outside instance limits, `size` ≠ Content-Length, version or kdf mismatch, an abuse report without `Content-Type: application/json` |
 | 403 | `{"error":"passphrase","retry_after":N,"attempts_left":N}` | wrong verifier or backoff active; no open consumed |
 | 403 | `{"error":"pow"}` | PoW required and missing, invalid or already used |
 | 403 | `{"error":"id_token"}` | create with an id token that is missing, invalid or expired; the client fetches a new id from `GET /api/v1/instance` |
-| 404 | `{"error":"not_found"}` | unknown id, wrong R, wrong M, and a malformed id or token in the path or `Authorization` (indistinguishable) |
+| 404 | `{"error":"not_found"}` | unknown id, a key that does not match, a missing, malformed, expired or spent challenge, a bad signature, and a malformed id in the path (indistinguishable) |
 | 409 | `{"error":"conflict"}` | id exists in `messages` or `tombstones` (identical for both) |
 | 410 | `{"error":"gone","state":"opened\|expired\|cancelled\|deleted"}` | message ended |
 | 410 | `{"error":"gone","state":"available\|opened"}` | blob or ack with a lease that is not active while the message is still live; `state` is the message's current state, read again after the lease check, so a message that ended meanwhile answers its end state |
@@ -205,7 +231,7 @@ No endpoint accepts or returns plaintext, `S`, `K` or a passphrase.
 | 500 | `{"error":"internal"}` | storage or blob failure; the body never carries details. A request whose client went away answers 400 instead. A claim that fails after its transaction committed still carries `X-Nylzo-Lease`, so the client can retry through `/blob`. A live, unexpired message whose blob is missing without a recorded ending (§7) answers 500 and stays live; a claim checks this before it spends an open |
 | 503 | `{"error":"unavailable"}` + `Retry-After` | global creation cap, `Sec-Purpose` requests, PoW verifier saturated, abuse report file full for a report that would be stored |
 
-The 404 response (status, headers, body bytes) MUST be byte-identical for an unknown id, a wrong `R` and a wrong `M`. The 409 response MUST be identical for a live id and a tombstone, and for a conflict found before the body is read or while storing it.
+The 404 response (status, headers, body bytes) MUST be byte-identical for an unknown id, a key that does not match the row and every failed signature or challenge. The 409 response MUST be identical for a live id and a tombstone, and for a conflict found before the body is read or while storing it.
 
 ### 6.2 Create
 
@@ -213,7 +239,7 @@ The 404 response (status, headers, body bytes) MUST be byte-identical for an unk
 POST /api/v1/messages
 Content-Type: application/octet-stream
 Content-Length: {size}
-X-Nylzo-Create: base64url(JSON {id, id_token, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
+X-Nylzo-Create: base64url(JSON {id, id_token, read_key, verifier_key?, manage_key, kdf_id, opens_max, ttl_s, size})
 X-Nylzo-Pow: {token}            only when the instance reports pow.required
 body: object (§3)
 ```
@@ -225,7 +251,7 @@ Server order of checks, each before reading the body: (1) parse the header and t
 ```
 
 - `id` and `id_token` MUST come from one `GET /api/v1/instance` response (§5.4). A client never generates an id.
-- `verifier_hash` MUST be present exactly when `kdf_id ≠ 0`.
+- `read_key`, `verifier_key` and `manage_key` are `pk_R`, `pk_V` and `pk_M` (§2). `verifier_key` MUST be present exactly when `kdf_id ≠ 0`.
 - `opens_max` MUST be between 1 and the instance maximum; `ttl_s` between 60 and the instance maximum. The server MUST NOT clamp a policy; it rejects with 400.
 - The header JSON MUST NOT contain unknown keys.
 - Only stored messages keep their slot in the global cap. Every failure after the reservation, including a conflict, a bad body, a storage error and a client that disconnects, returns the slot. Concurrent creates therefore never exceed the cap; a process that crashes while it holds a slot leaves it taken until the UTC day ends. While uploads are in flight the counter includes their slots. A second counter holds stored messages only: when it has reached the cap, the 503 carries a `Retry-After` until the next UTC day, otherwise 60 s. The 60 s hint therefore also covers slots that a crashed process left taken, and it can repeat until the day ends.
@@ -234,9 +260,9 @@ Server order of checks, each before reading the body: (1) parse the header and t
 
 ```
 GET /api/v1/messages/{id}
-Authorization: Bearer {R}
+Authorization: Nylzo-Sig {pk_R}.{challenge}.{signature}
 200 {"state":"available|opened|expired|cancelled|deleted","created_at":"…","expires_at":"…","opens_max":N,"opens_remaining":N,"ttl_s":N,"passphrase_required":bool,"kdf_id":N,"size":N,"first_opened_at":"…"?,"ended_at":"…"?}
-404 for unknown id and for a wrong R
+404 for an unknown id and for any failed signature
 ```
 
 Metadata never changes `opens_remaining` or the state. It MAY complete the deletion of a blob that is already unreachable (expired message, or `opens_remaining == 0` with no active lease), and it finishes an ending recorded in `messages.ending` (§7). Tombstones answer 200 with their state, `first_opened_at` (rounded to the minute, absent when the message was never opened) and `ended_at`. A tombstone keeps no policy or times, so `created_at` and `expires_at` are absent, `opens_max`, `opens_remaining`, `ttl_s`, `kdf_id` and `size` are 0 and `passphrase_required` is false. `kdf_id` 0 on a tombstone is not a profile (§2). While an ending is recorded but not yet finished (§7), metadata and status already report the ended state but keep the live fields and carry no `ended_at`; they switch to the tombstone shape once the ending is finished.
@@ -245,9 +271,9 @@ Metadata never changes `opens_remaining` or the state. It MAY complete the delet
 
 ```
 POST /api/v1/messages/{id}/claim
-Authorization: Bearer {R}
-Content-Type: application/json
-body: {"verifier":"{V}"}          only when passphrase_required
+Authorization: Nylzo-Sig {pk_R}.{challenge}.{signature}
+X-Nylzo-Verifier: {pk_V}.{signature}          only when passphrase_required, over the same challenge
+body: empty
 200
   X-Nylzo-Lease: {L}
   X-Nylzo-Policy: base64url(JSON {"opens_max":N,"ttl_s":N,"kdf_id":N,"flags":N})      [detail]
@@ -257,12 +283,12 @@ body: {"verifier":"{V}"}          only when passphrase_required
 410 {"error":"gone","state":"…"}
 ```
 
-After it has read and checked the request body, and before the transaction, the server opens the blob and keeps it open for the response. A blob whose size differs from the stored `size` answers 500 and spends no open. A missing blob on a message that has ended (a recorded ending, or `expires_at ≤ now`) answers 410 with the end state and finishes the ending; on any other message it answers 500 and spends no open.
+After it has checked that the request body is empty, and before the transaction, the server opens the blob and keeps it open for the response. A blob whose size differs from the stored `size` answers 500 and spends no open. A missing blob on a message that has ended (a recorded ending, or `expires_at ≤ now`) answers 410 with the end state and finishes the ending; on any other message it answers 500 and spends no open.
 
 In one storage transaction:
 
 1. Read `now` from the process clock, after the transaction holds the write lock, and load the row. A recorded ending, `state ≠ available` or `expires_at ≤ now` → 410.
-2. With a passphrase: if the message has 100 failed attempts over its whole life, every claim answers 403 with `retry_after` until `expires_at` and `attempts_left = 0`; if `next_attempt_at` is in the future → 403 with that `retry_after`. Otherwise compare `mac_verifier(h(V))` in constant time. On mismatch `fail_count_total += 1`; while `fail_count_total ≤ 5` answer 403 with `retry_after = 0` and `attempts_left = 5 − fail_count_total`; from the 6th failure set `next_attempt_at` to `now + min(2^(fail_count_total − 5), 3600)` seconds rounded up to the next full minute, and answer 403 with the resulting `retry_after` and `attempts_left = 0`. The counters belong to the message, not to an address, so a wait applies to every reader. No open is consumed. A claim without a verifier on a message with a passphrase counts as a mismatch.
+2. With a passphrase: if the message has 100 failed attempts over its whole life, every claim answers 403 with `retry_after` until `expires_at` and `attempts_left = 0`; if `next_attempt_at` is in the future → 403 with that `retry_after`. Otherwise compare `mac_verifier(pk_V)` in constant time and require a valid verifier signature. On mismatch `fail_count_total += 1`; while `fail_count_total ≤ 5` answer 403 with `retry_after = 0` and `attempts_left = 5 − fail_count_total`; from the 6th failure set `next_attempt_at` to `now + min(2^(fail_count_total − 5), 3600)` seconds rounded up to the next full minute, and answer 403 with the resulting `retry_after` and `attempts_left = 0`. The counters belong to the message, not to an address, so a wait applies to every reader. No open is consumed. A claim without a verifier, or with a verifier signature that fails, counts as a mismatch.
 3. `opens_remaining −= 1`; insert a lease `(id, mac_lease(L), lease_expires_at = now + max(120 s, size / 16000 s) rounded up to the next full minute, downloads = 0)`. When `opens_remaining == 0` set `state = opened`.
 4. Return the object with the lease and the policy.
 
@@ -273,9 +299,9 @@ Definition of one open: one successful atomic release of the envelope by the ser
 ### 6.5 Blob, ack
 
 ```
-GET  /api/v1/messages/{id}/blob    Authorization: Bearer {R}, X-Nylzo-Lease: {L}
+GET  /api/v1/messages/{id}/blob    signed with R, X-Nylzo-Lease: {L}
   200 object (also X-Nylzo-Policy), 410 when the lease is not active (§6.1) or the message ended, 429 from the 4th download in one lease
-POST /api/v1/messages/{id}/ack     Authorization: Bearer {R}, X-Nylzo-Lease: {L}
+POST /api/v1/messages/{id}/ack     signed with R, X-Nylzo-Lease: {L}
   204; ends the lease early and calls ReleaseIfDone
 ```
 
@@ -284,17 +310,18 @@ Blob downloads count in the read rate limit and are capped at 3 per lease. The b
 ### 6.6 Burn, cancel, status, instance, abuse
 
 ```
-POST /api/v1/messages/{id}/burn     Bearer R → 204; state = deleted, blob deleted
-POST /api/v1/messages/{id}/cancel   Bearer M → 204; state = cancelled, blob deleted
-GET  /api/v1/messages/{id}/status   Bearer M → 200 {"state":"…","opens_used":N,"opens_max":N,"created_at":"…","expires_at":"…","first_opened_at":"…"?,"ended_at":"…"?,"failed_passphrase_attempts":N}
+POST /api/v1/messages/{id}/burn     signed with R → 204; state = deleted, blob deleted
+POST /api/v1/messages/{id}/cancel   signed with M → 204; state = cancelled, blob deleted
+GET  /api/v1/messages/{id}/status   signed with M → 200 {"state":"…","opens_used":N,"opens_max":N,"created_at":"…","expires_at":"…","first_opened_at":"…"?,"ended_at":"…"?,"failed_passphrase_attempts":N}
 GET  /api/v1/instance               → 200 {"limits":{"max_file_bytes":N,"max_text_bytes":N,"max_object_bytes":N,"max_ttl_s":N,"default_ttl_s":N,"max_opens":N,"default_kdf_id":N},"pow":{"required":bool,"difficulty":N,"challenge":"…"?},"create":{"id":"…","id_token":"…","expires_at":"…"},"versions":{"api":1,"envelope":1,"fragment":1,"server":"…"}}
-POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…"?} → 202 {"status":"accepted"} for known, unknown and malformed ids alike; a malformed id is answered before any rate counter
+GET  /api/v1/challenge              → 200 {"challenge":"…","expires_at":"…"} (§5.5)
+POST /api/v1/abuse                  signed with R, {"id":"…","reason":"…"?} → 202 {"status":"accepted"} for known, unknown and malformed ids alike; a malformed id is answered before any rate counter
 ```
 
 - `failed_passphrase_attempts` is cumulative over the message lifetime (`fail_count_total`), not per day.
 - After the message ends, status reads the tombstone: only `state`, `first_opened_at` and `ended_at` are meaningful; `created_at` and `expires_at` are absent and the counters are 0.
 - `first_opened_at` and `ended_at` are rounded down to the minute.
-- A wrong `M` on cancel or status answers the same 404 as an unknown id.
+- A failed manage signature on cancel or status answers the same 404 as an unknown id.
 - Abuse reports are rate limited to 5 per hour per bucket, reviewed by a human, and never delete anything automatically.
 - An abuse report MUST carry `Content-Type: application/json`, so a cross-site page needs a CORS preflight, which the server never grants. Before storing `reason`, the server percent-decodes it up to three times, replaces control characters with spaces, drops format characters such as bidi controls, replaces every `#…` run and every run of 22 or more base64url characters with `[redacted]`, then cuts it to 1000 bytes and further until its JSON encoding fits in 1200 bytes. It stores at most 3 reports per message per UTC day and answers 202 for the rest. The cap is per message only, so no row ties a message to a reporter's address; one reporter can therefore use up the daily budget of a message. The server reserves the count before it writes a report and returns it when the write fails. A valid report that would be stored but would push the report file past 16 MiB answers 503, and the server logs the error `abuse-file-full` for the operator. A stored report holds the UTC date, the id and the redacted reason, never the time of day. Reports older than 14 days (the 7-day maximum TTL plus the 7-day tombstone) are dropped by every sweep of the server and before every new report.
 
@@ -363,7 +390,7 @@ valid     = HMAC tag verifies, −5 s ≤ now − window_start ≤ 120 s,
 
 ## 10. Logging
 
-The server logs time, method, route pattern, status, latency and response size. It never logs a message id, so a log line cannot be joined with a message even by someone who holds the database and the pepper. It never logs the raw path, so a mangled link whose fragment reached the path is not logged. Requests that a middleware answers before routing (token-bucket 429s and `Sec-Purpose` 503s) are logged without route. Internal `net/http` errors are logged as a fixed message with a category (`accept`, `panic`, `tls-handshake`, `http2`, `superfluous-write-header`, `other`; HTTP/2 handler panics count as `panic`) and without their text, because that text can carry a peer address. Warning and error categories are rate limited separately, each to a burst of 20 and 1 per second, and the next logged line reports how many were dropped. A failed sweep logs its report, the number of failed items and the first error. It MUST NOT log `Authorization`, `X-Nylzo-Create`, `X-Nylzo-Lease`, `X-Nylzo-Pow`, request or response bodies, query strings, or client addresses. Addresses exist only inside bucket hashes in `rate_counters`, never next to a message id.
+The server logs time, method, route pattern, status, latency and response size. It never logs a message id, so a log line cannot be joined with a message even by someone who holds the database and the pepper. It never logs the raw path, so a mangled link whose fragment reached the path is not logged. Requests that a middleware answers before routing (token-bucket 429s and `Sec-Purpose` 503s) are logged without route. Internal `net/http` errors are logged as a fixed message with a category (`accept`, `panic`, `tls-handshake`, `http2`, `superfluous-write-header`, `other`; HTTP/2 handler panics count as `panic`) and without their text, because that text can carry a peer address. Warning and error categories are rate limited separately, each to a burst of 20 and 1 per second, and the next logged line reports how many were dropped. A failed sweep logs its report, the number of failed items and the first error. It MUST NOT log `Authorization`, `X-Nylzo-Create`, `X-Nylzo-Lease`, `X-Nylzo-Verifier`, `X-Nylzo-Pow`, request or response bodies, query strings, or client addresses. Addresses exist only inside bucket hashes in `rate_counters`, never next to a message id.
 
 ## 11. Versioning
 
@@ -384,18 +411,18 @@ Blob store: one object per message. `blob_ref` is the message id. On disk the fi
 
 ## 13. What a stolen server reveals
 
-This section lists everything the server keeps, so an operator, an auditor or an attacker who copies the server sees the same picture. "Stolen" means a copy of the data directory (SQLite database with its WAL, the blob directory with its temporary uploads, the abuse report file), the logs and the configuration including the pepper. `TestStolenServerRevealsNothing` runs every flow (with and without passphrase, with a file, opened, leased, expired, burned, cancelled, reported), copies these files and the log, and checks that none of them contains `S`, `K`, `P`, a passphrase, plaintext, a file name, raw `R`, `V`, `M` or `L`, the hashes `h(R)`, `h(V)` or `h(M)`, a client address, or a time finer than the minute.
+This section lists everything the server keeps, so an operator, an auditor or an attacker who copies the server sees the same picture. "Stolen" means a copy of the data directory (SQLite database with its WAL, the blob directory with its temporary uploads, the abuse report file), the logs and the configuration including the pepper. `TestStolenServerRevealsNothing` runs every flow (with and without passphrase, with a file, opened, leased, expired, burned, cancelled, reported), copies these files and the log, and checks that none of them contains `S`, `K`, `P`, a passphrase, plaintext, a file name, the seeds `R`, `V` or `M`, the public keys `pk_R`, `pk_V` or `pk_M`, `L`, a client address, or a time finer than the minute.
 
 | Item | Kept | What it reveals | Why it does not help to reach content |
 |---|---|---|---|
-| Pepper (`NYLZO_PEPPER`, previous pepper) | configuration | With it, candidate tokens can be checked against the stored macs, address buckets recomputed for a candidate address, and id tokens and PoW challenges minted | Every token the macs protect comes from `S` (and `P`) or from 256 random bits (`M`, `L`); without the link there is nothing to test |
+| Pepper (`NYLZO_PEPPER`, previous pepper) | configuration | With it, candidate public keys can be checked against the stored macs, address buckets recomputed for a candidate address, and id tokens, request challenges and PoW challenges minted | Every key the macs protect comes from `S` (and `P`) or from 256 random bits (`M`); without the link there is nothing to test, and a minted challenge still needs a signature with the seed |
 | `messages`: id, version, `kdf_id`, flags, state, `opens_max`, `opens_remaining`, `ttl_s`, size, ending | until the message ends | That a message with this id exists, whether it needs a passphrase, its policy and its padded size (text to 4 KiB, file to 64 KiB) | The id is public in the link; none of these values enters a key |
 | `messages`: `created_at`, `expires_at`, `first_opened_at`, `next_attempt_at` | until the message ends | Times to the minute (§5.2) | No time enters a key |
 | `messages`: `fail_count_total` | until the message ends | How many wrong passphrases were tried | Says nothing about the passphrase |
-| `messages`: `read_mac`, `manage_mac`, `verifier_mac`, `pepper_id` | until the message ends, the first two also in the tombstone | `HMAC(k_purpose, h(token))` | Without the pepper the values are random to the attacker; with it they only confirm a token the attacker already has |
+| `messages`: `read_mac`, `manage_mac`, `verifier_mac`, `pepper_id` | until the message ends, the first two also in the tombstone | `HMAC(k_purpose, pk)` of the read, manage and verifier public keys | Without the pepper the values are random to the attacker; with it they only confirm a key the attacker already derived from `S` |
 | `leases`: `lease_mac`, `lease_expires_at`, downloads | until the ack, the end of the lease or the next sweep | That a claim happened, to the minute | `L` is random and only the mac is kept |
 | `tombstones`: id, state, `first_opened_at`, `ended_at`, `purge_at`, `read_mac`, `manage_mac` | 7 days after the end | How and roughly when a message ended | Same as above; no content and no key material |
-| `rate_counters` | the window plus one window | Counts per 24-bit address bucket and per window, global counters, used PoW nonces, the number of abuse reports per message and day | Buckets never stand next to a message id; with the pepper an attacker can test whether a candidate address was active in a window, which tells nothing about content |
+| `rate_counters` | the window plus one window; spent request challenges 2 to 3 minutes | Counts per 24-bit address bucket and per window, global counters, used PoW nonces, the number of abuse reports per message and day, and how many signed requests passed in the last few minutes (one random nonce each, no id) | Buckets never stand next to a message id; with the pepper an attacker can test whether a candidate address was active in a window, which tells nothing about content |
 | `blobs/{hex(id)}`, `blobs/tmp/*` | until the last lease ends, the message is burned or cancelled, or it expires | The envelope: header (version, `kdf_id`, flags, IV) and AES-256-GCM ciphertext of padded plaintext | Decryption needs `K`, which needs `S` (and `P`) |
 | `abuse-reports.jsonl` | 14 days | The UTC date, the id and the redacted reason of each stored report | No address, no time of day; links and long tokens are removed from the reason |
 | Request log | as long as the operator keeps it | Time, method, route pattern, status, latency, size | No id, no address, no token, no body (§10) |
@@ -404,6 +431,6 @@ This section lists everything the server keeps, so an operator, an auditor or an
 What goes beyond stolen data, stated plainly:
 
 - An attacker who controls the running server or the provider edge (T3, T13) can serve a modified web client to a chosen victim and read that victim's links and passphrases. No server design prevents this. The CLI, a separate static origin for the web client (OD23, planned for the web client milestone), a published manifest of the client files and an independent monitor make it harder or visible.
-- While the server runs, it sees `R`, `V`, `M` and `L` in requests, and an observer of the unencrypted h2c hop between the provider edge and the container sees them too. Such an observer can replay them to spend an open, burn or cancel a message, though never to read it. Challenge-response with keys derived from `S` replaces these tokens before v1 is released (OD18, decided 22. 10. 2026).
+- While the server runs, it sees public keys, one-time signatures, `L` and ciphertext in requests and responses, and so does an observer of the unencrypted h2c hop between the provider edge and the container. A recorded request cannot be replayed, because its challenge is spent (§5.5); such an observer can still drop or delay requests.
 - Someone who has a link and also steals the server (T14) can guess the passphrase offline against the ciphertext at the cost of scrypt `N = 2^17` per guess; only the strength of the passphrase protects it, which is why clients refuse passphrases shorter than 12 characters (§2).
 - The provider in front of the public instance sees client addresses, request times and sizes in its own logs.

@@ -54,23 +54,38 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	if rec, err := h.store.Get(t.Context(), ended.id.String()); err != nil || rec.Tombstone == nil {
 		t.Fatal("the ended message must be a tombstone before probing 409")
 	}
-	wrongToken := core.Encode(core.NewSecret()[:])
+	wrongSeed := core.NewSecret()
+	livePath := "/api/v1/messages/" + live.id.String()
 	classes := []struct {
 		name     string
 		endpoint string
 		req      func() request
 	}{
 		{"unknown-id", "metadata", func() request {
-			return request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
+			path := "/api/v1/messages/" + core.NewID().String()
+			return signedRequest(wrongSeed, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)
 		}},
 		{"wrong-R", "metadata", func() request {
-			return request{method: "GET", path: "/api/v1/messages/" + live.id.String(), headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
+			return signedRequest(wrongSeed, core.PurposeRead, "GET", livePath, h.srv.ChallengeForTest(), nil)
 		}},
 		{"unknown-id", "status", func() request {
-			return request{method: "GET", path: "/api/v1/messages/" + core.NewID().String() + "/status", headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
+			path := "/api/v1/messages/" + core.NewID().String() + "/status"
+			return signedRequest(wrongSeed, core.PurposeManage, "GET", path, h.srv.ChallengeForTest(), nil)
 		}},
 		{"wrong-M", "status", func() request {
-			return request{method: "GET", path: "/api/v1/messages/" + live.id.String() + "/status", headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
+			return signedRequest(wrongSeed, core.PurposeManage, "GET", livePath+"/status", h.srv.ChallengeForTest(), nil)
+		}},
+		{"bad-sig", "metadata", func() request {
+			return rawAuth(request{method: "GET", path: livePath}, badSignature(&live.link.R, core.PurposeRead, "GET", livePath, h.srv.ChallengeForTest()))
+		}},
+		{"stale", "metadata", func() request {
+			return signedRequest(&live.link.R, core.PurposeRead, "GET", livePath, h.srv.ChallengeAtForTest(h.clock.Now().Add(-2*time.Minute)), nil)
+		}},
+		{"malformed", "metadata", func() request {
+			return rawAuth(request{method: "GET", path: livePath}, core.AuthScheme+" x.y.z")
+		}},
+		{"bad-sig", "status", func() request {
+			return rawAuth(request{method: "GET", path: livePath + "/status"}, badSignature(live.manage, core.PurposeManage, "GET", livePath+"/status", h.srv.ChallengeForTest()))
 		}},
 	}
 	var refBody []byte

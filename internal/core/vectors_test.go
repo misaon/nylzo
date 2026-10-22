@@ -117,20 +117,14 @@ func TestDeriveVectors(t *testing.T) {
 			if hex.EncodeToString(content.K[:]) != v.K || hex.EncodeToString(content.V[:]) != v.V {
 				t.Fatal("content keys mismatch")
 			}
-			rh := core.Hash(link.R[:])
-			if core.Encode(rh[:]) != v.Wire.ReadHash || core.Encode(link.R[:]) != v.Wire.R {
-				t.Fatal("wire read values mismatch")
+			readKey := core.PublicKey(&link.R)
+			manageKey := core.PublicKey(to32(t, mustHex(t, v.M)))
+			if core.Encode(readKey[:]) != v.ReadKey || core.Encode(manageKey[:]) != v.ManageKey {
+				t.Fatal("public keys mismatch")
 			}
-			m := mustHex(t, v.M)
-			mh := core.Hash(m)
-			if core.Encode(mh[:]) != v.Wire.ManageHash {
-				t.Fatal("wire manage hash mismatch")
-			}
-			if v.KDFID != 0 {
-				vh := core.Hash(content.V[:])
-				if v.Wire.VerifierHash == nil || core.Encode(vh[:]) != *v.Wire.VerifierHash {
-					t.Fatal("wire verifier hash mismatch")
-				}
+			verifierKey := core.PublicKey(&content.V)
+			if (v.KDFID != 0) != (v.VerifierKey != nil) || (v.VerifierKey != nil && core.Encode(verifierKey[:]) != *v.VerifierKey) {
+				t.Fatal("verifier key mismatch")
 			}
 			if core.Fragment(core.KDF(v.KDFID), s) != v.Fragment {
 				t.Fatal("fragment mismatch")
@@ -339,5 +333,36 @@ func TestVectorsPassphraseStrength(t *testing.T) {
 		if (err == nil) != v.Accepted || (err != nil && !errors.Is(err, core.ErrWeakPassphrase)) {
 			t.Fatalf("%s: %v", v.Name, err)
 		}
+	}
+}
+
+func TestVectorsRequestSignatures(t *testing.T) {
+	f := loadVectors(t)
+	if len(f.Request) == 0 {
+		t.Fatal("no request vectors")
+	}
+	for _, v := range f.Request {
+		t.Run(v.Name, func(t *testing.T) {
+			seed := to32(t, mustHex(t, v.Seed))
+			challenge, err := core.DecodeExact(v.Challenge, core.ChallengeLen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := mustHex(t, v.Body)
+			if hex.EncodeToString(core.RequestMessage(v.Purpose, v.Method, v.Path, challenge, body)) != v.Message {
+				t.Fatal("request message mismatch")
+			}
+			sig := core.SignRequest(seed, v.Purpose, v.Method, v.Path, [core.ChallengeLen]byte(challenge), body)
+			if core.Encode(sig.PublicKey[:]) != v.PublicKey || core.Encode(sig.Sig[:]) != v.Signature || sig.Authorization() != v.Authorization {
+				t.Fatal("signature mismatch")
+			}
+			parsed, err := core.ParseAuthorization(v.Authorization)
+			if err != nil || !parsed.Verify(v.Purpose, v.Method, v.Path, body) {
+				t.Fatalf("the vector header does not verify: %v", err)
+			}
+			if parsed.Verify(v.Purpose, v.Method, v.Path+"x", body) || parsed.Verify(v.Purpose, v.Method, v.Path, append(body, 'x')) {
+				t.Fatal("a signature verified for another path or body")
+			}
+		})
 	}
 }

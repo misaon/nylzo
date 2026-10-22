@@ -142,7 +142,7 @@ R13 (nové, z druhého názoru). „Vojenská bezpečnost“ proti free tieru, k
 | OD15 | Zobrazení vyžaduje klik | Ano, vždy; automatické zobrazení nikdy | rozhodnuto zde |
 | OD16 | S3 klient v Go | minio-go v7.4.1 (jeden modul, 73 importů) v první verzi, s testy proti Scaleway a MinIO; ručně psaný podpis SigV4 (zhruba 200 řádků) jen jako pozdější volba, pokud se ukáže, že závislost je skutečný problém | vlastník |
 | OD17 | Registry image pro Scaleway | Scaleway Container Registry, nebo veřejný ghcr.io; podmínky a cena nebyly ověřeny | test |
-| OD18 | Challenge-response proti replay R, V a M na TLS edge a na nešifrovaném h2c mezi edge a kontejnerem | Rozhodnuto (D12, review 22. 10. 2026): už v první verzi. Klient odvodí z S (u passphrase z S a P, pro správu z M) klíčové páry Ed25519, server místo mac tokenů drží veřejné klíče a každá změna stavu podepisuje jednorázovou výzvu serveru, takže zachycený požadavek nejde zopakovat. Proti aktivnímu edge, který přepíše klienta (T13), to nepomůže. Do implementace platí dnešní tokeny | vlastník |
+| OD18 | Challenge-response proti replay R, V a M na TLS edge a na nešifrovaném h2c mezi edge a kontejnerem | Rozhodnuto (D12, review 22. 10. 2026): už v první verzi. Klient odvodí z S (u passphrase z S a P, pro správu z M) klíčové páry Ed25519, server místo mac tokenů drží veřejné klíče a každá změna stavu podepisuje jednorázovou výzvu serveru, takže zachycený požadavek nejde zopakovat. Proti aktivnímu edge, který přepíše klienta (T13), to nepomůže. Implementováno v milníku 1 (spec §5.5) | vlastník |
 | OD19 | HPKE režim „na klíč příjemce“ | Rezervovat bit ve flags; navrhnout ve druhé verzi s hybridem X25519 + ML-KEM-768 | vlastník |
 | OD20 | Zálohy obsahu | Aplikace sama nezálohuje ciphertext ani metadata (data jsou jednorázová); zálohuje se jen konfigurace. Doloženo (příloha B, recenze): Scaleway Serverless SQL zálohuje databázi denně a drží zálohy 7 dní, takže metadata, čítače a náhrobky mohou u poskytovatele přežít až 7 dní po smazání; stránka transparentnosti to uvádí a test R13 ověří, zda lze zálohy vypnout | vlastník |
 | OD21 | Pořadí záložního hostingu, když test R13 selže | 1. Scaleway STARDUST1-S s diskem a IPv4 (EU firma, zhruba 11 Kč plus extra, dostupnost nejistá); 2. OVH VPS-1 (EU firma, zhruba 112 Kč s DPH při roční platbě) s výslovnou výjimkou z rozpočtu o zhruba 12 Kč; 3. Fly.io (americká firma, zhruba 51 Kč) jen s výslovnou výjimkou z požadavku na EU firmu. Doporučení: ustoupí rozpočet (priorita 4), ne EU firma (priorita 1) | vlastník |
@@ -184,8 +184,8 @@ Prohlížeči a OS odesílatele i příjemce; kódu klienta tak, jak byl doruče
 | T10 | Síťový útočník | Odposlech, MITM, dlouhodobý záznam | Nic při správném TLS; kvantové riziko jen pro TLS |
 | T11 | Analytik metadat | Koreluje IP, časy, velikosti | Kdo s kým a kdy, pokud jsou logy |
 | T12 | Únik fragmentu v prohlížeči | Historie, synchronizace, rozšíření, skripty třetích stran | S, tedy obsah |
-| T13 | TLS edge poskytovatele (na veřejné instanci terminuje TLS Scaleway a mluví s kontejnerem h2c) | Vidí h(M) a h(V) při vytvoření, R, V a L při claimu, M při cancel a status, ciphertext v odpovědi, surové IP obou stran; může požadavky přehrát; aktivní edge může přepsat servírované HTML a JS | Spálení otevření, stažení ciphertextu, zrušení zprávy; od úniku odkazu (S) drží offline orákulum passphrase i bez pepperu a bez ciphertextu (má V); aktivní edge = pozice T3 s podvrženým klientem. Edge je proto na veřejné instanci součástí důvěryhodné báze pro integritu klienta, stejně jako provozovatel |
-| T14 | Kombinace úniku odkazu (T9 nebo T12) s únikem databáze (T2), s provozem na edge (T13), nebo s konfigurací (pepper) | Má S a k tomu ověřovač V, nebo mac(h(V)) s pepperem | Hádá passphrase offline proti ověřovači stejně, jako by měl ciphertext; samotný únik databáze bez pepperu k tomu nestačí |
+| T13 | TLS edge poskytovatele (na veřejné instanci terminuje TLS Scaleway a mluví s kontejnerem h2c) | Vidí veřejné klíče pk_R, pk_V a pk_M, jednorázové podpisy, L a ciphertext v odpovědi, surové IP obou stran; zachycený požadavek nejde zopakovat, protože jeho výzva je spotřebovaná (OD18, D12); aktivní edge může přepsat servírované HTML a JS | Zahození nebo zdržení požadavků, stažení ciphertextu v rámci lease; od úniku odkazu (S) drží offline orákulum passphrase proti pk_V i bez pepperu; aktivní edge = pozice T3 s podvrženým klientem. Edge je proto na veřejné instanci součástí důvěryhodné báze pro integritu klienta, stejně jako provozovatel |
+| T14 | Kombinace úniku odkazu (T9 nebo T12) s únikem databáze (T2), s provozem na edge (T13), nebo s konfigurací (pepper) | Má S a k tomu pk_V, nebo mac(pk_V) s pepperem | Hádá passphrase offline proti veřejnému klíči ověřovače stejně, jako by měl ciphertext; samotný únik databáze bez pepperu k tomu nestačí |
 
 ### Hranice
 
@@ -399,9 +399,9 @@ Rozsah „hostováno v EU“ po složkách (doporučení, z přílohy G):
 
 Datové toky:
 
-1. Vytvoření: klient si z `GET /api/v1/instance` vezme id a token id, vygeneruje S a M, odvodí R, K, V; zašifruje obálku; POST ciphertext + h(R) + h(V) + h(M) + politika. Server uloží blob a metadata a vrátí potvrzení. Klient složí URL a ukáže ji s M.
-2. Čtení: klient načte statickou stránku (nic se nespotřebuje); z fragmentu odvodí R; GET metadata s R (nic se nespotřebuje); po kliku a případné passphrase POST claim s R a V; server atomicky sníží počítadlo a vydá obálku s lease; klient dešifruje v paměti, ověří politiku v AAD, zobrazí nebo nabídne stažení; po dešifrování odstraní fragment z aktuálního záznamu historie.
-3. Zrušení a stav: odesílatel s M. Smazání příjemcem s R.
+1. Vytvoření: klient si z `GET /api/v1/instance` vezme id a token id, vygeneruje S a M, odvodí R, K, V; zašifruje obálku; POST ciphertext + pk_R + pk_V + pk_M + politika. Server uloží blob a metadata a vrátí potvrzení. Klient složí URL a ukáže ji s M.
+2. Čtení: klient načte statickou stránku (nic se nespotřebuje); z fragmentu odvodí R; GET metadata podepsaná R (nic se nespotřebuje); po kliku a případné passphrase POST claim podepsaný R a V; server atomicky sníží počítadlo a vydá obálku s lease; klient dešifruje v paměti, ověří politiku v AAD, zobrazí nebo nabídne stažení; po dešifrování odstraní fragment z aktuálního záznamu historie.
+3. Zrušení a stav: odesílatel podepisuje M. Smazání příjemcem podepisuje R. Každý podepsaný požadavek nese jednorázovou výzvu serveru (OD18).
 4. Úklid: každý požadavek kontroluje expiraci a volá ReleaseIfDone pro dané id; ack a časovač na konci lease volají ReleaseIfDone; pravidelný úklid (goroutine u self-hostingu, Serverless Job na veřejné instanci) maže prošlé zprávy, lease, náhrobky a bloby vyčerpaných zpráv; lifecycle pravidlo v Object Storage je pojistka.
 
 ### Stack a verze (vybrané)
@@ -480,29 +480,30 @@ Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní v
 - S: 32 náhodných bajtů, jen ve fragmentu URL jako `1.{kdf_id}.` + base64url(S) (43 znaků). Pokud poslední znak kódování je `-` nebo `_`, klient S vygeneruje znovu (některé autolinkery takový znak odříznou; cena 0,05 bitu).
 - kdf_id ve fragmentu: 0 bez passphrase, 1 scrypt, 2 PBKDF2. Příjemce bere profil KDF jen z fragmentu; hodnotu ze serveru použije jen k zobrazení a při neshodě odmítne pokračovat. Důvod: kdyby profil určoval server, mohl by zlý server nebo edge vynutit levnější PBKDF2 ověřovač pro zprávu chráněnou scryptem (nález kryptografické kontroly).
 - P: klíč z passphrase (32 bajtů), prázdný řetězec bez passphrase.
-- M: správcovský token, 32 náhodných bajtů, generuje klient; při vytvoření posílá h(M), při cancel a status M. Server nikdy žádné tajemství odesílatele nevyrábí, takže edge ani paměť procesu nedrží schopnost zrušení od první sekundy.
-- h(x) = SHA-256(x). HKDF = HKDF-SHA-256. Porovnání v konstantním čase. Klient odvozuje K jako neextrahovatelný CryptoKey (deriveKey, extractable = false); deriveBits jen pro R, V a sůl.
-- pepper: 32 bajtů serverového tajemství z konfigurace (`NYLZO_PEPPER`), nikdy v databázi. Klíče podle účelu: k_účel = HKDF(pepper, "nylzo/v1/mac/" + účel) pro read, verifier, manage, lease, ip, pow a id; mac_účel(x) = HMAC-SHA-256(k_účel, x). Každý řádek nese pepper_id (1 B); `NYLZO_PEPPER_PREVIOUS` dovolí ověřovat starým a zapisovat novým klíčem, takže rotace po podezření z úniku neukončí živé zprávy (řádky zanikají do 7 dní, nic se nepřepisuje). Ztráta obou pepperů znamená, že server žádný token neověří a živé zprávy zaniknou (ztráta dostupnosti, ne důvěrnosti).
+- M: semínko správcovského klíče Ed25519, 32 náhodných bajtů, generuje klient; při vytvoření posílá veřejný klíč pk_M, cancel a status podepisuje M; M klienta nikdy neopustí. Server nikdy žádné tajemství odesílatele nevyrábí, takže edge ani paměť procesu nedrží schopnost zrušení od první sekundy.
+- h(x) = SHA-256(x). HKDF = HKDF-SHA-256. Porovnání v konstantním čase. Klient odvozuje K jako neextrahovatelný CryptoKey (deriveKey, extractable = false); deriveBits jen pro R, V a sůl. R, V a M jsou semínka klíčů Ed25519 (RFC 8032) a klienta nikdy neopustí; server dostává jen veřejné klíče pk_R, pk_V, pk_M a podpisy jednorázových výzev (OD18, D12, review 22. 10. 2026).
+- pepper: 32 bajtů serverového tajemství z konfigurace (`NYLZO_PEPPER`), nikdy v databázi. Klíče podle účelu: k_účel = HKDF(pepper, "nylzo/v1/mac/" + účel) pro read, verifier, manage, lease, ip, pow, id a challenge; mac_účel(x) = HMAC-SHA-256(k_účel, x). Každý řádek nese pepper_id (1 B); `NYLZO_PEPPER_PREVIOUS` dovolí ověřovat starým a zapisovat novým klíčem, takže rotace po podezření z úniku neukončí živé zprávy (řádky zanikají do 7 dní, nic se nepřepisuje). Ztráta obou pepperů znamená, že server žádný klíč neověří a živé zprávy zaniknou (ztráta dostupnosti, ne důvěrnosti).
 
 ### Odvození klíčů a tokenů
 
 ```
 hsalt   = SHA-256("nylzo/v1/hkdf-salt" || id)                     32 B, veřejná sůl HKDF vázaná na id
 PRK_S   = HKDF-Extract(salt = hsalt, IKM = S)
-R       = HKDF-Expand(PRK_S,  info = "nylzo/v1/read",     32)     token čtení (server dostane při claimu)
+R       = HKDF-Expand(PRK_S,  info = "nylzo/v1/read",     32)     semínko čtecího klíče Ed25519 (klienta neopustí)
 salt_pw = HKDF-Expand(PRK_S,  info = "nylzo/v1/pw-salt",  32)     sůl KDF odvozená z S, ne z veřejného id
 P       = scrypt(NFC(passphrase) UTF-8, salt_pw, N=2^17, r=8, p=1, 32)   profil KDF 1
           nebo PBKDF2-HMAC-SHA256(passphrase, salt_pw, 600000, 32)         profil KDF 2
 PRK_SP  = HKDF-Extract(salt = hsalt, IKM = S || P)                 P prázdné bez passphrase; délky pevné, bez dvojznačnosti
 K       = HKDF-Expand(PRK_SP, info = "nylzo/v1/content",  32)     klíč obsahu (nikdy neopouští klienta)
-V       = HKDF-Expand(PRK_SP, info = "nylzo/v1/verifier", 32)     ověřovač (server dostane jen při passphrase)
+V       = HKDF-Expand(PRK_SP, info = "nylzo/v1/verifier", 32)     semínko klíče ověřovače Ed25519 (jen při passphrase, klienta neopustí)
+pk_X    = veřejný klíč Ed25519 semínka X (RFC 8032 §5.1.5) pro X z R, V, M
 ```
 
 Proč sůl KDF z S a ne z id (opravy nálezů 6a a kryptografické kontroly): sůl musí být k dispozici před vydáním obálky, protože claim vyžaduje V; S je v odkazu při vytvoření i při čtení, takže to platí. Kdyby sůl plynula jen z veřejného id, mohl by kdokoli, kdo id vidí (logy, cesta URL, náhrobky), předpočítat drahý scrypt pro kandidátní passphrase ještě před únikem S, ciphertextu nebo ověřovače; celková práce se nemění, jen by se dala udělat předem. Vazba na id zůstává přes hsalt.
 
-Co server ukládá: klient při vytvoření pošle h(R), h(V) a h(M); server uloží mac_read(h(R)), mac_verifier(h(V)) a mac_manage(h(M)) s pepper_id. Při claimu klient pošle R a V, při cancel a status M; server spočítá odpovídající mac a porovná v konstantním čase. Proč hash už při vytvoření: hlavička vytvoření nese jen h(R) a h(M), které nejde přehrát jako claim ani cancel, takže edge sledující vytváření zprávu neotevře ani nezruší; samotné R, V a M jdou po drátě až v okamžiku použití.
+Co server ukládá: klient při vytvoření pošle pk_R, pk_V a pk_M; server uloží mac_read(pk_R), mac_verifier(pk_V) a mac_manage(pk_M) s pepper_id. Každý požadavek, který dokazuje držení odkazu nebo správcovského klíče, nese veřejný klíč, jednorázovou výzvu serveru a podpis Ed25519 nad výzvou, metodou, cestou a hashem těla (spec §5.5). Server porovná mac veřejného klíče v konstantním čase, ověří podpis a výzvu spotřebuje. Proto zachycený požadavek nejde zopakovat ani na TLS edge, ani na nešifrovaném h2c mezi edge a kontejnerem: výzva už je spotřebovaná a nový podpis udělá jen držitel semínka (OD18, D12, review 22. 10. 2026). Mac veřejného klíče zůstává, aby samotná databáze bez pepperu nesloužila jako test uhodnuté passphrase proti pk_V. Podepsané požadavky kromě hlášení zneužití mají prázdné tělo. Spotřebovaná výzva zůstane v `rate_counters` 2 až 3 minuty jako náhodný nonce bez vazby na id, aby ji nepřijala ani instance s hodinami o 5 s jinde.
 
-Proč V a pepper: server může omezit online pokusy a nespálit otevření. Únik databáze samotné (T2) nedá ani R, ani materiál k hádání passphrase, protože uložené hodnoty jsou HMAC s pepperem mimo databázi. Únik odkazu samotného (T9, T12) bez ciphertextu, bez databáze s pepperem a bez provozu na edge hádat nedovolí. Kdo má odkaz a zároveň ciphertext, hádá passphrase offline proti obálce; kdo má odkaz a V nebo h(V) z provozu na edge (T13), hádá offline proti ověřovači i bez pepperu; kdo má odkaz, databázi a pepper (T14), hádá offline proti uloženému mac. Všechny případy limituje jen síla passphrase a cena KDF (scrypt 128 MiB). PAKE (například OPAQUE), který by V nikdy neposlal po drátě, nemá podporu ve Web Crypto a existuje jen v neauditovaných WASM knihovnách; zamítnuto pro první verzi. Posouzení odborníkem je otevřený bod.
+Proč V a pepper: server může omezit online pokusy a nespálit otevření. Únik databáze samotné (T2) nedá ani R, ani materiál k hádání passphrase, protože uložené hodnoty jsou HMAC s pepperem mimo databázi. Únik odkazu samotného (T9, T12) bez ciphertextu, bez databáze s pepperem a bez provozu na edge hádat nedovolí. Kdo má odkaz a zároveň ciphertext, hádá passphrase offline proti obálce; kdo má odkaz a pk_V z provozu na edge (T13), hádá offline proti veřejnému klíči i bez pepperu; kdo má odkaz, databázi a pepper (T14), hádá offline proti uloženému mac. Všechny případy limituje jen síla passphrase a cena KDF (scrypt 128 MiB). PAKE (například OPAQUE), který by V nikdy neposlal po drátě, nemá podporu ve Web Crypto a existuje jen v neauditovaných WASM knihovnách; zamítnuto pro první verzi. Posouzení odborníkem je otevřený bod.
 
 ### Obálka
 
@@ -537,7 +538,7 @@ Cesta /m/{id} vrací statický klient; fragment nikdy neodchází na server. Ver
 ```
 POST /api/v1/messages
 Content-Type: application/octet-stream
-X-Nylzo-Create: base64url(JSON {id, id_token, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
+X-Nylzo-Create: base64url(JSON {id, id_token, read_key, verifier_key?, manage_key, kdf_id, opens_max, ttl_s, size})
 X-Nylzo-Pow: token   (jen když instance hlásí pow.required)
 tělo: objekt
 ```
@@ -550,20 +551,21 @@ Server v tomto pořadí: parsování hlavičky, kontrola syntaxe id (přesně 22
 
 ```
 GET /api/v1/messages/{id}
-Authorization: Bearer {R}
+Authorization: Nylzo-Sig {pk_R}.{výzva}.{podpis}
 → 200 {state, created_at, expires_at, opens_max, opens_remaining, ttl_s, passphrase_required, kdf_id, size, first_opened_at?, ended_at?}
-→ 404 pro neznámé id i pro špatné R (nerozlišeno)
+→ 404 pro neznámé id i pro každý neplatný podpis nebo výzvu (nerozlišeno)
 Nekonzumující: nemění stav ani počítadla; smí jen dokončit smazání bloba prošlé nebo vyčerpané zprávy (líný úklid a ReleaseIfDone).
 ```
 
-Nerozlišitelnost: jeden dotaz nad `messages` i `tombstones` (UNION ALL nebo jedna tabulka se stavem), při nenalezení server stejně spočítá HMAC a porovná proti fiktivní hodnotě, aby práce byla shodná; tělo i hlavičky 404 jsou bajtově stejné pro neznámé id, špatné R i špatné M (status a cancel). Časový test s 1 000 vzorky je v plánu testů.
+Nerozlišitelnost: jeden dotaz nad `messages` i `tombstones` (UNION ALL nebo jedna tabulka se stavem), při nenalezení server stejně spočítá HMAC a porovná proti fiktivní hodnotě, aby práce byla shodná; tělo i hlavičky 404 jsou bajtově stejné pro neznámé id, nesouhlasný klíč i každý neplatný podpis nebo výzvu (i u status a cancel); server ověří podpis i pro neznámé id s fiktivním klíčem. Časový test s 1 000 vzorky je v plánu testů.
 
 ### Otevření (claim)
 
 ```
 POST /api/v1/messages/{id}/claim
-Authorization: Bearer {R}
-tělo: {verifier: V}   jen při passphrase
+Authorization: Nylzo-Sig {pk_R}.{výzva}.{podpis}
+X-Nylzo-Verifier: {pk_V}.{podpis}   jen při passphrase, nad stejnou výzvou
+tělo: prázdné
 → 200, hlavičky X-Nylzo-Lease: L a X-Nylzo-Policy: base64url(JSON {opens_max, ttl_s, kdf_id, flags}), tělo: objekt
 → 403 {retry_after, attempts_left}  špatná passphrase, otevření nespotřebováno
 → 410 {state}                        opened | expired | cancelled | deleted
@@ -571,28 +573,29 @@ tělo: {verifier: V}   jen při passphrase
 
 Server v jedné transakci (Postgres) nebo jedné SQLite transakci:
 1. Načte záznam; state != available nebo expires_at < now → 410.
-2. Při passphrase: pokud má zpráva 100 chybných pokusů za celou životnost, nebo next_attempt_at zprávy ještě platí → 403 s retry_after. Jinak porovná mac(h(V)) v konstantním čase; neshoda → fail_count_total +1; při fail_count_total ≤ 5 vrátí 403 s attempts_left bez čekání, od šestého nastaví next_attempt_at = now + 2^(fail_count_total − 5) s se stropem 1 h, zaokrouhleno nahoru na celou minutu (OD13). Otevření se nespotřebuje.
-3. opens_remaining −1; vloží řádek do tabulky `leases` (id, mac(L), lease_expires_at = now + 120 s), kde L je 32 náhodných bajtů; zpráva může mít tolik aktivních lease, kolik otevření proběhlo; když opens_remaining == 0 → state = opened.
+2. Při passphrase: pokud má zpráva 100 chybných pokusů za celou životnost, nebo next_attempt_at zprávy ještě platí → 403 s retry_after. Jinak porovná mac(pk_V) v konstantním čase a vyžaduje platný podpis ověřovače; neshoda → fail_count_total +1; při fail_count_total ≤ 5 vrátí 403 s attempts_left bez čekání, od šestého nastaví next_attempt_at = now + 2^(fail_count_total − 5) s se stropem 1 h, zaokrouhleno nahoru na celou minutu (OD13). Otevření se nespotřebuje.
+3. opens_remaining −1; vloží řádek do tabulky `leases` (id, mac(L), lease_expires_at = now + max(120 s, přenos při 128 kbit/s), zaokrouhleno nahoru na minutu), kde L je 32 náhodných bajtů; zpráva může mít tolik aktivních lease, kolik otevření proběhlo; když opens_remaining == 0 → state = opened.
 4. Vrátí objekt. Klient uloží L do sessionStorage pod id, dokud nedešifruje.
 
-Lease je aktivní, dokud now < lease_expires_at podle hodin procesu, který požadavek obsluhuje (instance i úklid musí mít synchronizované hodiny, změna z review 22. 10. 2026); časovač instance se plánuje na lease_expires_at plus 1 s rezervy. Opakování stahu: `GET /api/v1/messages/{id}/blob` s Bearer R a X-Nylzo-Lease: L do konce daného lease; nespotřebovává otevření, ale počítá se do limitu claim a metadata a je omezeno na 3 stažení na jeden lease (dál 429), aby egress nebyl neměřený. `POST /api/v1/messages/{id}/ack` ukončí daný lease dřív. Blob se smaže, jakmile opens_remaining == 0 a neexistuje žádný aktivní lease; do té doby ho mohou stahovat držitelé platných lease i další příjemci přes nový claim.
+Lease je aktivní, dokud now < lease_expires_at podle hodin procesu, který požadavek obsluhuje (instance i úklid musí mít synchronizované hodiny, změna z review 22. 10. 2026); časovač instance se plánuje na lease_expires_at plus 1 s rezervy. Opakování stahu: `GET /api/v1/messages/{id}/blob` podepsaný R a s X-Nylzo-Lease: L do konce daného lease; nespotřebovává otevření, ale počítá se do limitu claim a metadata a je omezeno na 3 stažení na jeden lease (dál 429), aby egress nebyl neměřený. `POST /api/v1/messages/{id}/ack` ukončí daný lease dřív. Blob se smaže, jakmile opens_remaining == 0 a neexistuje žádný aktivní lease; do té doby ho mohou stahovat držitelé platných lease i další příjemci přes nový claim.
 
 Definice „jedno otevření“: jedno úspěšné atomické vydání obálky serverem po důkazu držení odkazu a správné passphrase. Ne načtení stránky, ne dotaz na metadata, ne pokus o dešifrování, ne neúspěšná passphrase. Zobrazení textu a stažení přílohy jsou lokální operace nad jednou obálkou. Dva souběžní příjemci: právě jeden uspěje na každé otevření (transakce). Obnovení stránky před dešifrováním: fragment je ještě v URL, klient odvodí R, vezme L ze sessionStorage a stáhne znovu v lease. Obnovení po dešifrování: fragment už byl odstraněn (replaceState), plaintext je pryč záměrně; metadata ukážou „otevřeno v čase T“.
 
 ### Smazání, zrušení, stav
 
 ```
-POST /api/v1/messages/{id}/burn     Bearer R → state = deleted, blob smazán
-POST /api/v1/messages/{id}/cancel   Bearer M → state = cancelled, blob smazán
-GET  /api/v1/messages/{id}/status   Bearer M → {state, opens_used, opens_max, created_at, expires_at, first_opened_at? (zaokrouhleno na minutu), ended_at?, failed_passphrase_attempts (kumulativně za život zprávy z fail_count_total, ne jen za dnešek)}
-GET  /api/v1/instance               bez autorizace → {limits, pow: {required, difficulty, challenge?}, versions}
+POST /api/v1/messages/{id}/burn     podepsáno R → state = deleted, blob smazán
+POST /api/v1/messages/{id}/cancel   podepsáno M → state = cancelled, blob smazán
+GET  /api/v1/messages/{id}/status   podepsáno M → {state, opens_used, opens_max, created_at, expires_at, first_opened_at? (zaokrouhleno na minutu), ended_at?, failed_passphrase_attempts (kumulativně za život zprávy z fail_count_total, ne jen za dnešek)}
+GET  /api/v1/instance               bez autorizace → {limits, pow: {required, difficulty, challenge?}, create: {id, id_token, expires_at}, versions}
+GET  /api/v1/challenge              bez autorizace → {challenge, expires_at}; jednorázová výzva platná 60 s pro jeden podepsaný požadavek
 ```
 
-Špatné M u cancel a status vrací stejnou 404 jako neznámé id (žádné třetí orákulum existence).
+Neplatný podpis M u cancel a status vrací stejnou 404 jako neznámé id (žádné třetí orákulum existence).
 
 ### Expirace, úklid, náhrobky
 
-Každý požadavek kontroluje expires_at a prošlou zprávu smaže (líný úklid). Smazání bloba po posledním otevření má tři spouštěče: (1) `ack` posledního lease smaže blob okamžitě; (2) instance, která claim obsloužila, si při opens_remaining == 0 naplánuje `ReleaseIfDone(id)` na lease_expires_at a blob smaže, pokud do té doby žádný lease neběží (nejlepší snaha: časovač zanikne, když instance skončí dřív); (3) každý další požadavek na dané id (metadata, blob, claim) zavolá `ReleaseIfDone(id)` a pravidelný úklid ho volá pro všechny zprávy s opens_remaining == 0. Pravidelný úklid dále maže prošlé zprávy, prošlé lease a náhrobky starší 7 dní. Mechanismus závisí na nasazení: u self-hostingu běží v binárce jako goroutine s intervalem `NYLZO_SWEEP_INTERVAL` (výchozí 5 min); na veřejné instanci kontejner usíná, takže úklid spouští Scaleway Serverless Job každých 15 minut jako stejný image s příkazem `nylzod sweep-once`, který pracuje přímo s Postgresem a Object Storage a webový kontejner nebudí. Lifecycle pravidlo v Object Storage (8 dní) je pojistka pro případ chyby. Náhrobek drží {id, mac(h(R)), mac(M), state, first_opened_at, ended_at, purge_at} 7 dní (OD8).
+Každý požadavek kontroluje expires_at a prošlou zprávu smaže (líný úklid). Smazání bloba po posledním otevření má tři spouštěče: (1) `ack` posledního lease smaže blob okamžitě; (2) instance, která claim obsloužila, si při opens_remaining == 0 naplánuje `ReleaseIfDone(id)` na lease_expires_at a blob smaže, pokud do té doby žádný lease neběží (nejlepší snaha: časovač zanikne, když instance skončí dřív); (3) každý další požadavek na dané id (metadata, blob, claim) zavolá `ReleaseIfDone(id)` a pravidelný úklid ho volá pro všechny zprávy s opens_remaining == 0. Pravidelný úklid dále maže prošlé zprávy, prošlé lease a náhrobky starší 7 dní. Mechanismus závisí na nasazení: u self-hostingu běží v binárce jako goroutine s intervalem `NYLZO_SWEEP_INTERVAL` (výchozí 5 min); na veřejné instanci kontejner usíná, takže úklid spouští Scaleway Serverless Job každých 15 minut jako stejný image s příkazem `nylzod sweep-once`, který pracuje přímo s Postgresem a Object Storage a webový kontejner nebudí. Lifecycle pravidlo v Object Storage (8 dní) je pojistka pro případ chyby. Náhrobek drží {id, mac(pk_R), mac(pk_M), state, first_opened_at, ended_at, purge_at} 7 dní (OD8).
 
 Co lze garantovat a v jakém čase: ukončení přístupu okamžitě (každý požadavek kontroluje stav, expiraci a lease, takže po konci posledního lease nikdo blob nedostane); smazání aktivních dat okamžitě při burn, cancel a ack posledního lease; po vypršení posledního lease bez ack smaže blob běžící instance na konci lease jako nejlepší snahu a nejpozději ho smaže úklid, tedy do konce lease plus 5 minut u self-hostingu a plus 15 minut na veřejné instanci; úklid prošlých zpráv, kterých se nikdo nedotkl, do 5 minut u self-hostingu a do 15 minut na veřejné instanci, nejpozději lifecycle pravidlem do 8 dní; repliky poskytovatele mimo kontrolu (bez S bezcenné). Stránka transparentnosti uvádí tyto časy, ne „okamžitě“.
 
@@ -661,17 +664,18 @@ Rozhraní v Go (zjednodušeně): `Store` s metodami `Create`, `Get`, `Claim` (at
 | Metoda a cesta | Autorizace | Spotřebuje otevření |
 |---|---|---|
 | POST /api/v1/messages | žádná (rate limit, PoW při návalu; API klíče ve druhé verzi) | ne |
-| GET /api/v1/messages/{id} | Bearer R | ne |
-| POST /api/v1/messages/{id}/claim | Bearer R (+ verifier) | ano |
-| GET /api/v1/messages/{id}/blob | Bearer R + X-Nylzo-Lease | ne |
-| POST /api/v1/messages/{id}/ack | Bearer R + X-Nylzo-Lease | ne |
-| POST /api/v1/messages/{id}/burn | Bearer R | ukončí |
-| POST /api/v1/messages/{id}/cancel | Bearer M | ukončí |
-| GET /api/v1/messages/{id}/status | Bearer M | ne |
+| GET /api/v1/messages/{id} | podpis R | ne |
+| POST /api/v1/messages/{id}/claim | podpis R (+ podpis V) | ano |
+| GET /api/v1/messages/{id}/blob | podpis R + X-Nylzo-Lease | ne |
+| POST /api/v1/messages/{id}/ack | podpis R + X-Nylzo-Lease | ne |
+| POST /api/v1/messages/{id}/burn | podpis R | ukončí |
+| POST /api/v1/messages/{id}/cancel | podpis M | ukončí |
+| GET /api/v1/messages/{id}/status | podpis M | ne |
 | GET /api/v1/instance | žádná | ne |
-| POST /api/v1/abuse | žádná (rate limit) | ne |
+| GET /api/v1/challenge | žádná | ne |
+| POST /api/v1/abuse | podpis R (rate limit) | ne |
 
-Chyby: 400 formát, 403 passphrase (retry_after), 404 neznámé id nebo špatné R, 410 stav, 413 velikost, 429 rate limit (Retry-After), 503 globální strop nebo Sec-Purpose. Žádný endpoint nepřijímá ani nevrací plaintext, S, K ani passphrase.
+Chyby: 400 formát, 403 passphrase (retry_after), 404 neznámé id nebo neplatný podpis, 410 stav, 413 velikost, 429 rate limit (Retry-After), 503 globální strop nebo Sec-Purpose. Žádný endpoint nepřijímá ani nevrací plaintext, S, K ani passphrase.
 
 ---
 
@@ -801,7 +805,7 @@ Nálezy a jejich řešení (vlastní průchod plus druhý názor):
 | KD3. Ověřovač jako orákulum se zamknutím pravého příjemce (6c) | Backoff a celoživotní strop 100 chybných pokusů na zprávu, bez vazby na adresu (OD13, D10 a D11); zamknutí pravého příjemce je jen dostupnost: odesílatel vidí pokusy ve status, zprávu zruší a pošle znovu |
 | KD4. Nesoulad KDF a chybějící id KDF (6d) | kdf_id v hlavičce, profily s pevnými parametry, scrypt profil 1, PBKDF2 profil 2 |
 | KD5. Lease nefunguje po reloadu, když replaceState odstranil fragment (6e) | replaceState až po dešifrování; L v sessionStorage do dešifrování |
-| KD6. Replay R a V na TLS edge spálí otevření (6f) | Challenge-response podle OD18 už v první verzi (D12); do implementace platí dnešní tokeny |
+| KD6. Replay R a V na TLS edge spálí otevření (6f) | Challenge-response podle OD18 už v první verzi (D12), implementováno v milníku 1 |
 | KD7. Server by mohl politiku „oříznout“ na limity instance a tím rozbít AAD | Server politiku nikdy nemění; 400 při překročení limitů; limity čte klient z /api/v1/instance před vytvořením |
 | KD8. Čítače rate limitu v paměti se ztratí při usnutí kontejneru a nesdílí mezi instancemi | Čítače v DB (hash IP se solí dne), purge do 24 h |
 | KD9. Probuzení Serverless SQL při nule vCPU může přidat latenci k studenému startu | Změřit v testu R13; fallback placený hosting |
@@ -846,7 +850,7 @@ Zbytková rizika:
 
 Části vyžadující odborný audit:
 - Odvození R, K, V z S a P přes HKDF s oddělením domén a sůl KDF z id.
-- Ukládání tokenů jako HMAC-SHA-256 s pepperem mimo databázi (mac(h(R)), mac(h(V)), mac(M)) a důsledky ztráty pepperu.
+- Ukládání veřejných klíčů jako HMAC-SHA-256 s pepperem mimo databázi (mac(pk_R), mac(pk_V), mac(pk_M)), podpisy jednorázových výzev (OD18) a důsledky ztráty pepperu.
 - Obálka: AAD obsah, serializace, padding, kdf_id a flags.
 - Atomický claim, lease a náhrobky v obou adaptérech.
 - Web klient: CSP, Trusted Types, práce s fragmentem, sessionStorage, stahování, kompilovaný výstup Svelte a jeho runtime.

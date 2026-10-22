@@ -73,3 +73,21 @@ export {
   type Link,
 } from './link.ts';
 export { decodeMeta, encodeMeta, validateMeta, type FileMeta, type Meta } from './meta.ts';
+export {
+  AUTH_SCHEME,
+  CHALLENGE_LEN,
+  PUBLIC_KEY_LEN,
+  PURPOSE_MANAGE,
+  PURPOSE_READ,
+  PURPOSE_VERIFIER,
+  SIGNATURE_LEN,
+  authorizationHeader,
+  parseChallenge,
+  requestKey,
+  requestMessage,
+  signRequest,
+  verifierHeader,
+  type Purpose,
+  type RequestKey,
+  type RequestSignature,
+} from './sign.ts';

@@ -31,6 +31,7 @@ const (
 	headerPoW            = "X-Nylzo-Pow"
 	headerLease          = "X-Nylzo-Lease"
 	headerPolicy         = "X-Nylzo-Policy"
+	headerVerifier       = "X-Nylzo-Verifier"
 	maxCreateHeader      = 1024
 	maxJSONBody          = 4096
 	timeFormat           = time.RFC3339
@@ -45,18 +46,18 @@ const (
 )
 
 type createHeader struct {
-	ID           string  `json:"id"`
-	IDToken      string  `json:"id_token"`
-	ReadHash     string  `json:"read_hash"`
-	VerifierHash *string `json:"verifier_hash"`
-	ManageHash   string  `json:"manage_hash"`
-	KDFID        int     `json:"kdf_id"`
-	OpensMax     int     `json:"opens_max"`
-	TTLSeconds   int64   `json:"ttl_s"`
-	Size         int64   `json:"size"`
+	ID          string  `json:"id"`
+	IDToken     string  `json:"id_token"`
+	ReadKey     string  `json:"read_key"`
+	VerifierKey *string `json:"verifier_key"`
+	ManageKey   string  `json:"manage_key"`
+	KDFID       int     `json:"kdf_id"`
+	OpensMax    int     `json:"opens_max"`
+	TTLSeconds  int64   `json:"ttl_s"`
+	Size        int64   `json:"size"`
 }
 
-var createHeaderKeys = map[string]bool{"id": true, "id_token": true, "read_hash": true, "verifier_hash": true, "manage_hash": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
+var createHeaderKeys = map[string]bool{"id": true, "id_token": true, "read_key": true, "verifier_key": true, "manage_key": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
 
 type policyHeader struct {
 	OpensMax int `json:"opens_max"`
@@ -137,14 +138,6 @@ func formatOptTime(t *time.Time) string {
 	return formatTime(*t)
 }
 
-func bearer(r *http.Request) string {
-	auth := r.Header.Get("Authorization")
-	if len(auth) > 7 && strings.EqualFold(auth[:7], "Bearer ") {
-		return strings.TrimSpace(auth[7:])
-	}
-	return ""
-}
-
 func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
 	if r.Context().Err() != nil && errors.Is(err, context.Canceled) {
 		s.log.Info("handler", "route", r.Pattern, "err", "client went away")
@@ -159,38 +152,54 @@ type access struct {
 	rec    store.Record
 	id     core.ID
 	leases []store.Lease
+	sig    core.Signature
 }
 
-func (s *Server) authorize(ctx context.Context, idStr, token string, purpose pepper.Purpose) (access, bool, error) {
+var dummyPublicKey = core.PublicKey(new([core.TokenLen]byte))
+
+func signedPurpose(p pepper.Purpose) string {
+	if p == pepper.Manage {
+		return core.PurposeManage
+	}
+	return core.PurposeRead
+}
+
+func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, purpose pepper.Purpose, body []byte) (access, bool, error) {
 	id, idErr := core.ParseID(idStr)
-	raw, tokErr := core.DecodeExact(token, core.TokenLen)
-	if idErr != nil || tokErr != nil {
-		s.ring.Verify(purpose, s.ring.Dummy(), s.ring.Dummy(), s.ring.CurrentID())
-		return access{id: id}, false, nil
+	sig, sigErr := core.ParseAuthorization(r.Header.Get("Authorization"))
+	if sigErr != nil {
+		sig = core.Signature{PublicKey: dummyPublicKey}
 	}
 	now := s.clock()
-	rec, err := s.store.Get(ctx, id.String())
-	if errors.Is(err, store.ErrNotFound) {
-		h := core.Hash(raw)
-		s.ring.Verify(purpose, h[:], s.ring.Dummy(), s.ring.CurrentID())
-		return access{id: id}, false, nil
+	a := access{id: id, sig: sig}
+	fresh := s.validChallenge(sig.Challenge, now)
+	mac, pepperID, found := s.ring.Dummy(), s.ring.CurrentID(), false
+	if idErr == nil {
+		rec, err := s.store.Get(ctx, id.String())
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+		case err != nil:
+			return a, false, err
+		default:
+			a.rec, found = rec, true
+			if settled, leases, ok := s.settle(ctx, id.String(), rec.Message, now); ok {
+				a.rec = settled
+			} else {
+				a.leases = leases
+			}
+			mac, pepperID = a.rec.ReadMAC(), a.rec.PepperID()
+			if purpose == pepper.Manage {
+				mac = a.rec.ManageMAC()
+			}
+		}
 	}
-	if err != nil {
-		return access{id: id}, false, err
+	macOK := s.ring.Verify(purpose, sig.PublicKey[:], mac, pepperID)
+	sigOK := sig.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body)
+	if !found || sigErr != nil || !fresh || !macOK || !sigOK {
+		return a, false, nil
 	}
-	a := access{rec: rec, id: id}
-	if fresh, leases, ok := s.settle(ctx, id.String(), rec.Message, now); ok {
-		a.rec = fresh
-	} else {
-		a.leases = leases
-	}
-	mac := a.rec.ReadMAC()
-	if purpose == pepper.Manage {
-		mac = a.rec.ManageMAC()
-	}
-	h := core.Hash(raw)
-	ok := s.ring.Verify(purpose, h[:], mac, a.rec.PepperID())
-	return a, ok, nil
+	spent, err := s.spendChallenge(ctx, sig.Challenge)
+	return a, spent, err
 }
 
 func (s *Server) settle(ctx context.Context, id string, m *store.Message, now time.Time) (store.Record, []store.Lease, bool) {
@@ -289,11 +298,11 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 	if err != nil {
 		return h, core.ID{}, nil, nil, nil, false
 	}
-	readHash, err := core.DecodeExact(h.ReadHash, 32)
+	readKey, err := core.DecodeExact(h.ReadKey, core.PublicKeyLen)
 	if err != nil {
 		return h, id, nil, nil, nil, false
 	}
-	manageHash, err := core.DecodeExact(h.ManageHash, 32)
+	manageKey, err := core.DecodeExact(h.ManageKey, core.PublicKeyLen)
 	if err != nil {
 		return h, id, nil, nil, nil, false
 	}
@@ -301,12 +310,12 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 	if h.KDFID < 0 || h.KDFID > 255 || !kdf.Valid() {
 		return h, id, nil, nil, nil, false
 	}
-	var verifierHash []byte
-	if kdf.RequiresPassphrase() != (h.VerifierHash != nil) {
+	var verifierKey []byte
+	if kdf.RequiresPassphrase() != (h.VerifierKey != nil) {
 		return h, id, nil, nil, nil, false
 	}
-	if h.VerifierHash != nil {
-		if verifierHash, err = core.DecodeExact(*h.VerifierHash, 32); err != nil {
+	if h.VerifierKey != nil {
+		if verifierKey, err = core.DecodeExact(*h.VerifierKey, core.PublicKeyLen); err != nil {
 			return h, id, nil, nil, nil, false
 		}
 	}
@@ -314,7 +323,7 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 	if h.OpensMax < 1 || h.OpensMax > l.MaxOpens || h.TTLSeconds < core.MinTTLSeconds || h.TTLSeconds > int64(l.MaxTTL/time.Second) || h.Size < core.HeaderLen+core.TagLen+core.MetaLenPrefix {
 		return h, id, nil, nil, nil, false
 	}
-	return h, id, readHash, verifierHash, manageHash, true
+	return h, id, readKey, verifierKey, manageKey, true
 }
 
 func (s *Server) rejectCreate(w http.ResponseWriter, r *http.Request, status int, v any) {
@@ -339,7 +348,7 @@ func (t *trackingReader) Read(p []byte) (int, error) {
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	h, id, readHash, verifierHash, manageHash, ok := s.parseCreateHeader(r)
+	h, id, readKey, verifierKey, manageKey, ok := s.parseCreateHeader(r)
 	if !ok {
 		s.rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 		return
@@ -447,8 +456,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	readMAC, pepperID := s.ring.MAC(pepper.Read, readHash)
-	manageMAC, _ := s.ring.MAC(pepper.Manage, manageHash)
+	readMAC, pepperID := s.ring.MAC(pepper.Read, readKey)
+	manageMAC, _ := s.ring.MAC(pepper.Manage, manageKey)
 	uploaded := s.clock()
 	m := &store.Message{
 		ID: id.String(), Version: parsed.Version, KDF: uint8(parsed.KDF), Flags: parsed.Flags, State: store.StateAvailable,
@@ -456,8 +465,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		OpensMax: uint16(h.OpensMax), OpensRemaining: uint16(h.OpensMax), PepperID: pepperID,
 		ReadMAC: readMAC[:], ManageMAC: manageMAC[:], Size: h.Size, BlobRef: id.String(),
 	}
-	if verifierHash != nil {
-		verifierMAC, _ := s.ring.MAC(pepper.Verifier, verifierHash)
+	if verifierKey != nil {
+		verifierMAC, _ := s.ring.MAC(pepper.Verifier, verifierKey)
 		m.VerifierMAC = verifierMAC[:]
 	}
 	if err := s.store.Create(ctx, m, s.storedCreateCounters(now)...); err != nil {
@@ -502,7 +511,10 @@ func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string
 }
 
 func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose) (access, bool) {
-	a, ok, err := s.authorize(r.Context(), r.PathValue("id"), bearer(r), purpose)
+	if !emptyBody(w, r) {
+		return access{}, false
+	}
+	a, ok, err := s.authorize(r.Context(), r, r.PathValue("id"), purpose, nil)
 	if err != nil {
 		s.internal(w, r, err)
 		return a, false
@@ -528,6 +540,15 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 		return nil, a, false
 	}
 	return a.rec.Message, a, true
+}
+
+func emptyBody(w http.ResponseWriter, r *http.Request) bool {
+	var one [1]byte
+	if n, err := io.ReadFull(r.Body, one[:]); n != 0 || !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return false
+	}
+	return true
 }
 
 func validPathID(w http.ResponseWriter, r *http.Request) bool {
@@ -559,10 +580,6 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type claimBody struct {
-	Verifier string `json:"verifier"`
-}
-
 func (s *Server) policyHeader(m *store.Message) string {
 	data, _ := json.Marshal(policyHeader{OpensMax: int(m.OpensMax), TTL: int(m.TTLSeconds), KDFID: int(m.KDF), Flags: int(m.Flags)})
 	return core.Encode(data)
@@ -573,26 +590,23 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
+	verifierHeader := r.Header.Get(headerVerifier)
+	verifierSent := verifierHeader != ""
+	var verifier core.Signature
+	if verifierSent {
+		var err error
+		if verifier, err = core.ParseVerifierHeader(verifierHeader, [core.ChallengeLen]byte{}); err != nil {
+			writeError(w, http.StatusBadRequest, errBadRequest)
+			return
+		}
+	}
 	m, a, ok := s.authorizedLive(w, r, pepper.Read)
 	if !ok {
 		return
 	}
 	id := a.id
-	var verifier []byte
-	var err error
-	verifierSent := false
-	var body claimBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return
-	}
-	if body.Verifier != "" {
-		if verifier, err = core.DecodeExact(body.Verifier, core.TokenLen); err != nil {
-			writeError(w, http.StatusBadRequest, errBadRequest)
-			return
-		}
-		verifierSent = true
-	}
+	verifier.Challenge = a.sig.Challenge
+	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil)
 	blob, size, ok := s.openBlob(w, r, m)
 	if !ok {
 		return
@@ -600,14 +614,11 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	defer blob.Close()
 	lease := core.NewSecret()
 	leaseMAC, leasePepper := s.ring.MAC(pepper.Lease, lease[:])
-	var verifierHash [32]byte
-	if verifierSent {
-		verifierHash = core.Hash(verifier)
-	}
 	result, err := s.store.Claim(ctx, store.ClaimParams{
 		ID: id.String(), Clock: s.clock, VerifierSent: verifierSent,
 		VerifyMAC: func(pepperID byte, stored []byte) bool {
-			return s.ring.Verify(pepper.Verifier, verifierHash[:], stored, pepperID)
+			macOK := s.ring.Verify(pepper.Verifier, verifier.PublicKey[:], stored, pepperID)
+			return macOK && verifierSigned
 		},
 		LeaseMAC:      leaseMAC[:],
 		LeasePepperID: leasePepper,
@@ -877,9 +888,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 type abuseBody struct {
-	ID        string `json:"id"`
-	ReadToken string `json:"read_token"`
-	Reason    string `json:"reason"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
@@ -888,8 +898,9 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
+	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSONBody))
 	var body abuseBody
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody)).Decode(&body); err != nil {
+	if err != nil || json.Unmarshal(raw, &body) != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
@@ -901,7 +912,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.clock()
-	a, ok, err := s.authorize(ctx, body.ID, body.ReadToken, pepper.Read)
+	a, ok, err := s.authorize(ctx, r, body.ID, pepper.Read, raw)
 	id := a.id
 	if err != nil {
 		s.internal(w, r, err)

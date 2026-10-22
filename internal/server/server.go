@@ -238,6 +238,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
+	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
 	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
 	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
 	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)

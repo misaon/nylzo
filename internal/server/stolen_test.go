@@ -39,10 +39,10 @@ func (n *stolenNeedles) message(label string, m *message, passphrase string) {
 	n.secret(label+" K", m.content.K[:])
 	n.secret(label+" V", m.content.V[:])
 	n.secret(label+" M", m.manage[:])
-	rh, vh, mh := core.Hash(m.link.R[:]), core.Hash(m.content.V[:]), core.Hash(m.manage[:])
-	n.secret(label+" h(R)", rh[:])
-	n.secret(label+" h(V)", vh[:])
-	n.secret(label+" h(M)", mh[:])
+	pkR, pkV, pkM := core.PublicKey(&m.link.R), core.PublicKey(&m.content.V), core.PublicKey(m.manage)
+	n.secret(label+" pk_R", pkR[:])
+	n.secret(label+" pk_V", pkV[:])
+	n.secret(label+" pk_M", pkM[:])
 	if passphrase != "" {
 		p, err := core.DerivePassphraseKey(m.kdf, passphrase, &m.link.SaltPW)
 		if err != nil {
@@ -194,6 +194,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		`SELECT created_at FROM messages`, `SELECT expires_at FROM messages`, `SELECT next_attempt_at FROM messages`,
 		`SELECT first_opened_at FROM messages WHERE first_opened_at IS NOT NULL`, `SELECT lease_expires_at FROM leases`,
 		`SELECT first_opened_at FROM tombstones WHERE first_opened_at IS NOT NULL`, `SELECT ended_at FROM tombstones`, `SELECT purge_at FROM tombstones`,
+		`SELECT window_start FROM rate_counters`, `SELECT purge_at FROM rate_counters`,
 	} {
 		rows, err := db.Query(q)
 		if err != nil {
@@ -210,11 +211,12 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		rows.Close()
 	}
-	var tombstones, leases int
+	var tombstones, leases, spent int
 	db.QueryRow(`SELECT COUNT(*) FROM tombstones`).Scan(&tombstones)
 	db.QueryRow(`SELECT COUNT(*) FROM leases`).Scan(&leases)
-	if tombstones != 4 || leases != 1 {
-		t.Fatalf("the flows did not leave the expected rows: %d tombstones, %d leases", tombstones, leases)
+	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`).Scan(&spent)
+	if tombstones != 4 || leases != 1 || spent == 0 {
+		t.Fatalf("the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges", tombstones, leases, spent)
 	}
 	rows, err := db.Query(`SELECT key FROM rate_counters`)
 	if err != nil {

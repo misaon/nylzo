@@ -16,16 +16,20 @@ import {
   derivePassphraseKey,
   encodeBase64url,
   encodeMeta,
+  authorizationHeader,
   formatLink,
   fragment,
-  hash,
   hsalt,
   idToString,
   isKdfId,
   open,
   parseId,
+  parseChallenge,
   parseLink,
+  requestKey,
+  requestMessage,
   seal,
+  signRequest,
   utf8,
   type Header,
   type KdfId,
@@ -80,19 +84,12 @@ describe('derive', () => {
       expect(bytesToHex(content.v)).toBe(v.v_hex);
       expect(content.k.extractable).toBe(false);
 
-      expect(encodeBase64url(link.r)).toBe(v.wire.r);
-      expect(encodeBase64url(await hash(link.r))).toBe(v.wire.read_hash);
-      expect(bytesToHex(await hash(link.r))).toBe(v.read_hash_hex);
-      const m = hexToBytes(v.m_hex);
-      expect(encodeBase64url(m)).toBe(v.wire.m);
-      expect(encodeBase64url(await hash(m))).toBe(v.wire.manage_hash);
-      expect(bytesToHex(await hash(m))).toBe(v.manage_hash_hex);
+      expect(encodeBase64url((await requestKey(link.r)).publicKey)).toBe(v.read_key);
+      expect(encodeBase64url((await requestKey(hexToBytes(v.m_hex))).publicKey)).toBe(v.manage_key);
       if (kdfId === KDF_NONE) {
-        expect(v.wire.verifier_hash).toBeUndefined();
+        expect(v.verifier_key).toBeUndefined();
       } else {
-        expect(encodeBase64url(content.v)).toBe(v.wire.v);
-        expect(encodeBase64url(await hash(content.v))).toBe(v.wire.verifier_hash);
-        expect(bytesToHex(await hash(content.v))).toBe(v.verifier_hash_hex);
+        expect(encodeBase64url((await requestKey(content.v)).publicKey)).toBe(v.verifier_key);
       }
       expect(fragment(kdfId, s)).toBe(v.fragment);
 
@@ -212,6 +209,27 @@ describe('passphrase_strength', () => {
       } else {
         expect(() => assertStrongPassphrase(v.passphrase)).toThrow(WeakPassphraseError);
       }
+    });
+  }
+});
+
+describe('request', () => {
+  it('has cases', () => {
+    expect(vectors.request.length).toBeGreaterThan(0);
+  });
+  for (const v of vectors.request) {
+    it(v.name, async () => {
+      const key = await requestKey(hexToBytes(v.seed_hex));
+      expect(key.privateKey.extractable).toBe(false);
+      expect(encodeBase64url(key.publicKey)).toBe(v.public_key);
+
+      const challenge = parseChallenge(v.challenge);
+      const body = hexToBytes(v.body_hex);
+      expect(bytesToHex(await requestMessage(v.purpose, v.method, v.path, challenge, body))).toBe(v.message_hex);
+
+      const sig = await signRequest(key, v.purpose, v.method, v.path, challenge, body);
+      expect(encodeBase64url(sig.signature)).toBe(v.signature);
+      expect(authorizationHeader(sig)).toBe(v.authorization);
     });
   }
 });
