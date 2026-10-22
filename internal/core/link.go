@@ -57,11 +57,11 @@ func ParseLink(raw string) (Link, error) {
 	if err != nil {
 		return Link{}, ErrLink
 	}
-	id, err := ParsePath(u.Path)
+	id, err := ParsePath(u.EscapedPath())
 	if err != nil {
 		return Link{}, err
 	}
-	kdf, s, err := ParseFragment(u.Fragment)
+	kdf, s, err := ParseFragment(u.EscapedFragment())
 	if err != nil {
 		return Link{}, err
 	}

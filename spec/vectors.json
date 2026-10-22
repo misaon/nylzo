@@ -564,6 +564,16 @@
       "valid": false
     },
     {
+      "name": "id-percent-encoded",
+      "input": "https://nylzo.example/m/%56YkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "secret-percent-encoded",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.1.%7AvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
       "name": "path-not-m",
       "input": "https://nylzo.example/x/VYkVuDHE8iM238s_29iTmA#1.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": false
@@ -644,6 +654,39 @@
       "file_name": "a",
       "file_mime": "",
       "file_size": 1
+    },
+    {
+      "name": "duplicate-file-last-wins",
+      "input": "{\"v\":1,\"file\":{\"name\":\"first\",\"mime\":\"x\",\"size\":1},\"file\":{\"name\":\"second\",\"mime\":\"y\",\"size\":2}}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"file\":{\"name\":\"second\",\"mime\":\"y\",\"size\":2}}",
+      "file_name": "second",
+      "file_mime": "y",
+      "file_size": 2
+    },
+    {
+      "name": "duplicate-file-incomplete-last",
+      "input": "{\"v\":1,\"file\":{\"name\":\"a\",\"size\":1},\"file\":{\"mime\":\"x\"}}",
+      "valid": false
+    },
+    {
+      "name": "null-text-with-file",
+      "input": "{\"v\":1,\"text\":null,\"file\":{\"name\":\"a\",\"mime\":\"\",\"size\":1}}",
+      "valid": true,
+      "canonical": "{\"v\":1,\"file\":{\"name\":\"a\",\"mime\":\"\",\"size\":1}}",
+      "file_name": "a",
+      "file_mime": "",
+      "file_size": 1
+    },
+    {
+      "name": "null-text-only",
+      "input": "{\"v\":1,\"text\":null}",
+      "valid": false
+    },
+    {
+      "name": "null-v",
+      "input": "{\"v\":null,\"text\":\"x\"}",
+      "valid": false
     },
     {
       "name": "missing-v",

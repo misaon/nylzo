@@ -119,43 +119,56 @@ func writeJSONString(b *bytes.Buffer, s string) {
 	b.WriteByte('"')
 }
 
-type metaWire struct {
-	V    *int      `json:"v"`
-	Text *string   `json:"text"`
-	File *fileWire `json:"file"`
-}
-
 type fileWire struct {
 	Name *string `json:"name"`
 	Mime *string `json:"mime"`
 	Size *int64  `json:"size"`
 }
 
+func decodeField(raw json.RawMessage, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if err := dec.Decode(v); err != nil {
+		return ErrMeta
+	}
+	return nil
+}
+
+func isNull(raw json.RawMessage) bool {
+	return bytes.Equal(bytes.TrimSpace(raw), []byte("null"))
+}
+
 func DecodeMeta(b []byte) (Meta, error) {
 	if len(b) > MaxMetaBytes || !utf8.Valid(b) {
 		return Meta{}, ErrMeta
 	}
-	var w metaWire
+	var fields map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(b))
-	if err := dec.Decode(&w); err != nil {
+	if err := dec.Decode(&fields); err != nil || dec.More() || fields == nil {
 		return Meta{}, ErrMeta
 	}
-	if dec.More() {
+	var v *int
+	if raw, ok := fields["v"]; !ok || isNull(raw) || decodeField(raw, &v) != nil || v == nil || *v != 1 {
 		return Meta{}, ErrMeta
 	}
-	if w.V == nil || *w.V != 1 {
-		return Meta{}, ErrMeta
+	var m Meta
+	if raw, ok := fields["text"]; ok && !isNull(raw) {
+		if err := decodeField(raw, &m.Text); err != nil {
+			return Meta{}, err
+		}
 	}
-	m := Meta{Text: w.Text}
-	if w.File != nil {
-		if w.File.Name == nil || w.File.Size == nil {
+	if raw, ok := fields["file"]; ok && !isNull(raw) {
+		var f fileWire
+		if err := decodeField(raw, &f); err != nil {
+			return Meta{}, err
+		}
+		if f.Name == nil || f.Size == nil {
 			return Meta{}, ErrMeta
 		}
 		mime := ""
-		if w.File.Mime != nil {
-			mime = *w.File.Mime
+		if f.Mime != nil {
+			mime = *f.Mime
 		}
-		m.File = &FileMeta{Name: *w.File.Name, Mime: mime, Size: *w.File.Size}
+		m.File = &FileMeta{Name: *f.Name, Mime: mime, Size: *f.Size}
 	}
 	if err := m.Validate(); err != nil {
 		return Meta{}, err

@@ -1,0 +1,401 @@
+package server_test
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/store"
+	"github.com/misaon/nylzo/internal/store/disk"
+	"github.com/misaon/nylzo/internal/store/sqlite"
+)
+
+var (
+	pepperA = bytes.Repeat([]byte{0x11}, 32)
+	pepperB = bytes.Repeat([]byte{0x22}, 32)
+)
+
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	c.mu.Unlock()
+}
+
+type timer struct {
+	due time.Time
+	fn  func()
+}
+
+type harness struct {
+	t      *testing.T
+	cfg    server.Config
+	store  store.Store
+	blobs  store.Blobs
+	clock  *fakeClock
+	logBuf *syncBuffer
+	timers struct {
+		mu   sync.Mutex
+		list []timer
+	}
+	srv     *server.Server
+	ts      *httptest.Server
+	client  *http.Client
+	dir     string
+	capture struct {
+		mu   sync.Mutex
+		last []byte
+	}
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func baseConfig(pepper, previous []byte) server.Config {
+	cfg := server.Defaults()
+	cfg.Pepper = pepper
+	cfg.PepperPrevious = previous
+	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
+	cfg.Rates.BucketPerSecond = 1 << 20
+	cfg.Rates.BucketBurst = 1 << 20
+	return cfg
+}
+
+func newHarness(t *testing.T, cfg server.Config) *harness {
+	t.Helper()
+	dir := t.TempDir()
+	cfg.DataDir = dir
+	st, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	blobs, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{t: t, cfg: cfg, store: st, blobs: blobs, dir: dir, logBuf: &syncBuffer{}}
+	h.clock = &fakeClock{now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)}
+	h.open()
+	return h
+}
+
+func (h *harness) open() {
+	h.t.Helper()
+	logger := slog.New(slog.NewJSONHandler(h.logBuf, nil))
+	srv, err := server.New(h.cfg, h.store, h.blobs,
+		server.WithClock(h.clock.Now),
+		server.WithLogger(logger),
+		server.WithAfterFunc(func(d time.Duration, fn func()) {
+			h.timers.mu.Lock()
+			h.timers.list = append(h.timers.list, timer{due: h.clock.Now().Add(d), fn: fn})
+			h.timers.mu.Unlock()
+		}),
+	)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	h.srv = srv
+	inner := srv.Handler()
+	h.ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/api/v1/messages" {
+			var dump bytes.Buffer
+			fmt.Fprintf(&dump, "%s %s\n", r.Method, r.URL.RequestURI())
+			r.Header.Write(&dump)
+			body, _ := io.ReadAll(r.Body)
+			dump.Write(body)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			h.capture.mu.Lock()
+			h.capture.last = dump.Bytes()
+			h.capture.mu.Unlock()
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	h.t.Cleanup(h.ts.Close)
+	h.client = h.ts.Client()
+}
+
+func (h *harness) reopen(cfg server.Config) {
+	h.ts.Close()
+	cfg.DataDir = h.dir
+	h.cfg = cfg
+	h.open()
+}
+
+func (h *harness) fireTimers() int {
+	h.timers.mu.Lock()
+	now := h.clock.Now()
+	var due []func()
+	var rest []timer
+	for _, tm := range h.timers.list {
+		if !tm.due.After(now) {
+			due = append(due, tm.fn)
+		} else {
+			rest = append(rest, tm)
+		}
+	}
+	h.timers.list = rest
+	h.timers.mu.Unlock()
+	for _, fn := range due {
+		fn()
+	}
+	return len(due)
+}
+
+func (h *harness) pendingTimers() int {
+	h.timers.mu.Lock()
+	defer h.timers.mu.Unlock()
+	return len(h.timers.list)
+}
+
+type message struct {
+	id         core.ID
+	secret     *[32]byte
+	manage     *[32]byte
+	kdf        core.KDF
+	passphrase string
+	link       core.LinkKeys
+	content    core.ContentKeys
+	policy     core.Policy
+	object     []byte
+	text       string
+	readToken  string
+	manageTok  string
+	verifier   string
+	ip         string
+}
+
+type request struct {
+	method  string
+	path    string
+	body    []byte
+	headers map[string]string
+	ip      string
+}
+
+func (h *harness) do(req request) (*http.Response, []byte) {
+	h.t.Helper()
+	var body io.Reader
+	if req.body != nil {
+		body = bytes.NewReader(req.body)
+	}
+	r, err := http.NewRequest(req.method, h.ts.URL+req.path, body)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	for k, v := range req.headers {
+		r.Header.Set(k, v)
+	}
+	if req.ip != "" {
+		r.Header.Set("X-Forwarded-For", req.ip)
+	}
+	resp, err := h.client.Do(r)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if resp.StatusCode == http.StatusInternalServerError {
+		logs := h.logBuf.String()
+		if len(logs) > 2000 {
+			logs = logs[len(logs)-2000:]
+		}
+		h.t.Logf("server log tail after 500: %s", logs)
+	}
+	return resp, data
+}
+
+func buildMessage(kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) (*message, error) {
+	m := &message{id: core.NewID(), secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, passphrase: passphrase, text: text}
+	link, content, err := core.DeriveAll(m.id, m.secret, kdf, passphrase)
+	if err != nil {
+		return nil, err
+	}
+	m.link = link
+	m.content = content
+	m.policy = core.Policy{OpensMax: opens, TTLSeconds: ttl}
+	object, err := core.Seal(&content.K, core.NewHeader(kdf), m.id, m.policy, core.Payload{Meta: core.Meta{Text: &text}})
+	if err != nil {
+		return nil, err
+	}
+	m.object = object
+	m.readToken = core.Encode(link.R[:])
+	m.manageTok = core.Encode(m.manage[:])
+	m.verifier = core.Encode(content.V[:])
+	return m, nil
+}
+
+func newMessage(t *testing.T, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) *message {
+	t.Helper()
+	m, err := buildMessage(kdf, passphrase, opens, ttl, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func (h *harness) lastCreateRequest() []byte {
+	h.capture.mu.Lock()
+	defer h.capture.mu.Unlock()
+	return append([]byte(nil), h.capture.last...)
+}
+
+func (m *message) createHeader(sizeOverride int64) string {
+	rh := core.Hash(m.link.R[:])
+	mh := core.Hash(m.manage[:])
+	fields := map[string]any{
+		"id": m.id.String(), "read_hash": core.Encode(rh[:]), "manage_hash": core.Encode(mh[:]),
+		"kdf_id": int(m.kdf), "opens_max": int(m.policy.OpensMax), "ttl_s": int(m.policy.TTLSeconds), "size": len(m.object),
+	}
+	if sizeOverride > 0 {
+		fields["size"] = sizeOverride
+	}
+	if m.kdf != core.KDFNone {
+		vh := core.Hash(m.content.V[:])
+		fields["verifier_hash"] = core.Encode(vh[:])
+	}
+	data, _ := json.Marshal(fields)
+	return core.Encode(data)
+}
+
+func (h *harness) create(m *message) (*http.Response, []byte) {
+	h.t.Helper()
+	return h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
+		headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": m.createHeader(0)}})
+}
+
+func (h *harness) mustCreate(m *message) {
+	h.t.Helper()
+	resp, body := h.create(m)
+	if resp.StatusCode != http.StatusCreated {
+		h.t.Fatalf("create: %d %s", resp.StatusCode, body)
+	}
+}
+
+func (h *harness) metadata(m *message) (*http.Response, map[string]any) {
+	h.t.Helper()
+	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
+	return resp, decodeJSON(h.t, body)
+}
+
+func (h *harness) claim(m *message, verifier string, ip string) (*http.Response, []byte) {
+	h.t.Helper()
+	req := request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}}
+	if ip == "" {
+		req.ip = m.ip
+	}
+	if verifier != "" {
+		req.body = []byte(`{"verifier":"` + verifier + `"}`)
+		req.headers["Content-Type"] = "application/json"
+	}
+	return h.do(req)
+}
+
+func (h *harness) blob(m *message, lease string) (*http.Response, []byte) {
+	h.t.Helper()
+	return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+}
+
+func (h *harness) ack(m *message, lease string) *http.Response {
+	h.t.Helper()
+	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	return resp
+}
+
+func (h *harness) status(m *message) (*http.Response, map[string]any) {
+	h.t.Helper()
+	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+	return resp, decodeJSON(h.t, body)
+}
+
+func decodeJSON(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+	if len(body) == 0 {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("invalid json %q: %v", body, err)
+	}
+	return out
+}
+
+func (h *harness) blobExists(id core.ID) bool {
+	h.t.Helper()
+	f, _, err := h.blobs.Open(h.t.Context(), id.String())
+	if err != nil {
+		return false
+	}
+	f.Close()
+	return true
+}
+
+func (h *harness) openObject(m *message, object []byte, policy string) (core.Payload, error) {
+	h.t.Helper()
+	pol, err := decodePolicy(policy)
+	if err != nil {
+		return core.Payload{}, err
+	}
+	_, payload, err := core.Open(&m.content.K, m.id, pol, m.kdf, object)
+	return payload, err
+}
+
+func decodePolicy(header string) (core.Policy, error) {
+	var pol struct {
+		OpensMax int `json:"opens_max"`
+		TTL      int `json:"ttl_s"`
+		KDFID    int `json:"kdf_id"`
+		Flags    int `json:"flags"`
+	}
+	data, err := base64.RawURLEncoding.Strict().DecodeString(header)
+	if err != nil {
+		return core.Policy{}, err
+	}
+	if err := json.Unmarshal(data, &pol); err != nil {
+		return core.Policy{}, err
+	}
+	if pol.OpensMax == 0 {
+		return core.Policy{}, errors.New("policy header without opens_max")
+	}
+	return core.Policy{OpensMax: uint16(pol.OpensMax), TTLSeconds: uint32(pol.TTL)}, nil
+}
