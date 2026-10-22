@@ -6,7 +6,7 @@ import {
   KDF_SCRYPT,
   KEY_LEN,
   KdfError,
-  PassphraseError,
+  MalformedPassphraseError,
   TOKEN_LEN,
   deriveAll,
   deriveContent,
@@ -75,7 +75,8 @@ describe('passphrase normalisation', () => {
   it('rejects a passphrase that is not well-formed Unicode', async () => {
     const salt = new Uint8Array(32);
     for (const kdfId of [KDF_SCRYPT, KDF_PBKDF2] as const) {
-      await expect(derivePassphraseKey(kdfId, 'caf\ud800', salt)).rejects.toBeInstanceOf(PassphraseError);
+      await expect(derivePassphraseKey(kdfId, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
+      await expect(deriveAll(newId(), newSecret(), kdfId, 'caf\ud800')).rejects.toBeInstanceOf(MalformedPassphraseError);
     }
     await expect(derivePassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
   });

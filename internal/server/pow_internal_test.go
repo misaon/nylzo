@@ -126,3 +126,16 @@ func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 		t.Fatalf("createHeaderKeys %v differ from the createHeader tags %v", createHeaderKeys, tags)
 	}
 }
+
+func TestPoWToleratesASlightlyAheadIssuer(t *testing.T) {
+	s := powServer(t, 1)
+	now := time.Now()
+	id := core.NewID()
+	token, err := SolvePoW(s.powChallenge(now.Add(2*time.Second)), id, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.powVerify(t.Context(), token, id, now); err != nil {
+		t.Fatalf("a challenge from an instance 2 s ahead must verify: %v", err)
+	}
+}

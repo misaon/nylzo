@@ -144,7 +144,7 @@ func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Dur
 	}
 	for i, c := range counts {
 		if checks[i].hit.Over(c) {
-			return checks[i].end.Sub(s.clock()), nil
+			return max(checks[i].end.Sub(s.clock()), time.Second), nil
 		}
 	}
 	return 0, nil
@@ -153,7 +153,6 @@ func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Dur
 const (
 	globalCreatesKey = "global:d"
 	globalStoredKey  = "global:stored:d"
-	pendingRetry     = time.Minute
 )
 
 func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr, size int64) (time.Duration, error) {
@@ -195,7 +194,7 @@ func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (slot i
 		return 0, true, nil
 	}
 	d := dayWindow(now)
-	return s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt()}, limit)
+	return s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: limit})
 }
 
 func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
@@ -207,14 +206,12 @@ func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
 	}
 }
 
-func (s *Server) countStoredCreate(ctx context.Context, now time.Time) {
+func (s *Server) storedCreateCounters(now time.Time) []store.RateHit {
 	if s.cfg.Rates.GlobalDailyCreates <= 0 {
-		return
+		return nil
 	}
 	d := dayWindow(now)
-	if _, err := s.store.RateHit(ctx, []store.RateHit{{Key: globalStoredKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); err != nil {
-		s.log.Error("global-stored", "err", err.Error())
-	}
+	return []store.RateHit{{Key: globalStoredKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}
 }
 
 func (s *Server) limitHourly(ctx context.Context, now time.Time, addr netip.Addr, kind string, limit int64) (time.Duration, error) {

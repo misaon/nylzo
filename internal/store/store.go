@@ -183,19 +183,19 @@ func (r SweepReport) LogAttrs() []any {
 }
 
 type Store interface {
-	Create(ctx context.Context, m *Message) error
+	Create(ctx context.Context, m *Message, counters ...RateHit) error
 	Get(ctx context.Context, id string) (Record, error)
 	Claim(ctx context.Context, p ClaimParams) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
 	RecordDownload(ctx context.Context, leaseRowID int64, now time.Time) error
-	Ack(ctx context.Context, leaseRowID int64) error
+	Ack(ctx context.Context, leaseRowID int64, now time.Time) (string, error)
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
 	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
 	MarkEnding(ctx context.Context, id string, state State, now time.Time) (State, string, error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)
-	RateReserve(ctx context.Context, hit RateHit, limit int64) (int64, bool, error)
+	RateReserve(ctx context.Context, hit RateHit) (int64, bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
 	Sweep(ctx context.Context, now time.Time, b Blobs) (SweepReport, error)
 	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
@@ -209,7 +209,7 @@ type BlobInfo struct {
 
 type Blobs interface {
 	Put(ctx context.Context, ref string, r io.Reader, size int64) error
-	Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error)
+	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
 	Delete(ctx context.Context, ref string) error
 	List(ctx context.Context) ([]BlobInfo, error)
 	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)

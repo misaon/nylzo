@@ -11,10 +11,22 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 	if err != nil || ref == "" {
 		return false, err
 	}
-	if err := b.Delete(ctx, ref); err != nil {
-		return false, err
+	return true, clearReleased(ctx, s, b, id, ref, now)
+}
+
+func AckLease(ctx context.Context, s Store, b Blobs, id string, leaseRowID int64, now time.Time) error {
+	ref, err := s.Ack(ctx, leaseRowID, now)
+	if err != nil || ref == "" {
+		return err
 	}
-	return true, s.ClearBlob(ctx, id, ref, now)
+	return clearReleased(ctx, s, b, id, ref, now)
+}
+
+func clearReleased(ctx context.Context, s Store, b Blobs, id, ref string, now time.Time) error {
+	if err := b.Delete(ctx, ref); err != nil {
+		return err
+	}
+	return s.ClearBlob(ctx, id, ref, now)
 }
 
 func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) (State, error) {

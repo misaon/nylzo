@@ -18,6 +18,7 @@ import {
   IV_LEN,
   MAX_META_BYTES,
   MAX_OBJECT_BYTES,
+  META_LEN_PREFIX,
   MIN_TTL_SECONDS,
   PAD_FILE,
   PAD_TEXT,
@@ -189,10 +190,10 @@ function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
   if (file.length !== expectedSize) {
     throw new MetaError('file length differs from meta.file.size');
   }
-  const plaintext = new Uint8Array(paddedLen(4 + meta.length + file.length, fileMeta !== undefined));
+  const plaintext = new Uint8Array(paddedLen(META_LEN_PREFIX + meta.length + file.length, fileMeta !== undefined));
   new DataView(plaintext.buffer).setUint32(0, meta.length);
-  plaintext.set(meta, 4);
-  plaintext.set(file, 4 + meta.length);
+  plaintext.set(meta, META_LEN_PREFIX);
+  plaintext.set(file, META_LEN_PREFIX + meta.length);
   return plaintext;
 }
 
@@ -217,18 +218,18 @@ async function decrypt(
 }
 
 function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): Payload {
-  if (plaintext.length < 4) {
+  if (plaintext.length < META_LEN_PREFIX) {
     throw new PlaintextError();
   }
   const lenMeta = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).getUint32(0);
-  if (lenMeta > MAX_META_BYTES || lenMeta > plaintext.length - 4) {
+  if (lenMeta > MAX_META_BYTES || lenMeta > plaintext.length - META_LEN_PREFIX) {
     throw new PlaintextError();
   }
-  const meta = decodeMeta(plaintext.subarray(4, 4 + lenMeta));
+  const meta = decodeMeta(plaintext.subarray(META_LEN_PREFIX, META_LEN_PREFIX + lenMeta));
   if (meta.file === undefined) {
     return { meta };
   }
-  const start = 4 + lenMeta;
+  const start = META_LEN_PREFIX + lenMeta;
   if (meta.file.size > plaintext.length - start) {
     throw new PlaintextError();
   }

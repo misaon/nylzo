@@ -14,6 +14,7 @@ export const AAD_LEN = HEADER_LEN + ID_LEN + POLICY_LEN;
 export const MAX_TEXT_BYTES = 100 * 1024;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_META_BYTES = 102 * 1024;
+export const META_LEN_PREFIX = 4;
 export const PAD_TEXT = 4096;
 export const PAD_FILE = 65536;
 export const OBJECT_SLACK = 64;

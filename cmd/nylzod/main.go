@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"sync"
 	"syscall"
 	"time"
@@ -21,6 +22,12 @@ import (
 var version = "dev"
 
 var errSweepFailed = errors.New("sweep failed; see the sweep-once log line")
+
+const (
+	dbFile             = "nylzo.db"
+	shutdownTimeout    = 30 * time.Second
+	defaultMemoryLimit = 192 << 20
+)
 
 func main() {
 	cmd := "serve"
@@ -49,7 +56,7 @@ func open(cfg server.Config) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, nil, err
 	}
-	st, err := sqlite.Open(filepath.Join(cfg.DataDir, "nylzo.db"))
+	st, err := sqlite.Open(filepath.Join(cfg.DataDir, dbFile))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -61,12 +68,12 @@ func open(cfg server.Config) (*sqlite.Store, *disk.Blobs, error) {
 	return st, blobs, nil
 }
 
-func existingStore(dataDir string) error {
+func requireStore(dataDir string) error {
 	dir, err := filepath.Abs(dataDir)
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"nylzo.db", "blobs"} {
+	for _, name := range []string{dbFile, disk.Dir} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			return fmt.Errorf("sweep-once found no store: %w", err)
 		}
@@ -74,11 +81,18 @@ func existingStore(dataDir string) error {
 	return nil
 }
 
+func applyMemoryLimit(getenv func(string) string) {
+	if getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(defaultMemoryLimit)
+	}
+}
+
 func serve(logger *slog.Logger) error {
 	cfg, err := server.FromEnv(os.Getenv, true)
 	if err != nil {
 		return err
 	}
+	applyMemoryLimit(os.Getenv)
 	cfg.Version = version
 	st, blobs, err := open(cfg)
 	if err != nil {
@@ -108,9 +122,18 @@ func serve(logger *slog.Logger) error {
 		return err
 	case <-ctx.Done():
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	return shutdown(httpServer, shutdownTimeout, logger)
+}
+
+func shutdown(hs *http.Server, timeout time.Duration, logger *slog.Logger) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	return httpServer.Shutdown(shutdownCtx)
+	err := hs.Shutdown(ctx)
+	if errors.Is(err, context.DeadlineExceeded) {
+		logger.Warn("shutdown-timeout", "after", timeout.String())
+		return hs.Close()
+	}
+	return err
 }
 
 func sweepOnce(logger *slog.Logger) error {
@@ -118,7 +141,7 @@ func sweepOnce(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	if err := existingStore(cfg.DataDir); err != nil {
+	if err := requireStore(cfg.DataDir); err != nil {
 		return err
 	}
 	st, blobs, err := open(cfg)
@@ -126,7 +149,7 @@ func sweepOnce(logger *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-	report, err := server.NewSweeper(cfg, st, blobs, logger).SweepOnce(context.Background())
+	report, err := server.NewSweeper(st, blobs).SweepOnce(context.Background())
 	if err != nil {
 		logger.Error("sweep-once", server.SweepLogAttrs(report, err)...)
 		return errSweepFailed

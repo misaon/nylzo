@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	blobDir   = "blobs"
+	Dir       = "blobs"
 	tempDir   = "tmp"
 	maxRefLen = 64
 )
@@ -26,7 +26,7 @@ type Blobs struct {
 }
 
 func New(dataDir string) (*Blobs, error) {
-	root := filepath.Join(dataDir, blobDir)
+	root := filepath.Join(dataDir, Dir)
 	if err := os.MkdirAll(filepath.Join(root, tempDir), 0o700); err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 	return nil
 }
 
-func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {
+func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
 	p, err := b.path(ref)
 	if err != nil {
 		return nil, 0, err

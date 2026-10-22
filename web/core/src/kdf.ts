@@ -1,7 +1,7 @@
 import { scryptAsync } from '@noble/hashes/scrypt.js';
 
 import { arrayBufferBacked, utf8 } from './bytes.ts';
-import { KdfError, PassphraseError } from './errors.ts';
+import { KdfError, MalformedPassphraseError } from './errors.ts';
 import { KEY_LEN } from './limits.ts';
 
 export const KDF_NONE = 0;
@@ -40,6 +40,12 @@ export function normalizePassphrase(passphrase: string): Uint8Array<ArrayBuffer>
   return utf8(passphrase.normalize('NFC'));
 }
 
+export function assertWellFormedPassphrase(kdfId: KdfId, passphrase: string): void {
+  if (kdfId !== KDF_NONE && !passphrase.isWellFormed()) {
+    throw new MalformedPassphraseError();
+  }
+}
+
 export async function derivePassphraseKey(
   kdfId: KdfId,
   passphrase: string,
@@ -48,9 +54,7 @@ export async function derivePassphraseKey(
   if (kdfId === KDF_NONE) {
     return new Uint8Array(0);
   }
-  if (!passphrase.isWellFormed()) {
-    throw new PassphraseError();
-  }
+  assertWellFormedPassphrase(kdfId, passphrase);
   if (kdfId === KDF_SCRYPT) {
     return scrypt(normalizePassphrase(passphrase), saltPw);
   }

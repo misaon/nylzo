@@ -226,11 +226,24 @@ func TestKDFNoneIgnoresPassphrase(t *testing.T) {
 	}
 }
 
+func TestAssertProfile(t *testing.T) {
+	if err := core.AssertProfile(core.KDFScrypt, core.KDFPBKDF2); !errors.Is(err, core.ErrKDFMismatch) {
+		t.Fatal("downgrade accepted")
+	}
+	if err := core.AssertProfile(core.KDFScrypt, core.KDFScrypt); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIllFormedPassphraseIsRejected(t *testing.T) {
 	var salt [32]byte
 	for _, kdf := range []core.KDF{core.KDFScrypt, core.KDFPBKDF2} {
-		if _, err := core.DerivePassphraseKey(kdf, "caf\xe9", &salt); !errors.Is(err, core.ErrPassphrase) {
+		if _, err := core.DerivePassphraseKey(kdf, "caf\xe9", &salt); !errors.Is(err, core.ErrMalformedPassphrase) {
 			t.Fatalf("kdf %s accepted invalid UTF-8: %v", kdf, err)
+		}
+		link, _, err := core.DeriveAll(core.NewID(), core.NewSecret(), kdf, "caf\xe9")
+		if !errors.Is(err, core.ErrMalformedPassphrase) || link != (core.LinkKeys{}) {
+			t.Fatalf("kdf %s: DeriveAll must refuse before deriving anything: %v", kdf, err)
 		}
 	}
 }
@@ -286,5 +299,12 @@ func TestObjectLimitFitsLargestObject(t *testing.T) {
 	}
 	if got := core.ObjectLimit(26621); got != 196639 {
 		t.Errorf("ObjectLimit(26621) = %d, want 196639", got)
+	}
+}
+
+func TestKDFNoneIgnoresAnIllFormedPassphrase(t *testing.T) {
+	var salt [32]byte
+	if key, err := core.DerivePassphraseKey(core.KDFNone, "caf\xe9", &salt); err != nil || key != nil {
+		t.Fatalf("kdf 0 must ignore the passphrase: %v %v", key, err)
 	}
 }

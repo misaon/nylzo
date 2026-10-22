@@ -114,7 +114,7 @@ type faultyBlobs struct {
 }
 
 type failingReader struct {
-	io.ReadSeekCloser
+	io.ReadCloser
 	err error
 }
 
@@ -140,7 +140,7 @@ func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
 	return b.Blobs.Delete(ctx, ref)
 }
 
-func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, int64, error) {
+func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
 	b.mu.Lock()
 	err, readErr, hook := b.failOpen, b.failRead, b.onOpen
 	b.mu.Unlock()
@@ -152,7 +152,7 @@ func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadSeekCloser, 
 	}
 	f, size, err := b.Blobs.Open(ctx, ref)
 	if err == nil && readErr != nil {
-		return failingReader{ReadSeekCloser: f, err: readErr}, size, nil
+		return failingReader{ReadCloser: f, err: readErr}, size, nil
 	}
 	return f, size, err
 }

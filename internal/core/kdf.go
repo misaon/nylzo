@@ -27,8 +27,8 @@ const (
 )
 
 var (
-	ErrKDF        = errors.New("core: unknown kdf profile")
-	ErrPassphrase = errors.New("core: passphrase is not well-formed Unicode")
+	ErrKDF                 = errors.New("core: unknown kdf profile")
+	ErrMalformedPassphrase = errors.New("core: passphrase is not well-formed Unicode")
 )
 
 func (k KDF) Valid() bool {
@@ -59,9 +59,16 @@ func NormalizePassphrase(passphrase string) []byte {
 	return []byte(norm.NFC.String(passphrase))
 }
 
-func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, error) {
+func checkPassphrase(kdf KDF, passphrase string) error {
 	if kdf != KDFNone && !utf8.ValidString(passphrase) {
-		return nil, ErrPassphrase
+		return ErrMalformedPassphrase
+	}
+	return nil
+}
+
+func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, error) {
+	if err := checkPassphrase(kdf, passphrase); err != nil {
+		return nil, err
 	}
 	switch kdf {
 	case KDFNone:

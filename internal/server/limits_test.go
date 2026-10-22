@@ -1,14 +1,17 @@
 package server_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
@@ -279,5 +282,93 @@ func TestRefusedSourceDoesNotSpendItsRange(t *testing.T) {
 	third.ip = "198.51.100.3"
 	if resp, _ := h.create(third); resp.StatusCode != 429 {
 		t.Fatalf("the /24 budget still applies: %d", resp.StatusCode)
+	}
+}
+
+type windowEndingStore struct {
+	store.Store
+	clock *fakeClock
+	after time.Duration
+}
+
+func (s windowEndingStore) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
+	counts, err := s.Store.RateHit(ctx, hits)
+	s.clock.Advance(s.after)
+	return counts, err
+}
+
+func TestOverLimitRequestAtTheWindowEndIsRefused(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.CreatePerHour = 1
+	h := newHarness(t, cfg)
+	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
+	h.store = windowEndingStore{Store: h.store, clock: h.clock, after: time.Hour}
+	h.reopen(h.cfg)
+	if resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b")); resp.StatusCode != 429 {
+		t.Fatalf("a request counted over the limit must be refused even when its window ends meanwhile: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestSourceOverItsDailyBytesDoesNotSpendItsRangeHour(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	h := newHarness(t, cfg)
+	big := strings.Repeat("n", 5000)
+	probe := newMessage(t, core.KDFNone, "", 1, 3600, big)
+	cfg.Rates.CreatePerHour = 2
+	cfg.Rates.CoarseMultiplier = 1
+	cfg.Rates.CreateBytesPerDay = int64(len(probe.object) - 1)
+	h.reopen(cfg)
+	for i := range 2 {
+		m := newMessage(t, core.KDFNone, "", 1, 3600, big)
+		m.ip = "198.51.100.1"
+		if resp, _ := h.create(m); resp.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("create %d over the daily bytes: %d", i+1, resp.StatusCode)
+		}
+	}
+	neighbour := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	neighbour.ip = "198.51.100.2"
+	if resp, body := h.create(neighbour); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("a source refused by its daily limit must not spend its /24 hour: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestRefusedReaderDoesNotSpendItsRange(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.ReadPerHour = 1
+	cfg.Rates.CoarseMultiplier = 2
+	h := newHarness(t, cfg)
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	h.mustCreate(m)
+	read := func(ip string) int {
+		reader := *m
+		reader.ip = ip
+		resp, _ := h.metadata(&reader)
+		return resp.StatusCode
+	}
+	for i := range 4 {
+		if want := map[bool]int{true: 200, false: 429}[i == 0]; read("198.51.100.1") != want {
+			t.Fatalf("read %d from one source, want %d", i+1, want)
+		}
+	}
+	if code := read("198.51.100.2"); code != http.StatusOK {
+		t.Fatalf("a refused reader must not use up its /24: %d", code)
+	}
+	if code := read("198.51.100.3"); code != http.StatusTooManyRequests {
+		t.Fatalf("the /24 read budget still applies: %d", code)
+	}
+}
+
+func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.CreatePerHour = 1
+	h := newHarness(t, cfg)
+	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
+	resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b"))
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "3601" || decodeJSON(t, body)["retry_after"] != float64(3601) {
+		t.Fatalf("an hourly refusal at 10:00 must point to 11:00: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
+	}
+	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
+	if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") != "60" {
+		t.Fatalf("prefetch: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
 }

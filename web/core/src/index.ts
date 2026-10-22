@@ -35,7 +35,7 @@ export {
   KdfMismatchError,
   LinkError,
   MetaError,
-  PassphraseError,
+  MalformedPassphraseError,
   PlaintextError,
   PolicyError,
   TooLargeError,

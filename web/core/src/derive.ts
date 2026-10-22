@@ -1,6 +1,6 @@
 import { arrayBufferBacked, assertLength, concat, utf8 } from './bytes.ts';
 import { hash } from './ids.ts';
-import { derivePassphraseKey, type KdfId } from './kdf.ts';
+import { assertWellFormedPassphrase, derivePassphraseKey, type KdfId } from './kdf.ts';
 import { ID_LEN, KEY_LEN, SECRET_LEN, TOKEN_LEN } from './limits.ts';
 
 const HSALT_LABEL = 'nylzo/v1/hkdf-salt';
@@ -59,6 +59,7 @@ export async function deriveAll(
   kdfId: KdfId,
   passphrase: string,
 ): Promise<DerivedKeys> {
+  assertWellFormedPassphrase(kdfId, passphrase);
   const link = await deriveLink(id, s);
   const p = await derivePassphraseKey(kdfId, passphrase, link.saltPw);
   const content = await deriveContent(id, s, p);

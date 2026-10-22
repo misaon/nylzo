@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/url"
+	"os"
 	"time"
 
 	driver "modernc.org/sqlite"
@@ -92,6 +93,7 @@ const (
 	readerConns  = 8
 	openAttempts = 10
 	openBackoff  = 20 * time.Millisecond
+	openFastFail = 200 * time.Millisecond
 )
 
 func migrate(db *sql.DB) error {
@@ -133,9 +135,15 @@ func dsn(path string, write bool) string {
 }
 
 func Open(path string) (*Store, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	f.Close()
 	for attempt := 1; ; attempt++ {
+		start := time.Now()
 		s, err := open(path)
-		if err == nil || !busy(err) || attempt == openAttempts {
+		if err == nil || !busy(err) || attempt == openAttempts || time.Since(start) > openFastFail {
 			return s, err
 		}
 		time.Sleep(time.Duration(attempt)*openBackoff + rand.N(openBackoff))
@@ -168,6 +176,11 @@ func open(path string) (*Store, error) {
 	}
 	r.SetMaxOpenConns(readerConns)
 	r.SetMaxIdleConns(readerConns)
+	if err := r.Ping(); err != nil {
+		r.Close()
+		w.Close()
+		return nil, err
+	}
 	return &Store{w: w, r: r}, nil
 }
 
@@ -203,7 +216,7 @@ func (s *Store) tx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	return tx.Commit()
 }
 
-func (s *Store) Create(ctx context.Context, m *store.Message) error {
+func (s *Store) Create(ctx context.Context, m *store.Message, counters ...store.RateHit) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var exists int
 		err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT id FROM messages WHERE id = ? UNION ALL SELECT id FROM tombstones WHERE id = ?)`, m.ID, m.ID).Scan(&exists)
@@ -224,7 +237,15 @@ func (s *Store) Create(ctx context.Context, m *store.Message) error {
 		_, err = tx.ExecContext(ctx, `INSERT INTO messages (id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			m.ID, m.Version, m.KDF, m.Flags, string(store.StateAvailable), ms(m.CreatedAt), ms(m.ExpiresAt), m.TTLSeconds, m.OpensMax, m.OpensMax, m.PepperID, m.ReadMAC, m.ManageMAC, verifier, m.Size, blobRef)
-		return err
+		if err != nil {
+			return err
+		}
+		for _, h := range counters {
+			if _, err := hitInTx(ctx, tx, h); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -258,7 +279,7 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 		return store.Record{}, err
 	}
 	if kind == "t" {
-		return store.Record{Tombstone: &store.Tombstone{ID: m.ID, PepperID: byte(pepperID), ReadMAC: m.ReadMAC, ManageMAC: m.ManageMAC, State: store.State(state), FirstOpenedAt: optTime(firstOpened), EndedAt: fromMS(endedAt.Int64), PurgeAt: fromMS(purgeAt.Int64)}}, nil
+		return store.Record{Tombstone: &store.Tombstone{ID: m.ID, PepperID: byte(pepperID), ReadMAC: m.ReadMAC, ManageMAC: m.ManageMAC, State: store.State(state), FirstOpenedAt: optTime(firstOpened), EndedAt: fromMS(endedAt.Int64).Truncate(time.Minute), PurgeAt: fromMS(purgeAt.Int64)}}, nil
 	}
 	m.Version = uint8(version)
 	m.KDF = uint8(kdf)
@@ -419,12 +440,16 @@ func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.T
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		var expires int64
 		var downloads int
-		err := tx.QueryRowContext(ctx, `SELECT lease_expires_at, downloads FROM leases WHERE row_id = ?`, leaseRowID).Scan(&expires, &downloads)
+		var ending sql.NullString
+		err := tx.QueryRowContext(ctx, `SELECT l.lease_expires_at, l.downloads, m.ending FROM leases l JOIN messages m ON m.id = l.id WHERE l.row_id = ?`, leaseRowID).Scan(&expires, &downloads, &ending)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && expires <= ms(now)) {
 			return store.ErrLeaseInvalid
 		}
 		if err != nil {
 			return err
+		}
+		if ending.Valid {
+			return &store.GoneError{State: store.State(ending.String)}
 		}
 		if downloads >= store.MaxLeaseDownload {
 			return store.ErrLeaseLimit
@@ -434,38 +459,55 @@ func (s *Store) RecordDownload(ctx context.Context, leaseRowID int64, now time.T
 	})
 }
 
-func (s *Store) Ack(ctx context.Context, leaseRowID int64) error {
-	_, err := s.w.ExecContext(ctx, `DELETE FROM leases WHERE row_id = ?`, leaseRowID)
-	return err
-}
-
-func (s *Store) ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error) {
+func (s *Store) Ack(ctx context.Context, leaseRowID int64, now time.Time) (string, error) {
 	var ref string
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		var opensRemaining int
-		var blobRef sql.NullString
-		err := tx.QueryRowContext(ctx, `SELECT opens_remaining, blob_ref FROM messages WHERE id = ?`, id).Scan(&opensRemaining, &blobRef)
+		var id string
+		err := tx.QueryRowContext(ctx, `DELETE FROM leases WHERE row_id = ? RETURNING id`, leaseRowID).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if opensRemaining != 0 || !blobRef.Valid || blobRef.String == "" {
-			return nil
-		}
-		var active int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM leases WHERE id = ? AND lease_expires_at > ?`, id, ms(now)).Scan(&active); err != nil {
-			return err
-		}
-		if active > 0 {
-			return nil
-		}
-		ref = blobRef.String
-		_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ? AND ending IS NULL AND expires_at > ?`, string(store.StateOpened), id, ms(now))
+		ref, err = releaseInTx(ctx, tx, id, now)
 		return err
 	})
 	return ref, err
+}
+
+func (s *Store) ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error) {
+	var ref string
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		var err error
+		ref, err = releaseInTx(ctx, tx, id, now)
+		return err
+	})
+	return ref, err
+}
+
+func releaseInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (string, error) {
+	var opensRemaining int
+	var blobRef sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT opens_remaining, blob_ref FROM messages WHERE id = ?`, id).Scan(&opensRemaining, &blobRef)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if opensRemaining != 0 || !blobRef.Valid || blobRef.String == "" {
+		return "", nil
+	}
+	var active int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM leases WHERE id = ? AND lease_expires_at > ?`, id, ms(now)).Scan(&active); err != nil {
+		return "", err
+	}
+	if active > 0 {
+		return "", nil
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ? AND ending IS NULL AND expires_at > ?`, string(store.StateOpened), id, ms(now))
+	return blobRef.String, err
 }
 
 func (s *Store) ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error {
@@ -546,8 +588,13 @@ func endInTx(ctx context.Context, tx *sql.Tx, m *store.Message, state store.Stat
 	if m.FirstOpenedAt != nil {
 		firstOpened = ms(*m.FirstOpenedAt)
 	}
+	ended := now
+	if m.Ending == "" && !now.Before(m.ExpiresAt) {
+		ended = m.ExpiresAt
+	}
+	ended = ended.UTC().Truncate(time.Minute)
 	_, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO tombstones (id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.PepperID, m.ReadMAC, m.ManageMAC, string(state), firstOpened, ms(now.UTC().Truncate(time.Minute)), ms(now.Add(store.TombstoneTTL)))
+		m.ID, m.PepperID, m.ReadMAC, m.ManageMAC, string(state), firstOpened, ms(ended), ms(ended.Add(store.TombstoneTTL)))
 	return err
 }
 
@@ -555,10 +602,7 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 	out := make([]store.RateCount, 0, len(hits))
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		for _, h := range hits {
-			var c store.RateCount
-			err := tx.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, ?, ?)
-				ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1, bytes = bytes + excluded.bytes RETURNING count, bytes`,
-				h.Key, ms(h.WindowStart), h.Bytes, ms(h.PurgeAt)).Scan(&c.Count, &c.Bytes)
+			c, err := hitInTx(ctx, tx, h)
 			if err != nil {
 				return err
 			}
@@ -572,11 +616,19 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 	return out, err
 }
 
-func (s *Store) RateReserve(ctx context.Context, h store.RateHit, limit int64) (int64, bool, error) {
+func hitInTx(ctx context.Context, tx *sql.Tx, h store.RateHit) (store.RateCount, error) {
+	var c store.RateCount
+	err := tx.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, ?, ?)
+		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1, bytes = bytes + excluded.bytes RETURNING count, bytes`,
+		h.Key, ms(h.WindowStart), h.Bytes, ms(h.PurgeAt)).Scan(&c.Count, &c.Bytes)
+	return c, err
+}
+
+func (s *Store) RateReserve(ctx context.Context, h store.RateHit) (int64, bool, error) {
 	var count int64
 	err := s.w.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`,
-		h.Key, ms(h.WindowStart), ms(h.PurgeAt), limit).Scan(&count)
+		h.Key, ms(h.WindowStart), ms(h.PurgeAt), h.Limit).Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}

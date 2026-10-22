@@ -45,6 +45,8 @@ func Run(t *testing.T, open Factory) {
 	t.Run("AK7Expiry", func(t *testing.T) { testExpiry(t, open) })
 	t.Run("BurnAndCancel", func(t *testing.T) { testBurnCancel(t, open) })
 	t.Run("RateHitAtomic", func(t *testing.T) { testRateHit(t, open) })
+	t.Run("CreateCountsWithTheRow", func(t *testing.T) { testCreateCounters(t, open) })
+	t.Run("DownloadAfterRecordedEnding", func(t *testing.T) { testDownloadAfterRecordedEnding(t, open) })
 	t.Run("RateHitStopsAtFirstRefusal", func(t *testing.T) { testRateHitOrder(t, open) })
 	t.Run("SweepBatches", func(t *testing.T) { testSweepBatches(t, open) })
 	t.Run("BlobsIdempotentDelete", func(t *testing.T) { testBlobsDelete(t, open) })
@@ -332,7 +334,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 		t.Fatal("released while leases active")
 	}
 	for i, l := range leases {
-		if err := f.s.Ack(f.ctx, l.RowID); err != nil {
+		if _, err := f.s.Ack(f.ctx, l.RowID, baseTime.Add(time.Minute)); err != nil {
 			t.Fatal(err)
 		}
 		released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime.Add(time.Minute))
@@ -402,8 +404,8 @@ func testCrashBeforeDelete(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
-		t.Fatal(err)
+	if ref, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil || ref != m.ID {
+		t.Fatalf("the ack of the last lease must hand out the blob in the same transaction: %q %v", ref, err)
 	}
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime); ref != m.ID {
 		t.Fatal("release should return the ref")
@@ -430,7 +432,7 @@ func testCrashBeforeClear(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+	if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime)
@@ -586,10 +588,10 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+		if _, _, err := f.s.MarkEnding(f.ctx, m.ID, recorded, baseTime); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := f.s.MarkEnding(f.ctx, m.ID, recorded, baseTime); err != nil {
+		if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
 			t.Fatal(err)
 		}
 		if released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime); err != nil || !released {
@@ -604,7 +606,7 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+	if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	if ref, err := f.s.ReleaseIfDone(f.ctx, opened.ID, baseTime); err != nil || ref == "" {
@@ -667,7 +669,7 @@ func testEndMessageDeleteFails(t *testing.T, open Factory) {
 func testRateReserve(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	day := baseTime.Truncate(24 * time.Hour)
-	hit := store.RateHit{Key: "global:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
+	hit := store.RateHit{Key: "global:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 10}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	granted := 0
@@ -675,7 +677,7 @@ func testRateReserve(t *testing.T, open Factory) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, ok, err := f.s.RateReserve(f.ctx, hit, 10)
+			_, ok, err := f.s.RateReserve(f.ctx, hit)
 			if err != nil {
 				t.Error(err)
 				return
@@ -694,7 +696,7 @@ func testRateReserve(t *testing.T, open Factory) {
 	if err := f.s.RateRelease(f.ctx, hit.Key, hit.WindowStart); err != nil {
 		t.Fatal(err)
 	}
-	if c, ok, err := f.s.RateReserve(f.ctx, hit, 10); err != nil || !ok || c != 10 {
+	if c, ok, err := f.s.RateReserve(f.ctx, hit); err != nil || !ok || c != 10 {
 		t.Fatalf("a released slot must be reusable: %d %v %v", c, ok, err)
 	}
 	if got, _ := f.s.RateGet(f.ctx, hit.Key, hit.WindowStart); got.Count != 10 {
@@ -791,7 +793,7 @@ func testBlobStays(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.Ack(f.ctx, res.Lease.RowID); err != nil {
+	if _, err := f.s.Ack(f.ctx, res.Lease.RowID, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	released, err := store.Release(f.ctx, f.s, f.b, m.ID, baseTime.Add(time.Hour))
@@ -877,8 +879,50 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if _, err := store.EndMessage(f.ctx, f.s, f.b, late.ID, store.StateDeleted, endedAt); err != nil {
 		t.Fatal(err)
 	}
-	if rec := f.get(late.ID); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Minute)) || !rec.Tombstone.PurgeAt.Equal(endedAt.Add(store.TombstoneTTL)) {
-		t.Fatalf("ended_at must be rounded down to the minute and purge_at kept exact: %+v", rec.Tombstone)
+	if rec := f.get(late.ID); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Minute)) || !rec.Tombstone.PurgeAt.Equal(rec.Tombstone.EndedAt.Add(store.TombstoneTTL)) {
+		t.Fatalf("ended_at must be rounded down to the minute and purge_at must follow it: %+v", rec.Tombstone)
+	}
+	expired := f.create(1, time.Hour, false)
+	if _, err := store.EndMessage(f.ctx, f.s, f.b, expired.ID, store.StateExpired, baseTime.Add(time.Hour+4*time.Minute+30*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if rec := f.get(expired.ID); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Hour)) || !rec.Tombstone.PurgeAt.Equal(baseTime.Add(time.Hour+store.TombstoneTTL)) {
+		t.Fatalf("an expiry ends at expires_at, not when it was first noticed: %+v", rec.Tombstone)
+	}
+}
+
+func testCreateCounters(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	day := baseTime.Truncate(24 * time.Hour)
+	hit := store.RateHit{Key: "global:stored:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
+	m := f.create(1, time.Hour, false)
+	again := *m
+	if err := f.s.Create(f.ctx, &again, hit); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("duplicate create: %v", err)
+	}
+	fresh := *m
+	fresh.ID = core.NewID().String()
+	if err := f.s.Create(f.ctx, &fresh, hit); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := f.s.RateGet(f.ctx, hit.Key, day); err != nil || c.Count != 1 {
+		t.Fatalf("only the stored create counts: %+v %v", c, err)
+	}
+}
+
+func testDownloadAfterRecordedEnding(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	m := f.create(2, time.Hour, false)
+	res, err := f.claim(m, baseTime, 1, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateCancelled, baseTime); err != nil {
+		t.Fatal(err)
+	}
+	var gone *store.GoneError
+	if err := f.s.RecordDownload(f.ctx, res.Lease.RowID, baseTime.Add(time.Second)); !errors.As(err, &gone) || gone.State != store.StateCancelled {
+		t.Fatalf("a download after a recorded ending must report it: %v", err)
 	}
 }
 

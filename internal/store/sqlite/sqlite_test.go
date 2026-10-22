@@ -2,7 +2,9 @@ package sqlite_test
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -110,7 +112,10 @@ func openConcurrently(t *testing.T, path string, n int) {
 		wg.Go(func() {
 			s, err := sqlite.Open(path)
 			if err == nil {
-				err = s.Close()
+				if _, gerr := s.Get(t.Context(), "AAAAAAAAAAAAAAAAAAAAAA"); gerr != nil && !errors.Is(gerr, store.ErrNotFound) {
+					err = gerr
+				}
+				err = errors.Join(err, s.Close())
 			}
 			errs <- err
 		})
@@ -120,6 +125,85 @@ func openConcurrently(t *testing.T, path string, n int) {
 	for err := range errs {
 		if err != nil {
 			t.Fatalf("concurrent open of %s: %v", filepath.Base(path), err)
+		}
+	}
+}
+
+func TestLegacyTombstoneEndedAtIsRounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ended := time.Date(2026, 10, 22, 10, 1, 35, 300e6, time.UTC)
+	if _, err := raw.Exec(`INSERT INTO tombstones (id, pepper_id, read_mac, manage_mac, state, ended_at, purge_at) VALUES ('AAAAAAAAAAAAAAAAAAAAAA', 7, x'00', x'00', 'deleted', ?, ?)`, ended.UnixMilli(), ended.Add(store.TombstoneTTL).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+	s, err = sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	rec, err := s.Get(t.Context(), "AAAAAAAAAAAAAAAAAAAAAA")
+	if err != nil || rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(ended.Truncate(time.Minute)) {
+		t.Fatalf("a tombstone written before the rounding must be served rounded: %+v %v", rec, err)
+	}
+}
+
+func TestOpenGivesUpBehindAHeldWriteLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	holder, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	tx, err := holder.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO rate_counters VALUES ('x', 0, 1, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if s, err := sqlite.Open(path); err == nil {
+		s.Close()
+		t.Fatal("Open succeeded behind a held write lock")
+	}
+	// gstack-timing-ok: bounds a retry loop that used to wait ten busy timeouts
+	if d := time.Since(start); d > 15*time.Second {
+		t.Fatalf("Open retried for %v behind a held write lock", d)
+	}
+}
+
+func TestDatabaseFilesArePrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(60, 0)}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{path, path + "-wal", path + "-shm"} {
+		info, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("%s is readable by other users: %v", filepath.Base(name), info.Mode().Perm())
 		}
 	}
 }

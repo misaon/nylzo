@@ -56,16 +56,20 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	}
 	wrongToken := core.Encode(core.NewSecret()[:])
 	classes := []struct {
-		name string
-		req  func() request
+		name     string
+		endpoint string
+		req      func() request
 	}{
-		{"unknown-id", func() request {
+		{"unknown-id", "metadata", func() request {
 			return request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
 		}},
-		{"wrong-R", func() request {
+		{"wrong-R", "metadata", func() request {
 			return request{method: "GET", path: "/api/v1/messages/" + live.id.String(), headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
 		}},
-		{"wrong-M", func() request {
+		{"unknown-id", "status", func() request {
+			return request{method: "GET", path: "/api/v1/messages/" + core.NewID().String() + "/status", headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
+		}},
+		{"wrong-M", "status", func() request {
 			return request{method: "GET", path: "/api/v1/messages/" + live.id.String() + "/status", headers: map[string]string{"Authorization": "Bearer " + wrongToken}}
 		}},
 	}
@@ -111,25 +115,25 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 		sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
 		medians[ci] = d[len(d)/2]
 		p95s[ci] = d[len(d)*95/100]
-		t.Logf("AK21 %-10s median %s p95 %s", classes[ci].name, medians[ci], p95s[ci])
+		t.Logf("AK21 %-8s %-10s median %s p95 %s", classes[ci].endpoint, classes[ci].name, medians[ci], p95s[ci])
 	}
-	minMedian, minP95 := medians[0], p95s[0]
-	for ci := range classes {
-		if medians[ci] < minMedian {
-			minMedian = medians[ci]
+	minMedian, minP95 := map[string]time.Duration{}, map[string]time.Duration{}
+	for ci, c := range classes {
+		if m, ok := minMedian[c.endpoint]; !ok || medians[ci] < m {
+			minMedian[c.endpoint] = medians[ci]
 		}
-		if p95s[ci] < minP95 {
-			minP95 = p95s[ci]
+		if p, ok := minP95[c.endpoint]; !ok || p95s[ci] < p {
+			minP95[c.endpoint] = p95s[ci]
 		}
 	}
-	for ci := range classes {
+	for ci, c := range classes {
 		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2)
-		if medians[ci] > 3*minMedian {
-			t.Fatalf("%s median %s exceeds 3x the fastest class %s", classes[ci].name, medians[ci], minMedian)
+		if medians[ci] > 3*minMedian[c.endpoint] {
+			t.Fatalf("%s %s median %s exceeds 3x the fastest class %s on the same endpoint", c.endpoint, c.name, medians[ci], minMedian[c.endpoint])
 		}
 		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2)
-		if p95s[ci] > 5*minP95 {
-			t.Fatalf("%s p95 %s exceeds 5x the fastest class %s", classes[ci].name, p95s[ci], minP95)
+		if p95s[ci] > 5*minP95[c.endpoint] {
+			t.Fatalf("%s %s p95 %s exceeds 5x the fastest class %s on the same endpoint", c.endpoint, c.name, p95s[ci], minP95[c.endpoint])
 		}
 	}
 }

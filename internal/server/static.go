@@ -30,7 +30,8 @@ func isPreviewAgent(ua string) bool {
 }
 
 func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
-	if id := r.PathValue("id"); id != "" {
+	id := r.PathValue("id")
+	if id != "" {
 		if _, err := core.ParseID(id); err != nil {
 			http.NotFound(w, r)
 			return
@@ -39,7 +40,7 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 	nonce := rand.Text()
 	w.Header().Set("Content-Security-Policy", fmt.Sprintf(cspTemplate, nonce, nonce))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if isPreviewAgent(r.UserAgent()) {
+	if id != "" && isPreviewAgent(r.UserAgent()) {
 		w.Write([]byte(previewHTML))
 		return
 	}

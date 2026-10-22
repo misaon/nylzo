@@ -12,8 +12,8 @@ export class KdfError extends Error {
   }
 }
 
-export class PassphraseError extends Error {
-  override readonly name = 'PassphraseError';
+export class MalformedPassphraseError extends Error {
+  override readonly name = 'MalformedPassphraseError';
   constructor(message = 'passphrase is not well-formed Unicode') {
     super(message);
   }

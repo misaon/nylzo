@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	pendingRetry   = time.Minute
 	powBusyRetry   = 5 * time.Second
 	abuseFullRetry = time.Hour
 	prefetchRetry  = time.Minute
@@ -15,7 +16,7 @@ const (
 )
 
 func setRetryAfter(w http.ResponseWriter, d time.Duration) {
-	w.Header().Set("Retry-After", strconv.FormatInt(int64(d/time.Second), 10))
+	w.Header().Set("Retry-After", strconv.FormatInt(max(1, ceilSeconds(d)), 10))
 }
 
 type apiError struct {

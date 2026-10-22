@@ -16,14 +16,13 @@ import (
 const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
-	MaxPoWConcurrency = 8
+	MaxPoWConcurrency = 4
 	MaxPoWDifficulty  = 8
 	MaxTTL            = 7 * 24 * time.Hour
 )
 
 type Limits struct {
 	MaxFileBytes   int64
-	MaxTextBytes   int64
 	MaxObjectBytes int64
 	MaxTTL         time.Duration
 	DefaultTTL     time.Duration
@@ -69,7 +68,6 @@ func Defaults() Config {
 		SweepInterval:     5 * time.Minute,
 		Limits: Limits{
 			MaxFileBytes:   core.MaxFileBytes,
-			MaxTextBytes:   core.MaxTextBytes,
 			MaxObjectBytes: core.ObjectLimit(core.MaxFileBytes),
 			MaxTTL:         MaxTTL,
 			DefaultTTL:     24 * time.Hour,

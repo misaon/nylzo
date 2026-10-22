@@ -72,6 +72,9 @@ func DeriveContent(id ID, s *[SecretLen]byte, p []byte) (ContentKeys, error) {
 }
 
 func DeriveAll(id ID, s *[SecretLen]byte, kdf KDF, passphrase string) (LinkKeys, ContentKeys, error) {
+	if err := checkPassphrase(kdf, passphrase); err != nil {
+		return LinkKeys{}, ContentKeys{}, err
+	}
 	link, err := DeriveLink(id, s)
 	if err != nil {
 		return link, ContentKeys{}, err

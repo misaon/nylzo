@@ -56,8 +56,8 @@ func TestSourceLimiterKeepsMostSourcesWhenFull(t *testing.T) {
 
 type cancelAfterCommit struct{ store.Store }
 
-func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit, limit int64) (int64, bool, error) {
-	n, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit, limit)
+func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
+	n, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit)
 	if ctx.Err() != nil {
 		return 0, false, ctx.Err()
 	}

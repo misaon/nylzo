@@ -477,7 +477,7 @@ func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
 	h.mustCreate(m)
 	cfg := h.cfg
 	cfg.Pepper = nil
-	report, err := server.NewSweeper(cfg, h.store, h.blobs, nil).SweepOnce(t.Context())
+	report, err := server.NewSweeper(h.store, h.blobs).SweepOnce(t.Context())
 	if err != nil || report.Expired != 1 || h.blobExists(m.id) {
 		t.Fatalf("sweep without pepper: %+v %v", report, err)
 	}
@@ -1192,8 +1192,8 @@ type slotSignals struct {
 	released chan struct{}
 }
 
-func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit, limit int64) (int64, bool, error) {
-	n, ok, err := s.Store.RateReserve(ctx, hit, limit)
+func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
+	n, ok, err := s.Store.RateReserve(ctx, hit)
 	if hit.Key == server.GlobalCreatesKey {
 		s.reserved <- struct{}{}
 	}
@@ -1244,9 +1244,9 @@ func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
 	cfg.Rates.GlobalDailyCreates = 2
 	h := newHarness(t, cfg)
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	hit := store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
+	hit := store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 2}
 	for range 2 {
-		if _, ok, err := h.store.RateReserve(t.Context(), hit, 2); err != nil || !ok {
+		if _, ok, err := h.store.RateReserve(t.Context(), hit); err != nil || !ok {
 			t.Fatal(err)
 		}
 	}
@@ -1437,7 +1437,7 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	inner := h.store
 	h.store = &fillingStore{Store: inner, fill: func() {
-		if _, ok, err := inner.RateReserve(context.Background(), store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}, 1); err != nil || !ok {
+		if _, ok, err := inner.RateReserve(context.Background(), store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 1}); err != nil || !ok {
 			t.Error(ok, err)
 		}
 	}}
@@ -1492,5 +1492,40 @@ func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
 	fb.set(func(b *faultyBlobs) { b.failOpen = nil })
 	if _, meta := h.metadata(m); meta["opens_remaining"] != float64(1) {
 		t.Fatalf("an open error spent an open: %v", meta)
+	}
+}
+
+func TestFormatCharactersCannotSplitARedactedToken(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	h.mustCreate(m)
+	secret := core.Encode(m.secret[:])
+	split := secret[:15] + "​" + secret[15:30] + "­" + secret[30:]
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "pasted " + split + " end"})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.7", body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
+		t.Fatalf("report: %d", resp.StatusCode)
+	}
+	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), secret[:15]) {
+		t.Fatalf("a token split by format characters reached the report file: %s", data)
+	}
+}
+
+func TestHTTPErrorLogReportsAndResetsDroppedLines(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	errLog := h.srv.HTTPServer().ErrorLog
+	for range 40 {
+		errLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
+	}
+	h.clock.Advance(time.Second)
+	errLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
+	h.clock.Advance(time.Second)
+	errLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
+	lines := strings.Split(strings.TrimSpace(h.logBuf.String()), "\n")
+	if n := len(lines); n < 2 || !strings.Contains(lines[n-2], `"dropped":20`) || !strings.Contains(lines[n-1], `"dropped":0`) {
+		t.Fatalf("dropped lines must be reported once and then reset: %v", lines[max(0, len(lines)-2):])
 	}
 }

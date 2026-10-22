@@ -22,6 +22,7 @@ const (
 	writeTimeout      = 120 * time.Second
 	idleTimeout       = 30 * time.Second
 	maxHeaderBytes    = 8 << 10
+	h2cReceiveBuffer  = 128 << 10
 	httpErrorLogRate  = 1
 	httpErrorLogBurst = 20
 	reconcileKey      = "sweep:reconcile:d"
@@ -101,6 +102,7 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
+		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cReceiveBuffer, MaxReceiveBufferPerStream: h2cReceiveBuffer},
 		ErrorLog:          log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
 	}
 }
@@ -235,6 +237,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
 	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
 	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
+	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", s.handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/messages/{id}/ack", s.handleAck)
 	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
 	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
@@ -247,9 +250,6 @@ func (s *Server) routes() http.Handler {
 	return s.logging(s.securityHeaders(s.prefetchGuard(s.throttle(mux))))
 }
 
-func NewSweeper(cfg Config, st store.Store, blobs store.Blobs, log *slog.Logger) *Server {
-	if log == nil {
-		log = slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	}
-	return &Server{cfg: cfg, store: st, blobs: blobs, clock: time.Now, log: log}
+func NewSweeper(st store.Store, blobs store.Blobs) *Server {
+	return &Server{store: st, blobs: blobs, clock: time.Now}
 }

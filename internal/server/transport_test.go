@@ -39,7 +39,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String()})
 		csp := resp.Header.Get("Content-Security-Policy")
-		if !strings.Contains(csp, "default-src 'none'") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || !strings.Contains(csp, "require-trusted-types-for 'script'") {
+		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "font-src 'self'") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || !strings.Contains(csp, "require-trusted-types-for 'script'") {
 			t.Fatalf("csp: %s", csp)
 		}
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
@@ -55,6 +55,9 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String(), headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}})
 	if resp.StatusCode != 200 || strings.Contains(string(body), "<script") || strings.Contains(string(body), "<style") {
 		t.Fatalf("preview agent page: %d %s", resp.StatusCode, body)
+	}
+	if _, home := h.do(request{method: "GET", path: "/", headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}}); strings.Contains(string(home), "one-time message") {
+		t.Fatalf("the home page must not tell a preview agent it opens a message: %s", home)
 	}
 	for _, path := range []string{"/m/" + core.NewID().String(), "/api/v1/instance"} {
 		resp, _ := h.do(request{method: "GET", path: path, headers: map[string]string{"Sec-Purpose": "prefetch"}})
@@ -312,5 +315,30 @@ func TestTrustedProxyInMappedForm(t *testing.T) {
 		if got := server.ClientAddrForTest(cfg, "", remote, "198.51.100.9", ""); got.String() != "198.51.100.9" {
 			t.Fatalf("proxy %s written in mapped form must be trusted: %s", remote, got)
 		}
+	}
+}
+
+func TestH2CReceiveBufferIsBounded(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	hs := h.srv.HTTPServer()
+	if hs.HTTP2 == nil || hs.HTTP2.MaxReceiveBufferPerConnection == 0 || hs.HTTP2.MaxReceiveBufferPerConnection > 256<<10 || hs.HTTP2.MaxReceiveBufferPerStream > 256<<10 {
+		t.Fatal("h2c must not buffer up to 1 MiB of unread request body per stream")
+	}
+}
+
+func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
+	env := func(v string) func(string) string {
+		return func(k string) string {
+			if k == "NYLZO_POW_CONCURRENCY" {
+				return v
+			}
+			return ""
+		}
+	}
+	if _, err := server.FromEnv(env("4"), false); err != nil {
+		t.Fatalf("the spec allows 4 concurrent PoW checks: %v", err)
+	}
+	if _, err := server.FromEnv(env("5"), false); err == nil {
+		t.Fatal("NYLZO_POW_CONCURRENCY above 4 accepted")
 	}
 }

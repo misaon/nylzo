@@ -136,7 +136,7 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 
 All comparisons MUST be constant-time. When a row does not exist, the server MUST still compute a mac and compare it against a dummy value so that the work and the response are identical.
 
-Tombstones round `first_opened_at` and `ended_at` down to the minute. A lease row keeps `lease_expires_at` to the millisecond, so while it exists (the 120 s lease, until the ack or the next sweep) it reveals the claim time that precisely; this is accepted.
+Tombstones round `first_opened_at` and `ended_at` down to the minute, and `purge_at` is `ended_at + 7 d` from the rounded value. An expiry ends at `expires_at`, so a tombstone never reveals when someone first touched the expired link. A lease row keeps `lease_expires_at` to the millisecond, so while it exists (the 120 s lease, until the ack or the next sweep) it reveals the claim time that precisely; this is accepted.
 
 ### 5.3 Address buckets
 
@@ -200,7 +200,7 @@ X-Nylzo-Pow: {token}            only when the instance reports pow.required
 body: object (§3)
 ```
 
-Server order of checks, each before reading the body: (1) parse the header and the id syntax; (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap: 503 when the counter has reached the cap, PoW when it is at or above 50 % (403, §8.1), then one conditional increment reserves a slot (503 when none is left by then). A request that reserved a slot at or above 50 % without a verified PoW returns the slot and answers 403 `pow`; (5) id absent from `messages` and `tombstones` (409, same for both). The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `expires_at = now + ttl_s`, and answers:
+Server order of checks, each before reading the body: (1) parse the header and the id syntax; (2) `Content-Length` present (411), equal to `size` (400), below the limit (413); (3) atomic per-bucket rate counters, counting the attempt even if it fails later (429 when over); (4) the global daily cap: 503 when the counter has reached the cap, PoW when it is at or above 50 % (403, §8.1), then one conditional increment reserves a slot (503 when none is left by then). A request that reserved a slot at or above 50 % without a verified PoW returns the slot and answers 403 `pow`; (5) id absent from `messages` and `tombstones` (409, same for both). The server then streams the body through a size-bounded reader, reads the 15-byte header, stores `version` from it and rejects (400) a `kdf_id` that differs from the header field, stores the blob and the row with `created_at` and `expires_at = created_at + ttl_s` taken when the upload has been stored, so a slow upload does not use up the TTL, and answers:
 
 ```
 201 {"id":"…","expires_at":"…"}
@@ -238,7 +238,7 @@ body: {"verifier":"{V}"}          only when passphrase_required
 410 {"error":"gone","state":"…"}
 ```
 
-Before the transaction the server checks that the blob exists. A missing blob on a message that has ended (a recorded ending, or `expires_at ≤ now`) answers 410 with the end state and finishes the ending; on any other message it answers 500 and spends no open.
+After it has read and checked the request body, and before the transaction, the server opens the blob and keeps it open for the response. A blob whose size differs from the stored `size` answers 500 and spends no open. A missing blob on a message that has ended (a recorded ending, or `expires_at ≤ now`) answers 410 with the end state and finishes the ending; on any other message it answers 500 and spends no open.
 
 In one storage transaction:
 
@@ -260,7 +260,7 @@ POST /api/v1/messages/{id}/ack     Authorization: Bearer {R}, X-Nylzo-Lease: {L}
   204; ends the lease early and calls ReleaseIfDone
 ```
 
-Blob downloads count in the read rate limit and are capped at 3 per lease. The blob is deleted as soon as `opens_remaining == 0` and no lease is active. A claim or download that finds the blob already deleted by a concurrent ending, including an expiry, answers 410 without `X-Nylzo-Lease` and with the end state (§7), finishing that ending first if it was interrupted. A missing blob on an unexpired message without a recorded ending is a storage fault: the server answers 500, keeps the row and logs an error.
+Blob downloads count in the read rate limit and are capped at 3 per lease. The blob is deleted as soon as `opens_remaining == 0` and no lease is active. A claim or download that finds the blob already deleted by a concurrent ending, including an expiry, answers 410 without `X-Nylzo-Lease` and with the end state (§7), finishing that ending first if it was interrupted. A missing blob on an unexpired message without a recorded ending is a storage fault: the server answers 500, keeps the row and logs an error. A download that finds an ending already recorded answers 410 with that state and finishes the ending. `HEAD` on `/blob` answers 404 like any other unsupported method, so it never spends a download. A stream that ends early is logged as `blob-stream`.
 
 ### 6.6 Burn, cancel, status, instance, abuse
 
@@ -269,7 +269,7 @@ POST /api/v1/messages/{id}/burn     Bearer R → 204; state = deleted, blob dele
 POST /api/v1/messages/{id}/cancel   Bearer M → 204; state = cancelled, blob deleted
 GET  /api/v1/messages/{id}/status   Bearer M → 200 {"state":"…","opens_used":N,"opens_max":N,"created_at":"…","expires_at":"…","first_opened_at":"…"?,"ended_at":"…"?,"failed_passphrase_attempts":N}
 GET  /api/v1/instance               → 200 {"limits":{"max_file_bytes":N,"max_text_bytes":N,"max_object_bytes":N,"max_ttl_s":N,"default_ttl_s":N,"max_opens":N,"default_kdf_id":N},"pow":{"required":bool,"difficulty":N,"challenge":"…"?},"versions":{"api":1,"envelope":1,"fragment":1,"server":"…"}}
-POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…"?} → 202 {"status":"accepted"} for known and unknown ids alike
+POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…"?} → 202 {"status":"accepted"} for known, unknown and malformed ids alike; a malformed id is answered before any rate counter
 ```
 
 - `failed_passphrase_attempts` is cumulative over the message lifetime (`fail_count_total`), not per day.
@@ -297,12 +297,13 @@ POST /api/v1/abuse                  {"id":"…","read_token":"{R}","reason":"…
 - `ReleaseIfDone(id)` is idempotent: when `opens_remaining == 0`, no lease is active and `blob_ref` is set, it returns `blob_ref`, and keeps returning it until the caller, after a successful `Blobs.Delete`, clears it with `ClearBlob(id, blob_ref)`. `Blobs.Delete` is idempotent and treats a missing object as success. Callers: ack, the lease-end timer, every request on the id, and the sweep.
 - Sweep (built-in goroutine every `NYLZO_SWEEP_INTERVAL`, default 5 min; or `nylzod sweep-once` from an external scheduler) ends expired messages, deletes expired leases, calls `ReleaseIfDone` for every message with `opens_remaining == 0` and a blob, finishes every recorded ending that a crash interrupted, purges tombstones after `purge_at`, purges expired `rate_counters` and `passphrase_attempts`, in batches of 1000 rows paged by key, so rows that keep failing never hide the rows after them. Every sweep also deletes temporary upload files older than 15 minutes. Once per UTC day the sweep lists the blob store and deletes objects older than 15 minutes whose ref no row holds. A counter in `rate_counters` records the day once a reconcile has listed both the rows and the blob store, so later sweeps that day, including separate `sweep-once` runs, skip it. A reconcile whose listing failed runs again on the next sweep; objects that failed to delete wait for the next day. The built-in sweeper also runs once at startup. Two sweeps that overlap may both reconcile, which is harmless. One failing item never stops the remaining steps, and `sweep-once` exits non-zero when any step failed.
 - Clocks: every comparison of times (expiry, leases, backoff, counter windows, PoW windows) uses the clock of the process that handles the request or runs the sweep. All instances and sweep jobs MUST run with synchronised clocks; the reference store does not read a clock of its own.
+- Reuse of an ended id: once the tombstone is purged, the id is unknown again and a new create may use it. Anyone who still holds the old link knows `S` and could publish new content under the same link. This is an accepted risk: the server keeps no trace of a message longer than 7 days after it ends.
 - Guarantees: access ends immediately (every request checks state, expiry and leases). Active data is deleted immediately on burn, cancel and the ack of the last lease; after the last lease expires without ack, at the end of the lease on a best-effort timer and at the latest by the next sweep.
 
 ## 8. Rate limits, caps, proof of work
 
 - In-memory token buckets in front of the database for `/api/*`, checked in order: one per source, keyed by the /32 or /64 address bucket (§5.3; `NYLZO_RATE_SOURCE_RPS` default 10 requests per second, `NYLZO_RATE_SOURCE_BURST` default 20); one per prefix, keyed by the /24 or /48 bucket, with half the instance rate and burst; and one per instance (50 requests per second, burst 100). A request that an earlier bucket refuses takes no token from the later ones, so one /64 or /32 source, or one /48 or /24 range, cannot take more than half of the instance bucket. Many sources from different ranges can still drain it; the design does not claim availability against them. Each per-source and per-prefix table tracks at most 65536 entries; when full it drops entries that have refilled, then a random eighth. `/m/*` never queries the database and is not throttled. The id syntax is checked before any query.
-- Database counters per bucket (§5.3), incremented in one transaction by atomic statements with `RETURNING`, windows by the server clock. The /32 or /64 counters come first. A request over one limit is not counted against the limits after it, so a refused source does not use up its /24 or /48 budget:
+- Database counters per bucket (§5.3), incremented in one transaction by atomic statements with `RETURNING`, windows by the server clock. The /32 or /64 counters come first. A request over one limit is not counted against the limits after it, so a refused source does not use up its /24 or /48 budget. A refused request gets a `Retry-After` of at least 1 s, even when its window ends while the counters are written:
 
 | Limit | /32 or /64 | /24 or /48 |
 |---|---|---|
@@ -322,7 +323,7 @@ Algorithm per the design (OD24): scrypt with `N = 2^14, r = 8, p = 1` over a ser
 ```
 challenge = base64url( u32be(window_start) || nonce (16 bytes) || HMAC-SHA-256(k_pow, u32be(window_start) || nonce)[0:16] )
 token     = challenge || "." || u64be(counter) as 16 lowercase hex digits
-valid     = HMAC tag verifies, now − window_start ≤ 120 s,
+valid     = HMAC tag verifies, −5 s ≤ now − window_start ≤ 120 s,
             and scrypt(password = nonce || id, salt = u64be(counter), N = 2^14, r = 8, p = 1, dkLen = 32)
             has its first `difficulty` bits equal to zero
 ```
@@ -330,7 +331,7 @@ valid     = HMAC tag verifies, now − window_start ≤ 120 s,
 - `GET /api/v1/instance` returns `pow.required`, `pow.difficulty` (default 4, at most 8) and, when required, a fresh `pow.challenge`. A client needs about 2^difficulty scrypt evaluations on average, so operators should keep the difficulty low enough for phones to finish within the 120 s window.
 - A challenge is single-use. After the tag and window checks pass, the server records the nonce in `rate_counters`, then waits up to 10 s for a verifier slot and runs scrypt. A second token for the same challenge answers 403 without running scrypt. A failed create after that point, including a 503 because no slot freed up in time, needs a fresh challenge.
 - The counter MUST be lowercase hex; a token with `A`–`F` in the counter is invalid.
-- The server verifies with one scrypt call and bounds concurrent verifications (`NYLZO_POW_CONCURRENCY`, default 4, at most 8, since each one holds 16 MiB). A verification above that bound waits up to 10 s for a slot and then answers 503 with `Retry-After`.
+- The server verifies with one scrypt call and bounds concurrent verifications (`NYLZO_POW_CONCURRENCY`, default 4, at most 4, since each one holds 16 MiB). The 5 s tolerance before `window_start` absorbs small clock differences between instances. A verification above that bound waits up to 10 s for a slot and then answers 503 with `Retry-After`.
 - Clients that do not implement PoW receive 403 `{"error":"pow"}` while it is required.
 
 ## 9. Transport and headers
@@ -338,7 +339,7 @@ valid     = HMAC tag verifies, now − window_start ≤ 120 s,
 - `http.Server` timeouts: `ReadHeaderTimeout` 5 s, `ReadTimeout` 120 s, `WriteTimeout` 120 s, `IdleTimeout` 30 s, `MaxHeaderBytes` 8 KiB. Bodies are bounded by a size-limited reader at the instance object limit. The server never decompresses request bodies.
 - Client address: taken from the connection. `X-Forwarded-For` is honoured only when the connection comes from `NYLZO_TRUSTED_PROXIES` (CIDR list), taking the rightmost value that is not a trusted proxy. `NYLZO_PROXY_MODE=scaleway` reads `X-Real-IP` instead. Without configuration both headers are ignored.
 - Every response carries: `Referrer-Policy: no-referrer`, `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`, `X-Content-Type-Options: nosniff`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()`.
-- HTML responses additionally carry `Content-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'` with a fresh nonce of at least 128 bits per response.
+- HTML responses additionally carry `Content-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; connect-src 'self'; img-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'` with a fresh nonce of at least 128 bits per response.
 - Requests with a `Sec-Purpose` header to `/m/*` or `/api/*` answer 503. Known link-preview user agents receive, for `/m/*`, minimal HTML without script.
 
 ## 10. Logging

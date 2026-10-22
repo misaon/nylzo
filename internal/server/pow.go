@@ -22,6 +22,7 @@ const (
 	powR          = 8
 	powP          = 1
 	powWindow     = 120 * time.Second
+	powClockSkew  = 5 * time.Second
 	powNonceLen   = 16
 	powTagLen     = 16
 	powCounterLen = 8
@@ -62,7 +63,7 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 	}
 	issued := int64(binary.BigEndian.Uint32(chal[0:4]))
 	age := now.Unix() - issued
-	if age < 0 || age > int64(powWindow/time.Second) {
+	if age < -int64(powClockSkew/time.Second) || age > int64(powWindow/time.Second) {
 		return ErrPoW
 	}
 	issuedAt := time.Unix(issued, 0)
