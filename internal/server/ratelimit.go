@@ -69,14 +69,14 @@ func (s *Server) bucketKeys(now time.Time, addr netip.Addr) (fine string, coarse
 	return hex.EncodeToString(f[:]), hex.EncodeToString(c[:])
 }
 
-func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Duration, error) {
+func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Duration, []store.RateCount, error) {
 	hits := make([]store.RateHit, len(checks))
 	for i, c := range checks {
 		hits[i] = c.hit
 	}
 	counts, err := s.store.RateHit(ctx, hits)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	now := s.clock()
 	var retry time.Duration
@@ -91,7 +91,7 @@ func (s *Server) checkLimits(ctx context.Context, checks []limitCheck) (time.Dur
 			}
 		}
 	}
-	return retry, nil
+	return retry, counts, nil
 }
 
 type createVerdict struct {
@@ -112,15 +112,11 @@ func (s *Server) limitCreate(ctx context.Context, now time.Time, addr netip.Addr
 		{hit: store.RateHit{Key: "create:d:c:" + coarse, WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour), Bytes: size}, limit: r.CreatePerDay * m, bytes: r.CreateBytesPerDay * m, end: d.end},
 		{hit: store.RateHit{Key: "global:d", WindowStart: d.start, PurgeAt: d.end.Add(24 * time.Hour)}, end: d.end},
 	}
-	retry, err := s.checkLimits(ctx, checks[:4])
+	retry, counts, err := s.checkLimits(ctx, checks)
 	if err != nil {
 		return createVerdict{}, err
 	}
-	counts, err := s.store.RateHit(ctx, []store.RateHit{checks[4].hit})
-	if err != nil {
-		return createVerdict{}, err
-	}
-	count := counts[0].Count
+	count := counts[4].Count
 	s.globalCount.Store(count)
 	v := createVerdict{retry: retry}
 	if cap := r.GlobalDailyCreates; cap > 0 {
@@ -134,20 +130,22 @@ func (s *Server) limitRead(ctx context.Context, now time.Time, addr netip.Addr) 
 	fine, coarse := s.bucketKeys(now, addr)
 	h := hourWindow(now)
 	r := s.cfg.Rates
-	return s.checkLimits(ctx, []limitCheck{
+	retry, _, err := s.checkLimits(ctx, []limitCheck{
 		{hit: store.RateHit{Key: "read:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.ReadPerHour, end: h.end},
 		{hit: store.RateHit{Key: "read:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.ReadPerHour * r.CoarseMultiplier, end: h.end},
 	})
+	return retry, err
 }
 
 func (s *Server) limitAbuse(ctx context.Context, now time.Time, addr netip.Addr) (time.Duration, error) {
 	fine, coarse := s.bucketKeys(now, addr)
 	h := hourWindow(now)
 	r := s.cfg.Rates
-	return s.checkLimits(ctx, []limitCheck{
+	retry, _, err := s.checkLimits(ctx, []limitCheck{
 		{hit: store.RateHit{Key: "abuse:h:" + fine, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour, end: h.end},
 		{hit: store.RateHit{Key: "abuse:h:c:" + coarse, WindowStart: h.start, PurgeAt: h.end.Add(time.Hour)}, limit: r.AbusePerHour * r.CoarseMultiplier, end: h.end},
 	})
+	return retry, err
 }
 
 func (s *Server) powRequired() bool {

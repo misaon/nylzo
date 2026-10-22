@@ -75,9 +75,11 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.bucket = newTokenBucket(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst, s.clock())
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	if cfg.Rates.GlobalDailyCreates > 0 {
-		if c, err := st.RateGet(context.Background(), "global:d", dayWindow(s.clock()).start); err == nil {
-			s.globalCount.Store(c.Count)
+		c, err := st.RateGet(context.Background(), "global:d", dayWindow(s.clock()).start)
+		if err != nil {
+			return nil, err
 		}
+		s.globalCount.Store(c.Count)
 	}
 	s.handler = s.routes()
 	return s, nil
@@ -129,7 +131,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 				s.log.Error("sweep", "err", err.Error())
 				continue
 			}
-			s.log.Info("sweep", "expired", report.Expired, "leases", report.ExpiredLeases, "released", report.BlobsReleased, "tombstones", report.Tombstones, "counters", report.Counters, "attempts", report.Attempts, "orphans", report.OrphanedBlobs)
+			s.log.Info("sweep", report.LogAttrs()...)
 		}
 	}
 }

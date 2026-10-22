@@ -118,9 +118,11 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 		}
 	}
 	for ci := range classes {
+		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2)
 		if medians[ci] > 3*minMedian {
 			t.Fatalf("%s median %s exceeds 3x the fastest class %s", classes[ci].name, medians[ci], minMedian)
 		}
+		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2)
 		if p95s[ci] > 5*minP95 {
 			t.Fatalf("%s p95 %s exceeds 5x the fastest class %s", classes[ci].name, p95s[ci], minP95)
 		}

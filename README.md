@@ -14,7 +14,7 @@ Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScri
 | `internal/pepper` | serverové klíče podle účelu z pepperu, rotace, kyblíky adres |
 | `internal/store` | rozhraní úložiště, adaptér `sqlite` a `disk`, sdílená testovací sada |
 | `internal/server` | HTTP server: endpointy, limity, PoW, hlavičky, úklid |
-| `cmd/nylzod` | binárka serveru (`serve`, `sweep-once`) |
+| `cmd/nylzod` | binárka serveru (`serve`, `sweep-once`, `version`) |
 | `cmd/nylzo-vectors` | generátor vektorů |
 | `web/core` | TypeScript jádro `@nylzo/core` (Web Crypto, scrypt z `@noble/hashes`) |
 
@@ -67,12 +67,12 @@ Příkaz `sweep-once` pepper nepotřebuje.
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření |
 | `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2) |
 | `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek |
+| `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | násobek limitů pro hrubý kyblík /24 nebo /48 |
 | `NYLZO_RATE_READ_HOUR` | `300` | metadata, claim a blob na kyblík |
 | `NYLZO_RATE_ABUSE_HOUR` | `5` | hlášení zneužití na kyblík |
 | `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `50`, `100` | paměťový token bucket instance pro `/api/*` |
 | `NYLZO_GLOBAL_DAILY_CREATES` | `0` (vypnuto) | denní strop vytvoření; od 50 % vyžaduje PoW, nad 100 % vrací 503 |
-| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost a souběh ověření PoW |
-| `NYLZO_PUBLIC_URL` | prázdná | veřejná adresa instance |
+| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 16) |
 
 Hlášení zneužití s platným tokenem čtení se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení.
 
@@ -96,7 +96,7 @@ Go:
 go test -race ./...
 ```
 
-Čtvrtý vektor scrypt z RFC 7914 potřebuje 1 GiB paměti; `go test -short` ho přeskočí.
+Čtvrtý vektor scrypt z RFC 7914 potřebuje 1 GiB paměti; `go test -short` přeskočí jeho přepočet v `internal/core`, test generátoru v `internal/core/vectors` ho počítá vždy.
 
 TypeScript:
 

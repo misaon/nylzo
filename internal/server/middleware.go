@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/rand"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -62,6 +63,15 @@ func (w *statusWriter) WriteHeader(code int) {
 		w.status = code
 	}
 	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) ReadFrom(r io.Reader) (int64, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := io.Copy(w.ResponseWriter, r)
+	w.bytes += n
+	return n, err
 }
 
 func (w *statusWriter) Write(b []byte) (int, error) {

@@ -37,7 +37,7 @@ func TestPurposeKeysDiffer(t *testing.T) {
 		t.Fatal("different peppers share a mac")
 	}
 	if other.ID() == k.ID() {
-		t.Skip("pepper ids collide by chance")
+		t.Fatal("the fixed test peppers must have distinct ids")
 	}
 }
 

@@ -124,15 +124,15 @@ func Seal(k *[KeyLen]byte, h Header, id ID, p Policy, payload Payload) ([]byte, 
 	if !hasFile && len(payload.File) != 0 {
 		return nil, ErrMeta
 	}
-	raw := 4 + len(meta) + len(payload.File)
+	raw := MetaLenPrefix + len(meta) + len(payload.File)
 	total := PaddedLen(raw, hasFile)
 	if HeaderLen+total+TagLen > MaxObjectBytes {
 		return nil, ErrTooLarge
 	}
 	plaintext := make([]byte, total)
-	binary.BigEndian.PutUint32(plaintext[0:4], uint32(len(meta)))
-	copy(plaintext[4:], meta)
-	copy(plaintext[4+len(meta):], payload.File)
+	binary.BigEndian.PutUint32(plaintext[0:MetaLenPrefix], uint32(len(meta)))
+	copy(plaintext[MetaLenPrefix:], meta)
+	copy(plaintext[MetaLenPrefix+len(meta):], payload.File)
 	aead, err := newAEAD(k)
 	if err != nil {
 		return nil, err
@@ -167,20 +167,20 @@ func Open(k *[KeyLen]byte, id ID, p Policy, kdf KDF, object []byte) (Header, Pay
 }
 
 func parsePlaintext(pt []byte) (Payload, error) {
-	if len(pt) < 4 {
+	if len(pt) < MetaLenPrefix {
 		return Payload{}, ErrPlaintext
 	}
-	lenMeta := binary.BigEndian.Uint32(pt[0:4])
-	if lenMeta > MaxMetaBytes || int64(lenMeta) > int64(len(pt)-4) {
+	lenMeta := binary.BigEndian.Uint32(pt[0:MetaLenPrefix])
+	if lenMeta > MaxMetaBytes || int64(lenMeta) > int64(len(pt)-MetaLenPrefix) {
 		return Payload{}, ErrPlaintext
 	}
-	meta, err := DecodeMeta(pt[4 : 4+lenMeta])
+	meta, err := DecodeMeta(pt[MetaLenPrefix : MetaLenPrefix+lenMeta])
 	if err != nil {
 		return Payload{}, err
 	}
 	payload := Payload{Meta: meta}
 	if meta.File != nil {
-		start := 4 + int64(lenMeta)
+		start := MetaLenPrefix + int64(lenMeta)
 		if meta.File.Size > int64(len(pt))-start {
 			return Payload{}, ErrPlaintext
 		}

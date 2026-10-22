@@ -170,6 +170,10 @@ type SweepReport struct {
 	StaleTempFiles int
 }
 
+func (r SweepReport) LogAttrs() []any {
+	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "attempts", r.Attempts, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
+}
+
 type Store interface {
 	Create(ctx context.Context, m *Message) error
 	Get(ctx context.Context, id string) (Record, error)

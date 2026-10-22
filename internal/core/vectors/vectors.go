@@ -438,7 +438,7 @@ func nonCanonicalLast(c byte) string {
 }
 
 func (f *File) meta() error {
-	add := func(name, input string, valid bool) *MetaCase {
+	add := func(name, input string, valid bool) {
 		mc := MetaCase{Name: name, Input: input, Valid: valid}
 		if valid {
 			m, err := core.DecodeMeta([]byte(input))
@@ -461,7 +461,6 @@ func (f *File) meta() error {
 			panic(fmt.Sprintf("vectors: meta %q must be rejected", name))
 		}
 		f.Meta = append(f.Meta, mc)
-		return &f.Meta[len(f.Meta)-1]
 	}
 	add("text-only", `{"v":1,"text":"ahoj"}`, true)
 	add("file-only", `{"v":1,"file":{"name":"a.txt","mime":"text/plain","size":3}}`, true)

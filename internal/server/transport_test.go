@@ -177,6 +177,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("healthz during slowloris: %v", err)
 	}
 	resp.Body.Close()
+	// gstack-timing-ok: AK22 requires other requests to be answered within 2 s during a slowloris
 	if resp.StatusCode != 200 || time.Since(start) > 2*time.Second {
 		t.Fatalf("healthz %d after %s", resp.StatusCode, time.Since(start))
 	}

@@ -63,11 +63,8 @@ func TestAK8TamperedPolicyFails(t *testing.T) {
 }
 
 func TestEnvelopeBoundToID(t *testing.T) {
-	id, _, content, _, pol, object := sampleMessage(t, core.KDFNone, "", nil)
+	_, _, content, _, pol, object := sampleMessage(t, core.KDFNone, "", nil)
 	other := core.NewID()
-	if other == id {
-		t.Skip("random collision")
-	}
 	if _, _, err := core.Open(&content.K, other, pol, core.KDFNone, object); !errors.Is(err, core.ErrIntegrity) {
 		t.Fatalf("other id: want ErrIntegrity, got %v", err)
 	}

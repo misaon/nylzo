@@ -186,20 +186,19 @@ func (h *harness) pendingTimers() int {
 }
 
 type message struct {
-	id         core.ID
-	secret     *[32]byte
-	manage     *[32]byte
-	kdf        core.KDF
-	passphrase string
-	link       core.LinkKeys
-	content    core.ContentKeys
-	policy     core.Policy
-	object     []byte
-	text       string
-	readToken  string
-	manageTok  string
-	verifier   string
-	ip         string
+	id        core.ID
+	secret    *[32]byte
+	manage    *[32]byte
+	kdf       core.KDF
+	link      core.LinkKeys
+	content   core.ContentKeys
+	policy    core.Policy
+	object    []byte
+	text      string
+	readToken string
+	manageTok string
+	verifier  string
+	ip        string
 }
 
 type request struct {
@@ -246,7 +245,7 @@ func (h *harness) do(req request) (*http.Response, []byte) {
 }
 
 func buildMessage(kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) (*message, error) {
-	m := &message{id: core.NewID(), secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, passphrase: passphrase, text: text}
+	m := &message{id: core.NewID(), secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
 	link, content, err := core.DeriveAll(m.id, m.secret, kdf, passphrase)
 	if err != nil {
 		return nil, err

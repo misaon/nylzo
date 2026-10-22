@@ -34,7 +34,7 @@ func main() {
 	case "version":
 		fmt.Println(version)
 	default:
-		err = fmt.Errorf("unknown command %q (use serve or sweep-once)", cmd)
+		err = fmt.Errorf("unknown command %q (use serve, sweep-once or version)", cmd)
 	}
 	if err != nil {
 		logger.Error("nylzod", "err", err.Error())
@@ -111,6 +111,6 @@ func sweepOnce(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	logger.Info("sweep-once", "expired", report.Expired, "leases", report.ExpiredLeases, "released", report.BlobsReleased, "tombstones", report.Tombstones, "counters", report.Counters, "attempts", report.Attempts, "orphans", report.OrphanedBlobs, "temp", report.StaleTempFiles)
+	logger.Info("sweep-once", report.LogAttrs()...)
 	return nil
 }

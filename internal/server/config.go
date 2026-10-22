@@ -15,6 +15,7 @@ import (
 const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
+	MaxPoWConcurrency = 16
 )
 
 type Limits struct {
@@ -52,7 +53,6 @@ type Config struct {
 	Rates             Rates
 	PoWDifficulty     int
 	PoWConcurrency    int
-	PublicURL         string
 	Version           string
 }
 
@@ -185,15 +185,14 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_GLOBAL_DAILY_CREATES", func(v string) error { return parseInt64(v, &c.Rates.GlobalDailyCreates) })
 	set("NYLZO_POW_DIFFICULTY", func(v string) error { return parseInt(v, &c.PoWDifficulty) })
 	set("NYLZO_POW_CONCURRENCY", func(v string) error { return parseInt(v, &c.PoWConcurrency) })
-	set("NYLZO_PUBLIC_URL", func(v string) error { c.PublicURL = strings.TrimSuffix(v, "/"); return nil })
 	if err != nil {
 		return c, err
 	}
-	c.Limits.MaxObjectBytes = c.Limits.MaxFileBytes + core.MaxTextBytes + core.PadFile + 64
+	c.Limits.MaxObjectBytes = core.ObjectLimit(c.Limits.MaxFileBytes)
 	if needPepper && len(c.Pepper) == 0 {
 		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
 	}
-	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > 32 || c.PoWConcurrency < 1 {
+	if c.Limits.MaxOpens < 1 || c.Limits.MaxOpens > 65535 || c.Limits.MaxTTL < core.MinTTLSeconds*time.Second || c.Limits.DefaultTTL > c.Limits.MaxTTL || c.PoWDifficulty < 0 || c.PoWDifficulty > 32 || c.PoWConcurrency < 1 || c.PoWConcurrency > MaxPoWConcurrency {
 		return c, fmt.Errorf("%w: limits out of range", ErrConfig)
 	}
 	return c, nil

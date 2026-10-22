@@ -225,7 +225,7 @@ func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []by
 		}
 	}
 	l := s.cfg.Limits
-	if h.OpensMax < 1 || h.OpensMax > l.MaxOpens || h.TTLSeconds < core.MinTTLSeconds || h.TTLSeconds > int64(l.MaxTTL/time.Second) || h.Size < core.HeaderLen+core.TagLen+4 {
+	if h.OpensMax < 1 || h.OpensMax > l.MaxOpens || h.TTLSeconds < core.MinTTLSeconds || h.TTLSeconds > int64(l.MaxTTL/time.Second) || h.Size < core.HeaderLen+core.TagLen+core.MetaLenPrefix {
 		return h, id, nil, nil, nil, false
 	}
 	return h, id, readHash, verifierHash, manageHash, true
@@ -336,21 +336,21 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
 }
 
-func (s *Server) readLimited(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
+func (s *Server) readLimited(w http.ResponseWriter, r *http.Request) bool {
 	retry, err := s.limitRead(r.Context(), s.clock(), s.clientAddr(r))
 	if err != nil {
 		s.internal(w, r, err)
-		return 0, false
+		return false
 	}
 	if retry > 0 {
 		writeRateLimited(w, int64(retry/time.Second)+1)
-		return retry, false
+		return false
 	}
-	return 0, true
+	return true
 }
 
 func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.readLimited(w, r); !ok {
+	if !s.readLimited(w, r) {
 		return
 	}
 	rec, _, ok, err := s.authorize(r.Context(), r.PathValue("id"), bearer(r), pepper.Read)
@@ -394,7 +394,7 @@ func (s *Server) policyHeader(m *store.Message) string {
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if _, ok := s.readLimited(w, r); !ok {
+	if !s.readLimited(w, r) {
 		return
 	}
 	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)
@@ -412,20 +412,17 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	var verifier []byte
 	verifierSent := false
-	if r.ContentLength > 0 {
-		var body claimBody
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody))
-		if err := dec.Decode(&body); err != nil {
+	var body claimBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return
+	}
+	if body.Verifier != "" {
+		if verifier, err = core.DecodeExact(body.Verifier, core.TokenLen); err != nil {
 			writeError(w, http.StatusBadRequest, errBadRequest)
 			return
 		}
-		if body.Verifier != "" {
-			if verifier, err = core.DecodeExact(body.Verifier, core.TokenLen); err != nil {
-				writeError(w, http.StatusBadRequest, errBadRequest)
-				return
-			}
-			verifierSent = true
-		}
+		verifierSent = true
 	}
 	now := s.clock()
 	lease := core.NewSecret()
@@ -514,7 +511,7 @@ func (s *Server) findLease(ctx context.Context, r *http.Request, id string, now 
 
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if _, ok := s.readLimited(w, r); !ok {
+	if !s.readLimited(w, r) {
 		return
 	}
 	rec, id, ok, err := s.authorize(ctx, r.PathValue("id"), bearer(r), pepper.Read)

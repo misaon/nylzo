@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS rate_counters (
 CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at);
 `
 
+const readerConns = 8
+
 type Store struct {
 	w *sql.DB
 	r *sql.DB
@@ -112,6 +114,8 @@ func Open(path string) (*Store, error) {
 		w.Close()
 		return nil, err
 	}
+	r.SetMaxOpenConns(readerConns)
+	r.SetMaxIdleConns(readerConns)
 	return &Store{w: w, r: r}, nil
 }
 

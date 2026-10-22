@@ -17,13 +17,14 @@ import (
 )
 
 const (
-	powN        = 1 << 14
-	powR        = 8
-	powP        = 1
-	powWindow   = 120 * time.Second
-	powNonceLen = 16
-	powTagLen   = 16
-	powChalLen  = 4 + powNonceLen + powTagLen
+	powN          = 1 << 14
+	powR          = 8
+	powP          = 1
+	powWindow     = 120 * time.Second
+	powNonceLen   = 16
+	powTagLen     = 16
+	powCounterLen = 8
+	powChalLen    = 4 + powNonceLen + powTagLen
 )
 
 var ErrPoW = errors.New("server: invalid proof of work")
@@ -39,7 +40,7 @@ func (s *Server) powChallenge(now time.Time) string {
 
 func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now time.Time) error {
 	chalStr, counterStr, ok := strings.Cut(token, ".")
-	if !ok || len(counterStr) != 16 {
+	if !ok || len(counterStr) != 2*powCounterLen {
 		return ErrPoW
 	}
 	chal, err := core.DecodeExact(chalStr, powChalLen)
@@ -47,7 +48,7 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 		return ErrPoW
 	}
 	counter, err := hex.DecodeString(counterStr)
-	if err != nil || len(counter) != 8 {
+	if err != nil || len(counter) != powCounterLen {
 		return ErrPoW
 	}
 	tag, _ := s.ring.MAC(pepper.PoW, chal[:4+powNonceLen])
@@ -95,7 +96,7 @@ func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
 		return "", err
 	}
 	password := append(append([]byte(nil), chal[4:4+powNonceLen]...), id[:]...)
-	counter := make([]byte, 8)
+	counter := make([]byte, powCounterLen)
 	for i := uint64(0); ; i++ {
 		binary.BigEndian.PutUint64(counter, i)
 		out, err := scrypt.Key(password, counter, powN, powR, powP, 32)

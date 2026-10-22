@@ -21,10 +21,6 @@ type Meta struct {
 	File *FileMeta
 }
 
-func (m Meta) HasFile() bool {
-	return m.File != nil
-}
-
 func (m Meta) Validate() error {
 	if m.Text == nil && m.File == nil {
 		return ErrMeta
