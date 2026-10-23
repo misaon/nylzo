@@ -130,6 +130,10 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await reporter.goto('/report');
     await expect(reporter.getByLabel('Link to the message')).toBeVisible();
     await expectStable(reporter, 'report loaded');
+    await reporter.getByLabel('Link to the message').fill('not a link');
+    await reporter.getByRole('button', { name: 'Send report' }).click();
+    await expect(reporter.getByText('The link is incomplete or damaged.')).toBeVisible();
+    await expectStable(reporter, 'report refused');
     await reporter.getByLabel('Link to the message').fill(message.link);
     await reporter.getByRole('button', { name: 'Send report' }).click();
     await expect(reporter.getByText('We received the report.')).toBeVisible();
