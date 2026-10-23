@@ -48,9 +48,9 @@ What the numbers show:
 
 The test Mac has only the Command Line Tools and no full Xcode, so no simulator is available. The simulator would not answer the main question anyway, since it runs on the Mac's memory and applies no iOS memory limits.
 
-### iPhone: VERIFIED for one device, cause of the slowness NOT VERIFIED
+### iPhone over plain http: VERIFIED for one run, cause of the slowness NOT VERIFIED
 
-The owner's iPhone, Safari 27.2 (the user agent reports `iPhone OS 18_7`, which Safari freezes, so the iOS version comes from the owner), screen 430 × 932 CSS px at device pixel ratio 3, run over plain http on the local network, so not a secure context and without `crypto.subtle`. The page ran in the main mode with 5 derivations on 23 October 2026, 10:44 to 10:49 UTC.
+The owner's iPhone 15 Pro Max with iOS 27.2 and Safari 27.2 (the user agent reports the frozen `iPhone OS 18_7`; model and iOS version come from the owner), screen 430 × 932 CSS px at device pixel ratio 3, run over plain http on the local network, so not a secure context and without `crypto.subtle`. The page ran in the main mode with 5 derivations on 23 October 2026, 10:44 to 10:49 UTC.
 
 | Measurement | main |
 |---|---|
@@ -68,3 +68,22 @@ One derivation took about 160 times longer than in Safari on the Mac. A gap that
 Supporting data point, observed once and not reproduced: the HTTPS probe for the next phone run (see the plan) ran headless in Playwright's WebKit 27.2 on the M4 Pro Mac. In the first run `setTimeout(0)` took 80 ms on average and `scheduler.yield` did not exist; scrypt profile 1 then took 9.5 s with yielding (`scryptAsync`) and 0.9 to 1.2 s without yielding, on the main thread and in a worker alike. A second run in the same setup minutes later measured 6.4 ms per `setTimeout(0)` and 0.3 s with yielding. Headless Chromium showed 4.5 ms per `setTimeout(0)` and no difference between the modes (0.2 to 0.26 s). The yielding scrypt thus depends on how the browser schedules timers at that moment, and the blocking scrypt that the web client now runs in its worker does not. Whether the iPhone throttled timers is still NOT VERIFIED.
 
 Owner decision D30 (23 October 2026): the default passphrase profile is PBKDF2 (profile 2) on the public instance and in the default `nylzod` configuration.
+
+### iPhone over HTTPS: VERIFIED
+
+The same iPhone 15 Pro Max with iOS 27.2 opened the static probe from a temporary Codeberg Pages site over HTTPS on 23 October 2026 at 11:38 UTC, so in a secure context with Web Crypto. The probe ran every mode once and sent nothing; the owner pasted its JSON.
+
+| Measurement | value |
+|---|---|
+| secure context, Web Crypto, WebAssembly | yes, yes, yes |
+| loop of 2·10^7 steps | 28 ms, so the JIT runs |
+| `scheduler.yield`, mean `setTimeout(0)` | absent, 6.4 ms |
+| PBKDF2 600,000 (ms) | 119, 82 |
+| scrypt N=2^17 in a new worker, blocking, as the web client runs it (ms) | 587, 547, 533 |
+| scrypt in a new worker, yielding (ms) | 742 |
+| scrypt on the main thread, blocking and yielding (ms) | 233 and 340 |
+| vector `scrypt-ascii` | matches in every mode |
+| PoW scrypt N=2^14 in a worker, mean of 16 (ms) | 51.5, so about 0.8 s at difficulty 4 and about 13 s at difficulty 8 |
+| page interrupted | no, 7 derivations of 128 MiB in a row |
+
+Over HTTPS profile 1 takes about 0.55 s on the phone in the web client's path, the extra 0.3 s over the main thread being the start of a new worker. That meets the criterion of the milestone plan (median under 3 s, no interruption). The 43 s of the first run therefore came from that run's conditions, plain http from the local network, and not from the phone's speed; which part of them caused it is NOT VERIFIED. The web client does not run over plain http anyway, because Web Crypto exists only in a secure context.
