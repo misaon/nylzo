@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"bytes"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -389,8 +390,9 @@ func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 		INSERT INTO messages VALUES ('` + id + `', 1, 0, 0, 'available', 1800000000000, 4102444800000, 3600, 2, 1, 7, x'00', x'00', NULL, 64, '` + id + `', 0, 0, 1800000000000, NULL);
 		INSERT INTO leases VALUES (1, '` + id + `', x'0102', 7, 4102444800000, 0);
 		INSERT INTO rate_counters VALUES ('create:h:0a1b2c', 0, 1, 0, 4102444800000), ('create:d:c:0a1b2c', 0, 1, 4096, 4102444800000), ('read:h:ffffff', 0, 1, 0, 4102444800000), ('abuse:h:c:123456', 0, 1, 0, 4102444800000),
-			('abuse:id:` + id + `', 0, 1, 0, 4102444800000), ('global:d', 0, 5, 0, 4102444800000), ('challenge:00112233445566778899aabbccddeeff', 0, 1, 0, 4102444800000), ('create:h:abc', 0, 1, 0, 4102444800000);
-		PRAGMA user_version = 2;`); err != nil {
+			('abuse:id:` + id + `', 0, 1, 0, 4102444800000), ('global:d', 0, 5, 0, 4102444800000), ('challenge:00112233445566778899aabbccddeeff', 0, 1, 0, 4102444800000), ('create:h:abc', 0, 1, 0, 4102444800000),
+			('abuse:id:` + id + `:0a1b2c', 0, 1, 0, 4102444800000), ('pow:00ff', 1800000001000, 1, 0, 4102444800000), ('pow:11ee', 0, 1, 0, 4102444800000);
+		PRAGMA user_version = 3;`); err != nil {
 		t.Fatal(err)
 	}
 	old.Close()
@@ -425,7 +427,7 @@ func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 		rows.Scan(&k)
 		kept = append(kept, k)
 	}
-	want := []string{"abuse:id:" + id, "challenge:00112233445566778899aabbccddeeff", "create:h:abc", "global:d"}
+	want := []string{"abuse:id:" + id, "challenge:00112233445566778899aabbccddeeff", "global:d", "pow:11ee"}
 	if strings.Join(kept, ",") != strings.Join(want, ",") {
 		t.Fatalf("counters after the upgrade: %v, want %v", kept, want)
 	}
@@ -485,4 +487,135 @@ func TestSweepReportsABlockedCheckpoint(t *testing.T) {
 	if _, err := s.Sweep(t.Context(), time.Now(), nil); err != nil {
 		t.Fatalf("sweep after the reader left: %v", err)
 	}
+}
+
+func TestOpenRefusesANewerSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	newer, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newer.Exec(`PRAGMA user_version = 5`); err != nil {
+		t.Fatal(err)
+	}
+	newer.Close()
+	if s, err := sqlite.Open(path); !errors.Is(err, sqlite.ErrNewerSchema) {
+		if s != nil {
+			s.Close()
+		}
+		t.Fatalf("open a database from a newer build: %v", err)
+	}
+	check, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer check.Close()
+	var tables int
+	if err := check.QueryRow(`SELECT COUNT(*) FROM sqlite_master`).Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("the refused open still changed the schema: %d %v", tables, err)
+	}
+}
+
+func TestOlderBuildWritesFail(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	id := core.NewID().String()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 3, OpensRemaining: 3, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	old, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Close()
+	const counter = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, 4102444800000)
+		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 RETURNING count`
+	day := now.Truncate(24 * time.Hour).UnixMilli()
+	for _, refused := range []struct {
+		key    string
+		window int64
+	}{
+		{"create:h:0a1b2c", day}, {"create:d:c:0a1b2c", day}, {"read:h:ffffff", day}, {"abuse:h:c:123456", day},
+		{"abuse:id:" + id + ":0a1b2c", day}, {"pow:00112233445566778899aabbccddeeff", now.Add(17 * time.Second).UnixMilli()},
+	} {
+		var n int
+		if err := old.QueryRow(counter, refused.key, refused.window).Scan(&n); err == nil {
+			t.Errorf("an older build stored the counter %s", refused.key)
+		}
+	}
+	for _, allowed := range []string{"global:d", "abuse:id:" + id, "challenge:00112233445566778899aabbccddeeff"} {
+		var n int
+		if err := old.QueryRow(counter, allowed, 0).Scan(&n); err != nil {
+			t.Errorf("the guard refused %s: %v", allowed, err)
+		}
+	}
+	if _, err := old.Exec(`UPDATE rate_counters SET key = 'create:h:0a1b2c' WHERE key GLOB 'challenge:*'`); err == nil {
+		t.Error("an older build renamed a counter to an address key")
+	}
+	for name, stmt := range map[string]string{
+		"lease without row id":    `INSERT INTO leases (id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES ('` + id + `', x'01', 7, 4102444800000, 0)`,
+		"lease with a low row id": `INSERT INTO leases (row_id, id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES (5, '` + id + `', x'01', 7, 4102444800000, 0)`,
+		"lease moved to a low id": fmt.Sprintf(`UPDATE leases SET row_id = 5 WHERE row_id = %d`, res.Lease.RowID),
+	} {
+		if _, err := old.Exec(stmt); err == nil {
+			t.Errorf("an older build wrote a %s", name)
+		}
+	}
+	if _, err := old.Exec(fmt.Sprintf(`UPDATE leases SET downloads = 1 WHERE row_id = %d`, res.Lease.RowID)); err != nil {
+		t.Errorf("the guard refused a download count: %v", err)
+	}
+}
+
+func TestWALHoldsOnlyTheLastTransaction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	for range 5 {
+		id := core.NewID().String()
+		if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wal, err := os.ReadFile(path + "-wal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if commits := walCommits(t, wal); commits > 1 {
+		t.Fatalf("the WAL keeps %d transactions, so it shows the order of earlier writes", commits)
+	}
+}
+
+func walCommits(t *testing.T, wal []byte) int {
+	t.Helper()
+	const header, frameHeader = 32, 24
+	if len(wal) < header {
+		return 0
+	}
+	pageSize := int(binary.BigEndian.Uint32(wal[8:12]))
+	salts := wal[16:24]
+	commits := 0
+	for off := header; off+frameHeader+pageSize <= len(wal); off += frameHeader + pageSize {
+		frame := wal[off : off+frameHeader]
+		if bytes.Equal(frame[8:16], salts) && binary.BigEndian.Uint32(frame[4:8]) != 0 {
+			commits++
+		}
+	}
+	return commits
 }

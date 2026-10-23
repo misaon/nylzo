@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,7 +15,8 @@ import (
 
 func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 	id := core.NewID()
-	hexPath := fmt.Sprintf("/data/blobs/%x", id[:])
+	fileName := hex.EncodeToString([]byte(id.String()))
+	hexPath := "/data/blobs/" + fileName
 	for name, c := range map[string]struct {
 		err  error
 		want string
@@ -23,10 +25,11 @@ func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 		"link error":    {&os.LinkError{Op: "link", Old: hexPath + ".tmp", New: hexPath, Err: syscall.EEXIST}, "link: " + syscall.EEXIST.Error()},
 		"id in text":    {errors.New("store: row " + id.String() + " failed"), "store: row [redacted] failed"},
 		"hex in text":   {fmt.Errorf("store: ref %x failed", id[:]), "store: ref [redacted] failed"},
+		"file name":     {errors.New("disk: " + fileName + " is busy"), "disk: [redacted] is busy"},
 		"plain message": {errors.New("sqlite: database is locked"), "sqlite: database is locked"},
 	} {
 		got := ErrorText(c.err)
-		if got != c.want || strings.Contains(got, id.String()) || strings.Contains(got, fmt.Sprintf("%x", id[:])) {
+		if got != c.want || strings.Contains(got, id.String()) || strings.Contains(got, fileName) || strings.Contains(got, fmt.Sprintf("%x", id[:])) {
 			t.Fatalf("%s: %q, want %q", name, got, c.want)
 		}
 	}

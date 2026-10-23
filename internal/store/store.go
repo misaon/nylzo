@@ -209,6 +209,7 @@ type Store interface {
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)
 	RateReserve(ctx context.Context, hit RateHit) (int64, bool, error)
+	RateReserveBatch(ctx context.Context, hits []RateHit) ([]bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
 	Sweep(ctx context.Context, now time.Time, b Blobs) (SweepReport, error)
 	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)

@@ -57,6 +57,7 @@ type Server struct {
 	addrKey   *addrKey
 	counters  *addrCounters
 	spent     *spentChallenges
+	spends    *spendBatcher
 	powSlots  chan struct{}
 	handler   http.Handler
 	abuseMu   sync.Mutex
@@ -87,6 +88,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.addrKey = newAddrKey()
 	s.counters = newAddrCounters()
 	s.spent = newSpentChallenges()
+	s.spends = newSpendBatcher(st)
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.handler = s.routes()
 	return s, nil

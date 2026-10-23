@@ -629,6 +629,18 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	if !strings.Contains(h.logBuf.String(), `"msg":"blob-stream"`) {
 		t.Fatalf("a failed stream must be logged: %s", h.logBuf.String())
 	}
+	for _, line := range strings.Split(h.logBuf.String(), "\n") {
+		var entry map[string]any
+		if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "blob-stream" {
+			continue
+		}
+		delete(entry, "time")
+		delete(entry, "level")
+		delete(entry, "msg")
+		if len(entry) != 0 {
+			t.Fatalf("the stream warning carries more than its name: %s", line)
+		}
+	}
 	fb.set(func(b *faultyBlobs) { b.failRead = nil })
 	resp, object := h.blob(m, lease)
 	if resp.StatusCode != 200 || !bytes.Equal(object, m.object) {

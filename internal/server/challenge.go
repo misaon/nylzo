@@ -22,6 +22,7 @@ const (
 	challengeSigned   = 4 + challengeNonceLen
 	challengeSpentKey = "challenge:"
 	maxSpentNonces    = 1 << 16
+	spendBatchMax     = 256
 )
 
 type spentChallenges struct {
@@ -59,6 +60,66 @@ func (c *spentChallenges) evict(now int64) {
 		}
 		delete(c.expires, n)
 	}
+}
+
+type spendBatch struct {
+	hits     []store.RateHit
+	turn     chan struct{}
+	done     chan struct{}
+	reserved []bool
+	err      error
+}
+
+type spendBatcher struct {
+	store   store.Store
+	max     int
+	mu      sync.Mutex
+	writing bool
+	queue   []*spendBatch
+}
+
+func newSpendBatcher(st store.Store) *spendBatcher {
+	return &spendBatcher{store: st, max: spendBatchMax}
+}
+
+func (b *spendBatcher) reserve(ctx context.Context, hit store.RateHit) (bool, error) {
+	b.mu.Lock()
+	if n := len(b.queue); n == 0 || len(b.queue[n-1].hits) == b.max {
+		b.queue = append(b.queue, &spendBatch{turn: make(chan struct{}), done: make(chan struct{})})
+	}
+	batch := b.queue[len(b.queue)-1]
+	i := len(batch.hits)
+	batch.hits = append(batch.hits, hit)
+	if i == 0 && !b.writing {
+		b.writing = true
+		close(batch.turn)
+	}
+	b.mu.Unlock()
+	if i == 0 {
+		<-batch.turn
+		b.write(ctx, batch)
+	}
+	<-batch.done
+	if batch.err != nil {
+		return false, batch.err
+	}
+	return batch.reserved[i], nil
+}
+
+func (b *spendBatcher) write(ctx context.Context, batch *spendBatch) {
+	b.mu.Lock()
+	b.queue[0] = nil
+	b.queue = b.queue[1:]
+	b.mu.Unlock()
+	batch.reserved, batch.err = b.store.RateReserveBatch(context.WithoutCancel(ctx), batch.hits)
+	close(batch.done)
+	b.mu.Lock()
+	if len(b.queue) > 0 {
+		close(b.queue[0].turn)
+	} else {
+		b.writing = false
+	}
+	b.mu.Unlock()
 }
 
 type spentKey struct{}
@@ -129,11 +190,10 @@ func (s *Server) spendChallenge(ctx context.Context, c [core.ChallengeLen]byte) 
 	if s.spent.seen([challengeNonceLen]byte(c[4:challengeSigned]), expires, now.Unix()) {
 		return false, nil
 	}
-	_, ok, err := s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{
+	return s.spends.reserve(ctx, store.RateHit{
 		Key:         challengeSpentKey + hex.EncodeToString(c[4:challengeSigned]),
 		WindowStart: time.Unix(0, 0),
 		PurgeAt:     store.CeilMinute(time.Unix(expires, 0).Add(challengeTTL)),
 		Limit:       1,
 	})
-	return ok, err
 }

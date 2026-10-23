@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("ReleaseAfterExpiryRecordsNothing", func(t *testing.T) { testReleaseAfterExpiryRecordsNothing(t, open) })
 	t.Run("ExpiryOfSpentMessage", func(t *testing.T) { testExpiryOfSpentMessage(t, open) })
 	t.Run("RateReserveIsAtomic", func(t *testing.T) { testRateReserve(t, open) })
+	t.Run("RateReserveBatchReservesEachHit", func(t *testing.T) { testRateReserveBatch(t, open) })
 	t.Run("ReconcileOrphans", func(t *testing.T) { testReconcileOrphans(t, open) })
 	t.Run("ReconcileContinuesPastErrors", func(t *testing.T) { testReconcileErrors(t, open) })
 	t.Run("SweepSurvivesBlobErrors", func(t *testing.T) { testSweepSurvivesBlobErrors(t, open) })
@@ -712,6 +714,42 @@ func testRateReserve(t *testing.T, open Factory) {
 	}
 }
 
+func testRateReserveBatch(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	spend := func(key string) store.RateHit {
+		return store.RateHit{Key: key, WindowStart: time.Unix(0, 0), PurgeAt: baseTime.Add(time.Hour), Limit: 1}
+	}
+	got, err := f.s.RateReserveBatch(f.ctx, []store.RateHit{spend("a"), spend("b"), spend("a")})
+	if err != nil || !slices.Equal(got, []bool{true, true, false}) {
+		t.Fatalf("first batch: %v %v", got, err)
+	}
+	got, err = f.s.RateReserveBatch(f.ctx, []store.RateHit{spend("c"), spend("b")})
+	if err != nil || !slices.Equal(got, []bool{true, false}) {
+		t.Fatalf("second batch: %v %v", got, err)
+	}
+	if c, _ := f.s.RateGet(f.ctx, "a", time.Unix(0, 0)); c.Count != 1 {
+		t.Fatalf("a refused hit still counted: %+v", c)
+	}
+	var wg sync.WaitGroup
+	var granted atomic.Int64
+	for range 20 {
+		wg.Go(func() {
+			got, err := f.s.RateReserveBatch(f.ctx, []store.RateHit{spend("shared"), spend(core.NewID().String())})
+			if err != nil || !got[1] {
+				t.Errorf("concurrent batch: %v %v", got, err)
+				return
+			}
+			if got[0] {
+				granted.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	if granted.Load() != 1 {
+		t.Fatalf("concurrent batches reserved one key %d times", granted.Load())
+	}
+}
+
 func testReconcileOrphans(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	orphan := core.NewID().String()
@@ -944,7 +982,7 @@ func testRateHit(t *testing.T, open Factory) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "create:h:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 10}, {Key: "create:d:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 10}})
+			counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 10}, {Key: "daily:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 10}})
 			if err != nil {
 				t.Error(err)
 				return
@@ -958,18 +996,18 @@ func testRateHit(t *testing.T, open Factory) {
 	if len(seen) != 100 {
 		t.Fatalf("counter lost increments: %d distinct values", len(seen))
 	}
-	counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "create:h:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 5}})
+	counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 5}})
 	if err != nil || counts[0].Count != 101 || counts[0].Bytes != 1005 {
 		t.Fatalf("final count %+v %v", counts, err)
 	}
-	got, err := f.s.RateGet(f.ctx, "create:h:abc", window)
+	got, err := f.s.RateGet(f.ctx, "hourly:abc", window)
 	if err != nil || got.Count != 101 || got.Bytes != 1005 {
 		t.Fatalf("RateGet %+v %v", got, err)
 	}
 	if missing, err := f.s.RateGet(f.ctx, "nope", window); err != nil || missing.Count != 0 {
 		t.Fatalf("RateGet missing %+v %v", missing, err)
 	}
-	other, _ := f.s.RateHit(f.ctx, []store.RateHit{{Key: "create:h:abc", WindowStart: window.Add(time.Hour), PurgeAt: window.Add(3 * time.Hour)}})
+	other, _ := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window.Add(time.Hour), PurgeAt: window.Add(3 * time.Hour)}})
 	if other[0].Count != 1 {
 		t.Fatal("new window must start at 1")
 	}

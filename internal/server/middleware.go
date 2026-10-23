@@ -57,7 +57,6 @@ func (s *Server) allowAPI(r *http.Request) bool {
 type statusWriter struct {
 	http.ResponseWriter
 	status int
-	bytes  int64
 }
 
 func (w *statusWriter) Unwrap() http.ResponseWriter {
@@ -75,18 +74,14 @@ func (w *statusWriter) ReadFrom(r io.Reader) (int64, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
 	}
-	n, err := io.Copy(w.ResponseWriter, r)
-	w.bytes += n
-	return n, err
+	return io.Copy(w.ResponseWriter, r)
 }
 
 func (w *statusWriter) Write(b []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
 	}
-	n, err := w.ResponseWriter.Write(b)
-	w.bytes += int64(n)
-	return n, err
+	return w.ResponseWriter.Write(b)
 }
 
 var objectRoutes = map[string]bool{
@@ -102,7 +97,7 @@ func (s *Server) logging(next http.Handler) http.Handler {
 		next.ServeHTTP(sw, r)
 		attrs := []any{"method", r.Method, "route", r.Pattern, "status", sw.status}
 		if !objectRoutes[r.Pattern] {
-			attrs = append(attrs, "duration_ms", float64(time.Since(start).Microseconds())/1000, "bytes", sw.bytes)
+			attrs = append(attrs, "duration_ms", float64(time.Since(start).Microseconds())/1000)
 		}
 		s.log.Info("request", attrs...)
 	})

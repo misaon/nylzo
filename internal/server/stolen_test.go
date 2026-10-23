@@ -157,7 +157,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	h.mustCreate(stuck)
 	needles.message("stuck", stuck, "")
 	fb.set(func(b *faultyBlobs) {
-		b.deleteErr[stuck.id.String()] = &fs.PathError{Op: "remove", Path: filepath.Join(h.dir, "blobs", hex.EncodeToString(stuck.id[:])), Err: syscall.EROFS}
+		b.deleteErr[stuck.id.String()] = &fs.PathError{Op: "remove", Path: filepath.Join(h.dir, "blobs", hex.EncodeToString([]byte(stuck.id.String()))), Err: syscall.EROFS}
 	})
 	if resp, _ := h.post(stuck, "burn", stuck.readToken); resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("burn with a failing blob store: %d", resp.StatusCode)
@@ -220,7 +220,8 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}
 	everyone := []*message{expired, opened, leased, file, burned, cancelled, stuck, pow}
 	for _, m := range everyone {
-		if bytes.Contains(stolen["log"], []byte(m.id.String())) || bytes.Contains(stolen["log"], []byte(hex.EncodeToString(m.id[:]))) {
+		forms := []string{m.id.String(), hex.EncodeToString([]byte(m.id.String())), hex.EncodeToString(m.id[:])}
+		if slices.ContainsFunc(forms, func(form string) bool { return bytes.Contains(stolen["log"], []byte(form)) }) {
 			t.Errorf("the log names message %s", m.id)
 		}
 	}

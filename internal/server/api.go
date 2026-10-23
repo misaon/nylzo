@@ -187,9 +187,10 @@ func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, p
 			}
 		}
 	}
+	keyOK := core.ValidPublicKey(sig.PublicKey[:])
 	macOK := s.ring.Verify(purpose, sig.PublicKey[:], mac, pepperID)
 	sigOK := sig.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body)
-	if !found || sigErr != nil || !fresh || !macOK || !sigOK {
+	if !found || sigErr != nil || !fresh || !keyOK || !macOK || !sigOK {
 		return a, false, nil
 	}
 	if settled, leases, ok := s.settle(ctx, id.String(), a.rec.Message, s.clock()); ok {
@@ -595,7 +596,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	id := a.id
 	verifier.Challenge = a.sig.Challenge
-	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil)
+	verifierKeyOK := core.ValidPublicKey(verifier.PublicKey[:])
+	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
 	blob, size, ok := s.openBlob(w, r, m)
 	if !ok {
 		return
@@ -680,7 +682,7 @@ func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Mess
 	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
 	if n, err := io.Copy(w, f); (err != nil || n != size) && r.Context().Err() == nil {
-		s.log.Warn("blob-stream", "sent", n, "size", size)
+		s.log.Warn("blob-stream")
 	}
 }
 

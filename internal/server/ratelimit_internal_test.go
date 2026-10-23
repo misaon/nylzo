@@ -11,7 +11,9 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -176,11 +178,11 @@ type failingSpends struct {
 	fail bool
 }
 
-func (s *failingSpends) RateReserve(ctx context.Context, h store.RateHit) (int64, bool, error) {
-	if s.fail && strings.HasPrefix(h.Key, challengeSpentKey) {
-		return 0, false, errors.New("test: the store is down")
+func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
+	if s.fail {
+		return nil, errors.New("test: the store is down")
 	}
-	return s.Store.RateReserve(ctx, h)
+	return s.Store.RateReserveBatch(ctx, hits)
 }
 
 func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
@@ -216,5 +218,89 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	}
 	if c, _ := st.RateGet(t.Context(), challengeSpentKey+fmt.Sprintf("%x", c[4:challengeSigned]), time.Unix(0, 0)); c.Count != 0 {
 		t.Fatal("the repeat reached the store although the process had seen the nonce")
+	}
+}
+
+type gatedSpends struct {
+	store.Store
+	gate    chan struct{}
+	mu      sync.Mutex
+	batches []int
+}
+
+func (s *gatedSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
+	s.mu.Lock()
+	first := len(s.batches) == 0
+	s.batches = append(s.batches, len(hits))
+	s.mu.Unlock()
+	if first {
+		<-s.gate
+	}
+	return s.Store.RateReserveBatch(ctx, hits)
+}
+
+func (s *gatedSpends) calls() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.batches)
+}
+
+func TestConcurrentSpendsShareATransaction(t *testing.T) {
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	gated := &gatedSpends{Store: st, gate: make(chan struct{})}
+	b := newSpendBatcher(gated)
+	spend := func(key string) store.RateHit {
+		return store.RateHit{Key: challengeSpentKey + key, WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(4102444800, 0), Limit: 1}
+	}
+	var wg sync.WaitGroup
+	var granted atomic.Int64
+	reserve := func(key string) {
+		wg.Go(func() {
+			ok, err := b.reserve(t.Context(), spend(key))
+			if err != nil {
+				t.Error(err)
+			}
+			if ok {
+				granted.Add(1)
+			}
+		})
+	}
+	reserve("first")
+	waitFor(t, func() bool { return len(gated.calls()) == 1 })
+	const pairs = 300
+	for i := range 2 * pairs {
+		reserve(fmt.Sprint(i % pairs))
+	}
+	waitFor(t, func() bool {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		queued := 0
+		for _, batch := range b.queue {
+			queued += len(batch.hits)
+		}
+		return queued == 2*pairs
+	})
+	close(gated.gate)
+	wg.Wait()
+	if granted.Load() != pairs+1 {
+		t.Fatalf("%d spends succeeded, want one per distinct nonce (%d)", granted.Load(), pairs+1)
+	}
+	if calls := gated.calls(); !slices.Equal(calls, []int{1, spendBatchMax, spendBatchMax, 2*pairs - 2*spendBatchMax}) {
+		t.Fatalf("spends written as transactions of %v", calls)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

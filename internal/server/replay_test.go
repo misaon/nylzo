@@ -1,13 +1,16 @@
 package server_test
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server"
 )
 
@@ -108,6 +111,64 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 	h.mustCreate(none)
 }
 
+func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	ring, err := pepper.NewRing(pepperA, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := [core.PublicKeyLen]byte{1}
+	forge := func(purpose, method, path string, c [core.ChallengeLen]byte) core.Signature {
+		sig := core.Signature{PublicKey: identity, Challenge: c, Sig: [core.SignatureLen]byte{1}}
+		if !sig.Verify(purpose, method, path, nil) {
+			t.Fatal("the forged signature does not verify, so the test proves nothing")
+		}
+		return sig
+	}
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(h.dir, "nylzo.db")+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	setMAC := func(m *message, column string, p pepper.Purpose) {
+		mac, _ := ring.MAC(p, identity[:])
+		if _, err := db.Exec(`UPDATE messages SET `+column+` = ? WHERE id = ?`, mac[:], m.id.String()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "stored before keys were checked")
+	h.mustCreate(m)
+	setMAC(m, "read_mac", pepper.Read)
+	setMAC(m, "manage_mac", pepper.Manage)
+	path := "/api/v1/messages/" + m.id.String()
+	for name, req := range map[string]request{
+		"metadata": rawAuth(request{method: "GET", path: path}, forge(core.PurposeRead, "GET", path, h.srv.ChallengeForTest()).Authorization()),
+		"status":   rawAuth(request{method: "GET", path: path + "/status"}, forge(core.PurposeManage, "GET", path+"/status", h.srv.ChallengeForTest()).Authorization()),
+		"burn":     rawAuth(request{method: "POST", path: path + "/burn"}, forge(core.PurposeRead, "POST", path+"/burn", h.srv.ChallengeForTest()).Authorization()),
+	} {
+		if resp, body := h.do(req); resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s signed with the identity key: %d %s", name, resp.StatusCode, body)
+		}
+	}
+
+	const pass = "correct horse battery staple"
+	pw := newMessage(t, core.KDFPBKDF2, pass, 1, 3600, "verifier stored before keys were checked")
+	h.mustCreate(pw)
+	setMAC(pw, "verifier_mac", pepper.Verifier)
+	claimPath := "/api/v1/messages/" + pw.id.String() + "/claim"
+	challenge := h.srv.ChallengeForTest()
+	req := signedRequest(&pw.link.R, core.PurposeRead, "POST", claimPath, challenge, nil)
+	req.headers["X-Nylzo-Verifier"] = forge(core.PurposeVerifier, "POST", claimPath, challenge).VerifierHeader()
+	resp, body := h.do(req)
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), `"attempts_left":4`) {
+		t.Fatalf("claim with the identity verifier key: %d %s", resp.StatusCode, body)
+	}
+	if _, meta := h.metadata(pw); meta["opens_remaining"] != float64(1) {
+		t.Fatalf("the refused verifier consumed an open: %v", meta)
+	}
+}
+
 func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "head")
@@ -145,7 +206,7 @@ func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
 	}
 }
 
-func TestObjectRoutesLogNoSizeOrLatency(t *testing.T) {
+func TestRequestLinesLogNoSize(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
 	h.mustCreate(m)
@@ -154,6 +215,7 @@ func TestObjectRoutesLogNoSizeOrLatency(t *testing.T) {
 		t.Fatalf("blob: %d", r.StatusCode)
 	}
 	h.metadata(m)
+	h.status(m)
 	seen := map[string]bool{}
 	for _, line := range strings.Split(strings.TrimSpace(h.logBuf.String()), "\n") {
 		var entry map[string]any
@@ -164,15 +226,18 @@ func TestObjectRoutesLogNoSizeOrLatency(t *testing.T) {
 		_, bytes := entry["bytes"]
 		_, latency := entry["duration_ms"]
 		object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/blob")
-		if object && (bytes || latency) {
-			t.Fatalf("%s logs its size or latency: %s", route, line)
+		if bytes {
+			t.Fatalf("%s logs its response size: %s", route, line)
 		}
-		if route == "GET /api/v1/messages/{id}" && (!bytes || !latency) {
-			t.Fatalf("metadata lost its size and latency: %s", line)
+		if object && latency {
+			t.Fatalf("%s logs its latency: %s", route, line)
+		}
+		if !object && route != "" && !latency {
+			t.Fatalf("%s lost its latency: %s", route, line)
 		}
 		seen[route] = true
 	}
-	for _, r := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}"} {
+	for _, r := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
 		if !seen[r] {
 			t.Fatalf("no request line for %s", r)
 		}

@@ -81,13 +81,27 @@ CREATE INDEX IF NOT EXISTS messages_releasable ON messages(id) WHERE opens_remai
 CREATE INDEX IF NOT EXISTS messages_ending ON messages(id) WHERE ending IS NOT NULL;
 `
 
+const olderBuildWrite = `SELECT RAISE(ABORT, 'nylzo: this write comes from an older nylzod than the database schema allows')`
+
+var guards = fmt.Sprintf(`
+CREATE TRIGGER IF NOT EXISTS rate_counters_guard_insert BEFORE INSERT ON rate_counters WHEN %[1]s BEGIN %[3]s; END;
+CREATE TRIGGER IF NOT EXISTS rate_counters_guard_update BEFORE UPDATE ON rate_counters WHEN %[1]s BEGIN %[3]s; END;
+CREATE TRIGGER IF NOT EXISTS leases_guard_insert BEFORE INSERT ON leases WHEN %[2]s BEGIN %[3]s; END;
+CREATE TRIGGER IF NOT EXISTS leases_guard_update BEFORE UPDATE OF row_id ON leases WHEN %[2]s BEGIN %[3]s; END;
+`, revealingCounter("NEW."), fmt.Sprintf("NEW.row_id IS NULL OR NEW.row_id < %d", minLeaseRowID), olderBuildWrite)
+
+func revealingCounter(row string) string {
+	return fmt.Sprintf("%[1]skey GLOB 'create:*' OR %[1]skey GLOB 'read:*' OR %[1]skey GLOB 'abuse:h:*' OR %[1]skey GLOB 'abuse:id:*:*' OR (%[1]skey GLOB 'pow:*' AND %[1]swindow_start != 0)", row)
+}
+
 const (
 	readerConns   = 8
 	openAttempts  = 10
 	openBackoff   = 20 * time.Millisecond
 	openFastFail  = 200 * time.Millisecond
-	schemaVersion = 3
+	schemaVersion = 4
 	maxCacheKiB   = 512
+	minLeaseRowID = 1 << 32
 )
 
 func migrate(db *sql.DB) error {
@@ -99,6 +113,12 @@ func migrate(db *sql.DB) error {
 	defer conn.Close()
 	var version int
 	if err := conn.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	if version > schemaVersion {
+		return fmt.Errorf("%w: version %d, this build knows %d", ErrNewerSchema, version, schemaVersion)
+	}
+	if _, err := conn.ExecContext(ctx, schema); err != nil {
 		return err
 	}
 	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
@@ -143,12 +163,12 @@ func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
 			return err
 		}
 	}
-	if version < 3 {
-		if _, err := tx.Exec(addressCounters); err != nil {
+	if version < schemaVersion {
+		if _, err := tx.Exec(`DELETE FROM rate_counters WHERE ` + revealingCounter("")); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(indexes); err != nil {
+	if _, err := tx.Exec(indexes + guards); err != nil {
 		return err
 	}
 	var violations int
@@ -161,14 +181,7 @@ func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
 	return tx.Commit()
 }
 
-var addressCounters = func() string {
-	hex6 := strings.Repeat("[0-9a-f]", 6)
-	var terms []string
-	for _, kind := range []string{"create:h", "create:d", "read:h", "abuse:h"} {
-		terms = append(terms, fmt.Sprintf("key GLOB '%s:%s'", kind, hex6), fmt.Sprintf("key GLOB '%s:c:%s'", kind, hex6))
-	}
-	return "DELETE FROM rate_counters WHERE " + strings.Join(terms, " OR ")
-}()
+var ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzod")
 
 func dropPerAddressAttempts(tx *sql.Tx) error {
 	columns := map[string]bool{}
@@ -256,6 +269,7 @@ func dsn(path string, write bool) string {
 	q.Add("_pragma", "synchronous(FULL)")
 	q.Add("_pragma", "secure_delete(1)")
 	q.Add("_pragma", "journal_size_limit(0)")
+	q.Add("_pragma", "wal_autocheckpoint(1)")
 	q.Add("_pragma", fmt.Sprintf("cache_size(-%d)", maxCacheKiB))
 	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + q.Encode()
 }
@@ -287,10 +301,6 @@ func open(path string) (*Store, error) {
 		return nil, err
 	}
 	w.SetMaxOpenConns(1)
-	if _, err := w.Exec(schema); err != nil {
-		w.Close()
-		return nil, err
-	}
 	if err := migrate(w); err != nil {
 		w.Close()
 		return nil, err
@@ -735,9 +745,35 @@ func hitInTx(ctx context.Context, tx *sql.Tx, h store.RateHit) (store.RateCount,
 	return c, err
 }
 
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 func (s *Store) RateReserve(ctx context.Context, h store.RateHit) (int64, bool, error) {
+	return reserve(ctx, s.w, h)
+}
+
+func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
+	reserved := make([]bool, len(hits))
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		for i, h := range hits {
+			_, ok, err := reserve(ctx, tx, h)
+			if err != nil {
+				return err
+			}
+			reserved[i] = ok
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return reserved, nil
+}
+
+func reserve(ctx context.Context, q queryRower, h store.RateHit) (int64, bool, error) {
 	var count int64
-	err := s.w.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
+	err := q.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`,
 		h.Key, ms(h.WindowStart), ms(h.PurgeAt), h.Limit).Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -824,7 +860,7 @@ const leaseInsertAttempts = 4
 
 func insertLease(ctx context.Context, tx *sql.Tx, id string, p store.ClaimParams, expires time.Time) (int64, error) {
 	for range leaseInsertAttempts {
-		rowID := rand.Int64N(math.MaxInt64) + 1
+		rowID := minLeaseRowID + rand.Int64N(math.MaxInt64-minLeaseRowID+1)
 		res, err := tx.ExecContext(ctx, `INSERT INTO leases (row_id, id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(row_id) DO NOTHING`, rowID, id, p.LeaseMAC, p.LeasePepperID, ms(expires))
 		if err != nil {
 			return 0, err
