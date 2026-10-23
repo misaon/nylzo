@@ -159,7 +159,7 @@ func testCreateGetConflict(t *testing.T, open Factory) {
 func testMetadataDoesNotConsume(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(1, time.Hour, false)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		if rec := f.get(m.ID); rec.Message.OpensRemaining != 1 || rec.Message.State != store.StateAvailable {
 			t.Fatal("metadata changed the message")
 		}
@@ -174,11 +174,11 @@ func testMetadataDoesNotConsume(t *testing.T, open Factory) {
 
 func testConcurrentClaims(t *testing.T, open Factory) {
 	f := newFixture(t, open)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		m := f.create(1, time.Hour, false)
 		var wg sync.WaitGroup
 		results := make([]error, 2)
-		for j := 0; j < 2; j++ {
+		for j := range 2 {
 			wg.Add(1)
 			go func(j int) {
 				defer wg.Done()
@@ -260,7 +260,7 @@ func testLifetimeCap(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(1, 7*24*time.Hour, true)
 	now := baseTime
-	for i := 0; i < store.MaxFailedAttempts; i++ {
+	for i := range store.MaxFailedAttempts {
 		_, err := f.claim(m, now, byte(i), false, true)
 		var pe *store.PassphraseError
 		if !errors.As(err, &pe) {
@@ -297,7 +297,7 @@ func testLeasesAck(t *testing.T, open Factory) {
 	var wg sync.WaitGroup
 	results := make([]store.ClaimResult, 3)
 	errs := make([]error, 3)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -684,9 +684,7 @@ func testRateReserve(t *testing.T, open Factory) {
 	var mu sync.Mutex
 	granted := 0
 	for range 40 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, ok, err := f.s.RateReserve(f.ctx, hit)
 			if err != nil {
 				t.Error(err)
@@ -697,7 +695,7 @@ func testRateReserve(t *testing.T, open Factory) {
 				granted++
 				mu.Unlock()
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if granted != 10 {
@@ -978,10 +976,8 @@ func testRateHit(t *testing.T, open Factory) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	seen := map[int64]bool{}
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 100 {
+		wg.Go(func() {
 			counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 10}, {Key: "daily:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 10}})
 			if err != nil {
 				t.Error(err)
@@ -990,7 +986,7 @@ func testRateHit(t *testing.T, open Factory) {
 			mu.Lock()
 			seen[counts[0].Count] = true
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 	if len(seen) != 100 {
@@ -1044,7 +1040,7 @@ func testSweepBatches(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	window := baseTime
 	hits := make([]store.RateHit, 0, 2500)
-	for i := 0; i < 2500; i++ {
+	for i := range 2500 {
 		hits = append(hits, store.RateHit{Key: fmt.Sprintf("k%d", i), WindowStart: window, PurgeAt: window.Add(time.Hour)})
 	}
 	if _, err := f.s.RateHit(f.ctx, hits); err != nil {

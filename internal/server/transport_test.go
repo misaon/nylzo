@@ -36,9 +36,12 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 				t.Fatalf("%s: header %s = %q", path, k, resp.Header.Get(k))
 			}
 		}
+		if csp := resp.Header.Get("Content-Security-Policy"); !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") && csp != "default-src 'none'; frame-ancestors 'none'" {
+			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
+		}
 	}
 	nonces := map[string]bool{}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String()})
 		csp := resp.Header.Get("Content-Security-Policy")
 		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "font-src 'self'") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || !strings.Contains(csp, "require-trusted-types-for 'script'") {
@@ -83,26 +86,28 @@ func TestCreateValidation(t *testing.T) {
 	m := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "v")
 	cases := []struct {
 		name    string
-		mutate  func(r *http.Request)
+		mutate  func(t *testing.T, r *http.Request)
 		status  int
 		errCode string
 	}{
-		{"no-header", func(r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
-		{"bad-base64", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
-		{"unknown-field", func(r *http.Request) {
+		{"no-header", func(t *testing.T, r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
+		{"bad-base64", func(t *testing.T, r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
+		{"unknown-field", func(t *testing.T, r *http.Request) {
 			r.Header.Set("X-Nylzo-Create", mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 }))
 		}, 400, "bad_request"},
-		{"size-mismatch", func(r *http.Request) { r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1))) }, 400, "bad_request"},
-		{"size-above-limit-mismatch", func(r *http.Request) {
+		{"size-mismatch", func(t *testing.T, r *http.Request) {
+			r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1)))
+		}, 400, "bad_request"},
+		{"size-above-limit-mismatch", func(t *testing.T, r *http.Request) {
 			r.Header.Set("X-Nylzo-Create", m.createHeader(server.Defaults().Limits.MaxObjectBytes+1))
 		}, 400, "bad_request"},
-		{"chunked", func(r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
+		{"chunked", func(t *testing.T, r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r, _ := http.NewRequest("POST", h.ts.URL+"/api/v1/messages", strings.NewReader(string(m.object)))
 			r.Header.Set("X-Nylzo-Create", m.createHeader(0))
-			c.mutate(r)
+			c.mutate(t, r)
 			resp, err := h.client.Do(r)
 			if err != nil {
 				t.Fatal(err)
@@ -147,7 +152,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 			c.Close()
 		}
 	})
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		c, err := net.Dial("tcp", addr)
 		if err != nil {
 			t.Fatal(err)
@@ -156,7 +161,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		conns = append(conns, c)
 	}
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		c, err := net.Dial("tcp", addr)
 		if err != nil {
 			t.Fatal(err)
@@ -232,21 +237,25 @@ func TestClientAddr(t *testing.T) {
 		{"10.0.0.5:1234", "", "198.51.100.2", "", "10.0.0.5"},
 		{"[fd00::5]:1234", "2001:db8::7, fd00::9", "", "", "2001:db8::7"},
 		{"[2001:db8::1]:1234", "2001:db8::7", "", "", "2001:db8::1"},
-		{"203.0.113.1:1234", "198.51.100.1", "198.51.100.2", "scaleway", "198.51.100.2"},
+		{"10.0.0.5:1234", "198.51.100.1", "198.51.100.2", "scaleway", "198.51.100.2"},
+		{"203.0.113.1:1234", "", "198.51.100.2", "scaleway", "203.0.113.1"},
+		{"10.0.0.5:1234", "", "198.51.100.2\n198.51.100.3", "scaleway", "10.0.0.5"},
+		{"10.0.0.5:1234", "", "198.51.100.2, 198.51.100.3", "scaleway", "10.0.0.5"},
 		{"203.0.113.1:1234", "", "", "scaleway", "203.0.113.1"},
 	}
 	for _, c := range cases {
-		got := server.ClientAddrForTest(cfg, c.mode, c.remote, c.xff, c.realIP)
-		if got.String() != c.want {
-			t.Fatalf("remote %s xff %q real %q mode %q: got %s want %s", c.remote, c.xff, c.realIP, c.mode, got, c.want)
-		}
+		t.Run(fmt.Sprintf("%s/%s/xff=%q/real=%q", c.mode, c.remote, c.xff, c.realIP), func(t *testing.T) {
+			if got := server.ClientAddrForTest(cfg, c.mode, c.remote, c.xff, c.realIP); got.String() != c.want {
+				t.Fatalf("got %s want %s", got, c.want)
+			}
+		})
 	}
 }
 
 func TestConfigFromEnv(t *testing.T) {
 	env := map[string]string{
-		"NYLZO_PEPPER":               strings.Repeat("ab", 32),
-		"NYLZO_PEPPER_PREVIOUS":      strings.Repeat("cd", 32),
+		"NYLZO_PEPPER":               strings.Repeat("0123456789abcdef", 4),
+		"NYLZO_PEPPER_PREVIOUS":      strings.Repeat("fedcba9876543210", 4),
 		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1",
 		"NYLZO_PROXY_MODE":           "scaleway",
 		"NYLZO_SWEEP_INTERVAL":       "15m",
@@ -284,6 +293,25 @@ func TestConfigFromEnv(t *testing.T) {
 		return env[k]
 	}, true); err == nil {
 		t.Fatal("unknown proxy mode accepted")
+	}
+	for key, value := range map[string]string{
+		"NYLZO_PEPPER":           strings.Repeat("ab", 32),
+		"NYLZO_SWEEP_INTERVAL":   "-1",
+		"NYLZO_MAX_TTL":          "36028797019568768",
+		"NYLZO_RATE_CREATE_HOUR": "4611686018427387905",
+		"NYLZO_MAX_STREAMS":      "0",
+		"NYLZO_POW_CONCURRENCY":  "9223372036854775807",
+		"NYLZO_DEFAULT_KDF":      "0",
+	} {
+		_, err := server.FromEnv(func(k string) string {
+			if k == key {
+				return value
+			}
+			return env[k]
+		}, true)
+		if !errors.Is(err, server.ErrConfig) {
+			t.Fatalf("%s=%s accepted: %v", key, value, err)
+		}
 	}
 	tooBig := strconv.Itoa(core.MaxFileBytes + 1)
 	if _, err := server.FromEnv(func(k string) string {

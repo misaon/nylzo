@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -37,12 +38,11 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	cfg.PoWConcurrency = 1
 	cfg.PoWDifficulty = 1
 	cfg.Rates.GlobalDailyCreates = 2
-	s, err := New(cfg, st, blobs)
+	s, err := New(cfg, st, blobs, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func(d time.Duration) { powSlotWait = d }(powSlotWait)
-	powSlotWait = 3 * time.Second
+	s.powSlotWait = 3 * time.Second
 	d := dayWindow(time.Now())
 	if _, err := st.RateHit(t.Context(), []store.RateHit{{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); err != nil {
 		t.Fatal(err)
@@ -66,9 +66,11 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	size := int64(256 << 10)
 	hdr, _ := json.Marshal(map[string]any{"id": id.String(), "id_token": s.idToken(id, s.clock()), "read_key": core.Encode(readKey[:]), "manage_key": core.Encode(manageKey[:]), "kdf_id": 0, "opens_max": 1, "ttl_s": 60, "size": size})
 	done := make(chan struct{})
+	stalled := make(chan struct{})
+	body := &signalReader{r: bytes.NewReader(make([]byte, size)), after: h2cStreamBuffer, signal: stalled}
 	go func() {
 		defer close(done)
-		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, base+"/api/v1/messages", bytes.NewReader(make([]byte, size)))
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, base+"/api/v1/messages", body)
 		req.ContentLength = size
 		req.Header.Set("X-Nylzo-Create", core.Encode(hdr))
 		req.Header.Set("X-Nylzo-Pow", s.powChallenge(time.Now())+".0000000000000001")
@@ -77,7 +79,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 			resp.Body.Close()
 		}
 	}()
-	time.Sleep(300 * time.Millisecond)
+	<-stalled
 
 	start := time.Now()
 	req, _ := http.NewRequest(http.MethodPost, base+"/api/v1/abuse", strings.NewReader(`{"id":"x"}`))
@@ -90,7 +92,24 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	if elapsed := time.Since(start); resp.ProtoMajor != 2 || elapsed > time.Second {
 		t.Fatalf("a small request waited %v (%s) behind an upload that has not been read yet", elapsed, resp.Proto)
 	}
+	<-s.powSlots
 	<-done
+}
+
+type signalReader struct {
+	r      io.Reader
+	read   int
+	after  int
+	signal chan struct{}
+}
+
+func (s *signalReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if s.read <= s.after && s.read+n > s.after {
+		close(s.signal)
+	}
+	s.read += n
+	return n, err
 }
 
 type deadlineWriter struct {
@@ -135,7 +154,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := New(cfg, st, blobs)
+	cs, err := New(cfg, st, blobs, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}

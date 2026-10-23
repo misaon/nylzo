@@ -562,10 +562,10 @@ func (f *File) server() error {
 	if err != nil {
 		return err
 	}
-	curKey, _ := pepper.New(cur)
-	prevKey, _ := pepper.New(prev)
+	curKey, _ := pepper.NewKey(cur)
+	prevKey, _ := pepper.NewKey(prev)
 	f.Server = Server{Pepper: hex.EncodeToString(cur), PepperID: int(curKey.ID()), PreviousPepper: hex.EncodeToString(prev), PreviousPepperID: int(prevKey.ID())}
-	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.ID, pepper.Challenge} {
+	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge} {
 		input := det("mac-input/"+string(p), 32)
 		mac, _ := ring.MAC(p, input)
 		f.Server.MACs = append(f.Server.MACs, MACCase{Purpose: string(p), Input: hex.EncodeToString(input), MAC: hex.EncodeToString(mac[:])})

@@ -121,9 +121,11 @@ func TestPaddingBoundaries(t *testing.T) {
 		{1, true, 65536}, {65536, true, 65536}, {65537, true, 131072},
 	}
 	for _, c := range cases {
-		if got := core.PaddedLen(c.n, c.hasFile); got != c.want {
-			t.Fatalf("PaddedLen(%d,%v)=%d want %d", c.n, c.hasFile, got, c.want)
-		}
+		t.Run(fmt.Sprintf("%d/file=%v", c.n, c.hasFile), func(t *testing.T) {
+			if got := core.PaddedLen(c.n, c.hasFile); got != c.want {
+				t.Fatalf("PaddedLen(%d,%v)=%d want %d", c.n, c.hasFile, got, c.want)
+			}
+		})
 	}
 	for _, size := range []int{0, 1, 4095, 4096, 4097, 65536, 65537} {
 		_, _, _, _, _, object := sampleMessage(t, core.KDFNone, "", make([]byte, size))
@@ -207,7 +209,7 @@ func TestCanonicalBase64(t *testing.T) {
 			t.Fatalf("accepted %q", s)
 		}
 	}
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		s := core.NewSecret()
 		e := core.Encode(s[:])
 		if strings.HasSuffix(e, "-") || strings.HasSuffix(e, "_") {

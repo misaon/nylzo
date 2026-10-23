@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/binary"
 	"errors"
@@ -363,8 +364,7 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 	at := created.Add(17*time.Second + 123*time.Millisecond)
 	for i := 1; i <= store.FreeAttempts+1; i++ {
 		_, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return at }, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return false }, LeaseMAC: mac, LeasePepperID: 7})
-		var pe *store.PassphraseError
-		if !errors.As(err, &pe) {
+		if _, ok := errors.AsType[*store.PassphraseError](err); !ok {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
 		var next int64
@@ -618,4 +618,48 @@ func walCommits(t *testing.T, wal []byte) int {
 		}
 	}
 	return commits
+}
+
+type cancelAfterAck struct {
+	store.Store
+	cancel context.CancelFunc
+}
+
+func (c cancelAfterAck) Ack(ctx context.Context, l store.Lease, now time.Time) (string, error) {
+	ref, err := c.Store.Ack(context.WithoutCancel(ctx), l, now)
+	c.cancel()
+	return ref, err
+}
+
+func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
+	dir := t.TempDir()
+	s, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	blobs, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	id := core.NewID().String()
+	mac := bytes.Repeat([]byte{7}, 32)
+	if err := blobs.Put(t.Context(), id, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Create(t.Context(), &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Claim(t.Context(), store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	if err := store.AckLease(ctx, cancelAfterAck{s, cancel}, blobs, res.Lease, now); err != nil {
+		t.Fatalf("an ack whose client left after the commit: %v", err)
+	}
+	if rec, err := s.Get(t.Context(), id); err != nil || rec.Tombstone == nil {
+		t.Fatalf("the ack left the message without its tombstone: %+v %v", rec, err)
+	}
 }

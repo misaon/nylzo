@@ -3,6 +3,7 @@ package server_test
 import (
 	"database/sql"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -45,9 +46,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 				c.before(h, m)
 			}
 			claim := signedRequestFrom(victim, &m.link.R, core.PurposeRead, "POST", "/api/v1/messages/"+m.id.String()+"/claim", h.srv.ChallengeForTest())
-			for k, v := range c.header {
-				claim.headers[k] = v
-			}
+			maps.Copy(claim.headers, c.header)
 			if resp, _ := h.do(claim); resp.StatusCode != c.status {
 				t.Fatalf("the victim's claim: %d, want %d", resp.StatusCode, c.status)
 			}
@@ -217,7 +216,7 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 	h.metadata(m)
 	h.status(m)
 	seen := map[string]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(h.logBuf.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(h.logBuf.String()), "\n") {
 		var entry map[string]any
 		if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "request" {
 			continue

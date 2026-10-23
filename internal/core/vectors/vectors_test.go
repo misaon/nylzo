@@ -23,19 +23,3 @@ func TestCommittedVectorsMatchGenerator(t *testing.T) {
 		t.Fatalf("spec/vectors.json is stale; regenerate with `%s` and update web/core tests if the protocol changed", Generator)
 	}
 }
-
-func TestGenerateIsDeterministic(t *testing.T) {
-	a, err := Generate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := Generate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ma, _ := Marshal(a)
-	mb, _ := Marshal(b)
-	if !bytes.Equal(ma, mb) {
-		t.Fatal("two generator runs differ")
-	}
-}

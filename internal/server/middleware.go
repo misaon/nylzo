@@ -1,11 +1,14 @@
 package server
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 )
+
+const apiCSP = "default-src 'none'; frame-ancestors 'none'"
 
 const cspTemplate = "default-src 'none'; script-src 'nonce-%s'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'"
 
@@ -20,6 +23,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		h.Set("Cross-Origin-Resource-Policy", "same-origin")
 		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		h.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+		h.Set("Content-Security-Policy", apiCSP)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -90,15 +94,27 @@ var objectRoutes = map[string]bool{
 	"GET /api/v1/messages/{id}/blob":   true,
 }
 
+type routeKey struct{}
+
 func (s *Server) logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w}
-		next.ServeHTTP(sw, r)
-		attrs := []any{"method", r.Method, "route", r.Pattern, "status", sw.status}
-		if !objectRoutes[r.Pattern] {
+		route := new(string)
+		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), routeKey{}, route)))
+		attrs := []any{"method", r.Method, "route", *route, "status", sw.status}
+		if *route != "" && !objectRoutes[*route] {
 			attrs = append(attrs, "duration_ms", float64(time.Since(start).Microseconds())/1000)
 		}
 		s.log.Info("request", attrs...)
+	})
+}
+
+func recordRoute(mux http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.ServeHTTP(w, r)
+		if route, ok := r.Context().Value(routeKey{}).(*string); ok {
+			*route = r.Pattern
+		}
 	})
 }

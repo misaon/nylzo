@@ -1,10 +1,51 @@
 package core_test
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
 )
+
+func FuzzOpenPlaintext(f *testing.F) {
+	id := core.NewID()
+	_, content, err := core.DeriveAll(id, core.NewSecret(), core.KDFNone, "")
+	if err != nil {
+		f.Fatal(err)
+	}
+	h := core.NewHeader(core.KDFNone)
+	pol := core.Policy{OpensMax: 1, TTLSeconds: 60}
+	block, err := aes.NewCipher(content.K[:])
+	if err != nil {
+		f.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		f.Fatal(err)
+	}
+	text := "hello"
+	valid, err := core.Seal(&content.K, h, id, pol, core.Payload{Meta: core.Meta{Text: &text}})
+	if err != nil {
+		f.Fatal(err)
+	}
+	plain, err := gcm.Open(nil, h.IV[:], valid[core.HeaderLen:], core.AAD(h, id, pol))
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(plain)
+	f.Add([]byte{0, 0, 0, 2, '{', '}'})
+	f.Add([]byte{})
+	f.Fuzz(func(t *testing.T, pt []byte) {
+		_, payload, err := core.Open(&content.K, id, pol, core.KDFNone, gcm.Seal(h.Bytes(), h.IV[:], pt, core.AAD(h, id, pol)))
+		if err != nil {
+			return
+		}
+		if payload.Meta.File != nil && int64(len(payload.File)) != payload.Meta.File.Size {
+			t.Fatal("file size mismatch")
+		}
+	})
+}
 
 func FuzzOpen(f *testing.F) {
 	id, _, content, _, pol, object, err := buildSample(core.KDFNone, "", []byte{1, 2, 3})

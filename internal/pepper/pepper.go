@@ -1,12 +1,14 @@
 package pepper
 
 import (
+	"bytes"
 	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -18,7 +20,7 @@ const (
 	Manage    Purpose = "manage"
 	Lease     Purpose = "lease"
 	PoW       Purpose = "pow"
-	ID        Purpose = "id"
+	IDToken   Purpose = "id"
 	Challenge Purpose = "challenge"
 )
 
@@ -30,10 +32,11 @@ const (
 	infoBase = "nylzo/v1/mac/"
 )
 
-var purposes = []Purpose{Read, Verifier, Manage, Lease, PoW, ID, Challenge}
+var purposes = []Purpose{Read, Verifier, Manage, Lease, PoW, IDToken, Challenge}
 
 var (
 	ErrSecret    = errors.New("pepper: secret must be 32 bytes in hex or base64url")
+	ErrWeak      = errors.New("pepper: secret has 32 equal bytes; generate one with openssl rand -hex 32")
 	ErrCollision = errors.New("pepper: current and previous pepper share a pepper_id; choose a different previous pepper")
 )
 
@@ -42,7 +45,7 @@ type Key struct {
 	keys map[Purpose][32]byte
 }
 
-func New(secret []byte) (*Key, error) {
+func NewKey(secret []byte) (*Key, error) {
 	if len(secret) != SecretLen {
 		return nil, ErrSecret
 	}
@@ -59,7 +62,17 @@ func New(secret []byte) (*Key, error) {
 }
 
 func ParseSecret(s string) ([]byte, error) {
-	s = strings.TrimSpace(s)
+	b, err := decodeSecret(strings.TrimSpace(s))
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Count(b, b[:1]) == SecretLen {
+		return nil, ErrWeak
+	}
+	return b, nil
+}
+
+func decodeSecret(s string) ([]byte, error) {
 	if b, err := hex.DecodeString(s); err == nil && len(b) == SecretLen {
 		return b, nil
 	}
@@ -74,7 +87,10 @@ func (k *Key) ID() byte {
 }
 
 func (k *Key) MAC(p Purpose, input []byte) [MACLen]byte {
-	key := k.keys[p]
+	key, ok := k.keys[p]
+	if !ok {
+		panic("pepper: unknown purpose " + strconv.Quote(string(p)))
+	}
 	m := hmac.New(sha256.New, key[:])
 	m.Write(input)
 	return [MACLen]byte(m.Sum(nil))
@@ -87,13 +103,13 @@ type Ring struct {
 }
 
 func NewRing(current, previous []byte) (*Ring, error) {
-	cur, err := New(current)
+	cur, err := NewKey(current)
 	if err != nil {
 		return nil, err
 	}
 	r := &Ring{current: cur}
 	if previous != nil {
-		prev, err := New(previous)
+		prev, err := NewKey(previous)
 		if err != nil {
 			return nil, err
 		}

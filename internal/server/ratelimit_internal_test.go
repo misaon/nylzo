@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -95,13 +96,13 @@ func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	s := &Server{store: cancelAfterCommit{st}, abusePath: filepath.Join(t.TempDir(), "abuse-reports.jsonl"), log: slog.New(slog.DiscardHandler)}
+	s := &Server{store: cancelAfterCommit{st}, abuseDir: filepath.Join(t.TempDir(), "abuse"), log: slog.New(slog.DiscardHandler)}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := s.recordAbuse(ctx, time.Unix(1_800_000_000, 0), core.NewID().String(), "spam"); err != nil {
 		t.Fatalf("a report whose slot was reserved must be stored even if the client left: %v", err)
 	}
-	if data, err := os.ReadFile(s.abusePath); err != nil || len(data) == 0 {
+	if data, err := os.ReadFile(filepath.Join(s.abuseDir, "2027-01-15.jsonl")); err != nil || len(data) == 0 {
 		t.Fatalf("report not stored: %v", err)
 	}
 }
@@ -130,7 +131,7 @@ func TestAddrCountersStopAtTheFirstRefusal(t *testing.T) {
 	for range 3 {
 		c.hit(hits, w.start)
 	}
-	if got := c.tables["k:c"][coarse].count; got != 1 {
+	if got := c.tables["k:c"].entries[coarse].count; got != 1 {
 		t.Fatalf("refused requests were counted against the coarse bucket: %d", got)
 	}
 }
@@ -144,13 +145,13 @@ func TestAddrCountersStayBounded(t *testing.T) {
 		c.hit([]addrHit{{kind: "k", bucket: bucket{byte(i)}, window: old}}, old.start)
 	}
 	c.hit([]addrHit{{kind: "k", bucket: bucket{0xff, 0xff}, window: cur}}, now)
-	if n := len(c.tables["k"]); n != 1 {
+	if n := len(c.tables["k"].entries); n != 1 {
 		t.Fatalf("expired buckets were kept: %d", n)
 	}
 	for i := range 4 * c.max {
 		c.hit([]addrHit{{kind: "k", bucket: bucket{byte(i), byte(i >> 8), 1}, window: cur}}, now)
 	}
-	if n := len(c.tables["k"]); n > c.max {
+	if n := len(c.tables["k"].entries); n > c.max {
 		t.Fatalf("the table grew past its bound: %d", n)
 	}
 }
@@ -246,6 +247,10 @@ func (s *gatedSpends) calls() []int {
 }
 
 func TestConcurrentSpendsShareATransaction(t *testing.T) {
+	synctest.Test(t, testConcurrentSpendsShareATransaction)
+}
+
+func testConcurrentSpendsShareATransaction(t *testing.T) {
 	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -270,20 +275,15 @@ func TestConcurrentSpendsShareATransaction(t *testing.T) {
 		})
 	}
 	reserve("first")
-	waitFor(t, func() bool { return len(gated.calls()) == 1 })
+	synctest.Wait()
+	if calls := gated.calls(); len(calls) != 1 {
+		t.Fatalf("the first spend did not start writing: %v", calls)
+	}
 	const pairs = 300
 	for i := range 2 * pairs {
 		reserve(fmt.Sprint(i % pairs))
 	}
-	waitFor(t, func() bool {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		queued := 0
-		for _, batch := range b.queue {
-			queued += len(batch.hits)
-		}
-		return queued == 2*pairs
-	})
+	synctest.Wait()
 	close(gated.gate)
 	wg.Wait()
 	if granted.Load() != pairs+1 {
@@ -291,16 +291,5 @@ func TestConcurrentSpendsShareATransaction(t *testing.T) {
 	}
 	if calls := gated.calls(); !slices.Equal(calls, []int{1, spendBatchMax, spendBatchMax, 2*pairs - 2*spendBatchMax}) {
 		t.Fatalf("spends written as transactions of %v", calls)
-	}
-}
-
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatal("timed out")
-		}
-		time.Sleep(time.Millisecond)
 	}
 }

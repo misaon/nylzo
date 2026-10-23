@@ -4,22 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"io/fs"
-	"mime"
+	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
-	"unicode"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
@@ -27,22 +19,15 @@ import (
 )
 
 const (
-	headerCreate         = "X-Nylzo-Create"
-	headerPoW            = "X-Nylzo-Pow"
-	headerLease          = "X-Nylzo-Lease"
-	headerPolicy         = "X-Nylzo-Policy"
-	headerVerifier       = "X-Nylzo-Verifier"
-	maxCreateHeader      = 1024
-	maxJSONBody          = 4096
-	timeFormat           = time.RFC3339
-	octetStream          = "application/octet-stream"
-	abuseReasonRawBytes  = 1000
-	abuseReasonJSONBytes = 1200
-	abuseFileLimit       = 16 << 20
-	abuseRetention       = MaxTTL + store.TombstoneTTL
-	abusePerRange        = 3
-	abuseDecodePasses    = 3
-	maxJSONEscape        = len(`\u0000`)
+	headerCreate    = "X-Nylzo-Create"
+	headerPoW       = "X-Nylzo-Pow"
+	headerLease     = "X-Nylzo-Lease"
+	headerPolicy    = "X-Nylzo-Policy"
+	headerVerifier  = "X-Nylzo-Verifier"
+	maxCreateHeader = 1024
+	maxJSONBody     = 4096
+	timeFormat      = time.RFC3339
+	octetStream     = "application/octet-stream"
 )
 
 type createHeader struct {
@@ -138,14 +123,40 @@ func formatOptTime(t *time.Time) string {
 	return formatTime(*t)
 }
 
-func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
-	if r.Context().Err() != nil && errors.Is(err, context.Canceled) {
-		s.log.Info("handler", "route", r.Pattern, "err", "client went away")
+func clientGone(ctx context.Context, err error) bool {
+	return ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded))
+}
+
+func failure(ctx context.Context, err error) (slog.Level, string) {
+	if clientGone(ctx, err) {
+		return slog.LevelInfo, "client went away"
+	}
+	return slog.LevelError, ErrorText(err)
+}
+
+func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error) {
+	level, text := failure(r.Context(), err)
+	s.log.Log(r.Context(), level, "handler", "route", r.Pattern, "err", text)
+	if level == slog.LevelInfo {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
-	s.log.Error("handler", "route", r.Pattern, "err", ErrorText(err))
 	writeError(w, http.StatusInternalServerError, errInternal)
+}
+
+func (s *Server) takeStream(w http.ResponseWriter) bool {
+	select {
+	case s.streams <- struct{}{}:
+		return true
+	default:
+		setRetryAfter(w, streamBusyRetry)
+		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		return false
+	}
+}
+
+func (s *Server) releaseStream() {
+	<-s.streams
 }
 
 type access struct {
@@ -188,6 +199,9 @@ func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, p
 		}
 	}
 	keyOK := core.ValidPublicKey(sig.PublicKey[:])
+	if !keyOK {
+		sig.PublicKey = dummyPublicKey
+	}
 	macOK := s.ring.Verify(purpose, sig.PublicKey[:], mac, pepperID)
 	sigOK := sig.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body)
 	if !found || sigErr != nil || !fresh || !keyOK || !macOK || !sigOK {
@@ -212,7 +226,8 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 	case m.OpensRemaining == 0:
 		leases, lerr := s.store.Leases(ctx, id)
 		if lerr != nil {
-			s.log.Error("settle", "err", ErrorText(lerr))
+			level, text := failure(ctx, lerr)
+			s.log.Log(ctx, level, "settle", "err", text)
 			return store.Record{}, nil, false
 		}
 		if slices.ContainsFunc(leases, func(l store.Lease) bool { return l.Active(now) }) {
@@ -223,12 +238,14 @@ func (s *Server) settle(ctx context.Context, id string, m *store.Message, now ti
 		return store.Record{}, nil, false
 	}
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.log.Error("settle", "err", ErrorText(err))
+		level, text := failure(ctx, err)
+		s.log.Log(ctx, level, "settle", "err", text)
 		return store.Record{}, nil, false
 	}
 	rec, err := s.store.Get(ctx, id)
 	if err != nil {
-		s.log.Error("settle", "err", ErrorText(err))
+		level, text := failure(ctx, err)
+		s.log.Log(ctx, level, "settle", "err", text)
 		return store.Record{}, nil, false
 	}
 	return rec, nil, true
@@ -261,7 +278,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	resp.Create = s.issueID(now)
 	gate, err := s.globalGate(r.Context(), now)
 	if err != nil {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	if gate.powNeeded {
@@ -271,59 +288,66 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) parseCreateHeader(r *http.Request) (createHeader, core.ID, []byte, []byte, []byte, bool) {
-	var h createHeader
+type createRequest struct {
+	header      createHeader
+	id          core.ID
+	readKey     []byte
+	verifierKey []byte
+	manageKey   []byte
+}
+
+func (s *Server) parseCreateHeader(r *http.Request) (createRequest, bool) {
+	var req createRequest
 	raw := r.Header.Get(headerCreate)
 	if raw == "" || len(raw) > maxCreateHeader {
-		return h, core.ID{}, nil, nil, nil, false
+		return req, false
 	}
 	data, err := base64.RawURLEncoding.Strict().DecodeString(raw)
 	if err != nil {
-		return h, core.ID{}, nil, nil, nil, false
+		return req, false
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
-		return h, core.ID{}, nil, nil, nil, false
+		return req, false
 	}
 	for key := range fields {
 		if !createHeaderKeys[key] {
-			return h, core.ID{}, nil, nil, nil, false
+			return req, false
 		}
 	}
-	if err := json.Unmarshal(data, &h); err != nil {
-		return h, core.ID{}, nil, nil, nil, false
+	h := &req.header
+	if err := json.Unmarshal(data, h); err != nil {
+		return req, false
 	}
-	id, err := core.ParseID(h.ID)
-	if err != nil {
-		return h, core.ID{}, nil, nil, nil, false
+	if req.id, err = core.ParseID(h.ID); err != nil {
+		return req, false
 	}
-	readKey, err := core.DecodeExact(h.ReadKey, core.PublicKeyLen)
-	if err != nil {
-		return h, id, nil, nil, nil, false
+	if req.readKey, err = core.DecodeExact(h.ReadKey, core.PublicKeyLen); err != nil {
+		return req, false
 	}
-	manageKey, err := core.DecodeExact(h.ManageKey, core.PublicKeyLen)
-	if err != nil {
-		return h, id, nil, nil, nil, false
+	if req.manageKey, err = core.DecodeExact(h.ManageKey, core.PublicKeyLen); err != nil {
+		return req, false
 	}
 	kdf := core.KDF(h.KDFID)
-	if h.KDFID < 0 || h.KDFID > 255 || !kdf.Valid() || !core.ValidPublicKey(readKey) || !core.ValidPublicKey(manageKey) || bytes.Equal(readKey, manageKey) {
-		return h, id, nil, nil, nil, false
-	}
-	var verifierKey []byte
-	if kdf.RequiresPassphrase() != (h.VerifierKey != nil) {
-		return h, id, nil, nil, nil, false
+	kdfOK := h.KDFID >= 0 && h.KDFID <= 255 && kdf.Valid()
+	keysOK := core.ValidPublicKey(req.readKey) && core.ValidPublicKey(req.manageKey) && !bytes.Equal(req.readKey, req.manageKey)
+	if !kdfOK || !keysOK || kdf.RequiresPassphrase() != (h.VerifierKey != nil) {
+		return req, false
 	}
 	if h.VerifierKey != nil {
-		verifierKey, err = core.DecodeExact(*h.VerifierKey, core.PublicKeyLen)
-		if err != nil || !core.ValidPublicKey(verifierKey) || bytes.Equal(verifierKey, readKey) || bytes.Equal(verifierKey, manageKey) {
-			return h, id, nil, nil, nil, false
+		if req.verifierKey, err = core.DecodeExact(*h.VerifierKey, core.PublicKeyLen); err != nil {
+			return req, false
+		}
+		verifierOK := core.ValidPublicKey(req.verifierKey) && !bytes.Equal(req.verifierKey, req.readKey) && !bytes.Equal(req.verifierKey, req.manageKey)
+		if !verifierOK {
+			return req, false
 		}
 	}
 	l := s.cfg.Limits
-	if h.OpensMax < 1 || h.OpensMax > l.MaxOpens || h.TTLSeconds < core.MinTTLSeconds || h.TTLSeconds > int64(l.MaxTTL/time.Second) || h.Size < core.HeaderLen+core.TagLen+core.MetaLenPrefix {
-		return h, id, nil, nil, nil, false
-	}
-	return h, id, readKey, verifierKey, manageKey, true
+	opensOK := h.OpensMax >= 1 && h.OpensMax <= l.MaxOpens
+	ttlOK := h.TTLSeconds >= core.MinTTLSeconds && h.TTLSeconds <= int64(l.MaxTTL/time.Second)
+	sizeOK := h.Size >= core.HeaderLen+core.TagLen+core.MetaLenPrefix
+	return req, opensOK && ttlOK && sizeOK
 }
 
 func (s *Server) rejectCreate(w http.ResponseWriter, r *http.Request, status int, v any) {
@@ -348,7 +372,8 @@ func (t *trackingReader) Read(p []byte) (int, error) {
 
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	h, id, readKey, verifierKey, manageKey, ok := s.parseCreateHeader(r)
+	req, ok := s.parseCreateHeader(r)
+	h, id := req.header, req.id
 	if !ok {
 		s.rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 		return
@@ -369,7 +394,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, r, http.StatusRequestEntityTooLarge, errTooLarge)
 		return
 	}
-	http.NewResponseController(w).SetReadDeadline(time.Now().Add(max(readTimeout, store.TransferTime(h.Size))))
+	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(max(readTimeout, store.TransferTime(h.Size)))); err != nil {
+		s.log.Error("read-deadline", "err", ErrorText(err))
+	}
 	now := s.clock()
 	if retry := s.limitCreate(now, s.clientAddr(r), h.Size); retry > 0 {
 		setRetryAfter(w, retry)
@@ -378,7 +405,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	gate, err := s.globalGate(ctx, now)
 	if err != nil {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	if gate.full {
@@ -396,13 +423,13 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			s.rejectCreate(w, r, http.StatusForbidden, errPoWRequired)
 			return
 		case err != nil:
-			s.internal(w, r, err)
+			s.writeInternal(w, r, err)
 			return
 		}
 	}
 	slot, reserved, err := s.reserveGlobalCreate(ctx, now)
 	if err != nil {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	if !reserved {
@@ -423,7 +450,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, r, http.StatusConflict, errConflict)
 		return
 	} else if !errors.Is(err, store.ErrNotFound) {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	body := &trackingReader{r: http.MaxBytesReader(w, r.Body, h.Size)}
@@ -447,12 +474,12 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		case body.err != nil || errors.Is(err, io.ErrUnexpectedEOF):
 			writeError(w, http.StatusBadRequest, errBadRequest)
 		default:
-			s.internal(w, r, err)
+			s.writeInternal(w, r, err)
 		}
 		return
 	}
-	readMAC, pepperID := s.ring.MAC(pepper.Read, readKey)
-	manageMAC, _ := s.ring.MAC(pepper.Manage, manageKey)
+	readMAC, pepperID := s.ring.MAC(pepper.Read, req.readKey)
+	manageMAC, _ := s.ring.MAC(pepper.Manage, req.manageKey)
 	uploaded := s.clock()
 	m := &store.Message{
 		ID: id.String(), Version: parsed.Version, KDF: uint8(parsed.KDF), Flags: parsed.Flags, State: store.StateAvailable,
@@ -460,8 +487,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		OpensMax: uint16(h.OpensMax), OpensRemaining: uint16(h.OpensMax), PepperID: pepperID,
 		ReadMAC: readMAC[:], ManageMAC: manageMAC[:], Size: h.Size, BlobRef: id.String(),
 	}
-	if verifierKey != nil {
-		verifierMAC, _ := s.ring.MAC(pepper.Verifier, verifierKey)
+	if req.verifierKey != nil {
+		verifierMAC, _ := s.ring.MAC(pepper.Verifier, req.verifierKey)
 		m.VerifierMAC = verifierMAC[:]
 	}
 	if err := s.store.Create(ctx, m, s.storedCreateCounters(now)...); err != nil {
@@ -472,7 +499,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 			s.rejectCreate(w, r, http.StatusConflict, errConflict)
 			return
 		}
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	stored = true
@@ -481,7 +508,12 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.Time) {
 	retry := pendingRetry
-	if c, err := s.store.RateGet(r.Context(), globalStoredKey, dayWindow(now).start); err == nil && c.Count >= s.cfg.Rates.GlobalDailyCreates {
+	c, err := s.store.RateGet(r.Context(), globalStoredKey, dayWindow(now).start)
+	switch {
+	case err != nil:
+		level, text := failure(r.Context(), err)
+		s.log.Log(r.Context(), level, "global-cap", "err", text)
+	case c.Count >= s.cfg.Rates.GlobalDailyCreates:
 		retry = dayWindow(now).end.Sub(now) + time.Second
 	}
 	setRetryAfter(w, retry)
@@ -506,7 +538,7 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose pepp
 	}
 	a, ok, err := s.authorize(r.Context(), r, r.PathValue("id"), purpose, nil)
 	if err != nil {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return a, false
 	}
 	if !ok {
@@ -577,9 +609,10 @@ func (s *Server) policyHeader(m *store.Message) string {
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !validPathID(w, r) || !s.allowRead(w, r) {
+	if !validPathID(w, r) || !s.allowRead(w, r) || !s.takeStream(w) {
 		return
 	}
+	defer s.releaseStream()
 	verifierHeader := r.Header.Get(headerVerifier)
 	verifierSent := verifierHeader != ""
 	verifier := core.Signature{PublicKey: dummyPublicKey}
@@ -597,6 +630,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	id := a.id
 	verifier.Challenge = a.sig.Challenge
 	verifierKeyOK := core.ValidPublicKey(verifier.PublicKey[:])
+	if !verifierKeyOK {
+		verifier.PublicKey = dummyPublicKey
+	}
 	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
 	blob, size, ok := s.openBlob(w, r, m)
 	if !ok {
@@ -627,7 +663,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	case err != nil:
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	if result.Message.OpensRemaining == 0 {
@@ -666,14 +702,16 @@ func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, m *store.Messa
 		err = errBlobSize
 	}
 	if err != nil {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return nil, 0, false
 	}
 	return f, size, true
 }
 
 func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message, lease string, f io.Reader, size int64) {
-	http.NewResponseController(w).SetWriteDeadline(time.Now().Add(max(writeTimeout, store.TransferTime(size))))
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(max(writeTimeout, store.TransferTime(size)))); err != nil {
+		s.log.Error("write-deadline", "err", ErrorText(err))
+	}
 	if lease != "" {
 		w.Header().Set(headerLease, lease)
 	}
@@ -725,7 +763,7 @@ func (s *Server) endedState(ctx context.Context, id string) (store.State, error)
 func (s *Server) writeCurrentGone(w http.ResponseWriter, r *http.Request, id string) {
 	state, err := s.endedState(r.Context(), id)
 	if err != nil {
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	writeGone(w, string(state))
@@ -757,37 +795,54 @@ func (s *Server) findLease(ctx context.Context, r *http.Request, a access, now t
 	return store.Lease{}, false, nil
 }
 
+type leaseAccess struct {
+	msg   *store.Message
+	id    string
+	lease store.Lease
+	now   time.Time
+}
+
+func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAccess, bool) {
+	m, a, ok := s.authorizedLive(w, r, pepper.Read)
+	if !ok {
+		return leaseAccess{}, false
+	}
+	la := leaseAccess{msg: m, id: a.id.String(), now: s.clock()}
+	lease, active, err := s.findLease(r.Context(), r, a, la.now)
+	switch {
+	case err != nil:
+		s.writeInternal(w, r, err)
+		return la, false
+	case !active:
+		s.writeCurrentGone(w, r, la.id)
+		return la, false
+	}
+	la.lease = lease
+	return la, true
+}
+
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !validPathID(w, r) || !s.allowRead(w, r) {
+	if !validPathID(w, r) || !s.allowRead(w, r) || !s.takeStream(w) {
 		return
 	}
-	m, a, ok := s.authorizedLive(w, r, pepper.Read)
+	defer s.releaseStream()
+	la, ok := s.activeLease(w, r)
 	if !ok {
 		return
 	}
-	id := a.id
-	now := s.clock()
-	lease, active, err := s.findLease(ctx, r, a, now)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	if !active {
-		s.writeCurrentGone(w, r, id.String())
-		return
-	}
+	m, id, lease, now := la.msg, la.id, la.lease, la.now
 	if err := s.store.RecordDownload(ctx, lease, now); err != nil {
 		var goneErr *store.GoneError
 		switch {
 		case errors.As(err, &goneErr):
-			s.finishGone(w, r, id.String(), goneErr.State, now)
+			s.finishGone(w, r, id, goneErr.State, now)
 		case errors.Is(err, store.ErrLeaseLimit):
 			writeRateLimited(w, lease.ExpiresAt.Sub(now))
 		case errors.Is(err, store.ErrLeaseInvalid):
-			s.writeCurrentGone(w, r, id.String())
+			s.writeCurrentGone(w, r, id)
 		default:
-			s.internal(w, r, err)
+			s.writeInternal(w, r, err)
 		}
 		return
 	}
@@ -800,29 +855,17 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	_, a, ok := s.authorizedLive(w, r, pepper.Read)
+	la, ok := s.activeLease(w, r)
 	if !ok {
 		return
 	}
-	id := a.id
-	now := s.clock()
-	lease, active, err := s.findLease(ctx, r, a, now)
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	if !active {
-		s.writeCurrentGone(w, r, id.String())
-		return
-	}
 	var goneErr *store.GoneError
-	switch err := store.AckLease(ctx, s.store, s.blobs, lease, now); {
+	switch err := store.AckLease(r.Context(), s.store, s.blobs, la.lease, la.now); {
 	case errors.As(err, &goneErr):
-		s.finishGone(w, r, id.String(), goneErr.State, now)
+		s.finishGone(w, r, la.id, goneErr.State, la.now)
 		return
 	case err != nil:
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -838,13 +881,9 @@ func (s *Server) endWith(w http.ResponseWriter, r *http.Request, purpose pepper.
 	final, err := store.EndMessage(ctx, s.store, s.blobs, id.String(), state, s.clock())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		if gone, gerr := s.endedState(ctx, id.String()); gerr != nil {
-			s.internal(w, r, gerr)
-		} else {
-			writeGone(w, string(gone))
-		}
+		s.writeCurrentGone(w, r, id.String())
 	case err != nil:
-		s.internal(w, r, err)
+		s.writeInternal(w, r, err)
 	case final != state:
 		writeGone(w, string(final))
 	default:
@@ -872,194 +911,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	m := rec.Message
 	writeJSON(w, http.StatusOK, statusResponse{
-		State: string(liveState(m, s.clock())), OpensUsed: int(m.OpensMax - m.OpensRemaining), OpensMax: int(m.OpensMax),
+		State: string(liveState(m, s.clock())), OpensUsed: int(m.OpensMax) - int(m.OpensRemaining), OpensMax: int(m.OpensMax),
 		CreatedAt: formatTime(m.CreatedAt), ExpiresAt: formatTime(m.ExpiresAt), FirstOpenedAt: formatOptTime(m.FirstOpenedAt),
 		FailedPassphraseAttempts: m.FailCountTotal,
 	})
 }
 
-type abuseBody struct {
-	ID     string `json:"id"`
-	Reason string `json:"reason"`
-}
-
-func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return
-	}
-	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSONBody))
-	var body abuseBody
-	if err != nil || json.Unmarshal(raw, &body) != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return
-	}
-	if _, err := core.ParseID(body.ID); err != nil {
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
-		return
-	}
-	if !s.allowHourly(w, r, "abuse", s.cfg.Rates.AbusePerHour) {
-		return
-	}
-	now := s.clock()
-	a, ok, err := s.authorize(ctx, r, body.ID, pepper.Read, raw)
-	id := a.id
-	if err != nil {
-		s.internal(w, r, err)
-		return
-	}
-	if ok {
-		err := s.recordAbuse(ctx, now, id.String(), body.Reason)
-		if errors.Is(err, errAbuseFull) {
-			s.log.Error("abuse-file-full")
-			setRetryAfter(w, abuseFullRetry)
-			writeError(w, http.StatusServiceUnavailable, errUnavailable)
-			return
-		}
-		if err != nil {
-			s.log.Error("abuse-record", "err", ErrorText(err))
-		}
-	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
-}
-
-var (
-	percentEscape = regexp.MustCompile(`%[0-9A-Fa-f]{2}`)
-	linkFragment  = regexp.MustCompile(`#\S*`)
-	tokenRun      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(core.IDLen)))
-	errAbuseFull  = errors.New("server: abuse report file reached its size limit")
-	errBlobSize   = errors.New("server: blob size differs from the stored message size")
-)
-
-func percentDecode(text string) string {
-	for range abuseDecodePasses {
-		decoded := percentEscape.ReplaceAllStringFunc(text, func(esc string) string {
-			b, _ := hex.DecodeString(esc[1:])
-			return string(b)
-		})
-		if decoded == text {
-			break
-		}
-		text = decoded
-	}
-	return strings.ToValidUTF8(text, "")
-}
-
-func visibleRune(r rune) rune {
-	switch {
-	case unicode.Is(unicode.Cf, r):
-		return -1
-	case unicode.IsControl(r):
-		return ' '
-	}
-	return r
-}
-
-func redactReason(reason string) string {
-	reason = strings.Map(visibleRune, percentDecode(reason))
-	reason = linkFragment.ReplaceAllString(reason, "[redacted]")
-	reason = tokenRun.ReplaceAllString(reason, "[redacted]")
-	if len(reason) > abuseReasonRawBytes {
-		reason = strings.ToValidUTF8(reason[:abuseReasonRawBytes], "")
-	}
-	for {
-		encoded, _ := json.Marshal(reason)
-		if len(encoded) <= abuseReasonJSONBytes {
-			return reason
-		}
-		runes := []rune(reason)
-		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonJSONBytes)/maxJSONEscape)])
-	}
-}
-
-func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reason string) error {
-	d := dayWindow(now)
-	key := "abuse:id:" + id
-	_, ok, err := s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: key, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: abusePerRange})
-	if err != nil || !ok {
-		return err
-	}
-	if err := s.appendAbuse(now, id, reason); err != nil {
-		if rerr := s.store.RateRelease(context.WithoutCancel(ctx), key, d.start); rerr != nil {
-			s.log.Error("abuse-release", "err", ErrorText(rerr))
-		}
-		return err
-	}
-	return nil
-}
-
-func (s *Server) appendAbuse(now time.Time, id, reason string) error {
-	line, err := json.Marshal(map[string]string{"date": reportDate(now), "id": id, "reason": redactReason(reason)})
-	if err != nil {
-		return err
-	}
-	s.abuseMu.Lock()
-	defer s.abuseMu.Unlock()
-	if err := s.pruneAbuseLocked(now); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(s.abusePath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	if info.Size()+int64(len(line))+1 > abuseFileLimit {
-		return errAbuseFull
-	}
-	_, err = f.Write(append(line, '\n'))
-	return err
-}
-
-func reportDate(t time.Time) string {
-	return t.UTC().Format(time.DateOnly)
-}
-
-func (s *Server) pruneAbuse(now time.Time) error {
-	s.abuseMu.Lock()
-	defer s.abuseMu.Unlock()
-	return s.pruneAbuseLocked(now)
-}
-
-func (s *Server) pruneAbuseLocked(now time.Time) error {
-	data, err := os.ReadFile(s.abusePath)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	cutoff := reportDate(now.Add(-abuseRetention))
-	keep := data
-	for len(keep) > 0 {
-		line, rest, _ := bytes.Cut(keep, []byte("\n"))
-		var r struct {
-			Date string `json:"date"`
-			Time string `json:"time"`
-		}
-		if json.Unmarshal(line, &r) == nil && max(r.Date, r.Time[:min(len(r.Time), len(time.DateOnly))]) >= cutoff {
-			break
-		}
-		keep = rest
-	}
-	if len(keep) == len(data) {
-		return nil
-	}
-	f, err := os.CreateTemp(filepath.Dir(s.abusePath), ".abuse-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if _, err := f.Write(keep); err != nil {
-		f.Close()
-		return err
-	}
-	if err := errors.Join(f.Sync(), f.Close()); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), s.abusePath)
-}
+var errBlobSize = errors.New("server: blob size differs from the stored message size")

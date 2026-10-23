@@ -29,7 +29,7 @@ func (s *Server) idToken(id core.ID, now time.Time) string {
 }
 
 func (s *Server) idTokenTag(id core.ID, expires []byte) []byte {
-	mac, _ := s.ring.MAC(pepper.ID, append(id[:], expires...))
+	mac, _ := s.ring.MAC(pepper.IDToken, append(id[:], expires...))
 	return mac[:idTokenTagLen]
 }
 

@@ -31,7 +31,7 @@ func openDB(t *testing.T, h *harness) *sql.DB {
 
 func abuseLines(t *testing.T, h *harness, id core.ID) int {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	data, err := h.abuseReports()
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
@@ -165,7 +165,9 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 		req.headers["X-Nylzo-Verifier"] = c.header(challenge)
 		resp, body := h.do(req)
 		var got passphraseResponse
-		json.Unmarshal(body, &got)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatalf("%s: %d %s: %v", c.name, resp.StatusCode, body, err)
+		}
 		if resp.StatusCode != http.StatusForbidden || got.AttemptsLeft != 4-i {
 			t.Fatalf("%s: %d %+v", c.name, resp.StatusCode, got)
 		}

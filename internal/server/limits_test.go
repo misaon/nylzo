@@ -63,7 +63,7 @@ func TestAK12GlobalCap(t *testing.T) {
 		t.Fatalf("claim during cap: %d", resp.StatusCode)
 	}
 	h.reopen(cfg)
-	resp, body = h.do(request{method: "GET", path: "/api/v1/instance"})
+	_, body = h.do(request{method: "GET", path: "/api/v1/instance"})
 	if decodeJSON(t, body)["pow"].(map[string]any)["required"] != true {
 		t.Fatalf("instance after restart must still report pow: %s", body)
 	}
@@ -144,7 +144,7 @@ func TestReadRateLimitCountsMetadataClaimBlob(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	m.ip = "203.0.113.5"
 	h.mustCreate(m)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if resp, _ := h.metadata(m); resp.StatusCode != 200 {
 			t.Fatalf("metadata %d: %d", i, resp.StatusCode)
 		}
@@ -167,7 +167,7 @@ func TestTokenBucketThrottlesAPIPaths(t *testing.T) {
 	cfg.Rates.BucketBurst = 3
 	h := newHarness(t, cfg)
 	codes := []int{}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("203.0.%d.1", i)})
 		codes = append(codes, resp.StatusCode)
 	}
@@ -188,7 +188,7 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 	cfg.Rates.GlobalDailyCreates = 8
 	cfg.PoWDifficulty = 3
 	h := newHarness(t, cfg)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 		m.ip = fmt.Sprintf("203.0.113.%d", i+1)
 		h.mustCreate(m)
@@ -226,10 +226,12 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 	if resp.StatusCode != 201 {
 		t.Fatalf("create with pow: %d %s", resp.StatusCode, body)
 	}
+	_, body = h.do(request{method: "GET", path: "/api/v1/instance"})
+	expiring := decodeJSON(t, body)["pow"].(map[string]any)["challenge"].(string)
 	h.clock.Advance(121 * time.Second)
 	stale := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	stale.ip = "203.0.113.9"
-	staleToken, _ := server.SolvePoW(pow["challenge"].(string), stale.id, 3)
+	staleToken, _ := server.SolvePoW(expiring, stale.id, 3)
 	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: stale.object, ip: stale.ip, headers: map[string]string{"X-Nylzo-Create": stale.createHeader(0), "X-Nylzo-Pow": staleToken}})
 	if resp.StatusCode != 403 {
 		t.Fatalf("expired challenge accepted: %d", resp.StatusCode)
@@ -250,7 +252,7 @@ func TestAbuseReports(t *testing.T) {
 	if report(core.NewID().String(), m.readToken) != http.StatusAccepted {
 		t.Fatal("unknown id must get the same 202")
 	}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		report(m.id.String(), core.Encode(make([]byte, 32)))
 	}
 	if report(m.id.String(), m.readToken) != http.StatusTooManyRequests {

@@ -50,17 +50,20 @@ go run ./cmd/nylzod sweep-once
 
 Příkaz `sweep-once` pepper nepotřebuje.
 
+Příkazy `nylzod` jsou `serve` (výchozí), `sweep-once`, `version` a `help`. Žádný příkaz nebere další argumenty. Neznámý příkaz nebo argument vypíše nápovědu na standardní chybový výstup a skončí kódem 2, chyba za běhu kódem 1. Chybu konfigurace server zaloguje i s názvem proměnné.
+
 ### Proměnné prostředí
 
 | Proměnná | Výchozí | Význam |
 |---|---|---|
-| `NYLZO_PEPPER` | povinná pro `serve` | 32 bajtů v hex nebo base64url |
-| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje. Náhrobky ho drží ještě 7 dní a vyexpirovaná zpráva se stane náhrobkem až při dalším požadavku nebo úklidu, takže pro úplné stavy ho nechte 14 dní a jeden interval úklidu. Rotace zároveň vynuluje čítače limitů, backoff hesel a limit hlášení na rozsah adres, stejně jako půlnoc UTC; denní strop 100 selhání na zprávu platí dál |
+| `NYLZO_PEPPER` | povinná pro `serve` | 32 bajtů v hex nebo base64url; pepper ze samých stejných bajtů server odmítne |
+| `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje. Náhrobky ho drží ještě 7 dní a vyexpirovaná zpráva se stane náhrobkem až při dalším požadavku nebo úklidu, takže pro úplné stavy ho nechte 14 dní a jeden interval úklidu. Čítače limitů na adresu drží každý proces v paměti, takže rotace na ně nemá vliv; backoff passphrase, celoživotní strop 100 chybných pokusů a limit hlášení na zprávu jsou v databázi a platí dál |
 | `NYLZO_LISTEN`, `PORT` | `:8080` | adresa naslouchání |
 | `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky a fsync adresáře (`serve` i `sweep-once` to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují. `sweep-once` adresář nezakládá: bez existující databáze a adresáře `blobs` skončí chybou, proto mu v plánovači dejte absolutní cestu |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |
-| `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP` |
-| `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne |
+| `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP`, jen když ji požadavek nese právě jednou; při nastaveném `NYLZO_TRUSTED_PROXIES` jen ze spojení z těchto adres. Bezpečné jen za ingressem, přes který jde každé spojení |
+| `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne; záporná hodnota je chyba |
+| `NYLZO_MAX_STREAMS` | `64` | nejvýš tolik odpovědí claim a blob streamuje naráz; další dostanou 503 s `Retry-After: 5` a otevření nespotřebují |
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření, nejvýš 100 |
@@ -80,11 +83,11 @@ Všechny limity na kyblík adresy drží každý proces jen v paměti, s klíče
 
 Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
 
-Hlášení zneužití podepsaná klíčem čtení zprávy se zapisují do `data/abuse-reports.jsonl` pro ruční posouzení. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Na jednu zprávu uloží nejvýš 3 hlášení denně. Limit platí jen na zprávu, aby žádný řádek nespojoval zprávu s adresou, a jeden ohlašovatel ho proto může vyčerpat. Když by hlášení soubor zvětšilo nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubor je pak potřeba zpracovat a vyprázdnit. Hlášení obsahuje jen datum UTC, id a upravený důvod, čas dne v něm není. Hlášení starší než 14 dní server smaže při každém úklidu a před každým novým hlášením.
+Hlášení zneužití podepsaná klíčem čtení zprávy se zapisují pro ruční posouzení do souboru na každý den UTC, `data/abuse/RRRR-MM-DD.jsonl`; server do něj jen připisuje. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Na jednu zprávu uloží nejvýš 3 hlášení denně. Limit platí jen na zprávu, aby žádný řádek nespojoval zprávu s adresou, a jeden ohlašovatel ho proto může vyčerpat. Když by hlášení zvětšilo soubory dohromady nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubory je pak potřeba zpracovat a smazat. Hlášení obsahuje jen datum UTC, id a upravený důvod, čas dne v něm není. Soubory starší než 14 dní server smaže při každém úklidu, i při `sweep-once`, a před každým novým hlášením.
 
 Paměť: bez proměnné `GOMEMLIMIT` si `nylzod serve` nastaví měkký limit paměti 192 MiB, aby se ověřování PoW a čekající uploady vešly do kontejneru s 256 MB. Vlastní `GOMEMLIMIT` má přednost. Mezipaměť SQLite leží mimo tento limit, proto je omezená na 512 KiB na spojení. Přes nešifrované HTTP/2 (h2c) drží server nejvýš 64 KiB nepřečteného těla na stream a 1 MiB na spojení.
 
-Soubory databáze (`nylzo.db` a jeho `-wal` a `-shm`) vznikají s právy 0600. Existující soubor server nepřenastavuje, proto adresář dat nedávejte do sdíleného umístění. Smazané řádky SQLite přepisuje nulami (`secure_delete`). Každý commit hned vrátí z WAL do databáze (`wal_autocheckpoint = 1`), takže WAL drží jen poslední transakci a neukáže pořadí dřívějších zápisů; stojí to jeden fsync databáze navíc na zápis. Po každém úklidu server WAL zkrátí na nulu a databázi ze starší verze při prvním otevření jednou zkompaktuje (`VACUUM`). Replikaci WAL, třeba Litestream, nepoužívejte: brání checkpointům serveru a stránky WAL ukládá do repliky, kde by zůstaly smazané řádky i pořadí zápisů. Čtení blobu nemění čas přístupu k souboru (na Linuxu `O_NOATIME`); svazek s daty přesto připojte s `noatime`. Co si po smazání pamatuje souborový systém nebo poskytovatel úložiště, server neovlivní.
+Soubory databáze (`nylzo.db` a jeho `-wal` a `-shm`) vznikají s právy 0600. Existující soubor server nepřenastavuje, proto adresář dat nedávejte do sdíleného umístění. Smazané řádky SQLite přepisuje nulami (`secure_delete`). Každý commit hned vrátí z WAL do databáze (`wal_autocheckpoint = 1`), takže WAL drží jen poslední transakci a neukáže pořadí dřívějších zápisů; stojí to dvě synchronizace disku navíc na zápis. Po každém úklidu server WAL zkrátí na nulu a databázi ze starší verze při prvním otevření jednou zkompaktuje (`VACUUM`). Replikaci WAL, třeba Litestream, nepoužívejte: brání checkpointům serveru a stránky WAL ukládá do repliky, kde by zůstaly smazané řádky i pořadí zápisů. Čtení blobu nemění čas přístupu k souboru (na Linuxu `O_NOATIME`); svazek s daty přesto připojte s `noatime`. Co si po smazání pamatuje souborový systém nebo poskytovatel úložiště, server neovlivní.
 
 Velká zpráva má na nahrání i stažení čas podle velikosti: nejméně 120 s, jinak tolik, kolik trvá přenos při 128 kbit/s (u největšího objektu asi 5,6 minuty). Stejně dlouho platí lease, takže příjemce na pomalé lince o zprávu nepřijde.
 
@@ -130,10 +133,26 @@ cd web && pnpm install --frozen-lockfile && pnpm -r typecheck && pnpm -r test
 
 Těžký vektor v TypeScriptu běží jen s `NYLZO_HEAVY_TESTS=1` (CI ho zapíná).
 
-Fuzz cíle (obálka, meta JSON, odkaz, hlavička vytvoření):
+Fuzz cíle (obálka, plaintext obálky, meta JSON, odkaz, fragment, hlavička vytvoření); CI každý z nich spouští 15 s:
 
 ```bash
-go test -run='^$' -fuzz=FuzzOpen -fuzztime=30s ./internal/core
+go test -run='^$' -fuzz='^FuzzOpen$' -fuzztime=30s ./internal/core
+```
+
+Lint a modernizace kódu, stejně jako v CI (nastavení je v `.golangci.yml`):
+
+```bash
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
+```
+
+```bash
+go fix -diff ./...
+```
+
+Benchmarky kritických cest (ověření podpisu, čtení řádku, dávková spotřeba výzev, podepsaný požadavek):
+
+```bash
+go test -run='^$' -bench=. ./internal/core ./internal/store/sqlite ./internal/server
 ```
 
 ## Licence

@@ -1,14 +1,18 @@
 package sqlite
 
 import (
+	"cmp"
 	"context"
+	crand "crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"math/rand/v2"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -147,32 +151,32 @@ func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
 	}
 	defer tx.Rollback()
 	var has int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'ending'`).Scan(&has); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name = 'ending'`).Scan(&has); err != nil {
 		return err
 	}
 	if has == 0 {
-		if _, err := tx.Exec(`ALTER TABLE messages ADD COLUMN ending TEXT`); err != nil {
+		if _, err := tx.ExecContext(ctx, `ALTER TABLE messages ADD COLUMN ending TEXT`); err != nil {
 			return err
 		}
 	}
-	if err := dropPerAddressAttempts(tx); err != nil {
+	if err := dropPerAddressAttempts(ctx, tx); err != nil {
 		return err
 	}
-	for _, t := range append([]unorderedTable{messagesTable}, unorderedTables...) {
-		if err := dropRowid(tx, t); err != nil {
+	for _, t := range unorderedTables {
+		if err := dropRowid(ctx, tx, t); err != nil {
 			return err
 		}
 	}
 	if version < schemaVersion {
-		if _, err := tx.Exec(`DELETE FROM rate_counters WHERE ` + revealingCounter("")); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM rate_counters WHERE `+revealingCounter("")); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(indexes + guards); err != nil {
+	if _, err := tx.ExecContext(ctx, indexes+guards); err != nil {
 		return err
 	}
 	var violations int
-	if err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&violations); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&violations); err != nil {
 		return err
 	}
 	if violations != 0 {
@@ -183,9 +187,9 @@ func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
 
 var ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzod")
 
-func dropPerAddressAttempts(tx *sql.Tx) error {
+func dropPerAddressAttempts(ctx context.Context, tx *sql.Tx) error {
 	columns := map[string]bool{}
-	rows, err := tx.Query(`SELECT name FROM pragma_table_info('messages')`)
+	rows, err := tx.QueryContext(ctx, `SELECT name FROM pragma_table_info('messages')`)
 	if err != nil {
 		return err
 	}
@@ -211,7 +215,7 @@ func dropPerAddressAttempts(tx *sql.Tx) error {
 	}
 	stmts = append(stmts, `DROP TABLE IF EXISTS passphrase_attempts`)
 	for _, stmt := range stmts {
-		if _, err := tx.Exec(stmt); err != nil {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
@@ -219,19 +223,22 @@ func dropPerAddressAttempts(tx *sql.Tx) error {
 }
 
 type unorderedTable struct {
-	name, columns, purgeKey, index string
+	name, columns, index string
 }
-
-var messagesTable = unorderedTable{"messages", "id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref, fail_count_total, next_attempt_at, first_opened_at, ending", "", "expires_at"}
 
 var unorderedTables = []unorderedTable{
-	{"tombstones", "id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at", "id", "purge_at"},
-	{"rate_counters", "key, window_start, count, bytes, purge_at", "key, window_start", "purge_at"},
+	{
+		name:    "messages",
+		columns: "id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref, fail_count_total, next_attempt_at, first_opened_at, ending",
+		index:   "expires_at",
+	},
+	{name: "tombstones", columns: "id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at", index: "purge_at"},
+	{name: "rate_counters", columns: "key, window_start, count, bytes, purge_at", index: "purge_at"},
 }
 
-func dropRowid(tx *sql.Tx, t unorderedTable) error {
+func dropRowid(ctx context.Context, tx *sql.Tx, t unorderedTable) error {
 	var ddl string
-	if err := tx.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, t.name).Scan(&ddl); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, t.name).Scan(&ddl); err != nil {
 		return err
 	}
 	if strings.HasSuffix(strings.TrimSpace(ddl), "WITHOUT ROWID") {
@@ -246,7 +253,7 @@ func dropRowid(tx *sql.Tx, t unorderedTable) error {
 		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, rebuilt, t.name),
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_%s ON %s(%s)`, t.name, t.index, t.name, t.index),
 	} {
-		if _, err := tx.Exec(stmt); err != nil {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
@@ -257,6 +264,8 @@ type Store struct {
 	w *sql.DB
 	r *sql.DB
 }
+
+var _ store.Store = (*Store)(nil)
 
 func dsn(path string, write bool) string {
 	q := url.Values{}
@@ -303,7 +312,7 @@ func open(path string) (*Store, error) {
 	w.SetMaxOpenConns(1)
 	if err := migrate(w); err != nil {
 		w.Close()
-		return nil, err
+		return nil, fmt.Errorf("sqlite: migrate: %w", err)
 	}
 	r, err := sql.Open("sqlite", dsn(path, false))
 	if err != nil {
@@ -312,7 +321,7 @@ func open(path string) (*Store, error) {
 	}
 	r.SetMaxOpenConns(readerConns)
 	r.SetMaxIdleConns(readerConns)
-	if err := r.Ping(); err != nil {
+	if err := r.PingContext(context.Background()); err != nil {
 		r.Close()
 		w.Close()
 		return nil, err
@@ -345,11 +354,14 @@ func (s *Store) tx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 	if err := fn(tx); err != nil {
-		tx.Rollback()
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return cmp.Or(ctx.Err(), err)
+	}
+	return nil
 }
 
 func (s *Store) Create(ctx context.Context, m *store.Message, counters ...store.RateHit) error {
@@ -413,6 +425,9 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 	if err != nil {
 		return store.Record{}, err
 	}
+	if kind != "t" && (opensMax < 1 || opensMax > math.MaxUint16 || opensRem < 0 || opensRem > opensMax) {
+		return store.Record{}, fmt.Errorf("%w: opens %d of %d", errCorruptRow, opensRem, opensMax)
+	}
 	if kind == "t" {
 		return store.Record{Tombstone: &store.Tombstone{ID: m.ID, PepperID: byte(pepperID), ReadMAC: m.ReadMAC, ManageMAC: m.ManageMAC, State: store.State(state), FirstOpenedAt: optTime(firstOpened), EndedAt: fromMS(endedAt.Int64).Truncate(time.Minute), PurgeAt: fromMS(purgeAt.Int64)}}, nil
 	}
@@ -456,7 +471,16 @@ func backoff(failCount int) time.Duration {
 	return min(store.MaxBackoff, time.Second<<min(failCount-store.FreeAttempts, 20))
 }
 
+var (
+	errCorruptRow   = errors.New("sqlite: a message row holds impossible open counters")
+	errClaimParams  = errors.New("sqlite: claim needs a clock, and a verifier check when a verifier is sent")
+	errNoLeaseRowID = errors.New("sqlite: no free lease row id")
+)
+
 func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResult, error) {
+	if p.Clock == nil || (p.VerifierSent && p.VerifyMAC == nil) {
+		return store.ClaimResult{}, errClaimParams
+	}
 	var result store.ClaimResult
 	var passErr *store.PassphraseError
 	err := s.tx(ctx, func(tx *sql.Tx) error {
@@ -474,6 +498,9 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 		}
 		if m.State != store.StateAvailable {
 			return &store.GoneError{State: m.State}
+		}
+		if m.OpensRemaining == 0 {
+			return &store.GoneError{State: store.StateOpened}
 		}
 		if !now.Before(m.ExpiresAt) {
 			return &store.GoneError{State: store.StateExpired}
@@ -745,10 +772,6 @@ func hitInTx(ctx context.Context, tx *sql.Tx, h store.RateHit) (store.RateCount,
 	return c, err
 }
 
-type queryRower interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
 func (s *Store) RateReserve(ctx context.Context, h store.RateHit) (int64, bool, error) {
 	return reserve(ctx, s.w, h)
 }
@@ -771,7 +794,7 @@ func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]b
 	return reserved, nil
 }
 
-func reserve(ctx context.Context, q queryRower, h store.RateHit) (int64, bool, error) {
+func reserve(ctx context.Context, q querier, h store.RateHit) (int64, bool, error) {
 	var count int64
 	err := q.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`,
@@ -803,12 +826,15 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 	for ctx.Err() == nil {
 		rows, err := s.expiredRows(ctx, now, after)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("sqlite: list expired: %w", err))
 			break
 		}
 		for _, row := range rows {
+			if ctx.Err() != nil {
+				break
+			}
 			if _, err := store.EndMessage(ctx, s, b, row.id, store.StateExpired, now); err != nil && !errors.Is(err, store.ErrNotFound) {
-				errs = append(errs, err)
+				errs = append(errs, fmt.Errorf("sqlite: end expired: %w", err))
 				continue
 			}
 			r.Expired++
@@ -818,17 +844,15 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 		}
 		after = rows[len(rows)-1]
 	}
-	n, err := s.purge(ctx, "leases", "row_id", "lease_expires_at", now)
-	if err != nil {
-		errs = append(errs, err)
-	}
-	r.ExpiredLeases = n
-	released, rerrs := s.eachID(ctx, `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`, nil, func(id string) (bool, error) {
+	var err error
+	r.ExpiredLeases, err = s.purge(ctx, "leases", "row_id", "lease_expires_at", now)
+	errs = append(errs, err)
+	released, rerrs := s.eachID(ctx, "release", `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`, nil, func(id string) (bool, error) {
 		return store.Release(ctx, s, b, id, now)
 	})
 	r.BlobsReleased = released
 	errs = append(errs, rerrs...)
-	resumed, rerrs := s.eachID(ctx, `SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`, []any{ms(now)}, func(id string) (bool, error) {
+	resumed, rerrs := s.eachID(ctx, "resume ending", `SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`, []any{ms(now)}, func(id string) (bool, error) {
 		_, err := store.EndMessage(ctx, s, b, id, store.StateDeleted, now)
 		if errors.Is(err, store.ErrNotFound) {
 			return false, nil
@@ -837,17 +861,13 @@ func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.
 	})
 	r.Resumed = resumed
 	errs = append(errs, rerrs...)
-	counts := map[string]*int{"tombstones": &r.Tombstones, "rate_counters": &r.Counters}
-	for _, t := range unorderedTables {
-		n, err := s.purge(ctx, t.name, t.purgeKey, "purge_at", now)
-		if err != nil {
-			errs = append(errs, err)
-		}
-		*counts[t.name] = n
-	}
+	r.Tombstones, err = s.purge(ctx, "tombstones", "id", "purge_at", now)
+	errs = append(errs, err)
+	r.Counters, err = s.purge(ctx, "rate_counters", "key, window_start", "purge_at", now)
+	errs = append(errs, err)
 	var blocked, frames, moved int
 	if err := s.w.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved); err != nil {
-		errs = append(errs, err)
+		errs = append(errs, fmt.Errorf("sqlite: wal checkpoint: %w", err))
 	} else if blocked != 0 {
 		errs = append(errs, ErrCheckpointBusy)
 	}
@@ -858,9 +878,19 @@ var ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish 
 
 const leaseInsertAttempts = 4
 
+func randomLeaseRowID() int64 {
+	var b [8]byte
+	for {
+		crand.Read(b[:])
+		if id := int64(binary.BigEndian.Uint64(b[:]) >> 1); id >= minLeaseRowID {
+			return id
+		}
+	}
+}
+
 func insertLease(ctx context.Context, tx *sql.Tx, id string, p store.ClaimParams, expires time.Time) (int64, error) {
 	for range leaseInsertAttempts {
-		rowID := minLeaseRowID + rand.Int64N(math.MaxInt64-minLeaseRowID+1)
+		rowID := randomLeaseRowID()
 		res, err := tx.ExecContext(ctx, `INSERT INTO leases (row_id, id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(row_id) DO NOTHING`, rowID, id, p.LeaseMAC, p.LeasePepperID, ms(expires))
 		if err != nil {
 			return 0, err
@@ -869,22 +899,26 @@ func insertLease(ctx context.Context, tx *sql.Tx, id string, p store.ClaimParams
 			return rowID, err
 		}
 	}
-	return 0, errors.New("sqlite: no free lease row id")
+	return 0, errNoLeaseRowID
 }
 
-func (s *Store) eachID(ctx context.Context, query string, args []any, fn func(id string) (bool, error)) (int, []error) {
+func (s *Store) eachID(ctx context.Context, step, query string, args []any, fn func(id string) (bool, error)) (int, []error) {
 	var errs []error
 	done := 0
 	last := ""
 	for ctx.Err() == nil {
-		ids, err := s.queryIDs(ctx, query, append(args[:len(args):len(args)], last, store.SweepBatch)...)
+		var ids []string
+		err := s.scanIDs(ctx, query, append(slices.Clip(args), last, store.SweepBatch), func(id string) { ids = append(ids, id) })
 		if err != nil {
-			return done, append(errs, err)
+			return done, append(errs, fmt.Errorf("sqlite: %s: %w", step, err))
 		}
 		for _, id := range ids {
+			if ctx.Err() != nil {
+				break
+			}
 			ok, err := fn(id)
 			if err != nil {
-				errs = append(errs, err)
+				errs = append(errs, fmt.Errorf("sqlite: %s: %w", step, err))
 				continue
 			}
 			if ok {
@@ -922,21 +956,20 @@ func (s *Store) expiredRows(ctx context.Context, now time.Time, after expiredRow
 	return out, rows.Err()
 }
 
-func (s *Store) queryIDs(ctx context.Context, query string, args ...any) ([]string, error) {
+func (s *Store) scanIDs(ctx context.Context, query string, args []any, fn func(id string)) error {
 	rows, err := s.r.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
-	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			return nil, err
+			return err
 		}
-		ids = append(ids, id)
+		fn(id)
 	}
-	return ids, rows.Err()
+	return rows.Err()
 }
 
 func (s *Store) purge(ctx context.Context, table, key, column string, now time.Time) (int, error) {
@@ -944,9 +977,12 @@ func (s *Store) purge(ctx context.Context, table, key, column string, now time.T
 	for {
 		res, err := s.w.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE (%s) IN (SELECT %s FROM %s WHERE %s <= ? LIMIT %d)`, table, key, key, table, column, store.SweepBatch), ms(now))
 		if err != nil {
-			return total, err
+			return total, fmt.Errorf("sqlite: purge %s: %w", table, err)
 		}
-		n, _ := res.RowsAffected()
+		n, err := res.RowsAffected()
+		if err != nil {
+			return total, fmt.Errorf("sqlite: purge %s: %w", table, err)
+		}
 		total += int(n)
 		if n < store.SweepBatch {
 			return total, nil
@@ -955,13 +991,9 @@ func (s *Store) purge(ctx context.Context, table, key, column string, now time.T
 }
 
 func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) {
-	refs, err := s.queryIDs(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
-	if err != nil {
+	refs := map[string]struct{}{}
+	if err := s.scanIDs(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`, nil, func(ref string) { refs[ref] = struct{}{} }); err != nil {
 		return nil, err
 	}
-	out := make(map[string]struct{}, len(refs))
-	for _, r := range refs {
-		out[r] = struct{}{}
-	}
-	return out, nil
+	return refs, nil
 }

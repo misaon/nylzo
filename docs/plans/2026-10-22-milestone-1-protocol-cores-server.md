@@ -71,7 +71,7 @@ Kroky 1 až 4 jsou sériové (spec → jádro → vektory → pepper). Kroky 5 a
 - Dvě jádra se rozejdou v detailu (KD15): vektory s diakritikou, kombinovanými znaky a NFC; kanonický meta JSON; CI křížová kontrola.
 - SQLite a souběh: jeden zapisovatel; `BEGIN IMMEDIATE`, `busy_timeout` 5 s, test 100 souběžných claimů.
 - Testy s časem (lease 120 s, náhrobky 7 dní): injektované hodiny ve store a plánovači serveru; žádné `time.Sleep` v testech kromě AK22.
-- Měření latence v AK21 je v CI šumové: test asserts bajtovou shodu tvrdě; latenci měří prokládaně (1 000 vzorků × 3 třídy, střídání tříd po jednom vzorku), vypíše medián a p95 každé třídy a selže při mediánu > 3× nebo p95 > 5× nejrychlejší třídy (D2 = A, 22. 10. 2026).
+- Měření latence v AK21 je v CI šumové: test asserts bajtovou shodu tvrdě; latenci měří prokládaně (1 000 vzorků × 3 třídy, střídání tříd po jednom vzorku), vypíše medián a p95 každé třídy a selže při mediánu > 3× nebo p95 > 5× nejrychlejší třídy (D2 = A, 22. 10. 2026). Změněno D23 (23. 10. 2026): prahy platí jen mezi třídami se stejnou prací (neznámé id, špatné R nebo M, špatný podpis, klíč mimo křivku), medián nejvýš 1,15× a p95 nejvýš 5× nejrychlejší z nich; prošlá a poškozená výzva nezapisují spotřebu, proto se kontrolují jen na bajtovou shodu. Práh 3× propustil mutant, který pro neznámé id odpověděl o 23 % dřív.
 - scrypt N=2^17 v testech (128 MiB, zhruba 0,3 s v Go, jednotky sekund v Node): vektory s profilem 1 jsou dva, zbytek profil 2 nebo bez passphrase.
 - PoW ověření na serveru stojí jeden scrypt N=2^14 (zhruba 50 ms): přijatelné jen při zapnutém PoW nad 50 % stropu; CLI a web jej dostanou až v dalším milníku, server ho ověřuje už teď.
 

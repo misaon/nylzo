@@ -12,7 +12,11 @@ func (s *Server) clientAddr(r *http.Request) netip.Addr {
 	peer := peerAddr(r.RemoteAddr)
 	switch s.cfg.ProxyMode {
 	case ProxyModeScaleway:
-		if a, err := netip.ParseAddr(strings.TrimSpace(r.Header.Get("X-Real-IP"))); err == nil {
+		values := r.Header.Values("X-Real-IP")
+		if len(values) != 1 || (len(s.cfg.TrustedProxies) > 0 && !s.trusted(peer)) {
+			return peer
+		}
+		if a, err := netip.ParseAddr(strings.TrimSpace(values[0])); err == nil {
 			return a.Unmap()
 		}
 		return peer
@@ -52,7 +56,7 @@ func peerAddr(remote string) netip.Addr {
 func splitForwardedFor(values []string) []string {
 	var out []string
 	for _, v := range values {
-		for _, part := range strings.Split(v, ",") {
+		for part := range strings.SplitSeq(v, ",") {
 			if part = strings.TrimSpace(part); part != "" {
 				out = append(out, part)
 			}

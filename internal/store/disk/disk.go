@@ -25,6 +25,8 @@ type Blobs struct {
 	root string
 }
 
+var _ store.Blobs = (*Blobs)(nil)
+
 func New(dataDir string) (*Blobs, error) {
 	root := filepath.Join(dataDir, Dir)
 	if err := os.MkdirAll(filepath.Join(root, tempDir), 0o700); err != nil {
@@ -154,8 +156,11 @@ func (b *Blobs) List(ctx context.Context) ([]store.BlobInfo, error) {
 			continue
 		}
 		info, err := e.Info()
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
 			continue
+		}
+		if err != nil {
+			return nil, err
 		}
 		out = append(out, store.BlobInfo{Ref: string(ref), Modified: info.ModTime()})
 	}

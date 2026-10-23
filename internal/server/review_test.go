@@ -15,6 +15,7 @@ import (
 	"net/http/httptrace"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -187,7 +188,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 1000
 	h := newHarness(t, cfg)
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 		m.ip = "203.0.113.5"
 		h.create(m)
@@ -199,7 +200,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	small := baseConfig(pepperA, nil)
 	small.Rates.GlobalDailyCreates = 40
 	h.reopen(small)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 		m.ip = fmt.Sprintf("198.51.100.%d", i+1)
 		if resp, _ := h.create(m); resp.StatusCode != 403 {
@@ -284,7 +285,7 @@ func TestCreateBytesPerDayLimit(t *testing.T) {
 	probe := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	cfg.Rates.CreateBytesPerDay = int64(2*len(probe.object) + 1)
 	h.reopen(cfg)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 		m.ip = "203.0.113.5"
 		h.mustCreate(m)
@@ -347,7 +348,7 @@ func TestAbuseReportsRecordOnlyValidReports(t *testing.T) {
 	if send(`{"id":`) != 400 {
 		t.Fatal("malformed report body")
 	}
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	data, err := h.abuseReports()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,21 +363,16 @@ func TestAbuseReportsRecordOnlyValidReports(t *testing.T) {
 
 func TestConcurrentCreateWithSameID(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "race")
 		m.ip = fmt.Sprintf("198.51.100.%d", i+1)
 		var wg sync.WaitGroup
 		codes := make([]int, 2)
 		for j := range codes {
-			wg.Add(1)
-			go func(j int) {
-				defer wg.Done()
-				resp, _ := h.create(m)
-				codes[j] = resp.StatusCode
-			}(j)
+			wg.Go(func() { codes[j] = h.statusFrom(createRequest(m)) })
 		}
 		wg.Wait()
-		if !((codes[0] == 201 && codes[1] == 409) || (codes[0] == 409 && codes[1] == 201)) {
+		if !slices.Equal(slices.Sorted(slices.Values(codes)), []int{201, 409}) {
 			t.Fatalf("iteration %d: %v", i, codes)
 		}
 		resp, object := h.claim(m, "", "")
@@ -443,7 +439,7 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 	check("sec-purpose", resp, 503)
 	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: []byte("x")})
 	check("create-400", resp, 400)
-	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance"})
+	h.do(request{method: "GET", path: "/api/v1/instance"})
 	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance"})
 	check("throttled", resp, 429)
 }
@@ -479,9 +475,7 @@ func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
 	h.clock.mu.Unlock()
 	m := newMessage(t, core.KDFNone, "", 1, 60, "sweep")
 	h.mustCreate(m)
-	cfg := h.cfg
-	cfg.Pepper = nil
-	report, err := server.SweepOnce(t.Context(), h.store, h.blobs, time.Now())
+	report, err := server.SweepStore(t.Context(), h.store, h.blobs, h.dir, time.Now())
 	if err != nil || report.Expired != 1 || h.blobExists(m.id) {
 		t.Fatalf("sweep without pepper: %+v %v", report, err)
 	}
@@ -629,7 +623,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	if !strings.Contains(h.logBuf.String(), `"msg":"blob-stream"`) {
 		t.Fatalf("a failed stream must be logged: %s", h.logBuf.String())
 	}
-	for _, line := range strings.Split(h.logBuf.String(), "\n") {
+	for line := range strings.SplitSeq(h.logBuf.String(), "\n") {
 		var entry map[string]any
 		if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "blob-stream" {
 			continue
@@ -730,8 +724,8 @@ func TestSourceLimiterIsolatesClients(t *testing.T) {
 		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: ip})
 		return resp.StatusCode
 	}
-	if get("203.0.113.1") != 200 || get("203.0.113.1") != 200 || get("203.0.113.1") != 429 {
-		t.Fatal("one source must be limited after its burst")
+	if codes := []int{get("203.0.113.1"), get("203.0.113.1"), get("203.0.113.1")}; !slices.Equal(codes, []int{200, 200, 429}) {
+		t.Fatalf("one source must be limited after its burst: %v", codes)
 	}
 	if get("2001:db8:1:1::1") != 200 || get("2001:db8:1:1::2") != 200 || get("2001:db8:1:1::3") != 429 {
 		t.Fatal("addresses in one /64 must share a bucket")
@@ -765,7 +759,7 @@ func TestAbuseReportHardening(t *testing.T) {
 	if resp.StatusCode != 202 {
 		t.Fatalf("json report: %d", resp.StatusCode)
 	}
-	path := filepath.Join(h.dir, "abuse-reports.jsonl")
+	path := h.abuseFile(h.clock.Now())
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -785,7 +779,7 @@ func TestAbuseReportHardening(t *testing.T) {
 }
 
 func TestConfigBounds(t *testing.T) {
-	base := map[string]string{"NYLZO_PEPPER": strings.Repeat("ab", 32)}
+	base := map[string]string{"NYLZO_PEPPER": strings.Repeat("0123456789abcdef", 4)}
 	with := func(k, v string) func(string) string {
 		return func(key string) string {
 			if key == k {
@@ -1014,7 +1008,7 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 			t.Fatalf("report %d: %d", i, resp.StatusCode)
 		}
 	}
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	data, err := h.abuseReports()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1058,14 +1052,13 @@ func TestAbuseReportsCappedPerMessage(t *testing.T) {
 	h.mustCreate(m)
 	h.mustCreate(other)
 	h.mustCreate(third)
-	path := filepath.Join(h.dir, "abuse-reports.jsonl")
 	report := func(msg *message, ip string) int {
 		body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam"}`, msg.id.String(), msg.readToken)
 		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	stored := func() int {
-		data, _ := os.ReadFile(path)
+		data, _ := h.abuseReports()
 		return strings.Count(string(data), "\n")
 	}
 	for i := range 4 {
@@ -1080,6 +1073,7 @@ func TestAbuseReportsCappedPerMessage(t *testing.T) {
 	if n := stored(); n != 4 {
 		t.Fatalf("another message must keep its own budget: %d", n)
 	}
+	path := h.abuseFile(h.clock.Now())
 	if err := os.Truncate(path, 16<<20); err != nil {
 		t.Fatal(err)
 	}
@@ -1351,7 +1345,7 @@ type endingThenFailingGet struct {
 }
 
 func (s *endingThenFailingGet) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, bool, error) {
-	if err := s.Store.End(ctx, id, store.StateCancelled, now); err != nil {
+	if err := s.End(ctx, id, store.StateCancelled, now); err != nil {
 		return "", "", false, err
 	}
 	s.armed.Store(true)
@@ -1496,7 +1490,7 @@ func TestOverBudgetReportWithAFullFileIsAccepted(t *testing.T) {
 			t.Fatalf("report %d: %d", i+1, code)
 		}
 	}
-	if err := os.Truncate(filepath.Join(h.dir, "abuse-reports.jsonl"), 16<<20); err != nil {
+	if err := os.Truncate(h.abuseFile(h.clock.Now()), 16<<20); err != nil {
 		t.Fatal(err)
 	}
 	if code := report(m, "198.51.7.9"); code != 202 {
@@ -1528,12 +1522,12 @@ func TestFormatCharactersCannotSplitARedactedToken(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	secret := core.Encode(m.secret[:])
-	split := secret[:15] + "​" + secret[15:30] + "­" + secret[30:]
+	split := secret[:15] + "\u200b" + secret[15:30] + "\u00ad" + secret[30:]
 	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "pasted " + split + " end"})
 	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.7", body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	data, err := h.abuseReports()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1567,7 +1561,7 @@ func TestAbuseRedactsRunsFromTwentyTwoCharacters(t *testing.T) {
 	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.9", body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	data, err := h.abuseReports()
 	if err != nil || !strings.Contains(string(data), `"`+run21+` [redacted]"`) {
 		t.Fatalf("runs of 22 or more base64url characters must be redacted and shorter ones kept: %s %v", data, err)
 	}

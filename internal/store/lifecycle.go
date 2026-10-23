@@ -23,6 +23,7 @@ func AckLease(ctx context.Context, s Store, b Blobs, l Lease, now time.Time) err
 }
 
 func clearReleased(ctx context.Context, s Store, b Blobs, id, ref string, now time.Time) error {
+	ctx = context.WithoutCancel(ctx)
 	if err := b.Delete(ctx, ref); err != nil {
 		return err
 	}
@@ -59,6 +60,9 @@ func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans in
 	cutoff := now.Add(-BlobGrace)
 	var errs []error
 	for _, o := range objects {
+		if ctx.Err() != nil {
+			break
+		}
 		if o.Modified.After(cutoff) {
 			continue
 		}

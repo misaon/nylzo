@@ -24,8 +24,10 @@ func ClientAddrForTest(cfg Config, mode, remote, xff, realIP string) netip.Addr 
 	if xff != "" {
 		r.Header.Set("X-Forwarded-For", xff)
 	}
-	if realIP != "" {
-		r.Header.Set("X-Real-IP", realIP)
+	for value := range strings.SplitSeq(realIP, "\n") {
+		if value != "" {
+			r.Header.Add("X-Real-IP", value)
+		}
 	}
 	return s.clientAddr(r)
 }
@@ -34,7 +36,7 @@ func ParseCreateHeaderForTest(cfg Config, value string) bool {
 	s := &Server{cfg: cfg}
 	r, _ := http.NewRequest("POST", "/api/v1/messages", nil)
 	r.Header.Set(headerCreate, value)
-	_, _, _, _, _, ok := s.parseCreateHeader(r)
+	_, ok := s.parseCreateHeader(r)
 	return ok
 }
 

@@ -3,6 +3,8 @@ package server_test
 import (
 	"encoding/hex"
 	"errors"
+	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,7 +56,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	for _, ua := range []string{"", "Slackbot-LinkExpanding 1.0"} {
 		h.do(request{method: "GET", path: "/m/" + m.id.String(), headers: map[string]string{"User-Agent": ua}})
 	}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		resp, meta := h.metadata(m)
 		if resp.StatusCode != 200 || meta["opens_remaining"].(float64) != 1 || meta["state"] != "available" || meta["passphrase_required"] != false || meta["kdf_id"].(float64) != 0 {
 			t.Fatalf("metadata %d: %v", resp.StatusCode, meta)
@@ -82,11 +84,11 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 			t.Fatalf("changed policy %+v: want ErrIntegrity, got %v", bad, err)
 		}
 	}
-	resp, meta := h.metadata(m)
+	_, meta := h.metadata(m)
 	if meta["state"] != "opened" || meta["opens_remaining"].(float64) != 0 || meta["first_opened_at"] == nil {
 		t.Fatalf("metadata after claim: %v", meta)
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resp, again := h.blob(m, lease)
 		if resp.StatusCode != 200 || string(again) != string(object) {
 			t.Fatalf("blob %d: %d", i, resp.StatusCode)
@@ -134,21 +136,16 @@ func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
 	cfg.Rates.BucketPerSecond = 100000
 	cfg.Rates.BucketBurst = 100000
 	h.reopen(cfg)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "race")
 		h.mustCreate(m)
 		var wg sync.WaitGroup
 		codes := make([]int, 2)
-		for j := 0; j < 2; j++ {
-			wg.Add(1)
-			go func(j int) {
-				defer wg.Done()
-				resp, _ := h.claim(m, "", "")
-				codes[j] = resp.StatusCode
-			}(j)
+		for j := range codes {
+			wg.Go(func() { codes[j] = h.statusFrom(claimRequest(m, "", "")) })
 		}
 		wg.Wait()
-		if !((codes[0] == 200 && codes[1] == 410) || (codes[0] == 410 && codes[1] == 200)) {
+		if !slices.Equal(slices.Sorted(slices.Values(codes)), []int{200, 410}) {
 			t.Fatalf("iteration %d: %v", i, codes)
 		}
 	}
@@ -179,15 +176,15 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 		h.clock.Advance(time.Minute)
 		expect("203.0.113.10", 60, 0)
 	}
-	resp, meta := h.metadata(m)
+	_, meta := h.metadata(m)
 	if meta["opens_remaining"].(float64) != 2 {
 		t.Fatalf("wrong passphrase consumed an open: %v", meta)
 	}
-	if resp, _ = h.claim(m, m.verifier, "203.0.113.99"); resp.StatusCode != 403 {
+	if resp, _ := h.claim(m, m.verifier, "203.0.113.99"); resp.StatusCode != 403 {
 		t.Fatalf("the backoff belongs to the message, so another address waits too: %d", resp.StatusCode)
 	}
 	h.clock.Advance(time.Minute)
-	resp, _ = h.claim(m, m.verifier, "203.0.113.99")
+	resp, _ := h.claim(m, m.verifier, "203.0.113.99")
 	if resp.StatusCode != 200 {
 		t.Fatalf("correct passphrase after the wait: %d", resp.StatusCode)
 	}
@@ -195,7 +192,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	if st["failed_passphrase_attempts"].(float64) != 10 || st["opens_used"].(float64) != 1 {
 		t.Fatalf("status: %v", st)
 	}
-	for i := 0; i < 90; i++ {
+	for i := range 90 {
 		resp, body := h.claim(m, wrong, "198.51.100."+strconv.Itoa(i%250))
 		if resp.StatusCode != 403 {
 			t.Fatalf("flood attempt %d: %d", i, resp.StatusCode)
@@ -237,11 +234,13 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 	var leases []string
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, _ := h.claim(m, "", "")
+	for range 3 {
+		wg.Go(func() {
+			resp, _, err := h.tryDo(claimRequest(m, "", ""))
+			if err != nil {
+				t.Error(err)
+				return
+			}
 			if resp.StatusCode != 200 {
 				t.Errorf("claim: %d", resp.StatusCode)
 				return
@@ -249,7 +248,7 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 			mu.Lock()
 			leases = append(leases, resp.Header.Get("X-Nylzo-Lease"))
 			mu.Unlock()
-		}()
+		})
 	}
 	wg.Wait()
 	distinct := map[string]bool{}
@@ -370,14 +369,25 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 	m := newMessage(t, core.KDFScrypt, "log fráze", 1, 3600, "logged text")
 	m.ip = "203.0.113.55"
 	h.mustCreate(m)
-	h.metadata(m)
-	resp, _ := h.claim(m, m.verifier, "")
+	resp, _ := h.metadata(m)
+	codes := []int{resp.StatusCode}
+	resp, _ = h.claim(m, m.verifier, "")
 	lease := resp.Header.Get("X-Nylzo-Lease")
-	h.blob(m, lease)
-	h.ack(m, lease)
-	h.status(m)
-	h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
-	h.do(request{method: "GET", path: "/m/" + m.id.String()})
+	if lease == "" {
+		t.Fatalf("the claim gave no lease: %d", resp.StatusCode)
+	}
+	codes = append(codes, resp.StatusCode)
+	resp, _ = h.blob(m, lease)
+	codes = append(codes, resp.StatusCode, h.ack(m, lease).StatusCode)
+	resp, _ = h.status(m)
+	codes = append(codes, resp.StatusCode)
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+	codes = append(codes, resp.StatusCode)
+	resp, _ = h.do(request{method: "GET", path: "/m/" + m.id.String()})
+	codes = append(codes, resp.StatusCode)
+	if want := []int{200, 200, 200, 204, 200, 410, 200}; !slices.Equal(codes, want) {
+		t.Fatalf("the flow behind the log check answered %v, want %v", codes, want)
+	}
 	logs := h.logBuf.String()
 	if !strings.Contains(logs, "POST /api/v1/messages/{id}/claim") {
 		t.Fatal("log should contain the route pattern")
@@ -396,5 +406,27 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		if strings.Contains(logs, needle) {
 			t.Fatalf("log contains %q", needle)
 		}
+	}
+}
+
+func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "ack")
+	h.mustCreate(m)
+	resp, _ := h.claim(m, "", "")
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	if resp.StatusCode != 200 || lease == "" {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	if code := h.ack(m, core.Encode(core.NewSecret()[:])).StatusCode; code != http.StatusGone {
+		t.Fatalf("an ack with a lease the server never issued: %d", code)
+	}
+	if !h.blobExists(m.id) {
+		t.Fatal("an ack with a foreign lease deleted the blob")
+	}
+	h.clock.Advance(store.LeaseDuration + time.Minute)
+	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "opened" {
+		t.Fatalf("an ack after the lease ended: %d %s", resp.StatusCode, body)
 	}
 }

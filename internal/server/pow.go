@@ -33,7 +33,7 @@ const (
 
 var ErrPoW = errors.New("server: invalid proof of work")
 
-var powSlotWait = 10 * time.Second
+const powSlotWait = 10 * time.Second
 
 func (s *Server) powChallenge(now time.Time) string {
 	buf := make([]byte, powChalLen)
@@ -74,7 +74,7 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 	if used[0].Count > 1 {
 		return ErrPoW
 	}
-	wait := time.NewTimer(powSlotWait)
+	wait := time.NewTimer(s.powSlotWait)
 	defer wait.Stop()
 	select {
 	case s.powSlots <- struct{}{}:
@@ -101,7 +101,7 @@ func powSatisfies(chal, counter []byte, id core.ID, difficulty int) bool {
 var errPoWBusy = errors.New("server: proof-of-work verifier is saturated")
 
 func leadingZeroBits(b []byte, bits int) bool {
-	for i := 0; i < bits; i++ {
+	for i := range bits {
 		if b[i/8]&(0x80>>(i%8)) != 0 {
 			return false
 		}

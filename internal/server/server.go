@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -24,6 +23,8 @@ const (
 	maxHeaderBytes    = 8 << 10
 	h2cStreamBuffer   = 64 << 10
 	h2cConnBuffer     = 1 << 20
+	h2cMaxFrame       = 16 << 10
+	streamBusyRetry   = 5 * time.Second
 	httpErrorLogRate  = 1
 	httpErrorLogBurst = 20
 	reconcileKey      = "sweep:reconcile:d"
@@ -32,39 +33,56 @@ const (
 type Option func(*Server)
 
 func WithClock(clock func() time.Time) Option {
-	return func(s *Server) { s.clock = clock }
+	return func(s *Server) {
+		if clock != nil {
+			s.clock = clock
+		}
+	}
 }
 
 func WithAfterFunc(after func(d time.Duration, fn func())) Option {
-	return func(s *Server) { s.afterFunc = after }
+	return func(s *Server) {
+		if after != nil {
+			s.afterFunc = after
+		}
+	}
 }
 
 func WithLogger(l *slog.Logger) Option {
-	return func(s *Server) { s.log = l }
+	return func(s *Server) {
+		if l != nil {
+			s.log = l
+		}
+	}
 }
 
 type Server struct {
-	cfg       Config
-	store     store.Store
-	blobs     store.Blobs
-	ring      *pepper.Ring
-	clock     func() time.Time
-	afterFunc func(time.Duration, func())
-	log       *slog.Logger
-	bucket    *keyedLimiter
-	sources   *keyedLimiter
-	prefixes  *keyedLimiter
-	addrKey   *addrKey
-	counters  *addrCounters
-	spent     *spentChallenges
-	spends    *spendBatcher
-	powSlots  chan struct{}
-	handler   http.Handler
-	abuseMu   sync.Mutex
-	abusePath string
+	cfg         Config
+	store       store.Store
+	blobs       store.Blobs
+	ring        *pepper.Ring
+	clock       func() time.Time
+	afterFunc   func(time.Duration, func())
+	log         *slog.Logger
+	bucket      *keyedLimiter
+	sources     *keyedLimiter
+	prefixes    *keyedLimiter
+	addrKey     *addrKey
+	counters    *addrCounters
+	spent       *spentChallenges
+	spends      *spendBatcher
+	powSlots    chan struct{}
+	powSlotWait time.Duration
+	streams     chan struct{}
+	handler     http.Handler
+	abuseMu     sync.Mutex
+	abuseDir    string
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	ring, err := pepper.NewRing(cfg.Pepper, cfg.PepperPrevious)
 	if err != nil {
 		return nil, err
@@ -77,7 +95,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		clock:     time.Now,
 		afterFunc: func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
 		log:       slog.New(slog.NewJSONHandler(os.Stderr, nil)),
-		abusePath: filepath.Join(cfg.DataDir, "abuse-reports.jsonl"),
+		abuseDir:  abuseDir(cfg.DataDir),
 	}
 	for _, o := range opts {
 		o(s)
@@ -90,6 +108,8 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.spent = newSpentChallenges()
 	s.spends = newSpendBatcher(st)
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
+	s.powSlotWait = powSlotWait
+	s.streams = make(chan struct{}, cfg.MaxStreams)
 	s.handler = s.routes()
 	return s, nil
 }
@@ -111,7 +131,7 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cConnBuffer, MaxReceiveBufferPerStream: h2cStreamBuffer},
+		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cConnBuffer, MaxReceiveBufferPerStream: h2cStreamBuffer, MaxReadFrameSize: h2cMaxFrame},
 		ErrorLog:          log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
 	}
 }
@@ -177,13 +197,12 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
-	now := s.clock()
-	report, err := SweepOnce(ctx, s.store, s.blobs, now)
-	return report, errors.Join(err, s.pruneAbuse(now))
+	return SweepStore(ctx, s.store, s.blobs, s.cfg.DataDir, s.clock())
 }
 
-func SweepOnce(ctx context.Context, st store.Store, blobs store.Blobs, now time.Time) (store.SweepReport, error) {
+func SweepStore(ctx context.Context, st store.Store, blobs store.Blobs, dataDir string, now time.Time) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, st, blobs, now)
+	err = errors.Join(err, pruneAbuse(abuseDir(dataDir), now))
 	done, derr := st.RateGet(ctx, reconcileKey, dayWindow(now).start)
 	if derr != nil {
 		return report, errors.Join(err, derr)
@@ -219,6 +238,9 @@ func SweepLogAttrs(report store.SweepReport, err error) []any {
 		return attrs
 	}
 	leaves := leafErrors(err)
+	if len(leaves) == 0 {
+		leaves = []error{err}
+	}
 	return append(attrs, "errors", len(leaves), "err", ErrorText(leaves[0]))
 }
 
@@ -230,9 +252,13 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		report, err := s.SweepOnce(ctx)
-		if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			s.log.Info("sweep-stopped", report.LogAttrs()...)
+			return
+		case err != nil:
 			s.log.Error("sweep", SweepLogAttrs(report, err)...)
-		} else {
+		default:
 			s.log.Info("sweep", report.LogAttrs()...)
 		}
 		select {
@@ -263,5 +289,5 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /m/{id}", s.handlePage)
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(mux)))))
+	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux))))))
 }

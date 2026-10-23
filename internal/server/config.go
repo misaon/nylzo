@@ -20,6 +20,7 @@ const (
 	MaxPoWDifficulty  = 8
 	MaxOpens          = 100
 	MaxTTL            = 7 * 24 * time.Hour
+	MaxStreams        = 1024
 )
 
 type Limits struct {
@@ -57,6 +58,7 @@ type Config struct {
 	Rates          Rates
 	PoWDifficulty  int
 	PoWConcurrency int
+	MaxStreams     int
 	Version        string
 }
 
@@ -87,6 +89,7 @@ func Defaults() Config {
 		},
 		PoWDifficulty:  4,
 		PoWConcurrency: 4,
+		MaxStreams:     64,
 		Version:        "dev",
 	}
 }
@@ -126,7 +129,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 		return perr
 	})
 	set("NYLZO_TRUSTED_PROXIES", func(v string) error {
-		for _, part := range strings.Split(v, ",") {
+		for part := range strings.SplitSeq(v, ",") {
 			part = strings.TrimSpace(part)
 			if part == "" {
 				continue
@@ -164,23 +167,12 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 		return errors.New("removed: passphrase limits are kept per message, without address buckets")
 	})
 	set("NYLZO_SWEEP_INTERVAL", func(v string) error { return parseDuration(v, &c.SweepInterval) })
-	set("NYLZO_MAX_FILE_BYTES", func(v string) error {
-		if err := parseInt64(v, &c.Limits.MaxFileBytes); err != nil {
-			return err
-		}
-		if c.Limits.MaxFileBytes < 1 || c.Limits.MaxFileBytes > core.MaxFileBytes {
-			return fmt.Errorf("must be between 1 and %d (the protocol limit both cores enforce)", core.MaxFileBytes)
-		}
-		return nil
-	})
+	set("NYLZO_MAX_FILE_BYTES", func(v string) error { return parseInt64(v, &c.Limits.MaxFileBytes) })
 	set("NYLZO_MAX_TTL", func(v string) error { return parseDuration(v, &c.Limits.MaxTTL) })
 	set("NYLZO_DEFAULT_TTL", func(v string) error { return parseDuration(v, &c.Limits.DefaultTTL) })
 	set("NYLZO_MAX_OPENS", func(v string) error { return parseInt(v, &c.Limits.MaxOpens) })
 	set("NYLZO_DEFAULT_KDF", func(v string) error {
 		k, kerr := core.ParseKDF(v)
-		if kerr == nil && !k.RequiresPassphrase() {
-			return fmt.Errorf("want 1 (scrypt) or 2 (PBKDF2), got %q", v)
-		}
 		c.Limits.DefaultKDF = k
 		return kerr
 	})
@@ -197,6 +189,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_GLOBAL_DAILY_CREATES", func(v string) error { return parseInt64(v, &c.Rates.GlobalDailyCreates) })
 	set("NYLZO_POW_DIFFICULTY", func(v string) error { return parseInt(v, &c.PoWDifficulty) })
 	set("NYLZO_POW_CONCURRENCY", func(v string) error { return parseInt(v, &c.PoWConcurrency) })
+	set("NYLZO_MAX_STREAMS", func(v string) error { return parseInt(v, &c.MaxStreams) })
 	if err != nil {
 		return c, err
 	}
@@ -204,28 +197,45 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	if needPepper && len(c.Pepper) == 0 {
 		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
 	}
+	return c, c.Validate()
+}
+
+func (c Config) Validate() error {
 	minTTL := core.MinTTLSeconds * time.Second
-	for _, r := range []struct {
+	r := c.Rates
+	for _, check := range []struct {
 		name string
 		ok   bool
 	}{
+		{fmt.Sprintf("NYLZO_MAX_FILE_BYTES must be between 1 and %d", core.MaxFileBytes), c.Limits.MaxFileBytes >= 1 && c.Limits.MaxFileBytes <= core.MaxFileBytes},
+		{"the object limit must follow NYLZO_MAX_FILE_BYTES", c.Limits.MaxObjectBytes == core.ObjectLimit(c.Limits.MaxFileBytes)},
 		{fmt.Sprintf("NYLZO_MAX_OPENS must be between 1 and %d", MaxOpens), c.Limits.MaxOpens >= 1 && c.Limits.MaxOpens <= MaxOpens},
 		{fmt.Sprintf("NYLZO_MAX_TTL must be between %s and %s", minTTL, MaxTTL), c.Limits.MaxTTL >= minTTL && c.Limits.MaxTTL <= MaxTTL},
 		{fmt.Sprintf("NYLZO_DEFAULT_TTL must be between %s and NYLZO_MAX_TTL", minTTL), c.Limits.DefaultTTL >= minTTL && c.Limits.DefaultTTL <= c.Limits.MaxTTL},
+		{"NYLZO_DEFAULT_KDF must be 1 (scrypt) or 2 (PBKDF2)", c.Limits.DefaultKDF.RequiresPassphrase()},
 		{fmt.Sprintf("NYLZO_POW_DIFFICULTY must be between 0 and %d", MaxPoWDifficulty), c.PoWDifficulty >= 0 && c.PoWDifficulty <= MaxPoWDifficulty},
 		{fmt.Sprintf("NYLZO_POW_CONCURRENCY must be between 1 and %d", MaxPoWConcurrency), c.PoWConcurrency >= 1 && c.PoWConcurrency <= MaxPoWConcurrency},
-		{"NYLZO_RATE_BUCKET_BURST must be at least 1", c.Rates.BucketBurst >= 1},
-		{"NYLZO_RATE_SOURCE_BURST must be at least 1", c.Rates.SourceBurst >= 1},
+		{fmt.Sprintf("NYLZO_MAX_STREAMS must be between 1 and %d", MaxStreams), c.MaxStreams >= 1 && c.MaxStreams <= MaxStreams},
+		{"NYLZO_SWEEP_INTERVAL must not be negative", c.SweepInterval >= 0},
+		{"NYLZO_PROXY_MODE must be empty or scaleway", c.ProxyMode == ProxyModeNone || c.ProxyMode == ProxyModeScaleway},
+		{"NYLZO_RATE_BUCKET_RPS and NYLZO_RATE_SOURCE_RPS must be positive", r.BucketPerSecond > 0 && r.SourcePerSecond > 0},
+		{"NYLZO_RATE_BUCKET_BURST must be at least 1", r.BucketBurst >= 1},
+		{"NYLZO_RATE_SOURCE_BURST must be at least 1", r.SourceBurst >= 1},
+		{"the NYLZO_RATE_* limits must not be negative", min(r.CreatePerHour, r.CreatePerDay, r.CreateBytesPerDay, r.ReadPerHour, r.AbusePerHour, r.CoarseMultiplier, r.GlobalDailyCreates) >= 0},
+		{"a NYLZO_RATE_* limit times NYLZO_RATE_COARSE_MULTIPLIER does not fit in 64 bits", r.CoarseMultiplier == 0 || max(r.CreatePerHour, r.CreatePerDay, r.CreateBytesPerDay, r.ReadPerHour, r.AbusePerHour) <= math.MaxInt64/r.CoarseMultiplier},
 	} {
-		if !r.ok {
-			return c, fmt.Errorf("%w: %s", ErrConfig, r.name)
+		if !check.ok {
+			return fmt.Errorf("%w: %s", ErrConfig, check.name)
 		}
 	}
-	return c, nil
+	return nil
 }
 
 func parseDuration(v string, out *time.Duration) error {
 	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+		if secs < 0 || secs > int64(math.MaxInt64/time.Second) {
+			return fmt.Errorf("want 0 to %d seconds, got %q", int64(math.MaxInt64/time.Second), v)
+		}
 		*out = time.Duration(secs) * time.Second
 		return nil
 	}
@@ -250,6 +260,9 @@ func parseInt(v string, out *int) error {
 	var n int64
 	if err := parseInt64(v, &n); err != nil {
 		return err
+	}
+	if n > math.MaxInt {
+		return fmt.Errorf("want at most %d, got %q", math.MaxInt, v)
 	}
 	*out = int(n)
 	return nil

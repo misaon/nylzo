@@ -6,10 +6,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -27,7 +29,7 @@ func powServer(t *testing.T, concurrency int) *Server {
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 	cfg.PoWConcurrency = concurrency
 	cfg.PoWDifficulty = 1
-	s, err := New(cfg, st, nil)
+	s, err := New(cfg, st, nil, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,9 +37,11 @@ func powServer(t *testing.T, concurrency int) *Server {
 }
 
 func TestPoWVerifierSaturated(t *testing.T) {
+	synctest.Test(t, testPoWVerifierSaturated)
+}
+
+func testPoWVerifierSaturated(t *testing.T) {
 	s := powServer(t, 1)
-	defer func(d time.Duration) { powSlotWait = d }(powSlotWait)
-	powSlotWait = 50 * time.Millisecond
 	now := time.Now()
 	id := core.NewID()
 	token, err := SolvePoW(s.powChallenge(now), id, s.cfg.PoWDifficulty)
@@ -56,7 +60,6 @@ func TestPoWVerifierSaturated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	powSlotWait = 5 * time.Second
 	s.powSlots <- struct{}{}
 	go func() {
 		time.Sleep(10 * time.Millisecond)
@@ -118,8 +121,8 @@ func TestPoWRejectsUppercaseCounter(t *testing.T) {
 func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 	typ := reflect.TypeFor[createHeader]()
 	tags := map[string]bool{}
-	for i := range typ.NumField() {
-		tag, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+	for field := range typ.Fields() {
+		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		tags[tag] = true
 	}
 	if !reflect.DeepEqual(tags, createHeaderKeys) {

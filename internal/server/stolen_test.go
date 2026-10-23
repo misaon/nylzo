@@ -206,7 +206,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"nylzo.db", "nylzo.db-wal", "abuse-reports.jsonl"} {
+	for _, want := range []string{"nylzo.db", "nylzo.db-wal", filepath.Join("abuse", h.clock.Now().UTC().Format(time.DateOnly)+".jsonl")} {
 		if _, ok := stolen[want]; !ok {
 			t.Fatalf("the stolen copy misses %s: %v", want, keys(stolen))
 		}

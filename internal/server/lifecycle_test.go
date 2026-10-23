@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -147,8 +148,11 @@ func checkLifecycleCell(t *testing.T, h *harness, m *message, action, expect str
 	t.Helper()
 	parts := strings.Fields(expect)
 	code, state, final := parts[0], parts[1], parts[2]
-	if code != "-" && (resp == nil || strconv.Itoa(resp.StatusCode) != code) {
-		t.Fatalf("response %v, want %s (%s)", resp.StatusCode, code, body)
+	if code != "-" && resp == nil {
+		t.Fatalf("no response, want %s", code)
+	}
+	if code != "-" && strconv.Itoa(resp.StatusCode) != code {
+		t.Fatalf("response %d, want %s (%s)", resp.StatusCode, code, body)
 	}
 	if state != "-" && decodeJSON(t, body)["state"] != state {
 		t.Fatalf("state %s, want %s", body, state)
@@ -316,7 +320,7 @@ func TestMalformedAbuseReportsSpendNoRateLimit(t *testing.T) {
 	if code := report(m.id.String()); code != http.StatusAccepted {
 		t.Fatalf("a valid report after malformed ones was rate limited: %d", code)
 	}
-	if data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl")); err != nil || !strings.Contains(string(data), m.id.String()) {
+	if data, err := h.abuseReports(); err != nil || !strings.Contains(string(data), m.id.String()) {
 		t.Fatalf("the valid report was not stored: %v", err)
 	}
 }
@@ -554,7 +558,7 @@ func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
 	h.mustCreate(m)
 	h.clock.Advance(3*time.Hour + 17*time.Minute + 5*time.Second)
 	abuseReport(t, h, m, "203.0.113.44")
-	data, err := os.ReadFile(filepath.Join(h.dir, "abuse-reports.jsonl"))
+	data, err := h.abuseReports()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -568,28 +572,50 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
-	path := filepath.Join(h.dir, "abuse-reports.jsonl")
-	old := `{"date":"2026-10-01","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"old"}` + "\n" + `{"id":"AAAAAAAAAAAAAAAAAAAAAQ","reason":"older format","time":"2026-10-02T10:00:00Z"}` + "\n"
-	recent := `{"date":"2026-10-21","id":"AAAAAAAAAAAAAAAAAAAAAg","reason":"recent"}` + "\n"
-	if err := os.WriteFile(path, []byte(old+recent), 0o600); err != nil {
-		t.Fatal(err)
+	now := h.clock.Now()
+	oldDays := []time.Time{now.AddDate(0, 0, -21), now.AddDate(0, 0, -15)}
+	recentDay := now.AddDate(0, 0, -1)
+	legacy := filepath.Join(h.dir, "abuse-reports.jsonl")
+	write := func() {
+		if err := os.MkdirAll(filepath.Join(h.dir, "abuse"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		for _, day := range append(oldDays, recentDay) {
+			if err := os.WriteFile(h.abuseFile(day), []byte(`{"date":"`+day.Format(time.DateOnly)+`","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"x"}`+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(legacy, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(legacy, oldDays[1], oldDays[1]); err != nil {
+			t.Fatal(err)
+		}
 	}
+	check := func(when string) {
+		t.Helper()
+		for _, day := range oldDays {
+			if _, err := os.Stat(h.abuseFile(day)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%s kept the reports of %s: %v", when, day.Format(time.DateOnly), err)
+			}
+		}
+		if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s kept a report file of an older version: %v", when, err)
+		}
+		if _, err := os.Stat(h.abuseFile(recentDay)); err != nil {
+			t.Fatalf("%s dropped reports younger than 14 days: %v", when, err)
+		}
+	}
+	write()
 	if _, err := h.srv.SweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if data, err := os.ReadFile(path); err != nil || string(data) != recent {
-		t.Fatalf("the sweep must drop reports older than 14 days: %q %v", data, err)
-	}
-	if err := os.WriteFile(path, []byte(old+recent), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	check("the sweep")
+	write()
 	abuseReport(t, h, m, "203.0.113.45")
-	data, err := os.ReadFile(path)
-	if err != nil || strings.Contains(string(data), "old") || !strings.HasPrefix(string(data), recent) {
-		t.Fatalf("a new report must drop reports older than 14 days: %q %v", data, err)
-	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("report file mode: %v %v", info, err)
+	check("a new report")
+	if data, err := os.ReadFile(h.abuseFile(now)); err != nil || !strings.Contains(string(data), m.id.String()) {
+		t.Fatalf("the new report is not in the file of its day: %q %v", data, err)
 	}
 }
 

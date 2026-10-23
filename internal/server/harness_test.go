@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -13,7 +14,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -322,13 +325,21 @@ type request struct {
 
 func (h *harness) do(req request) (*http.Response, []byte) {
 	h.t.Helper()
+	resp, data, err := h.tryDo(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return resp, data
+}
+
+func (h *harness) tryDo(req request) (*http.Response, []byte, error) {
 	var body io.Reader
 	if req.body != nil {
 		body = bytes.NewReader(req.body)
 	}
 	r, err := http.NewRequest(req.method, h.ts.URL+req.path, body)
 	if err != nil {
-		h.t.Fatal(err)
+		return nil, nil, err
 	}
 	for k, v := range req.headers {
 		r.Header.Set(k, v)
@@ -338,12 +349,12 @@ func (h *harness) do(req request) (*http.Response, []byte) {
 	}
 	resp, err := h.client.Do(r)
 	if err != nil {
-		h.t.Fatal(err)
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		h.t.Fatal(err)
+		return nil, nil, err
 	}
 	if resp.StatusCode == http.StatusInternalServerError {
 		logs := h.logBuf.String()
@@ -352,7 +363,16 @@ func (h *harness) do(req request) (*http.Response, []byte) {
 		}
 		h.t.Logf("server log tail after 500: %s", logs)
 	}
-	return resp, data
+	return resp, data, nil
+}
+
+func (h *harness) statusFrom(req request) int {
+	resp, _, err := h.tryDo(req)
+	if err != nil {
+		h.t.Error(err)
+		return 0
+	}
+	return resp.StatusCode
 }
 
 func buildMessage(kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) (*message, error) {
@@ -416,8 +436,12 @@ func (m *message) createHeader(sizeOverride int64) string {
 
 func (h *harness) create(m *message) (*http.Response, []byte) {
 	h.t.Helper()
-	return h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
-		headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": m.createHeader(0)}})
+	return h.do(createRequest(m))
+}
+
+func createRequest(m *message) request {
+	return request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
+		headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": m.createHeader(0)}}
 }
 
 func (h *harness) mustCreate(m *message) {
@@ -436,6 +460,10 @@ func (h *harness) metadata(m *message) (*http.Response, map[string]any) {
 
 func (h *harness) claim(m *message, verifier string, ip string) (*http.Response, []byte) {
 	h.t.Helper()
+	return h.do(claimRequest(m, verifier, ip))
+}
+
+func claimRequest(m *message, verifier string, ip string) request {
 	req := request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}}
 	if ip == "" {
 		req.ip = m.ip
@@ -444,7 +472,7 @@ func (h *harness) claim(m *message, verifier string, ip string) (*http.Response,
 		req.body = []byte(`{"verifier":"` + verifier + `"}`)
 		req.headers["Content-Type"] = "application/json"
 	}
-	return h.do(req)
+	return req
 }
 
 func (h *harness) blob(m *message, lease string) (*http.Response, []byte) {
@@ -658,4 +686,25 @@ func withIDToken(srv *server.Server, header string) string {
 		return header
 	}
 	return core.Encode(out)
+}
+
+func (h *harness) abuseFile(day time.Time) string {
+	return filepath.Join(h.dir, "abuse", day.UTC().Format(time.DateOnly)+".jsonl")
+}
+
+func (h *harness) abuseReports() ([]byte, error) {
+	files, err := filepath.Glob(filepath.Join(h.dir, "abuse", "*.jsonl"))
+	if err != nil || len(files) == 0 {
+		return nil, cmp.Or(err, os.ErrNotExist)
+	}
+	slices.Sort(files)
+	var all []byte
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, data...)
+	}
+	return all, nil
 }

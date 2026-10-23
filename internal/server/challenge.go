@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -49,17 +50,7 @@ func (c *spentChallenges) seen(nonce [challengeNonceLen]byte, expires int64, now
 }
 
 func (c *spentChallenges) evict(now int64) {
-	for n, exp := range c.expires {
-		if now > exp+int64(powClockSkew/time.Second) {
-			delete(c.expires, n)
-		}
-	}
-	for n := range c.expires {
-		if len(c.expires) < c.max-c.max/evictDivisor {
-			return
-		}
-		delete(c.expires, n)
-	}
+	evictTo(c.expires, c.max, func(exp int64) bool { return now > exp+int64(powClockSkew/time.Second) })
 }
 
 type spendBatch struct {
@@ -99,27 +90,42 @@ func (b *spendBatcher) reserve(ctx context.Context, hit store.RateHit) (bool, er
 		<-batch.turn
 		b.write(ctx, batch)
 	}
-	<-batch.done
+	select {
+	case <-batch.done:
+	case <-ctx.Done():
+		return false, ctx.Err()
+	}
 	if batch.err != nil {
 		return false, batch.err
 	}
 	return batch.reserved[i], nil
 }
 
+var errSpendAborted = errors.New("server: the challenge spend write stopped before it finished")
+
 func (b *spendBatcher) write(ctx context.Context, batch *spendBatch) {
 	b.mu.Lock()
 	b.queue[0] = nil
 	b.queue = b.queue[1:]
 	b.mu.Unlock()
+	defer b.passTurn()
+	defer close(batch.done)
+	defer func() {
+		if recover() != nil {
+			batch.reserved, batch.err = nil, errSpendAborted
+		}
+	}()
 	batch.reserved, batch.err = b.store.RateReserveBatch(context.WithoutCancel(ctx), batch.hits)
-	close(batch.done)
+}
+
+func (b *spendBatcher) passTurn() {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if len(b.queue) > 0 {
 		close(b.queue[0].turn)
-	} else {
-		b.writing = false
+		return
 	}
-	b.mu.Unlock()
+	b.writing = false
 }
 
 type spentKey struct{}
@@ -133,8 +139,7 @@ func (s *Server) spendChallenges(next http.Handler) http.Handler {
 		}
 		spent, err := s.spendChallenge(r.Context(), sig.Challenge)
 		if err != nil {
-			s.log.Error("challenge-spend", "err", ErrorText(err))
-			writeError(w, http.StatusInternalServerError, errInternal)
+			s.writeInternal(w, r, err)
 			return
 		}
 		inner := r
@@ -142,7 +147,6 @@ func (s *Server) spendChallenges(next http.Handler) http.Handler {
 			inner = r.WithContext(context.WithValue(r.Context(), spentKey{}, &sig.Challenge))
 		}
 		next.ServeHTTP(w, inner)
-		r.Pattern = inner.Pattern
 	})
 }
 

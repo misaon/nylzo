@@ -17,20 +17,20 @@ func secret(b byte) []byte {
 }
 
 func TestPurposeKeysDiffer(t *testing.T) {
-	k, err := pepper.New(secret(1))
+	k, err := pepper.NewKey(secret(1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	in := []byte("same input")
 	seen := map[[32]byte]pepper.Purpose{}
-	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.ID, pepper.Challenge} {
+	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge} {
 		m := k.MAC(p, in)
 		if prev, dup := seen[m]; dup {
 			t.Fatalf("purpose %s and %s share a mac", prev, p)
 		}
 		seen[m] = p
 	}
-	other, _ := pepper.New(secret(2))
+	other, _ := pepper.NewKey(secret(2))
 	if other.MAC(pepper.Read, in) == k.MAC(pepper.Read, in) {
 		t.Fatal("different peppers share a mac")
 	}
@@ -87,13 +87,39 @@ func TestRingRejectsCollisionAndBadSecrets(t *testing.T) {
 	if _, err := pepper.ParseSecret("zz"); !errors.Is(err, pepper.ErrSecret) {
 		t.Fatal("bad secret parsed")
 	}
-	b, err := pepper.ParseSecret(hex.EncodeToString(secret(3)))
-	if err != nil || !bytes.Equal(b, secret(3)) {
+	sequence := make([]byte, pepper.SecretLen)
+	for i := range sequence {
+		sequence[i] = byte(i)
+	}
+	b, err := pepper.ParseSecret(hex.EncodeToString(sequence))
+	if err != nil || !bytes.Equal(b, sequence) {
 		t.Fatal("hex secret")
 	}
-	b, err = pepper.ParseSecret("AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM")
-	if err != nil || !bytes.Equal(b, secret(3)) {
+	b, err = pepper.ParseSecret("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")
+	if err != nil || !bytes.Equal(b, sequence) {
 		t.Fatalf("base64url secret: %v", err)
+	}
+	for _, weak := range []string{hex.EncodeToString(secret(0)), hex.EncodeToString(secret(0xab)), "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM"} {
+		if _, err := pepper.ParseSecret(weak); !errors.Is(err, pepper.ErrWeak) {
+			t.Fatalf("a pepper of equal bytes was accepted: %q %v", weak, err)
+		}
+	}
+}
+
+func TestUnknownPurposePanics(t *testing.T) {
+	k, err := pepper.NewKey(secret(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []pepper.Purpose{"", "reed"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("purpose %q got a MAC under a key that was never derived", p)
+				}
+			}()
+			k.MAC(p, []byte("x"))
+		}()
 	}
 }
 

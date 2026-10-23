@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"maps"
 	"net/netip"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ type keyedLimiter struct {
 	rate    float64
 	burst   float64
 	max     int
+	base    time.Time
 	buckets map[bucket]keyedBucket
 }
 
@@ -31,13 +33,13 @@ const (
 )
 
 func newKeyedLimiter(rate, burst float64) *keyedLimiter {
-	return &keyedLimiter{rate: rate, burst: burst, max: maxKeyedBuckets, buckets: map[bucket]keyedBucket{}}
+	return &keyedLimiter{rate: rate, burst: burst, max: maxKeyedBuckets, base: time.Now(), buckets: map[bucket]keyedBucket{}}
 }
 
 func (l *keyedLimiter) allow(key bucket, now time.Time) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	at := now.UnixNano()
+	at := int64(now.Sub(l.base))
 	b, ok := l.buckets[key]
 	if !ok {
 		if len(l.buckets) >= l.max {
@@ -58,17 +60,17 @@ func (l *keyedLimiter) allow(key bucket, now time.Time) bool {
 }
 
 func (l *keyedLimiter) evict(at int64) {
-	refill := int64(l.burst / l.rate * float64(time.Second))
-	for k, b := range l.buckets {
-		if at-b.last >= refill {
-			delete(l.buckets, k)
-		}
-	}
-	for k := range l.buckets {
-		if len(l.buckets) < l.max-l.max/evictDivisor {
+	refill := l.burst / l.rate * float64(time.Second)
+	evictTo(l.buckets, l.max, func(b keyedBucket) bool { return float64(at-b.last) >= refill })
+}
+
+func evictTo[K comparable, V any](m map[K]V, limit int, expired func(V) bool) {
+	maps.DeleteFunc(m, func(_ K, v V) bool { return expired(v) })
+	for k := range m {
+		if len(m) < limit-limit/evictDivisor {
 			return
 		}
-		delete(l.buckets, k)
+		delete(m, k)
 	}
 }
 
