@@ -7,6 +7,7 @@ import {
   SIGNATURE_LEN,
   TOKEN_LEN,
   encodeBase64url,
+  newRequestKey,
   requestKey,
   requestMessage,
   signRequest,
@@ -47,5 +48,19 @@ describe('request signatures', () => {
     const sig = await signRequest(key, PURPOSE_READ, 'POST', `${path}/claim`, new Uint8Array(CHALLENGE_LEN));
     expect(sig.signature).toHaveLength(SIGNATURE_LEN);
     expect(verifierHeader(sig)).toBe(`${encodeBase64url(key.publicKey)}.${encodeBase64url(sig.signature)}`);
+  });
+
+  it('generates a manage key whose private half never leaves WebCrypto', async () => {
+    const key = await newRequestKey();
+    expect(key.privateKey.extractable).toBe(false);
+    expect(key.privateKey.usages).toEqual(['sign']);
+    expect(key.publicKey).toHaveLength(32);
+    await expect(crypto.subtle.exportKey('jwk', key.privateKey)).rejects.toThrow();
+    const challenge = new Uint8Array(CHALLENGE_LEN).fill(3);
+    const signature = await signRequest(key, PURPOSE_MANAGE, 'POST', path, challenge);
+    const verifier = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
+    const message = await requestMessage(PURPOSE_MANAGE, 'POST', path, challenge, new Uint8Array(0));
+    expect(await crypto.subtle.verify('Ed25519', verifier, signature.signature, message)).toBe(true);
+    expect(encodeBase64url((await newRequestKey()).publicKey)).not.toBe(encodeBase64url(key.publicKey));
   });
 });

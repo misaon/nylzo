@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   KDF_NONE,
@@ -129,5 +129,23 @@ describe('kdf profiles', () => {
   it('rejects an unknown profile', async () => {
     const unknown = Number('3') as KdfId;
     await expect(derivePassphraseKey(unknown, 'x', new Uint8Array(32))).rejects.toBeInstanceOf(KdfError);
+  });
+
+  it('wipes the copy of S and P it feeds into HKDF', async () => {
+    const imported: Uint8Array[] = [];
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((format: KeyFormat, data: BufferSource, ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]) => {
+      if (data instanceof Uint8Array && data.length === 64) {
+        imported.push(data);
+      }
+      return importKey(format as 'raw', data, ...rest);
+    }) as typeof crypto.subtle.importKey);
+    try {
+      await deriveContent(newId(), newSecret(), new Uint8Array(32).fill(9));
+    } finally {
+      spy.mockRestore();
+    }
+    expect(imported).toHaveLength(1);
+    expect([...imported[0]!].every((byte) => byte === 0)).toBe(true);
   });
 });

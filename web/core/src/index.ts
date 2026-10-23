@@ -98,6 +98,7 @@ export {
   PURPOSE_VERIFIER,
   SIGNATURE_LEN,
   authorizationHeader,
+  newRequestKey,
   parseChallenge,
   requestKey,
   requestMessage,

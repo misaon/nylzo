@@ -42,7 +42,9 @@ export async function deriveLink(id: Uint8Array, s: Uint8Array): Promise<LinkKey
 export async function deriveContent(id: Uint8Array, s: Uint8Array, p: Uint8Array): Promise<ContentKeys> {
   assertLength(s, SECRET_LEN, 'secret');
   const salt = await hsalt(id);
-  const prk = await importIkm(concat(s, p));
+  const ikm = concat(s, p);
+  const prk = await importIkm(ikm);
+  ikm.fill(0);
   const k = await crypto.subtle.deriveKey(
     hkdfParams(salt, INFO_CONTENT),
     prk,
