@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
-  import { formatDuration } from '../lib/format.ts';
+  import { formatWait } from '../lib/format.ts';
   import { getI18n } from '../lib/i18n.svelte.ts';
   import type { ReportOutcome } from '../lib/report.ts';
 
@@ -32,7 +32,7 @@
       case 'accepted':
         return t('report.accepted');
       case 'retry_later':
-        return t('read.retry_later', { time: formatDuration(outcome.retryAfter ?? 60, i18n.language) });
+        return t('read.retry_later', { time: formatWait(outcome.retryAfter ?? 60, i18n.language) });
       case 'failed':
         return t('report.failed');
       default:
@@ -53,6 +53,7 @@
       return;
     }
     sending = true;
+    outcome = undefined;
     try {
       outcome = await send(link, reason);
     } finally {
@@ -80,9 +81,10 @@
       spellcheck="false"
       bind:value={link}
       aria-invalid={linkProblem !== ''}
-      aria-describedby={`${name}-link-problem`}
+      aria-describedby={`${name}-link-hint ${name}-link-problem`}
     />
-    <p id={`${name}-link-problem`}>{linkProblem}</p>
+    <p id={`${name}-link-hint`}>{t('report.link.hint')}</p>
+    <p id={`${name}-link-problem`} data-problem>{linkProblem}</p>
   {/if}
   <label for={`${name}-reason`}>{t('report.reason')}</label>
   <textarea
@@ -96,7 +98,7 @@
     aria-describedby={`${name}-reason-hint ${name}-reason-problem`}
   ></textarea>
   <p id={`${name}-reason-hint`}>{t('report.reason.hint')}</p>
-  <p id={`${name}-reason-problem`}>{reasonProblem}</p>
+  <p id={`${name}-reason-problem`} data-problem>{reasonProblem}</p>
   <button type="submit" disabled={sending}>{t('report.submit')}</button>
 </form>
 <p role="status" aria-live="polite">{result}</p>

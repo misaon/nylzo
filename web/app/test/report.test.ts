@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../src/lib/api.ts';
 import { createMessage, type CreateDeps } from '../src/lib/create.ts';
-import { reasonTooLong, reportLink } from '../src/lib/report.ts';
+import { reasonTooLong, redactReason, reportLink } from '../src/lib/report.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from './fake-api.ts';
 
 const ORIGIN = 'https://nylzo.test';
@@ -39,7 +39,7 @@ describe('reporting a pasted link (D41)', () => {
 
   it('refuses a damaged link and a long reason together', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.split('#')[0] ?? '', 'x'.repeat(1001))).toEqual({
+    expect(await reportLink(api, ORIGIN, link.split('#')[0] ?? '', 'ab '.repeat(334))).toEqual({
       outcome: 'invalid',
       problems: ['link_invalid', 'reason_too_long'],
     });
@@ -68,3 +68,44 @@ describe('the length of a reason', () => {
     expect(reasonTooLong('\u0001'.repeat(700))).toBe(true);
   });
 });
+
+describe('redacting a reason before it is signed (D41)', () => {
+  it('removes a pasted link and S in every form the server decodes', async () => {
+    const { api, link } = await setup();
+    const secret = link.split('.').at(-1) ?? '';
+    const zeroWidth = `${secret.slice(0, 20)}\u200b${secret.slice(20)}`;
+    for (const reason of [
+      `phishing, see ${link}`,
+      `see ${encodeURIComponent(link)}`,
+      `see ${encodeURIComponent(encodeURIComponent(link))}`,
+      `key ${secret}`,
+      `key ${zeroWidth}`,
+      `key ${[...secret].map((c) => `%${c.charCodeAt(0).toString(16)}`).join('')}`,
+    ]) {
+      const redacted = redactReason(reason);
+      expect(redacted, reason).not.toContain(secret);
+      expect(redacted, reason).toContain('[redacted]');
+    }
+    expect(await reportLink(api, ORIGIN, link, `phishing, see ${link}`)).toEqual({ outcome: 'accepted' });
+    expect(api.reports[0]?.reason).toBe('phishing, see https://nylzo.test/m/[redacted][redacted]');
+  });
+
+  it('keeps ordinary text and turns control characters into spaces', () => {
+    expect(redactReason('phishing "quoted" ✓ 100% sure')).toBe('phishing "quoted" ✓ 100% sure');
+    expect(redactReason('line\none\ttab\u0007bell')).toBe('line one tab bell');
+    expect(redactReason('bidi\u202eflip')).toBe('bidiflip');
+    expect(redactReason('%25%32%35')).toBe('%');
+  });
+
+  it('measures the redacted reason against the limit', async () => {
+    const { api, link } = await setup();
+    const long = `${link.split('.').at(-1) ?? ''} `.repeat(30);
+    expect(utf8Length(long)).toBeGreaterThan(1000);
+    expect(await reportLink(api, ORIGIN, link, long)).toEqual({ outcome: 'accepted' });
+  });
+});
+
+function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+

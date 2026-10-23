@@ -2,7 +2,10 @@ import { PUBLIC_KEY_LEN, parseId, type RequestKey } from '@nylzo/core';
 
 import { ApiError, type Api, type Status } from './api.ts';
 
-export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const RETENTION_MS = 7 * DAY_MS;
+const MAX_LIFETIME_MS = 31 * DAY_MS;
+const MAX_TIME_MS = 8.64e15;
 
 const DATABASE = 'nylzo';
 const DATABASE_VERSION = 1;
@@ -12,6 +15,7 @@ export interface SentRecord {
   readonly id: string;
   readonly createdAt: number;
   readonly expiresAt: number;
+  readonly endedAt?: number | undefined;
   readonly manageKey: RequestKey;
 }
 
@@ -19,6 +23,7 @@ export interface StoredRecord {
   readonly id: string;
   readonly createdAt: number;
   readonly expiresAt: number;
+  readonly endedAt?: number;
   readonly privateKey: CryptoKey;
   readonly publicKey: Uint8Array<ArrayBuffer>;
 }
@@ -34,6 +39,13 @@ export class ExtractableKeyError extends Error {
   override readonly name = 'ExtractableKeyError';
   constructor() {
     super('a manage key must not be extractable');
+  }
+}
+
+export class InvalidRecordError extends Error {
+  override readonly name = 'InvalidRecordError';
+  constructor() {
+    super('a sent record has impossible times or keys');
   }
 }
 
@@ -56,6 +68,20 @@ function validId(id: unknown): id is string {
   }
 }
 
+function validTime(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_TIME_MS;
+}
+
+function validTimes(createdAt: unknown, expiresAt: unknown, endedAt: unknown): boolean {
+  return (
+    validTime(createdAt) &&
+    validTime(expiresAt) &&
+    createdAt <= expiresAt &&
+    expiresAt - createdAt <= MAX_LIFETIME_MS &&
+    (endedAt === undefined || (validTime(endedAt) && endedAt <= expiresAt + MAX_LIFETIME_MS))
+  );
+}
+
 function isSigningKey(key: unknown): key is CryptoKey {
   return key instanceof CryptoKey && key.type === 'private' && key.algorithm.name === 'Ed25519' && key.usages.includes('sign');
 }
@@ -64,10 +90,14 @@ export function storedForm(record: SentRecord): StoredRecord {
   if (record.manageKey.privateKey.extractable) {
     throw new ExtractableKeyError();
   }
+  if (!validId(record.id) || !validTimes(record.createdAt, record.expiresAt, record.endedAt)) {
+    throw new InvalidRecordError();
+  }
   return {
     id: record.id,
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
+    ...(record.endedAt === undefined ? {} : { endedAt: record.endedAt }),
     privateKey: record.manageKey.privateKey,
     publicKey: record.manageKey.publicKey,
   };
@@ -77,13 +107,12 @@ export function recordFrom(value: unknown): SentRecord | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined;
   }
-  const { id, createdAt, expiresAt, privateKey, publicKey } = value as Partial<Record<keyof StoredRecord, unknown>>;
+  const { id, createdAt, expiresAt, endedAt, privateKey, publicKey } = value as Partial<Record<keyof StoredRecord, unknown>>;
   if (
     !validId(id) ||
-    typeof createdAt !== 'number' ||
-    !Number.isFinite(createdAt) ||
-    typeof expiresAt !== 'number' ||
-    !Number.isFinite(expiresAt) ||
+    !validTimes(createdAt, expiresAt, endedAt) ||
+    !validTime(createdAt) ||
+    !validTime(expiresAt) ||
     !isSigningKey(privateKey) ||
     privateKey.extractable ||
     !(publicKey instanceof Uint8Array) ||
@@ -91,11 +120,17 @@ export function recordFrom(value: unknown): SentRecord | undefined {
   ) {
     return undefined;
   }
-  return { id, createdAt, expiresAt, manageKey: { privateKey, publicKey: new Uint8Array(publicKey) } };
+  return {
+    id,
+    createdAt,
+    expiresAt,
+    ...(validTime(endedAt) ? { endedAt } : {}),
+    manageKey: { privateKey, publicKey: new Uint8Array(publicKey) },
+  };
 }
 
-export function isRetained(record: Pick<SentRecord, 'expiresAt'>, now: number): boolean {
-  return now < record.expiresAt + RETENTION_MS;
+export function isRetained(record: Pick<SentRecord, 'expiresAt' | 'endedAt'>, now: number): boolean {
+  return now < Math.min(record.expiresAt, record.endedAt ?? Number.POSITIVE_INFINITY) + RETENTION_MS;
 }
 
 export async function retainedRecords(store: SentStore, now: number): Promise<SentRecord[]> {
@@ -185,6 +220,16 @@ export function indexedDbSentStore(factory: IDBFactory | undefined = globalThis.
   };
 }
 
+export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<void> {
+  if (!factory || typeof factory.databases !== 'function') {
+    return;
+  }
+  const databases = await factory.databases();
+  if (databases.some((database) => database.name === DATABASE)) {
+    await retainedRecords(indexedDbSentStore(factory), now);
+  }
+}
+
 export type ItemState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'loaded'; readonly status: Status }
@@ -197,6 +242,8 @@ export interface SentItem {
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly state: ItemState;
+  readonly ended: boolean;
+  readonly cancellable: boolean;
 }
 
 export type SentView =
@@ -226,8 +273,14 @@ export interface SentPage {
   forgetAll(): Promise<void>;
 }
 
-export function isCancellable(state: ItemState): boolean {
-  return state.kind === 'loaded' && state.status.endedAt === undefined && (state.status.state === 'available' || state.status.state === 'opened');
+export function assess(state: ItemState, expiresAt: number, now: number): Pick<SentItem, 'ended' | 'cancellable'> {
+  if (state.kind !== 'loaded') {
+    return { ended: false, cancellable: false };
+  }
+  const { status } = state;
+  const expires = status.expiresAt === undefined ? expiresAt : Date.parse(status.expiresAt);
+  const ended = status.endedAt !== undefined || (status.state !== 'available' && status.state !== 'opened') || expires <= now;
+  return { ended, cancellable: !ended };
 }
 
 function failedState(error: unknown): ItemState {
@@ -242,6 +295,23 @@ function failedState(error: unknown): ItemState {
   return { kind: 'failed' };
 }
 
+function cancelOutcome(error: unknown): CancelOutcome {
+  if (error instanceof ApiError) {
+    switch (error.kind) {
+      case 'gone':
+        return { outcome: 'ended' };
+      case 'not_found':
+        return { outcome: 'unknown' };
+      case 'rate_limited':
+      case 'unavailable':
+        return { outcome: 'retry_later', retryAfter: error.retryAfter };
+      default:
+        return { outcome: 'failed' };
+    }
+  }
+  return { outcome: 'failed' };
+}
+
 export function createSentPage(deps: SentDeps, notify: (view: SentView) => void): SentPage {
   let records: SentRecord[] = [];
   let states = new Map<string, ItemState>();
@@ -249,27 +319,63 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
   const cancelling = new Set<string>();
 
   function show(): void {
+    const now = deps.now();
     notify({
       view: 'list',
-      items: records.map((record) => ({
-        id: record.id,
-        createdAt: record.createdAt,
-        expiresAt: record.expiresAt,
-        state: states.get(record.id) ?? { kind: 'loading' },
-      })),
+      items: records.map((record) => {
+        const state = states.get(record.id) ?? { kind: 'loading' };
+        return { id: record.id, createdAt: record.createdAt, expiresAt: record.expiresAt, state, ...assess(state, record.expiresAt, now) };
+      }),
     });
   }
 
+  function listed(id: string): boolean {
+    return records.some((record) => record.id === id);
+  }
+
   function setState(id: string, state: ItemState): void {
-    if (records.some((record) => record.id === id)) {
+    if (listed(id)) {
       states.set(id, state);
       show();
     }
   }
 
-  async function fetchStatus(record: SentRecord): Promise<ItemState> {
+  function drop(id: string): void {
+    records = records.filter((record) => record.id !== id);
+    states.delete(id);
+    show();
+  }
+
+  async function stored(id: string): Promise<SentRecord | undefined> {
+    const found = (await deps.store.list()).find((record) => record.id === id);
+    if (!found) {
+      drop(id);
+    }
+    return found;
+  }
+
+  async function rememberEnd(record: SentRecord, status: Status): Promise<void> {
+    if (status.endedAt === undefined || record.endedAt !== undefined) {
+      return;
+    }
+    const ended = { ...record, endedAt: Date.parse(status.endedAt) };
     try {
-      return { kind: 'loaded', status: await deps.api.status(parseId(record.id), record.manageKey) };
+      await deps.store.put(ended);
+      records = records.map((candidate) => (candidate.id === record.id ? ended : candidate));
+    } catch {
+      return;
+    }
+  }
+
+  async function fetchStatus(id: string): Promise<ItemState | undefined> {
+    try {
+      const record = await stored(id);
+      if (!record) {
+        return undefined;
+      }
+      const status = await deps.api.status(parseId(id), record.manageKey);
+      await rememberEnd(record, status);
+      return { kind: 'loaded', status };
     } catch (error) {
       return failedState(error);
     }
@@ -287,15 +393,20 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
     }
     states = new Map();
     show();
-    for (const [index, record] of records.entries()) {
-      const state = await fetchStatus(record);
+    for (const { id } of [...records]) {
       if (current !== generation) {
         return;
       }
-      setState(record.id, state);
+      const state = await fetchStatus(id);
+      if (current !== generation || state === undefined) {
+        continue;
+      }
+      setState(id, state);
       if (state.kind === 'retry_later') {
-        for (const rest of records.slice(index + 1)) {
-          states.set(rest.id, state);
+        for (const record of records) {
+          if (!states.has(record.id)) {
+            states.set(record.id, state);
+          }
         }
         show();
         return;
@@ -304,34 +415,31 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
   }
 
   async function refresh(id: string): Promise<void> {
-    const record = records.find((candidate) => candidate.id === id);
-    if (!record) {
+    if (!listed(id)) {
       return;
     }
     setState(id, { kind: 'loading' });
-    setState(id, await fetchStatus(record));
+    const state = await fetchStatus(id);
+    if (state) {
+      setState(id, state);
+    }
   }
 
   async function cancel(id: string): Promise<CancelOutcome> {
-    const record = records.find((candidate) => candidate.id === id);
-    if (!record || cancelling.has(id)) {
+    if (!listed(id) || cancelling.has(id)) {
       return { outcome: 'ignored' };
     }
     cancelling.add(id);
     let outcome: CancelOutcome;
     try {
+      const record = await stored(id);
+      if (!record) {
+        return { outcome: 'ignored' };
+      }
       await deps.api.cancel(parseId(id), record.manageKey);
       outcome = { outcome: 'cancelled' };
     } catch (error) {
-      if (error instanceof ApiError && error.kind === 'gone') {
-        outcome = { outcome: 'ended' };
-      } else if (error instanceof ApiError && error.kind === 'not_found') {
-        outcome = { outcome: 'unknown' };
-      } else if (error instanceof ApiError && (error.kind === 'rate_limited' || error.kind === 'unavailable')) {
-        outcome = { outcome: 'retry_later', retryAfter: error.retryAfter };
-      } else {
-        outcome = { outcome: 'failed' };
-      }
+      outcome = cancelOutcome(error);
     } finally {
       cancelling.delete(id);
     }
@@ -345,9 +453,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
 
   async function forget(id: string): Promise<void> {
     await deps.store.remove(id);
-    records = records.filter((record) => record.id !== id);
-    states.delete(id);
-    show();
+    drop(id);
   }
 
   async function forgetAll(): Promise<void> {

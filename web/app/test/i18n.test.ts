@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDuration } from '../src/lib/format.ts';
+import { formatBytes, formatDuration, formatWait } from '../src/lib/format.ts';
 import { createI18n, dictionaries, otherLanguage, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
@@ -35,6 +35,9 @@ describe('i18n', () => {
     expect(formatDuration(3601, 'en')).toBe('2 hours');
     expect(formatBytes(5242880, 'en')).toBe('5 MB');
     expect(formatBytes(102400, 'en')).toBe('100 kB');
+    const plain = (text: string) => text.replace(/\s/gu, ' ');
+    expect([1, 60, 3600, 120, 300].map((seconds) => plain(formatWait(seconds, 'cs')))).toEqual(['1 sekundu', '1 minutu', '1 hodinu', '2 minuty', '5 minut']);
+    expect(formatWait(60, 'en')).toBe('1 minute');
   });
 
   it('switches the language in place', () => {

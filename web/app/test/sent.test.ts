@@ -5,9 +5,12 @@ import { ApiError } from '../src/lib/api.ts';
 import { createMessage, type CreateDeps } from '../src/lib/create.ts';
 import {
   ExtractableKeyError,
+  InvalidRecordError,
   RETENTION_MS,
+  assess,
   createSentPage,
-  isCancellable,
+  isRetained,
+  purgeSentRecords,
   recordFrom,
   retainedRecords,
   storedForm,
@@ -95,6 +98,20 @@ describe('stored records of sent messages (D39)', () => {
     expect(Object.keys(stored).sort()).toEqual(['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey']);
   });
 
+  it('refuses to store impossible times', async () => {
+    const manageKey = await requestKey(newSecret());
+    for (const times of [
+      { createdAt: NOW, expiresAt: NOW - 1 },
+      { createdAt: -1, expiresAt: NOW },
+      { createdAt: NOW, expiresAt: NOW + 32 * 24 * 3_600_000 },
+      { createdAt: 0.5, expiresAt: NOW },
+      { createdAt: NOW, expiresAt: 1e300 },
+    ]) {
+      expect(() => storedForm({ id: ID, ...times, manageKey }), JSON.stringify(times)).toThrow(InvalidRecordError);
+    }
+    expect(() => storedForm({ id: 'not an id', createdAt: NOW, expiresAt: NOW, manageKey })).toThrow(InvalidRecordError);
+  });
+
   it('reads back only well-formed records with a non-extractable Ed25519 signing key', async () => {
     const manageKey = await requestKey(newSecret());
     const good = storedForm({ id: ID, createdAt: NOW, expiresAt: NOW + 1, manageKey });
@@ -110,6 +127,9 @@ describe('stored records of sent messages (D39)', () => {
       { ...good, id: `${ID.slice(0, 21)}B` },
       { ...good, createdAt: Number.NaN },
       { ...good, expiresAt: '2026-10-23' },
+      { ...good, createdAt: 1e300, expiresAt: 1e300 },
+      { ...good, expiresAt: NOW - 1 },
+      { ...good, endedAt: -5 },
       null,
       'record',
     ]) {
@@ -128,6 +148,23 @@ describe('stored records of sent messages (D39)', () => {
     const kept = await retainedRecords(store, NOW);
     expect(kept.map((record) => record.createdAt)).toEqual([3, 2]);
     expect([...store.records.keys()].sort()).toEqual(['AAAAAAAAAAAAAAAAAAAAAQ', 'AAAAAAAAAAAAAAAAAAAAAg']);
+  });
+});
+
+describe('cleaning up on page load', () => {
+  it('neither opens nor creates the database when it does not exist', async () => {
+    const opened: string[] = [];
+    const factory = {
+      databases: async () => [{ name: 'other', version: 1 }],
+      open: (name: string) => {
+        opened.push(name);
+        throw new Error('must not open');
+      },
+    } as unknown as IDBFactory;
+    await purgeSentRecords(factory, NOW);
+    await purgeSentRecords({ open: factory.open } as unknown as IDBFactory, NOW);
+    await purgeSentRecords(undefined, NOW);
+    expect(opened).toEqual([]);
   });
 });
 
@@ -163,13 +200,24 @@ describe('the sent page', () => {
     const { api, records, sent } = await setup({}, 1);
     await sent.load();
     const id = records[0]!.id;
-    expect(isCancellable(sent.items()[0]!.state)).toBe(true);
+    expect(sent.items()[0]).toMatchObject({ ended: false, cancellable: true });
     expect(await sent.cancel(id)).toEqual({ outcome: 'cancelled' });
-    const state = sent.items()[0]!.state;
-    expect(state).toMatchObject({ kind: 'loaded', status: { state: 'cancelled', endedAt: '2026-10-23T11:00:00Z' } });
-    expect(isCancellable(state)).toBe(false);
+    expect(sent.items()[0]).toMatchObject({
+      state: { kind: 'loaded', status: { state: 'cancelled', endedAt: '2026-10-23T11:00:00Z', opensMax: 0 } },
+      ended: true,
+      cancellable: false,
+    });
     expect(api.stored.get(id)?.state).toBe('cancelled');
     expect(await sent.cancel(id)).toEqual({ outcome: 'ended' });
+  });
+
+  it('cancels a message once even when asked twice at the same time', async () => {
+    const { api, records, sent } = await setup({}, 1);
+    await sent.load();
+    api.calls.length = 0;
+    const [first, second] = await Promise.all([sent.cancel(records[0]!.id), sent.cancel(records[0]!.id)]);
+    expect([first, second]).toEqual([{ outcome: 'cancelled' }, { outcome: 'ignored' }]);
+    expect(api.calls.filter((call) => call === 'cancel')).toHaveLength(1);
   });
 
   it('reports a rate limited cancel and leaves the message as it was', async () => {
@@ -204,13 +252,56 @@ describe('the sent page', () => {
     expect(sent.last()).toEqual({ view: 'unavailable' });
   });
 
-  it('treats only a live message without an end as cancellable', () => {
-    const status = { state: 'available' as const, opensUsed: 0, opensMax: 1, failedPassphraseAttempts: 0 };
-    expect(isCancellable({ kind: 'loaded', status })).toBe(true);
-    expect(isCancellable({ kind: 'loaded', status: { ...status, state: 'opened' } })).toBe(true);
-    expect(isCancellable({ kind: 'loaded', status: { ...status, state: 'opened', endedAt: '2026-10-23T11:00:00Z' } })).toBe(false);
-    expect(isCancellable({ kind: 'loaded', status: { ...status, state: 'expired' } })).toBe(false);
-    expect(isCancellable({ kind: 'loaded', status: { ...status, state: 'cancelled' } })).toBe(false);
-    expect(isCancellable({ kind: 'unknown' })).toBe(false);
+  it('treats only a live, unexpired message without an end as cancellable', () => {
+    const status = { state: 'available' as const, opensUsed: 0, opensMax: 1, failedPassphraseAttempts: 0, expiresAt: '2026-10-23T13:00:00Z' };
+    const later = NOW + 3_600_000;
+    expect(assess({ kind: 'loaded', status }, later, NOW)).toEqual({ ended: false, cancellable: true });
+    expect(assess({ kind: 'loaded', status: { ...status, state: 'opened' } }, later, NOW)).toEqual({ ended: false, cancellable: true });
+    for (const ended of [
+      { ...status, state: 'opened' as const, endedAt: '2026-10-23T11:00:00Z' },
+      { ...status, state: 'expired' as const },
+      { ...status, state: 'cancelled' as const },
+      { ...status, state: 'deleted' as const },
+      { ...status, expiresAt: '2026-10-23T12:00:00Z' },
+    ]) {
+      expect(assess({ kind: 'loaded', status: ended }, later, NOW), JSON.stringify(ended)).toEqual({ ended: true, cancellable: false });
+    }
+    const { expiresAt: _, ...withoutExpiry } = status;
+    expect(assess({ kind: 'loaded', status: withoutExpiry }, NOW, NOW)).toEqual({ ended: true, cancellable: false });
+    expect(assess({ kind: 'unknown' }, later, NOW)).toEqual({ ended: false, cancellable: false });
+  });
+
+  it('never signs with a key that another tab forgot', async () => {
+    const { api, records, store, sent } = await setup({}, 2);
+    await sent.load();
+    store.records.delete(records[0]!.id);
+    api.calls.length = 0;
+    expect(await sent.cancel(records[0]!.id)).toEqual({ outcome: 'ignored' });
+    await sent.refresh(records[0]!.id);
+    expect(api.calls).toEqual([]);
+    expect(sent.items().map((item) => item.id)).toEqual([records[1]!.id]);
+  });
+
+  it('skips a message forgotten while the list loads and still marks the rest to try later', async () => {
+    const { api, records, store, sent } = await setup({ failStatus: [new ApiError(500, 'internal'), new ApiError(429, 'rate_limited', 9)] }, 4);
+    api.calls.length = 0;
+    const loading = sent.load();
+    await sent.forget(records[2]!.id);
+    await loading;
+    expect(store.records.has(records[2]!.id)).toBe(false);
+    expect(api.calls.filter((call) => call === 'status')).toHaveLength(2);
+    expect(sent.items().map((item) => item.state.kind)).toEqual(['failed', 'retry_later', 'retry_later']);
+  });
+
+  it('keeps a record until 7 days after the message ended, at the latest after expiry', async () => {
+    const { records, store, sent } = await setup({}, 1);
+    await sent.load();
+    await sent.cancel(records[0]!.id);
+    const ended = store.records.get(records[0]!.id)!;
+    expect(ended.endedAt).toBe(Date.parse('2026-10-23T11:00:00Z'));
+    expect(isRetained(ended, Date.parse('2026-10-30T10:59:59Z'))).toBe(true);
+    expect(isRetained(ended, Date.parse('2026-10-30T11:00:00Z'))).toBe(false);
+    expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS - 1)).toBe(true);
+    expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS)).toBe(false);
   });
 });

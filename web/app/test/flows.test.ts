@@ -494,6 +494,16 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     ]);
   });
 
+  it('sends one report at a time', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const [first, second] = await Promise.all([r.report('one'), r.report('two')]);
+    expect([first, second]).toEqual([{ outcome: 'accepted' }, { outcome: 'ignored' }]);
+    expect(api.reports.map((report) => report.reason)).toEqual(['one']);
+  });
+
   it('drops the read key once the page shows an end state', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDeps(api));

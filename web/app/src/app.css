@@ -20,6 +20,7 @@
   }
 
   [role="status"],
+  [data-problem],
   dd {
     min-height: 1lh;
   }

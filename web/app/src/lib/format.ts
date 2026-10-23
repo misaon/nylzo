@@ -14,6 +14,11 @@ export function formatDuration(seconds: number, language: Language): string {
   return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
+export function formatWait(seconds: number, language: Language): string {
+  const duration = formatDuration(seconds, language);
+  return language === 'cs' ? duration.replace(/^1(\s)(minut|hodin|sekund)a$/u, '1$1$2u') : duration;
+}
+
 export function formatBytes(bytes: number, language: Language): string {
   const [value, unit] = bytes < MEBIBYTE ? [Math.max(1, Math.ceil(bytes / 1024)), 'kilobyte'] : [bytes / MEBIBYTE, 'megabyte'];
   return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 }).format(value);

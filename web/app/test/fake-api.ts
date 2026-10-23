@@ -226,6 +226,9 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         throw failure;
       }
       const message = managed(id, manageKey);
+      if (message.endedAt) {
+        return { state: message.state, opensUsed: 0, opensMax: 0, failedPassphraseAttempts: 0, endedAt: message.endedAt };
+      }
       return {
         state: message.state,
         opensUsed: message.request.opensMax - message.opensRemaining,
@@ -233,7 +236,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         failedPassphraseAttempts: message.failures,
         createdAt: '2026-10-23T10:00:00Z',
         expiresAt,
-        ...(message.endedAt ? { endedAt: message.endedAt } : {}),
       };
     },
   };

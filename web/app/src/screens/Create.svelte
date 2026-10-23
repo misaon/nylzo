@@ -16,12 +16,14 @@
     type Created,
   } from '../lib/create.ts';
   import { failureKey, problemKey, progressKey, readAttachment, ttlChoices, ttlKey } from '../lib/create-form.ts';
-  import { formatBytes, formatDuration, formatTime } from '../lib/format.ts';
+  import { formatBytes, formatDuration, formatTime, formatWait } from '../lib/format.ts';
   import { getI18n } from '../lib/i18n.svelte.ts';
   import { scryptInWorker, solvePowInWorker } from '../lib/kdf.ts';
   import { indexedDbSentStore } from '../lib/sent.ts';
 
   type Shown = Pick<Created, 'link' | 'expiresAt'>;
+
+  const SAVE_TIMEOUT_MS = 5000;
 
   const i18n = getI18n();
   const { t } = i18n;
@@ -43,11 +45,13 @@
   let progress = $state.raw<CreateProgress>();
   let created = $state.raw<Shown>();
   let remember = $state(true);
-  let remembered = $state<'remembered' | 'failed' | 'off'>('off');
+  let remembered = $state<'saving' | 'remembered' | 'failed' | 'off'>('off');
   let usedPassphrase = $state(false);
   let copied = $state(false);
-  let status = $state('');
+  let showingProblems = $state(false);
 
+  const status = $derived(progress ? t(progressKey(progress)) : showingProblems ? t('create.problems') : '');
+  const rememberedText = $derived(remembered === 'remembered' ? t('created.remembered') : remembered === 'failed' ? t('created.not_remembered') : '');
   const choices = $derived(limits ? ttlChoices(limits) : []);
   const weak = $derived(passphrase !== '' && passphraseIsWeak(passphrase));
   const fieldMessages = $derived.by(() => {
@@ -100,7 +104,7 @@
 
   function failureText(value: CreateFailure): string {
     const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
-    return t(failureKey(value), { time: formatDuration(retryAfter ?? 60, i18n.language) });
+    return t(failureKey(value), { time: formatWait(retryAfter ?? 60, i18n.language) });
   }
 
   function clearFile() {
@@ -112,14 +116,13 @@
 
   async function showProblems(next: readonly CreateProblem[]) {
     problems = next;
-    status = t('create.problems');
+    showingProblems = true;
     await tick();
     form?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }
 
   function onProgress(next: CreateProgress) {
     progress = next;
-    status = t(progressKey(next));
   }
 
   async function submit(event: SubmitEvent) {
@@ -128,6 +131,7 @@
       return;
     }
     failure = undefined;
+    showingProblems = false;
     const attachment = await readAttachment(file, limits);
     if ('problem' in attachment) {
       await showProblems([attachment.problem]);
@@ -151,31 +155,42 @@
         },
         onProgress,
       );
-      remembered = remember ? await rememberMessage(result) : 'off';
-      created = { link: result.link, expiresAt: result.expiresAt };
+      const shown = { link: result.link, expiresAt: result.expiresAt };
+      created = shown;
+      remembered = remember ? 'saving' : 'off';
+      if (remember) {
+        rememberMessage(result, shown);
+      }
       usedPassphrase = passphrase !== '';
       passphrase = '';
       text = '';
       clearFile();
-      status = '';
     } catch (error) {
       if (error instanceof CreateError && error.failure.kind === 'invalid') {
         await showProblems(error.failure.problems);
       } else {
         failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
-        status = '';
       }
     } finally {
       progress = undefined;
     }
   }
 
-  async function rememberMessage(result: Created): Promise<'remembered' | 'failed'> {
+  async function rememberMessage(result: Created, shown: Shown) {
+    const expiresAt = Date.parse(result.expiresAt);
+    const record = { id: result.id, createdAt: Math.min(Date.now(), expiresAt), expiresAt, manageKey: result.manageKey };
+    let outcome: 'remembered' | 'failed';
     try {
-      await sentStore.put({ id: result.id, createdAt: Date.now(), expiresAt: Date.parse(result.expiresAt), manageKey: result.manageKey });
-      return 'remembered';
+      await Promise.race([
+        sentStore.put(record),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('saving the record timed out')), SAVE_TIMEOUT_MS)),
+      ]);
+      outcome = 'remembered';
     } catch {
-      return 'failed';
+      outcome = 'failed';
+    }
+    if (created === shown) {
+      remembered = outcome;
     }
   }
 
@@ -212,10 +227,9 @@
     {#if usedPassphrase}
       <p>{t('created.passphrase')}</p>
     {/if}
-    {#if remembered === 'remembered'}
-      <p>{t('created.remembered')} <a href="/sent">{t('created.status_link')}</a></p>
-    {:else if remembered === 'failed'}
-      <p role="alert">{t('created.not_remembered')}</p>
+    {#if remembered !== 'off'}
+      <p role="status">{rememberedText}</p>
+      <a href="/sent">{t('created.status_link')}</a>
     {/if}
     <button type="button" onclick={another}>{t('created.another')}</button>
   </section>
@@ -240,7 +254,7 @@
           aria-invalid={fieldMessages.content !== undefined || fieldMessages.text !== undefined}
           aria-describedby="create-text-problem"
         ></textarea>
-        <p id="create-text-problem">{fieldMessages.content ?? fieldMessages.text ?? ''}</p>
+        <p id="create-text-problem" data-problem>{fieldMessages.content ?? fieldMessages.text ?? ''}</p>
 
         <label for="create-file">{t('create.file', { size: formatBytes(limits.maxFileBytes, i18n.language) })}</label>
         <input
@@ -254,7 +268,7 @@
         {#if file}
           <button type="button" onclick={clearFile}>{t('create.file.clear')}</button>
         {/if}
-        <p id="create-file-problem">{fieldMessages.file ?? ''}</p>
+        <p id="create-file-problem" data-problem>{fieldMessages.file ?? ''}</p>
 
         <label for="create-ttl">{t('create.ttl')}</label>
         <select id="create-ttl" bind:value={ttlSeconds} aria-invalid={fieldMessages.ttl !== undefined} aria-describedby="create-ttl-problem">
@@ -262,7 +276,7 @@
             <option value={seconds}>{ttlLabel(seconds)}</option>
           {/each}
         </select>
-        <p id="create-ttl-problem">{fieldMessages.ttl ?? ''}</p>
+        <p id="create-ttl-problem" data-problem>{fieldMessages.ttl ?? ''}</p>
 
         <label for="create-opens">{t('create.opens', { max: limits.maxOpens })}</label>
         <input
@@ -274,7 +288,7 @@
           aria-invalid={fieldMessages.opens !== undefined}
           aria-describedby="create-opens-problem"
         />
-        <p id="create-opens-problem">{fieldMessages.opens ?? ''}</p>
+        <p id="create-opens-problem" data-problem>{fieldMessages.opens ?? ''}</p>
 
         <label for="create-passphrase">{t('create.passphrase')}</label>
         <input
@@ -292,7 +306,7 @@
           aria-describedby="create-passphrase-hint create-passphrase-problem"
         />
         <p id="create-passphrase-hint">{t('create.passphrase.hint')}</p>
-        <p id="create-passphrase-problem">{fieldMessages.passphrase ?? (weak ? t('create.passphrase.weak') : '')}</p>
+        <p id="create-passphrase-problem" data-problem>{fieldMessages.passphrase ?? (weak ? t('create.passphrase.weak') : '')}</p>
 
         {#if passphrase !== ''}
           <fieldset>

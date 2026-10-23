@@ -1,11 +1,13 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ReportForm from '../components/ReportForm.svelte';
   import { createApi } from '../lib/api.ts';
   import { fileExtension, isKnownSafeFile, saveFile } from '../lib/download.ts';
-  import { formatBytes, formatDuration, formatTime } from '../lib/format.ts';
+  import { formatBytes, formatTime, formatWait } from '../lib/format.ts';
+  import { keepFocus } from '../lib/focus.ts';
   import { getI18n } from '../lib/i18n.svelte.ts';
   import { scryptInWorker } from '../lib/kdf.ts';
   import { createReader, type BurnOutcome, type ReadView, type RevealedFile } from '../lib/read.ts';
@@ -19,9 +21,12 @@
   let askingDelete = $state(false);
   let reporting = $state(false);
   let restDeleted = $state(false);
-  let actionStatus = $state('');
+  let deleting = $state(false);
+  let burned = $state.raw<{ readonly outcome: BurnOutcome; readonly afterReveal: boolean }>();
 
-  const status = $derived(view.view === 'loading' ? t('read.loading') : view.view === 'busy' ? t(`busy.${view.step}`) : actionStatus);
+  const status = $derived(
+    view.view === 'loading' ? t('read.loading') : view.view === 'busy' ? t(`busy.${view.step}`) : burned ? burnText(burned.outcome, burned.afterReveal) : '',
+  );
 
   const reader = createReader(
     {
@@ -65,7 +70,7 @@
       case 'ended':
         return afterReveal ? t(`read.ended.${outcome.state}`) : '';
       case 'retry_later':
-        return t('read.retry_later', { time: formatDuration(outcome.retryAfter ?? 60, i18n.language) });
+        return t('read.retry_later', { time: formatWait(outcome.retryAfter ?? 60, i18n.language) });
       case 'unknown':
         return afterReveal ? t('read.delete.failed') : '';
       case 'failed':
@@ -77,10 +82,21 @@
 
   async function burn() {
     askingDelete = false;
+    burned = undefined;
+    deleting = true;
     const afterReveal = view.view === 'revealed';
     const outcome = await reader.burn();
+    deleting = false;
     restDeleted ||= afterReveal && (outcome.outcome === 'deleted' || outcome.outcome === 'ended');
-    actionStatus = burnText(outcome, afterReveal);
+    burned = { outcome, afterReveal };
+    await tick();
+    keepFocus(document.getElementById(afterReveal ? 'revealed-title' : 'read-title'));
+  }
+
+  async function dismissed() {
+    askingDelete = false;
+    await tick();
+    keepFocus(document.getElementById(view.view === 'revealed' ? 'revealed-title' : 'read-title'));
   }
 
   function download(file: RevealedFile) {
@@ -96,7 +112,7 @@
 <p role="status" aria-live="polite">{status}</p>
 
 <section aria-labelledby="read-title">
-  <h2 id="read-title">{t('read.title')}</h2>
+  <h2 id="read-title" tabindex="-1">{t('read.title')}</h2>
 
   {#if view.view === 'invalid'}
     <p role="alert">{t('read.invalid')}</p>
@@ -108,7 +124,7 @@
     <p role="alert">{t('read.failed')}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'retry_later'}
-    <p role="alert">{t('read.retry_later', { time: formatDuration(view.retryAfter ?? 60, i18n.language) })}</p>
+    <p role="alert">{t('read.retry_later', { time: formatWait(view.retryAfter ?? 60, i18n.language) })}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'ended'}
     <p role="alert">{t(`read.ended.${view.state}`)}</p>
@@ -138,7 +154,7 @@
     {:else if view.rejected?.locked}
       <p role="alert">{t('read.rejected.locked')}</p>
     {:else if view.rejected && view.rejected.retryAfter > 0}
-      <p role="alert">{t('read.rejected.wait', { time: formatDuration(view.rejected.retryAfter, i18n.language) })}</p>
+      <p role="alert">{t('read.rejected.wait', { time: formatWait(view.rejected.retryAfter, i18n.language) })}</p>
     {:else if view.rejected}
       <p role="alert">{t('read.rejected.wrong', { count: view.rejected.attemptsLeft })}</p>
     {/if}
@@ -161,9 +177,9 @@
         />
       {/if}
       <p>{t('read.reveal.note')}</p>
-      <button type="submit">{t('read.reveal')}</button>
+      <button type="submit" disabled={deleting}>{t('read.reveal')}</button>
     </form>
-    <button type="button" onclick={() => (askingDelete = true)}>{t('read.delete')}</button>
+    <button type="button" disabled={deleting} onclick={() => (askingDelete = true)}>{t('read.delete')}</button>
     {@render reportArea()}
   {:else if view.view === 'busy'}
     {#if view.fraction === undefined}
@@ -172,7 +188,7 @@
       <progress aria-label={t(`busy.${view.step}`)} max="1" value={view.fraction}></progress>
     {/if}
   {:else if view.view === 'revealed'}
-    <h3 tabindex="-1" {@attach focus}>{t('revealed.title')}</h3>
+    <h3 id="revealed-title" tabindex="-1" {@attach focus}>{t('revealed.title')}</h3>
     {#if view.text !== undefined}
       <pre class="whitespace-pre-wrap break-words">{view.text}</pre>
     {/if}
@@ -191,7 +207,7 @@
     {/if}
     <p>{t('revealed.note')}</p>
     {#if view.burnable || restDeleted}
-      <button type="button" disabled={!view.burnable} onclick={() => (askingDelete = true)}>{t('read.delete.rest')}</button>
+      <button type="button" disabled={!view.burnable || deleting} onclick={() => (askingDelete = true)}>{t('read.delete.rest')}</button>
     {/if}
     {@render reportArea()}
   {/if}
@@ -213,6 +229,6 @@
     confirm={t('read.delete.yes')}
     dismiss={t('read.delete.no')}
     onconfirm={burn}
-    onclose={() => (askingDelete = false)}
+    onclose={dismissed}
   />
 {/if}

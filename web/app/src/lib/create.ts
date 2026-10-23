@@ -15,6 +15,7 @@ import {
   formatLink,
   idToString,
   newHeader,
+  newRequestKey,
   newSecret,
   requestKey,
   seal,
@@ -217,7 +218,6 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   const { id, idToken } = instance.create;
   const kdfId = effectiveKdf(input);
   const s = newSecret();
-  const m = newSecret();
   const link = await deriveLink(id, s);
   const p = await passphraseKey(input, kdfId, link.saltPw, deps, onProgress);
   const content = await deriveContent(id, s, p);
@@ -227,12 +227,11 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   if (object.length > instance.limits.maxObjectBytes) {
     throw new CreateError({ kind: 'too_large' });
   }
-  const [readKey, manageKey] = await Promise.all([requestKey(link.r), requestKey(m)]);
+  const [readKey, manageKey] = await Promise.all([requestKey(link.r), newRequestKey()]);
   const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;
   link.r.fill(0);
   link.saltPw.fill(0);
   content.v.fill(0);
-  m.fill(0);
   const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
   onProgress({ step: 'uploading' });
   const { expiresAt } = await deps.api.create({
