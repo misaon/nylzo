@@ -20,7 +20,7 @@ import (
 
 func powServer(t *testing.T, concurrency int) *Server {
 	t.Helper()
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +37,7 @@ func powServer(t *testing.T, concurrency int) *Server {
 }
 
 func TestPoWVerifierSaturated(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, testPoWVerifierSaturated)
 }
 
@@ -82,6 +83,7 @@ func testPoWVerifierSaturated(t *testing.T) {
 }
 
 func TestPoWRejectsFutureChallenge(t *testing.T) {
+	t.Parallel()
 	s := powServer(t, 1)
 	now := time.Now()
 	id := core.NewID()
@@ -95,6 +97,7 @@ func TestPoWRejectsFutureChallenge(t *testing.T) {
 }
 
 func TestPoWRejectsUppercaseCounter(t *testing.T) {
+	t.Parallel()
 	s := powServer(t, 1)
 	now := time.Now()
 	id := core.NewID()
@@ -119,6 +122,7 @@ func TestPoWRejectsUppercaseCounter(t *testing.T) {
 }
 
 func TestCreateHeaderKeysMatchStruct(t *testing.T) {
+	t.Parallel()
 	typ := reflect.TypeFor[createHeader]()
 	tags := map[string]bool{}
 	for field := range typ.Fields() {
@@ -131,6 +135,7 @@ func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 }
 
 func TestPoWToleratesASlightlyAheadIssuer(t *testing.T) {
+	t.Parallel()
 	s := powServer(t, 1)
 	now := time.Now()
 	id := core.NewID()

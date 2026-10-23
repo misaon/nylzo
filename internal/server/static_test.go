@@ -32,7 +32,7 @@ func newWebServer(t *testing.T, files fstest.MapFS) (*httptest.Server, error) {
 	dir := t.TempDir()
 	cfg := baseConfig(pepperA, nil)
 	cfg.DataDir = dir
-	st, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +65,7 @@ func get(t *testing.T, url string) (*http.Response, string) {
 }
 
 func TestBuiltClientIsServed(t *testing.T) {
+	t.Parallel()
 	ts, err := newWebServer(t, builtClient())
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +104,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 }
 
 func TestPlaceholderWithoutBuild(t *testing.T) {
+	t.Parallel()
 	ts, err := newWebServer(t, fstest.MapFS{"web/placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}})
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +118,7 @@ func TestPlaceholderWithoutBuild(t *testing.T) {
 }
 
 func TestUnknownAssetTypeRefusesToStart(t *testing.T) {
+	t.Parallel()
 	for name, files := range map[string]fstest.MapFS{
 		"unknown extension": {"web/placeholder.html": {}, "web/dist/index.html": {}, "web/dist/assets/logo.svg": {Data: []byte("<svg/>")}},
 		"nested directory":  {"web/placeholder.html": {}, "web/dist/index.html": {}, "web/dist/assets/sub/a.js": {}},

@@ -66,6 +66,7 @@ var lifecycleKinds = []lifecycleKind{
 }
 
 func TestLifecycleMatrix(t *testing.T) {
+	t.Parallel()
 	for _, kind := range lifecycleKinds {
 		for i, action := range lifecycleActions {
 			t.Run(kind.name+"/"+action, func(t *testing.T) {
@@ -113,7 +114,7 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 		return h.post(m, "cancel", m.manageTok)
 	case "expiry by request":
 		h.clock.Advance(2 * time.Hour)
-		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
+		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, token: m.readToken})
 	case "expiry by sweep":
 		h.clock.Advance(2 * time.Hour)
 		if _, err := h.srv.SweepOnce(ctx); err != nil {
@@ -124,7 +125,7 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 			t.Fatal(err)
 		}
 	case "resume by request":
-		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok})
 	case "resume by sweep":
 		if _, err := h.srv.SweepOnce(ctx); err != nil {
 			t.Fatal(err)
@@ -139,7 +140,7 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 		}
 		return h.claim(m, "", "")
 	case "ack":
-		return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+		return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	}
 	return nil, nil
 }
@@ -186,6 +187,7 @@ func checkLifecycleCell(t *testing.T, h *harness, m *message, action, expect str
 }
 
 func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -203,6 +205,7 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 }
 
 func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 2, 60, "x")
@@ -241,6 +244,7 @@ func (b slowPutBlobs) Put(ctx context.Context, ref string, r io.Reader, size int
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.blobs = slowPutBlobs{Blobs: h.blobs, clock: h.clock, delay: 90 * time.Second}
 	h.reopen(h.cfg)
@@ -252,19 +256,21 @@ func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
 }
 
 func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
 	var opens atomic.Int32
 	fb.set(func(b *faultyBlobs) { b.onOpen = func(string) { opens.Add(1) } })
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: m.ip, body: []byte("{"), headers: map[string]string{"Authorization": "Bearer " + m.readToken, "Content-Type": "application/json"}})
+	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: m.ip, body: []byte("{"), token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 	if resp.StatusCode != http.StatusBadRequest || opens.Load() != 0 {
 		t.Fatalf("a malformed claim body must be refused before the blob is opened: %d, %d opens", resp.StatusCode, opens.Load())
 	}
 }
 
 func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -285,12 +291,13 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 }
 
 func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
 	resp, _ := h.claim(m, "", "")
 	lease := resp.Header.Get("X-Nylzo-Lease")
-	head, _ := h.do(request{method: "HEAD", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	head, _ := h.do(request{method: "HEAD", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	if head.StatusCode != http.StatusNotFound {
 		t.Fatalf("HEAD on /blob: %d", head.StatusCode)
 	}
@@ -302,14 +309,15 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 }
 
 func TestMalformedAbuseReportsSpendNoRateLimit(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.AbusePerHour = 1
 	h := newHarness(t, cfg)
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	report := func(id string) int {
-		body, _ := json.Marshal(map[string]string{"id": id, "read_token": m.readToken, "reason": "spam"})
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.44", body: body, headers: map[string]string{"Content-Type": "application/json"}})
+		body, _ := json.Marshal(map[string]string{"id": id, "reason": "spam"})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.44", body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	for range 3 {
@@ -336,6 +344,7 @@ func (s leaseCount) Leases(ctx context.Context, id string) ([]store.Lease, error
 }
 
 func TestDownloadReadsLeasesOnce(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	n := &atomic.Int32{}
 	h.store = leaseCount{h.store, n}
@@ -368,6 +377,7 @@ func (s burnAfterClaim) Claim(ctx context.Context, p store.ClaimParams) (store.C
 }
 
 func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -380,6 +390,7 @@ func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
 }
 
 func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 2, 60, "x")
@@ -406,6 +417,7 @@ func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
 }
 
 func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -424,6 +436,7 @@ func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
 }
 
 func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -444,6 +457,7 @@ func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
 }
 
 func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -465,6 +479,7 @@ func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
 }
 
 func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -498,6 +513,7 @@ func (s slowWriterStore) Claim(ctx context.Context, p store.ClaimParams) (store.
 }
 
 func TestClaimThatWaitsPastExpiryIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 60, "x")
 	h.mustCreate(m)
@@ -522,6 +538,7 @@ func (b *deleteHookBlobs) Delete(ctx context.Context, ref string) error {
 }
 
 func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -546,13 +563,14 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 
 func abuseReport(t *testing.T, h *harness, m *message, ip string) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "spam"})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "reason": "spam"})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
 }
 
 func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -569,6 +587,7 @@ func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
 }
 
 func TestOldAbuseReportsAreDropped(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -620,6 +639,7 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 }
 
 func TestStoredTimesAreWholeMinutes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.clock.Advance(17*time.Second + 123*time.Millisecond)
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "minute")

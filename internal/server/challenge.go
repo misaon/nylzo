@@ -62,14 +62,14 @@ type spendBatch struct {
 }
 
 type spendBatcher struct {
-	store   store.Store
+	store   store.Counters
 	max     int
 	mu      sync.Mutex
 	writing bool
 	queue   []*spendBatch
 }
 
-func newSpendBatcher(st store.Store) *spendBatcher {
+func newSpendBatcher(st store.Counters) *spendBatcher {
 	return &spendBatcher{store: st, max: spendBatchMax}
 }
 

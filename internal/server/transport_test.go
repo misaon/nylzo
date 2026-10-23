@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/netip"
 	"regexp"
 	"strconv"
@@ -16,9 +17,11 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	required := map[string]string{
 		"Referrer-Policy":              "no-referrer",
@@ -75,13 +78,14 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	if resp, _ := h.do(request{method: "GET", path: "/m/not-an-id"}); resp.StatusCode != 404 {
 		t.Fatal("malformed page id")
 	}
-	resp, body = h.do(request{method: "GET", path: "/api/v1/messages/not-an-id", headers: map[string]string{"Authorization": "Bearer short"}})
+	resp, body = h.do(request{method: "GET", path: "/api/v1/messages/not-an-id", headers: map[string]string{"Authorization": core.AuthScheme + " short"}})
 	if resp.StatusCode != 404 || string(body) != `{"error":"not_found"}` {
 		t.Fatalf("malformed API id: %d %s", resp.StatusCode, body)
 	}
 }
 
 func TestCreateValidation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "v")
 	cases := []struct {
@@ -93,20 +97,20 @@ func TestCreateValidation(t *testing.T) {
 		{"no-header", func(t *testing.T, r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
 		{"bad-base64", func(t *testing.T, r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
 		{"unknown-field", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 }))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 })))
 		}, 400, "bad_request"},
 		{"size-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1)))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(int64(len(m.object)+1))))
 		}, 400, "bad_request"},
 		{"size-above-limit-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", m.createHeader(server.Defaults().Limits.MaxObjectBytes+1))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(server.Defaults().Limits.MaxObjectBytes+1)))
 		}, 400, "bad_request"},
 		{"chunked", func(t *testing.T, r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r, _ := http.NewRequest("POST", h.ts.URL+"/api/v1/messages", strings.NewReader(string(m.object)))
-			r.Header.Set("X-Nylzo-Create", m.createHeader(0))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(0)))
 			c.mutate(t, r)
 			resp, err := h.client.Do(r)
 			if err != nil {
@@ -167,7 +171,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 			t.Fatal(err)
 		}
 		liar := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
-		fmt.Fprintf(c, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", i, len(liar.object), liar.createHeader(0))
+		fmt.Fprintf(c, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", i, len(liar.object), h.withIDToken(liar.createHeader(0)))
 		c.Write(liar.object[:20])
 		conns = append(conns, c)
 	}
@@ -183,7 +187,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("healthz %d after %s", resp.StatusCode, time.Since(start))
 	}
 	r, _ := http.NewRequest("POST", "http://"+addr+"/api/v1/messages", strings.NewReader(string(m.object)))
-	r.Header.Set("X-Nylzo-Create", m.createHeader(0))
+	r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(0)))
 	r.Header.Set("X-Forwarded-For", "192.0.2.1")
 	resp, err = client.Do(r)
 	if err != nil || resp.StatusCode != 201 {
@@ -209,7 +213,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		}
 		probe := newMessage(t, core.KDFNone, "", 1, 3600, "probe")
 		conn.SetDeadline(time.Now().Add(2 * time.Second))
-		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, probe.createHeader(c.sizeOverride))
+		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, h.withIDToken(probe.createHeader(c.sizeOverride)))
 		line, err := bufio.NewReader(conn).ReadString('\n')
 		conn.Close()
 		if err != nil || !strings.Contains(line, " "+c.status+" ") {
@@ -219,6 +223,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 }
 
 func TestClientAddr(t *testing.T) {
+	t.Parallel()
 	cfg := server.Defaults()
 	cfg.Pepper = pepperA
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("fd00::/8")}
@@ -253,6 +258,7 @@ func TestClientAddr(t *testing.T) {
 }
 
 func TestConfigFromEnv(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{
 		"NYLZO_PEPPER":               strings.Repeat("0123456789abcdef", 4),
 		"NYLZO_PEPPER_PREVIOUS":      strings.Repeat("fedcba9876543210", 4),
@@ -334,6 +340,7 @@ func TestConfigFromEnv(t *testing.T) {
 }
 
 func TestTrustedProxyInMappedForm(t *testing.T) {
+	t.Parallel()
 	cfg, err := server.FromEnv(func(k string) string {
 		if k == "NYLZO_TRUSTED_PROXIES" {
 			return "::ffff:172.17.0.1, ::ffff:10.0.0.0/104"
@@ -351,6 +358,7 @@ func TestTrustedProxyInMappedForm(t *testing.T) {
 }
 
 func TestH2CReceiveBufferIsBounded(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	c := h.srv.HTTPServer().HTTP2
 	if c == nil || c.MaxReceiveBufferPerStream < 64<<10 || c.MaxReceiveBufferPerStream > 256<<10 || c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream || c.MaxReceiveBufferPerConnection > 1<<20 {
@@ -359,6 +367,7 @@ func TestH2CReceiveBufferIsBounded(t *testing.T) {
 }
 
 func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
+	t.Parallel()
 	env := func(v string) func(string) string {
 		return func(k string) string {
 			if k == "NYLZO_POW_CONCURRENCY" {
@@ -376,6 +385,7 @@ func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
 }
 
 func TestConfigErrorNamesTheVariable(t *testing.T) {
+	t.Parallel()
 	for name, value := range map[string]string{"NYLZO_POW_CONCURRENCY": "8", "NYLZO_MAX_OPENS": "0", "NYLZO_POW_DIFFICULTY": "9", "NYLZO_DEFAULT_TTL": "30s"} {
 		_, err := server.FromEnv(func(k string) string {
 			if k == name {
@@ -386,5 +396,125 @@ func TestConfigErrorNamesTheVariable(t *testing.T) {
 		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), name) {
 			t.Fatalf("%s=%s: the error must name the variable: %v", name, value, err)
 		}
+	}
+}
+
+func TestSecurityHeadersOnEveryResponse(t *testing.T) {
+	t.Parallel()
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.BucketPerSecond = 1
+	cfg.Rates.BucketBurst = 2
+	h := newHarness(t, cfg)
+	want := map[string]string{
+		"Referrer-Policy":              "no-referrer",
+		"Cache-Control":                "no-store",
+		"X-Robots-Tag":                 "noindex, nofollow",
+		"X-Content-Type-Options":       "nosniff",
+		"Cross-Origin-Opener-Policy":   "same-origin",
+		"Cross-Origin-Resource-Policy": "same-origin",
+		"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
+		"Permissions-Policy":           "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+	}
+	check := func(name string, resp *http.Response, status int) {
+		t.Helper()
+		if resp.StatusCode != status {
+			t.Fatalf("%s: status %d, want %d", name, resp.StatusCode, status)
+		}
+		for k, v := range want {
+			if resp.Header.Get(k) != v {
+				t.Fatalf("%s: %s = %q", name, k, resp.Header.Get(k))
+			}
+		}
+	}
+	resp, _ := h.do(request{method: "GET", path: "/"})
+	check("page", resp, 200)
+	if !strings.Contains(resp.Header.Get("Content-Security-Policy"), "'nonce-") {
+		t.Fatal("CSP missing on /")
+	}
+	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
+	check("sec-purpose", resp, 503)
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: []byte("x")})
+	check("create-400", resp, 400)
+	h.do(request{method: "GET", path: "/api/v1/instance"})
+	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance"})
+	check("throttled", resp, 429)
+}
+
+func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, baseConfig(pepperA, nil))
+	addr := h.listen()
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
+	var reused []bool
+	trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused = append(reused, info.Reused) }}
+	send := func(method, path string) *http.Response {
+		r, _ := http.NewRequestWithContext(httptrace.WithClientTrace(t.Context(), trace), method, "http://"+addr+path, nil)
+		resp, err := client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp
+	}
+	if resp := send("POST", "/api/v1/messages"); resp.StatusCode != 400 || resp.ProtoMajor != 2 {
+		t.Fatalf("rejected create over h2c: %d HTTP/%d", resp.StatusCode, resp.ProtoMajor)
+	}
+	if resp := send("GET", "/healthz"); resp.StatusCode != 200 || resp.ProtoMajor != 2 {
+		t.Fatalf("follow-up over h2c: %d HTTP/%d", resp.StatusCode, resp.ProtoMajor)
+	}
+	if len(reused) != 2 || !reused[1] {
+		t.Fatalf("a rejected create closed the shared h2c connection: %v", reused)
+	}
+}
+
+func TestConfigBounds(t *testing.T) {
+	t.Parallel()
+	base := map[string]string{"NYLZO_PEPPER": strings.Repeat("0123456789abcdef", 4)}
+	with := func(k, v string) func(string) string {
+		return func(key string) string {
+			if key == k {
+				return v
+			}
+			return base[key]
+		}
+	}
+	for name, env := range map[string]func(string) string{
+		"max-ttl-over-7d":      with("NYLZO_MAX_TTL", "169h"),
+		"max-ttl-over-7d-sec":  with("NYLZO_MAX_TTL", "604801"),
+		"default-ttl-under-60": with("NYLZO_DEFAULT_TTL", "59"),
+		"pow-concurrency-17":   with("NYLZO_POW_CONCURRENCY", "17"),
+		"ip-scope-removed":     with("NYLZO_PASSPHRASE_IP_SCOPE", "on"),
+		"max-opens-above-100":  with("NYLZO_MAX_OPENS", "101"),
+		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
+		"default-kdf-none":     with("NYLZO_DEFAULT_KDF", "0"),
+		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
+		"source-rps-nan":       with("NYLZO_RATE_SOURCE_RPS", "NaN"),
+		"source-burst-inf":     with("NYLZO_RATE_SOURCE_BURST", "+Inf"),
+		"source-burst-half":    with("NYLZO_RATE_SOURCE_BURST", "0.5"),
+		"bucket-burst-half":    with("NYLZO_RATE_BUCKET_BURST", "0.5"),
+	} {
+		if _, err := server.FromEnv(env, true); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	cfg, err := server.FromEnv(with("NYLZO_MAX_TTL", "604800"), true)
+	if err != nil || cfg.Limits.MaxTTL != store.TombstoneTTL {
+		t.Fatalf("max ttl of 7 days: %v %v", err, cfg.Limits.MaxTTL)
+	}
+}
+
+func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
+	t.Parallel()
+	if got := server.Defaults().Limits.MaxObjectBytes; got != 5373983 {
+		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
+	}
+	h := newHarness(t, baseConfig(pepperA, nil))
+	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+	limits := decodeJSON(t, body)["limits"].(map[string]any)
+	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
+		t.Fatalf("instance reports %v", limits)
 	}
 }

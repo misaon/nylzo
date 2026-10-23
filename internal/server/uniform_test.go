@@ -52,7 +52,7 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	h.mustCreate(live)
 	ended := newMessage(t, core.KDFNone, "", 1, 3600, "ended")
 	h.mustCreate(ended)
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + ended.id.String() + "/burn", headers: map[string]string{"Authorization": "Bearer " + ended.readToken}}); resp.StatusCode != 204 {
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + ended.id.String() + "/burn", token: ended.readToken}); resp.StatusCode != 204 {
 		t.Fatalf("burn: %d", resp.StatusCode)
 	}
 	if rec, err := h.store.Get(t.Context(), ended.id.String()); err != nil || rec.Tombstone == nil {

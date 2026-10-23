@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (bool, error) {
+func Release(ctx context.Context, s Messages, b Blobs, id string, now time.Time) (bool, error) {
 	ref, err := s.ReleaseIfDone(ctx, id, now)
 	if err != nil || ref == "" {
 		return false, err
@@ -14,7 +14,7 @@ func Release(ctx context.Context, s Store, b Blobs, id string, now time.Time) (b
 	return true, clearReleased(ctx, s, b, id, ref, now)
 }
 
-func AckLease(ctx context.Context, s Store, b Blobs, l Lease, now time.Time) error {
+func AckLease(ctx context.Context, s Messages, b Blobs, l Lease, now time.Time) error {
 	ref, err := s.Ack(ctx, l, now)
 	if err != nil || ref == "" {
 		return err
@@ -22,7 +22,7 @@ func AckLease(ctx context.Context, s Store, b Blobs, l Lease, now time.Time) err
 	return clearReleased(ctx, s, b, l.ID, ref, now)
 }
 
-func clearReleased(ctx context.Context, s Store, b Blobs, id, ref string, now time.Time) error {
+func clearReleased(ctx context.Context, s Messages, b Blobs, id, ref string, now time.Time) error {
 	ctx = context.WithoutCancel(ctx)
 	if err := b.Delete(ctx, ref); err != nil {
 		return err
@@ -30,7 +30,7 @@ func clearReleased(ctx context.Context, s Store, b Blobs, id, ref string, now ti
 	return s.ClearBlob(ctx, id, ref, now)
 }
 
-func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, now time.Time) (State, error) {
+func EndMessage(ctx context.Context, s Messages, b Blobs, id string, state State, now time.Time) (State, error) {
 	ctx = context.WithoutCancel(ctx)
 	ending, ref, recorded, err := s.MarkEnding(ctx, id, state, now)
 	if err != nil {
@@ -48,7 +48,7 @@ func EndMessage(ctx context.Context, s Store, b Blobs, id string, state State, n
 	return ending, err
 }
 
-func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans int, listed bool, err error) {
+func Reconcile(ctx context.Context, s Messages, b Blobs, now time.Time) (orphans int, listed bool, err error) {
 	known, err := s.KnownBlobRefs(ctx)
 	if err != nil {
 		return 0, false, err
@@ -76,11 +76,4 @@ func Reconcile(ctx context.Context, s Store, b Blobs, now time.Time) (orphans in
 		orphans++
 	}
 	return orphans, true, errors.Join(errs...)
-}
-
-func SweepAll(ctx context.Context, s Store, b Blobs, now time.Time) (SweepReport, error) {
-	report, err := s.Sweep(ctx, now, b)
-	temp, terr := b.PurgeTemp(ctx, now.Add(-BlobGrace))
-	report.StaleTempFiles = temp
-	return report, errors.Join(err, terr)
 }

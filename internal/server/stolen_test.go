@@ -75,6 +75,7 @@ func fileMessage(t *testing.T, content []byte) *message {
 }
 
 func TestStolenServerRevealsNothing(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 16
 	cfg.PoWDifficulty = 1
@@ -186,8 +187,8 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	needles.message("pow", pow, "")
 
 	link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
-	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "read_token": leased.readToken, "reason": "spam, see " + link})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip4, body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
+	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "reason": "spam, see " + link})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip4, body: body, token: leased.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("abuse report: %d", resp.StatusCode)
 	}
 

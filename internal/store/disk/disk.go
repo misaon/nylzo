@@ -131,6 +131,31 @@ func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, err
 }
 
 func (b *Blobs) Delete(ctx context.Context, ref string) error {
+	if err := b.remove(ref); err != nil {
+		return err
+	}
+	return b.syncDir()
+}
+
+func (b *Blobs) DeleteBatch(ctx context.Context, refs []string) []error {
+	errs := make([]error, len(refs))
+	if len(refs) == 0 {
+		return errs
+	}
+	for i, ref := range refs {
+		errs[i] = b.remove(ref)
+	}
+	if err := b.syncDir(); err != nil {
+		for i := range errs {
+			if errs[i] == nil {
+				errs[i] = err
+			}
+		}
+	}
+	return errs
+}
+
+func (b *Blobs) remove(ref string) error {
 	p, err := b.path(ref)
 	if err != nil {
 		return err
@@ -138,7 +163,7 @@ func (b *Blobs) Delete(ctx context.Context, ref string) error {
 	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return b.syncDir()
+	return nil
 }
 
 func (b *Blobs) List(ctx context.Context) ([]store.BlobInfo, error) {

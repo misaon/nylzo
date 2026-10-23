@@ -1,13 +1,15 @@
 package sqlite
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 )
 
 func TestPageCacheIsBounded(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	s, err := Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,5 +22,18 @@ func TestPageCacheIsBounded(t *testing.T) {
 		if kib >= 0 || -kib > maxCacheKiB {
 			t.Fatalf("page cache %d, want at most %d KiB per connection outside the Go heap", kib, maxCacheKiB)
 		}
+	}
+}
+
+func TestMigrationStopsWhenItsContextEnds(t *testing.T) {
+	db, err := sql.Open("sqlite", dsn(filepath.Join(t.TempDir(), "nylzo.db"), true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := migrate(ctx, db); !errors.Is(err, context.Canceled) {
+		t.Fatalf("migrate with a cancelled context: %v", err)
 	}
 }

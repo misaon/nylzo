@@ -24,7 +24,7 @@ import (
 func TestSQLiteStore(t *testing.T) {
 	storetest.Run(t, func(t *testing.T) (store.Store, store.Blobs) {
 		dir := t.TempDir()
-		s, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+		s, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -62,7 +62,7 @@ func TestOpenMigratesOlderSchema(t *testing.T) {
 			}
 			old.Close()
 			openConcurrently(t, path, 4)
-			s, err := sqlite.Open(path)
+			s, err := sqlite.Open(t.Context(), path)
 			if err != nil {
 				t.Fatalf("open an older database: %v", err)
 			}
@@ -114,7 +114,7 @@ func openConcurrently(t *testing.T, path string, n int) {
 	var wg sync.WaitGroup
 	for range n {
 		wg.Go(func() {
-			s, err := sqlite.Open(path)
+			s, err := sqlite.Open(t.Context(), path)
 			if err == nil {
 				if _, gerr := s.Get(t.Context(), "AAAAAAAAAAAAAAAAAAAAAA"); gerr != nil && !errors.Is(gerr, store.ErrNotFound) {
 					err = gerr
@@ -135,7 +135,7 @@ func openConcurrently(t *testing.T, path string, n int) {
 
 func TestLegacyTombstoneEndedAtIsRounded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestLegacyTombstoneEndedAtIsRounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw.Close()
-	s, err = sqlite.Open(path)
+	s, err = sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestLegacyTombstoneEndedAtIsRounded(t *testing.T) {
 
 func TestOpenGivesUpBehindAHeldWriteLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestOpenGivesUpBehindAHeldWriteLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	start := time.Now()
-	if s, err := sqlite.Open(path); err == nil {
+	if s, err := sqlite.Open(t.Context(), path); err == nil {
 		s.Close()
 		t.Fatal("Open succeeded behind a held write lock")
 	}
@@ -193,7 +193,7 @@ func TestOpenGivesUpBehindAHeldWriteLock(t *testing.T) {
 
 func TestDatabaseFilesArePrivate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestOpenKeepsTheDatabaseAtItsPath(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(dir, "nylzo.db")
-		s, err := sqlite.Open(path)
+		s, err := sqlite.Open(t.Context(), path)
 		if err != nil {
 			t.Fatalf("%q: %v", name, err)
 		}
@@ -239,7 +239,7 @@ func TestOpenKeepsTheDatabaseAtItsPath(t *testing.T) {
 func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nylzo.db")
-	st, err := sqlite.Open(path)
+	st, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	if err := store.AckLease(ctx, st, blobs, res.Lease, claimed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Sweep(ctx, created.Add(9*24*time.Hour), blobs); err != nil {
+	if _, err := store.SweepAll(ctx, st, blobs, created.Add(9*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Get(ctx, id); !errors.Is(err, store.ErrNotFound) {
@@ -286,7 +286,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 
 func TestOrderedTablesKeepNoInsertionOrder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestOpenRebuildsRowidTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	old.Close()
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func assertNoRowid(t *testing.T, path string) {
 
 func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,7 @@ func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 	old.Close()
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 }
 
 func TestLeaseRowIDsAreRandom(t *testing.T) {
-	s, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	s, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,12 +458,17 @@ func TestLeaseRowIDsAreRandom(t *testing.T) {
 }
 
 func TestSweepReportsABlockedCheckpoint(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nylzo.db")
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	blobs, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -480,11 +485,11 @@ func TestSweepReportsABlockedCheckpoint(t *testing.T) {
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM rate_counters`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Sweep(t.Context(), time.Now(), nil); !errors.Is(err, sqlite.ErrCheckpointBusy) {
+	if _, err := store.SweepAll(t.Context(), s, blobs, time.Now()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
 		t.Fatalf("sweep with a reader holding the WAL: %v", err)
 	}
 	tx.Rollback()
-	if _, err := s.Sweep(t.Context(), time.Now(), nil); err != nil {
+	if _, err := store.SweepAll(t.Context(), s, blobs, time.Now()); err != nil {
 		t.Fatalf("sweep after the reader left: %v", err)
 	}
 }
@@ -499,7 +504,7 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	newer.Close()
-	if s, err := sqlite.Open(path); !errors.Is(err, sqlite.ErrNewerSchema) {
+	if s, err := sqlite.Open(t.Context(), path); !errors.Is(err, sqlite.ErrNewerSchema) {
 		if s != nil {
 			s.Close()
 		}
@@ -518,7 +523,7 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 
 func TestOlderBuildWritesFail(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -579,7 +584,7 @@ func TestOlderBuildWritesFail(t *testing.T) {
 
 func TestWALHoldsOnlyTheLastTransaction(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, err := sqlite.Open(path)
+	s, err := sqlite.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -633,7 +638,7 @@ func (c cancelAfterAck) Ack(ctx context.Context, l store.Lease, now time.Time) (
 
 func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	dir := t.TempDir()
-	s, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+	s, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,5 +666,63 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	}
 	if rec, err := s.Get(t.Context(), id); err != nil || rec.Tombstone == nil {
 		t.Fatalf("the ack left the message without its tombstone: %+v %v", rec, err)
+	}
+}
+
+func TestOpenStopsWhenItsContextEnds(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if s, err := sqlite.Open(ctx, filepath.Join(dir, "new.db")); !errors.Is(err, context.Canceled) {
+		if err == nil {
+			s.Close()
+		}
+		t.Fatalf("open with a cancelled context: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "new.db")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a cancelled open left a database file: %v", err)
+	}
+}
+
+func TestPreparedStatementsReleaseTheLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	id := core.NewID().String()
+	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 2, OpensRemaining: 2, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}, store.RateHit{Key: "global:stored:d", WindowStart: now, PurgeAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, core.NewID().String()); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal(err)
+	}
+	if leases, err := s.Leases(ctx, id); err != nil || len(leases) != 1 {
+		t.Fatalf("leases: %d %v", len(leases), err)
+	}
+	if _, err := s.RateHit(ctx, []store.RateHit{{Key: "k", WindowStart: now, PurgeAt: now.Add(time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RateReserve(ctx, store.RateHit{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateReserveBatch(ctx, []store.RateHit{{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Checkpoint(ctx); err != nil {
+		t.Fatalf("a prepared statement kept a read open: %v", err)
+	}
+	if info, err := os.Stat(path + "-wal"); err != nil || info.Size() != 0 {
+		t.Fatalf("the log was not truncated: %v %v", info, err)
 	}
 }
