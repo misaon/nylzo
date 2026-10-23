@@ -2,6 +2,7 @@ package vectors
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -32,7 +33,19 @@ type File struct {
 	Meta      []MetaCase `json:"meta"`
 	Strength  []Strength `json:"passphrase_strength"`
 	Request   []Request  `json:"request"`
+	PoW       []PoW      `json:"pow"`
 	Server    Server     `json:"server"`
+}
+
+type PoW struct {
+	Name       string `json:"name"`
+	Challenge  string `json:"challenge"`
+	ID         string `json:"id"`
+	Counter    uint64 `json:"counter"`
+	Digest     string `json:"digest_hex"`
+	ZeroBits   int    `json:"zero_bits"`
+	Token      string `json:"token"`
+	Difficulty *int   `json:"difficulty,omitempty"`
 }
 
 type Strength struct {
@@ -182,7 +195,7 @@ func counterBytes(n int) []byte {
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
-	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.server} {
+	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.pow, f.server} {
 		if err := step(); err != nil {
 			return nil, err
 		}
@@ -532,6 +545,51 @@ func (f *File) request() error {
 		} else {
 			f.Request[len(f.Request)-1].Authorization = sig.Authorization()
 		}
+	}
+	return nil
+}
+
+func (f *File) pow() error {
+	for _, c := range []struct {
+		name       string
+		counter    uint64
+		difficulty int
+		solve      bool
+	}{
+		{"counter zero", 0, 0, false},
+		{"counter with two hex digits", 0xff, 0, false},
+		{"counter above 32 bits", 1<<32 + 1, 0, false},
+		{"largest safe JavaScript counter", 1<<53 - 1, 0, false},
+		{"at least nine zero bits", 512, 0, false},
+		{"first solution at difficulty 0", 0, 0, true},
+		{"first solution at difficulty 4", 0, 4, true},
+		{"first solution at difficulty 6", 0, 6, true},
+	} {
+		raw := det("pow-challenge/"+c.name, core.PoWChallengeLen)
+		challenge := core.Encode(raw)
+		id := detID("pow/" + c.name)
+		counter := c.counter
+		var difficulty *int
+		if c.solve {
+			_, solved, err := core.SolvePoW(context.Background(), challenge, id, c.difficulty)
+			if err != nil {
+				return err
+			}
+			counter = solved
+			difficulty = &c.difficulty
+		}
+		digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(raw), id, counter)
+		if err != nil {
+			return err
+		}
+		if strings.HasPrefix(c.name, "at least nine") && core.LeadingZeroBits(digest[:]) < 9 {
+			return fmt.Errorf("vectors: pow case %q has fewer than 9 zero bits", c.name)
+		}
+		f.PoW = append(f.PoW, PoW{
+			Name: c.name, Challenge: challenge, ID: id.String(), Counter: counter,
+			Digest: hex.EncodeToString(digest[:]), ZeroBits: core.LeadingZeroBits(digest[:]),
+			Token: core.PoWToken(challenge, counter), Difficulty: difficulty,
+		})
 	}
 	return nil
 }

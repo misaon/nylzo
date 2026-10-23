@@ -2,7 +2,7 @@
 
 Nylzo je open-source služba pro jednorázové sdílení citlivých zpráv a souborů do 5 MB. Obsah se šifruje v klientovi, server dostává jen ciphertext a HMAC důkazy; odkaz nese klíč jen ve fragmentu URL, který prohlížeč na server nikdy neposílá. Návrh a jeho zdůvodnění jsou v `docs/designs/nylzo-architecture-research.md`, normativní zápis protokolu v1 je v `spec/protocol.md`.
 
-Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient, CLI a adaptér postgres+s3 zatím nejsou součástí.
+Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient ve Svelte 5 vzniká jako druhý milník (plán v `docs/plans/2026-10-23-milestone-2-web-client-poc.md`): vytvoří a otevře zprávu s textem nebo souborem, volitelně s passphrase, a umí PoW. Obrazovky jsou zatím jen sémantická kostra bez vzhledu. CLI a adaptér postgres+s3 zatím nejsou součástí.
 
 ## Rozložení repozitáře
 
@@ -16,7 +16,10 @@ Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScri
 | `internal/server` | HTTP server: endpointy, limity, PoW, hlavičky, úklid |
 | `cmd/nylzod` | binárka serveru (`serve`, `sweep-once`, `version`) |
 | `cmd/nylzo-vectors` | generátor vektorů |
-| `web/core` | TypeScript jádro `@nylzo/core` (Web Crypto, scrypt z `@noble/hashes`) |
+| `web/core` | TypeScript jádro `@nylzo/core` (Web Crypto, scrypt z `@noble/hashes`, PoW) |
+| `web/app` | webový klient `@nylzo/web` (Svelte 5, Vite 8, Tailwind 4): HTTP klient, toky vytvoření a čtení, worker pro scrypt a PoW, obrazovky bez vzhledu a slovník cs a en |
+| `web/e2e` | testy Playwright proti `nylzod` se vloženým klientem |
+| `internal/server/web` | zástupná stránka; `dist/` je výstup sestavení `web/app`, který `nylzod` vkládá |
 
 ## Požadavky
 
@@ -40,7 +43,11 @@ Kontrola, že běží:
 curl -s http://localhost:8080/api/v1/instance
 ```
 
-Stránky `/` a `/m/{id}` zatím servírují jen zástupné HTML; webový klient vzniká zvlášť.
+Stránky `/` a `/m/{id}` servírují webového klienta, pokud je před sestavením serveru sestavený do `internal/server/web/dist`; jinak servírují zástupné HTML. Klienta sestavíte takto a server pak vložte znovu přes `go run` nebo `go build`:
+
+```bash
+cd web && pnpm install --frozen-lockfile && pnpm --filter @nylzo/web build
+```
 
 Úklid běží uvnitř serveru každých 5 minut. Pro nasazení s externím plánovačem nastavte `NYLZO_SWEEP_INTERVAL=0` a spouštějte:
 
@@ -67,7 +74,7 @@ Příkazy `nylzod` jsou `serve` (výchozí), `sweep-once`, `version` a `help`. �
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření, nejvýš 100 |
-| `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2); jiné hodnoty server odmítne |
+| `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2); jiné hodnoty server odmítne. Scrypt trvá na iPhonu 15 Pro Max přes HTTPS zhruba 0,55 s (D33, `docs/research/od6-scrypt-safari.md`) |
 | `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek |
 | `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | násobek limitů pro hrubý kyblík /24 nebo /48. Požadavek, který odmítne limit /32 nebo /64, se do limitu /24 nebo /48 nezapočítá |
 | `NYLZO_RATE_READ_HOUR` | `300` | metadata, claim a blob na kyblík |
@@ -132,6 +139,14 @@ cd web && pnpm install --frozen-lockfile && pnpm -r typecheck && pnpm -r test
 ```
 
 Těžký vektor v TypeScriptu běží jen s `NYLZO_HEAVY_TESTS=1` (CI ho zapíná).
+
+`svelte-check` 4.7.7 podporuje TypeScript nejvýš 6, proto `web/app` kontroluje typy přes TypeScript 6.0.3; `web/core` a `web/e2e` používají TypeScript 7.
+
+E2e testy sestaví `nylzod` z aktuálního kódu a spustí ho s dočasným adresářem dat. Potřebují sestaveného klienta a prohlížeče Playwright; Go hledají v `PATH`, nebo v proměnné `NYLZO_GO`:
+
+```bash
+cd web && pnpm --filter @nylzo/web build && cd e2e && pnpm exec playwright install chromium firefox webkit && pnpm e2e
+```
 
 Fuzz cíle (obálka, plaintext obálky, meta JSON, odkaz, fragment, hlavička vytvoření); CI každý z nich spouští 15 s:
 

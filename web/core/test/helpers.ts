@@ -106,6 +106,18 @@ export interface VectorFile {
   readonly meta: readonly MetaVector[];
   readonly passphrase_strength: readonly StrengthVector[];
   readonly request: readonly RequestVector[];
+  readonly pow: readonly PowVector[];
+}
+
+export interface PowVector {
+  readonly name: string;
+  readonly challenge: string;
+  readonly id: string;
+  readonly counter: number;
+  readonly digest_hex: string;
+  readonly zero_bits: number;
+  readonly token: string;
+  readonly difficulty?: number;
 }
 
 export interface StrengthVector {

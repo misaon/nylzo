@@ -1,5 +1,7 @@
 packages:
   - core
+  - app
+  - e2e
 minimumReleaseAge: 1440
 strictDepBuilds: true
 allowBuilds: {}

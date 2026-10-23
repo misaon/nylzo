@@ -17,7 +17,7 @@ const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 4
-	MaxPoWDifficulty  = 8
+	MaxPoWDifficulty  = core.MaxPoWDifficulty
 	MaxOpens          = 100
 	MaxTTL            = 7 * 24 * time.Hour
 	MaxStreams        = 1024

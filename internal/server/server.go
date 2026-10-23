@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io/fs"
 	"log"
 	"log/slog"
 	"net/http"
@@ -77,6 +78,8 @@ type Server struct {
 	handler     http.Handler
 	abuseMu     sync.Mutex
 	abuseDir    string
+	webFiles    fs.FS
+	web         webClient
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
@@ -96,10 +99,15 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		afterFunc: func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
 		log:       slog.New(slog.NewJSONHandler(os.Stderr, nil)),
 		abuseDir:  abuseDir(cfg.DataDir),
+		webFiles:  webFiles,
 	}
 	for _, o := range opts {
 		o(s)
 	}
+	if s.web, err = loadWebClient(s.webFiles); err != nil {
+		return nil, err
+	}
+	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets))
 	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
@@ -287,6 +295,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
 	mux.HandleFunc("/api/", s.handleAPINotFound)
 	mux.HandleFunc("GET /m/{id}", s.handlePage)
+	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux))))))

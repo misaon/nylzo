@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+
+  button,
+  input:not([type="radio"], [type="checkbox"]),
+  select,
+  textarea {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  select {
+    appearance: none;
+  }
+
+  [role="status"] {
+    min-height: 1lh;
+  }
+
+  label:has(> input[type="radio"], > input[type="checkbox"]) {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}

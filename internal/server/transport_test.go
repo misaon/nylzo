@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/netip"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +20,21 @@ import (
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store"
 )
+
+func htmlCSPFromSpec(t *testing.T) string {
+	t.Helper()
+	spec, err := os.ReadFile("../../spec/protocol.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "- HTML responses carry `Content-Security-Policy: "
+	_, rest, ok := strings.Cut(string(spec), marker)
+	csp, _, closed := strings.Cut(rest, "`")
+	if !ok || !closed || strings.Count(csp, "{nonce}") != 2 {
+		t.Fatal("spec section 9 lost the HTML CSP line")
+	}
+	return csp
+}
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
 	t.Parallel()
@@ -43,15 +59,16 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
 		}
 	}
+	specCSP := htmlCSPFromSpec(t)
 	nonces := map[string]bool{}
 	for range 5 {
 		resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String()})
 		csp := resp.Header.Get("Content-Security-Policy")
-		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "font-src 'self'") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || !strings.Contains(csp, "require-trusted-types-for 'script'") {
-			t.Fatalf("csp: %s", csp)
-		}
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
 		nonce := csp[start : start+strings.Index(csp[start:], "'")]
+		if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
+			t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+		}
 		if nonces[nonce] {
 			t.Fatal("nonce repeated")
 		}
@@ -503,6 +520,18 @@ func TestConfigBounds(t *testing.T) {
 	cfg, err := server.FromEnv(with("NYLZO_MAX_TTL", "604800"), true)
 	if err != nil || cfg.Limits.MaxTTL != store.TombstoneTTL {
 		t.Fatalf("max ttl of 7 days: %v %v", err, cfg.Limits.MaxTTL)
+	}
+}
+
+func TestDefaultPassphraseProfileIsScrypt(t *testing.T) {
+	t.Parallel()
+	if got := server.Defaults().Limits.DefaultKDF; got != core.KDFScrypt {
+		t.Fatalf("default kdf %d, D33 makes it scrypt", got)
+	}
+	h := newHarness(t, baseConfig(pepperA, nil))
+	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+	if got := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; got != float64(core.KDFScrypt) {
+		t.Fatalf("instance reports default_kdf_id %v", got)
 	}
 }
 
