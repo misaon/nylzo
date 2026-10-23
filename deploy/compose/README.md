@@ -42,7 +42,7 @@ Potřebujete Docker Compose v2, doménu s DNS záznamem na tento stroj a otevře
 - `NYLZO_GLOBAL_DAILY_CREATES` je ve výchozím stavu 2000. Od 1000 vytvoření za den UTC server vyžaduje PoW, po 2000 vytvoření odpovídá 503 a čtení běží dál. Limity na adresu drží každý proces jen v paměti, takže proti útočníkovi, který střídá rozsahy adres, chrání disk až tento strop. Nastavte ho podle disku: zpráva má nejvýš asi 5,4 MB a žije nejvýš 7 dní, takže najednou může existovat až osm denních stropů zpráv, při 2000 kolem 86 GB. Když volné místo klesne pod `NYLZO_MIN_FREE_BYTES` (1 GiB), vytvoření odpoví 503 a burn, zrušení i čtení dál fungují.
 - Caddy nezapisuje access log ani chyby s podrobnostmi požadavku. Globální volba `log default` vyřazuje loggery `http.log` (chyby a access log serveru), `http.handlers` (reverse proxy) a `http.stdlib`. Jinak by Caddy při 502, třeba během restartu `nylzod`, zapsal adresu klienta, cestu s id zprávy a hlavičky `X-Nylzo-*`. V logu zůstávají zprávy o startu a certifikátech.
 - Caddy drží nečinné spojení na `nylzod` nejvýš 25 s. `nylzod` zavírá nečinná spojení po 30 s, takže Caddy nepošle požadavek do spojení, které server právě zavírá, a klient kvůli tomu nedostane 502.
-- Caddy odstraní z odpovědí hlavičky `Server` a `Via`, takže neprozradí, jaký proxy server běží. Bezpečnostní hlavičky a CSP nastavuje `nylzod`.
+- Caddy odstraní hlavičky `Server` a `Via` ze všech odpovědí, i z chybových (například 502 při restartu `nylzod`) a z přesměrování z HTTP na HTTPS, takže neprozradí, jaký proxy server běží. Bezpečnostní hlavičky a CSP nastavuje `nylzod`.
 
 ## Rotace pepperu a aktualizace
 

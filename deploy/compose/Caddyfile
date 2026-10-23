@@ -14,4 +14,13 @@
 			keepalive 25s
 		}
 	}
+	handle_errors {
+		header -Server
+		respond {err.status_code}
+	}
+}
+
+http://{$NYLZO_DOMAIN} {
+	header -Server
+	redir https://{host}{uri} 308
 }
