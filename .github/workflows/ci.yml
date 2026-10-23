@@ -69,7 +69,7 @@ jobs:
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
 
   web:
-    name: TypeScript core
+    name: TypeScript core and web client
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -130,3 +130,35 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm -r test
+
+  e2e:
+    name: Web client end to end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build the client that nylzod embeds
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @nylzo/web build
+      - name: Install the Playwright browsers
+        working-directory: web/e2e
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Chromium, Firefox and WebKit against nylzod
+        working-directory: web/e2e
+        run: pnpm e2e
