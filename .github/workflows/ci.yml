@@ -4,9 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GOTOOLCHAIN: local
@@ -15,6 +21,7 @@ jobs:
   go:
     name: Go tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,18 +32,46 @@ jobs:
           check-latest: true
       - run: go mod verify
       - run: go mod tidy -diff
-      - run: test -z "$(gofmt -l cmd internal)"
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l cmd internal)
+          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
       - run: go vet ./...
+      - run: GOOS=darwin go vet ./...
+      - name: go fix (modernize)
+        run: go fix -diff ./...
+      - name: golangci-lint
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
       - run: go build ./...
-      - run: go test -race -count=1 -skip '^TestAK21UniformNotFoundAndConflict$' ./...
+      - run: go test -race -count=1 -shuffle=on -skip '^TestAK21UniformNotFoundAndConflict$' ./...
       - name: AK21 timing on its own
         run: go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
+  fuzz:
+    name: Fuzz smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - name: Fuzz each target for 15 s
+        run: |
+          for target in FuzzOpenPlaintext FuzzOpen FuzzDecodeMeta FuzzParseLink FuzzParseFragment; do
+            go test -run='^$' -fuzz="^${target}\$" -fuzztime=15s ./internal/core
+          done
+          go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
+
   web:
     name: TypeScript core
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -68,6 +103,7 @@ jobs:
   vectors:
     name: Cross-check vectors (AK9)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: [go]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

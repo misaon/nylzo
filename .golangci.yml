@@ -1,0 +1,56 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - asciicheck
+    - bidichk
+    - copyloopvar
+    - errorlint
+    - forbidigo
+    - gosec
+    - misspell
+    - modernize
+    - noctx
+    - nolintlint
+    - sloglint
+    - unconvert
+    - usetesting
+  settings:
+    errcheck:
+      exclude-functions:
+        - (net/http.ResponseWriter).Write
+        - (*database/sql.Tx).Rollback
+    errorlint:
+      errorf: false
+    forbidigo:
+      forbid:
+        - pattern: ^(fmt\.Print.*|print|println)$
+        - pattern: ^log\.(Print|Fatal|Panic).*$
+        - pattern: ^slog\.(Debug|Info|Warn|Error|Log|LogAttrs|Default|SetDefault)(Context)?$
+    gosec:
+      excludes: [G104, G115, G404]
+    nolintlint:
+      require-specific: true
+      require-explanation: false
+    sloglint:
+      no-global: all
+      static-msg: true
+    staticcheck:
+      checks: ["all", "-ST1000", "-ST1003", "-ST1020", "-ST1021", "-ST1022"]
+  exclusions:
+    presets: [comments, std-error-handling, common-false-positives]
+    rules:
+      - path: _test\.go
+        linters: [errcheck, gosec, noctx]
+      - path: ^cmd/
+        linters: [forbidigo]
+      - path: ^cmd/nylzo-vectors/
+        text: G306
+      - path: ^internal/core/derive\.go
+        text: G101
+      - path: ^internal/store/sqlite/sqlite\.go
+        text: G202
+formatters:
+  enable: [gofmt]
