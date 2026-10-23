@@ -1,0 +1,4 @@
+{$NYLZO_DOMAIN} {
+	header -Server
+	reverse_proxy nylzod:8080
+}
