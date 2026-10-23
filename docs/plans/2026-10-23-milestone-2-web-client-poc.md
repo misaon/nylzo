@@ -122,3 +122,8 @@ Runtime: `svelte` a `@noble/hashes` (D12). Vývojové: `vite`, `@sveltejs/vite-p
 - Worker s CSP `default-src 'none'` nesmí nic importovat; krok 1 to ověří na sestavení.
 - WebKit v Playwrightu není Safari a neběží na iOS, proto ruční ověření v AK10.
 - `fetch` neukazuje průběh nahrávání; PoC ukáže nahrávání 5 MB bez procent, průběh stahování ze streamu ano. XMLHttpRequest s průběhem nahrávání je možné doplnit, pokud ho vlastník v návrhu chce.
+
+## Průběh
+
+- Krok 1 (23. 10. 2026): sestavení Svelte 5 a Vite 8 servírované z `nylzod` s produkční CSP prošlo v Chromiu a WebKitu v Playwrightu bez porušení CSP. Dočasná stránka spustila scrypt profilu 1 a PoW obtížnosti 4 ve workeru a výsledky se shodovaly s vektory, worker je jeden soubor bez importů. Firefox se lokálně nespustil: build Firefoxu 157 z Playwrightu 1.64.1 na macOS 27.0.1 končí hláškou „Could not find profile folder“ i mimo Playwright, ověří ho CI na Linuxu. `svelte-check` 4.7.7 neumí TypeScript 7, `web/app` proto kontroluje typy přes TypeScript 6.0.3.
+- Kroky 2 až 5 (23. 10. 2026): server servíruje klienta z `internal/server/web`, PoW je v obou jádrech s vektory, `api.ts` a stavové automaty vytvoření a čtení mají testy nad podvrženým `fetch` a nad paměťovou náhražkou API.

@@ -315,6 +315,7 @@ Doloženo (přílohy E a H) k 21. 10. 2026:
 | jackc/pgx/v5 | v5.11.0 | Go 1.25+ |
 | modelcontextprotocol/go-sdk | v1.8.0 (září 2026) | Oficiální, s Googlem; stdio a Streamable HTTP; spec 2026-07-28 |
 | TypeScript | 7.0.2 (nativní kompilátor; LSP ještě rozpracovaný) | Pro web klient |
+| TypeScript 6 pro svelte-check | 6.0.3 | `svelte-check` 4.7.7 má v peerDependencies `typescript ^5.0.0 \|\| ^6.0.0` a balíček `typescript` 7.0.2 klasické API kompilátoru nemá, proto `web/app` kontroluje typy přes 6.0.3 (ověřeno z npm registru a obsahu balíčku 23. 10. 2026) |
 | Vite | 8.3.5 | Build web klienta; placeholder nonce přes html.cspNonce, který server nahrazuje na odpověď; assetsInlineLimit 0 |
 | Svelte | 5.57.2 (6. 10. 2026) | Web klient (D12); SvelteKit 3.1.0 se nepoužívá |
 | @sveltejs/vite-plugin-svelte | 7.3.1 (23. 9. 2026) | Ověřeno z npm registru během session, ne v příloze E |
