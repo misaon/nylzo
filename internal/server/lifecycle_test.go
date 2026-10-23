@@ -66,6 +66,7 @@ var lifecycleKinds = []lifecycleKind{
 }
 
 func TestLifecycleMatrix(t *testing.T) {
+	t.Parallel()
 	for _, kind := range lifecycleKinds {
 		for i, action := range lifecycleActions {
 			t.Run(kind.name+"/"+action, func(t *testing.T) {
@@ -186,6 +187,7 @@ func checkLifecycleCell(t *testing.T, h *harness, m *message, action, expect str
 }
 
 func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -203,6 +205,7 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 }
 
 func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 2, 60, "x")
@@ -241,6 +244,7 @@ func (b slowPutBlobs) Put(ctx context.Context, ref string, r io.Reader, size int
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.blobs = slowPutBlobs{Blobs: h.blobs, clock: h.clock, delay: 90 * time.Second}
 	h.reopen(h.cfg)
@@ -252,6 +256,7 @@ func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
 }
 
 func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
@@ -265,6 +270,7 @@ func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
 }
 
 func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -285,6 +291,7 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 }
 
 func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -302,6 +309,7 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 }
 
 func TestMalformedAbuseReportsSpendNoRateLimit(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.AbusePerHour = 1
 	h := newHarness(t, cfg)
@@ -336,6 +344,7 @@ func (s leaseCount) Leases(ctx context.Context, id string) ([]store.Lease, error
 }
 
 func TestDownloadReadsLeasesOnce(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	n := &atomic.Int32{}
 	h.store = leaseCount{h.store, n}
@@ -368,6 +377,7 @@ func (s burnAfterClaim) Claim(ctx context.Context, p store.ClaimParams) (store.C
 }
 
 func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -380,6 +390,7 @@ func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
 }
 
 func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 2, 60, "x")
@@ -406,6 +417,7 @@ func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
 }
 
 func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -424,6 +436,7 @@ func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
 }
 
 func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -444,6 +457,7 @@ func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
 }
 
 func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -465,6 +479,7 @@ func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
 }
 
 func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -498,6 +513,7 @@ func (s slowWriterStore) Claim(ctx context.Context, p store.ClaimParams) (store.
 }
 
 func TestClaimThatWaitsPastExpiryIsRefused(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 60, "x")
 	h.mustCreate(m)
@@ -522,6 +538,7 @@ func (b *deleteHookBlobs) Delete(ctx context.Context, ref string) error {
 }
 
 func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -553,6 +570,7 @@ func abuseReport(t *testing.T, h *harness, m *message, ip string) {
 }
 
 func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -569,6 +587,7 @@ func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
 }
 
 func TestOldAbuseReportsAreDropped(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -620,6 +639,7 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 }
 
 func TestStoredTimesAreWholeMinutes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.clock.Advance(17*time.Second + 123*time.Millisecond)
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "minute")

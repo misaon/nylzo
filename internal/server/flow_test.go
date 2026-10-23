@@ -16,6 +16,7 @@ import (
 )
 
 func TestAK1CreateCarriesNoSecrets(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFPBKDF2, "tajná fráze", 1, 3600, "plaintext secret body")
 	h.mustCreate(m)
@@ -50,6 +51,7 @@ func contains(haystack, needle []byte) bool {
 }
 
 func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "hello")
 	h.mustCreate(m)
@@ -128,6 +130,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 }
 
 func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
@@ -152,6 +155,7 @@ func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
 }
 
 func TestAK5PassphrasePolicyHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
@@ -225,6 +229,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 }
 
 func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
@@ -287,6 +292,7 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 }
 
 func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "one")
 	h.mustCreate(m)
@@ -310,6 +316,7 @@ func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
 }
 
 func TestAK6SweepAfterRestart(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "restart")
 	h.mustCreate(m)
@@ -331,6 +338,7 @@ func TestAK6SweepAfterRestart(t *testing.T) {
 }
 
 func TestAK7ExpiryLazyAndSweep(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 60, "short")
 	h.mustCreate(m)
@@ -365,6 +373,7 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 }
 
 func TestAK11LogsContainNoSecrets(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFScrypt, "log fráze", 1, 3600, "logged text")
 	m.ip = "203.0.113.55"
@@ -410,6 +419,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 }
 
 func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "ack")
 	h.mustCreate(m)

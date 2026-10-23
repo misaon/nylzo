@@ -15,6 +15,7 @@ import (
 )
 
 func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	for i := 1; i <= 20; i++ {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -33,6 +34,7 @@ func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
 }
 
 func TestAK12GlobalCap(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 2
 	h := newHarness(t, cfg)
@@ -72,6 +74,7 @@ func TestAK12GlobalCap(t *testing.T) {
 }
 
 func TestAK12ForwardedForOnlyFromTrustedProxy(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
 	h := newHarness(t, cfg)
@@ -96,6 +99,7 @@ func TestAK12ForwardedForOnlyFromTrustedProxy(t *testing.T) {
 }
 
 func TestAK23PrefixBuckets(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	for i := 1; i <= 20; i++ {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -140,6 +144,7 @@ func TestAK23PrefixBuckets(t *testing.T) {
 }
 
 func TestReadRateLimitCountsMetadataClaimBlob(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.ReadPerHour = 5
 	h := newHarness(t, cfg)
@@ -164,6 +169,7 @@ func TestReadRateLimitCountsMetadataClaimBlob(t *testing.T) {
 }
 
 func TestTokenBucketThrottlesAPIPaths(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.BucketPerSecond = 1
 	cfg.Rates.BucketBurst = 3
@@ -186,6 +192,7 @@ func TestTokenBucketThrottlesAPIPaths(t *testing.T) {
 }
 
 func TestPoWChallengeAndSolve(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 8
 	cfg.PoWDifficulty = 3
@@ -241,6 +248,7 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 }
 
 func TestAbuseReports(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -263,6 +271,7 @@ func TestAbuseReports(t *testing.T) {
 }
 
 func TestRefusedSourceDoesNotSpendItsRange(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.CreatePerHour = 1
 	cfg.Rates.CoarseMultiplier = 2
@@ -288,6 +297,7 @@ func TestRefusedSourceDoesNotSpendItsRange(t *testing.T) {
 }
 
 func TestSourceOverItsDailyBytesDoesNotSpendItsRangeHour(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	h := newHarness(t, cfg)
 	big := strings.Repeat("n", 5000)
@@ -311,6 +321,7 @@ func TestSourceOverItsDailyBytesDoesNotSpendItsRangeHour(t *testing.T) {
 }
 
 func TestRefusedReaderDoesNotSpendItsRange(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.ReadPerHour = 1
 	cfg.Rates.CoarseMultiplier = 2
@@ -337,6 +348,7 @@ func TestRefusedReaderDoesNotSpendItsRange(t *testing.T) {
 }
 
 func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.CreatePerHour = 1
 	h := newHarness(t, cfg)
@@ -352,6 +364,7 @@ func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
 }
 
 func TestPoWRejectsForgedAndMalformedTokens(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 2
 	cfg.PoWDifficulty = 1
@@ -380,6 +393,7 @@ func TestPoWRejectsForgedAndMalformedTokens(t *testing.T) {
 }
 
 func TestPoWTokenIsSingleUse(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 4
 	cfg.PoWDifficulty = 1
@@ -431,6 +445,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 }
 
 func TestCreateBytesPerDayLimit(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	h := newHarness(t, cfg)
 	probe := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -449,6 +464,7 @@ func TestCreateBytesPerDayLimit(t *testing.T) {
 }
 
 func TestReadRateLimitCountsBlob(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.ReadPerHour = 2
 	h := newHarness(t, cfg)
@@ -469,6 +485,7 @@ func TestReadRateLimitCountsBlob(t *testing.T) {
 }
 
 func TestSourceLimiterIsolatesClients(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.SourcePerSecond = 1
 	cfg.Rates.SourceBurst = 2
@@ -496,6 +513,7 @@ func TestSourceLimiterIsolatesClients(t *testing.T) {
 }
 
 func TestMalformedIDsDoNotSpendReadLimit(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.ReadPerHour = 1
 	h := newHarness(t, cfg)
@@ -517,6 +535,7 @@ func TestMalformedIDsDoNotSpendReadLimit(t *testing.T) {
 }
 
 func TestRefusedSourceTakesNoInstanceToken(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1, 1
 	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 1, 3
@@ -539,6 +558,7 @@ func TestRefusedSourceTakesNoInstanceToken(t *testing.T) {
 }
 
 func TestPrefixTierLimitsOneRange(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 10, 10
 	h := newHarness(t, cfg)
@@ -556,6 +576,7 @@ func TestPrefixTierLimitsOneRange(t *testing.T) {
 }
 
 func TestRefusedPrefixTakesNoInstanceToken(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 10, 10
 	h := newHarness(t, cfg)

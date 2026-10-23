@@ -13,6 +13,7 @@ import (
 )
 
 func TestBurnAndCancelEndpoints(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	burn := newMessage(t, core.KDFNone, "", 1, 3600, "b")
 	cancel := newMessage(t, core.KDFNone, "", 2, 3600, "c")
@@ -59,6 +60,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 }
 
 func TestCreateHeaderRules(t *testing.T) {
+	t.Parallel()
 	cfg := server.Defaults()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	pw := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
@@ -86,6 +88,7 @@ func TestCreateHeaderRules(t *testing.T) {
 }
 
 func TestClaimBodyVariants(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
 	h.mustCreate(m)
@@ -119,6 +122,7 @@ func TestClaimBodyVariants(t *testing.T) {
 }
 
 func TestPassphraseBackoffIsSharedByEveryReader(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
 	h.mustCreate(m)

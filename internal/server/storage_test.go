@@ -21,6 +21,7 @@ import (
 )
 
 func TestConcurrentCreateWithSameID(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	for i := range 20 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "race")
@@ -45,6 +46,7 @@ func TestConcurrentCreateWithSameID(t *testing.T) {
 }
 
 func TestTruncatedCreateStoresNothing(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "short")
 	conn, err := net.Dial("tcp", h.listen())
@@ -69,6 +71,7 @@ func TestTruncatedCreateStoresNothing(t *testing.T) {
 }
 
 func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	for _, opens := range []uint16{1, 2} {
 		m := newMessage(t, core.KDFNone, "", opens, 3600, "x")
@@ -91,6 +94,7 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 }
 
 func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	crash := func(m *message, state store.State) {
 		if _, _, _, err := h.store.MarkEnding(context.Background(), m.id.String(), state, h.clock.Now()); err != nil {
@@ -134,6 +138,7 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 }
 
 func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
@@ -178,6 +183,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 }
 
 func TestCreateStorageFailureAnswers500(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	fb.set(func(b *faultyBlobs) { b.failPut = errInjected })
@@ -205,6 +211,7 @@ func (s *racingStore) Get(ctx context.Context, id string) (store.Record, error) 
 }
 
 func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -222,6 +229,7 @@ func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
 }
 
 func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	existing := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(existing)
@@ -235,6 +243,7 @@ func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
 }
 
 func TestStorageCancellationIsInternalWhileClientWaits(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	fb.set(func(b *faultyBlobs) { b.failPut = context.Canceled })
@@ -244,6 +253,7 @@ func TestStorageCancellationIsInternalWhileClientWaits(t *testing.T) {
 }
 
 func TestBurnFinishesRecordedCancel(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -264,6 +274,7 @@ func TestBurnFinishesRecordedCancel(t *testing.T) {
 }
 
 func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
@@ -287,6 +298,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 }
 
 func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
@@ -314,6 +326,7 @@ func (s failingEndStore) End(ctx context.Context, id string, state store.State, 
 }
 
 func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	h.mustCreate(m)
@@ -354,6 +367,7 @@ func (s *endingThenFailingGet) Get(ctx context.Context, id string) (store.Record
 }
 
 func TestBurnWithUnreadableEndAnswers500(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -375,6 +389,7 @@ func (s *countingReleaseStore) ReleaseIfDone(ctx context.Context, id string, now
 }
 
 func TestRequestDuringTheLeaseTakesNoWriteLock(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(m)
@@ -394,6 +409,7 @@ func TestRequestDuringTheLeaseTakesNoWriteLock(t *testing.T) {
 }
 
 func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	unspent := newMessage(t, core.KDFNone, "", 2, 60, "x")
@@ -420,6 +436,7 @@ func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
 }
 
 func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "x")

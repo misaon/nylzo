@@ -15,6 +15,7 @@ import (
 )
 
 func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 1000
 	h := newHarness(t, cfg)
@@ -81,6 +82,7 @@ func (s *slotSignals) RateRelease(ctx context.Context, key string, windowStart t
 }
 
 func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 10
 	h := newHarness(t, cfg)
@@ -112,6 +114,7 @@ func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 }
 
 func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 2
 	h := newHarness(t, cfg)
@@ -146,6 +149,7 @@ func (s staleGateStore) RateGet(ctx context.Context, key string, ws time.Time) (
 }
 
 func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 4
 	h := newHarness(t, cfg)
@@ -164,6 +168,7 @@ func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
 }
 
 func TestStoredCapPointsToTheNextDay(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 1
 	h := newHarness(t, cfg)
@@ -189,6 +194,7 @@ func (s *fillingStore) RateGet(ctx context.Context, key string, ws time.Time) (s
 }
 
 func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 1
 	h := newHarness(t, cfg)

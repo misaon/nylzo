@@ -94,6 +94,7 @@ func spendHit(key string) store.RateHit {
 }
 
 func TestASpendPanicFailsOnlyItsBatch(t *testing.T) {
+	t.Parallel()
 	b := newSpendBatcher(&panicOnce{Store: openStore(t)})
 	if _, err := b.reserve(t.Context(), spendHit("a")); !errors.Is(err, errSpendAborted) {
 		t.Fatalf("a batch whose write panicked: %v", err)
@@ -114,6 +115,7 @@ func TestASpendPanicFailsOnlyItsBatch(t *testing.T) {
 }
 
 func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		gated := &gatedSpends{Store: openStore(t), gate: make(chan struct{})}
 		b := newSpendBatcher(gated)
@@ -147,6 +149,7 @@ func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
 }
 
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
+	t.Parallel()
 	s, _ := testServer(t, openStore(t), func(c *Config) { c.MaxStreams = 1 })
 	s.streams <- struct{}{}
 	id := core.NewID().String()
@@ -169,6 +172,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 }
 
 func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
+	t.Parallel()
 	s, _ := testServer(t, openStore(t), nil)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -217,6 +221,7 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 }
 
 func TestSweepLogAttrsAcceptAnEmptyJoin(t *testing.T) {
+	t.Parallel()
 	attrs := SweepLogAttrs(store.SweepReport{}, fmt.Errorf("%w %w", nil, nil))
 	if len(attrs) < 4 || attrs[len(attrs)-4] != "errors" || attrs[len(attrs)-3] != 1 {
 		t.Fatalf("attrs: %v", attrs)
@@ -224,6 +229,7 @@ func TestSweepLogAttrsAcceptAnEmptyJoin(t *testing.T) {
 }
 
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		s, logs := testServer(t, openStore(t), func(c *Config) { c.SweepInterval = time.Minute })
 		blobs, err := disk.New(s.cfg.DataDir)
@@ -266,6 +272,7 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 }
 
 func TestConfigErrorsAreCaughtByNew(t *testing.T) {
+	t.Parallel()
 	st := openStore(t)
 	for name, change := range map[string]func(*Config){
 		"no PoW slot":        func(c *Config) { c.PoWConcurrency = 0 },

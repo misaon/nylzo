@@ -15,6 +15,7 @@ import (
 )
 
 func TestAbuseReportsRecordOnlyValidReports(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -45,6 +46,7 @@ func TestAbuseReportsRecordOnlyValidReports(t *testing.T) {
 }
 
 func TestAbuseReportHardening(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -81,6 +83,7 @@ func TestAbuseReportHardening(t *testing.T) {
 }
 
 func TestAbuseReasonRedactionEdges(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -145,6 +148,7 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 }
 
 func TestAbuseReportsCappedPerMessage(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
@@ -206,6 +210,7 @@ func TestAbuseReportsCappedPerMessage(t *testing.T) {
 }
 
 func TestOverBudgetReportWithAFullFileIsAccepted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	fresh := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
@@ -233,6 +238,7 @@ func TestOverBudgetReportWithAFullFileIsAccepted(t *testing.T) {
 }
 
 func TestFormatCharactersCannotSplitARedactedToken(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
@@ -252,6 +258,7 @@ func TestFormatCharactersCannotSplitARedactedToken(t *testing.T) {
 }
 
 func TestAbuseRedactsRunsFromTwentyTwoCharacters(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)

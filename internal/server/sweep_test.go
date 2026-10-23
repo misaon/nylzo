@@ -13,6 +13,7 @@ import (
 )
 
 func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.clock.mu.Lock()
 	h.clock.now = time.Now().Add(-time.Hour)
@@ -26,6 +27,7 @@ func TestSweepOnceWithoutPepperEndsExpiredMessages(t *testing.T) {
 }
 
 func TestSweepReconcilesOncePerDay(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.startOfNextUTCDay()
 	put := func(ref string) {
@@ -50,6 +52,7 @@ func TestSweepReconcilesOncePerDay(t *testing.T) {
 }
 
 func TestSweepRetriesReconcileAfterFailure(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.startOfNextUTCDay()
 	fb := h.withFaultyBlobs()
@@ -78,6 +81,7 @@ func TestSweepRetriesReconcileAfterFailure(t *testing.T) {
 }
 
 func TestSweepLogAttrsCountsEveryFailedItem(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	fb := h.withFaultyBlobs()
 	for range 2 {
@@ -98,6 +102,7 @@ func TestSweepLogAttrsCountsEveryFailedItem(t *testing.T) {
 }
 
 func TestEverySweepPurgesStaleTempFiles(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.startOfNextUTCDay()
 	stale := func(name string) {

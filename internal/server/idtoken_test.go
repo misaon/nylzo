@@ -38,6 +38,7 @@ func createWithToken(t *testing.T, h *harness, m *message, token any) (*http.Res
 }
 
 func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	id, token, expires := issuedID(t, h)
 	if want := h.clock.Now().Add(10 * time.Minute).Truncate(time.Second); !expires.Equal(want) {

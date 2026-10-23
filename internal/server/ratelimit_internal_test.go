@@ -24,6 +24,7 @@ import (
 )
 
 func TestSourceLimiterEvictsIdleSourcesFirst(t *testing.T) {
+	t.Parallel()
 	l := newKeyedLimiter(1, 1)
 	l.max = 16
 	now := time.Unix(1_800_000_000, 0)
@@ -48,6 +49,7 @@ func TestSourceLimiterEvictsIdleSourcesFirst(t *testing.T) {
 }
 
 func TestSourceLimiterKeepsMostSourcesWhenFull(t *testing.T) {
+	t.Parallel()
 	l := newKeyedLimiter(1, 1)
 	l.max = 64
 	now := time.Unix(1_800_000_000, 0)
@@ -77,6 +79,7 @@ func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (
 }
 
 func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
+	t.Parallel()
 	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -91,6 +94,7 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 }
 
 func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
+	t.Parallel()
 	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +112,7 @@ func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 }
 
 func TestAddrCountersRefuseWithAtLeastOneSecond(t *testing.T) {
+	t.Parallel()
 	c := newAddrCounters()
 	w := hourWindow(time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC))
 	last := w.end.Add(-time.Nanosecond)
@@ -124,6 +129,7 @@ func TestAddrCountersRefuseWithAtLeastOneSecond(t *testing.T) {
 }
 
 func TestAddrCountersStopAtTheFirstRefusal(t *testing.T) {
+	t.Parallel()
 	c := newAddrCounters()
 	w := hourWindow(time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC))
 	fine, coarse := bucket{1}, bucket{2}
@@ -137,6 +143,7 @@ func TestAddrCountersStopAtTheFirstRefusal(t *testing.T) {
 }
 
 func TestAddrCountersStayBounded(t *testing.T) {
+	t.Parallel()
 	c := newAddrCounters()
 	c.max = 64
 	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
@@ -157,6 +164,7 @@ func TestAddrCountersStayBounded(t *testing.T) {
 }
 
 func TestAddressBucketsComeFromAProcessKey(t *testing.T) {
+	t.Parallel()
 	a, b := newAddrKey(), newAddrKey()
 	addr := netip.MustParseAddr("203.0.113.77")
 	if a.bucket(addr, false) == b.bucket(addr, false) && a.bucket(addr, true) == b.bucket(addr, true) {
@@ -187,6 +195,7 @@ func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateH
 }
 
 func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
+	t.Parallel()
 	cfg := Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
@@ -247,6 +256,7 @@ func (s *gatedSpends) calls() []int {
 }
 
 func TestConcurrentSpendsShareATransaction(t *testing.T) {
+	t.Parallel()
 	synctest.Test(t, testConcurrentSpendsShareATransaction)
 }
 

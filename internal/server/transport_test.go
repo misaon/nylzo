@@ -21,6 +21,7 @@ import (
 )
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	required := map[string]string{
 		"Referrer-Policy":              "no-referrer",
@@ -84,6 +85,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 }
 
 func TestCreateValidation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "v")
 	cases := []struct {
@@ -221,6 +223,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 }
 
 func TestClientAddr(t *testing.T) {
+	t.Parallel()
 	cfg := server.Defaults()
 	cfg.Pepper = pepperA
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("fd00::/8")}
@@ -255,6 +258,7 @@ func TestClientAddr(t *testing.T) {
 }
 
 func TestConfigFromEnv(t *testing.T) {
+	t.Parallel()
 	env := map[string]string{
 		"NYLZO_PEPPER":               strings.Repeat("0123456789abcdef", 4),
 		"NYLZO_PEPPER_PREVIOUS":      strings.Repeat("fedcba9876543210", 4),
@@ -336,6 +340,7 @@ func TestConfigFromEnv(t *testing.T) {
 }
 
 func TestTrustedProxyInMappedForm(t *testing.T) {
+	t.Parallel()
 	cfg, err := server.FromEnv(func(k string) string {
 		if k == "NYLZO_TRUSTED_PROXIES" {
 			return "::ffff:172.17.0.1, ::ffff:10.0.0.0/104"
@@ -353,6 +358,7 @@ func TestTrustedProxyInMappedForm(t *testing.T) {
 }
 
 func TestH2CReceiveBufferIsBounded(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	c := h.srv.HTTPServer().HTTP2
 	if c == nil || c.MaxReceiveBufferPerStream < 64<<10 || c.MaxReceiveBufferPerStream > 256<<10 || c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream || c.MaxReceiveBufferPerConnection > 1<<20 {
@@ -361,6 +367,7 @@ func TestH2CReceiveBufferIsBounded(t *testing.T) {
 }
 
 func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
+	t.Parallel()
 	env := func(v string) func(string) string {
 		return func(k string) string {
 			if k == "NYLZO_POW_CONCURRENCY" {
@@ -378,6 +385,7 @@ func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
 }
 
 func TestConfigErrorNamesTheVariable(t *testing.T) {
+	t.Parallel()
 	for name, value := range map[string]string{"NYLZO_POW_CONCURRENCY": "8", "NYLZO_MAX_OPENS": "0", "NYLZO_POW_DIFFICULTY": "9", "NYLZO_DEFAULT_TTL": "30s"} {
 		_, err := server.FromEnv(func(k string) string {
 			if k == name {
@@ -392,6 +400,7 @@ func TestConfigErrorNamesTheVariable(t *testing.T) {
 }
 
 func TestSecurityHeadersOnEveryResponse(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.BucketPerSecond = 1
 	cfg.Rates.BucketBurst = 2
@@ -432,6 +441,7 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 }
 
 func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	addr := h.listen()
 	var protocols http.Protocols
@@ -461,6 +471,7 @@ func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 }
 
 func TestConfigBounds(t *testing.T) {
+	t.Parallel()
 	base := map[string]string{"NYLZO_PEPPER": strings.Repeat("0123456789abcdef", 4)}
 	with := func(k, v string) func(string) string {
 		return func(key string) string {
@@ -496,6 +507,7 @@ func TestConfigBounds(t *testing.T) {
 }
 
 func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
+	t.Parallel()
 	if got := server.Defaults().Limits.MaxObjectBytes; got != 5373983 {
 		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
 	}

@@ -75,6 +75,7 @@ func fileMessage(t *testing.T, content []byte) *message {
 }
 
 func TestStolenServerRevealsNothing(t *testing.T) {
+	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Rates.GlobalDailyCreates = 16
 	cfg.PoWDifficulty = 1

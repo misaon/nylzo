@@ -10,6 +10,7 @@ import (
 )
 
 func TestAK27PepperRotation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	old := newMessage(t, core.KDFPBKDF2, "pw", 2, 7*24*3600, "before rotation")
 	h.mustCreate(old)
@@ -39,6 +40,7 @@ func TestAK27PepperRotation(t *testing.T) {
 }
 
 func TestAK27PreviousPepperHorizon(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	old := newMessage(t, core.KDFNone, "", 1, 7*24*3600, "max ttl")
 	h.mustCreate(old)

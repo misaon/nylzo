@@ -9,6 +9,7 @@ import (
 )
 
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	srv := h.srv.HTTPServer()
 	if srv.ErrorLog == nil {
@@ -28,6 +29,7 @@ func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 }
 
 func TestHTTPErrorLogCategoriesAndLimit(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	errLog := h.srv.HTTPServer().ErrorLog
 	errLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
@@ -50,6 +52,7 @@ func TestHTTPErrorLogCategoriesAndLimit(t *testing.T) {
 }
 
 func TestHTTPErrorLogReportsDrops(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	errLog := h.srv.HTTPServer().ErrorLog
 	for range 41 {
@@ -63,6 +66,7 @@ func TestHTTPErrorLogReportsDrops(t *testing.T) {
 }
 
 func TestHTTPErrorLogReportsAndResetsDroppedLines(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	errLog := h.srv.HTTPServer().ErrorLog
 	for range 40 {

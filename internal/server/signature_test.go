@@ -39,6 +39,7 @@ func abuseLines(t *testing.T, h *harness, id core.ID) int {
 }
 
 func TestSignedRequestsAreSingleUse(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "single use")
 	h.mustCreate(m)
@@ -85,6 +86,7 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 }
 
 func TestSignatureBindsTheRequest(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "bound")
 	h.mustCreate(m)
@@ -133,6 +135,7 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 }
 
 func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	const pass = "correct horse battery staple"
 	m := newMessage(t, core.KDFPBKDF2, pass, 1, 3600, "behind a passphrase")
@@ -187,6 +190,7 @@ type passphraseResponse struct {
 }
 
 func TestChallengeWindowAndRotation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "challenges")
 	h.mustCreate(m)
@@ -251,6 +255,7 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 }
 
 func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "no bodies")
 	h.mustCreate(m)
@@ -278,6 +283,7 @@ func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 }
 
 func TestSpentChallengesExpire(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "sweep")
 	h.mustCreate(m)

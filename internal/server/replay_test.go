@@ -16,6 +16,7 @@ import (
 )
 
 func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
+	t.Parallel()
 	const victim, observer = "203.0.113.10", "198.51.100.20"
 	cases := []struct {
 		name   string
@@ -71,6 +72,7 @@ func signedRequestFrom(ip string, seed *[core.TokenLen]byte, purpose, method, pa
 }
 
 func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	identity := core.Encode(append([]byte{1}, make([]byte, 31)...))
 	order4 := core.Encode(make([]byte, 32))
@@ -111,6 +113,7 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 }
 
 func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	ring, err := pepper.NewRing(pepperA, nil)
 	if err != nil {
@@ -169,6 +172,7 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 }
 
 func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "head")
 	h.mustCreate(m)
@@ -186,6 +190,7 @@ func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 }
 
 func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 60, "expires")
 	h.mustCreate(m)
@@ -206,6 +211,7 @@ func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
 }
 
 func TestRequestLinesLogNoSize(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
 	h.mustCreate(m)
