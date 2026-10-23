@@ -1,6 +1,4 @@
-import { expect, test } from '@playwright/test';
-
-import { createViaUi, expectRevealed, openViaUi } from './helpers.ts';
+import { createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 test('creates and reads a text message under the enforced CSP (AK10)', async ({ browser }) => {

@@ -1,7 +1,7 @@
 import { KDF_PBKDF2 } from '@nylzo/core';
-import { expect, test, type Page, type Request } from '@playwright/test';
+import type { Page, Request } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expectRevealed, openViaUi } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 
 interface Recorded {
   readonly url: string;
@@ -221,6 +221,22 @@ for (const file of files) {
     expect(await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes)).toEqual(['application/octet-stream']);
   });
 }
+
+test('the fields of an abuse report are not spell checked or autocompleted (D38, D41)', async ({ page }) => {
+  const message = await createViaApi();
+  await page.goto('/report');
+  const fields = [page.getByLabel('Link to the message'), page.getByLabel('Reason, optional')];
+  const reader = await page.context().newPage();
+  await reader.goto(message.link);
+  await reader.getByRole('button', { name: 'Report this message' }).click();
+  fields.push(reader.getByLabel('Reason, optional'));
+  for (const field of fields) {
+    await expect(field).toHaveAttribute('spellcheck', 'false');
+    await expect(field).toHaveAttribute('autocorrect', 'off');
+    await expect(field).toHaveAttribute('autocapitalize', 'off');
+    await expect(field).toHaveAttribute('autocomplete', 'off');
+  }
+});
 
 test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({ browser }) => {
   const message = await createViaApi({ text: 'report me' });

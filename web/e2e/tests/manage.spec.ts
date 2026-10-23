@@ -1,6 +1,6 @@
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Browser, Page } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expectRevealed, openViaUi } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 declare global {

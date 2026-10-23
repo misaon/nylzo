@@ -3,10 +3,10 @@ import { gzipSync } from 'node:zlib';
 
 import AxeBuilder from '@axe-core/playwright';
 import { KDF_PBKDF2 } from '@nylzo/core';
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { transform, type Declaration } from 'lightningcss';
 
-import { BASE_URL, createViaApi, createViaUi, expectRevealed, openViaUi } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 
 const ASSETS = new URL('../../../internal/server/web/dist/assets/', import.meta.url);
 const MOBILE = { width: 430, height: 932 };
