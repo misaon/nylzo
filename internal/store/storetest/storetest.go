@@ -344,6 +344,21 @@ func testLeasesAck(t *testing.T, open Factory) {
 	if ref, _ := f.s.ReleaseIfDone(f.ctx, m.ID, baseTime.Add(time.Minute)); ref != "" {
 		t.Fatal("released while leases active")
 	}
+	forged, elsewhere := leases[0], leases[0]
+	forged.MAC = slices.Clone(forged.MAC)
+	forged.MAC[0] ^= 1
+	elsewhere.ID = f.create(1, time.Hour, false).ID
+	for name, l := range map[string]store.Lease{"another lease_mac": forged, "another message id": elsewhere} {
+		if err := f.s.RecordDownload(f.ctx, l, baseTime.Add(time.Minute)); !errors.Is(err, store.ErrLeaseInvalid) {
+			t.Fatalf("download with %s: %v", name, err)
+		}
+		if _, err := f.s.Ack(f.ctx, l, baseTime.Add(time.Minute)); !errors.Is(err, store.ErrLeaseInvalid) {
+			t.Fatalf("ack with %s: %v", name, err)
+		}
+	}
+	if still, err := f.s.Leases(f.ctx, m.ID); err != nil || len(still) != 3 {
+		t.Fatalf("a lease token that does not match changed the leases: %d %v", len(still), err)
+	}
 	for i, l := range leases {
 		if _, err := f.s.Ack(f.ctx, l, baseTime.Add(time.Minute)); err != nil {
 			t.Fatal(err)
@@ -1255,8 +1270,8 @@ func testStaleLease(t *testing.T, open Factory) {
 	if _, err := f.claim(victim, baseTime, 2, false, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.s.Ack(f.ctx, stale, baseTime); err != nil {
-		t.Fatal(err)
+	if _, err := f.s.Ack(f.ctx, stale, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+		t.Fatalf("a second ack of a removed lease: %v, want ErrLeaseInvalid", err)
 	}
 	if err := f.s.RecordDownload(f.ctx, stale, baseTime); err == nil {
 		t.Fatal("a download on a lease that was acked must fail")

@@ -38,12 +38,9 @@ var assetTypes = map[string]string{
 	".woff2": "font/woff2",
 }
 
-const (
-	encodingBrotli = "br"
-	encodingGzip   = "gzip"
-)
+const encodingGzip = "gzip"
 
-var precompressed = map[string]string{".br": encodingBrotli, ".gz": encodingGzip}
+var precompressed = map[string]string{".gz": encodingGzip}
 
 var assetReference = regexp.MustCompile(`(?:src|href)="/assets/([^"]*)"`)
 
@@ -161,10 +158,8 @@ func acceptedEncodings(header string) map[string]bool {
 		explicit[token] = true
 		accepted[token] = quality > 0
 	}
-	for _, encoding := range []string{encodingBrotli, encodingGzip} {
-		if !explicit[encoding] {
-			accepted[encoding] = wildcard
-		}
+	if !explicit[encodingGzip] {
+		accepted[encodingGzip] = wildcard
 	}
 	return accepted
 }
@@ -201,13 +196,10 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
 	h.Set("Content-Type", asset.contentType)
 	h.Set("Vary", "Accept-Encoding")
-	accepted := acceptedEncodings(r.Header.Get("Accept-Encoding"))
-	for _, encoding := range []string{encodingBrotli, encodingGzip} {
-		if body, ok := asset.bodies[encoding]; ok && accepted[encoding] {
-			h.Set("Content-Encoding", encoding)
-			w.Write(body)
-			return
-		}
+	if body, ok := asset.bodies[encodingGzip]; ok && acceptedEncodings(r.Header.Get("Accept-Encoding"))[encodingGzip] {
+		h.Set("Content-Encoding", encodingGzip)
+		w.Write(body)
+		return
 	}
 	w.Write(asset.bodies[""])
 }

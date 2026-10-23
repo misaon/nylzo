@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   CHALLENGE_LEN,
@@ -62,5 +62,29 @@ describe('request signatures', () => {
     const message = await requestMessage(PURPOSE_MANAGE, 'POST', path, challenge, new Uint8Array(0));
     expect(await crypto.subtle.verify('Ed25519', verifier, signature.signature, message)).toBe(true);
     expect(encodeBase64url((await newRequestKey()).publicKey)).not.toBe(encodeBase64url(key.publicKey));
+  });
+
+  it('wipes the PKCS#8 copy of the seed it imports, also when an import fails', async () => {
+    for (const failAt of [0, 1, 2]) {
+      const imported: Uint8Array[] = [];
+      const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+      const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((format: KeyFormat, data: BufferSource, ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]) => {
+        if (format === 'pkcs8' && data instanceof Uint8Array) {
+          imported.push(data);
+          if (imported.length === failAt) {
+            return Promise.reject(new Error('import failed'));
+          }
+        }
+        return importKey(format as 'pkcs8', data, ...rest);
+      }) as typeof crypto.subtle.importKey);
+      try {
+        const result = requestKey(new Uint8Array(TOKEN_LEN).fill(7));
+        await (failAt === 0 ? expect(result).resolves.toBeDefined() : expect(result).rejects.toThrow('import failed'));
+      } finally {
+        spy.mockRestore();
+      }
+      expect(imported.length, `fail at ${failAt}`).toBeGreaterThan(0);
+      expect(imported.every((pkcs8) => pkcs8.every((byte) => byte === 0)), `fail at ${failAt}`).toBe(true);
+    }
   });
 });

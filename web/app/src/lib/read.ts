@@ -1,6 +1,10 @@
 import {
   KDF_NONE,
   KDF_PBKDF2,
+  KdfMismatchError,
+  MalformedPassphraseError,
+  assertProfile,
+  assertWellFormedPassphrase,
   deriveContent,
   deriveLink,
   derivePassphraseKey,
@@ -10,11 +14,14 @@ import {
   parsePath,
   requestKey,
   type KdfId,
+  type Link,
+  type LinkKeys,
   type RequestKey,
 } from '@nylzo/core';
 
-import { ApiError, type Api, type Envelope, type MessageState, type Metadata } from './api.ts';
+import { ApiError, StoppedError, type Api, type Envelope, type MessageState, type Metadata } from './api.ts';
 import { sanitizeFileName } from './download.ts';
+import { KdfWorkerError } from './kdf-protocol.ts';
 import { sendReport, type ReportOutcome } from './report.ts';
 
 export type EndedState = Exclude<MessageState, 'available'>;
@@ -33,6 +40,7 @@ export type ReadView =
   | { readonly view: 'unknown' }
   | { readonly view: 'tampered' }
   | { readonly view: 'failed' }
+  | { readonly view: 'cleared' }
   | { readonly view: 'retry_later'; readonly retryAfter?: number | undefined }
   | {
       readonly view: 'ended';
@@ -45,6 +53,7 @@ export type ReadView =
       readonly metadata: Metadata;
       readonly resumable: boolean;
       readonly deviceFailed: boolean;
+      readonly leaseEnded?: boolean | undefined;
       readonly rejected?: PassphraseRejection | undefined;
     }
   | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
@@ -84,6 +93,7 @@ export interface Reader {
   reveal(passphrase?: string): Promise<void>;
   burn(): Promise<BurnOutcome>;
   report(reason: string): Promise<ReportOutcome>;
+  clear(): void;
 }
 
 interface Secrets {
@@ -105,6 +115,11 @@ interface Fetched {
   readonly envelope: Envelope;
   readonly lease: string;
   readonly fromLease: boolean;
+}
+
+interface ContentAccess {
+  readonly k: CryptoKey;
+  readonly verifierKey: RequestKey | undefined;
 }
 
 function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'> {
@@ -130,8 +145,10 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   let busy = false;
   let lease: string | undefined;
   let revealable = false;
+  let left = false;
 
-  const onView = (view: ReadView) => {
+  const onView = (next: ReadView) => {
+    const view = left ? cleared(next) : next;
     revealable = view.view === 'ready';
     revealed = view.view === 'revealed' ? view : undefined;
     if (view.view !== 'ready' && view.view !== 'busy') {
@@ -142,6 +159,13 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
     notify(view);
   };
+
+  function cleared(view: ReadView): ReadView {
+    if (view.view === 'revealed') {
+      view.file?.bytes.fill(0);
+    }
+    return { view: 'cleared' };
+  }
 
   const leaseKey = () => `nylzo:lease:${idText}`;
   const kdfKey = () => `nylzo:kdf:${idText}`;
@@ -183,11 +207,23 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
   }
 
-  function readyView(rejected?: PassphraseRejection): ReadView {
+  function readyView(rejected?: PassphraseRejection, leaseEnded?: boolean): ReadView {
     if (!metadata || !secrets) {
       return { view: 'failed' };
     }
-    return { view: 'ready', metadata, resumable: storedLease() !== null, deviceFailed, rejected };
+    return { view: 'ready', metadata, resumable: storedLease() !== null, deviceFailed, leaseEnded, rejected };
+  }
+
+  function profileMatches(current: Metadata, kdfId: KdfId): boolean {
+    try {
+      assertProfile(kdfId, current.kdfId);
+    } catch (error) {
+      if (error instanceof KdfMismatchError) {
+        return false;
+      }
+      throw error;
+    }
+    return current.passphraseRequired === (kdfId !== KDF_NONE);
   }
 
   function metadataView(current: Metadata, kdfId: KdfId): ReadView {
@@ -197,7 +233,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (isTerminal(current.state)) {
       return ended(current.state, current);
     }
-    if (current.kdfId !== kdfId || current.passphraseRequired !== (kdfId !== KDF_NONE)) {
+    if (!profileMatches(current, kdfId)) {
       return { view: 'tampered' };
     }
     if (current.state === 'opened' && storedLease() === null) {
@@ -206,9 +242,24 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     return readyView();
   }
 
+  async function linkSecrets(fragment: Link): Promise<Secrets> {
+    let keys: LinkKeys | undefined;
+    try {
+      keys = await deriveLink(fragment.id, fragment.s);
+      const readKey = await requestKey(keys.r);
+      return { id: fragment.id, kdfId: fragment.kdfId, s: fragment.s, saltPw: keys.saltPw, readKey };
+    } catch (error) {
+      fragment.s.fill(0);
+      keys?.saltPw.fill(0);
+      throw error;
+    } finally {
+      keys?.r.fill(0);
+    }
+  }
+
   async function load(): Promise<void> {
     onView({ view: 'loading' });
-    let fragment;
+    let fragment: Link;
     try {
       const id = parsePath(deps.location.pathname);
       fragment = { id, ...parseFragment(deps.location.hash) };
@@ -221,13 +272,15 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       deviceFailed = true;
       safely(() => deps.session.removeItem(kdfKey()), undefined);
     }
+    const linked = await linkSecrets(fragment).catch(() => undefined);
+    if (!linked) {
+      onView({ view: 'failed' });
+      return;
+    }
+    secrets = linked;
+    held = { id: linked.id, readKey: linked.readKey };
     try {
-      const keys = await deriveLink(fragment.id, fragment.s);
-      const readKey = await requestKey(keys.r);
-      keys.r.fill(0);
-      secrets = { id: fragment.id, kdfId: fragment.kdfId, s: fragment.s, saltPw: keys.saltPw, readKey };
-      held = { id: fragment.id, readKey };
-      metadata = await deps.api.metadata(fragment.id, readKey);
+      metadata = await deps.api.metadata(linked.id, linked.readKey);
     } catch (error) {
       onView(apiView(error));
       return;
@@ -273,16 +326,17 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
           return apiView(error);
         }
         forgetLease();
-        if (error.state !== 'available') {
-          return apiView(error);
-        }
+        return error.state === 'available' ? readyView(undefined, true) : apiView(error);
       }
     }
     onView({ view: 'busy', step: 'claiming' });
     try {
-      const claimed = await deps.api.claim(current.id, current.readKey, { verifierKey, onLease: keepLease, onProgress });
+      const claimed = await deps.api.claim(current.id, current.readKey, { verifierKey, onLease: keepLease, onProgress, proceed: () => !left });
       return { envelope: claimed, lease: claimed.lease, fromLease: false };
     } catch (error) {
+      if (error instanceof StoppedError) {
+        return { view: 'cleared' };
+      }
       if (error instanceof ApiError && error.kind === 'passphrase') {
         return readyView(rejection(error));
       }
@@ -301,25 +355,40 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     );
   }
 
-  async function revealOnce(current: Secrets, passphrase: string): Promise<ReadView | undefined> {
-    let content;
+  async function contentAccess(current: Secrets, passphrase: string): Promise<ContentAccess | ReadView> {
+    let p: Uint8Array | undefined;
+    let v: Uint8Array | undefined;
     try {
-      const p = await passphraseKey(current, passphrase);
-      content = await deriveContent(current.id, current.s, p);
-      p.fill(0);
+      assertWellFormedPassphrase(current.kdfId, passphrase);
+      p = await passphraseKey(current, passphrase);
+      const content = await deriveContent(current.id, current.s, p);
+      v = content.v;
+      const verifierKey = current.kdfId === KDF_NONE ? undefined : await requestKey(content.v);
+      return { k: content.k, verifierKey };
     } catch (error) {
-      if (error instanceof Error && error.name === 'MalformedPassphraseError') {
+      if (error instanceof MalformedPassphraseError) {
         return readyView({ reason: 'malformed' });
       }
-      if (error instanceof Error && error.name === 'KdfWorkerError') {
+      if (error instanceof KdfWorkerError) {
         deviceFailed = true;
         return readyView();
       }
       return { view: 'failed' };
+    } finally {
+      p?.fill(0);
+      v?.fill(0);
     }
-    const verifierKey = current.kdfId === KDF_NONE ? undefined : await requestKey(content.v);
-    content.v.fill(0);
-    const fetched = await fetchEnvelope(current, verifierKey);
+  }
+
+  async function revealOnce(current: Secrets, passphrase: string): Promise<ReadView | undefined> {
+    const access = await contentAccess(current, passphrase);
+    if ('view' in access) {
+      return access;
+    }
+    if (left) {
+      return { view: 'cleared' };
+    }
+    const fetched = await fetchEnvelope(current, access.verifierKey);
     if ('view' in fetched) {
       return fetched;
     }
@@ -330,9 +399,13 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     let opened;
     try {
       const policy = { opensMax: fetched.envelope.policy.opensMax, ttlSeconds: fetched.envelope.policy.ttlSeconds };
-      opened = await open(content.k, current.id, policy, current.kdfId, fetched.envelope.object);
+      opened = await open(access.k, current.id, policy, current.kdfId, fetched.envelope.object);
     } catch {
       return fetched.fromLease && current.kdfId !== KDF_NONE ? readyView({ reason: 'wrong_or_changed' }) : { view: 'tampered' };
+    }
+    if (left) {
+      opened.payload.file?.fill(0);
+      return { view: 'cleared' };
     }
     deps.dropFragment();
     const { text, file } = opened.payload.meta;
@@ -340,7 +413,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     onView({
       view: 'revealed',
       text,
-      file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: new Uint8Array(opened.payload.file) } : undefined,
+      file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file } : undefined,
       burnable: remaining > 0,
     });
     await deps.api.ack(current.id, current.readKey, fetched.lease).catch(() => undefined);
@@ -404,7 +477,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       busy = false;
     }
     if (shown) {
-      if (outcome.outcome === 'deleted' || outcome.outcome === 'ended') {
+      if (revealed === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
         onView({ ...shown, burnable: false });
       }
     } else if (outcome.outcome === 'deleted') {
@@ -419,7 +492,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
 
   async function report(reason: string): Promise<ReportOutcome> {
     const current = held;
-    if (!current || reporting || !allowed()) {
+    if (!current || reporting || revealed?.burnable === false || !allowed()) {
       return { outcome: 'ignored' };
     }
     reporting = true;
@@ -430,5 +503,11 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
   }
 
-  return { load, reveal, burn, report };
+  function clear(): void {
+    left = true;
+    revealed?.file?.bytes.fill(0);
+    onView({ view: 'cleared' });
+  }
+
+  return { load, reveal, burn, report, clear };
 }

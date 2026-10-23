@@ -1,5 +1,5 @@
-import { newSecret, requestKey, type RequestKey } from '@nylzo/core';
-import { describe, expect, it } from 'vitest';
+import { newSecret, parseId, requestKey, type RequestKey } from '@nylzo/core';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../src/lib/api.ts';
 import { createMessage, type CreateDeps } from '../src/lib/create.ts';
@@ -12,8 +12,10 @@ import {
   isRetained,
   purgeSentRecords,
   recordFrom,
+  rememberSent,
   retainedRecords,
   storedForm,
+  type SentPage,
   type SentRecord,
   type SentStore,
   type SentView,
@@ -40,6 +42,16 @@ function memoryStore(initial: SentRecord[] = [], broken = false): SentStore & { 
       check();
       storedForm(record);
       records.set(record.id, record);
+    },
+    async markEnded(id, endedAt) {
+      check();
+      const record = records.get(id);
+      if (!record || record.endedAt !== undefined) {
+        return record;
+      }
+      const ended = { ...record, endedAt };
+      records.set(id, ended);
+      return ended;
     },
     async remove(id) {
       check();
@@ -304,4 +316,65 @@ describe('the sent page', () => {
     expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS - 1)).toBe(true);
     expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS)).toBe(false);
   });
+
+  it.each([
+    ['forgets it', (sent: SentPage, id: string) => sent.forget(id)],
+    ['forgets every message', (sent: SentPage) => sent.forgetAll()],
+  ] as const)('keeps a record gone when the page %s while its status loads', async (_, forget) => {
+    const { api, records, store, sent } = await setup({}, 1);
+    const record = records[0]!;
+    await api.cancel(parseId(record.id), record.manageKey);
+    const gate = Promise.withResolvers<void>();
+    const asked = Promise.withResolvers<void>();
+    const status = api.status.bind(api);
+    api.status = async (id, key) => {
+      const answer = await status(id, key);
+      asked.resolve();
+      await gate.promise;
+      return answer;
+    };
+    const loading = sent.load();
+    await asked.promise;
+    await forget(sent, record.id);
+    gate.resolve();
+    await loading;
+    expect(store.records.has(record.id)).toBe(false);
+    expect(sent.items()).toEqual([]);
+    await sent.load();
+    expect(sent.items()).toEqual([]);
+  });
 });
+
+describe('remembering a new message', () => {
+  async function record(): Promise<SentRecord> {
+    return { id: ID, createdAt: NOW, expiresAt: NOW + 3_600_000, manageKey: await requestKey(newSecret()) };
+  }
+
+  it('reports a saved record', async () => {
+    const store = memoryStore();
+    expect(await rememberSent(store, await record(), 1000)).toBe(true);
+    expect(store.records.has(ID)).toBe(true);
+  });
+
+  it('reports a store that refuses the record', async () => {
+    expect(await rememberSent(memoryStore([], true), await record(), 1000)).toBe(false);
+  });
+
+  it('removes a record that lands after the page said it was not saved', async () => {
+    const store = memoryStore();
+    const gate = Promise.withResolvers<void>();
+    const landed = Promise.withResolvers<void>();
+    const put = store.put.bind(store);
+    store.put = async (value) => {
+      await gate.promise;
+      await put(value);
+      landed.resolve();
+    };
+    expect(await rememberSent(store, await record(), 10)).toBe(false);
+    expect(store.records.has(ID)).toBe(false);
+    gate.resolve();
+    await landed.promise;
+    await vi.waitFor(() => expect(store.records.has(ID)).toBe(false));
+  });
+});
+

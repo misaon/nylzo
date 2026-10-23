@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { KDF_NONE, KDF_PBKDF2, KDF_SCRYPT, type KdfId } from '@nylzo/core';
+  import { KDF_NONE, KDF_PBKDF2, KDF_SCRYPT, MIN_PASSPHRASE_CHARS, type KdfId } from '@nylzo/core';
   import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
   import { createApi, type InstanceLimits } from '../lib/api.ts';
   import {
     CreateError,
+    WEAK_BELOW_CHARS,
+    WEAK_BELOW_WORDS,
     createMessage,
     passphraseIsWeak,
     validateCreate,
@@ -19,7 +21,7 @@
   import { formatBytes, formatDuration, formatTime, formatWait } from '../lib/format.ts';
   import { getI18n } from '../lib/i18n.svelte.ts';
   import { scryptInWorker, solvePowInWorker } from '../lib/kdf.ts';
-  import { indexedDbSentStore } from '../lib/sent.ts';
+  import { indexedDbSentStore, rememberSent } from '../lib/sent.ts';
 
   type Shown = Pick<Created, 'link' | 'expiresAt'>;
 
@@ -43,6 +45,7 @@
   let problems = $state.raw<readonly CreateProblem[]>([]);
   let failure = $state.raw<CreateFailure>();
   let progress = $state.raw<CreateProgress>();
+  let submitting = $state(false);
   let created = $state.raw<Shown>();
   let remember = $state(true);
   let remembered = $state<'saving' | 'remembered' | 'failed' | 'off'>('off');
@@ -60,10 +63,14 @@
       messages[problem.field] ??= t(problemKey(problem), {
         size: formatBytes(problem.field === 'text' ? (limits?.maxTextBytes ?? 0) : (limits?.maxFileBytes ?? 0), i18n.language),
         max: limits?.maxOpens ?? 0,
+        min: MIN_PASSPHRASE_CHARS,
       });
     }
     return messages;
   });
+  const passphraseProblem = $derived(
+    fieldMessages.passphrase ?? (weak ? t('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''),
+  );
 
   async function loadLimits() {
     loadFailed = false;
@@ -104,7 +111,7 @@
 
   function failureText(value: CreateFailure): string {
     const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
-    return t(failureKey(value), { time: formatWait(retryAfter ?? 60, i18n.language) });
+    return t(failureKey(value), { time: formatWait(retryAfter, i18n.language) });
   }
 
   function clearFile() {
@@ -127,18 +134,28 @@
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
-    if (!limits || progress) {
+    if (!limits || submitting) {
       return;
     }
+    submitting = true;
+    try {
+      await send(limits);
+    } finally {
+      submitting = false;
+      progress = undefined;
+    }
+  }
+
+  async function send(allowed: InstanceLimits) {
     failure = undefined;
     showingProblems = false;
-    const attachment = await readAttachment(file, limits);
+    const attachment = await readAttachment(file, allowed);
     if ('problem' in attachment) {
       await showProblems([attachment.problem]);
       return;
     }
     const input = { text, file: attachment.file, ttlSeconds, opensMax, passphrase, kdfId };
-    const invalid = validateCreate(input, limits);
+    const invalid = validateCreate(input, allowed);
     if (invalid.length > 0) {
       await showProblems(invalid);
       return;
@@ -171,26 +188,15 @@
       } else {
         failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
       }
-    } finally {
-      progress = undefined;
     }
   }
 
   async function rememberMessage(result: Created, shown: Shown) {
     const expiresAt = Date.parse(result.expiresAt);
     const record = { id: result.id, createdAt: Math.min(Date.now(), expiresAt), expiresAt, manageKey: result.manageKey };
-    let outcome: 'remembered' | 'failed';
-    try {
-      await Promise.race([
-        sentStore.put(record),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('saving the record timed out')), SAVE_TIMEOUT_MS)),
-      ]);
-      outcome = 'remembered';
-    } catch {
-      outcome = 'failed';
-    }
+    const saved = await rememberSent(sentStore, record, SAVE_TIMEOUT_MS);
     if (created === shown) {
-      remembered = outcome;
+      remembered = saved ? 'remembered' : 'failed';
     }
   }
 
@@ -305,8 +311,8 @@
           aria-invalid={fieldMessages.passphrase !== undefined}
           aria-describedby="create-passphrase-hint create-passphrase-problem"
         />
-        <p id="create-passphrase-hint">{t('create.passphrase.hint')}</p>
-        <p id="create-passphrase-problem" data-problem>{fieldMessages.passphrase ?? (weak ? t('create.passphrase.weak') : '')}</p>
+        <p id="create-passphrase-hint">{t('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARS })}</p>
+        <p id="create-passphrase-problem" data-problem>{passphraseProblem}</p>
 
         {#if passphrase !== ''}
           <fieldset>
@@ -318,7 +324,7 @@
 
         <label><input type="checkbox" bind:checked={remember} /> {t('create.remember')}</label>
 
-        <button type="submit" disabled={progress !== undefined}>{t('create.submit')}</button>
+        <button type="submit" disabled={submitting}>{t('create.submit')}</button>
       </form>
       {#if failure}
         <p role="alert">{failureText(failure)}</p>

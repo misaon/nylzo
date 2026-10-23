@@ -150,7 +150,7 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 func TestAbuseReportsCappedPerMessage(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	m := newMessage(t, core.KDFNone, "", 1, 2*86400, "abuse")
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	third := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)

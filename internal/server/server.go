@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
@@ -26,6 +27,7 @@ const (
 	h2cConnBuffer     = 1 << 20
 	h2cMaxFrame       = 16 << 10
 	streamBusyRetry   = 5 * time.Second
+	diskFullRetry     = 60 * time.Second
 	httpErrorLogRate  = 1
 	httpErrorLogBurst = 20
 	reconcileKey      = "sweep:reconcile:d"
@@ -58,28 +60,32 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 type Server struct {
-	cfg         Config
-	store       store.Store
-	blobs       store.Blobs
-	ring        *pepper.Ring
-	clock       func() time.Time
-	afterFunc   func(time.Duration, func())
-	log         *slog.Logger
-	bucket      *keyedLimiter
-	sources     *keyedLimiter
-	prefixes    *keyedLimiter
-	addrKey     *addrKey
-	counters    *addrCounters
-	spent       *spentChallenges
-	spends      *spendBatcher
-	powSlots    chan struct{}
-	powSlotWait time.Duration
-	streams     chan struct{}
-	handler     http.Handler
-	abuseMu     sync.Mutex
-	abuseDir    string
-	webFiles    fs.FS
-	web         webClient
+	cfg          Config
+	store        store.Store
+	blobs        store.Blobs
+	ring         *pepper.Ring
+	clock        func() time.Time
+	afterFunc    func(time.Duration, func())
+	timers       *timers
+	log          *slog.Logger
+	bucket       *keyedLimiter
+	sources      *keyedLimiter
+	prefixes     *keyedLimiter
+	addrKey      *addrKey
+	counters     *addrCounters
+	spent        *spentChallenges
+	spends       *spendBatcher
+	powSlots     chan struct{}
+	powSlotWait  time.Duration
+	streams      *streamSlots
+	freeSpace    func(string) (uint64, error)
+	diskLow      atomic.Bool
+	diskReserved atomic.Int64
+	handler      http.Handler
+	abuseMu      sync.Mutex
+	abuseDir     string
+	webFiles     fs.FS
+	web          webClient
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
@@ -90,16 +96,19 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	if err != nil {
 		return nil, err
 	}
+	pending := &timers{}
 	s := &Server{
 		cfg:       cfg,
 		store:     st,
 		blobs:     blobs,
 		ring:      ring,
 		clock:     time.Now,
-		afterFunc: func(d time.Duration, fn func()) { time.AfterFunc(d, fn) },
-		log:       slog.New(slog.NewJSONHandler(os.Stderr, nil)),
+		afterFunc: pending.after,
+		timers:    pending,
+		log:       NewLogger(os.Stderr),
 		abuseDir:  abuseDir(cfg.DataDir),
 		webFiles:  webFiles,
+		freeSpace: freeSpace,
 	}
 	for _, o := range opts {
 		o(s)
@@ -117,9 +126,13 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.spends = newSpendBatcher(st)
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.powSlotWait = powSlotWait
-	s.streams = make(chan struct{}, cfg.MaxStreams)
+	s.streams = newStreamSlots(cfg.MaxStreams)
 	s.handler = s.routes()
 	return s, nil
+}
+
+func (s *Server) Close() {
+	s.timers.stop()
 }
 
 func (s *Server) Handler() http.Handler {
@@ -280,7 +293,9 @@ func (s *Server) RunSweeper(ctx context.Context) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
+	mux.HandleFunc("HEAD /api/v1/instance", s.handleAPINotFound)
 	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
+	mux.HandleFunc("HEAD /api/v1/challenge", s.handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
 	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
 	mux.HandleFunc("HEAD /api/v1/messages/{id}", s.handleAPINotFound)

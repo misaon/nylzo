@@ -119,6 +119,42 @@
       "manage_key": "UFQAkVZhsMpZhPU4ePekewez19430hLj-maILcBE9eQ"
     },
     {
+      "name": "pbkdf2-nfc-composed",
+      "id": "s3iiDMrUxj-FeD9eES9kQQ",
+      "s": "57f4cbae60a5a9e37567ad2a3d9dd636961ed9e048e2cbf1cf4615bd09a72179",
+      "kdf_id": 2,
+      "passphrase": "héslo s češtinou",
+      "hsalt_hex": "e60f4c85f1195c7fe908b335f58b0a24a4b8ae4df9beeec9bbb44b88d617f2bf",
+      "r_hex": "74579d65199da45f8984599ab7d0dcad9b1efdbeb33755ad2c6188aa9cb93c18",
+      "salt_pw_hex": "3eeafc5c25710295a7e8be79bd281b24150e089f9f98bfbd65a4a4d664e41411",
+      "p_hex": "9e5937debfc088a6d7e95e8516f95aed878a010a26b1d33aec900c814d347957",
+      "k_hex": "dd8cfd915acc0638e1b457acf01033fddc1250b9b3317d1d4faee04d175440dc",
+      "v_hex": "5da39bc000384da9227b7ab0a847a82c66df73b79648b6b077a668733b3d8028",
+      "m_hex": "eaada52a572fd6d3334ce7ac39f91dd49a7ab1c6dd53aa368b92e10dc76e4414",
+      "fragment": "1.2.V_TLrmClqeN1Z60qPZ3WNpYe2eBI4svxz0YVvQmnIXk",
+      "read_key": "rgAZu81F_r_JGyBGP7QRuctjfS629yfx1DGrEFF23jE",
+      "verifier_key": "tZAKEwWWAGkG66cm5nztK1NQZGMY9VcapWx6u8hfC5s",
+      "manage_key": "CUB6SAbxOokHrOki7ff54sLFLTTP3zvvKvo4S96dyh8"
+    },
+    {
+      "name": "pbkdf2-nfc-decomposed",
+      "id": "s3iiDMrUxj-FeD9eES9kQQ",
+      "s": "57f4cbae60a5a9e37567ad2a3d9dd636961ed9e048e2cbf1cf4615bd09a72179",
+      "kdf_id": 2,
+      "passphrase": "héslo s češtinou",
+      "hsalt_hex": "e60f4c85f1195c7fe908b335f58b0a24a4b8ae4df9beeec9bbb44b88d617f2bf",
+      "r_hex": "74579d65199da45f8984599ab7d0dcad9b1efdbeb33755ad2c6188aa9cb93c18",
+      "salt_pw_hex": "3eeafc5c25710295a7e8be79bd281b24150e089f9f98bfbd65a4a4d664e41411",
+      "p_hex": "9e5937debfc088a6d7e95e8516f95aed878a010a26b1d33aec900c814d347957",
+      "k_hex": "dd8cfd915acc0638e1b457acf01033fddc1250b9b3317d1d4faee04d175440dc",
+      "v_hex": "5da39bc000384da9227b7ab0a847a82c66df73b79648b6b077a668733b3d8028",
+      "m_hex": "eaada52a572fd6d3334ce7ac39f91dd49a7ab1c6dd53aa368b92e10dc76e4414",
+      "fragment": "1.2.V_TLrmClqeN1Z60qPZ3WNpYe2eBI4svxz0YVvQmnIXk",
+      "read_key": "rgAZu81F_r_JGyBGP7QRuctjfS629yfx1DGrEFF23jE",
+      "verifier_key": "tZAKEwWWAGkG66cm5nztK1NQZGMY9VcapWx6u8hfC5s",
+      "manage_key": "CUB6SAbxOokHrOki7ff54sLFLTTP3zvvKvo4S96dyh8"
+    },
+    {
       "name": "pbkdf2-ascii",
       "id": "XAJHHIpIznO90EKCox8FFg",
       "s": "4a5e6df6ff1553b92bfec13b527f951b558c53e14ccae14b0fb1fc16b8c25d3c",
@@ -1083,6 +1119,103 @@
       "zero_bits": 6,
       "token": "XRix6PMl4vTj4EdCvaXuHIsSO8FpNAKAIncbaNBaXR2zdF--.0000000000000060",
       "difficulty": 6
+    }
+  ],
+  "redact": [
+    {
+      "name": "plain",
+      "reason": "phishing for bank logins",
+      "redacted": "phishing for bank logins"
+    },
+    {
+      "name": "empty",
+      "reason": "",
+      "redacted": ""
+    },
+    {
+      "name": "link",
+      "reason": "see https://nylzo.example/m/BH5FhEHrVykxKJTx-M9tag#1.0.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc please",
+      "redacted": "see https://nylzo.example/m/[redacted][redacted] please"
+    },
+    {
+      "name": "hash-run",
+      "reason": "see https://x.example/p#token-abc def",
+      "redacted": "see https://x.example/p[redacted] def"
+    },
+    {
+      "name": "bare-secret",
+      "reason": "bare J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc end",
+      "redacted": "bare [redacted] end"
+    },
+    {
+      "name": "glued-secret",
+      "reason": "key_1.0.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc",
+      "redacted": "key_1.0.[redacted]"
+    },
+    {
+      "name": "secret-21-chars",
+      "reason": "short J8N6KBvXE20lKaCbIo7A- stays",
+      "redacted": "short J8N6KBvXE20lKaCbIo7A- stays"
+    },
+    {
+      "name": "secret-22-chars",
+      "reason": "long J8N6KBvXE20lKaCbIo7A-q goes",
+      "redacted": "long [redacted] goes"
+    },
+    {
+      "name": "percent-link",
+      "reason": "https://safelinks.example/?url=https%3A%2F%2Fnylzo.example%2Fm%2FBH5FhEHrVykxKJTx-M9tag%231.0.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc",
+      "redacted": "https://safelinks.example/?url=https://nylzo.example/m/[redacted][redacted]"
+    },
+    {
+      "name": "percent-hash-once",
+      "reason": "see p%23token-abc def",
+      "redacted": "see p[redacted] def"
+    },
+    {
+      "name": "percent-hash-twice",
+      "reason": "see p%2523token-abc def",
+      "redacted": "see p[redacted] def"
+    },
+    {
+      "name": "percent-hash-three-times",
+      "reason": "see p%252523token-abc def",
+      "redacted": "see p[redacted] def"
+    },
+    {
+      "name": "percent-hash-four-times",
+      "reason": "see p%25252523token-abc def",
+      "redacted": "see p%23token-abc def"
+    },
+    {
+      "name": "secret-encoded-three-times",
+      "reason": "key %25%32%35%25%33%34%25%34%31%25%32%35%25%33%33%25%33%38%25%32%35%25%33%34%25%34%35%25%32%35%25%33%33%25%33%36%25%32%35%25%33%34%25%34%32%25%32%35%25%33%34%25%33%32%25%32%35%25%33%37%25%33%36%25%32%35%25%33%35%25%33%38%25%32%35%25%33%34%25%33%35%25%32%35%25%33%33%25%33%32%25%32%35%25%33%33%25%33%30%25%32%35%25%33%36%25%34%33%25%32%35%25%33%34%25%34%32%25%32%35%25%33%36%25%33%31%25%32%35%25%33%34%25%33%33%25%32%35%25%33%36%25%33%32%25%32%35%25%33%34%25%33%39%25%32%35%25%33%36%25%34%36%25%32%35%25%33%33%25%33%37%25%32%35%25%33%34%25%33%31%25%32%35%25%33%32%25%34%34%25%32%35%25%33%37%25%33%31%25%32%35%25%33%36%25%34%36%25%32%35%25%33%35%25%33%34%25%32%35%25%33%37%25%34%31%25%32%35%25%33%37%25%33%36%25%32%35%25%33%37%25%33%38%25%32%35%25%33%36%25%34%31%25%32%35%25%33%36%25%33%34%25%32%35%25%33%33%25%33%33%25%32%35%25%33%36%25%34%34%25%32%35%25%33%37%25%33%39%25%32%35%25%33%33%25%33%32%25%32%35%25%33%36%25%33%33%25%32%35%25%33%34%25%34%31%25%32%35%25%33%35%25%33%34%25%32%35%25%33%34%25%34%34%25%32%35%25%33%33%25%33%30%25%32%35%25%33%36%25%34%33%25%32%35%25%33%36%25%33%34%25%32%35%25%33%36%25%33%32%25%32%35%25%33%36%25%33%32%25%32%35%25%33%36%25%33%33",
+      "redacted": "key [redacted]"
+    },
+    {
+      "name": "controls-and-bidi",
+      "reason": "ab‮cd⁦e%E2%80%AEf\nnext",
+      "redacted": "a bc def next"
+    },
+    {
+      "name": "invalid-utf8-escape",
+      "reason": "bad %FF%FE bytes %C3",
+      "redacted": "bad  bytes "
+    },
+    {
+      "name": "replacement-character",
+      "reason": "a�b",
+      "redacted": "ab"
+    },
+    {
+      "name": "zero-width-split",
+      "reason": "J8N6KBvXE20​lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc",
+      "redacted": "[redacted]"
+    },
+    {
+      "name": "emoji",
+      "reason": "🔐 secret",
+      "redacted": "🔐 secret"
     }
   ],
   "server": {

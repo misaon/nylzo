@@ -135,23 +135,37 @@ func TestDeriveVectors(t *testing.T) {
 
 func TestNFCPassphrasesAgree(t *testing.T) {
 	f := loadVectors(t)
-	var composed, decomposed *vectors.Derive
-	for i := range f.Derive {
-		switch f.Derive[i].Name {
-		case "scrypt-nfc-composed":
-			composed = &f.Derive[i]
-		case "scrypt-nfc-decomposed":
-			decomposed = &f.Derive[i]
+	for _, profile := range []string{"scrypt", "pbkdf2"} {
+		var composed, decomposed *vectors.Derive
+		for i := range f.Derive {
+			switch f.Derive[i].Name {
+			case profile + "-nfc-composed":
+				composed = &f.Derive[i]
+			case profile + "-nfc-decomposed":
+				decomposed = &f.Derive[i]
+			}
+		}
+		if composed == nil || decomposed == nil {
+			t.Fatalf("%s nfc vectors missing", profile)
+		}
+		if *composed.Passphrase == *decomposed.Passphrase {
+			t.Fatalf("%s vectors must use different Unicode forms", profile)
+		}
+		if composed.ID != decomposed.ID || composed.S != decomposed.S || composed.P != decomposed.P || composed.K != decomposed.K {
+			t.Fatalf("%s: NFC forms must derive identical keys", profile)
 		}
 	}
-	if composed == nil || decomposed == nil {
-		t.Fatal("nfc vectors missing")
+}
+
+func TestRedactionVectorsMatchTheCore(t *testing.T) {
+	f := loadVectors(t)
+	if len(f.Redact) == 0 {
+		t.Fatal("redaction vectors missing")
 	}
-	if *composed.Passphrase == *decomposed.Passphrase {
-		t.Fatal("vectors must use different Unicode forms")
-	}
-	if composed.ID != decomposed.ID || composed.S != decomposed.S || composed.P != decomposed.P || composed.K != decomposed.K {
-		t.Fatal("NFC forms must derive identical keys")
+	for _, v := range f.Redact {
+		if got := core.RedactReason(v.Reason); got != v.Redacted {
+			t.Fatalf("%s: %q, want %q", v.Name, got, v.Redacted)
+		}
 	}
 }
 

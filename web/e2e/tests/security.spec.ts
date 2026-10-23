@@ -1,4 +1,4 @@
-import { KDF_PBKDF2 } from '@nylzo/core';
+import { KDF_PBKDF2, deriveContent, deriveLink, derivePassphraseKey, encodeBase64url, parseFragment, parsePath, requestKey } from '@nylzo/core';
 import type { Page, Request } from '@playwright/test';
 
 import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
@@ -22,37 +22,57 @@ function record(page: Page): Promise<Recorded>[] {
   return seen;
 }
 
-function encodings(bytes: Buffer): string[] {
-  return [
-    bytes.toString('hex'),
-    bytes.toString('base64'),
-    bytes.toString('base64').replace(/=+$/, ''),
-    bytes.toString('base64url'),
-  ];
+function encodings(bytes: Uint8Array): string[] {
+  const buffer = Buffer.from(bytes);
+  return [buffer.toString('hex'), buffer.toString('base64'), buffer.toString('base64').replace(/=+$/, ''), buffer.toString('base64url')];
 }
 
-test('the fragment and the passphrase never leave the browser in any common encoding (AK2)', async ({ browser }) => {
+function textForms(text: string): string[] {
+  const utf8 = Buffer.from(text, 'utf8');
+  return [text, encodeURIComponent(text), text.replaceAll(' ', '+'), utf8.toString('latin1'), ...encodings(utf8)];
+}
+
+async function linkSecrets(link: string, passphrase: string) {
+  const url = new URL(link);
+  const id = parsePath(url.pathname);
+  const { s } = parseFragment(url.hash);
+  const { r, saltPw } = await deriveLink(id, s);
+  const p = await derivePassphraseKey(KDF_PBKDF2, passphrase, saltPw);
+  const { v } = await deriveContent(id, s, p);
+  return { s, r, saltPw, p, v };
+}
+
+test('the fragment, the passphrase, the keys and the content never leave the browser in any common encoding (AK1, AK2)', async ({ browser }) => {
   const sender = await (await browser.newContext()).newPage();
   const recipient = await (await browser.newContext()).newPage();
   const sent = record(sender);
   const received = record(recipient);
   const passphrase = 'four random words here';
-  const link = await createViaUi(sender, { text: 'tajné', passphrase, kdf: 'pbkdf2' });
+  const text = 'tajné sdělení jen pro příjemce';
+  const file = { name: 'výplatní páska říjen.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n') };
+  const link = await createViaUi(sender, { text, file, passphrase, kdf: 'pbkdf2' });
   await openViaUi(recipient, link, passphrase);
   await expectRevealed(recipient);
+  await expect(recipient.locator('pre')).toHaveText(text);
+  await expect(recipient.locator('bdi')).toHaveText(file.name);
   const fragment = new URL(link).hash.slice(1);
-  const secret = Buffer.from(fragment.split('.')[2] ?? '', 'base64url');
-  expect(secret).toHaveLength(32);
+  const keys = await linkSecrets(link, passphrase);
+  expect(keys.s).toHaveLength(32);
   const forbidden = [
     fragment,
-    passphrase,
-    encodeURIComponent(passphrase),
-    passphrase.replaceAll(' ', '+'),
-    ...encodings(secret),
-    ...encodings(Buffer.from(passphrase, 'utf8')),
+    ...textForms(passphrase),
+    ...textForms(text),
+    ...textForms(file.name),
+    ...textForms(file.buffer.toString('utf8')),
+    ...[keys.s, keys.r, keys.saltPw, keys.p, keys.v].flatMap(encodings),
   ].map((form) => form.toLowerCase());
   const requests = await Promise.all([...sent, ...received]);
   expect(requests.length).toBeGreaterThan(6);
+  const create = requests.find((request) => request.headers['x-nylzo-create'] !== undefined);
+  expect(JSON.parse(Buffer.from(create?.headers['x-nylzo-create'] ?? '', 'base64url').toString('utf8'))).toMatchObject({
+    read_key: encodeBase64url((await requestKey(keys.r)).publicKey),
+    verifier_key: encodeBase64url((await requestKey(keys.v)).publicKey),
+  });
   for (const request of requests) {
     const flat = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
     for (const form of forbidden) {
@@ -82,17 +102,23 @@ test('prefetch and prerender requests get 503 (AK16)', async ({ request }) => {
   }
 });
 
-test('a speculation rules prerender does not spend an open (AK16)', async ({ page, browserName }) => {
+test('a speculation rules prerender reaches the server only as a refused Sec-Purpose request and spends no open (AK16)', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'only Chromium implements speculation rules');
   const message = await createViaApi();
-  await page.route(`${BASE_URL}/prerender-host`, (route) =>
-    route.fulfill({
-      contentType: 'text/html',
-      body: `<!doctype html><script type="speculationrules">${JSON.stringify({ prerender: [{ source: 'list', urls: [message.link] }] })}</script><a href="${message.link}">link</a>`,
-    }),
-  );
+  const path = `/m/${message.idText}`;
+  const speculative = page.context().waitForEvent('response', (response) => new URL(response.url()).pathname === path);
+  await page.route(`${BASE_URL}/prerender-host`, (route) => route.fulfill({ contentType: 'text/html', body: `<!doctype html><a href="${message.link}">link</a>` }));
   await page.goto(`${BASE_URL}/prerender-host`);
-  await page.waitForTimeout(3000);
+  await page.unrouteAll();
+  await page.evaluate((url) => {
+    const rules = document.createElement('script');
+    rules.type = 'speculationrules';
+    rules.textContent = JSON.stringify({ prerender: [{ source: 'list', urls: [url] }] });
+    document.head.append(rules);
+  }, message.link);
+  const response = await speculative;
+  expect((await response.request().allHeaders())['sec-purpose']).toMatch(/^prefetch/);
+  expect(response.status()).toBe(503);
   const status = await message.api.status(message.id, message.manageKey);
   expect(status).toMatchObject({ state: 'available', opensUsed: 0 });
 });
@@ -174,6 +200,81 @@ test('the passphrase fields give password managers nothing and the message field
   for (const screen of [page, reader]) {
     expect(await screen.locator('[autocomplete*="password"], [autocomplete="username"]').count()).toBe(0);
   }
+});
+
+async function leave(page: Page): Promise<void> {
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+}
+
+async function watchShownAfterLeaving(page: Page): Promise<() => Promise<boolean>> {
+  await page.addInitScript(() => {
+    let left = false;
+    let shown = false;
+    window.addEventListener('pagehide', () => {
+      left = true;
+    });
+    new MutationObserver(() => {
+      shown ||= left && document.querySelector('pre') !== null;
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+    Object.defineProperty(window, 'nylzoShownAfterLeaving', { get: () => shown || (left && document.querySelector('pre') !== null) });
+  });
+  return () => page.evaluate(() => (window as unknown as { nylzoShownAfterLeaving: boolean }).nylzoShownAfterLeaving);
+}
+
+test('leaving the page removes the shown message and closes its dialog, so the back/forward cache cannot show it again', async ({ page }) => {
+  const message = await createViaApi({ text: 'gone after leaving', opensMax: 2 });
+  await openViaUi(page, message.link);
+  await expectRevealed(page);
+  await expect(page.locator('pre')).toHaveText('gone after leaving');
+  await page.getByRole('button', { name: 'Report this message' }).click();
+  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await leave(page);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  await expect(page.locator('pre')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Delete the remaining opens' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Report this message' })).toHaveCount(0);
+});
+
+test('a page restored from the back/forward cache loads again and spends no open', async ({ page }) => {
+  const message = await createViaApi({ text: 'still unread', opensMax: 1 });
+  await page.goto(message.link);
+  await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
+  await leave(page);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  const reloaded = page.waitForEvent('load');
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  await reloaded;
+  await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
+  await openViaUi(page, message.link);
+  await expect(page.locator('pre')).toHaveText('still unread');
+});
+
+test('a deletion that answers after the page was left never shows the message again', async ({ page }) => {
+  const message = await createViaApi({ text: 'should stay gone', opensMax: 2 });
+  const shownAfterLeaving = await watchShownAfterLeaving(page);
+  await openViaUi(page, message.link);
+  await expectRevealed(page);
+  const asked = Promise.withResolvers<void>();
+  const answer = Promise.withResolvers<void>();
+  await page.route('**/api/v1/messages/*/burn', async (route) => {
+    asked.resolve();
+    await answer.promise;
+    await route.continue();
+  });
+  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Yes, delete' }).click();
+  await asked.promise;
+  await leave(page);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  const answered = page.waitForResponse((response) => response.url().endsWith('/burn'));
+  answer.resolve();
+  expect((await answered).status()).toBe(204);
+  await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
+  await expect(page.locator('pre')).toHaveCount(0);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  expect(await shownAfterLeaving()).toBe(false);
 });
 
 const files = [

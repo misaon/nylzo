@@ -1,0 +1,34 @@
+{
+	log default {
+		exclude http.log http.handlers http.stdlib
+	}
+}
+
+{$NYLZO_DOMAIN} {
+	header {
+		-Server
+		-Via
+	}
+	reverse_proxy nylzod:8080 {
+		transport http {
+			keepalive 25s
+		}
+	}
+	handle_errors {
+		header -Server
+		respond {err.status_code}
+	}
+}
+
+http://{$NYLZO_DOMAIN} {
+	header -Server
+	redir https://{host}{uri} 308
+}
+
+http:// {
+	abort
+}
+
+https:// {
+	abort
+}

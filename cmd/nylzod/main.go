@@ -59,7 +59,7 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
-	logger := slog.New(slog.NewJSONHandler(stderr, nil))
+	logger := server.NewLogger(stderr)
 	var err error
 	switch cmd {
 	case "help", "-h", "--help":
@@ -93,11 +93,11 @@ func buildVersion() string {
 	return version
 }
 
-func open(cfg server.Config) (*sqlite.Store, *disk.Blobs, error) {
+func open(cfg server.Config, openStore func(context.Context, string) (*sqlite.Store, error)) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, nil, err
 	}
-	st, err := sqlite.Open(context.Background(), filepath.Join(cfg.DataDir, dbFile))
+	st, err := openStore(context.Background(), filepath.Join(cfg.DataDir, dbFile))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -143,7 +143,7 @@ func serve(logger *slog.Logger, getenv func(string) string) error {
 	if err != nil {
 		return err
 	}
-	st, blobs, err := open(cfg)
+	st, blobs, err := open(cfg, sqlite.Open)
 	if err != nil {
 		return err
 	}
@@ -176,6 +176,7 @@ func serve(logger *slog.Logger, getenv func(string) string) error {
 		err = shutdown(httpServer, shutdownTimeout, logger)
 	}
 	waitFor(&sweeper, shutdownTimeout, logger)
+	srv.Close()
 	return err
 }
 
@@ -211,7 +212,7 @@ func sweepOnce(logger *slog.Logger, getenv func(string) string) error {
 	if err := requireStore(cfg.DataDir); err != nil {
 		return err
 	}
-	st, blobs, err := open(cfg)
+	st, blobs, err := open(cfg, sqlite.OpenCurrent)
 	if err != nil {
 		return err
 	}

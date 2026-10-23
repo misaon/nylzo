@@ -50,7 +50,7 @@ func (c *spentChallenges) seen(nonce [challengeNonceLen]byte, expires int64, now
 }
 
 func (c *spentChallenges) evict(now int64) {
-	evictTo(c.expires, c.max, func(exp int64) bool { return now > exp+int64(powClockSkew/time.Second) })
+	evictTo(c.expires, c.max, func(exp int64) bool { return now > exp+int64(clockSkew/time.Second) })
 }
 
 type spendBatch struct {
@@ -182,7 +182,7 @@ func (s *Server) challengeTag(signed []byte) []byte {
 func (s *Server) validChallenge(c [core.ChallengeLen]byte, now time.Time) bool {
 	tagOK := hmac.Equal(s.challengeTag(c[:challengeSigned]), c[challengeSigned:])
 	left := int64(binary.BigEndian.Uint32(c[:4])) - now.Unix()
-	return tagOK && left >= 0 && left <= int64((challengeTTL+powClockSkew)/time.Second)
+	return tagOK && left >= 0 && left <= int64((challengeTTL+clockSkew)/time.Second)
 }
 
 func (s *Server) spendChallenge(ctx context.Context, c [core.ChallengeLen]byte) (bool, error) {

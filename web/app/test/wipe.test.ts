@@ -1,11 +1,18 @@
+import { KDF_PBKDF2, KDF_SCRYPT, type KdfId } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiError } from '../src/lib/api.ts';
 import { createMessage, type CreateDeps } from '../src/lib/create.ts';
-import { createReader } from '../src/lib/read.ts';
+import { KdfWorkerError } from '../src/lib/kdf-protocol.ts';
+import { createReader, type ReadView } from '../src/lib/read.ts';
 import { reportLink } from '../src/lib/report.ts';
-import { fakeApi, type FakeApi } from './fake-api.ts';
+import { fakeApi, type FakeApi, type FakeOptions } from './fake-api.ts';
 
-const { captured } = vi.hoisted(() => ({ captured: [] as Uint8Array[] }));
+const { captured, passphraseKeys, failing } = vi.hoisted(() => ({
+  captured: [] as Uint8Array[],
+  passphraseKeys: [] as Uint8Array[],
+  failing: { requestKey: 0 },
+}));
 
 vi.mock('@nylzo/core', async (importOriginal) => {
   const core = await importOriginal<typeof import('@nylzo/core')>();
@@ -37,33 +44,106 @@ vi.mock('@nylzo/core', async (importOriginal) => {
       keep(keys.v);
       return keys;
     },
+    derivePassphraseKey: async (...args: Parameters<typeof core.derivePassphraseKey>) => {
+      const p = await core.derivePassphraseKey(...args);
+      passphraseKeys.push(p);
+      return p;
+    },
+    requestKey: async (seed: Uint8Array) => {
+      if (failing.requestKey > 0) {
+        failing.requestKey--;
+        throw new Error('this browser has no Ed25519');
+      }
+      return core.requestKey(seed);
+    },
   };
 });
 
 const ORIGIN = 'https://nylzo.test';
+const PASSPHRASE = 'correct horse battery staple';
+
+const wiped = (bytes: Uint8Array) => bytes.length > 0 && bytes.every((byte) => byte === 0);
 
 function zeroed(): boolean[] {
-  return captured.map((bytes) => bytes.length > 0 && bytes.every((byte) => byte === 0));
+  return captured.map(wiped);
 }
 
-async function created(api: FakeApi, opensMax = 1): Promise<string> {
-  const deps: CreateDeps = { api, origin: ORIGIN, scrypt: async () => new Uint8Array(32), solvePow: async () => '' };
-  const message = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase: '', kdfId: 0 }, deps);
+function scryptStub(): CreateDeps['scrypt'] {
+  return async () => {
+    const p = new Uint8Array(32).fill(7);
+    passphraseKeys.push(p);
+    return p;
+  };
+}
+
+function createDeps(api: FakeApi, scrypt = scryptStub()): CreateDeps {
+  return { api, origin: ORIGIN, scrypt, solvePow: async () => '' };
+}
+
+async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0, scrypt = scryptStub()): Promise<string> {
+  const passphrase = kdfId === 0 ? '' : PASSPHRASE;
+  const message = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase, kdfId }, createDeps(api, scrypt));
   captured.length = 0;
+  passphraseKeys.length = 0;
   return message.link;
+}
+
+function readerFor(api: FakeApi, link: string, scrypt = scryptStub()) {
+  const url = new URL(link);
+  const views: ReadView[] = [];
+  const reader = createReader(
+    {
+      api,
+      location: { pathname: url.pathname, hash: url.hash },
+      session: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
+      page: { visible: () => true, prerendering: () => false },
+      dropFragment: () => undefined,
+      scrypt,
+      now: () => Date.now(),
+    },
+    (view) => views.push(view),
+  );
+  return { ...reader, last: () => views.at(-1) };
 }
 
 describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   beforeEach(() => {
     captured.length = 0;
+    passphraseKeys.length = 0;
+    failing.requestKey = 0;
   });
 
   it('wipes S, R, salt_pw and V after creating a message', async () => {
-    const api = fakeApi();
-    const deps: CreateDeps = { api, origin: ORIGIN, scrypt: async () => new Uint8Array(32), solvePow: async () => '' };
-    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', kdfId: 0 }, deps);
+    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', kdfId: 0 }, createDeps(fakeApi()));
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
+  });
+
+  it.each([KDF_PBKDF2, KDF_SCRYPT] as const)('wipes P of profile %i after creating a message', async (kdfId) => {
+    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE, kdfId }, createDeps(fakeApi()));
+    expect(passphraseKeys).toHaveLength(1);
+    expect(passphraseKeys.every((p) => p.length === 32 && wiped(p))).toBe(true);
+  });
+
+  it.each<[string, FakeOptions]>([
+    ['the upload fails', { failCreate: [new ApiError(500, 'internal')] }],
+    ['a retry with a new id fails too', { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', 5)] }],
+  ])('wipes every S, R, salt_pw, V and P when %s', async (_, options) => {
+    const api = fakeApi(options);
+    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE, kdfId: KDF_PBKDF2 }, createDeps(api))).rejects.toThrow();
+    expect(captured.length).toBe(4 * api.calls.filter((call) => call === 'create').length);
+    expect(zeroed().every(Boolean)).toBe(true);
+    expect(passphraseKeys.length).toBeGreaterThan(0);
+    expect(passphraseKeys.every(wiped)).toBe(true);
+  });
+
+  it('wipes S, R and salt_pw when the key derivation fails', async () => {
+    const deps = createDeps(fakeApi(), async () => Promise.reject(new KdfWorkerError()));
+    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE, kdfId: KDF_SCRYPT }, deps)).rejects.toMatchObject({
+      failure: { kind: 'kdf' },
+    });
+    expect(captured).toHaveLength(3);
+    expect(zeroed()).toEqual([true, true, true]);
   });
 
   it('wipes S, R and salt_pw after reporting a pasted link', async () => {
@@ -72,6 +152,16 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(await reportLink(api, ORIGIN, link, 'spam')).toEqual({ outcome: 'accepted' });
     expect(captured).toHaveLength(3);
     expect(zeroed()).toEqual([true, true, true]);
+  });
+
+  it('wipes S, R and salt_pw when a pasted link gives no read key', async () => {
+    const api = fakeApi();
+    const link = await created(api);
+    failing.requestKey = 1;
+    expect(await reportLink(api, ORIGIN, link, 'spam')).toEqual({ outcome: 'failed' });
+    expect(captured).toHaveLength(3);
+    expect(zeroed()).toEqual([true, true, true]);
+    expect(api.calls).not.toContain('report');
   });
 
   it('wipes S when it refuses a link of another service', async () => {
@@ -84,23 +174,68 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it('wipes S, R, salt_pw and V once the reader shows the message', async () => {
     const api = fakeApi();
-    const url = new URL(await created(api, 2));
-    const reader = createReader(
-      {
-        api,
-        location: { pathname: url.pathname, hash: url.hash },
-        session: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
-        page: { visible: () => true, prerendering: () => false },
-        dropFragment: () => undefined,
-        scrypt: async () => new Uint8Array(32),
-        now: () => Date.now(),
-      },
-      () => undefined,
-    );
+    const reader = readerFor(api, await created(api, 2));
     await reader.load();
     await reader.reveal();
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
     expect(await reader.report('after reading')).toEqual({ outcome: 'accepted' });
+  });
+
+  it.each([KDF_PBKDF2, KDF_SCRYPT] as const)('wipes P of profile %i once the reader shows the message', async (kdfId) => {
+    const api = fakeApi();
+    const reader = readerFor(api, await created(api, 1, kdfId));
+    await reader.load();
+    await reader.reveal(PASSPHRASE);
+    expect(reader.last()?.view).toBe('revealed');
+    expect(passphraseKeys).toHaveLength(1);
+    expect(passphraseKeys.every((p) => p.length === 32 && wiped(p))).toBe(true);
+  });
+
+  it('wipes S, R and salt_pw when the page cannot make the read key', async () => {
+    const api = fakeApi();
+    const reader = readerFor(api, await created(api));
+    failing.requestKey = 1;
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'failed' });
+    expect(captured).toHaveLength(3);
+    expect(zeroed()).toEqual([true, true, true]);
+  });
+
+  it('wipes S, R, salt_pw, V and P when the claim fails', async () => {
+    const api = fakeApi();
+    const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
+    api.claim = async () => Promise.reject(new ApiError(500, 'internal'));
+    await reader.load();
+    await reader.reveal(PASSPHRASE);
+    expect(reader.last()).toEqual({ view: 'failed' });
+    expect(captured).toHaveLength(4);
+    expect(zeroed()).toEqual([true, true, true, true]);
+    expect(passphraseKeys.every(wiped)).toBe(true);
+  });
+
+  it('wipes S, R, salt_pw, V and P when the verifier key cannot be made', async () => {
+    const api = fakeApi();
+    const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
+    await reader.load();
+    failing.requestKey = 1;
+    await reader.reveal(PASSPHRASE);
+    expect(reader.last()).toEqual({ view: 'failed' });
+    expect(captured).toHaveLength(4);
+    expect(zeroed()).toEqual([true, true, true, true]);
+    expect(passphraseKeys).toHaveLength(1);
+    expect(passphraseKeys.every(wiped)).toBe(true);
+  });
+
+  it('wipes V and P after a wrong passphrase while it keeps S and salt_pw for the next try', async () => {
+    const api = fakeApi();
+    const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
+    await reader.load();
+    await reader.reveal('a wrong passphrase here');
+    expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong' } });
+    const [s, r, saltPw, v] = captured;
+    expect([s, saltPw].map((bytes) => bytes && wiped(bytes))).toEqual([false, false]);
+    expect([r, v].map((bytes) => bytes && wiped(bytes))).toEqual([true, true]);
+    expect(passphraseKeys.every(wiped)).toBe(true);
   });
 });

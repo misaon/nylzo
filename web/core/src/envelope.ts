@@ -45,9 +45,13 @@ export interface Payload {
   readonly file?: Uint8Array | undefined;
 }
 
+export interface OpenedPayload extends Payload {
+  readonly file?: Uint8Array<ArrayBuffer> | undefined;
+}
+
 export interface Opened {
   readonly header: Header;
-  readonly payload: Payload;
+  readonly payload: OpenedPayload;
 }
 
 const MAX_OPENS = 0xffff;
@@ -127,18 +131,22 @@ export async function seal(
   validateHeader(header);
   validatePolicy(policy);
   const plaintext = buildPlaintext(payload);
-  if (HEADER_LEN + plaintext.length + TAG_LEN > MAX_OBJECT_BYTES) {
-    throw new TooLargeError();
+  try {
+    if (HEADER_LEN + plaintext.length + TAG_LEN > MAX_OBJECT_BYTES) {
+      throw new TooLargeError();
+    }
+    const head = headerBytes(header);
+    const params: AesGcmParams = {
+      name: 'AES-GCM',
+      iv: head.subarray(3, HEADER_LEN),
+      additionalData: aad(header, id, policy),
+      tagLength: GCM_TAG_BITS,
+    };
+    const ciphertext = await crypto.subtle.encrypt(params, k, plaintext);
+    return concat(head, new Uint8Array(ciphertext));
+  } finally {
+    plaintext.fill(0);
   }
-  const head = headerBytes(header);
-  const params: AesGcmParams = {
-    name: 'AES-GCM',
-    iv: head.subarray(3, HEADER_LEN),
-    additionalData: aad(header, id, policy),
-    tagLength: GCM_TAG_BITS,
-  };
-  const ciphertext = await crypto.subtle.encrypt(params, k, plaintext);
-  return concat(head, new Uint8Array(ciphertext));
 }
 
 export async function open(
@@ -156,7 +164,11 @@ export async function open(
     throw new IntegrityError();
   }
   const plaintext = await decrypt(k, header, id, policy, object.subarray(HEADER_LEN));
-  return { header, payload: parsePlaintext(plaintext) };
+  try {
+    return { header, payload: parsePlaintext(plaintext) };
+  } finally {
+    plaintext.fill(0);
+  }
 }
 
 function checkHeaderFields(version: number, kdfId: number, flags: number): KdfId {
@@ -217,7 +229,7 @@ async function decrypt(
   }
 }
 
-function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): Payload {
+function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): OpenedPayload {
   if (plaintext.length < META_LEN_PREFIX) {
     throw new PlaintextError();
   }

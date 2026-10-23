@@ -1,0 +1,101 @@
+version: 2
+project_name: nylzo
+
+before:
+  hooks:
+    - pnpm --dir web install --frozen-lockfile --config.confirmModulesPurge=false
+    - pnpm --dir web --filter @nylzo/web build
+
+builds:
+  - id: nylzod
+    main: &main ./cmd/nylzod
+    binary: nylzod
+    env: &env
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: &flags
+      - -trimpath
+    ldflags: &ldflags
+      - -s -w -X main.version={{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: nylzod
+    ids: [nylzod]
+    formats: [tar.gz]
+    name_template: "nylzod_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+  extra_files:
+    - glob: internal/server/web/dist/index.html
+    - glob: internal/server/web/dist/assets/*
+
+sboms:
+  - artifacts: archive
+
+kos:
+  - id: nylzod
+    build: nylzod
+    main: *main
+    base_image: gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+    repositories: [ghcr.io/misaon/nylzo]
+    platforms: [linux/amd64, linux/arm64]
+    tags: ["{{ .Version }}", latest]
+    bare: true
+    sbom: spdx
+    creation_time: "{{ .CommitTimestamp }}"
+    ko_data_creation_time: "{{ .CommitTimestamp }}"
+    env: *env
+    flags: *flags
+    ldflags: *ldflags
+    labels:
+      org.opencontainers.image.source: https://github.com/misaon/nylzo
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: MIT
+
+signs:
+  - id: checksums
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args: [sign-blob, "--bundle=${signature}", "${artifact}", --yes]
+
+docker_signs:
+  - id: images
+    cmd: cosign
+    artifacts: manifests
+    args: [sign, "${artifact}@${digest}", --yes]
+
+changelog:
+  sort: asc
+
+release:
+  footer: |
+    Verify a download or the image before you run it:
+
+    ```bash
+    cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
+    sha256sum --ignore-missing -c checksums.txt
+    gh attestation verify nylzod_{{ .Version }}_linux_amd64.tar.gz --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref refs/tags/{{ .Tag }} --deny-self-hosted-runners
+    gh attestation verify oci://ghcr.io/misaon/nylzo:{{ .Version }} --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref refs/tags/{{ .Tag }} --deny-self-hosted-runners
+    cosign verify ghcr.io/misaon/nylzo:{{ .Version }} --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
+    ```
+
+    `checksums.txt` also lists the files of the embedded web client.
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -572,7 +573,7 @@ func abuseReport(t *testing.T, h *harness, m *message, ip string) {
 func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	m := newMessage(t, core.KDFNone, "", 1, 86400, "abuse")
 	h.mustCreate(m)
 	h.clock.Advance(3*time.Hour + 17*time.Minute + 5*time.Second)
 	abuseReport(t, h, m, "203.0.113.44")
@@ -584,6 +585,48 @@ func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
 	if err := json.Unmarshal(bytes.TrimSpace(data), &line); err != nil || line["date"] != "2026-10-22" || line["id"] != m.id.String() || len(line) != 3 {
 		t.Fatalf("a stored report must carry only the day, the id and the reason: %s %v", data, err)
 	}
+	dayStart := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	for _, path := range []string{h.abuseFile(h.clock.Now()), filepath.Join(h.dir, "abuse")} {
+		if info, err := os.Stat(path); err != nil || !info.ModTime().Equal(dayStart) {
+			t.Fatalf("%s carries the time of the report: %v %v", filepath.Base(path), info.ModTime(), err)
+		}
+	}
+}
+
+func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, baseConfig(pepperA, nil))
+	fb := h.withFaultyBlobs()
+	burned := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	expired := newMessage(t, core.KDFNone, "", 1, 60, "abuse")
+	opened := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	ending := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	live := newMessage(t, core.KDFNone, "", 2, 3600, "abuse")
+	for _, m := range []*message{burned, expired, opened, ending, live} {
+		h.mustCreate(m)
+	}
+	if _, _, _, err := h.store.MarkEnding(t.Context(), ending.id.String(), store.StateCancelled, h.clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fb.set(func(b *faultyBlobs) { b.failDelete[ending.id.String()] = true })
+	if resp, _ := h.post(burned, "burn", burned.readToken); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("burn: %d", resp.StatusCode)
+	}
+	resp, _ := h.claim(opened, "", "")
+	if resp.StatusCode != 200 || h.ack(opened, resp.Header.Get("X-Nylzo-Lease")).StatusCode != http.StatusNoContent {
+		t.Fatalf("open: %d", resp.StatusCode)
+	}
+	h.clock.Advance(2 * time.Minute)
+	for i, m := range []*message{burned, expired, opened, ending} {
+		abuseReport(t, h, m, fmt.Sprintf("203.0.113.%d", 50+i))
+	}
+	if data, err := h.abuseReports(); (err != nil && !errors.Is(err, os.ErrNotExist)) || len(data) != 0 {
+		t.Fatalf("reports about ended messages were stored: %q %v", data, err)
+	}
+	abuseReport(t, h, live, "203.0.113.60")
+	if data, err := h.abuseReports(); err != nil || !strings.Contains(string(data), live.id.String()) {
+		t.Fatalf("the report about a live message was not stored: %q %v", data, err)
+	}
 }
 
 func TestOldAbuseReportsAreDropped(t *testing.T) {
@@ -592,8 +635,8 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	now := h.clock.Now()
-	oldDays := []time.Time{now.AddDate(0, 0, -21), now.AddDate(0, 0, -15)}
-	recentDay := now.AddDate(0, 0, -1)
+	oldDays := []time.Time{now.AddDate(0, 0, -21), now.AddDate(0, 0, -8), now.AddDate(0, 0, -7)}
+	recentDay := now.AddDate(0, 0, -6)
 	legacy := filepath.Join(h.dir, "abuse-reports.jsonl")
 	write := func() {
 		if err := os.MkdirAll(filepath.Join(h.dir, "abuse"), 0o700); err != nil {
@@ -622,7 +665,7 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 			t.Fatalf("%s kept a report file of an older version: %v", when, err)
 		}
 		if _, err := os.Stat(h.abuseFile(recentDay)); err != nil {
-			t.Fatalf("%s dropped reports younger than 14 days: %v", when, err)
+			t.Fatalf("%s dropped reports younger than 7 days: %v", when, err)
 		}
 	}
 	write()

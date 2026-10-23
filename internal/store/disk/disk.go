@@ -94,6 +94,10 @@ func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) er
 		err = cerr
 	}
 	if err == nil {
+		minute := time.Now().Truncate(time.Minute)
+		err = os.Chtimes(tmp, minute, minute)
+	}
+	if err == nil {
 		err = os.Link(tmp, final)
 	}
 	os.Remove(tmp)

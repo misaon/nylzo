@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -151,7 +152,11 @@ func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	t.Parallel()
 	s, _ := testServer(t, openStore(t), func(c *Config) { c.MaxStreams = 1 })
-	s.streams <- struct{}{}
+	other := netip.MustParseAddr("198.51.100.7")
+	source, ranges := s.addrKey.bucket(other, false), s.addrKey.bucket(other, true)
+	if !s.streams.take(source, ranges) {
+		t.Fatal("the only slot was not free")
+	}
 	id := core.NewID().String()
 	for _, req := range []*http.Request{
 		httptest.NewRequest("POST", "/api/v1/messages/"+id+"/claim", nil),
@@ -163,11 +168,46 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 			t.Fatalf("%s with every stream slot busy: %d %q", req.URL.Path, w.Code, w.Header().Get("Retry-After"))
 		}
 	}
-	<-s.streams
+	s.streams.release(source, ranges)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/messages/"+id+"/claim", nil))
-	if w.Code != http.StatusNotFound || len(s.streams) != 0 {
-		t.Fatalf("a claim with a free slot: %d, %d slots still held", w.Code, len(s.streams))
+	if w.Code != http.StatusNotFound || s.streams.total != 0 || len(s.streams.source) != 0 || len(s.streams.ranges) != 0 {
+		t.Fatalf("a claim with a free slot: %d, %d slots still held", w.Code, s.streams.total)
+	}
+}
+
+func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
+	t.Parallel()
+	s, _ := testServer(t, openStore(t), func(c *Config) { c.MaxStreams = 64 })
+	claim := func(addr string) int {
+		req := httptest.NewRequest("POST", "/api/v1/messages/"+core.NewID().String()+"/claim", nil)
+		req.RemoteAddr = addr + ":1234"
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, req)
+		return w.Code
+	}
+	hold := func(addr string) {
+		a := netip.MustParseAddr(addr)
+		if !s.streams.take(s.addrKey.bucket(a, false), s.addrKey.bucket(a, true)) {
+			t.Fatalf("no slot for %s", addr)
+		}
+	}
+	hold("203.0.113.1")
+	hold("203.0.113.1")
+	if got := claim("203.0.113.1"); got != http.StatusServiceUnavailable {
+		t.Fatalf("a third stream from one address: %d, want 503", got)
+	}
+	if got := claim("198.51.100.1"); got != http.StatusNotFound {
+		t.Fatalf("another address while the first holds its share: %d, want 404 after the slot", got)
+	}
+	for i := 2; i <= 7; i++ {
+		hold(fmt.Sprintf("203.0.113.%d", i))
+	}
+	if got := claim("203.0.113.9"); got != http.StatusServiceUnavailable {
+		t.Fatalf("a ninth stream from one /24: %d, want 503", got)
+	}
+	if got := claim("2001:db8:1:2::1"); got != http.StatusNotFound {
+		t.Fatalf("an IPv6 source while one /24 holds its share: %d, want 404 after the slot", got)
 	}
 }
 
@@ -277,6 +317,7 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 	for name, change := range map[string]func(*Config){
 		"no PoW slot":        func(c *Config) { c.PoWConcurrency = 0 },
 		"no stream slot":     func(c *Config) { c.MaxStreams = 0 },
+		"negative free":      func(c *Config) { c.MinFreeBytes = -1 },
 		"zero burst":         func(c *Config) { c.Rates.BucketBurst = 0 },
 		"zero rate":          func(c *Config) { c.Rates.SourcePerSecond = 0 },
 		"negative sweep":     func(c *Config) { c.SweepInterval = -time.Second },
@@ -335,5 +376,27 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	// gstack-timing-ok: uniform work for every failed key is the contract under test (spec §5.5)
 	if mw, mo := median(wrong), median(off); mo*130 < mw*100 {
 		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", mo, mw)
+	}
+}
+
+func TestUploadsInProgressKeepTheirDiskReservation(t *testing.T) {
+	t.Parallel()
+	s, _ := testServer(t, openStore(t), nil)
+	s.freeSpace = func(string) (uint64, error) { return uint64(s.cfg.MinFreeBytes) + 10, nil }
+	release, ok := s.reserveDisk(6)
+	if !ok {
+		t.Fatal("the first upload did not fit")
+	}
+	if _, ok := s.reserveDisk(6); ok {
+		t.Fatal("a second upload took the room the first one reserved")
+	}
+	release()
+	again, ok := s.reserveDisk(10)
+	if !ok {
+		t.Fatal("a finished upload kept its reservation")
+	}
+	again()
+	if held := s.diskReserved.Load(); held != 0 {
+		t.Fatalf("%d bytes still reserved after every upload ended", held)
 	}
 }

@@ -4,7 +4,7 @@
 
   import { formatWait } from '../lib/format.ts';
   import { getI18n } from '../lib/i18n.svelte.ts';
-  import type { ReportOutcome } from '../lib/report.ts';
+  import { MAX_REASON_BYTES, type ReportOutcome } from '../lib/report.ts';
 
   interface Props {
     readonly name: string;
@@ -26,13 +26,13 @@
   const linkProblem = $derived(
     problems.includes('link_invalid') ? t('report.problem.link_invalid') : problems.includes('link_foreign') ? t('report.problem.link_foreign') : '',
   );
-  const reasonProblem = $derived(problems.includes('reason_too_long') ? t('report.problem.reason_too_long') : '');
+  const reasonProblem = $derived(problems.includes('reason_too_long') ? t('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES }) : '');
   const result = $derived.by(() => {
     switch (outcome?.outcome) {
       case 'accepted':
         return t('report.accepted');
       case 'retry_later':
-        return t('read.retry_later', { time: formatWait(outcome.retryAfter ?? 60, i18n.language) });
+        return t('read.retry_later', { time: formatWait(outcome.retryAfter, i18n.language) });
       case 'failed':
         return t('report.failed');
       default:
@@ -97,7 +97,7 @@
     aria-invalid={reasonProblem !== ''}
     aria-describedby={`${name}-reason-hint ${name}-reason-problem`}
   ></textarea>
-  <p id={`${name}-reason-hint`}>{t('report.reason.hint')}</p>
+  <p id={`${name}-reason-hint`}>{t('report.reason.hint', { bytes: MAX_REASON_BYTES })}</p>
   <p id={`${name}-reason-problem`} data-problem>{reasonProblem}</p>
   <button type="submit" disabled={sending}>{t('report.submit')}</button>
 </form>

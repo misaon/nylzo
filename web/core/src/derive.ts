@@ -1,6 +1,5 @@
 import { arrayBufferBacked, assertLength, concat, utf8 } from './bytes.ts';
 import { hash } from './ids.ts';
-import { assertWellFormedPassphrase, derivePassphraseKey, type KdfId } from './kdf.ts';
 import { ID_LEN, KEY_LEN, SECRET_LEN, TOKEN_LEN } from './limits.ts';
 
 const HSALT_LABEL = 'nylzo/v1/hkdf-salt';
@@ -53,19 +52,6 @@ export async function deriveContent(id: Uint8Array, s: Uint8Array, p: Uint8Array
     ['encrypt', 'decrypt'],
   );
   return { k, v: await expandBits(prk, salt, INFO_VERIFIER, TOKEN_LEN) };
-}
-
-export async function deriveAll(
-  id: Uint8Array,
-  s: Uint8Array,
-  kdfId: KdfId,
-  passphrase: string,
-): Promise<DerivedKeys> {
-  assertWellFormedPassphrase(kdfId, passphrase);
-  const link = await deriveLink(id, s);
-  const p = await derivePassphraseKey(kdfId, passphrase, link.saltPw);
-  const content = await deriveContent(id, s, p);
-  return { link, content };
 }
 
 function importIkm(ikm: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {

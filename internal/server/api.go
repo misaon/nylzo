@@ -144,19 +144,15 @@ func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error
 	writeError(w, http.StatusInternalServerError, errInternal)
 }
 
-func (s *Server) takeStream(w http.ResponseWriter) bool {
-	select {
-	case s.streams <- struct{}{}:
-		return true
-	default:
+func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
+	addr := s.clientAddr(r)
+	source, ranges := s.addrKey.bucket(addr, false), s.addrKey.bucket(addr, true)
+	if !s.streams.take(source, ranges) {
 		setRetryAfter(w, streamBusyRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
-		return false
+		return nil, false
 	}
-}
-
-func (s *Server) releaseStream() {
-	<-s.streams
+	return func() { s.streams.release(source, ranges) }, true
 }
 
 type access struct {
@@ -394,9 +390,14 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, r, http.StatusRequestEntityTooLarge, errTooLarge)
 		return
 	}
-	if err := http.NewResponseController(w).SetReadDeadline(time.Now().Add(max(readTimeout, store.TransferTime(h.Size)))); err != nil {
-		s.log.Error("read-deadline", "err", ErrorText(err))
+	s.setCreateDeadlines(w, time.Now().Add(max(readTimeout, store.TransferTime(h.Size))))
+	releaseDisk, ok := s.reserveDisk(h.Size)
+	if !ok {
+		setRetryAfter(w, diskFullRetry)
+		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+		return
 	}
+	defer releaseDisk()
 	now := s.clock()
 	if retry := s.limitCreate(now, s.clientAddr(r), h.Size); retry > 0 {
 		setRetryAfter(w, retry)
@@ -464,7 +465,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
-	if err := s.blobs.Put(ctx, id.String(), io.MultiReader(bytes.NewReader(header[:]), body), h.Size); err != nil {
+	err = s.blobs.Put(ctx, id.String(), io.MultiReader(bytes.NewReader(header[:]), body), h.Size)
+	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
+	if err != nil {
 		var tooLarge *http.MaxBytesError
 		switch {
 		case errors.Is(err, store.ErrConflict):
@@ -504,6 +507,42 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	stored = true
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
+}
+
+func (s *Server) reserveDisk(size int64) (func(), bool) {
+	if s.cfg.MinFreeBytes == 0 {
+		return func() {}, true
+	}
+	free, err := s.freeSpace(s.cfg.DataDir)
+	needed := uint64(s.cfg.MinFreeBytes) + uint64(s.diskReserved.Add(size))
+	if err == nil && free >= needed {
+		if s.diskLow.Swap(false) {
+			s.log.Info("disk-free-again")
+		}
+		return func() { s.diskReserved.Add(-size) }, true
+	}
+	s.diskReserved.Add(-size)
+	switch {
+	case s.diskLow.Swap(true):
+	case err != nil:
+		s.log.Error("disk-free", "err", ErrorText(err))
+	default:
+		s.log.Error("disk-full")
+	}
+	return nil, false
+}
+
+func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {
+	if err := http.NewResponseController(w).SetReadDeadline(bodyBy); err != nil {
+		s.log.Error("read-deadline", "err", ErrorText(err))
+	}
+	s.setWriteDeadline(w, bodyBy.Add(writeTimeout))
+}
+
+func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
+	if err := http.NewResponseController(w).SetWriteDeadline(by); err != nil {
+		s.log.Error("write-deadline", "err", ErrorText(err))
+	}
 }
 
 func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.Time) {
@@ -609,10 +648,14 @@ func (s *Server) policyHeader(m *store.Message) string {
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !validPathID(w, r) || !s.allowRead(w, r) || !s.takeStream(w) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	defer s.releaseStream()
+	release, ok := s.takeStream(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	verifierHeader := r.Header.Get(headerVerifier)
 	verifierSent := verifierHeader != ""
 	verifier := core.Signature{PublicKey: dummyPublicKey}
@@ -709,9 +752,7 @@ func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, m *store.Messa
 }
 
 func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message, lease string, f io.Reader, size int64) {
-	if err := http.NewResponseController(w).SetWriteDeadline(time.Now().Add(max(writeTimeout, store.TransferTime(size)))); err != nil {
-		s.log.Error("write-deadline", "err", ErrorText(err))
-	}
+	s.setWriteDeadline(w, time.Now().Add(max(writeTimeout, store.TransferTime(size))))
 	if lease != "" {
 		w.Header().Set(headerLease, lease)
 	}
@@ -823,10 +864,14 @@ func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAcces
 
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if !validPathID(w, r) || !s.allowRead(w, r) || !s.takeStream(w) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	defer s.releaseStream()
+	release, ok := s.takeStream(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	la, ok := s.activeLease(w, r)
 	if !ok {
 		return
@@ -863,6 +908,9 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 	switch err := store.AckLease(r.Context(), s.store, s.blobs, la.lease, la.now); {
 	case errors.As(err, &goneErr):
 		s.finishGone(w, r, la.id, goneErr.State, la.now)
+		return
+	case errors.Is(err, store.ErrLeaseInvalid):
+		s.writeCurrentGone(w, r, la.id)
 		return
 	case err != nil:
 		s.writeInternal(w, r, err)

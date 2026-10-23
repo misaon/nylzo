@@ -6,11 +6,57 @@ import { recordViolations } from './violations.ts';
 declare global {
   interface Window {
     nylzoMarker?: number;
+    nylzoWrites?: number;
   }
 }
 
 async function newPage(browser: Browser): Promise<Page> {
   return (await browser.newContext()).newPage();
+}
+
+async function countWrites(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.nylzoWrites = 0;
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<IDBDatabase['transaction']>) {
+      const opened = transaction.apply(this, args);
+      if (opened.mode === 'readwrite') {
+        opened.addEventListener('complete', () => {
+          window.nylzoWrites = (window.nylzoWrites ?? 0) + 1;
+        });
+      }
+      return opened;
+    };
+  });
+}
+
+function storedRecords(page: Page): Promise<{ readonly id: string; readonly endedAt?: number }[]> {
+  return page.evaluate(
+    () =>
+      new Promise((resolve, reject) => {
+        const opening = indexedDB.open('nylzo');
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const all = opening.result.transaction('sent').objectStore('sent').getAll();
+          all.onerror = () => reject(all.error);
+          all.onsuccess = () => {
+            resolve((all.result as { id: string; endedAt?: number }[]).map(({ id, endedAt }) => ({ id, ...(endedAt === undefined ? {} : { endedAt }) })));
+            opening.result.close();
+          };
+        };
+      }),
+  );
+}
+
+async function createdAndOpened(browser: Browser, sender: Page, text: string): Promise<string> {
+  const link = await createViaUi(sender, { text });
+  await expect(sender.getByText('This device remembered the message.')).toBeVisible();
+  const recipient = await newPage(browser);
+  const acked = recipient.waitForResponse((response) => response.url().endsWith('/ack'));
+  await openViaUi(recipient, link);
+  await expectRevealed(recipient);
+  expect((await acked).status()).toBe(204);
+  return new URL(link).pathname.slice(3);
 }
 
 async function confirm(page: Page, answer: string): Promise<void> {
@@ -36,12 +82,13 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
   const focusInItem = () => item.evaluate((element) => element.contains(document.activeElement));
   await cancel.click();
   await confirm(sender, 'Keep it');
-  expect(await focusInItem()).toBe(true);
+  await expect.poll(focusInItem).toBe(true);
   await cancel.click();
   await sender.keyboard.press('Escape');
   await expect(sender.getByRole('dialog')).toBeHidden();
-  expect(await focusInItem()).toBe(true);
+  await expect.poll(focusInItem).toBe(true);
   await cancel.focus();
+  await expect(cancel).toBeFocused();
   await sender.keyboard.press('Enter');
   await confirm(sender, 'Keep it');
   await expect(cancel).toBeFocused();
@@ -59,6 +106,25 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
   await recipient.goto(link);
   await expect(recipient.getByText('The sender cancelled the message.')).toBeVisible();
   expect(await violations()).toEqual([]);
+});
+
+test('a dialog closed with Escape opens again on the very next Enter', async ({ browser }) => {
+  const sender = await newPage(browser);
+  await createViaUi(sender, { text: 'dialog race' });
+  await sender.goto('/sent');
+  const item = sender.getByRole('listitem');
+  await expect(item.getByText('Waiting to be opened.')).toBeVisible();
+  const cancel = item.getByRole('button', { name: 'Cancel message' });
+  for (let round = 0; round < 10; round++) {
+    await cancel.click();
+    await expect(sender.getByRole('dialog')).toBeVisible();
+    await sender.keyboard.press('Escape');
+    await expect(sender.getByRole('dialog')).toBeHidden();
+    await cancel.focus();
+    await sender.keyboard.press('Enter');
+    await expect(sender.getByRole('dialog'), `round ${round}`).toBeVisible();
+    await confirm(sender, 'Keep it');
+  }
 });
 
 test('the manage key lies in IndexedDB only as a non-extractable key (D39)', async ({ browser }) => {
@@ -106,6 +172,42 @@ test('the manage key lies in IndexedDB only as a non-extractable key (D39)', asy
       exported: 'refused',
     },
   ]);
+});
+
+test('the sent list stores when a remembered message ended', async ({ browser }) => {
+  const sender = await newPage(browser);
+  const id = await createdAndOpened(browser, sender, 'ends');
+  expect(await storedRecords(sender)).toEqual([{ id }]);
+  await sender.goto('/sent');
+  await expect(sender.getByRole('listitem').getByText('Opened.')).toBeVisible();
+  await expect.poll(() => storedRecords(sender)).toEqual([{ id, endedAt: expect.any(Number) }]);
+});
+
+test('a status that answers after the sender forgot the message does not store it again (D39)', async ({ browser }) => {
+  const sender = await newPage(browser);
+  await countWrites(sender);
+  await createdAndOpened(browser, sender, 'forget me');
+  const asked = Promise.withResolvers<void>();
+  const answer = Promise.withResolvers<void>();
+  await sender.route('**/api/v1/messages/*/status', async (route) => {
+    asked.resolve();
+    await answer.promise;
+    await route.continue();
+  });
+  await sender.goto('/sent');
+  await asked.promise;
+  await sender.getByRole('listitem').getByRole('button', { name: 'Forget', exact: true }).click();
+  await expect(sender.getByText('This device remembers no messages.')).toBeVisible();
+  expect(await storedRecords(sender)).toEqual([]);
+  const writes = await sender.evaluate(() => window.nylzoWrites ?? 0);
+  const answered = sender.waitForResponse((response) => response.url().endsWith('/status'));
+  answer.resolve();
+  expect((await answered).status()).toBe(200);
+  await sender.waitForFunction((before) => (window.nylzoWrites ?? 0) > before, writes);
+  expect(await storedRecords(sender)).toEqual([]);
+  await sender.unrouteAll();
+  await sender.reload();
+  await expect(sender.getByText('This device remembers no messages.')).toBeVisible();
 });
 
 test('an unchecked box keeps the message off the sent list', async ({ browser }) => {
@@ -210,11 +312,11 @@ test('the last open offers no deletion', async ({ browser }) => {
   await openViaUi(recipient, message.link);
   await expectRevealed(recipient);
   await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toHaveCount(0);
-  await expect(recipient.getByRole('button', { name: 'Report this message' })).toBeVisible();
+  await expect(recipient.getByRole('button', { name: 'Report this message' })).toHaveCount(0);
 });
 
 test('a report from the read page or from /report spends no open (D41)', async ({ browser }) => {
-  const message = await createViaApi({ text: 'reported' });
+  const message = await createViaApi({ text: 'reported', opensMax: 2 });
   const recipient = await newPage(browser);
   const violations = await recordViolations(recipient);
   await recipient.goto(message.link);

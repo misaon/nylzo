@@ -3,8 +3,10 @@ package server
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +61,7 @@ type Config struct {
 	PoWDifficulty  int
 	PoWConcurrency int
 	MaxStreams     int
+	MinFreeBytes   int64
 	Version        string
 }
 
@@ -90,11 +93,14 @@ func Defaults() Config {
 		PoWDifficulty:  4,
 		PoWConcurrency: 4,
 		MaxStreams:     64,
+		MinFreeBytes:   1 << 30,
 		Version:        "dev",
 	}
 }
 
 var ErrConfig = errors.New("server: invalid configuration")
+
+const maxSecretFileBytes = 4096
 
 type envFunc func(string) string
 
@@ -118,16 +124,19 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	}
 	set("NYLZO_LISTEN", func(v string) error { c.Listen = v; return nil })
 	set("NYLZO_DATA_DIR", func(v string) error { c.DataDir = v; return nil })
-	set("NYLZO_PEPPER", func(v string) error {
-		b, perr := pepper.ParseSecret(v)
-		c.Pepper = b
-		return perr
-	})
-	set("NYLZO_PEPPER_PREVIOUS", func(v string) error {
-		b, perr := pepper.ParseSecret(v)
-		c.PepperPrevious = b
-		return perr
-	})
+	setSecret := func(key string, dst *[]byte) {
+		if err != nil {
+			return
+		}
+		b, serr := secretFromEnv(getenv, key)
+		if serr != nil {
+			err = fmt.Errorf("%w: %v", ErrConfig, serr)
+			return
+		}
+		*dst = b
+	}
+	setSecret("NYLZO_PEPPER", &c.Pepper)
+	setSecret("NYLZO_PEPPER_PREVIOUS", &c.PepperPrevious)
 	set("NYLZO_TRUSTED_PROXIES", func(v string) error {
 		for part := range strings.SplitSeq(v, ",") {
 			part = strings.TrimSpace(part)
@@ -190,14 +199,57 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_POW_DIFFICULTY", func(v string) error { return parseInt(v, &c.PoWDifficulty) })
 	set("NYLZO_POW_CONCURRENCY", func(v string) error { return parseInt(v, &c.PoWConcurrency) })
 	set("NYLZO_MAX_STREAMS", func(v string) error { return parseInt(v, &c.MaxStreams) })
+	set("NYLZO_MIN_FREE_BYTES", func(v string) error { return parseInt64(v, &c.MinFreeBytes) })
 	if err != nil {
 		return c, err
 	}
 	c.Limits.MaxObjectBytes = core.ObjectLimit(c.Limits.MaxFileBytes)
 	if needPepper && len(c.Pepper) == 0 {
-		return c, fmt.Errorf("%w: NYLZO_PEPPER is required (32 bytes, hex or base64url)", ErrConfig)
+		return c, fmt.Errorf("%w: NYLZO_PEPPER or NYLZO_PEPPER_FILE is required (32 bytes, hex or base64url)", ErrConfig)
 	}
 	return c, c.Validate()
+}
+
+func secretFromEnv(getenv envFunc, key string) ([]byte, error) {
+	value := strings.TrimSpace(getenv(key))
+	path := strings.TrimSpace(getenv(key + "_FILE"))
+	switch {
+	case value != "" && path != "":
+		return nil, fmt.Errorf("%s and %s_FILE are both set", key, key)
+	case path != "":
+		raw, err := readSecretFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("%s_FILE: %w", key, err)
+		}
+		b, err := pepper.ParseSecret(strings.TrimSpace(string(raw)))
+		if err != nil {
+			return nil, fmt.Errorf("%s_FILE: %w", key, err)
+		}
+		return b, nil
+	case value != "":
+		b, err := pepper.ParseSecret(value)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", key, err)
+		}
+		return b, nil
+	}
+	return nil, nil
+}
+
+func readSecretFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, maxSecretFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > maxSecretFileBytes {
+		return nil, errors.New("the file is larger than a secret can be")
+	}
+	return raw, nil
 }
 
 func (c Config) Validate() error {
@@ -217,6 +269,8 @@ func (c Config) Validate() error {
 		{fmt.Sprintf("NYLZO_POW_CONCURRENCY must be between 1 and %d", MaxPoWConcurrency), c.PoWConcurrency >= 1 && c.PoWConcurrency <= MaxPoWConcurrency},
 		{fmt.Sprintf("NYLZO_MAX_STREAMS must be between 1 and %d", MaxStreams), c.MaxStreams >= 1 && c.MaxStreams <= MaxStreams},
 		{"NYLZO_SWEEP_INTERVAL must not be negative", c.SweepInterval >= 0},
+		{"NYLZO_MIN_FREE_BYTES must not be negative", c.MinFreeBytes >= 0},
+		{"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzod cannot measure free space", c.MinFreeBytes == 0 || freeSpaceSupported},
 		{"NYLZO_PROXY_MODE must be empty or scaleway", c.ProxyMode == ProxyModeNone || c.ProxyMode == ProxyModeScaleway},
 		{"NYLZO_RATE_BUCKET_RPS and NYLZO_RATE_SOURCE_RPS must be positive", r.BucketPerSecond > 0 && r.SourcePerSecond > 0},
 		{"NYLZO_RATE_BUCKET_BURST must be at least 1", r.BucketBurst >= 1},

@@ -10,6 +10,7 @@ import {
   parseChallenge,
   parseId,
   signRequest,
+  transferSeconds,
   utf8,
   verifierHeader,
   type KdfId,
@@ -17,22 +18,25 @@ import {
   type RequestKey,
 } from '@nylzo/core';
 
-export type MessageState = 'available' | 'opened' | 'expired' | 'cancelled' | 'deleted';
+const STATES = ['available', 'opened', 'expired', 'cancelled', 'deleted'] as const;
+const KINDS = [
+  'bad_request',
+  'passphrase',
+  'pow',
+  'id_token',
+  'not_found',
+  'conflict',
+  'gone',
+  'length_required',
+  'too_large',
+  'rate_limited',
+  'internal',
+  'unavailable',
+] as const;
 
-export type ApiErrorKind =
-  | 'bad_request'
-  | 'passphrase'
-  | 'pow'
-  | 'id_token'
-  | 'not_found'
-  | 'conflict'
-  | 'gone'
-  | 'length_required'
-  | 'too_large'
-  | 'rate_limited'
-  | 'internal'
-  | 'unavailable'
-  | 'unexpected';
+export type MessageState = (typeof STATES)[number];
+
+export type ApiErrorKind = (typeof KINDS)[number] | 'unexpected';
 
 export class ApiError extends Error {
   override readonly name = 'ApiError';
@@ -56,6 +60,13 @@ export class ResponseError extends Error {
   override readonly name = 'ResponseError';
   constructor(message = 'the server sent a malformed response') {
     super(message);
+  }
+}
+
+export class StoppedError extends Error {
+  override readonly name = 'StoppedError';
+  constructor() {
+    super('the page stopped the request before it was sent');
   }
 }
 
@@ -135,6 +146,7 @@ export interface ClaimOptions {
   readonly verifierKey?: RequestKey | undefined;
   readonly onLease?: (lease: string) => void;
   readonly onProgress?: DownloadProgress;
+  readonly proceed?: () => boolean;
 }
 
 export interface ApiOptions {
@@ -150,28 +162,15 @@ interface SignedRequest {
   readonly verifier?: RequestKey | undefined;
   readonly headers?: Record<string, string>;
   readonly json?: Json;
+  readonly proceed?: (() => boolean) | undefined;
 }
 
 type Json = Record<string, unknown>;
 
-const STATES: readonly MessageState[] = ['available', 'opened', 'expired', 'cancelled', 'deleted'];
-const KINDS: readonly ApiErrorKind[] = [
-  'bad_request',
-  'passphrase',
-  'pow',
-  'id_token',
-  'not_found',
-  'conflict',
-  'gone',
-  'length_required',
-  'too_large',
-  'rate_limited',
-  'internal',
-  'unavailable',
-];
-
 const SHORT_TIMEOUT_MS = 30_000;
-const TRANSFER_TIMEOUT_MS = 360_000;
+const TRANSFER_MARGIN_MS = 21_000;
+export const TRANSFER_TIMEOUT_MS = transferSeconds(MAX_OBJECT_BYTES) * 1000 + TRANSFER_MARGIN_MS;
+const INITIAL_BODY_BYTES = 64 * 1024;
 
 function isObject(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -299,21 +298,34 @@ export function encodeCreateHeader(request: Omit<CreateRequest, 'object' | 'powT
   return encodeBase64url(utf8(JSON.stringify(header)));
 }
 
+function tooLarge(): ResponseError {
+  return new ResponseError('the object is larger than the protocol allows');
+}
+
+function grown(buffer: Uint8Array<ArrayBuffer>, used: number, needed: number): Uint8Array<ArrayBuffer> {
+  if (needed <= buffer.length) {
+    return buffer;
+  }
+  const larger = new Uint8Array(Math.min(MAX_OBJECT_BYTES, Math.max(needed, buffer.length * 2)));
+  larger.set(buffer.subarray(0, used));
+  return larger;
+}
+
 async function readBody(response: Response, onProgress?: DownloadProgress): Promise<Uint8Array<ArrayBuffer>> {
   const declared = Number(response.headers.get('Content-Length'));
   const total = Number.isSafeInteger(declared) && declared > 0 ? declared : undefined;
   if (total !== undefined && total > MAX_OBJECT_BYTES) {
     await response.body?.cancel();
-    throw new ResponseError('the object is larger than the protocol allows');
+    throw tooLarge();
   }
   if (!response.body) {
     const whole = new Uint8Array(await response.arrayBuffer());
     if (whole.length > MAX_OBJECT_BYTES) {
-      throw new ResponseError('the object is larger than the protocol allows');
+      throw tooLarge();
     }
     return whole;
   }
-  const chunks: Uint8Array[] = [];
+  let out = new Uint8Array(total ?? INITIAL_BODY_BYTES);
   let received = 0;
   const reader = response.body.getReader();
   for (;;) {
@@ -321,21 +333,16 @@ async function readBody(response: Response, onProgress?: DownloadProgress): Prom
     if (done) {
       break;
     }
-    received += value.length;
-    if (received > MAX_OBJECT_BYTES) {
+    if (received + value.length > MAX_OBJECT_BYTES) {
       await reader.cancel();
-      throw new ResponseError('the object is larger than the protocol allows');
+      throw tooLarge();
     }
-    chunks.push(value);
+    out = grown(out, received, received + value.length);
+    out.set(value, received);
+    received += value.length;
     onProgress?.(received, total);
   }
-  const out = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
+  return received === out.length ? out : out.slice(0, received);
 }
 
 export function createApi(options: ApiOptions = {}) {
@@ -373,6 +380,9 @@ export function createApi(options: ApiOptions = {}) {
     if (request.verifier) {
       const verifier = await signRequest(request.verifier, PURPOSE_VERIFIER, request.method, request.path, fresh);
       headers['X-Nylzo-Verifier'] = verifierHeader(verifier);
+    }
+    if (request.proceed?.() === false) {
+      throw new StoppedError();
     }
     return call(request.path, { method: request.method, headers, ...(body === undefined ? {} : { body }) }, timeoutMs);
   }
@@ -459,7 +469,10 @@ export function createApi(options: ApiOptions = {}) {
 
     async claim(id: Uint8Array, readKey: RequestKey, options: ClaimOptions = {}): Promise<Claimed> {
       const response = await ensureOk(
-        await signed({ method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey }, TRANSFER_TIMEOUT_MS),
+        await signed(
+          { method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey, proceed: options.proceed },
+          TRANSFER_TIMEOUT_MS,
+        ),
       );
       const lease = response.headers.get('X-Nylzo-Lease');
       if (lease === null) {

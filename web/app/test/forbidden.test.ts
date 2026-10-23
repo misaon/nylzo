@@ -12,12 +12,21 @@ describe('source guard', () => {
     ['a.svelte', '<p>{@html text}</p>'],
     ['a.svelte', '<p style:color="red">x</p>'],
     ['a.svelte', '<p style="color: red">x</p>'],
+    ['a.ts', 'eval(text);'],
+    ['a.ts', 'const run = globalThis.eval (text);'],
+    ['a.ts', 'const run = new Function(text);'],
+    ['a.ts', 'const run = new  Function;'],
+    ['a.ts', "setTimeout('alert(1)', 0);"],
+    ['a.ts', 'setInterval(`tick()`, 10);'],
+    ['a.ts', 'window.setTimeout("alert(1)", 0);'],
+    ['a.svelte', '<button onclick={() => setInterval("x()", 5)}>x</button>'],
   ])('refuses %s with %j', (path, line) => {
     expect(forbidden(path, `ok\n${line}`)).toEqual([expect.stringMatching(new RegExp(`^${path.replace('.', '\\.')}:2: `))]);
   });
 
   it('allows ordinary code and style: in TypeScript', () => {
     expect(forbidden('a.ts', "new Intl.NumberFormat(language, { style: 'unit' });\nnode.textContent = text;")).toEqual([]);
+    expect(forbidden('a.ts', 'setTimeout(resolve, 0);\nsetInterval(() => tick(), 10);\nconst evaluated = medieval(x);\nconst f: Function = run;')).toEqual([]);
     expect(forbidden('a.svelte', '<p class="text-sm">{text}</p>')).toEqual([]);
   });
 

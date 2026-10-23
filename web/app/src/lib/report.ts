@@ -1,4 +1,4 @@
-import { ID_LEN, deriveLink, encodedLength, parseLink, requestKey, utf8, type Link, type RequestKey } from '@nylzo/core';
+import { ID_LEN, deriveLink, encodedLength, parseLink, requestKey, utf8, type Link, type LinkKeys, type RequestKey } from '@nylzo/core';
 
 import { ApiError, type Api } from './api.ts';
 
@@ -103,10 +103,18 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
     link?.s.fill(0);
     return { outcome: 'invalid', problems };
   }
-  const keys = await deriveLink(link.id, link.s);
-  link.s.fill(0);
-  keys.saltPw.fill(0);
-  const readKey = await requestKey(keys.r);
-  keys.r.fill(0);
-  return sendReport(api, link.id, readKey, reason);
+  const readKey = await readKeyOf(link).catch(() => undefined);
+  return readKey ? sendReport(api, link.id, readKey, reason) : { outcome: 'failed' };
+}
+
+async function readKeyOf(link: Link): Promise<RequestKey> {
+  let keys: LinkKeys | undefined;
+  try {
+    keys = await deriveLink(link.id, link.s);
+    return await requestKey(keys.r);
+  } finally {
+    link.s.fill(0);
+    keys?.saltPw.fill(0);
+    keys?.r.fill(0);
+  }
 }

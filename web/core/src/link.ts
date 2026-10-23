@@ -3,9 +3,9 @@ import { assertLength } from './bytes.ts';
 import { KdfMismatchError, LinkError } from './errors.ts';
 import { idToString, parseId } from './ids.ts';
 import { parseKdfId, type KdfId } from './kdf.ts';
-import { SECRET_LEN } from './limits.ts';
+import { FRAGMENT_VERSION, SECRET_LEN } from './limits.ts';
 
-export const FRAGMENT_LABEL = '1';
+export const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
 const LINK_PATH_PREFIX = '/m/';
 
 export interface Fragment {

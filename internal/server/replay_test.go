@@ -187,6 +187,11 @@ func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 			t.Fatalf("HEAD %s: %d %q", p, resp.StatusCode, body)
 		}
 	}
+	for _, p := range []string{"/api/v1/instance", "/api/v1/challenge", "/api/v1/messages", "/api/v1/abuse", path + "/claim", path + "/ack"} {
+		if resp, body := h.do(request{method: "HEAD", path: p, ip: m.ip}); resp.StatusCode != http.StatusNotFound || len(body) != 0 {
+			t.Fatalf("HEAD %s: %d %q", p, resp.StatusCode, body)
+		}
+	}
 }
 
 func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {

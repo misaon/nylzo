@@ -1,6 +1,8 @@
 package main
 
 import (
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store/disk"
+	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
 func TestSweepOnceNeedsAnExistingStore(t *testing.T) {
@@ -90,7 +93,7 @@ func TestMemoryLimitYieldsToGOMEMLIMIT(t *testing.T) {
 
 func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(server.Config{DataDir: dir})
+	st, _, err := open(server.Config{DataDir: dir}, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +155,7 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 
 func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(server.Config{DataDir: dir})
+	st, _, err := open(server.Config{DataDir: dir}, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +176,7 @@ func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 		t.Fatalf("a clean sweep logged an error: %s", stderr)
 	}
 	if _, err := os.Stat(old); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("sweep-once kept an abuse report older than 14 days: %v", err)
+		t.Fatalf("sweep-once kept an abuse report older than 7 days: %v", err)
 	}
 }
 
@@ -186,5 +189,70 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 	code, _, stderr := runCLI(nil, map[string]string{"NYLZO_DATA_DIR": t.TempDir(), "NYLZO_PEPPER": testPepper, "NYLZO_LISTEN": taken.Addr().String()})
 	if code != 1 || strings.Contains(stderr, `"msg":"sweep`) || strings.Contains(stderr, `"msg":"listening"`) {
 		t.Fatalf("a taken port: exit %d, %s", code, stderr)
+	}
+}
+
+func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
+	_, _, stderr := runCLI([]string{"sweep-once"}, map[string]string{"NYLZO_DATA_DIR": filepath.Join(t.TempDir(), "absent")})
+	var line struct {
+		Time time.Time `json:"time"`
+	}
+	if err := json.Unmarshal([]byte(stderr), &line); err != nil || line.Time.IsZero() || !line.Time.Equal(line.Time.Truncate(time.Minute)) {
+		t.Fatalf("a log line of nylzod carries a time finer than the minute: %q %v", stderr, err)
+	}
+}
+
+func TestOpenCreatesPrivateDirectories(t *testing.T) {
+	cfg := server.Defaults()
+	cfg.DataDir = filepath.Join(t.TempDir(), "data")
+	st, _, err := open(cfg, sqlite.Open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	for _, dir := range []string{cfg.DataDir, filepath.Join(cfg.DataDir, disk.Dir), filepath.Join(cfg.DataDir, disk.Dir, "tmp")} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("%s is open to other users: %v", dir, info.Mode().Perm())
+		}
+	}
+}
+
+func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
+	dir := t.TempDir()
+	st, _, err := open(server.Config{DataDir: dir}, sqlite.Open)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`PRAGMA user_version = 3`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	code, _, stderr := runCLI([]string{"sweep-once"}, map[string]string{"NYLZO_DATA_DIR": dir})
+	if code != 1 || !strings.Contains(stderr, "older schema") {
+		t.Fatalf("sweep-once on an older schema: exit %d, %s", code, stderr)
+	}
+	db, err = sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
+		t.Fatalf("sweep-once migrated the database under a running older server: version %d %v", version, err)
+	}
+	if _, err := db.Exec(`PRAGMA user_version = 5`); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := runCLI([]string{"sweep-once"}, map[string]string{"NYLZO_DATA_DIR": dir}); code != 1 || !strings.Contains(stderr, "newer nylzod") {
+		t.Fatalf("sweep-once on a newer schema: exit %d, %s", code, stderr)
 	}
 }

@@ -3,6 +3,7 @@ package server_test
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -239,9 +240,9 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 	var leases []string
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	for range 3 {
+	for i := range 3 {
 		wg.Go(func() {
-			resp, _, err := h.tryDo(claimRequest(m, "", ""))
+			resp, _, err := h.tryDo(claimRequest(m, "", fmt.Sprintf("198.51.100.%d", 20+i)))
 			if err != nil {
 				t.Error(err)
 				return

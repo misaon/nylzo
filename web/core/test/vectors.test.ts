@@ -10,10 +10,8 @@ import {
   aad,
   assertStrongPassphrase,
   decodeMeta,
-  deriveAll,
   deriveContent,
   deriveLink,
-  derivePassphraseKey,
   encodeBase64url,
   encodeMeta,
   authorizationHeader,
@@ -37,6 +35,7 @@ import {
   type Meta,
   type Policy,
 } from '../src/index.ts';
+import { anyPassphraseKey, deriveAll } from '../src/scrypt.ts';
 import { bytesToHex, fileBytes, hexToBytes, loadVectors, metaOf, sha256Hex } from './helpers.ts';
 
 const vectors = loadVectors();
@@ -78,7 +77,7 @@ describe('derive', () => {
       expect(bytesToHex(link.r)).toBe(v.r_hex);
       expect(bytesToHex(link.saltPw)).toBe(v.salt_pw_hex);
 
-      const p = await derivePassphraseKey(kdfId, v.passphrase ?? '', link.saltPw);
+      const p = await anyPassphraseKey(kdfId, v.passphrase ?? '', link.saltPw);
       expect(bytesToHex(p)).toBe(v.p_hex);
 
       const content = await deriveContent(id, s, p);

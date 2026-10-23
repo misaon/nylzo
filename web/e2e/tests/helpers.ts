@@ -2,7 +2,6 @@ import {
   KDF_NONE,
   deriveContent,
   deriveLink,
-  derivePassphraseKey,
   encodeBase64url,
   formatLink,
   idToString,
@@ -13,6 +12,7 @@ import {
   type KdfId,
   type RequestKey,
 } from '@nylzo/core';
+import { anyPassphraseKey } from '@nylzo/core/scrypt';
 import { test as base, expect, type Page } from '@playwright/test';
 
 import { createApi, type Api } from '../../app/src/lib/api.ts';
@@ -58,7 +58,7 @@ export async function createViaApi(options: ApiMessageOptions = {}): Promise<Api
   const { create } = await api.instance();
   const s = newSecret();
   const link = await deriveLink(create.id, s);
-  const p = await derivePassphraseKey(kdfId, options.passphrase ?? '', link.saltPw);
+  const p = await anyPassphraseKey(kdfId, options.passphrase ?? '', link.saltPw);
   const content = await deriveContent(create.id, s, p);
   const policy = { opensMax, ttlSeconds: 3600 };
   const object = await seal(content.k, newHeader(kdfId), create.id, policy, { meta: { text: options.text ?? 'from the api' } });

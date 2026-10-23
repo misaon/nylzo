@@ -31,8 +31,13 @@ func TestTempDirStaysEmptyAfterPut(t *testing.T) {
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("temp entries left: %v %v", entries, err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "blobs", "61")); err != nil {
+	before := time.Now()
+	info, err := os.Stat(filepath.Join(dir, "blobs", "61"))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if mtime := info.ModTime(); !mtime.Equal(mtime.Truncate(time.Minute)) || mtime.After(before) || before.Sub(mtime) > time.Minute+time.Second {
+		t.Fatalf("a blob file carries the time of its upload: %v", mtime)
 	}
 }
 
