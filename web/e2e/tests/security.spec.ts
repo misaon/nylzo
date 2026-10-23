@@ -202,16 +202,65 @@ test('the passphrase fields give password managers nothing and the message field
   }
 });
 
-test('leaving the page removes the shown message, so the back/forward cache cannot show it again', async ({ page }) => {
+async function leave(page: Page): Promise<void> {
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+}
+
+async function watchShownAfterLeaving(page: Page): Promise<() => Promise<boolean>> {
+  await page.addInitScript(() => {
+    let left = false;
+    let shown = false;
+    window.addEventListener('pagehide', () => {
+      left = true;
+    });
+    new MutationObserver(() => {
+      shown ||= left && document.querySelector('pre') !== null;
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+    Object.defineProperty(window, 'nylzoShownAfterLeaving', { get: () => shown || (left && document.querySelector('pre') !== null) });
+  });
+  return () => page.evaluate(() => (window as unknown as { nylzoShownAfterLeaving: boolean }).nylzoShownAfterLeaving);
+}
+
+test('leaving the page removes the shown message and closes its dialog, so the back/forward cache cannot show it again', async ({ page }) => {
   const message = await createViaApi({ text: 'gone after leaving', opensMax: 2 });
   await openViaUi(page, message.link);
   await expectRevealed(page);
   await expect(page.locator('pre')).toHaveText('gone after leaving');
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+  await page.getByRole('button', { name: 'Report this message' }).click();
+  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await leave(page);
   await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Delete the remaining opens' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Report this message' })).toHaveCount(0);
+});
+
+test('a deletion that answers after the page was left never shows the message again', async ({ page }) => {
+  const message = await createViaApi({ text: 'should stay gone', opensMax: 2 });
+  const shownAfterLeaving = await watchShownAfterLeaving(page);
+  await openViaUi(page, message.link);
+  await expectRevealed(page);
+  const asked = Promise.withResolvers<void>();
+  const answer = Promise.withResolvers<void>();
+  await page.route('**/api/v1/messages/*/burn', async (route) => {
+    asked.resolve();
+    await answer.promise;
+    await route.continue();
+  });
+  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Yes, delete' }).click();
+  await asked.promise;
+  await leave(page);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  const answered = page.waitForResponse((response) => response.url().endsWith('/burn'));
+  answer.resolve();
+  expect((await answered).status()).toBe(204);
+  await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
+  await expect(page.locator('pre')).toHaveCount(0);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  expect(await shownAfterLeaving()).toBe(false);
 });
 
 const files = [

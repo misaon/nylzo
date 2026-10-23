@@ -489,15 +489,13 @@ describe('passphrase handling on the read page', () => {
   });
 });
 
-describe('leaving the page after the reveal', () => {
+describe('leaving the page', () => {
   it('wipes the shown file and drops the read key', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(5000).fill(7);
     const created = await createMessage(input({ text: '', file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 3 }), createDeps(api));
     const r = reader(api, created.link);
     await r.load();
-    r.clear();
-    expect(r.last()?.view).toBe('ready');
     await r.reveal();
     const shown = r.last();
     const file = shown?.view === 'revealed' ? shown.file : undefined;
@@ -509,6 +507,103 @@ describe('leaving the page after the reveal', () => {
     expect(await r.report('after leaving')).toEqual({ outcome: 'ignored' });
     expect(api.calls).not.toContain('burn');
     expect(api.calls).not.toContain('report');
+  });
+
+  it('reveals nothing once the page was left before the reveal', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    r.clear();
+    expect(r.last()).toEqual({ view: 'cleared' });
+    await r.reveal();
+    expect(r.last()).toEqual({ view: 'cleared' });
+    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+  });
+
+  it('keeps the message off the page when a deletion answers after the page was left', async () => {
+    const api = fakeApi();
+    const bytes = new Uint8Array(5000).fill(7);
+    const created = await createMessage(input({ file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 2 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    await r.reveal();
+    const shown = r.last();
+    expect(shown).toMatchObject({ view: 'revealed', burnable: true });
+    const gate = Promise.withResolvers<void>();
+    const burn = api.burn.bind(api);
+    api.burn = async (...args: Parameters<typeof burn>) => {
+      await gate.promise;
+      return burn(...args);
+    };
+    const burning = r.burn();
+    r.clear();
+    const after = r.views.length;
+    gate.resolve();
+    expect(await burning).toEqual({ outcome: 'deleted' });
+    expect(r.views.slice(after - 1)).toEqual([{ view: 'cleared' }]);
+    expect(shown?.view === 'revealed' && shown.file?.bytes.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it('keeps a reveal that finishes after the page was left off the page, and a reload resumes it without another open', async () => {
+    const api = fakeApi();
+    const bytes = new Uint8Array(5000).fill(7);
+    const created = await createMessage(input({ text: 'later', file: { name: 'a.pdf', mime: 'application/pdf', bytes } }), createDeps(api));
+    const session = memorySession();
+    const r = reader(api, created.link, { session });
+    await r.load();
+    const gate = Promise.withResolvers<void>();
+    const asked = Promise.withResolvers<void>();
+    const claim = api.claim.bind(api);
+    let claimed: Uint8Array | undefined;
+    api.claim = async (...args: Parameters<typeof claim>) => {
+      asked.resolve();
+      await gate.promise;
+      const envelope = await claim(...args);
+      claimed = envelope.object;
+      return envelope;
+    };
+    const revealing = r.reveal();
+    await asked.promise;
+    r.clear();
+    const after = r.views.length;
+    gate.resolve();
+    await revealing;
+    expect(r.views.slice(after - 1).every((view) => view.view === 'cleared')).toBe(true);
+    expect(claimed).toBeDefined();
+    expect(api.calls).not.toContain('ack');
+    expect(r.dropped()).toBe(0);
+    expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
+    api.claim = claim;
+    const reloaded = reader(api, created.link, { session });
+    await reloaded.load();
+    expect(reloaded.last()).toMatchObject({ view: 'ready', resumable: true });
+    await reloaded.reveal();
+    expect(reloaded.last()).toMatchObject({ view: 'revealed', text: 'later' });
+    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['claim', 'blob']);
+  });
+
+  it('sends no claim when the page was left during the key derivation', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), createDeps(api));
+    const gate = Promise.withResolvers<void>();
+    const asked = Promise.withResolvers<void>();
+    const r = reader(api, created.link, {
+      scrypt: async (...args) => {
+        asked.resolve();
+        await gate.promise;
+        return scrypt(...args);
+      },
+    });
+    await r.load();
+    const revealing = r.reveal('correct horse battery staple');
+    await asked.promise;
+    r.clear();
+    gate.resolve();
+    await revealing;
+    expect(r.last()).toEqual({ view: 'cleared' });
+    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    expect(storedOf(api, created.link).failures).toBe(0);
   });
 });
 

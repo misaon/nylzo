@@ -12,6 +12,7 @@ const ASSETS = new URL('../../../internal/server/web/dist/assets/', import.meta.
 const MOBILE = { width: 430, height: 932 };
 const DESKTOP = { width: 1440, height: 900 };
 const MOTION = ['transform', 'opacity', 'translate', 'scale', 'rotate'];
+const NOBLE_SCRYPT_MARKER = 'maxmem';
 
 declare global {
   interface Window {
@@ -352,4 +353,11 @@ test('the bundle stays within budget and animates only transform and opacity (AK
   }
   const js = files.filter((name) => name.endsWith('.js')).map((name) => readFileSync(new URL(name, ASSETS), 'utf8')).join('\n');
   expect(js).not.toMatch(/\bnew Function\b|\beval\(|svelte\/compiler/);
+});
+
+test('noble scrypt ships only in the key derivation worker (P5)', ({ browserName }) => {
+  test.skip(browserName !== 'chromium', 'checks the build output once');
+  const scripts = readdirSync(ASSETS).filter((name) => name.endsWith('.js'));
+  const withScrypt = scripts.filter((name) => readFileSync(new URL(name, ASSETS), 'utf8').includes(NOBLE_SCRYPT_MARKER));
+  expect(withScrypt).toEqual([expect.stringMatching(/^kdf-worker-[\w-]+\.js$/)]);
 });

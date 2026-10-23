@@ -82,12 +82,13 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
   const focusInItem = () => item.evaluate((element) => element.contains(document.activeElement));
   await cancel.click();
   await confirm(sender, 'Keep it');
-  expect(await focusInItem()).toBe(true);
+  await expect.poll(focusInItem).toBe(true);
   await cancel.click();
   await sender.keyboard.press('Escape');
   await expect(sender.getByRole('dialog')).toBeHidden();
-  expect(await focusInItem()).toBe(true);
+  await expect.poll(focusInItem).toBe(true);
   await cancel.focus();
+  await expect(cancel).toBeFocused();
   await sender.keyboard.press('Enter');
   await confirm(sender, 'Keep it');
   await expect(cancel).toBeFocused();
@@ -105,6 +106,25 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
   await recipient.goto(link);
   await expect(recipient.getByText('The sender cancelled the message.')).toBeVisible();
   expect(await violations()).toEqual([]);
+});
+
+test('a dialog closed with Escape opens again on the very next Enter', async ({ browser }) => {
+  const sender = await newPage(browser);
+  await createViaUi(sender, { text: 'dialog race' });
+  await sender.goto('/sent');
+  const item = sender.getByRole('listitem');
+  await expect(item.getByText('Waiting to be opened.')).toBeVisible();
+  const cancel = item.getByRole('button', { name: 'Cancel message' });
+  for (let round = 0; round < 10; round++) {
+    await cancel.click();
+    await expect(sender.getByRole('dialog')).toBeVisible();
+    await sender.keyboard.press('Escape');
+    await expect(sender.getByRole('dialog')).toBeHidden();
+    await cancel.focus();
+    await sender.keyboard.press('Enter');
+    await expect(sender.getByRole('dialog'), `round ${round}`).toBeVisible();
+    await confirm(sender, 'Keep it');
+  }
 });
 
 test('the manage key lies in IndexedDB only as a non-extractable key (D39)', async ({ browser }) => {

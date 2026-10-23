@@ -60,6 +60,11 @@ describe('i18n', () => {
     expect(t('report.problem.reason_too_long', limits)).toContain(`${MAX_REASON_BYTES} bytes`);
   });
 
+  it('counts the time a sent entry is kept from the end of its message, as isRetained does (D39)', () => {
+    expect(createI18n('en').t('sent.note', { days: formatDays(RETENTION_DAYS, 'en') })).toContain('disappears 7 days after its message ends.');
+    expect(createI18n('cs').t('sent.note', { days: formatDays(RETENTION_DAYS, 'cs') })).toMatch(/zmizí 7\s+dnů po skončení zprávy\.$/u);
+  });
+
   it('switches the language in place', () => {
     const i18n = createI18n('en');
     const { t } = i18n;

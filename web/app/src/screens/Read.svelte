@@ -102,6 +102,8 @@
   function leave() {
     burned = undefined;
     confirming = false;
+    askingDelete = false;
+    reporting = false;
     reader.clear();
   }
 

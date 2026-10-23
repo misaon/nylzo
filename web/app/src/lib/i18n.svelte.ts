@@ -67,7 +67,7 @@ const cs = {
   'created.not_remembered': 'Zprávu se na tomto zařízení nepodařilo zapamatovat, takže ji odtud nepůjde zrušit.',
 
   'sent.title': 'Odeslané zprávy',
-  'sent.note': 'Seznam drží jen tento prohlížeč a odkazy na zprávy v něm nejsou. Záznam zmizí {days} po vypršení zprávy.',
+  'sent.note': 'Seznam drží jen tento prohlížeč a odkazy na zprávy v něm nejsou. Záznam zmizí {days} po skončení zprávy.',
   'sent.loading': 'Načítám odeslané zprávy…',
   'sent.unavailable': 'Tento prohlížeč stránce nedovolí ukládat data, takže si odeslané zprávy nepamatuje.',
   'sent.empty': 'Toto zařízení si nepamatuje žádné zprávy.',
@@ -239,7 +239,7 @@ const en: Record<MessageKey, string> = {
   'created.not_remembered': 'This device could not remember the message, so you cannot cancel it from here.',
 
   'sent.title': 'Sent messages',
-  'sent.note': 'Only this browser keeps the list, and it holds no links to the messages. An entry disappears {days} after its message expires.',
+  'sent.note': 'Only this browser keeps the list, and it holds no links to the messages. An entry disappears {days} after its message ends.',
   'sent.loading': 'Loading sent messages…',
   'sent.unavailable': 'This browser does not let the page store data, so it cannot remember sent messages.',
   'sent.empty': 'This device remembers no messages.',

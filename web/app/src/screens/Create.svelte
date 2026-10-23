@@ -45,6 +45,7 @@
   let problems = $state.raw<readonly CreateProblem[]>([]);
   let failure = $state.raw<CreateFailure>();
   let progress = $state.raw<CreateProgress>();
+  let submitting = $state(false);
   let created = $state.raw<Shown>();
   let remember = $state(true);
   let remembered = $state<'saving' | 'remembered' | 'failed' | 'off'>('off');
@@ -133,18 +134,28 @@
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
-    if (!limits || progress) {
+    if (!limits || submitting) {
       return;
     }
+    submitting = true;
+    try {
+      await send(limits);
+    } finally {
+      submitting = false;
+      progress = undefined;
+    }
+  }
+
+  async function send(allowed: InstanceLimits) {
     failure = undefined;
     showingProblems = false;
-    const attachment = await readAttachment(file, limits);
+    const attachment = await readAttachment(file, allowed);
     if ('problem' in attachment) {
       await showProblems([attachment.problem]);
       return;
     }
     const input = { text, file: attachment.file, ttlSeconds, opensMax, passphrase, kdfId };
-    const invalid = validateCreate(input, limits);
+    const invalid = validateCreate(input, allowed);
     if (invalid.length > 0) {
       await showProblems(invalid);
       return;
@@ -177,8 +188,6 @@
       } else {
         failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
       }
-    } finally {
-      progress = undefined;
     }
   }
 
@@ -315,7 +324,7 @@
 
         <label><input type="checkbox" bind:checked={remember} /> {t('create.remember')}</label>
 
-        <button type="submit" disabled={progress !== undefined}>{t('create.submit')}</button>
+        <button type="submit" disabled={submitting}>{t('create.submit')}</button>
       </form>
       {#if failure}
         <p role="alert">{failureText(failure)}</p>

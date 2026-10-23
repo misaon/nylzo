@@ -11,9 +11,9 @@
   }
 
   const { id, message, confirm, dismiss, onconfirm, onclose }: Props = $props();
-  const CONFIRMED = 'confirm';
 
   let dialog: HTMLDialogElement | undefined;
+  let reported = false;
 
   const modal: Attachment<HTMLDialogElement> = (element) => {
     dialog = element;
@@ -23,8 +23,13 @@
     };
   };
 
-  function closed(event: Event & { currentTarget: HTMLDialogElement }) {
-    if (event.currentTarget.returnValue === CONFIRMED) {
+  function report(confirmed: boolean) {
+    if (reported) {
+      return;
+    }
+    reported = true;
+    dialog?.close();
+    if (confirmed) {
       onconfirm();
     } else {
       onclose();
@@ -32,8 +37,8 @@
   }
 </script>
 
-<dialog aria-labelledby={id} {@attach modal} onclose={closed}>
+<dialog aria-labelledby={id} {@attach modal} oncancel={() => report(false)} onclose={() => report(false)}>
   <p {id}>{message}</p>
-  <button type="button" onclick={() => dialog?.close()}>{dismiss}</button>
-  <button type="button" onclick={() => dialog?.close(CONFIRMED)}>{confirm}</button>
+  <button type="button" onclick={() => report(false)}>{dismiss}</button>
+  <button type="button" onclick={() => report(true)}>{confirm}</button>
 </dialog>

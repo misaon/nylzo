@@ -214,7 +214,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(passphraseKeys.every(wiped)).toBe(true);
   });
 
-  it('wipes V and P when the verifier key cannot be made, and keeps S for another try', async () => {
+  it('wipes S, R, salt_pw, V and P when the verifier key cannot be made', async () => {
     const api = fakeApi();
     const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
     await reader.load();

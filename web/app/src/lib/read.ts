@@ -145,8 +145,10 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   let busy = false;
   let lease: string | undefined;
   let revealable = false;
+  let left = false;
 
-  const onView = (view: ReadView) => {
+  const onView = (next: ReadView) => {
+    const view = left ? cleared(next) : next;
     revealable = view.view === 'ready';
     revealed = view.view === 'revealed' ? view : undefined;
     if (view.view !== 'ready' && view.view !== 'busy') {
@@ -157,6 +159,13 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
     notify(view);
   };
+
+  function cleared(view: ReadView): ReadView {
+    if (view.view === 'revealed') {
+      view.file?.bytes.fill(0);
+    }
+    return { view: 'cleared' };
+  }
 
   const leaseKey = () => `nylzo:lease:${idText}`;
   const kdfKey = () => `nylzo:kdf:${idText}`;
@@ -373,6 +382,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if ('view' in access) {
       return access;
     }
+    if (left) {
+      return { view: 'cleared' };
+    }
     const fetched = await fetchEnvelope(current, access.verifierKey);
     if ('view' in fetched) {
       return fetched;
@@ -387,6 +399,10 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       opened = await open(access.k, current.id, policy, current.kdfId, fetched.envelope.object);
     } catch {
       return fetched.fromLease && current.kdfId !== KDF_NONE ? readyView({ reason: 'wrong_or_changed' }) : { view: 'tampered' };
+    }
+    if (left) {
+      opened.payload.file?.fill(0);
+      return { view: 'cleared' };
     }
     deps.dropFragment();
     const { text, file } = opened.payload.meta;
@@ -458,7 +474,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       busy = false;
     }
     if (shown) {
-      if (outcome.outcome === 'deleted' || outcome.outcome === 'ended') {
+      if (revealed === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
         onView({ ...shown, burnable: false });
       }
     } else if (outcome.outcome === 'deleted') {
@@ -485,10 +501,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   }
 
   function clear(): void {
-    if (revealed) {
-      revealed.file?.bytes.fill(0);
-      onView({ view: 'cleared' });
-    }
+    left = true;
+    revealed?.file?.bytes.fill(0);
+    onView({ view: 'cleared' });
   }
 
   return { load, reveal, burn, report, clear };
