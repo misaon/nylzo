@@ -118,7 +118,7 @@ Při upgradu zastavte staré procesy dřív, než nový `nylzo serve` otevře da
 
 ## Příkazová řádka
 
-Stejná binárka `nylzo` posílá a čte zprávy z příkazové řádky (D53, D55). Odkaz, passphrase ani správcovský token nikdy nejsou v argumentech, kde by je viděl každý proces přes `ps` a uložila by je historie shellu: přicházejí ze stdin, ze souboru, z proměnné `NYLZO_*` nebo z terminálu bez echa. Argument, který vypadá jako odkaz s klíčem, `nylzo` odmítne dřív, než cokoli pošle. Se serverem mluví jen přes HTTPS, s výjimkou `localhost`, a přesměrování nenásleduje.
+Stejná binárka `nylzo` posílá a čte zprávy z příkazové řádky (D53, D55). Odkaz, passphrase ani správcovský token nikdy nejsou v argumentech, kde by je viděl každý proces přes `ps` a uložila by je historie shellu: přicházejí ze stdin, ze souboru, z proměnné `NYLZO_*` nebo z terminálu bez echa. Argument, který vypadá jako odkaz s klíčem, `nylzo` odmítne dřív, než cokoli pošle. Se serverem mluví jen přes HTTPS. Výjimkou je přesně `localhost` a adresa loopback (127.0.0.1, ::1); takové spojení nejde přes proxy a `nylzo` ověří, že opravdu míří na loopback. Přesměrování nenásleduje. Chybové hlášky nikdy neopakují hodnotu přepínače ani cestu k souboru, aby se tajemství omylem vložené na jejich místo neocitlo v logu.
 
 ```bash
 printf '%s' 'heslo k databázi' | nylzo create --server https://nylzo.example --ttl 1h --manage-token-file spravce.txt
@@ -133,9 +133,9 @@ nylzo cancel --manage-token-file spravce.txt
 nylzo burn < odkaz.txt
 ```
 
-`read` a `burn` berou odkaz ze stdin, z `--link-file` nebo z `NYLZO_LINK`. `read` zapíše text do `message.txt` a přílohu pod očištěným názvem do nového adresáře s právy 0700 v dočasném adresáři (nebo do `--out`), soubory s právy 0600, a vypíše jejich cesty; text na standardní výstup jen s `--stdout`. U zprávy s passphrase se zeptá v terminálu, nebo vezme `--passphrase-file`. Když se stahování přeruší, zkusí ho v témže běhu znovu přes lease a další otevření nespotřebuje. `status` (s `--json` pro skripty) a `cancel` berou správcovský token ze stdin, z `--manage-token-file` nebo z `NYLZO_MANAGE_TOKEN_FILE`.
+`read` a `burn` berou odkaz ze stdin, z `--link-file` nebo z `NYLZO_LINK`; když použijí proměnnou, napíšou to na standardní chybový výstup. `read` si ještě před otevřením zprávy založí nový adresář s právy 0700 v dočasném adresáři (nebo uvnitř `--out`), zapíše do něj text jako `message.txt` a přílohu pod očištěným názvem, soubory s právy 0600, a vypíše jejich cesty, takže žádná kolize názvů nespotřebuje otevření zbytečně. Text na standardní výstup jen s `--stdout`; když jde výstup do terminálu a text obsahuje řídicí znaky, zapíše ho místo toho do souboru. U zprávy s passphrase se zeptá v terminálu, nebo vezme `--passphrase-file`. Když se stahování přeruší, zkusí ho v témže běhu znovu přes lease a další otevření nespotřebuje. `status` (s `--json` pro skripty) a `cancel` berou správcovský token ze stdin, z `--manage-token-file` nebo z `NYLZO_MANAGE_TOKEN_FILE`.
 
-Klíče a passphrase `nylzo` po použití přepíše nulami. V Go je to jen snaha: úklid paměti může nechat kopie, a co jednou prošlo terminálem nebo rourou, mohlo zůstat jinde. Návratové kódy: 0 úspěch, 1 chyba, 2 špatné použití včetně tajemství v argumentu.
+Klíče a passphrase `nylzo` po použití přepíše nulami, ve vlastních kopiích i v kopiích, které dělá jádro při odvození klíčů a podpisu. V Go je to jen snaha: passphrase jako řetězec přepsat nejde, knihovny a úklid paměti mohou nechat další kopie a co jednou prošlo terminálem nebo rourou, mohlo zůstat jinde. Na Windows práva 0700 a 0600 přístup neomezují: soubory dědí oprávnění cílového adresáře. Výchozí dočasný adresář uživatele je soukromý, ale `--out` na sdílené složce zprávu zpřístupní i ostatním. Návratové kódy: 0 úspěch, 1 chyba, 2 špatné použití včetně tajemství v argumentu.
 
 ## Generování vektorů
 

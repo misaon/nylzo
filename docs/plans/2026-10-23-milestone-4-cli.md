@@ -38,9 +38,9 @@ Vlastník chce prototyp v produkci co nejjednodušeji, požadavek na provoz jen 
 - `create` čte text ze stdin, nebo přílohu z `--from-file`. Passphrase z `--passphrase-file`, z `NYLZO_PASSPHRASE_FILE`, nebo s `--ask-passphrase` dvakrát z terminálu bez echa. Server zadá `--server` nebo `NYLZO_SERVER`. Na stdout vypíše jen odkaz.
 - Správcovský klíč M (`status`, `cancel`) zapíše `create` jen na výslovné přání: `--manage-token-file` vytvoří nový soubor s právy 0600, `--print-manage-token` ho vypíše za odkaz. Správcovský záznam má dva řádky, adresu zprávy bez fragmentu a M; neobsahuje `S`, takže zprávu přečíst neumí.
 - `read` a `burn` čtou odkaz ze stdin, z `--link-file` nebo z `NYLZO_LINK`. `status` a `cancel` čtou správcovský záznam ze stdin, z `--manage-token-file` nebo z `NYLZO_MANAGE_TOKEN_FILE`.
-- `read` zapíše text a přílohu do nového soukromého adresáře (0700, soubory 0600, `O_EXCL`) v dočasném adresáři, nebo do `--out`, a vypíše cesty. Text na stdout jen s výslovným `--stdout`. Název přílohy CLI očistí stejně jako web a nikdy nezapíše mimo cílový adresář.
-- Spojení jen přes HTTPS, s výjimkou `localhost` a adres loopback, stejně jako prohlížeč povoluje Web Crypto jen v bezpečném kontextu. Přesměrování CLI odmítne, cookies neukládá.
-- S, R, salt_pw, P, V a M CLI po použití přepíše nulami. Go může při úklidu paměti nechat kopie, proto je to snaha, ne záruka; CLI nikdy nezapisuje tajemství do logu ani do chybové hlášky.
+- `read` založí nový soukromý adresář (0700, soubory 0600, `O_EXCL`) v dočasném adresáři nebo uvnitř `--out` ještě před claimem, zapíše do něj text a přílohu a vypíše cesty. Text na stdout jen s výslovným `--stdout` a bez řídicích znaků, když jde do terminálu. Název přílohy CLI očistí stejně jako web (sdílená tabulka případů v testech) a nikdy nezapíše mimo cílový adresář. Na Windows práva 0700/0600 přístup neomezují.
+- Spojení jen přes HTTPS, s výjimkou přesně `localhost` a adres loopback, stejně jako prohlížeč povoluje Web Crypto jen v bezpečném kontextu; u nich CLI ověří, že spojení opravdu míří na loopback, a nepoužije proxy. Přesměrování CLI odmítne, cookies neukládá. Chybové hlášky neopakují hodnoty přepínačů ani cesty.
+- S, R, salt_pw, P, V a M CLI i jádro (HKDF, Ed25519) po použití přepíšou nulami. Passphrase jako řetězec přepsat nejde a Go může při úklidu paměti nechat kopie, proto je to snaha, ne záruka; CLI nikdy nezapisuje tajemství do logu ani do chybové hlášky.
 
 ## Chování
 
