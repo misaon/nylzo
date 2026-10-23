@@ -62,7 +62,7 @@ V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  seed of 
 pk_X    = Ed25519 public key of seed X (RFC 8032 §5.1.5), for X in R, V, M
 ```
 
-- `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. Derivation accepts any well-formed passphrase, so a recipient can always open a message and the vectors stay valid. A client MUST refuse to create a message with a passphrase shorter than 12 characters (Unicode code points after NFC) and SHOULD warn below 4 words or 16 characters; both cores expose this check.
+- `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. Derivation accepts any well-formed passphrase, so a recipient can always open a message and the vectors stay valid. A client MUST refuse to create a message with a passphrase shorter than 12 characters (Unicode code points after NFC) and SHOULD warn unless the passphrase has at least 16 characters and at least 4 words (D37); both cores expose this check.
 - The passphrase MUST be well-formed Unicode. A core rejects invalid UTF-8 or a lone surrogate before it derives anything, so two cores never derive different keys from the same input.
 - The string literals are ASCII without a terminating NUL. `info` strings are passed to HKDF-Expand verbatim.
 - `S || P` has a fixed length per profile (32 or 64 bytes), so the concatenation is unambiguous.
@@ -101,7 +101,7 @@ object     = header || ciphertext
 ```
 
 - `v` MUST be 1. `text` and `file` are each optional; at least one MUST be present.
-- `file.name`: 1 to 255 bytes of UTF-8, no `/`, `\`, C0 control characters (U+0000 to U+001F) or DEL (U+007F). Clients MUST additionally sanitise the name before display and download.
+- `file.name`: 1 to 255 bytes of UTF-8, no `/`, `\`, C0 control characters (U+0000 to U+001F) or DEL (U+007F). Clients MUST additionally sanitise the name before display and download, and display only the sanitised name, isolated from the direction of the surrounding text (D35).
 - `file.mime`: 0 to 255 bytes. `file.size`: non-negative integer equal to the length of `file_bytes`.
 - Encoders MUST produce the canonical form so both cores emit identical bytes: UTF-8, no whitespace, keys in the order `v`, `text`, `file` (and `name`, `mime`, `size` inside `file`), absent keys omitted, integers in decimal without sign, exponent or fraction. String escaping: `"` → `\"`, `\` → `\\`, U+0008 → `\b`, U+0009 → `\t`, U+000A → `\n`, U+000C → `\f`, U+000D → `\r`, every other code point below U+0020 → `\u00XX` with lowercase hex, every other code point literal UTF-8 (including `/`, U+2028 and U+2029).
 - Decoders MUST accept any RFC 8259 JSON object that satisfies the constraints above, MUST ignore unknown keys, and take the last occurrence of a duplicated key. They MUST reject meta nested deeper than 32 levels; the top-level object is level 1 and brackets inside strings do not count.
@@ -386,6 +386,7 @@ valid     = HMAC tag verifies, −5 s ≤ now − window_start ≤ 120 s,
 - The counter MUST be lowercase hex; a token with `A`–`F` in the counter is invalid.
 - The server verifies with one scrypt call and bounds concurrent verifications (`NYLZO_POW_CONCURRENCY`, default 4, at most 4, since each one holds 16 MiB). The 5 s tolerance before `window_start` absorbs small clock differences between instances. A verification above that bound waits up to 10 s for a slot and then answers 503 with `Retry-After`.
 - Clients that do not implement PoW receive 403 `{"error":"pow"}` while it is required.
+- A client SHOULD fetch the challenge right before it starts solving, after its own key derivation, by calling `GET /api/v1/instance` again and ignoring the `create` part of that answer. It SHOULD stop solving shortly before 120 s after it fetched the challenge and fetch a new one, since the server refuses a token after the window.
 
 ## 9. Transport and headers
 
@@ -395,6 +396,7 @@ valid     = HMAC tag verifies, −5 s ≤ now − window_start ≤ 120 s,
 - Responses other than HTML carry `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
 - HTML responses carry `Content-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf` with a fresh nonce of at least 128 bits per response.
 - `worker-src 'self'` admits the module worker in which the web client runs scrypt for profile 1 and proof of work, one worker per derivation, terminated after it (D28). `trusted-types` admits only the policy that the Svelte runtime creates for component templates and the policy `nylzo-kdf` that creates the worker URL. A worker script is a non-HTML response and gets `default-src 'none'`, so it MUST be a single file without imports.
+- `GET /assets/{name}` serves the files of the embedded web client by exact name: `.js` as `text/javascript; charset=utf-8`, `.css` as `text/css; charset=utf-8` and `.woff2` as `font/woff2`. Any other name, including one that decodes to a path, answers 404. The server refuses to start when the embedded build holds a file of another type, a directory or a precompressed variant without its file, or when its `index.html` lacks the nonce placeholder or references an asset that is not embedded; without a build it serves a placeholder page and logs that. When `Accept-Encoding` accepts `br` or `gzip`, the server sends the precompressed variant from the build with `Content-Encoding`, preferring `br`; every asset response carries `Vary: Accept-Encoding` and, like every response, `Cache-Control: no-store` (D36). Assets pass no token bucket, since they never reach the database (§8).
 - Requests with a `Sec-Purpose` header to `/m/*` or `/api/*` answer 503. Known link-preview user agents receive, for `/m/*`, minimal HTML without script.
 
 ## 10. Logging
