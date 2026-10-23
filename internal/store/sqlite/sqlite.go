@@ -201,8 +201,8 @@ func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
 }
 
 var (
-	ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzod")
-	ErrOlderSchema = errors.New("sqlite: the database has an older schema; start nylzod serve to migrate it")
+	ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzo")
+	ErrOlderSchema = errors.New("sqlite: the database has an older schema; start nylzo serve to migrate it")
 )
 
 func dropPerAddressAttempts(ctx context.Context, tx *sql.Tx) error {

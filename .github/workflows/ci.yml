@@ -155,7 +155,7 @@ jobs:
           node-version-file: web/.node-version
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - name: Build the client that nylzod embeds
+      - name: Build the client that nylzo embeds
         working-directory: web
         run: |
           pnpm install --frozen-lockfile
@@ -163,7 +163,7 @@ jobs:
       - name: Install the Playwright browsers
         working-directory: web/e2e
         run: pnpm exec playwright install --with-deps chromium firefox webkit
-      - name: Chromium, Firefox and WebKit against nylzod
+      - name: Chromium, Firefox and WebKit against nylzo
         working-directory: web/e2e
         run: pnpm e2e
       - name: Keep the Playwright results of a failed run
@@ -204,7 +204,7 @@ jobs:
           distribution: goreleaser
           version: v2.18.3
           args: build --snapshot --clean
-      - run: sha256sum dist/*/nylzod internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
+      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.runner }}

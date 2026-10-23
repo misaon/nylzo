@@ -1,22 +1,23 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const [port = '8090', profile = 'default'] = process.argv.slice(2);
 const root = new URL('../../', import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), 'nylzo-e2e-'));
-const binary = join(dir, 'nylzod');
+const binary = new URL(`./.bin/${port}/nylzo`, import.meta.url).pathname;
+mkdirSync(new URL(`./.bin/${port}/`, import.meta.url), { recursive: true });
 
 const profiles: Record<string, Record<string, string>> = {
   default: {},
   pow: { NYLZO_GLOBAL_DAILY_CREATES: '8', NYLZO_POW_DIFFICULTY: '4' },
 };
 
-execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nylzod'], { cwd: root, stdio: 'inherit' });
+execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nylzo'], { cwd: root, stdio: 'inherit' });
 
-const server = spawn(binary, [], {
+const server = spawn(binary, ['serve'], {
   stdio: 'inherit',
   env: {
     ...process.env,

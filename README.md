@@ -2,7 +2,7 @@
 
 Nylzo je open-source služba pro jednorázové sdílení citlivých zpráv a souborů do 5 MB. Obsah se šifruje v klientovi, server dostává jen ciphertext a HMAC důkazy; odkaz nese klíč jen ve fragmentu URL, který prohlížeč na server nikdy neposílá. Návrh a jeho zdůvodnění jsou v `docs/designs/nylzo-architecture-research.md`, normativní zápis protokolu v1 je v `spec/protocol.md`.
 
-Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient ve Svelte 5 (plány v `docs/plans/`) vytvoří a otevře zprávu s textem nebo souborem, volitelně s passphrase, a umí PoW. Odesílatel na `/sent` vidí stav zpráv zapamatovaných na zařízení a může je zrušit, příjemce může zprávu smazat a kdokoli s odkazem ji může nahlásit na `/report`. Obrazovky jsou zatím jen sémantická kostra bez vzhledu. Vydání se sestavují reprodukovatelně a podepisují (`.github/workflows/release.yml`) a `deploy/compose` obsahuje příklad nasazení s Caddy. CLI a adaptér postgres+s3 zatím nejsou součástí.
+Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a jednu binárku `nylzo`, která je zároveň příkazová řádka i server s úložištěm SQLite a disk a s vloženým webovým klientem (D53). Webový klient ve Svelte 5 (plány v `docs/plans/`) vytvoří a otevře zprávu s textem nebo souborem, volitelně s passphrase, a umí PoW. Odesílatel na `/sent` vidí stav zpráv zapamatovaných na zařízení a může je zrušit, příjemce může zprávu smazat a kdokoli s odkazem ji může nahlásit na `/report`. Obrazovky jsou zatím jen sémantická kostra bez vzhledu. Vydání se sestavují reprodukovatelně a podepisují (`.github/workflows/release.yml`) a `deploy/compose` obsahuje příklad nasazení s Caddy. Adaptér postgres+s3 zatím není součástí.
 
 ## Rozložení repozitáře
 
@@ -14,13 +14,13 @@ Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané sp
 | `internal/pepper` | serverové klíče podle účelu z pepperu a rotace |
 | `internal/store` | rozhraní úložiště, adaptér `sqlite` a `disk`, sdílená testovací sada |
 | `internal/server` | HTTP server: endpointy, limity, PoW, hlavičky, úklid |
-| `cmd/nylzod` | binárka serveru (`serve`, `sweep-once`, `version`) |
+| `cmd/nylzo`, `internal/cli`, `internal/client` | binárka `nylzo`: příkazy `create`, `read`, `status`, `cancel`, `burn`, `serve`, `sweep-once`, `version` a HTTP klient nad jádrem |
 | `cmd/nylzo-vectors` | generátor vektorů |
 | `web/core` | TypeScript jádro `@nylzo/core` (Web Crypto, scrypt z `@noble/hashes`, PoW) |
 | `web/app` | webový klient `@nylzo/web` (Svelte 5, Vite 8, Tailwind 4): HTTP klient, toky vytvoření a čtení, worker pro scrypt a PoW, obrazovky bez vzhledu a slovník cs a en |
-| `web/e2e` | testy Playwright proti `nylzod` se vloženým klientem |
-| `internal/server/web` | zástupná stránka; `dist/` je výstup sestavení `web/app`, který `nylzod` vkládá |
-| `deploy/compose` | příklad self-hostu: `nylzod` za Caddy s TLS, pepper jako Docker secret |
+| `web/e2e` | testy Playwright proti `nylzo serve` se vloženým klientem, včetně výměny zpráv mezi CLI a prohlížečem |
+| `internal/server/web` | zástupná stránka; `dist/` je výstup sestavení `web/app`, který `nylzo` vkládá |
+| `deploy/compose` | příklad self-hostu: `nylzo serve` za Caddy s TLS, pepper jako Docker secret |
 | `.goreleaser.yaml`, `.github/workflows/release.yml` | vydání: binárky, image na ghcr.io, podpisy, SBOM a provenance |
 
 ## Požadavky
@@ -34,7 +34,7 @@ Server potřebuje 32bajtový pepper, tajemství mimo databázi, kterým podepisu
 
 ```bash
 export NYLZO_PEPPER="$(openssl rand -hex 32)"
-go run ./cmd/nylzod
+go run ./cmd/nylzo serve
 ```
 
 Server naslouchá na `:8080`, data ukládá do `./data` (soubor `nylzo.db` a adresář `blobs`). Pepper si uložte; bez něj server žádný existující token neověří a živé zprávy zaniknou.
@@ -54,12 +54,12 @@ cd web && pnpm install --frozen-lockfile && pnpm --filter @nylzo/web build
 Úklid běží uvnitř serveru každých 5 minut. Pro nasazení s externím plánovačem nastavte `NYLZO_SWEEP_INTERVAL=0` a spouštějte:
 
 ```bash
-go run ./cmd/nylzod sweep-once
+go run ./cmd/nylzo sweep-once
 ```
 
-Příkaz `sweep-once` pepper nepotřebuje. Databázi nemigruje: když má starší schéma, skončí chybou a migraci provede až `nylzod serve`, takže plánovač nikdy nezmění schéma pod běžícím starším serverem. Image plánovače proto aktualizujte až po serveru.
+Příkaz `sweep-once` pepper nepotřebuje. Databázi nemigruje: když má starší schéma, skončí chybou a migraci provede až `nylzo serve`, takže plánovač nikdy nezmění schéma pod běžícím starším serverem. Image plánovače proto aktualizujte až po serveru.
 
-Příkazy `nylzod` jsou `serve` (výchozí), `sweep-once`, `version` a `help`. Žádný příkaz nebere další argumenty. Neznámý příkaz nebo argument vypíše nápovědu na standardní chybový výstup a skončí kódem 2, chyba za běhu kódem 1. Chybu konfigurace server zaloguje i s názvem proměnné.
+Serverové příkazy `nylzo` jsou `serve` a `sweep-once`; žádný nebere argumenty ani přepínače, konfiguraci čtou z proměnných prostředí. `nylzo` bez příkazu vypíše nápovědu. Neznámý příkaz nebo argument vypíše nápovědu na standardní chybový výstup a skončí kódem 2, chyba za běhu kódem 1. Chybu konfigurace server zaloguje i s názvem proměnné. Server běží na Linuxu a macOS; na Windows `serve` odmítne start, protože tam chybí fsync adresáře i kontrola volného místa (D54), a doporučí WSL nebo Docker.
 
 ### Proměnné prostředí
 
@@ -96,7 +96,7 @@ Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE
 
 Hlášení zneužití podepsaná klíčem čtení zprávy se zapisují pro ruční posouzení do souboru na každý den UTC, `data/abuse/RRRR-MM-DD.jsonl`; server do něj jen připisuje. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Hlášení o už ukončené zprávě přijme, ale neuloží. Na jednu zprávu uloží nejvýš 3 hlášení denně. Limit platí jen na zprávu, aby žádný řádek nespojoval zprávu s adresou, a jeden ohlašovatel ho proto může vyčerpat. Když by hlášení zvětšilo soubory dohromady nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubory je pak potřeba zpracovat a smazat. Hlášení obsahuje jen datum UTC, id a upravený důvod, čas dne v něm není a čas změny souboru server nastaví na začátek dne. Soubory starší než 7 dní server smaže při každém úklidu, i při `sweep-once`, a před každým novým hlášením.
 
-Paměť: bez proměnné `GOMEMLIMIT` si `nylzod serve` nastaví měkký limit paměti 192 MiB, aby se ověřování PoW a čekající uploady vešly do kontejneru s 256 MB. Vlastní `GOMEMLIMIT` má přednost. Mezipaměť SQLite leží mimo tento limit, proto je omezená na 512 KiB na spojení. Přes nešifrované HTTP/2 (h2c) drží server nejvýš 64 KiB nepřečteného těla na stream a 1 MiB na spojení.
+Paměť: bez proměnné `GOMEMLIMIT` si `nylzo serve` nastaví měkký limit paměti 192 MiB, aby se ověřování PoW a čekající uploady vešly do kontejneru s 256 MB. Vlastní `GOMEMLIMIT` má přednost. Mezipaměť SQLite leží mimo tento limit, proto je omezená na 512 KiB na spojení. Přes nešifrované HTTP/2 (h2c) drží server nejvýš 64 KiB nepřečteného těla na stream a 1 MiB na spojení.
 
 Soubory databáze (`nylzo.db` a jeho `-wal` a `-shm`) vznikají s právy 0600. Existující soubor server nepřenastavuje, proto adresář dat nedávejte do sdíleného umístění. Smazané řádky SQLite přepisuje nulami (`secure_delete`). Každý commit hned vrátí z WAL do databáze (`wal_autocheckpoint = 1`), takže WAL drží jen poslední transakci a neukáže pořadí dřívějších zápisů. Stojí to tři synchronizace disku navíc na každou zápisovou transakci (na Linuxu čtyři `fsync` místo jednoho). Zápis dělá každý podepsaný požadavek, protože spotřebuje výzvu, takže na pomalém disku, třeba SD kartě nebo síťovém svazku, tohle určuje, kolik požadavků za sekundu server zvládne. Dočasná data SQLite zůstávají v paměti (`temp_store = MEMORY`), takže kopie řádků nikdy nevznikne v dočasném adresáři mimo adresář dat. Po každém úklidu server WAL zkrátí na nulu a databázi ze starší verze při prvním otevření jednou zkompaktuje (`VACUUM`). Replikaci WAL, třeba Litestream, nepoužívejte: brání checkpointům serveru a stránky WAL ukládá do repliky, kde by zůstaly smazané řádky i pořadí zápisů. Čtení blobu nemění čas přístupu k souboru (na Linuxu `O_NOATIME`); svazek s daty přesto připojte s `noatime`. Co si po smazání pamatuje souborový systém nebo poskytovatel úložiště, server neovlivní.
 
@@ -112,9 +112,30 @@ Klient nikdy neposílá R, V ani M. Jsou to semínka klíčů Ed25519: při vytv
 
 Logy obsahují čas zaokrouhlený na minutu, metodu, vzor cesty a stav, u všech cest kromě vytvoření, claimu a blobu i latenci; u těch tří latence sleduje velikost zprávy. Velikost odpovědi v logu není nikde, protože u metadat a status prozrazuje počty číslic v hodnotách zprávy. Id zprávy v nich není. Nikdy neobsahují surovou cestu, cestu k souboru blobu, hlavičku `Authorization`, hlavičky `X-Nylzo-*`, těla ani adresy klientů. Chyby úložiště se logují jen jako operace a systémová chyba. Při velmi malém provozu může čas řádku sedět na minutu vytvoření nebo otevření některé zprávy. Interní chyby `net/http` se logují jen jako kategorie bez textu.
 
-`nylzod sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn a cancel si před smazáním blobu zapíšou zamýšlený stav. Expirovaná zpráva zápis nepotřebuje, protože ji ukončuje samo `expires_at`. Po pádu procesu konec dokončí další požadavek nebo úklid. Chybějící blob u neexpirované zprávy bez zapsaného stavu server hlásí jako chybu 500, zprávu nesmaže a claim kvůli němu nespotřebuje otevření.
+`nylzo sweep-once` skončí nenulovým kódem, když některý krok úklidu selže. Vestavěný úklid běží i hned po startu. Denní kontrola osiřelých blobů se zopakuje při dalším úklidu, dokud se jí nepodaří vypsat řádky i úložiště blobů. Burn a cancel si před smazáním blobu zapíšou zamýšlený stav. Expirovaná zpráva zápis nepotřebuje, protože ji ukončuje samo `expires_at`. Po pádu procesu konec dokončí další požadavek nebo úklid. Chybějící blob u neexpirované zprávy bez zapsaného stavu server hlásí jako chybu 500, zprávu nesmaže a claim kvůli němu nespotřebuje otevření.
 
-Při upgradu zastavte staré procesy dřív, než nový `nylzod` otevře databázi; přidá do ní sloupce `ending` a `next_attempt_at`, odstraní tabulku `passphrase_attempts` a sloupce `day_fail_count` a `day_fail_date`, přestaví tabulky `messages`, `tombstones` a `rate_counters` bez rowid, smaže z `rate_counters` čítače podle adres a jednou spustí `VACUUM`. Databáze dostane verzi schématu 4 se spouštěči, které zastaví zápisy starších verzí: čítače podle adres, nonce PoW s časem a lease s pořadovým číslem. Starší verze proto s upgradovanou databází selže při vytvoření, metadatech, claimu, stažení blobu i hlášení zneužití. Databázi s novější verzí schématu server odmítne otevřít. Po upgradu se ke starší verzi nevracejte. Zprávy vytvořené verzí, která ještě posílala R, V a M jako tokeny, po upgradu nejde otevřít ani spravovat; vyprší nejpozději za 7 dní.
+Při upgradu zastavte staré procesy dřív, než nový `nylzo serve` otevře databázi; přidá do ní sloupce `ending` a `next_attempt_at`, odstraní tabulku `passphrase_attempts` a sloupce `day_fail_count` a `day_fail_date`, přestaví tabulky `messages`, `tombstones` a `rate_counters` bez rowid, smaže z `rate_counters` čítače podle adres a jednou spustí `VACUUM`. Databáze dostane verzi schématu 4 se spouštěči, které zastaví zápisy starších verzí: čítače podle adres, nonce PoW s časem a lease s pořadovým číslem. Starší verze proto s upgradovanou databází selže při vytvoření, metadatech, claimu, stažení blobu i hlášení zneužití. Databázi s novější verzí schématu server odmítne otevřít. Po upgradu se ke starší verzi nevracejte. Zprávy vytvořené verzí, která ještě posílala R, V a M jako tokeny, po upgradu nejde otevřít ani spravovat; vyprší nejpozději za 7 dní.
+
+## Příkazová řádka
+
+Stejná binárka `nylzo` posílá a čte zprávy z příkazové řádky (D53, D55). Odkaz, passphrase ani správcovský token nikdy nejsou v argumentech, kde by je viděl každý proces přes `ps` a uložila by je historie shellu: přicházejí ze stdin, ze souboru, z proměnné `NYLZO_*` nebo z terminálu bez echa. Argument, který vypadá jako odkaz s klíčem, `nylzo` odmítne dřív, než cokoli pošle. Se serverem mluví jen přes HTTPS. Výjimkou je přesně `localhost` a adresa loopback (127.0.0.1, ::1); takové spojení nejde přes proxy a `nylzo` ověří, že opravdu míří na loopback. Přesměrování nenásleduje. Chybové hlášky nikdy neopakují hodnotu přepínače ani cestu k souboru, aby se tajemství omylem vložené na jejich místo neocitlo v logu. Text od serveru nebo z certifikátu do nich `nylzo` nepouští, a co v hlášce zůstane, vypíše s řídicími znaky jako `\u001b`, takže server ani útočník v síti nepřepíše terminál.
+
+```bash
+printf '%s' 'heslo k databázi' | nylzo create --server https://nylzo.example --ttl 1h --manage-token-file spravce.txt
+```
+
+`create` vypíše jen odkaz. Text bere ze stdin (z terminálu jako jeden skrytý řádek), přílohu z `--from-file`. Passphrase přidá `--passphrase-file soubor` (první řádek), `NYLZO_PASSPHRASE_FILE` nebo `--ask-passphrase` (dvakrát z terminálu bez echa); profil zvolí `--kdf scrypt|pbkdf2`. Server lze zadat i proměnnou `NYLZO_SERVER`. Správcovský token pro stav a zrušení zapíše jen `--manage-token-file` (nový soubor s právy 0600) nebo `--print-manage-token`; má dva řádky, adresu zprávy bez části za `#` a token, a zprávu s ním přečíst nejde.
+
+```bash
+nylzo read --link-file odkaz.txt
+nylzo status --manage-token-file spravce.txt
+nylzo cancel --manage-token-file spravce.txt
+nylzo burn < odkaz.txt
+```
+
+`read` a `burn` berou odkaz ze stdin, z `--link-file` nebo z `NYLZO_LINK`; když použijí proměnnou, napíšou to na standardní chybový výstup. `read` si ještě před otevřením zprávy založí nový adresář s právy 0700 v dočasném adresáři (nebo uvnitř `--out`), zapíše do něj text jako `message.txt` a přílohu pod očištěným názvem, soubory s právy 0600, a vypíše jejich cesty, takže žádná kolize názvů nespotřebuje otevření zbytečně. Když zápis selže, zkusí druhý nový adresář vedle prvního, nikdy jinde. Text na standardní výstup jen s `--stdout`; když jde výstup do terminálu a text obsahuje řídicí znaky, zapíše ho místo toho do souboru. U zprávy s passphrase se zeptá v terminálu, nebo vezme `--passphrase-file`; Ctrl-C během skrytého dotazu vrátí terminálu echo a `nylzo` ukončí. Když se stahování přeruší, zkusí ho v témže běhu znovu přes lease a další otevření nespotřebuje. `status` (s `--json` pro skripty) a `cancel` berou správcovský token ze stdin, z `--manage-token-file` nebo z `NYLZO_MANAGE_TOKEN_FILE`.
+
+Klíče a passphrase `nylzo` po použití přepíše nulami, ve vlastních kopiích i v kopiích, které dělá jádro při odvození klíčů a podpisu. V Go je to jen snaha: passphrase jako řetězec přepsat nejde, knihovny a úklid paměti mohou nechat další kopie a co jednou prošlo terminálem nebo rourou, mohlo zůstat jinde. Na Windows práva 0700 a 0600 přístup neomezují: soubory dědí oprávnění cílového adresáře. Výchozí dočasný adresář uživatele je soukromý, ale `--out` na sdílené složce zprávu zpřístupní i ostatním. Návratové kódy: 0 úspěch, 1 chyba, 2 špatné použití včetně tajemství v argumentu.
 
 ## Generování vektorů
 
@@ -146,7 +167,7 @@ Těžký vektor v TypeScriptu běží jen s `NYLZO_HEAVY_TESTS=1` (CI ho zapín�
 
 `svelte-check` 4.7.7 podporuje TypeScript nejvýš 6, proto `web/app` kontroluje typy přes TypeScript 6.0.3; `web/core` a `web/e2e` používají TypeScript 7.
 
-E2e testy sestaví `nylzod` z aktuálního kódu a spustí ho s dočasným adresářem dat. Potřebují sestaveného klienta a prohlížeče Playwright; Go hledají v `PATH`, nebo v proměnné `NYLZO_GO`:
+E2e testy sestaví `nylzo` z aktuálního kódu a spustí ho s dočasným adresářem dat. Potřebují sestaveného klienta a prohlížeče Playwright; Go hledají v `PATH`, nebo v proměnné `NYLZO_GO`:
 
 ```bash
 cd web && pnpm --filter @nylzo/web build && cd e2e && pnpm exec playwright install chromium firefox webkit && pnpm e2e
@@ -176,10 +197,10 @@ go test -run='^$' -bench=. ./internal/core ./internal/store/sqlite ./internal/se
 
 ## Vydání
 
-Vydání spouští podepsaný anotovaný tag `v*` (D43). Workflow `release` nejdřív ověří, že GitHub podpis tagu ověřil a tag podepsal e-mail z proměnné repozitáře `RELEASE_TAGGER_EMAIL`, že tag ukazuje na sestavovaný commit ve větvi `main` a že prostředí `release` vyžaduje schválení. Webového klienta sestaví samostatný job, který smí repozitář jen číst (D52). Teprve po schválení job vydání sestaví binárky a image, podepíše je a přidá provenance. Před prvním vydáním proto v nastavení repozitáře založte prostředí `release` s povinným schválením a proměnnou `RELEASE_TAGGER_EMAIL` s e-mailem, kterým tagy podepisujete a který máte ověřený na svém účtu GitHub.
+Vydání spouští podepsaný anotovaný tag `v*` (D43). Workflow `release` nejdřív ověří, že GitHub podpis tagu ověřil a tag podepsal e-mail z proměnné repozitáře `RELEASE_TAGGER_EMAIL`, že tag ukazuje na sestavovaný commit ve větvi `main` a že prostředí `release` vyžaduje schválení. Webového klienta sestaví samostatný job, který smí repozitář jen číst (D52). Teprve po schválení job vydání sestaví binárky a image, podepíše je a přidá provenance. Archivy obsahují `nylzo` pro Linux (amd64, arm64), macOS (arm64) a Windows (amd64, zip); image na ghcr.io obsahuje tutéž binárku a spouští se s příkazem `serve`. Před prvním vydáním proto v nastavení repozitáře založte prostředí `release` s povinným schválením a proměnnou `RELEASE_TAGGER_EMAIL` s e-mailem, kterým tagy podepisujete a který máte ověřený na svém účtu GitHub.
 
 ```bash
-git tag -s v0.1.0 -m "nylzod 0.1.0"
+git tag -s v0.1.0 -m "nylzo 0.1.0"
 git push origin v0.1.0
 ```
 

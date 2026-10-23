@@ -1,20 +1,16 @@
-package main
+package cli
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"runtime/debug"
-	"slices"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/misaon/nylzo/internal/server"
@@ -22,75 +18,56 @@ import (
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
-var version = "dev"
-
 var (
-	errSweepFailed = errors.New("sweep failed; see the sweep-once log line")
-	errNoStore     = errors.New("sweep-once found no store in NYLZO_DATA_DIR")
+	errSweepFailed       = errors.New("sweep failed; see the sweep-once log line")
+	errNoStore           = errors.New("sweep-once found no store in NYLZO_DATA_DIR")
+	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
 )
 
 const (
 	dbFile             = "nylzo.db"
 	shutdownTimeout    = 30 * time.Second
 	defaultMemoryLimit = 192 << 20
-	usage              = `usage: nylzod [serve | sweep-once | version | help]
-
-  serve       run the server (the default)
-  sweep-once  run one sweep of the store and exit
-  version     print the version
-  help        print this help
-
-nylzod takes no other arguments; it reads its configuration from NYLZO_*
-environment variables, described in README.md.
-`
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, os.Getenv))
+func runServe(ctx context.Context, env Env, args []string) int {
+	return runServer(env, args, "serve", func(logger *slog.Logger) error { return serve(ctx, env, logger) })
 }
 
-func run(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
-	cmd := "serve"
-	if len(args) > 0 {
-		cmd = args[0]
+func runSweepOnce(_ context.Context, env Env, args []string) int {
+	return runServer(env, args, "sweep-once", func(logger *slog.Logger) error { return sweepOnce(env.Getenv, logger) })
+}
+
+func runServer(env Env, args []string, name string, run func(*slog.Logger) error) int {
+	fs := newFlags(env, name)
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "usage: %s %s\n\nThe server takes no flags; it reads NYLZO_* environment variables, described in README.md.\n", program, name)
 	}
-	known := []string{"serve", "sweep-once", "version", "help", "-h", "--help"}
-	if len(args) > 1 || !slices.Contains(known, cmd) {
-		fmt.Fprint(stderr, usage)
-		return 2
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
-	logger := server.NewLogger(stderr)
-	var err error
-	switch cmd {
-	case "help", "-h", "--help":
-		fmt.Fprint(stdout, usage)
-	case "version":
-		fmt.Fprintln(stdout, buildVersion())
-	case "serve":
-		err = serve(logger, getenv)
-	case "sweep-once":
-		err = sweepOnce(logger, getenv)
-	}
+	logger := server.NewLogger(env.Stderr)
+	err := run(logger)
 	switch {
 	case err == nil:
-		return 0
+		return exitOK
 	case errors.Is(err, errSweepFailed):
-	case errors.Is(err, server.ErrConfig):
-		logger.Error("nylzod", "err", err.Error())
+	case errors.Is(err, server.ErrConfig), errors.Is(err, errServerUnsupported):
+		logger.Error(program, "err", err.Error())
 	default:
-		logger.Error("nylzod", "err", server.ErrorText(err))
+		logger.Error(program, "err", server.ErrorText(err))
 	}
-	return 1
+	return exitError
 }
 
-func buildVersion() string {
-	if version != "dev" {
+func buildVersion(version string) string {
+	if version != "" && version != "dev" {
 		return version
 	}
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return info.Main.Version
 	}
-	return version
+	return "dev"
 }
 
 func open(cfg server.Config, openStore func(context.Context, string) (*sqlite.Store, error)) (*sqlite.Store, *disk.Blobs, error) {
@@ -128,18 +105,21 @@ func applyMemoryLimit(getenv func(string) string) {
 	}
 }
 
-func serveConfig(getenv func(string) string) (server.Config, error) {
-	cfg, err := server.FromEnv(getenv, true)
+func serveConfig(env Env) (server.Config, error) {
+	cfg, err := server.FromEnv(env.Getenv, true)
 	if err != nil {
 		return cfg, err
 	}
-	applyMemoryLimit(getenv)
-	cfg.Version = buildVersion()
+	applyMemoryLimit(env.Getenv)
+	cfg.Version = buildVersion(env.Version)
 	return cfg, nil
 }
 
-func serve(logger *slog.Logger, getenv func(string) string) error {
-	cfg, err := serveConfig(getenv)
+func serve(ctx context.Context, env Env, logger *slog.Logger) error {
+	if !serverSupported {
+		return errServerUnsupported
+	}
+	cfg, err := serveConfig(env)
 	if err != nil {
 		return err
 	}
@@ -156,7 +136,7 @@ func serve(logger *slog.Logger, getenv func(string) string) error {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	var sweeper sync.WaitGroup
 	sweeper.Go(func() { srv.RunSweeper(ctx) })
@@ -204,7 +184,10 @@ func shutdown(hs *http.Server, timeout time.Duration, logger *slog.Logger) error
 	return err
 }
 
-func sweepOnce(logger *slog.Logger, getenv func(string) string) error {
+func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
+	if !serverSupported {
+		return errServerUnsupported
+	}
 	cfg, err := server.FromEnv(getenv, false)
 	if err != nil {
 		return err

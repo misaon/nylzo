@@ -32,7 +32,9 @@ type Signature struct {
 }
 
 func PublicKey(seed *[TokenLen]byte) [PublicKeyLen]byte {
-	return [PublicKeyLen]byte(ed25519.NewKeyFromSeed(seed[:]).Public().(ed25519.PublicKey))
+	key := ed25519.NewKeyFromSeed(seed[:])
+	defer clear(key)
+	return [PublicKeyLen]byte(key.Public().(ed25519.PublicKey))
 }
 
 func ValidPublicKey(pk []byte) bool {
@@ -56,6 +58,7 @@ func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte,
 
 func SignRequest(seed *[TokenLen]byte, purpose, method, path string, challenge [ChallengeLen]byte, body []byte) Signature {
 	key := ed25519.NewKeyFromSeed(seed[:])
+	defer clear(key)
 	out := Signature{PublicKey: PublicKey(seed), Challenge: challenge}
 	copy(out.Sig[:], ed25519.Sign(key, RequestMessage(purpose, method, path, &challenge, body)))
 	return out
