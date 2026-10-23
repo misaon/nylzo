@@ -15,9 +15,12 @@ export interface FakeOptions {
   failCreate?: ApiError[];
   servedKdfId?: number;
   servedOpensMax?: number;
+  servedTtlSeconds?: number;
   servedFlags?: number;
   tombstone?: boolean;
   metadataKdfId?: number;
+  metadataOpensMax?: number;
+  metadataTtlSeconds?: number;
   tamperObject?: boolean;
   expiresInSeconds?: number;
   lockAfter?: number;
@@ -57,7 +60,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     return {
       policy: {
         opensMax: options.servedOpensMax ?? message.request.opensMax,
-        ttlSeconds: message.request.ttlSeconds,
+        ttlSeconds: options.servedTtlSeconds ?? message.request.ttlSeconds,
         kdfId: options.servedKdfId ?? message.request.kdfId,
         flags: options.servedFlags ?? 0,
       },
@@ -113,9 +116,9 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       }
       return {
         state: message.state,
-        opensMax: message.request.opensMax,
+        opensMax: options.metadataOpensMax ?? message.request.opensMax,
         opensRemaining: message.opensRemaining,
-        ttlSeconds: message.request.ttlSeconds,
+        ttlSeconds: options.metadataTtlSeconds ?? message.request.ttlSeconds,
         passphraseRequired: message.request.kdfId !== 0,
         kdfId: options.metadataKdfId ?? message.request.kdfId,
         size: message.request.object.length,

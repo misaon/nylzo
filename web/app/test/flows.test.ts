@@ -195,7 +195,10 @@ describe('reading a message', () => {
   it.each<[string, FakeOptions]>([
     ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_PBKDF2 }],
     ['non-zero flags in X-Nylzo-Policy (TEST-S7)', { servedFlags: 1 }],
-    ['opens_max that differs from the metadata (SEC-9)', { servedOpensMax: 2 }],
+    ['opens_max in X-Nylzo-Policy that the object does not carry', { servedOpensMax: 2 }],
+    ['ttl_s in X-Nylzo-Policy that the object does not carry', { servedTtlSeconds: 7200 }],
+    ['metadata whose opens_max differs from X-Nylzo-Policy (SEC-9)', { metadataOpensMax: 2 }],
+    ['metadata whose ttl_s differs from X-Nylzo-Policy (SEC-9)', { metadataTtlSeconds: 7200 }],
     ['a changed ciphertext', { tamperObject: true }],
   ])('treats %s as tampered and keeps the fragment', async (_, options) => {
     const api = fakeApi(options);
