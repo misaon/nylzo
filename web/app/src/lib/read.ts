@@ -19,7 +19,7 @@ import {
   type RequestKey,
 } from '@nylzo/core';
 
-import { ApiError, type Api, type Envelope, type MessageState, type Metadata } from './api.ts';
+import { ApiError, StoppedError, type Api, type Envelope, type MessageState, type Metadata } from './api.ts';
 import { sanitizeFileName } from './download.ts';
 import { KdfWorkerError } from './kdf-protocol.ts';
 import { sendReport, type ReportOutcome } from './report.ts';
@@ -331,9 +331,12 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
     onView({ view: 'busy', step: 'claiming' });
     try {
-      const claimed = await deps.api.claim(current.id, current.readKey, { verifierKey, onLease: keepLease, onProgress });
+      const claimed = await deps.api.claim(current.id, current.readKey, { verifierKey, onLease: keepLease, onProgress, proceed: () => !left });
       return { envelope: claimed, lease: claimed.lease, fromLease: false };
     } catch (error) {
+      if (error instanceof StoppedError) {
+        return { view: 'cleared' };
+      }
       if (error instanceof ApiError && error.kind === 'passphrase') {
         return readyView(rejection(error));
       }

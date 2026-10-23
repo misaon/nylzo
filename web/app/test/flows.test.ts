@@ -509,6 +509,21 @@ describe('leaving the page', () => {
     expect(api.calls).not.toContain('report');
   });
 
+  it('sends no claim when the page was left while the request was being signed', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const claim = api.claim.bind(api);
+    api.claim = async (...args: Parameters<typeof claim>) => {
+      r.clear();
+      return claim(...args);
+    };
+    await r.reveal();
+    expect(r.last()).toEqual({ view: 'cleared' });
+    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+  });
+
   it('reveals nothing once the page was left before the reveal', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDeps(api));
@@ -556,10 +571,10 @@ describe('leaving the page', () => {
     const asked = Promise.withResolvers<void>();
     const claim = api.claim.bind(api);
     let claimed: Uint8Array | undefined;
-    api.claim = async (...args: Parameters<typeof claim>) => {
+    api.claim = async (id, readKey, { proceed: _alreadySent, ...sent } = {}) => {
       asked.resolve();
       await gate.promise;
-      const envelope = await claim(...args);
+      const envelope = await claim(id, readKey, sent);
       claimed = envelope.object;
       return envelope;
     };

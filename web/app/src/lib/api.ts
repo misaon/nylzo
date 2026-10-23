@@ -63,6 +63,13 @@ export class ResponseError extends Error {
   }
 }
 
+export class StoppedError extends Error {
+  override readonly name = 'StoppedError';
+  constructor() {
+    super('the page stopped the request before it was sent');
+  }
+}
+
 export interface InstanceLimits {
   readonly maxFileBytes: number;
   readonly maxTextBytes: number;
@@ -139,6 +146,7 @@ export interface ClaimOptions {
   readonly verifierKey?: RequestKey | undefined;
   readonly onLease?: (lease: string) => void;
   readonly onProgress?: DownloadProgress;
+  readonly proceed?: () => boolean;
 }
 
 export interface ApiOptions {
@@ -154,6 +162,7 @@ interface SignedRequest {
   readonly verifier?: RequestKey | undefined;
   readonly headers?: Record<string, string>;
   readonly json?: Json;
+  readonly proceed?: (() => boolean) | undefined;
 }
 
 type Json = Record<string, unknown>;
@@ -372,6 +381,9 @@ export function createApi(options: ApiOptions = {}) {
       const verifier = await signRequest(request.verifier, PURPOSE_VERIFIER, request.method, request.path, fresh);
       headers['X-Nylzo-Verifier'] = verifierHeader(verifier);
     }
+    if (request.proceed?.() === false) {
+      throw new StoppedError();
+    }
     return call(request.path, { method: request.method, headers, ...(body === undefined ? {} : { body }) }, timeoutMs);
   }
 
@@ -457,7 +469,10 @@ export function createApi(options: ApiOptions = {}) {
 
     async claim(id: Uint8Array, readKey: RequestKey, options: ClaimOptions = {}): Promise<Claimed> {
       const response = await ensureOk(
-        await signed({ method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey }, TRANSFER_TIMEOUT_MS),
+        await signed(
+          { method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey, proceed: options.proceed },
+          TRANSFER_TIMEOUT_MS,
+        ),
       );
       const lease = response.headers.get('X-Nylzo-Lease');
       if (lease === null) {

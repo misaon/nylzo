@@ -11,7 +11,7 @@ import {
 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, ResponseError, TRANSFER_TIMEOUT_MS, createApi, decodePolicyHeader } from '../src/lib/api.ts';
+import { ApiError, ResponseError, StoppedError, TRANSFER_TIMEOUT_MS, createApi, decodePolicyHeader } from '../src/lib/api.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
 
@@ -284,6 +284,19 @@ describe('api client', () => {
       () => new Response(new Uint8Array(16), { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) } }),
     );
     await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
+  });
+
+  it('sends no claim once the caller stops it after the challenge', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(9));
+    const server = fakeServer(() => json(500, { error: 'internal' }));
+    let challenged = false;
+    const proceed = () => {
+      challenged = server.issued() > 0;
+      return false;
+    };
+    await expect(server.api.claim(randomId(), readKey, { proceed })).rejects.toThrow(StoppedError);
+    expect(challenged).toBe(true);
+    expect(server.seen.map((request) => new URL(request.url).pathname)).toEqual(['/api/v1/challenge']);
   });
 
   it('sends every request without credentials, cache, referrer or redirects', async () => {

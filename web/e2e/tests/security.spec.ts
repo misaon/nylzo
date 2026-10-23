@@ -237,6 +237,20 @@ test('leaving the page removes the shown message and closes its dialog, so the b
   await expect(page.getByRole('button', { name: 'Report this message' })).toHaveCount(0);
 });
 
+test('a page restored from the back/forward cache loads again and spends no open', async ({ page }) => {
+  const message = await createViaApi({ text: 'still unread', opensMax: 1 });
+  await page.goto(message.link);
+  await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
+  await leave(page);
+  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
+  const reloaded = page.waitForEvent('load');
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  await reloaded;
+  await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
+  await openViaUi(page, message.link);
+  await expect(page.locator('pre')).toHaveText('still unread');
+});
+
 test('a deletion that answers after the page was left never shows the message again', async ({ page }) => {
   const message = await createViaApi({ text: 'should stay gone', opensMax: 2 });
   const shownAfterLeaving = await watchShownAfterLeaving(page);

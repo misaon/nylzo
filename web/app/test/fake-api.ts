@@ -1,6 +1,6 @@
 import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
 
-import { ApiError, type Api, type CreateRequest, type Instance, type MessageState, type Metadata, type Status } from '../src/lib/api.ts';
+import { ApiError, StoppedError, type Api, type CreateRequest, type Instance, type MessageState, type Metadata, type Status } from '../src/lib/api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -161,6 +161,9 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       };
     },
     async claim(id, readKey, claimOptions = {}) {
+      if (claimOptions.proceed?.() === false) {
+        throw new StoppedError();
+      }
       calls.push(claimOptions.verifierKey ? 'claim+verifier' : 'claim');
       const message = find(id, readKey);
       if (message.state !== 'available') {

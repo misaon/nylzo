@@ -107,6 +107,12 @@
     reader.clear();
   }
 
+  function returned(event: PageTransitionEvent) {
+    if (event.persisted) {
+      location.reload();
+    }
+  }
+
   function download(file: RevealedFile) {
     if (isKnownSafeFile(file.name) || confirming) {
       confirming = false;
@@ -117,7 +123,7 @@
   }
 </script>
 
-<svelte:window onpagehide={leave} />
+<svelte:window onpagehide={leave} onpageshow={returned} />
 
 <p role="status" aria-live="polite">{status}</p>
 
