@@ -11,7 +11,7 @@ const binary = join(dir, 'nylzod');
 
 const profiles: Record<string, Record<string, string>> = {
   default: {},
-  pow: { NYLZO_GLOBAL_DAILY_CREATES: '2', NYLZO_POW_DIFFICULTY: '4' },
+  pow: { NYLZO_GLOBAL_DAILY_CREATES: '8', NYLZO_POW_DIFFICULTY: '4' },
 };
 
 execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nylzod'], { cwd: root, stdio: 'inherit' });
