@@ -41,7 +41,7 @@ A canonical 43-character encoding of 32 bytes never ends in `-` or `_`, so the d
 
 - `id`: 16 bytes from the server CSPRNG, issued together with an id token by `GET /api/v1/instance` (§5.4, §6.6). Appears in the URL path and never in logs.
 - `S`: 32 bytes from the client CSPRNG. Appears only in the URL fragment. The server MUST never receive `S`.
-- `M`: 32 bytes from the client CSPRNG, the seed of the manage key. The client sends the public key `pk_M` at creation and signs cancel and status with `M`; `M` never leaves the client.
+- `M`: 32 bytes from the client CSPRNG, the seed of the manage key. The client sends the public key `pk_M` at creation and signs cancel and status with `M`; `M` never leaves the client. A browser client that keeps `M` after creation MUST keep it only as a non-extractable `CryptoKey` and never as bytes (D39).
 - `L`: 32 bytes from the server CSPRNG (lease token), issued by claim.
 
 ## 2. Key derivation (client)
@@ -396,6 +396,7 @@ valid     = HMAC tag verifies, −5 s ≤ now − window_start ≤ 120 s,
 - Responses other than HTML carry `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`.
 - HTML responses carry `Content-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf` with a fresh nonce of at least 128 bits per response.
 - `worker-src 'self'` admits the module worker in which the web client runs scrypt for profile 1 and proof of work, one worker per derivation, terminated after it (D28). `trusted-types` admits only the policy that the Svelte runtime creates for component templates and the policy `nylzo-kdf` that creates the worker URL. A worker script is a non-HTML response and gets `default-src 'none'`, so it MUST be a single file without imports.
+- `GET /`, `GET /sent`, `GET /report` and `GET /m/{id}` (§4) serve the page of the embedded web client with the HTML CSP above and a fresh nonce. The client chooses the screen by path: create, the sender's list of remembered messages, an abuse report from a pasted link, and reading.
 - `GET /assets/{name}` serves the files of the embedded web client by exact name: `.js` as `text/javascript; charset=utf-8`, `.css` as `text/css; charset=utf-8` and `.woff2` as `font/woff2`. Any other name, including one that decodes to a path, answers 404. The server refuses to start when the embedded build holds a file of another type, a directory or a precompressed variant without its file, or when its `index.html` lacks the nonce placeholder or references an asset that is not embedded; without a build it serves a placeholder page and logs that. When `Accept-Encoding` accepts `br` or `gzip`, the server sends the precompressed variant from the build with `Content-Encoding`, preferring `br`; every asset response carries `Vary: Accept-Encoding` and, like every response, `Cache-Control: no-store` (D36). Assets pass no token bucket, since they never reach the database (§8).
 - Requests with a `Sec-Purpose` header to `/m/*` or `/api/*` answer 503. Known link-preview user agents receive, for `/m/*`, minimal HTML without script.
 
