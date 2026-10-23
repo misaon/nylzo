@@ -17,11 +17,16 @@
   } from '../lib/create.ts';
   import { failureKey, problemKey, progressKey, readAttachment, ttlChoices, ttlKey } from '../lib/create-form.ts';
   import { formatBytes, formatDuration, formatTime } from '../lib/format.ts';
-  import { getI18n } from '../lib/i18n.ts';
+  import { getI18n } from '../lib/i18n.svelte.ts';
   import { scryptInWorker, solvePowInWorker } from '../lib/kdf.ts';
+  import { indexedDbSentStore } from '../lib/sent.ts';
 
-  const { t, language } = getI18n();
+  type Shown = Pick<Created, 'link' | 'expiresAt'>;
+
+  const i18n = getI18n();
+  const { t } = i18n;
   const api = createApi();
+  const sentStore = indexedDbSentStore();
 
   let limits = $state.raw<InstanceLimits>();
   let loadFailed = $state(false);
@@ -36,7 +41,9 @@
   let problems = $state.raw<readonly CreateProblem[]>([]);
   let failure = $state.raw<CreateFailure>();
   let progress = $state.raw<CreateProgress>();
-  let created = $state.raw<Created>();
+  let created = $state.raw<Shown>();
+  let remember = $state(true);
+  let remembered = $state<'remembered' | 'failed' | 'off'>('off');
   let usedPassphrase = $state(false);
   let copied = $state(false);
   let status = $state('');
@@ -47,7 +54,7 @@
     const messages: Partial<Record<CreateField, string>> = {};
     for (const problem of problems) {
       messages[problem.field] ??= t(problemKey(problem), {
-        size: formatBytes(problem.field === 'text' ? (limits?.maxTextBytes ?? 0) : (limits?.maxFileBytes ?? 0), language),
+        size: formatBytes(problem.field === 'text' ? (limits?.maxTextBytes ?? 0) : (limits?.maxFileBytes ?? 0), i18n.language),
         max: limits?.maxOpens ?? 0,
       });
     }
@@ -88,12 +95,12 @@
 
   function ttlLabel(seconds: number): string {
     const key = ttlKey(seconds);
-    return key ? t(key) : formatDuration(seconds, language);
+    return key ? t(key) : formatDuration(seconds, i18n.language);
   }
 
   function failureText(value: CreateFailure): string {
     const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
-    return t(failureKey(value), { time: formatDuration(retryAfter ?? 60, language) });
+    return t(failureKey(value), { time: formatDuration(retryAfter ?? 60, i18n.language) });
   }
 
   function clearFile() {
@@ -134,7 +141,7 @@
     }
     problems = [];
     try {
-      created = await createMessage(
+      const result = await createMessage(
         input,
         {
           api,
@@ -144,6 +151,8 @@
         },
         onProgress,
       );
+      remembered = remember ? await rememberMessage(result) : 'off';
+      created = { link: result.link, expiresAt: result.expiresAt };
       usedPassphrase = passphrase !== '';
       passphrase = '';
       text = '';
@@ -158,6 +167,15 @@
       }
     } finally {
       progress = undefined;
+    }
+  }
+
+  async function rememberMessage(result: Created): Promise<'remembered' | 'failed'> {
+    try {
+      await sentStore.put({ id: result.id, createdAt: Date.now(), expiresAt: Date.parse(result.expiresAt), manageKey: result.manageKey });
+      return 'remembered';
+    } catch {
+      return 'failed';
     }
   }
 
@@ -176,6 +194,7 @@
   function another() {
     created = undefined;
     copied = false;
+    remembered = 'off';
     usedPassphrase = false;
   }
 </script>
@@ -189,9 +208,14 @@
     <input id="created-link" type="text" readonly value={created.link} onfocus={(event) => event.currentTarget.select()} />
     <button type="button" onclick={copy}>{t('created.copy')}</button>
     <p>{copied ? t('created.copied') : ''}</p>
-    <p>{t('created.expires', { time: formatTime(created.expiresAt, language) })}</p>
+    <p>{t('created.expires', { time: formatTime(created.expiresAt, i18n.language) })}</p>
     {#if usedPassphrase}
       <p>{t('created.passphrase')}</p>
+    {/if}
+    {#if remembered === 'remembered'}
+      <p>{t('created.remembered')} <a href="/sent">{t('created.status_link')}</a></p>
+    {:else if remembered === 'failed'}
+      <p role="alert">{t('created.not_remembered')}</p>
     {/if}
     <button type="button" onclick={another}>{t('created.another')}</button>
   </section>
@@ -218,7 +242,7 @@
         ></textarea>
         <p id="create-text-problem">{fieldMessages.content ?? fieldMessages.text ?? ''}</p>
 
-        <label for="create-file">{t('create.file', { size: formatBytes(limits.maxFileBytes, language) })}</label>
+        <label for="create-file">{t('create.file', { size: formatBytes(limits.maxFileBytes, i18n.language) })}</label>
         <input
           id="create-file"
           type="file"
@@ -277,6 +301,8 @@
             <label><input type="radio" name="kdf" value={KDF_PBKDF2} bind:group={kdfId} /> {t('create.kdf.2')}</label>
           </fieldset>
         {/if}
+
+        <label><input type="checkbox" bind:checked={remember} /> {t('create.remember')}</label>
 
         <button type="submit" disabled={progress !== undefined}>{t('create.submit')}</button>
       </form>

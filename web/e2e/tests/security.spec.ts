@@ -221,3 +221,38 @@ for (const file of files) {
     expect(await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes)).toEqual(['application/octet-stream']);
   });
 }
+
+test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({ browser }) => {
+  const message = await createViaApi({ text: 'report me' });
+  const recipient = await (await browser.newContext()).newPage();
+  const reporter = await (await browser.newContext()).newPage();
+  const fromPage = record(recipient);
+  const fromReportPage = record(reporter);
+  await recipient.goto(message.link);
+  await recipient.getByRole('button', { name: 'Report this message' }).click();
+  await recipient.getByLabel('Reason, optional').fill('spam');
+  await recipient.getByRole('button', { name: 'Send report' }).click();
+  await expect(recipient.getByText('We received the report.')).toBeVisible();
+  await reporter.goto('/report');
+  await reporter.getByLabel('Link to the message').fill(message.link);
+  await reporter.getByRole('button', { name: 'Send report' }).click();
+  await expect(reporter.getByText('We received the report.')).toBeVisible();
+
+  const fragment = new URL(message.link).hash.slice(1);
+  const forbidden = [fragment, ...encodings(Buffer.from(message.secret, 'base64url'))].map((form) => form.toLowerCase());
+  const requests = await Promise.all([...fromPage, ...fromReportPage]);
+  const reports = requests.filter((request) => request.url.endsWith('/api/v1/abuse'));
+  expect(reports.length).toBeGreaterThanOrEqual(2);
+  for (const request of requests) {
+    const flat = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}`.toLowerCase();
+    for (const form of forbidden) {
+      expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
+    }
+  }
+  for (const report of reports) {
+    expect(Object.keys(JSON.parse(report.body)).sort()).toEqual(report.body.includes('reason') ? ['id', 'reason'] : ['id']);
+    expect(JSON.parse(report.body).id).toBe(message.idText);
+    expect(report.headers['authorization']).toMatch(/^Nylzo-Sig /);
+    expect(report.headers['content-type']).toBe('application/json');
+  }
+});

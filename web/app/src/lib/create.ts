@@ -13,6 +13,7 @@ import {
   deriveLink,
   derivePassphraseKey,
   formatLink,
+  idToString,
   newHeader,
   newSecret,
   requestKey,
@@ -20,6 +21,7 @@ import {
   utf8,
   type KdfId,
   type Meta,
+  type RequestKey,
 } from '@nylzo/core';
 
 import { ApiError, type Api, type InstanceLimits } from './api.ts';
@@ -72,6 +74,8 @@ export class CreateError extends Error {
 export interface Created {
   readonly link: string;
   readonly expiresAt: string;
+  readonly id: string;
+  readonly manageKey: RequestKey;
 }
 
 export interface CreateDeps {
@@ -243,7 +247,7 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
     object,
     ...(powToken === undefined ? {} : { powToken }),
   });
-  const result = { link: formatLink(deps.origin, id, kdfId, s), expiresAt };
+  const result = { link: formatLink(deps.origin, id, kdfId, s), expiresAt, id: idToString(id), manageKey };
   s.fill(0);
   return result;
 }

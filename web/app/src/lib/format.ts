@@ -1,4 +1,4 @@
-import type { Language } from './i18n.ts';
+import type { Language } from './i18n.svelte.ts';
 
 const MINUTE = 60;
 const HOUR = 3600;

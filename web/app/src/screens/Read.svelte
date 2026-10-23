@@ -1,20 +1,27 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
+  import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import ReportForm from '../components/ReportForm.svelte';
   import { createApi } from '../lib/api.ts';
   import { fileExtension, isKnownSafeFile, saveFile } from '../lib/download.ts';
   import { formatBytes, formatDuration, formatTime } from '../lib/format.ts';
-  import { getI18n } from '../lib/i18n.ts';
+  import { getI18n } from '../lib/i18n.svelte.ts';
   import { scryptInWorker } from '../lib/kdf.ts';
-  import { createReader, type ReadView, type RevealedFile } from '../lib/read.ts';
+  import { createReader, type BurnOutcome, type ReadView, type RevealedFile } from '../lib/read.ts';
 
-  const { t, language } = getI18n();
+  const i18n = getI18n();
+  const { t } = i18n;
 
   let view = $state.raw<ReadView>({ view: 'loading' });
   let passphrase = $state('');
   let confirming = $state(false);
+  let askingDelete = $state(false);
+  let reporting = $state(false);
+  let restDeleted = $state(false);
+  let actionStatus = $state('');
 
-  const status = $derived(view.view === 'loading' ? t('read.loading') : view.view === 'busy' ? t(`busy.${view.step}`) : '');
+  const status = $derived(view.view === 'loading' ? t('read.loading') : view.view === 'busy' ? t(`busy.${view.step}`) : actionStatus);
 
   const reader = createReader(
     {
@@ -51,6 +58,31 @@
     reader.reveal(entered);
   }
 
+  function burnText(outcome: BurnOutcome, afterReveal: boolean): string {
+    switch (outcome.outcome) {
+      case 'deleted':
+        return afterReveal ? t('read.deleted_rest') : '';
+      case 'ended':
+        return afterReveal ? t(`read.ended.${outcome.state}`) : '';
+      case 'retry_later':
+        return t('read.retry_later', { time: formatDuration(outcome.retryAfter ?? 60, i18n.language) });
+      case 'unknown':
+        return afterReveal ? t('read.delete.failed') : '';
+      case 'failed':
+        return t('read.delete.failed');
+      case 'ignored':
+        return '';
+    }
+  }
+
+  async function burn() {
+    askingDelete = false;
+    const afterReveal = view.view === 'revealed';
+    const outcome = await reader.burn();
+    restDeleted ||= afterReveal && (outcome.outcome === 'deleted' || outcome.outcome === 'ended');
+    actionStatus = burnText(outcome, afterReveal);
+  }
+
   function download(file: RevealedFile) {
     if (isKnownSafeFile(file.name) || confirming) {
       confirming = false;
@@ -76,17 +108,17 @@
     <p role="alert">{t('read.failed')}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'retry_later'}
-    <p role="alert">{t('read.retry_later', { time: formatDuration(view.retryAfter ?? 60, language) })}</p>
+    <p role="alert">{t('read.retry_later', { time: formatDuration(view.retryAfter ?? 60, i18n.language) })}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'ended'}
     <p role="alert">{t(`read.ended.${view.state}`)}</p>
     {#if view.firstOpenedAt}
-      <p>{t('read.opened_at', { time: formatTime(view.firstOpenedAt, language) })}</p>
+      <p>{t('read.opened_at', { time: formatTime(view.firstOpenedAt, i18n.language) })}</p>
     {/if}
   {:else if view.view === 'ready'}
     <ul>
       {#if view.metadata.expiresAt}
-        <li>{t('read.expires', { time: formatTime(view.metadata.expiresAt, language) })}</li>
+        <li>{t('read.expires', { time: formatTime(view.metadata.expiresAt, i18n.language) })}</li>
       {/if}
       <li>{t('read.opens', { count: view.metadata.opensRemaining })}</li>
       {#if view.metadata.passphraseRequired}
@@ -106,7 +138,7 @@
     {:else if view.rejected?.locked}
       <p role="alert">{t('read.rejected.locked')}</p>
     {:else if view.rejected && view.rejected.retryAfter > 0}
-      <p role="alert">{t('read.rejected.wait', { time: formatDuration(view.rejected.retryAfter, language) })}</p>
+      <p role="alert">{t('read.rejected.wait', { time: formatDuration(view.rejected.retryAfter, i18n.language) })}</p>
     {:else if view.rejected}
       <p role="alert">{t('read.rejected.wrong', { count: view.rejected.attemptsLeft })}</p>
     {/if}
@@ -131,6 +163,8 @@
       <p>{t('read.reveal.note')}</p>
       <button type="submit">{t('read.reveal')}</button>
     </form>
+    <button type="button" onclick={() => (askingDelete = true)}>{t('read.delete')}</button>
+    {@render reportArea()}
   {:else if view.view === 'busy'}
     {#if view.fraction === undefined}
       <progress aria-label={t(`busy.${view.step}`)}></progress>
@@ -145,7 +179,7 @@
     {#if view.file}
       {@const file = view.file}
       {@const extension = fileExtension(file.name)}
-      <p>{t('revealed.file')}: <bdi>{file.name}</bdi>, {formatBytes(file.bytes.length, language)}</p>
+      <p>{t('revealed.file')}: <bdi>{file.name}</bdi>, {formatBytes(file.bytes.length, i18n.language)}</p>
       {#if confirming}
         <p role="alert">{t('revealed.confirm.title')}</p>
         <p>{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</p>
@@ -156,5 +190,29 @@
       {/if}
     {/if}
     <p>{t('revealed.note')}</p>
+    {#if view.burnable || restDeleted}
+      <button type="button" disabled={!view.burnable} onclick={() => (askingDelete = true)}>{t('read.delete.rest')}</button>
+    {/if}
+    {@render reportArea()}
   {/if}
 </section>
+
+{#snippet reportArea()}
+  <button type="button" aria-expanded={reporting} onclick={() => (reporting = !reporting)}>{t('report.open')}</button>
+  {#if reporting}
+    <p>{t('report.note')}</p>
+    <p>{t('report.privacy')}</p>
+    <ReportForm name="read-report" send={(_link, reason) => reader.report(reason)} />
+  {/if}
+{/snippet}
+
+{#if askingDelete}
+  <ConfirmDialog
+    id="read-confirm"
+    message={t('read.delete.confirm')}
+    confirm={t('read.delete.yes')}
+    dismiss={t('read.delete.no')}
+    onconfirm={burn}
+    onclose={() => (askingDelete = false)}
+  />
+{/if}

@@ -40,9 +40,17 @@ function decode(s: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(s.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(s.length / 4) * 4, '=')), (c) => c.charCodeAt(0));
 }
 
-async function verifies(pk: string, challenge: string, signature: string, purpose: Purpose, method: string, path: string): Promise<boolean> {
+async function verifies(
+  pk: string,
+  challenge: string,
+  signature: string,
+  purpose: Purpose,
+  method: string,
+  path: string,
+  body: Uint8Array = new Uint8Array(0),
+): Promise<boolean> {
   const key = await crypto.subtle.importKey('raw', decode(pk), 'Ed25519', false, ['verify']);
-  const message = await requestMessage(purpose, method, path, decode(challenge), new Uint8Array(0));
+  const message = await requestMessage(purpose, method, path, decode(challenge), body);
   return crypto.subtle.verify('Ed25519', key, decode(signature), message);
 }
 
@@ -102,6 +110,62 @@ describe('api client', () => {
     expect(new URL(request?.url ?? '').pathname).toBe(path);
     expect(await verifies(...authParts(request?.headers.get('Authorization') ?? ''), 'read', 'GET', path)).toBe(true);
     expect(request?.headers.get('X-Nylzo-Verifier')).toBeNull();
+  });
+
+  it('burns with R and cancels and reads the status with M, each without a body', async () => {
+    const id = randomId();
+    const readKey = await requestKey(new Uint8Array(32).fill(7));
+    const manageKey = await requestKey(new Uint8Array(32).fill(9));
+    const server = fakeServer((request) =>
+      new URL(request.url).pathname.endsWith('/status')
+        ? json(200, { state: 'cancelled', opens_used: 0, opens_max: 1, failed_passphrase_attempts: 2, ended_at: '2026-10-23T10:00:00Z' })
+        : new Response(null, { status: 204 }),
+    );
+    await server.api.burn(id, readKey);
+    await server.api.cancel(id, manageKey);
+    expect(await server.api.status(id, manageKey)).toEqual({
+      state: 'cancelled',
+      opensUsed: 0,
+      opensMax: 1,
+      failedPassphraseAttempts: 2,
+      endedAt: '2026-10-23T10:00:00Z',
+    });
+    const signed = server.seen.filter((request) => !request.url.endsWith('/challenge'));
+    const base = `/api/v1/messages/${idToString(id)}`;
+    const expected = [
+      ['POST', `${base}/burn`, 'read', readKey],
+      ['POST', `${base}/cancel`, 'manage', manageKey],
+      ['GET', `${base}/status`, 'manage', manageKey],
+    ] as const;
+    expect(signed).toHaveLength(expected.length);
+    for (const [index, [method, path, purpose, key]] of expected.entries()) {
+      const request = signed[index]!;
+      expect([request.method, new URL(request.url).pathname]).toEqual([method, path]);
+      const parts = authParts(request.headers.get('Authorization') ?? '');
+      expect(parts[0]).toBe(encodeBase64url(key.publicKey));
+      expect(await verifies(...parts, purpose, method, path)).toBe(true);
+      expect(await request.arrayBuffer()).toHaveProperty('byteLength', 0);
+    }
+  });
+
+  it('signs an abuse report with R over its JSON body', async () => {
+    const id = randomId();
+    const readKey = await requestKey(new Uint8Array(32).fill(7));
+    const server = fakeServer(() => json(202, { status: 'accepted' }));
+    await server.api.report(id, readKey, 'phishing "quoted" ✓');
+    await server.api.report(id, readKey, '');
+    const reports = server.seen.filter((request) => request.url.endsWith('/api/v1/abuse'));
+    const bodies = [];
+    for (const request of reports) {
+      expect(request.method).toBe('POST');
+      expect(request.headers.get('Content-Type')).toBe('application/json');
+      const body = new Uint8Array(await request.arrayBuffer());
+      bodies.push(JSON.parse(new TextDecoder().decode(body)));
+      const parts = authParts(request.headers.get('Authorization') ?? '');
+      expect(await verifies(...parts, 'read', 'POST', '/api/v1/abuse', body)).toBe(true);
+      expect(await verifies(...parts, 'read', 'POST', '/api/v1/abuse')).toBe(false);
+    }
+    expect(bodies).toEqual([{ id: idToString(id), reason: 'phishing "quoted" ✓' }, { id: idToString(id) }]);
   });
 
   it('claims with R and V over the same challenge and streams the object', async () => {

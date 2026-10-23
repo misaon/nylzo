@@ -109,6 +109,53 @@ for (const viewport of [MOBILE, DESKTOP]) {
   });
 }
 
+for (const viewport of [MOBILE, DESKTOP]) {
+  test(`nothing shifts or resizes on the sent list, the report page and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({ browser, browserName }) => {
+    test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
+    const sender = await (await browser.newContext({ viewport })).newPage();
+    await createViaUi(sender, { text: 'first' });
+    await createViaUi(sender, { text: 'second' });
+    await watchLayout(sender);
+    await sender.goto('/sent');
+    await expect(sender.getByText('Waiting to be opened.')).toHaveCount(2);
+    await expectStable(sender, 'sent loaded');
+    await sender.getByRole('button', { name: 'Cancel message' }).first().click();
+    await sender.getByRole('dialog').getByRole('button', { name: 'Yes, cancel' }).click();
+    await expect(sender.getByText('Cancelled.', { exact: true })).toBeVisible();
+    await expectStable(sender, 'cancelled');
+
+    const reporter = await (await browser.newContext({ viewport })).newPage();
+    await watchLayout(reporter);
+    const message = await createViaApi({ text: 'layout', opensMax: 2 });
+    await reporter.goto('/report');
+    await expect(reporter.getByLabel('Link to the message')).toBeVisible();
+    await expectStable(reporter, 'report loaded');
+    await reporter.getByLabel('Link to the message').fill(message.link);
+    await reporter.getByRole('button', { name: 'Send report' }).click();
+    await expect(reporter.getByText('We received the report.')).toBeVisible();
+    await expectStable(reporter, 'report accepted');
+
+    const recipient = await (await browser.newContext({ viewport })).newPage();
+    await watchLayout(recipient);
+    await recipient.goto(message.link);
+    await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
+    await expectStable(recipient, 'read loaded');
+    await recipient.getByRole('button', { name: 'Report this message' }).click();
+    await expect(recipient.getByLabel('Reason, optional')).toBeVisible();
+    await expectStable(recipient, 'report form open');
+    await recipient.getByRole('button', { name: 'Delete without showing' }).click();
+    await recipient.getByRole('dialog').getByRole('button', { name: 'Do not delete' }).click();
+    await expectStable(recipient, 'delete dismissed');
+    await recipient.getByRole('button', { name: 'Show message' }).click();
+    await expectRevealed(recipient);
+    await expectStable(recipient, 'revealed with actions');
+    await recipient.getByRole('button', { name: 'Delete the remaining opens' }).click();
+    await recipient.getByRole('dialog').getByRole('button', { name: 'Yes, delete' }).click();
+    await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toBeDisabled();
+    await expectStable(recipient, 'rest deleted');
+  });
+}
+
 async function reload(page: Page, url: string): Promise<void> {
   await page.goto('about:blank');
   await page.goto(url);
@@ -177,6 +224,52 @@ test('the confirmation before a risky download passes axe (AK20, D35)', async ({
   await page.getByRole('button', { name: 'Download attachment' }).click();
   await expect(page.getByRole('button', { name: 'Download anyway' })).toBeVisible();
   await expectAccessible(page, 'confirm download');
+});
+
+test('the sent list and its dialog pass axe (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
+  const page = await context.newPage();
+  await page.goto('/sent');
+  await expect(page.getByText('This device remembers no messages.')).toBeVisible();
+  await expectAccessible(page, 'sent empty');
+  await createViaUi(page, { text: 'axe' });
+  await expectAccessible(page, 'created and remembered');
+  await page.goto('/sent');
+  await expect(page.getByText('Waiting to be opened.')).toBeVisible();
+  await expectAccessible(page, 'sent list');
+  await page.getByRole('button', { name: 'Cancel message' }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expectAccessible(page, 'cancel dialog');
+  await page.getByRole('dialog').getByRole('button', { name: 'Keep it' }).click();
+});
+
+test('the report page passes axe with and without problems (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
+  const page = await context.newPage();
+  await page.goto('/report');
+  await expectAccessible(page, 'report');
+  await page.getByLabel('Link to the message').fill('not a link');
+  await page.getByLabel('Reason, optional').fill('x'.repeat(1001));
+  await page.getByRole('button', { name: 'Send report' }).click();
+  await expect(page.getByLabel('Link to the message')).toBeFocused();
+  await expectAccessible(page, 'report with problems');
+});
+
+test('the read actions and the delete dialog pass axe (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
+  const page = await context.newPage();
+  const message = await createViaApi({ text: 'axe', opensMax: 2 });
+  await page.goto(message.link);
+  await page.getByRole('button', { name: 'Report this message' }).click();
+  await expectAccessible(page, 'read with report form');
+  await page.getByRole('button', { name: 'Delete without showing' }).click();
+  await expectAccessible(page, 'delete dialog');
+  await page.getByRole('dialog').getByRole('button', { name: 'Do not delete' }).click();
+  await page.getByRole('button', { name: 'Show message' }).click();
+  await expectRevealed(page);
+  await expectAccessible(page, 'revealed with actions');
+  await page.getByRole('button', { name: 'Čeština' }).click();
+  await expectAccessible(page, 'revealed in Czech');
 });
 
 function declarationName(declaration: Declaration): string {

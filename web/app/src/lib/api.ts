@@ -149,7 +149,10 @@ interface SignedRequest {
   readonly key: RequestKey;
   readonly verifier?: RequestKey | undefined;
   readonly headers?: Record<string, string>;
+  readonly json?: Json;
 }
+
+type Json = Record<string, unknown>;
 
 const STATES: readonly MessageState[] = ['available', 'opened', 'expired', 'cancelled', 'deleted'];
 const KINDS: readonly ApiErrorKind[] = [
@@ -166,8 +169,6 @@ const KINDS: readonly ApiErrorKind[] = [
   'internal',
   'unavailable',
 ];
-
-type Json = Record<string, unknown>;
 
 const SHORT_TIMEOUT_MS = 30_000;
 const TRANSFER_TIMEOUT_MS = 360_000;
@@ -363,13 +364,17 @@ export function createApi(options: ApiOptions = {}) {
   async function signedOnce(request: SignedRequest, timeoutMs: number): Promise<Response> {
     const fresh = await challenge();
     const headers: Record<string, string> = { ...request.headers };
-    const auth = await signRequest(request.key, request.purpose, request.method, request.path, fresh);
+    const body = request.json === undefined ? undefined : utf8(JSON.stringify(request.json));
+    if (body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
+    const auth = await signRequest(request.key, request.purpose, request.method, request.path, fresh, body);
     headers['Authorization'] = authorizationHeader(auth);
     if (request.verifier) {
       const verifier = await signRequest(request.verifier, PURPOSE_VERIFIER, request.method, request.path, fresh);
       headers['X-Nylzo-Verifier'] = verifierHeader(verifier);
     }
-    return call(request.path, { method: request.method, headers }, timeoutMs);
+    return call(request.path, { method: request.method, headers, ...(body === undefined ? {} : { body }) }, timeoutMs);
   }
 
   async function signed(request: SignedRequest, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
@@ -477,6 +482,19 @@ export function createApi(options: ApiOptions = {}) {
       await ensureOk(
         await signed({ method: 'POST', path: `${messagePath(id)}/ack`, purpose: PURPOSE_READ, key: readKey, headers: { 'X-Nylzo-Lease': lease } }),
       );
+    },
+
+    async burn(id: Uint8Array, readKey: RequestKey): Promise<void> {
+      await ensureOk(await signed({ method: 'POST', path: `${messagePath(id)}/burn`, purpose: PURPOSE_READ, key: readKey }));
+    },
+
+    async cancel(id: Uint8Array, manageKey: RequestKey): Promise<void> {
+      await ensureOk(await signed({ method: 'POST', path: `${messagePath(id)}/cancel`, purpose: PURPOSE_MANAGE, key: manageKey }));
+    },
+
+    async report(id: Uint8Array, readKey: RequestKey, reason: string): Promise<void> {
+      const json = { id: idToString(id), ...(reason === '' ? {} : { reason }) };
+      await ensureOk(await signed({ method: 'POST', path: '/api/v1/abuse', purpose: PURPOSE_READ, key: readKey, json }));
     },
 
     async status(id: Uint8Array, manageKey: RequestKey): Promise<Status> {
