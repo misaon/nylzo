@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   AAD_LEN,
@@ -20,7 +20,6 @@ import {
   VERSION,
   VersionError,
   aad,
-  deriveAll,
   headerBytes,
   newHeader,
   newSecret,
@@ -34,6 +33,7 @@ import {
   type Policy,
 } from '../src/index.ts';
 import { newId } from '../src/ids.ts';
+import { deriveAll } from '../src/scrypt.ts';
 import { withByteFlipped } from './helpers.ts';
 
 interface Sample {
@@ -274,3 +274,38 @@ describe('header and aad', () => {
     expect(opened.payload.file).toBeUndefined();
   });
 });
+
+describe('plaintext buffers', () => {
+  it('are wiped after seal and open, and the opened file is its own copy', async () => {
+    const file = new Uint8Array(5000).fill(0x5a);
+    const m = await sample(KDF_NONE, '', file);
+    const plaintexts: Uint8Array[] = [];
+    const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
+    const decrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+    const spies = [
+      vi.spyOn(crypto.subtle, 'encrypt').mockImplementation(async (algorithm, key, data) => {
+        if (data instanceof Uint8Array) {
+          plaintexts.push(data);
+        }
+        return encrypt(algorithm, key, data);
+      }),
+      vi.spyOn(crypto.subtle, 'decrypt').mockImplementation(async (algorithm, key, data) => {
+        const plaintext = await decrypt(algorithm, key, data);
+        plaintexts.push(new Uint8Array(plaintext));
+        return plaintext;
+      }),
+    ];
+    let opened;
+    try {
+      await seal(m.k, newHeader(KDF_NONE), m.id, policy, { meta: textMeta('wipe me', file), file });
+      opened = await open(m.k, m.id, policy, KDF_NONE, m.object);
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+    expect(plaintexts).toHaveLength(2);
+    expect(plaintexts.every((plaintext) => plaintext.length > file.length && plaintext.every((byte) => byte === 0))).toBe(true);
+    expect(opened.payload.file).toEqual(file);
+    expect(opened.payload.meta.text).toBe('integrity');
+  });
+});
+

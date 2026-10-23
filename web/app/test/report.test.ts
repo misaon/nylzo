@@ -90,6 +90,12 @@ describe('redacting a reason before it is signed (D41)', () => {
     expect(api.reports[0]?.reason).toBe('phishing, see https://nylzo.test/m/[redacted][redacted]');
   });
 
+  it('redacts S that was percent-encoded three times, as deep as the server decodes', () => {
+    const secret = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE';
+    const triple = [...secret].map((c) => `%2525${c.charCodeAt(0).toString(16)}`).join('');
+    expect(redactReason(`key ${triple}`)).toBe('key [redacted]');
+  });
+
   it('keeps ordinary text and turns control characters into spaces', () => {
     expect(redactReason('phishing "quoted" ✓ 100% sure')).toBe('phishing "quoted" ✓ 100% sure');
     expect(redactReason('line\none\ttab\u0007bell')).toBe('line one tab bell');

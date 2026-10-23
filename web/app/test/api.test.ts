@@ -5,12 +5,13 @@ import {
   idToString,
   requestKey,
   requestMessage,
+  transferSeconds,
   utf8,
   type Purpose,
 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, ResponseError, createApi, decodePolicyHeader } from '../src/lib/api.ts';
+import { ApiError, ResponseError, TRANSFER_TIMEOUT_MS, createApi, decodePolicyHeader } from '../src/lib/api.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
 
@@ -284,4 +285,87 @@ describe('api client', () => {
     );
     await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
   });
+
+  it('sends every request without credentials, cache, referrer or redirects', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(9));
+    const object = new Uint8Array(100).fill(1);
+    const server = fakeServer((request) => {
+      const path = new URL(request.url).pathname;
+      if (path === '/api/v1/instance') {
+        return json(200, instanceBody);
+      }
+      if (path === '/api/v1/messages') {
+        return json(201, { id: 'AAAAAAAAAAAAAAAAAAAAAA', expires_at: '2026-10-24T09:00:00Z' });
+      }
+      if (path.endsWith('/claim') || path.endsWith('/blob')) {
+        return new Response(object, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } });
+      }
+      return new Response(null, { status: 204 });
+    });
+    const id = randomId();
+    await server.api.instance();
+    await server.api.create({ id, idToken: 't', readKey: readKey.publicKey, manageKey: readKey.publicKey, kdfId: 0, opensMax: 1, ttlSeconds: 3600, object });
+    await server.api.claim(id, readKey);
+    await server.api.blob(id, readKey, 'l');
+    await server.api.ack(id, readKey, 'l');
+    await server.api.burn(id, readKey);
+    await server.api.report(id, readKey, 'spam');
+    expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(8);
+    for (const request of server.seen) {
+      expect({ redirect: request.redirect, referrerPolicy: request.referrerPolicy, credentials: request.credentials, cache: request.cache }, request.url).toEqual({
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+    }
+  });
+
+  it('stops reading an object without Content-Length once it passes the protocol maximum', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(9));
+    const chunk = new Uint8Array(1 << 20);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent > 2 * MAX_OBJECT_BYTES) {
+          controller.close();
+          return;
+        }
+        sent += chunk.length;
+        controller.enqueue(chunk);
+      },
+    });
+    const server = fakeServer(() => new Response(body, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } }));
+    await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
+    expect(sent).toBeLessThanOrEqual(MAX_OBJECT_BYTES + 2 * chunk.length);
+  });
+
+  it('reads an object in chunks with and without an exact Content-Length', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(9));
+    const object = Uint8Array.from({ length: 200_000 }, (_, i) => i % 251);
+    const chunked = () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (let offset = 0; offset < object.length; offset += 30_000) {
+            controller.enqueue(object.slice(offset, offset + 30_000));
+          }
+          controller.close();
+        },
+      });
+    for (const length of [undefined, object.length, 1000]) {
+      const headers: Record<string, string> = { 'X-Nylzo-Policy': policy, ...(length === undefined ? {} : { 'Content-Length': String(length) }) };
+      const progress: [number, number | undefined][] = [];
+      const server = fakeServer(() => new Response(chunked(), { status: 200, headers }));
+      const envelope = await server.api.blob(randomId(), readKey, 'l', (received, total) => progress.push([received, total]));
+      expect(envelope.object, String(length)).toEqual(object);
+      expect(envelope.object.buffer.byteLength, String(length)).toBe(object.length);
+      expect(progress.at(-1), String(length)).toEqual([object.length, length]);
+    }
+  });
+
+  it('gives a transfer the time the protocol allows the largest object, plus a margin', () => {
+    expect(TRANSFER_TIMEOUT_MS).toBeGreaterThan(transferSeconds(MAX_OBJECT_BYTES) * 1000);
+    expect(TRANSFER_TIMEOUT_MS).toBe(360_000);
+  });
 });
+

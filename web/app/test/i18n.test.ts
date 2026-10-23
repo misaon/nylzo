@@ -1,6 +1,10 @@
+import { MIN_PASSPHRASE_CHARS } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDuration, formatWait } from '../src/lib/format.ts';
+import { WEAK_BELOW_CHARS, WEAK_BELOW_WORDS } from '../src/lib/create.ts';
+import { formatBytes, formatDays, formatDuration, formatWait } from '../src/lib/format.ts';
+import { MAX_REASON_BYTES } from '../src/lib/report.ts';
+import { RETENTION_DAYS } from '../src/lib/sent.ts';
 import { createI18n, dictionaries, otherLanguage, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
@@ -38,6 +42,22 @@ describe('i18n', () => {
     const plain = (text: string) => text.replace(/\s/gu, ' ');
     expect([1, 60, 3600, 120, 300].map((seconds) => plain(formatWait(seconds, 'cs')))).toEqual(['1 sekundu', '1 minutu', '1 hodinu', '2 minuty', '5 minut']);
     expect(formatWait(60, 'en')).toBe('1 minute');
+    expect(formatWait(undefined, 'en')).toBe('1 minute');
+    expect(formatDays(7, 'en')).toBe('7 days');
+  });
+
+  it('takes the limits it names from the code', () => {
+    const limits = { min: MIN_PASSPHRASE_CHARS, words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS, bytes: MAX_REASON_BYTES, days: RETENTION_DAYS };
+    for (const language of ['cs', 'en'] as const) {
+      for (const [key, text] of Object.entries(dictionaries[language]).filter(([key]) => !key.startsWith('ttl.'))) {
+        expect(text, `${language} ${key}`).not.toMatch(/\b(12|16|1000)\b|\b7 (days|dní|dnů)\b/u);
+        expect(createI18n(language).t(key as MessageKey, limits), `${language} ${key}`).not.toMatch(/\{(min|words|chars|bytes|days)\}/);
+      }
+    }
+    const { t } = createI18n('en');
+    expect(t('create.passphrase.hint', limits)).toContain(`${MIN_PASSPHRASE_CHARS} characters`);
+    expect(t('create.passphrase.weak', limits)).toContain(`${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARS} characters`);
+    expect(t('report.problem.reason_too_long', limits)).toContain(`${MAX_REASON_BYTES} bytes`);
   });
 
   it('switches the language in place', () => {

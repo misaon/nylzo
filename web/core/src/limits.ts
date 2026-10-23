@@ -24,3 +24,10 @@ export const MAX_MIME = 255;
 export const MAX_JSON_DEPTH = 32;
 
 export const MIN_TTL_SECONDS = 60;
+
+export const MIN_TRANSFER_SECONDS = 120;
+export const MIN_TRANSFER_BYTES_PER_SECOND = 16000;
+
+export function transferSeconds(size: number): number {
+  return Math.max(MIN_TRANSFER_SECONDS, Math.ceil(size / MIN_TRANSFER_BYTES_PER_SECOND));
+}

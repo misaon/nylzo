@@ -1,7 +1,6 @@
 export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './base64url.ts';
 export { concat, utf8 } from './bytes.ts';
 export {
-  deriveAll,
   deriveContent,
   deriveLink,
   hsalt,
@@ -23,6 +22,7 @@ export {
   validatePolicy,
   type Header,
   type Opened,
+  type OpenedPayload,
   type Payload,
   type Policy,
 } from './envelope.ts';
@@ -55,13 +55,14 @@ export {
   SCRYPT_P,
   SCRYPT_R,
   assertStrongPassphrase,
+  assertWellFormedPassphrase,
   derivePassphraseKey,
   isKdfId,
   kdfRequiresPassphrase,
   normalizePassphrase,
   parseKdfId,
   type KdfId,
-  type KdfOptions,
+  type NativeKdfId,
 } from './kdf.ts';
 export * from './limits.ts';
 export {

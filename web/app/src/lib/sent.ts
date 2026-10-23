@@ -3,7 +3,8 @@ import { PUBLIC_KEY_LEN, parseId, type RequestKey } from '@nylzo/core';
 import { ApiError, type Api, type Status } from './api.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const RETENTION_MS = 7 * DAY_MS;
+export const RETENTION_DAYS = 7;
+export const RETENTION_MS = RETENTION_DAYS * DAY_MS;
 const MAX_LIFETIME_MS = 31 * DAY_MS;
 const MAX_TIME_MS = 8.64e15;
 
@@ -31,6 +32,7 @@ export interface StoredRecord {
 export interface SentStore {
   list(): Promise<SentRecord[]>;
   put(record: SentRecord): Promise<void>;
+  markEnded(id: string, endedAt: number): Promise<SentRecord | undefined>;
   remove(id: string): Promise<void>;
   clear(): Promise<void>;
 }
@@ -185,39 +187,71 @@ function openDatabase(factory: IDBFactory | undefined): Promise<IDBDatabase> {
 export function indexedDbSentStore(factory: IDBFactory | undefined = globalThis.indexedDB): SentStore {
   let database: Promise<IDBDatabase> | undefined;
 
-  async function run<T>(mode: IDBTransactionMode, action: (records: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+  async function run<T>(mode: IDBTransactionMode, action: (records: IDBObjectStore) => Promise<T>): Promise<T> {
     database ??= openDatabase(factory);
     const transaction = (await database).transaction(RECORDS, mode);
-    const result = settle(action(transaction.objectStore(RECORDS)));
-    await committed(transaction);
+    const done = committed(transaction);
+    const result = action(transaction.objectStore(RECORDS));
+    await Promise.all([result, done]);
     return result;
+  }
+
+  async function endIfStored(records: IDBObjectStore, id: string, endedAt: number): Promise<SentRecord | undefined> {
+    const record = recordFrom(await settle(records.get(id)));
+    if (!record || record.endedAt !== undefined) {
+      return record;
+    }
+    const ended = { ...record, endedAt };
+    await settle(records.put(storedForm(ended)));
+    return ended;
   }
 
   return {
     async list() {
       const records: SentRecord[] = [];
-      for (const value of await run('readonly', (records) => records.getAll())) {
+      for (const value of await run('readonly', (records) => settle(records.getAll()))) {
         const record = recordFrom(value);
         if (record) {
           records.push(record);
         } else if (typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'string') {
           const id = (value as { id: string }).id;
-          await run('readwrite', (stored) => stored.delete(id));
+          await run('readwrite', (stored) => settle(stored.delete(id)));
         }
       }
       return records;
     },
     async put(record) {
       const stored = storedForm(record);
-      await run('readwrite', (records) => records.put(stored));
+      await run('readwrite', (records) => settle(records.put(stored)));
+    },
+    async markEnded(id, endedAt) {
+      return run('readwrite', (records) => endIfStored(records, id, endedAt));
     },
     async remove(id) {
-      await run('readwrite', (records) => records.delete(id));
+      await run('readwrite', (records) => settle(records.delete(id)));
     },
     async clear() {
-      await run('readwrite', (records) => records.clear());
+      await run('readwrite', (records) => settle(records.clear()));
     },
   };
+}
+
+export async function rememberSent(store: SentStore, record: SentRecord, timeoutMs: number): Promise<boolean> {
+  const saving = store.put(record).then(
+    () => true,
+    () => false,
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<undefined>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs, undefined);
+  });
+  const saved = await Promise.race([saving, timedOut]);
+  clearTimeout(timer);
+  if (saved !== undefined) {
+    return saved;
+  }
+  saving.then((late) => (late ? store.remove(record.id) : undefined)).catch(() => undefined);
+  return false;
 }
 
 export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<void> {
@@ -358,12 +392,9 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
     if (status.endedAt === undefined || record.endedAt !== undefined) {
       return;
     }
-    const ended = { ...record, endedAt: Date.parse(status.endedAt) };
-    try {
-      await deps.store.put(ended);
+    const ended = await deps.store.markEnded(record.id, Date.parse(status.endedAt)).catch(() => undefined);
+    if (ended) {
       records = records.map((candidate) => (candidate.id === record.id ? ended : candidate));
-    } catch {
-      return;
     }
   }
 

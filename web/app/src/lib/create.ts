@@ -7,6 +7,7 @@ import {
   MIN_TTL_SECONDS,
   MalformedPassphraseError,
   PowTimeoutError,
+  TooLargeError,
   WeakPassphraseError,
   assertStrongPassphrase,
   deriveContent,
@@ -20,13 +21,16 @@ import {
   requestKey,
   seal,
   utf8,
+  type ContentKeys,
   type KdfId,
+  type LinkKeys,
   type Meta,
   type RequestKey,
 } from '@nylzo/core';
 
-import { ApiError, type Api, type InstanceLimits } from './api.ts';
+import { ApiError, type Api, type Instance, type InstanceLimits } from './api.ts';
 import { sanitizeFileName } from './download.ts';
+import { KdfWorkerError } from './kdf-protocol.ts';
 
 export interface FileInput {
   readonly name: string;
@@ -95,8 +99,8 @@ export interface CreateDeps {
 
 const MAX_ATTEMPTS = 3;
 const RETRY_WITH_NEW_ID = new Set(['id_token', 'conflict', 'pow']);
-const WEAK_BELOW_CHARS = 16;
-const WEAK_BELOW_WORDS = 4;
+export const WEAK_BELOW_CHARS = 16;
+export const WEAK_BELOW_WORDS = 4;
 export const POW_BUDGET_MS = 110_000;
 export const POW_ROUNDS = 2;
 
@@ -199,13 +203,53 @@ function failureOf(error: unknown): CreateFailure {
       return { kind: 'too_large' };
     }
   }
-  if (error instanceof Error && error.name === 'KdfWorkerError') {
+  if (error instanceof KdfWorkerError) {
     return { kind: 'kdf' };
   }
-  if (error instanceof Error && error.name === 'TooLargeError') {
+  if (error instanceof TooLargeError) {
     return { kind: 'too_large' };
   }
   return { kind: 'failed' };
+}
+
+interface Sealed {
+  readonly object: Uint8Array<ArrayBuffer>;
+  readonly readKey: RequestKey;
+  readonly manageKey: RequestKey;
+  readonly verifierKey: Uint8Array<ArrayBuffer> | undefined;
+}
+
+async function sealMessage(
+  input: CreateInput,
+  instance: Instance,
+  kdfId: KdfId,
+  s: Uint8Array<ArrayBuffer>,
+  deps: CreateDeps,
+  onProgress: (p: CreateProgress) => void,
+): Promise<Sealed> {
+  const { id } = instance.create;
+  let link: LinkKeys | undefined;
+  let p: Uint8Array | undefined;
+  let content: ContentKeys | undefined;
+  try {
+    link = await deriveLink(id, s);
+    p = await passphraseKey(input, kdfId, link.saltPw, deps, onProgress);
+    content = await deriveContent(id, s, p);
+    p.fill(0);
+    const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
+    const object = await seal(content.k, newHeader(kdfId), id, policy, { meta: meta(input), file: input.file?.bytes });
+    if (object.length > instance.limits.maxObjectBytes) {
+      throw new CreateError({ kind: 'too_large' });
+    }
+    const [readKey, manageKey] = await Promise.all([requestKey(link.r), newRequestKey()]);
+    const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;
+    return { object, readKey, manageKey, verifierKey };
+  } finally {
+    link?.r.fill(0);
+    link?.saltPw.fill(0);
+    p?.fill(0);
+    content?.v.fill(0);
+  }
 }
 
 async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: CreateProgress) => void): Promise<Created> {
@@ -218,37 +262,26 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   const { id, idToken } = instance.create;
   const kdfId = effectiveKdf(input);
   const s = newSecret();
-  const link = await deriveLink(id, s);
-  const p = await passphraseKey(input, kdfId, link.saltPw, deps, onProgress);
-  const content = await deriveContent(id, s, p);
-  p.fill(0);
-  const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
-  const object = await seal(content.k, newHeader(kdfId), id, policy, { meta: meta(input), file: input.file?.bytes });
-  if (object.length > instance.limits.maxObjectBytes) {
-    throw new CreateError({ kind: 'too_large' });
+  try {
+    const { object, readKey, manageKey, verifierKey } = await sealMessage(input, instance, kdfId, s, deps, onProgress);
+    const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
+    onProgress({ step: 'uploading' });
+    const { expiresAt } = await deps.api.create({
+      id,
+      idToken,
+      readKey: readKey.publicKey,
+      ...(verifierKey ? { verifierKey } : {}),
+      manageKey: manageKey.publicKey,
+      kdfId,
+      opensMax: input.opensMax,
+      ttlSeconds: input.ttlSeconds,
+      object,
+      ...(powToken === undefined ? {} : { powToken }),
+    });
+    return { link: formatLink(deps.origin, id, kdfId, s), expiresAt, id: idToString(id), manageKey };
+  } finally {
+    s.fill(0);
   }
-  const [readKey, manageKey] = await Promise.all([requestKey(link.r), newRequestKey()]);
-  const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;
-  link.r.fill(0);
-  link.saltPw.fill(0);
-  content.v.fill(0);
-  const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
-  onProgress({ step: 'uploading' });
-  const { expiresAt } = await deps.api.create({
-    id,
-    idToken,
-    readKey: readKey.publicKey,
-    ...(verifierKey ? { verifierKey } : {}),
-    manageKey: manageKey.publicKey,
-    kdfId,
-    opensMax: input.opensMax,
-    ttlSeconds: input.ttlSeconds,
-    object,
-    ...(powToken === undefined ? {} : { powToken }),
-  });
-  const result = { link: formatLink(deps.origin, id, kdfId, s), expiresAt, id: idToString(id), manageKey };
-  s.fill(0);
-  return result;
 }
 
 export async function createMessage(

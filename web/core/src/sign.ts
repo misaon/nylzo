@@ -32,12 +32,15 @@ export interface RequestSignature {
 export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
   assertLength(seed, TOKEN_LEN, 'seed');
   const pkcs8 = concat(PKCS8_ED25519_PREFIX, seed);
-  const exportable = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
-  const jwk = await crypto.subtle.exportKey('jwk', exportable);
-  const publicKey = decodeBase64urlExact(jwk.x ?? '', PUBLIC_KEY_LEN);
-  const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
-  pkcs8.fill(0);
-  return { privateKey, publicKey };
+  try {
+    const exportable = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
+    const jwk = await crypto.subtle.exportKey('jwk', exportable);
+    const publicKey = decodeBase64urlExact(jwk.x ?? '', PUBLIC_KEY_LEN);
+    const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
+    return { privateKey, publicKey };
+  } finally {
+    pkcs8.fill(0);
+  }
 }
 
 export async function newRequestKey(): Promise<RequestKey> {

@@ -3,9 +3,9 @@ import {
   KDF_PBKDF2,
   KDF_SCRYPT,
   PowTimeoutError,
+  TooLargeError,
   deriveContent,
   deriveLink,
-  derivePassphraseKey,
   encodeBase64url,
   formatLink,
   newHeader,
@@ -15,15 +15,29 @@ import {
   solvePow,
   type KdfId,
 } from '@nylzo/core';
+import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError } from '../src/lib/api.ts';
+import { ApiError, type MessageState } from '../src/lib/api.ts';
 import { CreateError, POW_BUDGET_MS, createMessage, passphraseIsWeak, validateCreate, type CreateDeps, type CreateInput } from '../src/lib/create.ts';
-import { createReader, type ReadView, type SessionStore } from '../src/lib/read.ts';
+import { KdfWorkerError } from '../src/lib/kdf-protocol.ts';
+import { createReader, type ReaderDeps, type ReadView, type SessionStore } from '../src/lib/read.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from './fake-api.ts';
 
-const scrypt = (passphrase: string, saltPw: Uint8Array<ArrayBuffer>, onProgress: (fraction: number) => void) =>
-  derivePassphraseKey(KDF_SCRYPT, passphrase, saltPw, { onProgress });
+type Scrypt = ReaderDeps['scrypt'];
+
+const scrypt: Scrypt = async (passphrase, saltPw, onProgress) => scryptPassphraseKey(passphrase, saltPw, onProgress);
+
+function workerScrypt(calls: string[] = []): Scrypt {
+  return async (passphrase, saltPw, onProgress) => {
+    calls.push('scrypt');
+    try {
+      return await scrypt(passphrase, saltPw, onProgress);
+    } catch {
+      throw new KdfWorkerError();
+    }
+  };
+}
 
 interface PowCall {
   readonly challenge: string;
@@ -71,7 +85,14 @@ function memorySession(): SessionStore & { map: Map<string, string>; log: string
   };
 }
 
-function reader(api: FakeApi, link: string, overrides: { session?: ReturnType<typeof memorySession>; visible?: boolean; prerendering?: boolean } = {}) {
+interface ReaderOverrides {
+  readonly session?: ReturnType<typeof memorySession>;
+  readonly visible?: boolean;
+  readonly prerendering?: boolean;
+  readonly scrypt?: Scrypt;
+}
+
+function reader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
   const url = new URL(link);
   const views: ReadView[] = [];
   let dropped = 0;
@@ -83,7 +104,7 @@ function reader(api: FakeApi, link: string, overrides: { session?: ReturnType<ty
       session,
       page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
       dropFragment: () => void dropped++,
-      scrypt,
+      scrypt: overrides.scrypt ?? scrypt,
       now: () => Date.now(),
     },
     (view) => {
@@ -298,6 +319,199 @@ describe('reading a message', () => {
   });
 });
 
+function leaseKeyOf(link: string): string {
+  return `nylzo:lease:${idTextOf(link)}`;
+}
+
+function storedOf(api: FakeApi, link: string) {
+  const stored = api.stored.get(idTextOf(link));
+  if (!stored) {
+    throw new Error('the fake server does not know the message');
+  }
+  return stored;
+}
+
+describe('reading through the lease and claim edge cases', () => {
+  it('asks before spending another open when the stored lease ran out', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 3 }), createDeps(api));
+    const session = memorySession();
+    session.setItem(leaseKeyOf(created.link), 'stale');
+    const r = reader(api, created.link, { session });
+    await r.load();
+    expect(r.last()).toMatchObject({ view: 'ready', resumable: true });
+    api.calls.length = 0;
+    await r.reveal();
+    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['blob']);
+    expect(r.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
+    expect(session.map.has(leaseKeyOf(created.link))).toBe(false);
+    expect(storedOf(api, created.link).opensRemaining).toBe(3);
+    await r.reveal();
+    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['blob', 'claim']);
+    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
+    expect(storedOf(api, created.link).opensRemaining).toBe(2);
+  });
+
+  it('keeps the lease when the download limit of the lease is reached', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const session = memorySession();
+    session.setItem(leaseKeyOf(created.link), 'lease-1');
+    api.blob = async () => {
+      api.calls.push('blob');
+      throw new ApiError(429, 'rate_limited', 90);
+    };
+    const r = reader(api, created.link, { session });
+    await r.load();
+    await r.reveal();
+    expect(r.last()).toEqual({ view: 'retry_later', retryAfter: 90 });
+    expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
+    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['blob']);
+  });
+
+  it('keeps the lease when the claim stream breaks, so a reload resumes without another open', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const session = memorySession();
+    const claim = api.claim.bind(api);
+    api.claim = async (id, readKey, options = {}) => {
+      await claim(id, readKey, options);
+      throw new TypeError('network error');
+    };
+    const first = reader(api, created.link, { session });
+    await first.load();
+    await first.reveal();
+    expect(first.last()).toEqual({ view: 'failed' });
+    expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
+    api.claim = claim;
+    const again = reader(api, created.link, { session });
+    await again.load();
+    expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
+    await again.reveal();
+    expect(again.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['claim', 'blob']);
+  });
+
+  it.each<MessageState>(['cancelled', 'deleted', 'expired', 'opened'])('shows the end state %s when the message ended after the page loaded', async (state) => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    r.session.setItem(leaseKeyOf(created.link), 'stale');
+    storedOf(api, created.link).state = state;
+    await r.reveal();
+    expect(r.last()).toMatchObject({ view: 'ended', state });
+    expect(r.session.map.has(leaseKeyOf(created.link))).toBe(false);
+    expect(await r.report('late')).toEqual({ outcome: 'ignored' });
+  });
+
+  it.each([
+    [429, 'rate_limited', 7],
+    [503, 'unavailable', 5],
+  ] as const)('waits after a %i claim without spending an open', async (status, kind, wait) => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    api.claim = async () => {
+      api.calls.push('claim');
+      throw new ApiError(status, kind, wait);
+    };
+    const r = reader(api, created.link);
+    await r.load();
+    await r.reveal();
+    expect(r.last()).toEqual({ view: 'retry_later', retryAfter: wait });
+    expect(r.session.map.has(leaseKeyOf(created.link))).toBe(false);
+    expect(storedOf(api, created.link).opensRemaining).toBe(1);
+  });
+
+  it('reports a link that became unknown at the claim', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    api.claim = async () => {
+      throw new ApiError(404, 'not_found');
+    };
+    await r.reveal();
+    expect(r.last()).toEqual({ view: 'unknown' });
+  });
+
+  it('sends one claim when the reader submits twice before the first reveal ends', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const claim = api.claim.bind(api);
+    api.claim = async (...args: Parameters<typeof claim>) => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return claim(...args);
+    };
+    await Promise.all([r.reveal(), r.reveal()]);
+    expect(api.calls.filter((c) => c.startsWith('claim'))).toEqual(['claim']);
+    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+  });
+});
+
+describe('passphrase handling on the read page', () => {
+  it.each([KDF_PBKDF2, KDF_SCRYPT] as const)('refuses a malformed passphrase for profile %i before any derivation or claim', async (kdfId) => {
+    const api = fakeApi();
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId }), createDeps(api));
+    const derivations: string[] = [];
+    const r = reader(api, created.link, { scrypt: workerScrypt(derivations) });
+    await r.load();
+    await r.reveal('caf\ud800 correct horse');
+    expect(r.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason: 'malformed' } });
+    expect(r.views.some((v) => v.view === 'busy')).toBe(false);
+    expect(derivations).toEqual([]);
+    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    expect(r.session.map.size).toBe(0);
+  });
+
+  it('suggests another device when the key derivation worker fails', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), createDeps(api));
+    const r = reader(api, created.link, {
+      scrypt: async () => {
+        throw new KdfWorkerError();
+      },
+    });
+    await r.load();
+    await r.reveal('correct horse battery staple');
+    expect(r.last()).toMatchObject({ view: 'ready', deviceFailed: true, rejected: undefined });
+    const other = reader(api, created.link, {
+      scrypt: async () => {
+        throw Object.assign(new Error('not the worker'), { name: 'KdfWorkerError' });
+      },
+    });
+    await other.load();
+    await other.reveal('correct horse battery staple');
+    expect(other.last()).toEqual({ view: 'failed' });
+    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+  });
+});
+
+describe('leaving the page after the reveal', () => {
+  it('wipes the shown file and drops the read key', async () => {
+    const api = fakeApi();
+    const bytes = new Uint8Array(5000).fill(7);
+    const created = await createMessage(input({ text: '', file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 3 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    r.clear();
+    expect(r.last()?.view).toBe('ready');
+    await r.reveal();
+    const shown = r.last();
+    const file = shown?.view === 'revealed' ? shown.file : undefined;
+    expect(file?.bytes).toEqual(bytes);
+    r.clear();
+    expect(r.last()).toEqual({ view: 'cleared' });
+    expect(file?.bytes.every((byte) => byte === 0)).toBe(true);
+    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    expect(await r.report('after leaving')).toEqual({ outcome: 'ignored' });
+    expect(api.calls).not.toContain('burn');
+    expect(api.calls).not.toContain('report');
+  });
+});
+
 describe('creating a message', () => {
   it('fetches a new id when the token expired or the id is taken', async () => {
     const api = fakeApi({ failCreate: [new ApiError(403, 'id_token'), new ApiError(409, 'conflict')] });
@@ -359,6 +573,16 @@ describe('creating a message', () => {
       ],
     });
     expect(api.calls).toEqual(['instance']);
+  });
+
+  it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
+    const api = fakeApi();
+    const failing = { ...createDeps(api), scrypt: async () => Promise.reject(new KdfWorkerError()) };
+    await expect(createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), failing)).rejects.toMatchObject({ failure: { kind: 'kdf' } });
+    const renamed = { ...createDeps(api), scrypt: async () => Promise.reject(Object.assign(new Error('worker'), { name: 'KdfWorkerError' })) };
+    await expect(createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), renamed)).rejects.toMatchObject({ failure: { kind: 'failed' } });
+    api.create = async () => Promise.reject(new TooLargeError());
+    await expect(createMessage(input(), createDeps(api))).rejects.toMatchObject({ failure: { kind: 'too_large' } });
   });
 
   it('checks the limits of the instance', async () => {
@@ -502,6 +726,23 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const [first, second] = await Promise.all([r.report('one'), r.report('two')]);
     expect([first, second]).toEqual([{ outcome: 'accepted' }, { outcome: 'ignored' }]);
     expect(api.reports.map((report) => report.reason)).toEqual(['one']);
+  });
+
+  it('sends no report once the last open was shown, because the server keeps reports only for live messages (D46)', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    await r.reveal();
+    expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+    expect(await r.report('after the last open')).toEqual({ outcome: 'ignored' });
+    const rest = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const other = reader(api, rest.link);
+    await other.load();
+    await other.reveal();
+    expect(await other.burn()).toEqual({ outcome: 'deleted' });
+    expect(await other.report('after deleting the rest')).toEqual({ outcome: 'ignored' });
+    expect(api.calls).not.toContain('report');
   });
 
   it('drops the read key once the page shows an end state', async () => {

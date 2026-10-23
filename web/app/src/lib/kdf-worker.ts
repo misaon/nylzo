@@ -1,15 +1,16 @@
-import { KDF_SCRYPT, PowTimeoutError, derivePassphraseKey, solvePow } from '@nylzo/core';
+import { PowTimeoutError, solvePow } from '@nylzo/core';
+import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 
-import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
+import { throttledProgress, type KdfRequest, type KdfResponse } from './kdf-protocol.ts';
 
 function reply(message: KdfResponse, transfer: Transferable[] = []): void {
   self.postMessage(message, { transfer });
 }
 
-async function handle(request: KdfRequest): Promise<void> {
-  const onProgress = (fraction: number) => reply({ kind: 'progress', fraction });
+function handle(request: KdfRequest): void {
+  const onProgress = throttledProgress((fraction) => reply({ kind: 'progress', fraction }));
   if (request.kind === 'scrypt') {
-    const key = await derivePassphraseKey(KDF_SCRYPT, request.passphrase, request.saltPw, { blocking: true, onProgress });
+    const key = scryptPassphraseKey(request.passphrase, request.saltPw, onProgress);
     reply({ kind: 'key', key }, [key.buffer]);
     return;
   }
@@ -22,5 +23,9 @@ async function handle(request: KdfRequest): Promise<void> {
 }
 
 self.addEventListener('message', (event: MessageEvent<KdfRequest>) => {
-  handle(event.data).catch((error: unknown) => reply({ kind: 'error', timeout: error instanceof PowTimeoutError }));
+  try {
+    handle(event.data);
+  } catch (error) {
+    reply({ kind: 'error', timeout: error instanceof PowTimeoutError });
+  }
 });

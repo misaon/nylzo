@@ -4,11 +4,25 @@
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import { createApi } from '../lib/api.ts';
   import { keepFocus } from '../lib/focus.ts';
-  import { formatTime, formatWait } from '../lib/format.ts';
-  import { getI18n } from '../lib/i18n.svelte.ts';
-  import { createSentPage, indexedDbSentStore, type CancelOutcome, type ItemState, type SentItem, type SentView } from '../lib/sent.ts';
+  import { formatDays, formatTime, formatWait } from '../lib/format.ts';
+  import { getI18n, type MessageKey } from '../lib/i18n.svelte.ts';
+  import {
+    RETENTION_DAYS,
+    createSentPage,
+    indexedDbSentStore,
+    type CancelOutcome,
+    type ItemState,
+    type SentItem,
+    type SentView,
+  } from '../lib/sent.ts';
 
   type Confirming = { readonly kind: 'cancel' | 'forget'; readonly id: string } | { readonly kind: 'forget_all' };
+
+  const DIALOGS: Record<Confirming['kind'], { readonly message: MessageKey; readonly confirm: MessageKey; readonly dismiss: MessageKey }> = {
+    cancel: { message: 'sent.cancel.confirm', confirm: 'sent.cancel.yes', dismiss: 'sent.cancel.no' },
+    forget: { message: 'sent.forget.confirm', confirm: 'sent.forget.yes', dismiss: 'sent.keep' },
+    forget_all: { message: 'sent.forget_all.confirm', confirm: 'sent.forget_all.yes', dismiss: 'sent.keep' },
+  };
 
   const i18n = getI18n();
   const { t } = i18n;
@@ -33,7 +47,7 @@
       case 'cancelled':
         return t('sent.cancelled');
       case 'retry_later':
-        return t('read.retry_later', { time: formatWait(cancelled.retryAfter ?? 60, i18n.language) });
+        return t('read.retry_later', { time: formatWait(cancelled.retryAfter, i18n.language) });
       case 'failed':
         return t('sent.failed');
       default:
@@ -55,7 +69,7 @@
       case 'unknown':
         return t('sent.unknown');
       case 'retry_later':
-        return t('read.retry_later', { time: formatWait(state.retryAfter ?? 60, i18n.language) });
+        return t('read.retry_later', { time: formatWait(state.retryAfter, i18n.language) });
       case 'failed':
         return t('sent.failed');
     }
@@ -135,7 +149,7 @@
 
 <section aria-labelledby="sent-title">
   <h2 id="sent-title" tabindex="-1">{t('sent.title')}</h2>
-  <p>{t('sent.note')}</p>
+  <p>{t('sent.note', { days: formatDays(RETENTION_DAYS, i18n.language) })}</p>
 
   {#if view.view === 'unavailable'}
     <p role="alert">{t('sent.unavailable')}</p>
@@ -175,30 +189,13 @@
   {/if}
 </section>
 
-{#if confirming?.kind === 'cancel'}
+{#if confirming}
+  {@const dialog = DIALOGS[confirming.kind]}
   <ConfirmDialog
     id="sent-confirm"
-    message={t('sent.cancel.confirm')}
-    confirm={t('sent.cancel.yes')}
-    dismiss={t('sent.cancel.no')}
-    onconfirm={confirmed}
-    onclose={dismissed}
-  />
-{:else if confirming?.kind === 'forget'}
-  <ConfirmDialog
-    id="sent-confirm"
-    message={t('sent.forget.confirm')}
-    confirm={t('sent.forget.yes')}
-    dismiss={t('sent.keep')}
-    onconfirm={confirmed}
-    onclose={dismissed}
-  />
-{:else if confirming?.kind === 'forget_all'}
-  <ConfirmDialog
-    id="sent-confirm"
-    message={t('sent.forget_all.confirm')}
-    confirm={t('sent.forget_all.yes')}
-    dismiss={t('sent.keep')}
+    message={t(dialog.message)}
+    confirm={t(dialog.confirm)}
+    dismiss={t(dialog.dismiss)}
     onconfirm={confirmed}
     onclose={dismissed}
   />

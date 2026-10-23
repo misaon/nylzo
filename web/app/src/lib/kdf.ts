@@ -1,14 +1,7 @@
 import { PowTimeoutError } from '@nylzo/core';
 
-import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
+import { KdfWorkerError, type KdfRequest, type KdfResponse } from './kdf-protocol.ts';
 import workerUrl from './kdf-worker.ts?worker&url';
-
-export class KdfWorkerError extends Error {
-  override readonly name = 'KdfWorkerError';
-  constructor(message = 'the key derivation worker failed') {
-    super(message);
-  }
-}
 
 export const SILENCE_LIMIT_MS = 30_000;
 

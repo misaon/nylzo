@@ -8,7 +8,6 @@ import {
   KdfError,
   MalformedPassphraseError,
   TOKEN_LEN,
-  deriveAll,
   deriveContent,
   deriveLink,
   derivePassphraseKey,
@@ -21,8 +20,10 @@ import {
   seal,
   utf8,
   type KdfId,
+  type NativeKdfId,
 } from '../src/index.ts';
 import { newId } from '../src/ids.ts';
+import { deriveAll, scryptPassphraseKey } from '../src/scrypt.ts';
 import { bytesToHex } from './helpers.ts';
 
 const composed = 'héslo s češtinou';
@@ -74,8 +75,9 @@ describe('tokens', () => {
 describe('passphrase normalisation', () => {
   it('rejects a passphrase that is not well-formed Unicode', async () => {
     const salt = new Uint8Array(32);
+    await expect(derivePassphraseKey(KDF_PBKDF2, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
+    expect(() => scryptPassphraseKey('caf\ud800', salt)).toThrow(MalformedPassphraseError);
     for (const kdfId of [KDF_SCRYPT, KDF_PBKDF2] as const) {
-      await expect(derivePassphraseKey(kdfId, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
       await expect(deriveAll(newId(), newSecret(), kdfId, 'caf\ud800')).rejects.toBeInstanceOf(MalformedPassphraseError);
     }
     await expect(derivePassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
@@ -105,8 +107,8 @@ describe('passphrase normalisation', () => {
     const id = newId();
     const s = newSecret();
     const { saltPw } = await deriveLink(id, s);
-    const a = await derivePassphraseKey(KDF_SCRYPT, composed, saltPw);
-    const b = await derivePassphraseKey(KDF_SCRYPT, decomposed, saltPw);
+    const a = scryptPassphraseKey(composed, saltPw);
+    const b = scryptPassphraseKey(decomposed, saltPw);
     expect(a).toHaveLength(KEY_LEN);
     expect(a).toEqual(b);
   }, 60_000);
@@ -126,9 +128,10 @@ describe('kdf profiles', () => {
     expect(a.content.v).toEqual(b.content.v);
   });
 
-  it('rejects an unknown profile', async () => {
-    const unknown = Number('3') as KdfId;
-    await expect(derivePassphraseKey(unknown, 'x', new Uint8Array(32))).rejects.toBeInstanceOf(KdfError);
+  it('rejects an unknown profile and leaves scrypt to its own module', async () => {
+    for (const kdfId of [Number('3'), KDF_SCRYPT] as KdfId[]) {
+      await expect(derivePassphraseKey(kdfId as NativeKdfId, 'correct horse battery staple', new Uint8Array(32))).rejects.toBeInstanceOf(KdfError);
+    }
   });
 
   it('wipes the copy of S and P it feeds into HKDF', async () => {

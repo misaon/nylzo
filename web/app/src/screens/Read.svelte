@@ -70,7 +70,7 @@
       case 'ended':
         return afterReveal ? t(`read.ended.${outcome.state}`) : '';
       case 'retry_later':
-        return t('read.retry_later', { time: formatWait(outcome.retryAfter ?? 60, i18n.language) });
+        return t('read.retry_later', { time: formatWait(outcome.retryAfter, i18n.language) });
       case 'unknown':
         return afterReveal ? t('read.delete.failed') : '';
       case 'failed':
@@ -99,6 +99,12 @@
     keepFocus(document.getElementById(view.view === 'revealed' ? 'revealed-title' : 'read-title'));
   }
 
+  function leave() {
+    burned = undefined;
+    confirming = false;
+    reader.clear();
+  }
+
   function download(file: RevealedFile) {
     if (isKnownSafeFile(file.name) || confirming) {
       confirming = false;
@@ -108,6 +114,8 @@
     }
   }
 </script>
+
+<svelte:window onpagehide={leave} />
 
 <p role="status" aria-live="polite">{status}</p>
 
@@ -120,11 +128,13 @@
     <p role="alert">{t('read.unknown')}</p>
   {:else if view.view === 'tampered'}
     <p role="alert">{t('read.tampered')}</p>
+  {:else if view.view === 'cleared'}
+    <p role="alert">{t('read.cleared')}</p>
   {:else if view.view === 'failed'}
     <p role="alert">{t('read.failed')}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'retry_later'}
-    <p role="alert">{t('read.retry_later', { time: formatWait(view.retryAfter ?? 60, i18n.language) })}</p>
+    <p role="alert">{t('read.retry_later', { time: formatWait(view.retryAfter, i18n.language) })}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'ended'}
     <p role="alert">{t(`read.ended.${view.state}`)}</p>
@@ -146,6 +156,9 @@
     {/if}
     {#if view.resumable}
       <p>{t('read.resumable')}</p>
+    {/if}
+    {#if view.leaseEnded}
+      <p role="alert">{t('read.lease_ended')}</p>
     {/if}
     {#if view.rejected?.reason === 'malformed'}
       <p role="alert">{t('read.rejected.malformed')}</p>
@@ -209,7 +222,9 @@
     {#if view.burnable || restDeleted}
       <button type="button" disabled={!view.burnable || deleting} onclick={() => (askingDelete = true)}>{t('read.delete.rest')}</button>
     {/if}
-    {@render reportArea()}
+    {#if view.burnable}
+      {@render reportArea()}
+    {/if}
   {/if}
 </section>
 

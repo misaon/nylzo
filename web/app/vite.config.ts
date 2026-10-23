@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
+import { gzipSync } from 'node:zlib';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
@@ -33,9 +33,7 @@ function precompress(): Plugin {
         if (!/\.(js|css)$/.test(name)) {
           continue;
         }
-        const body = readFileSync(join(assets, name));
-        writeFileSync(join(assets, `${name}.br`), brotliCompressSync(body, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }));
-        const gz = gzipSync(body, { level: 9 });
+        const gz = gzipSync(readFileSync(join(assets, name)), { level: 9 });
         gz[9] = GZIP_OS_UNKNOWN;
         writeFileSync(join(assets, `${name}.gz`), gz);
       }
