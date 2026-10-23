@@ -41,11 +41,11 @@ mise install
 mise run dev
 ```
 
-Pak v prohlížeči napište zprávu, zkopírujte odkaz a otevřete ho v anonymním okně. Data a pepper leží v `.dev/`, takže zprávy přežijí restart; `mise run dev:reset` je smaže. Server naslouchá jen na localhostu (jiný port nastaví `NYLZO_LISTEN=127.0.0.1:8090`) a má vypnuté limity vytváření a čtení, aby zkoušení nenarazilo na 20 zpráv za hodinu. Z telefonu přes adresu v lokální síti to nepůjde, Web Crypto potřebuje HTTPS nebo localhost.
+Pak v prohlížeči napište zprávu, zkopírujte odkaz a otevřete ho v anonymním okně. Data a pepper leží v `.dev/`, takže zprávy přežijí restart; `mise run dev:reset` je smaže. Server naslouchá vždy jen na `127.0.0.1` (jiný port nastaví `NYLZO_DEV_PORT=8081`; 8090 si berou e2e testy) a má vypnuté limity vytváření a čtení, aby zkoušení nenarazilo na 20 zpráv za hodinu. Pepper z prostředí shellu (`NYLZO_PEPPER` a spol.) úloha ignoruje. Z telefonu přes adresu v lokální síti to nepůjde, Web Crypto potřebuje HTTPS nebo localhost.
 
 Pro práci na webovém klientovi pusťte vedle `mise run dev` ještě `mise run dev:web`: Vite s hot reloadem na `http://localhost:5173` posílá `/api` na server z `mise run dev` (jinou adresu nastaví `NYLZO_DEV_API`). Vite stránky neposílá s CSP serveru, takže CSP a nonce ověříte až v `mise run dev` nebo v e2e testech.
 
-Další úlohy vypíše `mise tasks`: `mise run test` (Go s race detektorem a TypeScript), `mise run lint`, `mise run build`, `mise run e2e` (prohlížeče jednou stáhne `mise run e2e:browsers`). Úlohy spouštějí stejné příkazy jako CI a potřebují POSIX shell, tedy Linux, macOS nebo WSL. Proč mise a co hlídá CI, popisuje `docs/plans/2026-10-24-dev-setup-mise.md` (D58, D59).
+Další úlohy vypíše `mise tasks`: `mise run test` (Go s race detektorem a TypeScript), `mise run lint`, `mise run build`, `mise run e2e` (prohlížeče jednou stáhne `mise run e2e:browsers`). `test` a `lint` spouštějí stejné kontroly jako joby Go a TypeScript v CI. Úlohy potřebují POSIX shell, tedy Linux, macOS nebo WSL. Na Linuxu potřebuje race detektor překladač C (na Debianu a Ubuntu `sudo apt install gcc`) a prohlížeče pro e2e systémové knihovny, které nainstaluje `sudo pnpm --dir web/e2e exec playwright install-deps`. Proč mise a co hlídá CI, popisuje `docs/plans/2026-10-24-dev-setup-mise.md` (D58, D59).
 
 ## Požadavky bez mise
 

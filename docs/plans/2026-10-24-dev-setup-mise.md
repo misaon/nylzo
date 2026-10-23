@@ -4,7 +4,7 @@ Datum: 24. 10. 2026. Větev: `claude/mise` z `main` po sloučení PR 8 (`43376a0
 
 ## Cíl
 
-Kdo naklonuje repozitář a má mise, spustí Nylzo dvěma příkazy: `mise install` stáhne připnuté Go, Node.js a pnpm a `mise run dev` sestaví webového klienta, binárku a pustí server na `http://localhost:8080`. Front-end vývojář dostane i Vite s hot reloadem. Ruční postup bez mise v README zůstává.
+Kdo naklonuje repozitář a má mise, spustí Nylzo třemi příkazy: `mise trust` povolí konfiguraci repozitáře, `mise install` stáhne připnuté Go, Node.js a pnpm a `mise run dev` sestaví webového klienta, binárku a pustí server na `http://localhost:8080`. Front-end vývojář dostane i Vite s hot reloadem. Ruční postup bez mise v README zůstává.
 
 Hotovo znamená: `mise.toml` a `mise.lock` v kořeni, úlohy pro vývoj, testy, lint a e2e, job v CI, který postup ověří na čistém stroji, a README s rychlým startem.
 
@@ -13,10 +13,10 @@ Hotovo znamená: `mise.toml` a `mise.lock` v kořeni, úlohy pro vývoj, testy, 
 ### D58: mise jako vstupní bod pro vývojáře
 
 - `mise.toml` připíná Go 1.27.3, Node.js 24.22.1 a pnpm 12.14.0. `mise.lock` k nim drží adresu a SHA-256 pro linux-x64, linux-arm64, macos-x64 a macos-arm64. Ověřeno 24. 10. 2026 s mise 2026.10.9: `mise install` stažení s jiným checksumem, než má zámek, odmítne. Go a Node.js stahuje z dl.google.com a nodejs.org, pnpm z GitHub Releases přes backend aqua, který navíc ověří atestaci GitHubu.
-- Verze dál stojí i v `go.mod` (`toolchain`), `web/.node-version` a poli `packageManager`, protože z nich čte CI a GoReleaser. Job „Developer setup (mise)“ v CI hlídá, že `mise.toml` říká totéž a že úloha `lint` volá stejnou verzi golangci-lint jako CI.
+- Verze dál stojí i v `go.mod` (`toolchain`), `web/.node-version` a poli `packageManager`, protože z nich čte CI a GoReleaser. Job „Developer setup (mise)“ v CI hlídá, že `mise.toml` říká totéž.
 - `GOTOOLCHAIN=local` v prostředí mise zakáže Go stahovat jiný toolchain. Kvůli sekcím `[env]` a `[settings]` mise konfiguraci použije až po `mise trust` (ověřeno s 2026.10.9); README to uvádí jako první krok, aby si ji přispěvatel před povolením přečetl.
-- Úlohy: `install`, `build:web`, `build`, `dev`, `dev:web`, `dev:reset`, `test`, `lint`, `e2e:browsers`, `e2e`. Spouštějí stejné příkazy jako CI, aby lokální výsledek odpovídal CI.
-- `mise run dev` naslouchá jen na `127.0.0.1:8080` (port změní `NYLZO_LISTEN`). Pepper vygeneruje z `/dev/urandom` do `.dev/pepper` s právy 0600 a data dává do `.dev/data`, takže zprávy přežijí restart. Limity vytváření a čtení vypne, aby opakované zkoušení nenarazilo na 20 zpráv za hodinu; PoW, velikosti a ostatní limity zůstávají jako v produkci. `mise run dev:reset` adresář `.dev` smaže. `.dev/` a `bin/` jsou v `.gitignore`.
+- Úlohy: `install`, `build:web`, `build`, `dev`, `dev:web`, `dev:reset`, `test`, `lint`, `e2e:browsers`, `e2e`. `test` a `lint` spouštějí stejné kontroly jako joby Go a TypeScript v CI (včetně `go fix -diff`, govulncheck, `pnpm audit` a pravidel dodavatelského řetězce pnpm), aby lokální výsledek odpovídal CI. Job v CI hlídá, že nástroje spouštěné přes `go run` mají v `mise.toml` stejnou verzi jako v CI.
+- `mise run dev` naslouchá vždy jen na `127.0.0.1`, i když shell má nastavené `NYLZO_LISTEN`, protože limity jsou vypnuté; port změní `NYLZO_DEV_PORT` (výchozí 8080). Zděděné `NYLZO_PEPPER` a předchozí pepper úloha zahodí, jinak by se srazily s pepperem v souboru. Pepper vygeneruje z `/dev/urandom` do `.dev/pepper` s právy 0600 a data dává do `.dev/data`, takže zprávy přežijí restart. Limity vytváření a čtení vypne, aby opakované zkoušení nenarazilo na 20 zpráv za hodinu; PoW, velikosti a ostatní limity zůstávají jako v produkci. `mise run dev:reset` adresář `.dev` smaže. `.dev/` a `bin/` jsou v `.gitignore`.
 - Úlohy potřebují POSIX shell, tedy Linux, macOS nebo WSL. Server na Windows stejně neběží (D54).
 
 Cena: přispěvatel, který mise nechce, má o jeden nástroj víc v návodu, proto ruční postup zůstává. mise sám je další místo důvěry, protože stahuje nástroje; zámek s checksumy a v CI akce připnutá na SHA s pevnou verzí mise, jejíž stažení akce ověří proti podepsaným checksumům (minisign), ho omezují.

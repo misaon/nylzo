@@ -32,9 +32,11 @@ run = """
 umask 077
 mkdir -p .dev/data
 [ -s .dev/pepper ] || od -An -N32 -tx1 /dev/urandom | tr -d ' \\n' > .dev/pepper
-listen="${NYLZO_LISTEN:-127.0.0.1:8080}"
-echo "nylzo: http://localhost:${listen##*:} (Ctrl-C stops it, mise run dev:reset deletes the messages)"
-exec env NYLZO_LISTEN="$listen" NYLZO_PEPPER_FILE=.dev/pepper NYLZO_DATA_DIR=.dev/data \
+port="${NYLZO_DEV_PORT:-8080}"
+case "$port" in ''|*[!0-9]*) echo "NYLZO_DEV_PORT must be a port number" >&2; exit 2 ;; esac
+unset NYLZO_PEPPER NYLZO_PEPPER_PREVIOUS NYLZO_PEPPER_PREVIOUS_FILE
+echo "nylzo: http://localhost:$port (Ctrl-C stops it, mise run dev:reset deletes the messages)"
+exec env NYLZO_LISTEN="127.0.0.1:$port" NYLZO_PEPPER_FILE=.dev/pepper NYLZO_DATA_DIR=.dev/data \
   NYLZO_RATE_CREATE_HOUR=0 NYLZO_RATE_CREATE_DAY=0 NYLZO_RATE_CREATE_BYTES_DAY=0 NYLZO_RATE_READ_HOUR=0 \
   bin/nylzo serve
 """
@@ -49,21 +51,31 @@ description = "Delete the local messages and the pepper in .dev"
 run = "rm -rf .dev"
 
 [tasks.test]
-description = "Go tests with the race detector and the TypeScript tests"
+description = "The Go and TypeScript tests of CI, Go with the race detector"
 depends = ["install"]
 run = [
   "go test -race -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./...",
-  "go test -race -count=1 -run '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./internal/server/",
-  "pnpm --dir web -r test",
+  "go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/",
+  "go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/",
+  "NYLZO_HEAVY_TESTS=1 pnpm --dir web -r test",
 ]
 
 [tasks.lint]
-description = "gofmt, go vet, golangci-lint, svelte-check and the web source checks"
+description = "The static checks of the Go and TypeScript CI jobs"
 depends = ["install"]
 run = [
+  "go mod verify",
+  "go mod tidy -diff",
   "test -z \"$(gofmt -l cmd internal)\" || { gofmt -l cmd internal; exit 1; }",
-  "go vet ./...",
+  "GOOS=linux go vet ./...",
+  "GOOS=darwin go vet ./...",
+  "go fix -diff ./...",
   "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...",
+  "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
+  '''awk '/^minimumReleaseAge:/ { found = 1; if ($2 + 0 < 1440) exit 1 } END { exit !found }' web/pnpm-workspace.yaml''',
+  '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
+  '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
+  "pnpm --dir web audit --audit-level=moderate",
   "pnpm --dir web -r typecheck",
   "pnpm --dir web --filter @nylzo/web check",
 ]
