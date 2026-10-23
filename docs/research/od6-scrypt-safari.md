@@ -87,3 +87,5 @@ The same iPhone 15 Pro Max with iOS 27.2 opened the static probe from a temporar
 | page interrupted | no, 7 derivations of 128 MiB in a row |
 
 Over HTTPS profile 1 takes about 0.55 s on the phone in the web client's path, the extra 0.3 s over the main thread being the start of a new worker. That meets the criterion of the milestone plan (median under 3 s, no interruption). The 43 s of the first run therefore came from that run's conditions, plain http from the local network, and not from the phone's speed; which part of them caused it is NOT VERIFIED. The web client does not run over plain http anyway, because Web Crypto exists only in a secure context.
+
+Owner decision D33 (23 October 2026), after the run over HTTPS: the default passphrase profile is scrypt (profile 1) again, replacing D30. Owner decision D34: OD25 closes without a change to the proof of work.
