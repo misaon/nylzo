@@ -22,7 +22,11 @@ Webový klient zůstává vložený v binárce i na veřejné instanci; samostat
 
 ### D57: hosting prototypu
 
-Vlastník chce prototyp v produkci co nejjednodušeji, požadavek na provoz jen v EU zatím odkládá a TLS v produkci ukončí hosting (v Compose proxy před `nylzo`). Hosting vybere rešerše `docs/research/I-hosting-prototype.md`; nasazení samo potřebuje účet vlastníka.
+Vlastník chce prototyp v produkci co nejjednodušeji, požadavek na provoz jen v EU zatím odkládá a TLS v produkci ukončí hosting (v Compose proxy před `nylzo`). Rešerše `docs/research/I-hosting-prototype.md` (23. 10. 2026) potvrdila, že stačí jeden kontejner s trvalým POSIX svazkem, ale serverless platformy ho většinou nemají nebo mají krátké limity: Vercel nevyhovuje (tělo nejvýš 4,5 MB, žádný trvalý disk, funkce nejvýš 300 s na Hobby), stejně tak Cloud Run, Scaleway Serverless Containers a DigitalOcean App Platform (bez svazku), Railway (nahrání do 5 minut) a Koyeb (100 s).
+
+- Doporučení: malý VPS s hotovým `deploy/compose` (Caddy a `nylzo serve`), například DigitalOcean Droplet 1 GiB ve Frankfurtu za 6 USD měsíčně. Server nepotřebuje změnu, TLS končí na vlastním stroji a access logy platformy nevznikají; cenou je správa stroje.
+- Druhá volba: Fly.io (jeden Machine 256 MB a 5GB volume, odhadem 3,3 USD měsíčně). Potřebovala by nový režim proxy pro hlavičku `Fly-Client-IP`, test, zda ji proxy přepíše, a odpověď Fly, co loguje.
+- Na vlastníkovi: volba platformy, účet s kartou, doména a DNS záznamy, způsob nasazení. Nasazení samo potřebuje účet vlastníka; Nylzo účty nezakládá.
 
 ### D54: server jen na Linuxu a macOS
 
