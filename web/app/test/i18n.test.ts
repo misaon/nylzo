@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDuration } from '../src/lib/format.ts';
-import { createI18n, dictionaries, pickLanguage, type MessageKey } from '../src/lib/i18n.ts';
+import { formatBytes, formatDuration, formatWait } from '../src/lib/format.ts';
+import { createI18n, dictionaries, otherLanguage, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
@@ -35,5 +35,41 @@ describe('i18n', () => {
     expect(formatDuration(3601, 'en')).toBe('2 hours');
     expect(formatBytes(5242880, 'en')).toBe('5 MB');
     expect(formatBytes(102400, 'en')).toBe('100 kB');
+    const plain = (text: string) => text.replace(/\s/gu, ' ');
+    expect([1, 60, 3600, 120, 300].map((seconds) => plain(formatWait(seconds, 'cs')))).toEqual(['1 sekundu', '1 minutu', '1 hodinu', '2 minuty', '5 minut']);
+    expect(formatWait(60, 'en')).toBe('1 minute');
+  });
+
+  it('switches the language in place', () => {
+    const i18n = createI18n('en');
+    const { t } = i18n;
+    expect(t('nav.sent')).toBe('Sent');
+    i18n.language = otherLanguage(i18n.language);
+    expect(t('nav.sent')).toBe('Odeslané');
+    expect(otherLanguage('cs')).toBe('en');
+  });
+
+  it('prefers a saved choice and survives storage that throws', () => {
+    const map = new Map<string, string>();
+    const store: PreferenceStore = { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => void map.set(key, value) };
+    expect(savedLanguage(store, ['en'])).toBe('en');
+    saveLanguage(store, 'cs');
+    expect(map.get('nylzo:lang')).toBe('cs');
+    expect(savedLanguage(store, ['en'])).toBe('cs');
+    saveLanguage(store, 'en');
+    expect(savedLanguage(store, ['cs-CZ'])).toBe('en');
+    map.set('nylzo:lang', 'de');
+    expect(savedLanguage(store, ['cs-CZ'])).toBe('cs');
+    const broken: PreferenceStore = {
+      getItem: () => {
+        throw new Error('blocked');
+      },
+      setItem: () => {
+        throw new Error('blocked');
+      },
+    };
+    expect(savedLanguage(broken, ['cs'])).toBe('cs');
+    expect(() => saveLanguage(broken, 'en')).not.toThrow();
+    expect(savedLanguage(undefined, ['en-US'])).toBe('en');
   });
 });

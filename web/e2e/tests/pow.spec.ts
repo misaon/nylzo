@@ -1,7 +1,5 @@
-import { expect, test } from '@playwright/test';
-
 import { ApiError, createApi } from '../../app/src/lib/api.ts';
-import { POW_BASE_URL, createViaApi, createViaUi, expectRevealed, openViaUi } from './helpers.ts';
+import { POW_BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 test('the client solves the proof of work the instance asks for', async ({ browser }) => {

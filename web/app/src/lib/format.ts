@@ -1,4 +1,4 @@
-import type { Language } from './i18n.ts';
+import type { Language } from './i18n.svelte.ts';
 
 const MINUTE = 60;
 const HOUR = 3600;
@@ -12,6 +12,11 @@ export function formatDuration(seconds: number, language: Language): string {
   const [value, unit] =
     seconds < MINUTE ? [Math.max(1, Math.ceil(seconds)), 'second'] : seconds < HOUR ? [Math.ceil(seconds / MINUTE), 'minute'] : [Math.ceil(seconds / HOUR), 'hour'];
   return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
+}
+
+export function formatWait(seconds: number, language: Language): string {
+  const duration = formatDuration(seconds, language);
+  return language === 'cs' ? duration.replace(/^1(\s)(minut|hodin|sekund)a$/u, '1$1$2u') : duration;
 }
 
 export function formatBytes(bytes: number, language: Language): string {

@@ -13,13 +13,16 @@ import {
   deriveLink,
   derivePassphraseKey,
   formatLink,
+  idToString,
   newHeader,
+  newRequestKey,
   newSecret,
   requestKey,
   seal,
   utf8,
   type KdfId,
   type Meta,
+  type RequestKey,
 } from '@nylzo/core';
 
 import { ApiError, type Api, type InstanceLimits } from './api.ts';
@@ -72,6 +75,8 @@ export class CreateError extends Error {
 export interface Created {
   readonly link: string;
   readonly expiresAt: string;
+  readonly id: string;
+  readonly manageKey: RequestKey;
 }
 
 export interface CreateDeps {
@@ -213,7 +218,6 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   const { id, idToken } = instance.create;
   const kdfId = effectiveKdf(input);
   const s = newSecret();
-  const m = newSecret();
   const link = await deriveLink(id, s);
   const p = await passphraseKey(input, kdfId, link.saltPw, deps, onProgress);
   const content = await deriveContent(id, s, p);
@@ -223,12 +227,11 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   if (object.length > instance.limits.maxObjectBytes) {
     throw new CreateError({ kind: 'too_large' });
   }
-  const [readKey, manageKey] = await Promise.all([requestKey(link.r), requestKey(m)]);
+  const [readKey, manageKey] = await Promise.all([requestKey(link.r), newRequestKey()]);
   const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;
   link.r.fill(0);
   link.saltPw.fill(0);
   content.v.fill(0);
-  m.fill(0);
   const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
   onProgress({ step: 'uploading' });
   const { expiresAt } = await deps.api.create({
@@ -243,7 +246,7 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
     object,
     ...(powToken === undefined ? {} : { powToken }),
   });
-  const result = { link: formatLink(deps.origin, id, kdfId, s), expiresAt };
+  const result = { link: formatLink(deps.origin, id, kdfId, s), expiresAt, id: idToString(id), manageKey };
   s.fill(0);
   return result;
 }

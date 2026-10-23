@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, test } from '@playwright/test';
-
+import { expect, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 const id = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -23,7 +22,7 @@ function withoutNonce(policy: string): { readonly policy: string; readonly nonce
   return { policy: policy.replaceAll(/'nonce-[^']+'/g, "'nonce-{nonce}'"), nonces };
 }
 
-for (const path of ['/', `/m/${id}`]) {
+for (const path of ['/', '/sent', '/report', `/m/${id}`]) {
   test(`${path} carries exactly the CSP of spec section 9 and renders without violations`, async ({ page }) => {
     const violations = await recordViolations(page);
     const response = await page.goto(path);

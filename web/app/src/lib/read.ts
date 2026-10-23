@@ -15,6 +15,7 @@ import {
 
 import { ApiError, type Api, type Envelope, type MessageState, type Metadata } from './api.ts';
 import { sanitizeFileName } from './download.ts';
+import { sendReport, type ReportOutcome } from './report.ts';
 
 export type EndedState = Exclude<MessageState, 'available'>;
 
@@ -47,7 +48,15 @@ export type ReadView =
       readonly rejected?: PassphraseRejection | undefined;
     }
   | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
-  | { readonly view: 'revealed'; readonly text?: string | undefined; readonly file?: RevealedFile | undefined };
+  | { readonly view: 'revealed'; readonly text?: string | undefined; readonly file?: RevealedFile | undefined; readonly burnable: boolean };
+
+export type BurnOutcome =
+  | { readonly outcome: 'deleted' }
+  | { readonly outcome: 'ended'; readonly state: EndedState }
+  | { readonly outcome: 'unknown' }
+  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined }
+  | { readonly outcome: 'failed' }
+  | { readonly outcome: 'ignored' };
 
 export type PassphraseRejection =
   | { readonly reason: 'malformed' }
@@ -73,6 +82,8 @@ export interface ReaderDeps {
 export interface Reader {
   load(): Promise<void>;
   reveal(passphrase?: string): Promise<void>;
+  burn(): Promise<BurnOutcome>;
+  report(reason: string): Promise<ReportOutcome>;
 }
 
 interface Secrets {
@@ -82,6 +93,13 @@ interface Secrets {
   readonly saltPw: Uint8Array<ArrayBuffer>;
   readonly readKey: RequestKey;
 }
+
+interface Held {
+  readonly id: Uint8Array<ArrayBuffer>;
+  readonly readKey: RequestKey;
+}
+
+type Revealed = Extract<ReadView, { view: 'revealed' }>;
 
 interface Fetched {
   readonly envelope: Envelope;
@@ -103,6 +121,9 @@ function safely<T>(action: () => T, fallback: T): T {
 
 export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void): Reader {
   let secrets: Secrets | undefined;
+  let held: Held | undefined;
+  let revealed: Revealed | undefined;
+  let reporting = false;
   let idText = '';
   let metadata: Metadata | undefined;
   let deviceFailed = false;
@@ -112,8 +133,12 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
 
   const onView = (view: ReadView) => {
     revealable = view.view === 'ready';
+    revealed = view.view === 'revealed' ? view : undefined;
     if (view.view !== 'ready' && view.view !== 'busy') {
       forget();
+    }
+    if (view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') {
+      held = undefined;
     }
     notify(view);
   };
@@ -201,6 +226,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       const readKey = await requestKey(keys.r);
       keys.r.fill(0);
       secrets = { id: fragment.id, kdfId: fragment.kdfId, s: fragment.s, saltPw: keys.saltPw, readKey };
+      held = { id: fragment.id, readKey };
       metadata = await deps.api.metadata(fragment.id, readKey);
     } catch (error) {
       onView(apiView(error));
@@ -310,10 +336,12 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
     deps.dropFragment();
     const { text, file } = opened.payload.meta;
+    const remaining = (metadata?.opensRemaining ?? 0) - (fetched.fromLease ? 0 : 1);
     onView({
       view: 'revealed',
       text,
       file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: new Uint8Array(opened.payload.file) } : undefined,
+      burnable: remaining > 0,
     });
     await deps.api.ack(current.id, current.readKey, fetched.lease).catch(() => undefined);
     forgetLease();
@@ -338,5 +366,69 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
   }
 
-  return { load, reveal };
+  function allowed(): boolean {
+    return deps.page.visible() && !deps.page.prerendering();
+  }
+
+  function burnOutcome(error: unknown): BurnOutcome {
+    if (error instanceof ApiError) {
+      switch (error.kind) {
+        case 'gone':
+          return error.state && error.state !== 'available' ? { outcome: 'ended', state: error.state } : { outcome: 'failed' };
+        case 'not_found':
+          return { outcome: 'unknown' };
+        case 'rate_limited':
+        case 'unavailable':
+          return { outcome: 'retry_later', retryAfter: error.retryAfter };
+        default:
+          return { outcome: 'failed' };
+      }
+    }
+    return { outcome: 'failed' };
+  }
+
+  async function burn(): Promise<BurnOutcome> {
+    const current = held;
+    const shown = revealed;
+    if (!current || busy || !(revealable || shown?.burnable) || !allowed()) {
+      return { outcome: 'ignored' };
+    }
+    busy = true;
+    let outcome: BurnOutcome;
+    try {
+      await deps.api.burn(current.id, current.readKey);
+      outcome = { outcome: 'deleted' };
+    } catch (error) {
+      outcome = burnOutcome(error);
+    } finally {
+      busy = false;
+    }
+    if (shown) {
+      if (outcome.outcome === 'deleted' || outcome.outcome === 'ended') {
+        onView({ ...shown, burnable: false });
+      }
+    } else if (outcome.outcome === 'deleted') {
+      onView(ended('deleted'));
+    } else if (outcome.outcome === 'ended') {
+      onView(ended(outcome.state));
+    } else if (outcome.outcome === 'unknown') {
+      onView({ view: 'unknown' });
+    }
+    return outcome;
+  }
+
+  async function report(reason: string): Promise<ReportOutcome> {
+    const current = held;
+    if (!current || reporting || !allowed()) {
+      return { outcome: 'ignored' };
+    }
+    reporting = true;
+    try {
+      return await sendReport(deps.api, current.id, current.readKey, reason);
+    } finally {
+      reporting = false;
+    }
+  }
+
+  return { load, reveal, burn, report };
 }

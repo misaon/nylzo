@@ -40,6 +40,11 @@ export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
   return { privateKey, publicKey };
 }
 
+export async function newRequestKey(): Promise<RequestKey> {
+  const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify'])) as CryptoKeyPair;
+  return { privateKey: pair.privateKey, publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)) };
+}
+
 export async function requestMessage(
   purpose: Purpose,
   method: string,

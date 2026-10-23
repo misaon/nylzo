@@ -13,9 +13,22 @@ import {
   type KdfId,
   type RequestKey,
 } from '@nylzo/core';
-import { expect, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 
 import { createApi, type Api } from '../../app/src/lib/api.ts';
+
+export { expect };
+
+export const test = base.extend<{ closeOwnContexts: void }>({
+  closeOwnContexts: [
+    async ({ browser }, use) => {
+      const before = new Set(browser.contexts());
+      await use();
+      await Promise.all(browser.contexts().filter((context) => !before.has(context)).map((context) => context.close()));
+    },
+    { auto: true },
+  ],
+});
 
 export const BASE_URL = 'http://127.0.0.1:8090';
 export const POW_BASE_URL = 'http://127.0.0.1:8091';

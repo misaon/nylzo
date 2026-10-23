@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../src/lib/api.ts';
 import { failureKey, problemKey, progressKey, readAttachment, ttlChoices, ttlKey } from '../src/lib/create-form.ts';
-import { dictionaries } from '../src/lib/i18n.ts';
+import { dictionaries } from '../src/lib/i18n.svelte.ts';
 
 const limits: InstanceLimits = {
   maxFileBytes: 16,

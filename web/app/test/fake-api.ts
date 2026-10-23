@@ -1,6 +1,6 @@
 import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
 
-import { ApiError, type Api, type CreateRequest, type Instance, type MessageState, type Metadata } from '../src/lib/api.ts';
+import { ApiError, type Api, type CreateRequest, type Instance, type MessageState, type Metadata, type Status } from '../src/lib/api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -8,6 +8,13 @@ interface Stored {
   opensRemaining: number;
   failures: number;
   leases: Set<string>;
+  endedAt?: string;
+}
+
+export interface Report {
+  readonly id: string;
+  readonly signedByReader: boolean;
+  readonly reason: string;
 }
 
 export interface FakeOptions {
@@ -24,6 +31,10 @@ export interface FakeOptions {
   tamperObject?: boolean;
   expiresInSeconds?: number;
   lockAfter?: number;
+  failStatus?: ApiError[];
+  failCancel?: ApiError[];
+  failBurn?: ApiError[];
+  failReport?: ApiError[];
 }
 
 export interface FakeApi extends Api {
@@ -31,6 +42,7 @@ export interface FakeApi extends Api {
   readonly challenges: string[];
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
+  readonly reports: Report[];
 }
 
 const equal = (a: Uint8Array | undefined, b: Uint8Array | undefined) =>
@@ -42,6 +54,11 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   const stored = new Map<string, Stored>();
   const issuedIds: Uint8Array<ArrayBuffer>[] = [];
   const failCreate = [...(options.failCreate ?? [])];
+  const failStatus = [...(options.failStatus ?? [])];
+  const failCancel = [...(options.failCancel ?? [])];
+  const failBurn = [...(options.failBurn ?? [])];
+  const failReport = [...(options.failReport ?? [])];
+  const reports: Report[] = [];
   const expiresAt = new Date(Date.now() + (options.expiresInSeconds ?? 3600) * 1000).toISOString();
 
   function find(id: Uint8Array, readKey: RequestKey): Stored {
@@ -50,6 +67,23 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       throw new ApiError(404, 'not_found');
     }
     return message;
+  }
+
+  function managed(id: Uint8Array, manageKey: RequestKey): Stored {
+    const message = stored.get(idToString(id));
+    if (!message || !equal(message.request.manageKey, manageKey.publicKey)) {
+      throw new ApiError(404, 'not_found');
+    }
+    return message;
+  }
+
+  function end(message: Stored, state: MessageState): void {
+    if (message.state !== 'available' && !(message.state === 'opened' && message.leases.size > 0)) {
+      throw new ApiError(410, 'gone', undefined, undefined, message.state);
+    }
+    message.state = state;
+    message.leases.clear();
+    message.endedAt = '2026-10-23T11:00:00Z';
   }
 
   function envelope(message: Stored) {
@@ -160,9 +194,50 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push('ack');
       find(id, readKey).leases.delete(lease);
     },
-    async status() {
-      throw new Error('not used');
+    async burn(id, readKey) {
+      calls.push('burn');
+      const failure = failBurn.shift();
+      if (failure) {
+        throw failure;
+      }
+      end(find(id, readKey), 'deleted');
+    },
+    async cancel(id, manageKey) {
+      calls.push('cancel');
+      const failure = failCancel.shift();
+      if (failure) {
+        throw failure;
+      }
+      end(managed(id, manageKey), 'cancelled');
+    },
+    async report(id, readKey, reason) {
+      calls.push('report');
+      const failure = failReport.shift();
+      if (failure) {
+        throw failure;
+      }
+      const message = stored.get(idToString(id));
+      reports.push({ id: idToString(id), signedByReader: equal(message?.request.readKey, readKey.publicKey), reason });
+    },
+    async status(id, manageKey): Promise<Status> {
+      calls.push('status');
+      const failure = failStatus.shift();
+      if (failure) {
+        throw failure;
+      }
+      const message = managed(id, manageKey);
+      if (message.endedAt) {
+        return { state: message.state, opensUsed: 0, opensMax: 0, failedPassphraseAttempts: 0, endedAt: message.endedAt };
+      }
+      return {
+        state: message.state,
+        opensUsed: message.request.opensMax - message.opensRemaining,
+        opensMax: message.request.opensMax,
+        failedPassphraseAttempts: message.failures,
+        createdAt: '2026-10-23T10:00:00Z',
+        expiresAt,
+      };
     },
   };
-  return Object.assign(api, { calls, challenges, stored, issuedIds });
+  return Object.assign(api, { calls, challenges, stored, issuedIds, reports });
 }

@@ -5,6 +5,12 @@ const cs = {
   'action.retry': 'Zkusit znovu',
   'app.crashed': 'Stránka narazila na chybu. Načtěte ji znovu.',
 
+  'nav.label': 'Hlavní navigace',
+  'nav.create': 'Nová zpráva',
+  'nav.sent': 'Odeslané',
+  'nav.report': 'Nahlásit zneužití',
+  'language.other': 'English',
+
   'create.title': 'Nová zpráva',
   'create.text': 'Text zprávy',
   'create.file': 'Příloha, nejvýš {size}',
@@ -17,6 +23,7 @@ const cs = {
   'create.kdf': 'Odvození klíče z passphrase',
   'create.kdf.1': 'scrypt, odolnější proti hádání passphrase',
   'create.kdf.2': 'PBKDF2, nativní funkce prohlížeče',
+  'create.remember': 'Zapamatovat na tomto zařízení pro stav a zrušení',
   'create.submit': 'Vytvořit odkaz',
   'create.loading': 'Načítám nastavení služby…',
   'create.problems': 'Formulář obsahuje chyby, opravte označená pole.',
@@ -55,6 +62,47 @@ const cs = {
   'created.expires': 'Platí do {time}.',
   'created.passphrase': 'Passphrase pošlete jiným kanálem než odkaz.',
   'created.another': 'Nová zpráva',
+  'created.remembered': 'Toto zařízení si zprávu zapamatovalo.',
+  'created.status_link': 'Stav a zrušení zprávy',
+  'created.not_remembered': 'Zprávu se na tomto zařízení nepodařilo zapamatovat, takže ji odtud nepůjde zrušit.',
+
+  'sent.title': 'Odeslané zprávy',
+  'sent.note': 'Seznam drží jen tento prohlížeč a odkazy na zprávy v něm nejsou. Záznam zmizí 7 dní po vypršení zprávy.',
+  'sent.loading': 'Načítám odeslané zprávy…',
+  'sent.unavailable': 'Tento prohlížeč stránce nedovolí ukládat data, takže si odeslané zprávy nepamatuje.',
+  'sent.empty': 'Toto zařízení si nepamatuje žádné zprávy.',
+  'sent.item': 'Zpráva vytvořená {time}',
+  'sent.state.available': 'Čeká na otevření.',
+  'sent.state.opened': 'Otevřená.',
+  'sent.state.expired': 'Platnost vypršela.',
+  'sent.state.cancelled': 'Zrušená.',
+  'sent.state.deleted': 'Smazaná příjemcem.',
+  'sent.label.state': 'Stav',
+  'sent.label.time': 'Platnost',
+  'sent.label.opens': 'Otevření',
+  'sent.label.attempts': 'Chybné pokusy o passphrase',
+  'sent.label.first_opened': 'První otevření',
+  'sent.not_opened': 'zatím ne',
+  'sent.not_kept': 'už se neuchovává',
+  'sent.ending': 'právě končí',
+  'sent.until': 'do {time}',
+  'sent.ended_at': 'skončila {time}',
+  'sent.opens': '{used} z {max}',
+  'sent.loading_item': 'Načítám stav…',
+  'sent.unknown': 'Služba tuto zprávu už nezná.',
+  'sent.failed': 'Stav se nepodařilo načíst.',
+  'sent.cancel': 'Zrušit zprávu',
+  'sent.cancel.confirm': 'Po zrušení zprávu už nikdo neotevře.',
+  'sent.cancel.yes': 'Ano, zrušit',
+  'sent.cancel.no': 'Ponechat',
+  'sent.cancelled': 'Zpráva je zrušená.',
+  'sent.forget': 'Zapomenout',
+  'sent.forget.confirm': 'Zapomenutou zprávu odtud už nepůjde zrušit.',
+  'sent.forget.yes': 'Ano, zapomenout',
+  'sent.forget_all': 'Zapomenout všechny',
+  'sent.forget_all.confirm': 'Zapomenuté zprávy odtud už nepůjde zrušit.',
+  'sent.forget_all.yes': 'Ano, zapomenout všechny',
+  'sent.keep': 'Nezapomínat',
 
   'read.title': 'Jednorázová zpráva',
   'read.loading': 'Načítám zprávu…',
@@ -81,6 +129,13 @@ const cs = {
   'read.rejected.locked': 'Zpráva je po chybných pokusech zamčená. Požádejte odesílatele o nový odkaz.',
   'read.rejected.malformed': 'Passphrase obsahuje neplatné znaky.',
   'read.rejected.wrong_or_changed': 'Zprávu se nepodařilo dešifrovat: passphrase nesedí, nebo se data změnila. Zadejte passphrase znovu.',
+  'read.delete': 'Smazat zprávu bez zobrazení',
+  'read.delete.rest': 'Smazat zbývající otevření',
+  'read.delete.confirm': 'Po smazání zprávu už nikdo neotevře, ani vy.',
+  'read.delete.yes': 'Ano, smazat',
+  'read.delete.no': 'Nemazat',
+  'read.deleted_rest': 'Zbývající otevření jsou smazaná.',
+  'read.delete.failed': 'Zprávu se nepodařilo smazat. Zkuste to znovu.',
 
   'busy.deriving': 'Odvozuji klíč z passphrase…',
   'busy.claiming': 'Otevírám zprávu…',
@@ -96,6 +151,21 @@ const cs = {
   'revealed.confirm.none': 'Soubor nemá příponu.',
   'revealed.confirm.download': 'Přesto stáhnout',
   'revealed.confirm.cancel': 'Nestahovat',
+
+  'report.title': 'Nahlásit zneužití',
+  'report.open': 'Nahlásit tuto zprávu',
+  'report.note': 'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a nic se nemaže automaticky.',
+  'report.privacy': 'Server dostane jen id zprávy, důvod a podpis odvozený z odkazu. Odkaz ani obsah zprávy stránku neopustí.',
+  'report.link': 'Odkaz na zprávu',
+  'report.link.hint': 'Vložte celý odkaz včetně části za #.',
+  'report.reason': 'Důvod, volitelný',
+  'report.reason.hint': 'Nejvýš 1000 bajtů. Odkazy a dlouhé kódy se z důvodu před odesláním odstraní.',
+  'report.submit': 'Odeslat hlášení',
+  'report.accepted': 'Hlášení jsme přijali.',
+  'report.failed': 'Hlášení se nepodařilo odeslat. Zkuste to znovu.',
+  'report.problem.link_invalid': 'Odkaz je neúplný nebo poškozený.',
+  'report.problem.link_foreign': 'Odkaz patří jiné službě.',
+  'report.problem.reason_too_long': 'Důvod je delší než 1000 bajtů.',
 } as const;
 
 export type MessageKey = keyof typeof cs;
@@ -104,6 +174,12 @@ const en: Record<MessageKey, string> = {
   'app.name': 'Nylzo',
   'action.retry': 'Try again',
   'app.crashed': 'The page ran into an error. Reload it.',
+
+  'nav.label': 'Main navigation',
+  'nav.create': 'New message',
+  'nav.sent': 'Sent',
+  'nav.report': 'Report abuse',
+  'language.other': 'Čeština',
 
   'create.title': 'New message',
   'create.text': 'Message text',
@@ -117,6 +193,7 @@ const en: Record<MessageKey, string> = {
   'create.kdf': 'Key derivation from the passphrase',
   'create.kdf.1': 'scrypt, harder to guess the passphrase',
   'create.kdf.2': 'PBKDF2, built into the browser',
+  'create.remember': 'Remember on this device for status and cancelling',
   'create.submit': 'Create link',
   'create.loading': 'Loading the service settings…',
   'create.problems': 'The form has errors, correct the marked fields.',
@@ -155,6 +232,47 @@ const en: Record<MessageKey, string> = {
   'created.expires': 'Valid until {time}.',
   'created.passphrase': 'Send the passphrase through another channel than the link.',
   'created.another': 'New message',
+  'created.remembered': 'This device remembered the message.',
+  'created.status_link': 'Status and cancelling',
+  'created.not_remembered': 'This device could not remember the message, so you cannot cancel it from here.',
+
+  'sent.title': 'Sent messages',
+  'sent.note': 'Only this browser keeps the list, and it holds no links to the messages. An entry disappears 7 days after its message expires.',
+  'sent.loading': 'Loading sent messages…',
+  'sent.unavailable': 'This browser does not let the page store data, so it cannot remember sent messages.',
+  'sent.empty': 'This device remembers no messages.',
+  'sent.item': 'Message created {time}',
+  'sent.state.available': 'Waiting to be opened.',
+  'sent.state.opened': 'Opened.',
+  'sent.state.expired': 'Expired.',
+  'sent.state.cancelled': 'Cancelled.',
+  'sent.state.deleted': 'Deleted by the recipient.',
+  'sent.label.state': 'Status',
+  'sent.label.time': 'Validity',
+  'sent.label.opens': 'Opens',
+  'sent.label.attempts': 'Wrong passphrase attempts',
+  'sent.label.first_opened': 'First opened',
+  'sent.not_opened': 'not yet',
+  'sent.not_kept': 'no longer kept',
+  'sent.ending': 'ending now',
+  'sent.until': 'until {time}',
+  'sent.ended_at': 'ended {time}',
+  'sent.opens': '{used} of {max}',
+  'sent.loading_item': 'Loading the status…',
+  'sent.unknown': 'The service no longer knows this message.',
+  'sent.failed': 'The status could not be loaded.',
+  'sent.cancel': 'Cancel message',
+  'sent.cancel.confirm': 'Once cancelled, nobody can open the message.',
+  'sent.cancel.yes': 'Yes, cancel',
+  'sent.cancel.no': 'Keep it',
+  'sent.cancelled': 'The message is cancelled.',
+  'sent.forget': 'Forget',
+  'sent.forget.confirm': 'You cannot cancel a forgotten message from here.',
+  'sent.forget.yes': 'Yes, forget',
+  'sent.forget_all': 'Forget all',
+  'sent.forget_all.confirm': 'You cannot cancel forgotten messages from here.',
+  'sent.forget_all.yes': 'Yes, forget all',
+  'sent.keep': 'Do not forget',
 
   'read.title': 'One-time message',
   'read.loading': 'Loading the message…',
@@ -181,6 +299,13 @@ const en: Record<MessageKey, string> = {
   'read.rejected.locked': 'Wrong attempts locked the message. Ask the sender for a new link.',
   'read.rejected.malformed': 'The passphrase contains invalid characters.',
   'read.rejected.wrong_or_changed': 'The message could not be decrypted: the passphrase does not match or the data changed. Enter the passphrase again.',
+  'read.delete': 'Delete without showing',
+  'read.delete.rest': 'Delete the remaining opens',
+  'read.delete.confirm': 'Once deleted, nobody can open the message, you included.',
+  'read.delete.yes': 'Yes, delete',
+  'read.delete.no': 'Do not delete',
+  'read.deleted_rest': 'The remaining opens are deleted.',
+  'read.delete.failed': 'The message could not be deleted. Try again.',
 
   'busy.deriving': 'Deriving the key from the passphrase…',
   'busy.claiming': 'Opening the message…',
@@ -196,6 +321,21 @@ const en: Record<MessageKey, string> = {
   'revealed.confirm.none': 'The file has no extension.',
   'revealed.confirm.download': 'Download anyway',
   'revealed.confirm.cancel': 'Do not download',
+
+  'report.title': 'Report abuse',
+  'report.open': 'Report this message',
+  'report.note': 'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically.',
+  'report.privacy': 'The server receives only the message id, the reason and a signature derived from the link. Neither the link nor the content leaves this page.',
+  'report.link': 'Link to the message',
+  'report.link.hint': 'Paste the whole link, including the part after #.',
+  'report.reason': 'Reason, optional',
+  'report.reason.hint': 'Up to 1000 bytes. Links and long codes are removed from the reason before it is sent.',
+  'report.submit': 'Send report',
+  'report.accepted': 'We received the report.',
+  'report.failed': 'The report could not be sent. Try again.',
+  'report.problem.link_invalid': 'The link is incomplete or damaged.',
+  'report.problem.link_foreign': 'The link belongs to another service.',
+  'report.problem.reason_too_long': 'The reason is longer than 1000 bytes.',
 };
 
 export const dictionaries = { cs, en } as const;
@@ -204,9 +344,22 @@ export type Language = keyof typeof dictionaries;
 
 export type Translate = (key: MessageKey, values?: Readonly<Record<string, string | number>>) => string;
 
-export interface I18n {
-  readonly language: Language;
-  readonly t: Translate;
+const LANGUAGE_KEY = 'nylzo:lang';
+
+export interface PreferenceStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export class I18n {
+  language = $state<Language>('en');
+
+  constructor(language: Language) {
+    this.language = language;
+  }
+
+  readonly t: Translate = (key, values = {}) =>
+    dictionaries[this.language][key].replace(/\{(\w+)\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
 }
 
 export function pickLanguage(preferred: readonly string[]): Language {
@@ -223,10 +376,37 @@ export function pickLanguage(preferred: readonly string[]): Language {
 }
 
 export function createI18n(language: Language): I18n {
-  const dictionary = dictionaries[language];
-  const t: Translate = (key, values = {}) =>
-    dictionary[key].replace(/\{(\w+)\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
-  return { language, t };
+  return new I18n(language);
+}
+
+export function browserPreferences(): PreferenceStore | undefined {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+export function otherLanguage(language: Language): Language {
+  return language === 'cs' ? 'en' : 'cs';
+}
+
+export function savedLanguage(store: PreferenceStore | undefined, preferred: readonly string[]): Language {
+  let saved: string | null = null;
+  try {
+    saved = store?.getItem(LANGUAGE_KEY) ?? null;
+  } catch {
+    saved = null;
+  }
+  return saved === 'cs' || saved === 'en' ? saved : pickLanguage(preferred);
+}
+
+export function saveLanguage(store: PreferenceStore | undefined, language: Language): void {
+  try {
+    store?.setItem(LANGUAGE_KEY, language);
+  } catch {
+    return;
+  }
 }
 
 export const [getI18n, setI18n] = createContext<I18n>();

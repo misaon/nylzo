@@ -19,8 +19,17 @@
     appearance: none;
   }
 
-  [role="status"] {
+  [role="status"],
+  [data-problem],
+  dd {
     min-height: 1lh;
+  }
+
+  a[href] {
+    display: inline-flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   label:has(> input[type="radio"], > input[type="checkbox"]) {

@@ -119,7 +119,7 @@ describe('reading a message', () => {
     await r.load();
     expect(r.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
     await r.reveal();
-    expect(r.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined });
+    expect(r.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
     expect(api.calls.slice(api.calls.indexOf('claim'))).toEqual(['claim', 'view:busy', 'view:busy', 'view:revealed', 'ack']);
     expect(r.dropped()).toBe(1);
     const lease = `nylzo:lease:${idTextOf(created.link)}`;
@@ -378,5 +378,159 @@ describe('creating a message', () => {
     expect(passphraseIsWeak('twelve chars')).toBe(true);
     expect(passphraseIsWeak('sixteencharacter')).toBe(true);
     expect(passphraseIsWeak('one two three four')).toBe(false);
+  });
+});
+
+describe('deleting and reporting from the read page (D40, D41)', () => {
+  it('deletes a message before showing it and then refuses to reveal it', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    expect(await r.burn()).toEqual({ outcome: 'deleted' });
+    expect(r.last()).toEqual({ view: 'ended', state: 'deleted', firstOpenedAt: undefined, endedAt: undefined });
+    await r.reveal();
+    expect(api.calls).not.toContain('claim');
+    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    expect(api.calls.filter((call) => call === 'burn')).toHaveLength(1);
+  });
+
+  it('deletes the remaining opens after showing the message and keeps the content on screen', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 3 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    await r.reveal();
+    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
+    expect(await r.burn()).toEqual({ outcome: 'deleted' });
+    expect(r.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
+    expect([...api.stored.values()][0]?.state).toBe('deleted');
+    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+  });
+
+  it('offers no deletion after the last open was shown', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    await r.reveal();
+    expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    expect(api.calls).not.toContain('burn');
+  });
+
+  it('counts the open of a resumed lease when it decides whether opens remain', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const session = memorySession();
+    const first = reader(api, created.link, { session });
+    await first.load();
+    session.setItem(`nylzo:lease:${idTextOf(created.link)}`, 'lease-1');
+    [...api.stored.values()][0]!.leases.add('lease-1');
+    [...api.stored.values()][0]!.opensRemaining = 1;
+    const resumed = reader(api, created.link, { session });
+    await resumed.load();
+    await resumed.reveal();
+    expect(resumed.last()).toMatchObject({ view: 'revealed', burnable: true });
+  });
+
+  it('ignores a deletion while the message is being revealed or already being deleted', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const revealing = r.reveal();
+    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    await revealing;
+    expect(r.last()).toMatchObject({ view: 'revealed', burnable: true });
+    const [first, second] = await Promise.all([r.burn(), r.burn()]);
+    expect([first, second]).toEqual([{ outcome: 'deleted' }, { outcome: 'ignored' }]);
+    expect(api.calls.filter((call) => call === 'burn')).toHaveLength(1);
+  });
+
+  it('does nothing on a hidden or prerendering page', async () => {
+    for (const overrides of [{ visible: false }, { prerendering: true }]) {
+      const api = fakeApi();
+      const created = await createMessage(input(), createDeps(api));
+      const r = reader(api, created.link, overrides);
+      await r.load();
+      expect(await r.burn()).toEqual({ outcome: 'ignored' });
+      expect(await r.report('spam')).toEqual({ outcome: 'ignored' });
+      expect(api.calls).not.toContain('burn');
+      expect(api.calls).not.toContain('report');
+    }
+  });
+
+  it('shows the end state when the message ended before the deletion', async () => {
+    const api = fakeApi({ failBurn: [new ApiError(410, 'gone', undefined, undefined, 'cancelled')] });
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    expect(await r.burn()).toEqual({ outcome: 'ended', state: 'cancelled' });
+    expect(r.last()).toMatchObject({ view: 'ended', state: 'cancelled' });
+  });
+
+  it('keeps the page when the deletion is rate limited and allows another attempt', async () => {
+    const api = fakeApi({ failBurn: [new ApiError(429, 'rate_limited', 30)] });
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    expect(await r.burn()).toEqual({ outcome: 'retry_later', retryAfter: 30 });
+    expect(r.last()).toMatchObject({ view: 'ready' });
+    expect(await r.burn()).toEqual({ outcome: 'deleted' });
+  });
+
+  it('reports a message with the read key before and after it is shown', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    expect(await r.report('phishing')).toEqual({ outcome: 'accepted' });
+    await r.reveal();
+    expect(await r.report('')).toEqual({ outcome: 'accepted' });
+    expect(api.reports).toEqual([
+      { id: idTextOf(created.link), signedByReader: true, reason: 'phishing' },
+      { id: idTextOf(created.link), signedByReader: true, reason: '' },
+    ]);
+  });
+
+  it('sends one report at a time', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const [first, second] = await Promise.all([r.report('one'), r.report('two')]);
+    expect([first, second]).toEqual([{ outcome: 'accepted' }, { outcome: 'ignored' }]);
+    expect(api.reports.map((report) => report.reason)).toEqual(['one']);
+  });
+
+  it('drops the read key once the page shows an end state', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    await r.burn();
+    expect(await r.report('late')).toEqual({ outcome: 'ignored' });
+    expect(api.reports).toEqual([]);
+  });
+
+  it('refuses a reason longer than 1000 bytes without a request', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    expect(await r.report('č'.repeat(501))).toEqual({ outcome: 'invalid', problems: ['reason_too_long'] });
+    expect(api.calls).not.toContain('report');
+  });
+});
+
+describe('remembering the manage key (D39)', () => {
+  it('returns a non-extractable manage key that signs the status of the new message', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    expect(created.manageKey.privateKey.extractable).toBe(false);
+    await expect(crypto.subtle.exportKey('pkcs8', created.manageKey.privateKey)).rejects.toThrow();
+    const status = await api.status(new Uint8Array(Buffer.from(created.id, 'base64url')), created.manageKey);
+    expect(status).toMatchObject({ state: 'available', opensUsed: 0, opensMax: 1 });
   });
 });
