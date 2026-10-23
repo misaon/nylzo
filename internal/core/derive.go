@@ -35,14 +35,17 @@ func DeriveLink(id ID, s *[SecretLen]byte) (LinkKeys, error) {
 	if err != nil {
 		return out, err
 	}
+	defer clear(prk)
 	r, err := hkdf.Expand(sha256.New, prk, infoRead, TokenLen)
 	if err != nil {
 		return out, err
 	}
+	defer clear(r)
 	salt, err := hkdf.Expand(sha256.New, prk, infoPWSalt, 32)
 	if err != nil {
 		return out, err
 	}
+	defer clear(salt)
 	copy(out.R[:], r)
 	copy(out.SaltPW[:], salt)
 	return out, nil
@@ -54,18 +57,22 @@ func DeriveContent(id ID, s *[SecretLen]byte, p []byte) (ContentKeys, error) {
 	ikm := make([]byte, 0, SecretLen+len(p))
 	ikm = append(ikm, s[:]...)
 	ikm = append(ikm, p...)
+	defer clear(ikm)
 	prk, err := hkdf.Extract(sha256.New, ikm, hs[:])
 	if err != nil {
 		return out, err
 	}
+	defer clear(prk)
 	k, err := hkdf.Expand(sha256.New, prk, infoContent, KeyLen)
 	if err != nil {
 		return out, err
 	}
+	defer clear(k)
 	v, err := hkdf.Expand(sha256.New, prk, infoVerifier, TokenLen)
 	if err != nil {
 		return out, err
 	}
+	defer clear(v)
 	copy(out.K[:], k)
 	copy(out.V[:], v)
 	return out, nil
