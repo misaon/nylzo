@@ -2,7 +2,7 @@
 
 Nylzo je open-source služba pro jednorázové sdílení citlivých zpráv a souborů do 5 MB. Obsah se šifruje v klientovi, server dostává jen ciphertext a HMAC důkazy; odkaz nese klíč jen ve fragmentu URL, který prohlížeč na server nikdy neposílá. Návrh a jeho zdůvodnění jsou v `docs/designs/nylzo-architecture-research.md`, normativní zápis protokolu v1 je v `spec/protocol.md`.
 
-Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient ve Svelte 5 vzniká jako druhý milník (plán v `docs/plans/2026-10-23-milestone-2-web-client-poc.md`); zatím má logiku vytvoření a čtení zprávy, obrazovky ještě ne. CLI a adaptér postgres+s3 zatím nejsou součástí.
+Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient ve Svelte 5 vzniká jako druhý milník (plán v `docs/plans/2026-10-23-milestone-2-web-client-poc.md`): vytvoří a otevře zprávu s textem nebo souborem, volitelně s passphrase, a umí PoW. Obrazovky jsou zatím jen sémantická kostra bez vzhledu. CLI a adaptér postgres+s3 zatím nejsou součástí.
 
 ## Rozložení repozitáře
 
@@ -17,7 +17,7 @@ Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScri
 | `cmd/nylzod` | binárka serveru (`serve`, `sweep-once`, `version`) |
 | `cmd/nylzo-vectors` | generátor vektorů |
 | `web/core` | TypeScript jádro `@nylzo/core` (Web Crypto, scrypt z `@noble/hashes`, PoW) |
-| `web/app` | webový klient `@nylzo/web` (Svelte 5, Vite 8, Tailwind 4): HTTP klient, toky vytvoření a čtení, worker pro scrypt a PoW |
+| `web/app` | webový klient `@nylzo/web` (Svelte 5, Vite 8, Tailwind 4): HTTP klient, toky vytvoření a čtení, worker pro scrypt a PoW, obrazovky bez vzhledu a slovník cs a en |
 | `web/e2e` | testy Playwright proti `nylzod` se vloženým klientem |
 | `internal/server/web` | zástupná stránka; `dist/` je výstup sestavení `web/app`, který `nylzod` vkládá |
 
