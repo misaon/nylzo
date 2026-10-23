@@ -39,6 +39,7 @@ export {
   PlaintextError,
   PolicyError,
   PowError,
+  PowTimeoutError,
   TooLargeError,
   VersionError,
   WeakPassphraseError,
@@ -86,6 +87,7 @@ export {
   powDigest,
   powToken,
   solvePow,
+  type SolveOptions,
 } from './pow.ts';
 export {
   AUTH_SCHEME,

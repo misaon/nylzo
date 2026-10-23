@@ -1,8 +1,9 @@
 package server
 
 import (
-	"encoding/binary"
+	"context"
 	"encoding/hex"
+	"io/fs"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -42,7 +43,7 @@ func ParseCreateHeaderForTest(cfg Config, value string) bool {
 
 func PoWSatisfiesForTest(token string, id core.ID, difficulty int) bool {
 	chalStr, counterStr, _ := strings.Cut(token, ".")
-	chal, err := core.DecodeExact(chalStr, powChalLen)
+	chal, err := core.DecodeExact(chalStr, core.PoWChallengeLen)
 	if err != nil {
 		return false
 	}
@@ -54,17 +55,8 @@ func PoWSatisfiesForTest(token string, id core.ID, difficulty int) bool {
 }
 
 func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
-	chal, err := core.DecodeExact(challenge, powChalLen)
-	if err != nil {
-		return "", err
-	}
-	counter := make([]byte, powCounterLen)
-	for i := uint64(0); ; i++ {
-		binary.BigEndian.PutUint64(counter, i)
-		if powSatisfies(chal, counter, id, difficulty) {
-			return challenge + "." + hex.EncodeToString(counter), nil
-		}
-	}
+	token, _, err := core.SolvePoW(context.Background(), challenge, id, difficulty)
+	return token, err
 }
 
 func (s *Server) IDTokenForTest(id core.ID) string {
@@ -79,4 +71,12 @@ func (s *Server) ChallengeForTest() [core.ChallengeLen]byte {
 func (s *Server) ChallengeAtForTest(now time.Time) [core.ChallengeLen]byte {
 	c, _ := s.issueChallenge(now)
 	return c
+}
+
+func WithWebFiles(files fs.FS) Option {
+	return func(s *Server) {
+		if files != nil {
+			s.webFiles = files
+		}
+	}
 }

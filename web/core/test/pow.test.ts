@@ -4,6 +4,7 @@ import {
   MAX_POW_DIFFICULTY,
   POW_CHALLENGE_LEN,
   PowError,
+  PowTimeoutError,
   encodeBase64url,
   leadingZeroBits,
   parseId,
@@ -24,7 +25,7 @@ describe('proof of work', () => {
     expect(powToken(v.challenge, v.counter)).toBe(v.token);
     if (v.difficulty !== undefined) {
       const attempts: number[] = [];
-      expect(solvePow(v.challenge, parseId(v.id), v.difficulty, (counter) => attempts.push(counter))).toBe(v.token);
+      expect(solvePow(v.challenge, parseId(v.id), v.difficulty, { onAttempt: (counter) => attempts.push(counter) })).toBe(v.token);
       expect(attempts.at(-1)).toBe(v.counter);
     }
   });
@@ -46,5 +47,19 @@ describe('proof of work', () => {
     expect(() => solvePow(challenge.slice(1), id, 0)).toThrow();
     expect(() => powToken(challenge, -1)).toThrow(PowError);
     expect(() => powToken(challenge, 2 ** 53)).toThrow(PowError);
+  });
+
+  it('stops at the deadline instead of solving on past the challenge window', () => {
+    const challenge = encodeBase64url(new Uint8Array(POW_CHALLENGE_LEN));
+    let clock = 0;
+    const attempts: number[] = [];
+    expect(() =>
+      solvePow(challenge, new Uint8Array(16), MAX_POW_DIFFICULTY, {
+        deadline: 3,
+        now: () => clock++,
+        onAttempt: (counter) => attempts.push(counter),
+      }),
+    ).toThrow(PowTimeoutError);
+    expect(attempts).toEqual([0, 1, 2]);
   });
 });

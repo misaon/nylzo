@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"net/netip"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +20,21 @@ import (
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store"
 )
+
+func htmlCSPFromSpec(t *testing.T) string {
+	t.Helper()
+	spec, err := os.ReadFile("../../spec/protocol.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "- HTML responses carry `Content-Security-Policy: "
+	_, rest, ok := strings.Cut(string(spec), marker)
+	csp, _, closed := strings.Cut(rest, "`")
+	if !ok || !closed || strings.Count(csp, "{nonce}") != 2 {
+		t.Fatal("spec section 9 lost the HTML CSP line")
+	}
+	return csp
+}
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
 	t.Parallel()
@@ -43,15 +59,16 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
 		}
 	}
+	specCSP := htmlCSPFromSpec(t)
 	nonces := map[string]bool{}
 	for range 5 {
 		resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String()})
 		csp := resp.Header.Get("Content-Security-Policy")
-		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "font-src 'self'") || !strings.Contains(csp, "worker-src 'self';") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || strings.Contains(csp, "blob:") || !strings.Contains(csp, "require-trusted-types-for 'script'") || !strings.HasSuffix(csp, "; trusted-types svelte-trusted-html nylzo-kdf") {
-			t.Fatalf("csp: %s", csp)
-		}
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
 		nonce := csp[start : start+strings.Index(csp[start:], "'")]
+		if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
+			t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+		}
 		if nonces[nonce] {
 			t.Fatal("nonce repeated")
 		}

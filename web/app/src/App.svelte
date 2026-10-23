@@ -11,9 +11,15 @@
   <h1>{t('app.name')}</h1>
 </header>
 <main>
-  {#if reading}
-    <Read />
-  {:else}
-    <Create />
-  {/if}
+  <svelte:boundary>
+    {#if reading}
+      <Read />
+    {:else}
+      <Create />
+    {/if}
+
+    {#snippet failed()}
+      <p role="alert">{t('app.crashed')}</p>
+    {/snippet}
+  </svelte:boundary>
 </main>

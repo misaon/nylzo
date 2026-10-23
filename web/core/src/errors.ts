@@ -102,3 +102,10 @@ export class PowError extends Error {
     super(message);
   }
 }
+
+export class PowTimeoutError extends Error {
+  override readonly name = 'PowTimeoutError';
+  constructor(message = 'proof of work not found before the challenge window ends') {
+    super(message);
+  }
+}

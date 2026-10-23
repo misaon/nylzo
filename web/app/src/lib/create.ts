@@ -6,6 +6,7 @@ import {
   MAX_TEXT_BYTES,
   MIN_TTL_SECONDS,
   MalformedPassphraseError,
+  PowTimeoutError,
   WeakPassphraseError,
   assertStrongPassphrase,
   deriveContent,
@@ -39,23 +40,24 @@ export interface CreateInput {
   readonly kdfId: KdfId;
 }
 
-export type CreateField = 'content' | 'text' | 'file' | 'ttl' | 'opens' | 'passphrase';
+export type CreateProblem =
+  | { readonly field: 'content'; readonly code: 'missing' }
+  | { readonly field: 'text' | 'file'; readonly code: 'too_large' }
+  | { readonly field: 'ttl' | 'opens'; readonly code: 'out_of_range' }
+  | { readonly field: 'passphrase'; readonly code: 'too_short' | 'malformed' | 'out_of_range' };
 
-export interface CreateProblem {
-  readonly field: CreateField;
-  readonly code: 'missing' | 'too_large' | 'out_of_range' | 'too_short' | 'malformed';
-}
+export type CreateField = CreateProblem['field'];
 
 export type CreateProgress =
   | { readonly step: 'preparing' }
-  | { readonly step: 'deriving'; readonly fraction: number }
+  | { readonly step: 'deriving'; readonly fraction?: number | undefined }
   | { readonly step: 'proving'; readonly fraction: number }
   | { readonly step: 'uploading' };
 
 export type CreateFailure =
   | { readonly kind: 'invalid'; readonly problems: readonly CreateProblem[] }
   | { readonly kind: 'rate_limited' | 'unavailable'; readonly retryAfter?: number | undefined }
-  | { readonly kind: 'too_large' | 'kdf' | 'failed' };
+  | { readonly kind: 'too_large' | 'kdf' | 'pow' | 'failed' };
 
 export class CreateError extends Error {
   override readonly name = 'CreateError';
@@ -76,13 +78,22 @@ export interface CreateDeps {
   readonly api: Api;
   readonly origin: string;
   readonly scrypt: (passphrase: string, saltPw: Uint8Array<ArrayBuffer>, onProgress: (fraction: number) => void) => Promise<Uint8Array<ArrayBuffer>>;
-  readonly solvePow: (challenge: string, id: Uint8Array<ArrayBuffer>, difficulty: number, onProgress: (fraction: number) => void) => Promise<string>;
+  readonly solvePow: (
+    challenge: string,
+    id: Uint8Array<ArrayBuffer>,
+    difficulty: number,
+    deadline: number,
+    onProgress: (fraction: number) => void,
+  ) => Promise<string>;
+  readonly now?: () => number;
 }
 
 const MAX_ATTEMPTS = 3;
 const RETRY_WITH_NEW_ID = new Set(['id_token', 'conflict', 'pow']);
 const WEAK_BELOW_CHARS = 16;
 const WEAK_BELOW_WORDS = 4;
+export const POW_BUDGET_MS = 110_000;
+export const POW_ROUNDS = 2;
 
 export function passphraseIsWeak(passphrase: string): boolean {
   const normalized = passphrase.normalize('NFC');
@@ -145,9 +156,30 @@ async function passphraseKey(input: CreateInput, kdfId: KdfId, saltPw: Uint8Arra
     return deps.scrypt(input.passphrase, saltPw, (fraction) => onProgress({ step: 'deriving', fraction }));
   }
   if (kdfId === KDF_PBKDF2) {
-    onProgress({ step: 'deriving', fraction: 0 });
+    onProgress({ step: 'deriving' });
   }
   return derivePassphraseKey(kdfId, input.passphrase, saltPw);
+}
+
+async function prove(id: Uint8Array<ArrayBuffer>, deps: CreateDeps, onProgress: (p: CreateProgress) => void): Promise<string | undefined> {
+  const now = deps.now ?? Date.now;
+  for (let round = 1; ; round++) {
+    const { pow } = await deps.api.instance();
+    if (!pow.required) {
+      return undefined;
+    }
+    onProgress({ step: 'proving', fraction: 0 });
+    try {
+      return await deps.solvePow(pow.challenge ?? '', id, pow.difficulty, now() + POW_BUDGET_MS, (fraction) =>
+        onProgress({ step: 'proving', fraction }),
+      );
+    } catch (error) {
+      if (error instanceof PowTimeoutError && round < POW_ROUNDS) {
+        continue;
+      }
+      throw error instanceof ApiError ? error : new CreateError({ kind: 'pow' });
+    }
+  }
 }
 
 function failureOf(error: unknown): CreateFailure {
@@ -185,6 +217,7 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   const link = await deriveLink(id, s);
   const p = await passphraseKey(input, kdfId, link.saltPw, deps, onProgress);
   const content = await deriveContent(id, s, p);
+  p.fill(0);
   const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
   const object = await seal(content.k, newHeader(kdfId), id, policy, { meta: meta(input), file: input.file?.bytes });
   if (object.length > instance.limits.maxObjectBytes) {
@@ -192,13 +225,11 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   }
   const [readKey, manageKey] = await Promise.all([requestKey(link.r), requestKey(m)]);
   const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;
-  let powToken: string | undefined;
-  if (instance.pow.required) {
-    onProgress({ step: 'proving', fraction: 0 });
-    powToken = await deps.solvePow(instance.pow.challenge ?? '', id, instance.pow.difficulty, (fraction) =>
-      onProgress({ step: 'proving', fraction }),
-    );
-  }
+  link.r.fill(0);
+  link.saltPw.fill(0);
+  content.v.fill(0);
+  m.fill(0);
+  const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
   onProgress({ step: 'uploading' });
   const { expiresAt } = await deps.api.create({
     id,
@@ -212,7 +243,9 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
     object,
     ...(powToken === undefined ? {} : { powToken }),
   });
-  return { link: formatLink(deps.origin, id, kdfId, s), expiresAt };
+  const result = { link: formatLink(deps.origin, id, kdfId, s), expiresAt };
+  s.fill(0);
+  return result;
 }
 
 export async function createMessage(

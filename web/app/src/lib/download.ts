@@ -1,14 +1,15 @@
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
-const INVISIBLE = /[­؜᠎​-‏‪-‮⁠-⁤⁦-⁩﻿]/g;
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}ᅟᅠㅤﾠ]/gu;
 const RESERVED = /[/\\:*?"<>|]/g;
-const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)/i;
+const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)\s*(\.|$)/iu;
 const MAX_NAME_BYTES = 255;
 const MAX_EXTENSION_CHARS = 16;
 const FALLBACK_NAME = 'nylzo';
 
-const RISKY_EXTENSIONS = new Set([
-  'apk', 'app', 'bat', 'cmd', 'com', 'cpl', 'dll', 'dmg', 'exe', 'hta', 'htm', 'html', 'iso', 'jar', 'js', 'jse',
-  'lnk', 'msi', 'msix', 'pkg', 'ps1', 'reg', 'scr', 'sh', 'svg', 'url', 'vbe', 'vbs', 'wsf', 'xhtml',
+const SAFE_EXTENSIONS = new Set([
+  'txt', 'md', 'csv', 'log', 'json',
+  'pdf',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'heic', 'heif', 'bmp', 'tif', 'tiff',
+  'docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp',
 ]);
 
 const encoder = new TextEncoder();
@@ -32,8 +33,8 @@ function truncateBytes(text: string, max: number): string {
 }
 
 export function sanitizeFileName(name: string): string {
-  let clean = name.normalize('NFC').replace(CONTROL, '').replace(INVISIBLE, '').replace(RESERVED, '_').trim();
-  clean = clean.replace(/^[.\s]+/, '').replace(/[.\s]+$/, '');
+  let clean = name.normalize('NFC').replace(INVISIBLE, '').replace(RESERVED, '_').replace(/\s+/gu, ' ').trim();
+  clean = clean.replace(/^[.\s]+/u, '').replace(/[.\s]+$/u, '');
   if (WINDOWS_DEVICE.test(clean)) {
     clean = `_${clean}`;
   }
@@ -49,10 +50,14 @@ export function sanitizeFileName(name: string): string {
   return truncateBytes(stem, MAX_NAME_BYTES - byteLength(extension)) + extension;
 }
 
-export function isRiskyFile(name: string): boolean {
-  const clean = sanitizeFileName(name).toLowerCase();
+export function fileExtension(name: string): string {
+  const clean = sanitizeFileName(name);
   const dot = clean.lastIndexOf('.');
-  return dot >= 0 && RISKY_EXTENSIONS.has(clean.slice(dot + 1));
+  return dot > 0 ? clean.slice(dot + 1).toLowerCase() : '';
+}
+
+export function isKnownSafeFile(name: string): boolean {
+  return SAFE_EXTENSIONS.has(fileExtension(name));
 }
 
 export function saveFile(bytes: Uint8Array<ArrayBuffer>, name: string): void {

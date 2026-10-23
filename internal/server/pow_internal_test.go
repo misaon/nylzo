@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/vectors"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
@@ -102,7 +105,7 @@ func TestPoWRejectsUppercaseCounter(t *testing.T) {
 	now := time.Now()
 	id := core.NewID()
 	challenge := s.powChallenge(now)
-	chal, err := core.DecodeExact(challenge, powChalLen)
+	chal, err := core.DecodeExact(challenge, core.PoWChallengeLen)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,5 +148,34 @@ func TestPoWToleratesASlightlyAheadIssuer(t *testing.T) {
 	}
 	if err := s.powVerify(t.Context(), token, id, now); err != nil {
 		t.Fatalf("a challenge from an instance 2 s ahead must verify: %v", err)
+	}
+}
+
+func TestPoWVerifierMatchesVectors(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../spec/vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file vectors.File
+	if err := json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range file.PoW {
+		chal, err := core.DecodeExact(v.Challenge, core.PoWChallengeLen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := core.ParseID(v.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		counter := binary.BigEndian.AppendUint64(nil, v.Counter)
+		if !powSatisfies(chal, counter, id, v.ZeroBits) {
+			t.Fatalf("%s: the verifier rejects %d zero bits", v.Name, v.ZeroBits)
+		}
+		if powSatisfies(chal, counter, id, v.ZeroBits+1) {
+			t.Fatalf("%s: the verifier accepts %d zero bits for a digest with %d", v.Name, v.ZeroBits+1, v.ZeroBits)
+		}
 	}
 }

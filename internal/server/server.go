@@ -107,6 +107,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	if s.web, err = loadWebClient(s.webFiles); err != nil {
 		return nil, err
 	}
+	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets))
 	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))

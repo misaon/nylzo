@@ -2,6 +2,7 @@ package vectors
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -558,6 +559,9 @@ func (f *File) pow() error {
 		{"counter zero", 0, 0, false},
 		{"counter with two hex digits", 0xff, 0, false},
 		{"counter above 32 bits", 1<<32 + 1, 0, false},
+		{"largest safe JavaScript counter", 1<<53 - 1, 0, false},
+		{"at least nine zero bits", 512, 0, false},
+		{"first solution at difficulty 0", 0, 0, true},
 		{"first solution at difficulty 4", 0, 4, true},
 		{"first solution at difficulty 6", 0, 6, true},
 	} {
@@ -567,20 +571,19 @@ func (f *File) pow() error {
 		counter := c.counter
 		var difficulty *int
 		if c.solve {
-			token, err := core.SolvePoW(challenge, id, c.difficulty)
+			_, solved, err := core.SolvePoW(context.Background(), challenge, id, c.difficulty)
 			if err != nil {
 				return err
 			}
-			var parsed uint64
-			if _, err := fmt.Sscanf(token[len(challenge)+1:], "%x", &parsed); err != nil {
-				return err
-			}
-			counter = parsed
+			counter = solved
 			difficulty = &c.difficulty
 		}
 		digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(raw), id, counter)
 		if err != nil {
 			return err
+		}
+		if strings.HasPrefix(c.name, "at least nine") && core.LeadingZeroBits(digest[:]) < 9 {
+			return fmt.Errorf("vectors: pow case %q has fewer than 9 zero bits", c.name)
 		}
 		f.PoW = append(f.PoW, PoW{
 			Name: c.name, Challenge: challenge, ID: id.String(), Counter: counter,

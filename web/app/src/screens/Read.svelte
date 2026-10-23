@@ -2,16 +2,19 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { createApi } from '../lib/api.ts';
-  import { isRiskyFile, saveFile } from '../lib/download.ts';
+  import { fileExtension, isKnownSafeFile, saveFile } from '../lib/download.ts';
   import { formatBytes, formatDuration, formatTime } from '../lib/format.ts';
   import { getI18n } from '../lib/i18n.ts';
   import { scryptInWorker } from '../lib/kdf.ts';
-  import { createReader, type ReadView } from '../lib/read.ts';
+  import { createReader, type ReadView, type RevealedFile } from '../lib/read.ts';
 
   const { t, language } = getI18n();
 
   let view = $state.raw<ReadView>({ view: 'loading' });
   let passphrase = $state('');
+  let confirming = $state(false);
+
+  const status = $derived(view.view === 'loading' ? t('read.loading') : view.view === 'busy' ? t(`busy.${view.step}`) : '');
 
   const reader = createReader(
     {
@@ -43,16 +46,27 @@
 
   function reveal(event: SubmitEvent) {
     event.preventDefault();
-    reader.reveal(passphrase);
+    const entered = passphrase;
+    passphrase = '';
+    reader.reveal(entered);
+  }
+
+  function download(file: RevealedFile) {
+    if (isKnownSafeFile(file.name) || confirming) {
+      confirming = false;
+      saveFile(file.bytes, file.name);
+    } else {
+      confirming = true;
+    }
   }
 </script>
 
-<section aria-labelledby="read-title" aria-busy={view.view === 'loading' || view.view === 'busy'}>
+<p role="status" aria-live="polite">{status}</p>
+
+<section aria-labelledby="read-title">
   <h2 id="read-title">{t('read.title')}</h2>
 
-  {#if view.view === 'loading'}
-    <p role="status">{t('read.loading')}</p>
-  {:else if view.view === 'invalid'}
+  {#if view.view === 'invalid'}
     <p role="alert">{t('read.invalid')}</p>
   {:else if view.view === 'unknown'}
     <p role="alert">{t('read.unknown')}</p>
@@ -65,7 +79,7 @@
     <p role="alert">{t('read.retry_later', { time: formatDuration(view.retryAfter ?? 60, language) })}</p>
     <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
   {:else if view.view === 'ended'}
-    <p role="status">{t(`read.ended.${view.state}`)}</p>
+    <p role="alert">{t(`read.ended.${view.state}`)}</p>
     {#if view.firstOpenedAt}
       <p>{t('read.opened_at', { time: formatTime(view.firstOpenedAt, language) })}</p>
     {/if}
@@ -87,6 +101,8 @@
     {/if}
     {#if view.rejected?.reason === 'malformed'}
       <p role="alert">{t('read.rejected.malformed')}</p>
+    {:else if view.rejected?.reason === 'wrong_or_changed'}
+      <p role="alert">{t('read.rejected.wrong_or_changed')}</p>
     {:else if view.rejected?.locked}
       <p role="alert">{t('read.rejected.locked')}</p>
     {:else if view.rejected && view.rejected.retryAfter > 0}
@@ -101,6 +117,12 @@
           id="read-passphrase"
           type="password"
           autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-1p-ignore=""
+          data-lpignore="true"
+          data-bwignore="true"
+          data-form-type="other"
           required
           bind:value={passphrase}
           {@attach focus}
@@ -110,7 +132,6 @@
       <button type="submit">{t('read.reveal')}</button>
     </form>
   {:else if view.view === 'busy'}
-    <p role="status">{t(`busy.${view.step}`)}</p>
     {#if view.fraction === undefined}
       <progress aria-label={t(`busy.${view.step}`)}></progress>
     {:else}
@@ -123,12 +144,16 @@
     {/if}
     {#if view.file}
       {@const file = view.file}
-      {#if isRiskyFile(file.name)}
-        <p role="alert">{t('revealed.risky')}</p>
+      {@const extension = fileExtension(file.name)}
+      <p>{t('revealed.file')}: <bdi>{file.name}</bdi>, {formatBytes(file.bytes.length, language)}</p>
+      {#if confirming}
+        <p role="alert">{t('revealed.confirm.title')}</p>
+        <p>{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</p>
+        <button type="button" onclick={() => download(file)}>{t('revealed.confirm.download')}</button>
+        <button type="button" onclick={() => (confirming = false)}>{t('revealed.confirm.cancel')}</button>
+      {:else}
+        <button type="button" onclick={() => download(file)}>{t('revealed.download')}</button>
       {/if}
-      <button type="button" onclick={() => saveFile(file.bytes, file.name)}>
-        {t('revealed.download', { name: file.name, size: formatBytes(file.bytes.length, language) })}
-      </button>
     {/if}
     <p>{t('revealed.note')}</p>
   {/if}

@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"testing"
@@ -38,9 +39,9 @@ func TestVectorsPoW(t *testing.T) {
 		if v.Difficulty == nil {
 			continue
 		}
-		token, err := core.SolvePoW(v.Challenge, id, *v.Difficulty)
-		if err != nil || token != v.Token {
-			t.Fatalf("%s: solved %q (%v), want the first solution %s", v.Name, token, err, v.Token)
+		token, counter, err := core.SolvePoW(t.Context(), v.Challenge, id, *v.Difficulty)
+		if err != nil || token != v.Token || counter != v.Counter {
+			t.Fatalf("%s: solved %q at %d (%v), want the first solution %s", v.Name, token, counter, err, v.Token)
 		}
 	}
 }
@@ -65,11 +66,16 @@ func TestLeadingZeroBits(t *testing.T) {
 func TestSolvePoWRejectsBadInput(t *testing.T) {
 	challenge := core.Encode(make([]byte, core.PoWChallengeLen))
 	for _, difficulty := range []int{-1, core.MaxPoWDifficulty + 1} {
-		if _, err := core.SolvePoW(challenge, core.NewID(), difficulty); !errors.Is(err, core.ErrPoWDifficulty) {
+		if _, _, err := core.SolvePoW(t.Context(), challenge, core.NewID(), difficulty); !errors.Is(err, core.ErrPoWDifficulty) {
 			t.Fatalf("difficulty %d: %v", difficulty, err)
 		}
 	}
-	if _, err := core.SolvePoW(challenge[1:], core.NewID(), 0); err == nil {
+	if _, _, err := core.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
 		t.Fatal("a malformed challenge was accepted")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := core.SolvePoW(ctx, challenge, core.NewID(), core.MaxPoWDifficulty); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a cancelled solve went on: %v", err)
 	}
 }

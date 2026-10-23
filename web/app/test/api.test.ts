@@ -1,5 +1,6 @@
 import {
   CHALLENGE_LEN,
+  MAX_OBJECT_BYTES,
   encodeBase64url,
   idToString,
   requestKey,
@@ -194,5 +195,29 @@ describe('api client', () => {
     for (const bad of [null, '', `${policy}A`, `${policy}=`, encodeBase64url(utf8('[]')), encodeBase64url(utf8('{"opens_max":1}'))]) {
       expect(() => decodePolicyHeader(bad)).toThrow(ResponseError);
     }
+  });
+
+  it('refuses a timestamp that is not RFC 3339', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(5));
+    const server = fakeServer(() =>
+      json(200, { state: 'available', created_at: 'yesterday', expires_at: '2026-10-24T09:00:00Z', opens_max: 1, opens_remaining: 1, ttl_s: 86400, passphrase_required: false, kdf_id: 0, size: 1 }),
+    );
+    await expect(server.api.metadata(randomId(), readKey)).rejects.toThrow(ResponseError);
+  });
+
+  it('leaves retryAfter empty when the server sends no Retry-After', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(6));
+    const server = fakeServer(() => json(503, { error: 'unavailable' }));
+    const error = await server.api.claim(randomId(), readKey).catch((e: unknown) => e);
+    expect(error).toMatchObject({ kind: 'unavailable' });
+    expect((error as ApiError).retryAfter).toBeUndefined();
+  });
+
+  it('refuses an object larger than the protocol allows', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(8));
+    const server = fakeServer(
+      () => new Response(new Uint8Array(16), { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) } }),
+    );
+    await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
   });
 });

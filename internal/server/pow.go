@@ -16,14 +16,10 @@ import (
 )
 
 const (
-	powWindow     = 120 * time.Second
-	powClockSkew  = 5 * time.Second
-	powNonceLen   = 16
-	powTagLen     = 16
-	powCounterLen = 8
-	powChalLen    = core.PoWChallengeLen
-	powNonceKey   = "pow:"
-	powNonceTTL   = 2 * powWindow
+	powWindow    = 120 * time.Second
+	powClockSkew = 5 * time.Second
+	powNonceKey  = "pow:"
+	powNonceTTL  = 2 * powWindow
 )
 
 var ErrPoW = errors.New("server: invalid proof of work")
@@ -31,38 +27,38 @@ var ErrPoW = errors.New("server: invalid proof of work")
 const powSlotWait = 10 * time.Second
 
 func (s *Server) powChallenge(now time.Time) string {
-	buf := make([]byte, powChalLen)
-	binary.BigEndian.PutUint32(buf[0:4], uint32(now.Unix()))
-	rand.Read(buf[4 : 4+powNonceLen])
-	tag, _ := s.ring.MAC(pepper.PoW, buf[:4+powNonceLen])
-	copy(buf[4+powNonceLen:], tag[:powTagLen])
+	buf := make([]byte, core.PoWChallengeLen)
+	binary.BigEndian.PutUint32(buf[:core.PoWWindowLen], uint32(now.Unix()))
+	rand.Read(buf[core.PoWNonceOffset : core.PoWNonceOffset+core.PoWNonceLen])
+	tag, _ := s.ring.MAC(pepper.PoW, buf[:core.PoWNonceOffset+core.PoWNonceLen])
+	copy(buf[core.PoWNonceOffset+core.PoWNonceLen:], tag[:core.PoWTagLen])
 	return core.Encode(buf)
 }
 
 func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now time.Time) error {
 	chalStr, counterStr, ok := strings.Cut(token, ".")
-	if !ok || len(counterStr) != 2*powCounterLen {
+	if !ok || len(counterStr) != 2*core.PoWCounterLen {
 		return ErrPoW
 	}
-	chal, err := core.DecodeExact(chalStr, powChalLen)
+	chal, err := core.DecodeExact(chalStr, core.PoWChallengeLen)
 	if err != nil {
 		return ErrPoW
 	}
 	counter, err := hex.DecodeString(counterStr)
-	if err != nil || len(counter) != powCounterLen || strings.ContainsAny(counterStr, "ABCDEF") {
+	if err != nil || len(counter) != core.PoWCounterLen || strings.ContainsAny(counterStr, "ABCDEF") {
 		return ErrPoW
 	}
-	tag, _ := s.ring.MAC(pepper.PoW, chal[:4+powNonceLen])
-	if !hmac.Equal(tag[:powTagLen], chal[4+powNonceLen:]) {
+	tag, _ := s.ring.MAC(pepper.PoW, chal[:core.PoWNonceOffset+core.PoWNonceLen])
+	if !hmac.Equal(tag[:core.PoWTagLen], chal[core.PoWNonceOffset+core.PoWNonceLen:]) {
 		return ErrPoW
 	}
-	issued := int64(binary.BigEndian.Uint32(chal[0:4]))
+	issued := int64(binary.BigEndian.Uint32(chal[:core.PoWWindowLen]))
 	age := now.Unix() - issued
 	if age < -int64(powClockSkew/time.Second) || age > int64(powWindow/time.Second) {
 		return ErrPoW
 	}
 	purge := store.CeilMinute(time.Unix(issued, 0).Add(powNonceTTL))
-	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: powNonceKey + hex.EncodeToString(chal[4:4+powNonceLen]), WindowStart: time.Unix(0, 0), PurgeAt: purge}})
+	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: powNonceKey + hex.EncodeToString(chal[core.PoWNonceOffset:core.PoWNonceOffset+core.PoWNonceLen]), WindowStart: time.Unix(0, 0), PurgeAt: purge}})
 	if err != nil {
 		return err
 	}

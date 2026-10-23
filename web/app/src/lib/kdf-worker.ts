@@ -1,4 +1,4 @@
-import { KDF_SCRYPT, derivePassphraseKey, solvePow } from '@nylzo/core';
+import { KDF_SCRYPT, PowTimeoutError, derivePassphraseKey, solvePow } from '@nylzo/core';
 
 import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 
@@ -14,12 +14,13 @@ async function handle(request: KdfRequest): Promise<void> {
     return;
   }
   const expected = 2 ** request.difficulty;
-  const token = solvePow(request.challenge, request.id, request.difficulty, (counter) => {
-    onProgress(Math.min(counter / expected, 1));
+  const token = solvePow(request.challenge, request.id, request.difficulty, {
+    deadline: request.deadline,
+    onAttempt: (counter) => onProgress(Math.min(counter / expected, 1)),
   });
   reply({ kind: 'token', token });
 }
 
 self.addEventListener('message', (event: MessageEvent<KdfRequest>) => {
-  handle(event.data).catch(() => reply({ kind: 'error' }));
+  handle(event.data).catch((error: unknown) => reply({ kind: 'error', timeout: error instanceof PowTimeoutError }));
 });

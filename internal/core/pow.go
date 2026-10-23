@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -13,11 +14,14 @@ const (
 	PoWN               = 1 << 14
 	PoWR               = 8
 	PoWP               = 1
-	PoWChallengeLen    = 36
-	PoWNonceOffset     = 4
+	PoWWindowLen       = 4
+	PoWNonceOffset     = PoWWindowLen
 	PoWNonceLen        = 16
+	PoWTagLen          = 16
+	PoWChallengeLen    = PoWWindowLen + PoWNonceLen + PoWTagLen
+	PoWCounterLen      = 8
 	MaxPoWDifficulty   = 8
-	powCounterHexChars = 16
+	powCounterHexChars = 2 * PoWCounterLen
 )
 
 var ErrPoWDifficulty = errors.New("core: proof-of-work difficulty out of range")
@@ -48,22 +52,25 @@ func PoWToken(challenge string, counter uint64) string {
 	return fmt.Sprintf("%s.%0*x", challenge, powCounterHexChars, counter)
 }
 
-func SolvePoW(challenge string, id ID, difficulty int) (string, error) {
+func SolvePoW(ctx context.Context, challenge string, id ID, difficulty int) (string, uint64, error) {
 	if difficulty < 0 || difficulty > MaxPoWDifficulty {
-		return "", ErrPoWDifficulty
+		return "", 0, ErrPoWDifficulty
 	}
 	raw, err := DecodeExact(challenge, PoWChallengeLen)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	chal := (*[PoWChallengeLen]byte)(raw)
 	for counter := uint64(0); ; counter++ {
+		if err := ctx.Err(); err != nil {
+			return "", 0, err
+		}
 		digest, err := PoWDigest(chal, id, counter)
 		if err != nil {
-			return "", err
+			return "", 0, err
 		}
 		if LeadingZeroBits(digest[:]) >= difficulty {
-			return PoWToken(challenge, counter), nil
+			return PoWToken(challenge, counter), counter, nil
 		}
 	}
 }

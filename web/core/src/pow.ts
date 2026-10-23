@@ -2,7 +2,7 @@ import { scrypt } from '@noble/hashes/scrypt.js';
 
 import { decodeBase64urlExact } from './base64url.ts';
 import { arrayBufferBacked, assertLength, concat } from './bytes.ts';
-import { PowError } from './errors.ts';
+import { PowError, PowTimeoutError } from './errors.ts';
 import { ID_LEN, KEY_LEN } from './limits.ts';
 
 export const POW_N = 1 << 14;
@@ -45,18 +45,23 @@ export function powToken(challenge: string, counter: number): string {
   return `${challenge}.${counter.toString(16).padStart(COUNTER_HEX_CHARS, '0')}`;
 }
 
-export function solvePow(
-  challenge: string,
-  id: Uint8Array,
-  difficulty: number,
-  onAttempt?: (counter: number) => void,
-): string {
+export interface SolveOptions {
+  readonly onAttempt?: (counter: number) => void;
+  readonly deadline?: number;
+  readonly now?: () => number;
+}
+
+export function solvePow(challenge: string, id: Uint8Array, difficulty: number, options: SolveOptions = {}): string {
   if (!Number.isInteger(difficulty) || difficulty < 0 || difficulty > MAX_POW_DIFFICULTY) {
     throw new PowError();
   }
   const raw = parsePowChallenge(challenge);
+  const now = options.now ?? Date.now;
   for (let counter = 0; ; counter++) {
-    onAttempt?.(counter);
+    if (options.deadline !== undefined && now() >= options.deadline) {
+      throw new PowTimeoutError();
+    }
+    options.onAttempt?.(counter);
     if (leadingZeroBits(powDigest(raw, id, counter)) >= difficulty) {
       return powToken(challenge, counter);
     }

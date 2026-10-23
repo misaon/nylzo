@@ -1,4 +1,5 @@
 import {
+  MAX_OBJECT_BYTES,
   PURPOSE_MANAGE,
   PURPOSE_READ,
   PURPOSE_VERIFIER,
@@ -168,6 +169,9 @@ const KINDS: readonly ApiErrorKind[] = [
 
 type Json = Record<string, unknown>;
 
+const SHORT_TIMEOUT_MS = 30_000;
+const TRANSFER_TIMEOUT_MS = 360_000;
+
 function isObject(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -184,6 +188,14 @@ function text(json: Json, key: string): string {
   const value = json[key];
   if (typeof value !== 'string') {
     throw new ResponseError(`field ${key} is not a string`);
+  }
+  return value;
+}
+
+function timestamp(json: Json, key: string): string {
+  const value = text(json, key);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
+    throw new ResponseError(`field ${key} is not an RFC 3339 time`);
   }
   return value;
 }
@@ -206,14 +218,15 @@ function times(json: Json): Pick<Metadata, 'createdAt' | 'expiresAt' | 'firstOpe
     ['ended_at', 'endedAt'],
   ] as const) {
     if (json[wire] !== undefined) {
-      out[field] = text(json, wire);
+      out[field] = timestamp(json, wire);
     }
   }
   return out;
 }
 
 function retryAfterHeader(response: Response): number | undefined {
-  const value = Number(response.headers.get('Retry-After'));
+  const raw = response.headers.get('Retry-After');
+  const value = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
@@ -288,8 +301,16 @@ export function encodeCreateHeader(request: Omit<CreateRequest, 'object' | 'powT
 async function readBody(response: Response, onProgress?: DownloadProgress): Promise<Uint8Array<ArrayBuffer>> {
   const declared = Number(response.headers.get('Content-Length'));
   const total = Number.isSafeInteger(declared) && declared > 0 ? declared : undefined;
+  if (total !== undefined && total > MAX_OBJECT_BYTES) {
+    await response.body?.cancel();
+    throw new ResponseError('the object is larger than the protocol allows');
+  }
   if (!response.body) {
-    return new Uint8Array(await response.arrayBuffer());
+    const whole = new Uint8Array(await response.arrayBuffer());
+    if (whole.length > MAX_OBJECT_BYTES) {
+      throw new ResponseError('the object is larger than the protocol allows');
+    }
+    return whole;
   }
   const chunks: Uint8Array[] = [];
   let received = 0;
@@ -299,8 +320,12 @@ async function readBody(response: Response, onProgress?: DownloadProgress): Prom
     if (done) {
       break;
     }
-    chunks.push(value);
     received += value.length;
+    if (received > MAX_OBJECT_BYTES) {
+      await reader.cancel();
+      throw new ResponseError('the object is larger than the protocol allows');
+    }
+    chunks.push(value);
     onProgress?.(received, total);
   }
   const out = new Uint8Array(received);
@@ -316,12 +341,13 @@ export function createApi(options: ApiOptions = {}) {
   const base = options.base ?? '';
   const fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
 
-  function call(path: string, init: RequestInit): Promise<Response> {
+  function call(path: string, init: RequestInit, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
     return fetchImpl(`${base}${path}`, {
       credentials: 'omit',
       cache: 'no-store',
       redirect: 'error',
       referrerPolicy: 'no-referrer',
+      signal: AbortSignal.timeout(timeoutMs),
       ...init,
     });
   }
@@ -334,7 +360,7 @@ export function createApi(options: ApiOptions = {}) {
     return parseChallenge(text(await readJson(response), 'challenge'));
   }
 
-  async function signedOnce(request: SignedRequest): Promise<Response> {
+  async function signedOnce(request: SignedRequest, timeoutMs: number): Promise<Response> {
     const fresh = await challenge();
     const headers: Record<string, string> = { ...request.headers };
     const auth = await signRequest(request.key, request.purpose, request.method, request.path, fresh);
@@ -343,16 +369,16 @@ export function createApi(options: ApiOptions = {}) {
       const verifier = await signRequest(request.verifier, PURPOSE_VERIFIER, request.method, request.path, fresh);
       headers['X-Nylzo-Verifier'] = verifierHeader(verifier);
     }
-    return call(request.path, { method: request.method, headers });
+    return call(request.path, { method: request.method, headers }, timeoutMs);
   }
 
-  async function signed(request: SignedRequest): Promise<Response> {
-    const response = await signedOnce(request);
+  async function signed(request: SignedRequest, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
+    const response = await signedOnce(request, timeoutMs);
     if (response.status !== 404) {
       return response;
     }
     await response.body?.cancel();
-    return signedOnce(request);
+    return signedOnce(request, timeoutMs);
   }
 
   async function ensureOk(response: Response): Promise<Response> {
@@ -404,8 +430,8 @@ export function createApi(options: ApiOptions = {}) {
       if (request.powToken !== undefined) {
         headers['X-Nylzo-Pow'] = request.powToken;
       }
-      const response = await ensureOk(await call('/api/v1/messages', { method: 'POST', headers, body: request.object }));
-      return { expiresAt: text(await readJson(response), 'expires_at') };
+      const response = await ensureOk(await call('/api/v1/messages', { method: 'POST', headers, body: request.object }, TRANSFER_TIMEOUT_MS));
+      return { expiresAt: timestamp(await readJson(response), 'expires_at') };
     },
 
     async metadata(id: Uint8Array, readKey: RequestKey): Promise<Metadata> {
@@ -428,7 +454,7 @@ export function createApi(options: ApiOptions = {}) {
 
     async claim(id: Uint8Array, readKey: RequestKey, options: ClaimOptions = {}): Promise<Claimed> {
       const response = await ensureOk(
-        await signed({ method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey }),
+        await signed({ method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey }, TRANSFER_TIMEOUT_MS),
       );
       const lease = response.headers.get('X-Nylzo-Lease');
       if (lease === null) {
@@ -441,7 +467,7 @@ export function createApi(options: ApiOptions = {}) {
 
     async blob(id: Uint8Array, readKey: RequestKey, lease: string, onProgress?: DownloadProgress): Promise<Envelope> {
       const response = await ensureOk(
-        await signed({ method: 'GET', path: `${messagePath(id)}/blob`, purpose: PURPOSE_READ, key: readKey, headers: { 'X-Nylzo-Lease': lease } }),
+        await signed({ method: 'GET', path: `${messagePath(id)}/blob`, purpose: PURPOSE_READ, key: readKey, headers: { 'X-Nylzo-Lease': lease } }, TRANSFER_TIMEOUT_MS),
       );
       const policy = decodePolicyHeader(response.headers.get('X-Nylzo-Policy'));
       return { policy, object: await readBody(response, onProgress) };

@@ -1037,6 +1037,34 @@
       "token": "B6DD180NN7KVuNDuKmY-kYjLtWuWJwcRVn-O0C4news6_Fkd.0000000100000001"
     },
     {
+      "name": "largest safe JavaScript counter",
+      "challenge": "aoSnrii6G-AIRNlzCOs7MJTWhuPLgjjiYPfJQ7wavAJEdkGh",
+      "id": "tKNbZV6MfEynXyFrIMjYbg",
+      "counter": 9007199254740991,
+      "digest_hex": "a27657c4f40f7b02bd67ba02dc0b8bd3caba584faafe50c2ff066c566ee9edeb",
+      "zero_bits": 0,
+      "token": "aoSnrii6G-AIRNlzCOs7MJTWhuPLgjjiYPfJQ7wavAJEdkGh.001fffffffffffff"
+    },
+    {
+      "name": "at least nine zero bits",
+      "challenge": "qnhl68c5zntye9kzacJxs6iao2-Ly33RAvKDx7jXOlxRNFkR",
+      "id": "c1fYaWGOVawW1m5NXb2iRw",
+      "counter": 512,
+      "digest_hex": "00351ea9bf57292e7316a5860088372e68c590c96e120954e9b26b31ba95050b",
+      "zero_bits": 10,
+      "token": "qnhl68c5zntye9kzacJxs6iao2-Ly33RAvKDx7jXOlxRNFkR.0000000000000200"
+    },
+    {
+      "name": "first solution at difficulty 0",
+      "challenge": "I5YU7ZKR8XNV3ljzE4kcjBRbqFJBc9Y9CxOXvy37teFgLLel",
+      "id": "jIubbCNIz4j6BahDsak67Q",
+      "counter": 0,
+      "digest_hex": "43e358029349e5f67c4285761abeaf56ad7ae09ac43d5d55261d9f3b34e50e45",
+      "zero_bits": 1,
+      "token": "I5YU7ZKR8XNV3ljzE4kcjBRbqFJBc9Y9CxOXvy37teFgLLel.0000000000000000",
+      "difficulty": 0
+    },
+    {
       "name": "first solution at difficulty 4",
       "challenge": "GTx2_fmjslEIhvQjnxbPSNPKLeFWIQuKZTxCdLik6I5aZaSO",
       "id": "FPN4y8BkrcPcFYlYNewlsQ",

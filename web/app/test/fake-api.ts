@@ -1,4 +1,4 @@
-import { idToString, type KdfId, type RequestKey } from '@nylzo/core';
+import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
 
 import { ApiError, type Api, type CreateRequest, type Instance, type MessageState, type Metadata } from '../src/lib/api.ts';
 
@@ -11,9 +11,12 @@ interface Stored {
 }
 
 export interface FakeOptions {
-  pow?: { required: boolean; difficulty: number; challenge?: string };
+  pow?: { required: boolean; difficulty: number };
   failCreate?: ApiError[];
   servedKdfId?: number;
+  servedOpensMax?: number;
+  servedFlags?: number;
+  tombstone?: boolean;
   metadataKdfId?: number;
   tamperObject?: boolean;
   expiresInSeconds?: number;
@@ -22,6 +25,7 @@ export interface FakeOptions {
 
 export interface FakeApi extends Api {
   readonly calls: string[];
+  readonly challenges: string[];
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
 }
@@ -31,6 +35,7 @@ const equal = (a: Uint8Array | undefined, b: Uint8Array | undefined) =>
 
 export function fakeApi(options: FakeOptions = {}): FakeApi {
   const calls: string[] = [];
+  const challenges: string[] = [];
   const stored = new Map<string, Stored>();
   const issuedIds: Uint8Array<ArrayBuffer>[] = [];
   const failCreate = [...(options.failCreate ?? [])];
@@ -51,10 +56,10 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     }
     return {
       policy: {
-        opensMax: message.request.opensMax,
+        opensMax: options.servedOpensMax ?? message.request.opensMax,
         ttlSeconds: message.request.ttlSeconds,
         kdfId: options.servedKdfId ?? message.request.kdfId,
-        flags: 0,
+        flags: options.servedFlags ?? 0,
       },
       object,
     };
@@ -65,6 +70,8 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push('instance');
       const id = crypto.getRandomValues(new Uint8Array(16));
       issuedIds.push(id);
+      const challenge = encodeBase64url(new Uint8Array(36).fill(challenges.length + 1));
+      challenges.push(challenge);
       return {
         limits: {
           maxFileBytes: 5242880,
@@ -75,7 +82,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
           maxOpens: 10,
           defaultKdfId: 1 as KdfId,
         },
-        pow: options.pow ?? { required: false, difficulty: 4 },
+        pow: options.pow?.required ? { ...options.pow, challenge } : { required: false, difficulty: 4 },
         create: { id, idToken: 'token' },
       };
     },
@@ -91,6 +98,19 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     async metadata(id, readKey): Promise<Metadata> {
       calls.push('metadata');
       const message = find(id, readKey);
+      if (options.tombstone) {
+        return {
+          state: message.state,
+          opensMax: 0,
+          opensRemaining: 0,
+          ttlSeconds: 0,
+          passphraseRequired: false,
+          kdfId: 0,
+          size: 0,
+          firstOpenedAt: '2026-10-23T10:00:00Z',
+          endedAt: '2026-10-23T10:05:00Z',
+        };
+      }
       return {
         state: message.state,
         opensMax: message.request.opensMax,
@@ -141,5 +161,5 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       throw new Error('not used');
     },
   };
-  return Object.assign(api, { calls, stored, issuedIds });
+  return Object.assign(api, { calls, challenges, stored, issuedIds });
 }

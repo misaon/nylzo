@@ -1,14 +1,19 @@
 package server
 
 import (
+	"bytes"
+	"compress/gzip"
 	"crypto/rand"
 	"embed"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"path"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -33,22 +38,24 @@ var assetTypes = map[string]string{
 	".woff2": "font/woff2",
 }
 
+const (
+	encodingBrotli = "br"
+	encodingGzip   = "gzip"
+)
+
+var precompressed = map[string]string{".br": encodingBrotli, ".gz": encodingGzip}
+
+var assetReference = regexp.MustCompile(`(?:src|href)="/assets/([^"]*)"`)
+
 type webClient struct {
+	built  bool
 	index  string
 	assets map[string]webAsset
 }
 
 type webAsset struct {
-	body        []byte
 	contentType string
-}
-
-func WithWebFiles(files fs.FS) Option {
-	return func(s *Server) {
-		if files != nil {
-			s.webFiles = files
-		}
-	}
+	bodies      map[string][]byte
 }
 
 func loadWebClient(files fs.FS) (webClient, error) {
@@ -63,26 +70,103 @@ func loadWebClient(files fs.FS) (webClient, error) {
 	if err != nil {
 		return webClient{}, fmt.Errorf("server: web client: %w", err)
 	}
-	client := webClient{index: string(index), assets: map[string]webAsset{}}
-	entries, err := fs.ReadDir(files, "web/dist/assets")
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return webClient{}, fmt.Errorf("server: web assets: %w", err)
+	client := webClient{built: true, index: string(index), assets: map[string]webAsset{}}
+	if !strings.Contains(client.index, noncePlaceholder) {
+		return webClient{}, errors.New("server: web client index.html has no nonce placeholder")
 	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			return webClient{}, fmt.Errorf("server: web asset %s is a directory", entry.Name())
+	if err := client.loadAssets(files); err != nil {
+		return webClient{}, err
+	}
+	for _, match := range assetReference.FindAllStringSubmatch(client.index, -1) {
+		if _, ok := client.assets[match[1]]; !ok {
+			return webClient{}, fmt.Errorf("server: web client index.html references the missing asset %q", match[1])
 		}
-		contentType, ok := assetTypes[path.Ext(entry.Name())]
-		if !ok {
-			return webClient{}, fmt.Errorf("server: web asset %s has no known type", entry.Name())
+	}
+	return client, nil
+}
+
+func (c *webClient) loadAssets(files fs.FS) error {
+	entries, err := fs.ReadDir(files, "web/dist/assets")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("server: web assets: %w", err)
+	}
+	bodies := map[string]map[string][]byte{}
+	for _, entry := range entries {
+		name, encoding := entry.Name(), ""
+		if e, ok := precompressed[path.Ext(name)]; ok {
+			name, encoding = strings.TrimSuffix(name, path.Ext(name)), e
+		}
+		if _, ok := assetTypes[path.Ext(name)]; !ok {
+			return fmt.Errorf("server: web asset %s has no known type", entry.Name())
 		}
 		body, err := fs.ReadFile(files, "web/dist/assets/"+entry.Name())
 		if err != nil {
-			return webClient{}, fmt.Errorf("server: web asset %s: %w", entry.Name(), err)
+			return fmt.Errorf("server: web asset %s: %w", entry.Name(), err)
 		}
-		client.assets[entry.Name()] = webAsset{body: body, contentType: contentType}
+		if bodies[name] == nil {
+			bodies[name] = map[string][]byte{}
+		}
+		bodies[name][encoding] = body
 	}
-	return client, nil
+	for name, variants := range bodies {
+		plain, ok := variants[""]
+		if !ok {
+			return fmt.Errorf("server: web asset %s has a compressed variant without the file", name)
+		}
+		if gz, ok := variants[encodingGzip]; ok {
+			if err := sameAfterGunzip(gz, plain); err != nil {
+				return fmt.Errorf("server: web asset %s.gz: %w", name, err)
+			}
+		}
+		c.assets[name] = webAsset{contentType: assetTypes[path.Ext(name)], bodies: variants}
+	}
+	return nil
+}
+
+func sameAfterGunzip(compressed, plain []byte) error {
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return err
+	}
+	unpacked, err := io.ReadAll(io.LimitReader(reader, int64(len(plain))+1))
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(unpacked, plain) {
+		return errors.New("does not unpack to the file")
+	}
+	return nil
+}
+
+func acceptedEncodings(header string) map[string]bool {
+	accepted := map[string]bool{}
+	wildcard := false
+	explicit := map[string]bool{}
+	for part := range strings.SplitSeq(header, ",") {
+		token, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		token = strings.ToLower(strings.TrimSpace(token))
+		quality := 1.0
+		if name, value, ok := strings.Cut(strings.TrimSpace(params), "="); ok && strings.TrimSpace(name) == "q" {
+			if q, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+				quality = q
+			}
+		}
+		if token == "*" {
+			wildcard = quality > 0
+			continue
+		}
+		explicit[token] = true
+		accepted[token] = quality > 0
+	}
+	for _, encoding := range []string{encodingBrotli, encodingGzip} {
+		if !explicit[encoding] {
+			accepted[encoding] = wildcard
+		}
+	}
+	return accepted
 }
 
 func isPreviewAgent(ua string) bool {
@@ -114,8 +198,18 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", asset.contentType)
-	w.Write(asset.body)
+	h := w.Header()
+	h.Set("Content-Type", asset.contentType)
+	h.Set("Vary", "Accept-Encoding")
+	accepted := acceptedEncodings(r.Header.Get("Accept-Encoding"))
+	for _, encoding := range []string{encodingBrotli, encodingGzip} {
+		if body, ok := asset.bodies[encoding]; ok && accepted[encoding] {
+			h.Set("Content-Encoding", encoding)
+			w.Write(body)
+			return
+		}
+	}
+	w.Write(asset.bodies[""])
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

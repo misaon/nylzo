@@ -1,5 +1,6 @@
 <script lang="ts">
   import { KDF_NONE, KDF_PBKDF2, KDF_SCRYPT, type KdfId } from '@nylzo/core';
+  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
   import { createApi, type InstanceLimits } from '../lib/api.ts';
@@ -10,16 +11,14 @@
     validateCreate,
     type CreateFailure,
     type CreateField,
-    type CreateInput,
     type CreateProblem,
     type CreateProgress,
     type Created,
   } from '../lib/create.ts';
+  import { failureKey, problemKey, progressKey, readAttachment, ttlChoices, ttlKey } from '../lib/create-form.ts';
   import { formatBytes, formatDuration, formatTime } from '../lib/format.ts';
-  import { getI18n, type MessageKey } from '../lib/i18n.ts';
+  import { getI18n } from '../lib/i18n.ts';
   import { scryptInWorker, solvePowInWorker } from '../lib/kdf.ts';
-
-  const TTL_CHOICES = [3600, 86400, 259200, 604800] as const;
 
   const { t, language } = getI18n();
   const api = createApi();
@@ -29,6 +28,7 @@
   let text = $state('');
   let file = $state.raw<File>();
   let fileInput: HTMLInputElement | undefined;
+  let form: HTMLFormElement | undefined;
   let ttlSeconds = $state(86400);
   let opensMax = $state(1);
   let passphrase = $state('');
@@ -37,17 +37,19 @@
   let failure = $state.raw<CreateFailure>();
   let progress = $state.raw<CreateProgress>();
   let created = $state.raw<Created>();
+  let usedPassphrase = $state(false);
   let copied = $state(false);
+  let status = $state('');
 
-  const ttlChoices = $derived.by(() => {
-    const maxTtl = limits?.maxTtlSeconds ?? 0;
-    return TTL_CHOICES.filter((seconds) => seconds <= maxTtl);
-  });
+  const choices = $derived(limits ? ttlChoices(limits) : []);
   const weak = $derived(passphrase !== '' && passphraseIsWeak(passphrase));
   const fieldMessages = $derived.by(() => {
     const messages: Partial<Record<CreateField, string>> = {};
     for (const problem of problems) {
-      messages[problem.field] ??= problemText(problem);
+      messages[problem.field] ??= t(problemKey(problem), {
+        size: formatBytes(problem.field === 'text' ? (limits?.maxTextBytes ?? 0) : (limits?.maxFileBytes ?? 0), language),
+        max: limits?.maxOpens ?? 0,
+      });
     }
     return messages;
   });
@@ -70,6 +72,13 @@
     element.focus();
   };
 
+  const rememberForm: Attachment<HTMLFormElement> = (element) => {
+    form = element;
+    return () => {
+      form = undefined;
+    };
+  };
+
   const rememberFileInput: Attachment<HTMLInputElement> = (element) => {
     fileInput = element;
     return () => {
@@ -77,23 +86,14 @@
     };
   };
 
-  function problemText(problem: CreateProblem): string {
-    const key = `problem.${problem.field}.${problem.code}` as MessageKey;
-    return t(key, {
-      size: formatBytes(problem.field === 'text' ? (limits?.maxTextBytes ?? 0) : (limits?.maxFileBytes ?? 0), language),
-      max: limits?.maxOpens ?? 0,
-    });
+  function ttlLabel(seconds: number): string {
+    const key = ttlKey(seconds);
+    return key ? t(key) : formatDuration(seconds, language);
   }
 
   function failureText(value: CreateFailure): string {
-    if (value.kind === 'rate_limited' || value.kind === 'unavailable') {
-      return t(`failure.${value.kind}`, { time: formatDuration(value.retryAfter ?? 60, language) });
-    }
-    return value.kind === 'invalid' ? t('failure.failed') : t(`failure.${value.kind}`);
-  }
-
-  function progressText(value: CreateProgress): string {
-    return t(`progress.${value.step}`);
+    const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
+    return t(failureKey(value), { time: formatDuration(retryAfter ?? 60, language) });
   }
 
   function clearFile() {
@@ -103,16 +103,16 @@
     }
   }
 
-  async function readInput(current: InstanceLimits): Promise<CreateInput | undefined> {
-    const base = { text, ttlSeconds, opensMax, passphrase, kdfId };
-    if (file && file.size > current.maxFileBytes) {
-      problems = [{ field: 'file', code: 'too_large' }];
-      return undefined;
-    }
-    const attached = file && { name: file.name, mime: file.type, bytes: new Uint8Array(await file.arrayBuffer()) };
-    const input: CreateInput = { ...base, file: attached };
-    problems = validateCreate(input, current);
-    return problems.length === 0 ? input : undefined;
+  async function showProblems(next: readonly CreateProblem[]) {
+    problems = next;
+    status = t('create.problems');
+    await tick();
+    form?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+  }
+
+  function onProgress(next: CreateProgress) {
+    progress = next;
+    status = t(progressKey(next));
   }
 
   async function submit(event: SubmitEvent) {
@@ -121,29 +121,40 @@
       return;
     }
     failure = undefined;
-    progress = { step: 'preparing' };
+    const attachment = await readAttachment(file, limits);
+    if ('problem' in attachment) {
+      await showProblems([attachment.problem]);
+      return;
+    }
+    const input = { text, file: attachment.file, ttlSeconds, opensMax, passphrase, kdfId };
+    const invalid = validateCreate(input, limits);
+    if (invalid.length > 0) {
+      await showProblems(invalid);
+      return;
+    }
+    problems = [];
     try {
-      const input = await readInput(limits);
-      if (!input) {
-        return;
-      }
       created = await createMessage(
         input,
         {
           api,
           origin: location.origin,
-          scrypt: (pass, saltPw, onProgress) => scryptInWorker(pass, saltPw, { onProgress }),
-          solvePow: (challenge, id, difficulty, onProgress) => solvePowInWorker(challenge, id, difficulty, { onProgress }),
+          scrypt: (pass, saltPw, report) => scryptInWorker(pass, saltPw, { onProgress: report }),
+          solvePow: (challenge, id, difficulty, deadline, report) => solvePowInWorker(challenge, id, difficulty, deadline, { onProgress: report }),
         },
-        (next) => {
-          progress = next;
-        },
+        onProgress,
       );
+      usedPassphrase = passphrase !== '';
+      passphrase = '';
+      text = '';
+      clearFile();
+      status = '';
     } catch (error) {
       if (error instanceof CreateError && error.failure.kind === 'invalid') {
-        problems = error.failure.problems;
+        await showProblems(error.failure.problems);
       } else {
         failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
+        status = '';
       }
     } finally {
       progress = undefined;
@@ -165,11 +176,11 @@
   function another() {
     created = undefined;
     copied = false;
-    text = '';
-    passphrase = '';
-    clearFile();
+    usedPassphrase = false;
   }
 </script>
+
+<p role="status" aria-live="polite">{status}</p>
 
 {#if created}
   <section aria-labelledby="created-title">
@@ -177,26 +188,29 @@
     <label for="created-link">{t('created.link')}</label>
     <input id="created-link" type="text" readonly value={created.link} onfocus={(event) => event.currentTarget.select()} />
     <button type="button" onclick={copy}>{t('created.copy')}</button>
-    <p role="status">{copied ? t('created.copied') : ''}</p>
+    <p>{copied ? t('created.copied') : ''}</p>
     <p>{t('created.expires', { time: formatTime(created.expiresAt, language) })}</p>
-    {#if passphrase !== ''}
+    {#if usedPassphrase}
       <p>{t('created.passphrase')}</p>
     {/if}
     <button type="button" onclick={another}>{t('created.another')}</button>
   </section>
 {:else}
-  <section aria-labelledby="create-title" aria-busy={progress !== undefined}>
+  <section aria-labelledby="create-title">
     <h2 id="create-title">{t('create.title')}</h2>
     {#if loadFailed}
       <p role="alert">{t('failure.instance')}</p>
       <button type="button" onclick={loadLimits}>{t('action.retry')}</button>
     {:else if !limits}
-      <p role="status">{t('create.loading')}</p>
+      <p>{t('create.loading')}</p>
     {:else}
-      <form onsubmit={submit} novalidate>
+      <form onsubmit={submit} novalidate {@attach rememberForm}>
         <label for="create-text">{t('create.text')}</label>
         <textarea
           id="create-text"
+          spellcheck="false"
+          autocapitalize="off"
+          autocomplete="off"
           bind:value={text}
           aria-invalid={fieldMessages.content !== undefined || fieldMessages.text !== undefined}
           aria-describedby="create-text-problem"
@@ -218,11 +232,12 @@
         <p id="create-file-problem">{fieldMessages.file ?? ''}</p>
 
         <label for="create-ttl">{t('create.ttl')}</label>
-        <select id="create-ttl" bind:value={ttlSeconds}>
-          {#each ttlChoices as seconds (seconds)}
-            <option value={seconds}>{t(`ttl.${seconds}`)}</option>
+        <select id="create-ttl" bind:value={ttlSeconds} aria-invalid={fieldMessages.ttl !== undefined} aria-describedby="create-ttl-problem">
+          {#each choices as seconds (seconds)}
+            <option value={seconds}>{ttlLabel(seconds)}</option>
           {/each}
         </select>
+        <p id="create-ttl-problem">{fieldMessages.ttl ?? ''}</p>
 
         <label for="create-opens">{t('create.opens', { max: limits.maxOpens })}</label>
         <input
@@ -240,7 +255,13 @@
         <input
           id="create-passphrase"
           type="password"
-          autocomplete="new-password"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-1p-ignore=""
+          data-lpignore="true"
+          data-bwignore="true"
+          data-form-type="other"
           bind:value={passphrase}
           aria-invalid={fieldMessages.passphrase !== undefined}
           aria-describedby="create-passphrase-hint create-passphrase-problem"
@@ -262,11 +283,10 @@
         <p role="alert">{failureText(failure)}</p>
       {/if}
       {#if progress}
-        <p role="status">{progressText(progress)}</p>
-        {#if progress.step === 'deriving' || progress.step === 'proving'}
-          <progress aria-label={progressText(progress)} max="1" value={progress.fraction}></progress>
+        {#if (progress.step === 'deriving' || progress.step === 'proving') && progress.fraction !== undefined}
+          <progress aria-label={t(progressKey(progress))} max="1" value={progress.fraction}></progress>
         {:else}
-          <progress aria-label={progressText(progress)}></progress>
+          <progress aria-label={t(progressKey(progress))}></progress>
         {/if}
       {/if}
     {/if}
