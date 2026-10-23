@@ -3,7 +3,7 @@ project_name: nylzo
 
 before:
   hooks:
-    - pnpm --dir web install --frozen-lockfile
+    - pnpm --dir web install --frozen-lockfile --config.confirmModulesPurge=false
     - pnpm --dir web --filter @nylzo/web build
 
 builds:
