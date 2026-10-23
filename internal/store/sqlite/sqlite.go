@@ -259,8 +259,46 @@ func dropRowid(ctx context.Context, tx *sql.Tx, t unorderedTable) error {
 }
 
 type Store struct {
-	w *sql.DB
-	r *sql.DB
+	w    *sql.DB
+	r    *sql.DB
+	stmt *statements
+}
+
+type statements struct {
+	get, leases          *sql.Stmt
+	record, hit, reserve *sql.Stmt
+}
+
+func prepare(ctx context.Context, w, r *sql.DB) (*statements, error) {
+	st := &statements{}
+	for _, p := range []struct {
+		db    *sql.DB
+		stmt  **sql.Stmt
+		query string
+	}{
+		{r, &st.get, recordQuery},
+		{r, &st.leases, leasesQuery},
+		{w, &st.record, recordQuery},
+		{w, &st.hit, hitQuery},
+		{w, &st.reserve, reserveQuery},
+	} {
+		stmt, err := p.db.PrepareContext(ctx, p.query)
+		if err != nil {
+			return nil, errors.Join(err, st.close())
+		}
+		*p.stmt = stmt
+	}
+	return st, nil
+}
+
+func (st *statements) close() error {
+	var errs []error
+	for _, stmt := range []*sql.Stmt{st.get, st.leases, st.record, st.hit, st.reserve} {
+		if stmt != nil {
+			errs = append(errs, stmt.Close())
+		}
+	}
+	return errors.Join(errs...)
 }
 
 var _ store.Store = (*Store)(nil)
@@ -331,11 +369,17 @@ func open(ctx context.Context, path string) (*Store, error) {
 		w.Close()
 		return nil, err
 	}
-	return &Store{w: w, r: r}, nil
+	stmt, err := prepare(ctx, w, r)
+	if err != nil {
+		r.Close()
+		w.Close()
+		return nil, err
+	}
+	return &Store{w: w, r: r, stmt: stmt}, nil
 }
 
 func (s *Store) Close() error {
-	return errors.Join(s.r.Close(), s.w.Close())
+	return errors.Join(s.stmt.close(), s.r.Close(), s.w.Close())
 }
 
 func ms(t time.Time) int64 {
@@ -393,8 +437,12 @@ func (s *Store) Create(ctx context.Context, m *store.Message, counters ...store.
 		if err != nil {
 			return err
 		}
+		if len(counters) == 0 {
+			return nil
+		}
+		stmt := tx.StmtContext(ctx, s.stmt.hit)
 		for _, h := range counters {
-			if _, err := hitInTx(ctx, tx, h); err != nil {
+			if _, err := hit(ctx, stmt, h); err != nil {
 				return err
 			}
 		}
@@ -406,11 +454,7 @@ const recordQuery = `SELECT 'm' AS kind, id, version, kdf_id, flags, state, crea
 UNION ALL
 SELECT 't', id, 0, 0, 0, state, 0, 0, 0, 0, 0, pepper_id, read_mac, manage_mac, NULL, 0, NULL, 0, 0, first_opened_at, ended_at, purge_at, NULL FROM tombstones WHERE id = ?`
 
-type querier interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-func scanRecord(ctx context.Context, q querier, id string) (store.Record, error) {
+func scanRecord(row *sql.Row) (store.Record, error) {
 	var (
 		kind                                    string
 		m                                       store.Message
@@ -422,7 +466,6 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 		version, kdf, flags, opensMax, opensRem int
 		pepperID, ttl, size, total, nextAttempt int64
 	)
-	row := q.QueryRowContext(ctx, recordQuery, id, id)
 	err := row.Scan(&kind, &m.ID, &version, &kdf, &flags, &state, &createdAt, &expiresAt, &ttl, &opensMax, &opensRem, &pepperID, &m.ReadMAC, &m.ManageMAC, &verifier, &size, &blobRef, &total, &nextAttempt, &firstOpened, &endedAt, &purgeAt, &ending)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Record{}, store.ErrNotFound
@@ -459,7 +502,11 @@ func scanRecord(ctx context.Context, q querier, id string) (store.Record, error)
 }
 
 func (s *Store) Get(ctx context.Context, id string) (store.Record, error) {
-	return scanRecord(ctx, s.r, id)
+	return scanRecord(s.stmt.get.QueryRowContext(ctx, id, id))
+}
+
+func (s *Store) recordIn(ctx context.Context, tx *sql.Tx, id string) (store.Record, error) {
+	return scanRecord(tx.StmtContext(ctx, s.stmt.record).QueryRowContext(ctx, id, id))
 }
 
 func attemptMS(t time.Time) int64 {
@@ -490,7 +537,7 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 	var passErr *store.PassphraseError
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		now := p.Clock()
-		rec, err := scanRecord(ctx, tx, p.ID)
+		rec, err := s.recordIn(ctx, tx, p.ID)
 		if err != nil {
 			return err
 		}
@@ -563,7 +610,7 @@ func (s *Store) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResu
 }
 
 func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT row_id, id, lease_mac, pepper_id, lease_expires_at, downloads FROM leases WHERE id = ? ORDER BY row_id`, id)
+	rows, err := s.stmt.leases.QueryContext(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -664,7 +711,7 @@ func releaseInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (str
 
 func (s *Store) ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		rec, err := scanRecord(ctx, tx, id)
+		rec, err := s.recordIn(ctx, tx, id)
 		if errors.Is(err, store.ErrNotFound) || (err == nil && (rec.Message == nil || rec.Message.BlobRef != blobRef)) {
 			return nil
 		}
@@ -687,7 +734,7 @@ func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, no
 	var ref string
 	recorded := false
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		rec, err := scanRecord(ctx, tx, id)
+		rec, err := s.recordIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -722,7 +769,7 @@ func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, no
 
 func (s *Store) End(ctx context.Context, id string, state store.State, now time.Time) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		rec, err := scanRecord(ctx, tx, id)
+		rec, err := s.recordIn(ctx, tx, id)
 		if err != nil {
 			return err
 		}
@@ -754,8 +801,9 @@ func endInTx(ctx context.Context, tx *sql.Tx, m *store.Message, state store.Stat
 func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
 	out := make([]store.RateCount, 0, len(hits))
 	err := s.tx(ctx, func(tx *sql.Tx) error {
+		stmt := tx.StmtContext(ctx, s.stmt.hit)
 		for _, h := range hits {
-			c, err := hitInTx(ctx, tx, h)
+			c, err := hit(ctx, stmt, h)
 			if err != nil {
 				return err
 			}
@@ -769,23 +817,30 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 	return out, err
 }
 
-func hitInTx(ctx context.Context, tx *sql.Tx, h store.RateHit) (store.RateCount, error) {
+const (
+	leasesQuery = `SELECT row_id, id, lease_mac, pepper_id, lease_expires_at, downloads FROM leases WHERE id = ? ORDER BY row_id`
+	hitQuery    = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, ?, ?)
+		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1, bytes = bytes + excluded.bytes RETURNING count, bytes`
+	reserveQuery = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
+		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`
+)
+
+func hit(ctx context.Context, stmt *sql.Stmt, h store.RateHit) (store.RateCount, error) {
 	var c store.RateCount
-	err := tx.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, ?, ?)
-		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1, bytes = bytes + excluded.bytes RETURNING count, bytes`,
-		h.Key, ms(h.WindowStart), h.Bytes, ms(h.PurgeAt)).Scan(&c.Count, &c.Bytes)
+	err := stmt.QueryRowContext(ctx, h.Key, ms(h.WindowStart), h.Bytes, ms(h.PurgeAt)).Scan(&c.Count, &c.Bytes)
 	return c, err
 }
 
 func (s *Store) RateReserve(ctx context.Context, h store.RateHit) (int64, bool, error) {
-	return reserve(ctx, s.w, h)
+	return reserve(ctx, s.stmt.reserve, h)
 }
 
 func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
 	reserved := make([]bool, len(hits))
 	err := s.tx(ctx, func(tx *sql.Tx) error {
+		stmt := tx.StmtContext(ctx, s.stmt.reserve)
 		for i, h := range hits {
-			_, ok, err := reserve(ctx, tx, h)
+			_, ok, err := reserve(ctx, stmt, h)
 			if err != nil {
 				return err
 			}
@@ -799,11 +854,9 @@ func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]b
 	return reserved, nil
 }
 
-func reserve(ctx context.Context, q querier, h store.RateHit) (int64, bool, error) {
+func reserve(ctx context.Context, stmt *sql.Stmt, h store.RateHit) (int64, bool, error) {
 	var count int64
-	err := q.QueryRowContext(ctx, `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
-		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`,
-		h.Key, ms(h.WindowStart), ms(h.PurgeAt), h.Limit).Scan(&count)
+	err := stmt.QueryRowContext(ctx, h.Key, ms(h.WindowStart), ms(h.PurgeAt), h.Limit).Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
@@ -852,7 +905,7 @@ func (s *Store) EndExpired(ctx context.Context, ids []string, now time.Time) (in
 	err := s.tx(ctx, func(tx *sql.Tx) error {
 		ended, errs = 0, nil
 		for _, id := range ids {
-			ok, err := endExpiredInTx(ctx, tx, id, now)
+			ok, err := s.endExpiredInTx(ctx, tx, id, now)
 			if errors.Is(err, errCorruptRow) {
 				errs = append(errs, fmt.Errorf("sqlite: end expired: %w", err))
 				continue
@@ -872,8 +925,8 @@ func (s *Store) EndExpired(ctx context.Context, ids []string, now time.Time) (in
 	return ended, errors.Join(errs...)
 }
 
-func endExpiredInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (bool, error) {
-	rec, err := scanRecord(ctx, tx, id)
+func (s *Store) endExpiredInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (bool, error) {
+	rec, err := s.recordIn(ctx, tx, id)
 	if errors.Is(err, store.ErrNotFound) || (err == nil && rec.Message == nil) {
 		return true, nil
 	}

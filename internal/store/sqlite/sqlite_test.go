@@ -683,3 +683,46 @@ func TestOpenStopsWhenItsContextEnds(t *testing.T) {
 		t.Fatalf("a cancelled open left a database file: %v", err)
 	}
 }
+
+func TestPreparedStatementsReleaseTheLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := t.Context()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	id := core.NewID().String()
+	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 2, OpensRemaining: 2, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}, store.RateHit{Key: "global:stored:d", WindowStart: now, PurgeAt: now.Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, core.NewID().String()); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal(err)
+	}
+	if leases, err := s.Leases(ctx, id); err != nil || len(leases) != 1 {
+		t.Fatalf("leases: %d %v", len(leases), err)
+	}
+	if _, err := s.RateHit(ctx, []store.RateHit{{Key: "k", WindowStart: now, PurgeAt: now.Add(time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RateReserve(ctx, store.RateHit{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RateReserveBatch(ctx, []store.RateHit{{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Checkpoint(ctx); err != nil {
+		t.Fatalf("a prepared statement kept a read open: %v", err)
+	}
+	if info, err := os.Stat(path + "-wal"); err != nil || info.Size() != 0 {
+		t.Fatalf("the log was not truncated: %v %v", info, err)
+	}
+}
