@@ -20,7 +20,7 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 	m := newMessage(t, core.KDFPBKDF2, "tajná fráze", 1, 3600, "plaintext secret body")
 	h.mustCreate(m)
 	captured := h.lastCreateRequest()
-	if !strings.Contains(string(captured), "X-Nylzo-Create: "+m.createHeader(0)) || !strings.Contains(string(captured), string(m.object)) {
+	if !strings.Contains(string(captured), "X-Nylzo-Create: "+h.withIDToken(m.createHeader(0))) || !strings.Contains(string(captured), string(m.object)) {
 		t.Fatal("wire capture missing the create request")
 	}
 	p, err := core.DerivePassphraseKey(m.kdf, "tajná fráze", &m.link.SaltPW)
@@ -381,7 +381,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 	codes = append(codes, resp.StatusCode, h.ack(m, lease).StatusCode)
 	resp, _ = h.status(m)
 	codes = append(codes, resp.StatusCode)
-	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", token: m.manageTok})
 	codes = append(codes, resp.StatusCode)
 	resp, _ = h.do(request{method: "GET", path: "/m/" + m.id.String()})
 	codes = append(codes, resp.StatusCode)
@@ -425,7 +425,7 @@ func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
 		t.Fatal("an ack with a foreign lease deleted the blob")
 	}
 	h.clock.Advance(store.LeaseDuration + time.Minute)
-	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "opened" {
 		t.Fatalf("an ack after the lease ended: %d %s", resp.StatusCode, body)
 	}

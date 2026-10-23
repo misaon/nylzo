@@ -92,7 +92,7 @@ func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), m.createHeader(0))
+	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), h.withIDToken(m.createHeader(0)))
 	conn.Write(m.object[:100])
 	wait := func(ch chan struct{}, what string) {
 		select {

@@ -113,7 +113,7 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 		return h.post(m, "cancel", m.manageTok)
 	case "expiry by request":
 		h.clock.Advance(2 * time.Hour)
-		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
+		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, token: m.readToken})
 	case "expiry by sweep":
 		h.clock.Advance(2 * time.Hour)
 		if _, err := h.srv.SweepOnce(ctx); err != nil {
@@ -124,7 +124,7 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 			t.Fatal(err)
 		}
 	case "resume by request":
-		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok})
 	case "resume by sweep":
 		if _, err := h.srv.SweepOnce(ctx); err != nil {
 			t.Fatal(err)
@@ -139,7 +139,7 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 		}
 		return h.claim(m, "", "")
 	case "ack":
-		return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+		return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	}
 	return nil, nil
 }
@@ -258,7 +258,7 @@ func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
 	h.mustCreate(m)
 	var opens atomic.Int32
 	fb.set(func(b *faultyBlobs) { b.onOpen = func(string) { opens.Add(1) } })
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: m.ip, body: []byte("{"), headers: map[string]string{"Authorization": "Bearer " + m.readToken, "Content-Type": "application/json"}})
+	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: m.ip, body: []byte("{"), token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 	if resp.StatusCode != http.StatusBadRequest || opens.Load() != 0 {
 		t.Fatalf("a malformed claim body must be refused before the blob is opened: %d, %d opens", resp.StatusCode, opens.Load())
 	}
@@ -290,7 +290,7 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 	h.mustCreate(m)
 	resp, _ := h.claim(m, "", "")
 	lease := resp.Header.Get("X-Nylzo-Lease")
-	head, _ := h.do(request{method: "HEAD", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	head, _ := h.do(request{method: "HEAD", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	if head.StatusCode != http.StatusNotFound {
 		t.Fatalf("HEAD on /blob: %d", head.StatusCode)
 	}
@@ -308,8 +308,8 @@ func TestMalformedAbuseReportsSpendNoRateLimit(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	report := func(id string) int {
-		body, _ := json.Marshal(map[string]string{"id": id, "read_token": m.readToken, "reason": "spam"})
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.44", body: body, headers: map[string]string{"Content-Type": "application/json"}})
+		body, _ := json.Marshal(map[string]string{"id": id, "reason": "spam"})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.44", body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	for range 3 {
@@ -546,8 +546,8 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 
 func abuseReport(t *testing.T, h *harness, m *message, ip string) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "spam"})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "reason": "spam"})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
 }

@@ -210,7 +210,6 @@ func (h *harness) startOfNextUTCDay() {
 func (h *harness) listen() string {
 	h.t.Helper()
 	httpServer := h.srv.HTTPServer()
-	httpServer.Handler = h.asClient(httpServer.Handler)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		h.t.Fatal(err)
@@ -268,7 +267,7 @@ func (h *harness) open() {
 			h.capture.last = dump.Bytes()
 			h.capture.mu.Unlock()
 		}
-		h.asClient(inner).ServeHTTP(w, r)
+		inner.ServeHTTP(w, r)
 	}))
 	h.t.Cleanup(h.ts.Close)
 	h.client = h.ts.Client()
@@ -324,11 +323,14 @@ type message struct {
 }
 
 type request struct {
-	method  string
-	path    string
-	body    []byte
-	headers map[string]string
-	ip      string
+	method    string
+	path      string
+	body      []byte
+	headers   map[string]string
+	ip        string
+	token     string
+	verifier  string
+	rawCreate bool
 }
 
 func (h *harness) do(req request) (*http.Response, []byte) {
@@ -354,6 +356,14 @@ func (h *harness) tryDo(req request) (*http.Response, []byte, error) {
 	}
 	if req.ip != "" {
 		r.Header.Set("X-Forwarded-For", req.ip)
+	}
+	if req.method == "POST" && req.path == "/api/v1/messages" && !req.rawCreate {
+		if header := r.Header.Get("X-Nylzo-Create"); header != "" {
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(header))
+		}
+	}
+	if req.token != "" {
+		h.sign(r, req.token, req.verifier, req.body)
 	}
 	resp, err := h.client.Do(r)
 	if err != nil {
@@ -462,7 +472,7 @@ func (h *harness) mustCreate(m *message) {
 
 func (h *harness) metadata(m *message) (*http.Response, map[string]any) {
 	h.t.Helper()
-	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
+	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), ip: m.ip, token: m.readToken})
 	return resp, decodeJSON(h.t, body)
 }
 
@@ -472,31 +482,27 @@ func (h *harness) claim(m *message, verifier string, ip string) (*http.Response,
 }
 
 func claimRequest(m *message, verifier string, ip string) request {
-	req := request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}}
+	req := request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: ip, token: m.readToken, verifier: verifier}
 	if ip == "" {
 		req.ip = m.ip
-	}
-	if verifier != "" {
-		req.body = []byte(`{"verifier":"` + verifier + `"}`)
-		req.headers["Content-Type"] = "application/json"
 	}
 	return req
 }
 
 func (h *harness) blob(m *message, lease string) (*http.Response, []byte) {
 	h.t.Helper()
-	return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 }
 
 func (h *harness) ack(m *message, lease string) *http.Response {
 	h.t.Helper()
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	return resp
 }
 
 func (h *harness) status(m *message) (*http.Response, map[string]any) {
 	h.t.Helper()
-	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok})
 	return resp, decodeJSON(h.t, body)
 }
 
@@ -552,45 +558,16 @@ func decodePolicy(header string) (core.Policy, error) {
 	return core.Policy{OpensMax: uint16(pol.OpensMax), TTLSeconds: uint32(pol.TTL)}, nil
 }
 
-const (
-	rawCreateHeader = "X-Test-Raw-Create"
-	rawAuthHeader   = "X-Test-Raw-Auth"
-)
-
-func (h *harness) asClient(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" && r.URL.Path == "/api/v1/messages" && r.Header.Get(rawCreateHeader) == "" {
-			r.Header.Set("X-Nylzo-Create", withIDToken(h.srv, r.Header.Get("X-Nylzo-Create")))
-		}
-		if r.Header.Get(rawAuthHeader) == "" {
-			signAsClient(h.srv, r)
-		}
-		r.Header.Del(rawCreateHeader)
-		r.Header.Del(rawAuthHeader)
-		next.ServeHTTP(w, r)
-	})
-}
-
-func signAsClient(srv *server.Server, r *http.Request) {
+func (h *harness) sign(r *http.Request, token, verifier string, body []byte) {
 	path := r.URL.EscapedPath()
-	if path == "/api/v1/abuse" {
-		signAbuse(srv, r)
-		return
-	}
-	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok {
-		return
-	}
 	purpose := core.PurposeRead
 	if strings.HasSuffix(path, "/status") || strings.HasSuffix(path, "/cancel") {
 		purpose = core.PurposeManage
 	}
-	body, _ := io.ReadAll(r.Body)
-	challenge := srv.ChallengeForTest()
-	if strings.HasSuffix(path, "/claim") {
-		body = moveVerifier(r, challenge, body)
+	challenge := h.srv.ChallengeForTest()
+	if verifier != "" {
+		r.Header.Set("X-Nylzo-Verifier", verifierHeader(verifier, r.Method, path, challenge))
 	}
-	setBody(r, body)
 	r.Header.Set("Authorization", signedHeader(token, purpose, r.Method, path, challenge, body))
 }
 
@@ -602,50 +579,12 @@ func signedHeader(token, purpose, method, path string, challenge [core.Challenge
 	return core.SignRequest((*[core.TokenLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
 }
 
-func moveVerifier(r *http.Request, challenge [core.ChallengeLen]byte, body []byte) []byte {
-	var fields map[string]string
-	if json.Unmarshal(body, &fields) != nil || len(fields) != 1 {
-		return body
-	}
-	verifier, ok := fields["verifier"]
-	if !ok {
-		return body
-	}
+func verifierHeader(verifier, method, path string, challenge [core.ChallengeLen]byte) string {
 	seed, err := core.DecodeExact(verifier, core.TokenLen)
 	if err != nil {
-		r.Header.Set("X-Nylzo-Verifier", verifier)
-		return nil
+		return verifier
 	}
-	sig := core.SignRequest((*[core.TokenLen]byte)(seed), core.PurposeVerifier, r.Method, r.URL.EscapedPath(), challenge, nil)
-	r.Header.Set("X-Nylzo-Verifier", sig.VerifierHeader())
-	return nil
-}
-
-func signAbuse(srv *server.Server, r *http.Request) {
-	body, _ := io.ReadAll(r.Body)
-	setBody(r, body)
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(body, &fields) != nil || fields == nil {
-		return
-	}
-	rawToken, ok := fields["read_token"]
-	if !ok {
-		return
-	}
-	var token string
-	if json.Unmarshal(rawToken, &token) != nil {
-		return
-	}
-	delete(fields, "read_token")
-	var out bytes.Buffer
-	enc := json.NewEncoder(&out)
-	enc.SetEscapeHTML(false)
-	if enc.Encode(fields) != nil {
-		return
-	}
-	body = bytes.TrimSuffix(out.Bytes(), []byte("\n"))
-	setBody(r, body)
-	r.Header.Set("Authorization", signedHeader(token, core.PurposeRead, r.Method, r.URL.EscapedPath(), srv.ChallengeForTest(), body))
+	return core.SignRequest((*[core.TokenLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil).VerifierHeader()
 }
 
 func signedRequest(seed *[core.TokenLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) request {
@@ -658,16 +597,10 @@ func rawAuth(req request, authorization string) request {
 		req.headers = map[string]string{}
 	}
 	req.headers["Authorization"] = authorization
-	req.headers[rawAuthHeader] = "1"
 	return req
 }
 
-func setBody(r *http.Request, body []byte) {
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	r.ContentLength = int64(len(body))
-}
-
-func withIDToken(srv *server.Server, header string) string {
+func (h *harness) withIDToken(header string) string {
 	data, err := base64.RawURLEncoding.DecodeString(header)
 	if err != nil {
 		return header
@@ -687,7 +620,7 @@ func withIDToken(srv *server.Server, header string) string {
 	if err != nil {
 		return header
 	}
-	token, _ := json.Marshal(srv.IDTokenForTest(id))
+	token, _ := json.Marshal(h.srv.IDTokenForTest(id))
 	fields["id_token"] = token
 	out, err := json.Marshal(fields)
 	if err != nil {
@@ -719,7 +652,7 @@ func (h *harness) abuseReports() ([]byte, error) {
 
 func (h *harness) post(m *message, action, token string) (*http.Response, []byte) {
 	h.t.Helper()
-	return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/" + action, headers: map[string]string{"Authorization": "Bearer " + token}})
+	return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/" + action, token: token})
 }
 
 func mutateHeader(t *testing.T, m *message, f func(map[string]any)) string {

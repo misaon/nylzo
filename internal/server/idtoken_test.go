@@ -34,7 +34,7 @@ func createWithToken(t *testing.T, h *harness, m *message, token any) (*http.Res
 		}
 	})
 	return h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
-		headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": header, rawCreateHeader: "1"}})
+		rawCreate: true, headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": header}})
 }
 
 func TestCreateNeedsAnIssuedIDToken(t *testing.T) {

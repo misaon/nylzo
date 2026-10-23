@@ -18,7 +18,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 	cancel := newMessage(t, core.KDFNone, "", 2, 3600, "c")
 	h.mustCreate(burn)
 	h.mustCreate(cancel)
-	unknown, unknownBody := h.do(request{method: "POST", path: "/api/v1/messages/" + core.NewID().String() + "/burn", headers: map[string]string{"Authorization": "Bearer " + burn.readToken}})
+	unknown, unknownBody := h.do(request{method: "POST", path: "/api/v1/messages/" + core.NewID().String() + "/burn", token: burn.readToken})
 	if unknown.StatusCode != 404 {
 		t.Fatalf("unknown id: %d", unknown.StatusCode)
 	}
@@ -89,8 +89,12 @@ func TestClaimBodyVariants(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
 	h.mustCreate(m)
-	for name, body := range map[string]string{"malformed-json": `{"verifier":`, "short-verifier": `{"verifier":"` + m.verifier[:42] + `"}`} {
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", body: []byte(body), headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
+	path := "/api/v1/messages/" + m.id.String() + "/claim"
+	for name, req := range map[string]request{
+		"malformed-json": {method: "POST", path: path, body: []byte(`{"verifier":`), token: m.readToken},
+		"short-verifier": {method: "POST", path: path, token: m.readToken, verifier: m.verifier[:42]},
+	} {
+		resp, _ := h.do(req)
 		if resp.StatusCode != 400 {
 			t.Fatalf("%s: %d", name, resp.StatusCode)
 		}
@@ -98,10 +102,8 @@ func TestClaimBodyVariants(t *testing.T) {
 	if _, st := h.status(m); st["failed_passphrase_attempts"].(float64) != 0 || st["opens_used"].(float64) != 0 {
 		t.Fatalf("malformed claim bodies changed the message: %v", st)
 	}
-	path := "/api/v1/messages/" + m.id.String() + "/claim"
 	r, _ := http.NewRequest("POST", h.ts.URL+path, io.MultiReader(strings.NewReader(`{"verifier":"`+m.verifier+`"}`)))
 	r.Header.Set("Authorization", core.SignRequest(&m.link.R, core.PurposeRead, "POST", path, h.srv.ChallengeForTest(), nil).Authorization())
-	r.Header.Set(rawAuthHeader, "1")
 	r.Header.Set("X-Forwarded-For", "203.0.113.4")
 	resp, err := h.client.Do(r)
 	if err != nil {

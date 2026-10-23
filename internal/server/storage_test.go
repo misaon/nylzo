@@ -52,7 +52,7 @@ func TestTruncatedCreateStoresNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), m.createHeader(0))
+	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), h.withIDToken(m.createHeader(0)))
 	conn.Write(m.object[:100])
 	conn.(*net.TCPConn).CloseWrite()
 	line, _ := bufio.NewReader(conn).ReadString('\n')
@@ -143,7 +143,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+m.readToken)
+	h.sign(req, m.readToken, "", nil)
 	req.Header.Set("X-Forwarded-For", m.ip)
 	resp, err := h.client.Do(req)
 	if err != nil {
@@ -272,8 +272,8 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	fb.set(func(b *faultyBlobs) { b.failDelete[m.id.String()] = true })
-	unknown, unknownBody := h.do(request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), headers: map[string]string{"Authorization": "Bearer " + m.readToken}})
-	wrong, wrongBody := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), headers: map[string]string{"Authorization": "Bearer " + core.Encode(make([]byte, 32))}})
+	unknown, unknownBody := h.do(request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), token: m.readToken})
+	wrong, wrongBody := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), token: core.Encode(make([]byte, 32))})
 	if unknown.StatusCode != 404 || wrong.StatusCode != 404 || !bytes.Equal(unknownBody, wrongBody) {
 		t.Fatalf("a storage fault must not change the 404 for a wrong token: %d %d", unknown.StatusCode, wrong.StatusCode)
 	}

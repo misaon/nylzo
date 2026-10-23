@@ -77,7 +77,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	if resp, _ := h.do(request{method: "GET", path: "/m/not-an-id"}); resp.StatusCode != 404 {
 		t.Fatal("malformed page id")
 	}
-	resp, body = h.do(request{method: "GET", path: "/api/v1/messages/not-an-id", headers: map[string]string{"Authorization": "Bearer short"}})
+	resp, body = h.do(request{method: "GET", path: "/api/v1/messages/not-an-id", headers: map[string]string{"Authorization": core.AuthScheme + " short"}})
 	if resp.StatusCode != 404 || string(body) != `{"error":"not_found"}` {
 		t.Fatalf("malformed API id: %d %s", resp.StatusCode, body)
 	}
@@ -95,20 +95,20 @@ func TestCreateValidation(t *testing.T) {
 		{"no-header", func(t *testing.T, r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
 		{"bad-base64", func(t *testing.T, r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
 		{"unknown-field", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 }))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 })))
 		}, 400, "bad_request"},
 		{"size-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", m.createHeader(int64(len(m.object)+1)))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(int64(len(m.object)+1))))
 		}, 400, "bad_request"},
 		{"size-above-limit-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", m.createHeader(server.Defaults().Limits.MaxObjectBytes+1))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(server.Defaults().Limits.MaxObjectBytes+1)))
 		}, 400, "bad_request"},
 		{"chunked", func(t *testing.T, r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r, _ := http.NewRequest("POST", h.ts.URL+"/api/v1/messages", strings.NewReader(string(m.object)))
-			r.Header.Set("X-Nylzo-Create", m.createHeader(0))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(0)))
 			c.mutate(t, r)
 			resp, err := h.client.Do(r)
 			if err != nil {
@@ -169,7 +169,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 			t.Fatal(err)
 		}
 		liar := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
-		fmt.Fprintf(c, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", i, len(liar.object), liar.createHeader(0))
+		fmt.Fprintf(c, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", i, len(liar.object), h.withIDToken(liar.createHeader(0)))
 		c.Write(liar.object[:20])
 		conns = append(conns, c)
 	}
@@ -185,7 +185,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("healthz %d after %s", resp.StatusCode, time.Since(start))
 	}
 	r, _ := http.NewRequest("POST", "http://"+addr+"/api/v1/messages", strings.NewReader(string(m.object)))
-	r.Header.Set("X-Nylzo-Create", m.createHeader(0))
+	r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(0)))
 	r.Header.Set("X-Forwarded-For", "192.0.2.1")
 	resp, err = client.Do(r)
 	if err != nil || resp.StatusCode != 201 {
@@ -211,7 +211,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		}
 		probe := newMessage(t, core.KDFNone, "", 1, 3600, "probe")
 		conn.SetDeadline(time.Now().Add(2 * time.Second))
-		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, probe.createHeader(c.sizeOverride))
+		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, h.withIDToken(probe.createHeader(c.sizeOverride)))
 		line, err := bufio.NewReader(conn).ReadString('\n')
 		conn.Close()
 		if err != nil || !strings.Contains(line, " "+c.status+" ") {

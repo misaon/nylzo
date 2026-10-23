@@ -245,7 +245,7 @@ func TestAbuseReports(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	report := func(id, token string) int {
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.77", body: []byte(fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam"}`, id, token)), headers: map[string]string{"Content-Type": "application/json"}})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.77", body: []byte(fmt.Sprintf(`{"id":%q,"reason":"spam"}`, id)), token: token, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	if report(m.id.String(), m.readToken) != http.StatusAccepted {
@@ -507,7 +507,7 @@ func TestMalformedIDsDoNotSpendReadLimit(t *testing.T) {
 		if strings.HasSuffix(path, "/claim") {
 			method = "POST"
 		}
-		if resp, _ := h.do(request{method: method, path: path, ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}}); resp.StatusCode != 404 {
+		if resp, _ := h.do(request{method: method, path: path, ip: m.ip, token: m.readToken}); resp.StatusCode != 404 {
 			t.Fatalf("%s %s: %d", method, path, resp.StatusCode)
 		}
 	}

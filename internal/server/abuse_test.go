@@ -18,17 +18,17 @@ func TestAbuseReportsRecordOnlyValidReports(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
-	send := func(body string) int {
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.70", body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
+	send := func(token, body string) int {
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.70", body: []byte(body), token: token, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	long := strings.Repeat("r", 3000)
-	if send(fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":%q}`, m.id.String(), m.readToken, long)) != 202 ||
-		send(fmt.Sprintf(`{"id":%q,"read_token":%q}`, core.NewID().String(), m.readToken)) != 202 ||
-		send(fmt.Sprintf(`{"id":%q,"read_token":%q}`, m.id.String(), core.Encode(make([]byte, 32)))) != 202 {
+	if send(m.readToken, fmt.Sprintf(`{"id":%q,"reason":%q}`, m.id.String(), long)) != 202 ||
+		send(m.readToken, fmt.Sprintf(`{"id":%q}`, core.NewID().String())) != 202 ||
+		send(core.Encode(make([]byte, 32)), fmt.Sprintf(`{"id":%q}`, m.id.String())) != 202 {
 		t.Fatal("reports must answer 202")
 	}
-	if send(`{"id":`) != 400 {
+	if send("", `{"id":`) != 400 {
 		t.Fatal("malformed report body")
 	}
 	data, err := h.abuseReports()
@@ -50,14 +50,14 @@ func TestAbuseReportHardening(t *testing.T) {
 	h.mustCreate(m)
 	link := core.FormatLink("https://nylzo.example", m.id, m.kdf, m.secret)
 	_, fragment, _ := strings.Cut(link, "#")
-	body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":%q}`, m.id.String(), m.readToken, "malware at "+link+" and again "+fragment)
+	body := fmt.Sprintf(`{"id":%q,"reason":%q}`, m.id.String(), "malware at "+link+" and again "+fragment)
 	for _, ct := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.80", body: []byte(body), headers: map[string]string{"Content-Type": ct}})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.80", body: []byte(body), token: m.readToken, headers: map[string]string{"Content-Type": ct}})
 		if resp.StatusCode != 400 {
 			t.Fatalf("content type %q: %d", ct, resp.StatusCode)
 		}
 	}
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.81", body: []byte(body), headers: map[string]string{"Content-Type": "application/json; charset=utf-8"}})
+	resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.81", body: []byte(body), token: m.readToken, headers: map[string]string{"Content-Type": "application/json; charset=utf-8"}})
 	if resp.StatusCode != 202 {
 		t.Fatalf("json report: %d", resp.StatusCode)
 	}
@@ -73,7 +73,7 @@ func TestAbuseReportHardening(t *testing.T) {
 	if err := os.Truncate(path, 16<<20); err != nil {
 		t.Fatal(err)
 	}
-	resp, _ = h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.82", body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.82", body: []byte(body), token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 	info, err := os.Stat(path)
 	if resp.StatusCode != 503 || err != nil || info.Size() != 16<<20 || !strings.Contains(h.logBuf.String(), "abuse-file-full") {
 		t.Fatalf("a full report file must answer 503, log an error and not grow: %d %v %d", resp.StatusCode, err, info.Size())
@@ -102,8 +102,8 @@ func TestAbuseReasonRedactionEdges(t *testing.T) {
 	for i, reason := range reasons {
 		reported := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 		h.mustCreate(reported)
-		body, _ := json.Marshal(map[string]string{"id": reported.id.String(), "read_token": reported.readToken, "reason": reason})
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: fmt.Sprintf("203.0.%d.1", 90+i), body: body, headers: map[string]string{"Content-Type": "application/json"}})
+		body, _ := json.Marshal(map[string]string{"id": reported.id.String(), "reason": reason})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: fmt.Sprintf("203.0.%d.1", 90+i), body: body, token: reported.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 		if resp.StatusCode != 202 {
 			t.Fatalf("report %d: %d", i, resp.StatusCode)
 		}
@@ -153,8 +153,8 @@ func TestAbuseReportsCappedPerMessage(t *testing.T) {
 	h.mustCreate(other)
 	h.mustCreate(third)
 	report := func(msg *message, ip string) int {
-		body := fmt.Sprintf(`{"id":%q,"read_token":%q,"reason":"spam"}`, msg.id.String(), msg.readToken)
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: []byte(body), headers: map[string]string{"Content-Type": "application/json"}})
+		body := fmt.Sprintf(`{"id":%q,"reason":"spam"}`, msg.id.String())
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: []byte(body), token: msg.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	stored := func() int {
@@ -212,8 +212,8 @@ func TestOverBudgetReportWithAFullFileIsAccepted(t *testing.T) {
 	h.mustCreate(m)
 	h.mustCreate(fresh)
 	report := func(msg *message, ip string) int {
-		body, _ := json.Marshal(map[string]string{"id": msg.id.String(), "read_token": msg.readToken, "reason": "spam"})
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, headers: map[string]string{"Content-Type": "application/json"}})
+		body, _ := json.Marshal(map[string]string{"id": msg.id.String(), "reason": "spam"})
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, token: msg.readToken, headers: map[string]string{"Content-Type": "application/json"}})
 		return resp.StatusCode
 	}
 	for i := range 3 {
@@ -238,8 +238,8 @@ func TestFormatCharactersCannotSplitARedactedToken(t *testing.T) {
 	h.mustCreate(m)
 	secret := core.Encode(m.secret[:])
 	split := secret[:15] + "\u200b" + secret[15:30] + "\u00ad" + secret[30:]
-	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": "pasted " + split + " end"})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.7", body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "reason": "pasted " + split + " end"})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.7", body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
 	data, err := h.abuseReports()
@@ -256,8 +256,8 @@ func TestAbuseRedactsRunsFromTwentyTwoCharacters(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	run21, run22 := strings.Repeat("a", 21), strings.Repeat("b", 22)
-	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "read_token": m.readToken, "reason": run21 + " " + run22})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.9", body: body, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
+	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "reason": run21 + " " + run22})
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.9", body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != 202 {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
 	data, err := h.abuseReports()
