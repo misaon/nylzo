@@ -27,7 +27,7 @@ Hlavní kompromisy, které jsi přijal:
 
 Co smíš pravdivě tvrdit (znění po třech nezávislých kontrolách, viz etapa D): obsah se šifruje v prohlížeči nebo CLI klíčem, který je nikdy neopustí; ukradená kopie databáze, úložiště i konfigurace serveru nedovolí nikomu přečíst zprávu; prozradí identifikátory zpráv, přibližné velikosti, časy vytvoření a otevření, počty otevření a spolu s konfiguračním tajemstvím i to, které adresy službu v posledních dnech použily; odkazy nejde uhodnout (128bitový identifikátor a 256bitový klíč; při miliardě pokusů za sekundu po dobu roku je šance trefit jakoukoli zprávu pod 10^−18 a trefa bez klíče vrací stejnou 404 jako netrefa); passphrase lze zkoušet nejvýš 100× na zprávu a den ze všech adres dohromady a špatná passphrase zprávu nespálí; odkaz se spotřebuje atomicky jen na výslovný claim držitele odkazu; pokud je změněn server, edge poskytovatele nebo servírovaný webový klient (útočníkem nebo provozovatelem), lze číst každou zprávu vytvořenou nebo otevřenou webovým klientem od té chvíle, zatímco zprávy zpracované jen ověřeným vydáním CLI zůstávají chráněné; prohlížeč servírovaný kód ověřit neumí, proto zveřejňujeme zdroj, reprodukovatelné hashe a podepsaná vydání; veřejná instance omezuje, kolik denně uloží a vytvoří, a při dosažení stropu pozastaví vytváření, ne čtení, což chrání náklady, ne dostupnost. Co tvrdit nesmíš: „zero knowledge“, „nevratné smazání“, „ani provozovatel nemůže nikdy číst“, „nic neuniká“, „detekujeme screenshoty“, „kvantově odolné“, „auditováno“ (dokud audit není), „garantovaná dostupnost“.
 
-Nejrizikovější nevyřešené body: test limitu těla, studeného startu, ceny úklidové úlohy s probouzením databáze a hlavičky s IP za load balancerem na Scaleway (rozhoduje P3, záložní pořadí v OD21), odborné posouzení kombinace HKDF odvození R, K a V, test scryptu se 128 MiB paměti na iOS Safari, a právní posouzení DSA povinností pro veřejnou instanci.
+Nejrizikovější nevyřešené body: test limitu těla, studeného startu, ceny úklidové úlohy s probouzením databáze a hlavičky s IP za load balancerem na Scaleway (rozhoduje P3, záložní pořadí v OD21), odborné posouzení kombinace HKDF odvození R, K a V, test scryptu se 128 MiB paměti na skutečném iPhonu (v Safari na macOS prošel, viz zkouška OD6), a právní posouzení DSA povinností pro veřejnou instanci.
 
 ---
 
@@ -130,7 +130,7 @@ R13 (nové, z druhého názoru). „Vojenská bezpečnost“ proti free tieru, k
 | OD3 | Kdo smí smazat | Odesílatel s M kdykoli; příjemce s R kdykoli (před i po zobrazení); vždy s důkazem, nikdy jen s id | vlastník |
 | OD4 | Doba platnosti | Výchozí 24 h; volby 1 h, 24 h, 3 d, 7 d; maximum 7 d na veřejné instanci, konfigurovatelné jinde | vlastník |
 | OD5 | Počet otevření | Výchozí 1, maximum 10 na veřejné instanci, konfigurovatelné jinde | vlastník |
-| OD6 | KDF passphrase | scrypt N=2^17, r=8, p=1 (profil 1); PBKDF2-HMAC-SHA256 600 000 (profil 2). Profil volí odesílatel při vytvoření; UI a CLI nabízejí výchozí profil instance z /api/v1/instance (veřejná instance profil 1). Příjemce na zařízení, které profil nezvládne, dostane hlášku „toto zařízení nezvládne odvození klíče z passphrase, otevřete odkaz jinde“; otevření se nespotřebuje, protože KDF běží před claimem. Pokud test na iOS ukáže, že profil 1 neprojde, výchozí profil veřejné instance se změní na 2 | vlastník + test |
+| OD6 | KDF passphrase | scrypt N=2^17, r=8, p=1 (profil 1); PBKDF2-HMAC-SHA256 600 000 (profil 2). Profil volí odesílatel při vytvoření; UI a CLI nabízejí výchozí profil instance z /api/v1/instance (veřejná instance profil 1). Příjemce na zařízení, které profil nezvládne, dostane hlášku „toto zařízení nezvládne odvození klíče z passphrase, otevřete odkaz jinde“; otevření se nespotřebuje, protože KDF běží před claimem. Pokud test na iOS ukáže, že profil 1 neprojde, výchozí profil veřejné instance se změní na 2. Zkouška 23. 10. 2026 (sekce „Zkouška OD6“, příloha `docs/research/od6-scrypt-safari.md`): v Safari 27.0.1 na macOS ověřeno, 268 až 285 ms na odvození; simulátor neproběhl, skutečný iPhone čeká | vlastník + test |
 | OD7 | Stav pro odesílatele | Jen stav, počet otevření, čas prvního otevření, počet chybných passphrase; nikdy IP ani user agent | vlastník |
 | OD8 | Co ukázat u zaniklé zprávy | S R: „otevřeno v čase T“ nebo „vypršelo“ 7 dní po zániku; bez R nebo po 7 dnech: obecné „nedostupné“ | vlastník |
 | OD9 | Jazyky UI | Čeština a angličtina | vlastník |
@@ -431,7 +431,7 @@ Rozhodnuto (D12): Svelte 5 bez SvelteKit. Důvody: nejmenší runtime z framewor
 
 Pravidla implementace klienta:
 - Build: Vite 8, @sveltejs/vite-plugin-svelte 7.3.1 a @tailwindcss/vite 4.3.3 (verze ověřeny z npm registru 21. 10. 2026); výstup jeden JS a jeden CSS soubor s hashem v názvu; `build.assetsInlineLimit: 0`; kontrola v CI, že bundle neobsahuje `svelte/compiler`, `eval` ani `new Function`.
-- CSP: styly jen přes extrahovaný CSS soubor s nonce (emitCss), žádné `style:` direktivy ani inline atributy `style` (style-src-attr by vyžadoval výjimku); žádné `{@html}`; Trusted Types zapnuté.
+- CSP: styly jen přes extrahovaný CSS soubor s nonce (emitCss), žádné `style:` direktivy ani inline atributy `style` (style-src-attr by vyžadoval výjimku); žádné `{@html}`; Trusted Types zapnuté. Ověřeno ze zdroje Svelte 5.57.2 (23. 10. 2026, `src/internal/client/dom/reconciler.js`): runtime si vytvoří politiku Trusted Types `svelte-trusted-html`, která šablony komponent předává do `innerHTML` beze změny. CSP bez direktivy `trusted-types` ji povolí, takže Svelte s `require-trusted-types-for 'script'` funguje. Tutéž politiku používá i `{@html}`, proto zákaz `{@html}` zůstává.
 - Obrazovky a stavy: `/` vytvoření (text a/nebo soubor, platnost, otevření, passphrase, profil KDF, odhad délky scryptu) a výsledek s URL a M; `/m/{id}` načítání metadat, náhled stavu (platnost, zbývající otevření, passphrase ano/ne), tlačítko Zobrazit, zadání passphrase s průběhem KDF, zobrazení textu nebo stažení, chybové stavy (vypršelo, otevřeno v čase T, zrušeno, špatná passphrase s retry_after, zařízení nezvládne KDF, poškozená obálka nebo politika), tlačítko Smazat; `/sent` seznam z localStorage se stavem a zrušením.
 - i18n: vlastní typovaný slovník (čeština, angličtina) bez knihovny; výběr podle navigator.language s přepínačem; žádné načítání překladů ze serveru.
 - Přístupnost: sémantické formuláře, správa fokusu u dialogu Zobrazit, varování kompilátoru Svelte k přístupnosti jako chyby v CI.
@@ -448,11 +448,27 @@ Zadání vlastníka (D13): pouze tmavý režim; responzivní pro desktop i iPhon
 - Pohyb: animovat jen `transform` a `opacity` (nikdy `width`, `height`, `top`, `margin`); změny výšky přes `grid-template-rows: 0fr → 1fr` nebo předměřené kontejnery; 150 až 300 ms pro interakce, 300 až 500 ms pro přechody obrazovek; křivky `cubic-bezier` definované v tokenech; `prefers-reduced-motion: reduce` vypne vše kromě změn opacity.
 - Žádné skákání: cíl CLS 0 na obou viewportech (Layout Instability API v Playwrightu); každý asynchronní stav (metadata, scrypt, claim, stahování) má kostru nebo rezervované místo stejné výšky; ikony s pevnými rozměry; písmo přes preload nebo `font-display: optional`, aby nevznikl reflow; tlačítka mění stav bez změny rozměru (pevná šířka, indikátor uvnitř).
 - Průběh dlouhých operací: scrypt (sekundy) a stahování 5 MB mají plynulý indikátor animovaný transformacemi a odhad času z benchmarku při načtení.
-- Technika animací a CSP: vestavěné přechody Svelte (`svelte/transition`) vkládají inline styly a `<style>` elementy, což koliduje s politikou style-src bez unsafe-inline (otevřeno, ověřit v implementaci); animace proto přes CSS třídy v extrahovaném CSS a přes Web Animations API (`element.animate`, které CSP neomezuje); View Transitions API jen jako progresivní vylepšení za `@supports` (podpora napříč prohlížeči nebyla v rešerši ověřena).
+- Technika animací a CSP: ověřeno ze zdroje Svelte 5.57.2 (23. 10. 2026, `src/internal/client/dom/elements/transitions.js` a `css.js`): přechody `svelte/transition` běží přes Web Animations API (`element.animate`, které CSP neomezuje) a element `<style>` vkládá za běhu jen komponenta přeložená s `css: 'injected'`, což build přes vite-plugin-svelte s extrahovaným CSS nedělá. Přechody Svelte tedy s politikou style-src bez unsafe-inline nekolidují. Animace jdou přes CSS třídy v extrahovaném CSS, přes Web Animations API a přes přechody Svelte; View Transitions API jen jako progresivní vylepšení za `@supports` (podpora napříč prohlížeči nebyla v rešerši ověřena).
 - Rozpočet: JS bundle do 150 kB gzip včetně Svelte a noble, CSS do 40 kB, první vykreslení bez blokujících externích požadavků, Lighthouse INP pod 200 ms na simulovaném mobilu.
 - Nástroje (OD22, D15): Tailwind CSS 4.3.3 s @tailwindcss/vite 4.3.3 jako build-time nástroj, tokeny designového systému v `@theme` jako custom properties, vlastní CSS vrstva (`@layer components`) pro skleněné plochy, keyframes a složitější animace; žádný runtime CSS-in-JS, žádné inline styly; výstup je jeden statický CSS soubor s nonce. Cena přijatá v D15: dvě připnuté build závislosti s přístupem k bundle (stejná kategorie důvěry jako Vite), kryté minimumReleaseAge, provenance a reprodukovatelným buildem (AK15).
 
 Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní vzhled obrazovek) tento dokument nenavrhuje; doporučený další krok je `/gstack-design-consultation`, případně `/gstack-design-shotgun` pro varianty, s tímto zadáním a pravidly jako vstupem.
+
+### Zkouška OD6: scrypt v Safari (23. 10. 2026)
+
+Měření a metoda jsou v `docs/research/od6-scrypt-safari.md`. Testovací stránka běžela s HTML CSP podle spec §9 a s nezměněným `@noble/hashes` 2.4.0, tedy se stejným kódem, jaký používá `web/core`.
+
+Ověřeno v Safari 27.0.1 na macOS 27.0.1 (MacBook Pro M4 Pro, 24 GB):
+
+- Profil 1 (scrypt N=2^17, r=8, p=1) trvá na hlavním vlákně 268 až 285 ms na odvození a dává stejný P jako vektor `scrypt-ascii`. `scryptAsync` mezi kroky pouští smyčku událostí, nejdelší mezera mezi snímky byla 24 ms.
+- Každé odvození alokuje nový blok 128 MiB a JavaScriptCore ho uvolní až při pozdějším úklidu paměti. Po pěti odvozeních za sebou, tedy po pěti chybných passphrase bez čekání (OD13), měl proces stránky 653 MiB místo 46 MiB, po minutě 586 MiB a po třech minutách 447 MiB.
+- Odvození v module Workeru, který se po každém odvození ukončí, drží špičku na jednom odvození (215 MiB proti 60 MiB) bez ohledu na počet pokusů a hlavní vlákno nemá snímek delší než 11 ms. Stojí to zhruba 125 ms navíc na odvození, protože každý nový worker znovu načte a přeloží noble. Worker vyžaduje `worker-src 'self'` v CSP; o tom rozhoduje D28 v plánu milníku webového klienta.
+- Jedno vyhodnocení PoW (scrypt N=2^14) trvá 32 až 34 ms, obtížnost 4 tedy v průměru zhruba 0,5 s a obtížnost 8 zhruba 8,3 s. PBKDF2 s 600 000 iteracemi přes Web Crypto trvá 84 ms.
+
+Neověřeno:
+
+- Simulátor iOS neproběhl, na testovacím Macu chybí plné Xcode. Odpověď na hlavní otázku by stejně nedal, protože běží na paměti Macu bez limitů iOS.
+- Skutečný iPhone čeká na vlastníka. Apple limit paměti pro proces stránky v Safari nezveřejňuje (NOT FOUND); proces nad limitem systém ukončí a Safari stránku načte znovu. Jestli iPhone ustojí 650 MiB nevyčištěné paměti po pěti pokusech, ukáže až měření na zařízení. Do té doby zůstává výchozím profilem veřejné instance profil 1.
 
 ### Nasazení veřejné instance (Scaleway)
 
@@ -862,13 +878,13 @@ Zbytková rizika:
 ## Open Questions
 
 - Potvrdí test na Scaleway limit těla 5 MB a studený start pod 3 s (R13)?
-- Zvládne iOS Safari scrypt N=2^17 (128 MiB) v rozumném čase (OD6)?
+- Zvládne skutečný iPhone scrypt N=2^17 (128 MiB) v rozumném čase a přežije stránka několik pokusů za sebou (OD6)? Safari na macOS ano (zkouška OD6, 23. 10. 2026).
 - Kdo je provozovatel veřejné instance a smluvní strana (OD11)?
 - Vlastní doména a TLS na Serverless Containers: nativně, nebo přes Load Balancer?
 - Registry image pro Scaleway (OD17)?
 - Hlavička X-Nylzo-Create proti multipart (KD20)?
 - Minimální délka passphrase: rozhodnuto, vynucovat (KD19, D14).
-- Vestavěné přechody Svelte proti CSP bez unsafe-inline: jde je použít s nonce, nebo se animace píší jen přes CSS třídy a Web Animations API?
+- Vestavěné přechody Svelte proti CSP bez unsafe-inline: zodpovězeno 23. 10. 2026, přechody Svelte 5.57.2 běží přes Web Animations API a CSP neporušují (sekce „Vizuální design a interakce“).
 - Podpora View Transitions API napříč prohlížeči (neověřeno) a dopad na rozpočet animací.
 
 ## Success Criteria
