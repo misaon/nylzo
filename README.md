@@ -65,6 +65,7 @@ Příkazy `nylzod` jsou `serve` (výchozí), `sweep-once`, `version` a `help`. �
 |---|---|---|
 | `NYLZO_PEPPER` | povinná pro `serve` | 32 bajtů v hex nebo base64url; pepper ze samých stejných bajtů server odmítne |
 | `NYLZO_PEPPER_PREVIOUS` | prázdná | předchozí pepper při rotaci; starší řádky se ověřují jím, nové se zapisují aktuálním. Po 7 dnech už žádná živá zpráva starý pepper nepotřebuje. Náhrobky ho drží ještě 7 dní a vyexpirovaná zpráva se stane náhrobkem až při dalším požadavku nebo úklidu, takže pro úplné stavy ho nechte 14 dní a jeden interval úklidu. Čítače limitů na adresu drží každý proces v paměti, takže rotace na ně nemá vliv; backoff passphrase, celoživotní strop 100 chybných pokusů a limit hlášení na zprávu jsou v databázi a platí dál |
+| `NYLZO_PEPPER_FILE`, `NYLZO_PEPPER_PREVIOUS_FILE` | prázdná | cesta k souboru s pepperem místo proměnné (D44), třeba Docker secret; koncový konec řádku se ignoruje. Proměnná a soubor pro tutéž hodnotu zároveň jsou chyba |
 | `NYLZO_LISTEN`, `PORT` | `:8080` | adresa naslouchání |
 | `NYLZO_DATA_DIR` | `data` | adresář pro SQLite a bloby; souborový systém musí podporovat hard linky a fsync adresáře (`serve` i `sweep-once` to ověří při startu), takže FAT, exFAT a FUSE připojení objektových úložišť nefungují. `sweep-once` adresář nezakládá: bez existující databáze a adresáře `blobs` skončí chybou, proto mu v plánovači dejte absolutní cestu |
 | `NYLZO_TRUSTED_PROXIES` | prázdná | CIDR proxy, od kterých se bere `X-Forwarded-For` |

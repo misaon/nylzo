@@ -121,7 +121,7 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 
 ### 5.1 Pepper and purpose keys
 
-- `pepper`: 32 bytes of configuration (`NYLZO_PEPPER`), never stored in the database. The server refuses a pepper whose 32 bytes are all equal, the typical placeholder value.
+- `pepper`: 32 bytes of configuration (`NYLZO_PEPPER`, or the file named by `NYLZO_PEPPER_FILE`), never stored in the database. The server refuses a pepper whose 32 bytes are all equal, the typical placeholder value.
 - `k_purpose = HKDF-SHA-256(salt = empty, IKM = pepper, info = "nylzo/v1/mac/" || purpose, 32)` for `purpose` in `read`, `verifier`, `manage`, `lease`, `pow`, `id`, `challenge`.
 - `mac_purpose(x) = HMAC-SHA-256(k_purpose, x)`.
 - `pepper_id = SHA-256("nylzo/v1/pepper-id" || pepper)[0]` (one byte). Every row that stores a mac carries the `pepper_id` of the key that produced it.
