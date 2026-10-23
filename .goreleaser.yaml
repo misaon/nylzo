@@ -8,15 +8,15 @@ before:
 
 builds:
   - id: nylzod
-    main: ./cmd/nylzod
+    main: &main ./cmd/nylzod
     binary: nylzod
-    env:
+    env: &env
       - CGO_ENABLED=0
     goos: [linux]
     goarch: [amd64, arm64]
-    flags:
+    flags: &flags
       - -trimpath
-    ldflags:
+    ldflags: &ldflags
       - -s -w -X main.version={{ .Version }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
@@ -48,7 +48,7 @@ sboms:
 kos:
   - id: nylzod
     build: nylzod
-    main: ./cmd/nylzod
+    main: *main
     base_image: gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
     repositories: [ghcr.io/misaon/nylzo]
     platforms: [linux/amd64, linux/arm64]
@@ -57,12 +57,9 @@ kos:
     sbom: spdx
     creation_time: "{{ .CommitTimestamp }}"
     ko_data_creation_time: "{{ .CommitTimestamp }}"
-    env:
-      - CGO_ENABLED=0
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w -X main.version={{ .Version }}
+    env: *env
+    flags: *flags
+    ldflags: *ldflags
     labels:
       org.opencontainers.image.source: https://github.com/misaon/nylzo
       org.opencontainers.image.revision: "{{ .FullCommit }}"
@@ -91,8 +88,10 @@ release:
     Verify a download or the image before you run it:
 
     ```bash
-    gh attestation verify nylzod_{{ .Version }}_linux_amd64.tar.gz --repo misaon/nylzo
-    gh attestation verify oci://ghcr.io/misaon/nylzo:{{ .Version }} --repo misaon/nylzo
+    cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
+    sha256sum --ignore-missing -c checksums.txt
+    gh attestation verify nylzod_{{ .Version }}_linux_amd64.tar.gz --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref refs/tags/{{ .Tag }} --deny-self-hosted-runners
+    gh attestation verify oci://ghcr.io/misaon/nylzo:{{ .Version }} --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref refs/tags/{{ .Tag }} --deny-self-hosted-runners
     cosign verify ghcr.io/misaon/nylzo:{{ .Version }} --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
     ```
 
