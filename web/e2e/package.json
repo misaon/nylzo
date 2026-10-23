@@ -12,6 +12,7 @@
     "@nylzo/core": "workspace:*",
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
+    "lightningcss": "1.33.0",
     "typescript": "7.0.2"
   }
 }

@@ -96,6 +96,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level=moderate
       - run: pnpm -r typecheck
+      - name: No markup sinks, clean svelte-autofixer
+        run: pnpm --filter @nylzo/web check
       - run: pnpm -r test
         env:
           NYLZO_HEAVY_TESTS: "1"

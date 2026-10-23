@@ -22,7 +22,16 @@ function record(page: Page): Promise<Recorded>[] {
   return seen;
 }
 
-test('the fragment and the passphrase never leave the browser (AK2)', async ({ browser }) => {
+function encodings(bytes: Buffer): string[] {
+  return [
+    bytes.toString('hex'),
+    bytes.toString('base64'),
+    bytes.toString('base64').replace(/=+$/, ''),
+    bytes.toString('base64url'),
+  ];
+}
+
+test('the fragment and the passphrase never leave the browser in any common encoding (AK2)', async ({ browser }) => {
   const sender = await (await browser.newContext()).newPage();
   const recipient = await (await browser.newContext()).newPage();
   const sent = record(sender);
@@ -32,15 +41,23 @@ test('the fragment and the passphrase never leave the browser (AK2)', async ({ b
   await openViaUi(recipient, link, passphrase);
   await expectRevealed(recipient);
   const fragment = new URL(link).hash.slice(1);
-  const secret = fragment.split('.')[2] ?? '';
-  expect(secret).toHaveLength(43);
+  const secret = Buffer.from(fragment.split('.')[2] ?? '', 'base64url');
+  expect(secret).toHaveLength(32);
+  const forbidden = [
+    fragment,
+    passphrase,
+    encodeURIComponent(passphrase),
+    passphrase.replaceAll(' ', '+'),
+    ...encodings(secret),
+    ...encodings(Buffer.from(passphrase, 'utf8')),
+  ].map((form) => form.toLowerCase());
   const requests = await Promise.all([...sent, ...received]);
   expect(requests.length).toBeGreaterThan(6);
   for (const request of requests) {
-    const flat = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}`;
-    expect(flat).not.toContain(secret);
-    expect(flat).not.toContain(fragment);
-    expect(flat).not.toContain(passphrase);
+    const flat = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
+    for (const form of forbidden) {
+      expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
+    }
     expect(request.url).not.toContain('#');
     expect(request.headers['referer']).toBeUndefined();
   }
@@ -80,6 +97,39 @@ test('a speculation rules prerender does not spend an open (AK16)', async ({ pag
   expect(status).toMatchObject({ state: 'available', opensUsed: 0 });
 });
 
+const hiddenStates = {
+  hidden: () => {
+    Object.defineProperty(Document.prototype, 'visibilityState', {
+      configurable: true,
+      get: () => ((window as unknown as { nylzoShown?: boolean }).nylzoShown ? 'visible' : 'hidden'),
+    });
+  },
+  prerendering: () => {
+    Object.defineProperty(Document.prototype, 'prerendering', {
+      configurable: true,
+      get: () => !(window as unknown as { nylzoShown?: boolean }).nylzoShown,
+    });
+  },
+};
+
+for (const [state, script] of Object.entries(hiddenStates)) {
+  test(`a ${state} page does not start reading until it is shown (AK16)`, async ({ page }) => {
+    const passphrase = 'four random words here';
+    const message = await createViaApi({ passphrase, kdfId: KDF_PBKDF2, text: 'shown' });
+    await page.addInitScript(script);
+    await openViaUi(page, message.link, passphrase);
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(await page.getByRole('button', { name: 'Show message' }).isVisible()).toBe(true);
+    expect(await page.getByRole('status').textContent()).toBe('');
+    expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
+    await page.evaluate(() => Object.assign(window, { nylzoShown: true }));
+    await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
+    await page.getByRole('button', { name: 'Show message' }).click();
+    await expectRevealed(page);
+    await expect(page.locator('pre')).toHaveText('shown');
+  });
+}
+
 test('the reader stops without a verifier when the server reports another profile (AK24)', async ({ page }) => {
   const passphrase = 'four random words here';
   const message = await createViaApi({ passphrase, kdfId: KDF_PBKDF2 });
@@ -102,14 +152,39 @@ test('the reader stops without a verifier when the server reports another profil
   expect(status).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
 });
 
+test('the passphrase fields give password managers nothing and the message field is not spell checked (D38)', async ({ page }) => {
+  const message = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_PBKDF2 });
+  await page.goto('/');
+  const text = page.getByLabel('Message text');
+  await expect(text).toHaveAttribute('spellcheck', 'false');
+  await expect(text).toHaveAttribute('autocorrect', 'off');
+  await expect(text).toHaveAttribute('autocapitalize', 'off');
+  await expect(text).toHaveAttribute('autocomplete', 'off');
+  const fields = [page.getByLabel('Passphrase, optional')];
+  const reader = await page.context().newPage();
+  await reader.goto(message.link);
+  fields.push(reader.getByLabel('Passphrase', { exact: true }));
+  for (const field of fields) {
+    await expect(field).toHaveAttribute('autocomplete', 'off');
+    await expect(field).toHaveAttribute('spellcheck', 'false');
+    await expect(field).toHaveAttribute('data-1p-ignore', '');
+    await expect(field).toHaveAttribute('data-lpignore', 'true');
+    await expect(field).toHaveAttribute('data-bwignore', 'true');
+  }
+  for (const screen of [page, reader]) {
+    expect(await screen.locator('[autocomplete*="password"], [autocomplete="username"]').count()).toBe(0);
+  }
+});
+
 const files = [
-  { name: 'drawing.svg', mimeType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script></svg>', risky: true },
-  { name: 'page.html', mimeType: 'text/html', body: '<!doctype html><script>alert(3)</script>', risky: true },
-  { name: 'report.pdf', mimeType: 'application/pdf', body: '%PDF-1.4\n%nylzo\n', risky: false },
+  { name: 'drawing.svg', shown: 'drawing.svg', extension: 'svg', mimeType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script></svg>', risky: true },
+  { name: 'page.html', shown: 'page.html', extension: 'html', mimeType: 'text/html', body: '<!doctype html><script>alert(3)</script>', risky: true },
+  { name: 'invoice‮fdp.exe', shown: 'invoicefdp.exe', extension: 'exe', mimeType: 'application/pdf', body: 'MZ', risky: true },
+  { name: 'report.pdf', shown: 'report.pdf', extension: 'pdf', mimeType: 'application/pdf', body: '%PDF-1.4\n%nylzo\n', risky: false },
 ];
 
 for (const file of files) {
-  test(`an attachment ${file.name} is only ever downloaded (AK13)`, async ({ browser }) => {
+  test(`an attachment ${file.shown} is only ever downloaded under its sanitised name (AK13, D35)`, async ({ browser }) => {
     const sender = await (await browser.newContext()).newPage();
     const context = await browser.newContext();
     const recipient = await context.newPage();
@@ -122,16 +197,25 @@ for (const file of files) {
         return original(object);
       };
     });
+    const downloads: string[] = [];
+    recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
     const link = await createViaUi(sender, { file: { name: file.name, mimeType: file.mimeType, buffer: Buffer.from(file.body) } });
     await openViaUi(recipient, link);
     await expectRevealed(recipient);
-    await expect(recipient.getByText(/can run code/)).toHaveCount(file.risky ? 1 : 0);
+    await expect(recipient.locator('bdi')).toHaveText(file.shown);
     const before = recipient.url();
-    const [download] = await Promise.all([
-      recipient.waitForEvent('download'),
-      recipient.getByRole('button', { name: new RegExp(`^Download ${file.name.replace('.', '\\.')}`) }).click(),
-    ]);
-    expect(download.suggestedFilename()).toBe(file.name);
+    const download = recipient.waitForEvent('download');
+    await recipient.getByRole('button', { name: 'Download attachment' }).click();
+    if (file.risky) {
+      await expect(recipient.getByRole('alert')).toHaveText(/can run code/);
+      await expect(recipient.getByText(`File extension: .${file.extension}`)).toBeVisible();
+      expect(downloads).toEqual([]);
+      await recipient.getByRole('button', { name: 'Download anyway' }).click();
+    } else {
+      await expect(recipient.getByText(/can run code/)).toHaveCount(0);
+    }
+    expect((await download).suggestedFilename()).toBe(file.shown);
+    expect(downloads).toEqual([file.shown]);
     expect(recipient.url()).toBe(before);
     expect(context.pages()).toHaveLength(1);
     expect(await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes)).toEqual(['application/octet-stream']);
