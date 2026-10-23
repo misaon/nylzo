@@ -27,7 +27,7 @@ Hlavní kompromisy, které jsi přijal:
 
 Co smíš pravdivě tvrdit (znění po třech nezávislých kontrolách, viz etapa D): obsah se šifruje v prohlížeči nebo CLI klíčem, který je nikdy neopustí; ukradená kopie databáze, úložiště i konfigurace serveru nedovolí nikomu přečíst zprávu; prozradí identifikátory zpráv, přibližné velikosti, časy vytvoření a otevření, počty otevření a spolu s konfiguračním tajemstvím i to, které adresy službu v posledních dnech použily; odkazy nejde uhodnout (128bitový identifikátor a 256bitový klíč; při miliardě pokusů za sekundu po dobu roku je šance trefit jakoukoli zprávu pod 10^−18 a trefa bez klíče vrací stejnou 404 jako netrefa); passphrase lze zkoušet nejvýš 100× na zprávu a den ze všech adres dohromady a špatná passphrase zprávu nespálí; odkaz se spotřebuje atomicky jen na výslovný claim držitele odkazu; pokud je změněn server, edge poskytovatele nebo servírovaný webový klient (útočníkem nebo provozovatelem), lze číst každou zprávu vytvořenou nebo otevřenou webovým klientem od té chvíle, zatímco zprávy zpracované jen ověřeným vydáním CLI zůstávají chráněné; prohlížeč servírovaný kód ověřit neumí, proto zveřejňujeme zdroj, reprodukovatelné hashe a podepsaná vydání; veřejná instance omezuje, kolik denně uloží a vytvoří, a při dosažení stropu pozastaví vytváření, ne čtení, což chrání náklady, ne dostupnost. Co tvrdit nesmíš: „zero knowledge“, „nevratné smazání“, „ani provozovatel nemůže nikdy číst“, „nic neuniká“, „detekujeme screenshoty“, „kvantově odolné“, „auditováno“ (dokud audit není), „garantovaná dostupnost“.
 
-Nejrizikovější nevyřešené body: test limitu těla, studeného startu, ceny úklidové úlohy s probouzením databáze a hlavičky s IP za load balancerem na Scaleway (rozhoduje P3, záložní pořadí v OD21), odborné posouzení kombinace HKDF odvození R, K a V, test scryptu se 128 MiB paměti na skutečném iPhonu (v Safari na macOS prošel, viz zkouška OD6), a právní posouzení DSA povinností pro veřejnou instanci.
+Nejrizikovější nevyřešené body: test limitu těla, studeného startu, ceny úklidové úlohy s probouzením databáze a hlavičky s IP za load balancerem na Scaleway (rozhoduje P3, záložní pořadí v OD21), odborné posouzení kombinace HKDF odvození R, K a V, výchozí profil passphrase po zkoušce OD6 (Safari na macOS 0,3 s, vlastníkův iPhone 43 s na odvození, příčina neověřena), a právní posouzení DSA povinností pro veřejnou instanci.
 
 ---
 
@@ -130,7 +130,7 @@ R13 (nové, z druhého názoru). „Vojenská bezpečnost“ proti free tieru, k
 | OD3 | Kdo smí smazat | Odesílatel s M kdykoli; příjemce s R kdykoli (před i po zobrazení); vždy s důkazem, nikdy jen s id | vlastník |
 | OD4 | Doba platnosti | Výchozí 24 h; volby 1 h, 24 h, 3 d, 7 d; maximum 7 d na veřejné instanci, konfigurovatelné jinde | vlastník |
 | OD5 | Počet otevření | Výchozí 1, maximum 10 na veřejné instanci, konfigurovatelné jinde | vlastník |
-| OD6 | KDF passphrase | scrypt N=2^17, r=8, p=1 (profil 1); PBKDF2-HMAC-SHA256 600 000 (profil 2). Profil volí odesílatel při vytvoření; UI a CLI nabízejí výchozí profil instance z /api/v1/instance (veřejná instance profil 1). Příjemce na zařízení, které profil nezvládne, dostane hlášku „toto zařízení nezvládne odvození klíče z passphrase, otevřete odkaz jinde“; otevření se nespotřebuje, protože KDF běží před claimem. Pokud test na iOS ukáže, že profil 1 neprojde, výchozí profil veřejné instance se změní na 2. Zkouška 23. 10. 2026 (sekce „Zkouška OD6“, příloha `docs/research/od6-scrypt-safari.md`): v Safari 27.0.1 na macOS ověřeno, 268 až 285 ms na odvození; simulátor neproběhl, skutečný iPhone čeká | vlastník + test |
+| OD6 | KDF passphrase | scrypt N=2^17, r=8, p=1 (profil 1); PBKDF2-HMAC-SHA256 600 000 (profil 2). Profil volí odesílatel při vytvoření; UI a CLI nabízejí výchozí profil instance z /api/v1/instance (od D30 profil 2). Příjemce na zařízení, které profil nezvládne, dostane hlášku „toto zařízení nezvládne odvození klíče z passphrase, otevřete odkaz jinde“; otevření se nespotřebuje, protože KDF běží před claimem. Pokud test na iOS ukáže, že profil 1 neprojde, výchozí profil veřejné instance se změní na 2. Zkouška 23. 10. 2026 (sekce „Zkouška OD6“, příloha `docs/research/od6-scrypt-safari.md`): v Safari 27.0.1 na macOS ověřeno, 268 až 285 ms na odvození; na vlastníkově iPhonu (Safari 27.2, Režim blokování vypnutý) 43 až 45 s na odvození, příčina neověřena; simulátor neproběhl. Rozhodnuto (D30, vlastník 23. 10. 2026): výchozí profil je 2 (PBKDF2) na veřejné instanci i ve výchozí konfiguraci `nylzod`; profil 1 zůstává na výběr a self-hosting si ho může nastavit přes `NYLZO_DEFAULT_KDF=1` | vlastník + test |
 | OD7 | Stav pro odesílatele | Jen stav, počet otevření, čas prvního otevření, počet chybných passphrase; nikdy IP ani user agent | vlastník |
 | OD8 | Co ukázat u zaniklé zprávy | S R: „otevřeno v čase T“ nebo „vypršelo“ 7 dní po zániku; bez R nebo po 7 dnech: obecné „nedostupné“ | vlastník |
 | OD9 | Jazyky UI | Čeština a angličtina | vlastník |
@@ -149,6 +149,7 @@ R13 (nové, z druhého názoru). „Vojenská bezpečnost“ proti free tieru, k
 | OD22 | CSS nástroj web klienta | Rozhodnuto (D15): Tailwind CSS 4.3.3 s @tailwindcss/vite 4.3.3 jako build-time nástroj (verze ověřeny z npm registru 21. 10. 2026); tokeny v @theme, vlastní CSS vrstva pro sklo a animace, žádné inline styly, žádný runtime; čisté CSS zamítnuto kvůli ruční konzistenci | rozhodnuto D15 |
 | OD23 | Oddělený statický origin pro webový klient (milník webového klienta ve v1, D13, review 22. 10. 2026) | Klient servírovaný z jiné strany než API (například Codeberg Pages nebo GitHub Pages s SRI), aby injekce vyžadovala kompromitaci dvou stran. Cena: CORS a CSP práce, konec „jedna binárka, jeden hash“ (KD17), IP návštěvníků u druhé strany (u GitHubu mimo EU). Rozhodnuto: už v první verzi, v milníku webového klienta. Upřesněno (D27, 23. 10. 2026): minimální proof of concept webového klienta servíruje stránku z `nylzod`; oddělený origin musí být hotový před veřejným nasazením (Next Steps 9) | vlastník |
 | OD24 | Typ proof-of-work | Puzzle nad scryptem (N=2^14, r=8, p=1, k kol laděných na zhruba 1 s na běžném telefonu) nad nonce vydanou serverem, vázanou na id a 2minutové okno; hashcash nad SHA-256 zamítnut (GPU řeší 0,5s úlohu za zlomek milisekundy); PoW se zapíná automaticky při 50 % denního stropu | rozhodnuto zde |
+| OD25 | PoW na pomalém telefonu (nové, zkouška OD6 23. 10. 2026) | Jedno vyhodnocení PoW (scrypt N=2^14) trvalo na vlastníkově iPhonu 5,6 s, takže obtížnost 4 vychází v průměru na 89 s a často se nevejde do 120s okna výzvy; PoW se zapíná až od 50 % denního stropu, jde tedy o dostupnost vytváření pod zátěží, ne o důvěrnost. Rozhodne se, až sonda ukáže příčinu pomalosti; možnosti jsou nižší výchozí obtížnost, delší okno výzvy a Private Access Tokens místo PoW na zařízeních Apple | vlastník |
 
 ---
 
@@ -469,7 +470,15 @@ Ověřeno v Safari 27.0.1 na macOS 27.0.1 (MacBook Pro M4 Pro, 24 GB):
 Neověřeno:
 
 - Simulátor iOS neproběhl, na testovacím Macu chybí plné Xcode. Odpověď na hlavní otázku by stejně nedal, protože běží na paměti Macu bez limitů iOS.
-- Skutečný iPhone čeká na vlastníka. Apple limit paměti pro proces stránky v Safari nezveřejňuje (NOT FOUND); proces nad limitem systém ukončí a Safari stránku načte znovu. Jestli iPhone ustojí 650 MiB nevyčištěné paměti po pěti pokusech, ukáže až měření na zařízení. Do té doby zůstává výchozím profilem veřejné instance profil 1.
+- Apple limit paměti pro proces stránky v Safari nezveřejňuje (NOT FOUND); proces nad limitem systém ukončí a Safari stránku načte znovu. Paměť na iPhonu stránka změřit nemůže.
+
+Ověřeno na vlastníkově iPhonu (Safari 27.2, displej 430 × 932, 23. 10. 2026, hlavní vlákno, 5 odvození):
+
+- Profil 1 trvá 43,0 až 45,4 s na odvození, asi 160× déle než v Safari na macOS. Výsledek odpovídá vektoru, stránka všech 5 odvození přežila a UI zůstalo plynulé.
+- Jedno vyhodnocení PoW trvá 5,6 s, obtížnost 4 tedy v průměru zhruba 89 s a obtížnost 8 zhruba 24 minut. To se nevejde do 120s okna výzvy PoW (spec §8.1).
+- PBKDF2 ani režim s workerem na iPhonu neproběhly; stránka běžela přes http v lokální síti bez Web Crypto.
+
+Neověřeno: proč je iPhone tak pomalý. Rozdíl odpovídá JavaScriptu bez kompilátoru JIT, který vypíná Režim blokování (Lockdown Mode), víc než výkonu telefonu. Vlastník potvrdil, že má Režim blokování na telefonu vypnutý, takže ten pomalost nevysvětlí. Profil 1 v tomto měření kritérium z plánu milníku (medián do 3 s) nesplnil. Rozhodnuto (D30, vlastník 23. 10. 2026): výchozím profilem je PBKDF2 (profil 2), který běží nativně ve Web Crypto a nezávisí na JIT ani na úklidu paměti; scrypt zůstává volitelný. Proti offline hádání na GPU je PBKDF2 slabší než scrypt, takové hádání ale vyžaduje odkaz i ciphertext, nebo odkaz, databázi a pepper (Odolnost proti hádání). PoW na pomalém telefonu řeší OD25. Worker počítá scrypt bez ustupování smyčce událostí, aby výsledek nezávisel na plánovači prohlížeče.
 
 ### Nasazení veřejné instance (Scaleway)
 
@@ -879,7 +888,7 @@ Zbytková rizika:
 ## Open Questions
 
 - Potvrdí test na Scaleway limit těla 5 MB a studený start pod 3 s (R13)?
-- Zvládne skutečný iPhone scrypt N=2^17 (128 MiB) v rozumném čase a přežije stránka několik pokusů za sebou (OD6)? Safari na macOS ano (zkouška OD6, 23. 10. 2026).
+- Proč vlastníkův iPhone počítá scrypt N=2^17 43 s místo desetin sekundy (Režim blokování bez JIT?), a jaký profil passphrase má být výchozí (OD6)? Safari na macOS 0,3 s, stránka na iPhonu 5 odvození přežila (zkouška OD6, 23. 10. 2026).
 - Kdo je provozovatel veřejné instance a smluvní strana (OD11)?
 - Vlastní doména a TLS na Serverless Containers: nativně, nebo přes Load Balancer?
 - Registry image pro Scaleway (OD17)?

@@ -48,6 +48,21 @@ What the numbers show:
 
 The test Mac has only the Command Line Tools and no full Xcode, so no simulator is available. The simulator would not answer the main question anyway, since it runs on the Mac's memory and applies no iOS memory limits.
 
-### iPhone: PENDING
+### iPhone: VERIFIED for one device, cause of the slowness NOT VERIFIED
 
-The memory limit iOS sets for a Safari WebContent process is not documented by Apple (NOT FOUND); a process above it is killed and Safari reloads the page. Whether 650 MiB of uncollected scrypt memory is safe on a given iPhone is therefore open until measured on a device. The owner runs the same page on a real iPhone over the local network, in both modes and with 10 derivations, which covers the 5 attempts without waiting plus margin. Over plain http on the local network the page is not a secure context, so `crypto.subtle` is missing and the PBKDF2 step is skipped; scrypt and workers do not need it.
+The owner's iPhone, Safari 27.2 (the user agent reports `iPhone OS 18_7`, which Safari freezes, so the iOS version comes from the owner), screen 430 × 932 CSS px at device pixel ratio 3, run over plain http on the local network, so not a secure context and without `crypto.subtle`. The page ran in the main mode with 5 derivations on 23 October 2026, 10:44 to 10:49 UTC.
+
+| Measurement | main |
+|---|---|
+| scrypt N=2^17, 5 derivations (ms) | 43195, 43175, 43021, 45141, 45432 |
+| vector `scrypt-ascii` | matches |
+| longest frame gap during a derivation (ms) | 27 to 74 |
+| page interrupted | no, all 5 derivations finished and the summary arrived |
+| PoW scrypt N=2^14, mean of 16 (ms) | 5572 (5491 to 5667) |
+| expected PoW time at difficulty 4 and 8 | about 89 s and about 24 min |
+| PBKDF2 600,000 | not run, no Web Crypto outside a secure context |
+| memory | not measured, Safari on iOS gives the page no memory figure |
+
+One derivation took about 160 times longer than in Safari on the Mac. A gap that large fits JavaScript running without the JIT compiler, which is what Lockdown Mode does in Safari, better than the speed of the phone itself. The owner reports that Lockdown Mode is off on the phone, so that does not explain it, and the cause is NOT VERIFIED. A second candidate is the yield between work slices: `scryptAsync` hands control back through `scheduler.yield()` or `setTimeout(0)` after about 10 ms of work, so a slow yield adds time without any extra computation. The page now reports whether WebAssembly exists and how long a plain loop of 2·10^7 steps takes (16 to 23 ms in Safari on the Mac), and its `sync` mode runs scrypt without yielding (246 and 254 ms in Safari on the Mac). The worker and sync modes have not run on the iPhone yet.
+
+Owner decision D30 (23 October 2026): the default passphrase profile is PBKDF2 (profile 2) on the public instance and in the default `nylzod` configuration.
