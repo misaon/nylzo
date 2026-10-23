@@ -180,22 +180,13 @@ type RateCount struct {
 	Bytes int64
 }
 
-type SweepReport struct {
-	Expired        int
-	ExpiredLeases  int
-	BlobsReleased  int
-	Tombstones     int
-	Counters       int
-	Resumed        int
-	OrphanedBlobs  int
-	StaleTempFiles int
+type ExpiredMessage struct {
+	ID        string
+	BlobRef   string
+	ExpiresAt time.Time
 }
 
-func (r SweepReport) LogAttrs() []any {
-	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "resumed", r.Resumed, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
-}
-
-type Store interface {
+type Messages interface {
 	Create(ctx context.Context, m *Message, counters ...RateHit) error
 	Get(ctx context.Context, id string) (Record, error)
 	Claim(ctx context.Context, p ClaimParams) (ClaimResult, error)
@@ -206,13 +197,28 @@ type Store interface {
 	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
 	MarkEnding(ctx context.Context, id string, state State, now time.Time) (ending State, ref string, recorded bool, err error)
 	End(ctx context.Context, id string, state State, now time.Time) error
+	EndExpired(ctx context.Context, ids []string, now time.Time) (int, error)
+	ExpiredPage(ctx context.Context, now time.Time, after ExpiredMessage, limit int) ([]ExpiredMessage, error)
+	SpentPage(ctx context.Context, after string, limit int) ([]string, error)
+	EndingPage(ctx context.Context, now time.Time, after string, limit int) ([]string, error)
+	PurgeLeases(ctx context.Context, now time.Time, limit int) (int, error)
+	PurgeTombstones(ctx context.Context, now time.Time, limit int) (int, error)
+	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
+}
+
+type Counters interface {
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)
 	RateReserve(ctx context.Context, hit RateHit) (int64, bool, error)
 	RateReserveBatch(ctx context.Context, hits []RateHit) ([]bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
-	Sweep(ctx context.Context, now time.Time, b Blobs) (SweepReport, error)
-	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
+	RatePurge(ctx context.Context, now time.Time, limit int) (int, error)
+}
+
+type Store interface {
+	Messages
+	Counters
+	Checkpoint(ctx context.Context) error
 	Close() error
 }
 
@@ -225,6 +231,7 @@ type Blobs interface {
 	Put(ctx context.Context, ref string, r io.Reader, size int64) error
 	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
 	Delete(ctx context.Context, ref string) error
+	DeleteBatch(ctx context.Context, refs []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)
 	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
 }

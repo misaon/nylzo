@@ -122,3 +122,21 @@ func TestPurgeTempReportsFailedRemovals(t *testing.T) {
 		t.Fatalf("a temp file that cannot be removed must fail the sweep step: %d %v", n, err)
 	}
 }
+
+func TestDeleteBatchFailsEveryRefWhenTheSyncFails(t *testing.T) {
+	dir := t.TempDir()
+	b, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Put(t.Context(), "a", strings.NewReader("x"), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "blobs")); err != nil {
+		t.Fatal(err)
+	}
+	errs := b.DeleteBatch(t.Context(), []string{"a", "b"})
+	if len(errs) != 2 || errs[0] == nil || errs[1] == nil {
+		t.Fatalf("a delete that could not be synced must not count as done: %v", errs)
+	}
+}

@@ -148,6 +148,14 @@ func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
 	return b.Blobs.Delete(ctx, ref)
 }
 
+func (b *faultyBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
+	errs := make([]error, len(refs))
+	for i, ref := range refs {
+		errs[i] = b.Delete(ctx, ref)
+	}
+	return errs
+}
+
 func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
 	b.mu.Lock()
 	err, readErr, hook := b.failOpen, b.failRead, b.onOpen

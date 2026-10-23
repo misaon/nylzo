@@ -97,3 +97,26 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 		t.Fatalf("a claim without a clock: %v", err)
 	}
 }
+
+func TestACorruptRowLeavesTheRestOfItsPageToEnd(t *testing.T) {
+	s := openTest(t)
+	ctx := t.Context()
+	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	mac := bytes.Repeat([]byte{7}, 32)
+	ids := []string{"AAAAAAAAAAAAAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAQ"}
+	for _, id := range ids {
+		if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Minute), TTLSeconds: 60, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.w.Exec(`UPDATE messages SET opens_remaining = 5 WHERE id = ?`, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.EndExpired(ctx, ids, now.Add(time.Hour))
+	if n != 1 || !errors.Is(err, errCorruptRow) {
+		t.Fatalf("end expired: %d %v", n, err)
+	}
+	if rec, err := s.Get(ctx, ids[1]); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateExpired {
+		t.Fatalf("the row after a corrupt one did not end: %+v %v", rec, err)
+	}
+}

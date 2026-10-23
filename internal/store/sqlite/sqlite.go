@@ -12,7 +12,6 @@ import (
 	"math/rand/v2"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -819,59 +818,111 @@ func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) 
 	return c, err
 }
 
-func (s *Store) Sweep(ctx context.Context, now time.Time, b store.Blobs) (store.SweepReport, error) {
-	var r store.SweepReport
-	var errs []error
-	var after expiredRow
-	for ctx.Err() == nil {
-		rows, err := s.expiredRows(ctx, now, after)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("sqlite: list expired: %w", err))
-			break
+func (s *Store) ExpiredPage(ctx context.Context, now time.Time, after store.ExpiredMessage, limit int) ([]store.ExpiredMessage, error) {
+	rows, err := s.r.QueryContext(ctx, `SELECT id, blob_ref, expires_at FROM messages WHERE expires_at <= ? AND (expires_at, id) > (?, ?) ORDER BY expires_at, id LIMIT ?`,
+		ms(now), ms(after.ExpiresAt), after.ID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []store.ExpiredMessage
+	for rows.Next() {
+		var m store.ExpiredMessage
+		var ref sql.NullString
+		var expires int64
+		if err := rows.Scan(&m.ID, &ref, &expires); err != nil {
+			return nil, err
 		}
-		for _, row := range rows {
-			if ctx.Err() != nil {
-				break
-			}
-			if _, err := store.EndMessage(ctx, s, b, row.id, store.StateExpired, now); err != nil && !errors.Is(err, store.ErrNotFound) {
+		m.BlobRef = ref.String
+		m.ExpiresAt = fromMS(expires)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) EndExpired(ctx context.Context, ids []string, now time.Time) (int, error) {
+	var ended int
+	var errs []error
+	err := s.tx(ctx, func(tx *sql.Tx) error {
+		ended, errs = 0, nil
+		for _, id := range ids {
+			ok, err := endExpiredInTx(ctx, tx, id, now)
+			if errors.Is(err, errCorruptRow) {
 				errs = append(errs, fmt.Errorf("sqlite: end expired: %w", err))
 				continue
 			}
-			r.Expired++
+			if err != nil {
+				return err
+			}
+			if ok {
+				ended++
+			}
 		}
-		if len(rows) < store.SweepBatch {
-			break
-		}
-		after = rows[len(rows)-1]
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: end expired: %w", err)
 	}
-	var err error
-	r.ExpiredLeases, err = s.purge(ctx, "leases", "row_id", "lease_expires_at", now)
-	errs = append(errs, err)
-	released, rerrs := s.eachID(ctx, "release", `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`, nil, func(id string) (bool, error) {
-		return store.Release(ctx, s, b, id, now)
-	})
-	r.BlobsReleased = released
-	errs = append(errs, rerrs...)
-	resumed, rerrs := s.eachID(ctx, "resume ending", `SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`, []any{ms(now)}, func(id string) (bool, error) {
-		_, err := store.EndMessage(ctx, s, b, id, store.StateDeleted, now)
-		if errors.Is(err, store.ErrNotFound) {
-			return false, nil
-		}
-		return err == nil, err
-	})
-	r.Resumed = resumed
-	errs = append(errs, rerrs...)
-	r.Tombstones, err = s.purge(ctx, "tombstones", "id", "purge_at", now)
-	errs = append(errs, err)
-	r.Counters, err = s.purge(ctx, "rate_counters", "key, window_start", "purge_at", now)
-	errs = append(errs, err)
+	return ended, errors.Join(errs...)
+}
+
+func endExpiredInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (bool, error) {
+	rec, err := scanRecord(ctx, tx, id)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && rec.Message == nil) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	m := rec.Message
+	if now.Before(m.ExpiresAt) {
+		return false, nil
+	}
+	ending := store.StateExpired
+	if m.OpensRemaining == 0 {
+		ending = store.StateOpened
+	}
+	return true, endInTx(ctx, tx, m, endingOr(m, ending), now)
+}
+
+func (s *Store) SpentPage(ctx context.Context, after string, limit int) ([]string, error) {
+	return s.ids(ctx, `SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`, after, limit)
+}
+
+func (s *Store) EndingPage(ctx context.Context, now time.Time, after string, limit int) ([]string, error) {
+	return s.ids(ctx, `SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`, ms(now), after, limit)
+}
+
+func (s *Store) PurgeLeases(ctx context.Context, now time.Time, limit int) (int, error) {
+	return s.purge(ctx, `DELETE FROM leases WHERE row_id IN (SELECT row_id FROM leases WHERE lease_expires_at <= ? LIMIT ?)`, now, limit)
+}
+
+func (s *Store) PurgeTombstones(ctx context.Context, now time.Time, limit int) (int, error) {
+	return s.purge(ctx, `DELETE FROM tombstones WHERE id IN (SELECT id FROM tombstones WHERE purge_at <= ? LIMIT ?)`, now, limit)
+}
+
+func (s *Store) RatePurge(ctx context.Context, now time.Time, limit int) (int, error) {
+	return s.purge(ctx, `DELETE FROM rate_counters WHERE (key, window_start) IN (SELECT key, window_start FROM rate_counters WHERE purge_at <= ? LIMIT ?)`, now, limit)
+}
+
+func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {
+	res, err := s.w.ExecContext(ctx, query, ms(now), limit)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
+func (s *Store) Checkpoint(ctx context.Context) error {
 	var blocked, frames, moved int
 	if err := s.w.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved); err != nil {
-		errs = append(errs, fmt.Errorf("sqlite: wal checkpoint: %w", err))
-	} else if blocked != 0 {
-		errs = append(errs, ErrCheckpointBusy)
+		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
-	return r, errors.Join(errs...)
+	if blocked != 0 {
+		return ErrCheckpointBusy
+	}
+	return nil
 }
 
 var ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish because a reader held the log")
@@ -902,60 +953,6 @@ func insertLease(ctx context.Context, tx *sql.Tx, id string, p store.ClaimParams
 	return 0, errNoLeaseRowID
 }
 
-func (s *Store) eachID(ctx context.Context, step, query string, args []any, fn func(id string) (bool, error)) (int, []error) {
-	var errs []error
-	done := 0
-	last := ""
-	for ctx.Err() == nil {
-		var ids []string
-		err := s.scanIDs(ctx, query, append(slices.Clip(args), last, store.SweepBatch), func(id string) { ids = append(ids, id) })
-		if err != nil {
-			return done, append(errs, fmt.Errorf("sqlite: %s: %w", step, err))
-		}
-		for _, id := range ids {
-			if ctx.Err() != nil {
-				break
-			}
-			ok, err := fn(id)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("sqlite: %s: %w", step, err))
-				continue
-			}
-			if ok {
-				done++
-			}
-		}
-		if len(ids) < store.SweepBatch {
-			break
-		}
-		last = ids[len(ids)-1]
-	}
-	return done, errs
-}
-
-type expiredRow struct {
-	id        string
-	expiresAt int64
-}
-
-func (s *Store) expiredRows(ctx context.Context, now time.Time, after expiredRow) ([]expiredRow, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT id, expires_at FROM messages WHERE expires_at <= ? AND (expires_at, id) > (?, ?) ORDER BY expires_at, id LIMIT ?`,
-		ms(now), after.expiresAt, after.id, store.SweepBatch)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []expiredRow
-	for rows.Next() {
-		var row expiredRow
-		if err := rows.Scan(&row.id, &row.expiresAt); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
 func (s *Store) scanIDs(ctx context.Context, query string, args []any, fn func(id string)) error {
 	rows, err := s.r.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -972,22 +969,10 @@ func (s *Store) scanIDs(ctx context.Context, query string, args []any, fn func(i
 	return rows.Err()
 }
 
-func (s *Store) purge(ctx context.Context, table, key, column string, now time.Time) (int, error) {
-	total := 0
-	for {
-		res, err := s.w.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE (%s) IN (SELECT %s FROM %s WHERE %s <= ? LIMIT %d)`, table, key, key, table, column, store.SweepBatch), ms(now))
-		if err != nil {
-			return total, fmt.Errorf("sqlite: purge %s: %w", table, err)
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return total, fmt.Errorf("sqlite: purge %s: %w", table, err)
-		}
-		total += int(n)
-		if n < store.SweepBatch {
-			return total, nil
-		}
-	}
+func (s *Store) ids(ctx context.Context, query string, args ...any) ([]string, error) {
+	var out []string
+	err := s.scanIDs(ctx, query, args, func(id string) { out = append(out, id) })
+	return out, err
 }
 
 func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) {

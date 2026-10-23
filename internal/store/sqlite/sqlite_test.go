@@ -267,7 +267,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	if err := store.AckLease(ctx, st, blobs, res.Lease, claimed); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.Sweep(ctx, created.Add(9*24*time.Hour), blobs); err != nil {
+	if _, err := store.SweepAll(ctx, st, blobs, created.Add(9*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.Get(ctx, id); !errors.Is(err, store.ErrNotFound) {
@@ -458,12 +458,17 @@ func TestLeaseRowIDsAreRandom(t *testing.T) {
 }
 
 func TestSweepReportsABlockedCheckpoint(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nylzo.db")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nylzo.db")
 	s, err := sqlite.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	blobs, err := disk.New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}}); err != nil {
 		t.Fatal(err)
 	}
@@ -480,11 +485,11 @@ func TestSweepReportsABlockedCheckpoint(t *testing.T) {
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM rate_counters`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Sweep(t.Context(), time.Now(), nil); !errors.Is(err, sqlite.ErrCheckpointBusy) {
+	if _, err := store.SweepAll(t.Context(), s, blobs, time.Now()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
 		t.Fatalf("sweep with a reader holding the WAL: %v", err)
 	}
 	tx.Rollback()
-	if _, err := s.Sweep(t.Context(), time.Now(), nil); err != nil {
+	if _, err := store.SweepAll(t.Context(), s, blobs, time.Now()); err != nil {
 		t.Fatalf("sweep after the reader left: %v", err)
 	}
 }
