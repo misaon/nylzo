@@ -2,9 +2,11 @@ package server_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 func TestAK27PepperRotation(t *testing.T) {
@@ -33,5 +35,30 @@ func TestAK27PepperRotation(t *testing.T) {
 	}
 	if _, err := server.New(baseConfig(pepperA, pepperA), h.store, h.blobs); err == nil {
 		t.Fatal("identical peppers accepted")
+	}
+}
+
+func TestAK27PreviousPepperHorizon(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	old := newMessage(t, core.KDFNone, "", 1, 7*24*3600, "max ttl")
+	h.mustCreate(old)
+	h.reopen(baseConfig(pepperB, pepperA))
+	h.clock.Advance(7*24*time.Hour + time.Minute)
+	if _, err := h.srv.SweepOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if resp, meta := h.metadata(old); resp.StatusCode != 200 || meta["state"] != "expired" {
+		t.Fatalf("tombstone with the previous pepper still configured: %d %v", resp.StatusCode, meta)
+	}
+	if rec, err := h.store.Get(t.Context(), old.id.String()); err != nil || rec.Message != nil {
+		t.Fatal("no live message may remain after the maximum TTL")
+	}
+	h.clock.Advance(store.TombstoneTTL)
+	if _, err := h.srv.SweepOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	h.reopen(baseConfig(pepperB, nil))
+	if _, err := h.store.Get(t.Context(), old.id.String()); err == nil {
+		t.Fatal("tombstone must be purged before the previous pepper is dropped")
 	}
 }

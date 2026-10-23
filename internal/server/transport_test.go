@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/netip"
 	"regexp"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
@@ -386,5 +388,121 @@ func TestConfigErrorNamesTheVariable(t *testing.T) {
 		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), name) {
 			t.Fatalf("%s=%s: the error must name the variable: %v", name, value, err)
 		}
+	}
+}
+
+func TestSecurityHeadersOnEveryResponse(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.BucketPerSecond = 1
+	cfg.Rates.BucketBurst = 2
+	h := newHarness(t, cfg)
+	want := map[string]string{
+		"Referrer-Policy":              "no-referrer",
+		"Cache-Control":                "no-store",
+		"X-Robots-Tag":                 "noindex, nofollow",
+		"X-Content-Type-Options":       "nosniff",
+		"Cross-Origin-Opener-Policy":   "same-origin",
+		"Cross-Origin-Resource-Policy": "same-origin",
+		"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
+		"Permissions-Policy":           "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+	}
+	check := func(name string, resp *http.Response, status int) {
+		t.Helper()
+		if resp.StatusCode != status {
+			t.Fatalf("%s: status %d, want %d", name, resp.StatusCode, status)
+		}
+		for k, v := range want {
+			if resp.Header.Get(k) != v {
+				t.Fatalf("%s: %s = %q", name, k, resp.Header.Get(k))
+			}
+		}
+	}
+	resp, _ := h.do(request{method: "GET", path: "/"})
+	check("page", resp, 200)
+	if !strings.Contains(resp.Header.Get("Content-Security-Policy"), "'nonce-") {
+		t.Fatal("CSP missing on /")
+	}
+	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
+	check("sec-purpose", resp, 503)
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: []byte("x")})
+	check("create-400", resp, 400)
+	h.do(request{method: "GET", path: "/api/v1/instance"})
+	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance"})
+	check("throttled", resp, 429)
+}
+
+func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
+	h := newHarness(t, baseConfig(pepperA, nil))
+	addr := h.listen()
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
+	var reused []bool
+	trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused = append(reused, info.Reused) }}
+	send := func(method, path string) *http.Response {
+		r, _ := http.NewRequestWithContext(httptrace.WithClientTrace(t.Context(), trace), method, "http://"+addr+path, nil)
+		resp, err := client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp
+	}
+	if resp := send("POST", "/api/v1/messages"); resp.StatusCode != 400 || resp.ProtoMajor != 2 {
+		t.Fatalf("rejected create over h2c: %d HTTP/%d", resp.StatusCode, resp.ProtoMajor)
+	}
+	if resp := send("GET", "/healthz"); resp.StatusCode != 200 || resp.ProtoMajor != 2 {
+		t.Fatalf("follow-up over h2c: %d HTTP/%d", resp.StatusCode, resp.ProtoMajor)
+	}
+	if len(reused) != 2 || !reused[1] {
+		t.Fatalf("a rejected create closed the shared h2c connection: %v", reused)
+	}
+}
+
+func TestConfigBounds(t *testing.T) {
+	base := map[string]string{"NYLZO_PEPPER": strings.Repeat("0123456789abcdef", 4)}
+	with := func(k, v string) func(string) string {
+		return func(key string) string {
+			if key == k {
+				return v
+			}
+			return base[key]
+		}
+	}
+	for name, env := range map[string]func(string) string{
+		"max-ttl-over-7d":      with("NYLZO_MAX_TTL", "169h"),
+		"max-ttl-over-7d-sec":  with("NYLZO_MAX_TTL", "604801"),
+		"default-ttl-under-60": with("NYLZO_DEFAULT_TTL", "59"),
+		"pow-concurrency-17":   with("NYLZO_POW_CONCURRENCY", "17"),
+		"ip-scope-removed":     with("NYLZO_PASSPHRASE_IP_SCOPE", "on"),
+		"max-opens-above-100":  with("NYLZO_MAX_OPENS", "101"),
+		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
+		"default-kdf-none":     with("NYLZO_DEFAULT_KDF", "0"),
+		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
+		"source-rps-nan":       with("NYLZO_RATE_SOURCE_RPS", "NaN"),
+		"source-burst-inf":     with("NYLZO_RATE_SOURCE_BURST", "+Inf"),
+		"source-burst-half":    with("NYLZO_RATE_SOURCE_BURST", "0.5"),
+		"bucket-burst-half":    with("NYLZO_RATE_BUCKET_BURST", "0.5"),
+	} {
+		if _, err := server.FromEnv(env, true); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	cfg, err := server.FromEnv(with("NYLZO_MAX_TTL", "604800"), true)
+	if err != nil || cfg.Limits.MaxTTL != store.TombstoneTTL {
+		t.Fatalf("max ttl of 7 days: %v %v", err, cfg.Limits.MaxTTL)
+	}
+}
+
+func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
+	if got := server.Defaults().Limits.MaxObjectBytes; got != 5373983 {
+		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
+	}
+	h := newHarness(t, baseConfig(pepperA, nil))
+	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+	limits := decodeJSON(t, body)["limits"].(map[string]any)
+	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
+		t.Fatalf("instance reports %v", limits)
 	}
 }

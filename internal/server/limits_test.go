@@ -1,9 +1,11 @@
 package server_test
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net/http"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -346,5 +348,223 @@ func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
 	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
 	if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") != "60" {
 		t.Fatalf("prefetch: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+}
+
+func TestPoWRejectsForgedAndMalformedTokens(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 2
+	cfg.PoWDifficulty = 1
+	h := newHarness(t, cfg)
+	first := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	first.ip = "203.0.113.1"
+	h.mustCreate(first)
+	forge := func(issued time.Time) string {
+		chal := make([]byte, 36)
+		binary.BigEndian.PutUint32(chal, uint32(issued.Unix()))
+		return core.Encode(chal)
+	}
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "forged")
+	m.ip = "203.0.113.2"
+	zeroTag, err := server.SolvePoW(forge(h.clock.Now()), m.id, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tokens := map[string]string{"no-dot": "abc", "short-counter": forge(h.clock.Now()) + ".00", "zero-tag": zeroTag}
+	for name, token := range tokens {
+		resp, body := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": m.createHeader(0), "X-Nylzo-Pow": token}})
+		if resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "pow" {
+			t.Fatalf("%s: %d %s", name, resp.StatusCode, body)
+		}
+	}
+}
+
+func TestPoWTokenIsSingleUse(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.GlobalDailyCreates = 4
+	cfg.PoWDifficulty = 1
+	h := newHarness(t, cfg)
+	for i := range 2 {
+		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+		m.ip = fmt.Sprintf("203.0.113.%d", i+1)
+		h.mustCreate(m)
+	}
+	solve := func(m *message) string {
+		_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+		token, err := server.SolvePoW(decodeJSON(t, body)["pow"].(map[string]any)["challenge"].(string), m.id, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
+	m.ip = "203.0.113.9"
+	token := solve(m)
+	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = publicKey(core.NewSecret()) })
+	send := func(header, pow string) int {
+		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow}})
+		return resp.StatusCode
+	}
+	if code := send(badHeader, token); code != 400 {
+		t.Fatalf("first use with a mismatched body: %d", code)
+	}
+	if code := send(m.createHeader(0), token); code != 403 {
+		t.Fatalf("replayed token: %d", code)
+	}
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 2 {
+		t.Fatalf("failed and replayed creates moved the global counter: %+v", c)
+	}
+	other := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
+	other.ip = "203.0.113.10"
+	challenge, _, _ := strings.Cut(token, ".")
+	reuse, err := server.SolvePoW(challenge, other.id, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: other.object, ip: other.ip, headers: map[string]string{"X-Nylzo-Create": other.createHeader(0), "X-Nylzo-Pow": reuse}}); resp.StatusCode != 403 {
+		t.Fatalf("a second token for a used challenge: %d", resp.StatusCode)
+	}
+	if code := send(m.createHeader(0), solve(m)); code != 201 {
+		t.Fatalf("fresh challenge: %d", code)
+	}
+}
+
+func TestCreateBytesPerDayLimit(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	h := newHarness(t, cfg)
+	probe := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	cfg.Rates.CreateBytesPerDay = int64(2*len(probe.object) + 1)
+	h.reopen(cfg)
+	for range 2 {
+		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+		m.ip = "203.0.113.5"
+		h.mustCreate(m)
+	}
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	m.ip = "203.0.113.5"
+	if resp, _ := h.create(m); resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("third create over the daily byte limit: %d", resp.StatusCode)
+	}
+}
+
+func TestReadRateLimitCountsBlob(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.ReadPerHour = 2
+	h := newHarness(t, cfg)
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	m.ip = "203.0.113.5"
+	h.mustCreate(m)
+	resp, _ := h.claim(m, "", "")
+	if resp.StatusCode != 200 {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	if resp, _ := h.blob(m, lease); resp.StatusCode != 200 {
+		t.Fatalf("first download: %d", resp.StatusCode)
+	}
+	if resp, _ := h.blob(m, lease); resp.StatusCode != 429 {
+		t.Fatalf("second download over the read limit: %d", resp.StatusCode)
+	}
+}
+
+func TestSourceLimiterIsolatesClients(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.SourcePerSecond = 1
+	cfg.Rates.SourceBurst = 2
+	h := newHarness(t, cfg)
+	get := func(ip string) int {
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: ip})
+		return resp.StatusCode
+	}
+	if codes := []int{get("203.0.113.1"), get("203.0.113.1"), get("203.0.113.1")}; !slices.Equal(codes, []int{200, 200, 429}) {
+		t.Fatalf("one source must be limited after its burst: %v", codes)
+	}
+	if get("2001:db8:1:1::1") != 200 || get("2001:db8:1:1::2") != 200 || get("2001:db8:1:1::3") != 429 {
+		t.Fatal("addresses in one /64 must share a bucket")
+	}
+	if get("203.0.113.2") != 200 {
+		t.Fatal("a busy source must not throttle other clients")
+	}
+	if resp, _ := h.do(request{method: "GET", path: "/healthz", ip: "203.0.113.1"}); resp.StatusCode != 200 {
+		t.Fatal("non-API paths are not throttled")
+	}
+	h.clock.Advance(time.Second)
+	if get("203.0.113.1") != 200 {
+		t.Fatal("the source bucket did not refill")
+	}
+}
+
+func TestMalformedIDsDoNotSpendReadLimit(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.ReadPerHour = 1
+	h := newHarness(t, cfg)
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	m.ip = "203.0.113.5"
+	h.mustCreate(m)
+	for _, path := range []string{"/api/v1/messages/short", "/api/v1/messages/short/claim", "/api/v1/messages/short/blob"} {
+		method := "GET"
+		if strings.HasSuffix(path, "/claim") {
+			method = "POST"
+		}
+		if resp, _ := h.do(request{method: method, path: path, ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken}}); resp.StatusCode != 404 {
+			t.Fatalf("%s %s: %d", method, path, resp.StatusCode)
+		}
+	}
+	if resp, _ := h.metadata(m); resp.StatusCode != 200 {
+		t.Fatalf("malformed ids spent the read limit: %d", resp.StatusCode)
+	}
+}
+
+func TestRefusedSourceTakesNoInstanceToken(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1, 1
+	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 1, 3
+	h := newHarness(t, cfg)
+	get := func(ip string) int {
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: ip})
+		return resp.StatusCode
+	}
+	if get("203.0.113.1") != 200 {
+		t.Fatal("first request")
+	}
+	for range 5 {
+		if get("203.0.113.1") != 429 {
+			t.Fatal("source not limited")
+		}
+	}
+	if get("198.51.100.2") != 200 || get("192.0.2.3") != 200 {
+		t.Fatal("a refused source drained the instance bucket")
+	}
+}
+
+func TestPrefixTierLimitsOneRange(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 10, 10
+	h := newHarness(t, cfg)
+	codes := []int{}
+	for i := range 8 {
+		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:1:%x::1", i)})
+		codes = append(codes, resp.StatusCode)
+	}
+	if codes[4] != 200 || codes[5] != 429 || codes[7] != 429 {
+		t.Fatalf("one /48 must get at most half of the instance bucket: %v", codes)
+	}
+	if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: "2001:db8:2::1"}); resp.StatusCode != 200 {
+		t.Fatal("another /48 was throttled")
+	}
+}
+
+func TestRefusedPrefixTakesNoInstanceToken(t *testing.T) {
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 10, 10
+	h := newHarness(t, cfg)
+	for i := range 20 {
+		h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:1:%x::1", i)})
+	}
+	for i := range 5 {
+		if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:%x::1", i+2)}); resp.StatusCode != 200 {
+			t.Fatalf("a refused /48 drained the instance bucket: request %d got %d", i, resp.StatusCode)
+		}
 	}
 }

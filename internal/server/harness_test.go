@@ -716,3 +716,26 @@ func (h *harness) abuseReports() ([]byte, error) {
 	}
 	return all, nil
 }
+
+func (h *harness) post(m *message, action, token string) (*http.Response, []byte) {
+	h.t.Helper()
+	return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/" + action, headers: map[string]string{"Authorization": "Bearer " + token}})
+}
+
+func mutateHeader(t *testing.T, m *message, f func(map[string]any)) string {
+	t.Helper()
+	data, err := base64.RawURLEncoding.DecodeString(m.createHeader(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	f(fields)
+	out, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return core.Encode(out)
+}
