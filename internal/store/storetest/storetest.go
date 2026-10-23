@@ -44,6 +44,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("ReconcileContinuesPastErrors", func(t *testing.T) { testReconcileErrors(t, open) })
 	t.Run("SweepSurvivesBlobErrors", func(t *testing.T) { testSweepSurvivesBlobErrors(t, open) })
 	t.Run("SweepPagesPastFailures", func(t *testing.T) { testSweepPagesPastFailures(t, open) })
+	t.Run("SweepEndsAnExpiredPageTogether", func(t *testing.T) { testSweepEndsAPageTogether(t, open) })
 	t.Run("AK6BlobStaysWhileOpensRemain", func(t *testing.T) { testBlobStays(t, open) })
 	t.Run("AK7Expiry", func(t *testing.T) { testExpiry(t, open) })
 	t.Run("BurnAndCancel", func(t *testing.T) { testBurnCancel(t, open) })
@@ -53,6 +54,7 @@ func Run(t *testing.T, open Factory) {
 	t.Run("RateHitStopsAtFirstRefusal", func(t *testing.T) { testRateHitOrder(t, open) })
 	t.Run("SweepBatches", func(t *testing.T) { testSweepBatches(t, open) })
 	t.Run("BlobsIdempotentDelete", func(t *testing.T) { testBlobsDelete(t, open) })
+	t.Run("BlobsDeleteBatch", func(t *testing.T) { testBlobsDeleteBatch(t, open) })
 	t.Run("StaleLeaseLeavesOtherMessages", func(t *testing.T) { testStaleLease(t, open) })
 	t.Run("RecordedEndingFinishedAfterExpiry", func(t *testing.T) { testRecordedEndingFinishedAfterExpiry(t, open) })
 }
@@ -486,8 +488,9 @@ func (b *failingBlobs) failOnce(ref string) {
 	b.mu.Unlock()
 }
 
-func (b *failingBlobs) Delete(ctx context.Context, ref string) error {
+func (b *failingBlobs) failing(ref string) bool {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.attempts[ref]++
 	n, ok := b.fail[ref]
 	if ok && n > 0 {
@@ -497,11 +500,32 @@ func (b *failingBlobs) Delete(ctx context.Context, ref string) error {
 			b.fail[ref] = n - 1
 		}
 	}
-	b.mu.Unlock()
-	if ok {
+	return ok
+}
+
+func (b *failingBlobs) Delete(ctx context.Context, ref string) error {
+	if b.failing(ref) {
 		return errDisk
 	}
 	return b.Blobs.Delete(ctx, ref)
+}
+
+func (b *failingBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
+	errs := make([]error, len(refs))
+	var pass []string
+	var at []int
+	for i, ref := range refs {
+		if b.failing(ref) {
+			errs[i] = errDisk
+			continue
+		}
+		pass = append(pass, ref)
+		at = append(at, i)
+	}
+	for j, err := range b.Blobs.DeleteBatch(ctx, pass) {
+		errs[at[j]] = err
+	}
+	return errs
 }
 
 func (f *fixture) createRow(ttl time.Duration) *store.Message {
@@ -830,6 +854,64 @@ func testSweepPagesPastFailures(t *testing.T, open Factory) {
 	}
 }
 
+type pageBlobs struct {
+	store.Blobs
+	f       *fixture
+	batches int
+	deletes int
+	refs    []string
+	early   []string
+}
+
+func (b *pageBlobs) Delete(ctx context.Context, ref string) error {
+	b.deletes++
+	return b.Blobs.Delete(ctx, ref)
+}
+
+func (b *pageBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
+	b.batches++
+	b.refs = append(b.refs, refs...)
+	for _, ref := range refs {
+		if rec, err := b.f.s.Get(ctx, ref); err != nil || rec.Message == nil {
+			b.early = append(b.early, ref)
+		}
+	}
+	return b.Blobs.DeleteBatch(ctx, refs)
+}
+
+func testSweepEndsAPageTogether(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	unspent := f.create(2, time.Minute, false)
+	spent := f.create(1, time.Minute, false)
+	if _, err := f.claim(spent, baseTime, 1, false, false); err != nil {
+		t.Fatal(err)
+	}
+	burned := f.create(1, time.Minute, false)
+	if _, _, _, err := f.s.MarkEnding(f.ctx, burned.ID, store.StateDeleted, baseTime); err != nil {
+		t.Fatal(err)
+	}
+	live := f.create(1, time.Hour, false)
+	pb := &pageBlobs{Blobs: f.b, f: f}
+	report, err := store.SweepAll(f.ctx, f.s, pb, baseTime.Add(2*time.Minute))
+	if err != nil || report.Expired != 3 {
+		t.Fatalf("sweep: %+v %v", report, err)
+	}
+	if pb.batches != 1 || len(pb.refs) != 3 || pb.deletes != 0 {
+		t.Fatalf("an expired page must be deleted in one batch: %d batches, %d refs, %d single deletes", pb.batches, len(pb.refs), pb.deletes)
+	}
+	if len(pb.early) != 0 {
+		t.Fatalf("rows ended before their blobs were deleted: %v", pb.early)
+	}
+	for m, want := range map[*store.Message]store.State{unspent: store.StateExpired, spent: store.StateOpened, burned: store.StateDeleted} {
+		if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != want || !rec.Tombstone.EndedAt.Equal(m.ExpiresAt) || f.blobExists(m.ID) {
+			t.Fatalf("want a %s tombstone ended at expiry and no blob: %+v", want, rec.Tombstone)
+		}
+	}
+	if rec := f.get(live.ID); rec.Message == nil || !f.blobExists(live.ID) {
+		t.Fatal("the sweep ended a live message")
+	}
+}
+
 func testBlobStays(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(2, time.Hour, false)
@@ -1113,6 +1195,26 @@ func testBlobsDelete(t *testing.T, open Factory) {
 	}
 	if !found {
 		t.Fatal("a ref with path characters must be stored inside the blob store")
+	}
+}
+
+func testBlobsDeleteBatch(t *testing.T, open Factory) {
+	f := newFixture(t, open)
+	first, second, kept := core.NewID().String(), core.NewID().String(), core.NewID().String()
+	for _, ref := range []string{first, second, kept} {
+		if err := f.b.Put(f.ctx, ref, strings.NewReader("x"), 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	errs := f.b.DeleteBatch(f.ctx, []string{first, core.NewID().String(), "", second})
+	if len(errs) != 4 || errs[0] != nil || errs[1] != nil || errs[2] == nil || errs[3] != nil {
+		t.Fatalf("one error per ref, a missing object counts as deleted and an invalid ref fails alone: %v", errs)
+	}
+	if f.blobExists(first) || f.blobExists(second) || !f.blobExists(kept) {
+		t.Fatal("the batch deleted the wrong objects")
+	}
+	if errs := f.b.DeleteBatch(f.ctx, nil); len(errs) != 0 {
+		t.Fatalf("an empty batch: %v", errs)
 	}
 }
 

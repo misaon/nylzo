@@ -16,11 +16,12 @@ import (
 )
 
 func TestAK1CreateCarriesNoSecrets(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFPBKDF2, "tajná fráze", 1, 3600, "plaintext secret body")
 	h.mustCreate(m)
 	captured := h.lastCreateRequest()
-	if !strings.Contains(string(captured), "X-Nylzo-Create: "+m.createHeader(0)) || !strings.Contains(string(captured), string(m.object)) {
+	if !strings.Contains(string(captured), "X-Nylzo-Create: "+h.withIDToken(m.createHeader(0))) || !strings.Contains(string(captured), string(m.object)) {
 		t.Fatal("wire capture missing the create request")
 	}
 	p, err := core.DerivePassphraseKey(m.kdf, "tajná fráze", &m.link.SaltPW)
@@ -50,6 +51,7 @@ func contains(haystack, needle []byte) bool {
 }
 
 func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "hello")
 	h.mustCreate(m)
@@ -128,6 +130,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 }
 
 func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
@@ -152,6 +155,7 @@ func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
 }
 
 func TestAK5PassphrasePolicyHTTP(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
@@ -225,6 +229,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 }
 
 func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
@@ -287,6 +292,7 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 }
 
 func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "one")
 	h.mustCreate(m)
@@ -310,6 +316,7 @@ func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
 }
 
 func TestAK6SweepAfterRestart(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 86400, "restart")
 	h.mustCreate(m)
@@ -331,6 +338,7 @@ func TestAK6SweepAfterRestart(t *testing.T) {
 }
 
 func TestAK7ExpiryLazyAndSweep(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 60, "short")
 	h.mustCreate(m)
@@ -365,6 +373,7 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 }
 
 func TestAK11LogsContainNoSecrets(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFScrypt, "log fráze", 1, 3600, "logged text")
 	m.ip = "203.0.113.55"
@@ -381,7 +390,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 	codes = append(codes, resp.StatusCode, h.ack(m, lease).StatusCode)
 	resp, _ = h.status(m)
 	codes = append(codes, resp.StatusCode)
-	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", headers: map[string]string{"Authorization": "Bearer " + m.manageTok}})
+	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", token: m.manageTok})
 	codes = append(codes, resp.StatusCode)
 	resp, _ = h.do(request{method: "GET", path: "/m/" + m.id.String()})
 	codes = append(codes, resp.StatusCode)
@@ -410,6 +419,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 }
 
 func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "ack")
 	h.mustCreate(m)
@@ -425,7 +435,7 @@ func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
 		t.Fatal("an ack with a foreign lease deleted the blob")
 	}
 	h.clock.Advance(store.LeaseDuration + time.Minute)
-	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, headers: map[string]string{"Authorization": "Bearer " + m.readToken, "X-Nylzo-Lease": lease}})
+	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
 	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "opened" {
 		t.Fatalf("an ack after the lease ended: %d %s", resp.StatusCode, body)
 	}

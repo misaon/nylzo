@@ -97,7 +97,7 @@ func open(cfg server.Config) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, nil, err
 	}
-	st, err := sqlite.Open(filepath.Join(cfg.DataDir, dbFile))
+	st, err := sqlite.Open(context.Background(), filepath.Join(cfg.DataDir, dbFile))
 	if err != nil {
 		return nil, nil, err
 	}

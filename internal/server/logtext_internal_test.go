@@ -14,6 +14,7 @@ import (
 )
 
 func TestErrorTextDropsPathsAndIDs(t *testing.T) {
+	t.Parallel()
 	id := core.NewID()
 	fileName := hex.EncodeToString([]byte(id.String()))
 	hexPath := "/data/blobs/" + fileName
@@ -37,6 +38,7 @@ func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 }
 
 func TestSpentChallengesStayBounded(t *testing.T) {
+	t.Parallel()
 	c := newSpentChallenges()
 	c.max = 64
 	for i := range c.max {
