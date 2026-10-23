@@ -5,6 +5,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"database/sql"
+	sqldriver "database/sql/driver"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -99,13 +100,29 @@ func revealingCounter(row string) string {
 
 const (
 	readerConns   = 8
-	openAttempts  = 10
+	openRetryFor  = 10 * time.Second
 	openBackoff   = 20 * time.Millisecond
-	openFastFail  = 200 * time.Millisecond
+	openMaxWait   = 200 * time.Millisecond
 	schemaVersion = 4
 	maxCacheKiB   = 512
+	busyMS        = 5000
+	checkpointMS  = 250
 	minLeaseRowID = 1 << 32
 )
+
+func requireCurrent(ctx context.Context, db *sql.DB) error {
+	var version int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		return err
+	}
+	switch {
+	case version > schemaVersion:
+		return fmt.Errorf("%w: version %d, this build knows %d", ErrNewerSchema, version, schemaVersion)
+	case version < schemaVersion:
+		return fmt.Errorf("%w: version %d, this build needs %d", ErrOlderSchema, version, schemaVersion)
+	}
+	return nil
+}
 
 func migrate(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
@@ -183,7 +200,10 @@ func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
 	return tx.Commit()
 }
 
-var ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzod")
+var (
+	ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzod")
+	ErrOlderSchema = errors.New("sqlite: the database has an older schema; start nylzod serve to migrate it")
+)
 
 func dropPerAddressAttempts(ctx context.Context, tx *sql.Tx) error {
 	columns := map[string]bool{}
@@ -308,7 +328,7 @@ func dsn(path string, write bool) string {
 	if write {
 		q.Set("_txlock", "immediate")
 	}
-	q.Set("_busy_timeout", "5000")
+	q.Set("_busy_timeout", fmt.Sprint(busyMS))
 	q.Set("_journal_mode", "WAL")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(FULL)")
@@ -316,10 +336,19 @@ func dsn(path string, write bool) string {
 	q.Add("_pragma", "journal_size_limit(0)")
 	q.Add("_pragma", "wal_autocheckpoint(1)")
 	q.Add("_pragma", fmt.Sprintf("cache_size(-%d)", maxCacheKiB))
+	q.Add("_pragma", "temp_store(2)")
 	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + q.Encode()
 }
 
 func Open(ctx context.Context, path string) (*Store, error) {
+	return openWith(ctx, path, migrate)
+}
+
+func OpenCurrent(ctx context.Context, path string) (*Store, error) {
+	return openWith(ctx, path, requireCurrent)
+}
+
+func openWith(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -328,16 +357,16 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, err
 	}
 	f.Close()
+	deadline := time.Now().Add(openRetryFor)
 	for attempt := 1; ; attempt++ {
-		start := time.Now()
-		s, err := open(ctx, path)
-		if err == nil || !busy(err) || attempt == openAttempts || time.Since(start) > openFastFail {
+		s, err := open(ctx, path, prepareSchema)
+		if err == nil || !busy(err) || time.Now().After(deadline) {
 			return s, err
 		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-time.After(time.Duration(attempt)*openBackoff + rand.N(openBackoff)):
+		case <-time.After(min(time.Duration(attempt)*openBackoff, openMaxWait) + rand.N(openBackoff)):
 		}
 	}
 }
@@ -347,15 +376,15 @@ func busy(err error) bool {
 	return errors.As(err, &e) && e.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
-func open(ctx context.Context, path string) (*Store, error) {
+func open(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {
 	w, err := sql.Open("sqlite", dsn(path, true))
 	if err != nil {
 		return nil, err
 	}
 	w.SetMaxOpenConns(1)
-	if err := migrate(ctx, w); err != nil {
+	if err := prepareSchema(ctx, w); err != nil {
 		w.Close()
-		return nil, fmt.Errorf("sqlite: migrate: %w", err)
+		return nil, fmt.Errorf("sqlite: schema: %w", err)
 	}
 	r, err := sql.Open("sqlite", dsn(path, false))
 	if err != nil {
@@ -658,7 +687,7 @@ func (s *Store) Ack(ctx context.Context, l store.Lease, now time.Time) (string, 
 		var ending sql.NullString
 		err := tx.QueryRowContext(ctx, `SELECT m.ending FROM leases l JOIN messages m ON m.id = l.id WHERE l.row_id = ? AND l.id = ? AND l.lease_mac = ?`, l.RowID, l.ID, l.MAC).Scan(&ending)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil
+			return store.ErrLeaseInvalid
 		}
 		if err != nil {
 			return err
@@ -973,15 +1002,36 @@ func (s *Store) purge(ctx context.Context, query string, now time.Time, limit in
 	return int(n), err
 }
 
-func (s *Store) Checkpoint(ctx context.Context) error {
+func (s *Store) Checkpoint(ctx context.Context) (err error) {
+	conn, err := s.w.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, fmt.Sprintf(`PRAGMA busy_timeout = %d`, checkpointMS)); err != nil {
+		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
+	}
+	defer func() {
+		if _, rerr := conn.ExecContext(context.WithoutCancel(ctx), fmt.Sprintf(`PRAGMA busy_timeout = %d`, busyMS)); rerr != nil {
+			discarded := conn.Raw(func(any) error { return sqldriver.ErrBadConn })
+			err = errors.Join(err, fmt.Errorf("sqlite: wal checkpoint: %w", rerr), ignoreBadConn(discarded))
+		}
+	}()
 	var blocked, frames, moved int
-	if err := s.w.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved); err != nil {
+	if err := conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved); err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
 	if blocked != 0 {
 		return ErrCheckpointBusy
 	}
 	return nil
+}
+
+func ignoreBadConn(err error) error {
+	if errors.Is(err, sqldriver.ErrBadConn) {
+		return nil
+	}
+	return err
 }
 
 var ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish because a reader held the log")

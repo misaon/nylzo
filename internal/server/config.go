@@ -61,6 +61,7 @@ type Config struct {
 	PoWDifficulty  int
 	PoWConcurrency int
 	MaxStreams     int
+	MinFreeBytes   int64
 	Version        string
 }
 
@@ -92,6 +93,7 @@ func Defaults() Config {
 		PoWDifficulty:  4,
 		PoWConcurrency: 4,
 		MaxStreams:     64,
+		MinFreeBytes:   1 << 30,
 		Version:        "dev",
 	}
 }
@@ -197,6 +199,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_POW_DIFFICULTY", func(v string) error { return parseInt(v, &c.PoWDifficulty) })
 	set("NYLZO_POW_CONCURRENCY", func(v string) error { return parseInt(v, &c.PoWConcurrency) })
 	set("NYLZO_MAX_STREAMS", func(v string) error { return parseInt(v, &c.MaxStreams) })
+	set("NYLZO_MIN_FREE_BYTES", func(v string) error { return parseInt64(v, &c.MinFreeBytes) })
 	if err != nil {
 		return c, err
 	}
@@ -266,6 +269,8 @@ func (c Config) Validate() error {
 		{fmt.Sprintf("NYLZO_POW_CONCURRENCY must be between 1 and %d", MaxPoWConcurrency), c.PoWConcurrency >= 1 && c.PoWConcurrency <= MaxPoWConcurrency},
 		{fmt.Sprintf("NYLZO_MAX_STREAMS must be between 1 and %d", MaxStreams), c.MaxStreams >= 1 && c.MaxStreams <= MaxStreams},
 		{"NYLZO_SWEEP_INTERVAL must not be negative", c.SweepInterval >= 0},
+		{"NYLZO_MIN_FREE_BYTES must not be negative", c.MinFreeBytes >= 0},
+		{"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzod cannot measure free space", c.MinFreeBytes == 0 || freeSpaceSupported},
 		{"NYLZO_PROXY_MODE must be empty or scaleway", c.ProxyMode == ProxyModeNone || c.ProxyMode == ProxyModeScaleway},
 		{"NYLZO_RATE_BUCKET_RPS and NYLZO_RATE_SOURCE_RPS must be positive", r.BucketPerSecond > 0 && r.SourcePerSecond > 0},
 		{"NYLZO_RATE_BUCKET_BURST must be at least 1", r.BucketBurst >= 1},

@@ -317,6 +317,39 @@ func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
 	}
 }
 
+type ackRacingStore struct {
+	store.Store
+	race func(id string)
+}
+
+func (s *ackRacingStore) Ack(ctx context.Context, l store.Lease, now time.Time) (string, error) {
+	s.race(l.ID)
+	return s.Store.Ack(ctx, l, now)
+}
+
+func TestAckAfterAConcurrentBurnAnswersGone(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, baseConfig(pepperA, nil))
+	m := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+	h.mustCreate(m)
+	resp, _ := h.claim(m, "", "")
+	lease := resp.Header.Get("X-Nylzo-Lease")
+	if resp.StatusCode != 200 || lease == "" {
+		t.Fatalf("claim: %d", resp.StatusCode)
+	}
+	inner, blobs := h.store, h.blobs
+	h.store = &ackRacingStore{Store: inner, race: func(id string) {
+		if _, err := store.EndMessage(context.Background(), inner, blobs, id, store.StateDeleted, h.clock.Now()); err != nil {
+			t.Error(err)
+		}
+	}}
+	h.reopen(h.cfg)
+	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "deleted" {
+		t.Fatalf("ack after a burn removed its lease: %d %s", resp.StatusCode, body)
+	}
+}
+
 type failingEndStore struct {
 	store.Store
 }

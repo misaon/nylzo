@@ -22,6 +22,10 @@ func TestPageCacheIsBounded(t *testing.T) {
 		if kib >= 0 || -kib > maxCacheKiB {
 			t.Fatalf("page cache %d, want at most %d KiB per connection outside the Go heap", kib, maxCacheKiB)
 		}
+		var temp int
+		if err := db.QueryRow("PRAGMA temp_store").Scan(&temp); err != nil || temp != 2 {
+			t.Fatalf("temp_store %d %v: SQLite may write temporary copies of rows outside the data directory", temp, err)
+		}
 	}
 }
 

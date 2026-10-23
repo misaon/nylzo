@@ -289,13 +289,14 @@ func TestConfigFromEnv(t *testing.T) {
 		"NYLZO_MAX_OPENS":            "3",
 		"NYLZO_RATE_CREATE_HOUR":     "7",
 		"NYLZO_GLOBAL_DAILY_CREATES": "500",
+		"NYLZO_MIN_FREE_BYTES":       "0",
 		"PORT":                       "9090",
 	}
 	cfg, err := server.FromEnv(func(k string) string { return env[k] }, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Listen != ":9090" || len(cfg.TrustedProxies) != 2 || cfg.ProxyMode != "scaleway" || cfg.SweepInterval != 15*time.Minute || cfg.Limits.MaxTTL != 48*time.Hour || cfg.Limits.MaxOpens != 3 || cfg.Rates.CreatePerHour != 7 || cfg.Rates.GlobalDailyCreates != 500 || len(cfg.PepperPrevious) != 32 {
+	if cfg.Listen != ":9090" || len(cfg.TrustedProxies) != 2 || cfg.ProxyMode != "scaleway" || cfg.SweepInterval != 15*time.Minute || cfg.Limits.MaxTTL != 48*time.Hour || cfg.Limits.MaxOpens != 3 || cfg.Rates.CreatePerHour != 7 || cfg.Rates.GlobalDailyCreates != 500 || cfg.MinFreeBytes != 0 || len(cfg.PepperPrevious) != 32 {
 		t.Fatalf("config %+v", cfg)
 	}
 	if _, err := server.FromEnv(func(string) string { return "" }, true); err == nil {
@@ -326,6 +327,7 @@ func TestConfigFromEnv(t *testing.T) {
 		"NYLZO_MAX_TTL":          "36028797019568768",
 		"NYLZO_RATE_CREATE_HOUR": "4611686018427387905",
 		"NYLZO_MAX_STREAMS":      "0",
+		"NYLZO_MIN_FREE_BYTES":   "-1",
 		"NYLZO_POW_CONCURRENCY":  "9223372036854775807",
 		"NYLZO_DEFAULT_KDF":      "0",
 	} {

@@ -172,4 +172,24 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := cw.read.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte upload may take %v, got a read deadline %v ahead", size, want, got)
 	}
+	if got := cw.write.Sub(start); got < want+writeTimeout || got > want+writeTimeout+time.Second {
+		t.Fatalf("the response to a %d byte upload got a write deadline %v ahead, want %v after the body", size, got, want+writeTimeout)
+	}
+
+	body := append(core.NewHeader(core.KDFNone).Bytes(), make([]byte, 1000)...)
+	id = core.NewID()
+	hdr, _ = json.Marshal(map[string]any{"id": id.String(), "id_token": cs.idToken(id, cs.clock()), "read_key": core.Encode(readKey[:]), "manage_key": core.Encode(manageKey[:]), "kdf_id": 0, "opens_max": 1, "ttl_s": 60, "size": len(body)})
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
+	req.Header.Set("X-Nylzo-Create", core.Encode(hdr))
+	rec := httptest.NewRecorder()
+	cw = &deadlineWriter{ResponseWriter: rec}
+	cs.handleCreate(cw, req)
+	stored := time.Now()
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body)
+	}
+	if got := cw.write.Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
+		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
+	}
 }

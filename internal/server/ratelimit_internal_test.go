@@ -303,3 +303,52 @@ func testConcurrentSpendsShareATransaction(t *testing.T) {
 		t.Fatalf("spends written as transactions of %v", calls)
 	}
 }
+
+func TestTokenBucketRefillsAtItsRate(t *testing.T) {
+	t.Parallel()
+	l := newKeyedLimiter(1, 2)
+	var key bucket
+	now := l.base
+	for i := range 2 {
+		if !l.allow(key, now) {
+			t.Fatalf("burst token %d refused", i)
+		}
+	}
+	if l.allow(key, now.Add(500*time.Millisecond)) {
+		t.Fatal("half a second at 1 request per second refilled a whole token")
+	}
+	if !l.allow(key, now.Add(1100*time.Millisecond)) {
+		t.Fatal("one second at 1 request per second refilled nothing")
+	}
+	if l.allow(key, now.Add(1200*time.Millisecond)) {
+		t.Fatal("the bucket refilled more than its rate")
+	}
+}
+
+func TestIPv6RangeBucketCoversTheWhole48(t *testing.T) {
+	t.Parallel()
+	k := newAddrKey()
+	low, high := netip.MustParseAddr("2001:db8:1::1"), netip.MustParseAddr("2001:db8:1:ffff:ffff:ffff:ffff:ffff")
+	if k.bucket(low, true) != k.bucket(high, true) {
+		t.Fatal("the /48 range bucket splits one /48")
+	}
+	if k.bucket(low, true) == k.bucket(netip.MustParseAddr("2001:db8:0:ffff::1"), true) {
+		t.Fatal("the /48 range bucket joins two /48s")
+	}
+	if k.bucket(low, false) == k.bucket(netip.MustParseAddr("2001:db8:1:1::1"), false) || k.bucket(low, false) != k.bucket(netip.MustParseAddr("2001:db8:1:0:ffff::1"), false) {
+		t.Fatal("the source bucket is not exactly one /64")
+	}
+}
+
+func TestIDTokenFromTheFutureIsRefused(t *testing.T) {
+	t.Parallel()
+	s, _ := testServer(t, openStore(t), nil)
+	now := time.Now()
+	id := core.NewID()
+	if !s.validIDToken(id, s.idToken(id, now.Add(5*time.Second)), now) {
+		t.Fatal("a token from an instance 5 s ahead must pass")
+	}
+	if s.validIDToken(id, s.idToken(id, now.Add(time.Minute)), now) {
+		t.Fatal("a token that expires more than 605 s from now was accepted")
+	}
+}

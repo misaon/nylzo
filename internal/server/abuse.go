@@ -2,21 +2,16 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
@@ -24,16 +19,12 @@ import (
 )
 
 const (
-	abuseDirName         = "abuse"
-	abuseFileExt         = ".jsonl"
-	legacyAbuseFile      = "abuse-reports.jsonl"
-	abuseReasonRawBytes  = 1000
-	abuseReasonJSONBytes = 1200
-	abuseFileLimit       = 16 << 20
-	abuseRetention       = MaxTTL + store.TombstoneTTL
-	abusePerRange        = 3
-	abuseDecodePasses    = 3
-	maxJSONEscape        = len(`\u0000`)
+	abuseDirName    = "abuse"
+	abuseFileExt    = ".jsonl"
+	legacyAbuseFile = "abuse-reports.jsonl"
+	abuseFileLimit  = 16 << 20
+	abuseRetention  = 7 * 24 * time.Hour
+	abusePerRange   = 3
 )
 
 type abuseBody struct {
@@ -67,7 +58,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, r, err)
 		return
 	}
-	if ok {
+	if ok && a.rec.Message != nil && !ended(a.rec.Message, now) {
 		err := s.recordAbuse(ctx, now, id.String(), body.Reason)
 		if errors.Is(err, errAbuseFull) {
 			s.log.Error("abuse-file-full")
@@ -82,53 +73,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
-var (
-	percentEscape = regexp.MustCompile(`%[0-9A-Fa-f]{2}`)
-	linkFragment  = regexp.MustCompile(`#\S*`)
-	tokenRun      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(core.IDLen)))
-	errAbuseFull  = errors.New("server: abuse report files reached their size limit")
-)
-
-func percentDecode(text string) string {
-	for range abuseDecodePasses {
-		decoded := percentEscape.ReplaceAllStringFunc(text, func(esc string) string {
-			b, _ := hex.DecodeString(esc[1:])
-			return string(b)
-		})
-		if decoded == text {
-			break
-		}
-		text = decoded
-	}
-	return strings.ToValidUTF8(text, "")
-}
-
-func visibleRune(r rune) rune {
-	switch {
-	case unicode.Is(unicode.Cf, r):
-		return -1
-	case unicode.IsControl(r):
-		return ' '
-	}
-	return r
-}
-
-func redactReason(reason string) string {
-	reason = strings.Map(visibleRune, percentDecode(reason))
-	reason = linkFragment.ReplaceAllString(reason, "[redacted]")
-	reason = tokenRun.ReplaceAllString(reason, "[redacted]")
-	if len(reason) > abuseReasonRawBytes {
-		reason = strings.ToValidUTF8(reason[:abuseReasonRawBytes], "")
-	}
-	for {
-		encoded, _ := json.Marshal(reason)
-		if len(encoded) <= abuseReasonJSONBytes {
-			return reason
-		}
-		runes := []rune(reason)
-		reason = string(runes[:len(runes)-max(1, (len(encoded)-abuseReasonJSONBytes)/maxJSONEscape)])
-	}
-}
+var errAbuseFull = errors.New("server: abuse report files reached their size limit")
 
 func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reason string) error {
 	d := dayWindow(now)
@@ -147,7 +92,7 @@ func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reas
 }
 
 func (s *Server) appendAbuse(now time.Time, id, reason string) error {
-	line, err := json.Marshal(map[string]string{"date": reportDate(now), "id": id, "reason": redactReason(reason)})
+	line, err := json.Marshal(map[string]string{"date": reportDate(now), "id": id, "reason": core.RedactReason(reason)})
 	if err != nil {
 		return err
 	}
@@ -166,12 +111,20 @@ func (s *Server) appendAbuse(now time.Time, id, reason string) error {
 	if used+int64(len(line))+1 > abuseFileLimit {
 		return errAbuseFull
 	}
-	f, err := os.OpenFile(filepath.Join(s.abuseDir, reportDate(now)+abuseFileExt), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	path := filepath.Join(s.abuseDir, reportDate(now)+abuseFileExt)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
 	_, err = f.Write(append(line, '\n'))
-	return errors.Join(err, f.Sync(), f.Close())
+	if err = errors.Join(err, f.Sync(), f.Close()); err != nil {
+		return err
+	}
+	day := dayWindow(now).start
+	if err := errors.Join(os.Chtimes(path, day, day), os.Chtimes(s.abuseDir, day, day)); err != nil {
+		s.log.Error("abuse-times", "err", ErrorText(err))
+	}
+	return nil
 }
 
 func reportDate(t time.Time) string {
@@ -224,7 +177,7 @@ func pruneAbuse(dir string, now time.Time) error {
 		errs = append(errs, err)
 	}
 	for _, e := range entries {
-		if day, ok := abuseDay(e.Name()); ok && day < reportDate(cutoff) {
+		if day, ok := abuseDay(e.Name()); ok && day <= reportDate(cutoff) {
 			errs = append(errs, removeReport(filepath.Join(dir, e.Name())))
 		}
 	}

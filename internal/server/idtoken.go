@@ -40,5 +40,5 @@ func (s *Server) validIDToken(id core.ID, token string, now time.Time) bool {
 	}
 	tagOK := hmac.Equal(s.idTokenTag(id, raw[:4]), raw[4:])
 	left := int64(binary.BigEndian.Uint32(raw[:4])) - now.Unix()
-	return tagOK && left >= 0 && left <= int64((idTokenTTL+powClockSkew)/time.Second)
+	return tagOK && left >= 0 && left <= int64((idTokenTTL+clockSkew)/time.Second)
 }

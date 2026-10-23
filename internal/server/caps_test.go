@@ -2,9 +2,12 @@ package server_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -215,5 +218,58 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 	}
 	if resp, _ := h.metadata(m); resp.StatusCode != 404 {
 		t.Fatalf("a refused create stored a row: %d", resp.StatusCode)
+	}
+}
+
+func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, baseConfig(pepperA, nil))
+	live := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	h.mustCreate(live)
+	free := uint64(1<<30 - 1)
+	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return free, nil })
+	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
+	before, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day)
+	for i := range 2 {
+		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+		m.ip = fmt.Sprintf("198.51.100.%d", i+1)
+		if resp, _ := h.create(m); resp.StatusCode != 503 || resp.Header.Get("Retry-After") != "60" {
+			t.Fatalf("create on a nearly full disk: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+		}
+	}
+	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != before.Count {
+		t.Fatalf("a create refused for disk space took a global slot: %d, before %d", c.Count, before.Count)
+	}
+	if resp, _ := h.post(live, "burn", live.readToken); resp.StatusCode != 204 {
+		t.Fatalf("burn on a nearly full disk: %d", resp.StatusCode)
+	}
+	if n := strings.Count(h.logBuf.String(), `"msg":"disk-full"`); n != 1 {
+		t.Fatalf("logged disk-full %d times, want once per change", n)
+	}
+	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return math.MaxUint64, errors.New("statfs failed") })
+	m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	m.ip = "198.51.100.9"
+	if resp, _ := h.create(m); resp.StatusCode != 503 {
+		t.Fatalf("create when free space cannot be measured: %d", resp.StatusCode)
+	}
+	free = 1 << 30
+	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return free, nil })
+	m = newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	m.ip = "198.51.100.10"
+	if resp, _ := h.create(m); resp.StatusCode != 201 {
+		t.Fatalf("create with enough space: %d", resp.StatusCode)
+	}
+	if n := strings.Count(h.logBuf.String(), `"msg":"disk-free-again"`); n != 1 {
+		t.Fatalf("logged disk-free-again %d times", n)
+	}
+
+	off := baseConfig(pepperA, nil)
+	off.MinFreeBytes = 0
+	h.reopen(off)
+	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return 0, errors.New("statfs failed") })
+	m = newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	m.ip = "198.51.100.11"
+	if resp, _ := h.create(m); resp.StatusCode != 201 {
+		t.Fatalf("create with the guard off: %d", resp.StatusCode)
 	}
 }

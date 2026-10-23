@@ -494,6 +494,60 @@ func TestSweepReportsABlockedCheckpoint(t *testing.T) {
 	}
 }
 
+func TestABlockedCheckpointGivesUpTheWriterQuickly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	s, err := sqlite.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	hit := func(key string) error {
+		_, err := s.RateHit(t.Context(), []store.RateHit{{Key: key, WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}})
+		return err
+	}
+	if err := hit("a"); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	tx, err := reader.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM rate_counters`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if err := hit("after the reader"); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if err := s.Checkpoint(t.Context()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
+		t.Fatalf("checkpoint with a reader holding the WAL: %v", err)
+	}
+	if held := time.Since(start); held > 2*time.Second {
+		t.Fatalf("a blocked checkpoint held the only writer for %v", held)
+	}
+	tx.Rollback()
+	other, err := sql.Open("sqlite", "file:"+path+"?_txlock=immediate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	lock, err := other.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	released := time.AfterFunc(time.Second, func() { lock.Rollback() })
+	defer released.Stop()
+	if err := hit("b"); err != nil {
+		t.Fatalf("after a checkpoint a write no longer waits for the lock: %v", err)
+	}
+}
+
 func TestOpenRefusesANewerSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	newer, err := sql.Open("sqlite", "file:"+path)

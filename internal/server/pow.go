@@ -16,10 +16,10 @@ import (
 )
 
 const (
-	powWindow    = 120 * time.Second
-	powClockSkew = 5 * time.Second
-	powNonceKey  = "pow:"
-	powNonceTTL  = 2 * powWindow
+	powWindow   = 120 * time.Second
+	clockSkew   = 5 * time.Second
+	powNonceKey = "pow:"
+	powNonceTTL = 2 * powWindow
 )
 
 var ErrPoW = errors.New("server: invalid proof of work")
@@ -54,7 +54,7 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 	}
 	issued := int64(binary.BigEndian.Uint32(chal[:core.PoWWindowLen]))
 	age := now.Unix() - issued
-	if age < -int64(powClockSkew/time.Second) || age > int64(powWindow/time.Second) {
+	if age < -int64(clockSkew/time.Second) || age > int64(powWindow/time.Second) {
 		return ErrPoW
 	}
 	purge := store.CeilMinute(time.Unix(issued, 0).Add(powNonceTTL))

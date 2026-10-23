@@ -80,3 +80,7 @@ func WithWebFiles(files fs.FS) Option {
 		}
 	}
 }
+
+func (s *Server) SetFreeSpaceForTest(free func(string) (uint64, error)) {
+	s.freeSpace = free
+}
