@@ -209,6 +209,7 @@
         <textarea
           id="create-text"
           spellcheck="false"
+          autocorrect="off"
           autocapitalize="off"
           autocomplete="off"
           bind:value={text}

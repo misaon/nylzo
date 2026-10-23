@@ -19,6 +19,10 @@
     appearance: none;
   }
 
+  [role="status"] {
+    min-height: 1lh;
+  }
+
   label:has(> input[type="radio"], > input[type="checkbox"]) {
     display: flex;
     align-items: center;
