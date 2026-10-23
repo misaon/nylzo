@@ -44,7 +44,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	for range 5 {
 		resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String()})
 		csp := resp.Header.Get("Content-Security-Policy")
-		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "font-src 'self'") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || !strings.Contains(csp, "require-trusted-types-for 'script'") {
+		if !strings.Contains(csp, "default-src 'none'") || !strings.Contains(csp, "font-src 'self'") || !strings.Contains(csp, "worker-src 'self';") || strings.Contains(csp, "unsafe") || strings.Contains(csp, "data:") || strings.Contains(csp, "blob:") || !strings.Contains(csp, "require-trusted-types-for 'script'") || !strings.HasSuffix(csp, "; trusted-types svelte-trusted-html nylzo-kdf") {
 			t.Fatalf("csp: %s", csp)
 		}
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
