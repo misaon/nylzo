@@ -14,8 +14,8 @@ const cs = {
   'create.passphrase.hint': 'Nejméně 12 znaků. Pošlete ji příjemci jiným kanálem než odkaz.',
   'create.passphrase.weak': 'Doporučujeme aspoň 4 náhodná slova nebo 16 znaků.',
   'create.kdf': 'Odvození klíče z passphrase',
-  'create.kdf.2': 'PBKDF2, funguje na každém zařízení',
-  'create.kdf.1': 'scrypt, odolnější proti hádání, na některých telefonech velmi pomalý',
+  'create.kdf.1': 'scrypt, odolnější proti hádání passphrase',
+  'create.kdf.2': 'PBKDF2, nativní funkce prohlížeče',
   'create.submit': 'Vytvořit odkaz',
   'create.loading': 'Načítám nastavení služby…',
 
@@ -42,7 +42,7 @@ const cs = {
   'failure.rate_limited': 'Za krátkou dobu přišlo příliš mnoho zpráv. Zkuste to za {time}.',
   'failure.unavailable': 'Služba teď nové zprávy nepřijímá. Zkuste to za {time}.',
   'failure.too_large': 'Zpráva je pro tuto službu příliš velká.',
-  'failure.kdf': 'Toto zařízení odvození klíče nezvládlo. Zvolte PBKDF2 nebo jiné zařízení.',
+  'failure.kdf': 'Toto zařízení odvození klíče nezvládlo. Zkuste PBKDF2 nebo jiné zařízení.',
   'failure.failed': 'Zprávu se nepodařilo vytvořit.',
 
   'created.title': 'Odkaz je připravený',
@@ -105,8 +105,8 @@ const en: Record<MessageKey, string> = {
   'create.passphrase.hint': 'At least 12 characters. Send it to the recipient through another channel than the link.',
   'create.passphrase.weak': 'We recommend at least 4 random words or 16 characters.',
   'create.kdf': 'Key derivation from the passphrase',
-  'create.kdf.2': 'PBKDF2, works on every device',
-  'create.kdf.1': 'scrypt, harder to guess, very slow on some phones',
+  'create.kdf.1': 'scrypt, harder to guess the passphrase',
+  'create.kdf.2': 'PBKDF2, built into the browser',
   'create.submit': 'Create link',
   'create.loading': 'Loading the service settings…',
 

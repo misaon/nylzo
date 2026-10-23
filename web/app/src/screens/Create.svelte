@@ -32,7 +32,7 @@
   let ttlSeconds = $state(86400);
   let opensMax = $state(1);
   let passphrase = $state('');
-  let kdfId = $state<KdfId>(KDF_PBKDF2);
+  let kdfId = $state<KdfId>(KDF_SCRYPT);
   let problems = $state.raw<readonly CreateProblem[]>([]);
   let failure = $state.raw<CreateFailure>();
   let progress = $state.raw<CreateProgress>();
@@ -58,7 +58,7 @@
       const instance = await api.instance();
       limits = instance.limits;
       ttlSeconds = instance.limits.defaultTtlSeconds;
-      kdfId = instance.limits.defaultKdfId === KDF_NONE ? KDF_PBKDF2 : instance.limits.defaultKdfId;
+      kdfId = instance.limits.defaultKdfId === KDF_NONE ? KDF_SCRYPT : instance.limits.defaultKdfId;
     } catch {
       loadFailed = true;
     }
@@ -251,8 +251,8 @@
         {#if passphrase !== ''}
           <fieldset>
             <legend>{t('create.kdf')}</legend>
-            <label><input type="radio" name="kdf" value={KDF_PBKDF2} bind:group={kdfId} /> {t('create.kdf.2')}</label>
             <label><input type="radio" name="kdf" value={KDF_SCRYPT} bind:group={kdfId} /> {t('create.kdf.1')}</label>
+            <label><input type="radio" name="kdf" value={KDF_PBKDF2} bind:group={kdfId} /> {t('create.kdf.2')}</label>
           </fieldset>
         {/if}
 

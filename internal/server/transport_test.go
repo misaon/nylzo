@@ -506,14 +506,14 @@ func TestConfigBounds(t *testing.T) {
 	}
 }
 
-func TestDefaultPassphraseProfileIsPBKDF2(t *testing.T) {
+func TestDefaultPassphraseProfileIsScrypt(t *testing.T) {
 	t.Parallel()
-	if got := server.Defaults().Limits.DefaultKDF; got != core.KDFPBKDF2 {
-		t.Fatalf("default kdf %d, D30 makes it PBKDF2", got)
+	if got := server.Defaults().Limits.DefaultKDF; got != core.KDFScrypt {
+		t.Fatalf("default kdf %d, D33 makes it scrypt", got)
 	}
 	h := newHarness(t, baseConfig(pepperA, nil))
 	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
-	if got := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; got != float64(core.KDFPBKDF2) {
+	if got := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; got != float64(core.KDFScrypt) {
 		t.Fatalf("instance reports default_kdf_id %v", got)
 	}
 }

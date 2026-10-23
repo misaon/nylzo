@@ -73,7 +73,7 @@ func Defaults() Config {
 			MaxTTL:         MaxTTL,
 			DefaultTTL:     24 * time.Hour,
 			MaxOpens:       10,
-			DefaultKDF:     core.KDFPBKDF2,
+			DefaultKDF:     core.KDFScrypt,
 		},
 		Rates: Rates{
 			CreatePerHour:     20,
