@@ -1,4 +1,17 @@
+{
+	log default {
+		exclude http.log http.handlers http.stdlib
+	}
+}
+
 {$NYLZO_DOMAIN} {
-	header -Server
-	reverse_proxy nylzod:8080
+	header {
+		-Server
+		-Via
+	}
+	reverse_proxy nylzod:8080 {
+		transport http {
+			keepalive 25s
+		}
+	}
 }

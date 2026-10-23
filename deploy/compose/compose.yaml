@@ -11,7 +11,8 @@ services:
       NYLZO_LISTEN: ":8080"
       NYLZO_DATA_DIR: /home/nonroot
       NYLZO_PEPPER_FILE: /run/secrets/nylzo_pepper
-      NYLZO_TRUSTED_PROXIES: 172.30.80.0/24
+      NYLZO_TRUSTED_PROXIES: 172.30.80.2/32,fd1f:9791:e50b::2/128
+      NYLZO_GLOBAL_DAILY_CREATES: ${NYLZO_GLOBAL_DAILY_CREATES:-2000}
     secrets: [nylzo_pepper]
     volumes:
       - nylzo-data:/home/nonroot
@@ -35,7 +36,10 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on: [nylzod]
-    networks: [nylzo]
+    networks:
+      nylzo:
+        ipv4_address: 172.30.80.2
+        ipv6_address: fd1f:9791:e50b::2
 
 secrets:
   nylzo_pepper:
@@ -48,6 +52,10 @@ volumes:
 
 networks:
   nylzo:
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.30.80.0/24
+          ip_range: 172.30.80.128/25
+        - subnet: fd1f:9791:e50b::/64
+          ip_range: fd1f:9791:e50b:0:8000::/65
