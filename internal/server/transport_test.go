@@ -506,6 +506,18 @@ func TestConfigBounds(t *testing.T) {
 	}
 }
 
+func TestDefaultPassphraseProfileIsPBKDF2(t *testing.T) {
+	t.Parallel()
+	if got := server.Defaults().Limits.DefaultKDF; got != core.KDFPBKDF2 {
+		t.Fatalf("default kdf %d, D30 makes it PBKDF2", got)
+	}
+	h := newHarness(t, baseConfig(pepperA, nil))
+	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
+	if got := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; got != float64(core.KDFPBKDF2) {
+		t.Fatalf("instance reports default_kdf_id %v", got)
+	}
+}
+
 func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	t.Parallel()
 	if got := server.Defaults().Limits.MaxObjectBytes; got != 5373983 {
