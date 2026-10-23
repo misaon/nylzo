@@ -41,7 +41,7 @@ A canonical 43-character encoding of 32 bytes never ends in `-` or `_`, so the d
 
 - `id`: 16 bytes from the server CSPRNG, issued together with an id token by `GET /api/v1/instance` (§5.4, §6.6). Appears in the URL path and never in logs.
 - `S`: 32 bytes from the client CSPRNG. Appears only in the URL fragment. The server MUST never receive `S`.
-- `M`: 32 bytes from the client CSPRNG, the seed of the manage key. The client sends the public key `pk_M` at creation and signs cancel and status with `M`; `M` never leaves the client. A browser client that keeps `M` after creation MUST keep it only as a non-extractable `CryptoKey` and never as bytes (D39).
+- `M`: 32 bytes from the client CSPRNG, the seed of the manage key. The client sends the public key `pk_M` at creation and signs cancel and status with `M`; `M` never leaves the client. A browser client lets WebCrypto generate the manage key pair as non-extractable, so `M` never exists as bytes in the page, and keeps it only as that `CryptoKey` (D39).
 - `L`: 32 bytes from the server CSPRNG (lease token), issued by claim.
 
 ## 2. Key derivation (client)
@@ -330,6 +330,7 @@ POST /api/v1/abuse                  signed with R, {"id":"…","reason":"…"?} 
 - `first_opened_at` and `ended_at` are rounded down to the minute.
 - A failed manage signature on cancel or status answers the same 404 as an unknown id.
 - Abuse reports are rate limited to 5 per hour per bucket, reviewed by a human, and never delete anything automatically.
+- A client MUST apply the redaction below to `reason` before it signs and sends a report, so a link or `S` pasted into the reason never reaches the server (§1.2); the server redacts again before storing.
 - An abuse report MUST carry `Content-Type: application/json`, so a cross-site page needs a CORS preflight, which the server never grants. Before storing `reason`, the server percent-decodes it up to three times, replaces control characters with spaces, drops format characters such as bidi controls, replaces every `#…` run and every run of 22 or more base64url characters with `[redacted]`, then cuts it to 1000 bytes and further until its JSON encoding fits in 1200 bytes. It stores at most 3 reports per message per UTC day and answers 202 for the rest. The cap is per message only, so no row ties a message to a reporter's address; one reporter can therefore use up the daily budget of a message. The server reserves the count before it writes a report and returns it when the write fails. Reports go to one file per UTC day, `abuse/{YYYY-MM-DD}.jsonl` in the data directory, which the server only appends to and syncs after each report, so no report is ever rewritten. A valid report that would be stored but would push the report files together past 16 MiB answers 503, and the server logs the error `abuse-file-full` for the operator. A stored report holds the UTC date, the id and the redacted reason, never the time of day. Reports older than 14 days (the 7-day maximum TTL plus the 7-day tombstone) are dropped by deleting their day files, at every sweep including `sweep-once` and before every new report (D26).
 
 ## 7. Lifecycle, leases, tombstones, sweep

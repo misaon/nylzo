@@ -2,7 +2,7 @@
 
 Nylzo je open-source služba pro jednorázové sdílení citlivých zpráv a souborů do 5 MB. Obsah se šifruje v klientovi, server dostává jen ciphertext a HMAC důkazy; odkaz nese klíč jen ve fragmentu URL, který prohlížeč na server nikdy neposílá. Návrh a jeho zdůvodnění jsou v `docs/designs/nylzo-architecture-research.md`, normativní zápis protokolu v1 je v `spec/protocol.md`.
 
-Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient ve Svelte 5 vzniká jako druhý milník (plán v `docs/plans/2026-10-23-milestone-2-web-client-poc.md`): vytvoří a otevře zprávu s textem nebo souborem, volitelně s passphrase, a umí PoW. Obrazovky jsou zatím jen sémantická kostra bez vzhledu. CLI a adaptér postgres+s3 zatím nejsou součástí.
+Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScriptu svázané společnými vektory a server `nylzod` s úložištěm SQLite a disk. Webový klient ve Svelte 5 (plány v `docs/plans/`) vytvoří a otevře zprávu s textem nebo souborem, volitelně s passphrase, a umí PoW. Odesílatel na `/sent` vidí stav zpráv zapamatovaných na zařízení a může je zrušit, příjemce může zprávu smazat a kdokoli s odkazem ji může nahlásit na `/report`. Obrazovky jsou zatím jen sémantická kostra bez vzhledu. CLI a adaptér postgres+s3 zatím nejsou součástí.
 
 ## Rozložení repozitáře
 
@@ -43,7 +43,7 @@ Kontrola, že běží:
 curl -s http://localhost:8080/api/v1/instance
 ```
 
-Stránky `/` a `/m/{id}` servírují webového klienta, pokud je před sestavením serveru sestavený do `internal/server/web/dist`; jinak servírují zástupné HTML. Klienta sestavíte takto a server pak vložte znovu přes `go run` nebo `go build`:
+Stránky `/`, `/sent`, `/report` a `/m/{id}` servírují webového klienta, pokud je před sestavením serveru sestavený do `internal/server/web/dist`; jinak servírují zástupné HTML. Klienta sestavíte takto a server pak vložte znovu přes `go run` nebo `go build`:
 
 ```bash
 cd web && pnpm install --frozen-lockfile && pnpm --filter @nylzo/web build

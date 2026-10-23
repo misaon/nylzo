@@ -22,11 +22,11 @@ Hotovo znamená: unit testy logiky, e2e testy nových obrazovek v Chromiu, Firef
 
 ### D39: kde odesílatel drží M
 
-- A. IndexedDB, M jen jako neexportovatelný `CryptoKey` Ed25519. Záznam drží id, čas vytvoření, expiraci a klíč. Smaže se 7 dní po expiraci (po té době už server nezná ani náhrobek) při každém načtení aplikace. Ruční zapomenutí jednoho záznamu i všech.
-- B. `localStorage` s bajty M, jak dosud psal návrh. Jednodušší, ale M v něm leží čitelně pro každý skript na stránce, malware na disku i zálohu profilu.
+- A. IndexedDB, M jen jako neexportovatelný `CryptoKey` Ed25519. Záznam drží id, čas vytvoření, expiraci a klíč. Smaže se 7 dní po konci zprávy, nejpozději po expiraci (po té době už server nezná ani náhrobek), při každém načtení aplikace, pokud databáze existuje. Ruční zapomenutí jednoho záznamu i všech.
+- B. `localStorage` s bajty M, jak dosud psal návrh. Jednodušší, ale M v něm leží čitelně pro každý skript na stránce, který ho může poslat jinam. Malware na disku a záloha profilu přečtou M u A i u B.
 - C. Nic neukládat a dát odesílateli správcovský odkaz s M. Funguje napříč zařízeními, ale M pak žije ve schránce a v poznámkách jako další tajný odkaz.
 
-Doporučení: A. Klíč jde na stránce použít k podpisu, ale jeho bajty nikdo nepřečte, ani skript na stránce. Rozhodnuto: A, ve formuláři vytvoření ve výchozím stavu zapnuté, protože zrušení je pojistka odesílatele pro odkaz poslaný špatnému člověku.
+Doporučení: A. Klíč jde na stránce použít k podpisu, ale jeho bajty nepřečte ani skript na stránce. Rozhodnuto: A, ve formuláři vytvoření ve výchozím stavu zapnuté, protože zrušení je pojistka odesílatele pro odkaz poslaný špatnému člověku.
 
 ### D40: smazání příjemcem a klíč R po zobrazení
 
@@ -45,9 +45,9 @@ Doporučení: A. Návrh chce odkaz na hlášení na každé stránce čtení a `
 
 ## Bezpečnost
 
-- M existuje jako bajty jen během vytvoření: `requestKey` z něj udělá neexportovatelný privátní klíč a seed se hned vynuluje. IndexedDB uloží `CryptoKey` strukturovaným klonem, takže bajty nikdy nevzniknou znovu. E2e test ověří v každém prohlížeči, že uložený klíč má `extractable = false` a `exportKey` selže.
+- M jako bajty v JavaScriptu nevznikne vůbec: klíč vygeneruje WebCrypto jako neexportovatelný a IndexedDB uloží `CryptoKey` strukturovaným klonem. E2e test ověří v každém prohlížeči, že uložený klíč má `extractable = false` a `exportKey` selže. Prohlížeč materiál klíče ukládá do souborů profilu, takže A chrání před skriptem na stránce, ne před přístupem k disku.
 - Kdo má přístup k zařízení, vidí v IndexedDB id zpráv a časy jejich vytvoření a expirace a s klíčem může zprávu zrušit nebo číst její stav. Obsah ani odkaz tam nejsou. Zaškrtávátko na formuláři to vypíná.
-- Klíč R po zobrazení je neexportovatelný a zmizí se stránkou. Formulář hlášení podepisuje tělo požadavku (spec §5.5), takže zaznamenané hlášení nejde poslat s jiným důvodem ani k jinému id.
+- Klíč R po zobrazení je neexportovatelný a zmizí se stránkou. Formulář hlášení podepisuje tělo požadavku (spec §5.5), takže zaznamenané hlášení nejde poslat s jiným důvodem ani k jinému id. Z důvodu klient před podpisem odstraní odkazy a dlouhé kódy stejně jako server, aby S vložené do důvodu neodešlo.
 - `/report` vložený odkaz nikam neposílá: z odkazu klient odvodí R a pošle jen id, důvod a podpis. Pole s odkazem má vypnutou kontrolu pravopisu, automatické opravy i nápovědu prohlížeče.
 - CSP se nemění; IndexedDB ani `localStorage` CSP neomezuje.
 
