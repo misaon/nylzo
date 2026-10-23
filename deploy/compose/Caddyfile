@@ -24,3 +24,11 @@ http://{$NYLZO_DOMAIN} {
 	header -Server
 	redir https://{host}{uri} 308
 }
+
+http:// {
+	abort
+}
+
+https:// {
+	abort
+}
