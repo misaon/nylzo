@@ -1,6 +1,6 @@
 # Plán: milník 2, webový klient (proof of concept)
 
-Datum: 23. 10. 2026. Větev: `claude/focused-kirch-80a68e` z `main` po sloučení PR 1 (`9cb63b3`). Zdroj pravdy: `docs/designs/nylzo-architecture-research.md` (sekce „Webový klient: srovnání a volba (D12)“, „Vizuální design a interakce“, „Zkouška OD6“, Next Steps 5) a `spec/protocol.md` §2 až §9. Stav: návrh ke schválení vlastníkem.
+Datum: 23. 10. 2026. Větev: `claude/focused-kirch-80a68e` z `main` po sloučení PR 1 (`9cb63b3`). Zdroj pravdy: `docs/designs/nylzo-architecture-research.md` (sekce „Webový klient: srovnání a volba (D12)“, „Vizuální design a interakce“, „Zkouška OD6“, Next Steps 5) a `spec/protocol.md` §2 až §9. Stav: schváleno vlastníkem 23. 10. 2026 s volbami D19 C, D28 A a D29 podle doporučení; kroky 1 až 5 běží, test OD6 na iPhonu pouští vlastník.
 
 ## Cíl milníku
 
@@ -38,7 +38,7 @@ Kdo má odkaz bez passphrase, vyvolá čekání pro všechny čtenáře. Podle s
 - B. PoW za každý pokus o passphrase: útočníka to stojí sekundy na pokus, k hodinovému čekání mu stačí 17 pokusů, takže dostupnost to také nevrátí. Platí to i pravý příjemce na telefonu.
 - C. Bez resetu. Protokol se nemění, dostupnost obnoví odesílatel zrušením a novým odkazem jiným kanálem. Klient příjemci zobrazí zamčený stav a radí požádat o nový odkaz; odesílatel uvidí počet chybných pokusů ve stavu, až přijde `/sent`. Návrh a spec zapíšou, že jde o ztrátu dostupnosti, kterou A ani B neodstraní.
 
-Doporučení: C. A i B mění protokol a útok neodstraní, A navíc oslabuje strop 100 pokusů, který chrání passphrase.
+Doporučení: C. A i B mění protokol a útok neodstraní, A navíc oslabuje strop 100 pokusů, který chrání passphrase. Rozhodnuto: C.
 
 ### D28: kde běží scrypt a PoW
 
@@ -47,11 +47,11 @@ Zkouška OD6 na macOS ukázala, že pět odvození na hlavním vlákně drží p
 - A. Module Worker pro scrypt profilu 1 i pro PoW, nový pro každé odvození a po něm ukončený. Vyžaduje `worker-src 'self'` v HTML CSP (spec §9, server, návrh; nejdřív dokumenty). Worker dostává od serveru CSP `default-src 'none'`, proto musí být jeden soubor bez importů. Adresa workeru jde přes politiku Trusted Types a CSP dostane i `trusted-types svelte-trusted-html nylzo-kdf`, aby stránka nemohla vytvořit jinou politiku. Stojí to zhruba 125 ms na odvození na M4 Pro a druhý JS soubor v sestavení.
 - B. Hlavní vlákno jako dnes v `@nylzo/core`. CSP se nemění. Paměť po několika pokusech závisí na úklidu JavaScriptCore a na iPhonu může stránku ukončit.
 
-Doporučení: A. Paměť pak nezávisí na úklidu paměti a na počtu pokusů, což chrání i slabší iPhony, které neotestujeme. Pokud iPhone v zkoušce OD6 přežije 10 odvození na hlavním vlákně, zůstává B jako možnost s menší změnou.
+Doporučení: A. Paměť pak nezávisí na úklidu paměti a na počtu pokusů, což chrání i slabší iPhony, které neotestujeme. Pokud iPhone v zkoušce OD6 přežije 10 odvození na hlavním vlákně, zůstává B jako možnost s menší změnou. Rozhodnuto: A.
 
 ### D29: rozsah PoC
 
-Doporučení: rozsah podle sekce Rozsah. Kostru obrazovek píšu já, aby e2e testy měly co ověřovat; vlastník ji pak přestyluje.
+Doporučení: rozsah podle sekce Rozsah. Kostru obrazovek píšu já, aby e2e testy měly co ověřovat; vlastník ji pak přestyluje. Rozhodnuto podle doporučení.
 
 ### OD6: brána před psaním UI
 
