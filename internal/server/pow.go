@@ -10,23 +10,18 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/scrypt"
-
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	powN          = 1 << 14
-	powR          = 8
-	powP          = 1
 	powWindow     = 120 * time.Second
 	powClockSkew  = 5 * time.Second
 	powNonceLen   = 16
 	powTagLen     = 16
 	powCounterLen = 8
-	powChalLen    = 4 + powNonceLen + powTagLen
+	powChalLen    = core.PoWChallengeLen
 	powNonceKey   = "pow:"
 	powNonceTTL   = 2 * powWindow
 )
@@ -91,20 +86,8 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 }
 
 func powSatisfies(chal, counter []byte, id core.ID, difficulty int) bool {
-	password := make([]byte, 0, powNonceLen+core.IDLen)
-	password = append(password, chal[4:4+powNonceLen]...)
-	password = append(password, id[:]...)
-	out, err := scrypt.Key(password, counter, powN, powR, powP, 32)
-	return err == nil && leadingZeroBits(out, difficulty)
+	digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(chal), id, binary.BigEndian.Uint64(counter))
+	return err == nil && core.LeadingZeroBits(digest[:]) >= difficulty
 }
 
 var errPoWBusy = errors.New("server: proof-of-work verifier is saturated")
-
-func leadingZeroBits(b []byte, bits int) bool {
-	for i := range bits {
-		if b[i/8]&(0x80>>(i%8)) != 0 {
-			return false
-		}
-	}
-	return true
-}

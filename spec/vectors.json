@@ -1008,6 +1008,55 @@
       "authorization": "Nylzo-Sig eLAv01QB0iXjlRRiq-5xlzDWPYD9ce9Hs3z67z3IirA.MyKObsiH32mNmBnMP7T3oR1gvwUh4GVX1Za_2NvRScW4ClTd.g7cy2xuEw-GNq5r7i4aHJl4rFo3IxxEfLAUWJe6j7ctNfseAcBHuhd6tFZuNzLgGRHVJTOzzdCjWX-VqhxfhDQ"
     }
   ],
+  "pow": [
+    {
+      "name": "counter zero",
+      "challenge": "27ir2diQGQ_oCT97sKVLhloktvCnt4x7bpzfTu6NSVgSd25A",
+      "id": "czhveiyoCkZ6PH1nEVwpaA",
+      "counter": 0,
+      "digest_hex": "a951814baea0161f4b8e7fb368492b911cfb2d8f59e7872f8910466ffa4a57bc",
+      "zero_bits": 0,
+      "token": "27ir2diQGQ_oCT97sKVLhloktvCnt4x7bpzfTu6NSVgSd25A.0000000000000000"
+    },
+    {
+      "name": "counter with two hex digits",
+      "challenge": "iYYM3cEZa2aljnIWwF6Or1U2rpBIZAFAdGCkaoghhKcgy0wD",
+      "id": "jKpF4pRJcgvBDPpaUsFB_A",
+      "counter": 255,
+      "digest_hex": "397933d26c2f2ae4b6e58a50558164ecdb0bfe62c88990761deb59f86e2c5e8d",
+      "zero_bits": 2,
+      "token": "iYYM3cEZa2aljnIWwF6Or1U2rpBIZAFAdGCkaoghhKcgy0wD.00000000000000ff"
+    },
+    {
+      "name": "counter above 32 bits",
+      "challenge": "B6DD180NN7KVuNDuKmY-kYjLtWuWJwcRVn-O0C4news6_Fkd",
+      "id": "FqeVRNjp3X-tVp-_eA676g",
+      "counter": 4294967297,
+      "digest_hex": "497c167946a3986ed2e01d3f9ca108f243f5dd2c2fd76b7d408c552846a5e82f",
+      "zero_bits": 1,
+      "token": "B6DD180NN7KVuNDuKmY-kYjLtWuWJwcRVn-O0C4news6_Fkd.0000000100000001"
+    },
+    {
+      "name": "first solution at difficulty 4",
+      "challenge": "GTx2_fmjslEIhvQjnxbPSNPKLeFWIQuKZTxCdLik6I5aZaSO",
+      "id": "FPN4y8BkrcPcFYlYNewlsQ",
+      "counter": 3,
+      "digest_hex": "092ca0e0331db43b87304ede66ceca3a727590980a22dc9e88426213329fc1cd",
+      "zero_bits": 4,
+      "token": "GTx2_fmjslEIhvQjnxbPSNPKLeFWIQuKZTxCdLik6I5aZaSO.0000000000000003",
+      "difficulty": 4
+    },
+    {
+      "name": "first solution at difficulty 6",
+      "challenge": "XRix6PMl4vTj4EdCvaXuHIsSO8FpNAKAIncbaNBaXR2zdF--",
+      "id": "QoiOMVCZLdj3nfX7lM4EbQ",
+      "counter": 96,
+      "digest_hex": "02ca031bd7e6d3870812c3bed99e8b306cfbee101592fe4b0f98edb5080e9146",
+      "zero_bits": 6,
+      "token": "XRix6PMl4vTj4EdCvaXuHIsSO8FpNAKAIncbaNBaXR2zdF--.0000000000000060",
+      "difficulty": 6
+    }
+  ],
   "server": {
     "pepper_hex": "a59a077138be894c1284db9057e9c47ddf644cf703cd821b445445c1dd3e409f",
     "pepper_id": 122,

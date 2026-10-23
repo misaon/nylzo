@@ -32,7 +32,19 @@ type File struct {
 	Meta      []MetaCase `json:"meta"`
 	Strength  []Strength `json:"passphrase_strength"`
 	Request   []Request  `json:"request"`
+	PoW       []PoW      `json:"pow"`
 	Server    Server     `json:"server"`
+}
+
+type PoW struct {
+	Name       string `json:"name"`
+	Challenge  string `json:"challenge"`
+	ID         string `json:"id"`
+	Counter    uint64 `json:"counter"`
+	Digest     string `json:"digest_hex"`
+	ZeroBits   int    `json:"zero_bits"`
+	Token      string `json:"token"`
+	Difficulty *int   `json:"difficulty,omitempty"`
 }
 
 type Strength struct {
@@ -182,7 +194,7 @@ func counterBytes(n int) []byte {
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
-	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.server} {
+	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.pow, f.server} {
 		if err := step(); err != nil {
 			return nil, err
 		}
@@ -532,6 +544,49 @@ func (f *File) request() error {
 		} else {
 			f.Request[len(f.Request)-1].Authorization = sig.Authorization()
 		}
+	}
+	return nil
+}
+
+func (f *File) pow() error {
+	for _, c := range []struct {
+		name       string
+		counter    uint64
+		difficulty int
+		solve      bool
+	}{
+		{"counter zero", 0, 0, false},
+		{"counter with two hex digits", 0xff, 0, false},
+		{"counter above 32 bits", 1<<32 + 1, 0, false},
+		{"first solution at difficulty 4", 0, 4, true},
+		{"first solution at difficulty 6", 0, 6, true},
+	} {
+		raw := det("pow-challenge/"+c.name, core.PoWChallengeLen)
+		challenge := core.Encode(raw)
+		id := detID("pow/" + c.name)
+		counter := c.counter
+		var difficulty *int
+		if c.solve {
+			token, err := core.SolvePoW(challenge, id, c.difficulty)
+			if err != nil {
+				return err
+			}
+			var parsed uint64
+			if _, err := fmt.Sscanf(token[len(challenge)+1:], "%x", &parsed); err != nil {
+				return err
+			}
+			counter = parsed
+			difficulty = &c.difficulty
+		}
+		digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(raw), id, counter)
+		if err != nil {
+			return err
+		}
+		f.PoW = append(f.PoW, PoW{
+			Name: c.name, Challenge: challenge, ID: id.String(), Counter: counter,
+			Digest: hex.EncodeToString(digest[:]), ZeroBits: core.LeadingZeroBits(digest[:]),
+			Token: core.PoWToken(challenge, counter), Difficulty: difficulty,
+		})
 	}
 	return nil
 }

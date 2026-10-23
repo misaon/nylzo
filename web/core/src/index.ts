@@ -38,6 +38,7 @@ export {
   MalformedPassphraseError,
   PlaintextError,
   PolicyError,
+  PowError,
   TooLargeError,
   VersionError,
   WeakPassphraseError,
@@ -59,6 +60,7 @@ export {
   normalizePassphrase,
   parseKdfId,
   type KdfId,
+  type KdfOptions,
 } from './kdf.ts';
 export * from './limits.ts';
 export {
@@ -73,6 +75,18 @@ export {
   type Link,
 } from './link.ts';
 export { decodeMeta, encodeMeta, validateMeta, type FileMeta, type Meta } from './meta.ts';
+export {
+  MAX_POW_DIFFICULTY,
+  POW_CHALLENGE_LEN,
+  POW_N,
+  POW_P,
+  POW_R,
+  leadingZeroBits,
+  parsePowChallenge,
+  powDigest,
+  powToken,
+  solvePow,
+} from './pow.ts';
 export {
   AUTH_SCHEME,
   CHALLENGE_LEN,

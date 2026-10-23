@@ -95,3 +95,10 @@ export class TooLargeError extends Error {
     super(message);
   }
 }
+
+export class PowError extends Error {
+  override readonly name = 'PowError';
+  constructor(message = 'proof-of-work difficulty out of range') {
+    super(message);
+  }
+}
