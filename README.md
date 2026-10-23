@@ -74,7 +74,7 @@ Příkazy `nylzod` jsou `serve` (výchozí), `sweep-once`, `version` a `help`. �
 | `NYLZO_PROXY_MODE` | prázdná | `scaleway` čte `X-Real-IP`, jen když ji požadavek nese právě jednou; při nastaveném `NYLZO_TRUSTED_PROXIES` jen ze spojení z těchto adres. Bezpečné jen za ingressem, přes který jde každé spojení |
 | `NYLZO_SWEEP_INTERVAL` | `5m` | interval vestavěného úklidu, `0` vypne; záporná hodnota je chyba |
 | `NYLZO_MAX_STREAMS` | `64` | nejvýš tolik odpovědí claim a blob streamuje naráz; další dostanou 503 s `Retry-After: 5` a otevření nespotřebují. Jedna adresa (/32, /64) drží nejvýš 2 sloty a jeden rozsah (/24, /48) nejvýš 8 |
-| `NYLZO_MIN_FREE_BYTES` | `1073741824` (1 GiB) | když má souborový systém s daty méně volného místa, vytvoření odpoví 503, aby zbylo místo na zápisy, které potřebují burn a zrušení; `0` kontrolu vypne |
+| `NYLZO_MIN_FREE_BYTES` | `1073741824` (1 GiB) | když by volné místo souborového systému s daty po odečtení právě nahrávaných zpráv a nové zprávy kleslo pod tuto hodnotu, vytvoření odpoví 503, aby zbylo místo na zápisy, které potřebují burn a zrušení; `0` kontrolu vypne |
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření, nejvýš 100 |
