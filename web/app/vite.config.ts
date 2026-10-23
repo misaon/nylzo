@@ -7,6 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type Plugin } from 'vite';
 
 const outDir = resolve(import.meta.dirname, '../../internal/server/web/dist');
+const devApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
 const GZIP_OS_UNKNOWN = 255;
 
 function withoutNonceMeta(): Plugin {
@@ -44,6 +45,7 @@ function precompress(): Plugin {
 export default defineConfig({
   plugins: [tailwindcss(), svelte(), withoutNonceMeta(), precompress()],
   html: { cspNonce: '__NYLZO_CSP_NONCE__' },
+  server: { strictPort: true, proxy: { '/api': devApi } },
   build: {
     outDir,
     emptyOutDir: true,

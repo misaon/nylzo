@@ -6,6 +6,8 @@
 
 # Local data and build output
 /data/
+/.dev/
+/bin/
 /web/node_modules/
 /web/core/node_modules/
 /web/core/dist/
