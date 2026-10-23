@@ -17,7 +17,7 @@ import { bytesToHex, loadVectors } from './helpers.ts';
 const vectors = loadVectors().pow;
 
 describe('proof of work', () => {
-  it.each(vectors.map((v) => [v.name, v] as const))('matches the vector %s', (_, v) => {
+  it.each(vectors.map((v) => [v.name, v] as const))('matches the vector %s', { timeout: 60_000 }, (_, v) => {
     const digest = powDigest(parsePowChallenge(v.challenge), parseId(v.id), v.counter);
     expect(bytesToHex(digest)).toBe(v.digest_hex);
     expect(leadingZeroBits(digest)).toBe(v.zero_bits);

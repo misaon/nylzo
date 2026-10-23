@@ -3,6 +3,8 @@
 @layer base {
   :root {
     color-scheme: dark;
+    background-color: Canvas;
+    color: CanvasText;
   }
 
   button,
