@@ -14,6 +14,9 @@ services:
       NYLZO_PEPPER_FILE: /run/secrets/nylzo_pepper
       NYLZO_TRUSTED_PROXIES: 172.30.80.2/32,fd1f:9791:e50b::2/128
       NYLZO_GLOBAL_DAILY_CREATES: ${NYLZO_GLOBAL_DAILY_CREATES:-2000}
+      NYLZO_OPERATOR: ${NYLZO_OPERATOR:-}
+      NYLZO_CONTACT: ${NYLZO_CONTACT:-}
+      NYLZO_HOSTING: ${NYLZO_HOSTING:-}
     secrets: [nylzo_pepper]
     volumes:
       - nylzo-data:/home/nonroot

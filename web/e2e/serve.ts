@@ -33,6 +33,9 @@ const server = spawn(binary, ['serve'], {
     NYLZO_RATE_SOURCE_BURST: '1000',
     NYLZO_RATE_BUCKET_RPS: '2000',
     NYLZO_RATE_BUCKET_BURST: '2000',
+    NYLZO_OPERATOR: 'Nylzo e2e',
+    NYLZO_CONTACT: 'abuse@nylzo.test',
+    NYLZO_HOSTING: 'localhost',
     ...profiles[profile],
   },
 });

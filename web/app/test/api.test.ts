@@ -382,3 +382,55 @@ describe('api client', () => {
   });
 });
 
+describe('transparency', () => {
+  const sha = 'a'.repeat(64);
+  const report = (change: Record<string, unknown> = {}) => ({
+    server: 'v1.2.3',
+    operator: { name: 'Example s.r.o.', contact: 'abuse@example.org' },
+    limits: { max_file_bytes: 5242880, max_text_bytes: 102400, max_object_bytes: 5373983, max_ttl_s: 604800, default_ttl_s: 86400, max_opens: 10, default_kdf_id: 1 },
+    rates: { create_per_hour: 20, create_per_day: 100, create_bytes_per_day: 50000000, read_per_hour: 300, abuse_per_hour: 5, coarse_multiplier: 5, global_daily_creates: 0, pow_difficulty: 4 },
+    retention: { tombstone_s: 604800, abuse_report_s: 604800, daily_counter_s: 86400 },
+    ...change,
+  });
+  const manifest = (change: Record<string, unknown> = {}) => ({
+    server: 'v1.2.3',
+    built: true,
+    nonce_placeholder: '__NYLZO_CSP_NONCE__',
+    pages: ['/'],
+    files: [{ path: '/', sha256: sha }],
+    ...change,
+  });
+  const serve = (body: unknown, client: unknown) =>
+    fakeServer((request) => json(200, new URL(request.url).pathname === '/.well-known/nylzo/client.json' ? client : body)).api;
+
+  it('reads the report and the client manifest', async () => {
+    const got = await serve(report(), manifest()).transparency();
+    expect(got.server).toBe('v1.2.3');
+    expect(got.operator).toEqual({ name: 'Example s.r.o.', contact: 'abuse@example.org' });
+    expect(got.limits.maxOpens).toBe(10);
+    expect(got.rates.globalDailyCreates).toBe(0);
+    expect(got.retention.tombstoneSeconds).toBe(604800);
+    expect(got.files).toEqual([{ path: '/', sha256: sha }]);
+  });
+
+  it('accepts an instance without an operator', async () => {
+    const { operator: _, ...withoutOperator } = report();
+    expect((await serve(withoutOperator, manifest()).transparency()).operator).toBeUndefined();
+  });
+
+  it('refuses malformed details', async () => {
+    for (const [body, client] of [
+      [report({ server: 'v9' }), manifest()],
+      [report(), manifest({ files: [{ path: '/', sha256: 'A'.repeat(64) }] })],
+      [report(), manifest({ files: [{ path: 'assets/x.js', sha256: sha }] })],
+      [report(), manifest({ built: 'yes' })],
+      [report({ operator: { name: 'x'.repeat(201) } }), manifest()],
+      [report({ operator: { contact: 7 } }), manifest()],
+      [report({ operator: 'Example' }), manifest()],
+      [report({ rates: {} }), manifest()],
+    ]) {
+      await expect(serve(body, client).transparency()).rejects.toBeInstanceOf(ResponseError);
+    }
+  });
+});
+

@@ -19,6 +19,8 @@ import {
 } from '@nylzo/core';
 
 const STATES = ['available', 'opened', 'expired', 'cancelled', 'deleted'] as const;
+const MAX_OPERATOR_FIELD_BYTES = 200;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
 const KINDS = [
   'bad_request',
   'passphrase',
@@ -78,6 +80,35 @@ export interface InstanceLimits {
   readonly defaultTtlSeconds: number;
   readonly maxOpens: number;
   readonly defaultKdfId: KdfId;
+}
+
+export interface Operator {
+  readonly name?: string;
+  readonly contact?: string;
+  readonly hosting?: string;
+}
+
+export interface ClientFile {
+  readonly path: string;
+  readonly sha256: string;
+}
+
+export interface Transparency {
+  readonly server: string;
+  readonly operator: Operator | undefined;
+  readonly limits: InstanceLimits;
+  readonly rates: {
+    readonly createPerHour: number;
+    readonly createPerDay: number;
+    readonly createBytesPerDay: number;
+    readonly readPerHour: number;
+    readonly abusePerHour: number;
+    readonly coarseMultiplier: number;
+    readonly globalDailyCreates: number;
+    readonly powDifficulty: number;
+  };
+  readonly retention: { readonly tombstoneSeconds: number; readonly abuseReportSeconds: number; readonly dailyCounterSeconds: number };
+  readonly files: readonly ClientFile[];
 }
 
 export interface Instance {
@@ -228,6 +259,64 @@ function retryAfterHeader(response: Response): number | undefined {
   const raw = response.headers.get('Retry-After');
   const value = raw === null || raw.trim() === '' ? Number.NaN : Number(raw);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+function parseLimits(limits: Json): InstanceLimits {
+  const defaultKdfId = integer(limits, 'default_kdf_id');
+  if (!isKdfId(defaultKdfId)) {
+    throw new ResponseError('unknown default kdf profile');
+  }
+  return {
+    maxFileBytes: integer(limits, 'max_file_bytes'),
+    maxTextBytes: integer(limits, 'max_text_bytes'),
+    maxObjectBytes: integer(limits, 'max_object_bytes'),
+    maxTtlSeconds: integer(limits, 'max_ttl_s'),
+    defaultTtlSeconds: integer(limits, 'default_ttl_s'),
+    maxOpens: integer(limits, 'max_opens'),
+    defaultKdfId,
+  };
+}
+
+function operatorField(operator: Json, key: string): string | undefined {
+  const value = operator[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || value === '' || utf8(value).length > MAX_OPERATOR_FIELD_BYTES) {
+    throw new ResponseError();
+  }
+  return value;
+}
+
+function parseOperator(value: unknown): Operator | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isObject(value)) {
+    throw new ResponseError();
+  }
+  const name = operatorField(value, 'name');
+  const contact = operatorField(value, 'contact');
+  const hosting = operatorField(value, 'hosting');
+  return { ...(name === undefined ? {} : { name }), ...(contact === undefined ? {} : { contact }), ...(hosting === undefined ? {} : { hosting }) };
+}
+
+function parseClientFiles(manifest: Json): readonly ClientFile[] {
+  const files = manifest['files'];
+  if (!Array.isArray(files) || typeof manifest['built'] !== 'boolean') {
+    throw new ResponseError();
+  }
+  return files.map((file: unknown) => {
+    if (!isObject(file)) {
+      throw new ResponseError();
+    }
+    const path = text(file, 'path');
+    const sha256 = text(file, 'sha256');
+    if (!path.startsWith('/') || !SHA256_HEX.test(sha256)) {
+      throw new ResponseError();
+    }
+    return { path, sha256 };
+  });
 }
 
 async function readJson(response: Response): Promise<Json> {
@@ -414,26 +503,48 @@ export function createApi(options: ApiOptions = {}) {
       if (!isObject(limits) || !isObject(pow) || !isObject(create) || typeof pow['required'] !== 'boolean') {
         throw new ResponseError();
       }
-      const defaultKdfId = integer(limits, 'default_kdf_id');
-      if (!isKdfId(defaultKdfId)) {
-        throw new ResponseError('unknown default kdf profile');
-      }
       return {
-        limits: {
-          maxFileBytes: integer(limits, 'max_file_bytes'),
-          maxTextBytes: integer(limits, 'max_text_bytes'),
-          maxObjectBytes: integer(limits, 'max_object_bytes'),
-          maxTtlSeconds: integer(limits, 'max_ttl_s'),
-          defaultTtlSeconds: integer(limits, 'default_ttl_s'),
-          maxOpens: integer(limits, 'max_opens'),
-          defaultKdfId,
-        },
+        limits: parseLimits(limits),
         pow: {
           required: pow['required'],
           difficulty: integer(pow, 'difficulty'),
           ...(pow['challenge'] === undefined ? {} : { challenge: text(pow, 'challenge') }),
         },
         create: { id: parseId(text(create, 'id')), idToken: text(create, 'id_token') },
+      };
+    },
+
+    async transparency(): Promise<Transparency> {
+      const [report, manifest] = await Promise.all([
+        call('/.well-known/nylzo/transparency.json', { method: 'GET' }).then(ensureOk).then(readJson),
+        call('/.well-known/nylzo/client.json', { method: 'GET' }).then(ensureOk).then(readJson),
+      ]);
+      const limits = report['limits'];
+      const rates = report['rates'];
+      const retention = report['retention'];
+      if (!isObject(limits) || !isObject(rates) || !isObject(retention) || text(manifest, 'server') !== text(report, 'server')) {
+        throw new ResponseError();
+      }
+      return {
+        server: text(report, 'server'),
+        operator: parseOperator(report['operator']),
+        limits: parseLimits(limits),
+        rates: {
+          createPerHour: integer(rates, 'create_per_hour'),
+          createPerDay: integer(rates, 'create_per_day'),
+          createBytesPerDay: integer(rates, 'create_bytes_per_day'),
+          readPerHour: integer(rates, 'read_per_hour'),
+          abusePerHour: integer(rates, 'abuse_per_hour'),
+          coarseMultiplier: integer(rates, 'coarse_multiplier'),
+          globalDailyCreates: integer(rates, 'global_daily_creates'),
+          powDifficulty: integer(rates, 'pow_difficulty'),
+        },
+        retention: {
+          tombstoneSeconds: integer(retention, 'tombstone_s'),
+          abuseReportSeconds: integer(retention, 'abuse_report_s'),
+          dailyCounterSeconds: integer(retention, 'daily_counter_s'),
+        },
+        files: parseClientFiles(manifest),
       };
     },
 

@@ -62,6 +62,7 @@ type Config struct {
 	PoWConcurrency int
 	MaxStreams     int
 	MinFreeBytes   int64
+	Operator       Operator
 	Version        string
 }
 
@@ -200,6 +201,9 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_POW_CONCURRENCY", func(v string) error { return parseInt(v, &c.PoWConcurrency) })
 	set("NYLZO_MAX_STREAMS", func(v string) error { return parseInt(v, &c.MaxStreams) })
 	set("NYLZO_MIN_FREE_BYTES", func(v string) error { return parseInt64(v, &c.MinFreeBytes) })
+	set("NYLZO_OPERATOR", func(v string) error { c.Operator.Name = v; return nil })
+	set("NYLZO_CONTACT", func(v string) error { c.Operator.Contact = v; return nil })
+	set("NYLZO_HOSTING", func(v string) error { c.Operator.Hosting = v; return nil })
 	if err != nil {
 		return c, err
 	}
@@ -281,6 +285,9 @@ func (c Config) Validate() error {
 		if !check.ok {
 			return fmt.Errorf("%w: %s", ErrConfig, check.name)
 		}
+	}
+	if err := c.Operator.validate(); err != nil {
+		return fmt.Errorf("%w: %v", ErrConfig, err)
 	}
 	return nil
 }

@@ -86,6 +86,7 @@ type Server struct {
 	abuseDir     string
 	webFiles     fs.FS
 	web          webClient
+	manifest     ClientManifest
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
@@ -117,6 +118,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		return nil, err
 	}
 	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets))
+	s.manifest = s.web.embedded().Manifest(cfg.Version)
 	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
@@ -314,6 +316,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handlePage)
 	mux.HandleFunc("GET /sent", s.handlePage)
 	mux.HandleFunc("GET /report", s.handlePage)
+	mux.HandleFunc("GET /transparency", s.handlePage)
+	mux.HandleFunc("GET "+ClientManifestPath, s.handleClientManifest)
+	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux))))))
 }
