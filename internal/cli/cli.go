@@ -7,11 +7,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/signal"
 	"regexp"
 	"slices"
 	"strings"
 	"syscall"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -21,6 +24,8 @@ const (
 	exitOK    = 0
 	exitError = 1
 	exitUsage = 2
+
+	exitInterrupted = 130
 )
 
 type Env struct {
@@ -30,6 +35,14 @@ type Env struct {
 	Getenv   func(string) string
 	Terminal Terminal
 	Version  string
+	TempDir  string
+}
+
+func (e Env) tempDir() string {
+	if e.TempDir != "" {
+		return e.TempDir
+	}
+	return os.TempDir()
 }
 
 type command struct {
@@ -45,6 +58,7 @@ var (
 	keyLike      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, keyLength))
 	fragmentLike = regexp.MustCompile(fmt.Sprintf(`#[0-9]+\.[0-9]+\.[A-Za-z0-9_-]{%d}`, keyLength))
 	badFlagValue = regexp.MustCompile(`invalid (?:boolean )?value .* for flag -([a-z-]+)`)
+	commandLike  = regexp.MustCompile(`^[a-z][a-z-]{0,19}$`)
 )
 
 func commands() []command {
@@ -78,7 +92,11 @@ func Run(args []string, env Env) int {
 	}
 	i := slices.IndexFunc(commands(), func(c command) bool { return c.name == args[0] })
 	if i < 0 {
-		fmt.Fprintf(env.Stderr, "%s: unknown command %q\n\n%s", program, args[0], usage())
+		name := "unknown command"
+		if commandLike.MatchString(args[0]) {
+			name += " " + args[0]
+		}
+		fmt.Fprintf(env.Stderr, "%s: %s\n\n%s", program, name, usage())
 		return exitUsage
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -122,6 +140,7 @@ func parseFlags(fs *flag.FlagSet, env Env, args []string) error {
 	fs.SetOutput(env.Stderr)
 	switch {
 	case errors.Is(err, flag.ErrHelp):
+		fs.SetOutput(env.Stdout)
 		fs.Usage()
 		return errHelp
 	case err != nil:
@@ -154,8 +173,20 @@ func flagsDone(err error) (int, bool) {
 }
 
 func failf(env Env, format string, a ...any) int {
-	fmt.Fprintf(env.Stderr, program+": "+format+"\n", a...)
+	fmt.Fprintln(env.Stderr, program+": "+printable(fmt.Sprintf(format, a...)))
 	return exitError
+}
+
+func printable(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
+			fmt.Fprintf(&b, "\\u%04x", r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func runVersion(_ context.Context, env Env, args []string) int {

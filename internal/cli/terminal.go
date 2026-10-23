@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"golang.org/x/term"
 )
@@ -42,8 +44,27 @@ func (t systemTerminal) ReadSecret(prompt string) ([]byte, error) {
 	if out != in {
 		defer out.Close()
 	}
+	fd := int(in.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, ErrNoTerminal
+	}
+	interrupted := make(chan os.Signal, 1)
+	signal.Notify(interrupted, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(interrupted)
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-interrupted:
+			_ = term.Restore(fd, state)
+			fmt.Fprintln(out)
+			os.Exit(exitInterrupted)
+		case <-done:
+		}
+	}()
 	fmt.Fprint(out, prompt)
-	secret, err := term.ReadPassword(int(in.Fd()))
+	secret, err := term.ReadPassword(fd)
 	fmt.Fprintln(out)
 	return secret, err
 }

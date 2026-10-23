@@ -136,6 +136,9 @@ func TestPlainHTTPDialsOnlyLoopback(t *testing.T) {
 	if transport.Proxy != nil || transport.DialContext == nil {
 		t.Fatal("plain http to localhost may go through a proxy or dial anything")
 	}
+	if _, err := transport.DialContext(t.Context(), "tcp", "192.0.2.1:80"); !errors.Is(err, ErrInsecureServer) {
+		t.Fatalf("plain http dialed a non-loopback address: %v", err)
+	}
 }
 
 func TestServerStringsAreValidated(t *testing.T) {
@@ -156,6 +159,28 @@ func TestServerStringsAreValidated(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = c.Status(t.Context(), core.NewID(), core.NewSecret())
+		ts.Close()
+		if !errors.Is(err, ErrResponse) {
+			t.Fatalf("%s accepted: %v", body, err)
+		}
+	}
+}
+
+func TestMetadataStringsAreValidated(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{`{"state":"weird","kdf_id":0}`, `{"state":"available","expires_at":"soon","kdf_id":0}`} {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/challenge" {
+				w.Write([]byte(`{"challenge":"` + core.Encode(make([]byte, core.ChallengeLen)) + `","expires_at":"2026-10-24T00:00:00Z"}`))
+				return
+			}
+			w.Write([]byte(body))
+		}))
+		c, err := New(ts.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.Metadata(t.Context(), core.NewID(), core.NewSecret())
 		ts.Close()
 		if !errors.Is(err, ErrResponse) {
 			t.Fatalf("%s accepted: %v", body, err)

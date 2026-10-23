@@ -59,3 +59,15 @@ func TestLongNamesKeepTheirExtension(t *testing.T) {
 		t.Fatalf("%d bytes, %q", len(name), name[len(name)-10:])
 	}
 }
+
+func TestNamesCompareWithFullCaseFolding(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"MESSAGE.TXT", "Meßage.txt", "meſſage.txt", "message.txt"} {
+		if !sameFileName(name, textFileName) {
+			t.Fatalf("%q is not treated as %q", name, textFileName)
+		}
+	}
+	if sameFileName("messages.txt", textFileName) {
+		t.Fatal("a different name was treated as the text file")
+	}
+}

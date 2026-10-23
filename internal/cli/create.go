@@ -97,7 +97,7 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	}
 	manage, err := reserveManageFile(o.manageFile)
 	if err != nil {
-		return failf(env, "manage token file: %s", err)
+		return failf(env, "--manage-token-file: the file already exists or cannot be created")
 	}
 	created, err := createMessage(ctx, env, c, o, kdf, passphrase, msg)
 	if err != nil {
@@ -108,7 +108,7 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	token := formatManageToken(c.Origin(), created.id, &created.manage)
 	if err := manage.write(token); err != nil {
 		fmt.Fprintln(env.Stdout, created.link)
-		return failf(env, "the message was created, but its manage token file could not be written: %s", err)
+		return failf(env, "the message was created, but its manage token file could not be written")
 	}
 	fmt.Fprintln(env.Stdout, created.link)
 	if o.printManage {

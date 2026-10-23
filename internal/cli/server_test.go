@@ -127,7 +127,7 @@ func runCLI(args []string, values map[string]string) (int, string, string) {
 
 func TestRunAnswersUsageErrorsWithoutRunning(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
-	if code, stdout, stderr := runCLI([]string{"serve", "--help"}, nil); code != 0 || stdout != "" || !strings.HasPrefix(stderr, "usage: nylzo serve") {
+	if code, stdout, stderr := runCLI([]string{"serve", "--help"}, nil); code != 0 || stderr != "" || !strings.HasPrefix(stdout, "usage: nylzo serve") {
 		t.Fatalf("serve --help: exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	for _, args := range [][]string{nil, {"sweep-once", "--dry-run"}, {"serve", "extra"}, {"bogus"}, {"version", "extra"}} {

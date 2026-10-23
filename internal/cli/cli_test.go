@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -117,7 +121,7 @@ func runWith(t *testing.T, stdin string, vars map[string]string, term Terminal, 
 	if term == nil {
 		term = noTerminal{}
 	}
-	code := Run(args, Env{Stdin: strings.NewReader(stdin), Stdout: &stdout, Stderr: &stderr, Getenv: env(vars), Terminal: term, Version: "test"})
+	code := Run(args, Env{Stdin: strings.NewReader(stdin), Stdout: &stdout, Stderr: &stderr, Getenv: env(vars), Terminal: term, Version: "test", TempDir: t.TempDir()})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -354,7 +358,10 @@ func TestNoFlagTakesASecret(t *testing.T) {
 	}
 	for _, c := range commands() {
 		res := runWith(t, "", nil, nil, c.name, "-h")
-		for _, m := range flagLine.FindAllStringSubmatch(res.stderr, -1) {
+		if res.code != exitOK || res.stderr != "" {
+			t.Fatalf("%s -h: exit %d, stderr %q", c.name, res.code, res.stderr)
+		}
+		for _, m := range flagLine.FindAllStringSubmatch(res.stdout, -1) {
 			if !allowed[m[1]] {
 				t.Fatalf("%s has the flag -%s, which is not on the list of flags known to carry no secret", c.name, m[1])
 			}
@@ -760,6 +767,10 @@ func TestErrorsNeverEchoSecrets(t *testing.T) {
 		"token as a count":                {nil, []string{"create", "--server", ts.url, "--opens", token}},
 		"link with trailing punctuation":  {nil, []string{"read", "--link-file", link + ")"}},
 		"link with a carriage return":     {nil, []string{"burn", "--link-file=" + link + "\r"}},
+		"passphrase as --out":             {nil, []string{"read", "--out", filepath.Join(t.TempDir(), secret)}},
+		"token as the manage file":        {nil, []string{"create", "--server", ts.url, "--manage-token-file", existing(t, token)}},
+		"token as a command":              {nil, []string{token}},
+		"passphrase as a command":         {nil, []string{secret}},
 	} {
 		stdin := link
 		if c.args[0] == "status" {
@@ -811,4 +822,185 @@ func TestWritePrivateStaysInItsDirectory(t *testing.T) {
 			t.Fatalf("wrote %q outside %s", name, dir)
 		}
 	}
+}
+
+func existing(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestServerTextNeverReachesTheTerminalRaw(t *testing.T) {
+	t.Parallel()
+	hostile := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		w.Write([]byte(`{"error":"\u001b]0;pwned\u0007 https://evil.example/m/x#1.0.fake"}`))
+	}))
+	t.Cleanup(hostile.Close)
+	res := runWith(t, "text", nil, nil, "create", "--server", hostile.URL)
+	if res.code != exitError || strings.ContainsAny(res.stderr, "\x1b\x07") || strings.Contains(res.stderr, "evil.example") {
+		t.Fatalf("server text on stderr: %d %q", res.code, res.stderr)
+	}
+	cert := &x509.Certificate{DNSNames: []string{"\x1b]0;pwned\x07", "\x1b[2K\rnylzo: the message was saved"}}
+	if msg := explain(&url.Error{Op: "Get", URL: "https://localhost/", Err: &tls.CertificateVerificationError{Err: x509.HostnameError{Certificate: cert, Host: "localhost"}}}); strings.ContainsAny(msg, "\x1b\x07\r") {
+		t.Fatalf("certificate names reach the terminal: %q", msg)
+	}
+	if got := printable("a\x1b[2K\u202eb\x07"); got != `a\u001b[2K\u202eb\u0007` {
+		t.Fatalf("printable: %q", got)
+	}
+}
+
+func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	c, err := client.New(ts.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "beside a folded clash"
+	for _, name := range []string{"Meßage.txt", "meſſage.txt", "MESSAGE.TXT"} {
+		msg := content{meta: core.Meta{Text: &text, File: &core.FileMeta{Name: name, Mime: "text/plain", Size: 4}}, file: []byte("file")}
+		created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, core.KDFNone, "", msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		paths := readPaths(t, runWith(t, created.link, nil, nil, "read"))
+		if len(paths) != 2 || !strings.HasPrefix(filepath.Base(paths[1]), attachmentPrefix) {
+			t.Fatalf("%s: %v", name, paths)
+		}
+		assertPrivate(t, paths[1], "file")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "taken.bin"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := writeAll(dir, []outputFile{{"taken.bin", []byte("new")}})
+	if err != nil || filepath.Base(paths[0]) != attachmentPrefix+"taken.bin" {
+		t.Fatalf("an existing name was not avoided: %v %v", paths, err)
+	}
+}
+
+func TestFallbackStaysInsideOut(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix permissions and a non-root user")
+	}
+	t.Parallel()
+	base := t.TempDir()
+	locked := filepath.Join(base, "locked")
+	if err := os.Mkdir(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	text := "after a failed write"
+	var stderr bytes.Buffer
+	paths, err := saveMessage(Env{Stdout: io.Discard, Stderr: &stderr, Terminal: noTerminal{}}, locked, base, false, core.Payload{Meta: core.Meta{Text: &text}})
+	if err != nil || len(paths) != 1 || filepath.Dir(filepath.Dir(paths[0])) != base || filepath.Dir(paths[0]) == locked {
+		t.Fatalf("fallback wrote %v (%v)", paths, err)
+	}
+	assertPrivate(t, paths[0], text)
+	full := filepath.Join(t.TempDir(), "full")
+	if err := os.Mkdir(full, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := saveMessage(Env{Stdout: io.Discard, Stderr: io.Discard, Terminal: noTerminal{}}, full, full, false, core.Payload{Meta: core.Meta{Text: &text}}); err == nil {
+		t.Fatal("a write with nowhere to go succeeded")
+	}
+	partial := t.TempDir()
+	if err := os.Mkdir(filepath.Join(partial, "a.bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(partial, attachmentPrefix+"a.bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeAll(partial, []outputFile{{textFileName, []byte("x")}, {"a.bin", []byte("y")}}); err == nil {
+		t.Fatal("writeAll succeeded with nowhere to put the attachment")
+	}
+	if _, err := os.Stat(filepath.Join(partial, textFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("a failed set of files left the text behind")
+	}
+}
+
+func TestControlCharactersAndTheTerminalGate(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	bidi, _ := createText(t, ts, "looks\u202esafe")
+	if res := runWith(t, bidi, nil, &scriptedTerminal{stdout: true}, "read", "--stdout"); strings.Contains(res.stdout, "\u202e") || !strings.Contains(res.stderr, "control characters") {
+		t.Fatalf("a format character went to the terminal: %q %q", res.stdout, res.stderr)
+	}
+	piped, _ := createText(t, ts, "to\x1ba pipe")
+	if res := runWith(t, piped, nil, nil, "read", "--stdout"); res.stdout != "to\x1ba pipe\n" {
+		t.Fatalf("text for a pipe was changed: %q %q", res.stdout, res.stderr)
+	}
+}
+
+func TestManageTokenVariableIsNamed(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	manage := filepath.Join(t.TempDir(), "manage")
+	createText(t, ts, "named", "--manage-token-file", manage)
+	res := runWith(t, "", map[string]string{envManageToken: manage}, nil, "status")
+	if res.code != exitOK || !strings.Contains(res.stderr, "named by "+envManageToken) {
+		t.Fatalf("status from the variable: %d %q", res.code, res.stderr)
+	}
+}
+
+func TestASecondSignalStopsTheCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signals")
+	}
+	t.Parallel()
+	stdin, keep, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer keep.Close()
+	cmd := exec.Command(os.Args[0], "burn")
+	cmd.Env = append(os.Environ(), reexecEnv+"=1")
+	cmd.Stdin = stdin
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	stdin.Close()
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	time.Sleep(300 * time.Millisecond)
+	cmd.Process.Signal(syscall.SIGTERM)
+	time.Sleep(300 * time.Millisecond)
+	cmd.Process.Signal(syscall.SIGTERM)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		cmd.Process.Kill()
+		t.Fatal("two signals did not stop a command blocked on stdin")
+	}
+}
+
+func TestFailureMessagesAreEscaped(t *testing.T) {
+	t.Parallel()
+	var stderr bytes.Buffer
+	failf(Env{Stderr: &stderr}, "%s", "spoof\x1b]0;x\x07\rnylzo: saved")
+	if strings.ContainsAny(stderr.String(), "\x1b\x07\r") {
+		t.Fatalf("raw control characters on stderr: %q", stderr.String())
+	}
+}
+
+func TestAnUnwritableOutDirectoryIsNotNamed(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs Unix permissions and a non-root user")
+	}
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	link, _ := createText(t, ts, "kept")
+	locked := filepath.Join(t.TempDir(), "correct horse battery staple")
+	if err := os.Mkdir(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	res := runWith(t, link, nil, nil, "read", "--out", locked)
+	if res.code != exitError || strings.Contains(res.stderr, "correct horse") {
+		t.Fatalf("read into an unwritable --out: %d %q", res.code, res.stderr)
+	}
+	paths := readPaths(t, runWith(t, link, nil, nil, "read"))
+	assertPrivate(t, paths[0], "kept")
 }

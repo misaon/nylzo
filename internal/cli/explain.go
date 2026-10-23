@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
@@ -18,9 +21,28 @@ var endedStates = map[string]string{
 
 func explain(err error) string {
 	var apiErr *client.APIError
+	var hostErr x509.HostnameError
+	var authorityErr x509.UnknownAuthorityError
+	var invalidErr x509.CertificateInvalidError
+	var dnsErr *net.DNSError
+	var opErr *net.OpError
 	switch {
 	case errors.As(err, &apiErr):
 		return explainAPI(apiErr)
+	case errors.As(err, &hostErr):
+		return "the server's TLS certificate is not valid for its address"
+	case errors.As(err, &authorityErr):
+		return "the server's TLS certificate is not from a trusted authority"
+	case errors.As(err, &invalidErr):
+		return "the server's TLS certificate is invalid or has expired"
+	case errors.Is(err, client.ErrInsecureServer), errors.Is(err, client.ErrServerURL), errors.Is(err, client.ErrRedirect), errors.Is(err, client.ErrResponse):
+		return err.Error()
+	case errors.As(err, &dnsErr):
+		return "the server address cannot be resolved"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "the server did not answer in time"
+	case errors.As(err, &opErr):
+		return "cannot connect to the server"
 	case errors.Is(err, core.ErrWeakPassphrase):
 		return fmt.Sprintf("the passphrase must have at least %d characters", core.MinPassphraseChars)
 	case errors.Is(err, core.ErrMalformedPassphrase):
