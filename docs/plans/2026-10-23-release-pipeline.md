@@ -50,7 +50,7 @@ Doporučení: A, jak říká návrh. Image má CA certifikáty a tzdata a neobsa
 - `go.mod` dostane `toolchain go1.27.3` a `web/.node-version` dostane `24.22.1`. CI i vydání používají přesně tyto verze, protože jiná verze kompilátoru nebo komprese dá jiné bajty.
 - `.goreleaser.yaml`:
   - hook `before` sestaví klienta přes `pnpm`. Spouští ho lokální build a CI, job vydání ho vynechá (`--skip=before`) a klienta dostane hotového z jobu `web` (D52);
-  - build `nylzod` s `CGO_ENABLED=0`, `-trimpath`, časem souborů a buildu z commitu a verzí z tagu přes `-X main.version`. `kos` bere `main`, `env`, `flags` a `ldflags` z buildu přes YAML kotvy, takže image nese stejnou binárku jako archiv;
+  - build `nylzo` (od milníku 4 jediná binárka, dříve `nylzod`; archivy pro linux/amd64, linux/arm64, darwin/arm64 a windows/amd64) s `CGO_ENABLED=0`, `-trimpath`, časem souborů a buildu z commitu a verzí z tagu přes `-X main.version`. `kos` bere `main`, `env`, `flags` a `ldflags` z buildu přes YAML kotvy, takže image nese stejnou binárku jako archiv;
   - archivy pro linux/amd64 a linux/arm64, `checksums.txt` a SBOM přes syft;
   - `kos` pro image `ghcr.io/misaon/nylzo` (amd64 a arm64) na základu z D45 s SBOM;
   - podpis `checksums.txt` a image přes cosign keyless;
@@ -61,7 +61,7 @@ Doporučení: A, jak říká návrh. Image má CA certifikáty a tzdata a neobsa
   - `release` (prostředí `release`, `contents: write`, `packages: write`, `id-token: write`, `attestations: write`): znovu ověří, že tag ukazuje na `GITHUB_SHA`, protože schválení může trvat hodiny. Stáhne artefakt s kontrolou digestu, porovná SHA-256 manifestu s výstupem jobu `web` a znovu spočítaný manifest se staženým, takže neprojde změněný, chybějící ani přidaný soubor. Referenci základu image přečte z `.goreleaser.yaml` (`yq`, právě jeden záznam `kos`, přesný tvar s digestem) a ověří její podpis cosignem. Pak spustí `goreleaser release --clean --skip=before` s `GORELEASER_CURRENT_TAG` nastaveným na ověřený tag, takže v jobu s právy zápisu a s OIDC tokenem neběží žádný kód z npm a jiný tag na stejném commitu, třeba RC nebo nepodepsaný, vydání nepřejmenuje. Vydání tím nese právě ověřený tag. Kontrola, že `dist/metadata.json` nese tento tag, běží až po zveřejnění, takže rozdíl jen odhalí a zastaví přidání provenance; zabraňuje mu připnutí tagu. Nakonec job přidá provenance pro archivy, checksums a image.
 - CI job „Reproducible build“: dva joby na různých runnerech (x64 a arm64) sestaví klienta a binárky pro obě platformy. Třetí job porovná jejich SHA-256 a zároveň snapshot konfigurace GoReleaseru (`goreleaser check`). Node se tu instaluje s `package-manager-cache: false`, stejně jako v jobu `web`.
 - `deploy/compose/` (D51):
-  - `compose.yaml` s `nylzod` a Caddy, obojí připnuté na digest;
+  - `compose.yaml` s `nylzo serve` a Caddy, obojí připnuté na digest;
   - pepper jako Docker secret ze souboru;
   - data ve volume;
   - síť s IPv4 i IPv6 (ULA `fd1f:9791:e50b::/64`), aby Docker neposílal klienty IPv6 přes userland proxy z jedné adresy. Caddy má pevné adresy `172.30.80.2` a `fd1f:9791:e50b::2` a jen ty jsou v `NYLZO_TRUSTED_PROXIES`, brána sítě důvěru nemá. Ostatní kontejnery dostávají adresy z `ip_range` v horní polovině podsítí;
