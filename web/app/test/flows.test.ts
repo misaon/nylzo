@@ -434,6 +434,20 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     expect(resumed.last()).toMatchObject({ view: 'revealed', burnable: true });
   });
 
+  it('ignores a deletion while the message is being revealed or already being deleted', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const revealing = r.reveal();
+    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    await revealing;
+    expect(r.last()).toMatchObject({ view: 'revealed', burnable: true });
+    const [first, second] = await Promise.all([r.burn(), r.burn()]);
+    expect([first, second]).toEqual([{ outcome: 'deleted' }, { outcome: 'ignored' }]);
+    expect(api.calls.filter((call) => call === 'burn')).toHaveLength(1);
+  });
+
   it('does nothing on a hidden or prerendering page', async () => {
     for (const overrides of [{ visible: false }, { prerendering: true }]) {
       const api = fakeApi();

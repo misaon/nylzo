@@ -53,6 +53,8 @@ describe('i18n', () => {
     saveLanguage(store, 'cs');
     expect(map.get('nylzo:lang')).toBe('cs');
     expect(savedLanguage(store, ['en'])).toBe('cs');
+    saveLanguage(store, 'en');
+    expect(savedLanguage(store, ['cs-CZ'])).toBe('en');
     map.set('nylzo:lang', 'de');
     expect(savedLanguage(store, ['cs-CZ'])).toBe('cs');
     const broken: PreferenceStore = {
