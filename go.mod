@@ -2,6 +2,8 @@ module github.com/misaon/nylzo
 
 go 1.27
 
+toolchain go1.27.3
+
 require (
 	filippo.io/edwards25519 v1.2.0
 	golang.org/x/crypto v0.58.0
