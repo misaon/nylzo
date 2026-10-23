@@ -523,6 +523,7 @@ func rewritingProxy(t *testing.T, target string, rewrite func(*http.Request, []b
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		req, _ := http.NewRequestWithContext(r.Context(), r.Method, target+r.URL.RequestURI(), r.Body)
 		req.Header = r.Header.Clone()
+		req.ContentLength = r.ContentLength
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadGateway)
@@ -569,5 +570,20 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 		if name == "kdf profile" && !strings.Contains(status.stdout, "opens: 0 of 2 used") {
 			t.Fatalf("a profile mismatch spent an open: %s", status.stdout)
 		}
+	}
+}
+
+func TestAServerCannotSwitchOffThePassphrase(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	proxy := rewritingProxy(t, ts.url, func(r *http.Request, body []byte) []byte {
+		if r.URL.Path == "/api/v1/instance" {
+			return []byte(strings.Replace(string(body), `"default_kdf_id":1`, `"default_kdf_id":0`, 1))
+		}
+		return body
+	})
+	res := runWith(t, "secret", nil, nil, "create", "--server", proxy, "--passphrase-file", writeSecretFile(t, "correct horse battery staple"))
+	if res.code != exitOK || !strings.Contains(res.stdout, "#1.1.") {
+		t.Fatalf("a passphrase was dropped on the server's word: %d %q %q", res.code, res.stdout, res.stderr)
 	}
 }

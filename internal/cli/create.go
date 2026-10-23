@@ -220,6 +220,9 @@ func createOnce(ctx context.Context, env Env, c *client.Client, o createOptions,
 		if kdf == core.KDFNone {
 			kdf = core.KDF(inst.Limits.DefaultKDF)
 		}
+		if !kdf.RequiresPassphrase() {
+			kdf = core.KDFScrypt
+		}
 	}
 	id := inst.Create.ID
 	s, manage := core.NewSecret(), core.NewSecret()
