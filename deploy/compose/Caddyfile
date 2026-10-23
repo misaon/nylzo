@@ -9,7 +9,7 @@
 		-Server
 		-Via
 	}
-	reverse_proxy nylzod:8080 {
+	reverse_proxy nylzo:8080 {
 		transport http {
 			keepalive 25s
 		}

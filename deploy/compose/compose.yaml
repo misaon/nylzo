@@ -1,8 +1,9 @@
 name: nylzo
 
 services:
-  nylzod:
+  nylzo:
     image: ${NYLZO_IMAGE:?set NYLZO_IMAGE to a verified image reference with its digest}
+    command: [serve]
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
@@ -35,7 +36,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [nylzod]
+    depends_on: [nylzo]
     networks:
       nylzo:
         ipv4_address: 172.30.80.2
