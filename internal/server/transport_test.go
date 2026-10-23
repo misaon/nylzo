@@ -48,7 +48,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 		"Cross-Origin-Resource-Policy": "same-origin",
 		"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
 	}
-	for _, path := range []string{"/", "/m/" + core.NewID().String(), "/api/v1/instance", "/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope"} {
+	for _, path := range []string{"/", "/sent", "/report", "/m/" + core.NewID().String(), "/api/v1/instance", "/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope"} {
 		resp, _ := h.do(request{method: "GET", path: path})
 		for k, v := range required {
 			if resp.Header.Get(k) != v {
@@ -61,8 +61,9 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	}
 	specCSP := htmlCSPFromSpec(t)
 	nonces := map[string]bool{}
-	for range 5 {
-		resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String()})
+	pages := []string{"/", "/sent", "/report", "/m/" + core.NewID().String()}
+	for i := range 2 * len(pages) {
+		resp, body := h.do(request{method: "GET", path: pages[i%len(pages)]})
 		csp := resp.Header.Get("Content-Security-Policy")
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
 		nonce := csp[start : start+strings.Index(csp[start:], "'")]

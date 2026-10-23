@@ -297,6 +297,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /m/{id}", s.handlePage)
 	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
 	mux.HandleFunc("GET /{$}", s.handlePage)
+	mux.HandleFunc("GET /sent", s.handlePage)
+	mux.HandleFunc("GET /report", s.handlePage)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux))))))
 }
