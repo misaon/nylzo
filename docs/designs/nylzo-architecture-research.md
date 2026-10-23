@@ -118,7 +118,7 @@ R8. Agenti předávají tajemství odkazem proti tomu, kde tajemství skutečně
 R9. Anonymní vytváření proti denním kvótám. Řešení: dostupnost „best effort“, globální strop zastaví nejdřív vytváření, čtení běží dál.
 R10. Passphrase stejným kanálem jako odkaz nepřidá nic. Řešení: UI to říká; protokol zajišťuje, že špatná passphrase nespálí otevření.
 R11. Kvantová hrozba proti době uchování. Řešení: žádná asymetrická kryptografie v aplikační vrstvě, 256bitové klíče, hybridní ML-KEM v TLS prohlížečů (příloha A).
-R12. Jednorázovost proti přerušenému přenosu. Řešení: lease 120 s před dešifrováním; po dešifrování reload obsah ztrácí záměrně.
+R12. Jednorázovost proti přerušenému přenosu. Řešení: lease nejméně 120 s, u velké zprávy po dobu přenosu při 128 kbit/s, před dešifrováním; po dešifrování reload obsah ztrácí záměrně.
 R13 (nové, z druhého názoru). „Vojenská bezpečnost“ proti free tieru, kde kontejner usíná a limit těla není zdokumentovaný. Řešení: výstupní podmínka: pokud 5 MB POST neprojde, studený start přesáhne 3 s, nebo běh úklidové úlohy a probouzení databáze prodraží provoz nad 100 Kč měsíčně (webový kontejner úloha nebudí), veřejná instance jde na záložní hosting v pořadí podle OD21 (nejdřív EU firma nad rozpočet, až pak americká firma v rozpočtu) a adaptér Postgres a S3 zůstane jako volitelný.
 
 ### Otevřená rozhodnutí s navrženým výchozím stavem
@@ -137,17 +137,17 @@ R13 (nové, z druhého názoru). „Vojenská bezpečnost“ proti free tieru, k
 | OD10 | Pořadí cílů nasazení | Scaleway (veřejná) a Docker se SQLite (firmy) ze stejného image; Cloudflare a Oracle jen zdokumentované | rozhodnuto D3, D6 |
 | OD11 | Provozovatel veřejné instance | Fyzická osoba, nebo Techfides; ovlivňuje DSA kontaktní místo a smluvní stranu u Scaleway | vlastník + právník |
 | OD12 | Identifikátory a verzování | id 128 bitů base64url (22 znaků), fragment s prefixem „1.“, API /api/v1, verze obálky v prvním bajtu | rozhodnuto zde |
-| OD13 | Limit pokusů o passphrase | Na (id, hash IP): pokusy 1 až 5 vrací 403 s attempts_left bez čekání, od šestého čekání 2^(fail_count − 5) s se stropem 1 h. Na id: tvrdý strop 100 chybných pokusů za den UTC, pak 403 s retry_after do půlnoci UTC pro všechny IP; zamknutí pravého příjemce je přijaté riziko, odesílatel vidí počet pokusů ve status a může zprávu zrušit a poslat znovu. Nikdy spálení otevření | rozhodnuto zde |
-| OD14 | Lease | 120 s, token lease v sessionStorage pod id do dešifrování | rozhodnuto zde |
+| OD13 | Limit pokusů o passphrase | Na zprávu, bez vazby na adresu (D11, review 22. 10. 2026): pokusy 1 až 5 vrací 403 s attempts_left bez čekání, od šestého čekání 2^(fail_count_total − 5) s se stropem 1 h, zaokrouhlené nahoru na celou minutu, aby databáze nenesla přesný čas pokusu. Celoživotní strop 100 chybných pokusů na zprávu (D10), pak 403 s retry_after do konce platnosti pro každého. Útočník s odkazem tak může zprávu zamknout natrvalo; je to jen dostupnost, odesílatel vidí počet pokusů ve status a zprávu zruší a pošle znovu. Nikdy spálení otevření | rozhodnuto zde |
+| OD14 | Lease | max(120 s, přenos objektu při 128 kbit/s), token lease v sessionStorage pod id do dešifrování; stejně dlouhý je i deadline zápisu odpovědi a čtení těla při vytvoření (review 22. 10. 2026) | rozhodnuto zde |
 | OD15 | Zobrazení vyžaduje klik | Ano, vždy; automatické zobrazení nikdy | rozhodnuto zde |
 | OD16 | S3 klient v Go | minio-go v7.4.1 (jeden modul, 73 importů) v první verzi, s testy proti Scaleway a MinIO; ručně psaný podpis SigV4 (zhruba 200 řádků) jen jako pozdější volba, pokud se ukáže, že závislost je skutečný problém | vlastník |
 | OD17 | Registry image pro Scaleway | Scaleway Container Registry, nebo veřejný ghcr.io; podmínky a cena nebyly ověřeny | test |
-| OD18 | Challenge-response proti replay R na TLS edge | Ne v první verzi: server drží jen mac(h(R)), takže důkaz vázaný na nonce by vyžadoval klíčový pár odvozený z S a asymetrickou kryptografii v aplikační vrstvě; proti edge, který může přepsat i klienta (T13), to přináší málo. Zůstává přijaté riziko | vlastník |
+| OD18 | Challenge-response proti replay R, V a M na TLS edge a na nešifrovaném h2c mezi edge a kontejnerem | Rozhodnuto (D12, review 22. 10. 2026): už v první verzi. Klient odvodí z S (u passphrase z S a P, pro správu z M) klíčové páry Ed25519, server místo mac tokenů drží veřejné klíče a každá změna stavu podepisuje jednorázovou výzvu serveru, takže zachycený požadavek nejde zopakovat. Proti aktivnímu edge, který přepíše klienta (T13), to nepomůže. Implementováno v milníku 1 (spec §5.5) | vlastník |
 | OD19 | HPKE režim „na klíč příjemce“ | Rezervovat bit ve flags; navrhnout ve druhé verzi s hybridem X25519 + ML-KEM-768 | vlastník |
 | OD20 | Zálohy obsahu | Aplikace sama nezálohuje ciphertext ani metadata (data jsou jednorázová); zálohuje se jen konfigurace. Doloženo (příloha B, recenze): Scaleway Serverless SQL zálohuje databázi denně a drží zálohy 7 dní, takže metadata, čítače a náhrobky mohou u poskytovatele přežít až 7 dní po smazání; stránka transparentnosti to uvádí a test R13 ověří, zda lze zálohy vypnout | vlastník |
 | OD21 | Pořadí záložního hostingu, když test R13 selže | 1. Scaleway STARDUST1-S s diskem a IPv4 (EU firma, zhruba 11 Kč plus extra, dostupnost nejistá); 2. OVH VPS-1 (EU firma, zhruba 112 Kč s DPH při roční platbě) s výslovnou výjimkou z rozpočtu o zhruba 12 Kč; 3. Fly.io (americká firma, zhruba 51 Kč) jen s výslovnou výjimkou z požadavku na EU firmu. Doporučení: ustoupí rozpočet (priorita 4), ne EU firma (priorita 1) | vlastník |
 | OD22 | CSS nástroj web klienta | Rozhodnuto (D15): Tailwind CSS 4.3.3 s @tailwindcss/vite 4.3.3 jako build-time nástroj (verze ověřeny z npm registru 21. 10. 2026); tokeny v @theme, vlastní CSS vrstva pro sklo a animace, žádné inline styly, žádný runtime; čisté CSS zamítnuto kvůli ruční konzistenci | rozhodnuto D15 |
-| OD23 | Oddělený statický origin pro webový klient (druhá verze) | Klient servírovaný z jiné strany než API (například Codeberg Pages nebo GitHub Pages s SRI), aby injekce vyžadovala kompromitaci dvou stran. Cena: CORS a CSP práce, konec „jedna binárka, jeden hash“ (KD17), IP návštěvníků u druhé strany (u GitHubu mimo EU). V první verzi ne | vlastník |
+| OD23 | Oddělený statický origin pro webový klient (milník webového klienta ve v1, D13, review 22. 10. 2026) | Klient servírovaný z jiné strany než API (například Codeberg Pages nebo GitHub Pages s SRI), aby injekce vyžadovala kompromitaci dvou stran. Cena: CORS a CSP práce, konec „jedna binárka, jeden hash“ (KD17), IP návštěvníků u druhé strany (u GitHubu mimo EU). Rozhodnuto: už v první verzi, v milníku webového klienta. Upřesněno (D27, 23. 10. 2026): minimální proof of concept webového klienta servíruje stránku z `nylzod`; oddělený origin musí být hotový před veřejným nasazením (Next Steps 9) | vlastník |
 | OD24 | Typ proof-of-work | Puzzle nad scryptem (N=2^14, r=8, p=1, k kol laděných na zhruba 1 s na běžném telefonu) nad nonce vydanou serverem, vázanou na id a 2minutové okno; hashcash nad SHA-256 zamítnut (GPU řeší 0,5s úlohu za zlomek milisekundy); PoW se zapíná automaticky při 50 % denního stropu | rozhodnuto zde |
 
 ---
@@ -184,8 +184,8 @@ Prohlížeči a OS odesílatele i příjemce; kódu klienta tak, jak byl doruče
 | T10 | Síťový útočník | Odposlech, MITM, dlouhodobý záznam | Nic při správném TLS; kvantové riziko jen pro TLS |
 | T11 | Analytik metadat | Koreluje IP, časy, velikosti | Kdo s kým a kdy, pokud jsou logy |
 | T12 | Únik fragmentu v prohlížeči | Historie, synchronizace, rozšíření, skripty třetích stran | S, tedy obsah |
-| T13 | TLS edge poskytovatele (na veřejné instanci terminuje TLS Scaleway a mluví s kontejnerem h2c) | Vidí h(M) a h(V) při vytvoření, R, V a L při claimu, M při cancel a status, ciphertext v odpovědi, surové IP obou stran; může požadavky přehrát; aktivní edge může přepsat servírované HTML a JS | Spálení otevření, stažení ciphertextu, zrušení zprávy; od úniku odkazu (S) drží offline orákulum passphrase i bez pepperu a bez ciphertextu (má V); aktivní edge = pozice T3 s podvrženým klientem. Edge je proto na veřejné instanci součástí důvěryhodné báze pro integritu klienta, stejně jako provozovatel |
-| T14 | Kombinace úniku odkazu (T9 nebo T12) s únikem databáze (T2), s provozem na edge (T13), nebo s konfigurací (pepper) | Má S a k tomu ověřovač V, nebo mac(h(V)) s pepperem | Hádá passphrase offline proti ověřovači stejně, jako by měl ciphertext; samotný únik databáze bez pepperu k tomu nestačí |
+| T13 | TLS edge poskytovatele (na veřejné instanci terminuje TLS Scaleway a mluví s kontejnerem h2c) | Vidí veřejné klíče pk_R, pk_V a pk_M, jednorázové podpisy, L a ciphertext v odpovědi, surové IP obou stran; zachycený požadavek nejde zopakovat, protože jeho výzva je spotřebovaná (OD18, D12); aktivní edge může přepsat servírované HTML a JS | Zahození nebo zdržení požadavků, stažení ciphertextu v rámci lease; od úniku odkazu (S) drží offline orákulum passphrase proti pk_V i bez pepperu; aktivní edge = pozice T3 s podvrženým klientem. Edge je proto na veřejné instanci součástí důvěryhodné báze pro integritu klienta, stejně jako provozovatel |
+| T14 | Kombinace úniku odkazu (T9 nebo T12) s únikem databáze (T2), s provozem na edge (T13), nebo s konfigurací (pepper) | Má S a k tomu pk_V, nebo mac(pk_V) s pepperem | Hádá passphrase offline proti veřejnému klíči ověřovače stejně, jako by měl ciphertext; samotný únik databáze bez pepperu k tomu nestačí |
 
 ### Hranice
 
@@ -199,7 +199,7 @@ Kanál odkazu: mimo systém; kdo odkaz vidí, je z pohledu systému příjemce.
 
 Z1. Důvěrnost proti pasivnímu úniku (T2) a proti serveru, který nepodvrhne klienta. Platí kryptograficky, pokud S neopustí klienta a klient je nepodvržený. To je definice „end-to-end šifrování“ v tomto dokumentu.
 Z2. Důvěrnost proti serveru, edge poskytovatele nebo build pipeline, které podvrhnou klientský kód (T3 aktivní, T4, T13 aktivní). Neplatí. Webový klient je vložený do stejné binárky jako server, takže kdo změní server, změní klienta. Zveřejněné hashe a reprodukovatelné sestavení ověřují vydání, ne to, co konkrétní návštěvník dostal; cílený útočník servíruje čistý bundle ověřovateli a podvržený oběti. Co pomáhá: ověřené vydání CLI pro každého, kdo provozovateli nevěří; nezávislý monitor z jiné sítě, který každou hodinu stáhne bundle a porovná hash s vydáním (odhalí plošnou, ne cílenou záměnu); kontroly na straně zdroje (chráněné větve, povinná revize, podepsané tagy, lokální reprodukce hashe maintainerem); ve druhé verzi oddělený statický origin pro klienta (OD23), který nutí útočníka kompromitovat dvě strany. Mechanismy transparentnosti webového kódu (WAICT) jsou v roce 2026 jen prototyp ve Firefox Nightly (příloha D); manifest ve stylu WAICT zveřejníme na well-known cestě už teď, aby opt-in později nic nestál.
-Z3. Integrita a původ obsahu. AES-GCM odhalí změnu ciphertextu; politika zprávy v AAD odhalí změnu metadat. Server bez S nemůže podvrhnout dešifrovatelný obsah. Příjemce ví, že obsah vytvořil držitel S (tvůrce odkazu). Není to ověření identity.
+Z3. Integrita a původ obsahu. AES-GCM odhalí změnu ciphertextu; politika zprávy v AAD odhalí změnu metadat. Server bez S nemůže podvrhnout dešifrovatelný obsah. Příjemce ví, že obsah vytvořil držitel S (tvůrce odkazu). Není to ověření identity. Id zprávy vydává server (náhodných 128 bitů s tokenem platným 10 minut), takže ani po smazání náhrobku nikdo nezíská id staré zprávy a nemůže pod starým odkazem vytvořit nový obsah. Server si vydaná id nepamatuje, o zprávě tedy dál nic nedrží déle než 7 dní po jejím konci (review 22. 10. 2026, D2; nahrazuje dřívější přijaté riziko).
 Z4. Jednorázovost. Vynucuje ji server atomicky; platí jen pro poctivý server. Porušení lze odhalit jen nepřímo.
 Z5. Ukončení přístupu. Okamžité po spotřebování, zrušení, smazání nebo expiraci: server přestane ciphertext vydávat.
 Z6. Odstranění aktivních dat. Okamžité při burn, cancel a ack posledního lease; po vypršení posledního lease bez ack do konce lease plus interval úklidu (5 min self-hosting, 15 min veřejná instance); metadata přecházejí v náhrobek na 7 dní; lifecycle pravidlo v úložišti a denní porovnání objektů s řádky jsou pojistky.
@@ -399,9 +399,9 @@ Rozsah „hostováno v EU“ po složkách (doporučení, z přílohy G):
 
 Datové toky:
 
-1. Vytvoření: klient generuje id, S a M, odvodí R, K, V; zašifruje obálku; POST ciphertext + h(R) + h(V) + h(M) + politika. Server uloží blob a metadata a vrátí potvrzení. Klient složí URL a ukáže ji s M.
-2. Čtení: klient načte statickou stránku (nic se nespotřebuje); z fragmentu odvodí R; GET metadata s R (nic se nespotřebuje); po kliku a případné passphrase POST claim s R a V; server atomicky sníží počítadlo a vydá obálku s lease; klient dešifruje v paměti, ověří politiku v AAD, zobrazí nebo nabídne stažení; po dešifrování odstraní fragment z aktuálního záznamu historie.
-3. Zrušení a stav: odesílatel s M. Smazání příjemcem s R.
+1. Vytvoření: klient si z `GET /api/v1/instance` vezme id a token id, vygeneruje S a M, odvodí R, K, V; zašifruje obálku; POST ciphertext + pk_R + pk_V + pk_M + politika. Server uloží blob a metadata a vrátí potvrzení. Klient složí URL a ukáže ji s M.
+2. Čtení: klient načte statickou stránku (nic se nespotřebuje); z fragmentu odvodí R; GET metadata podepsaná R (nic se nespotřebuje); po kliku a případné passphrase POST claim podepsaný R a V; server atomicky sníží počítadlo a vydá obálku s lease; klient dešifruje v paměti, ověří politiku v AAD, zobrazí nebo nabídne stažení; po dešifrování odstraní fragment z aktuálního záznamu historie.
+3. Zrušení a stav: odesílatel podepisuje M. Smazání příjemcem podepisuje R. Každý podepsaný požadavek nese jednorázovou výzvu serveru (OD18).
 4. Úklid: každý požadavek kontroluje expiraci a volá ReleaseIfDone pro dané id; ack a časovač na konci lease volají ReleaseIfDone; pravidelný úklid (goroutine u self-hostingu, Serverless Job na veřejné instanci) maže prošlé zprávy, lease, náhrobky a bloby vyčerpaných zpráv; lifecycle pravidlo v Object Storage je pojistka.
 
 ### Stack a verze (vybrané)
@@ -465,9 +465,9 @@ Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní v
 
 ### Vlastní provoz (firmy)
 
-- Jeden image `ghcr.io/<org>/nylzo:<verze>`; `NYLZO_STORE=sqlite` (výchozí) nebo `postgres`; `NYLZO_BLOBS=disk` nebo `s3`; `NYLZO_DATA_DIR`, `NYLZO_PG_URL`, `NYLZO_S3_*`; `NYLZO_PEPPER` (povinné, 32 bajtů, mimo databázi) a `NYLZO_PEPPER_PREVIOUS` pro rotaci; `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE=scaleway`; `NYLZO_PASSPHRASE_IP_SCOPE`; `NYLZO_SWEEP_INTERVAL` (výchozí 5 min, 0 vypne vestavěný úklid pro nasazení s externí úlohou); limity (`NYLZO_MAX_FILE_BYTES`, `NYLZO_MAX_TTL`, `NYLZO_MAX_OPENS`, `NYLZO_RATE_*`), `NYLZO_PUBLIC_URL`. API klíče (`NYLZO_API_KEYS`) přijdou ve druhé verzi.
+- Jeden image `ghcr.io/<org>/nylzo:<verze>`; `NYLZO_STORE=sqlite` (výchozí) nebo `postgres`; `NYLZO_BLOBS=disk` nebo `s3`; `NYLZO_DATA_DIR`, `NYLZO_PG_URL`, `NYLZO_S3_*`; `NYLZO_PEPPER` (povinné, 32 bajtů, mimo databázi) a `NYLZO_PEPPER_PREVIOUS` pro rotaci; `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE=scaleway`; `NYLZO_SWEEP_INTERVAL` (výchozí 5 min, 0 vypne vestavěný úklid pro nasazení s externí úlohou); limity (`NYLZO_MAX_FILE_BYTES`, `NYLZO_MAX_TTL`, `NYLZO_MAX_OPENS`, `NYLZO_RATE_*`), `NYLZO_PUBLIC_URL`. API klíče (`NYLZO_API_KEYS`) přijdou ve druhé verzi.
 - TLS před kontejnerem (Caddy nebo Traefik v příkladovém compose) na stejném stroji; binárka sama TLS neterminuje (menší kód). Kdo terminuje TLS, vidí R, V, M a L v provozu a může přepsat servírovaný klient (T13), proto u self-hostingu nikdy TLS neukončovat u cizí CDN nebo proxy mimo vlastní kontrolu.
-- Zálohy: ve výchozím stavu žádné pro obsah (OD20); Litestream v0.5.17 je volitelná replikace SQLite pro firmy, které ji chtějí.
+- Zálohy: ve výchozím stavu žádné pro obsah (OD20). Replikaci SQLite přes Litestream návrh nedoporučuje (D22, rozhodnutí vlastníka 23. 10. 2026). Litestream drží dlouhou čtecí transakci, aby checkpointy dělal jen sám, takže o restartu lokálního WAL rozhoduje on a ne `wal_autocheckpoint`. Stránky WAL kopíruje do repliky, kde je ve výchozím stavu drží 24 hodin. Replika by tak nesla smazané řádky i pořadí zápisů a obešla by D20 i spec §13 (ověřeno na https://litestream.io/how-it-works/ 23. 10. 2026).
 - Aktualizace: tag image, podpis cosign, `gh attestation verify`; CHANGELOG a SECURITY.md s kontaktem.
 
 ---
@@ -476,33 +476,34 @@ Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní v
 
 ### Značení
 
-- id: 16 náhodných bajtů (CSPRNG klienta), base64url bez paddingu, 22 znaků. V cestě URL, smí do logů.
+- id: 16 náhodných bajtů z CSPRNG serveru, base64url bez paddingu, 22 znaků. Klient ho dostane spolu s tokenem id v odpovědi `GET /api/v1/instance` a sám id nikdy negeneruje. V cestě URL, do logů nikdy (review 22. 10. 2026, D2).
 - S: 32 náhodných bajtů, jen ve fragmentu URL jako `1.{kdf_id}.` + base64url(S) (43 znaků). Pokud poslední znak kódování je `-` nebo `_`, klient S vygeneruje znovu (některé autolinkery takový znak odříznou; cena 0,05 bitu).
 - kdf_id ve fragmentu: 0 bez passphrase, 1 scrypt, 2 PBKDF2. Příjemce bere profil KDF jen z fragmentu; hodnotu ze serveru použije jen k zobrazení a při neshodě odmítne pokračovat. Důvod: kdyby profil určoval server, mohl by zlý server nebo edge vynutit levnější PBKDF2 ověřovač pro zprávu chráněnou scryptem (nález kryptografické kontroly).
 - P: klíč z passphrase (32 bajtů), prázdný řetězec bez passphrase.
-- M: správcovský token, 32 náhodných bajtů, generuje klient; při vytvoření posílá h(M), při cancel a status M. Server nikdy žádné tajemství odesílatele nevyrábí, takže edge ani paměť procesu nedrží schopnost zrušení od první sekundy.
-- h(x) = SHA-256(x). HKDF = HKDF-SHA-256. Porovnání v konstantním čase. Klient odvozuje K jako neextrahovatelný CryptoKey (deriveKey, extractable = false); deriveBits jen pro R, V a sůl.
-- pepper: 32 bajtů serverového tajemství z konfigurace (`NYLZO_PEPPER`), nikdy v databázi. Klíče podle účelu: k_účel = HKDF(pepper, "nylzo/v1/mac/" + účel) pro read, verifier, manage, lease a ip; mac_účel(x) = HMAC-SHA-256(k_účel, x). Každý řádek nese pepper_id (1 B); `NYLZO_PEPPER_PREVIOUS` dovolí ověřovat starým a zapisovat novým klíčem, takže rotace po podezření z úniku neukončí živé zprávy (řádky zanikají do 7 dní, nic se nepřepisuje). Ztráta obou pepperů znamená, že server žádný token neověří a živé zprávy zaniknou (ztráta dostupnosti, ne důvěrnosti).
+- M: semínko správcovského klíče Ed25519, 32 náhodných bajtů, generuje klient; při vytvoření posílá veřejný klíč pk_M, cancel a status podepisuje M; M klienta nikdy neopustí. Server nikdy žádné tajemství odesílatele nevyrábí, takže edge ani paměť procesu nedrží schopnost zrušení od první sekundy.
+- h(x) = SHA-256(x). HKDF = HKDF-SHA-256. Porovnání v konstantním čase. Klient odvozuje K jako neextrahovatelný CryptoKey (deriveKey, extractable = false); deriveBits jen pro R, V a sůl. R, V a M jsou semínka klíčů Ed25519 (RFC 8032) a klienta nikdy neopustí; server dostává jen veřejné klíče pk_R, pk_V, pk_M a podpisy jednorázových výzev (OD18, D12, review 22. 10. 2026).
+- pepper: 32 bajtů serverového tajemství z konfigurace (`NYLZO_PEPPER`), nikdy v databázi. Klíče podle účelu: k_účel = HKDF(pepper, "nylzo/v1/mac/" + účel) pro read, verifier, manage, lease, ip, pow, id a challenge; mac_účel(x) = HMAC-SHA-256(k_účel, x). Každý řádek nese pepper_id (1 B); `NYLZO_PEPPER_PREVIOUS` dovolí ověřovat starým a zapisovat novým klíčem, takže rotace po podezření z úniku neukončí živé zprávy (řádky zanikají do 7 dní, nic se nepřepisuje). Ztráta obou pepperů znamená, že server žádný klíč neověří a živé zprávy zaniknou (ztráta dostupnosti, ne důvěrnosti).
 
 ### Odvození klíčů a tokenů
 
 ```
 hsalt   = SHA-256("nylzo/v1/hkdf-salt" || id)                     32 B, veřejná sůl HKDF vázaná na id
 PRK_S   = HKDF-Extract(salt = hsalt, IKM = S)
-R       = HKDF-Expand(PRK_S,  info = "nylzo/v1/read",     32)     token čtení (server dostane při claimu)
+R       = HKDF-Expand(PRK_S,  info = "nylzo/v1/read",     32)     semínko čtecího klíče Ed25519 (klienta neopustí)
 salt_pw = HKDF-Expand(PRK_S,  info = "nylzo/v1/pw-salt",  32)     sůl KDF odvozená z S, ne z veřejného id
 P       = scrypt(NFC(passphrase) UTF-8, salt_pw, N=2^17, r=8, p=1, 32)   profil KDF 1
           nebo PBKDF2-HMAC-SHA256(passphrase, salt_pw, 600000, 32)         profil KDF 2
 PRK_SP  = HKDF-Extract(salt = hsalt, IKM = S || P)                 P prázdné bez passphrase; délky pevné, bez dvojznačnosti
 K       = HKDF-Expand(PRK_SP, info = "nylzo/v1/content",  32)     klíč obsahu (nikdy neopouští klienta)
-V       = HKDF-Expand(PRK_SP, info = "nylzo/v1/verifier", 32)     ověřovač (server dostane jen při passphrase)
+V       = HKDF-Expand(PRK_SP, info = "nylzo/v1/verifier", 32)     semínko klíče ověřovače Ed25519 (jen při passphrase, klienta neopustí)
+pk_X    = veřejný klíč Ed25519 semínka X (RFC 8032 §5.1.5) pro X z R, V, M
 ```
 
 Proč sůl KDF z S a ne z id (opravy nálezů 6a a kryptografické kontroly): sůl musí být k dispozici před vydáním obálky, protože claim vyžaduje V; S je v odkazu při vytvoření i při čtení, takže to platí. Kdyby sůl plynula jen z veřejného id, mohl by kdokoli, kdo id vidí (logy, cesta URL, náhrobky), předpočítat drahý scrypt pro kandidátní passphrase ještě před únikem S, ciphertextu nebo ověřovače; celková práce se nemění, jen by se dala udělat předem. Vazba na id zůstává přes hsalt.
 
-Co server ukládá: klient při vytvoření pošle h(R), h(V) a h(M); server uloží mac_read(h(R)), mac_verifier(h(V)) a mac_manage(h(M)) s pepper_id. Při claimu klient pošle R a V, při cancel a status M; server spočítá odpovídající mac a porovná v konstantním čase. Proč hash už při vytvoření: hlavička vytvoření nese jen h(R) a h(M), které nejde přehrát jako claim ani cancel, takže edge sledující vytváření zprávu neotevře ani nezruší; samotné R, V a M jdou po drátě až v okamžiku použití.
+Co server ukládá: klient při vytvoření pošle pk_R, pk_V a pk_M; server uloží mac_read(pk_R), mac_verifier(pk_V) a mac_manage(pk_M) s pepper_id. Každý požadavek, který dokazuje držení odkazu nebo správcovského klíče, nese veřejný klíč, jednorázovou výzvu serveru a podpis Ed25519 nad výzvou, metodou, cestou a hashem těla (spec §5.5). Server porovná mac veřejného klíče v konstantním čase, ověří podpis a výzvu spotřebuje. Proto zachycený požadavek nejde zopakovat ani na TLS edge, ani na nešifrovaném h2c mezi edge a kontejnerem: výzva už je spotřebovaná a nový podpis udělá jen držitel semínka (OD18, D12, review 22. 10. 2026). Mac veřejného klíče zůstává, aby samotná databáze bez pepperu nesloužila jako test uhodnuté passphrase proti pk_V. Podepsané požadavky kromě hlášení zneužití mají prázdné tělo. Výzvu spotřebuje první požadavek, který ji předloží, ještě před limity a před ověřením podpisu, ať server odpoví čímkoli, takže ani odmítnutý požadavek (429, 503, 400) nejde zopakovat (review 22. 10. 2026). Spotřebovaná výzva zůstane v `rate_counters` 2 až 3 minuty jako náhodný nonce bez vazby na id, aby ji nepřijala ani instance s hodinami o 5 s jinde; proces si navíc pamatuje viděné nonce, takže opakovaná výzva nestojí zápis do databáze. Spotřeby, které přijdou zároveň, zapisuje proces hromadně, vždy jednu dávku naráz a s výsledkem pro každý nonce. Spotřebu, která přijde ve chvíli, kdy se nic nezapisuje, zapíše hned; spotřeby, které přijdou během zápisu, počkají a půjdou společně v další transakci, nejvýš 256 v jedné. Každý požadavek čeká na commit své dávky, takže jednorázovost platí napříč instancemi. Nečinný proces nic nezdrží a nával čerstvých výzev stojí jeden zápis na dávku místo jednoho na výzvu (D21, review 23. 10. 2026). Pevné čekání 2 ms z původního návrhu D21 se nepoužilo: zpomalilo by jen požadavky s čerstvou výzvou a časový test AK21 by je odlišil od požadavků s použitou výzvou. Server při vytvoření odmítne veřejný klíč, který není kanonickým bodem křivky, má malý řád nebo se shoduje s jiným klíčem téže zprávy (D18, `filippo.io/edwards25519`): pro takový klíč by podpis zfalšoval každý, kdo zná id. Stejnou kontrolu klíče opakuje u každého podepsaného požadavku, u claimu i pro pk_V, takže ani řádek uložený dřív, než server takové klíče při vytvoření odmítal, s nimi nejde použít (review 23. 10. 2026).
 
-Proč V a pepper: server může omezit online pokusy a nespálit otevření. Únik databáze samotné (T2) nedá ani R, ani materiál k hádání passphrase, protože uložené hodnoty jsou HMAC s pepperem mimo databázi. Únik odkazu samotného (T9, T12) bez ciphertextu, bez databáze s pepperem a bez provozu na edge hádat nedovolí. Kdo má odkaz a zároveň ciphertext, hádá passphrase offline proti obálce; kdo má odkaz a V nebo h(V) z provozu na edge (T13), hádá offline proti ověřovači i bez pepperu; kdo má odkaz, databázi a pepper (T14), hádá offline proti uloženému mac. Všechny případy limituje jen síla passphrase a cena KDF (scrypt 128 MiB). PAKE (například OPAQUE), který by V nikdy neposlal po drátě, nemá podporu ve Web Crypto a existuje jen v neauditovaných WASM knihovnách; zamítnuto pro první verzi. Posouzení odborníkem je otevřený bod.
+Proč V a pepper: server může omezit online pokusy a nespálit otevření. Únik databáze samotné (T2) nedá ani R, ani materiál k hádání passphrase, protože uložené hodnoty jsou HMAC s pepperem mimo databázi. Únik odkazu samotného (T9, T12) bez ciphertextu, bez databáze s pepperem a bez provozu na edge hádat nedovolí. Kdo má odkaz a zároveň ciphertext, hádá passphrase offline proti obálce; kdo má odkaz a pk_V z provozu na edge (T13), hádá offline proti veřejnému klíči i bez pepperu; kdo má odkaz, databázi a pepper (T14), hádá offline proti uloženému mac. Všechny případy limituje jen síla passphrase a cena KDF (scrypt 128 MiB). PAKE (například OPAQUE), který by V nikdy neposlal po drátě, nemá podporu ve Web Crypto a existuje jen v neauditovaných WASM knihovnách; zamítnuto pro první verzi. Posouzení odborníkem je otevřený bod.
 
 ### Obálka
 
@@ -537,31 +538,34 @@ Cesta /m/{id} vrací statický klient; fragment nikdy neodchází na server. Ver
 ```
 POST /api/v1/messages
 Content-Type: application/octet-stream
-X-Nylzo-Create: base64url(JSON {id, read_hash, verifier_hash?, manage_hash, kdf_id, opens_max, ttl_s, size})
-X-Nylzo-Pow: token   (jen když instance hlásí pow_required)
+X-Nylzo-Create: base64url(JSON {id, id_token, read_key, verifier_key?, manage_key, kdf_id, opens_max, ttl_s, size})
+X-Nylzo-Pow: token   (jen když instance hlásí pow.required)
 tělo: objekt
 ```
 
-Server v tomto pořadí: parsování hlavičky a kontrola syntaxe id (přesně 22 znaků base64url); Content-Length povinný (411 bez něj), rovný `size` a pod limitem (400, 413) ještě před čtením těla; atomické zvýšení čítačů rate limitu (pokus se počítá i při selhání); PoW, pokud je zapnutý; až nakonec kontrola, že id neexistuje v `messages` ani `tombstones` (409 shodná pro obojí). Pořadí je záměrné: 409 je orákulum existence pro držitele id, a díky 128 bitům entropie je neškodné, ale nesmí být zdarma. Pak uloží blob a metadata (expires_at = now + ttl_s) a vrátí `201 {id, expires_at}`. Klient složí URL a nabídne uložení M (prohlížeč si M uloží do localStorage pod id do expirace zprávy plus 7 dní náhrobku; stránka /sent zobrazí seznam odeslaných zpráv z localStorage s jejich stavem přes endpoint status a umožní záznam smazat ručně; CLI vypíše M jen na výslovný přepínač).
+Token id: `base64url(u32be(expires_at) || HMAC-SHA-256(k_id, id || u32be(expires_at))[0:16])`, 27 znaků, platnost 10 minut od vydání (tolerance 5 s pro rozdíl hodin instancí), ověření v konstantním čase pod aktuálním pepperem. Server vydaná id neukládá; druhé vytvoření se stejným id skončí 409.
+
+Server v tomto pořadí: parsování hlavičky, kontrola syntaxe id (přesně 22 znaků base64url) a tokenu id (403 `id_token`); Content-Length povinný (411 bez něj), rovný `size` a pod limitem (400, 413) ještě před čtením těla; atomické zvýšení čítačů rate limitu (pokus se počítá i při selhání); PoW, pokud je zapnutý; až nakonec kontrola, že id neexistuje v `messages` ani `tombstones` (409 shodná pro obojí). Pořadí je záměrné: 409 je orákulum existence pro držitele id, a díky 128 bitům entropie je neškodné, ale nesmí být zdarma. Pak uloží blob a metadata (expires_at = now + ttl_s) a vrátí `201 {id, expires_at}`. Klient složí URL a nabídne uložení M (prohlížeč si M uloží do localStorage pod id do expirace zprávy plus 7 dní náhrobku; stránka /sent zobrazí seznam odeslaných zpráv z localStorage s jejich stavem přes endpoint status a umožní záznam smazat ručně; CLI vypíše M jen na výslovný přepínač).
 
 ### Metadata (nekonzumující)
 
 ```
 GET /api/v1/messages/{id}
-Authorization: Bearer {R}
+Authorization: Nylzo-Sig {pk_R}.{výzva}.{podpis}
 → 200 {state, created_at, expires_at, opens_max, opens_remaining, ttl_s, passphrase_required, kdf_id, size, first_opened_at?, ended_at?}
-→ 404 pro neznámé id i pro špatné R (nerozlišeno)
+→ 404 pro neznámé id i pro každý neplatný podpis nebo výzvu (nerozlišeno)
 Nekonzumující: nemění stav ani počítadla; smí jen dokončit smazání bloba prošlé nebo vyčerpané zprávy (líný úklid a ReleaseIfDone).
 ```
 
-Nerozlišitelnost: jeden dotaz nad `messages` i `tombstones` (UNION ALL nebo jedna tabulka se stavem), při nenalezení server stejně spočítá HMAC a porovná proti fiktivní hodnotě, aby práce byla shodná; tělo i hlavičky 404 jsou bajtově stejné pro neznámé id, špatné R i špatné M (status a cancel). Časový test s 1 000 vzorky je v plánu testů.
+Nerozlišitelnost: jeden dotaz nad `messages` i `tombstones` (UNION ALL nebo jedna tabulka se stavem), při nenalezení server stejně spočítá HMAC a porovná proti fiktivní hodnotě, aby práce byla shodná; tělo i hlavičky 404 jsou bajtově stejné pro neznámé id, nesouhlasný klíč i každý neplatný podpis nebo výzvu (i u status a cancel); server ověří podpis i pro neznámé id s fiktivním klíčem. Časový test s 1 000 vzorky je v plánu testů.
 
 ### Otevření (claim)
 
 ```
 POST /api/v1/messages/{id}/claim
-Authorization: Bearer {R}
-tělo: {verifier: V}   jen při passphrase
+Authorization: Nylzo-Sig {pk_R}.{výzva}.{podpis}
+X-Nylzo-Verifier: {pk_V}.{podpis}   jen při passphrase, nad stejnou výzvou
+tělo: prázdné
 → 200, hlavičky X-Nylzo-Lease: L a X-Nylzo-Policy: base64url(JSON {opens_max, ttl_s, kdf_id, flags}), tělo: objekt
 → 403 {retry_after, attempts_left}  špatná passphrase, otevření nespotřebováno
 → 410 {state}                        opened | expired | cancelled | deleted
@@ -569,28 +573,29 @@ tělo: {verifier: V}   jen při passphrase
 
 Server v jedné transakci (Postgres) nebo jedné SQLite transakci:
 1. Načte záznam; state != available nebo expires_at < now → 410.
-2. Při passphrase: pokud denní strop na id (100 chybných) nebo next_attempt_at na (id, hash IP) ještě platí → 403 s retry_after. Jinak porovná mac(h(V)) v konstantním čase; neshoda → fail_count na (id, hash IP) +1, day_fail_count na id +1 a fail_count_total na id +1; při fail_count ≤ 5 vrátí 403 s attempts_left bez čekání, od šestého nastaví next_attempt_at = now + 2^(fail_count − 5) s se stropem 1 h (OD13). Otevření se nespotřebuje.
-3. opens_remaining −1; vloží řádek do tabulky `leases` (id, mac(L), lease_expires_at = now + 120 s), kde L je 32 náhodných bajtů; zpráva může mít tolik aktivních lease, kolik otevření proběhlo; když opens_remaining == 0 → state = opened.
+2. Při passphrase: pokud má zpráva 100 chybných pokusů za celou životnost, nebo next_attempt_at zprávy ještě platí → 403 s retry_after. Jinak porovná mac(pk_V) v konstantním čase a vyžaduje platný podpis ověřovače; neshoda → fail_count_total +1; při fail_count_total ≤ 5 vrátí 403 s attempts_left bez čekání, od šestého nastaví next_attempt_at = now + 2^(fail_count_total − 5) s se stropem 1 h, zaokrouhleno nahoru na celou minutu (OD13). Otevření se nespotřebuje.
+3. opens_remaining −1; vloží řádek do tabulky `leases` (id, mac(L), lease_expires_at = now + max(120 s, přenos při 128 kbit/s), zaokrouhleno nahoru na minutu), kde L je 32 náhodných bajtů; zpráva může mít tolik aktivních lease, kolik otevření proběhlo; když opens_remaining == 0 → state = opened.
 4. Vrátí objekt. Klient uloží L do sessionStorage pod id, dokud nedešifruje.
 
-Lease je aktivní, dokud now < lease_expires_at podle hodin úložiště (databáze), ne instance; časovač instance se plánuje na lease_expires_at plus 1 s rezervy. Opakování stahu: `GET /api/v1/messages/{id}/blob` s Bearer R a X-Nylzo-Lease: L do konce daného lease; nespotřebovává otevření, ale počítá se do limitu claim a metadata a je omezeno na 3 stažení na jeden lease (dál 429), aby egress nebyl neměřený. `POST /api/v1/messages/{id}/ack` ukončí daný lease dřív. Blob se smaže, jakmile opens_remaining == 0 a neexistuje žádný aktivní lease; do té doby ho mohou stahovat držitelé platných lease i další příjemci přes nový claim.
+Lease je aktivní, dokud now < lease_expires_at podle hodin procesu, který požadavek obsluhuje (instance i úklid musí mít synchronizované hodiny, změna z review 22. 10. 2026); časovač instance se plánuje na lease_expires_at plus 1 s rezervy. Opakování stahu: `GET /api/v1/messages/{id}/blob` podepsaný R a s X-Nylzo-Lease: L do konce daného lease; nespotřebovává otevření, ale počítá se do limitu claim a metadata a je omezeno na 3 stažení na jeden lease (dál 429), aby egress nebyl neměřený. `POST /api/v1/messages/{id}/ack` ukončí daný lease dřív. Blob se smaže, jakmile opens_remaining == 0 a neexistuje žádný aktivní lease; do té doby ho mohou stahovat držitelé platných lease i další příjemci přes nový claim.
 
 Definice „jedno otevření“: jedno úspěšné atomické vydání obálky serverem po důkazu držení odkazu a správné passphrase. Ne načtení stránky, ne dotaz na metadata, ne pokus o dešifrování, ne neúspěšná passphrase. Zobrazení textu a stažení přílohy jsou lokální operace nad jednou obálkou. Dva souběžní příjemci: právě jeden uspěje na každé otevření (transakce). Obnovení stránky před dešifrováním: fragment je ještě v URL, klient odvodí R, vezme L ze sessionStorage a stáhne znovu v lease. Obnovení po dešifrování: fragment už byl odstraněn (replaceState), plaintext je pryč záměrně; metadata ukážou „otevřeno v čase T“.
 
 ### Smazání, zrušení, stav
 
 ```
-POST /api/v1/messages/{id}/burn     Bearer R → state = deleted, blob smazán
-POST /api/v1/messages/{id}/cancel   Bearer M → state = cancelled, blob smazán
-GET  /api/v1/messages/{id}/status   Bearer M → {state, opens_used, opens_max, created_at, expires_at, first_opened_at? (zaokrouhleno na minutu), ended_at?, failed_passphrase_attempts (kumulativně za život zprávy z fail_count_total, ne jen za dnešek)}
-GET  /api/v1/instance               bez autorizace → {limits, pow_required, versions}
+POST /api/v1/messages/{id}/burn     podepsáno R → state = deleted, blob smazán
+POST /api/v1/messages/{id}/cancel   podepsáno M → state = cancelled, blob smazán
+GET  /api/v1/messages/{id}/status   podepsáno M → {state, opens_used, opens_max, created_at, expires_at, first_opened_at? (zaokrouhleno na minutu), ended_at?, failed_passphrase_attempts (kumulativně za život zprávy z fail_count_total, ne jen za dnešek)}
+GET  /api/v1/instance               bez autorizace → {limits, pow: {required, difficulty, challenge?}, create: {id, id_token, expires_at}, versions}
+GET  /api/v1/challenge              bez autorizace → {challenge, expires_at}; jednorázová výzva platná 60 s pro jeden podepsaný požadavek
 ```
 
-Špatné M u cancel a status vrací stejnou 404 jako neznámé id (žádné třetí orákulum existence).
+Neplatný podpis M u cancel a status vrací stejnou 404 jako neznámé id (žádné třetí orákulum existence).
 
 ### Expirace, úklid, náhrobky
 
-Každý požadavek kontroluje expires_at a prošlou zprávu smaže (líný úklid). Smazání bloba po posledním otevření má tři spouštěče: (1) `ack` posledního lease smaže blob okamžitě; (2) instance, která claim obsloužila, si při opens_remaining == 0 naplánuje `ReleaseIfDone(id)` na lease_expires_at a blob smaže, pokud do té doby žádný lease neběží (nejlepší snaha: časovač zanikne, když instance skončí dřív); (3) každý další požadavek na dané id (metadata, blob, claim) zavolá `ReleaseIfDone(id)` a pravidelný úklid ho volá pro všechny zprávy s opens_remaining == 0. Pravidelný úklid dále maže prošlé zprávy, prošlé lease a náhrobky starší 7 dní. Mechanismus závisí na nasazení: u self-hostingu běží v binárce jako goroutine s intervalem `NYLZO_SWEEP_INTERVAL` (výchozí 5 min); na veřejné instanci kontejner usíná, takže úklid spouští Scaleway Serverless Job každých 15 minut jako stejný image s příkazem `nylzod sweep-once`, který pracuje přímo s Postgresem a Object Storage a webový kontejner nebudí. Lifecycle pravidlo v Object Storage (8 dní) je pojistka pro případ chyby. Náhrobek drží {id, mac(h(R)), mac(M), state, first_opened_at, ended_at, purge_at} 7 dní (OD8).
+Každý požadavek kontroluje expires_at a prošlou zprávu smaže (líný úklid). Smazání bloba po posledním otevření má tři spouštěče: (1) `ack` posledního lease smaže blob okamžitě; (2) instance, která claim obsloužila, si při opens_remaining == 0 naplánuje `ReleaseIfDone(id)` na lease_expires_at a blob smaže, pokud do té doby žádný lease neběží (nejlepší snaha: časovač zanikne, když instance skončí dřív); (3) každý další požadavek na dané id (metadata, blob, claim) zavolá `ReleaseIfDone(id)` a pravidelný úklid ho volá pro všechny zprávy s opens_remaining == 0. Pravidelný úklid dále maže prošlé zprávy, prošlé lease a náhrobky starší 7 dní. Mechanismus závisí na nasazení: u self-hostingu běží v binárce jako goroutine s intervalem `NYLZO_SWEEP_INTERVAL` (výchozí 5 min); na veřejné instanci kontejner usíná, takže úklid spouští Scaleway Serverless Job každých 15 minut jako stejný image s příkazem `nylzod sweep-once`, který pracuje přímo s Postgresem a Object Storage a webový kontejner nebudí. Lifecycle pravidlo v Object Storage (8 dní) je pojistka pro případ chyby. Náhrobek drží {id, mac(pk_R), mac(pk_M), state, first_opened_at, ended_at, purge_at} 7 dní (OD8).
 
 Co lze garantovat a v jakém čase: ukončení přístupu okamžitě (každý požadavek kontroluje stav, expiraci a lease, takže po konci posledního lease nikdo blob nedostane); smazání aktivních dat okamžitě při burn, cancel a ack posledního lease; po vypršení posledního lease bez ack smaže blob běžící instance na konci lease jako nejlepší snahu a nejpozději ho smaže úklid, tedy do konce lease plus 5 minut u self-hostingu a plus 15 minut na veřejné instanci; úklid prošlých zpráv, kterých se nikdo nedotkl, do 5 minut u self-hostingu a do 15 minut na veřejné instanci, nejpozději lifecycle pravidlem do 8 dní; repliky poskytovatele mimo kontrolu (bez S bezcenné). Stránka transparentnosti uvádí tyto časy, ne „okamžitě“.
 
@@ -605,24 +610,25 @@ Co lze garantovat a v jakém čase: ukončení přístupu okamžitě (každý po
 
 ### Hlavičky a chování klienta
 
-- CSP s nonce na odpověď: server v Go generuje pro každou HTML odpověď 128bitový nonce, vloží ho do hlavičky `Content-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'` a do atributů `nonce` na `<script src>` a `<link rel=stylesheet>` v šabloně index.html (Vite vygeneruje placeholder přes `html.cspNonce`, server ho nahradí). Nonce na externím skriptu podporují všechny současné prohlížeče (CSP Level 2); hash externího skriptu by vyžadoval CSP3 s atributem integrity, jehož podpora mimo Chromium není doložena, proto se nepoužívá. HTML se servíruje s Cache-Control: no-store, takže nonce se nikdy neopakuje z cache. Žádné externí skripty, fonty ani analytika.
+- CSP s nonce na odpověď: server v Go generuje pro každou HTML odpověď 128bitový nonce, vloží ho do hlavičky `Content-Security-Policy: default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; connect-src 'self'; img-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'` a do atributů `nonce` na `<script src>` a `<link rel=stylesheet>` v šabloně index.html (Vite vygeneruje placeholder přes `html.cspNonce`, server ho nahradí). Nonce na externím skriptu podporují všechny současné prohlížeče (CSP Level 2); hash externího skriptu by vyžadoval CSP3 s atributem integrity, jehož podpora mimo Chromium není doložena, proto se nepoužívá. HTML se servíruje s Cache-Control: no-store, takže nonce se nikdy neopakuje z cache. Žádné externí skripty, fonty ani analytika.
 - Referrer-Policy: no-referrer; Cache-Control: no-store pro API a /m/*; X-Robots-Tag: noindex, nofollow; X-Content-Type-Options: nosniff; Cross-Origin-Opener-Policy: same-origin; Cross-Origin-Resource-Policy: same-origin; Strict-Transport-Security; Permissions-Policy minimální.
 - Klient drží S, K a plaintext jen v paměti; S nikdy do localStorage; L do sessionStorage jen do dešifrování; po dešifrování replaceState bez fragmentu (globální historie ho stejně má, viz B4; proto krátká platnost a jednorázovost, ne spoléhání na úklid URL).
 - Přílohy nikdy inline; Blob + download s očištěným názvem a typem application/octet-stream; text vždy jako text.
 
 ### Logování
 
-Server loguje čas, metodu, cestu (obsahuje id, ne S), stav, latenci, velikost; nikdy Authorization, hlavičku X-Nylzo-Create, těla ani IP do trvalého logu. IP žije jen v čítačích v DB jako kyblík: adresa se kanonizuje (`netip.ParseAddr`, mapování `::ffff:`), IPv4 se bere jako /32 s nadřazeným kyblíkem /24, IPv6 jako /64 s nadřazeným /48; kyblík = prvních 24 bitů z HMAC-SHA-256(k_ip, datum UTC || prefix), takže jeden kyblík kryje zhruba 256 adres a hodnota je bez k_ip nepoužitelná a i s ním jen hrubá; k_ip je samostatný účelový klíč z pepperu; sůl se mění o půlnoci UTC a všechny instance ji sdílí (úklidová úloha hash nepotřebuje, maže řádky podle purge_at); rotace o půlnoci resetuje backoff na (id, kyblík), což je přijaté chování, protože tvrdý denní strop per id platí dál; hodinové řádky se mažou hodinu po konci okna, denní do 24 h, a řádky `passphrase_attempts` při zániku zprávy. Volba `NYLZO_PASSPHRASE_IP_SCOPE=off` (výchozí on) vypne vazbu pokusů na kyblík úplně (backoff jen per id), výměnou za snazší zamknutí pravého příjemce. Na veřejné instanci vidí ingress Scaleway surové IP klientů v otevřené podobě a místo jeho logů není zdokumentované; stránka transparentnosti to říká. Chybové hlášení bez obsahu požadavků.
+Server loguje čas, metodu, vzor cesty a stav, u všech cest kromě vytvoření, claimu a blobu také latenci. U těchto tří cest latence sleduje velikost objektu a řádek logu by šel spojit s `messages.size`, proto ji vynechává (D17, review 22. 10. 2026). Velikost odpovědi neloguje nikde: u vytvoření, claimu a blobu je to velikost objektu a délka odpovědi na metadata a status prozradí počet číslic velikosti, platnosti a čítačů a to, zda zpráva chce passphrase. Varování `blob-stream` o přerušeném přenosu nenese počet odeslaných bajtů ani velikost objektu (review 23. 10. 2026). Nikdy neloguje id zprávy ani surovou cestu. Chyby úložiště loguje jen jako operaci a systémovou chybu, třeba `remove: read-only file system`, bez cesty k souboru, protože cesta blobu obsahuje id v hex. Nikdy Authorization, hlavičky X-Nylzo-*, těla ani IP do trvalého logu. Při velmi malém provozu může čas řádku sedět na minutu `created_at` nebo `first_opened_at` některé zprávy a platforma, která log sbírá, přidává vlastní časy. IP žije jen v paměti procesu jako kyblík: adresa se kanonizuje (`netip.ParseAddr`, mapování `::ffff:`), IPv4 se bere jako /32 s nadřazeným kyblíkem /24, IPv6 jako /64 s nadřazeným /48; kyblík = prvních 24 bitů z HMAC-SHA-256(k_addr, prefix). Klíč k_addr si každý proces při startu vylosuje a nikam ho nezapíše, s pepperem nesouvisí. Databáze, záloha, logy ani konfigurace s pepperem tedy neobsahují žádnou adresu ani hodnotu z ní odvozenou (D17, review 22. 10. 2026: dřívější kyblíky v `rate_counters` šly s pepperem spočítat pro všechny IPv4 adresy a součet bajtů prozradil tvůrce zprávy). Cena je dostupnost: limity na adresu platí pro jednu instanci a po restartu nebo probuzení kontejneru začínají od nuly; zátěž pak drží globální denní strop a PoW, které zůstávají v databázi. Backoff passphrase i limit hlášení zneužití jsou jen na zprávu (D11). Na veřejné instanci vidí ingress Scaleway surové IP klientů v otevřené podobě a místo jeho logů není zdokumentované; stránka transparentnosti to říká. Chybové hlášení bez obsahu požadavků.
 
 ### Ochrana proti zneužití
 
-- Určení IP klienta: server bere adresu ze spojení; hlavičku X-Forwarded-For respektuje jen od adres v `NYLZO_TRUSTED_PROXIES` (seznam CIDR) a bere z ní nejpravější hodnotu, která není důvěryhodnou proxy; `NYLZO_PROXY_MODE=scaleway` čte X-Real-IP, kterou ingress Scaleway přepisuje (dokumentace Scaleway sama varuje, že X-Forwarded-For může klient upravit). Bez konfigurace se hlavičky ignorují. Výchozí hodnoty: compose příklad nastaví síť Caddy; pro Scaleway se chování ingressu (přepis X-Real-IP, připojování X-Forwarded-For) ověří v testu R13. Metrika „podíl požadavků v největším kyblíku“ s alarmem nad 50 % odhalí špatnou konfiguraci, při které všichni sdílí jeden čítač (bezpečné pro rozpočet, špatné pro dostupnost).
-- Limity podle kyblíků (prefix, ne adresa, viz Logování): vytvoření 20 za hodinu a 100 za den, 50 MB za den na /32 nebo /64, pětinásobek na /24 nebo /48; claim, metadata a blob 300 za hodinu na kyblík; globální denní strop vytvoření jako konfigurace (na veřejné instanci podle měřené spotřeby), při 50 % stropu se zapne PoW, po překročení 503 jen pro vytváření. Čítače se zvyšují jedním atomickým příkazem (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`), nikdy čtení a zápis zvlášť; u SQLite `BEGIN IMMEDIATE`; okna podle hodin databáze.
+- Určení IP klienta: server bere adresu ze spojení; hlavičku X-Forwarded-For respektuje jen od adres v `NYLZO_TRUSTED_PROXIES` (seznam CIDR) a bere z ní nejpravější hodnotu, která není důvěryhodnou proxy; `NYLZO_PROXY_MODE=scaleway` čte X-Real-IP, kterou ingress Scaleway přepisuje (dokumentace Scaleway sama varuje, že X-Forwarded-For může klient upravit). X-Real-IP platí jen tehdy, když ji požadavek nese právě jednou, a při nastaveném `NYLZO_TRUSTED_PROXIES` jen ze spojení z těchto adres; spojení, které ingress obejde, si tak kyblík nevybere (review 23. 10. 2026). Bez konfigurace se hlavičky ignorují. Výchozí hodnoty: compose příklad nastaví síť Caddy; pro Scaleway se chování ingressu (přepis X-Real-IP, připojování X-Forwarded-For) ověří v testu R13. Metrika „podíl požadavků v největším kyblíku“ s alarmem nad 50 % odhalí špatnou konfiguraci, při které všichni sdílí jeden čítač (bezpečné pro rozpočet, špatné pro dostupnost).
+- Limity podle kyblíků (prefix, ne adresa, viz Logování), v paměti procesu: vytvoření 20 za hodinu a 100 za den, 50 MB za den na /32 nebo /64, pětinásobek na /24 nebo /48; claim, metadata a blob 300 za hodinu na kyblík. Platí pro jednu instanci a po restartu se nulují (D17). Globální denní strop vytvoření jako konfigurace (na veřejné instanci podle měřené spotřeby), při 50 % stropu se zapne PoW, po překročení 503 jen pro vytváření. Globální čítače v databázi se zvyšují jedním atomickým příkazem (`INSERT ... ON CONFLICT DO UPDATE ... RETURNING`), nikdy čtení a zápis zvlášť; u SQLite `BEGIN IMMEDIATE`; okna podle hodin procesu, který požadavek obsluhuje, takže instance i úklidové úlohy musí mít synchronizované hodiny (změna z review 22. 10. 2026: referenční úložiště nečte vlastní hodiny a testy běží s falešnými).
 - Paměťový token bucket v každé instanci před databází (50 požadavků za sekundu, burst 100) pro všechny cesty, které mohou skončit 404, 410, 429 nebo 503, a kontrola syntaxe id před jakýmkoli dotazem; chrání databázi a účet před záplavou z rotujících adres, kterou by jinak každý požadavek proměnil v zápis čítače.
+- Souběžné streamy: claim a stažení blobu streamují nejvýš `NYLZO_MAX_STREAMS` odpovědí naráz (výchozí 64), protože klient, který přestane číst, drží odpověď až do deadline zápisu (podle měření 49 až 93 MiB na 1000 zastavených streamů). Další dostane 503 s Retry-After ještě před ověřením podpisu, stejně pro každé id, takže nespotřebuje otevření. h2c přijímá rámce nejvýš 16 KiB, aby spojení nedrželo 1MiB čtecí buffer (D24, review 23. 10. 2026).
 - Passphrase: OD13; řádky pokusů zanikají se zprávou.
 - Proof-of-work (OD24): puzzle nad scryptem (N=2^14, r=8, p=1, k kol laděných na zhruba 1 s na běžném telefonu) nad nonce vydanou serverem, vázanou na id a 2minutové okno; zapíná se při 50 % denního stropu, CLI a MCP ho umí. Hashcash nad SHA-256 zamítnut: GPU řeší půlsekundovou úlohu notebooku za zlomek milisekundy, asymetrie je tisíckrát ve prospěch útočníka. Private Access Tokens (HTTP 401 s WWW-Authenticate: PrivateToken, bez skriptu, Apple od iOS 16) mohou ve druhé verzi klienty s tokenem od PoW osvobodit, nikdy ho vyžadovat.
 - Spojení a těla: Go `http.Server` s ReadHeaderTimeout 5 s, ReadTimeout 120 s, WriteTimeout 120 s, IdleTimeout 30 s, MaxHeaderBytes 8 KiB; `MaxBytesReader` na 5 MiB + 100 KiB + 64 KiB + 64 B; 411 bez Content-Length, 400 při neshodě se `size`, 413 nad limit, vše před čtením těla; žádná dekomprese na serveru; timeout požadavku na Scaleway 120 s; R13 ověří, zda ingress těla bufferuje. Bez toho stačí 160 pomalých spojení (2 instance × souběžnost 80) k zablokování instance.
-- Hlášení zneužití: `POST /api/v1/abuse` vyžaduje R (klient ho odvodí z vloženého odkazu, takže hlásit může jen držitel odkazu), 5 hlášení za hodinu na kyblík, jednotná odpověď 202 pro známé i neznámé id, ruční posouzení, nikdy automatické smazání; odkaz na nahlášení na každé stránce čtení; reakce do 24 h; interstitial varování před stažením spustitelných přípon; přílohy vždy jako application/octet-stream. Hromadné hlášení podle id z úniku databáze nesmí vést k mazání, proto ruční posouzení.
+- Hlášení zneužití: `POST /api/v1/abuse` je podepsané klíčem R (klient ho odvodí z vloženého odkazu, takže hlásit může jen držitel odkazu), 5 hlášení za hodinu na kyblík, jednotná odpověď 202 pro známé i neznámé id, ruční posouzení, nikdy automatické smazání; odkaz na nahlášení na každé stránce čtení; reakce do 24 h; interstitial varování před stažením spustitelných přípon; přílohy vždy jako application/octet-stream. Hromadné hlášení podle id z úniku databáze nesmí vést k mazání, proto ruční posouzení. Uložené hlášení nese jen datum UTC, id a upravený důvod; hlášení starší než 14 dní server smaže při úklidu a před každým novým hlášením (review 22. 10. 2026). Hlášení se zapisují do jednoho souboru na den UTC (`abuse/YYYY-MM-DD.jsonl`), do kterého server jen připisuje, a úklid včetně `sweep-once` maže celé soubory starší 14 dní. Žádné hlášení se tak nepřepisuje a úklid v jiném procesu nemůže ztratit hlášení, které server právě zapisuje (D26, review 23. 10. 2026).
 
 ### Verzování
 
@@ -630,25 +636,27 @@ Verze obálky v prvním bajtu, verze fragmentu v prefixu, API pod /api/v1, kdf_i
 
 ### Odolnost proti hádání
 
-Bez odkazu musí útočník uhodnout id (128 bitů) a R (odvozené z 256bitového S). Při N = 10 000 živých zpráv je pravděpodobnost trefit existující id jedním pokusem N / 2^128 ≈ 3·10^−35; při 10^9 pokusech za sekundu po dobu roku (≈ 3·10^16 pokusů) ≈ 10^−18, a trefa dá jen 404 (metadata i claim chtějí R). Realistický strop je nižší: Scaleway omezuje invokace na 5 000 za sekundu na kontejner, tedy zhruba 1,6·10^11 pokusů za rok a šance 5·10^−24. Rate limit slouží proti zahlcení, ne proti hádání. Jediné místo, kde je limit bezpečnostní kontrolou, je passphrase: platí tvrdý strop 100 chybných pokusů na zprávu a den UTC ze všech adres dohromady (700 za 7denní platnost), protože backoff podle kyblíku jde obejít rotací prefixů. Passphrase: online hádání omezuje server; offline hádání vyžaduje S i ciphertext; pak při scryptu s 128 MiB a zhruba 0,2 až 1 s na pokus je 4slovná náhodná fráze (≈ 51 bitů) mimo dosah a 6znakové heslo (≈ 28 bitů) padne za dny až týdny na běžném stroji. UI doporučí frázi ze 4 a více náhodných slov.
+Bez odkazu musí útočník uhodnout id (128 bitů) a R (odvozené z 256bitového S). Při N = 10 000 živých zpráv je pravděpodobnost trefit existující id jedním pokusem N / 2^128 ≈ 3·10^−35; při 10^9 pokusech za sekundu po dobu roku (≈ 3·10^16 pokusů) ≈ 10^−18, a trefa dá jen 404 (metadata i claim chtějí R). Realistický strop je nižší: Scaleway omezuje invokace na 5 000 za sekundu na kontejner, tedy zhruba 1,6·10^11 pokusů za rok a šance 5·10^−24. Rate limit slouží proti zahlcení, ne proti hádání. Jediné místo, kde je limit bezpečnostní kontrolou, je passphrase: platí strop 100 chybných pokusů na zprávu za celou dobu platnosti ze všech adres dohromady a backoff na zprávu (D10, D11). Kdo má uniklý odkaz bez passphrase, může tím zprávu zdržovat a nakonec zamknout do konce platnosti; obsah ani passphrase tím nezíská. Reset čítače klíčem M nebo PoW za pokus se rozhodne s milníkem webového klienta (D19). Passphrase: online hádání omezuje server; offline hádání vyžaduje S i ciphertext; pak při scryptu s 128 MiB a zhruba 0,2 až 1 s na pokus je 4slovná náhodná fráze (≈ 51 bitů) mimo dosah a 6znakové heslo (≈ 28 bitů) padne za dny až týdny na běžném stroji. UI doporučí frázi ze 4 a více náhodných slov.
 
 ---
 
 ## Datový model
 
-Tabulka `messages`: id (PK, 22 znaků), version, kdf_id, flags, state (available, opened), created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac (32 B), manage_mac (32 B), verifier_mac (32 B, null), size, blob_ref (null po ClearBlob), day_fail_count, day_fail_date, fail_count_total, first_opened_at (null, zaokrouhleno na minutu).
+Tabulka `messages`: id (PK, 22 znaků), version, kdf_id, flags, state (available, opened), created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac (32 B), manage_mac (32 B), verifier_mac (32 B, null), size, blob_ref (null po ClearBlob), fail_count_total, next_attempt_at (0, nebo celá minuta), first_opened_at (null, zaokrouhleno na minutu). Žádný čas v databázi není přesnější než na minutu: created_at dolů, expires_at a lease_expires_at nahoru na celou minutu (D9).
 
 Životní cyklus řádku: živá zpráva je jen v `messages` (available, nebo opened s blobem čekajícím na konec lease). Zánik zprávy (opened po smazání bloba, expired, cancelled, deleted) se provede v jedné transakci: smazání řádku `messages` a jeho `leases`, vložení náhrobku se stavem a časy; blob se maže před touto transakcí (ReleaseIfDone, Blobs.Delete, ClearBlob) nebo v ní u burn a cancel. Endpointy hledají nejdřív v `messages`, pak v `tombstones`: náhrobek vrací 410 se stavem u claimu a blob, 200 se stavem u metadat (s R) a u status (s M). Vytvoření odmítne id, které existuje v `messages` nebo `tombstones` (409; klient vygeneruje nové id a zkusí znovu).
 
 Tabulka `leases`: id (FK messages), lease_mac (32 B), lease_expires_at; více řádků na zprávu; blob se maže, až když opens_remaining == 0 a žádný řádek lease není aktivní.
 
-Tabulka `passphrase_attempts`: id, bucket (24bitový kyblík), fail_count, next_attempt_at, purge_at; řádky se mažou se zánikem zprávy.
+Tabulka `passphrase_attempts` byla zrušena (D11): pokusy o passphrase se počítají jen na zprávu, takže žádný řádek nespojuje id zprávy s kyblíkem adresy.
 
 Tabulka `tombstones`: id, pepper_id, read_mac, manage_mac, state, first_opened_at, ended_at, purge_at.
 
-Tabulka `rate_counters`: key (kyblík /32, /24, /64 nebo /48 se solí dne, nebo „global“), window_start, count, bytes, purge_at; index nad purge_at; mazání v dávkách po 1 000 řádcích.
+Hygiena úložiště (review 22. 10. 2026): SQLite běží se `secure_delete` a `journal_size_limit = 0`, každý úklid končí `wal_checkpoint(TRUNCATE)` a databáze ze starší verze projde jednou `VACUUM`, takže smazané řádky nezůstávají ve volných stránkách ani ve WAL. Navíc `wal_autocheckpoint = 1` vrátí každý commit hned do databáze a další zápis začne WAL znovu od začátku a zkrátí ho na své stránky. WAL tak drží jen poslední transakci, jejíž stránky už databáze obsahuje, a neukáže pořadí dřívějších vytvoření a claimů. Cena jsou dvě synchronizace navíc na zápis (WAL před checkpointem a databáze po něm); měření na macOS s plným fsync dalo 12,9 ms místo 4,2 ms na transakci, s běžným fsync 123 µs místo 97 µs. Když zrovna běží čtení se starším snímkem, checkpoint se u něj zastaví a transakce z té doby zůstanou ve WAL, dokud je po skončení čtení nevrátí další zápisy (D20, review 23. 10. 2026). `messages`, `tombstones` a `rate_counters` jsou tabulky bez rowid a každý řádek lease dostane náhodné číslo řádku od 2^32 do 2^63 − 1, takže žádná tabulka neprozradí pořadí ani počet vytvoření a claimů. Databáze nese verzi schématu (`user_version`, nyní 4) a server odmítne otevřít databázi novější verze. Verze 4 přidává spouštěče, které zastaví každý zápis, jímž by starší verze serveru uložila víc než tato: čítač podle adresy, nonce PoW s časem okna a lease s pořadovým číslem pod 2^32. Starší verze s upgradovanou databází proto selže při vytvoření, metadatech, claimu, stažení blobu i hlášení zneužití, místo aby takové řádky zapsala (review 23. 10. 2026). Úklid bere `wal_checkpoint(TRUNCATE)`, který nedoběhl kvůli čtenáři, jako chybu a další úklid ho zopakuje. Čtení blobu nemění čas přístupu k souboru (na Linuxu `O_NOATIME`). Lease se hledá podle id zprávy, řádku a `lease_mac` zároveň, aby starý token nikdy nezasáhl lease jiného claimu.
 
-Bloby: objekt `{blob_ref}` = obálka; u disku soubor `data/blobs/{id}`; u S3 klíč `{id}`.
+Tabulka `rate_counters`: key (jen klíče bez adresy: globální denní čítače, použité nonce PoW, spotřebované výzvy, hlášení na zprávu a den, značka denní kontroly), window_start, count, bytes, purge_at; index nad purge_at; mazání v dávkách po 1 000 řádcích. Čítače podle adres v databázi nejsou (D17).
+
+Bloby: objekt `{blob_ref}` = obálka; u disku soubor `data/blobs/{hex(ref)}` (malá hexa kvůli souborovým systémům, které nerozlišují velikost písmen); u S3 klíč `{id}`.
 
 Rozhraní v Go (zjednodušeně): `Store` s metodami `Create`, `Get`, `Claim` (atomická: kontrola stavu a passphrase, snížení počítadla, vložení lease), `CheckLease`, `Ack`, `ReleaseIfDone` (idempotentní, bez jednorázového stavu: když opens_remaining == 0, žádný lease není aktivní a blob_ref je v řádku vyplněn, vrátí blob_ref, a vrací ho při každém dalším volání, dokud volající po úspěšném `Blobs.Delete` nevynuluje blob_ref druhou atomickou operací `ClearBlob(id, blob_ref)`; `Blobs.Delete` je idempotentní a chybějící objekt bere jako úspěch; volá ji ack, časovač na konci lease, každý požadavek na dané id a úklid, který prochází všechny řádky s opens_remaining == 0 a vyplněným blob_ref; úklid navíc jednou denně porovná objekty v úložišti s blob_ref v řádcích a náhrobcích a osiřelé objekty smaže, takže pád mezi označením a smazáním nenechá blob ležet déle než den), `Burn`, `Cancel`, `Status`, `Sweep` (prošlé zprávy, prošlé lease, ReleaseIfDone pro zprávy s opens_remaining == 0, náhrobky), `RateHit`, `PassphraseFail`; `Blobs` s `Put`, `Get`, `Delete`. Obě implementace prochází stejnou testovací sadou včetně souběhu a včetně scénáře s opens_max = 3 a třemi souběžnými příjemci, z nichž každý opakuje stah ve svém lease.
 
@@ -657,17 +665,18 @@ Rozhraní v Go (zjednodušeně): `Store` s metodami `Create`, `Get`, `Claim` (at
 | Metoda a cesta | Autorizace | Spotřebuje otevření |
 |---|---|---|
 | POST /api/v1/messages | žádná (rate limit, PoW při návalu; API klíče ve druhé verzi) | ne |
-| GET /api/v1/messages/{id} | Bearer R | ne |
-| POST /api/v1/messages/{id}/claim | Bearer R (+ verifier) | ano |
-| GET /api/v1/messages/{id}/blob | Bearer R + X-Nylzo-Lease | ne |
-| POST /api/v1/messages/{id}/ack | Bearer R + X-Nylzo-Lease | ne |
-| POST /api/v1/messages/{id}/burn | Bearer R | ukončí |
-| POST /api/v1/messages/{id}/cancel | Bearer M | ukončí |
-| GET /api/v1/messages/{id}/status | Bearer M | ne |
+| GET /api/v1/messages/{id} | podpis R | ne |
+| POST /api/v1/messages/{id}/claim | podpis R (+ podpis V) | ano |
+| GET /api/v1/messages/{id}/blob | podpis R + X-Nylzo-Lease | ne |
+| POST /api/v1/messages/{id}/ack | podpis R + X-Nylzo-Lease | ne |
+| POST /api/v1/messages/{id}/burn | podpis R | ukončí |
+| POST /api/v1/messages/{id}/cancel | podpis M | ukončí |
+| GET /api/v1/messages/{id}/status | podpis M | ne |
 | GET /api/v1/instance | žádná | ne |
-| POST /api/v1/abuse | žádná (rate limit) | ne |
+| GET /api/v1/challenge | žádná | ne |
+| POST /api/v1/abuse | podpis R (rate limit) | ne |
 
-Chyby: 400 formát, 403 passphrase (retry_after), 404 neznámé id nebo špatné R, 410 stav, 413 velikost, 429 rate limit (Retry-After), 503 globální strop nebo Sec-Purpose. Žádný endpoint nepřijímá ani nevrací plaintext, S, K ani passphrase.
+Chyby: 400 formát, 403 passphrase (retry_after), 404 neznámé id nebo neplatný podpis, 410 stav, 413 velikost, 429 rate limit (Retry-After), 503 globální strop nebo Sec-Purpose. Žádný endpoint nepřijímá ani nevrací plaintext, S, K ani passphrase.
 
 ---
 
@@ -736,7 +745,7 @@ První verze (bezpečně použitelná):
 - Dokumentace: protokol, model hrozeb, stránka transparentnosti, SECURITY.md, podmínky a kontaktní místo podle DSA.
 - Testy podle akceptačních kritérií níže.
 
-Druhá verze: MCP server a skill; `verify-client` (s výhradou, že ověřuje jen to, co dostane ověřovatel); API klíče pro firemní instance; Private Access Tokens jako výjimka z PoW; „reply credit“ v odpovědi claimu; oddělený statický origin pro klienta (OD23); metriky bez osobních údajů; Litestream návod.
+Druhá verze: MCP server a skill; `verify-client` (s výhradou, že ověřuje jen to, co dostane ověřovatel); API klíče pro firemní instance; Private Access Tokens jako výjimka z PoW; „reply credit“ v odpovědi claimu; oddělený statický origin pro klienta (OD23); metriky bez osobních údajů.
 
 Později: nezávislý audit protokolu a obou jader; režim na klíč příjemce (HPKE); další jazykové SDK (Python) z vektorů; mechanismy transparentnosti webového kódu, až budou v prohlížečích.
 
@@ -794,10 +803,10 @@ Nálezy a jejich řešení (vlastní průchod plus druhý názor):
 |---|---|
 | KD1. Sůl KDF v obálce, ale V je potřeba před vydáním obálky (druhý názor 6a) | Sůl odvozená z id; pw_salt v obálce zrušen |
 | KD2. Politika zprávy neautentizovaná (6b) | opens_max, ttl_s, kdf_id a flags v AAD; server politiku neupravuje, jen odmítá |
-| KD3. Ověřovač jako orákulum se zamknutím pravého příjemce (6c) | Backoff per (id, hash IP), tvrdý denní strop 100 per id (zamknutí přijato: odesílatel vidí pokusy ve status, zprávu zruší a pošle znovu), vše v OD13; přiznáno, že více IP obchází limit per IP, ne strop per id |
+| KD3. Ověřovač jako orákulum se zamknutím pravého příjemce (6c) | Backoff a celoživotní strop 100 chybných pokusů na zprávu, bez vazby na adresu (OD13, D10 a D11); zamknutí pravého příjemce je jen dostupnost: odesílatel vidí pokusy ve status, zprávu zruší a pošle znovu |
 | KD4. Nesoulad KDF a chybějící id KDF (6d) | kdf_id v hlavičce, profily s pevnými parametry, scrypt profil 1, PBKDF2 profil 2 |
 | KD5. Lease nefunguje po reloadu, když replaceState odstranil fragment (6e) | replaceState až po dešifrování; L v sessionStorage do dešifrování |
-| KD6. Replay R a V na TLS edge spálí otevření (6f) | Přijaté zbytkové riziko (edge může mazat tak jako tak); challenge-response jako OD18 pro druhou verzi |
+| KD6. Replay R a V na TLS edge spálí otevření (6f) | Challenge-response podle OD18 už v první verzi (D12), implementováno v milníku 1 |
 | KD7. Server by mohl politiku „oříznout“ na limity instance a tím rozbít AAD | Server politiku nikdy nemění; 400 při překročení limitů; limity čte klient z /api/v1/instance před vytvořením |
 | KD8. Čítače rate limitu v paměti se ztratí při usnutí kontejneru a nesdílí mezi instancemi | Čítače v DB (hash IP se solí dne), purge do 24 h |
 | KD9. Probuzení Serverless SQL při nule vCPU může přidat latenci k studenému startu | Změřit v testu R13; fallback placený hosting |
@@ -805,12 +814,12 @@ Nálezy a jejich řešení (vlastní průchod plus druhý názor):
 | KD11. Metadata s R prozradí passphrase_required a opens_remaining každému držiteli odkazu | Záměr: odkaz je schopnost; bez R nic |
 | KD12. Náhrobek 7 dní prozradí čas prvního otevření držitelům R | Záměr (signál zachycení); dokumentováno v OD8 |
 | KD13. Globální strop 503 postihne legitimní uživatele | Dostupnost „best effort“; čtení běží dál; dokumentováno |
-| KD14. Velikost souboru v obálce není rozmazaná | Přiznáno; padding jen pro text |
+| KD14. Velikost souboru v obálce není rozmazaná | Padding souboru na 64 KiB, textu na 4 KiB; velikost je tedy vidět s touto přesností. Padding na mocniny dvou vlastník zamítl kvůli až dvojnásobnému přenosu a úložišti (D16, review 22. 10. 2026) |
 | KD15. Dvě jádra se mohou rozejít v detailu (NFC normalizace passphrase, pořadí bajtů) | Vektory obsahují passphrase s diakritikou a kombinovanými znaky; CI křížově testuje |
 | KD16. Klient čte limity instance z /api/v1/instance; podvržený server je může zmenšit, aby vynutil jinou politiku | Politika je volba odesílatele; menší limit nevede k slabší kryptografii, jen k odmítnutí; přijato |
 | KD17. Web klient vložený do Go binárky: změna klienta vyžaduje nové vydání serveru | Záměr (jedna verze, jeden hash, jedna provenance) |
 | KD18. CLI `read` zapisuje do dočasného adresáře, který Claude Code může číst | Doporučit Read deny a sandbox; výstup s náhodným názvem; dokumentace skillu |
-| KD19. Passphrase bez minimální délky | UI a CLI varují pod 4 slovy nebo 12 znaky; nevynucují (odesílatel rozhoduje); dokumentovat |
+| KD19. Passphrase bez minimální délky | Klient MUST odmítnout passphrase kratší než 12 znaků (kódové body po NFC) a SHOULD varovat pod 4 slovy nebo 16 znaky; obě jádra kontrolu nabízejí (D14, review 22. 10. 2026) |
 | KD20. Hlavička X-Nylzo-Create nese politiku v base64; proxy může hlavičku zahodit | Alternativa: multipart nebo JSON prefix v těle; rozhodnout v implementaci; AAD každopádně chrání integritu |
 
 ### Nezávislé kontroly tří tvrzení vlastníka (21. 10. 2026)
@@ -819,7 +828,7 @@ Tři oddělení recenzenti s čerstvým kontextem a přístupem k dokumentu, př
 
 Tvrzení 1, „nejmodernější, nejsilnější a nejbezpečnější algoritmy k říjnu 2026, cílíme na nejnovější prohlížeče“: platí s podmínkami. Symetrické jádro je to nejsilnější, co existuje nativně napříč Chrome 156, Firefox 158 a Safari 27 a v Go 1.27; každá „modernější“ volba (Argon2id, ChaCha20-Poly1305, AES-GCM-SIV, ML-KEM ve Web Crypto) buď v prohlížečích není, nebo je jen experiment v Chromu, nebo jde o knihovnu s užším auditem než nativní kód. Nálezy a jejich zapracování: downgrade profilu KDF přes server (střední; kdf_id ve fragmentu, AK24); sůl passphrase z veřejného id (nízká; sůl z S); nepaddované soubory (nízká; padding všeho); jeden pepper bez účelů a rotace (nízká; klíče podle účelu, pepper_id, AK27); TLS edge jako offline orákulum passphrase (nízká; T13, T14); post-kvantové TLS na edge nedoloženo (AK26); verze noble-hashes 2.4.0 proti auditu 1.0.0 z roku 2022 (připnutí, vektory RFC 7914); K jako neextrahovatelný klíč; 409 jako orákulum (dokumentováno); FIPS modul nekryje scrypt (uvedeno). Neměnit: AES-256-GCM, HKDF-SHA-256, 256bitové klíče, scrypt N=2^17, žádná asymetrická kryptografie v první verzi.
 
-Tvrzení 2, „po krádeži, prolomení nebo injekci serveru útočník nezjistí nic“: pro obsah platí proti všem pasivním pozicím (databáze, úložiště, konfigurace, zálohy, paměť procesu, provoz); pro metadata platí jen částečně (id, velikosti, časy, počty, a s pepperem i adresy za čítači); pro injekci kódu neplatí (klient je ve stejné binárce; edge Scaleway je v cestě ke klientskému kódu). Zapracováno: edge jako součást důvěryhodné báze pro integritu klienta (T13, Z2, OD18); přesné publikovatelné znění (Rozhodovací shrnutí); nezávislý monitor bundle, manifest ve stylu WAICT, kontroly na straně zdroje, oddělený origin jako OD23 (AK25); rotace pepperu (AK27); kyblíky IP s 24bitovým zkrácením a odděleným klíčem; zálohy Serverless SQL 7 dní (OD20); klientem generované M; padding souborů; hlášení zneužití s ručním posouzením; first_opened_at na minutu; ingress vidí surové IP (Logování).
+Tvrzení 2, „po krádeži, prolomení nebo injekci serveru útočník nezjistí nic“ (úplný výčet uložených dat a toho, co každá položka prozradí, je od 22. 10. 2026 ve spec §13 a ověřuje ho test `TestStolenServerRevealsNothing`): pro obsah platí proti všem pasivním pozicím (databáze, úložiště, konfigurace, zálohy, paměť procesu, provoz); pro metadata platí jen částečně (id, velikosti, časy na minutu, počty; adresy ani jejich otisky databáze od D17 nedrží); pro injekci kódu neplatí (klient je ve stejné binárce; edge Scaleway je v cestě ke klientskému kódu). Zapracováno: edge jako součást důvěryhodné báze pro integritu klienta (T13, Z2, OD18); přesné publikovatelné znění (Rozhodovací shrnutí); nezávislý monitor bundle, manifest ve stylu WAICT, kontroly na straně zdroje, oddělený origin jako OD23 (AK25); rotace pepperu (AK27); kyblíky IP s 24bitovým zkrácením a klíčem jen v paměti procesu (D17); zálohy Serverless SQL 7 dní (OD20); klientem generované M; padding souborů; hlášení zneužití s ručním posouzením; first_opened_at na minutu; ingress vidí surové IP (Logování).
 
 Tvrzení 3, „skutečná ochrana proti hádání URL a proti zahlcení“: hádání platí (entropie, ne limity; realistický strop 5·10^−24 za rok při platformním limitu invokací); dvě orákula existence opravena (jednotná práce i tělo 404, pořadí kroků při vytvoření, AK21). Zahlcení: platí pro rozpočet úložiště, neplatí pro dostupnost a výpočet; zapracováno: kyblíky podle prefixu (/64, /48, /24; AK23), paměťový token bucket před databází, max 1 instance a minimum vCPU databáze s alarmem útraty, timeouty serveru a kontrola Content-Length před čtením těla (AK22), limit stažení v lease, puzzle nad scryptem místo hashcash (OD24), hlášení zneužití s R a ručním posouzením, NYLZO_PROXY_MODE pro Scaleway, atomické čítače. Publikovatelné znění je v Rozhodovacím shrnutí. Nápad pro druhou verzi: podepsaný „reply credit“ v odpovědi claimu (HMAC, 24 h), aby příjemce mohl odpovědět i při vyčerpaném stropu.
 
@@ -842,7 +851,7 @@ Zbytková rizika:
 
 Části vyžadující odborný audit:
 - Odvození R, K, V z S a P přes HKDF s oddělením domén a sůl KDF z id.
-- Ukládání tokenů jako HMAC-SHA-256 s pepperem mimo databázi (mac(h(R)), mac(h(V)), mac(M)) a důsledky ztráty pepperu.
+- Ukládání veřejných klíčů jako HMAC-SHA-256 s pepperem mimo databázi (mac(pk_R), mac(pk_V), mac(pk_M)), podpisy jednorázových výzev (OD18) a důsledky ztráty pepperu.
 - Obálka: AAD obsah, serializace, padding, kdf_id a flags.
 - Atomický claim, lease a náhrobky v obou adaptérech.
 - Web klient: CSP, Trusted Types, práce s fragmentem, sessionStorage, stahování, kompilovaný výstup Svelte a jeho runtime.
@@ -858,7 +867,7 @@ Zbytková rizika:
 - Vlastní doména a TLS na Serverless Containers: nativně, nebo přes Load Balancer?
 - Registry image pro Scaleway (OD17)?
 - Hlavička X-Nylzo-Create proti multipart (KD20)?
-- Minimální délka passphrase: varovat, nebo vynucovat (KD19)?
+- Minimální délka passphrase: rozhodnuto, vynucovat (KD19, D14).
 - Vestavěné přechody Svelte proti CSP bez unsafe-inline: jde je použít s nonce, nebo se animace píší jen přes CSS třídy a Web Animations API?
 - Podpora View Transitions API napříč prohlížeči (neověřeno) a dopad na rozpočet animací.
 
@@ -886,7 +895,7 @@ Zbytková rizika:
 2. Specifikace protokolu v1 jako `spec/protocol.md` a první `spec/vectors.json` generované z Go jádra; posouzení odvození R, K, V externím kryptografem (nebo aspoň veřejné review).
 3. Go jádro a TS jádro s vektory a křížovým CI.
 4. Server s adaptérem sqlite+disk a testem 100 souběžných claimů; hlavičky; limity; adaptér postgres+s3 hned poté, pokud R13 potvrdil Scaleway.
-5. Designový systém přes `/gstack-design-consultation` (tmavý režim, sklo, motion tokeny) podle sekce „Vizuální design a interakce“; pak web klient ve Svelte 5 (D12); e2e testy AK2, AK3, AK10, AK13, AK16, AK18 až AK20.
+5. Designový systém přes `/gstack-design-consultation` (tmavý režim, sklo, motion tokeny) podle sekce „Vizuální design a interakce“; pak web klient ve Svelte 5 (D12); e2e testy AK2, AK3, AK10, AK13, AK16, AK18 až AK20. Milník začne zkouškou scryptu se 128 MiB na iOS Safari (OD6), protože její výsledek může změnit výchozí profil passphrase; klient implementuje PoW a rozhodne se D19. Minimální proof of concept servíruje klienta z `nylzod`, oddělený origin (OD23) přijde před nasazením (D27, 23. 10. 2026). CLI (bod 6) následuje až po webu.
 6. CLI create a read; AK14.
 7. Compose příklad s Caddy; image na ghcr.io s podpisem a provenance; AK15.
 8. Stránka transparentnosti, SECURITY.md, DSA podmínky a kontaktní místo; právní posouzení.

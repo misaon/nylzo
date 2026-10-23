@@ -3,3 +3,9 @@
 
 # macOS
 .DS_Store
+
+# Local data and build output
+/data/
+/web/node_modules/
+/web/core/node_modules/
+/web/core/dist/
