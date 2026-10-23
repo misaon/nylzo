@@ -4,7 +4,7 @@ Datum: 23. 10. 2026. Větev: `claude/cli` z `main` po sloučení PR 7 (`01de35e`
 
 ## Cíl milníku
 
-Příkazová řádka `nylzo` pro vytvoření, přečtení, stav, zrušení a smazání zprávy (bod 6 v Next Steps, rozsah první verze v „Rozdělení na MVP“). Stejná binárka obsahuje i server s vloženým webovým klientem (`nylzo serve`), takže kdo si ji stáhne, má celé Nylzo v jednom souboru.
+Příkazová řádka `nylzo` pro vytvoření, přečtení, stav, zrušení a smazání zprávy (bod 6 v Next Steps, rozsah první verze v „Rozdělení na MVP“). Stejná binárka obsahuje i server s vloženým webovým klientem (`nylzo serve`), takže kdo si ji stáhne, má celé Nylzo v jednom souboru, a stejná binárka běží i v produkci na jednom hostingu (D56, D57).
 
 Hotovo znamená: AK14 prochází, CLI vytvoří zprávu, kterou přečte webový klient, a přečte zprávu z webového klienta (e2e), jednotkové a integrační testy proti skutečnému serveru, mutační kontrola bezpečnostních pravidel, vydání sestaví `nylzo` pro Linux, macOS a Windows a otevřený PR proti `main`.
 
@@ -12,9 +12,17 @@ Hotovo znamená: AK14 prochází, CLI vytvoří zprávu, kterou přečte webový
 
 ### D53: jedna binárka `nylzo`
 
-Binárka `nylzo` obsahuje CLI (`create`, `read`, `status`, `cancel`, `burn`) i server (`serve`, `sweep-once`) s vloženým webovým klientem. Bez argumentu vypíše nápovědu. Image na ghcr.io dál spouští `nylzod`: je to stejný program z balíčku `internal/cli`, jen s výchozím příkazem `serve`, aby `docker run` a Compose fungovaly bez argumentů. Archivy vydání obsahují `nylzo`; samostatný archiv `nylzod` už nevzniká. Rozhodnuto podle přání vlastníka 23. 10. 2026.
+Jediná binárka `nylzo` obsahuje CLI (`create`, `read`, `status`, `cancel`, `burn`) i server (`serve`, `sweep-once`) s vloženým webovým klientem. Bez příkazu vypíše nápovědu. `nylzod` zaniká: image na ghcr.io spouští `nylzo` a Compose i hosting mu předají příkaz `serve`. Archivy vydání obsahují jen `nylzo`. Rozhodnuto podle přání vlastníka 23. 10. 2026 („jen jedna binárka all-in-one, aby nebyl server a front-end zvlášť“).
 
 Cena: kdo chce jen posílat zprávy, stahuje i server a SQLite (kolem 12 MB místo menšího klienta), a oprava jedné části vydá novou verzi obou. Bezpečnost to nemění: CLI chrání před napadeným serverem tím, že jeho kód pochází z podepsaného vydání (Z2), ne tím, že je v oddělené binárce.
+
+### D56: jeden hosting, web na stejném originu
+
+Webový klient zůstává vložený v binárce i na veřejné instanci; samostatný statický origin (OD23, D31) vlastník 23. 10. 2026 zrušil. Cena: kdo ovládne server nebo hosting, podvrhne i klienta a oddělený origin už útok neztíží (Z2).
+
+### D57: hosting prototypu
+
+Vlastník chce prototyp v produkci co nejjednodušeji, požadavek na provoz jen v EU zatím odkládá a TLS v produkci ukončí hosting (v Compose proxy před `nylzo`). Hosting vybere rešerše `docs/research/I-hosting-prototype.md`; nasazení samo potřebuje účet vlastníka.
 
 ### D54: server jen na Linuxu a macOS
 
@@ -40,10 +48,10 @@ Cena: kdo chce jen posílat zprávy, stahuje i server a SQLite (kolem 12 MB mís
 ## Struktura
 
 - `internal/client`: HTTP klient nad `internal/core` (instance, výzva, vytvoření, metadata, claim, blob, ack, burn, cancel, status), sdílený s budoucím MCP serverem.
-- `internal/cli`: příkazy a jejich vstupy a výstupy; serverové příkazy přesunuté z `cmd/nylzod`.
-- `cmd/nylzo` a `cmd/nylzod`: tenké vstupy s jiným výchozím příkazem.
+- `internal/cli`: příkazy a jejich vstupy a výstupy včetně serverových, přesunutých z `cmd/nylzod`.
+- `cmd/nylzo`: tenký vstup; `cmd/nylzod` zaniká.
 - Testy: klient i CLI proti skutečnému serveru (`server.New` nad SQLite v `httptest`), AK14 s kontrolou `ps` během běžícího příkazu, kontrola, že žádný přepínač nenese tajemství, e2e mezi CLI a webovým klientem oběma směry.
-- Vydání: build `nylzo` pro linux/amd64, linux/arm64, darwin/arm64 a windows/amd64 (zip) podle „Distribution Plan“, image dál z `cmd/nylzod`.
+- Vydání: build `nylzo` pro linux/amd64, linux/arm64, darwin/arm64 a windows/amd64 (zip) podle „Distribution Plan“, image z téhož `cmd/nylzo`, Compose s příkazem `serve`.
 
 ## Mimo milník
 
