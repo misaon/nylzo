@@ -9,7 +9,7 @@ function reply(message: KdfResponse, transfer: Transferable[] = []): void {
 async function handle(request: KdfRequest): Promise<void> {
   const onProgress = (fraction: number) => reply({ kind: 'progress', fraction });
   if (request.kind === 'scrypt') {
-    const key = await derivePassphraseKey(KDF_SCRYPT, request.passphrase, request.saltPw, { onProgress });
+    const key = await derivePassphraseKey(KDF_SCRYPT, request.passphrase, request.saltPw, { blocking: true, onProgress });
     reply({ kind: 'key', key }, [key.buffer]);
     return;
   }
