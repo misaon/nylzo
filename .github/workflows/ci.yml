@@ -162,7 +162,13 @@ jobs:
           pnpm --filter @nylzo/web build
       - name: Install the Playwright browsers
         working-directory: web/e2e
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 15
+        run: |
+          for attempt in 1 2 3; do
+            timeout 240 pnpm exec playwright install --with-deps chromium firefox webkit && exit 0
+            echo "browser install attempt $attempt failed or hung"
+          done
+          exit 1
       - name: Chromium, Firefox and WebKit against nylzo
         working-directory: web/e2e
         run: pnpm e2e
