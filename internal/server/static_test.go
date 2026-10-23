@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -222,9 +223,7 @@ func TestBrokenBuildRefusesToStart(t *testing.T) {
 	t.Parallel()
 	index := func(extra fstest.MapFS) fstest.MapFS {
 		files := fstest.MapFS{"web/dist/index.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__"></p>`)}}
-		for k, v := range extra {
-			files[k] = v
-		}
+		maps.Copy(files, extra)
 		return files
 	}
 	for name, files := range map[string]fstest.MapFS{
