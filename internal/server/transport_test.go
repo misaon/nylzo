@@ -453,7 +453,7 @@ func TestConfigPepperFromFile(t *testing.T) {
 		"missing file":   {"NYLZO_PEPPER_FILE": filepath.Join(dir, "absent")},
 		"empty file":     {"NYLZO_PEPPER_FILE": write("empty", "\n")},
 		"bad content":    {"NYLZO_PEPPER_FILE": write("bad", "not a pepper")},
-		"too large":      {"NYLZO_PEPPER_FILE": write("large", strings.Repeat("a", 4097))},
+		"too large":      {"NYLZO_PEPPER_FILE": write("large", current+strings.Repeat(" ", 4097))},
 		"bad previous":   {"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
 		"previous twice": {"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previous)},
 	} {
