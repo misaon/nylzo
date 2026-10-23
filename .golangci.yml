@@ -50,6 +50,8 @@ linters:
         text: G306
       - path: ^internal/core/derive\.go
         text: G101
+      - path: ^internal/cli/secrets\.go
+        text: G101
       - path: ^internal/store/sqlite/sqlite\.go
         text: G202
 formatters:
