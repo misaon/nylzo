@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptrace"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -414,6 +416,57 @@ func TestConfigErrorNamesTheVariable(t *testing.T) {
 		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), name) {
 			t.Fatalf("%s=%s: the error must name the variable: %v", name, value, err)
 		}
+	}
+}
+
+func TestConfigPepperFromFile(t *testing.T) {
+	t.Parallel()
+	const current = "00112233445566778899aabbccddeeff00112233445566778899aabbccddee01"
+	const previous = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221102"
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o400); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	env := func(vars map[string]string) func(string) string {
+		return func(k string) string { return vars[k] }
+	}
+	fromVar, err := server.FromEnv(env(map[string]string{"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous}), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromFile, err := server.FromEnv(env(map[string]string{
+		"NYLZO_PEPPER_FILE":          write("pepper", current+"\n"),
+		"NYLZO_PEPPER_PREVIOUS_FILE": write("previous", "  "+previous+"\r\n"),
+	}), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fromFile.Pepper, fromVar.Pepper) || !bytes.Equal(fromFile.PepperPrevious, fromVar.PepperPrevious) || len(fromFile.Pepper) != 32 {
+		t.Fatal("a pepper from a file differs from the same pepper in a variable")
+	}
+	for name, vars := range map[string]map[string]string{
+		"both set":       {"NYLZO_PEPPER": current, "NYLZO_PEPPER_FILE": write("both", current)},
+		"missing file":   {"NYLZO_PEPPER_FILE": filepath.Join(dir, "absent")},
+		"empty file":     {"NYLZO_PEPPER_FILE": write("empty", "\n")},
+		"bad content":    {"NYLZO_PEPPER_FILE": write("bad", "not a pepper")},
+		"too large":      {"NYLZO_PEPPER_FILE": write("large", strings.Repeat("a", 4097))},
+		"bad previous":   {"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
+		"previous twice": {"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previous)},
+	} {
+		_, err := server.FromEnv(env(vars), true)
+		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), "_FILE") {
+			t.Fatalf("%s: want a config error naming the _FILE variable, got %v", name, err)
+		}
+		if strings.Contains(err.Error(), current) || strings.Contains(err.Error(), previous) {
+			t.Fatalf("%s: the error leaks the pepper: %v", name, err)
+		}
+	}
+	if _, err := server.FromEnv(env(nil), true); err == nil || !strings.Contains(err.Error(), "NYLZO_PEPPER_FILE") {
+		t.Fatalf("a missing pepper must mention both ways to set it: %v", err)
 	}
 }
 
