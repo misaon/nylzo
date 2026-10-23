@@ -77,7 +77,7 @@ func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (
 }
 
 func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 }
 
 func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	cfg := Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
-	st, err := sqlite.Open(filepath.Join(cfg.DataDir, "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(cfg.DataDir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestConcurrentSpendsShareATransaction(t *testing.T) {
 }
 
 func testConcurrentSpendsShareATransaction(t *testing.T) {
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -64,7 +64,7 @@ func testServer(t testing.TB, st store.Store, change func(*Config)) (*Server, *l
 
 func openStore(t testing.TB) *sqlite.Store {
 	t.Helper()
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

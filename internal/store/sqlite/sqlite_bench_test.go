@@ -14,7 +14,7 @@ import (
 
 func benchStore(b *testing.B) *sqlite.Store {
 	b.Helper()
-	s, err := sqlite.Open(filepath.Join(b.TempDir(), "nylzo.db"))
+	s, err := sqlite.Open(b.Context(), filepath.Join(b.TempDir(), "nylzo.db"))
 	if err != nil {
 		b.Fatal(err)
 	}

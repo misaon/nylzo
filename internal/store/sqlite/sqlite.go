@@ -107,8 +107,7 @@ const (
 	minLeaseRowID = 1 << 32
 )
 
-func migrate(db *sql.DB) error {
-	ctx := context.Background()
+func migrate(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -282,7 +281,10 @@ func dsn(path string, write bool) string {
 	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + q.Encode()
 }
 
-func Open(path string) (*Store, error) {
+func Open(ctx context.Context, path string) (*Store, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
@@ -290,11 +292,15 @@ func Open(path string) (*Store, error) {
 	f.Close()
 	for attempt := 1; ; attempt++ {
 		start := time.Now()
-		s, err := open(path)
+		s, err := open(ctx, path)
 		if err == nil || !busy(err) || attempt == openAttempts || time.Since(start) > openFastFail {
 			return s, err
 		}
-		time.Sleep(time.Duration(attempt)*openBackoff + rand.N(openBackoff))
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(attempt)*openBackoff + rand.N(openBackoff)):
+		}
 	}
 }
 
@@ -303,13 +309,13 @@ func busy(err error) bool {
 	return errors.As(err, &e) && e.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
-func open(path string) (*Store, error) {
+func open(ctx context.Context, path string) (*Store, error) {
 	w, err := sql.Open("sqlite", dsn(path, true))
 	if err != nil {
 		return nil, err
 	}
 	w.SetMaxOpenConns(1)
-	if err := migrate(w); err != nil {
+	if err := migrate(ctx, w); err != nil {
 		w.Close()
 		return nil, fmt.Errorf("sqlite: migrate: %w", err)
 	}
@@ -320,7 +326,7 @@ func open(path string) (*Store, error) {
 	}
 	r.SetMaxOpenConns(readerConns)
 	r.SetMaxIdleConns(readerConns)
-	if err := r.PingContext(context.Background()); err != nil {
+	if err := r.PingContext(ctx); err != nil {
 		r.Close()
 		w.Close()
 		return nil, err

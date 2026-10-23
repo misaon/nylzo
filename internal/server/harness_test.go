@@ -224,7 +224,7 @@ func newHarness(t *testing.T, cfg server.Config) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	cfg.DataDir = dir
-	st, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

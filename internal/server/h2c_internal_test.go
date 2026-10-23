@@ -23,7 +23,7 @@ import (
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	dir := t.TempDir()
-	st, err := sqlite.Open(filepath.Join(dir, "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	cfg := Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
-	st, err := sqlite.Open(filepath.Join(cfg.DataDir, "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(cfg.DataDir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

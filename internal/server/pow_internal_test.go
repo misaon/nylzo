@@ -20,7 +20,7 @@ import (
 
 func powServer(t *testing.T, concurrency int) *Server {
 	t.Helper()
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "nylzo.db"))
+	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
