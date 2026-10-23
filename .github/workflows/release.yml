@@ -150,9 +150,11 @@ jobs:
           args: release --clean --skip=before
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
       - name: Digest of the published image
         id: image
         run: |
+          test "$(jq -r .tag dist/metadata.json)" = "${GITHUB_REF_NAME}"
           digest=$(jq -r 'first(.[] | select(.type == "Docker Manifest") | .extra.Digest)' dist/artifacts.json)
           test -n "${digest}" && test "${digest}" != null
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
