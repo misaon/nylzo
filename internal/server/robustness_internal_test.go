@@ -378,3 +378,25 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", mo, mw)
 	}
 }
+
+func TestUploadsInProgressKeepTheirDiskReservation(t *testing.T) {
+	t.Parallel()
+	s, _ := testServer(t, openStore(t), nil)
+	s.freeSpace = func(string) (uint64, error) { return uint64(s.cfg.MinFreeBytes) + 10, nil }
+	release, ok := s.reserveDisk(6)
+	if !ok {
+		t.Fatal("the first upload did not fit")
+	}
+	if _, ok := s.reserveDisk(6); ok {
+		t.Fatal("a second upload took the room the first one reserved")
+	}
+	release()
+	again, ok := s.reserveDisk(10)
+	if !ok {
+		t.Fatal("a finished upload kept its reservation")
+	}
+	again()
+	if held := s.diskReserved.Load(); held != 0 {
+		t.Fatalf("%d bytes still reserved after every upload ended", held)
+	}
+}

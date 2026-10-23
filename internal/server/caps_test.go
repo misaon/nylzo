@@ -223,16 +223,18 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 
 func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, baseConfig(pepperA, nil))
+	cfg := baseConfig(pepperA, nil)
+	cfg.Rates.CreatePerHour = 2
+	h := newHarness(t, cfg)
 	live := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	h.mustCreate(live)
 	free := uint64(1<<30 - 1)
 	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return free, nil })
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	before, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day)
-	for i := range 2 {
+	for range 3 {
 		m := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-		m.ip = fmt.Sprintf("198.51.100.%d", i+1)
+		m.ip = "198.51.100.1"
 		if resp, _ := h.create(m); resp.StatusCode != 503 || resp.Header.Get("Retry-After") != "60" {
 			t.Fatalf("create on a nearly full disk: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 		}
@@ -252,12 +254,16 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 	if resp, _ := h.create(m); resp.StatusCode != 503 {
 		t.Fatalf("create when free space cannot be measured: %d", resp.StatusCode)
 	}
-	free = 1 << 30
-	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return free, nil })
 	m = newMessage(t, core.KDFNone, "", 1, 3600, "n")
-	m.ip = "198.51.100.10"
+	m.ip = "198.51.100.1"
+	free = 1<<30 + uint64(len(m.object)) - 1
+	h.srv.SetFreeSpaceForTest(func(string) (uint64, error) { return free, nil })
+	if resp, _ := h.create(m); resp.StatusCode != 503 {
+		t.Fatalf("create whose own upload would cross the reserve: %d", resp.StatusCode)
+	}
+	free++
 	if resp, _ := h.create(m); resp.StatusCode != 201 {
-		t.Fatalf("create with enough space: %d", resp.StatusCode)
+		t.Fatalf("a client refused for disk space lost its rate budget or the upload did not fit: %d", resp.StatusCode)
 	}
 	if n := strings.Count(h.logBuf.String(), `"msg":"disk-free-again"`); n != 1 {
 		t.Fatalf("logged disk-free-again %d times", n)

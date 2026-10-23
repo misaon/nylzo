@@ -391,15 +391,17 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setCreateDeadlines(w, time.Now().Add(max(readTimeout, store.TransferTime(h.Size))))
+	releaseDisk, ok := s.reserveDisk(h.Size)
+	if !ok {
+		setRetryAfter(w, diskFullRetry)
+		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+		return
+	}
+	defer releaseDisk()
 	now := s.clock()
 	if retry := s.limitCreate(now, s.clientAddr(r), h.Size); retry > 0 {
 		setRetryAfter(w, retry)
 		s.rejectCreate(w, r, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(retry)})
-		return
-	}
-	if !s.diskHasRoom() {
-		setRetryAfter(w, diskFullRetry)
-		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 		return
 	}
 	gate, err := s.globalGate(ctx, now)
@@ -507,17 +509,19 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
 }
 
-func (s *Server) diskHasRoom() bool {
+func (s *Server) reserveDisk(size int64) (func(), bool) {
 	if s.cfg.MinFreeBytes == 0 {
-		return true
+		return func() {}, true
 	}
 	free, err := s.freeSpace(s.cfg.DataDir)
-	if err == nil && free >= uint64(s.cfg.MinFreeBytes) {
+	needed := uint64(s.cfg.MinFreeBytes) + uint64(s.diskReserved.Add(size))
+	if err == nil && free >= needed {
 		if s.diskLow.Swap(false) {
 			s.log.Info("disk-free-again")
 		}
-		return true
+		return func() { s.diskReserved.Add(-size) }, true
 	}
+	s.diskReserved.Add(-size)
 	switch {
 	case s.diskLow.Swap(true):
 	case err != nil:
@@ -525,7 +529,7 @@ func (s *Server) diskHasRoom() bool {
 	default:
 		s.log.Error("disk-full")
 	}
-	return false
+	return nil, false
 }
 
 func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {
