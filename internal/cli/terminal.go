@@ -12,19 +12,25 @@ var ErrNoTerminal = errors.New("no terminal to ask on")
 
 type Terminal interface {
 	StdinIsTerminal() bool
+	StdoutIsTerminal() bool
 	ReadSecret(prompt string) ([]byte, error)
 }
 
 type systemTerminal struct {
-	stdin *os.File
+	stdin  *os.File
+	stdout *os.File
 }
 
-func SystemTerminal(stdin *os.File) Terminal {
-	return systemTerminal{stdin: stdin}
+func SystemTerminal(stdin, stdout *os.File) Terminal {
+	return systemTerminal{stdin: stdin, stdout: stdout}
 }
 
 func (t systemTerminal) StdinIsTerminal() bool {
 	return term.IsTerminal(int(t.stdin.Fd()))
+}
+
+func (t systemTerminal) StdoutIsTerminal() bool {
+	return term.IsTerminal(int(t.stdout.Fd()))
 }
 
 func (t systemTerminal) ReadSecret(prompt string) ([]byte, error) {

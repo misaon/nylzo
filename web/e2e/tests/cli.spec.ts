@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { BASE_URL, NYLZO_BIN, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 
@@ -42,6 +42,8 @@ test('the CLI reads messages and files created in the browser', async ({ page })
   const withFile = await createViaUi(page, { text: '', file: { name: 'data.bin', mimeType: 'application/octet-stream', buffer: bytes } });
   const out = mkdtempSync(join(tmpdir(), 'nylzo-out-'));
   const paths = cli(['read', '--out', out], withFile).trim().split('\n');
-  expect(paths).toEqual([join(out, 'data.bin')]);
+  expect(paths).toHaveLength(1);
+  expect(dirname(dirname(paths[0] ?? ''))).toBe(out);
+  expect(basename(paths[0] ?? '')).toBe('data.bin');
   expect(readFileSync(paths[0] ?? '').equals(bytes)).toBe(true);
 });

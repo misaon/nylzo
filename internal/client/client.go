@@ -11,9 +11,12 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -45,12 +48,29 @@ func New(server string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true, ResponseHeaderTimeout: minTransfer + transferMargin}
+	if strings.HasPrefix(base, "http://") {
+		transport.Proxy = nil
+		dialer := &net.Dialer{Timeout: shortTimeout, Control: loopbackOnly}
+		transport.DialContext = dialer.DialContext
+	}
 	return &Client{base: base, http: &http.Client{
-		Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true, ResponseHeaderTimeout: minTransfer + transferMargin},
+		Transport: transport,
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return ErrRedirect
 		},
 	}}, nil
+}
+
+func loopbackOnly(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	if ip, err := netip.ParseAddr(host); err != nil || !ip.Unmap().IsLoopback() {
+		return ErrInsecureServer
+	}
+	return nil
 }
 
 func (c *Client) Origin() string {
@@ -75,11 +95,11 @@ func Origin(server string) (string, error) {
 }
 
 func loopback(host string) bool {
-	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+	if strings.EqualFold(host, "localhost") {
 		return true
 	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.Unmap().IsLoopback()
 }
 
 type APIError struct {
@@ -233,6 +253,21 @@ type Metadata struct {
 	EndedAt            string `json:"ended_at"`
 }
 
+var states = []string{"available", "opened", "expired", "cancelled", "deleted"}
+
+func knownState(state string) bool {
+	return slices.Contains(states, state)
+}
+
+func timesValid(times ...string) bool {
+	for _, t := range times {
+		if _, err := time.Parse(time.RFC3339, t); t != "" && err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func messagePath(id core.ID) string {
 	return "/api/v1/messages/" + id.String()
 }
@@ -246,7 +281,7 @@ func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.TokenLen]
 	if err := readJSON(resp, &m); err != nil {
 		return Metadata{}, err
 	}
-	if m.State == "" {
+	if !knownState(m.State) || !timesValid(m.CreatedAt, m.ExpiresAt, m.FirstOpenedAt, m.EndedAt) {
 		return Metadata{}, ErrResponse
 	}
 	return m, nil
@@ -272,7 +307,7 @@ func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.TokenLen]
 	if err := readJSON(resp, &s); err != nil {
 		return Status{}, err
 	}
-	if s.State == "" {
+	if !knownState(s.State) || !timesValid(s.CreatedAt, s.ExpiresAt, s.FirstOpenedAt, s.EndedAt) {
 		return Status{}, ErrResponse
 	}
 	return s, nil
@@ -466,7 +501,9 @@ func apiError(resp *http.Response) error {
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxJSONBytes))
 	if json.Unmarshal(data, &raw) == nil && raw.Error != "" {
 		out.Kind = raw.Error
-		out.State = raw.State
+		if knownState(raw.State) {
+			out.State = raw.State
+		}
 		if raw.AttemptsLeft != nil {
 			out.AttemptsLeft = *raw.AttemptsLeft
 		}

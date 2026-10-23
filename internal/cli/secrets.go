@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"strings"
@@ -44,10 +45,28 @@ func readLimited(r io.Reader, limit int64) ([]byte, error) {
 func readFileLimited(path string, limit int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, unreadable(err)
 	}
 	defer f.Close()
-	return readLimited(f, limit)
+	data, err := readLimited(f, limit)
+	if err != nil && !errors.Is(err, errTooLong) {
+		return nil, unreadable(err)
+	}
+	return data, err
+}
+
+func unreadable(err error) error {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return errors.New("the file does not exist")
+	case errors.Is(err, fs.ErrPermission):
+		return errors.New("the file is not readable")
+	}
+	return errors.New("the file cannot be read")
+}
+
+func noteSource(env Env, what, variable string) {
+	fmt.Fprintf(env.Stderr, "%s: using the %s named by %s\n", program, what, variable)
 }
 
 func readLink(env Env, linkFile string) (string, error) {
@@ -57,6 +76,7 @@ func readLink(env Env, linkFile string) (string, error) {
 	case linkFile != "":
 		raw, err = readFileLimited(linkFile, maxSecretInput)
 	case env.Getenv(envLink) != "":
+		noteSource(env, "link", envLink)
 		raw = []byte(env.Getenv(envLink))
 	case env.Terminal.StdinIsTerminal():
 		raw, err = env.Terminal.ReadSecret("Link (hidden): ")
@@ -85,8 +105,9 @@ func (s passphraseSource) given(env Env) bool {
 
 func readPassphrase(env Env, src passphraseSource, confirm bool) (string, error) {
 	path := src.file
-	if path == "" {
+	if path == "" && env.Getenv(envPassphrase) != "" {
 		path = env.Getenv(envPassphrase)
+		noteSource(env, "passphrase file", envPassphrase)
 	}
 	if path != "" && src.ask {
 		return "", errPassphraseSource
@@ -97,7 +118,8 @@ func readPassphrase(env Env, src passphraseSource, confirm bool) (string, error)
 			return "", err
 		}
 		defer clear(raw)
-		line := bytes.TrimSuffix(bytes.TrimSuffix(raw, []byte("\n")), []byte("\r"))
+		line, _, _ := bytes.Cut(raw, []byte("\n"))
+		line = bytes.TrimSuffix(line, []byte("\r"))
 		if len(line) == 0 {
 			return "", errEmpty
 		}
@@ -140,8 +162,9 @@ func formatManageToken(origin string, id core.ID, seed *[core.TokenLen]byte) str
 
 func readManageToken(env Env, file string) (manageToken, error) {
 	path := file
-	if path == "" {
+	if path == "" && env.Getenv(envManageToken) != "" {
 		path = env.Getenv(envManageToken)
+		noteSource(env, "manage token file", envManageToken)
 	}
 	var raw []byte
 	var err error

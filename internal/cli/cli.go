@@ -39,8 +39,12 @@ type command struct {
 }
 
 var (
-	errUsage = errors.New("usage")
-	keyLike  = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(core.SecretLen)))
+	errUsage     = errors.New("usage")
+	errHelp      = errors.New("help")
+	keyLength    = base64.RawURLEncoding.EncodedLen(core.SecretLen)
+	keyLike      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, keyLength))
+	fragmentLike = regexp.MustCompile(fmt.Sprintf(`#[0-9]+\.[0-9]+\.[A-Za-z0-9_-]{%d}`, keyLength))
+	badFlagValue = regexp.MustCompile(`invalid (?:boolean )?value .* for flag -([a-z-]+)`)
 )
 
 func commands() []command {
@@ -79,6 +83,10 @@ func Run(args []string, env Env) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	return commands()[i].run(ctx, env, args[1:])
 }
 
@@ -99,14 +107,7 @@ configuration from NYLZO_* variables, described in README.md.
 }
 
 func secretInArguments(args []string) bool {
-	for _, arg := range args {
-		if _, fragment, ok := strings.Cut(arg, "#"); ok {
-			if _, _, err := core.ParseFragment(fragment); err == nil {
-				return true
-			}
-		}
-	}
-	return false
+	return slices.ContainsFunc(args, fragmentLike.MatchString)
 }
 
 func newFlags(env Env, name string) *flag.FlagSet {
@@ -116,7 +117,19 @@ func newFlags(env Env, name string) *flag.FlagSet {
 }
 
 func parseFlags(fs *flag.FlagSet, env Env, args []string) error {
-	if err := fs.Parse(args); err != nil {
+	fs.SetOutput(io.Discard)
+	err := fs.Parse(args)
+	fs.SetOutput(env.Stderr)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		fs.Usage()
+		return errHelp
+	case err != nil:
+		if m := badFlagValue.FindStringSubmatch(err.Error()); m != nil {
+			fmt.Fprintf(env.Stderr, "%s: invalid value for -%s; run %s -h\n", fs.Name(), m[1], fs.Name())
+		} else {
+			fmt.Fprintf(env.Stderr, "%s: unknown or incomplete flag; run %s -h\n", fs.Name(), fs.Name())
+		}
 		return errUsage
 	}
 	if fs.NArg() > 0 {
@@ -130,6 +143,16 @@ func parseFlags(fs *flag.FlagSet, env Env, args []string) error {
 	return nil
 }
 
+func flagsDone(err error) (int, bool) {
+	switch {
+	case errors.Is(err, errHelp):
+		return exitOK, true
+	case err != nil:
+		return exitUsage, true
+	}
+	return exitOK, false
+}
+
 func failf(env Env, format string, a ...any) int {
 	fmt.Fprintf(env.Stderr, program+": "+format+"\n", a...)
 	return exitError
@@ -137,8 +160,8 @@ func failf(env Env, format string, a ...any) int {
 
 func runVersion(_ context.Context, env Env, args []string) int {
 	fs := newFlags(env, "version")
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	fmt.Fprintln(env.Stdout, buildVersion(env.Version))
 	return exitOK

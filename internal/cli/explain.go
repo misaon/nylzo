@@ -64,5 +64,5 @@ func explainAPI(e *client.APIError) string {
 	case "internal":
 		return "the server failed; try again later"
 	}
-	return fmt.Sprintf("the server answered %d (%s)", e.Status, e.Kind)
+	return fmt.Sprintf("the server answered with status %d", e.Status)
 }

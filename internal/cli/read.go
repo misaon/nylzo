@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
@@ -77,10 +79,10 @@ func runRead(ctx context.Context, env Env, args []string) int {
 	fs.StringVar(&o.linkFile, "link-file", "", "read the link from this file (or "+envLink+", or stdin)")
 	fs.StringVar(&o.passphrase.file, "passphrase-file", "", "read the passphrase from the first line of this file (or "+envPassphrase+")")
 	fs.BoolVar(&o.passphrase.ask, "ask-passphrase", false, "ask for the passphrase on the terminal without echo")
-	fs.StringVar(&o.out, "out", "", "write the files into this existing directory instead of a new private one")
+	fs.StringVar(&o.out, "out", "", "create the new private directory for the files inside this directory (default: the system temporary directory)")
 	fs.BoolVar(&o.stdout, "stdout", false, "print the text to stdout instead of writing it to a file")
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	link, err := linkFromInput(env, o.linkFile)
 	if err != nil {
@@ -91,14 +93,19 @@ func runRead(ctx context.Context, env Env, args []string) int {
 	if err != nil {
 		return failf(env, "%s", explain(err))
 	}
+	dir, err := outputDir(o.out)
+	if err != nil {
+		return failf(env, "cannot create a private directory for the message: %s", explain(err))
+	}
+	defer removeIfEmpty(dir)
 	opened, err := readMessage(ctx, env, c, &link, o.passphrase)
 	if err != nil {
 		return failf(env, "%s", explain(err))
 	}
 	defer clear(opened.payload.File)
-	paths, err := saveMessage(env, o, opened.payload)
+	paths, err := saveMessage(env, dir, o.stdout, opened.payload)
 	if err != nil {
-		return failf(env, "the message was opened but could not be saved: %s", err)
+		return failf(env, "the message was opened but could not be saved: %s", explain(err))
 	}
 	if err := c.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, "gone") {
 		fmt.Fprintf(env.Stderr, "%s: warning: the server did not confirm the read; it frees the message when the lease ends\n", program)
@@ -193,46 +200,69 @@ func fetchEnvelope(ctx context.Context, c *client.Client, link *openLink, verifi
 	return client.Envelope{}, "", err
 }
 
-func saveMessage(env Env, o readOptions, payload core.Payload) ([]string, error) {
-	text := payload.Meta.Text
-	if o.stdout && text != nil {
-		fmt.Fprint(env.Stdout, *text)
-		if len(*text) > 0 && (*text)[len(*text)-1] != '\n' {
-			fmt.Fprintln(env.Stdout)
+func terminalControl(r rune) bool {
+	return r != '\n' && r != '\t' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r))
+}
+
+type outputFile struct {
+	name string
+	data []byte
+}
+
+func saveMessage(env Env, dir string, toStdout bool, payload core.Payload) ([]string, error) {
+	var files []outputFile
+	if text := payload.Meta.Text; text != nil {
+		if toStdout && env.Terminal.StdoutIsTerminal() && strings.ContainsFunc(*text, terminalControl) {
+			fmt.Fprintf(env.Stderr, "%s: the text holds terminal control characters, so it goes to a file instead of the terminal\n", program)
+			toStdout = false
 		}
-		text = nil
-	}
-	if text == nil && payload.Meta.File == nil {
-		return nil, nil
-	}
-	dir, err := outputDir(o.out)
-	if err != nil {
-		return nil, err
-	}
-	var paths []string
-	if text != nil {
-		path, err := writePrivate(dir, textFileName, []byte(*text))
-		if err != nil {
-			return paths, err
+		if toStdout {
+			fmt.Fprint(env.Stdout, *text)
+			if len(*text) > 0 && (*text)[len(*text)-1] != '\n' {
+				fmt.Fprintln(env.Stdout)
+			}
+		} else {
+			files = append(files, outputFile{textFileName, []byte(*text)})
 		}
-		paths = append(paths, path)
 	}
 	if payload.Meta.File != nil {
 		name := attachmentName(payload.Meta.File.Name)
-		if name == textFileName {
+		if strings.EqualFold(name, textFileName) {
 			name = "attachment-" + name
 		}
-		path, err := writePrivate(dir, name, payload.File)
-		if err != nil {
-			return paths, err
-		}
-		paths = append(paths, path)
+		files = append(files, outputFile{name, payload.File})
 	}
-	if o.stdout {
+	paths, err := writeAll(dir, files)
+	if err != nil {
+		fallback, ferr := os.MkdirTemp("", outputDirPrefix)
+		if ferr != nil {
+			return nil, err
+		}
+		fmt.Fprintf(env.Stderr, "%s: warning: writing into %s failed, using %s instead\n", program, dir, fallback)
+		if paths, err = writeAll(fallback, files); err != nil {
+			return nil, err
+		}
+	}
+	if toStdout {
 		for _, path := range paths {
 			fmt.Fprintf(env.Stderr, "%s: the attachment is in %s\n", program, path)
 		}
 		return nil, nil
+	}
+	return paths, nil
+}
+
+func writeAll(dir string, files []outputFile) ([]string, error) {
+	var paths []string
+	for _, f := range files {
+		path, err := writePrivate(dir, f.name, f.data)
+		if err != nil {
+			for _, written := range paths {
+				os.Remove(written)
+			}
+			return nil, err
+		}
+		paths = append(paths, path)
 	}
 	return paths, nil
 }
@@ -243,12 +273,18 @@ func outputDir(out string) (string, error) {
 	}
 	info, err := os.Stat(out)
 	if err != nil {
-		return "", err
+		return "", errors.New("--out must name an existing directory")
 	}
 	if !info.IsDir() {
-		return "", fmt.Errorf("--out must be a directory")
+		return "", errors.New("--out must name an existing directory")
 	}
-	return out, nil
+	return os.MkdirTemp(out, outputDirPrefix)
+}
+
+func removeIfEmpty(dir string) {
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) == 0 {
+		os.Remove(dir)
+	}
 }
 
 func writePrivate(dir, name string, data []byte) (string, error) {

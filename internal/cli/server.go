@@ -43,8 +43,8 @@ func runServer(env Env, args []string, name string, run func(*slog.Logger) error
 	fs.Usage = func() {
 		fmt.Fprintf(env.Stderr, "usage: %s %s\n\nThe server takes no flags; it reads NYLZO_* environment variables, described in README.md.\n", program, name)
 	}
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	logger := server.NewLogger(env.Stderr)
 	err := run(logger)

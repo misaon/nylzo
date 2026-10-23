@@ -12,8 +12,8 @@ func runStatus(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "status")
 	file := fs.String("manage-token-file", "", "read the manage token from this file (or "+envManageToken+", or stdin)")
 	asJSON := fs.Bool("json", false, "print the status as JSON")
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	token, err := readManageToken(env, *file)
 	if err != nil {
@@ -48,8 +48,8 @@ func runStatus(ctx context.Context, env Env, args []string) int {
 func runCancel(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "cancel")
 	file := fs.String("manage-token-file", "", "read the manage token from this file (or "+envManageToken+", or stdin)")
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	token, err := readManageToken(env, *file)
 	if err != nil {
@@ -70,8 +70,8 @@ func runCancel(ctx context.Context, env Env, args []string) int {
 func runBurn(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "burn")
 	linkFile := fs.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	link, err := linkFromInput(env, *linkFile)
 	if err != nil {

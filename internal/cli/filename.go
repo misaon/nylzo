@@ -17,8 +17,7 @@ const (
 
 var (
 	reservedRunes = regexp.MustCompile(`[/\\:*?"<>|]`)
-	spaceRuns     = regexp.MustCompile(`\s+`)
-	windowsDevice = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)\s*(\.|$)`)
+	windowsDevice = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$) *(\.|$)`)
 )
 
 func invisible(r rune) bool {
@@ -37,8 +36,9 @@ func attachmentName(name string) string {
 		return r
 	}, norm.NFC.String(strings.ToValidUTF8(name, "")))
 	clean = reservedRunes.ReplaceAllString(clean, "_")
-	clean = strings.TrimSpace(spaceRuns.ReplaceAllString(clean, " "))
-	clean = strings.TrimRight(strings.TrimLeft(clean, ". "), ". ")
+	clean = strings.Join(strings.FieldsFunc(clean, unicode.IsSpace), " ")
+	dotOrSpace := func(r rune) bool { return r == '.' || r == ' ' }
+	clean = strings.TrimRightFunc(strings.TrimLeftFunc(clean, dotOrSpace), dotOrSpace)
 	if windowsDevice.MatchString(clean) {
 		clean = "_" + clean
 	}

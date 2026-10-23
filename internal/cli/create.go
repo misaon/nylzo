@@ -59,8 +59,8 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	fs.StringVar(&o.kdf, "kdf", "", "passphrase profile, scrypt or pbkdf2 (default: the instance default)")
 	fs.StringVar(&o.manageFile, "manage-token-file", "", "write the manage token for status and cancel to this new file (mode 0600)")
 	fs.BoolVar(&o.printManage, "print-manage-token", false, "print the manage token after the link")
-	if parseFlags(fs, env, args) != nil {
-		return exitUsage
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
 	}
 	if o.server == "" {
 		o.server = env.Getenv(envServer)
@@ -143,14 +143,14 @@ func readContent(env Env, fromFile string) (content, error) {
 	if fromFile != "" {
 		info, err := os.Stat(fromFile)
 		if err != nil {
-			return content{}, err
+			return content{}, fmt.Errorf("--from-file: %w", unreadable(err))
 		}
 		if !info.Mode().IsRegular() || info.Size() > core.MaxFileBytes {
 			return content{}, fmt.Errorf("--from-file must be a regular file of at most %d bytes", core.MaxFileBytes)
 		}
 		data, err := readFileLimited(fromFile, core.MaxFileBytes)
 		if err != nil {
-			return content{}, err
+			return content{}, fmt.Errorf("--from-file: %w", err)
 		}
 		name := attachmentName(filepath.Base(fromFile))
 		kind := mime.TypeByExtension(filepath.Ext(name))

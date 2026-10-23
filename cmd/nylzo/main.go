@@ -14,7 +14,7 @@ func main() {
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,
 		Getenv:   os.Getenv,
-		Terminal: cli.SystemTerminal(os.Stdin),
+		Terminal: cli.SystemTerminal(os.Stdin, os.Stdout),
 		Version:  version,
 	}))
 }

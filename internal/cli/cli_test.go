@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"io"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -85,9 +87,12 @@ func newTestServer(t *testing.T, change func(*server.Config)) *testServer {
 type scriptedTerminal struct {
 	mu      sync.Mutex
 	secrets []string
+	stdout  bool
 }
 
 func (s *scriptedTerminal) StdinIsTerminal() bool { return false }
+
+func (s *scriptedTerminal) StdoutIsTerminal() bool { return s.stdout }
 
 func (s *scriptedTerminal) ReadSecret(string) ([]byte, error) {
 	s.mu.Lock()
@@ -272,7 +277,7 @@ func TestAttachmentAndStdout(t *testing.T) {
 	link, _ := createText(t, ts, "", "--from-file", src)
 	out := t.TempDir()
 	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", out))
-	if len(paths) != 1 || filepath.Dir(paths[0]) != out || filepath.Base(paths[0]) != "reportgpj.exe" {
+	if len(paths) != 1 || filepath.Dir(filepath.Dir(paths[0])) != out || filepath.Base(paths[0]) != "reportgpj.exe" {
 		t.Fatalf("attachment written to %v", paths)
 	}
 	if got, _ := os.ReadFile(paths[0]); !bytes.Equal(got, payload) {
@@ -357,7 +362,7 @@ func TestNoFlagTakesASecret(t *testing.T) {
 	}
 }
 
-func TestProcessListShowsNoSecret(t *testing.T) {
+func TestProcessListShowsNoSecretSmoke(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("no ps on Windows")
 	}
@@ -553,6 +558,7 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 		"opens_max":   {nil, func(b string) string { return strings.Replace(b, `"opens_max":2`, `"opens_max":3`, 1) }, "different policy"},
 		"ttl_s":       {nil, func(b string) string { return strings.Replace(b, `"ttl_s":3600`, `"ttl_s":7200`, 1) }, "different policy"},
 		"kdf profile": {[]string{"--passphrase-file", passphrase, "--kdf", "scrypt"}, func(b string) string { return strings.Replace(b, `"kdf_id":1`, `"kdf_id":2`, 1) }, "does not match"},
+		"state":       {nil, func(b string) string { return strings.Replace(b, `"state":"available"`, `"state":"opened"`, 1) }, "already opened"},
 	} {
 		manage := filepath.Join(t.TempDir(), "manage")
 		link, _ := createText(t, ts, "policy", append([]string{"--opens", "2", "--ttl", "1h", "--manage-token-file", manage}, c.args...)...)
@@ -585,5 +591,224 @@ func TestAServerCannotSwitchOffThePassphrase(t *testing.T) {
 	res := runWith(t, "secret", nil, nil, "create", "--server", proxy, "--passphrase-file", writeSecretFile(t, "correct horse battery staple"))
 	if res.code != exitOK || !strings.Contains(res.stdout, "#1.1.") {
 		t.Fatalf("a passphrase was dropped on the server's word: %d %q %q", res.code, res.stdout, res.stderr)
+	}
+}
+
+func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	out := t.TempDir()
+	first, _ := createText(t, ts, "first")
+	second, _ := createText(t, ts, "second")
+	a := readPaths(t, runWith(t, first, nil, nil, "read", "--out", out))
+	b := readPaths(t, runWith(t, second, nil, nil, "read", "--out", out))
+	assertPrivate(t, a[0], "first")
+	assertPrivate(t, b[0], "second")
+	c, err := client.New(ts.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := "beside a clashing attachment"
+	msg := content{meta: core.Meta{Text: &text, File: &core.FileMeta{Name: "MESSAGE.TXT", Mime: "text/plain", Size: 4}}, file: []byte("file")}
+	created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, core.KDFNone, "", msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := readPaths(t, runWith(t, created.link, nil, nil, "read", "--out", out))
+	if len(paths) != 2 || filepath.Base(paths[0]) != textFileName || filepath.Base(paths[1]) != "attachment-MESSAGE.TXT" {
+		t.Fatalf("text and attachment: %v", paths)
+	}
+	assertPrivate(t, paths[0], text)
+	assertPrivate(t, paths[1], "file")
+}
+
+func TestReadChecksTheOutputBeforeItSpendsAnOpen(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	link, _ := createText(t, ts, "still there")
+	before := ts.requests.Load()
+	res := runWith(t, link, nil, nil, "read", "--out", filepath.Join(t.TempDir(), "missing"))
+	if res.code != exitError || ts.requests.Load() != before {
+		t.Fatalf("a missing --out: exit %d, %d requests", res.code, ts.requests.Load()-before)
+	}
+	out := t.TempDir()
+	if res := runWith(t, link, nil, nil, "read", "--stdout", "--out", out); res.code != exitOK || res.stdout != "still there\n" {
+		t.Fatalf("read --stdout: %d %q %q", res.code, res.stdout, res.stderr)
+	}
+	if entries, _ := os.ReadDir(out); len(entries) != 0 {
+		t.Fatalf("read --stdout left %d empty directories behind", len(entries))
+	}
+}
+
+func TestLiedPolicyHeaderIsRefused(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	for name, field := range map[string][2]string{"kdf": {`"kdf_id":0`, `"kdf_id":2`}, "flags": {`"flags":0`, `"flags":1`}} {
+		link, _ := createText(t, ts, "policy header")
+		proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			req, _ := http.NewRequestWithContext(r.Context(), r.Method, ts.url+r.URL.RequestURI(), r.Body)
+			req.Header = r.Header.Clone()
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+			maps.Copy(w.Header(), resp.Header)
+			if policy := resp.Header.Get("X-Nylzo-Policy"); policy != "" {
+				raw, _ := base64.RawURLEncoding.DecodeString(policy)
+				w.Header().Set("X-Nylzo-Policy", core.Encode([]byte(strings.Replace(string(raw), field[0], field[1], 1))))
+			}
+			w.WriteHeader(resp.StatusCode)
+			io.Copy(w, resp.Body)
+		}))
+		res := runWith(t, strings.Replace(link, ts.url, proxy.URL, 1), nil, nil, "read")
+		proxy.Close()
+		if res.code != exitError || !strings.Contains(res.stderr, "different policy") {
+			t.Fatalf("%s: %d %q", name, res.code, res.stderr)
+		}
+	}
+}
+
+func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	var creates, metadata atomic.Int32
+	var ids sync.Map
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages" {
+			ids.Store(r.Header.Get("X-Nylzo-Create"), true)
+			if creates.Add(1) == 1 {
+				w.WriteHeader(http.StatusConflict)
+				w.Write([]byte(`{"error":"conflict"}`))
+				return
+			}
+		}
+		if r.Method == http.MethodGet && strings.Count(r.URL.Path, "/") == 4 && metadata.Add(1) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"not_found"}`))
+			return
+		}
+		req, _ := http.NewRequestWithContext(r.Context(), r.Method, ts.url+r.URL.RequestURI(), r.Body)
+		req.Header = r.Header.Clone()
+		req.ContentLength = r.ContentLength
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		maps.Copy(w.Header(), resp.Header)
+		w.WriteHeader(resp.StatusCode)
+		io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(proxy.Close)
+	res := runWith(t, "second try", nil, nil, "create", "--server", proxy.URL)
+	if res.code != exitOK || creates.Load() != 2 {
+		t.Fatalf("create after a conflict: %d %q, %d creates", res.code, res.stderr, creates.Load())
+	}
+	distinct := 0
+	ids.Range(func(any, any) bool { distinct++; return true })
+	if distinct != 2 {
+		t.Fatal("the retry reused the refused create header")
+	}
+	link, _, _ := strings.Cut(res.stdout, "\n")
+	paths := readPaths(t, runWith(t, link, nil, nil, "read"))
+	assertPrivate(t, paths[0], "second try")
+	if metadata.Load() != 2 {
+		t.Fatalf("metadata was asked %d times, want one retry after the 404", metadata.Load())
+	}
+}
+
+func TestReadAcksAndSendsNoVerifierWithoutAPassphrase(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	manage := filepath.Join(t.TempDir(), "manage")
+	link, _ := createText(t, ts, "acked", "--manage-token-file", manage)
+	var verifier atomic.Bool
+	ts.hold = func(r *http.Request) bool {
+		if r.Header.Get("X-Nylzo-Verifier") != "" {
+			verifier.Store(true)
+		}
+		return false
+	}
+	readPaths(t, runWith(t, "\n  "+link+"  \n", nil, nil, "read"))
+	if verifier.Load() {
+		t.Fatal("a message without a passphrase got a verifier header")
+	}
+	status := runWith(t, "", nil, nil, "status", "--json", "--manage-token-file", manage)
+	if !regexp.MustCompile(`"ended_at":"[^"]+"`).MatchString(status.stdout) {
+		t.Fatalf("the read was not acked, so the message did not end at once: %s", status.stdout)
+	}
+}
+
+func TestErrorsNeverEchoSecrets(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	link, _ := createText(t, ts, "quiet")
+	_, fragment, _ := strings.Cut(link, "#")
+	secret := "correct horse battery staple"
+	token := core.Encode(make([]byte, 32))
+	for name, c := range map[string]struct {
+		vars map[string]string
+		args []string
+	}{
+		"passphrase in the file variable": {map[string]string{envPassphrase: secret}, []string{"read"}},
+		"token in the file variable":      {map[string]string{envManageToken: token}, []string{"status"}},
+		"passphrase as a file":            {nil, []string{"read", "--passphrase-file", secret}},
+		"passphrase as a duration":        {nil, []string{"create", "--server", ts.url, "--ttl", secret}},
+		"token as a count":                {nil, []string{"create", "--server", ts.url, "--opens", token}},
+		"link with trailing punctuation":  {nil, []string{"read", "--link-file", link + ")"}},
+		"link with a carriage return":     {nil, []string{"burn", "--link-file=" + link + "\r"}},
+	} {
+		stdin := link
+		if c.args[0] == "status" {
+			stdin = ""
+		}
+		if name == "passphrase in the file variable" || name == "passphrase as a file" {
+			guarded, _ := createText(t, ts, "guarded", "--passphrase-file", writeSecretFile(t, secret))
+			stdin = guarded
+		}
+		res := runWith(t, stdin, c.vars, nil, c.args...)
+		if res.code == exitOK || strings.Contains(res.stderr, secret) || strings.Contains(res.stderr, token) || strings.Contains(res.stderr, fragment) {
+			t.Fatalf("%s: exit %d, stderr %q", name, res.code, res.stderr)
+		}
+		if strings.HasPrefix(name, "link with") && res.code != exitUsage {
+			t.Fatalf("%s: the link in an argument was not refused up front: exit %d", name, res.code)
+		}
+	}
+}
+
+func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	file := writeSecretFile(t, "correct horse battery staple\r\nnote for Bob\n")
+	link, _ := createText(t, ts, "first line", "--passphrase-file", file)
+	res := runWith(t, "", map[string]string{envLink: link, envPassphrase: writeSecretFile(t, "correct horse battery staple")}, nil, "read")
+	paths := readPaths(t, res)
+	assertPrivate(t, paths[0], "first line")
+	if !strings.Contains(res.stderr, "named by "+envLink) || !strings.Contains(res.stderr, "named by "+envPassphrase) {
+		t.Fatalf("read did not say it used the variables: %q", res.stderr)
+	}
+}
+
+func TestStdoutKeepsControlCharactersOffATerminal(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	link, _ := createText(t, ts, "safe\x1b]0;pwned\x07text")
+	res := runWith(t, link, nil, &scriptedTerminal{stdout: true}, "read", "--stdout")
+	if res.code != exitOK || strings.Contains(res.stdout, "\x1b") || !strings.Contains(res.stderr, "control characters") {
+		t.Fatalf("read --stdout to a terminal: %d %q %q", res.code, res.stdout, res.stderr)
+	}
+	assertPrivate(t, strings.TrimSpace(res.stdout), "safe\x1b]0;pwned\x07text")
+}
+
+func TestWritePrivateStaysInItsDirectory(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	for _, name := range []string{"../escape", "sub/../../escape"} {
+		if _, err := writePrivate(dir, name, []byte("x")); err == nil {
+			t.Fatalf("wrote %q outside %s", name, dir)
+		}
 	}
 }
