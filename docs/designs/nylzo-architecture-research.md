@@ -467,7 +467,7 @@ Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní v
 
 - Jeden image `ghcr.io/<org>/nylzo:<verze>`; `NYLZO_STORE=sqlite` (výchozí) nebo `postgres`; `NYLZO_BLOBS=disk` nebo `s3`; `NYLZO_DATA_DIR`, `NYLZO_PG_URL`, `NYLZO_S3_*`; `NYLZO_PEPPER` (povinné, 32 bajtů, mimo databázi) a `NYLZO_PEPPER_PREVIOUS` pro rotaci; `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE=scaleway`; `NYLZO_SWEEP_INTERVAL` (výchozí 5 min, 0 vypne vestavěný úklid pro nasazení s externí úlohou); limity (`NYLZO_MAX_FILE_BYTES`, `NYLZO_MAX_TTL`, `NYLZO_MAX_OPENS`, `NYLZO_RATE_*`), `NYLZO_PUBLIC_URL`. API klíče (`NYLZO_API_KEYS`) přijdou ve druhé verzi.
 - TLS před kontejnerem (Caddy nebo Traefik v příkladovém compose) na stejném stroji; binárka sama TLS neterminuje (menší kód). Kdo terminuje TLS, vidí R, V, M a L v provozu a může přepsat servírovaný klient (T13), proto u self-hostingu nikdy TLS neukončovat u cizí CDN nebo proxy mimo vlastní kontrolu.
-- Zálohy: ve výchozím stavu žádné pro obsah (OD20); Litestream v0.5.17 je volitelná replikace SQLite pro firmy, které ji chtějí.
+- Zálohy: ve výchozím stavu žádné pro obsah (OD20). Replikaci SQLite přes Litestream návrh nedoporučuje (D22, rozhodnutí vlastníka 23. 10. 2026). Litestream drží dlouhou čtecí transakci, aby checkpointy dělal jen sám, takže o restartu lokálního WAL rozhoduje on a ne `wal_autocheckpoint`. Stránky WAL kopíruje do repliky, kde je ve výchozím stavu drží 24 hodin. Replika by tak nesla smazané řádky i pořadí zápisů a obešla by D20 i spec §13 (ověřeno na https://litestream.io/how-it-works/ 23. 10. 2026).
 - Aktualizace: tag image, podpis cosign, `gh attestation verify`; CHANGELOG a SECURITY.md s kontaktem.
 
 ---
@@ -744,7 +744,7 @@ První verze (bezpečně použitelná):
 - Dokumentace: protokol, model hrozeb, stránka transparentnosti, SECURITY.md, podmínky a kontaktní místo podle DSA.
 - Testy podle akceptačních kritérií níže.
 
-Druhá verze: MCP server a skill; `verify-client` (s výhradou, že ověřuje jen to, co dostane ověřovatel); API klíče pro firemní instance; Private Access Tokens jako výjimka z PoW; „reply credit“ v odpovědi claimu; oddělený statický origin pro klienta (OD23); metriky bez osobních údajů; Litestream návod.
+Druhá verze: MCP server a skill; `verify-client` (s výhradou, že ověřuje jen to, co dostane ověřovatel); API klíče pro firemní instance; Private Access Tokens jako výjimka z PoW; „reply credit“ v odpovědi claimu; oddělený statický origin pro klienta (OD23); metriky bez osobních údajů.
 
 Později: nezávislý audit protokolu a obou jader; režim na klíč příjemce (HPKE); další jazykové SDK (Python) z vektorů; mechanismy transparentnosti webového kódu, až budou v prohlížečích.
 
