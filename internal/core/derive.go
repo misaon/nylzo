@@ -11,7 +11,7 @@ const (
 	infoPWSalt    = "nylzo/v1/pw-salt"
 	infoContent   = "nylzo/v1/content"
 	infoVerifier  = "nylzo/v1/verifier"
-	FragmentLabel = "1"
+	FragmentLabel = string(rune('0' + FragmentVersion))
 )
 
 type LinkKeys struct {

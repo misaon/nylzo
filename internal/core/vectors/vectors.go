@@ -34,7 +34,14 @@ type File struct {
 	Strength  []Strength `json:"passphrase_strength"`
 	Request   []Request  `json:"request"`
 	PoW       []PoW      `json:"pow"`
+	Redact    []Redact   `json:"redact"`
 	Server    Server     `json:"server"`
+}
+
+type Redact struct {
+	Name     string `json:"name"`
+	Reason   string `json:"reason"`
+	Redacted string `json:"redacted"`
 }
 
 type PoW struct {
@@ -195,7 +202,7 @@ func counterBytes(n int) []byte {
 
 func Generate() (*File, error) {
 	f := &File{Spec: Spec, Generator: Generator}
-	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.pow, f.server} {
+	for _, step := range []func() error{f.scrypt, f.derive, f.envelope, f.link, f.meta, f.strength, f.request, f.pow, f.redact, f.server} {
 		if err := step(); err != nil {
 			return nil, err
 		}
@@ -247,6 +254,8 @@ func deriveCases() []deriveCase {
 		{"scrypt-ascii", core.KDFScrypt, new("correct horse battery staple")},
 		{"scrypt-nfc-composed", core.KDFScrypt, new("héslo s češtinou")},
 		{"scrypt-nfc-decomposed", core.KDFScrypt, new("héslo s češtinou")},
+		{"pbkdf2-nfc-composed", core.KDFPBKDF2, new("héslo s češtinou")},
+		{"pbkdf2-nfc-decomposed", core.KDFPBKDF2, new("héslo s češtinou")},
 		{"pbkdf2-ascii", core.KDFPBKDF2, new("password")},
 		{"pbkdf2-emoji", core.KDFPBKDF2, new("\U0001F510 tajné heslo")},
 		{"pbkdf2-empty", core.KDFPBKDF2, new("")},
@@ -256,8 +265,10 @@ func deriveCases() []deriveCase {
 func (f *File) derive() error {
 	for _, c := range deriveCases() {
 		label := c.name
-		if strings.HasPrefix(c.name, "scrypt-nfc") {
-			label = "scrypt-nfc"
+		for _, nfc := range []string{"scrypt-nfc", "pbkdf2-nfc"} {
+			if strings.HasPrefix(c.name, nfc) {
+				label = nfc
+			}
 		}
 		id := detID(label)
 		s := det32("s/" + label)
@@ -627,6 +638,51 @@ func (f *File) server() error {
 		input := det("mac-input/"+string(p), 32)
 		mac, _ := ring.MAC(p, input)
 		f.Server.MACs = append(f.Server.MACs, MACCase{Purpose: string(p), Input: hex.EncodeToString(input), MAC: hex.EncodeToString(mac[:])})
+	}
+	return nil
+}
+
+func (f *File) redact() error {
+	secret := core.Encode(det32("s/redact")[:])
+	id := detID("redact")
+	link := core.FormatLink("https://nylzo.example", id, core.KDFNone, det32("s/redact"))
+	encodeAll := func(text string, times int) string {
+		for range times {
+			var b strings.Builder
+			for _, c := range []byte(text) {
+				fmt.Fprintf(&b, "%%%02X", c)
+			}
+			text = b.String()
+		}
+		return text
+	}
+	cases := []struct{ name, reason string }{
+		{"plain", "phishing for bank logins"},
+		{"empty", ""},
+		{"link", "see " + link + " please"},
+		{"hash-run", "see https://x.example/p#token-abc def"},
+		{"bare-secret", "bare " + secret + " end"},
+		{"glued-secret", "key_1.0." + secret},
+		{"secret-21-chars", "short " + secret[:21] + " stays"},
+		{"secret-22-chars", "long " + secret[:22] + " goes"},
+		{"percent-link", "https://safelinks.example/?url=" + strings.NewReplacer(":", "%3A", "/", "%2F", "#", "%23").Replace(link)},
+		{"percent-hash-once", "see p%23token-abc def"},
+		{"percent-hash-twice", "see p%2523token-abc def"},
+		{"percent-hash-three-times", "see p%252523token-abc def"},
+		{"percent-hash-four-times", "see p%25252523token-abc def"},
+		{"secret-encoded-three-times", "key " + encodeAll(secret, 3)},
+		{"controls-and-bidi", "a\u009bb\u202ec\u007fd\u2066e%E2%80%AEf\nnext"},
+		{"invalid-utf8-escape", "bad %FF%FE bytes %C3"},
+		{"replacement-character", "a\uFFFDb"},
+		{"zero-width-split", secret[:11] + "\u200b" + secret[11:]},
+		{"emoji", "\U0001F510 secret"},
+	}
+	for _, c := range cases {
+		redacted := core.RedactReason(c.reason)
+		if len(redacted) >= core.MaxReasonBytes {
+			return fmt.Errorf("redact %s: the case must stay under the length limit", c.name)
+		}
+		f.Redact = append(f.Redact, Redact{Name: c.name, Reason: c.reason, Redacted: redacted})
 	}
 	return nil
 }
