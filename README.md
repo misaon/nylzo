@@ -20,11 +20,13 @@ Tento repozitář obsahuje první milník: protokol v1, jádro v Go a v TypeScri
 | `web/app` | webový klient `@nylzo/web` (Svelte 5, Vite 8, Tailwind 4): HTTP klient, toky vytvoření a čtení, worker pro scrypt a PoW, obrazovky bez vzhledu a slovník cs a en |
 | `web/e2e` | testy Playwright proti `nylzod` se vloženým klientem |
 | `internal/server/web` | zástupná stránka; `dist/` je výstup sestavení `web/app`, který `nylzod` vkládá |
+| `deploy/compose` | příklad self-hostu: `nylzod` za Caddy s TLS, pepper jako Docker secret |
+| `.goreleaser.yaml`, `.github/workflows/release.yml` | vydání: binárky, image na ghcr.io, podpisy, SBOM a provenance |
 
 ## Požadavky
 
-- Go 1.27 (na tomto stroji přes `mise`: `mise use go@1.27`).
-- Node.js 24 a pnpm 12 (pole `packageManager` ve `web/package.json` ho přes corepack stáhne samo).
+- Go 1.27.3, připnuté řádkem `toolchain` v `go.mod` (na tomto stroji přes `mise`: `mise use go@1.27.3`).
+- Node.js 24.22.1 podle `web/.node-version` a pnpm 12 (pole `packageManager` ve `web/package.json` ho přes corepack stáhne samo).
 
 ## Spuštění serveru lokálně se SQLite
 
@@ -170,6 +172,25 @@ Benchmarky kritických cest (ověření podpisu, čtení řádku, dávková spot
 ```bash
 go test -run='^$' -bench=. ./internal/core ./internal/store/sqlite ./internal/server
 ```
+
+## Vydání
+
+Vydání spouští podepsaný anotovaný tag `v*` (D43). Workflow `release` nejdřív ověří podpis tagu a to, že prostředí `release` vyžaduje schválení, a teprve po schválení sestaví binárky a image, podepíše je a přidá provenance. Před prvním vydáním proto v nastavení repozitáře založte prostředí `release` s povinným schválením.
+
+```bash
+git tag -s v0.1.0 -m "nylzod 0.1.0"
+git push origin v0.1.0
+```
+
+Build je reprodukovatelný (AK15): CI sestaví klienta i binárky na runneru x64 i arm64 a porovná hashe. Vydání ověříte sestavením stejného tagu se stejnými verzemi Go a Node:
+
+```bash
+git checkout v0.1.0
+goreleaser release --clean --skip=publish,sign,sbom,ko,validate
+diff <(grep -v sbom dist/checksums.txt) <(curl -sL https://github.com/misaon/nylzo/releases/download/v0.1.0/checksums.txt | grep -v sbom)
+```
+
+Self-host přes Docker Compose popisuje `deploy/compose/README.md`.
 
 ## Licence
 
