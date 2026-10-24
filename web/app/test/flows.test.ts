@@ -16,7 +16,7 @@ import {
   type KdfId,
 } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type MessageState } from '../src/lib/api.ts';
 import { CreateError, POW_BUDGET_MS, createMessage, passphraseIsWeak, validateCreate, type CreateDeps, type CreateInput } from '../src/lib/create.ts';
@@ -906,5 +906,92 @@ describe('remembering the manage key (D39)', () => {
     await expect(crypto.subtle.exportKey('pkcs8', created.manageKey.privateKey)).rejects.toThrow();
     const status = await api.status(new Uint8Array(Buffer.from(created.id, 'base64url')), created.manageKey);
     expect(status).toMatchObject({ state: 'available', opensUsed: 0, opensMax: 1 });
+  });
+});
+
+describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
+  it('reads, deletes and wipes the fallback seed only once no request needs it', async () => {
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
+      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    try {
+      const api = fakeApi();
+      const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+      const r = reader(api, created.link);
+      await r.load();
+      await r.reveal();
+      expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
+      const gate = Promise.withResolvers<void>();
+      let usedKey: { seed?: Uint8Array } | undefined;
+      let intactWhenSent = false;
+      const burn = api.burn.bind(api);
+      api.burn = async (...args: Parameters<typeof burn>) => {
+        await gate.promise;
+        usedKey = args[1] as { seed?: Uint8Array };
+        intactWhenSent = usedKey.seed?.some((byte) => byte !== 0) ?? false;
+        return burn(...args);
+      };
+      const burning = r.burn();
+      r.clear();
+      gate.resolve();
+      expect(await burning).toEqual({ outcome: 'deleted' });
+      expect(usedKey?.seed).toBeDefined();
+      expect(intactWhenSent).toBe(true);
+      expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true);
+    } finally {
+      refuse.mockRestore();
+    }
+  });
+
+  it('wipes the fallback seed once the shown message can be neither deleted nor reported', async () => {
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
+      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    try {
+      const api = fakeApi();
+      const created = await createMessage(input(), createDeps(api));
+      const r = reader(api, created.link);
+      await r.load();
+      let usedKey: { seed?: Uint8Array } | undefined;
+      const ack = api.ack.bind(api);
+      api.ack = async (...args: Parameters<typeof ack>) => {
+        usedKey = args[1] as { seed?: Uint8Array };
+        return ack(...args);
+      };
+      await r.reveal();
+      expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+      await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
+    } finally {
+      refuse.mockRestore();
+    }
+  });
+
+  it('keeps the fallback seed for an ack that is still on its way when the page is left', async () => {
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
+      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    try {
+      const api = fakeApi();
+      const created = await createMessage(input(), createDeps(api));
+      const r = reader(api, created.link);
+      await r.load();
+      const gate = Promise.withResolvers<void>();
+      let usedKey: { seed?: Uint8Array } | undefined;
+      let intactWhenSent = false;
+      const ack = api.ack.bind(api);
+      api.ack = async (...args: Parameters<typeof ack>) => {
+        await gate.promise;
+        usedKey = args[1] as { seed?: Uint8Array };
+        intactWhenSent = usedKey.seed?.some((byte) => byte !== 0) ?? false;
+        return ack(...args);
+      };
+      await r.reveal();
+      r.clear();
+      gate.resolve();
+      await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
+      expect(intactWhenSent).toBe(true);
+    } finally {
+      refuse.mockRestore();
+    }
   });
 });

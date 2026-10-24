@@ -1,4 +1,4 @@
-import { BASE_URL, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 test('creates and reads a text message under the enforced CSP (AK10)', async ({ browser }) => {
@@ -68,3 +68,21 @@ test('a double click on Create link with an attachment creates one message', asy
   expect(sent).toEqual(['GET /api/v1/instance', 'POST /api/v1/messages']);
 });
 
+test('a link whose read key starts with a zero byte opens and can be reported (D66)', async ({ page }) => {
+  const message = await createViaApi({ text: 'nula na začátku', opensMax: 2, readKeyStartsWithZero: true });
+  await openViaUi(page, message.link);
+  await expectRevealed(page);
+  await expect(page.locator('pre')).toHaveText('nula na začátku');
+  await page.getByRole('button', { name: 'Report this message' }).click();
+  await page.getByLabel('Reason, optional').fill('zero byte');
+  await page.getByRole('button', { name: 'Send report' }).click();
+  await expect(page.getByText('We received the report.')).toBeVisible();
+});
+
+test('the report page accepts a link whose read key starts with a zero byte (D66)', async ({ page }) => {
+  const message = await createViaApi({ text: 'nula', readKeyStartsWithZero: true });
+  await page.goto(`${BASE_URL}/report`);
+  await page.getByLabel('Link to the message').fill(message.link);
+  await page.getByRole('button', { name: 'Send report' }).click();
+  await expect(page.getByText('We received the report.')).toBeVisible();
+});

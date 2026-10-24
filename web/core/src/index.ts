@@ -103,9 +103,13 @@ export {
   parseChallenge,
   requestKey,
   requestMessage,
+  seedRequestKey,
   signRequest,
   verifierHeader,
+  wipeRequestKey,
+  type CryptoRequestKey,
   type Purpose,
   type RequestKey,
   type RequestSignature,
+  type SeedRequestKey,
 } from './sign.ts';

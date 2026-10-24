@@ -25,7 +25,8 @@ import {
   type KdfId,
   type LinkKeys,
   type Meta,
-  type RequestKey,
+  wipeRequestKey,
+  type CryptoRequestKey,
 } from '@nylzo/core';
 
 import { ApiError, type Api, type Instance, type InstanceLimits } from './api.ts';
@@ -80,7 +81,7 @@ export interface Created {
   readonly link: string;
   readonly expiresAt: string;
   readonly id: string;
-  readonly manageKey: RequestKey;
+  readonly manageKey: CryptoRequestKey;
 }
 
 export interface CreateDeps {
@@ -214,8 +215,8 @@ function failureOf(error: unknown): CreateFailure {
 
 interface Sealed {
   readonly object: Uint8Array<ArrayBuffer>;
-  readonly readKey: RequestKey;
-  readonly manageKey: RequestKey;
+  readonly readPublicKey: Uint8Array<ArrayBuffer>;
+  readonly manageKey: CryptoRequestKey;
   readonly verifierKey: Uint8Array<ArrayBuffer> | undefined;
 }
 
@@ -241,9 +242,12 @@ async function sealMessage(
     if (object.length > instance.limits.maxObjectBytes) {
       throw new CreateError({ kind: 'too_large' });
     }
-    const [readKey, manageKey] = await Promise.all([requestKey(link.r), newRequestKey()]);
-    const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;
-    return { object, readKey, manageKey, verifierKey };
+    const readKey = await requestKey(link.r);
+    wipeRequestKey(readKey);
+    const verifier = kdfId === KDF_NONE ? undefined : await requestKey(content.v);
+    wipeRequestKey(verifier);
+    const manageKey = await newRequestKey();
+    return { object, readPublicKey: readKey.publicKey, manageKey, verifierKey: verifier?.publicKey };
   } finally {
     link?.r.fill(0);
     link?.saltPw.fill(0);
@@ -263,13 +267,13 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   const kdfId = effectiveKdf(input);
   const s = newSecret();
   try {
-    const { object, readKey, manageKey, verifierKey } = await sealMessage(input, instance, kdfId, s, deps, onProgress);
+    const { object, readPublicKey, manageKey, verifierKey } = await sealMessage(input, instance, kdfId, s, deps, onProgress);
     const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
     onProgress({ step: 'uploading' });
     const { expiresAt } = await deps.api.create({
       id,
       idToken,
-      readKey: readKey.publicKey,
+      readKey: readPublicKey,
       ...(verifierKey ? { verifierKey } : {}),
       manageKey: manageKey.publicKey,
       kdfId,

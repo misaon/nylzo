@@ -49,6 +49,7 @@ export interface ApiMessageOptions {
   readonly passphrase?: string;
   readonly kdfId?: KdfId;
   readonly opensMax?: number;
+  readonly readKeyStartsWithZero?: boolean;
 }
 
 export async function createViaApi(options: ApiMessageOptions = {}): Promise<ApiMessage> {
@@ -57,8 +58,12 @@ export async function createViaApi(options: ApiMessageOptions = {}): Promise<Api
   const opensMax = options.opensMax ?? 1;
   const api = createApi({ base });
   const { create } = await api.instance();
-  const s = newSecret();
-  const link = await deriveLink(create.id, s);
+  let s = newSecret();
+  let link = await deriveLink(create.id, s);
+  while (options.readKeyStartsWithZero && link.r[0] !== 0) {
+    s = newSecret();
+    link = await deriveLink(create.id, s);
+  }
   const p = await anyPassphraseKey(kdfId, options.passphrase ?? '', link.saltPw);
   const content = await deriveContent(create.id, s, p);
   const policy = { opensMax, ttlSeconds: 3600 };
