@@ -79,6 +79,7 @@
   let sealingWithPassphrase = $state(false);
   let remembered = $state<'off' | 'saving' | 'remembered' | 'failed'>('off');
   let pending: Sealed | undefined;
+  let run = 0;
   let startedAt = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -320,9 +321,14 @@
   }
 
   async function send(allowed: InstanceLimits) {
+    const current = run;
+    const stale = () => current !== run;
     menu = null;
     failure = undefined;
     const attachment = await readAttachment(file, allowed);
+    if (stale()) {
+      return;
+    }
     if ('problem' in attachment) {
       await showProblems([attachment.problem]);
       return;
@@ -346,8 +352,15 @@
           scrypt: (pass, saltPw, report) => scryptInWorker(pass, saltPw, { onProgress: report }),
           solvePow: (challenge, id, difficulty, deadline, report) => solvePowInWorker(challenge, id, difficulty, deadline, { onProgress: report }),
         },
-        onProgress,
+        (progress) => {
+          if (!stale()) {
+            onProgress(progress);
+          }
+        },
       );
+      if (stale()) {
+        return;
+      }
       const saved = remember ? rememberMessage(created) : undefined;
       text = '';
       passphrase = '';
@@ -356,6 +369,9 @@
       reached = nodes.length;
       fraction = undefined;
     } catch (error) {
+      if (stale()) {
+        return;
+      }
       stopTimeline();
       phase = 'compose';
       if (error instanceof CreateError && error.failure.kind === 'invalid') {
@@ -383,6 +399,7 @@
   }
 
   function leave() {
+    run++;
     stopTimeline();
     pending = undefined;
     cipher = '';

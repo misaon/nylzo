@@ -27,6 +27,7 @@ D79: čtečka potvrdí otevření (`ack`) a smaže fragment z adresy až ve chv�
 - Ovládací prvky mají na mobilu 44 px místo 40 px (AK20): pole passphrase, akce pod kartou, záložky v sekcích Bezpečnost a Vlastní server.
 - Sklo je na víc plochách, než doporučuje sekce „Vizuální design a interakce“ (dvě až tři na obrazovce). Takový návrh vlastník schválil a měření níže problém s výkonem nenašlo.
 - Nahlášení zneužití v sekci Hranice je samostatné tlačítko místo odkazu ve větě, aby mělo na mobilu 44 px.
+- Ruční výběr v sekcích Jak to funguje a Kdo co vidí zastaví automatické přepínání natrvalo, jak slibuje text „Klepnutím na kteroukoli je zastavíte.“. Dřívější obnovení po 15 s nedávalo uživateli trvalé zastavení, které WCAG 2.2.2 požaduje.
 - Procenta v tlačítku průběhu mají pevnou šířku čtyř znaků a skryté akce pod kartou si drží místo. V návrhu se šířka měnila s počtem číslic a akce na mobilu mizely z řádku, což by porušilo AK18.
 
 ## Opravy z review
@@ -40,8 +41,8 @@ Review podle gstack (specialisté, adversariální průchod a druhé nezávislé
 - Dvojklik na Stáhnout nebo Přesto stáhnout uloží soubor jen jednou, dvojklik u rizikového souboru nechá upozornění otevřené a Nestahovat vrátí fokus na tlačítko Stáhnout. Dlouhá „přípona“ (víc než 16 znaků) se zkracuje se jménem souboru a nevyteče z karty.
 - Po odeslaném nahlášení zůstane popover ve stavu „odesláno“, dokud příjemce zprávu nezobrazí. Po zobrazení může nahlásit znovu (D41). Zavřený a znovu otevřený popover si nechá rozepsaný důvod i výsledek odesílání.
 - Části odkazu v sekci Jak to funguje mají přístupný název, který obsahuje viditelný text (WCAG 2.5.3).
-- Automatické přepínání sekcí se zastaví při najetí myší, při fokusu z klávesnice uvnitř a při `prefers-reduced-motion`. Výběr myší drží 15 s ve všech prohlížečích.
-- Úvodní stránka při `pagehide` vymaže rozepsanou zprávu, passphrase, soubor i hotový odkaz a po návratu přes mezipaměť zpět/vpřed se načte znovu, stejně jako stránka pro otevření.
+- Automatické přepínání sekcí se pozastaví při najetí myší a při fokusu z klávesnice uvnitř, při `prefers-reduced-motion` neběží a ruční výběr ho zastaví natrvalo (WCAG 2.2.2).
+- Úvodní stránka při `pagehide` vymaže rozepsanou zprávu, passphrase, soubor i hotový odkaz, odpověď na vytvoření po odchodu už nic nezobrazí ani nezapamatuje a po návratu přes mezipaměť zpět/vpřed se stránka načte znovu, stejně jako stránka pro otevření.
 - Výpočet doby útoku hrubou silou používá pro Groverův algoritmus (π/4)·2¹²⁸ iterací a slova pro miliony a miliardy let přes slovník, ne napevno v kódu.
 
 QA podle gstack (`/qa`, headless Chromium, desktop a 430 × 932) našlo jednu další chybu: při šifrování s passphrase krok Odvození na chvíli ukázal popis pro zprávu bez passphrase, protože editor už passphrase smazal. Popis teď vychází z toho, s čím šifrování začalo, a hlídá ho e2e test. Dvě drobnosti zůstávají na vlastníkovi: titulek „Máte šifrovanou zprávu“ nad všemi oznámeními a dva formáty data platnosti (panel po vytvoření a stránka pro otevření).

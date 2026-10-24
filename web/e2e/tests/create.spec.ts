@@ -87,3 +87,28 @@ test('the derivation step keeps its passphrase wording until the link is ready',
   await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
   expect(await page.evaluate(() => (window as unknown as { nylzoPlainDerive: boolean }).nylzoPlainDerive)).toBe(false);
 });
+
+test('the points of view cycle on their own, pause for the keyboard and stop for good after a pick (WCAG 2.2.2)', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  const tabs = page.getByRole('tablist', { name: 'Point of view' });
+  await tabs.scrollIntoViewIfNeeded();
+  const selected = () => tabs.getByRole('tab', { selected: true }).textContent();
+  const start = await selected();
+  await page.clock.runFor(20_000);
+  expect(await selected()).not.toBe(start);
+
+  const current = tabs.getByRole('tab', { selected: true });
+  await current.focus();
+  expect(await current.evaluate((tab) => tab.matches(':focus-visible'))).toBe(true);
+  const focused = await selected();
+  await page.clock.runFor(20_000);
+  expect(await selected()).toBe(focused);
+
+  const picked = tabs.getByRole('tab').first();
+  await picked.click();
+  await page.mouse.move(0, 0);
+  await page.locator('h1').click();
+  await page.clock.runFor(60_000);
+  await expect(picked).toHaveAttribute('aria-selected', 'true');
+});

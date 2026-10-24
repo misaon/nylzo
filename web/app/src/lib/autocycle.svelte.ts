@@ -2,7 +2,6 @@ import type { Attachment } from 'svelte/attachments';
 import { prefersReducedMotion } from 'svelte/motion';
 
 const TICK_MS = 50;
-const RESUME_MS = 15_000;
 const VISIBLE_THRESHOLD = 0.35;
 
 export class AutoCycle {
@@ -11,11 +10,10 @@ export class AutoCycle {
   visible = $state(false);
   pointer = $state(false);
   focused = $state(false);
-  held = $state(false);
+  stopped = $state(false);
 
   readonly #count: () => number;
   readonly #duration: (index: number) => number;
-  #resume: ReturnType<typeof setTimeout> | undefined;
 
   constructor(count: () => number, duration: (index: number) => number) {
     this.#count = count;
@@ -23,17 +21,13 @@ export class AutoCycle {
   }
 
   get running(): boolean {
-    return this.visible && !this.pointer && !this.focused && !this.held && !prefersReducedMotion.current;
+    return this.visible && !this.pointer && !this.focused && !this.stopped && !prefersReducedMotion.current;
   }
 
   select(index: number): void {
     this.index = index;
     this.progress = 0;
-    this.held = true;
-    clearTimeout(this.#resume);
-    this.#resume = setTimeout(() => {
-      this.held = false;
-    }, RESUME_MS);
+    this.stopped = true;
   }
 
   readonly pointerEnter = (): void => {
@@ -78,10 +72,7 @@ export class AutoCycle {
       return () => clearInterval(timer);
     });
 
-    return () => {
-      observer?.disconnect();
-      clearTimeout(this.#resume);
-    };
+    return () => observer?.disconnect();
   };
 
   #tick(): void {

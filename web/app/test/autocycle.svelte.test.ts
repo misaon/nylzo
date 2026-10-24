@@ -63,17 +63,22 @@ describe('AutoCycle', () => {
     stop();
   });
 
-  it('holds a manual pick for 15 s and then moves on, even when the click focused it', () => {
+  it('stops for good after a manual pick', () => {
     const { cycle, stop } = runCycle();
-    cycle.focusIn(focusOn(false));
     cycle.select(2);
     flushSync();
-    vi.advanceTimersByTime(14_000);
+    vi.advanceTimersByTime(60_000);
     expect(cycle.index).toBe(2);
-    vi.advanceTimersByTime(1_000);
+    expect(cycle.running).toBe(false);
+    stop();
+  });
+
+  it('keeps cycling when a mouse click moves the focus inside', () => {
+    const { cycle, stop } = runCycle();
+    cycle.focusIn(focusOn(false));
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
-    expect(cycle.index).toBe(0);
+    expect(cycle.index).toBe(1);
     stop();
   });
 

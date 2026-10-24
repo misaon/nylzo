@@ -88,6 +88,8 @@ test('the risky download prompt cancels back to the button and a double click sa
   const prompt = live(recipient, recipient.getByRole('alert')).filter({ hasText: /can run code/ });
   await download.dblclick();
   await expect(prompt).toHaveCount(1);
+  await cancel.dispatchEvent('click', { detail: 2 });
+  await expect(prompt).toHaveCount(1);
   await cancel.click();
   await expect(prompt).toHaveCount(0);
   await expect(download).toBeFocused();
