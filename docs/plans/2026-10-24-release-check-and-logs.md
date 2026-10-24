@@ -4,8 +4,9 @@ Datum: 24. 10. 2026. Větev: `claude/ops`, postavená na `claude/takedown`. Zdro
 
 ## D64: maintainer sestaví vydání znovu a zveřejní výsledek
 
-- GoReleaser 2.18.3 je v `mise.toml` a jeho adresy a checksumy v `mise.lock`, takže maintainer má stejnou verzi jako workflow vydání. Job „Developer setup (mise)“ hlídá, že verze sedí s `release.yml`.
-- `mise run release:verify` na checkoutu tagu sestaví vydání bez publikace, podpisu, SBOM a image a porovná `checksums.txt` s tím, co je u vydání na GitHubu. `checksums.txt` pokrývá archivy binárek i soubory webového klienta.
+- GoReleaser 2.18.3 je v `mise.toml` a jeho adresy a checksumy v `mise.lock`, takže maintainer má stejnou verzi jako workflow vydání. Job „Developer setup (mise)“ přes `yq` najde každý krok `goreleaser/goreleaser-action` v obou workflow a hlídá, že jeho `version` je přesně verze z `mise.toml`.
+- `mise run release:verify` na checkoutu tagu sestaví vydání bez publikace, podpisu, SBOM a image (s `GORELEASER_CURRENT_TAG` jako workflow vydání, aby GoReleaser nevzal jiný tag stejného commitu) a porovná `checksums.txt` bez řádků SBOM s tím, co je u vydání na GitHubu. `checksums.txt` pokrývá archivy binárek i soubory webového klienta. Nakonec vypíše SHA-256 staženého, nezkráceného `checksums.txt`; ten maintainer zveřejní, protože ho může kdokoli spočítat z vydání.
+- `mise run release:verify-image` vytáhne z image vydání pro linux/amd64 i linux/arm64 binárku `/ko-app/nylzo` a porovná ji s binárkou z lokálního sestavení, protože podpis a atestace image dokládají jen to, že ho sestavilo CI. Potřebuje Docker.
 - Ověřeno 24. 10. 2026 na macOS (arm64) s nástroji z `mise.lock`: snapshot commitu `5f403c1` dal stejné bajty všech čtyř binárek i souborů klienta jako CI na `ubuntu-24.04`, a dva běhy `goreleaser release` s testovacím tagem daly stejný `checksums.txt` včetně archivů. Publikovaný `checksums.txt` zatím neexistuje, protože žádné vydání ještě nebylo; porovnání s ním ověří první vydání.
 - Postup vydání a co maintainer zveřejní je v `docs/release-checklist.md`.
 
