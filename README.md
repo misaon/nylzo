@@ -254,13 +254,17 @@ git tag -s v0.1.0 -m "nylzo 0.1.0"
 git push origin v0.1.0
 ```
 
-Build je reprodukovatelný (AK15): CI sestaví klienta i binárky na runneru x64 i arm64 a porovná hashe. Vydání ověříte sestavením stejného tagu se stejnými verzemi Go a Node:
+Build je reprodukovatelný (AK15): CI sestaví klienta i binárky na runneru x64 i arm64 a porovná hashe, a sestavení na macOS dává stejné bajty (ověřeno 24. 10. 2026, D64). Vydání ověříte sestavením stejného tagu s nástroji z `mise.lock`; úloha porovná `checksums.txt` s vydáním na GitHubu:
 
 ```bash
 git checkout v0.1.0
-goreleaser release --clean --skip=publish,sign,sbom,ko,validate
-diff <(grep -v sbom dist/checksums.txt) <(curl -sL https://github.com/misaon/nylzo/releases/download/v0.1.0/checksums.txt | grep -v sbom)
 ```
+
+```bash
+mise run release:verify
+```
+
+Bez mise to samé udělá GoReleaser 2.18.3 se stejnými verzemi Go, Node.js a pnpm: `goreleaser release --clean --skip=publish,sign,sbom,ko,validate` a porovnání `dist/checksums.txt` bez řádků SBOM s `checksums.txt` vydání. Postup vydání pro maintainera včetně zveřejnění vlastního hashe je v `docs/release-checklist.md`.
 
 Self-host přes Docker Compose popisuje `deploy/compose/README.md`.
 

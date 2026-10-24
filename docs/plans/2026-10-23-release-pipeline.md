@@ -72,7 +72,7 @@ Doporučení: A, jak říká návrh. Image má CA certifikáty a tzdata a neobsa
 
 ## Bezpečnost
 
-- Provenance nekryje změnu zdroje. Tag musí být podepsaný e-mailem z `RELEASE_TAGGER_EMAIL`, ukazovat na sestavovaný commit v `main` a vydání schvaluje vlastník (D43, D52). Postup zveřejnění vlastního hashe od maintainera zůstává v návrhu.
+- Provenance nekryje změnu zdroje. Tag musí být podepsaný e-mailem z `RELEASE_TAGGER_EMAIL`, ukazovat na sestavovaný commit v `main` a vydání schvaluje vlastník (D43, D52). Maintainer vydání sestaví znovu přes `mise run release:verify` a do poznámek vydání připíše hash svého `checksums.txt` (D64, `docs/release-checklist.md`).
 - Workflow vydání nemá `pull_request_target`, nesdílí cache s PR a nezapisuje do ní. Práva zápisu a OIDC token má jen job `release`, ostatní joby jen `contents: read`.
 - Kód z npm (pnpm, Vite, Rollup, Svelte, Tailwind) běží jen v jobu `web`, který smí repozitář jen číst a nemá token pro registr ani podpis. Výstup klienta ovlivnit může: build, který se ve vydání chová jinak než jinde, odhalí nezávislé sestavení stejného tagu (AK15, README) a závislosti z lockfile hlídá politika pnpm v CI. Manifest chrání přenos mezi joby.
 - Image běží bez shellu jako nonroot a s jen pro čtení kořenovým systémem souborů v Compose. Zapisuje jen do volume s daty.
