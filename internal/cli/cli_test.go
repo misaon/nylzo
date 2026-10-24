@@ -233,7 +233,11 @@ func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ivs = append(ivs, object[3:core.HeaderLen])
+		h, err := core.ParseHeader(object)
+		if err != nil {
+			t.Fatalf("a stored blob is not an envelope: %v", err)
+		}
+		ivs = append(ivs, h.IV[:])
 	}
 	if len(ivs) != 2 || bytes.Equal(ivs[0], ivs[1]) {
 		t.Fatalf("stored IVs %x, want two different ones", ivs)

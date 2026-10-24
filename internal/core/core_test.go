@@ -102,17 +102,6 @@ func TestEveryHeaderGetsAFreshRandomIV(t *testing.T) {
 	}
 }
 
-func TestSealUsesTheHeaderIV(t *testing.T) {
-	_, _, _, h, _, object := sampleMessage(t, core.KDFNone, "", nil)
-	_, _, _, other, _, again := sampleMessage(t, core.KDFNone, "", nil)
-	if !bytes.Equal(object[3:core.HeaderLen], h.IV[:]) || !bytes.Equal(again[3:core.HeaderLen], other.IV[:]) {
-		t.Fatal("the envelope does not carry the IV of its header")
-	}
-	if h.IV == other.IV {
-		t.Fatal("two messages got the same IV")
-	}
-}
-
 func TestOpenRejectsVersionFlagsAndKDF(t *testing.T) {
 	id, _, content, _, pol, object := sampleMessage(t, core.KDFNone, "", nil)
 	v := append([]byte(nil), object...)

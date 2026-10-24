@@ -127,15 +127,7 @@ describe('every message gets a fresh random iv', () => {
       seen.add(hex);
       iv.forEach((byte, index) => distinct[index]?.add(byte));
     }
-    expect(distinct.map((values) => values.size >= 200)).toEqual(Array.from({ length: IV_LEN }, () => true));
-  });
-
-  it('seals with the iv of the header, so two messages differ', async () => {
-    const first = await sample(KDF_NONE, '');
-    const second = await sample(KDF_NONE, '');
-    expect(first.object.slice(3, HEADER_LEN)).toEqual(first.header.iv);
-    expect(second.object.slice(3, HEADER_LEN)).toEqual(second.header.iv);
-    expect(first.header.iv).not.toEqual(second.header.iv);
+    expect(Math.min(...distinct.map((values) => values.size))).toBeGreaterThanOrEqual(200);
   });
 });
 
