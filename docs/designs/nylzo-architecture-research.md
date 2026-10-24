@@ -803,12 +803,12 @@ AK8. Pozměněný ciphertext (1 bit) nebo pozměněná politika v odpovědi serv
 AK9. Go i TS jádro procházejí `spec/vectors.json`; změna jednoho bez druhého shodí CI.
 AK10. Hlavičky CSP, Referrer-Policy, Cache-Control, X-Robots-Tag, HSTS, COOP na všech odpovědích; CSP bez `unsafe-eval` a `data:`; nonce je v každé HTML odpovědi jiný; klient se načte a vytvoří i přečte zprávu v aktuálním Chromu, Firefoxu a WebKitu přes Playwright s CSP v režimu enforce, plus ruční ověření v Safari na macOS a iOS spolu s testem scryptu z OD6.
 AK11. Logy po testovacím běhu neobsahují S, R, V, M, Authorization ani IP.
-AK12. Rate limit: 21. vytvoření z jedné IP za hodinu vrací 429; globální strop vrací 503 pro vytváření, claim běží; za důvěryhodnou proxy se počítá IP z X-Forwarded-For, podvržená hlavička z nedůvěryhodné adresy se ignoruje (test s Caddy v compose a test za load balancerem Scaleway v rámci R13).
+AK12. Rate limit: 21. vytvoření z jedné IP za hodinu vrací 429; globální strop vrací 503 pro vytváření, claim běží; za důvěryhodnou proxy se počítá IP z X-Forwarded-For, podvržená hlavička z nedůvěryhodné adresy se ignoruje (test s Caddy v compose a test za load balancerem Scaleway v rámci R13). Podvrženou hlavičku přes Caddy v Compose ověřuje od 24. 10. 2026 job „Compose with Caddy“ v CI (D67).
 AK13. Příloha se nikdy nevykreslí inline (SVG, HTML, PDF): e2e test, že odpovědí je stažení s application/octet-stream.
 AK14. CLI odmítne tajemství, odkaz s fragmentem, passphrase i M v argumentu u všech příkazů (create, read, status, cancel, burn); `read` zapíše soubor 0600; `ps` během běhu žádného příkazu neukazuje tajemství, fragment, passphrase ani M.
 AK15. Build Go binárek a web klienta je reprodukovatelný: dva nezávislé buildy dají stejné hashe; `gh attestation verify` projde.
 AK16. Požadavek s Sec-Purpose na /m/* a /api/* vrátí 503; prerender v Chromu nevyvolá claim.
-AK17. 5 MB soubor se vytvoří a přečte na veřejné instanci (Scaleway) i v self-host compose; studený start pod 3 s (R13).
+AK17. 5 MB soubor se vytvoří a přečte na veřejné instanci (Scaleway) i v self-host compose; studený start pod 3 s (R13). Část pro self-host Compose ověřuje od 24. 10. 2026 job „Compose with Caddy“ v CI (D67).
 AK18. CLS = 0 při vytvoření i čtení zprávy na viewportu 430 × 932 i 1440 × 900 (Playwright, Layout Instability API); žádný prvek nemění rozměr bez animace přes transform nebo grid-template-rows.
 AK19. Všechny animace používají jen transform a opacity (lint nad CSS), respektují prefers-reduced-motion a stránka je použitelná i bez podpory backdrop-filter; CSS neobsahuje inline styly ani style elementy vkládané za běhu (kontrola CSP v režimu enforce bez unsafe-inline).
 AK20. Kontrast textu na skleněných plochách nejméně 4,5:1 (axe v Playwrightu) a dotykové cíle nejméně 44 px na mobilním viewportu; JS bundle do 150 kB gzip, CSS do 40 kB.
@@ -817,7 +817,7 @@ AK22. Server přežije 200 pomalých spojení a POST s Content-Length větším 
 AK23. Limity podle kyblíků: 21. vytvoření z druhé adresy téhož /64 za hodinu vrací 429; 101. vytvoření z pátého /64 téhož /48 za hodinu vrací 429 (pětinásobek); IPv4 analogicky s /24.
 AK24. Příjemce bere kdf_id z fragmentu: když server v metadatech nebo v X-Nylzo-Policy vrátí jiný profil, klient odmítne pokračovat a žádný ověřovač neodešle.
 AK25. Nezávislý monitor porovná hashe servírovaného index.html, JS a CSS s vydáním každou hodinu; podvržený bundle v testovacím nasazení vyvolá alarm do 60 minut.
-AK26. Veřejná instance vyjednává X25519MLKEM768 v TLS 1.3 (`openssl s_client -groups X25519MLKEM768`); pokud ne, model hrozeb a stránka transparentnosti uvádějí, že post-kvantová výměna na drátě platí jen při terminaci TLS v Go nebo Caddy.
+AK26. Veřejná instance vyjednává X25519MLKEM768 v TLS 1.3 (`openssl s_client -groups X25519MLKEM768`); pokud ne, model hrozeb a stránka transparentnosti uvádějí, že post-kvantová výměna na drátě platí jen při terminaci TLS v Go nebo Caddy. Pro self-host Compose to od 24. 10. 2026 ověřuje job „Compose with Caddy“ v CI nástrojem `tools/tlscheck` (D67).
 AK27. Rotace pepperu: po nastavení `NYLZO_PEPPER_PREVIOUS` a nového `NYLZO_PEPPER` se zprávy vytvořené před rotací otevřou, nové se ověřují novým klíčem, a po 7 dnech jde starý pepper odstranit bez ztráty.
 
 ## Plán bezpečnostních testů
