@@ -1,0 +1,91 @@
+min_version = "2026.10.9"
+
+[settings]
+lockfile = true
+
+[tools]
+go = "1.27.3"
+node = "24.22.1"
+pnpm = "12.14.0"
+
+[env]
+GOTOOLCHAIN = "local"
+
+[tasks.install]
+description = "Install the web dependencies exactly as locked"
+run = "pnpm --dir web install --frozen-lockfile"
+
+[tasks."build:web"]
+description = "Build the web client into internal/server/web/dist, where nylzo embeds it"
+depends = ["install"]
+run = "pnpm --dir web --filter @nylzo/web build"
+
+[tasks.build]
+description = "Build bin/nylzo with the web client inside"
+depends = ["build:web"]
+run = "go build -trimpath -o bin/nylzo ./cmd/nylzo"
+
+[tasks.dev]
+description = "Run nylzo on http://localhost:8080 with relaxed rate limits and data in .dev"
+depends = ["build"]
+run = """
+umask 077
+mkdir -p .dev/data
+[ -s .dev/pepper ] || od -An -N32 -tx1 /dev/urandom | tr -d ' \\n' > .dev/pepper
+port="${NYLZO_DEV_PORT:-8080}"
+case "$port" in ''|*[!0-9]*) echo "NYLZO_DEV_PORT must be a port number" >&2; exit 2 ;; esac
+unset NYLZO_PEPPER NYLZO_PEPPER_PREVIOUS NYLZO_PEPPER_PREVIOUS_FILE
+echo "nylzo: http://localhost:$port (Ctrl-C stops it, mise run dev:reset deletes the messages)"
+exec env NYLZO_LISTEN="127.0.0.1:$port" NYLZO_PEPPER_FILE=.dev/pepper NYLZO_DATA_DIR=.dev/data \
+  NYLZO_RATE_CREATE_HOUR=0 NYLZO_RATE_CREATE_DAY=0 NYLZO_RATE_CREATE_BYTES_DAY=0 NYLZO_RATE_READ_HOUR=0 \
+  bin/nylzo serve
+"""
+
+[tasks."dev:web"]
+description = "Vite with hot reload on http://localhost:5173, API from mise run dev"
+depends = ["install"]
+run = "pnpm --dir web --filter @nylzo/web exec vite"
+
+[tasks."dev:reset"]
+description = "Delete the local messages and the pepper in .dev"
+run = "rm -rf .dev"
+
+[tasks.test]
+description = "The Go and TypeScript tests of CI, Go with the race detector"
+depends = ["install"]
+run = [
+  "go test -race -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./...",
+  "go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/",
+  "go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/",
+  "NYLZO_HEAVY_TESTS=1 pnpm --dir web -r test",
+]
+
+[tasks.lint]
+description = "The static checks of the Go and TypeScript CI jobs"
+depends = ["install"]
+run = [
+  "go mod verify",
+  "go mod tidy -diff",
+  "test -z \"$(gofmt -l cmd internal)\" || { gofmt -l cmd internal; exit 1; }",
+  "GOOS=linux go vet ./...",
+  "GOOS=darwin go vet ./...",
+  "go fix -diff ./...",
+  "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...",
+  "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
+  '''awk '/^minimumReleaseAge:/ { found = 1; if ($2 + 0 < 1440) exit 1 } END { exit !found }' web/pnpm-workspace.yaml''',
+  '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
+  '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
+  "pnpm --dir web audit --audit-level=moderate",
+  "pnpm --dir web -r typecheck",
+  "pnpm --dir web --filter @nylzo/web check",
+]
+
+[tasks."e2e:browsers"]
+description = "Download the Playwright browsers once"
+depends = ["install"]
+run = "pnpm --dir web/e2e exec playwright install chromium firefox webkit"
+
+[tasks.e2e]
+description = "Playwright end to end in Chromium, Firefox and WebKit"
+depends = ["build:web"]
+run = "pnpm --dir web/e2e e2e"

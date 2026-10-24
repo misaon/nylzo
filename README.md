@@ -23,10 +23,35 @@ Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané sp
 | `deploy/compose` | příklad self-hostu: `nylzo serve` za Caddy s TLS, pepper jako Docker secret |
 | `.goreleaser.yaml`, `.github/workflows/release.yml` | vydání: binárky, image na ghcr.io, podpisy, SBOM a provenance |
 
-## Požadavky
+## Rychlý start s mise
 
-- Go 1.27.3, připnuté řádkem `toolchain` v `go.mod` (na tomto stroji přes `mise`: `mise use go@1.27.3`).
+S [mise](https://mise.jdx.dev/getting-started.html) stačí v kořeni repozitáře tři příkazy. mise nejdřív chce, abyste konfiguraci repozitáře výslovně povolili, protože nastavuje prostředí a spouští úlohy; přečtěte si `mise.toml` a povolte ji:
+
+```bash
+mise trust
+```
+
+Další příkaz stáhne Go, Node.js a pnpm ve verzích z `mise.toml` a ověří je proti checksumům v `mise.lock`, poslední nainstaluje závislosti webu, sestaví webového klienta a binárku `bin/nylzo` a pustí server na `http://localhost:8080`:
+
+```bash
+mise install
+```
+
+```bash
+mise run dev
+```
+
+Pak v prohlížeči napište zprávu, zkopírujte odkaz a otevřete ho v anonymním okně. Data a pepper leží v `.dev/`, takže zprávy přežijí restart; `mise run dev:reset` je smaže. Server naslouchá vždy jen na `127.0.0.1` (jiný port nastaví `NYLZO_DEV_PORT=8081`; 8090 si berou e2e testy) a má vypnuté limity vytváření a čtení, aby zkoušení nenarazilo na 20 zpráv za hodinu. Pepper z prostředí shellu (`NYLZO_PEPPER` a spol.) úloha ignoruje. Z telefonu přes adresu v lokální síti to nepůjde, Web Crypto potřebuje HTTPS nebo localhost.
+
+Pro práci na webovém klientovi pusťte vedle `mise run dev` ještě `mise run dev:web`: Vite s hot reloadem na `http://localhost:5173` posílá `/api` na server z `mise run dev` (jinou adresu nastaví `NYLZO_DEV_API`). Vite stránky neposílá s CSP serveru, takže CSP a nonce ověříte až v `mise run dev` nebo v e2e testech.
+
+Další úlohy vypíše `mise tasks`: `mise run test` (Go s race detektorem a TypeScript), `mise run lint`, `mise run build`, `mise run e2e` (prohlížeče jednou stáhne `mise run e2e:browsers`). `test` a `lint` spouštějí stejné kontroly jako joby Go a TypeScript v CI. Úlohy potřebují POSIX shell, tedy Linux, macOS nebo WSL. Na Linuxu potřebuje race detektor překladač C (na Debianu a Ubuntu `sudo apt install gcc`) a prohlížeče pro e2e systémové knihovny, které nainstaluje `sudo pnpm --dir web/e2e exec playwright install-deps`. Proč mise a co hlídá CI, popisuje `docs/plans/2026-10-24-dev-setup-mise.md` (D58, D59).
+
+## Požadavky bez mise
+
+- Go 1.27.3, připnuté řádkem `toolchain` v `go.mod`.
 - Node.js 24.22.1 podle `web/.node-version` a pnpm 12 (pole `packageManager` ve `web/package.json` ho přes corepack stáhne samo).
+- Stejné verze stojí v `mise.toml`; CI hlídá, že se neliší.
 
 ## Spuštění serveru lokálně se SQLite
 
@@ -79,7 +104,7 @@ Serverové příkazy `nylzo` jsou `serve` a `sweep-once`; žádný nebere argume
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření, nejvýš 100 |
 | `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2); jiné hodnoty server odmítne. Scrypt trvá na iPhonu 15 Pro Max přes HTTPS zhruba 0,55 s (D33, `docs/research/od6-scrypt-safari.md`) |
-| `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek |
+| `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek. U všech `NYLZO_RATE_*_HOUR`, `_DAY` a `_BYTES_DAY` znamená `0` bez limitu, což se hodí jen pro lokální vývoj |
 | `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | násobek limitů pro hrubý kyblík /24 nebo /48. Požadavek, který odmítne limit /32 nebo /64, se do limitu /24 nebo /48 nezapočítá |
 | `NYLZO_RATE_READ_HOUR` | `300` | metadata, claim a blob na kyblík |
 | `NYLZO_RATE_ABUSE_HOUR` | `5` | hlášení zneužití na kyblík |
