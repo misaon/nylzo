@@ -1,5 +1,7 @@
 # Rešerše I: hosting prototypu Nylzo
 
+Ceny, dostupnost a doporučení aktualizuje rešerše K (`K-hosting-cheapest.md`, 24. 10. 2026). Postup nasazení a změny serveru popsané níže platí dál.
+
 Ověřeno 23. 10. 2026 na stránkách poskytovatelů (seznam zdrojů na konci). Kurz ČNB 23. 10. 2026: 24,335 Kč za EUR a 21,741 Kč za USD (https://www.cnb.cz/en/financial-markets/foreign-exchange-market/central-bank-exchange-rate-fixing/central-bank-exchange-rate-fixing/daily.txt). Ceny jsou bez DPH, pokud není uvedeno jinak; částky s 21 % DPH jsou můj výpočet.
 
 Stav údajů: ověřeno znamená citaci z otevřené stránky poskytovatele. Částečně znamená, že stránka tvrzení podporuje jen zčásti, nebo že jde o vyjádření zaměstnance na fóru či blogu. Neověřeno znamená, že oficiální zdroj jsem nenašel.
