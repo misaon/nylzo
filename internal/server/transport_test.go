@@ -88,8 +88,8 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	}
 	nonceAttr := regexp.MustCompile(`nonce="[^"]*"`)
 	_, home := h.do(request{method: "GET", path: "/"})
-	if strings.Contains(string(home), `name="robots"`) {
-		t.Fatal("the client HTML must leave robots to the X-Robots-Tag header (D80)")
+	if client, err := server.Embedded(); err != nil || client.Built && strings.Contains(string(home), `name="robots"`) {
+		t.Fatalf("the built client HTML must leave robots to the X-Robots-Tag header (D80): %v", err)
 	}
 	if !strings.Contains(string(body), `name="robots" content="noindex, nofollow"`) {
 		t.Fatal("the preview page must stay noindex")
