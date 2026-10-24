@@ -13,7 +13,7 @@ import {
   type RequestKey,
 } from '@nylzo/core';
 import { anyPassphraseKey } from '@nylzo/core/scrypt';
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
 import { createApi, type Api } from '../../app/src/lib/api.ts';
 
@@ -95,23 +95,38 @@ export interface UiMessage {
   readonly text?: string;
   readonly file?: { readonly name: string; readonly mimeType: string; readonly buffer: Buffer };
   readonly passphrase?: string;
-  readonly kdf?: 'pbkdf2' | 'scrypt';
 }
 
 export async function createViaUi(page: Page, message: UiMessage, base = BASE_URL): Promise<string> {
   await page.goto(`${base}/`);
   await page.getByLabel('Message text').fill(message.text ?? '');
   if (message.file) {
-    await page.getByLabel(/^Attachment/).setInputFiles(message.file);
+    await page.getByLabel(/Attachment, up to/).setInputFiles(message.file);
   }
   if (message.passphrase) {
-    await page.getByLabel('Passphrase, optional').fill(message.passphrase);
-    await page.getByRole('radio', { name: message.kdf === 'scrypt' ? /^scrypt/ : /^PBKDF2/ }).check();
+    await setPassphrase(page, message.passphrase);
   }
   await page.getByRole('button', { name: 'Create link' }).click();
   const link = page.getByLabel('Link to the message');
   await expect(link).toBeVisible({ timeout: 45_000 });
   return link.inputValue();
+}
+
+export async function setPassphrase(page: Page, passphrase: string): Promise<void> {
+  await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
+  const protect = page.getByRole('switch', { name: /^Protect with a passphrase/ });
+  if ((await protect.getAttribute('aria-checked')) !== 'true') {
+    await protect.click();
+  }
+  await page.getByLabel('Passphrase, optional').fill(passphrase);
+}
+
+export async function leave(page: Page): Promise<void> {
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+}
+
+export function live(page: Page, locator: Locator): Locator {
+  return locator.and(page.locator(':not([inert]):not([inert] *)'));
 }
 
 export async function openViaUi(page: Page, link: string, passphrase?: string): Promise<void> {

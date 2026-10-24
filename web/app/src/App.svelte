@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { browserPreferences, createI18n, otherLanguage, saveLanguage, savedLanguage, setI18n } from './lib/i18n.svelte.ts';
+  import SiteFooter from './components/shell/SiteFooter.svelte';
+  import SiteHeader from './components/shell/SiteHeader.svelte';
+  import Sky from './components/shell/Sky.svelte';
+  import { browserPreferences, createI18n, saveLanguage, savedLanguage, setI18n, type Language } from './lib/i18n.svelte.ts';
   import Create from './screens/Create.svelte';
   import Read from './screens/Read.svelte';
   import Report from './screens/Report.svelte';
@@ -12,41 +15,49 @@
   const path = location.pathname;
   const screen =
     path === '/sent' ? 'sent' : path === '/report' ? 'report' : path === '/transparency' ? 'transparency' : path.startsWith('/m/') ? 'read' : 'create';
-  const other = $derived(otherLanguage(i18n.language));
+  const variant = screen === 'create' ? 'home' : screen === 'read' ? 'read' : 'page';
 
-  function switchLanguage() {
-    i18n.language = other;
-    document.documentElement.lang = i18n.language;
-    saveLanguage(preferences, i18n.language);
+  function switchLanguage(language: Language) {
+    if (i18n.language === language) {
+      return;
+    }
+    i18n.language = language;
+    document.documentElement.lang = language;
+    saveLanguage(preferences, language);
   }
 </script>
 
-<header>
-  <h1>{t('app.name')}</h1>
-  <nav aria-label={t('nav.label')}>
-    <a href="/" aria-current={screen === 'create' ? 'page' : undefined}>{t('nav.create')}</a>
-    <a href="/sent" aria-current={screen === 'sent' ? 'page' : undefined}>{t('nav.sent')}</a>
-    <a href="/report" aria-current={screen === 'report' ? 'page' : undefined}>{t('nav.report')}</a>
-    <a href="/transparency" aria-current={screen === 'transparency' ? 'page' : undefined}>{t('nav.transparency')}</a>
-  </nav>
-  <button type="button" lang={other} onclick={switchLanguage}>{t('language.other')}</button>
-</header>
-<main>
-  <svelte:boundary>
-    {#if screen === 'read'}
-      <Read />
-    {:else if screen === 'sent'}
-      <Sent />
-    {:else if screen === 'report'}
-      <Report />
-    {:else if screen === 'transparency'}
-      <Transparency />
-    {:else}
-      <Create />
-    {/if}
+<div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
+  <Sky />
+  <div class="relative z-10 flex min-h-dvh flex-col">
+    <SiteHeader {variant} />
+    <main class="min-h-svh flex-1">
+      <svelte:boundary>
+        {#if screen === 'read'}
+          <Read />
+        {:else if screen === 'create'}
+          <Create />
+        {:else}
+          <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+            <div class="glass legacy-screen rounded-card p-6 md:p-10">
+              {#if screen === 'sent'}
+                <Sent />
+              {:else if screen === 'report'}
+                <Report />
+              {:else}
+                <Transparency />
+              {/if}
+            </div>
+          </div>
+        {/if}
 
-    {#snippet failed()}
-      <p role="alert">{t('app.crashed')}</p>
-    {/snippet}
-  </svelte:boundary>
-</main>
+        {#snippet failed()}
+          <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+            <p role="alert" class="glass rounded-card p-6 text-ink-soft md:p-10">{t('app.crashed')}</p>
+          </div>
+        {/snippet}
+      </svelte:boundary>
+    </main>
+    <SiteFooter compact={screen === 'read'} current={screen} onlanguage={switchLanguage} />
+  </div>
+</div>

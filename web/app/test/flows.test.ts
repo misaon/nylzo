@@ -91,6 +91,7 @@ interface ReaderOverrides {
   readonly visible?: boolean;
   readonly prerendering?: boolean;
   readonly scrypt?: Scrypt;
+  readonly shown?: () => Promise<void>;
 }
 
 function reader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
@@ -105,6 +106,7 @@ function reader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
       session,
       page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
       dropFragment: () => void dropped++,
+      ...(overrides.shown ? { shown: overrides.shown } : {}),
       scrypt: overrides.scrypt ?? scrypt,
       now: () => Date.now(),
     },
@@ -133,6 +135,41 @@ async function storeRaw(api: FakeApi, meta: { text?: string; file?: { name: stri
 }
 
 describe('reading a message', () => {
+  it('acknowledges and drops the fragment only once the page shows the message', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const display = Promise.withResolvers<void>();
+    const r = reader(api, created.link, { shown: () => display.promise });
+    await r.load();
+    const revealing = r.reveal();
+    await vi.waitFor(() => expect(r.last()?.view).toBe('revealed'));
+    expect(api.calls).not.toContain('ack');
+    expect(r.dropped()).toBe(0);
+    display.resolve();
+    await revealing;
+    expect(api.calls.at(-1)).toBe('ack');
+    expect(r.dropped()).toBe(1);
+  });
+
+  it('keeps the lease and the fragment when the page is left before it shows the message', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDeps(api));
+    const display = Promise.withResolvers<void>();
+    const r = reader(api, created.link, { shown: () => display.promise });
+    await r.load();
+    const revealing = r.reveal();
+    await vi.waitFor(() => expect(r.last()?.view).toBe('revealed'));
+    r.clear();
+    display.resolve();
+    await revealing;
+    expect(api.calls).not.toContain('ack');
+    expect(r.dropped()).toBe(0);
+    expect(r.last()).toEqual({ view: 'cleared' });
+    const again = reader(api, created.link, { session: r.session });
+    await again.load();
+    expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
+  });
+
   it('shows the text before it acknowledges the lease and then drops the fragment and the lease', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDeps(api));

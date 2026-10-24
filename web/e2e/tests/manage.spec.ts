@@ -1,6 +1,6 @@
 import type { Browser, Page } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, live, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 declare global {
@@ -60,7 +60,7 @@ async function createdAndOpened(browser: Browser, sender: Page, text: string): P
 }
 
 async function confirm(page: Page, answer: string): Promise<void> {
-  const dialog = page.getByRole('dialog');
+  const dialog = live(page, page.getByRole('dialog').or(page.getByRole('alertdialog')));
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: answer, exact: true }).click();
   await expect(dialog).toBeHidden();
@@ -104,8 +104,23 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
 
   const recipient = await newPage(browser);
   await recipient.goto(link);
-  await expect(recipient.getByText('The sender cancelled the message.')).toBeVisible();
+  await expect(recipient.getByText('The sender cancelled the message')).toBeVisible();
   expect(await violations()).toEqual([]);
+});
+
+test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({ browser }) => {
+  const sender = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
+  await countWrites(sender);
+  await sender.goto('/');
+  await sender.getByLabel('Message text').fill('remember early');
+  const created = sender.waitForResponse((response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST');
+  await sender.getByRole('button', { name: 'Create link' }).click();
+  expect((await created).ok()).toBe(true);
+  await expect.poll(() => sender.evaluate(() => window.nylzoWrites ?? 0)).toBeGreaterThan(0);
+  await expect(live(sender, sender.getByLabel('Link to the message'))).toHaveCount(0);
+  await sender.goto('/sent');
+  await expect(sender.getByRole('listitem')).toHaveCount(1);
+  await expect(sender.getByText('Waiting to be opened.')).toBeVisible();
 });
 
 test('a dialog closed with Escape opens again on the very next Enter', async ({ browser }) => {
@@ -213,7 +228,10 @@ test('a status that answers after the sender forgot the message does not store i
 test('an unchecked box keeps the message off the sent list', async ({ browser }) => {
   const sender = await newPage(browser);
   await sender.goto('/');
-  await sender.getByLabel('Remember on this device for status and cancelling').uncheck();
+  await sender.getByRole('button', { name: 'Passphrase', exact: true }).click();
+  const remember = sender.getByRole('switch', { name: /^Cancel from this device/ });
+  await remember.click();
+  await expect(remember).toHaveAttribute('aria-checked', 'false');
   await sender.getByLabel('Message text').fill('forget me');
   await sender.getByRole('button', { name: 'Create link' }).click();
   await expect(sender.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
@@ -258,12 +276,12 @@ test('the recipient deletes a message without showing it (D40)', async ({ browse
   await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
   await recipient.getByRole('button', { name: 'Delete without showing' }).click();
   await confirm(recipient, 'Yes, delete');
-  await expect(recipient.getByText('The message was deleted.')).toBeVisible();
+  await expect(recipient.getByText('You deleted the message')).toBeVisible();
   expect(await violations()).toEqual([]);
 
   const late = await newPage(browser);
   await late.goto(message.link);
-  await expect(late.getByText('The message was deleted.')).toBeVisible();
+  await expect(late.getByText('The message was deleted')).toBeVisible();
 });
 
 test('the reveal waits while a deletion runs', async ({ browser }) => {
@@ -283,7 +301,7 @@ test('the reveal waits while a deletion runs', async ({ browser }) => {
   await expect(recipient.getByRole('button', { name: 'Show message' })).toBeDisabled();
   await expect(recipient.getByRole('button', { name: 'Delete without showing' })).toBeDisabled();
   release();
-  await expect(recipient.getByText('The message was deleted.')).toBeVisible();
+  await expect(recipient.getByText('You deleted the message')).toBeVisible();
   await expect(recipient.getByRole('heading', { name: 'One-time message' })).toBeFocused();
 });
 
@@ -303,7 +321,7 @@ test('the recipient deletes the remaining opens and keeps reading (D40)', async 
 
   const late = await newPage(browser);
   await late.goto(message.link);
-  await expect(late.getByText('The message was deleted.')).toBeVisible();
+  await expect(late.getByText('The message was deleted')).toBeVisible();
 });
 
 test('the last open offers no deletion', async ({ browser }) => {
@@ -311,8 +329,8 @@ test('the last open offers no deletion', async ({ browser }) => {
   const recipient = await newPage(browser);
   await openViaUi(recipient, message.link);
   await expectRevealed(recipient);
-  await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toHaveCount(0);
-  await expect(recipient.getByRole('button', { name: 'Report this message' })).toHaveCount(0);
+  await expect(live(recipient, recipient.getByRole('button', { name: 'Delete the remaining opens' }))).toHaveCount(0);
+  await expect(live(recipient, recipient.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
 });
 
 test('a report from the read page or from /report spends no open (D41)', async ({ browser }) => {
@@ -320,10 +338,10 @@ test('a report from the read page or from /report spends no open (D41)', async (
   const recipient = await newPage(browser);
   const violations = await recordViolations(recipient);
   await recipient.goto(message.link);
-  await recipient.getByRole('button', { name: 'Report this message' }).click();
+  await recipient.getByRole('button', { name: 'Report', exact: true }).click();
   await recipient.getByLabel('Reason, optional').fill('looks like phishing');
   await recipient.getByRole('button', { name: 'Send report' }).click();
-  await expect(recipient.getByText('We received the report.')).toBeVisible();
+  await expect(recipient.getByRole('status').first()).toHaveText('Report sent');
   await expect(recipient.getByLabel('Reason, optional')).toHaveValue('');
 
   const reporter = await newPage(browser);
@@ -339,9 +357,10 @@ test('a report from the read page or from /report spends no open (D41)', async (
   await recipient.getByRole('button', { name: 'Show message' }).click();
   await expectRevealed(recipient);
   await expect(recipient.locator('pre')).toHaveText('reported');
+  await recipient.getByRole('button', { name: 'Report', exact: true }).click();
   await recipient.getByLabel('Reason, optional').fill('after reading');
   await recipient.getByRole('button', { name: 'Send report' }).click();
-  await expect(recipient.getByText('We received the report.')).toBeVisible();
+  await expect(recipient.getByRole('status').first()).toHaveText('Report sent');
   expect(await violations()).toEqual([]);
 });
 

@@ -28,3 +28,10 @@ export function formatBytes(bytes: number, language: Language): string {
   const [value, unit] = bytes < MEBIBYTE ? [Math.max(1, Math.ceil(bytes / 1024)), 'kilobyte'] : [bytes / MEBIBYTE, 'megabyte'];
   return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 }).format(value);
 }
+
+export function formatSize(bytes: number, language: Language): string {
+  if (bytes < 1024) {
+    return `${new Intl.NumberFormat(language).format(bytes)}\u00a0B`;
+  }
+  return formatBytes(bytes, language);
+}

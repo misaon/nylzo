@@ -17,7 +17,7 @@ test('creates and reads a text message under the enforced CSP (AK10)', async ({ 
 
   const late = await (await browser.newContext()).newPage();
   await late.goto(link);
-  await expect(late.getByText('The message has already been opened.')).toBeVisible();
+  await expect(late.getByText('The message has already been opened')).toBeVisible();
 });
 
 test('a wrong passphrase spends no open and the right one reveals the message', async ({ browser }) => {
@@ -25,8 +25,8 @@ test('a wrong passphrase spends no open and the right one reveals the message', 
   const recipient = await (await browser.newContext()).newPage();
   const violations = await recordViolations(recipient);
   const passphrase = 'four random words here';
-  const link = await createViaUi(sender, { text: 'chráněno', passphrase, kdf: 'pbkdf2' });
-  expect(link).toContain('#1.2.');
+  const link = await createViaUi(sender, { text: 'chráněno', passphrase });
+  expect(link).toContain('#1.1.');
   await openViaUi(recipient, link, 'definitely the wrong one');
   await expect(recipient.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
   await recipient.getByLabel('Passphrase', { exact: true }).fill(passphrase);
@@ -42,7 +42,7 @@ test('scrypt runs in the worker under the enforced CSP', async ({ browser }) => 
   const senderViolations = await recordViolations(sender);
   const recipientViolations = await recordViolations(recipient);
   const passphrase = 'correct horse battery staple';
-  const link = await createViaUi(sender, { text: 'scrypt', passphrase, kdf: 'scrypt' });
+  const link = await createViaUi(sender, { text: 'scrypt', passphrase });
   expect(link).toContain('#1.1.');
   await openViaUi(recipient, link, passphrase);
   await expectRevealed(recipient);
@@ -62,7 +62,7 @@ test('a double click on Create link with an attachment creates one message', asy
     }
   });
   await page.getByLabel('Message text').fill('double');
-  await page.getByLabel(/^Attachment/).setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
+  await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
   await page.getByRole('button', { name: 'Create link' }).dblclick();
   await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
   expect(sent).toEqual(['GET /api/v1/instance', 'POST /api/v1/messages']);
@@ -73,10 +73,10 @@ test('a link whose read key starts with a zero byte opens and can be reported (D
   await openViaUi(page, message.link);
   await expectRevealed(page);
   await expect(page.locator('pre')).toHaveText('nula na začátku');
-  await page.getByRole('button', { name: 'Report this message' }).click();
+  await page.getByRole('button', { name: 'Report', exact: true }).click();
   await page.getByLabel('Reason, optional').fill('zero byte');
   await page.getByRole('button', { name: 'Send report' }).click();
-  await expect(page.getByText('We received the report.')).toBeVisible();
+  await expect(page.getByRole('status').first()).toHaveText('Report sent');
 });
 
 test('the report page accepts a link whose read key starts with a zero byte (D66)', async ({ page }) => {

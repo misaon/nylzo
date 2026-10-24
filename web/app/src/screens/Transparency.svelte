@@ -2,11 +2,11 @@
   import { createApi, type Transparency } from '../lib/api.ts';
   import { formatBytes, formatDays, formatDuration } from '../lib/format.ts';
   import { getI18n } from '../lib/i18n.svelte.ts';
+  import { REPOSITORY_URL } from '../lib/repository.ts';
   import { contactHref, verifyCommand } from '../lib/transparency.ts';
 
   type View = { readonly view: 'loading' } | { readonly view: 'failed' } | { readonly view: 'ready'; readonly data: Transparency };
 
-  const SOURCE_URL = 'https://github.com/misaon/nylzo';
   const DAY_SECONDS = 86_400;
 
   const i18n = getI18n();
@@ -128,6 +128,6 @@
     <p>{t('transparency.client.verify')}</p>
     <p><code class="wrap-anywhere">{verifyCommand(location.origin)}</code></p>
     <p>{t('transparency.client.limit')}</p>
-    <p><a href={SOURCE_URL} rel="noreferrer">{t('transparency.source')}</a></p>
+    <p><a href={REPOSITORY_URL} rel="noreferrer">{t('transparency.source')}</a></p>
   {/if}
 </section>

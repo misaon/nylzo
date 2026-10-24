@@ -7,9 +7,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: ci,
   retries: 0,
+  workers: ci ? 2 : '50%',
   timeout: 60_000,
   reporter: ci ? 'github' : 'list',
-  use: { baseURL: 'http://127.0.0.1:8090', locale: 'en-US', trace: 'retain-on-failure' },
+  use: { baseURL: 'http://127.0.0.1:8090', locale: 'en-US', reducedMotion: 'reduce', trace: 'retain-on-failure' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },

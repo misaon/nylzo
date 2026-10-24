@@ -88,6 +88,7 @@ export interface ReaderDeps {
   readonly session: SessionStore;
   readonly page: { visible(): boolean; prerendering(): boolean };
   readonly dropFragment: () => void;
+  readonly shown?: () => Promise<void>;
   readonly scrypt: (passphrase: string, saltPw: Uint8Array<ArrayBuffer>, onProgress: (fraction: number) => void) => Promise<Uint8Array<ArrayBuffer>>;
   readonly now: () => number;
 }
@@ -434,7 +435,6 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       opened.payload.file?.fill(0);
       return { view: 'cleared' };
     }
-    deps.dropFragment();
     const { text, file } = opened.payload.meta;
     const remaining = (metadata?.opensRemaining ?? 0) - (fetched.fromLease ? 0 : 1);
     onView({
@@ -443,6 +443,11 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file } : undefined,
       burnable: remaining > 0,
     });
+    await deps.shown?.();
+    if (left) {
+      return undefined;
+    }
+    deps.dropFragment();
     acknowledging = true;
     acknowledged = deps.api
       .ack(current.id, current.readKey, fetched.lease)

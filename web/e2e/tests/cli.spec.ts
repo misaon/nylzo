@@ -41,7 +41,7 @@ test('a message with a passphrase from the CLI opens in the browser', async ({ p
 test('the CLI reads messages and files created in the browser', async ({ page }) => {
   const plain = await createViaUi(page, { text: 'z prohlížeče' });
   expect(cli(['read', '--stdout'], plain)).toBe('z prohlížeče\n');
-  const guarded = await createViaUi(page, { text: 's heslem', passphrase: PASSPHRASE, kdf: 'scrypt' });
+  const guarded = await createViaUi(page, { text: 's heslem', passphrase: PASSPHRASE });
   expect(cli(['read', '--stdout', '--passphrase-file', passphraseFile()], guarded)).toBe('s heslem\n');
   const bytes = Buffer.from(Array.from({ length: 70_000 }, (_, i) => i % 251));
   const withFile = await createViaUi(page, { text: '', file: { name: 'data.bin', mimeType: 'application/octet-stream', buffer: bytes } });

@@ -10,6 +10,9 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p scripts"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "5.3.0",
+    "@fontsource-variable/geist-mono": "5.3.0",
+    "@fontsource-variable/sora": "5.3.0",
     "@nylzo/core": "workspace:*",
     "svelte": "5.57.2"
   },
