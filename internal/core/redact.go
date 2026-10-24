@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ const (
 	maxReasonJSONBytes = 1200
 	reasonDecodePasses = 3
 	maxJSONEscape      = len(`\u0000`)
+	maxReportBodyBytes = 4096
 )
 
 var (
@@ -23,10 +25,25 @@ var (
 	tokenRun      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(IDLen)))
 )
 
-func RedactReason(reason string) string {
+func redactUnbounded(reason string) string {
 	reason = strings.Map(visibleRune, percentDecode(reason))
 	reason = linkFragment.ReplaceAllString(reason, "[redacted]")
-	reason = tokenRun.ReplaceAllString(reason, "[redacted]")
+	return tokenRun.ReplaceAllString(reason, "[redacted]")
+}
+
+func ReasonTooLong(reason string) bool {
+	redacted := redactUnbounded(reason)
+	var body bytes.Buffer
+	encoder := json.NewEncoder(&body)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(IDLen)), "reason": redacted}); err != nil {
+		return true
+	}
+	return len(redacted) > MaxReasonBytes || body.Len()-1 > maxReportBodyBytes
+}
+
+func RedactReason(reason string) string {
+	reason = redactUnbounded(reason)
 	if len(reason) > MaxReasonBytes {
 		reason = strings.ToValidUTF8(reason[:MaxReasonBytes], "")
 	}

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core"
 )
 
 func runStatus(ctx context.Context, env Env, args []string) int {
@@ -86,5 +88,40 @@ func runBurn(ctx context.Context, env Env, args []string) int {
 		return failf(env, "%s", explain(err))
 	}
 	fmt.Fprintln(env.Stdout, "deleted")
+	return exitOK
+}
+
+func runReport(ctx context.Context, env Env, args []string) int {
+	fs := newFlags(env, "report")
+	linkFile := fs.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	reasonFile := fs.String("reason-file", "", "read why the message should be removed from this file (optional; links and long codes are removed before sending)")
+	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+		return code
+	}
+	reason := ""
+	if *reasonFile != "" {
+		raw, err := readFileLimited(*reasonFile, maxSecretInput)
+		if err != nil {
+			return failf(env, "reason: %s", explain(err))
+		}
+		reason = strings.TrimSpace(string(raw))
+	}
+	if core.ReasonTooLong(reason) {
+		fmt.Fprintf(env.Stderr, "%s report: the reason is longer than %d bytes after links and long codes are removed\n", program, core.MaxReasonBytes)
+		return exitUsage
+	}
+	link, err := linkFromInput(env, *linkFile)
+	if err != nil {
+		return failf(env, "link: %s", explain(err))
+	}
+	defer link.wipe()
+	c, err := client.New(link.origin)
+	if err != nil {
+		return failf(env, "%s", explain(err))
+	}
+	if err := c.Report(ctx, link.id, &link.keys.R, reason); err != nil {
+		return failf(env, "%s", explain(err))
+	}
+	fmt.Fprintln(env.Stdout, "the report was sent; a person reviews it, and it is kept only while the message exists")
 	return exitOK
 }

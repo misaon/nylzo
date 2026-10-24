@@ -167,6 +167,12 @@ nylzo verify-client --server https://nylzo.example
 
 `verify-client` porovná webového klienta, kterého server posílá, s klientem vloženým v této binárce (D61). Stáhne každou stránku a každý soubor dvakrát, bez komprese a tak, jak o ně žádá prohlížeč, a ověří obsah, CSP s nonce i bezpečnostní hlavičky a manifest `/.well-known/nylzo/client.json`. Hlavičku, kterou tato verze neposílá, bere jako neshodu; hlavičku, kterou přidává proxy nebo CDN před serverem, povolí `--allow-header Název` (opakovaně), kromě hlaviček, které mění chování stránky, třeba `Refresh` nebo `Set-Cookie`. Server musí běžet na stejné verzi jako binárka, jinak příkaz skončí kódem 1 a řekne, kterou verzi použít. Ověří jen to, co server poslal tomuto příkazu. Server ho pozná podle hlaviček a otisku TLS a může prohlížečům posílat něco jiného, takže kontrola odhalí záměnu z napadeného sestavení nebo chybného nasazení, ne server, který ji úmyslně skrývá. Má smysl pouštět ji pravidelně a z jiné sítě. Binárka sestavená bez webového klienta nemá s čím porovnat a skončí chybou.
 
+```bash
+nylzo report --link-file odkaz.txt --reason-file duvod.txt
+```
+
+`report` nahlásí zprávu provozovateli stejně jako stránka `/report`: odkaz bere ze stdin, z `--link-file` nebo z `NYLZO_LINK` a podepíše hlášení klíčem čtení. Důvod bere ze souboru `--reason-file`, ne z argumentu, protože vložený odkaz by v argumentu viděl každý proces přes `ps` (AK14). Před odesláním z něj odstraní odkazy a dlouhé kódy stejně jako webový klient a server (spec §6.6) a stejně jako webový klient odmítne důvod, který je i potom delší než 1000 bajtů. Hlášení zprávy, která už skončila, server přijme, ale neuloží.
+
 Klíče a passphrase `nylzo` po použití přepíše nulami, ve vlastních kopiích i v kopiích, které dělá jádro při odvození klíčů a podpisu. V Go je to jen snaha: passphrase jako řetězec přepsat nejde, knihovny a úklid paměti mohou nechat další kopie a co jednou prošlo terminálem nebo rourou, mohlo zůstat jinde. Na Windows práva 0700 a 0600 přístup neomezují: soubory dědí oprávnění cílového adresáře. Výchozí dočasný adresář uživatele je soukromý, ale `--out` na sdílené složce zprávu zpřístupní i ostatním. Návratové kódy: 0 úspěch, 1 chyba, 2 špatné použití včetně tajemství v argumentu.
 
 ## Generování vektorů

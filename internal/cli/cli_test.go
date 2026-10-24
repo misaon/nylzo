@@ -43,6 +43,7 @@ func TestMain(m *testing.M) {
 
 type testServer struct {
 	url      string
+	dir      string
 	requests atomic.Int64
 	hold     func(*http.Request) bool
 	release  chan struct{}
@@ -73,7 +74,7 @@ func newTestServer(t *testing.T, change func(*server.Config)) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := &testServer{release: make(chan struct{})}
+	ts := &testServer{dir: dir, release: make(chan struct{})}
 	handler := srv.Handler()
 	hs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ts.requests.Add(1)
@@ -354,7 +355,7 @@ func TestNoFlagTakesASecret(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
 		"server": true, "from-file": true, "ttl": true, "opens": true, "passphrase-file": true, "ask-passphrase": true, "kdf": true,
-		"manage-token-file": true, "print-manage-token": true, "link-file": true, "out": true, "stdout": true, "json": true, "allow-header": true,
+		"manage-token-file": true, "print-manage-token": true, "link-file": true, "out": true, "stdout": true, "json": true, "allow-header": true, "reason-file": true,
 	}
 	for _, c := range commands() {
 		res := runWith(t, "", nil, nil, c.name, "-h")

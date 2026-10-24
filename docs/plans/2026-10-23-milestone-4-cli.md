@@ -59,4 +59,4 @@ Vlastník chce prototyp v produkci co nejjednodušeji, požadavek na provoz jen 
 
 ## Mimo milník
 
-`verify-client`, MCP server a skill (druhá verze), hlášení zneužití z CLI, podpis binárek pro macOS a Windows (placené účty, rozhodne vlastník), oddělený origin webového klienta (OD23).
+`verify-client`, MCP server a skill (druhá verze), hlášení zneužití z CLI (doplněno 24. 10. 2026 jako `nylzo report`), podpis binárek pro macOS a Windows (placené účty, rozhodne vlastník), oddělený origin webového klienta (OD23).
