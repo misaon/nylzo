@@ -1,4 +1,5 @@
 import {
+  HEADER_LEN,
   KDF_NONE,
   KDF_PBKDF2,
   KDF_SCRYPT,
@@ -665,6 +666,15 @@ describe('creating a message', () => {
     await createMessage(input(), deps);
     expect(api.calls.filter((c) => c === 'create')).toEqual(['create', 'create']);
     expect(new Set(deps.powCalls.map((c) => c.challenge)).size).toBe(2);
+  });
+
+  it('seals every message with its own iv', async () => {
+    const api = fakeApi();
+    await createMessage(input(), createDeps(api));
+    await createMessage(input(), createDeps(api));
+    const ivs = [...api.stored.values()].map((message) => message.request.object.slice(3, HEADER_LEN));
+    expect(ivs).toHaveLength(2);
+    expect(ivs[0]).not.toEqual(ivs[1]);
   });
 
   it('maps rate limits and refuses invalid input before any key is made', async () => {

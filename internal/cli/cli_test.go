@@ -215,6 +215,31 @@ func TestCreateAndReadText(t *testing.T) {
 	}
 }
 
+func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
+	t.Parallel()
+	ts := newTestServer(t, nil)
+	createText(t, ts, "the same text")
+	createText(t, ts, "the same text")
+	entries, err := os.ReadDir(filepath.Join(ts.dir, disk.Dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ivs [][]byte
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		object, err := os.ReadFile(filepath.Join(ts.dir, disk.Dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ivs = append(ivs, object[3:core.HeaderLen])
+	}
+	if len(ivs) != 2 || bytes.Equal(ivs[0], ivs[1]) {
+		t.Fatalf("stored IVs %x, want two different ones", ivs)
+	}
+}
+
 func mustRead(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

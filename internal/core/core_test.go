@@ -77,6 +77,42 @@ func TestEnvelopeBoundToID(t *testing.T) {
 	}
 }
 
+func TestEveryHeaderGetsAFreshRandomIV(t *testing.T) {
+	const samples = 4096
+	seen := make(map[[core.IVLen]byte]bool, samples)
+	var taken [core.IVLen][256]bool
+	var distinct [core.IVLen]int
+	for range samples {
+		iv := core.NewHeader(core.KDFNone).IV
+		if seen[iv] {
+			t.Fatalf("IV %x repeated within %d headers", iv, samples)
+		}
+		seen[iv] = true
+		for i, b := range iv {
+			if !taken[i][b] {
+				taken[i][b] = true
+				distinct[i]++
+			}
+		}
+	}
+	for i, n := range distinct {
+		if n < 200 {
+			t.Errorf("byte %d of the IV took %d of 256 values in %d headers", i, n, samples)
+		}
+	}
+}
+
+func TestSealUsesTheHeaderIV(t *testing.T) {
+	_, _, _, h, _, object := sampleMessage(t, core.KDFNone, "", nil)
+	_, _, _, other, _, again := sampleMessage(t, core.KDFNone, "", nil)
+	if !bytes.Equal(object[3:core.HeaderLen], h.IV[:]) || !bytes.Equal(again[3:core.HeaderLen], other.IV[:]) {
+		t.Fatal("the envelope does not carry the IV of its header")
+	}
+	if h.IV == other.IV {
+		t.Fatal("two messages got the same IV")
+	}
+}
+
 func TestOpenRejectsVersionFlagsAndKDF(t *testing.T) {
 	id, _, content, _, pol, object := sampleMessage(t, core.KDFNone, "", nil)
 	v := append([]byte(nil), object...)

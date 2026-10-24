@@ -251,6 +251,33 @@ test('a page restored from the back/forward cache loads again and spends no open
   await expect(page.locator('pre')).toHaveText('still unread');
 });
 
+test('back and forward after reading bring back neither the fragment nor the message and spend no open', async ({ page, browser }) => {
+  const message = await createViaApi({ text: 'only once in this tab', opensMax: 2 });
+  const read = `${BASE_URL}/m/${message.idText}`;
+  await page.goto(`${BASE_URL}/`);
+  await openViaUi(page, message.link);
+  await expectRevealed(page);
+  await expect(page).toHaveURL(read);
+  await page.goto(`${BASE_URL}/transparency`);
+  await page.goBack();
+  await expect(page).toHaveURL(read);
+  await expect(page.getByText(/^The link is incomplete or damaged\./)).toBeVisible();
+  await expect(page.locator('pre')).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(`${BASE_URL}/`);
+  await page.goForward();
+  await expect(page).toHaveURL(read);
+  await expect(page.getByText(/^The link is incomplete or damaged\./)).toBeVisible();
+  await expect(page.locator('pre')).toHaveCount(0);
+
+  const second = await (await browser.newContext()).newPage();
+  await openViaUi(second, message.link);
+  await expect(second.locator('pre')).toHaveText('only once in this tab');
+  const third = await (await browser.newContext()).newPage();
+  await third.goto(message.link);
+  await expect(third.getByText('The message has already been opened.')).toBeVisible();
+});
+
 test('a deletion that answers after the page was left never shows the message again', async ({ page }) => {
   const message = await createViaApi({ text: 'should stay gone', opensMax: 2 });
   const shownAfterLeaving = await watchShownAfterLeaving(page);
