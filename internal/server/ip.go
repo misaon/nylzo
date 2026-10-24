@@ -6,7 +6,10 @@ import (
 	"net/netip"
 	"slices"
 	"strings"
+	"time"
 )
+
+var forwardingHeaders = []string{"X-Forwarded-For", "X-Real-IP", "Forwarded"}
 
 func (s *Server) clientAddr(r *http.Request) netip.Addr {
 	peer := peerAddr(r.RemoteAddr)
@@ -35,6 +38,30 @@ func (s *Server) clientAddr(r *http.Request) netip.Addr {
 		}
 	}
 	return peer
+}
+
+func (s *Server) noticeForwarded(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if header := forwardingHeader(r); header != "" && s.clientAddr(r) == peerAddr(r.RemoteAddr) {
+			hour := s.clock().UTC().Truncate(time.Hour).Unix()
+			for last := s.forwardNotice.Load(); hour > last || hour < last-int64(time.Hour/time.Second); last = s.forwardNotice.Load() {
+				if s.forwardNotice.CompareAndSwap(last, hour) {
+					s.log.Warn("forwarded-header-ignored", "header", header)
+					break
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func forwardingHeader(r *http.Request) string {
+	for _, name := range forwardingHeaders {
+		if len(r.Header.Values(name)) > 0 {
+			return name
+		}
+	}
+	return ""
 }
 
 func (s *Server) trusted(a netip.Addr) bool {
