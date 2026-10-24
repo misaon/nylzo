@@ -47,6 +47,8 @@ Review podle gstack (specialisté, adversariální průchod a druhé nezávislé
 
 QA podle gstack (`/qa`, headless Chromium, desktop a 430 × 932) našlo jednu další chybu: při šifrování s passphrase krok Odvození na chvíli ukázal popis pro zprávu bez passphrase, protože editor už passphrase smazal. Popis teď vychází z toho, s čím šifrování začalo, a hlídá ho e2e test. Dvě drobnosti zůstávají na vlastníkovi: titulek „Máte šifrovanou zprávu“ nad všemi oznámeními a dva formáty data platnosti (panel po vytvoření a stránka pro otevření).
 
+E2E testy běží ve výchozím stavu s `prefers-reduced-motion: reduce`. Nekonečné dekorativní animace (mlhovina, hvězdy, rotující okraj) se v CI bez GPU skládají softwarově a zpomalily celou sadu z 3,5 na 21 minut, takže jednotlivé testy narážely na limit 60 s. Testy, které na pohybu závisí (AK18, odkrývání textu, odchod během otevírání, popis kroků při šifrování, automatické přepínání), si plný pohyb zapínají samy.
+
 Testy runes s efekty běží ve Vitest v projektu `client` s vlastním prostředím (`web/app/test/client-environment.ts`), ostatní unit testy dál v Node.
 
 ## Měření 24. 10. 2026

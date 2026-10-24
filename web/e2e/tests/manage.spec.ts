@@ -109,7 +109,7 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
 });
 
 test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({ browser }) => {
-  const sender = await newPage(browser);
+  const sender = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
   await countWrites(sender);
   await sender.goto('/');
   await sender.getByLabel('Message text').fill('remember early');

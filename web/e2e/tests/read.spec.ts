@@ -144,29 +144,33 @@ test('the reader acknowledges the open only once the message is on the screen', 
   await expect(page.locator('pre')).toHaveText('on screen');
 });
 
-test('leaving while the message opens neither acknowledges nor loses it', async ({ page }) => {
-  const message = await createViaApi({ text: 'resume me' });
-  const acks: string[] = [];
-  page.on('request', (request) => {
-    if (request.url().endsWith('/ack')) {
-      acks.push(request.url());
-    }
-  });
-  const claimed = page.waitForResponse((response) => response.url().endsWith('/claim'));
-  await openViaUi(page, message.link);
-  expect((await claimed).status()).toBe(200);
-  await leave(page);
-  await expect(page.getByText(LEFT)).toBeVisible();
-  await expect(page.locator('pre')).toHaveCount(0);
-  expect(acks).toEqual([]);
-  expect(new URL(page.url()).hash).not.toBe('');
+test.describe('with full motion', () => {
+  test.use({ reducedMotion: 'no-preference' });
 
-  await page.reload();
-  await expect(page.getByText('You already opened the message on this page')).toBeVisible();
-  await page.getByRole('button', { name: 'Show message' }).click();
-  await expectRevealed(page);
-  await expect(page.locator('pre')).toHaveText('resume me');
-  expect(acks).toHaveLength(1);
+  test('leaving while the message opens neither acknowledges nor loses it', async ({ page }) => {
+    const message = await createViaApi({ text: 'resume me' });
+    const acks: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/ack')) {
+        acks.push(request.url());
+      }
+    });
+    const claimed = page.waitForResponse((response) => response.url().endsWith('/claim'));
+    await openViaUi(page, message.link);
+    expect((await claimed).status()).toBe(200);
+    await leave(page);
+    await expect(page.getByText(LEFT)).toBeVisible();
+    await expect(page.locator('pre')).toHaveCount(0);
+    expect(acks).toEqual([]);
+    expect(new URL(page.url()).hash).not.toBe('');
+
+    await page.reload();
+    await expect(page.getByText('You already opened the message on this page')).toBeVisible();
+    await page.getByRole('button', { name: 'Show message' }).click();
+    await expectRevealed(page);
+    await expect(page.locator('pre')).toHaveText('resume me');
+    expect(acks).toHaveLength(1);
+  });
 });
 
 test('a second submit while the message opens starts nothing new', async ({ page }) => {

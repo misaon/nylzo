@@ -13,6 +13,7 @@ const MOBILE = { width: 430, height: 932 };
 const DESKTOP = { width: 1440, height: 900 };
 const MOTION = ['transform', 'opacity', 'translate', 'scale', 'rotate'];
 const NOBLE_SCRYPT_MARKER = 'maxmem';
+const FULL_MOTION = { reducedMotion: 'no-preference' } as const;
 
 declare global {
   interface Window {
@@ -79,7 +80,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
   test(`nothing shifts or resizes after loading or a click while creating and reading at ${viewport.width}x${viewport.height} (AK18)`, async ({ browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
     const passphrase = 'four random words here';
-    const sender = await (await browser.newContext({ viewport })).newPage();
+    const sender = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(sender);
     await sender.goto('/');
     await expect(sender.getByLabel('Message text')).toBeVisible();
@@ -92,7 +93,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await expect(sender.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
     await expectStable(sender, 'created');
 
-    const recipient = await (await browser.newContext({ viewport })).newPage();
+    const recipient = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(recipient);
     const message = await createViaApi({ text: 'layout', passphrase, kdfId: KDF_SCRYPT });
     await recipient.goto(message.link);
@@ -112,7 +113,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
 for (const viewport of [MOBILE, DESKTOP]) {
   test(`nothing shifts or resizes on the sent list, the report page and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({ browser, browserName }) => {
     test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
-    const sender = await (await browser.newContext({ viewport })).newPage();
+    const sender = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await createViaUi(sender, { text: 'first' });
     await createViaUi(sender, { text: 'second' });
     await watchLayout(sender);
@@ -124,7 +125,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await expect(sender.getByText('Cancelled.', { exact: true })).toBeVisible();
     await expectStable(sender, 'cancelled');
 
-    const reporter = await (await browser.newContext({ viewport })).newPage();
+    const reporter = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(reporter);
     const message = await createViaApi({ text: 'layout', opensMax: 2 });
     await reporter.goto('/report');
@@ -143,7 +144,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await expect(reporter.getByText('We received the report.')).toBeVisible();
     await expectStable(reporter, 'report accepted');
 
-    const recipient = await (await browser.newContext({ viewport })).newPage();
+    const recipient = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(recipient);
     await recipient.goto(message.link);
     await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
@@ -169,7 +170,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
     test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
     const text = ['Ahoj, posílám přístup k serveru, jak jsme se domluvili včera večer.', 'Heslo platí jen do pátku, pak ho prosím změň a starý záznam smaž.', 'Díky!'].join('\n');
     const message = await createViaApi({ text });
-    const recipient = await (await browser.newContext({ viewport })).newPage();
+    const recipient = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(recipient);
     await recipient.goto(message.link);
     await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
