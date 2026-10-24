@@ -330,6 +330,25 @@ func (c *Client) end(ctx context.Context, path, purpose string, seed *[core.Toke
 	return drain(resp)
 }
 
+func (c *Client) Report(ctx context.Context, id core.ID, read *[core.TokenLen]byte, reason string) error {
+	payload := map[string]string{"id": id.String()}
+	if reason = core.RedactReason(reason); reason != "" {
+		payload["reason"] = reason
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	resp, err := c.signed(ctx, signedRequest{
+		method: http.MethodPost, path: "/api/v1/abuse", purpose: core.PurposeRead, seed: read,
+		headers: map[string]string{"Content-Type": "application/json"}, body: body,
+	}, shortTimeout)
+	if err != nil {
+		return err
+	}
+	return drain(resp)
+}
+
 type Envelope struct {
 	Policy core.Policy
 	KDF    core.KDF
@@ -426,6 +445,7 @@ type signedRequest struct {
 	seed     *[core.TokenLen]byte
 	verifier *[core.TokenLen]byte
 	headers  map[string]string
+	body     []byte
 }
 
 func (c *Client) signed(ctx context.Context, r signedRequest, timeout time.Duration) (*http.Response, error) {
@@ -441,12 +461,12 @@ func (c *Client) signedOnce(ctx context.Context, r signedRequest, timeout time.D
 	if err != nil {
 		return nil, err
 	}
-	headers := map[string]string{"Authorization": core.SignRequest(r.seed, r.purpose, r.method, r.path, challenge, nil).Authorization()}
+	headers := map[string]string{"Authorization": core.SignRequest(r.seed, r.purpose, r.method, r.path, challenge, r.body).Authorization()}
 	if r.verifier != nil {
 		headers["X-Nylzo-Verifier"] = core.SignRequest(r.verifier, core.PurposeVerifier, r.method, r.path, challenge, nil).VerifierHeader()
 	}
 	maps.Copy(headers, r.headers)
-	return c.do(ctx, r.method, r.path, headers, nil, timeout)
+	return c.do(ctx, r.method, r.path, headers, r.body, timeout)
 }
 
 type Fetched struct {

@@ -76,6 +76,7 @@ func commands() []command {
 		{"read", "read a link from stdin and decrypt the message into private files", runRead},
 		{"status", "show the state of a message from its manage token", runStatus},
 		{"cancel", "end a message with its manage token", runCancel},
+		{"report", "report a message for abuse from its link on stdin", runReport},
 		{"burn", "delete the remaining opens of a message from its link", runBurn},
 		{"serve", "run the server with the embedded web client", runServe},
 		{"sweep-once", "run one sweep of the server store and exit", runSweepOnce},
