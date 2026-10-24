@@ -77,6 +77,31 @@ func TestEnvelopeBoundToID(t *testing.T) {
 	}
 }
 
+func TestEveryHeaderGetsAFreshRandomIV(t *testing.T) {
+	const samples = 4096
+	seen := make(map[[core.IVLen]byte]bool, samples)
+	var taken [core.IVLen][256]bool
+	var distinct [core.IVLen]int
+	for range samples {
+		iv := core.NewHeader(core.KDFNone).IV
+		if seen[iv] {
+			t.Fatalf("IV %x repeated within %d headers", iv, samples)
+		}
+		seen[iv] = true
+		for i, b := range iv {
+			if !taken[i][b] {
+				taken[i][b] = true
+				distinct[i]++
+			}
+		}
+	}
+	for i, n := range distinct {
+		if n < 200 {
+			t.Errorf("byte %d of the IV took %d of 256 values in %d headers", i, n, samples)
+		}
+	}
+}
+
 func TestOpenRejectsVersionFlagsAndKDF(t *testing.T) {
 	id, _, content, _, pol, object := sampleMessage(t, core.KDFNone, "", nil)
 	v := append([]byte(nil), object...)

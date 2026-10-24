@@ -5,6 +5,7 @@ import {
   FlagsError,
   HEADER_LEN,
   HeaderError,
+  IV_LEN,
   IntegrityError,
   KDF_NONE,
   KDF_PBKDF2,
@@ -34,7 +35,7 @@ import {
 } from '../src/index.ts';
 import { newId } from '../src/ids.ts';
 import { deriveAll } from '../src/scrypt.ts';
-import { withByteFlipped } from './helpers.ts';
+import { bytesToHex, withByteFlipped } from './helpers.ts';
 
 interface Sample {
   readonly id: Uint8Array;
@@ -111,6 +112,22 @@ describe('AK8: tampering is detected', () => {
     const m = await sample(KDF_PBKDF2, 'right');
     const wrong = await deriveAll(m.id, m.s, KDF_PBKDF2, 'wrong');
     await expect(open(wrong.content.k, m.id, m.policy, KDF_PBKDF2, m.object)).rejects.toBeInstanceOf(IntegrityError);
+  });
+});
+
+describe('every message gets a fresh random iv', () => {
+  it('repeats no iv and spreads every byte of it', () => {
+    const samples = 4096;
+    const seen = new Set<string>();
+    const distinct = Array.from({ length: IV_LEN }, () => new Set<number>());
+    for (let n = 0; n < samples; n++) {
+      const { iv } = newHeader(KDF_NONE);
+      const hex = bytesToHex(iv);
+      expect(seen.has(hex), `iv ${hex} repeated`).toBe(false);
+      seen.add(hex);
+      iv.forEach((byte, index) => distinct[index]?.add(byte));
+    }
+    expect(Math.min(...distinct.map((values) => values.size))).toBeGreaterThanOrEqual(200);
   });
 });
 
