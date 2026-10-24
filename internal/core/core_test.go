@@ -444,3 +444,22 @@ func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
 		t.Fatal("rejected a key of mixed order, which no third party can forge for")
 	}
 }
+
+func TestParseFragmentTellsANewerVersionApart(t *testing.T) {
+	s := core.Encode(make([]byte, core.SecretLen))
+	for fragment, newer := range map[string]bool{
+		"#2.1." + s: true,
+		"2":         true,
+		"#7.a.b.c":  true,
+		"#1.9." + s: false,
+		"#0.1." + s: false,
+		"#02.1.":    false,
+		"#-2.1.":    false,
+		"":          false,
+	} {
+		_, _, err := core.ParseFragment(fragment)
+		if !errors.Is(err, core.ErrLink) || errors.Is(err, core.ErrLinkVersion) != newer {
+			t.Errorf("%q: got %v, want a link error with newer version %v", fragment, err, newer)
+		}
+	}
+}

@@ -142,6 +142,7 @@ type Link struct {
 	ID        *string `json:"id,omitempty"`
 	KDFID     *int    `json:"kdf_id,omitempty"`
 	S         *string `json:"s_hex,omitempty"`
+	Newer     bool    `json:"newer_version,omitempty"`
 }
 
 type MetaCase struct {
@@ -401,7 +402,19 @@ func (f *File) link() error {
 	invalid := func(name, input string) {
 		f.Link = append(f.Link, Link{Name: name, Input: input, Valid: false})
 	}
-	invalid("fragment-version-2", base+"/m/"+idEnc+"#2.1."+sEnc)
+	newer := func(name, input string) {
+		f.Link = append(f.Link, Link{Name: name, Input: input, Valid: false, Newer: true})
+	}
+	newer("fragment-version-2", base+"/m/"+idEnc+"#2.1."+sEnc)
+	newer("fragment-version-2-bare", base+"/m/"+idEnc+"#2")
+	newer("fragment-version-10-new-path-and-shape", base+"/m2/"+idEnc+"AAAA#10.x.y.z")
+	newer("fragment-version-9-digits", base+"/m/"+idEnc+"#999999999.1."+sEnc)
+	invalid("fragment-version-0", base+"/m/"+idEnc+"#0.1."+sEnc)
+	invalid("fragment-version-leading-zero", base+"/m/"+idEnc+"#02.1."+sEnc)
+	invalid("fragment-version-10-digits", base+"/m/"+idEnc+"#1000000000.1."+sEnc)
+	invalid("fragment-version-letter", base+"/m/"+idEnc+"#v2.1."+sEnc)
+	invalid("fragment-version-2-relative-reference", "/m/"+idEnc+"#2.1."+sEnc)
+	invalid("fragment-version-2-userinfo", "https://user@nylzo.example/m/"+idEnc+"#2.1."+sEnc)
 	invalid("fragment-kdf-3", base+"/m/"+idEnc+"#1.3."+sEnc)
 	invalid("fragment-missing", base+"/m/"+idEnc)
 	invalid("fragment-two-parts", base+"/m/"+idEnc+"#1."+sEnc)

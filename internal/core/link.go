@@ -2,11 +2,18 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
-var ErrLink = errors.New("core: invalid link")
+var (
+	ErrLink        = errors.New("core: invalid link")
+	ErrLinkVersion = fmt.Errorf("%w: a newer fragment version", ErrLink)
+)
+
+var versionLabel = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
 
 const linkPathPrefix = "/m/"
 
@@ -25,6 +32,9 @@ func ParseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
 }
 
 func parseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
+	if newerFragment(fragment) {
+		return 0, nil, ErrLinkVersion
+	}
 	parts := strings.Split(fragment, ".")
 	if len(parts) != 3 || parts[0] != FragmentLabel {
 		return 0, nil, ErrLink
@@ -38,6 +48,15 @@ func parseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
 		return 0, nil, ErrLink
 	}
 	return kdf, s, nil
+}
+
+func newerFragment(fragment string) bool {
+	label, _, _ := strings.Cut(fragment, ".")
+	if !versionLabel.MatchString(label) {
+		return false
+	}
+	version, err := strconv.Atoi(label)
+	return err == nil && version > FragmentVersion
 }
 
 func FormatLink(base string, id ID, kdf KDF, s *[SecretLen]byte) string {
@@ -65,6 +84,9 @@ func ParseLink(raw string) (Link, error) {
 	m := linkHead.FindStringSubmatch(head)
 	if m == nil {
 		return Link{}, ErrLink
+	}
+	if newerFragment(fragment) {
+		return Link{}, ErrLinkVersion
 	}
 	id, err := ParsePath(m[1])
 	if err != nil {

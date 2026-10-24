@@ -249,6 +249,23 @@ func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
 	}
 }
 
+func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
+	t.Parallel()
+	s := core.Encode(make([]byte, core.SecretLen))
+	newer := "https://nylzo.example/m/" + core.NewID().String() + "#2.1." + s
+	damaged := "https://nylzo.example/m/" + core.NewID().String() + "#1.9." + s
+	for _, command := range []string{"read", "burn", "report"} {
+		res := runWith(t, newer, nil, nil, command)
+		if res.code != exitError || !strings.Contains(res.stderr, "the link was made by a newer version of nylzo; update nylzo from "+releasesURL) {
+			t.Errorf("%s with a newer link: %d %q", command, res.code, res.stderr)
+		}
+		res = runWith(t, damaged, nil, nil, command)
+		if res.code != exitError || !strings.Contains(res.stderr, "the link is incomplete or damaged") || strings.Contains(res.stderr, "newer") {
+			t.Errorf("%s with a damaged link: %d %q", command, res.code, res.stderr)
+		}
+	}
+}
+
 func mustRead(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)

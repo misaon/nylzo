@@ -276,8 +276,11 @@ func TestLinkVectors(t *testing.T) {
 		t.Run(v.Name, func(t *testing.T) {
 			link, err := core.ParseLink(v.Input)
 			if !v.Valid {
-				if err == nil {
-					t.Fatalf("expected rejection of %q", v.Input)
+				if !errors.Is(err, core.ErrLink) {
+					t.Fatalf("expected rejection of %q, got %v", v.Input, err)
+				}
+				if errors.Is(err, core.ErrLinkVersion) != v.Newer {
+					t.Fatalf("%q: newer version %v, got %v", v.Input, v.Newer, err)
 				}
 				return
 			}
