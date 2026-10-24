@@ -1,4 +1,9 @@
-# Nylzo
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/dark/nylzo-landscape-dark.svg">
+    <img alt="Nylzo" src="assets/brand/light/nylzo-landscape-light.svg" width="301" height="105">
+  </picture>
+</h1>
 
 Nylzo je open-source služba pro jednorázové sdílení citlivých zpráv a souborů do 5 MB. Obsah se šifruje v klientovi, server dostává jen ciphertext a HMAC důkazy; odkaz nese klíč jen ve fragmentu URL, který prohlížeč na server nikdy neposílá. Návrh a jeho zdůvodnění jsou v `docs/designs/nylzo-architecture-research.md`, normativní zápis protokolu v1 je v `spec/protocol.md`.
 
@@ -22,6 +27,7 @@ Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané sp
 | `web/e2e` | testy Playwright proti `nylzo serve` se vloženým klientem, včetně výměny zpráv mezi CLI a prohlížečem |
 | `internal/server/web` | zástupná stránka; `dist/` je výstup sestavení `web/app`, který `nylzo` vkládá |
 | `deploy/compose` | příklad self-hostu: `nylzo serve` za Caddy s TLS, pepper jako Docker secret |
+| `assets/brand` | oficiální logo: SVG ve světlé a tmavé variantě a barvy v `manifest.json` (D72) |
 | `.goreleaser.yaml`, `.github/workflows/release.yml` | vydání: binárky, image na ghcr.io, podpisy, SBOM a provenance |
 
 ## Rychlý start s mise

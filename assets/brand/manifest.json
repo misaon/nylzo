@@ -1,0 +1,76 @@
+{
+  "brand": "Nylzo",
+  "themes": [
+    {
+      "name": "light",
+      "text": "#142B52",
+      "background": "#FFFFFF",
+      "stops": [
+        "#194A80",
+        "#315EAA",
+        "#6556AC"
+      ]
+    },
+    {
+      "name": "dark",
+      "text": "#F1F4FF",
+      "background": "#080D20",
+      "stops": [
+        "#98D5FF",
+        "#7AA7F4",
+        "#B4A0F2"
+      ]
+    }
+  ],
+  "formats": [
+    {
+      "name": "landscape",
+      "svgViewBox": [
+        430,
+        150
+      ],
+      "pngWidth": 1720
+    },
+    {
+      "name": "square",
+      "svgViewBox": [
+        320,
+        320
+      ],
+      "pngWidth": 1024
+    },
+    {
+      "name": "icon",
+      "svgViewBox": [
+        96,
+        96
+      ],
+      "pngWidth": 1024
+    }
+  ],
+  "artwork": "Opaque fills and strokes. No glass, blur or glow. Lettering is vector geometry with no font dependency.",
+  "backgrounds": "Base files have transparent canvas only. Files ending in -background have fully opaque white or navy canvas.",
+  "iconPngSizes": [
+    16,
+    32,
+    48,
+    64,
+    128,
+    256,
+    512
+  ],
+  "assets": [
+    "light/nylzo-landscape-light",
+    "light/nylzo-landscape-light-background",
+    "light/nylzo-square-light",
+    "light/nylzo-square-light-background",
+    "light/nylzo-icon-light",
+    "light/nylzo-icon-light-background",
+    "dark/nylzo-landscape-dark",
+    "dark/nylzo-landscape-dark-background",
+    "dark/nylzo-square-dark",
+    "dark/nylzo-square-dark-background",
+    "dark/nylzo-icon-dark",
+    "dark/nylzo-icon-dark-background"
+  ]
+}
