@@ -164,6 +164,22 @@ for (const viewport of [MOBILE, DESKTOP]) {
   });
 }
 
+for (const viewport of [MOBILE, DESKTOP]) {
+  test(`a long message keeps its place while it unscrambles at ${viewport.width}x${viewport.height} (AK18)`, async ({ browser, browserName }) => {
+    test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
+    const text = ['Ahoj, posílám přístup k serveru, jak jsme se domluvili včera večer.', 'Heslo platí jen do pátku, pak ho prosím změň a starý záznam smaž.', 'Díky!'].join('\n');
+    const message = await createViaApi({ text });
+    const recipient = await (await browser.newContext({ viewport })).newPage();
+    await watchLayout(recipient);
+    await recipient.goto(message.link);
+    await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
+    await recipient.getByRole('button', { name: 'Show message' }).click();
+    await expectRevealed(recipient);
+    await expect(recipient.locator('pre')).toHaveText(text);
+    await expectStable(recipient, 'unscrambled');
+  });
+}
+
 async function reload(page: Page, url: string): Promise<void> {
   await page.goto('about:blank');
   await page.goto(url);
@@ -183,14 +199,22 @@ async function expectAccessible(page: Page, screen: string): Promise<void> {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`), screen).toEqual([]);
   const small = await page.evaluate(() => {
-    const targets = [...document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea')].map((element) =>
-      element instanceof HTMLInputElement && (element.type === 'radio' || element.type === 'checkbox') ? (element.closest('label') ?? element) : element,
-    );
-    return targets
-      .filter((element) => element.getClientRects().length > 0 && !element.closest('[inert]'))
-      .map((element) => ({ element: element.outerHTML.slice(0, 80), width: element.offsetWidth, height: element.offsetHeight }))
-      .filter(({ width, height }) => width < 44 || height < 44)
-      .map(({ element, width, height }) => `${element} ${width}x${height}`);
+    const still = document.createElement('style');
+    still.textContent =
+      '*, ::before, ::after { transition: none !important; animation: none !important; transform: none !important; translate: none !important; scale: none !important; rotate: none !important; }';
+    document.head.append(still);
+    try {
+      const targets = [...document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea')].map((element) =>
+        element instanceof HTMLInputElement && (element.type === 'radio' || element.type === 'checkbox') ? (element.closest('label') ?? element) : element,
+      );
+      return targets
+        .filter((element) => element.getClientRects().length > 0)
+        .map((element) => ({ element: element.outerHTML.slice(0, 80), box: element.getBoundingClientRect() }))
+        .filter(({ box }) => box.width < 44 || box.height < 44)
+        .map(({ element, box }) => `${element} ${box.width}x${box.height}`);
+    } finally {
+      still.remove();
+    }
   });
   expect(small, screen).toEqual([]);
 }
@@ -245,6 +269,33 @@ test('the confirmation before a risky download passes axe (AK20, D35)', async ({
   await page.getByRole('button', { name: 'Download attachment' }).click();
   await expect(page.getByRole('button', { name: 'Download anyway' })).toBeVisible();
   await expectAccessible(page, 'confirm download');
+});
+
+test('with reduced motion the composer popovers, the attachment and the tabs pass axe (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  await page.goto('/');
+  await expect(page.getByLabel('Message text')).toBeVisible();
+  const triggers = page.locator('button[aria-haspopup="dialog"]');
+  await expect(triggers).toHaveCount(3);
+  for (let index = 0; index < 3; index++) {
+    await triggers.nth(index).click();
+    await expect(triggers.nth(index)).toHaveAttribute('aria-expanded', 'true');
+    await expectAccessible(page, `popover ${index}`);
+    await page.keyboard.press('Escape');
+    await expect(triggers.nth(index)).toHaveAttribute('aria-expanded', 'false');
+  }
+  await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
+  await expect(page.getByText('notes.txt')).toBeVisible();
+  await expectAccessible(page, 'attachment');
+  const tabs = page.getByRole('tab');
+  const count = await tabs.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index++) {
+    await tabs.nth(index).click();
+    await expect(tabs.nth(index)).toHaveAttribute('aria-selected', 'true');
+    await expectAccessible(page, `tab ${index}`);
+  }
 });
 
 test('the sent list and its dialog pass axe (AK20)', async ({ browser }) => {
@@ -379,6 +430,9 @@ test('the bundle stays within budget and animates only transform and opacity (AK
   }
   const js = files.filter((name) => name.endsWith('.js')).map((name) => readFileSync(new URL(name, ASSETS), 'utf8')).join('\n');
   expect(js).not.toMatch(/\bnew Function\b|\beval\(|svelte\/compiler/);
+  const html = readFileSync(new URL('../index.html', ASSETS), 'utf8');
+  const preloaded = [...html.matchAll(/<link rel="preload" href="\/assets\/([^"]+)" as="font" type="font\/woff2" crossorigin>/g)].map((match) => match[1]);
+  expect(preloaded.sort()).toEqual(files.filter((name) => name.endsWith('.woff2')).sort());
 });
 
 test('noble scrypt ships only in the key derivation worker (P5)', ({ browserName }) => {

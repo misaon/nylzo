@@ -82,7 +82,7 @@
       id={`${name}-reason`}
       rows="3"
       placeholder={t('report.reason')}
-      class="well mt-2.5 block w-full resize-none rounded-[8px] px-3 py-2 text-[13px] text-ink outline-none placeholder:text-ink-mute focus-visible:outline-2 focus-visible:outline-aegis-300"
+      class="well mt-2.5 block w-full resize-none rounded-[8px] px-3 py-2 text-[13px] text-ink placeholder:text-ink-mute aria-invalid:shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]"
       autocomplete="off"
       autocapitalize="off"
       autocorrect="off"

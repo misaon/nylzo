@@ -56,21 +56,16 @@
 
   --color-void-950: oklch(0.11 0.025 270);
   --color-void-900: oklch(0.14 0.03 270);
-  --color-void-800: oklch(0.19 0.035 270);
   --color-ink: oklch(0.97 0.006 255);
   --color-ink-soft: oklch(0.86 0.014 255);
   --color-ink-mute: oklch(0.76 0.02 258);
-  --color-aegis-100: oklch(0.93 0.03 246);
   --color-aegis-200: oklch(0.86 0.06 246);
   --color-aegis-300: oklch(0.77 0.115 249);
   --color-aegis-400: oklch(0.67 0.16 252);
   --color-aegis-500: oklch(0.56 0.19 258);
-  --color-aegis-600: oklch(0.48 0.19 262);
-  --color-aegis-700: oklch(0.38 0.15 265);
   --color-aegis-950: oklch(0.16 0.05 262);
   --color-nebula-300: oklch(0.8 0.1 305);
   --color-nebula-400: oklch(0.72 0.14 305);
-  --color-nebula-600: oklch(0.5 0.17 305);
   --color-rose-100: oklch(0.94 0.03 350);
   --color-rose-200: oklch(0.88 0.06 350);
   --color-rose-300: oklch(0.8 0.08 350);
@@ -81,7 +76,6 @@
   --radius-control: 0.625rem;
 
   --ease-silk: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-drift: cubic-bezier(0.45, 0, 0.55, 1);
 
   --animate-drift-1: drift-1 70s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
   --animate-drift-2: drift-2 90s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
@@ -92,24 +86,13 @@
   --animate-twinkle: twinkle 5s ease-in-out infinite;
   --animate-meteor: meteor 13s cubic-bezier(0.22, 1, 0.36, 1) 4s infinite;
   --animate-spin-slow: spin 26s linear infinite;
-  --animate-spin-fast: spin 3.2s linear infinite;
   --animate-pulse-core: pulse-core 2.6s ease-in-out infinite;
   --animate-rise: rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-beam: beam 4.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-scan: scan 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-blink: blink 1.1s steps(1, end) infinite;
-  --animate-cycle: cycle 7s linear both;
-  --animate-fill: fill 7s linear both;
   --animate-wave: wave 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 
-  @keyframes cycle {
-    from { transform: scaleX(0); }
-    to { transform: scaleX(1); }
-  }
-  @keyframes fill {
-    from { transform: translate3d(-100%, 0, 0); }
-    to { transform: translate3d(0, 0, 0); }
-  }
   @keyframes wave {
     from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.98); }
     to { opacity: 1; transform: none; }
@@ -243,6 +226,11 @@
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
+    }
+    .sheen,
+    .animate-beam,
+    .animate-scan {
+      display: none;
     }
   }
 }
@@ -460,6 +448,7 @@
     left: 0;
     width: 40%;
     background: linear-gradient(90deg, transparent, oklch(1 0 0 / 0.18), transparent);
+    transform: translate3d(-130%, 0, 0) skewX(-18deg);
     animation: sheen 6.5s ease-in-out 1.5s infinite;
   }
 }
@@ -501,12 +490,13 @@
     pointer-events: none;
   }
   @media (hover: hover) {
-    &:hover::after {
+    &:hover:not(:disabled)::after {
       opacity: 1;
     }
   }
   &:disabled {
     cursor: not-allowed;
+    filter: saturate(0.35) brightness(0.8);
   }
 }
 @utility btn-ghost {
@@ -549,16 +539,17 @@
   }
 }
 @utility hover-lift {
-  transition-property: transform;
+  transition-property: translate, scale;
   transition-duration: 0.45s;
   transition-timing-function: var(--ease-silk);
   @media (hover: hover) {
     &:hover:not(:disabled) {
-      transform: translate3d(0, -3px, 0);
+      translate: 0 -3px;
     }
   }
   &:active:not(:disabled) {
-    transform: translate3d(0, 0, 0) scale(0.985);
+    translate: 0 0;
+    scale: 0.985;
   }
 }
 @utility glow-on-hover {
@@ -567,6 +558,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
+    z-index: -1;
     background: radial-gradient(80% 120% at 50% 0%, oklch(0.67 0.16 252 / 0.14), transparent 70%);
     opacity: 0;
     transition-property: opacity;
@@ -836,6 +828,9 @@
       color: var(--color-ink);
       background-color: oklch(1 0 0 / 0.06);
       box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.14);
+    }
+    & button:hover:not(:disabled) {
+      background-color: oklch(1 0 0 / 0.1);
     }
     & button[type="submit"] {
       background:

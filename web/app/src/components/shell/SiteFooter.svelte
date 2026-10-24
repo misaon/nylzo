@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getI18n, type Language, type MessageKey } from '../../lib/i18n.svelte.ts';
+  import { REPOSITORY_URL } from '../../lib/repository.ts';
   import Logo from './Logo.svelte';
 
   interface Props {
@@ -32,15 +33,15 @@
       links: [
         { href: '/#jak', key: 'footer.how' },
         { href: '/report', key: 'footer.report', page: 'report' },
-        { href: 'https://github.com/misaon/nylzo/blob/main/SECURITY.md', key: 'footer.vulnerabilities' },
+        { href: `${REPOSITORY_URL}/blob/main/SECURITY.md`, key: 'footer.vulnerabilities' },
       ],
     },
     {
       key: 'footer.community',
       links: [
-        { href: 'https://github.com/misaon/nylzo', key: 'footer.github' },
+        { href: REPOSITORY_URL, key: 'footer.github' },
         { href: '/#self-host', key: 'footer.selfhost' },
-        { href: 'https://github.com/misaon/nylzo/tree/main/skills/nylzo', key: 'footer.skill' },
+        { href: `${REPOSITORY_URL}/tree/main/skills/nylzo`, key: 'footer.skill' },
       ],
     },
   ];
@@ -80,7 +81,7 @@
       </div>
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
         <a href="/#jak" class="text-ink-soft hover:text-ink">{t('footer.how')}</a>
-        <a href="https://github.com/misaon/nylzo" class="text-ink-soft hover:text-ink">{t('footer.github')}</a>
+        <a href={REPOSITORY_URL} class="text-ink-soft hover:text-ink">{t('footer.github')}</a>
         {@render languageSwitch()}
       </div>
     </div>

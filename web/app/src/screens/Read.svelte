@@ -4,6 +4,7 @@
   import { prefersReducedMotion } from 'svelte/motion';
 
   import ReportForm from '../components/ReportForm.svelte';
+  import Chip from '../components/ui/Chip.svelte';
   import Icon from '../components/ui/Icon.svelte';
   import Pipeline from '../components/ui/Pipeline.svelte';
   import Popover from '../components/ui/Popover.svelte';
@@ -43,11 +44,18 @@
   const MIN_MS = { passphrase: 3800, plain: 2600, reduced: 1000 } as const;
   const TICK_MS = 60;
   const REVEAL_MS = 900;
+  const REVEAL_TICK_MS = 40;
+  const SCRAMBLED_CHARS = 2000;
   const FLASH_MS = 2400;
   const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   const SHOWN = 'translate-y-0 opacity-100';
   const HIDDEN = 'pointer-events-none translate-y-3 opacity-0';
-  const STEP_ICONS = { derive: 'key', claim: 'envelopeOpen', download: 'download', decrypt: 'unlock' } as const;
+  const STEPS = [
+    { id: 'derive', busy: 'deriving', icon: 'key' },
+    { id: 'claim', busy: 'claiming', icon: 'envelopeOpen' },
+    { id: 'download', busy: 'downloading', icon: 'download' },
+    { id: 'decrypt', busy: 'decrypting', icon: 'unlock' },
+  ] as const;
   const NOTICE_ICONS: Record<Notice, IconName> = {
     loading: 'envelope',
     opened: 'envelopeOpen',
@@ -65,6 +73,7 @@
     cleared: 'eyeOff',
   };
   const ALARMING: readonly Notice[] = ['locked', 'invalid', 'tampered', 'failed'];
+  const FAILED_BURNS: readonly BurnOutcome['outcome'][] = ['failed', 'retry_later', 'unknown'];
   const TRUST = [
     { key: 'open.trust.key', icon: 'key', reveal: 'reveal-up' },
     { key: 'open.trust.click', icon: 'eye', reveal: 'reveal-up reveal-step-1' },
@@ -87,6 +96,7 @@
   let askingDelete = $state(false);
   let reporting = $state(false);
   let reportSent = $state(false);
+  let reportRound = $state(0);
   let restDeleted = $state(false);
   let deleting = $state(false);
   let burned = $state.raw<{ readonly outcome: BurnOutcome; readonly afterReveal: boolean }>();
@@ -94,22 +104,25 @@
   let fraction = $state<number | undefined>();
   let elapsed = $state(0);
   let opening = $state(false);
-  let revealProgress = $state(1);
+  let revealText = $state<string>();
   let copied = $state(false);
   let downloaded = $state(false);
   let noise = $state('');
   let pending: ReadView | undefined;
+  let revealing = false;
+  let markShown: (() => void) | undefined;
   let startedAt = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
   let revealTimer: ReturnType<typeof setInterval> | undefined;
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   let downloadedTimer: ReturnType<typeof setTimeout> | undefined;
 
+  const steps = $derived(passphraseRequired ? STEPS : STEPS.slice(1));
   const nodes: readonly PipelineNode[] = $derived(
-    (passphraseRequired ? (['derive', 'claim', 'download', 'decrypt'] as const) : (['claim', 'download', 'decrypt'] as const)).map((id) => ({
+    steps.map(({ id, icon }) => ({
       id,
       label: t(`open.step.${id}.label`),
-      icon: STEP_ICONS[id],
+      icon,
       title: t(`open.step.${id}.title`),
       detail: t(`open.step.${id}.detail`),
     })),
@@ -120,8 +133,9 @@
   const revealed = $derived(shown.view === 'revealed' ? shown : undefined);
   const locked = $derived(ready?.rejected?.reason === 'wrong' && ready.rejected.locked);
   const phase = $derived(opening ? 'opening' : revealed ? 'revealed' : (ready && !locked) || shown.view === 'loading' ? 'ready' : 'notice');
-  const askPassphrase = $derived(passphraseRequired);
   const notice = $derived(noticeOf(shown));
+  const burnNote = $derived(burned ? burnText(burned.outcome, burned.afterReveal) : '');
+  const burnFailed = $derived(burned !== undefined && FAILED_BURNS.includes(burned.outcome.outcome));
   const status = $derived.by(() => {
     if (shown.view === 'loading') {
       return t('read.loading');
@@ -132,7 +146,7 @@
     if (reporting && reportSent) {
       return t('open.report.sent');
     }
-    return burned ? burnText(burned.outcome, burned.afterReveal) : '';
+    return burnNote;
   });
   const passError = $derived.by(() => {
     if (emptyPassphrase) {
@@ -193,8 +207,9 @@
     }
     return [];
   });
-  const messageText = $derived(revealed?.text === undefined ? undefined : revealProgress >= 1 ? revealed.text : scramble(revealed.text, revealProgress));
-  const actions = $derived(phase === 'opening' ? 'dim' : (phase === 'ready' || phase === 'revealed') && shown.view !== 'loading' && !askingDelete ? 'on' : 'off');
+  const actions = $derived(
+    phase === 'opening' ? 'dim' : (phase === 'ready' || phase === 'revealed' || locked) && shown.view !== 'loading' && !askingDelete ? 'on' : 'off',
+  );
   const deleteActions = $derived([
     { id: 'delete', label: 'read.delete', shown: ready !== undefined, enabled: ready !== undefined && !deleting },
     { id: 'delete-rest', label: 'read.delete.rest', shown: revealed !== undefined && (revealed.burnable || restDeleted), enabled: (revealed?.burnable ?? false) && !deleting },
@@ -215,6 +230,7 @@
         prerendering: () => (document as Document & { prerendering?: boolean }).prerendering === true,
       },
       dropFragment: () => history.replaceState(null, '', location.pathname),
+      shown: displayed,
       scrypt: (pass, saltPw, onProgress) => scryptInWorker(pass, saltPw, { onProgress }),
       now: () => Date.now(),
     },
@@ -223,17 +239,33 @@
 
   reader.load();
 
+  function displayed(): Promise<void> {
+    return new Promise((resolve) => {
+      if (shown.view === 'revealed') {
+        resolve();
+      } else {
+        markShown = resolve;
+      }
+    });
+  }
+
+  function settleShown() {
+    markShown?.();
+    markShown = undefined;
+  }
+
   function stepIndex(step: BusyStep): number {
-    const order: readonly BusyStep[] = passphraseRequired ? ['deriving', 'claiming', 'downloading', 'decrypting'] : ['claiming', 'downloading', 'decrypting'];
-    return Math.max(0, order.indexOf(step));
+    return Math.max(0, steps.findIndex((item) => item.busy === step));
   }
 
   function onView(next: ReadView) {
+    const wasOpening = opening;
     view = next;
     if (next.view === 'ready') {
       passphraseRequired = next.metadata.passphraseRequired;
       metadata = next.metadata;
       typedAgain = false;
+      emptyPassphrase = false;
     }
     if (next.view === 'busy') {
       if (!opening) {
@@ -249,15 +281,26 @@
       fraction = undefined;
       return;
     }
+    pending = undefined;
     stopTimeline();
     show(next);
+    if (wasOpening && next.view === 'ready' && passphraseRequired) {
+      tick().then(() => document.getElementById(`${uid}-passphrase`)?.focus());
+    }
   }
 
   function show(next: ReadView) {
     const wasRevealed = shown.view === 'revealed';
     shown = next;
-    if (next.view === 'revealed' && !wasRevealed) {
-      startReveal();
+    if (next.view === 'revealed') {
+      settleShown();
+      if (!wasRevealed) {
+        reportSent = false;
+        reportRound++;
+        startReveal(next.text);
+      }
+    } else {
+      revealText = undefined;
     }
   }
 
@@ -268,6 +311,10 @@
     reached = 0;
     fraction = undefined;
     noise = randomText(260);
+    const active = document.activeElement;
+    if (active && [`${uid}-ready`, `${uid}-bar`].some((id) => document.getElementById(id)?.contains(active))) {
+      document.getElementById('read-title')?.focus();
+    }
     clearInterval(timer);
     timer = setInterval(() => {
       elapsed = performance.now() - startedAt;
@@ -287,38 +334,37 @@
     opening = false;
   }
 
-  async function startReveal() {
+  async function startReveal(text: string | undefined) {
     clearInterval(revealTimer);
-    revealProgress = prefersReducedMotion.current ? 1 : 0;
-    if (revealProgress < 1) {
+    revealText = text;
+    if (text !== undefined && !prefersReducedMotion.current) {
       const started = performance.now();
+      const chars = Array.from(text.slice(0, SCRAMBLED_CHARS));
+      const rest = text.slice(chars.join('').length);
+      revealText = scramble(chars, 0) + rest;
       revealTimer = setInterval(() => {
-        revealProgress = Math.min(1, (performance.now() - started) / REVEAL_MS);
-        if (revealProgress >= 1) {
+        const progress = Math.min(1, (performance.now() - started) / REVEAL_MS);
+        revealText = progress >= 1 ? text : scramble(chars, progress) + rest;
+        if (progress >= 1) {
           clearInterval(revealTimer);
         }
-      }, 40);
+      }, REVEAL_TICK_MS);
     }
     await tick();
     document.getElementById(`${uid}-revealed`)?.focus();
   }
 
-  function randomText(length: number): string {
-    let out = '';
-    for (let index = 0; index < length; index++) {
-      out += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    }
-    return out;
+  function randomChar(): string {
+    return ALPHABET[Math.floor(Math.random() * ALPHABET.length)] ?? '';
   }
 
-  function scramble(text: string, progress: number): string {
-    const cut = Math.floor(text.length * Math.min(1, progress * 1.15));
-    let out = '';
-    for (let index = 0; index < text.length; index++) {
-      const char = text[index] ?? '';
-      out += index < cut || /\s/.test(char) ? char : ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    }
-    return out;
+  function randomText(length: number): string {
+    return Array.from({ length }, randomChar).join('');
+  }
+
+  function scramble(chars: readonly string[], progress: number): string {
+    const cut = Math.floor(chars.length * Math.min(1, progress * 1.15));
+    return chars.map((char, index) => (index < cut || char === ' ' || char === '\n' || char === '\t' ? char : randomChar())).join('');
   }
 
   function shortTime(iso: string): string {
@@ -372,7 +418,7 @@
 
   function reveal(event: SubmitEvent) {
     event.preventDefault();
-    if (shown.view !== 'ready' || deleting) {
+    if (revealing || phase !== 'ready' || shown.view !== 'ready' || deleting) {
       return;
     }
     if (passphraseRequired && passphrase === '') {
@@ -381,11 +427,14 @@
       return;
     }
     emptyPassphrase = false;
+    showPassphrase = false;
     reporting = false;
     askingDelete = false;
+    burned = undefined;
     const entered = passphrase;
     passphrase = '';
-    reader.reveal(entered);
+    revealing = true;
+    reader.reveal(entered).finally(() => (revealing = false));
   }
 
   function typed() {
@@ -412,6 +461,7 @@
 
   async function askDelete() {
     reporting = false;
+    burned = undefined;
     askingDelete = true;
     await tick();
     document.getElementById(`${uid}-keep`)?.focus();
@@ -444,7 +494,9 @@
   }
 
   function toggleReport() {
-    reportSent = false;
+    if (!reporting && !reportSent) {
+      reportRound++;
+    }
     reporting = !reporting;
   }
 
@@ -457,7 +509,9 @@
   async function reportAccepted() {
     reportSent = true;
     await tick();
-    document.getElementById(`${uid}-report`)?.focus();
+    if (reporting) {
+      document.getElementById(`${uid}-report`)?.focus();
+    }
   }
 
   function leave() {
@@ -465,8 +519,14 @@
     confirming = false;
     askingDelete = false;
     reporting = false;
+    showPassphrase = false;
+    passphrase = '';
+    pending = undefined;
+    revealText = undefined;
+    clearInterval(revealTimer);
     stopTimeline();
     reader.clear();
+    settleShown();
   }
 
   function returned(event: PageTransitionEvent) {
@@ -475,16 +535,48 @@
     }
   }
 
-  function download(file: RevealedFile) {
-    if (!isKnownSafeFile(file.name) && !confirming) {
-      confirming = true;
+  async function askDownload(event: MouseEvent, file: RevealedFile) {
+    if (event.detail > 1) {
       return;
     }
+    if (isKnownSafeFile(file.name)) {
+      save(file);
+      return;
+    }
+    confirming = true;
+    await tick();
+    document.getElementById(`${uid}-keep-file`)?.focus();
+  }
+
+  function confirmDownload(event: MouseEvent, file: RevealedFile) {
+    if (event.detail > 1 || !confirming) {
+      return;
+    }
+    save(file);
+    focusDownload();
+  }
+
+  function cancelDownload() {
+    confirming = false;
+    focusDownload();
+  }
+
+  async function focusDownload() {
+    await tick();
+    document.getElementById(`${uid}-download`)?.focus();
+  }
+
+  function save(file: RevealedFile) {
     confirming = false;
     saveFile(file.bytes, file.name);
     downloaded = true;
     clearTimeout(downloadedTimer);
     downloadedTimer = setTimeout(() => (downloaded = false), FLASH_MS);
+  }
+
+  function nameParts(name: string): { readonly stem: string; readonly extension: string } {
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? { stem: name.slice(0, dot), extension: name.slice(dot) } : { stem: name, extension: '' };
   }
 
   async function copyText() {
@@ -520,15 +612,7 @@
 {#snippet chips(list: readonly ChipData[], dim = false)}
   <ul class={['flex flex-wrap items-center gap-1.5 transition-opacity duration-500', dim ? 'pointer-events-none opacity-40' : 'opacity-100']}>
     {#each list as data (data.text)}
-      <li
-        class={[
-          'flex h-9 items-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap ring-1',
-          data.accent ? 'bg-nebula-400/10 text-nebula-300 ring-nebula-300/30' : 'text-ink-soft ring-white/8',
-        ]}
-      >
-        <Icon name={data.icon} class={['size-4 shrink-0', !data.accent && 'text-ink-mute']} />
-        {data.text}
-      </li>
+      <Chip icon={data.icon} accent={data.accent ?? false}>{data.text}</Chip>
     {/each}
   </ul>
 {/snippet}
@@ -557,7 +641,11 @@
       <h2 id="read-title" tabindex="-1" class="sr-only">{t('read.title')}</h2>
 
       <div class="stack relative min-h-[420px] md:min-h-[440px]">
-        <div class={['fade-swap flex flex-col items-center justify-center gap-7 px-5 py-12 text-center sm:px-10 md:py-14', phase === 'ready' ? SHOWN : HIDDEN]} inert={phase !== 'ready'}>
+        <div
+          id="{uid}-ready"
+          class={['fade-swap flex flex-col items-center justify-center gap-7 px-5 py-12 text-center sm:px-10 md:py-14', phase === 'ready' ? SHOWN : HIDDEN]}
+          inert={phase !== 'ready'}
+        >
           <span class="relative grid size-20 place-items-center" aria-hidden="true">
             <span class="absolute -inset-5 rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.35),transparent)]"></span>
             <span class="absolute -inset-3 rounded-[28px] ring-1 ring-aegis-300/15"></span>
@@ -576,11 +664,13 @@
             <p class="mt-2 text-[15px] text-pretty text-ink-mute">{t(shown.view === 'loading' ? 'open.loading.text' : 'open.ready.sub')}</p>
           </div>
           <form id="{uid}-form" class="contents" novalidate onsubmit={reveal}>
-            {#if askPassphrase}
+            {#if passphraseRequired}
               <div class="w-full max-w-[440px] text-left">
                 <label for="{uid}-passphrase" class="sr-only">{t('read.passphrase')}</label>
                 <div class="relative rounded-pane">
-                  <div class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4">
+                  <div
+                    class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300"
+                  >
                     <Icon name="key" class="size-4 shrink-0 text-nebula-300" />
                     <input
                       id="{uid}-passphrase"
@@ -588,6 +678,7 @@
                       type={showPassphrase ? 'text' : 'password'}
                       autocomplete="off"
                       autocapitalize="off"
+                      autocorrect="off"
                       spellcheck="false"
                       data-1p-ignore=""
                       data-lpignore="true"
@@ -687,23 +778,30 @@
                 <span class="sr-only" role="status">{copied ? t('open.copied.text') : ''}</span>
               {/if}
             </div>
-            {#if messageText !== undefined}
+            {#if revealText !== undefined}
               <pre
-                class="well min-h-0 max-h-[220px] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink [scrollbar-width:thin]">{messageText}</pre>
+                class="well min-h-0 max-h-[220px] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink [scrollbar-width:thin]">{revealText}</pre>
             {/if}
             {#if revealed.file}
               {@const file = revealed.file}
               {@const extension = fileExtension(file.name)}
+              {@const parts = nameParts(file.name)}
               <div class="stack shrink-0 rounded-pane bg-white/3 py-2.5 pr-2.5 pl-3 ring-1 ring-white/8">
                 <div class={['fade-swap flex items-center gap-3.5', confirming ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={confirming}>
                   <span class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30" aria-hidden="true">
                     <Icon name="file" stroke={1.7} class="size-[18px]" />
                   </span>
                   <span class="min-w-0 flex-1">
-                    <bdi class="block truncate text-sm text-ink">{file.name}</bdi>
+                    <bdi class="flex min-w-0 text-sm text-ink"><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi>
                     <span class="block font-mono text-[11px] text-ink-mute">{formatBytes(file.bytes.length, i18n.language)}</span>
                   </span>
-                  <button type="button" onclick={() => download(file)} class="btn-ghost hover-lift flex h-11 shrink-0 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9">
+                  <button
+                    id="{uid}-download"
+                    type="button"
+                    disabled={confirming}
+                    onclick={(event) => askDownload(event, file)}
+                    class="btn-ghost hover-lift flex h-11 shrink-0 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9"
+                  >
                     {@render swapIcons('download', 'check', downloaded)}
                     {t('open.download')}<span class="sr-only">{t('open.download.suffix')}</span>
                   </button>
@@ -722,13 +820,16 @@
                     </span>
                   </div>
                   <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
-                    <button type="button" onclick={() => (confirming = false)} class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9">{t('revealed.confirm.cancel')}</button>
                     <button
                       type="button"
-                      onclick={() => download(file)}
+                      disabled={!confirming}
+                      onclick={(event) => confirmDownload(event, file)}
                       class="h-11 rounded-[9px] bg-rose-500/20 px-3 text-[13px] font-medium text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
                     >
                       {t('revealed.confirm.download')}
+                    </button>
+                    <button id="{uid}-keep-file" type="button" onclick={cancelDownload} class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9">
+                      {t('revealed.confirm.cancel')}
                     </button>
                   </div>
                 </div>
@@ -761,6 +862,7 @@
       <div class="relative border-t border-white/8">
         <div class="stack">
           <div
+            id="{uid}-bar"
             class={[
               'fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3',
               (phase === 'ready' || phase === 'opening') && !askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0',
@@ -773,9 +875,9 @@
                 <button
                   type="submit"
                   form="{uid}-form"
-                  disabled={!ready || deleting}
+                  disabled={!ready || deleting || phase !== 'ready'}
                   class={[
-                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-opacity duration-500 md:h-9 md:px-4',
+                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-[opacity,translate,scale] duration-500 md:h-9 md:px-4',
                     phase === 'ready' ? 'opacity-100' : 'pointer-events-none opacity-0',
                   ]}
                 >
@@ -851,6 +953,7 @@
               </button>
               <button
                 type="button"
+                disabled={!askingDelete}
                 onclick={burn}
                 class="hover-lift flex h-11 items-center justify-center gap-2 rounded-[9px] bg-rose-500/20 px-4 text-[13px] font-medium whitespace-nowrap text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
               >
@@ -864,10 +967,16 @@
   </div>
 
   <div class="relative z-30 mx-auto mt-6 flex max-w-[860px] flex-col-reverse items-center gap-4 px-1 sm:flex-row sm:justify-between">
-    <p class="flex items-center gap-2 text-center text-xs text-ink-mute">
-      <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
-      {t('compose.note')}
-    </p>
+    <div class="stack text-xs">
+      <p class={['fade-swap flex items-center justify-center gap-2 text-center text-ink-mute', burnNote ? 'opacity-0' : 'opacity-100']}>
+        <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
+        {t('compose.note')}
+      </p>
+      <p class={['fade-swap flex items-center justify-center gap-2 text-center', burnFailed ? 'text-rose-300' : 'text-ink-soft', burnNote ? 'opacity-100' : 'opacity-0']}>
+        <Icon name={burnFailed ? 'alert' : 'check'} stroke={1.7} class="size-4 shrink-0" />
+        {burnNote}
+      </p>
+    </div>
     <div
       class={['flex items-center gap-1 transition-opacity duration-500', actions === 'on' ? 'opacity-100' : actions === 'dim' ? 'pointer-events-none opacity-40' : 'pointer-events-none opacity-0']}
       inert={actions !== 'on'}
@@ -915,7 +1024,9 @@
             <div class={['fade-swap', reportSent ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={reportSent}>
               <p class="px-0.5 text-[13px] text-ink">{t('open.report.title')}</p>
               <p class="mt-1 px-0.5 text-[11px] leading-relaxed text-ink-mute">{t('open.report.note')}</p>
-              <ReportForm name="{uid}-report-form" compact hint={t('open.report.privacy')} send={(_link, reason) => reader.report(reason)} onaccepted={reportAccepted} />
+              {#key reportRound}
+                <ReportForm name="{uid}-report-form" compact hint={t('open.report.privacy')} send={(_link, reason) => reader.report(reason)} onaccepted={reportAccepted} />
+              {/key}
             </div>
             <div class={['fade-swap flex flex-col items-center justify-center gap-2 text-center', reportSent ? 'opacity-100' : 'pointer-events-none opacity-0']} inert={!reportSent}>
               <span class="grid size-10 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35" aria-hidden="true">

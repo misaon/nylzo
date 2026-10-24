@@ -1,4 +1,5 @@
 import type { Attachment } from 'svelte/attachments';
+import { prefersReducedMotion } from 'svelte/motion';
 
 const TICK_MS = 50;
 const RESUME_MS = 15_000;
@@ -8,7 +9,8 @@ export class AutoCycle {
   index = $state(0);
   progress = $state(0);
   visible = $state(false);
-  hovered = $state(false);
+  pointer = $state(false);
+  focused = $state(false);
   held = $state(false);
 
   readonly #count: () => number;
@@ -21,7 +23,7 @@ export class AutoCycle {
   }
 
   get running(): boolean {
-    return this.visible && !this.hovered && !this.held;
+    return this.visible && !this.pointer && !this.focused && !this.held && !prefersReducedMotion.current;
   }
 
   select(index: number): void {
@@ -34,12 +36,23 @@ export class AutoCycle {
     }, RESUME_MS);
   }
 
-  readonly enter = (): void => {
-    this.hovered = true;
+  readonly pointerEnter = (): void => {
+    this.pointer = true;
   };
 
-  readonly leave = (): void => {
-    this.hovered = false;
+  readonly pointerLeave = (): void => {
+    this.pointer = false;
+  };
+
+  readonly focusIn = (): void => {
+    this.focused = true;
+  };
+
+  readonly focusOut = (event: FocusEvent): void => {
+    const target = event.currentTarget;
+    if (!(target instanceof Node && event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
+      this.focused = false;
+    }
   };
 
   readonly observe: Attachment<HTMLElement> = (element) => {

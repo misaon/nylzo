@@ -3,7 +3,7 @@ import { createContext } from 'svelte';
 import { copyCs, copyEn } from './i18n-copy.ts';
 import { homeCs, homeEn } from './i18n-home.ts';
 
-const baseCs = {
+export const baseCs = {
   'action.retry': 'Zkusit znovu',
   'app.crashed': 'Stránka narazila na chybu. Načtěte ji znovu.',
 
@@ -22,11 +22,6 @@ const baseCs = {
   'ttl.259200': '3 dny',
   'ttl.604800': '7 dní',
 
-  'progress.preparing': 'Připravuji zprávu…',
-  'progress.deriving': 'Odvozuji klíč z passphrase…',
-  'progress.encrypting': 'Šifruji obsah…',
-  'progress.proving': 'Počítám ochranu proti zahlcení služby…',
-  'progress.uploading': 'Nahrávám zašifrovanou zprávu…',
 
   'problem.content.missing': 'Napište text nebo přiložte soubor.',
   'problem.text.too_large': 'Text je delší než {size}.',
@@ -211,11 +206,6 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'ttl.259200': '3 days',
   'ttl.604800': '7 days',
 
-  'progress.preparing': 'Preparing the message…',
-  'progress.deriving': 'Deriving the key from the passphrase…',
-  'progress.encrypting': 'Encrypting the content…',
-  'progress.proving': 'Working on the anti-flooding check…',
-  'progress.uploading': 'Uploading the encrypted message…',
 
   'problem.content.missing': 'Write a text or attach a file.',
   'problem.text.too_large': 'The text is longer than {size}.',
@@ -426,10 +416,6 @@ export function browserPreferences(): PreferenceStore | undefined {
   } catch {
     return undefined;
   }
-}
-
-export function otherLanguage(language: Language): Language {
-  return language === 'cs' ? 'en' : 'cs';
 }
 
 export function savedLanguage(store: PreferenceStore | undefined, preferred: readonly string[]): Language {

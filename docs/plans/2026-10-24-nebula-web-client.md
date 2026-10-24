@@ -8,7 +8,7 @@ Datum: 24. 10. 2026. Větev: `feat/nebula-web-client` z `main`. Stav: implementa
 
 ## Rozhodnutí
 
-D73: návrh v kódu. Svelte 5 v režimu runes a Tailwind CSS 4.3.3, žádná knihovna komponent. Písma Geist, Geist Mono a Sora jsou self-hosted balíčky `@fontsource-variable` 5.3.0 (OFL) jen se subsety latin a latin-ext, kvůli CSP a soukromí. Build přidá preload pro Geist a Soru a klient před prvním vykreslením počká na písma nejvýš 1,5 s, aby výměna písma neposunula rozvržení (AK18).
+D73: návrh v kódu. Svelte 5 v režimu runes a Tailwind CSS 4.3.3, žádná knihovna komponent. Písma Geist, Geist Mono a Sora jsou self-hosted balíčky `@fontsource-variable` 5.3.0 (OFL) jen se subsety latin a latin-ext, kvůli CSP a soukromí. Build přidá preload pro Geist, Geist Mono a Soru a klient před prvním vykreslením počká na písma nejvýš 1,5 s, aby výměna písma neposunula rozvržení ani nezměnila rozměr tlačítek (AK18).
 
 D74: pohyb jen přes opacitu a transformace (AK19). Barva se nemění přechodem, ale prolnutím dvou vrstev (přepínač, kroky průběhu, tlačítko kopírování). Průběh šifrování a otevírání kreslí element `<progress>` stylovaný přes pseudo-elementy, protože CSP nedovolí atribut `style`. Skryté panely a ovládací prvky zůstávají v DOM s `inert` a nulovou opacitou, takže se při změně stavu rozvržení nehne. Playwright `inert` za skryté nepovažuje, testy proto hledají jen prvky mimo `inert` (`live()` v `web/e2e/tests/helpers.ts`).
 
@@ -18,6 +18,10 @@ D76: formulář nabízí jen scrypt. Volba PBKDF2 zmizela ve shodě s D71 (PR 26
 
 D77: klient zůstává jeden JS balík. Rozdělení podle stránek by na mobilu ušetřilo zhruba 40 KiB nepoužitého JS, ale změnilo by zavádění modulů pod CSP jen s nonce a přidalo další soubory, které hlídá `verify-client`. Za dva až tři body v Lighthouse to nestojí.
 
+D78: příjemce může text zprávy zkopírovat jedním tlačítkem. Schránka ale nepatří stránce: text v ní zůstane i po zavření karty a správce schránky nebo synchronizace mezi zařízeními si ho může uložit. Tlačítko proto zůstává jen u textu, ne u odkazu na přílohu, a po zkopírování stránka oznámí „Text je ve schránce. Zůstane tam i po zavření stránky.“, aby příjemce věděl, že ho má ze schránky sám smazat.
+
+D79: čtečka potvrdí otevření (`ack`) a smaže fragment z adresy až ve chvíli, kdy stránka dešifrovanou zprávu opravdu zobrazí. Dřív to udělala hned po dešifrování, ještě během animace otevírání, takže kdo stránku v tu chvíli opustil, spotřeboval otevření a zprávu nikdy neviděl. Teď si čtečka při odchodu před zobrazením nechá lease i fragment a po návratu na stejnou kartu může zprávu načíst znovu, dokud lease běží (`shown` v `web/app/src/lib/read.ts`).
+
 ## Odchylky od návrhu
 
 - Ovládací prvky mají na mobilu 44 px místo 40 px (AK20): pole passphrase, akce pod kartou, záložky v sekcích Bezpečnost a Vlastní server.
@@ -25,18 +29,34 @@ D77: klient zůstává jeden JS balík. Rozdělení podle stránek by na mobilu 
 - Nahlášení zneužití v sekci Hranice je samostatné tlačítko místo odkazu ve větě, aby mělo na mobilu 44 px.
 - Procenta v tlačítku průběhu mají pevnou šířku čtyř znaků a skryté akce pod kartou si drží místo. V návrhu se šířka měnila s počtem číslic a akce na mobilu mizely z řádku, což by porušilo AK18.
 
+## Opravy z review
+
+Review podle gstack (specialisté a adversariální průchod) našlo chyby, které jsou opravené v této větvi a pokryté testy:
+
+- Editor po vytvoření odkazu smaže text, passphrase i přílohu a zprávu si zařízení zapamatuje hned po vytvoření, ne až po animaci.
+- Zapnutá ochrana s prázdnou passphrase je chyba formuláře, ne zpráva bez passphrase.
+- Přetažený text už neodstraní vybranou přílohu. Po selhání vytvoření se fokus vrátí na tlačítko Vytvořit odkaz.
+- Stránka pro otevření nepřijme druhé Enter během otevírání, po odchodu zahodí čekající dešifrovaný pohled a selhané smazání ukáže viditelně.
+- Dvojklik na Stáhnout nebo Přesto stáhnout uloží soubor jen jednou a Nestahovat vrátí fokus na tlačítko Stáhnout.
+- Po odeslaném nahlášení zůstane popover ve stavu „odesláno“, dokud příjemce zprávu nezobrazí. Po zobrazení může nahlásit znovu (D41).
+- Části odkazu v sekci Jak to funguje mají přístupný název, který obsahuje viditelný text (WCAG 2.5.3).
+- Automatické přepínání sekcí se zastaví při najetí myší, při fokusu uvnitř a při `prefers-reduced-motion`.
+- Výpočet doby útoku hrubou silou používá pro Groverův algoritmus (π/4)·2¹²⁸ iterací a slova pro miliony a miliardy let přes slovník, ne napevno v kódu.
+
+Testy runes s efekty běží ve Vitest v projektu `client` s vlastním prostředím (`web/app/test/client-environment.ts`), ostatní unit testy dál v Node.
+
 ## Měření 24. 10. 2026
 
 Lighthouse 13.5.0 v Chromu proti `nylzo serve` spuštěnému lokálně přes HTTP:
 
 | Stránka | Výkon | Přístupnost | Doporučené postupy | SEO |
 | --- | --- | --- | --- | --- |
-| `/`, mobil | 94 | 100 | 96 | 60 |
+| `/`, mobil | 95 | 100 | 96 | 60 |
 | `/`, desktop | 100 | 100 | 96 | 60 |
-| `/m/…`, mobil | 95 | 100 | 96 | 60 |
+| `/m/…`, mobil | 96 | 100 | 96 | 60 |
 | `/m/…`, desktop | 100 | 100 | 96 | 60 |
 
-CLS je všude 0. TBT na mobilu je 110 ms na úvodní stránce a 10 ms při otevření zprávy. SEO snižuje `noindex`, který server posílá záměrně. Doporučené postupy strhávají body za 404 na `/favicon.ico` (řeší PR 27) a za vypnutou back/forward cache kvůli `Cache-Control: no-store`, což je také záměr.
+CLS je všude 0. Na mobilu je LCP 2,9 s na úvodní stránce a 2,7 s při otevření zprávy, TBT 100 ms a 0 ms. Měřeno po opravách z review, včetně preloadu Geist Mono. SEO snižuje `noindex`, který server posílá záměrně. Doporučené postupy strhávají body za 404 na `/favicon.ico` (jediná chyba v konzoli, řeší PR 27) a za vypnutou back/forward cache kvůli `Cache-Control: no-store`, což je také záměr.
 
 Balík: JS 112 kB gzip (rozpočet 150 kB), CSS 16 kB gzip (rozpočet 40 kB).
 

@@ -5,7 +5,9 @@ import { WEAK_BELOW_CHARS, WEAK_BELOW_WORDS } from '../src/lib/create.ts';
 import { formatBytes, formatDays, formatDuration, formatSize, formatWait } from '../src/lib/format.ts';
 import { MAX_REASON_BYTES } from '../src/lib/report.ts';
 import { RETENTION_DAYS } from '../src/lib/sent.ts';
-import { createI18n, dictionaries, otherLanguage, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
+import { copyCs } from '../src/lib/i18n-copy.ts';
+import { homeCs } from '../src/lib/i18n-home.ts';
+import { baseCs, createI18n, dictionaries, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
@@ -72,9 +74,20 @@ describe('i18n', () => {
     const i18n = createI18n('en');
     const { t } = i18n;
     expect(t('footer.sent')).toBe('Sent messages');
-    i18n.language = otherLanguage(i18n.language);
+    i18n.language = 'cs';
     expect(t('footer.sent')).toBe('Odeslané zprávy');
-    expect(otherLanguage('cs')).toBe('en');
+  });
+
+  it('never lets one partial dictionary override another', () => {
+    const partials = [baseCs, copyCs, homeCs].map((partial) => Object.keys(partial));
+    const seen = new Set<string>();
+    for (const keys of partials) {
+      for (const key of keys) {
+        expect(seen.has(key), key).toBe(false);
+        seen.add(key);
+      }
+    }
+    expect(seen.size).toBe(Object.keys(dictionaries.cs).length);
   });
 
   it('prefers a saved choice and survives storage that throws', () => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KDF_SCRYPT, MIN_PASSPHRASE_CHARS } from '@nylzo/core';
+  import { KDF_SCRYPT, MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARS } from '@nylzo/core';
   import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import { prefersReducedMotion } from 'svelte/motion';
@@ -13,6 +13,7 @@
     passphraseIsWeak,
     validateCreate,
     type CreateFailure,
+    type CreateField,
     type CreateInput,
     type CreateProblem,
     type CreateProgress,
@@ -38,15 +39,14 @@
     readonly created: Created;
     readonly opensMax: number;
     readonly passphrase: boolean;
-    readonly remember: boolean;
+    readonly saved?: Promise<boolean> | undefined;
   }
 
-  const STEPS = 5;
+  const REACHED: Record<CreateProgress['step'], number> = { preparing: 0, deriving: 1, encrypting: 2, proving: 3, uploading: 3 };
   const MIN_MS = 5000;
   const REDUCED_MIN_MS = 1200;
   const TICK_MS = 60;
   const SAVE_TIMEOUT_MS = 5000;
-  const TEXT_LIMIT_FALLBACK = 102_400;
   const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
   const i18n = getI18n();
@@ -81,35 +81,6 @@
   let startedAt = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
-  const minMs = $derived(prefersReducedMotion.current ? REDUCED_MIN_MS : MIN_MS);
-  const shown = $derived(pace({ elapsedMs: elapsed, minMs, steps: STEPS, reached, fraction }));
-  const textBytes = $derived(encoder.encode(text).length);
-  const textLimit = $derived(limits?.maxTextBytes ?? TEXT_LIMIT_FALLBACK);
-  const choices = $derived(limits ? ttlChoices(limits) : [ttlSeconds]);
-  const maxOpens = $derived(limits?.maxOpens ?? 1);
-  const weak = $derived(protect && passphrase !== '' && passphraseIsWeak(passphrase));
-  const problemOf = $derived.by(() => {
-    const messages: Partial<Record<CreateProblem['field'], string>> = {};
-    for (const problem of problems) {
-      messages[problem.field] ??= t(problemKey(problem), {
-        size: formatBytes(problem.field === 'text' ? textLimit : (limits?.maxFileBytes ?? 0), i18n.language),
-        max: maxOpens,
-        min: MIN_PASSPHRASE_CHARS,
-      });
-    }
-    return messages;
-  });
-  const passphraseMessage = $derived(problemOf.passphrase ?? (weak ? t('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''));
-  const notice = $derived(
-    loadFailed
-      ? t('failure.instance')
-      : failure
-        ? failureText(failure)
-        : (problemOf.content ?? problemOf.text ?? problemOf.file ?? problemOf.ttl ?? problemOf.opens ?? problemOf.passphrase ?? ''),
-  );
-  const busy = $derived(phase !== 'compose');
-  let submitting = false;
-
   const nodes: readonly PipelineNode[] = $derived([
     { id: 'key', label: t('step.key.label'), icon: 'key', title: t('step.key.title'), detail: t('step.key.detail') },
     {
@@ -129,6 +100,36 @@
     },
     { id: 'link', label: t('step.link.label'), icon: 'link', title: t('step.link.title'), detail: t('step.link.detail') },
   ]);
+  const minMs = $derived(prefersReducedMotion.current ? REDUCED_MIN_MS : MIN_MS);
+  const shown = $derived(pace({ elapsedMs: elapsed, minMs, steps: nodes.length, reached, fraction }));
+  const textBytes = $derived(encoder.encode(text).length);
+  const textLimit = $derived(Math.min(limits?.maxTextBytes ?? MAX_TEXT_BYTES, MAX_TEXT_BYTES));
+  const fileLimit = $derived(limits?.maxFileBytes ?? MAX_FILE_BYTES);
+  const choices = $derived(limits ? ttlChoices(limits) : [ttlSeconds]);
+  const maxOpens = $derived(limits?.maxOpens ?? 1);
+  const weak = $derived(protect && passphrase !== '' && passphraseIsWeak(passphrase));
+  const problemOf = $derived.by(() => {
+    const messages: Partial<Record<CreateField, string>> = {};
+    for (const problem of problems) {
+      messages[problem.field] ??= t(problemKey(problem), {
+        size: formatBytes(problem.field === 'text' ? textLimit : fileLimit, i18n.language),
+        max: maxOpens,
+        min: MIN_PASSPHRASE_CHARS,
+      });
+    }
+    return messages;
+  });
+  const passphraseMessage = $derived(problemOf.passphrase ?? (weak ? t('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''));
+  const notice = $derived(
+    loadFailed
+      ? t('failure.instance')
+      : failure
+        ? failureText(failure)
+        : (problemOf.content ?? problemOf.text ?? problemOf.file ?? problemOf.ttl ?? problemOf.opens ?? problemOf.passphrase ?? ''),
+  );
+  const busy = $derived(phase !== 'compose');
+  let submitting = false;
+
   const stepTitle = $derived(busy && phase === 'encrypting' ? (nodes[shown.step]?.title ?? '') : '');
 
   async function loadLimits() {
@@ -174,8 +175,7 @@
     }
   }
 
-  function scramble(source: string, progress: number): string {
-    const plain = source.replace(/\s+/g, ' ').slice(0, 140);
+  function scramble(plain: string, progress: number): string {
     const cut = Math.floor(plain.length * Math.min(1, progress * 1.3));
     let out = '';
     for (let index = 0; index < plain.length; index++) {
@@ -227,6 +227,9 @@
   }
 
   function ondrop(event: DragEvent) {
+    if (!event.dataTransfer?.types.includes('Files')) {
+      return;
+    }
     event.preventDefault();
     dragging = false;
     if (!busy) {
@@ -260,42 +263,23 @@
 
   function onProgress(progress: CreateProgress) {
     proving = progress.step === 'proving';
-    switch (progress.step) {
-      case 'preparing':
-        reached = 0;
-        fraction = undefined;
-        break;
-      case 'deriving':
-        reached = 1;
-        fraction = progress.fraction;
-        break;
-      case 'encrypting':
-        reached = 2;
-        fraction = undefined;
-        break;
-      case 'proving':
-        reached = 3;
-        fraction = progress.fraction;
-        break;
-      case 'uploading':
-        reached = 3;
-        fraction = undefined;
-        break;
-    }
+    reached = Math.max(reached, REACHED[progress.step]);
+    fraction = 'fraction' in progress ? progress.fraction : undefined;
   }
 
   function startTimeline(source: string) {
+    const plain = source.replace(/\s+/g, ' ').slice(0, 140);
     startedAt = performance.now();
     elapsed = 0;
     reached = 0;
     fraction = undefined;
     proving = false;
-    cipher = scramble(source, 0);
+    cipher = scramble(plain, 0);
     phase = 'encrypting';
     clearInterval(timer);
     timer = setInterval(() => {
       elapsed = performance.now() - startedAt;
-      cipher = scramble(source, shown.progress);
+      cipher = scramble(plain, shown.progress);
       if (shown.finished && pending) {
         finish(pending);
       }
@@ -312,14 +296,12 @@
     pending = undefined;
     sealed = result;
     phase = 'done';
-    remembered = result.remember ? 'saving' : 'off';
-    if (result.remember) {
-      rememberMessage(result.created).then((saved) => {
-        if (sealed === result) {
-          remembered = saved ? 'remembered' : 'failed';
-        }
-      });
-    }
+    remembered = result.saved ? 'saving' : 'off';
+    result.saved?.then((saved) => {
+      if (sealed === result) {
+        remembered = saved ? 'remembered' : 'failed';
+      }
+    });
   }
 
   async function submit(event: SubmitEvent) {
@@ -344,7 +326,8 @@
       return;
     }
     const input: CreateInput = { text, file: attachment.file, ttlSeconds, opensMax, passphrase: protect ? passphrase : '', kdfId: KDF_SCRYPT };
-    const invalid = validateCreate(input, allowed);
+    const unset: CreateProblem[] = protect && passphrase === '' ? [{ field: 'passphrase', code: 'too_short' }] : [];
+    const invalid = [...unset, ...validateCreate(input, allowed)];
     if (invalid.length > 0) {
       await showProblems(invalid);
       return;
@@ -362,8 +345,12 @@
         },
         onProgress,
       );
-      pending = { created, opensMax, passphrase: input.passphrase !== '', remember };
-      reached = STEPS;
+      const saved = remember ? rememberMessage(created) : undefined;
+      text = '';
+      passphrase = '';
+      removeFile();
+      pending = { created, opensMax, passphrase: input.passphrase !== '', saved };
+      reached = nodes.length;
       fraction = undefined;
     } catch (error) {
       stopTimeline();
@@ -372,6 +359,7 @@
         await showProblems(error.failure.problems);
       } else {
         failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
+        tick().then(() => document.getElementById(`${uid}-submit`)?.focus());
       }
     }
   }
@@ -496,7 +484,7 @@
             </div>
 
             <div
-              class="pointer-events-none absolute inset-0 rounded-t-card opacity-0 shadow-[inset_0_0_0_1px_oklch(0.67_0.16_252/0.45)] transition-opacity duration-500 group-focus-within:opacity-100"
+              class="pointer-events-none absolute inset-0 rounded-t-card opacity-0 shadow-[inset_0_0_0_2px_oklch(0.77_0.115_249/0.7)] transition-opacity duration-500 group-focus-within:opacity-100"
               aria-hidden="true"
             ></div>
             <div
@@ -655,7 +643,7 @@
                         aria-invalid={problemOf.passphrase !== undefined}
                         aria-describedby="{uid}-passphrase-hint {uid}-passphrase-problem"
                         class={[
-                          'well h-11 w-full rounded-[7px] px-3 text-[13px] text-ink outline-none placeholder:text-ink-mute focus-visible:outline-2 focus-visible:outline-aegis-300 md:h-8',
+                          'well h-11 w-full rounded-[7px] px-3 text-[13px] text-ink placeholder:text-ink-mute md:h-8',
                           problemOf.passphrase && 'shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]',
                         ]}
                       />
@@ -697,17 +685,18 @@
                     ]}
                   >
                     <Icon name="paperclip" class="size-4 shrink-0" />
-                    {t('compose.attach')}<span class="sr-only">{t('compose.attach.limit', { size: formatBytes(limits?.maxFileBytes ?? 0, i18n.language) })}</span>
+                    {t('compose.attach')}<span class="sr-only">{t('compose.attach.limit', { size: formatBytes(fileLimit, i18n.language) })}</span>
                   </label>
                 </div>
               </div>
 
               <div class="stack shrink-0">
                 <button
+                  id="{uid}-submit"
                   type="submit"
                   disabled={!limits || busy}
                   class={[
-                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-opacity duration-500 md:h-9 md:px-4',
+                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-[opacity,translate,scale] duration-500 md:h-9 md:px-4',
                     busy ? 'pointer-events-none opacity-0' : 'opacity-100',
                   ]}
                 >

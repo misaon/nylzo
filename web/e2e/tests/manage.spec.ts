@@ -108,6 +108,21 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
   expect(await violations()).toEqual([]);
 });
 
+test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({ browser }) => {
+  const sender = await newPage(browser);
+  await countWrites(sender);
+  await sender.goto('/');
+  await sender.getByLabel('Message text').fill('remember early');
+  const created = sender.waitForResponse((response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST');
+  await sender.getByRole('button', { name: 'Create link' }).click();
+  expect((await created).ok()).toBe(true);
+  await expect.poll(() => sender.evaluate(() => window.nylzoWrites ?? 0)).toBeGreaterThan(0);
+  await expect(live(sender, sender.getByLabel('Link to the message'))).toHaveCount(0);
+  await sender.goto('/sent');
+  await expect(sender.getByRole('listitem')).toHaveCount(1);
+  await expect(sender.getByText('Waiting to be opened.')).toBeVisible();
+});
+
 test('a dialog closed with Escape opens again on the very next Enter', async ({ browser }) => {
   const sender = await newPage(browser);
   await createViaUi(sender, { text: 'dialog race' });

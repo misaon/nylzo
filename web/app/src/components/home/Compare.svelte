@@ -56,7 +56,7 @@
     </div>
     <div class="glass reveal-tilt mt-12 overflow-hidden rounded-card">
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="overflow-x-auto" role="region" aria-labelledby="compare-title" tabindex="0">
+      <div class="overflow-x-auto focus-visible:outline-offset-[-2px]" role="region" aria-labelledby="compare-title" tabindex="0">
         <table class="w-full min-w-[820px] border-collapse text-left">
           <caption class="sr-only">{t('compare.caption')}</caption>
           <thead>

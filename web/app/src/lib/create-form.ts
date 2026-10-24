@@ -1,7 +1,7 @@
 import { MIN_TTL_SECONDS } from '@nylzo/core';
 
 import type { InstanceLimits } from './api.ts';
-import type { CreateFailure, CreateProblem, CreateProgress, FileInput } from './create.ts';
+import type { CreateFailure, CreateProblem, FileInput } from './create.ts';
 import type { MessageKey } from './i18n.svelte.ts';
 
 export const TTL_CHOICES = [3600, 86400, 259200, 604800] as const;
@@ -43,10 +43,6 @@ export function problemKey(problem: CreateProblem): MessageKey {
 
 export function failureKey(failure: CreateFailure): MessageKey {
   return failure.kind === 'invalid' ? 'failure.failed' : `failure.${failure.kind}`;
-}
-
-export function progressKey(progress: CreateProgress): MessageKey {
-  return `progress.${progress.step}`;
 }
 
 export type Attachment = { readonly file?: FileInput | undefined } | { readonly problem: CreateProblem };

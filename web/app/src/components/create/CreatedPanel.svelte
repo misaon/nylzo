@@ -78,8 +78,15 @@
     </div>
 
     <div class={['transition-[opacity,translate]', item('delay-[200ms]')]}>
-      <div class={['rounded-pane transition-opacity duration-500', copied ? 'shadow-[0_0_0_1px_oklch(0.77_0.115_249/0.45),0_0_32px_-6px_oklch(0.56_0.19_258/0.8)]' : '']}>
-        <div class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4">
+      <div class="relative rounded-pane">
+        <span
+          class={[
+            'pointer-events-none absolute inset-0 rounded-pane shadow-[0_0_0_1px_oklch(0.77_0.115_249/0.45),0_0_32px_-6px_oklch(0.56_0.19_258/0.8)] transition-opacity duration-500 ease-silk',
+            copied ? 'opacity-100' : 'opacity-0',
+          ]}
+          aria-hidden="true"
+        ></span>
+        <div class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300">
           <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
           <div class="relative min-h-11 min-w-0 flex-1 md:min-h-10">
             <p

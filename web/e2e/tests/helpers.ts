@@ -121,6 +121,10 @@ export async function setPassphrase(page: Page, passphrase: string): Promise<voi
   await page.getByLabel('Passphrase, optional').fill(passphrase);
 }
 
+export async function leave(page: Page): Promise<void> {
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
+}
+
 export function live(page: Page, locator: Locator): Locator {
   return locator.and(page.locator(':not([inert]):not([inert] *)'));
 }

@@ -52,16 +52,12 @@ export const ICONS = {
   server: [{ rect: [4, 4, 16, 7, 2] }, { rect: [4, 13, 16, 7, 2] }, { path: 'M8 7.5h.01M8 16.5h.01' }],
   shield: [{ path: 'M12 3l8 3.5v5c0 4.5-3.4 8.4-8 9.5-4.6-1.1-8-5-8-9.5v-5z' }, { path: 'M12 8v5M12 16h.01' }],
   shieldCheck: [{ path: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z' }, { path: 'M9 12l2 2 4-4' }],
-  sliders: [{ path: 'M4 7h10M18 7h2M4 17h4M12 17h8' }, { circle: [16, 7, 2] }, { circle: [10, 17, 2] }],
-  terminal: [{ rect: [3, 4.5, 18, 15, 2.5] }, { path: 'M7 9.5l3 2.5-3 2.5M12.5 15H17' }],
   trash: [trashLid, { path: 'M10 11v5M14 11v5' }],
   unlock: [lockBody, { path: 'M8 10.5V7.5a4 4 0 0 1 7.6-1.7' }],
   update: [clockFace, { path: 'M12 16V8M8.5 11.5L12 8l3.5 3.5' }],
   upload: [{ path: 'M12 15V4.5M7.5 9L12 4.5 16.5 9' }, { path: 'M5 14.5v3.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3.5' }],
-  user: [{ circle: [12, 8, 3.5] }, { path: 'M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5' }],
   userOff: [{ circle: [12, 8, 3.5] }, { path: 'M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5' }, { path: 'M3 3l18 18' }],
   world: [{ circle: [12, 12, 9] }, { path: 'M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9M12 3C9.5 5.6 8.2 8.6 8.2 12s1.3 6.4 3.8 9' }],
-  zap: [{ path: 'M13 2.5L5 13.5h6l-1 8 8-11h-6z' }],
 } satisfies Record<string, readonly Shape[]>;
 
 export type IconName = keyof typeof ICONS;

@@ -2,6 +2,7 @@
   import { TTL_CHOICES } from '../../lib/create-form.ts';
   import { formatDays } from '../../lib/format.ts';
   import { getI18n } from '../../lib/i18n.svelte.ts';
+  import { REPOSITORY_URL } from '../../lib/repository.ts';
   import { RETENTION_DAYS } from '../../lib/sent.ts';
   import Icon from '../ui/Icon.svelte';
 
@@ -53,7 +54,7 @@
             <p class="mt-2 max-w-[640px] leading-relaxed text-pretty text-ink-soft">{t('promise.open.text')}</p>
           </div>
         </div>
-        <a href="https://github.com/misaon/nylzo" class="btn-ghost hover-lift flex h-11 shrink-0 items-center justify-center gap-2 self-start rounded-control px-5 text-sm md:self-auto">
+        <a href={REPOSITORY_URL} class="btn-ghost hover-lift flex h-11 shrink-0 items-center justify-center gap-2 self-start rounded-control px-5 text-sm md:self-auto">
           {t('promise.open.link')}
           <Icon name="arrowRight" class="size-4" />
         </a>

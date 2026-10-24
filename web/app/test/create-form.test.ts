@@ -2,7 +2,7 @@ import { KDF_SCRYPT } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../src/lib/api.ts';
-import { failureKey, problemKey, progressKey, readAttachment, ttlChoices, ttlKey } from '../src/lib/create-form.ts';
+import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from '../src/lib/create-form.ts';
 import { dictionaries } from '../src/lib/i18n.svelte.ts';
 
 const limits: InstanceLimits = {
@@ -28,7 +28,7 @@ describe('create form', () => {
     expect(ttlKey(7200)).toBeUndefined();
   });
 
-  it('maps every problem, failure and step to a translated text', () => {
+  it('maps every problem and failure to a translated text', () => {
     const keys = [
       problemKey({ field: 'content', code: 'missing' }),
       problemKey({ field: 'text', code: 'too_large' }),
@@ -39,7 +39,6 @@ describe('create form', () => {
       problemKey({ field: 'passphrase', code: 'malformed' }),
       failureKey({ kind: 'pow' }),
       failureKey({ kind: 'invalid', problems: [] }),
-      progressKey({ step: 'proving', fraction: 0.5 }),
     ];
     for (const key of keys) {
       expect(dictionaries.en[key], key).toBeTypeOf('string');

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AutoCycle } from '../../lib/autocycle.svelte.ts';
-  import { getI18n, type MessageKey } from '../../lib/i18n.svelte.ts';
+  import { getI18n } from '../../lib/i18n.svelte.ts';
   import Icon from '../ui/Icon.svelte';
   import Switch from '../ui/Switch.svelte';
 
@@ -20,22 +20,22 @@
   ] as const;
 
   const SERVER = parts.length;
+  const READ_BASE_MS = 1100;
+  const READ_MS_PER_CHAR = 28;
+  const READ_MIN_MS = 4100;
+  const READ_MAX_MS = 6750;
 
   function body(index: number): string {
     const part = parts[index];
-    return t(part ? (`how.link.${part.id}.body` as MessageKey) : 'how.link.server.body');
+    return t(part ? (`how.link.${part.id}.body`) : 'how.link.server.body');
   }
 
   const cycle = new AutoCycle(
     () => parts.length + 1,
-    (index) => Math.min(6750, Math.max(4100, 1100 + body(index).length * 28)),
+    (index) => Math.min(READ_MAX_MS, Math.max(READ_MIN_MS, READ_BASE_MS + body(index).length * READ_MS_PER_CHAR)),
   );
 
   const serverView = $derived(cycle.index === SERVER);
-
-  function pick(index: number) {
-    cycle.select(index);
-  }
 </script>
 
 <section id="jak" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="jak-title">
@@ -70,10 +70,10 @@
       role="group"
       aria-labelledby="jak-link-title"
       {@attach cycle.observe}
-      onmouseenter={cycle.enter}
-      onmouseleave={cycle.leave}
-      onfocusin={cycle.enter}
-      onfocusout={cycle.leave}
+      onmouseenter={cycle.pointerEnter}
+      onmouseleave={cycle.pointerLeave}
+      onfocusin={cycle.focusIn}
+      onfocusout={cycle.focusOut}
     >
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -84,7 +84,7 @@
           type="button"
           role="switch"
           aria-checked={serverView}
-          onclick={() => pick(serverView ? 0 : SERVER)}
+          onclick={() => cycle.select(serverView ? 0 : SERVER)}
           class="flex h-11 shrink-0 items-center gap-3 self-start rounded-control text-sm text-ink-soft hover:text-ink md:h-9 md:self-auto"
         >
           <Switch on={serverView} size="md" />
@@ -101,11 +101,10 @@
             <button
               type="button"
               aria-pressed={active}
-              aria-label={t(`how.link.${part.id}.title` as MessageKey)}
-              onclick={() => pick(index)}
-              class={['relative rounded-[6px] px-px pt-1 pb-1.5 transition-opacity duration-500', part.tone, dimmed ? 'opacity-40 hover:opacity-80' : 'opacity-100']}
+              onclick={() => cycle.select(index)}
+              class={['relative rounded-[6px] px-px pt-1 pb-1.5 transition-opacity duration-500', part.tone, dimmed ? 'opacity-60 hover:opacity-90' : 'opacity-100']}
             >
-              {part.text}
+              <span class="sr-only">{t(`how.link.${part.id}.title`)}: </span>{part.text}
               <span class={['absolute inset-x-px bottom-0 h-[3px] rounded-full transition-opacity duration-500', part.dot, dimmed ? 'opacity-0' : 'opacity-100']}></span>
             </button>
           {/each}
@@ -119,11 +118,11 @@
           <button
             type="button"
             aria-pressed={active}
-            onclick={() => pick(index)}
+            onclick={() => cycle.select(index)}
             class={[
               'relative overflow-hidden rounded-pane p-4 text-left ring-1 transition-opacity duration-500',
               lit ? 'bg-white/6 ring-white/20' : 'ring-white/8 hover:bg-white/4',
-              serverView && !part.server ? 'opacity-40' : 'opacity-100',
+              serverView && !part.server ? 'opacity-60' : 'opacity-100',
             ]}
           >
             <progress
@@ -133,13 +132,13 @@
               aria-hidden="true"
             ></progress>
             <span class={['block h-[3px] w-7 rounded-full', part.dot]}></span>
-            <span class="mt-3 block text-[15px] text-ink">{t(`how.link.${part.id}.title` as MessageKey)}</span>
-            <span class="mt-1 block font-mono text-xs text-ink-mute">{t(`how.link.${part.id}.meta` as MessageKey)}</span>
+            <span class="mt-3 block text-[15px] text-ink">{t(`how.link.${part.id}.title`)}</span>
+            <span class="mt-1 block font-mono text-xs text-ink-mute">{t(`how.link.${part.id}.meta`)}</span>
           </button>
         {/each}
       </div>
 
-      <div class="stack mt-5" aria-live="polite">
+      <div class="stack mt-5">
         {#each [...parts.map((part) => part.id), 'server'] as id, index (id)}
           <p
             class={[

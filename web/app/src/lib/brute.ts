@@ -1,3 +1,4 @@
+import { TTL_CHOICES } from './create-form.ts';
 import type { Language } from './i18n.svelte.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
@@ -20,7 +21,7 @@ const QUANTUM_DENOMINATOR = 1_000_000_000n;
 const UNIVERSE_YEARS = 13.8e9;
 const FAR_BEYOND = 3;
 const MILESTONES: readonly { readonly years: number; readonly verdict: Verdict }[] = [
-  { years: 7 / 365.25, verdict: 'ttl' },
+  { years: Math.max(...TTL_CHOICES) / SECONDS_PER_YEAR, verdict: 'ttl' },
   { years: 80, verdict: 'life' },
   { years: 66e6, verdict: 'dinosaurs' },
   { years: 4.5e9, verdict: 'earth' },
@@ -33,7 +34,7 @@ function rateOf(attacker: Attacker): number {
 
 export function averageYearsLog10(attacker: Attacker, quantum: boolean): number {
   const log2 = Math.log10(2);
-  const steps = quantum ? Number(QUANTUM_BITS) * log2 + Math.log10(Math.PI / 8) : (Number(KEY_BITS) - 1) * log2;
+  const steps = quantum ? Number(QUANTUM_BITS) * log2 + Math.log10(Math.PI / 4) : (Number(KEY_BITS) - 1) * log2;
   return steps - rateOf(attacker) - Math.log10(SECONDS_PER_YEAR);
 }
 
@@ -54,31 +55,37 @@ export function judge(attacker: Attacker, quantum: boolean): Judgement {
   return { verdict: last, bigBang: false, yearsLog10 };
 }
 
-export function yearsInWords(yearsLog10: number, language: Language): string {
+export type YearsKey =
+  | 'brute.years.billion.fraction'
+  | 'brute.years.billion'
+  | 'brute.years.million.fraction'
+  | 'brute.years.million'
+  | 'brute.years.one'
+  | 'brute.years.few'
+  | 'brute.years.other';
+
+export interface YearsAmount {
+  readonly key: YearsKey;
+  readonly amount: string;
+}
+
+const SCALES: readonly { readonly size: number; readonly fraction: YearsKey; readonly whole: YearsKey }[] = [
+  { size: 1e9, fraction: 'brute.years.billion.fraction', whole: 'brute.years.billion' },
+  { size: 1e6, fraction: 'brute.years.million.fraction', whole: 'brute.years.million' },
+];
+
+export function yearsAmount(yearsLog10: number, language: Language): YearsAmount {
   const years = 10 ** yearsLog10;
   const number = (value: number, digits: number) => new Intl.NumberFormat(language, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value);
-  const scales: readonly [number, string, string][] =
-    language === 'cs'
-      ? [
-          [1e9, 'miliardy let', 'miliard let'],
-          [1e6, 'milionu let', 'milionů let'],
-        ]
-      : [
-          [1e9, 'billion years', 'billion years'],
-          [1e6, 'million years', 'million years'],
-        ];
-  for (const [size, fraction, whole] of scales) {
+  for (const { size, fraction, whole } of SCALES) {
     if (years >= size) {
       const value = years / size;
-      return value < 10 ? `${number(value, 1)} ${fraction}` : `${number(Math.round(value), 0)} ${whole}`;
+      return value < 10 ? { key: fraction, amount: number(value, 1) } : { key: whole, amount: number(Math.round(value), 0) };
     }
   }
   const rounded = Math.round(years);
-  if (language === 'cs') {
-    const noun = rounded === 1 ? 'rok' : rounded >= 2 && rounded <= 4 ? 'roky' : 'let';
-    return `${number(rounded, 0)} ${noun}`;
-  }
-  return `${number(rounded, 0)} ${rounded === 1 ? 'year' : 'years'}`;
+  const rule = new Intl.PluralRules(language).select(rounded);
+  return { key: rule === 'one' ? 'brute.years.one' : rule === 'few' ? 'brute.years.few' : 'brute.years.other', amount: number(rounded, 0) };
 }
 
 export interface Countdown {

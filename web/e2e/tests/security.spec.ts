@@ -2,7 +2,7 @@ import { KDF_PBKDF2, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, par
 import { anyPassphraseKey } from '@nylzo/core/scrypt';
 import type { Page, Request } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, live, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openViaUi, test } from './helpers.ts';
 
 interface Recorded {
   readonly url: string;
@@ -147,6 +147,7 @@ for (const [state, script] of Object.entries(hiddenStates)) {
     await openViaUi(page, message.link, passphrase);
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     expect(await page.getByRole('button', { name: 'Show message' }).isVisible()).toBe(true);
+    await expect(live(page, page.getByLabel('Passphrase', { exact: true }))).toBeEditable();
     expect(await page.getByRole('status').textContent()).toBe('');
     expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
     await page.evaluate(() => Object.assign(window, { nylzoShown: true }));
@@ -202,10 +203,6 @@ test('the passphrase fields give password managers nothing and the message field
     expect(await screen.locator('[autocomplete*="password"], [autocomplete="username"]').count()).toBe(0);
   }
 });
-
-async function leave(page: Page): Promise<void> {
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
-}
 
 async function watchShownAfterLeaving(page: Page): Promise<() => Promise<boolean>> {
   await page.addInitScript(() => {

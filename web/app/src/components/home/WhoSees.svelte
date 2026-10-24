@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AutoCycle } from '../../lib/autocycle.svelte.ts';
-  import { getI18n, type MessageKey } from '../../lib/i18n.svelte.ts';
+  import { getI18n } from '../../lib/i18n.svelte.ts';
   import Icon from '../ui/Icon.svelte';
 
   const { t } = getI18n();
@@ -62,10 +62,10 @@
       role="group"
       aria-labelledby="who-title"
       {@attach cycle.observe}
-      onmouseenter={cycle.enter}
-      onmouseleave={cycle.leave}
-      onfocusin={cycle.enter}
-      onfocusout={cycle.leave}
+      onmouseenter={cycle.pointerEnter}
+      onmouseleave={cycle.pointerLeave}
+      onfocusin={cycle.focusIn}
+      onfocusout={cycle.focusOut}
     >
       <div class="relative grid grid-cols-3 rounded-control well p-0.5" role="tablist" aria-label={t('who.tabs')}>
         <span
@@ -182,8 +182,8 @@
             {#each facts as fact (fact.key)}
               <div class="well min-w-0 rounded-pane px-4 py-3">
                 <dt class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t(fact.key)}</dt>
-                <dd class="mt-1 truncate font-mono text-[13px] text-ink">{'value' in fact ? fact.value : t(`${fact.key}.value` as MessageKey)}</dd>
-                <dd class="mt-0.5 text-[13px] text-ink-mute">{t(`${fact.key}.note` as MessageKey)}</dd>
+                <dd class="mt-1 truncate font-mono text-[13px] text-ink">{'value' in fact ? fact.value : t(`${fact.key}.value`)}</dd>
+                <dd class="mt-0.5 text-[13px] text-ink-mute">{t(`${fact.key}.note`)}</dd>
               </div>
             {/each}
           </dl>

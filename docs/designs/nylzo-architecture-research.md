@@ -456,7 +456,7 @@ Zadání vlastníka (D13): pouze tmavý režim; responzivní pro desktop i iPhon
 - Rozpočet: JS bundle do 150 kB gzip včetně Svelte a noble, CSS do 40 kB, první vykreslení bez blokujících externích požadavků, Lighthouse INP pod 200 ms na simulovaném mobilu.
 - Nástroje (OD22, D15): Tailwind CSS 4.3.3 s @tailwindcss/vite 4.3.3 jako build-time nástroj, tokeny designového systému v `@theme` jako custom properties, vlastní CSS vrstva (`@layer components`) pro skleněné plochy, keyframes a složitější animace; žádný runtime CSS-in-JS, žádné inline styly; výstup je jeden statický CSS soubor s nonce. Cena přijatá v D15: dvě připnuté build závislosti s přístupem k bundle (stejná kategorie důvěry jako Vite), kryté minimumReleaseAge, provenance a reprodukovatelným buildem (AK15).
 
-Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní vzhled obrazovek) tento dokument nenavrhuje. Vzhled „Nebula“ navrhl a 24. 10. 2026 schválil vlastník; klient ho implementuje podle D73 až D77 a odchylky od pravidel výše (sklo na víc než třech plochách, 44 px místo 40 px na mobilu) popisuje plán `docs/plans/2026-10-24-nebula-web-client.md`.
+Designový systém (typografie, paleta, komponenty, motion tokeny, konkrétní vzhled obrazovek) tento dokument nenavrhuje. Vzhled „Nebula“ navrhl a 24. 10. 2026 schválil vlastník; klient ho implementuje podle D73 až D79 a odchylky od pravidel výše (sklo na víc než třech plochách, 44 px místo 40 px na mobilu) popisuje plán `docs/plans/2026-10-24-nebula-web-client.md`.
 
 ### Zkouška OD6: scrypt v Safari (23. 10. 2026)
 

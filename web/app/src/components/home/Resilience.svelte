@@ -1,9 +1,8 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import { ATTACKERS, countdown, judge, yearsInWords, type Attacker } from '../../lib/brute.ts';
+  import { ATTACKERS, countdown, judge, yearsAmount, type Attacker } from '../../lib/brute.ts';
   import { getI18n } from '../../lib/i18n.svelte.ts';
-  import type { IconName } from '../../lib/icons.ts';
   import Icon from '../ui/Icon.svelte';
   import Switch from '../ui/Switch.svelte';
 
@@ -11,7 +10,7 @@
   const { t } = i18n;
 
   const TICK_MS = 100;
-  const icons: Record<Attacker, IconName> = { laptop: 'laptop', gpu: 'gpu', farm: 'farm', datacenter: 'datacenter', world: 'world' };
+  const VISIBLE_THRESHOLD = 0.35;
   const facts = [
     { key: 'brute.fact.id', icon: 'hash', accent: true },
     { key: 'brute.fact.pass', icon: 'keyhole', accent: true },
@@ -25,7 +24,8 @@
 
   const judgement = $derived(judge(attacker, quantum));
   const counter = $derived(countdown(attacker, quantum, elapsed));
-  const sub = $derived(judgement.bigBang ? t('brute.bigbang') : t('brute.about', { time: yearsInWords(judgement.yearsLog10, i18n.language) }));
+  const years = $derived(yearsAmount(judgement.yearsLog10, i18n.language));
+  const sub = $derived(judgement.bigBang ? t('brute.bigbang') : t('brute.about', { time: t(years.key, { amount: years.amount }) }));
 
   function restart(change: () => void) {
     change();
@@ -51,9 +51,13 @@
                 timer = setInterval(() => (elapsed += TICK_MS), TICK_MS);
               }
             },
-            { threshold: 0.35 },
+            { threshold: VISIBLE_THRESHOLD },
           );
-    observer?.observe(element);
+    if (observer) {
+      observer.observe(element);
+    } else {
+      timer = setInterval(() => (elapsed += TICK_MS), TICK_MS);
+    }
     return () => {
       observer?.disconnect();
       clearInterval(timer);
@@ -101,7 +105,7 @@
                     ]}
                     aria-hidden="true"
                   >
-                    <Icon name={icons[item.id]} stroke={1.6} class="size-5" />
+                    <Icon name={item.id} stroke={1.6} class="size-5" />
                   </span>
                   <span class="min-w-0 flex-1">
                     <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-ink">
@@ -116,7 +120,7 @@
               {/each}
             </div>
           </div>
-          <button type="button" role="switch" aria-checked={quantum} onclick={() => restart(() => (quantum = !quantum))} class="well flex items-start gap-4 rounded-pane p-5 text-left">
+          <button type="button" role="switch" aria-checked={quantum} onclick={() => restart(() => (quantum = !quantum))} class="well flex items-start gap-4 rounded-pane p-5 text-left hover:bg-white/4">
             <span class="mt-0.5"><Switch on={quantum} size="md" /></span>
             <span>
               <span class="block text-[15px] text-ink">{t('brute.quantum')}</span>

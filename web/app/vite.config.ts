@@ -4,7 +4,8 @@ import { gzipSync } from 'node:zlib';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig, type Plugin } from 'vite';
+import type { Plugin } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 const outDir = resolve(import.meta.dirname, '../../internal/server/web/dist');
 const devApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
@@ -24,7 +25,7 @@ function withoutNonceMeta(): Plugin {
   };
 }
 
-const PRELOADED_FONTS = /^assets\/(?:geist|sora)-latin(?:-ext)?-wght-normal-[\w-]+\.woff2$/;
+const PRELOADED_FONTS = /^assets\/(?:geist|geist-mono|sora)-latin(?:-ext)?-wght-normal-[\w-]+\.woff2$/;
 
 function preloadFonts(): Plugin {
   return {
@@ -75,4 +76,18 @@ export default defineConfig({
     modulePreload: false,
   },
   worker: { format: 'es' },
+  test: {
+    projects: [
+      { extends: true, test: { name: 'node', include: ['test/**/*.test.ts'], exclude: ['test/**/*.svelte.test.ts'] } },
+      {
+        extends: true,
+        resolve: { conditions: ['browser'] },
+        test: {
+          name: 'client',
+          include: ['test/**/*.svelte.test.ts'],
+          environment: './test/client-environment.ts',
+        },
+      },
+    ],
+  },
 });

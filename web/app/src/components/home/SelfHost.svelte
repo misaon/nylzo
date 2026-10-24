@@ -2,6 +2,7 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { getI18n } from '../../lib/i18n.svelte.ts';
+  import { REPOSITORY_URL } from '../../lib/repository.ts';
   import Icon from '../ui/Icon.svelte';
 
   const { t } = getI18n();
@@ -23,7 +24,7 @@
     switch (id) {
       case 'compose':
         return [
-          'git clone https://github.com/misaon/nylzo',
+          `git clone ${REPOSITORY_URL}`,
           'cd nylzo/deploy/compose',
           'cp .env.example .env',
           'mkdir -p secrets && openssl rand -hex 32 > secrets/pepper',
@@ -31,7 +32,7 @@
           'docker compose up -d',
         ].join('\n');
       case 'binary':
-        return ['export NYLZO_PEPPER="$(openssl rand -hex 32)"', 'nylzo serve'].join('\n');
+        return ['openssl rand -hex 32 > pepper && chmod 0400 pepper', 'NYLZO_PEPPER_FILE=pepper nylzo serve'].join('\n');
       case 'verify':
         return `nylzo verify-client --server https://${t('host.domain')}`;
     }
@@ -131,7 +132,7 @@
           <p class="flex-1 text-center font-mono text-[11px] text-ink-mute">{t('host.terminal')}</p>
           <span class="w-[46px]"></span>
         </div>
-        <div id="host-panel" role="tabpanel" aria-labelledby="host-tab-{tab}" tabindex="0" class="stack overflow-x-auto p-4 font-mono text-[13px] leading-6">
+        <div id="host-panel" role="tabpanel" aria-labelledby="host-tab-{tab}" tabindex="0" class="stack overflow-x-auto p-4 font-mono text-[13px] leading-6 focus-visible:outline-offset-[-2px]">
           {#each terminal as screen (screen.id)}
             <div class={['transition-opacity', tab === screen.id ? 'opacity-100 delay-[160ms] duration-300 ease-out' : 'pointer-events-none opacity-0 duration-200 ease-in']} aria-hidden={tab !== screen.id}>
               {#each screen.lines as line (line.cmd + line.rest)}
