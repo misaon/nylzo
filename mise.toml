@@ -7,6 +7,7 @@ lockfile = true
 go = "1.27.3"
 node = "24.22.1"
 pnpm = "12.14.0"
+goreleaser = "2.18.3"
 
 [env]
 GOTOOLCHAIN = "local"
@@ -89,3 +90,14 @@ run = "pnpm --dir web/e2e exec playwright install chromium firefox webkit"
 description = "Playwright end to end in Chromium, Firefox and WebKit"
 depends = ["build:web"]
 run = "pnpm --dir web/e2e e2e"
+
+[tasks."release:verify"]
+description = "Rebuild the checked-out release tag and compare checksums.txt with the published release"
+depends = ["install"]
+run = """
+tag="$(git describe --exact-match --tags HEAD)"
+goreleaser release --clean --skip=publish,sign,sbom,ko,validate
+curl -fsSL "https://github.com/misaon/nylzo/releases/download/$tag/checksums.txt" | grep -v sbom > dist/published-checksums.txt
+grep -v sbom dist/checksums.txt | diff dist/published-checksums.txt -
+echo "$tag: the local build matches the published checksums.txt"
+"""
