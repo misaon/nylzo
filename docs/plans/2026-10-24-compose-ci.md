@@ -8,6 +8,7 @@ Nový job v `ci.yml` sestaví `nylzo` a image se stejným základem a rozložen�
 
 - AK17: CLI vytvoří a přečte 5MiB soubor přes Caddy a HTTPS; obsah sedí bajt po bajtu.
 - AK26: nástroj `tools/tlscheck` nabídne v TLS 1.3 jen X25519MLKEM768 a vyžaduje, aby ho server vyjednal. Systémové OpenSSL na Ubuntu 24.04 ML-KEM nezná, proto nástroj v Go.
+- D61: `nylzo verify-client` přes Caddy najde stejného webového klienta, jakého má vložený, se stejnými hlavičkami. Ověří tím i to, že Caddy v příkladu nepřidává hlavičku, kterou by kontrola musela povolit.
 - spec §10: když `nylzo` neběží a Caddy vrací 502, log Caddy neobsahuje id zprávy, cestu `/m/` ani hodnotu hlavičky `X-Nylzo-Lease`.
 - AK12: s limitem tří požadavků na zdroj dostane čtvrtý požadavek s jiným podvrženým `X-Forwarded-For` odpověď 429, takže podvržená hlavička nevytvoří vlastní kyblík.
 
