@@ -20,9 +20,13 @@ import (
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
-const builtIndex = `<!doctype html><html><head><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
+const builtIndex = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
 
-const appJS = "console.log('nylzo')"
+const (
+	appJS      = "console.log('nylzo')"
+	faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg"/>`
+	faviconPNG = "\x89PNG\r\n\x1a\n"
+)
 
 func gzipped(t *testing.T, data string) []byte {
 	t.Helper()
@@ -46,6 +50,8 @@ func builtClient(t *testing.T) fstest.MapFS {
 		"web/dist/assets/index-a1.js.gz":   {Data: gzipped(t, appJS)},
 		"web/dist/assets/style-b2.css":     {Data: []byte("body{}")},
 		"web/dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
+		"web/dist/assets/favicon-d4.svg":   {Data: []byte(faviconSVG)},
+		"web/dist/assets/favicon-e5.png":   {Data: []byte(faviconPNG)},
 	}
 }
 
@@ -109,7 +115,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(logs.String(), `"msg":"web-client","built":true,"assets":3`) {
+	if !strings.Contains(logs.String(), `"msg":"web-client","built":true,"assets":5`) {
 		t.Fatalf("the server did not log the embedded client: %s", logs.String())
 	}
 	for _, path := range []string{"/", "/m/" + core.NewID().String()} {
@@ -125,6 +131,8 @@ func TestBuiltClientIsServed(t *testing.T) {
 		"/assets/index-a1.js":      "text/javascript; charset=utf-8",
 		"/assets/style-b2.css":     "text/css; charset=utf-8",
 		"/assets/kdf-worker-c3.js": "text/javascript; charset=utf-8",
+		"/assets/favicon-d4.svg":   "image/svg+xml",
+		"/assets/favicon-e5.png":   "image/png",
 	}
 	for path, contentType := range assets {
 		resp, body := get(t, ts.URL+path, nil)
@@ -231,14 +239,14 @@ func TestBrokenBuildRefusesToStart(t *testing.T) {
 		return files
 	}
 	for name, files := range map[string]fstest.MapFS{
-		"unknown extension":                 index(fstest.MapFS{"web/dist/assets/logo.svg": {Data: []byte("<svg/>")}}),
+		"unknown extension":                 index(fstest.MapFS{"web/dist/assets/index-a1.js.map": {Data: []byte("{}")}}),
 		"nested directory":                  index(fstest.MapFS{"web/dist/assets/sub/a.js": {}}),
 		"directory named like a script":     index(fstest.MapFS{"web/dist/assets/x.js/a.js": {}}),
 		"compressed variant without a file": index(fstest.MapFS{"web/dist/assets/a.js.gz": {Data: gzipped(t, "x")}}),
 		"brotli variant":                    index(fstest.MapFS{"web/dist/assets/a.js": {Data: []byte("a")}, "web/dist/assets/a.js.br": {Data: []byte("a")}}),
 		"gzip that is not the file":         index(fstest.MapFS{"web/dist/assets/a.js": {Data: []byte("a")}, "web/dist/assets/a.js.gz": {Data: gzipped(t, "b")}}),
 		"gzip that is not gzip":             index(fstest.MapFS{"web/dist/assets/a.js": {Data: []byte("a")}, "web/dist/assets/a.js.gz": {Data: []byte("a")}}),
-		"compressed unknown type":           index(fstest.MapFS{"web/dist/assets/a.svg": {}, "web/dist/assets/a.svg.gz": {}}),
+		"compressed unknown type":           index(fstest.MapFS{"web/dist/assets/a.map": {}, "web/dist/assets/a.map.gz": {}}),
 		"index without the nonce":           {"web/dist/index.html": {Data: []byte(`<script src="/assets/a.js"></script>`)}, "web/dist/assets/a.js": {}},
 		"index with a missing asset": {
 			"web/dist/index.html":  {Data: []byte(`<script nonce="__NYLZO_CSP_NONCE__" src="/assets/a.js"></script><link href="/assets/gone.css">`)},

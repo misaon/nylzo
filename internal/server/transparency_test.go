@@ -48,6 +48,8 @@ func TestClientManifestListsTheEmbeddedFiles(t *testing.T) {
 		Pages:            []string{"/", "/sent", "/report", "/transparency", "/m/{id}"},
 		Files: []server.ClientFile{
 			{Path: "/", SHA256: sha(builtIndex)},
+			{Path: "/assets/favicon-d4.svg", SHA256: sha(faviconSVG)},
+			{Path: "/assets/favicon-e5.png", SHA256: sha(faviconPNG)},
 			{Path: "/assets/index-a1.js", SHA256: sha(appJS)},
 			{Path: "/assets/kdf-worker-c3.js", SHA256: sha("self.onmessage=null")},
 			{Path: "/assets/style-b2.css", SHA256: sha("body{}")},

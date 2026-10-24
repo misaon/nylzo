@@ -22,6 +22,7 @@ import (
 const (
 	webIndex = `<!doctype html><html><head><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
 	webJS    = "console.log('nylzo')"
+	webIcon  = `<svg xmlns="http://www.w3.org/2000/svg"/>`
 )
 
 func gzipBytes(t *testing.T, data []byte) []byte {
@@ -46,6 +47,8 @@ func webFiles(t *testing.T) fstest.MapFS {
 		"web/dist/assets/index-a1.js.gz":   {Data: gzipBytes(t, []byte(webJS))},
 		"web/dist/assets/style-b2.css":     {Data: []byte("body{}")},
 		"web/dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
+		"web/dist/assets/favicon-d4.svg":   {Data: []byte(webIcon)},
+		"web/dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
 	}
 }
 
@@ -128,7 +131,7 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
 	res := runVerify(t, newWebTestServer(t, files, "test", nil), files)
-	if res.code != exitOK || res.stdout != "the server sends the web client of nylzo test unchanged: 5 pages and 3 files checked\n" {
+	if res.code != exitOK || res.stdout != "the server sends the web client of nylzo test unchanged: 5 pages and 5 files checked\n" {
 		t.Fatalf("%+v", res)
 	}
 	if !strings.Contains(res.stderr, "a server can recognise it") {
@@ -196,6 +199,9 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"content type", rewrite(pathIs("/assets/style-b2.css"), func(s *served) {
 			s.header.Set("Content-Type", "text/html; charset=utf-8")
 		}), "/assets/style-b2.css: the Content-Type header differs"},
+		{"icon served as a page", rewrite(pathIs("/assets/favicon-d4.svg"), func(s *served) {
+			s.header.Set("Content-Type", "text/html; charset=utf-8")
+		}), "/assets/favicon-d4.svg: the Content-Type header differs"},
 		{"two content encodings", rewrite(browserAsks("/assets/index-a1.js"), func(s *served) {
 			s.header.Add("Content-Encoding", "gzip")
 		}), "/assets/index-a1.js (as a browser asks for it): the server sent the Content-Encoding header"},
