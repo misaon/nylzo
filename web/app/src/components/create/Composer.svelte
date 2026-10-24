@@ -76,11 +76,13 @@
   let elapsed = $state(0);
   let cipher = $state('');
   let sealed = $state.raw<Sealed>();
+  let sealingWithPassphrase = $state(false);
   let remembered = $state<'off' | 'saving' | 'remembered' | 'failed'>('off');
   let pending: Sealed | undefined;
   let startedAt = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
 
+  const usesPassphrase = $derived(phase === 'compose' ? protect && passphrase !== '' : sealingWithPassphrase);
   const nodes: readonly PipelineNode[] = $derived([
     { id: 'key', label: t('step.key.label'), icon: 'key', title: t('step.key.title'), detail: t('step.key.detail') },
     {
@@ -88,7 +90,7 @@
       label: t('step.derive.label'),
       icon: 'fork',
       title: t('step.derive.title'),
-      detail: t(protect && passphrase !== '' ? 'step.derive.detail.passphrase' : 'step.derive.detail'),
+      detail: t(usesPassphrase ? 'step.derive.detail.passphrase' : 'step.derive.detail'),
     },
     { id: 'encrypt', label: t('step.encrypt.label'), icon: 'lock', title: t('step.encrypt.title'), detail: t('step.encrypt.detail') },
     {
@@ -333,6 +335,7 @@
       return;
     }
     problems = [];
+    sealingWithPassphrase = input.passphrase !== '';
     startTimeline(text.trim() === '' ? (file?.name ?? '') : text);
     try {
       const created = await createMessage(

@@ -71,3 +71,19 @@ test('on a phone the created panel copies the link and starts a new message', as
   await expect(page.getByLabel('Message text')).toBeFocused();
   await expect(page.getByLabel('Message text')).toHaveValue('');
 });
+
+test('the derivation step keeps its passphrase wording until the link is ready', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Message text').fill('scrypt wording');
+  await setPassphrase(page, 'four random words here');
+  await page.evaluate(() => {
+    let plain = false;
+    Object.defineProperty(window, 'nylzoPlainDerive', { get: () => plain });
+    new MutationObserver(() => {
+      plain ||= document.body.textContent?.includes('HKDF-SHA-256 creates the content key') ?? false;
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  });
+  await page.getByRole('button', { name: 'Create link' }).click();
+  await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
+  expect(await page.evaluate(() => (window as unknown as { nylzoPlainDerive: boolean }).nylzoPlainDerive)).toBe(false);
+});
