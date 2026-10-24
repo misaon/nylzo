@@ -199,7 +199,11 @@ jobs:
           test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' go.mod)"
           test "$(mise current node)" = "$(cat web/.node-version)"
           test "pnpm@$(mise current pnpm)" = "$(jq -r .packageManager web/package.json)"
-          test "$(grep -h '^ *version: v' .github/workflows/ci.yml .github/workflows/release.yml | tr -d ' ' | sort -u)" = "version:v$(mise current goreleaser)"
+          for workflow in .github/workflows/ci.yml .github/workflows/release.yml; do
+            versions=$(yq -r '[.jobs[].steps[]? | select(.uses // "" | test("^goreleaser/goreleaser-action@")) | .with.version // "missing"] | .[]' "$workflow")
+            test -n "$versions"
+            for version in $versions; do test "$version" = "v$(mise current goreleaser)"; done
+          done
           tools=$(grep -o 'go run [a-z0-9./-]*@v[0-9][0-9.]*' mise.toml | cut -d' ' -f3 | sort -u)
           test "$(printf '%s\n' "$tools" | wc -l)" -ge 2
           for tool in $tools; do grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; }; done

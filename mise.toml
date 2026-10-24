@@ -96,8 +96,24 @@ description = "Rebuild the checked-out release tag and compare checksums.txt wit
 depends = ["install"]
 run = """
 tag="$(git describe --exact-match --tags HEAD)"
-goreleaser release --clean --skip=publish,sign,sbom,ko,validate
-curl -fsSL "https://github.com/misaon/nylzo/releases/download/$tag/checksums.txt" | grep -v sbom > dist/published-checksums.txt
-grep -v sbom dist/checksums.txt | diff dist/published-checksums.txt -
+GORELEASER_CURRENT_TAG="$tag" goreleaser release --clean --skip=publish,sign,sbom,ko,validate
+curl -fsSL "https://github.com/misaon/nylzo/releases/download/$tag/checksums.txt" -o dist/published-checksums.txt
+grep -v sbom dist/published-checksums.txt > dist/published-without-sbom.txt
+grep -v sbom dist/checksums.txt | diff dist/published-without-sbom.txt -
 echo "$tag: the local build matches the published checksums.txt"
+shasum -a 256 dist/published-checksums.txt
+"""
+
+[tasks."release:verify-image"]
+description = "Compare the nylzo binaries in the release image with the local build from release:verify"
+run = """
+tag="$(git describe --exact-match --tags HEAD)"
+for arch in amd64 arm64; do
+  docker pull -q --platform "linux/$arch" "ghcr.io/misaon/nylzo:${tag#v}" > /dev/null
+  container="$(docker create --platform "linux/$arch" "ghcr.io/misaon/nylzo:${tag#v}")"
+  docker cp "$container:/ko-app/nylzo" "dist/image-$arch"
+  docker rm "$container" > /dev/null
+  cmp "dist/image-$arch" dist/nylzo_linux_${arch}_*/nylzo
+  echo "linux/$arch: the image binary matches the local build"
+done
 """
