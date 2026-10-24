@@ -115,3 +115,18 @@ function utf8Length(text: string): number {
   return new TextEncoder().encode(text).length;
 }
 
+
+describe('the reason length after redaction, as nylzo report checks it', () => {
+  it.each([
+    ['', false],
+    ['phishing', false],
+    ['ab '.repeat(400), true],
+    ['a'.repeat(3000), false],
+    ['# '.repeat(150), true],
+    ['# '.repeat(50), false],
+    ['<'.repeat(1000), false],
+    ['ab '.repeat(333) + 'ab', true],
+  ])('%#', (reason, long) => {
+    expect(reasonTooLong(redactReason(reason))).toBe(long);
+  });
+});

@@ -17,7 +17,7 @@ func TestReportSendsARedactedReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := runWith(t, link, nil, nil, "report", "--reason", "phishing, see https://evil.example/#1.0.abc")
+	res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, "phishing, see https://evil.example/#1.0.abc\n"))
 	if res.code != exitOK || !strings.Contains(res.stdout, "the report was sent") {
 		t.Fatalf("%+v", res)
 	}
@@ -39,8 +39,14 @@ func TestReportRefusesALongReasonBeforeAnyRequest(t *testing.T) {
 	ts := newTestServer(t, nil)
 	link, _ := createText(t, ts, "podvod")
 	before := ts.requests.Load()
-	res := runWith(t, link, nil, nil, "report", "--reason", strings.Repeat("a", core.MaxReasonBytes+1))
-	if res.code != exitUsage || !strings.Contains(res.stderr, "longer than 1000 bytes") || ts.requests.Load() != before {
-		t.Fatalf("%+v, %d requests", res, ts.requests.Load()-before)
+	for _, reason := range []string{strings.Repeat("ab ", 400), strings.Repeat("# ", 150)} {
+		res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, reason))
+		if res.code != exitUsage || !strings.Contains(res.stderr, "longer than 1000 bytes") || ts.requests.Load() != before {
+			t.Fatalf("%+v, %d requests", res, ts.requests.Load()-before)
+		}
+	}
+	short := strings.Repeat("# ", 50)
+	if res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, short)); res.code != exitOK {
+		t.Fatalf("a reason that fits after redaction must pass: %+v", res)
 	}
 }

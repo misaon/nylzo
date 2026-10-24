@@ -355,7 +355,7 @@ func TestNoFlagTakesASecret(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
 		"server": true, "from-file": true, "ttl": true, "opens": true, "passphrase-file": true, "ask-passphrase": true, "kdf": true,
-		"manage-token-file": true, "print-manage-token": true, "link-file": true, "out": true, "stdout": true, "json": true, "allow-header": true, "reason": true,
+		"manage-token-file": true, "print-manage-token": true, "link-file": true, "out": true, "stdout": true, "json": true, "allow-header": true, "reason-file": true,
 	}
 	for _, c := range commands() {
 		res := runWith(t, "", nil, nil, c.name, "-h")
