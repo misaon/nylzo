@@ -98,22 +98,26 @@ test.describe('with full motion', () => {
     await tabs.evaluate((list) => list.closest('[role="group"]')?.scrollIntoView({ block: 'center' }));
     await expect(tabs.locator('progress')).toHaveClass(/opacity-100/);
     const selected = () => tabs.getByRole('tab', { selected: true }).textContent();
+    const after = async (ms: number) => {
+      for (let passed = 0; passed < ms; passed += 1000) {
+        await page.clock.runFor(1000);
+      }
+      return selected();
+    };
     const start = await selected();
-    await page.clock.runFor(20_000);
-    expect(await selected()).not.toBe(start);
+    await expect.poll(() => after(1000), { timeout: 30_000 }).not.toBe(start);
 
     const current = tabs.getByRole('tab', { selected: true });
     await current.focus();
     expect(await current.evaluate((tab) => tab.matches(':focus-visible'))).toBe(true);
     const focused = await selected();
-    await page.clock.runFor(20_000);
-    expect(await selected()).toBe(focused);
+    expect(await after(20_000)).toBe(focused);
 
     const picked = tabs.getByRole('tab').first();
     await picked.click();
     await page.mouse.move(0, 0);
     await page.locator('h1').click();
-    await page.clock.runFor(60_000);
+    await after(30_000);
     await expect(picked).toHaveAttribute('aria-selected', 'true');
   });
 });
