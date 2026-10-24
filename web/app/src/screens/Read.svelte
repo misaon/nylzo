@@ -1,32 +1,205 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
+  import { prefersReducedMotion } from 'svelte/motion';
 
-  import ConfirmDialog from '../components/ConfirmDialog.svelte';
   import ReportForm from '../components/ReportForm.svelte';
-  import { createApi } from '../lib/api.ts';
+  import Icon from '../components/ui/Icon.svelte';
+  import Pipeline from '../components/ui/Pipeline.svelte';
+  import Popover from '../components/ui/Popover.svelte';
+  import { createApi, type Metadata } from '../lib/api.ts';
   import { fileExtension, isKnownSafeFile, saveFile } from '../lib/download.ts';
-  import { formatBytes, formatTime, formatWait } from '../lib/format.ts';
+  import { formatBytes, formatWait } from '../lib/format.ts';
   import { keepFocus } from '../lib/focus.ts';
-  import { getI18n } from '../lib/i18n.svelte.ts';
+  import { getI18n, type MessageKey } from '../lib/i18n.svelte.ts';
+  import type { IconName } from '../lib/icons.ts';
   import { scryptInWorker } from '../lib/kdf.ts';
-  import { createReader, type BurnOutcome, type ReadView, type RevealedFile } from '../lib/read.ts';
+  import { pace } from '../lib/pacing.ts';
+  import type { PipelineNode } from '../lib/pipeline.ts';
+  import { createReader, type BurnOutcome, type BusyStep, type ReadView, type RevealedFile } from '../lib/read.ts';
+
+  type Notice =
+    | 'loading'
+    | 'opened'
+    | 'expired'
+    | 'cancelled'
+    | 'deleted'
+    | 'burned'
+    | 'locked'
+    | 'unknown'
+    | 'invalid'
+    | 'newer'
+    | 'tampered'
+    | 'failed'
+    | 'busy'
+    | 'cleared';
+
+  interface ChipData {
+    readonly icon: IconName;
+    readonly text: string;
+    readonly accent?: boolean;
+  }
+
+  const MIN_MS = { passphrase: 3800, plain: 2600, reduced: 1000 } as const;
+  const TICK_MS = 60;
+  const REVEAL_MS = 900;
+  const FLASH_MS = 2400;
+  const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const SHOWN = 'translate-y-0 opacity-100';
+  const HIDDEN = 'pointer-events-none translate-y-3 opacity-0';
+  const STEP_ICONS = { derive: 'key', claim: 'envelopeOpen', download: 'download', decrypt: 'unlock' } as const;
+  const NOTICE_ICONS: Record<Notice, IconName> = {
+    loading: 'envelope',
+    opened: 'envelopeOpen',
+    expired: 'clock',
+    cancelled: 'cancel',
+    deleted: 'trash',
+    burned: 'trash',
+    locked: 'lock',
+    unknown: 'search',
+    invalid: 'broken',
+    newer: 'update',
+    tampered: 'shield',
+    failed: 'alert',
+    busy: 'clock',
+    cleared: 'eyeOff',
+  };
+  const ALARMING: readonly Notice[] = ['locked', 'invalid', 'tampered', 'failed'];
+  const TRUST = [
+    { key: 'open.trust.key', icon: 'key', reveal: 'reveal-up' },
+    { key: 'open.trust.click', icon: 'eye', reveal: 'reveal-up reveal-step-1' },
+    { key: 'open.trust.gone', icon: 'trash', reveal: 'reveal-up reveal-step-2' },
+  ] as const;
 
   const i18n = getI18n();
   const { t } = i18n;
+  const uid = $props.id();
 
   let view = $state.raw<ReadView>({ view: 'loading' });
+  let shown = $state.raw<ReadView>({ view: 'loading' });
   let passphrase = $state('');
+  let showPassphrase = $state(false);
+  let emptyPassphrase = $state(false);
+  let typedAgain = $state(false);
+  let passphraseRequired = $state(false);
+  let metadata = $state.raw<Metadata>();
   let confirming = $state(false);
   let askingDelete = $state(false);
   let reporting = $state(false);
+  let reportSent = $state(false);
   let restDeleted = $state(false);
   let deleting = $state(false);
   let burned = $state.raw<{ readonly outcome: BurnOutcome; readonly afterReveal: boolean }>();
+  let reached = $state(0);
+  let fraction = $state<number | undefined>();
+  let elapsed = $state(0);
+  let opening = $state(false);
+  let revealProgress = $state(1);
+  let copied = $state(false);
+  let downloaded = $state(false);
+  let noise = $state('');
+  let pending: ReadView | undefined;
+  let startedAt = 0;
+  let timer: ReturnType<typeof setInterval> | undefined;
+  let revealTimer: ReturnType<typeof setInterval> | undefined;
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  let downloadedTimer: ReturnType<typeof setTimeout> | undefined;
 
-  const status = $derived(
-    view.view === 'loading' ? t('read.loading') : view.view === 'busy' ? t(`busy.${view.step}`) : burned ? burnText(burned.outcome, burned.afterReveal) : '',
+  const nodes: readonly PipelineNode[] = $derived(
+    (passphraseRequired ? (['derive', 'claim', 'download', 'decrypt'] as const) : (['claim', 'download', 'decrypt'] as const)).map((id) => ({
+      id,
+      label: t(`open.step.${id}.label`),
+      icon: STEP_ICONS[id],
+      title: t(`open.step.${id}.title`),
+      detail: t(`open.step.${id}.detail`),
+    })),
   );
+  const minMs = $derived(prefersReducedMotion.current ? MIN_MS.reduced : passphraseRequired ? MIN_MS.passphrase : MIN_MS.plain);
+  const paced = $derived(pace({ elapsedMs: elapsed, minMs, steps: nodes.length, reached, fraction }));
+  const ready = $derived(shown.view === 'ready' ? shown : undefined);
+  const revealed = $derived(shown.view === 'revealed' ? shown : undefined);
+  const locked = $derived(ready?.rejected?.reason === 'wrong' && ready.rejected.locked);
+  const phase = $derived(opening ? 'opening' : revealed ? 'revealed' : (ready && !locked) || shown.view === 'loading' ? 'ready' : 'notice');
+  const askPassphrase = $derived(passphraseRequired);
+  const notice = $derived(noticeOf(shown));
+  const status = $derived.by(() => {
+    if (shown.view === 'loading') {
+      return t('read.loading');
+    }
+    if (opening && view.view === 'busy') {
+      return t(`busy.${view.step}`);
+    }
+    if (reporting && reportSent) {
+      return t('open.report.sent');
+    }
+    return burned ? burnText(burned.outcome, burned.afterReveal) : '';
+  });
+  const passError = $derived.by(() => {
+    if (emptyPassphrase) {
+      return t('open.passphrase.empty');
+    }
+    const rejected = typedAgain ? undefined : ready?.rejected;
+    if (rejected?.reason === 'malformed') {
+      return t('read.rejected.malformed');
+    }
+    if (rejected?.reason === 'wrong_or_changed') {
+      return t('read.rejected.wrong_or_changed');
+    }
+    if (rejected && rejected.retryAfter > 0) {
+      return t('read.rejected.wait', { time: formatWait(rejected.retryAfter, i18n.language) });
+    }
+    return rejected ? t('read.rejected.wrong', { count: rejected.attemptsLeft }) : '';
+  });
+  const readyNote = $derived.by(() => {
+    if (ready?.deviceFailed) {
+      return { alert: true, text: t('read.device') };
+    }
+    if (ready?.leaseEnded) {
+      return { alert: true, text: t('read.lease_ended') };
+    }
+    return { alert: false, text: ready?.resumable ? t('read.resumable') : '' };
+  });
+  const passHint = $derived(readyNote.text || t('open.passphrase.hint'));
+  const passAlert = $derived(passError || (readyNote.alert ? readyNote.text : ''));
+  const readyChips = $derived.by((): ChipData[] => {
+    if (!metadata) {
+      return [];
+    }
+    const chips: ChipData[] = [];
+    if (metadata.expiresAt) {
+      chips.push({ icon: 'clock', text: t('open.chip.expires', { time: shortTime(metadata.expiresAt) }) });
+    }
+    chips.push({ icon: 'eye', text: opensLeft(metadata.opensRemaining) });
+    if (metadata.passphraseRequired) {
+      chips.push({ icon: 'key', text: t('compose.passphrase.chip'), accent: true });
+    }
+    return chips;
+  });
+  const afterChips = $derived.by((): ChipData[] => {
+    if (revealed) {
+      return [
+        { icon: 'check', text: t('open.chip.now') },
+        { icon: 'eye', text: revealed.burnable && !restDeleted ? t('open.chip.more') : opensLeft(0) },
+      ];
+    }
+    if (notice === 'burned') {
+      return [{ icon: 'check', text: t('open.chip.burned') }];
+    }
+    if (shown.view === 'ended' && shown.firstOpenedAt) {
+      return [{ icon: 'eye', text: t('open.chip.first_opened', { time: shortTime(shown.firstOpenedAt) }) }];
+    }
+    if (shown.view === 'ended' && shown.endedAt) {
+      return [{ icon: 'clock', text: t('open.chip.ended', { time: shortTime(shown.endedAt) }) }];
+    }
+    return [];
+  });
+  const messageText = $derived(revealed?.text === undefined ? undefined : revealProgress >= 1 ? revealed.text : scramble(revealed.text, revealProgress));
+  const actions = $derived(phase === 'opening' ? 'dim' : (phase === 'ready' || phase === 'revealed') && shown.view !== 'loading' && !askingDelete ? 'on' : 'off');
+  const deleteActions = $derived([
+    { id: 'delete', label: 'read.delete', shown: ready !== undefined, enabled: ready !== undefined && !deleting },
+    { id: 'delete-rest', label: 'read.delete.rest', shown: revealed !== undefined && (revealed.burnable || restDeleted), enabled: (revealed?.burnable ?? false) && !deleting },
+  ] as const);
+  const reportable = $derived(ready !== undefined || (revealed?.burnable ?? false));
 
   const reader = createReader(
     {
@@ -45,22 +218,179 @@
       scrypt: (pass, saltPw, onProgress) => scryptInWorker(pass, saltPw, { onProgress }),
       now: () => Date.now(),
     },
-    (next) => {
-      view = next;
-    },
+    onView,
   );
 
   reader.load();
 
-  const focus: Attachment<HTMLElement> = (element) => {
-    element.focus();
-  };
+  function stepIndex(step: BusyStep): number {
+    const order: readonly BusyStep[] = passphraseRequired ? ['deriving', 'claiming', 'downloading', 'decrypting'] : ['claiming', 'downloading', 'decrypting'];
+    return Math.max(0, order.indexOf(step));
+  }
+
+  function onView(next: ReadView) {
+    view = next;
+    if (next.view === 'ready') {
+      passphraseRequired = next.metadata.passphraseRequired;
+      metadata = next.metadata;
+      typedAgain = false;
+    }
+    if (next.view === 'busy') {
+      if (!opening) {
+        startTimeline();
+      }
+      reached = stepIndex(next.step);
+      fraction = next.fraction;
+      return;
+    }
+    if (next.view === 'revealed' && opening) {
+      pending = next;
+      reached = nodes.length;
+      fraction = undefined;
+      return;
+    }
+    stopTimeline();
+    show(next);
+  }
+
+  function show(next: ReadView) {
+    const wasRevealed = shown.view === 'revealed';
+    shown = next;
+    if (next.view === 'revealed' && !wasRevealed) {
+      startReveal();
+    }
+  }
+
+  function startTimeline() {
+    opening = true;
+    startedAt = performance.now();
+    elapsed = 0;
+    reached = 0;
+    fraction = undefined;
+    noise = randomText(260);
+    clearInterval(timer);
+    timer = setInterval(() => {
+      elapsed = performance.now() - startedAt;
+      noise = randomText(260 + Math.floor(paced.progress * 900));
+      if (paced.finished && pending) {
+        const next = pending;
+        pending = undefined;
+        stopTimeline();
+        show(next);
+      }
+    }, TICK_MS);
+  }
+
+  function stopTimeline() {
+    clearInterval(timer);
+    timer = undefined;
+    opening = false;
+  }
+
+  async function startReveal() {
+    clearInterval(revealTimer);
+    revealProgress = prefersReducedMotion.current ? 1 : 0;
+    if (revealProgress < 1) {
+      const started = performance.now();
+      revealTimer = setInterval(() => {
+        revealProgress = Math.min(1, (performance.now() - started) / REVEAL_MS);
+        if (revealProgress >= 1) {
+          clearInterval(revealTimer);
+        }
+      }, 40);
+    }
+    await tick();
+    document.getElementById(`${uid}-revealed`)?.focus();
+  }
+
+  function randomText(length: number): string {
+    let out = '';
+    for (let index = 0; index < length; index++) {
+      out += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    }
+    return out;
+  }
+
+  function scramble(text: string, progress: number): string {
+    const cut = Math.floor(text.length * Math.min(1, progress * 1.15));
+    let out = '';
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index] ?? '';
+      out += index < cut || /\s/.test(char) ? char : ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    }
+    return out;
+  }
+
+  function shortTime(iso: string): string {
+    return new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+  }
+
+  function opensLeft(count: number): string {
+    const rule = new Intl.PluralRules(i18n.language).select(count);
+    const key: MessageKey = rule === 'one' ? 'open.chip.opens.one' : rule === 'few' ? 'open.chip.opens.few' : 'open.chip.opens.other';
+    return t(key, { count });
+  }
+
+  function noticeOf(current: ReadView): Notice {
+    switch (current.view) {
+      case 'ended':
+        return current.state === 'deleted' && burned?.outcome.outcome === 'deleted' && !burned.afterReveal ? 'burned' : current.state;
+      case 'ready':
+        return current.rejected?.reason === 'wrong' && current.rejected.locked ? 'locked' : 'loading';
+      case 'retry_later':
+        return 'busy';
+      case 'invalid':
+      case 'newer':
+      case 'unknown':
+      case 'tampered':
+      case 'failed':
+      case 'cleared':
+        return current.view;
+      default:
+        return 'loading';
+    }
+  }
+
+  function noticeTitle(kind: Notice): string {
+    return kind === 'loading' ? t('read.loading') : t(`open.notice.${kind}`);
+  }
+
+  function noticeText(kind: Notice): string {
+    switch (kind) {
+      case 'unknown':
+        return t('read.unknown');
+      case 'cleared':
+        return t('read.cleared');
+      case 'busy':
+        return t('open.notice.busy.text', { time: formatWait(shown.view === 'retry_later' ? shown.retryAfter : undefined, i18n.language) });
+      case 'loading':
+        return t('open.loading.text');
+      default:
+        return t(`open.notice.${kind}.text`);
+    }
+  }
 
   function reveal(event: SubmitEvent) {
     event.preventDefault();
+    if (shown.view !== 'ready' || deleting) {
+      return;
+    }
+    if (passphraseRequired && passphrase === '') {
+      emptyPassphrase = true;
+      document.getElementById(`${uid}-passphrase`)?.focus();
+      return;
+    }
+    emptyPassphrase = false;
+    reporting = false;
+    askingDelete = false;
     const entered = passphrase;
     passphrase = '';
     reader.reveal(entered);
+  }
+
+  function typed() {
+    emptyPassphrase = false;
+    typedAgain = true;
   }
 
   function burnText(outcome: BurnOutcome, afterReveal: boolean): string {
@@ -80,23 +410,54 @@
     }
   }
 
+  async function askDelete() {
+    reporting = false;
+    askingDelete = true;
+    await tick();
+    document.getElementById(`${uid}-keep`)?.focus();
+  }
+
+  async function cancelDelete() {
+    askingDelete = false;
+    await tick();
+    document.getElementById(revealed ? `${uid}-delete-rest` : `${uid}-delete`)?.focus();
+  }
+
+  function onconfirmkey(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      cancelDelete();
+    }
+  }
+
   async function burn() {
     askingDelete = false;
     burned = undefined;
     deleting = true;
-    const afterReveal = view.view === 'revealed';
+    const afterReveal = shown.view === 'revealed';
     const outcome = await reader.burn();
     deleting = false;
     restDeleted ||= afterReveal && (outcome.outcome === 'deleted' || outcome.outcome === 'ended');
     burned = { outcome, afterReveal };
     await tick();
-    keepFocus(document.getElementById(afterReveal ? 'revealed-title' : 'read-title'));
+    keepFocus(document.getElementById(afterReveal ? `${uid}-revealed` : 'read-title'));
   }
 
-  async function dismissed() {
-    askingDelete = false;
+  function toggleReport() {
+    reportSent = false;
+    reporting = !reporting;
+  }
+
+  async function closeReport() {
+    reporting = false;
     await tick();
-    keepFocus(document.getElementById(view.view === 'revealed' ? 'revealed-title' : 'read-title'));
+    document.getElementById(`${uid}-report-button`)?.focus();
+  }
+
+  async function reportAccepted() {
+    reportSent = true;
+    await tick();
+    document.getElementById(`${uid}-report`)?.focus();
   }
 
   function leave() {
@@ -104,6 +465,7 @@
     confirming = false;
     askingDelete = false;
     reporting = false;
+    stopTimeline();
     reader.clear();
   }
 
@@ -114,146 +476,476 @@
   }
 
   function download(file: RevealedFile) {
-    if (isKnownSafeFile(file.name) || confirming) {
-      confirming = false;
-      saveFile(file.bytes, file.name);
-    } else {
+    if (!isKnownSafeFile(file.name) && !confirming) {
       confirming = true;
+      return;
+    }
+    confirming = false;
+    saveFile(file.bytes, file.name);
+    downloaded = true;
+    clearTimeout(downloadedTimer);
+    downloadedTimer = setTimeout(() => (downloaded = false), FLASH_MS);
+  }
+
+  async function copyText() {
+    if (!revealed?.text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(revealed.text);
+      copied = true;
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => (copied = false), FLASH_MS);
+    } catch {
+      copied = false;
     }
   }
+
+  function onwindowclick(event: MouseEvent) {
+    if (reporting && !(event.target instanceof Element && event.target.closest('[data-menu]'))) {
+      reporting = false;
+    }
+  }
+
+  const cleanup: Attachment = () => () => {
+    clearInterval(timer);
+    clearInterval(revealTimer);
+    clearTimeout(copiedTimer);
+    clearTimeout(downloadedTimer);
+  };
 </script>
 
-<svelte:window onpagehide={leave} onpageshow={returned} />
+<svelte:window onpagehide={leave} onpageshow={returned} onclick={onwindowclick} />
 
-<p role="status" aria-live="polite">{status}</p>
-
-<section aria-labelledby="read-title">
-  <h2 id="read-title" tabindex="-1">{t('read.title')}</h2>
-
-  {#if view.view === 'invalid'}
-    <p role="alert">{t('read.invalid')}</p>
-  {:else if view.view === 'newer'}
-    <p role="alert">{t('read.newer')}</p>
-  {:else if view.view === 'unknown'}
-    <p role="alert">{t('read.unknown')}</p>
-  {:else if view.view === 'tampered'}
-    <p role="alert">{t('read.tampered')}</p>
-  {:else if view.view === 'cleared'}
-    <p role="alert">{t('read.cleared')}</p>
-  {:else if view.view === 'failed'}
-    <p role="alert">{t('read.failed')}</p>
-    <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
-  {:else if view.view === 'retry_later'}
-    <p role="alert">{t('read.retry_later', { time: formatWait(view.retryAfter, i18n.language) })}</p>
-    <button type="button" onclick={() => reader.load()}>{t('action.retry')}</button>
-  {:else if view.view === 'ended'}
-    <p role="alert">{t(`read.ended.${view.state}`)}</p>
-    {#if view.firstOpenedAt}
-      <p>{t('read.opened_at', { time: formatTime(view.firstOpenedAt, i18n.language) })}</p>
-    {/if}
-  {:else if view.view === 'ready'}
-    <ul>
-      {#if view.metadata.expiresAt}
-        <li>{t('read.expires', { time: formatTime(view.metadata.expiresAt, i18n.language) })}</li>
-      {/if}
-      <li>{t('read.opens', { count: view.metadata.opensRemaining })}</li>
-      {#if view.metadata.passphraseRequired}
-        <li>{t('read.passphrase_required')}</li>
-      {/if}
-    </ul>
-    {#if view.deviceFailed}
-      <p role="alert">{t('read.device')}</p>
-    {/if}
-    {#if view.resumable}
-      <p>{t('read.resumable')}</p>
-    {/if}
-    {#if view.leaseEnded}
-      <p role="alert">{t('read.lease_ended')}</p>
-    {/if}
-    {#if view.rejected?.reason === 'malformed'}
-      <p role="alert">{t('read.rejected.malformed')}</p>
-    {:else if view.rejected?.reason === 'wrong_or_changed'}
-      <p role="alert">{t('read.rejected.wrong_or_changed')}</p>
-    {:else if view.rejected?.locked}
-      <p role="alert">{t('read.rejected.locked')}</p>
-    {:else if view.rejected && view.rejected.retryAfter > 0}
-      <p role="alert">{t('read.rejected.wait', { time: formatWait(view.rejected.retryAfter, i18n.language) })}</p>
-    {:else if view.rejected}
-      <p role="alert">{t('read.rejected.wrong', { count: view.rejected.attemptsLeft })}</p>
-    {/if}
-    <form onsubmit={reveal}>
-      {#if view.metadata.passphraseRequired}
-        <label for="read-passphrase">{t('read.passphrase')}</label>
-        <input
-          id="read-passphrase"
-          type="password"
-          autocomplete="off"
-          autocapitalize="off"
-          spellcheck="false"
-          data-1p-ignore=""
-          data-lpignore="true"
-          data-bwignore="true"
-          data-form-type="other"
-          required
-          bind:value={passphrase}
-          {@attach focus}
-        />
-      {/if}
-      <p>{t('read.reveal.note')}</p>
-      <button type="submit" disabled={deleting}>{t('read.reveal')}</button>
-    </form>
-    <button type="button" disabled={deleting} onclick={() => (askingDelete = true)}>{t('read.delete')}</button>
-    {@render reportArea()}
-  {:else if view.view === 'busy'}
-    {#if view.fraction === undefined}
-      <progress aria-label={t(`busy.${view.step}`)}></progress>
-    {:else}
-      <progress aria-label={t(`busy.${view.step}`)} max="1" value={view.fraction}></progress>
-    {/if}
-  {:else if view.view === 'revealed'}
-    <h3 id="revealed-title" tabindex="-1" {@attach focus}>{t('revealed.title')}</h3>
-    {#if view.text !== undefined}
-      <pre class="whitespace-pre-wrap break-words">{view.text}</pre>
-    {/if}
-    {#if view.file}
-      {@const file = view.file}
-      {@const extension = fileExtension(file.name)}
-      <p>{t('revealed.file')}: <bdi>{file.name}</bdi>, {formatBytes(file.bytes.length, i18n.language)}</p>
-      {#if confirming}
-        <p role="alert">{t('revealed.confirm.title')}</p>
-        <p>{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</p>
-        <button type="button" onclick={() => download(file)}>{t('revealed.confirm.download')}</button>
-        <button type="button" onclick={() => (confirming = false)}>{t('revealed.confirm.cancel')}</button>
-      {:else}
-        <button type="button" onclick={() => download(file)}>{t('revealed.download')}</button>
-      {/if}
-    {/if}
-    <p>{t('revealed.note')}</p>
-    {#if view.burnable || restDeleted}
-      <button type="button" disabled={!view.burnable || deleting} onclick={() => (askingDelete = true)}>{t('read.delete.rest')}</button>
-    {/if}
-    {#if view.burnable}
-      {@render reportArea()}
-    {/if}
-  {/if}
-</section>
-
-{#snippet reportArea()}
-  <button type="button" aria-expanded={reporting} onclick={() => (reporting = !reporting)}>{t('report.open')}</button>
-  {#if reporting}
-    <p>{t('report.note')}</p>
-    <p>{t('report.privacy')}</p>
-    <ReportForm name="read-report" send={(_link, reason) => reader.report(reason)} />
-  {/if}
+{#snippet chips(list: readonly ChipData[], dim = false)}
+  <ul class={['flex flex-wrap items-center gap-1.5 transition-opacity duration-500', dim ? 'pointer-events-none opacity-40' : 'opacity-100']}>
+    {#each list as data (data.text)}
+      <li
+        class={[
+          'flex h-9 items-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap ring-1',
+          data.accent ? 'bg-nebula-400/10 text-nebula-300 ring-nebula-300/30' : 'text-ink-soft ring-white/8',
+        ]}
+      >
+        <Icon name={data.icon} class={['size-4 shrink-0', !data.accent && 'text-ink-mute']} />
+        {data.text}
+      </li>
+    {/each}
+  </ul>
 {/snippet}
 
-{#if askingDelete}
-  <ConfirmDialog
-    id="read-confirm"
-    message={t('read.delete.confirm')}
-    confirm={t('read.delete.yes')}
-    dismiss={t('read.delete.no')}
-    onconfirm={burn}
-    onclose={dismissed}
-  />
-{/if}
+{#snippet swapIcons(first: IconName, second: IconName, swapped: boolean, tone = 'text-aegis-200')}
+  <span class="stack place-items-center">
+    <Icon name={first} class={['size-4 transition-[opacity,scale] duration-300 ease-silk', swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100']} />
+    <Icon name={second} stroke={2.2} class={['size-4 transition-[opacity,scale] duration-300 ease-silk', tone, swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0']} />
+  </span>
+{/snippet}
+
+<section id="otevrit" class="px-4 pt-20 pb-20 sm:px-6 md:pt-28 md:pb-28" aria-labelledby="read-title" {@attach cleanup}>
+  <p class="sr-only" role="status" aria-live="polite">{status}</p>
+  <div class="mx-auto max-w-[860px] text-center">
+    <p class="animate-rise text-sm font-medium text-aegis-300" aria-hidden="true">{t('read.title')}</p>
+    <h1 class="mt-3 animate-rise font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance [animation-delay:80ms] sm:text-[50px] lg:text-[62px]">
+      {t('open.title')}
+    </h1>
+    <p class="mx-auto mt-6 max-w-[620px] animate-rise text-base leading-[1.75] text-balance text-ink-soft [animation-delay:160ms] sm:text-[17px]">{t('open.intro')}</p>
+  </div>
+
+  <div class="relative z-20 mx-auto mt-14 max-w-[860px] animate-rise [animation-delay:240ms]">
+    <div class="glow-under" aria-hidden="true"></div>
+    <div class="glass rounded-card">
+      <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
+      <h2 id="read-title" tabindex="-1" class="sr-only">{t('read.title')}</h2>
+
+      <div class="stack relative min-h-[420px] md:min-h-[440px]">
+        <div class={['fade-swap flex flex-col items-center justify-center gap-7 px-5 py-12 text-center sm:px-10 md:py-14', phase === 'ready' ? SHOWN : HIDDEN]} inert={phase !== 'ready'}>
+          <span class="relative grid size-20 place-items-center" aria-hidden="true">
+            <span class="absolute -inset-5 rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.35),transparent)]"></span>
+            <span class="absolute -inset-3 rounded-[28px] ring-1 ring-aegis-300/15"></span>
+            <span class="absolute -inset-1.5 animate-pulse-core rounded-[25px] ring-1 ring-aegis-300/30"></span>
+            <span class="relative grid size-20 place-items-center rounded-[22px] bg-aegis-500/15 text-aegis-200 shadow-[0_0_44px_-8px_oklch(0.56_0.19_258/0.85)] ring-1 ring-aegis-400/40">
+              <Icon name="envelope" stroke={1.4} class="size-9" />
+            </span>
+            <span
+              class="absolute -right-2 -bottom-2 grid size-8 place-items-center rounded-full bg-void-900 text-aegis-200 shadow-[0_0_16px_-4px_oklch(0.56_0.19_258/0.9)] ring-1 ring-aegis-400/50"
+            >
+              <Icon name="keyhole" stroke={2} class="size-4" />
+            </span>
+          </span>
+          <div>
+            <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">{t(shown.view === 'loading' ? 'read.loading' : 'open.ready.title')}</h3>
+            <p class="mt-2 text-[15px] text-pretty text-ink-mute">{t(shown.view === 'loading' ? 'open.loading.text' : 'open.ready.sub')}</p>
+          </div>
+          <form id="{uid}-form" class="contents" novalidate onsubmit={reveal}>
+            {#if askPassphrase}
+              <div class="w-full max-w-[440px] text-left">
+                <label for="{uid}-passphrase" class="sr-only">{t('read.passphrase')}</label>
+                <div class="relative rounded-pane">
+                  <div class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4">
+                    <Icon name="key" class="size-4 shrink-0 text-nebula-300" />
+                    <input
+                      id="{uid}-passphrase"
+                      bind:value={passphrase}
+                      type={showPassphrase ? 'text' : 'password'}
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      data-1p-ignore=""
+                      data-lpignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
+                      placeholder={t('open.passphrase.placeholder')}
+                      aria-invalid={passAlert !== ''}
+                      aria-describedby="{uid}-pass-hint {uid}-pass-alert"
+                      oninput={typed}
+                      class="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-mute md:h-10"
+                    />
+                    <button
+                      type="button"
+                      onclick={() => (showPassphrase = !showPassphrase)}
+                      aria-label={t(showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
+                      aria-pressed={showPassphrase}
+                      class="grid size-11 shrink-0 place-items-center rounded-[8px] text-ink-mute hover:bg-white/6 hover:text-ink md:size-9"
+                    >
+                      <span class="stack place-items-center">
+                        <Icon name="eye" class={['size-[18px] transition-[opacity,scale] duration-300 ease-silk', showPassphrase ? 'scale-50 opacity-0' : 'scale-100 opacity-100']} />
+                        <Icon name="eyeOff" class={['size-[18px] transition-[opacity,scale] duration-300 ease-silk', showPassphrase ? 'scale-100 opacity-100' : 'scale-50 opacity-0']} />
+                      </span>
+                    </button>
+                  </div>
+                  <span
+                    class={[
+                      'pointer-events-none absolute inset-0 rounded-pane shadow-[0_0_0_1px_oklch(0.72_0.15_15/0.7),0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] transition-opacity duration-500',
+                      passAlert ? 'opacity-100' : 'opacity-0',
+                    ]}
+                    aria-hidden="true"
+                  ></span>
+                </div>
+                <div class="stack mt-3 px-1 text-[13px]">
+                  <p id="{uid}-pass-hint" class={['fade-swap flex items-center gap-2 text-ink-mute', passAlert ? 'opacity-0' : 'opacity-100']}>
+                    <Icon name="info" class="size-4 shrink-0" />
+                    {passHint}
+                  </p>
+                  <p id="{uid}-pass-alert" role="alert" class={['fade-swap flex items-center gap-2 text-rose-300', passAlert ? 'opacity-100' : 'opacity-0']}>
+                    <Icon name="alert" class="size-4 shrink-0" />
+                    {passAlert}
+                  </p>
+                </div>
+              </div>
+            {:else if readyNote.text}
+              <p role={readyNote.alert ? 'alert' : undefined} class={['flex max-w-[440px] items-center gap-2 text-[13px]', readyNote.alert ? 'text-rose-300' : 'text-ink-mute']}>
+                <Icon name={readyNote.alert ? 'alert' : 'info'} class="size-4 shrink-0" />
+                {readyNote.text}
+              </p>
+            {/if}
+          </form>
+        </div>
+
+        <div class={['fade-swap relative overflow-hidden', phase === 'opening' ? SHOWN : HIDDEN]} aria-hidden="true">
+          <p
+            class="pointer-events-none absolute inset-0 px-6 pt-6 font-mono text-[13px] leading-6 break-all text-aegis-200/30 [mask-image:radial-gradient(ellipse_62%_58%_at_50%_50%,transparent_35%,black_100%)]"
+          >
+            {noise}
+          </p>
+          <div class="pointer-events-none absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-400/12 to-transparent"></div>
+          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"></div>
+          <div class="relative flex h-full flex-col items-center justify-center px-4 py-12">
+            <Pipeline {nodes} size="narrow" current={paced.step} progress={paced.progress} active={phase === 'opening'} />
+          </div>
+        </div>
+
+        <div class={['fade-swap absolute inset-0 flex flex-col justify-center gap-5 px-5 py-6 text-left sm:px-8 sm:py-8', phase === 'revealed' ? SHOWN : HIDDEN]} inert={phase !== 'revealed'}>
+          {#if revealed}
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-3">
+                <span
+                  class="grid size-10 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 shadow-[0_0_28px_-6px_oklch(0.56_0.19_258/0.75)] ring-1 ring-aegis-400/35"
+                  aria-hidden="true"
+                >
+                  <Icon name="unlock" stroke={1.7} class="size-5" />
+                </span>
+                <div class="min-w-0">
+                  <h3 id="{uid}-revealed" tabindex="-1" class="text-[15px] text-ink outline-none">{t('revealed.title')}</h3>
+                  <p class="truncate text-[13px] text-ink-mute">{t('open.revealed.sub')}</p>
+                </div>
+              </div>
+              {#if revealed.text !== undefined}
+                <button
+                  type="button"
+                  onclick={copyText}
+                  aria-label={t('open.copy.text')}
+                  title={t('open.copy.text')}
+                  class="relative grid size-11 shrink-0 place-items-center rounded-[9px] bg-white/4 text-ink-soft ring-1 ring-white/10 hover:bg-white/8 hover:text-ink md:size-9"
+                >
+                  <span
+                    class={[
+                      'absolute inset-0 rounded-[9px] bg-aegis-500/20 shadow-[0_0_18px_-4px_oklch(0.56_0.19_258/0.8)] ring-1 ring-aegis-400/50 transition-opacity duration-500 ease-silk',
+                      copied ? 'opacity-100' : 'opacity-0',
+                    ]}
+                  ></span>
+                  <span class="relative">{@render swapIcons('copy', 'check', copied)}</span>
+                </button>
+                <span class="sr-only" role="status">{copied ? t('open.copied.text') : ''}</span>
+              {/if}
+            </div>
+            {#if messageText !== undefined}
+              <pre
+                class="well min-h-0 max-h-[220px] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink [scrollbar-width:thin]">{messageText}</pre>
+            {/if}
+            {#if revealed.file}
+              {@const file = revealed.file}
+              {@const extension = fileExtension(file.name)}
+              <div class="stack shrink-0 rounded-pane bg-white/3 py-2.5 pr-2.5 pl-3 ring-1 ring-white/8">
+                <div class={['fade-swap flex items-center gap-3.5', confirming ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={confirming}>
+                  <span class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30" aria-hidden="true">
+                    <Icon name="file" stroke={1.7} class="size-[18px]" />
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <bdi class="block truncate text-sm text-ink">{file.name}</bdi>
+                    <span class="block font-mono text-[11px] text-ink-mute">{formatBytes(file.bytes.length, i18n.language)}</span>
+                  </span>
+                  <button type="button" onclick={() => download(file)} class="btn-ghost hover-lift flex h-11 shrink-0 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9">
+                    {@render swapIcons('download', 'check', downloaded)}
+                    {t('open.download')}<span class="sr-only">{t('open.download.suffix')}</span>
+                  </button>
+                </div>
+                <div
+                  class={['fade-swap flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between', confirming ? 'opacity-100' : 'pointer-events-none opacity-0']}
+                  inert={!confirming}
+                >
+                  <div class="flex min-w-0 items-center gap-3.5">
+                    <span class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-rose-500/12 text-rose-300 ring-1 ring-rose-300/35" aria-hidden="true">
+                      <Icon name="alert" stroke={1.7} class="size-[18px]" />
+                    </span>
+                    <span class="min-w-0">
+                      <span role="alert" class="block text-sm text-ink">{confirming ? t('revealed.confirm.title') : ''}</span>
+                      <span class="block text-[11px] text-ink-mute">{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</span>
+                    </span>
+                  </div>
+                  <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
+                    <button type="button" onclick={() => (confirming = false)} class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9">{t('revealed.confirm.cancel')}</button>
+                    <button
+                      type="button"
+                      onclick={() => download(file)}
+                      class="h-11 rounded-[9px] bg-rose-500/20 px-3 text-[13px] font-medium text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
+                    >
+                      {t('revealed.confirm.download')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {/if}
+            <p class="flex shrink-0 items-center gap-2 px-1 text-[13px] text-ink-mute">
+              <Icon name="eyeOff" class="size-4 shrink-0 text-nebula-300" />
+              {t('revealed.note')}
+            </p>
+          {/if}
+        </div>
+
+        <div class={['fade-swap flex flex-col items-center justify-center gap-7 px-5 py-12 text-center sm:px-10 md:py-14', phase === 'notice' ? SHOWN : HIDDEN]} inert={phase !== 'notice'}>
+          <span
+            class={[
+              'grid size-20 place-items-center rounded-[22px] ring-1',
+              ALARMING.includes(notice) ? 'bg-rose-500/12 text-rose-300 ring-rose-300/35' : 'bg-white/4 text-ink-soft ring-white/12',
+            ]}
+            aria-hidden="true"
+          >
+            <Icon name={NOTICE_ICONS[notice]} stroke={1.6} class="size-9" />
+          </span>
+          <div>
+            <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">{noticeTitle(notice)}</h3>
+            <p class="mx-auto mt-2 max-w-[460px] text-[15px] leading-relaxed text-pretty text-ink-mute">{noticeText(notice)}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="relative border-t border-white/8">
+        <div class="stack">
+          <div
+            class={[
+              'fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+              (phase === 'ready' || phase === 'opening') && !askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0',
+            ]}
+            inert={!(phase === 'ready' || phase === 'opening') || askingDelete}
+          >
+            {@render chips(readyChips, phase === 'opening')}
+            <div class="flex items-center">
+              <div class="stack min-w-0 flex-1 sm:flex-none">
+                <button
+                  type="submit"
+                  form="{uid}-form"
+                  disabled={!ready || deleting}
+                  class={[
+                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-opacity duration-500 md:h-9 md:px-4',
+                    phase === 'ready' ? 'opacity-100' : 'pointer-events-none opacity-0',
+                  ]}
+                >
+                  <span class="sheen" aria-hidden="true"></span>
+                  <Icon name="eye" stroke={2} class="size-4 shrink-0" />
+                  {t('read.reveal')}
+                </button>
+                <div
+                  class={[
+                    'relative flex h-11 items-center justify-center gap-2.5 overflow-hidden rounded-[9px] bg-aegis-950/70 px-5 text-sm font-medium whitespace-nowrap text-ink ring-1 ring-aegis-400/45 transition-opacity duration-500 md:h-9 md:px-4',
+                    phase === 'opening' ? 'opacity-100' : 'pointer-events-none opacity-0',
+                  ]}
+                  aria-hidden="true"
+                >
+                  <progress class="progress-fill absolute inset-0 h-full w-full" max="1" value={phase === 'opening' ? paced.progress : 0}></progress>
+                  <span class="absolute inset-y-0 left-0 w-1/3 animate-beam bg-linear-to-r from-transparent via-white/15 to-transparent"></span>
+                  <svg class="relative size-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.2"></circle>
+                    <path d="M20.5 12A8.5 8.5 0 0 0 12 3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path>
+                  </svg>
+                  <span class="relative">{t('open.opening')}</span>
+                  <span class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums">{Math.round(paced.progress * 100)} %</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class={[
+              'fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+              (phase === 'revealed' || phase === 'notice') && !askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0',
+            ]}
+            inert={!(phase === 'revealed' || phase === 'notice') || askingDelete}
+          >
+            {@render chips(afterChips)}
+            {#if shown.view === 'failed' || shown.view === 'retry_later'}
+              <button
+                type="button"
+                onclick={() => reader.load()}
+                class="btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-4 text-sm font-medium whitespace-nowrap sm:w-auto md:h-9"
+              >
+                <Icon name="refresh" class="size-4 shrink-0" />
+                {t('action.retry')}
+              </button>
+            {:else}
+              <a href="/" class="btn-ghost hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] whitespace-nowrap sm:w-auto md:h-9">
+                <Icon name="pen" class="size-4 shrink-0" />
+                {t('nav.write')}
+              </a>
+            {/if}
+          </div>
+
+          <div
+            role="alertdialog"
+            tabindex="-1"
+            aria-labelledby="{uid}-confirm"
+            onkeydown={onconfirmkey}
+            class={['fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3', askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0']}
+            inert={!askingDelete}
+          >
+            <p id="{uid}-confirm" class="flex items-center gap-2 px-1.5 text-[13px] text-ink-soft">
+              <Icon name="trash" class="size-4 shrink-0 text-rose-300" />
+              {t('read.delete.confirm')}
+            </p>
+            <div class="grid grid-cols-2 gap-1.5 sm:flex sm:items-center">
+              <button
+                id="{uid}-keep"
+                type="button"
+                onclick={cancelDelete}
+                class="btn-ghost hover-lift flex h-11 items-center justify-center rounded-[9px] px-4 text-[13px] whitespace-nowrap md:h-9"
+              >
+                {t('read.delete.no')}
+              </button>
+              <button
+                type="button"
+                onclick={burn}
+                class="hover-lift flex h-11 items-center justify-center gap-2 rounded-[9px] bg-rose-500/20 px-4 text-[13px] font-medium whitespace-nowrap text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
+              >
+                {t('read.delete.yes')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="relative z-30 mx-auto mt-6 flex max-w-[860px] flex-col-reverse items-center gap-4 px-1 sm:flex-row sm:justify-between">
+    <p class="flex items-center gap-2 text-center text-xs text-ink-mute">
+      <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
+      {t('compose.note')}
+    </p>
+    <div
+      class={['flex items-center gap-1 transition-opacity duration-500', actions === 'on' ? 'opacity-100' : actions === 'dim' ? 'pointer-events-none opacity-40' : 'pointer-events-none opacity-0']}
+      inert={actions !== 'on'}
+    >
+      <div class="stack justify-items-end">
+        {#each deleteActions as action (action.id)}
+          <button
+            id="{uid}-{action.id}"
+            type="button"
+            disabled={!action.enabled}
+            onclick={askDelete}
+            inert={!action.shown}
+            class={[
+              'flex h-11 items-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap text-ink-mute transition-opacity duration-300 hover:bg-rose-500/10 hover:text-rose-200 disabled:hover:bg-transparent disabled:hover:text-ink-mute md:h-9',
+              action.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
+            ]}
+          >
+            <Icon name="trash" class="size-4 shrink-0" />
+            {t(action.label)}
+          </button>
+        {/each}
+      </div>
+      <div class={['relative transition-opacity duration-300', reportable ? 'opacity-100' : 'pointer-events-none opacity-0']} inert={!reportable} data-menu>
+        <button
+          id="{uid}-report-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={reporting}
+          aria-controls="{uid}-report"
+          onclick={toggleReport}
+          class={['flex h-11 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9', reporting ? 'bg-white/8 text-ink' : 'text-ink-mute hover:bg-white/5 hover:text-ink']}
+        >
+          <Icon name="flag" class="size-4 shrink-0" />
+          {t('open.report')}
+        </button>
+        <Popover
+          id="{uid}-report"
+          label={t('open.report.title')}
+          open={reporting}
+          from="below"
+          onclose={closeReport}
+          class="top-full right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] p-3.5 text-left"
+        >
+          <div class="stack">
+            <div class={['fade-swap', reportSent ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={reportSent}>
+              <p class="px-0.5 text-[13px] text-ink">{t('open.report.title')}</p>
+              <p class="mt-1 px-0.5 text-[11px] leading-relaxed text-ink-mute">{t('open.report.note')}</p>
+              <ReportForm name="{uid}-report-form" compact hint={t('open.report.privacy')} send={(_link, reason) => reader.report(reason)} onaccepted={reportAccepted} />
+            </div>
+            <div class={['fade-swap flex flex-col items-center justify-center gap-2 text-center', reportSent ? 'opacity-100' : 'pointer-events-none opacity-0']} inert={!reportSent}>
+              <span class="grid size-10 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35" aria-hidden="true">
+                <Icon name="check" stroke={2} class="size-5" />
+              </span>
+              <p class="text-[13px] text-ink">{t('open.report.sent')}</p>
+              <p class="text-[11px] text-ink-mute">{t('open.report.sent.note')}</p>
+            </div>
+          </div>
+        </Popover>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="px-4 pb-28 sm:px-6 md:pb-36" aria-labelledby="{uid}-trust">
+  <div class="mx-auto max-w-[1160px]">
+    <h2 id="{uid}-trust" class="reveal-up text-center text-sm font-medium text-aegis-300">{t('open.trust.title')}</h2>
+    <ol class="mt-8 grid gap-4 md:grid-cols-3 md:gap-6">
+      {#each TRUST as card (card.key)}
+        <li class={['glass hover-lift glow-on-hover flex items-start gap-4 rounded-card p-5 text-left md:flex-col md:items-center md:gap-0 md:px-6 md:pt-7 md:pb-8 md:text-center', card.reveal]}>
+          <span class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35">
+            <Icon name={card.icon} stroke={1.6} class="size-6" />
+          </span>
+          <div class="min-w-0">
+            <h3 class="text-[17px] font-medium md:mt-6 md:text-lg">{t(`${card.key}.title`)}</h3>
+            <p class="mt-1 max-w-[300px] text-[15px] leading-relaxed text-pretty text-ink-soft md:mx-auto md:mt-2">{t(`${card.key}.text`)}</p>
+          </div>
+        </li>
+      {/each}
+    </ol>
+  </div>
+</section>

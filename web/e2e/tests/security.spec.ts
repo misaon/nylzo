@@ -1,7 +1,8 @@
-import { KDF_PBKDF2, deriveContent, deriveLink, derivePassphraseKey, encodeBase64url, parseFragment, parsePath, requestKey } from '@nylzo/core';
+import { KDF_PBKDF2, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, parseFragment, parsePath, requestKey } from '@nylzo/core';
+import { anyPassphraseKey } from '@nylzo/core/scrypt';
 import type { Page, Request } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, live, openViaUi, test } from './helpers.ts';
 
 interface Recorded {
   readonly url: string;
@@ -37,7 +38,7 @@ async function linkSecrets(link: string, passphrase: string) {
   const id = parsePath(url.pathname);
   const { s } = parseFragment(url.hash);
   const { r, saltPw } = await deriveLink(id, s);
-  const p = await derivePassphraseKey(KDF_PBKDF2, passphrase, saltPw);
+  const p = await anyPassphraseKey(KDF_SCRYPT, passphrase, saltPw);
   const { v } = await deriveContent(id, s, p);
   return { s, r, saltPw, p, v };
 }
@@ -50,7 +51,7 @@ test('the fragment, the passphrase, the keys and the content never leave the bro
   const passphrase = 'four random words here';
   const text = 'tajné sdělení jen pro příjemce';
   const file = { name: 'výplatní páska říjen.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n') };
-  const link = await createViaUi(sender, { text, file, passphrase, kdf: 'pbkdf2' });
+  const link = await createViaUi(sender, { text, file, passphrase });
   await openViaUi(recipient, link, passphrase);
   await expectRevealed(recipient);
   await expect(recipient.locator('pre')).toHaveText(text);
@@ -172,7 +173,7 @@ test('the reader stops without a verifier when the server reports another profil
   });
   await page.goto(message.link);
   await expect(page.getByText(/cannot be opened safely/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Show message' })).toHaveCount(0);
+  await expect(live(page, page.getByRole('button', { name: 'Show message' }))).toHaveCount(0);
   expect(sensitive).toEqual([]);
   const status = await message.api.status(message.id, message.manageKey);
   expect(status).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
@@ -226,15 +227,16 @@ test('leaving the page removes the shown message and closes its dialog, so the b
   await openViaUi(page, message.link);
   await expectRevealed(page);
   await expect(page.locator('pre')).toHaveText('gone after leaving');
-  await page.getByRole('button', { name: 'Report this message' }).click();
+  await page.getByRole('button', { name: 'Report', exact: true }).click();
+  await expect(live(page, page.getByRole('dialog'))).toBeVisible();
   await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(live(page, page.getByRole('alertdialog'))).toBeVisible();
   await leave(page);
   await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Delete the remaining opens' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Report this message' })).toHaveCount(0);
+  await expect(live(page, page.getByRole('dialog').or(page.getByRole('alertdialog')))).toHaveCount(0);
+  await expect(live(page, page.getByRole('button', { name: 'Delete the remaining opens' }))).toHaveCount(0);
+  await expect(live(page, page.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
 });
 
 test('a page restored from the back/forward cache loads again and spends no open', async ({ page }) => {
@@ -261,13 +263,13 @@ test('back and forward after reading bring back neither the fragment nor the mes
   await page.goto(`${BASE_URL}/transparency`);
   await page.goBack();
   await expect(page).toHaveURL(read);
-  await expect(page.getByText(/^The link is incomplete or damaged\./)).toBeVisible();
+  await expect(page.getByText(/^The link is incomplete or damaged$/)).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
   await page.goBack();
   await expect(page).toHaveURL(`${BASE_URL}/`);
   await page.goForward();
   await expect(page).toHaveURL(read);
-  await expect(page.getByText(/^The link is incomplete or damaged\./)).toBeVisible();
+  await expect(page.getByText(/^The link is incomplete or damaged$/)).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
   expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ state: 'available', opensUsed: 1 });
 });
@@ -285,7 +287,7 @@ test('a deletion that answers after the page was left never shows the message ag
     await route.continue();
   });
   await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Yes, delete' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
   await asked.promise;
   await leave(page);
   await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
@@ -329,7 +331,7 @@ for (const file of files) {
     const download = recipient.waitForEvent('download');
     await recipient.getByRole('button', { name: 'Download attachment' }).click();
     if (file.risky) {
-      await expect(recipient.getByRole('alert')).toHaveText(/can run code/);
+      await expect(live(recipient, recipient.getByRole('alert'))).toHaveText(/can run code/);
       await expect(recipient.getByText(`File extension: .${file.extension}`)).toBeVisible();
       expect(downloads).toEqual([]);
       await recipient.getByRole('button', { name: 'Download anyway' }).click();
@@ -350,7 +352,7 @@ test('the fields of an abuse report are not spell checked or autocompleted (D38,
   const fields = [page.getByLabel('Link to the message'), page.getByLabel('Reason, optional')];
   const reader = await page.context().newPage();
   await reader.goto(message.link);
-  await reader.getByRole('button', { name: 'Report this message' }).click();
+  await reader.getByRole('button', { name: 'Report', exact: true }).click();
   fields.push(reader.getByLabel('Reason, optional'));
   for (const field of fields) {
     await expect(field).toHaveAttribute('spellcheck', 'false');
@@ -367,10 +369,10 @@ test('an abuse report sends the id, the reason and a signature but never the fra
   const fromPage = record(recipient);
   const fromReportPage = record(reporter);
   await recipient.goto(message.link);
-  await recipient.getByRole('button', { name: 'Report this message' }).click();
+  await recipient.getByRole('button', { name: 'Report', exact: true }).click();
   await recipient.getByLabel('Reason, optional').fill('spam');
   await recipient.getByRole('button', { name: 'Send report' }).click();
-  await expect(recipient.getByText('We received the report.')).toBeVisible();
+  await expect(recipient.getByRole('status').first()).toHaveText('Report sent');
   await reporter.goto('/report');
   await reporter.getByLabel('Link to the message').fill(message.link);
   await reporter.getByRole('button', { name: 'Send report' }).click();

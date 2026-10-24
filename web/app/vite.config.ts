@@ -24,6 +24,27 @@ function withoutNonceMeta(): Plugin {
   };
 }
 
+const PRELOADED_FONTS = /^assets\/(?:geist|sora)-latin(?:-ext)?-wght-normal-[\w-]+\.woff2$/;
+
+function preloadFonts(): Plugin {
+  return {
+    name: 'nylzo-preload-fonts',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_, bundle) {
+      const index = bundle['index.html'];
+      if (index?.type !== 'asset' || typeof index.source !== 'string') {
+        return;
+      }
+      const links = Object.keys(bundle)
+        .filter((name) => PRELOADED_FONTS.test(name))
+        .sort()
+        .map((name) => `<link rel="preload" href="/${name}" as="font" type="font/woff2" crossorigin>`);
+      index.source = index.source.replace('</head>', `${links.join('\n')}\n</head>`);
+    },
+  };
+}
+
 function precompress(): Plugin {
   return {
     name: 'nylzo-precompress',
@@ -43,7 +64,7 @@ function precompress(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [tailwindcss(), svelte(), withoutNonceMeta(), precompress()],
+  plugins: [tailwindcss(), svelte(), withoutNonceMeta(), preloadFonts(), precompress()],
   html: { cspNonce: '__NYLZO_CSP_NONCE__' },
   server: { strictPort: true, proxy: { '/api': devApi } },
   build: {

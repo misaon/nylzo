@@ -59,6 +59,7 @@ export type CreateField = CreateProblem['field'];
 export type CreateProgress =
   | { readonly step: 'preparing' }
   | { readonly step: 'deriving'; readonly fraction?: number | undefined }
+  | { readonly step: 'encrypting' }
   | { readonly step: 'proving'; readonly fraction: number }
   | { readonly step: 'uploading' };
 
@@ -238,6 +239,7 @@ async function sealMessage(
     content = await deriveContent(id, s, p);
     p.fill(0);
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
+    onProgress({ step: 'encrypting' });
     const object = await seal(content.k, newHeader(kdfId), id, policy, { meta: meta(input), file: input.file?.bytes });
     if (object.length > instance.limits.maxObjectBytes) {
       throw new CreateError({ kind: 'too_large' });

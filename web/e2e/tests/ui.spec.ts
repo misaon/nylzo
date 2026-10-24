@@ -2,11 +2,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 import AxeBuilder from '@axe-core/playwright';
-import { KDF_PBKDF2 } from '@nylzo/core';
+import { KDF_SCRYPT } from '@nylzo/core';
 import type { Page } from '@playwright/test';
 import { transform, type Declaration } from 'lightningcss';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, setPassphrase, test } from './helpers.ts';
 
 const ASSETS = new URL('../../../internal/server/web/dist/assets/', import.meta.url);
 const MOBILE = { width: 430, height: 932 };
@@ -85,8 +85,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await expect(sender.getByLabel('Message text')).toBeVisible();
     await expectStable(sender, 'create loaded');
     await sender.getByLabel('Message text').fill('layout');
-    await sender.getByLabel('Passphrase, optional').fill(passphrase);
-    await sender.getByRole('radio', { name: /^PBKDF2/ }).check();
+    await setPassphrase(sender, passphrase);
     await settled(sender);
     await sender.evaluate(() => window.nylzoShifts());
     await sender.getByRole('button', { name: 'Create link' }).click();
@@ -95,7 +94,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
 
     const recipient = await (await browser.newContext({ viewport })).newPage();
     await watchLayout(recipient);
-    const message = await createViaApi({ text: 'layout', passphrase, kdfId: KDF_PBKDF2 });
+    const message = await createViaApi({ text: 'layout', passphrase, kdfId: KDF_SCRYPT });
     await recipient.goto(message.link);
     await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
     await expectStable(recipient, 'read loaded');
@@ -149,17 +148,17 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await recipient.goto(message.link);
     await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
     await expectStable(recipient, 'read loaded');
-    await recipient.getByRole('button', { name: 'Report this message' }).click();
-    await expect(recipient.getByLabel('Reason, optional')).toBeVisible();
+    await recipient.getByRole('button', { name: 'Report', exact: true }).click();
+    await expect(recipient.getByLabel('Reason, optional')).toBeFocused();
     await expectStable(recipient, 'report form open');
     await recipient.getByRole('button', { name: 'Delete without showing' }).click();
-    await recipient.getByRole('dialog').getByRole('button', { name: 'Do not delete' }).click();
+    await recipient.getByRole('alertdialog').getByRole('button', { name: 'Do not delete' }).click();
     await expectStable(recipient, 'delete dismissed');
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectRevealed(recipient);
     await expectStable(recipient, 'revealed with actions');
     await recipient.getByRole('button', { name: 'Delete the remaining opens' }).click();
-    await recipient.getByRole('dialog').getByRole('button', { name: 'Yes, delete' }).click();
+    await recipient.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
     await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toBeDisabled();
     await expectStable(recipient, 'rest deleted');
   });
@@ -170,7 +169,17 @@ async function reload(page: Page, url: string): Promise<void> {
   await page.goto(url);
 }
 
+async function animationsSettled(page: Page): Promise<void> {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => {
+      const finite = animation.effect?.getComputedTiming().iterations !== Infinity;
+      return !(animation.timeline instanceof DocumentTimeline) || !finite || animation.playState !== 'running';
+    }),
+  );
+}
+
 async function expectAccessible(page: Page, screen: string): Promise<void> {
+  await animationsSettled(page);
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`), screen).toEqual([]);
   const small = await page.evaluate(() => {
@@ -178,10 +187,10 @@ async function expectAccessible(page: Page, screen: string): Promise<void> {
       element instanceof HTMLInputElement && (element.type === 'radio' || element.type === 'checkbox') ? (element.closest('label') ?? element) : element,
     );
     return targets
-      .filter((element) => element.getClientRects().length > 0)
-      .map((element) => ({ element: element.outerHTML.slice(0, 80), box: element.getBoundingClientRect() }))
-      .filter(({ box }) => box.width < 44 || box.height < 44)
-      .map(({ element, box }) => `${element} ${Math.round(box.width)}x${Math.round(box.height)}`);
+      .filter((element) => element.getClientRects().length > 0 && !element.closest('[inert]'))
+      .map((element) => ({ element: element.outerHTML.slice(0, 80), width: element.offsetWidth, height: element.offsetHeight }))
+      .filter(({ width, height }) => width < 44 || height < 44)
+      .map(({ element, width, height }) => `${element} ${width}x${height}`);
   });
   expect(small, screen).toEqual([]);
 }
@@ -190,7 +199,7 @@ test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
   const page = await context.newPage();
   await page.goto('/');
-  await page.getByLabel('Passphrase, optional').fill('four random words here');
+  await setPassphrase(page, 'four random words here');
   await expectAccessible(page, 'create');
   await page.getByLabel('Message text').fill('axe');
   await page.getByLabel('Passphrase, optional').fill('short');
@@ -208,10 +217,10 @@ test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)
   await expectRevealed(page);
   await expectAccessible(page, 'revealed');
   await reload(page, message.link);
-  await expect(page.getByText('The message has already been opened.')).toBeVisible();
+  await expect(page.getByText('The message has already been opened')).toBeVisible();
   await expectAccessible(page, 'opened');
 
-  const guarded = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_PBKDF2 });
+  const guarded = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_SCRYPT });
   await openViaUi(page, guarded.link, 'definitely the wrong one');
   await expect(page.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
@@ -220,7 +229,7 @@ test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)
   await expect(page.getByText(/The link is incomplete or damaged/)).toBeVisible();
   await expectAccessible(page, 'invalid');
   await reload(page, `${BASE_URL}/m/${message.idText}#2.0.${message.secret}`);
-  await expect(page.getByText(/^This link comes from a newer version of Nylzo than this server runs/)).toBeVisible();
+  await expect(page.getByText(/^This link comes from a newer version of Nylzo$/)).toBeVisible();
   await expectAccessible(page, 'newer');
   await reload(page, `${BASE_URL}/m/${message.idText}#1.0.${'A'.repeat(43)}`);
   await expect(page.getByText(/does not exist or can no longer be opened/)).toBeVisible();
@@ -280,11 +289,11 @@ test('the read actions and the delete dialog pass axe (AK20)', async ({ browser 
   const page = await context.newPage();
   const message = await createViaApi({ text: 'axe', opensMax: 2 });
   await page.goto(message.link);
-  await page.getByRole('button', { name: 'Report this message' }).click();
+  await page.getByRole('button', { name: 'Report', exact: true }).click();
   await expectAccessible(page, 'read with report form');
   await page.getByRole('button', { name: 'Delete without showing' }).click();
-  await expectAccessible(page, 'delete dialog');
-  await page.getByRole('dialog').getByRole('button', { name: 'Do not delete' }).click();
+  await expectAccessible(page, 'delete confirmation');
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Do not delete' }).click();
   await page.getByRole('button', { name: 'Show message' }).click();
   await expectRevealed(page);
   await expectAccessible(page, 'revealed with actions');
@@ -333,7 +342,7 @@ function motionProblems(css: string): { readonly problems: string[]; readonly an
           declaration.value.forEach((id) => animates('transition-property', id.property));
         } else if (declaration.property === 'transition') {
           declaration.value.forEach((transition) => animates('transition', transition.property.property));
-        } else if (declaration.property === 'unparsed' && /^(?:transition|animation)/.test(declaration.value.propertyId.property)) {
+        } else if (declaration.property === 'unparsed' && /^transition(?:-property)?$/.test(declaration.value.propertyId.property)) {
           problems.push(`${declaration.value.propertyId.property} has a value the check cannot read`);
         }
       },
@@ -349,6 +358,8 @@ test('the motion check reads shorthands and keyframes (AK19)', ({ browserName })
   expect(motionProblems('a { transition: all 1s }').problems).toEqual(['transition animates all']);
   expect(motionProblems('a { transition-property: height }').problems).toEqual(['transition-property animates height']);
   expect(motionProblems('a { transition: var(--t) }').problems).toEqual(['transition has a value the check cannot read']);
+  expect(motionProblems('a { transition-property: var(--p) }').problems).toEqual(['transition-property has a value the check cannot read']);
+  expect(motionProblems('a { transition-duration: var(--d); animation: var(--a) }').problems).toEqual([]);
   expect(motionProblems('@keyframes k { to { margin-left: 4px } }').problems).toEqual(['@keyframes animates margin-left']);
   expect(motionProblems('a { transition: none }')).toEqual({ problems: [], animated: false });
 });

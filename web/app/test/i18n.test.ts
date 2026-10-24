@@ -2,7 +2,7 @@ import { MIN_PASSPHRASE_CHARS } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import { WEAK_BELOW_CHARS, WEAK_BELOW_WORDS } from '../src/lib/create.ts';
-import { formatBytes, formatDays, formatDuration, formatWait } from '../src/lib/format.ts';
+import { formatBytes, formatDays, formatDuration, formatSize, formatWait } from '../src/lib/format.ts';
 import { MAX_REASON_BYTES } from '../src/lib/report.ts';
 import { RETENTION_DAYS } from '../src/lib/sent.ts';
 import { createI18n, dictionaries, otherLanguage, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
@@ -28,8 +28,8 @@ describe('i18n', () => {
 
   it('fills placeholders and leaves unknown ones visible', () => {
     const { t } = createI18n('en');
-    expect(t('read.opens', { count: 3 })).toBe('Opens left: 3');
-    expect(t('read.opens')).toBe('Opens left: {count}');
+    expect(t('open.chip.opens.other', { count: 3 })).toBe('3 opens left');
+    expect(t('open.chip.opens.other')).toBe('{count} opens left');
   });
 
   it('formats durations and sizes', () => {
@@ -40,6 +40,9 @@ describe('i18n', () => {
     expect(formatBytes(5242880, 'en')).toBe('5 MB');
     expect(formatBytes(102400, 'en')).toBe('100 kB');
     const plain = (text: string) => text.replace(/\s/gu, ' ');
+    expect(plain(formatSize(0, 'en'))).toBe('0 B');
+    expect(plain(formatSize(312, 'cs'))).toBe('312 B');
+    expect(formatSize(5242880, 'en')).toBe('5 MB');
     expect([1, 60, 3600, 120, 300].map((seconds) => plain(formatWait(seconds, 'cs')))).toEqual(['1 sekundu', '1 minutu', '1 hodinu', '2 minuty', '5 minut']);
     expect(formatWait(60, 'en')).toBe('1 minute');
     expect(formatWait(undefined, 'en')).toBe('1 minute');
@@ -68,9 +71,9 @@ describe('i18n', () => {
   it('switches the language in place', () => {
     const i18n = createI18n('en');
     const { t } = i18n;
-    expect(t('nav.sent')).toBe('Sent');
+    expect(t('footer.sent')).toBe('Sent messages');
     i18n.language = otherLanguage(i18n.language);
-    expect(t('nav.sent')).toBe('Odeslané');
+    expect(t('footer.sent')).toBe('Odeslané zprávy');
     expect(otherLanguage('cs')).toBe('en');
   });
 
