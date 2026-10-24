@@ -18,7 +18,7 @@ D76: formulář nabízí jen scrypt. Volba PBKDF2 zmizela ve shodě s D71 (PR 26
 
 D77: klient zůstává jeden JS balík. Rozdělení podle stránek by na mobilu ušetřilo zhruba 40 KiB nepoužitého JS, ale změnilo by zavádění modulů pod CSP jen s nonce a přidalo další soubory, které hlídá `verify-client`. Za dva až tři body v Lighthouse to nestojí.
 
-D78: příjemce může text zprávy zkopírovat jedním tlačítkem. Schránka ale nepatří stránce: text v ní zůstane i po zavření karty a správce schránky nebo synchronizace mezi zařízeními si ho může uložit. Tlačítko proto zůstává jen u textu, ne u odkazu na přílohu, a po zkopírování stránka oznámí „Text je ve schránce. Zůstane tam i po zavření stránky.“, aby příjemce věděl, že ho má ze schránky sám smazat.
+D78: příjemce může text zprávy zkopírovat jedním tlačítkem. Schránka ale nepatří stránce: text v ní zůstane i po zavření karty a správce schránky nebo synchronizace mezi zařízeními si ho může uložit. Po zkopírování proto stránka oznámí „Text je ve schránce. Zůstane tam i po zavření stránky.“, aby příjemce věděl, že ho má ze schránky sám smazat.
 
 D79: čtečka potvrdí otevření (`ack`) a smaže fragment z adresy až ve chvíli, kdy stránka dešifrovanou zprávu opravdu zobrazí. Dřív to udělala hned po dešifrování, ještě během animace otevírání, takže kdo stránku v tu chvíli opustil, spotřeboval otevření a zprávu nikdy neviděl. Teď si čtečka při odchodu před zobrazením nechá lease i fragment a po návratu na stejnou kartu může zprávu načíst znovu, dokud lease běží (`shown` v `web/app/src/lib/read.ts`).
 
@@ -43,6 +43,8 @@ Review podle gstack (specialisté a adversariální průchod) našlo chyby, kter
 - Automatické přepínání sekcí se zastaví při najetí myší, při fokusu uvnitř a při `prefers-reduced-motion`.
 - Výpočet doby útoku hrubou silou používá pro Groverův algoritmus (π/4)·2¹²⁸ iterací a slova pro miliony a miliardy let přes slovník, ne napevno v kódu.
 
+QA podle gstack (`/qa`, headless Chromium, desktop a 430 × 932) našlo jednu další chybu: při šifrování s passphrase krok Odvození na chvíli ukázal popis pro zprávu bez passphrase, protože editor už passphrase smazal. Popis teď vychází z toho, s čím šifrování začalo, a hlídá ho e2e test. Dvě drobnosti zůstávají na vlastníkovi: titulek „Máte šifrovanou zprávu“ nad všemi oznámeními a dva formáty data platnosti (panel po vytvoření a stránka pro otevření).
+
 Testy runes s efekty běží ve Vitest v projektu `client` s vlastním prostředím (`web/app/test/client-environment.ts`), ostatní unit testy dál v Node.
 
 ## Měření 24. 10. 2026
@@ -65,3 +67,5 @@ Hlavičky na HTML, API i assetech: CSP s nonce, `default-src 'none'` a Trusted T
 ## Otevřené pro vlastníka
 
 - Assety s hashem v názvu chodí s `Cache-Control: no-store` (D36), takže každá návštěva stahuje zhruba 270 kB znovu. Cache s `immutable` by opakované návštěvy zrychlila; rozhodnutí patří vlastníkovi.
+- Stránka pro otevření má nad každým oznámením titulek „Máte šifrovanou zprávu“, i když zpráva neexistuje nebo už byla otevřená. Návrh to tak má; jiný titulek pro oznámení je volba vlastníka.
+- Platnost se ukazuje ve dvou formátech: dlouhý na panelu po vytvoření, krátký na stránce pro otevření.
