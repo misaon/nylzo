@@ -301,7 +301,7 @@ jobs:
           INSTALL: ${{ matrix.install }}
         run: |
           limit=()
-          if command -v timeout > /dev/null; then limit=(timeout 240); fi
+          if command -v timeout > /dev/null; then limit=(timeout 120); fi
           read -ra install <<< "$INSTALL"
           for attempt in 1 2 3; do
             "${limit[@]}" pnpm exec playwright install "${install[@]}" && exit 0
