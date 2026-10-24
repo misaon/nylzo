@@ -8,8 +8,9 @@ import {
   IV_LEN,
   IntegrityError,
   KDF_NONE,
-  KDF_PBKDF2,
+  KDF_RETIRED,
   KDF_SCRYPT,
+  KdfError,
   KdfMismatchError,
   MAX_FILE_BYTES,
   MAX_OBJECT_BYTES,
@@ -109,10 +110,10 @@ describe('AK8: tampering is detected', () => {
   });
 
   it('a wrong passphrase fails integrity', async () => {
-    const m = await sample(KDF_PBKDF2, 'right');
-    const wrong = await deriveAll(m.id, m.s, KDF_PBKDF2, 'wrong');
-    await expect(open(wrong.content.k, m.id, m.policy, KDF_PBKDF2, m.object)).rejects.toBeInstanceOf(IntegrityError);
-  });
+    const m = await sample(KDF_SCRYPT, 'right');
+    const wrong = await deriveAll(m.id, m.s, KDF_SCRYPT, 'wrong');
+    await expect(open(wrong.content.k, m.id, m.policy, KDF_SCRYPT, m.object)).rejects.toBeInstanceOf(IntegrityError);
+  }, 60_000);
 });
 
 describe('every message gets a fresh random iv', () => {
@@ -143,6 +144,15 @@ describe('open rejects malformed headers before decrypting', () => {
     const m = await sample(KDF_NONE, '');
     const tampered = withByteFlipped(m.object, 2);
     await expect(open(m.k, m.id, m.policy, KDF_NONE, tampered)).rejects.toBeInstanceOf(FlagsError);
+  });
+
+  it('the retired profile 2 is rejected', async () => {
+    const m = await sample(KDF_NONE, '');
+    const tampered = withByteFlipped(m.object, 1, KDF_RETIRED);
+    expect(tampered[1]).toBe(KDF_RETIRED);
+    expect(() => parseHeader(tampered)).toThrow(KdfError);
+    await expect(open(m.k, m.id, m.policy, KDF_RETIRED as KdfId, tampered)).rejects.toBeInstanceOf(KdfError);
+    await expect(seal(m.k, { ...newHeader(KDF_NONE), kdfId: KDF_RETIRED as KdfId }, m.id, m.policy, { meta: textMeta('x') })).rejects.toBeInstanceOf(KdfError);
   });
 
   it('a kdf argument that differs from the header is rejected', async () => {

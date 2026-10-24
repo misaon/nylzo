@@ -30,12 +30,11 @@ test('a message from the CLI opens in the browser', async ({ page }) => {
 });
 
 test('a message with a passphrase from the CLI opens in the browser', async ({ page }) => {
-  for (const kdf of ['scrypt', 'pbkdf2']) {
-    const link = cli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile(), '--kdf', kdf], `chráněno ${kdf}`).trim();
-    await openViaUi(page, link, PASSPHRASE);
-    await expectRevealed(page);
-    await expect(page.locator('pre')).toHaveText(`chráněno ${kdf}`);
-  }
+  const link = cli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile()], 'chráněno').trim();
+  expect(link).toContain('#1.1.');
+  await openViaUi(page, link, PASSPHRASE);
+  await expectRevealed(page);
+  await expect(page.locator('pre')).toHaveText('chráněno');
 });
 
 test('the CLI reads messages and files created in the browser', async ({ page }) => {

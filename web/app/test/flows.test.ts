@@ -1,7 +1,6 @@
 import {
   HEADER_LEN,
   KDF_NONE,
-  KDF_PBKDF2,
   KDF_SCRYPT,
   PowTimeoutError,
   TooLargeError,
@@ -14,7 +13,6 @@ import {
   requestKey,
   seal,
   solvePow,
-  type KdfId,
 } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
@@ -64,7 +62,7 @@ function createDeps(api: FakeApi, solve?: (call: PowCall, id: Uint8Array<ArrayBu
 }
 
 function input(overrides: Partial<CreateInput> = {}): CreateInput {
-  return { text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', kdfId: KDF_NONE, ...overrides };
+  return { text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', ...overrides };
 }
 
 function memorySession(): SessionStore & { map: Map<string, string>; log: string[] } {
@@ -185,19 +183,19 @@ describe('reading a message', () => {
     expect(r.session.log).toEqual([`set ${lease}`, `remove ${lease}`]);
   });
 
-  it('rejects a wrong PBKDF2 passphrase without spending an open, then opens the file', async () => {
+  it('rejects a wrong passphrase without spending an open, then opens the file', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(70000).map((_, i) => i % 251);
     const created = await createMessage(
-      input({ text: '', file: { name: 'report.pdf', mime: 'application/pdf', bytes }, passphrase: 'tři slova a ještě čtvrté', kdfId: KDF_PBKDF2 }),
+      input({ text: '', file: { name: 'report.pdf', mime: 'application/pdf', bytes }, passphrase: 'tři slova a ještě čtvrté' }),
       createDeps(api),
     );
-    expect(created.link).toContain('#1.2.');
+    expect(created.link).toContain('#1.1.');
     const r = reader(api, created.link);
     await r.load();
     await r.reveal('špatná passphrase tady');
     expect(r.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4, locked: false } });
-    expect(r.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({ view: 'busy', step: 'deriving' });
+    expect(r.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({ view: 'busy', step: 'deriving', fraction: 0 });
     expect(api.stored.get(idTextOf(created.link))?.opensRemaining).toBe(1);
     await r.reveal('tři slova a ještě čtvrté');
     const last = r.last();
@@ -207,7 +205,7 @@ describe('reading a message', () => {
 
   it('marks the scrypt derivation in the session and removes the mark afterwards', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal('correct horse battery staple');
@@ -231,7 +229,7 @@ describe('reading a message', () => {
   it('reports an opened tombstone as opened, not as tampered (SEC-2)', async () => {
     const options: FakeOptions = {};
     const api = fakeApi(options);
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_PBKDF2 }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const first = reader(api, created.link);
     await first.load();
     await first.reveal('correct horse battery staple');
@@ -242,8 +240,8 @@ describe('reading a message', () => {
   });
 
   it('stops before any verifier when the server reports another profile (AK24)', async () => {
-    const api = fakeApi({ metadataKdfId: KDF_PBKDF2 });
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), createDeps(api));
+    const api = fakeApi({ metadataKdfId: KDF_NONE });
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const r = reader(api, created.link);
     await r.load();
     expect(r.last()).toEqual({ view: 'tampered' });
@@ -252,7 +250,7 @@ describe('reading a message', () => {
   });
 
   it.each<[string, FakeOptions]>([
-    ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_PBKDF2 }],
+    ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_SCRYPT }],
     ['non-zero flags in X-Nylzo-Policy (TEST-S7)', { servedFlags: 1 }],
     ['opens_max in X-Nylzo-Policy that the object does not carry', { servedOpensMax: 2 }],
     ['ttl_s in X-Nylzo-Policy that the object does not carry', { servedTtlSeconds: 7200 }],
@@ -305,7 +303,7 @@ describe('reading a message', () => {
   it('lets the reader retry a mistyped passphrase on the lease path (SEC-7)', async () => {
     const api = fakeApi();
     const passphrase = 'correct horse battery staple';
-    const created = await createMessage(input({ passphrase, kdfId: KDF_PBKDF2, opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ passphrase, opensMax: 2 }), createDeps(api));
     const session = memorySession();
     const first = reader(api, created.link, { session });
     await first.load();
@@ -326,7 +324,7 @@ describe('reading a message', () => {
 
   it('tells the reader when wrong attempts locked the message for its lifetime', async () => {
     const api = fakeApi({ lockAfter: 1, expiresInSeconds: 600 });
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_PBKDF2 }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal('nesprávná passphrase');
@@ -335,7 +333,7 @@ describe('reading a message', () => {
 
   it('warns after a key derivation that the system ended', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_PBKDF2 }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const session = memorySession();
     session.setItem(`nylzo:kdf:${idTextOf(created.link)}`, '1');
     const r = reader(api, created.link, { session });
@@ -344,7 +342,7 @@ describe('reading a message', () => {
     expect(session.map.size).toBe(0);
   });
 
-  it('tells a malformed link, a link from a newer version and an unknown one apart', async () => {
+  it('tells a malformed link, a link from a newer version, one with the retired profile and an unknown one apart', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDeps(api));
     const before = api.calls.length;
@@ -359,6 +357,12 @@ describe('reading a message', () => {
       await newer.load();
       expect(newer.last()).toEqual({ view: 'newer' });
     }
+    const retired = reader(api, created.link.replace('#1.0.', '#1.2.'));
+    await retired.load();
+    expect(retired.last()).toEqual({ view: 'retired' });
+    const retiredBadPath = reader(api, created.link.replace('/m/', '/m/x').replace('#1.0.', '#1.2.'));
+    await retiredBadPath.load();
+    expect(retiredBadPath.last()).toEqual({ view: 'invalid' });
     expect(api.calls.slice(before).filter((call) => !call.startsWith('view:'))).toEqual([]);
     const other = encodeBase64url(new Uint8Array(32).fill(5));
     const unknown = reader(api, created.link.replace(/#1\.0\..*$/, `#1.0.${other}`));
@@ -500,9 +504,9 @@ describe('reading through the lease and claim edge cases', () => {
 });
 
 describe('passphrase handling on the read page', () => {
-  it.each([KDF_PBKDF2, KDF_SCRYPT] as const)('refuses a malformed passphrase for profile %i before any derivation or claim', async (kdfId) => {
+  it('refuses a malformed passphrase before any derivation or claim', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const derivations: string[] = [];
     const r = reader(api, created.link, { scrypt: workerScrypt(derivations) });
     await r.load();
@@ -516,7 +520,7 @@ describe('passphrase handling on the read page', () => {
 
   it('suggests another device when the key derivation worker fails', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const r = reader(api, created.link, {
       scrypt: async () => {
         throw new KdfWorkerError();
@@ -648,7 +652,7 @@ describe('leaving the page', () => {
 
   it('sends no claim when the page was left during the key derivation', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
     const gate = Promise.withResolvers<void>();
     const asked = Promise.withResolvers<void>();
     const r = reader(api, created.link, {
@@ -681,7 +685,7 @@ describe('creating a message', () => {
   it('solves a challenge fetched after the key derivation and stops near the window', async () => {
     const api = fakeApi({ pow: { required: true, difficulty: 2 } });
     const deps = createDeps(api);
-    await createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_PBKDF2 }), deps);
+    await createMessage(input({ passphrase: 'correct horse battery staple' }), deps);
     expect(api.calls.filter((c) => c === 'instance' || c === 'solve' || c === 'create')).toEqual(['instance', 'instance', 'solve', 'create']);
     expect(deps.powCalls).toEqual([{ challenge: api.challenges[1], difficulty: 2, deadline: 1_000 + POW_BUDGET_MS }]);
     const [message] = api.stored.values();
@@ -728,7 +732,7 @@ describe('creating a message', () => {
     const limited = fakeApi({ failCreate: [new ApiError(429, 'rate_limited', 30)] });
     await expect(createMessage(input(), createDeps(limited))).rejects.toMatchObject({ failure: { kind: 'rate_limited', retryAfter: 30 } });
     const api = fakeApi();
-    const error = await createMessage(input({ text: '', passphrase: 'short', kdfId: KDF_SCRYPT, opensMax: 0, ttlSeconds: 30 }), createDeps(api)).catch((e: unknown) => e);
+    const error = await createMessage(input({ text: '', passphrase: 'short', opensMax: 0, ttlSeconds: 30 }), createDeps(api)).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CreateError);
     expect((error as CreateError).failure).toEqual({
       kind: 'invalid',
@@ -745,9 +749,9 @@ describe('creating a message', () => {
   it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
     const api = fakeApi();
     const failing = { ...createDeps(api), scrypt: async () => Promise.reject(new KdfWorkerError()) };
-    await expect(createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), failing)).rejects.toMatchObject({ failure: { kind: 'kdf' } });
+    await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), failing)).rejects.toMatchObject({ failure: { kind: 'kdf' } });
     const renamed = { ...createDeps(api), scrypt: async () => Promise.reject(Object.assign(new Error('worker'), { name: 'KdfWorkerError' })) };
-    await expect(createMessage(input({ passphrase: 'correct horse battery staple', kdfId: KDF_SCRYPT }), renamed)).rejects.toMatchObject({ failure: { kind: 'failed' } });
+    await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), renamed)).rejects.toMatchObject({ failure: { kind: 'failed' } });
     api.create = async () => Promise.reject(new TooLargeError());
     await expect(createMessage(input(), createDeps(api))).rejects.toMatchObject({ failure: { kind: 'too_large' } });
   });
@@ -759,9 +763,7 @@ describe('creating a message', () => {
       { field: 'ttl', code: 'out_of_range' },
       { field: 'opens', code: 'out_of_range' },
     ]);
-    expect(validateCreate(input({ passphrase: 'correct horse battery staple', kdfId: KDF_NONE as KdfId }), limits)).toEqual([
-      { field: 'passphrase', code: 'out_of_range' },
-    ]);
+    expect(validateCreate(input({ passphrase: 'correct horse battery staple' }), limits)).toEqual([]);
     expect(validateCreate(input({ passphrase: '\ud800 twelve chars' }), limits)).toEqual([{ field: 'passphrase', code: 'malformed' }]);
   });
 

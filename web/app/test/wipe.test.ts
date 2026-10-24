@@ -1,4 +1,4 @@
-import { KDF_PBKDF2, KDF_SCRYPT, type KdfId } from '@nylzo/core';
+import { KDF_SCRYPT, type KdfId } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../src/lib/api.ts';
@@ -44,11 +44,6 @@ vi.mock('@nylzo/core', async (importOriginal) => {
       keep(keys.v);
       return keys;
     },
-    derivePassphraseKey: async (...args: Parameters<typeof core.derivePassphraseKey>) => {
-      const p = await core.derivePassphraseKey(...args);
-      passphraseKeys.push(p);
-      return p;
-    },
     requestKey: async (seed: Uint8Array) => {
       if (failing.requestKey > 0) {
         failing.requestKey--;
@@ -69,8 +64,8 @@ function zeroed(): boolean[] {
 }
 
 function scryptStub(): CreateDeps['scrypt'] {
-  return async () => {
-    const p = new Uint8Array(32).fill(7);
+  return async (passphrase) => {
+    const p = new Uint8Array(32).fill(passphrase === PASSPHRASE ? 7 : 9);
     passphraseKeys.push(p);
     return p;
   };
@@ -82,7 +77,7 @@ function createDeps(api: FakeApi, scrypt = scryptStub()): CreateDeps {
 
 async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0, scrypt = scryptStub()): Promise<string> {
   const passphrase = kdfId === 0 ? '' : PASSPHRASE;
-  const message = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase, kdfId }, createDeps(api, scrypt));
+  const message = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase }, createDeps(api, scrypt));
   captured.length = 0;
   passphraseKeys.length = 0;
   return message.link;
@@ -114,13 +109,13 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   });
 
   it('wipes S, R, salt_pw and V after creating a message', async () => {
-    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', kdfId: 0 }, createDeps(fakeApi()));
+    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, createDeps(fakeApi()));
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
   });
 
-  it.each([KDF_PBKDF2, KDF_SCRYPT] as const)('wipes P of profile %i after creating a message', async (kdfId) => {
-    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE, kdfId }, createDeps(fakeApi()));
+  it('wipes P after creating a message', async () => {
+    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDeps(fakeApi()));
     expect(passphraseKeys).toHaveLength(1);
     expect(passphraseKeys.every((p) => p.length === 32 && wiped(p))).toBe(true);
   });
@@ -130,7 +125,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     ['a retry with a new id fails too', { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', 5)] }],
   ])('wipes every S, R, salt_pw, V and P when %s', async (_, options) => {
     const api = fakeApi(options);
-    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE, kdfId: KDF_PBKDF2 }, createDeps(api))).rejects.toThrow();
+    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDeps(api))).rejects.toThrow();
     expect(captured.length).toBe(4 * api.calls.filter((call) => call === 'create').length);
     expect(zeroed().every(Boolean)).toBe(true);
     expect(passphraseKeys.length).toBeGreaterThan(0);
@@ -139,7 +134,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it('wipes S, R and salt_pw when the key derivation fails', async () => {
     const deps = createDeps(fakeApi(), async () => Promise.reject(new KdfWorkerError()));
-    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE, kdfId: KDF_SCRYPT }, deps)).rejects.toMatchObject({
+    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, deps)).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });
     expect(captured).toHaveLength(3);
@@ -182,9 +177,9 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(await reader.report('after reading')).toEqual({ outcome: 'accepted' });
   });
 
-  it.each([KDF_PBKDF2, KDF_SCRYPT] as const)('wipes P of profile %i once the reader shows the message', async (kdfId) => {
+  it('wipes P once the reader shows the message', async () => {
     const api = fakeApi();
-    const reader = readerFor(api, await created(api, 1, kdfId));
+    const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
     await reader.load();
     await reader.reveal(PASSPHRASE);
     expect(reader.last()?.view).toBe('revealed');
@@ -204,7 +199,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it('wipes S, R, salt_pw, V and P when the claim fails', async () => {
     const api = fakeApi();
-    const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
+    const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
     api.claim = async () => Promise.reject(new ApiError(500, 'internal'));
     await reader.load();
     await reader.reveal(PASSPHRASE);
@@ -216,7 +211,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it('wipes S, R, salt_pw, V and P when the verifier key cannot be made', async () => {
     const api = fakeApi();
-    const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
+    const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
     await reader.load();
     failing.requestKey = 1;
     await reader.reveal(PASSPHRASE);
@@ -229,7 +224,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it('wipes V and P after a wrong passphrase while it keeps S and salt_pw for the next try', async () => {
     const api = fakeApi();
-    const reader = readerFor(api, await created(api, 1, KDF_PBKDF2));
+    const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
     await reader.load();
     await reader.reveal('a wrong passphrase here');
     expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong' } });

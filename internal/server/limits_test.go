@@ -414,7 +414,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	m.ip = "203.0.113.9"
 	token := solve(m)
-	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = publicKey(core.NewSecret()) })
+	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) })
 	send := func(header, pow string) int {
 		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow}})
 		return resp.StatusCode

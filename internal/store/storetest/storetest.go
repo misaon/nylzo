@@ -89,7 +89,7 @@ func (f *fixture) create(opens uint16, ttl time.Duration, passphrase bool) *stor
 		ReadMAC: mac("read/" + id), ManageMAC: mac("manage/" + id), Size: 64, BlobRef: id,
 	}
 	if passphrase {
-		m.KDF = 2
+		m.KDF = 1
 		m.VerifierMAC = mac("verifier/" + id)
 	}
 	if err := f.b.Put(f.ctx, id, bytes.NewReader(bytes.Repeat([]byte{0xAB}, 64)), 64); err != nil {

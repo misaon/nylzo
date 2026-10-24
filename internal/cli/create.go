@@ -33,7 +33,6 @@ type createOptions struct {
 	ttl         time.Duration
 	opens       int
 	passphrase  passphraseSource
-	kdf         string
 	manageFile  string
 	printManage bool
 }
@@ -56,7 +55,6 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	fs.IntVar(&o.opens, "opens", 1, "how many times the message can be opened")
 	fs.StringVar(&o.passphrase.file, "passphrase-file", "", "protect the message with the passphrase on the first line of this file (or "+envPassphrase+")")
 	fs.BoolVar(&o.passphrase.ask, "ask-passphrase", false, "protect the message with a passphrase asked on the terminal without echo")
-	fs.StringVar(&o.kdf, "kdf", "", "passphrase profile, scrypt or pbkdf2 (default: the instance default)")
 	fs.StringVar(&o.manageFile, "manage-token-file", "", "write the manage token for status and cancel to this new file (mode 0600)")
 	fs.BoolVar(&o.printManage, "print-manage-token", false, "print the manage token after the link")
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
@@ -67,11 +65,6 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	}
 	if o.server == "" {
 		fmt.Fprintln(env.Stderr, program+" create needs --server or "+envServer)
-		return exitUsage
-	}
-	kdf, err := chosenKDF(o, env)
-	if err != nil {
-		fmt.Fprintln(env.Stderr, program+" create: "+err.Error())
 		return exitUsage
 	}
 	c, err := client.New(o.server)
@@ -99,7 +92,7 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	if err != nil {
 		return failf(env, "--manage-token-file: the file already exists or cannot be created")
 	}
-	created, err := createMessage(ctx, env, c, o, kdf, passphrase, msg)
+	created, err := createMessage(ctx, env, c, o, passphrase, msg)
 	if err != nil {
 		manage.discard()
 		return failf(env, "%s", explain(err))
@@ -116,22 +109,6 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	}
 	fmt.Fprintf(env.Stderr, "%s: the link works until %s\n", program, created.expires.Local().Format(time.RFC1123))
 	return exitOK
-}
-
-func chosenKDF(o createOptions, env Env) (core.KDF, error) {
-	switch o.kdf {
-	case "":
-		return core.KDFNone, nil
-	case "scrypt", "pbkdf2":
-		if !o.passphrase.given(env) {
-			return 0, errors.New("--kdf needs a passphrase")
-		}
-		if o.kdf == "scrypt" {
-			return core.KDFScrypt, nil
-		}
-		return core.KDFPBKDF2, nil
-	}
-	return 0, fmt.Errorf("--kdf must be scrypt or pbkdf2")
 }
 
 func weakPassphrase(passphrase string) bool {
@@ -192,9 +169,9 @@ func (m *createdMessage) wipe() {
 	m.link = ""
 }
 
-func createMessage(ctx context.Context, env Env, c *client.Client, o createOptions, kdf core.KDF, passphrase string, msg content) (createdMessage, error) {
+func createMessage(ctx context.Context, env Env, c *client.Client, o createOptions, passphrase string, msg content) (createdMessage, error) {
 	for attempt := 1; ; attempt++ {
-		created, err := createOnce(ctx, env, c, o, kdf, passphrase, msg)
+		created, err := createOnce(ctx, env, c, o, passphrase, msg)
 		if attempt == createAttempts || !retryWithNewID(err) {
 			return created, err
 		}
@@ -205,7 +182,7 @@ func retryWithNewID(err error) bool {
 	return client.IsKind(err, "id_token") || client.IsKind(err, "conflict") || client.IsKind(err, "pow")
 }
 
-func createOnce(ctx context.Context, env Env, c *client.Client, o createOptions, chosen core.KDF, passphrase string, msg content) (createdMessage, error) {
+func createOnce(ctx context.Context, env Env, c *client.Client, o createOptions, passphrase string, msg content) (createdMessage, error) {
 	inst, err := c.Instance(ctx)
 	if err != nil {
 		return createdMessage{}, err
@@ -216,13 +193,7 @@ func createOnce(ctx context.Context, env Env, c *client.Client, o createOptions,
 	}
 	kdf := core.KDFNone
 	if passphrase != "" {
-		kdf = chosen
-		if kdf == core.KDFNone {
-			kdf = core.KDF(inst.Limits.DefaultKDF)
-		}
-		if !kdf.RequiresPassphrase() {
-			kdf = core.KDFScrypt
-		}
+		kdf = core.KDFScrypt
 	}
 	id := inst.Create.ID
 	s, manage := core.NewSecret(), core.NewSecret()

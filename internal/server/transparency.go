@@ -105,7 +105,7 @@ func (s *Server) transparency() transparencyResponse {
 
 func (s *Server) instanceLimits() instanceLimits {
 	l := s.cfg.Limits
-	return instanceLimits{MaxFileBytes: l.MaxFileBytes, MaxTextBytes: core.MaxTextBytes, MaxObjectBytes: l.MaxObjectBytes, MaxTTL: int64(l.MaxTTL / time.Second), DefaultTTL: int64(l.DefaultTTL / time.Second), MaxOpens: l.MaxOpens, DefaultKDF: int(l.DefaultKDF)}
+	return instanceLimits{MaxFileBytes: l.MaxFileBytes, MaxTextBytes: core.MaxTextBytes, MaxObjectBytes: l.MaxObjectBytes, MaxTTL: int64(l.MaxTTL / time.Second), DefaultTTL: int64(l.DefaultTTL / time.Second), MaxOpens: l.MaxOpens}
 }
 
 func (s *Server) handleTransparency(w http.ResponseWriter, r *http.Request) {

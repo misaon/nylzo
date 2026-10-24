@@ -123,15 +123,15 @@ func TestOpenRejectsVersionFlagsAndKDF(t *testing.T) {
 }
 
 func TestWrongPassphraseFailsIntegrity(t *testing.T) {
-	id, s, content, _, pol, object := sampleMessage(t, core.KDFPBKDF2, "right", nil)
-	_, wrong, err := core.DeriveAll(id, s, core.KDFPBKDF2, "wrong")
+	id, s, content, _, pol, object := sampleMessage(t, core.KDFScrypt, "right", nil)
+	_, wrong, err := core.DeriveAll(id, s, core.KDFScrypt, "wrong")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if wrong.K == content.K {
 		t.Fatal("different passphrases derived the same key")
 	}
-	if _, _, err := core.Open(&wrong.K, id, pol, core.KDFPBKDF2, object); !errors.Is(err, core.ErrIntegrity) {
+	if _, _, err := core.Open(&wrong.K, id, pol, core.KDFScrypt, object); !errors.Is(err, core.ErrIntegrity) {
 		t.Fatalf("wrong passphrase: got %v", err)
 	}
 }
@@ -258,7 +258,7 @@ func TestKDFNoneIgnoresPassphrase(t *testing.T) {
 }
 
 func TestAssertProfile(t *testing.T) {
-	for _, reported := range []int{int(core.KDFPBKDF2), 3, 257, -255} {
+	for _, reported := range []int{int(core.KDFNone), int(core.KDFRetired), 3, 257, -255} {
 		if err := core.AssertProfile(core.KDFScrypt, reported); !errors.Is(err, core.ErrKDFMismatch) {
 			t.Fatalf("server-reported kdf_id %d accepted for a scrypt link", reported)
 		}
@@ -266,21 +266,19 @@ func TestAssertProfile(t *testing.T) {
 	if err := core.AssertProfile(core.KDFScrypt, int(core.KDFScrypt)); err != nil {
 		t.Fatal(err)
 	}
-	if err := core.AssertProfile(core.KDFScrypt, int(core.KDFPBKDF2)); strings.Contains(err.Error(), "envelope") {
+	if err := core.AssertProfile(core.KDFScrypt, int(core.KDFRetired)); strings.Contains(err.Error(), "envelope") {
 		t.Fatalf("a server-reported mismatch must not be reported as an envelope error: %v", err)
 	}
 }
 
 func TestIllFormedPassphraseIsRejected(t *testing.T) {
 	var salt [32]byte
-	for _, kdf := range []core.KDF{core.KDFScrypt, core.KDFPBKDF2} {
-		if _, err := core.DerivePassphraseKey(kdf, "caf\xe9", &salt); !errors.Is(err, core.ErrMalformedPassphrase) {
-			t.Fatalf("kdf %s accepted invalid UTF-8: %v", kdf, err)
-		}
-		link, _, err := core.DeriveAll(core.NewID(), core.NewSecret(), kdf, "caf\xe9")
-		if !errors.Is(err, core.ErrMalformedPassphrase) || link != (core.LinkKeys{}) {
-			t.Fatalf("kdf %s: DeriveAll must refuse before deriving anything: %v", kdf, err)
-		}
+	if _, err := core.DerivePassphraseKey(core.KDFScrypt, "caf\xe9", &salt); !errors.Is(err, core.ErrMalformedPassphrase) {
+		t.Fatalf("scrypt accepted invalid UTF-8: %v", err)
+	}
+	link, _, err := core.DeriveAll(core.NewID(), core.NewSecret(), core.KDFScrypt, "caf\xe9")
+	if !errors.Is(err, core.ErrMalformedPassphrase) || link != (core.LinkKeys{}) {
+		t.Fatalf("DeriveAll must refuse before deriving anything: %v", err)
 	}
 }
 
@@ -461,5 +459,47 @@ func TestParseFragmentTellsANewerVersionApart(t *testing.T) {
 		if !errors.Is(err, core.ErrLink) || errors.Is(err, core.ErrLinkVersion) != newer {
 			t.Errorf("%q: got %v, want a link error with newer version %v", fragment, err, newer)
 		}
+	}
+}
+
+func TestRetiredProfileIsRefused(t *testing.T) {
+	s := core.Encode(make([]byte, core.SecretLen))
+	for fragment, retired := range map[string]bool{
+		"#1.2." + s:        true,
+		"1.2." + s:         true,
+		"#1.2." + s[:42]:   false,
+		"#1.2." + s + "A":  false,
+		"#1.02." + s:       false,
+		"#1.2":             false,
+		"#1.2." + s + ".x": false,
+	} {
+		kdf, secret, err := core.ParseFragment(fragment)
+		if !errors.Is(err, core.ErrLink) || errors.Is(err, core.ErrLinkRetiredKDF) != retired || secret != nil || kdf != core.KDFNone {
+			t.Errorf("%q: got %v, want a link error with retired profile %v", fragment, err, retired)
+		}
+	}
+	if _, err := core.ParseLink("https://nylzo.example/m/" + core.NewID().String() + "#1.2." + s); !errors.Is(err, core.ErrLinkRetiredKDF) {
+		t.Fatalf("link with kdf_id 2: %v", err)
+	}
+	if _, err := core.ParseKDF("2"); !errors.Is(err, core.ErrKDF) {
+		t.Fatalf("ParseKDF accepted the retired profile: %v", err)
+	}
+	if core.KDFRetired.Valid() {
+		t.Fatal("the retired profile must be invalid")
+	}
+	var salt [32]byte
+	if p, err := core.DerivePassphraseKey(core.KDFRetired, "correct horse battery staple", &salt); !errors.Is(err, core.ErrKDF) || p != nil {
+		t.Fatalf("derived a key for the retired profile: %v", err)
+	}
+	if _, _, err := core.DeriveAll(core.NewID(), core.NewSecret(), core.KDFRetired, "correct horse battery staple"); !errors.Is(err, core.ErrKDF) {
+		t.Fatalf("DeriveAll accepted the retired profile: %v", err)
+	}
+	header := core.NewHeader(core.KDFScrypt).Bytes()
+	header[1] = byte(core.KDFRetired)
+	if _, err := core.ParseHeader(header); !errors.Is(err, core.ErrKDF) {
+		t.Fatalf("envelope header with kdf_id 2: %v", err)
+	}
+	if _, err := core.Seal(new([core.KeyLen]byte), core.NewHeader(core.KDFRetired), core.NewID(), core.Policy{OpensMax: 1, TTLSeconds: 60}, core.Payload{Meta: core.Meta{Text: new("x")}}); !errors.Is(err, core.ErrKDF) {
+		t.Fatalf("sealed an envelope for the retired profile: %v", err)
 	}
 }

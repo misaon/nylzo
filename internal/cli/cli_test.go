@@ -266,6 +266,18 @@ func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 	}
 }
 
+func TestALinkWithTheRetiredProfileAsksForANewLink(t *testing.T) {
+	t.Parallel()
+	s := core.Encode(make([]byte, core.SecretLen))
+	retired := "https://nylzo.example/m/" + core.NewID().String() + "#1.2." + s
+	for _, command := range []string{"read", "burn", "report"} {
+		res := runWith(t, retired, nil, nil, command)
+		if res.code != exitError || !strings.Contains(res.stderr, "the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link") {
+			t.Errorf("%s with kdf_id 2: %d %q", command, res.code, res.stderr)
+		}
+	}
+}
+
 func mustRead(t *testing.T, path string) string {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -280,20 +292,26 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 	ts := newTestServer(t, nil)
 	right := writeSecretFile(t, "correct horse battery staple\n")
 	wrong := writeSecretFile(t, "wrong horse battery staple")
-	for _, kdf := range []string{"scrypt", "pbkdf2"} {
-		link, _ := createText(t, ts, "behind a passphrase", "--passphrase-file", right, "--kdf", kdf)
-		if !strings.Contains(link, "#1."+map[string]string{"scrypt": "1", "pbkdf2": "2"}[kdf]+".") {
-			t.Fatalf("%s link %s", kdf, link)
-		}
-		res := runWith(t, link, nil, nil, "read", "--passphrase-file", wrong)
-		if res.code != exitError || !strings.Contains(res.stderr, "wrong passphrase; 4 attempts left") {
-			t.Fatalf("%s wrong passphrase: %d %q", kdf, res.code, res.stderr)
-		}
-		if res := runWith(t, link, nil, nil, "read"); res.code != exitError || !strings.Contains(res.stderr, "needs a passphrase") {
-			t.Fatalf("%s no passphrase: %d %q", kdf, res.code, res.stderr)
-		}
-		paths := readPaths(t, runWith(t, link, map[string]string{envPassphrase: right}, nil, "read"))
-		assertPrivate(t, paths[0], "behind a passphrase")
+	link, _ := createText(t, ts, "behind a passphrase", "--passphrase-file", right)
+	if !strings.Contains(link, "#1.1.") {
+		t.Fatalf("link %s", link)
+	}
+	res := runWith(t, link, nil, nil, "read", "--passphrase-file", wrong)
+	if res.code != exitError || !strings.Contains(res.stderr, "wrong passphrase; 4 attempts left") {
+		t.Fatalf("wrong passphrase: %d %q", res.code, res.stderr)
+	}
+	if res := runWith(t, link, nil, nil, "read"); res.code != exitError || !strings.Contains(res.stderr, "needs a passphrase") {
+		t.Fatalf("no passphrase: %d %q", res.code, res.stderr)
+	}
+	paths := readPaths(t, runWith(t, link, map[string]string{envPassphrase: right}, nil, "read"))
+	assertPrivate(t, paths[0], "behind a passphrase")
+}
+
+func TestCreateHasNoProfileChoice(t *testing.T) {
+	t.Parallel()
+	res := runWith(t, "secret", nil, nil, "create", "--server", "https://nylzo.example", "--passphrase-file", writeSecretFile(t, "correct horse battery staple"), "--kdf", "scrypt")
+	if res.code != exitUsage || !strings.Contains(res.stderr, "unknown or incomplete flag") {
+		t.Fatalf("--kdf: %d %q", res.code, res.stderr)
 	}
 }
 
@@ -405,7 +423,7 @@ var flagLine = regexp.MustCompile(`(?m)^  -([a-z-]+)`)
 func TestNoFlagTakesASecret(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
-		"server": true, "from-file": true, "ttl": true, "opens": true, "passphrase-file": true, "ask-passphrase": true, "kdf": true,
+		"server": true, "from-file": true, "ttl": true, "opens": true, "passphrase-file": true, "ask-passphrase": true,
 		"manage-token-file": true, "print-manage-token": true, "link-file": true, "out": true, "stdout": true, "json": true, "allow-header": true, "reason-file": true,
 	}
 	for _, c := range commands() {
@@ -616,7 +634,7 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 	}{
 		"opens_max":   {nil, func(b string) string { return strings.Replace(b, `"opens_max":2`, `"opens_max":3`, 1) }, "different policy"},
 		"ttl_s":       {nil, func(b string) string { return strings.Replace(b, `"ttl_s":3600`, `"ttl_s":7200`, 1) }, "different policy"},
-		"kdf profile": {[]string{"--passphrase-file", passphrase, "--kdf", "scrypt"}, func(b string) string { return strings.Replace(b, `"kdf_id":1`, `"kdf_id":2`, 1) }, "does not match"},
+		"kdf profile": {[]string{"--passphrase-file", passphrase}, func(b string) string { return strings.Replace(b, `"kdf_id":1`, `"kdf_id":0`, 1) }, "does not match"},
 		"state":       {nil, func(b string) string { return strings.Replace(b, `"state":"available"`, `"state":"opened"`, 1) }, "already opened"},
 	} {
 		manage := filepath.Join(t.TempDir(), "manage")
@@ -643,7 +661,7 @@ func TestAServerCannotSwitchOffThePassphrase(t *testing.T) {
 	ts := newTestServer(t, nil)
 	proxy := rewritingProxy(t, ts.url, func(r *http.Request, body []byte) []byte {
 		if r.URL.Path == "/api/v1/instance" {
-			return []byte(strings.Replace(string(body), `"default_kdf_id":1`, `"default_kdf_id":0`, 1))
+			return []byte(strings.Replace(string(body), `"max_opens":`, `"default_kdf_id":0,"max_opens":`, 1))
 		}
 		return body
 	})
@@ -669,7 +687,7 @@ func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
 	}
 	text := "beside a clashing attachment"
 	msg := content{meta: core.Meta{Text: &text, File: &core.FileMeta{Name: "MESSAGE.TXT", Mime: "text/plain", Size: 4}}, file: []byte("file")}
-	created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, core.KDFNone, "", msg)
+	created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, "", msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,7 +720,7 @@ func TestReadChecksTheOutputBeforeItSpendsAnOpen(t *testing.T) {
 func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t, nil)
-	for name, field := range map[string][2]string{"kdf": {`"kdf_id":0`, `"kdf_id":2`}, "flags": {`"flags":0`, `"flags":1`}} {
+	for name, field := range map[string][2]string{"kdf": {`"kdf_id":0`, `"kdf_id":1`}, "flags": {`"flags":0`, `"flags":1`}} {
 		link, _ := createText(t, ts, "policy header")
 		proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req, _ := http.NewRequestWithContext(r.Context(), r.Method, ts.url+r.URL.RequestURI(), r.Body)
@@ -915,7 +933,7 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 	text := "beside a folded clash"
 	for _, name := range []string{"Meßage.txt", "meſſage.txt", "MESSAGE.TXT"} {
 		msg := content{meta: core.Meta{Text: &text, File: &core.FileMeta{Name: name, Mime: "text/plain", Size: 4}}, file: []byte("file")}
-		created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, core.KDFNone, "", msg)
+		created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, "", msg)
 		if err != nil {
 			t.Fatal(err)
 		}

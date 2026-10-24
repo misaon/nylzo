@@ -117,7 +117,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
           maxTtlSeconds: 604800,
           defaultTtlSeconds: 86400,
           maxOpens: 10,
-          defaultKdfId: 1 as KdfId,
         },
         pow: options.pow?.required ? { ...options.pow, challenge } : { required: false, difficulty: 4 },
         create: { id, idToken: 'token' },

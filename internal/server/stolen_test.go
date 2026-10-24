@@ -122,7 +122,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}
 
 	const pass = "correct horse battery staple"
-	leased := newMessage(t, core.KDFPBKDF2, pass, 2, 3600, "plaintext leased sentinel")
+	leased := newMessage(t, core.KDFScrypt, pass, 2, 3600, "plaintext leased sentinel")
 	leased.ip = ip6
 	h.mustCreate(leased)
 	needles.message("leased", leased, pass)
@@ -145,7 +145,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		t.Fatalf("burn: %d", resp.StatusCode)
 	}
 
-	cancelled := newMessage(t, core.KDFPBKDF2, pass, 1, 3600, "plaintext cancelled sentinel")
+	cancelled := newMessage(t, core.KDFScrypt, pass, 1, 3600, "plaintext cancelled sentinel")
 	cancelled.ip = ip6
 	h.mustCreate(cancelled)
 	needles.message("cancelled", cancelled, pass)

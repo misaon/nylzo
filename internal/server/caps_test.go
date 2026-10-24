@@ -53,8 +53,8 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	wrongKDF.ip = "198.51.100.11"
-	headerKDF2 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 2; f["verifier_key"] = publicKey(core.NewSecret()) })
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF2}}); resp.StatusCode != 400 {
+	headerKDF1 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) })
+	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF1}}); resp.StatusCode != 400 {
 		t.Fatalf("body kdf differs from the header: %d", resp.StatusCode)
 	}
 	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 21 {

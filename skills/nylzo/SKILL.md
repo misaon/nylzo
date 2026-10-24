@@ -37,7 +37,7 @@ D=/tmp/tmp.XXXXXXXXXX; nylzo create --server https://nylzo.example --ttl 1h --op
 
 - `create` reads the text from stdin and prints only the link. `mktemp -d` made the directory with mode 0700, so `link.txt` is private whatever the umask. Tell the user the path of `link.txt` and let them send it. Print the link only if the user asks: a printed link stays in the transcript, and it works until it is opened or expires.
 - An attachment instead of text: `nylzo create --server https://nylzo.example --from-file "$D/report.pdf"`, with the output redirected to `"$D/link.txt"` as above.
-- A passphrase from the first line of a file: `nylzo create --passphrase-file "$D/pass.txt"`. The CLI refuses a passphrase under 12 characters and warns under 4 words or under 16 characters. `nylzo create --kdf scrypt` or `--kdf pbkdf2` picks the profile.
+- A passphrase from the first line of a file: `nylzo create --passphrase-file "$D/pass.txt"`. The CLI refuses a passphrase under 12 characters and warns under 4 words or under 16 characters.
 - `--manage-token-file` writes a new file with mode 0600 and refuses an existing one. The token checks and cancels the message but cannot read it.
 - `--server` can come from `NYLZO_SERVER`. `--ttl` and `--opens` default to the instance settings and 1.
 - When the user no longer needs the manage token, suggest deleting the whole directory.

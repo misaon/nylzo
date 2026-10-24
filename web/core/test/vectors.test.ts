@@ -5,6 +5,7 @@ import {
   HEADER_LEN,
   KDF_NONE,
   LinkError,
+  LinkRetiredKdfError,
   LinkVersionError,
   TAG_LEN,
   VERSION,
@@ -168,6 +169,7 @@ describe('link', () => {
         const error = thrownBy(() => parseLink(v.input));
         expect(error).toBeInstanceOf(LinkError);
         expect(error instanceof LinkVersionError).toBe(v.newer_version === true);
+        expect(error instanceof LinkRetiredKdfError).toBe(v.retired_kdf === true);
         return;
       }
       const link = parseLink(v.input);

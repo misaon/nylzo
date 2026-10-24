@@ -12,7 +12,7 @@ import (
 func TestAK27PepperRotation(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
-	old := newMessage(t, core.KDFPBKDF2, "pw", 2, 7*24*3600, "before rotation")
+	old := newMessage(t, core.KDFScrypt, "pw", 2, 7*24*3600, "before rotation")
 	h.mustCreate(old)
 	h.reopen(baseConfig(pepperB, pepperA))
 	if resp, _ := h.metadata(old); resp.StatusCode != 200 {

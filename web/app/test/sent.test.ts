@@ -66,7 +66,7 @@ function memoryStore(initial: SentRecord[] = [], broken = false): SentStore & { 
 
 async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promise<SentRecord> {
   const deps: CreateDeps = { api, origin: 'https://nylzo.test', scrypt: async () => new Uint8Array(32), solvePow: async () => '' };
-  const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase: '', kdfId: 0 }, deps);
+  const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase: '' }, deps);
   return { id: created.id, createdAt, expiresAt: NOW + 3_600_000, manageKey: created.manageKey };
 }
 

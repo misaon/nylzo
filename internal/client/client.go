@@ -127,7 +127,6 @@ type Limits struct {
 	MaxTTLSeconds  int64 `json:"max_ttl_s"`
 	DefaultTTL     int64 `json:"default_ttl_s"`
 	MaxOpens       int   `json:"max_opens"`
-	DefaultKDF     int   `json:"default_kdf_id"`
 }
 
 type PoW struct {
@@ -167,7 +166,7 @@ func (c *Client) Instance(ctx context.Context) (Instance, error) {
 		return Instance{}, ErrResponse
 	}
 	id, err := core.ParseID(raw.Create.ID)
-	if err != nil || raw.Create.IDToken == "" || !core.KDF(raw.Limits.DefaultKDF).Valid() || raw.PoW.Difficulty < 0 || raw.PoW.Difficulty > core.MaxPoWDifficulty {
+	if err != nil || raw.Create.IDToken == "" || raw.PoW.Difficulty < 0 || raw.PoW.Difficulty > core.MaxPoWDifficulty {
 		return Instance{}, ErrResponse
 	}
 	return Instance{Limits: *raw.Limits, PoW: *raw.PoW, Create: Issued{ID: id, IDToken: raw.Create.IDToken}}, nil

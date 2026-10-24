@@ -58,6 +58,9 @@ func parseOpenLink(raw string) (openLink, error) {
 	if errors.Is(err, core.ErrLinkVersion) {
 		return openLink{}, errors.New("the link was made by a newer version of nylzo; update nylzo from " + releasesURL)
 	}
+	if errors.Is(err, core.ErrLinkRetiredKDF) {
+		return openLink{}, errors.New("the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link")
+	}
 	if err != nil {
 		return openLink{}, errors.New("the link is incomplete or damaged")
 	}

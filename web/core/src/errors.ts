@@ -89,6 +89,13 @@ export class LinkVersionError extends LinkError {
   }
 }
 
+export class LinkRetiredKdfError extends LinkError {
+  override readonly name = 'LinkRetiredKdfError';
+  constructor() {
+    super('invalid link: a retired passphrase profile');
+  }
+}
+
 export class PolicyError extends Error {
   override readonly name = 'PolicyError';
   constructor(message = 'invalid policy') {

@@ -3,11 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   EncodingError,
   KDF_NONE,
-  KDF_PBKDF2,
+  KDF_RETIRED,
   KDF_SCRYPT,
   KdfError,
   KdfMismatchError,
   LinkError,
+  LinkRetiredKdfError,
   LinkVersionError,
   assertProfile,
   decode32,
@@ -30,7 +31,7 @@ const base = 'https://nylzo.example';
 
 describe('AK24: the kdf profile comes from the fragment only', () => {
   it('assertProfile rejects a server-reported profile that differs from the fragment', () => {
-    expect(() => assertProfile(KDF_SCRYPT, KDF_PBKDF2)).toThrow(KdfMismatchError);
+    expect(() => assertProfile(KDF_SCRYPT, KDF_RETIRED)).toThrow(KdfMismatchError);
     expect(() => assertProfile(KDF_SCRYPT, 3)).toThrow(KdfMismatchError);
     expect(() => assertProfile(KDF_SCRYPT, 257)).toThrow(KdfMismatchError);
     expect(() => assertProfile(KDF_SCRYPT, KDF_SCRYPT)).not.toThrow();
@@ -45,7 +46,7 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
     expect(Object.keys(link).sort()).toEqual(['id', 'kdfId', 's']);
     expect(link.id).toEqual(id);
     expect(link.s).toEqual(s);
-    expect(() => assertProfile(link.kdfId, KDF_PBKDF2)).toThrow(KdfMismatchError);
+    expect(() => assertProfile(link.kdfId, KDF_NONE)).toThrow(KdfMismatchError);
   });
 });
 
@@ -54,7 +55,7 @@ describe('fragment', () => {
   const encoded = encodeBase64url(s);
 
   it('formats as 1.{kdf}.{S}', () => {
-    expect(fragment(KDF_PBKDF2, s)).toBe(`1.2.${encoded}`);
+    expect(fragment(KDF_SCRYPT, s)).toBe(`1.1.${encoded}`);
     expect(encoded).toHaveLength(43);
   });
 
@@ -173,11 +174,10 @@ describe('canonical base64url', () => {
 });
 
 describe('kdf identifiers', () => {
-  it('parses only 0, 1 and 2', () => {
+  it('parses only 0 and 1', () => {
     expect(parseKdfId('0')).toBe(KDF_NONE);
     expect(parseKdfId('1')).toBe(KDF_SCRYPT);
-    expect(parseKdfId('2')).toBe(KDF_PBKDF2);
-    for (const text of ['3', '01', '', ' 1', '1 ', '-1', '1.0']) {
+    for (const text of ['2', '3', '01', '', ' 1', '1 ', '-1', '1.0']) {
       expect(() => parseKdfId(text), text).toThrow(KdfError);
     }
   });
@@ -210,4 +210,32 @@ describe('a newer fragment version', () => {
       expect(error instanceof LinkVersionError).toBe(newer);
     });
   }
+});
+
+describe('the retired passphrase profile 2', () => {
+  const s = encodeBase64url(new Uint8Array(32));
+  const cases: readonly (readonly [string, boolean])[] = [
+    [`#1.2.${s}`, true],
+    [`1.2.${s}`, true],
+    [`#1.2.${s.slice(0, 42)}`, false],
+    [`#1.2.${s}A`, false],
+    [`#1.02.${s}`, false],
+    ['#1.2', false],
+    [`#1.2.${s}.x`, false],
+  ];
+  for (const [text, retired] of cases) {
+    it(`parseFragment(${JSON.stringify(text)}) tells the retired profile apart: ${String(retired)}`, () => {
+      const error = thrownBy(() => parseFragment(text));
+      expect(error).toBeInstanceOf(LinkError);
+      expect(error instanceof LinkRetiredKdfError).toBe(retired);
+    });
+  }
+
+  it('parseLink reports it only for an otherwise valid link', () => {
+    const id = idToString(newId());
+    expect(thrownBy(() => parseLink(`${base}/m/${id}#1.2.${s}`))).toBeInstanceOf(LinkRetiredKdfError);
+    const badPath = thrownBy(() => parseLink(`${base}/x/${id}#1.2.${s}`));
+    expect(badPath).toBeInstanceOf(LinkError);
+    expect(badPath).not.toBeInstanceOf(LinkRetiredKdfError);
+  });
 });

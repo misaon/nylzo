@@ -1,14 +1,13 @@
 import {
   KDF_NONE,
-  KDF_PBKDF2,
   KdfMismatchError,
+  LinkRetiredKdfError,
   LinkVersionError,
   MalformedPassphraseError,
   assertProfile,
   assertWellFormedPassphrase,
   deriveContent,
   deriveLink,
-  derivePassphraseKey,
   idToString,
   open,
   parseFragment,
@@ -41,6 +40,7 @@ export type ReadView =
   | { readonly view: 'loading' }
   | { readonly view: 'invalid' }
   | { readonly view: 'newer' }
+  | { readonly view: 'retired' }
   | { readonly view: 'unknown' }
   | { readonly view: 'tampered' }
   | { readonly view: 'failed' }
@@ -273,13 +273,20 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
   }
 
+  function linkErrorView(error: unknown): 'newer' | 'retired' | 'invalid' {
+    if (error instanceof LinkVersionError) {
+      return 'newer';
+    }
+    return error instanceof LinkRetiredKdfError && safely(() => parsePath(deps.location.pathname), undefined) ? 'retired' : 'invalid';
+  }
+
   async function load(): Promise<void> {
     onView({ view: 'loading' });
     let parsed: Fragment;
     try {
       parsed = parseFragment(deps.location.hash);
     } catch (error) {
-      onView({ view: error instanceof LinkVersionError ? 'newer' : 'invalid' });
+      onView({ view: linkErrorView(error) });
       return;
     }
     let fragment: Link;
@@ -318,10 +325,6 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   async function passphraseKey(current: Secrets, passphrase: string): Promise<Uint8Array<ArrayBuffer>> {
     if (current.kdfId === KDF_NONE) {
       return new Uint8Array(0);
-    }
-    if (current.kdfId === KDF_PBKDF2) {
-      onView({ view: 'busy', step: 'deriving' });
-      return derivePassphraseKey(KDF_PBKDF2, passphrase, current.saltPw);
     }
     onView({ view: 'busy', step: 'deriving', fraction: 0 });
     safely(() => deps.session.setItem(kdfKey(), '1'), undefined);

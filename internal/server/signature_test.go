@@ -138,7 +138,7 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	const pass = "correct horse battery staple"
-	m := newMessage(t, core.KDFPBKDF2, pass, 1, 3600, "behind a passphrase")
+	m := newMessage(t, core.KDFScrypt, pass, 1, 3600, "behind a passphrase")
 	h.mustCreate(m)
 	path := "/api/v1/messages/" + m.id.String() + "/claim"
 	stranger := core.NewSecret()
