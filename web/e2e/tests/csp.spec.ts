@@ -47,6 +47,19 @@ test('responses other than HTML carry the short CSP of spec section 9', async ({
   }
 });
 
+test('the icons are files of the embedded client with the short CSP of spec section 9', async ({ page, request }) => {
+  await page.goto('/');
+  const hrefs = await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]').evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
+  expect(hrefs).toHaveLength(3);
+  for (const href of hrefs) {
+    expect(href).toMatch(/^\/assets\/[\w-]+\.(?:svg|png)$/);
+    const response = await request.get(href);
+    expect(response.status(), href).toBe(200);
+    expect(response.headers()['content-type'], href).toBe(href.endsWith('.svg') ? 'image/svg+xml' : 'image/png');
+    expect(response.headers()['content-security-policy'], href).toBe(otherPolicy);
+  }
+});
+
 test('every HTML response carries a fresh nonce', async ({ request }) => {
   const nonces = new Set<string>();
   for (let i = 0; i < 3; i++) {
