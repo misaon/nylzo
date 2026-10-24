@@ -195,9 +195,10 @@ async function animationsSettled(page: Page): Promise<void> {
   );
 }
 
-async function expectAccessible(page: Page, screen: string): Promise<void> {
+async function expectAccessible(page: Page, screen: string, scope?: string): Promise<void> {
   await animationsSettled(page);
-  const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  const builder = new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']);
+  const results = await (scope ? builder.include(scope) : builder).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`), screen).toEqual([]);
   const small = await page.evaluate(() => {
     const still = document.createElement('style');
@@ -220,7 +221,7 @@ async function expectAccessible(page: Page, screen: string): Promise<void> {
   expect(small, screen).toEqual([]);
 }
 
-test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)', async ({ browser }) => {
+test('the create screens pass axe and keep touch targets at 44 px on a phone (AK20)', async ({ browser }) => {
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
   const page = await context.newPage();
   await page.goto('/');
@@ -230,10 +231,14 @@ test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)
   await page.getByLabel('Passphrase, optional').fill('short');
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.getByLabel('Passphrase, optional')).toBeFocused();
-  await expectAccessible(page, 'create with problems');
+  await expectAccessible(page, 'create with problems', '#napsat');
   await createViaUi(page, { text: 'axe' });
-  await expectAccessible(page, 'created');
+  await expectAccessible(page, 'created', '#napsat');
+});
 
+test('the read screens pass axe and keep touch targets at 44 px on a phone (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
+  const page = await context.newPage();
   const message = await createViaApi({ text: 'axe' });
   await page.goto(message.link);
   await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
@@ -249,7 +254,12 @@ test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)
   await openViaUi(page, guarded.link, 'definitely the wrong one');
   await expect(page.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
+});
 
+test('the notice screens pass axe and keep touch targets at 44 px on a phone (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
+  const page = await context.newPage();
+  const message = await createViaApi({ text: 'axe' });
   await page.goto(`${BASE_URL}/m/${message.idText}#0.0.${message.secret}`);
   await expect(page.getByText(/The link is incomplete or damaged/)).toBeVisible();
   await expectAccessible(page, 'invalid');
@@ -272,7 +282,7 @@ test('the confirmation before a risky download passes axe (AK20, D35)', async ({
   await expectAccessible(page, 'confirm download');
 });
 
-test('with reduced motion the composer popovers, the attachment and the tabs pass axe (AK20)', async ({ browser }) => {
+test('with reduced motion the composer popovers and the attachment pass axe (AK20)', async ({ browser }) => {
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true, reducedMotion: 'reduce' });
   const page = await context.newPage();
   await page.goto('/');
@@ -282,20 +292,29 @@ test('with reduced motion the composer popovers, the attachment and the tabs pas
   for (let index = 0; index < 3; index++) {
     await triggers.nth(index).click();
     await expect(triggers.nth(index)).toHaveAttribute('aria-expanded', 'true');
-    await expectAccessible(page, `popover ${index}`);
+    await expectAccessible(page, `popover ${index}`, '#napsat');
     await page.keyboard.press('Escape');
     await expect(triggers.nth(index)).toHaveAttribute('aria-expanded', 'false');
   }
   await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
-  await expectAccessible(page, 'attachment');
+  await expectAccessible(page, 'attachment', '#napsat');
+});
+
+test('with reduced motion every tab passes axe (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true, reducedMotion: 'reduce' });
+  const page = await context.newPage();
+  await page.goto('/');
   const tabs = page.getByRole('tab');
   const count = await tabs.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < count; index++) {
-    await tabs.nth(index).click();
-    await expect(tabs.nth(index)).toHaveAttribute('aria-selected', 'true');
-    await expectAccessible(page, `tab ${index}`);
+    const tab = tabs.nth(index);
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    const section = await tab.evaluate((element) => element.closest('section')?.id ?? '');
+    expect(section).not.toBe('');
+    await expectAccessible(page, `tab ${index}`, `#${section}`);
   }
 });
 

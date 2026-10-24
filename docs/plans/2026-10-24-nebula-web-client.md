@@ -49,7 +49,7 @@ QA podle gstack (`/qa`, headless Chromium, desktop a 430 × 932) našlo jednu da
 
 WebKit pro Linux, který Playwright používá, vykresluje bez GPU softwarově a `backdrop-filter` skla v něm zastaví vykreslování úplně: `requestAnimationFrame` neběží a testy čekají do limitu (ověřeno v obraze `mcr.microsoft.com/playwright:v1.64.1-noble`, Chromium i Firefox na Linuxu kreslí kolem 60 snímků za sekundu). Skutečné Safari kreslí přes GPU a lokálně na macOS testy procházejí. CI proto pouští e2e jako matici po prohlížečích: Chromium a Firefox na Linuxu, WebKit na runneru macOS.
 
-E2E testy běží ve výchozím stavu s `prefers-reduced-motion: reduce`. Odpadnou tak umělé minimální doby animací (5 s při vytvoření, 2,6 až 3,8 s při otevření) v každém toku. Testy, které na pohybu závisí (AK18, odkrývání textu, odchod během otevírání, popis kroků při šifrování, zapamatování před koncem animace, automatické přepínání), si plný pohyb zapínají samy.
+E2E testy běží ve výchozím stavu s `prefers-reduced-motion: reduce`. Odpadnou tak umělé minimální doby animací (5 s při vytvoření, 2,6 až 3,8 s při otevření) v každém toku. Testy, které na pohybu závisí (AK18, odkrývání textu, odchod během otevírání, popis kroků při šifrování, zapamatování před koncem animace, automatické přepínání), si plný pohyb zapínají samy. Při `prefers-reduced-motion` styly nulují i zpoždění animací a přechodů; dřív zpožděný meteor a lesk tlačítka „běžely“ ještě 4 s bez jakéhokoli pohybu a každá kontrola přístupnosti na ně čekala.
 
 Testy runes s efekty běží ve Vitest v projektu `client` s vlastním prostředím (`web/app/test/client-environment.ts`), ostatní unit testy dál v Node.
 
