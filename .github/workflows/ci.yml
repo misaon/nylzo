@@ -212,6 +212,96 @@ jobs:
           test "$(stat -c %a .dev/pepper)" = 600
           pkill -f 'bin/nylzo serve'
 
+  compose:
+    name: Compose with Caddy (AK12, AK17, AK26)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build the web client that nylzo embeds
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @nylzo/web build
+      - name: Build nylzo and an image laid out like the release image
+        run: |
+          CGO_ENABLED=0 go build -trimpath -o dist/nylzo ./cmd/nylzo
+          go build -o dist/tlscheck ./tools/tlscheck
+          base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
+          printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
+      - name: Start the Compose example for localhost
+        working-directory: deploy/compose
+        run: |
+          mkdir -p secrets
+          openssl rand -hex 32 > secrets/pepper
+          sudo chown 65532:65532 secrets/pepper
+          sudo chmod 0400 secrets/pepper
+          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\n' > .env
+          docker compose up -d
+          for _ in $(seq 1 60); do
+            docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break
+            sleep 1
+          done
+          curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz || { docker compose logs; exit 1; }
+      - name: A 5 MiB file goes through Caddy and back (AK17)
+        env:
+          SSL_CERT_FILE: ${{ runner.temp }}/root.crt
+        run: |
+          head -c 5242880 /dev/urandom > "$RUNNER_TEMP/file.bin"
+          link=$(dist/nylzo create --server https://localhost --from-file "$RUNNER_TEMP/file.bin" < /dev/null)
+          out=$(mktemp -d)
+          printf '%s' "$link" | dist/nylzo read --out "$out" > /dev/null
+          cmp "$RUNNER_TEMP/file.bin" "$out"/nylzo-*/file.bin
+      - name: Caddy negotiates X25519MLKEM768 (AK26)
+        run: dist/tlscheck -addr localhost:443 -ca "$RUNNER_TEMP/root.crt"
+      - name: The web client arrives through Caddy unchanged (D61)
+        env:
+          SSL_CERT_FILE: ${{ runner.temp }}/root.crt
+        run: dist/nylzo verify-client --server https://localhost
+      - name: Caddy logs nothing about a request that fails (spec §10)
+        working-directory: deploy/compose
+        run: |
+          docker compose stop nylzo
+          id=$(head -c 16 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')
+          code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" -H 'X-Nylzo-Lease: lease-that-must-not-be-logged' "https://localhost/m/$id")
+          test "$code" = 502
+          sleep 2
+          docker compose logs caddy > "$RUNNER_TEMP/caddy.log" 2>&1
+          if grep -F -e "$id" -e '/m/' -e 'lease-that-must-not-be-logged' "$RUNNER_TEMP/caddy.log"; then exit 1; fi
+          docker compose start nylzo
+      - name: A spoofed X-Forwarded-For gets no bucket of its own (AK12)
+        working-directory: deploy/compose
+        run: |
+          printf 'services:\n  nylzo:\n    environment:\n      NYLZO_RATE_SOURCE_RPS: "0.001"\n      NYLZO_RATE_SOURCE_BURST: "3"\n' > compose.ak12.yaml
+          docker compose -f compose.yaml -f compose.ak12.yaml up -d nylzo
+          for _ in $(seq 1 30); do curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break; sleep 1; done
+          for i in 1 2 3 4; do
+            curl -s -o /dev/null -w '%{http_code}\n' --cacert "$RUNNER_TEMP/root.crt" -H "X-Forwarded-For: 10.0.0.$i" https://localhost/api/v1/instance
+          done | tee "$RUNNER_TEMP/codes.txt"
+          test "$(tr '\n' ' ' < "$RUNNER_TEMP/codes.txt")" = "200 200 200 429 "
+          other=$(hostname -I | awk '{print $1}')
+          code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" --resolve "localhost:443:${other}" https://localhost/api/v1/instance)
+          echo "a second real source: $code"
+          test "$code" = 200
+      - name: Logs of a failed run
+        if: failure()
+        working-directory: deploy/compose
+        run: docker compose logs
+
   build:
     name: Release build on ${{ matrix.runner }}
     runs-on: ${{ matrix.runner }}

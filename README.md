@@ -205,6 +205,8 @@ E2e testy sestaví `nylzo` z aktuálního kódu a spustí ho s dočasným adres�
 cd web && pnpm --filter @nylzo/web build && cd e2e && pnpm exec playwright install chromium firefox webkit && pnpm e2e
 ```
 
+Job „Compose with Caddy“ v CI spustí `deploy/compose` pro `localhost` s image sestaveným stejně jako vydání (D67). Ověří, že 5MiB soubor projde přes Caddy tam i zpět (AK17), že Caddy vyjedná X25519MLKEM768 (AK26, nástroj `tools/tlscheck`), že `nylzo verify-client` přes Caddy najde nezměněného webového klienta, že při 502 nezapíše id, cestu ani hlavičky `X-Nylzo-*` (spec §10) a že podvržené `X-Forwarded-For` nedostane vlastní limit (AK12). Lokálně ho nespouštějte na stroji, kde porty 80 a 443 něco používá.
+
 Fuzz cíle (obálka, plaintext obálky, meta JSON, odkaz, fragment, hlavička vytvoření); CI každý z nich spouští 15 s:
 
 ```bash
