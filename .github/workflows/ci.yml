@@ -18,10 +18,37 @@ env:
   GOTOOLCHAIN: local
 
 jobs:
-  go:
-    name: Go tests
+  changes:
+    name: What changed
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: diff
+        name: Anything besides documentation?
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then echo code=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          files=$(git diff --name-only HEAD^1 HEAD)
+          printf '%s\n' "$files"
+          if printf '%s\n' "$files" | grep -Ev '^(docs/|\.claude/|README\.md$|SECURITY\.md$)' | grep -q .; then
+            echo code=true >> "$GITHUB_OUTPUT"
+          else
+            echo code=false >> "$GITHUB_OUTPUT"
+          fi
+
+  go-lint:
+    name: Go static checks
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,29 +57,120 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+          cache: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-lint-${{ runner.os }}-
       - run: go mod verify
       - run: go mod tidy -diff
       - name: gofmt
         run: |
           unformatted=$(gofmt -l cmd internal)
           if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+      - run: go build ./...
       - run: go vet ./...
       - run: GOOS=darwin go vet ./...
       - name: go fix (modernize)
         run: go fix -diff ./...
       - name: golangci-lint
-        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-      - run: go build ./...
-      - run: go test -race -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./...
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+
+  go-test:
+    name: Go tests (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [core, vectors, rest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-${{ matrix.shard }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ matrix.shard }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ matrix.shard }}-${{ runner.os }}-
+      - name: go test -race
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          case "$SHARD" in
+            core) packages=(./internal/core) ;;
+            vectors) packages=(./internal/core/vectors) ;;
+            rest) mapfile -t packages < <(go list ./... | grep -v -e '/internal/core$' -e '/internal/core/vectors$') ;;
+          esac
+          go test -race -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' "${packages[@]}"
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-${{ matrix.shard }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+
+  go-timing:
+    name: Go timing tests (AK21, AK22)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-test-rest-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-rest-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-rest-${{ runner.os }}-
       - name: AK21 timing on its own
         run: go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/
       - name: AK22 slow connections on their own
         run: go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   fuzz:
     name: Fuzz smoke
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -72,6 +190,8 @@ jobs:
 
   web:
     name: TypeScript core and web client
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -106,9 +226,10 @@ jobs:
 
   vectors:
     name: Cross-check vectors (AK9)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [go]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,31 +238,22 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
-      - name: Regenerate vectors from the Go core
+      - name: The Go core regenerates exactly the committed vectors, which the TypeScript job tests against
         run: |
           go run ./cmd/nylzo-vectors -out spec/vectors.json
           git diff --exit-code -- spec/vectors.json
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.node-version
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-      - name: TypeScript core against the regenerated vectors
-        working-directory: web
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm -r test
 
   e2e:
-    name: Web client end to end (${{ matrix.browser }})
+    name: Web client end to end (${{ matrix.browser }} ${{ matrix.shard }}/2)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
+        browser: [chromium, firefox, webkit]
+        shard: [1, 2]
         include:
           - browser: chromium
             runner: ubuntu-latest
@@ -179,26 +291,29 @@ jobs:
         env:
           INSTALL: ${{ matrix.install }}
         run: |
-          limit=""
-          if command -v timeout > /dev/null; then limit="timeout 240"; fi
+          limit=()
+          if command -v timeout > /dev/null; then limit=(timeout 240); fi
+          read -ra install <<< "$INSTALL"
           for attempt in 1 2 3; do
-            $limit pnpm exec playwright install $INSTALL && exit 0
+            "${limit[@]}" pnpm exec playwright install "${install[@]}" && exit 0
             echo "browser install attempt $attempt failed or hung"
           done
           exit 1
       - name: ${{ matrix.browser }} against nylzo
         working-directory: web/e2e
-        run: pnpm e2e --project=${{ matrix.browser }}
+        run: pnpm e2e --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-results-${{ matrix.browser }}
+          name: playwright-results-${{ matrix.browser }}-${{ matrix.shard }}
           path: web/e2e/test-results
           retention-days: 7
 
   dev-setup:
     name: Developer setup (mise)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -223,7 +338,15 @@ jobs:
           done
           tools=$(grep -o 'go run [a-z0-9./-]*@v[0-9][0-9.]*' mise.toml | cut -d' ' -f3 | sort -u)
           test "$(printf '%s\n' "$tools" | wc -l)" -ge 2
-          for tool in $tools; do grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; }; done
+          for tool in $tools; do
+            case "$tool" in
+              github.com/golangci/golangci-lint/*)
+                lint=$(yq -r '[.jobs[].steps[]? | select(.uses // "" | test("^golangci/golangci-lint-action@")) | .with.version // "missing"] | .[]' .github/workflows/ci.yml)
+                test -n "$lint"
+                for version in $lint; do test "$version" = "${tool##*@}" || { echo "CI lints with golangci-lint $version, mise.toml with ${tool##*@}"; exit 1; }; done ;;
+              *) grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; } ;;
+            esac
+          done
       - run: mise run build
       - name: mise run dev serves the built client
         run: |
@@ -236,6 +359,8 @@ jobs:
 
   compose:
     name: Compose with Caddy (AK12, AK17, AK26)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -326,6 +451,8 @@ jobs:
 
   build:
     name: Release build on ${{ matrix.runner }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
