@@ -114,7 +114,7 @@ Serverové příkazy `nylzo` jsou `serve` a `sweep-once`; žádný nebere argume
 | `NYLZO_OPERATOR`, `NYLZO_CONTACT`, `NYLZO_HOSTING` | prázdné | provozovatel, kontakt (e-mail nebo adresa `https://`) a hosting pro stránku `/transparency` (D62). Každá nejvýš 200 bajtů bez řídicích znaků; jinak server nenaběhne. Nenastavené stránka uvede jako neuvedené |
 | `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | obtížnost (nejvýš 8) a souběh ověření PoW (každé ověření drží 16 MiB; strop souběhu je 4). Každou výzvu lze použít jen jednou |
 
-Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez nich server vidí jen adresu proxy a všichni klienti sdílejí jeden kyblík, včetně limitu na zdroj.
+Za reverzní proxy nastavte `NYLZO_TRUSTED_PROXIES` nebo `NYLZO_PROXY_MODE`. Bez nich server vidí jen adresu proxy a všichni klienti sdílejí jeden kyblík, včetně limitu na zdroj. Server na to upozorní varováním `forwarded-header-ignored` v logu, nejvýš jednou za hodinu a jen s názvem hlavičky: požadavek nesl `X-Forwarded-For`, `X-Real-IP` nebo `Forwarded`, ale server ji nepoužil, protože spojení nepřišlo od důvěryhodné proxy. Totéž způsobí klient, který hlavičku pošle sám.
 
 Všechny limity na kyblík adresy drží každý proces jen v paměti, s klíčem, který si vylosuje při startu. Databáze, záloha, logy ani pepper proto o adresách klientů nic neobsahují. Limity na adresu ale platí pro jednu instanci a po restartu nebo probuzení kontejneru začínají od nuly. Globální denní strop, PoW, backoff passphrase a limit hlášení na zprávu jsou v databázi a platí napříč instancemi.
 
