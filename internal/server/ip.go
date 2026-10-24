@@ -12,52 +12,39 @@ import (
 var forwardingHeaders = []string{"X-Forwarded-For", "X-Real-IP", "Forwarded"}
 
 func (s *Server) clientAddr(r *http.Request) netip.Addr {
-	addr, _ := s.resolveClient(r)
-	return addr
-}
-
-func (s *Server) resolveClient(r *http.Request) (netip.Addr, string) {
 	peer := peerAddr(r.RemoteAddr)
 	switch s.cfg.ProxyMode {
 	case ProxyModeScaleway:
 		values := r.Header.Values("X-Real-IP")
-		if len(values) == 0 {
-			return peer, ""
-		}
 		if len(values) != 1 || (len(s.cfg.TrustedProxies) > 0 && !s.trusted(peer)) {
-			return peer, "X-Real-IP"
+			return peer
 		}
 		if a, err := netip.ParseAddr(strings.TrimSpace(values[0])); err == nil {
-			return a.Unmap(), ""
+			return a.Unmap()
 		}
-		return peer, "X-Real-IP"
+		return peer
 	}
 	if len(s.cfg.TrustedProxies) == 0 || !s.trusted(peer) {
-		for _, name := range forwardingHeaders {
-			if len(r.Header.Values(name)) > 0 {
-				return peer, name
-			}
-		}
-		return peer, ""
+		return peer
 	}
 	for _, raw := range splitForwardedFor(r.Header.Values("X-Forwarded-For")) {
 		a, err := netip.ParseAddr(raw)
 		if err != nil {
-			return peer, ""
+			return peer
 		}
 		a = a.Unmap()
 		if !s.trusted(a) {
-			return a, ""
+			return a
 		}
 	}
-	return peer, ""
+	return peer
 }
 
 func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, header := s.resolveClient(r); header != "" {
+		if header := forwardingHeader(r); header != "" && s.clientAddr(r) == peerAddr(r.RemoteAddr) {
 			hour := s.clock().UTC().Truncate(time.Hour).Unix()
-			for last := s.forwardNotice.Load(); hour > last; last = s.forwardNotice.Load() {
+			for last := s.forwardNotice.Load(); hour > last || hour < last-int64(time.Hour/time.Second); last = s.forwardNotice.Load() {
 				if s.forwardNotice.CompareAndSwap(last, hour) {
 					s.log.Warn("forwarded-header-ignored", "header", header)
 					break
@@ -66,6 +53,15 @@ func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func forwardingHeader(r *http.Request) string {
+	for _, name := range forwardingHeaders {
+		if len(r.Header.Values(name)) > 0 {
+			return name
+		}
+	}
+	return ""
 }
 
 func (s *Server) trusted(a netip.Addr) bool {

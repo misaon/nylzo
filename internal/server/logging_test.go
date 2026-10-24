@@ -117,14 +117,50 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 	scaleway.ProxyMode = server.ProxyModeScaleway
 	s := newHarness(t, scaleway)
 	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"}})
-	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}})
 	for _, logs := range []string{h.logBuf.String(), s.logBuf.String()} {
 		if strings.Contains(logs, "forwarded-header-ignored") {
 			t.Fatalf("a header the server used must not warn: %s", logs)
 		}
 	}
-	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Real-IP": "not an address"}})
-	if !strings.Contains(s.logBuf.String(), `"msg":"forwarded-header-ignored","header":"X-Real-IP"`) {
-		t.Fatalf("an unusable X-Real-IP must warn in scaleway mode: %s", s.logBuf.String())
+}
+
+func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
+	t.Parallel()
+	scaleway := baseConfig(pepperA, nil)
+	scaleway.ProxyMode = server.ProxyModeScaleway
+	for _, tc := range []struct {
+		name    string
+		cfg     server.Config
+		headers map[string]string
+		header  string
+	}{
+		{"scaleway without X-Real-IP", scaleway, map[string]string{"X-Forwarded-For": "203.0.113.1"}, "X-Forwarded-For"},
+		{"scaleway with an unusable X-Real-IP", scaleway, map[string]string{"X-Real-IP": "not an address"}, "X-Real-IP"},
+		{"trusted proxy with only X-Real-IP", baseConfig(pepperA, nil), map[string]string{"X-Real-IP": "203.0.113.1"}, "X-Real-IP"},
+		{"trusted proxy with only Forwarded", baseConfig(pepperA, nil), map[string]string{"Forwarded": "for=203.0.113.1"}, "Forwarded"},
+		{"trusted proxy with an unreadable X-Forwarded-For", baseConfig(pepperA, nil), map[string]string{"X-Forwarded-For": "not an address"}, "X-Forwarded-For"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, tc.cfg)
+			h.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: tc.headers})
+			if !strings.Contains(h.logBuf.String(), `"msg":"forwarded-header-ignored","header":"`+tc.header+`"`) {
+				t.Fatalf("no warning: %s", h.logBuf.String())
+			}
+		})
+	}
+}
+
+func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
+	t.Parallel()
+	cfg := baseConfig(pepperA, nil)
+	cfg.TrustedProxies = nil
+	h := newHarness(t, cfg)
+	h.clock.Advance(48 * time.Hour)
+	h.statusFrom(request{method: "GET", path: "/", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}})
+	h.clock.Advance(-47 * time.Hour)
+	h.statusFrom(request{method: "GET", path: "/", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}})
+	if n := strings.Count(h.logBuf.String(), "forwarded-header-ignored"); n != 2 {
+		t.Fatalf("want a warning after the clock stepped back, got %d", n)
 	}
 }
