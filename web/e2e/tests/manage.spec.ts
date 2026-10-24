@@ -1,6 +1,6 @@
 import type { Browser, Page } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, live, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, live, openApp, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 declare global {
@@ -111,7 +111,7 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
 test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({ browser }) => {
   const sender = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
   await countWrites(sender);
-  await sender.goto('/');
+  await openApp(sender, '/');
   await sender.getByLabel('Message text').fill('remember early');
   const created = sender.waitForResponse((response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST');
   await sender.getByRole('button', { name: 'Create link' }).click();
@@ -227,7 +227,7 @@ test('a status that answers after the sender forgot the message does not store i
 
 test('an unchecked box keeps the message off the sent list', async ({ browser }) => {
   const sender = await newPage(browser);
-  await sender.goto('/');
+  await openApp(sender, '/');
   await sender.getByRole('button', { name: 'Passphrase', exact: true }).click();
   const remember = sender.getByRole('switch', { name: /^Cancel from this device/ });
   await remember.click();
@@ -378,7 +378,7 @@ test('the language switches in place, keeps a shown message and stays chosen', a
   expect(await recipient.evaluate(() => [window.nylzoMarker, document.documentElement.lang])).toEqual([1, 'cs']);
   await expect(recipient.getByRole('button', { name: 'English' })).toHaveAttribute('lang', 'en');
 
-  await recipient.goto('/');
+  await openApp(recipient, '/');
   await expect(recipient).toHaveURL(`${BASE_URL}/cs/`);
   await expect(recipient.getByRole('heading', { name: 'Nová zpráva' })).toBeVisible();
   expect(await recipient.evaluate(() => document.documentElement.lang)).toBe('cs');
@@ -418,7 +418,7 @@ test('every page load drops records 7 days after expiry and creates no database 
   const visitor = await newPage(browser);
   await visitor.goto(message.link);
   await expect(visitor.getByRole('button', { name: 'Show message' })).toBeVisible();
-  await visitor.goto('/');
+  await openApp(visitor, '/');
   await expect(visitor.getByLabel('Message text')).toBeVisible();
   expect(await visitor.evaluate(async () => (await indexedDB.databases()).map((database) => database.name))).toEqual([]);
 

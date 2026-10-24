@@ -2,6 +2,7 @@ import { createContext } from 'svelte';
 
 import { copyCs, copyEn } from './i18n-copy.ts';
 import { homeCs, homeEn } from './i18n-home.ts';
+import type { Language } from './language.ts';
 
 export const baseCs = {
   'action.retry': 'Zkusit znovu',
@@ -369,18 +370,11 @@ const baseEn: Record<keyof typeof baseCs, string> = {
 
 const en: Record<MessageKey, string> = { ...baseEn, ...copyEn, ...homeEn };
 
-export const dictionaries = { cs, en } as const;
+export const dictionaries = { cs, en } as const satisfies Record<Language, Record<MessageKey, string>>;
 
-export type Language = keyof typeof dictionaries;
+export type { Language } from './language.ts';
 
 export type Translate = (key: MessageKey, values?: Readonly<Record<string, string | number>>) => string;
-
-const LANGUAGE_KEY = 'nylzo:lang';
-
-export interface PreferenceStore {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
 
 export class I18n {
   language = $state<Language>('en');
@@ -393,51 +387,8 @@ export class I18n {
     dictionaries[this.language][key].replace(/\{(\w+)\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
 }
 
-export function pickLanguage(preferred: readonly string[]): Language {
-  for (const tag of preferred) {
-    const base = tag.toLowerCase().split('-')[0];
-    if (base === 'cs' || base === 'sk') {
-      return 'cs';
-    }
-    if (base === 'en') {
-      return 'en';
-    }
-  }
-  return 'en';
-}
-
 export function createI18n(language: Language): I18n {
   return new I18n(language);
-}
-
-export function browserPreferences(): PreferenceStore | undefined {
-  try {
-    return globalThis.localStorage;
-  } catch {
-    return undefined;
-  }
-}
-
-export function storedLanguage(store: PreferenceStore | undefined): Language | undefined {
-  let saved: string | null = null;
-  try {
-    saved = store?.getItem(LANGUAGE_KEY) ?? null;
-  } catch {
-    saved = null;
-  }
-  return saved === 'cs' || saved === 'en' ? saved : undefined;
-}
-
-export function savedLanguage(store: PreferenceStore | undefined, preferred: readonly string[]): Language {
-  return storedLanguage(store) ?? pickLanguage(preferred);
-}
-
-export function saveLanguage(store: PreferenceStore | undefined, language: Language): void {
-  try {
-    store?.setItem(LANGUAGE_KEY, language);
-  } catch {
-    return;
-  }
 }
 
 export const [getI18n, setI18n] = createContext<I18n>();

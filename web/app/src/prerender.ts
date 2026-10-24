@@ -18,6 +18,17 @@ export interface OgImage {
   readonly height: number;
 }
 
+export interface HomeStyles {
+  readonly stylesheet: string;
+  readonly fontStylesheet: string;
+  readonly inline: string;
+}
+
+export interface HomeAssets {
+  readonly image: OgImage;
+  readonly styles: HomeStyles;
+}
+
 function escapeAttribute(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
@@ -31,7 +42,7 @@ function absolute(path: string): string {
 }
 
 function replaceOnce(source: string, pattern: string | RegExp, replacement: string): string {
-  const matches = typeof pattern === 'string' ? source.split(pattern).length - 1 : (source.match(new RegExp(pattern, 'g')) ?? []).length;
+  const matches = typeof pattern === 'string' ? source.split(pattern).length - 1 : count(source, pattern);
   if (matches !== 1) {
     throw new Error(`prerender: expected one match of ${String(pattern)}, found ${matches}`);
   }
@@ -92,9 +103,45 @@ function seoHead(language: Language, image: OgImage): string {
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
 }
 
-const REVEAL_WITHOUT_SCRIPT = `<noscript><style nonce="${NONCE_PLACEHOLDER}">html:not([data-ready]) body{visibility:visible}</style></noscript>`;
+const REVEAL_WITHOUT_SCRIPT = `<noscript><style nonce="${NONCE_PLACEHOLDER}">html:not([data-fonts]) body{visibility:visible}</style></noscript>`;
+const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/;
+const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/g;
+const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/g;
 
-export function homeTemplate(index: string, language: Language, image: OgImage): string {
+const FONT_FACE = /@font-face\{[^}]*\}/g;
+
+export function splitFontFaces(css: string): { readonly fontFaces: string; readonly inline: string } {
+  const fontFaces = css.match(FONT_FACE)?.join('') ?? '';
+  if (fontFaces === '') {
+    throw new Error('prerender: the stylesheet declares no fonts');
+  }
+  return { fontFaces, inline: css.replace(FONT_FACE, '') };
+}
+
+function inlineStyles(page: string, { stylesheet, fontStylesheet, inline }: HomeStyles): string {
+  if (STYLESHEET.exec(page)?.[1] !== stylesheet || inline.includes('</style')) {
+    throw new Error(`prerender: cannot inline the stylesheet ${stylesheet}`);
+  }
+  return replaceOnce(
+    page,
+    STYLESHEET,
+    `<link rel="stylesheet" crossorigin href="${fontStylesheet}" nonce="${NONCE_PLACEHOLDER}">\n<style nonce="${NONCE_PLACEHOLDER}">${inline}</style>`,
+  );
+}
+
+function fontPreloads(page: string, language: Language): string {
+  if (count(page, CZECH_FONT_PRELOAD) === 0 || count(page, EXTENDED_FONT_PRELOAD) === 0) {
+    throw new Error('prerender: the index preloads no Czech or extended Latin fonts');
+  }
+  const home = page.replace(EXTENDED_FONT_PRELOAD, '');
+  return language === 'cs' ? home : home.replace(CZECH_FONT_PRELOAD, '');
+}
+
+function count(source: string, pattern: RegExp): number {
+  return source.match(new RegExp(pattern, 'g'))?.length ?? 0;
+}
+
+export function homeTemplate(index: string, language: Language, { image, styles }: HomeAssets): string {
   const { head, body } = render(App, {
     props: { start: { path: HOME_PATHS[language], language } },
     csp: { nonce: NONCE_PLACEHOLDER },
@@ -103,5 +150,6 @@ export function homeTemplate(index: string, language: Language, image: OgImage):
   page = replaceOnce(page, /<meta name="description"[^>]*>\n?/, '');
   page = replaceOnce(page, /<title>[^<]*<\/title>/, `${head.trim()}\n${seoHead(language, image)}`);
   page = replaceOnce(page, '</head>', `${REVEAL_WITHOUT_SCRIPT}\n</head>`);
+  page = fontPreloads(inlineStyles(page, styles), language);
   return replaceOnce(page, '<body></body>', `<body>${body}</body>`);
 }

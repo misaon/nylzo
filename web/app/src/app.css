@@ -14,7 +14,15 @@
   font-display: swap;
   font-weight: 100 900;
   src: url("../node_modules/@fontsource-variable/geist/files/geist-latin-ext-wght-normal.woff2") format("woff2-variations");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range: U+0100-010B, U+0110-0119, U+011C-0146, U+0149-0157, U+015A-015F, U+0162-0163, U+0166-016D, U+0170-017C, U+017F-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../fonts/geist-czech.woff2") format("woff2-variations");
+  unicode-range: U+010C-010F, U+011A-011B, U+0147-0148, U+0158-0159, U+0160-0161, U+0164-0165, U+016E-016F, U+017D-017E;
 }
 @font-face {
   font-family: "Geist Mono";
@@ -30,7 +38,15 @@
   font-display: swap;
   font-weight: 100 900;
   src: url("../node_modules/@fontsource-variable/geist-mono/files/geist-mono-latin-ext-wght-normal.woff2") format("woff2-variations");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range: U+0100-010B, U+0110-0119, U+011C-0146, U+0149-0157, U+015A-015F, U+0162-0163, U+0166-016D, U+0170-017C, U+017F-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../fonts/geist-mono-czech.woff2") format("woff2-variations");
+  unicode-range: U+010C-010F, U+011A-011B, U+0147-0148, U+0158-0159, U+0160-0161, U+0164-0165, U+016E-016F, U+017D-017E;
 }
 @font-face {
   font-family: "Sora";
@@ -46,7 +62,15 @@
   font-display: swap;
   font-weight: 100 800;
   src: url("../node_modules/@fontsource-variable/sora/files/sora-latin-ext-wght-normal.woff2") format("woff2-variations");
-  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  unicode-range: U+0100-010B, U+0110-0119, U+011C-0146, U+0149-0157, U+015A-015F, U+0162-0163, U+0166-016D, U+0170-017C, U+017F-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Sora";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url("../fonts/sora-czech.woff2") format("woff2-variations");
+  unicode-range: U+010C-010F, U+011A-011B, U+0147-0148, U+0158-0159, U+0160-0161, U+0164-0165, U+016E-016F, U+017D-017E;
 }
 
 @theme {
@@ -88,6 +112,7 @@
   --animate-spin-slow: spin 26s linear infinite;
   --animate-pulse-core: pulse-core 2.6s ease-in-out infinite;
   --animate-rise: rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-rise-visible: rise-visible 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-beam: beam 4.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-scan: scan 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-blink: blink 1.1s steps(1, end) infinite;
@@ -141,6 +166,11 @@
     from { opacity: 0; transform: translate3d(0, 24px, 0); }
     to { opacity: 1; transform: none; }
   }
+  @keyframes rise-visible {
+    /* Largest Contentful Paint skips text first painted at opacity 0. */
+    from { opacity: 0.01; transform: translate3d(0, 24px, 0); }
+    to { opacity: 1; transform: none; }
+  }
   @keyframes beam {
     0% { transform: translate3d(-30%, 0, 0); opacity: 0; }
     15% { opacity: 1; }
@@ -187,7 +217,7 @@
       scroll-behavior: smooth;
     }
   }
-  html:not([data-ready]) body {
+  html:not([data-fonts]) body {
     visibility: hidden;
   }
   body {

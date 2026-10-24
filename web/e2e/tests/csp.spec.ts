@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, test } from './helpers.ts';
+import { expect, openApp, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 const id = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -25,7 +25,7 @@ function withoutNonce(policy: string): { readonly policy: string; readonly nonce
 for (const path of ['/', '/cs/', '/sent', '/report', `/m/${id}`]) {
   test(`${path} carries exactly the CSP of spec section 9 and renders without violations`, async ({ page }) => {
     const violations = await recordViolations(page);
-    const response = await page.goto(path);
+    const response = await openApp(page, path);
     const { policy, nonces } = withoutNonce(response?.headers()['content-security-policy'] ?? '');
     expect(policy).toBe(htmlPolicy);
     expect(nonces).toHaveLength(2);
@@ -48,7 +48,7 @@ test('responses other than HTML carry the short CSP of spec section 9', async ({
 });
 
 test('the icons are files of the embedded client with the short CSP of spec section 9', async ({ page, request }) => {
-  await page.goto('/');
+  await openApp(page, '/');
   const hrefs = await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]').evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
   expect(hrefs).toHaveLength(3);
   for (const href of hrefs) {

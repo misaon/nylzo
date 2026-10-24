@@ -1,4 +1,4 @@
-import type { Language } from './i18n.svelte.ts';
+import type { Language } from './language.ts';
 
 export type Screen = 'create' | 'sent' | 'report' | 'transparency' | 'read';
 

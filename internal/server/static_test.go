@@ -283,6 +283,8 @@ func TestBrokenBuildRefusesToStart(t *testing.T) {
 		"nested public blocks":              home(page + `<!--nylzo:public--><!--nylzo:public--><!--/nylzo:public--><!--/nylzo:public-->`),
 		"public URL outside a public block": home(page + `<link rel="canonical" href="__NYLZO_PUBLIC_URL__/">`),
 		"social image that is not embedded": home(page + `<!--nylzo:public--><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/og-gone.png"><!--/nylzo:public-->`),
+		"inline style with a missing font":  home(page + `<style nonce="__NYLZO_CSP_NONCE__">@font-face{src:url(/assets/gone.woff2)}</style>`),
+		"quoted font that is not embedded":  home(page + `<style nonce="__NYLZO_CSP_NONCE__">@font-face{src:url("/assets/gone.woff2")}</style>`),
 	} {
 		if _, err := newWebServer(t, files, nil); err == nil {
 			t.Fatalf("%s: the server started", name)

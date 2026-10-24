@@ -13,7 +13,7 @@ import {
   type RequestKey,
 } from '@nylzo/core';
 import { anyPassphraseKey } from '@nylzo/core/scrypt';
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { test as base, expect, type Locator, type Page, type Response } from '@playwright/test';
 
 import { createApi, type Api } from '../../app/src/lib/api.ts';
 
@@ -91,6 +91,12 @@ export async function createViaApi(options: ApiMessageOptions = {}): Promise<Api
   };
 }
 
+export async function openApp(page: Page, url: string): Promise<Response | null> {
+  const response = await page.goto(url);
+  await page.locator('html[data-ready]').waitFor({ state: 'attached' });
+  return response;
+}
+
 export interface UiMessage {
   readonly text?: string;
   readonly file?: { readonly name: string; readonly mimeType: string; readonly buffer: Buffer };
@@ -98,7 +104,7 @@ export interface UiMessage {
 }
 
 export async function createViaUi(page: Page, message: UiMessage, base = BASE_URL): Promise<string> {
-  await page.goto(`${base}/`);
+  await openApp(page, `${base}/`);
   await page.getByLabel('Message text').fill(message.text ?? '');
   if (message.file) {
     await page.getByLabel(/Attachment, up to/).setInputFiles(message.file);

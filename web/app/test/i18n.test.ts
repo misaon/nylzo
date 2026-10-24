@@ -7,7 +7,8 @@ import { MAX_REASON_BYTES } from '../src/lib/report.ts';
 import { RETENTION_DAYS } from '../src/lib/sent.ts';
 import { copyCs } from '../src/lib/i18n-copy.ts';
 import { homeCs } from '../src/lib/i18n-home.ts';
-import { baseCs, createI18n, dictionaries, pickLanguage, saveLanguage, savedLanguage, type MessageKey, type PreferenceStore } from '../src/lib/i18n.svelte.ts';
+import { baseCs, createI18n, dictionaries, type MessageKey } from '../src/lib/i18n.svelte.ts';
+import { pickLanguage, saveLanguage, savedLanguage, type PreferenceStore } from '../src/lib/language.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 

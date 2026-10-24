@@ -1,4 +1,4 @@
-import { BASE_URL, expect, test } from './helpers.ts';
+import { BASE_URL, expect, openApp, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 const HOMES = [
@@ -46,7 +46,7 @@ test('the browser takes over the prerendered page without errors or a second cop
       errors.push(message.text());
     }
   });
-  await page.goto('/cs/');
+  await openApp(page, '/cs/');
   await expect(page.locator('html[data-ready]')).toHaveCount(1);
   await expect(page.locator('main')).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
@@ -56,24 +56,44 @@ test('the browser takes over the prerendered page without errors or a second cop
   expect(await violations()).toEqual([]);
 });
 
-test('the language switch moves between / and /cs/ and the choice stays (D82)', async ({ page }) => {
+test('the page shows before the app starts and keeps text typed in the meantime (D86)', async ({ page }) => {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(/\/assets\/start-[\w-]+\.js$/, async (route) => {
+    await held;
+    await route.continue();
+  });
   await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1, name: 'A secret that opens once' })).toBeVisible();
+  await expect(page.locator('html[data-ready]')).toHaveCount(0);
+  await page.getByLabel('Message text').fill('typed early');
+  release();
+  await expect(page.locator('html[data-ready]')).toHaveCount(1);
+  await expect(page.getByLabel('Message text')).toHaveValue('typed early');
+  await page.getByRole('button', { name: 'Create link' }).click();
+  await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
+});
+
+test('the language switch moves between / and /cs/ and the choice stays (D82)', async ({ page }) => {
+  await openApp(page, '/');
   await page.getByRole('button', { name: 'Čeština' }).click();
   await expect(page).toHaveURL(`${BASE_URL}/cs/`);
   await expect(page).toHaveTitle(/^Bezpečně poslat heslo/);
-  await page.goto('/#create');
+  await openApp(page, '/#create');
   await expect(page).toHaveURL(`${BASE_URL}/cs/#create`);
   await expect(page.getByRole('heading', { level: 1, name: 'Tajemství na jedno otevření' })).toBeVisible();
   await page.getByRole('button', { name: 'English' }).click();
   await expect(page).toHaveURL(`${BASE_URL}/#create`);
-  await page.goto('/cs/');
+  await openApp(page, '/cs/');
   await expect(page).toHaveURL(`${BASE_URL}/`);
 });
 
 test('a visitor without a saved choice stays on the address they opened', async ({ browser }) => {
   const context = await browser.newContext({ locale: 'cs-CZ' });
   const page = await context.newPage();
-  await page.goto('/');
+  await openApp(page, '/');
   await expect(page.getByRole('heading', { level: 1, name: 'A secret that opens once' })).toBeVisible();
   await expect(page).toHaveURL(`${BASE_URL}/`);
   await context.close();

@@ -4,7 +4,8 @@
   import SiteFooter from './components/shell/SiteFooter.svelte';
   import SiteHeader from './components/shell/SiteHeader.svelte';
   import Sky from './components/shell/Sky.svelte';
-  import { browserPreferences, createI18n, saveLanguage, setI18n, type Language } from './lib/i18n.svelte.ts';
+  import { createI18n, setI18n } from './lib/i18n.svelte.ts';
+  import { browserPreferences, saveLanguage, type Language } from './lib/language.ts';
   import { HOME_PATHS, screenOf, type Screen } from './lib/pages.ts';
   import Create from './screens/Create.svelte';
   import Read from './screens/Read.svelte';
