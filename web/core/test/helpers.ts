@@ -84,6 +84,7 @@ export interface LinkVector {
   readonly kdf_id?: number;
   readonly s_hex?: string;
   readonly newer_version?: boolean;
+  readonly retired_kdf?: boolean;
 }
 
 export interface MetaVector {

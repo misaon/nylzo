@@ -85,7 +85,7 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 		return core.Encode(b)
 	}()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	pw := newMessage(t, core.KDFPBKDF2, "correct horse battery staple", 1, 3600, "x")
+	pw := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "x")
 	for name, header := range map[string]string{
 		"identity read key":      mutateHeader(t, none, func(f map[string]any) { f["read_key"] = identity }),
 		"small-order manage key": mutateHeader(t, none, func(f map[string]any) { f["manage_key"] = order4 }),
@@ -155,7 +155,7 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	}
 
 	const pass = "correct horse battery staple"
-	pw := newMessage(t, core.KDFPBKDF2, pass, 1, 3600, "verifier stored before keys were checked")
+	pw := newMessage(t, core.KDFScrypt, pass, 1, 3600, "verifier stored before keys were checked")
 	h.mustCreate(pw)
 	setMAC(pw, "verifier_mac", pepper.Verifier)
 	claimPath := "/api/v1/messages/" + pw.id.String() + "/claim"

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   KDF_NONE,
-  KDF_PBKDF2,
+  KDF_RETIRED,
   KDF_SCRYPT,
   KEY_LEN,
   KdfError,
@@ -10,20 +10,20 @@ import {
   TOKEN_LEN,
   deriveContent,
   deriveLink,
-  derivePassphraseKey,
   hsalt,
+  isKdfId,
   kdfRequiresPassphrase,
   newHeader,
   newSecret,
   normalizePassphrase,
   open,
+  parseKdfId,
   seal,
   utf8,
   type KdfId,
-  type NativeKdfId,
 } from '../src/index.ts';
 import { newId } from '../src/ids.ts';
-import { deriveAll, scryptPassphraseKey } from '../src/scrypt.ts';
+import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from '../src/scrypt.ts';
 import { bytesToHex } from './helpers.ts';
 
 const composed = 'héslo s češtinou';
@@ -75,12 +75,10 @@ describe('tokens', () => {
 describe('passphrase normalisation', () => {
   it('rejects a passphrase that is not well-formed Unicode', async () => {
     const salt = new Uint8Array(32);
-    await expect(derivePassphraseKey(KDF_PBKDF2, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
     expect(() => scryptPassphraseKey('caf\ud800', salt)).toThrow(MalformedPassphraseError);
-    for (const kdfId of [KDF_SCRYPT, KDF_PBKDF2] as const) {
-      await expect(deriveAll(newId(), newSecret(), kdfId, 'caf\ud800')).rejects.toBeInstanceOf(MalformedPassphraseError);
-    }
-    await expect(derivePassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
+    await expect(anyPassphraseKey(KDF_SCRYPT, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
+    await expect(deriveAll(newId(), newSecret(), KDF_SCRYPT, 'caf\ud800')).rejects.toBeInstanceOf(MalformedPassphraseError);
+    await expect(anyPassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
   });
 
   it('encodes the NFC form as UTF-8', () => {
@@ -89,38 +87,28 @@ describe('passphrase normalisation', () => {
     expect(bytesToHex(normalizePassphrase(composed))).toBe(bytesToHex(utf8(composed)));
   });
 
-  it('derives identical bytes for composed and decomposed input with PBKDF2', async () => {
+  it('derives identical keys for composed and decomposed input with scrypt', async () => {
     const id = newId();
     const s = newSecret();
-    const a = await deriveAll(id, s, KDF_PBKDF2, composed);
-    const b = await deriveAll(id, s, KDF_PBKDF2, decomposed);
+    const a = await deriveAll(id, s, KDF_SCRYPT, composed);
+    const b = await deriveAll(id, s, KDF_SCRYPT, decomposed);
     expect(a.content.v).toEqual(b.content.v);
-    expect(bytesToHex(a.content.v)).not.toBe(bytesToHex((await deriveAll(id, s, KDF_PBKDF2, 'other')).content.v));
-    const header = newHeader(KDF_PBKDF2);
+    expect(bytesToHex(a.content.v)).not.toBe(bytesToHex((await deriveAll(id, s, KDF_SCRYPT, 'other')).content.v));
+    expect(scryptPassphraseKey(composed, a.link.saltPw)).toHaveLength(KEY_LEN);
+    const header = newHeader(KDF_SCRYPT);
     const policy = { opensMax: 1, ttlSeconds: 3600 };
     const object = await seal(a.content.k, header, id, policy, { meta: { text: 'nfc' } });
-    const opened = await open(b.content.k, id, policy, KDF_PBKDF2, object);
+    const opened = await open(b.content.k, id, policy, KDF_SCRYPT, object);
     expect(opened.payload.meta.text).toBe('nfc');
-  });
-
-  it('derives identical bytes for composed and decomposed input with scrypt', async () => {
-    const id = newId();
-    const s = newSecret();
-    const { saltPw } = await deriveLink(id, s);
-    const a = scryptPassphraseKey(composed, saltPw);
-    const b = scryptPassphraseKey(decomposed, saltPw);
-    expect(a).toHaveLength(KEY_LEN);
-    expect(a).toEqual(b);
   }, 60_000);
 });
 
 describe('kdf profiles', () => {
   it('profile 0 ignores the passphrase and needs none', async () => {
     const salt = new Uint8Array(32);
-    expect(await derivePassphraseKey(KDF_NONE, 'anything', salt)).toHaveLength(0);
+    expect(await anyPassphraseKey(KDF_NONE, 'anything', salt)).toHaveLength(0);
     expect(kdfRequiresPassphrase(KDF_NONE)).toBe(false);
     expect(kdfRequiresPassphrase(KDF_SCRYPT)).toBe(true);
-    expect(kdfRequiresPassphrase(KDF_PBKDF2)).toBe(true);
     const id = newId();
     const s = newSecret();
     const a = await deriveAll(id, s, KDF_NONE, 'a');
@@ -128,9 +116,12 @@ describe('kdf profiles', () => {
     expect(a.content.v).toEqual(b.content.v);
   });
 
-  it('rejects an unknown profile and leaves scrypt to its own module', async () => {
-    for (const kdfId of [Number('3'), KDF_SCRYPT] as KdfId[]) {
-      await expect(derivePassphraseKey(kdfId as NativeKdfId, 'correct horse battery staple', new Uint8Array(32))).rejects.toBeInstanceOf(KdfError);
+  it('rejects the retired profile 2 and an unknown profile', async () => {
+    expect(isKdfId(KDF_RETIRED)).toBe(false);
+    expect(() => parseKdfId(String(KDF_RETIRED))).toThrow(KdfError);
+    for (const kdfId of [KDF_RETIRED, Number('3')] as KdfId[]) {
+      await expect(anyPassphraseKey(kdfId, 'correct horse battery staple', new Uint8Array(32))).rejects.toBeInstanceOf(KdfError);
+      await expect(deriveAll(newId(), newSecret(), kdfId, 'correct horse battery staple')).rejects.toBeInstanceOf(KdfError);
     }
   });
 

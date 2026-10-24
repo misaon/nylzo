@@ -15,7 +15,7 @@ Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané sp
 |---|---|
 | `spec/protocol.md` | normativní protokol v1 |
 | `spec/vectors.json` | testovací vektory generované z Go jádra |
-| `internal/core` | Go jádro: odvození klíčů, KDF profily, obálka, meta JSON, odkaz |
+| `internal/core` | Go jádro: odvození klíčů, scrypt pro passphrase, obálka, meta JSON, odkaz |
 | `internal/pepper` | serverové klíče podle účelu z pepperu a rotace |
 | `internal/store` | rozhraní úložiště, adaptér `sqlite` a `disk`, sdílená testovací sada |
 | `internal/server` | HTTP server: endpointy, limity, PoW, hlavičky, úklid |
@@ -110,7 +110,6 @@ Serverové příkazy `nylzo` jsou `serve`, `sweep-once` a `takedown`; žádný n
 | `NYLZO_MAX_FILE_BYTES` | `5242880` | limit souboru; lze jen snížit, protokolové maximum vynucují obě jádra |
 | `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | platnost zprávy; maximum je 7 dní, minimum 60 s |
 | `NYLZO_MAX_OPENS` | `10` | maximum otevření, nejvýš 100 |
-| `NYLZO_DEFAULT_KDF` | `1` | výchozí profil passphrase hlášený klientům (1 scrypt, 2 PBKDF2); jiné hodnoty server odmítne. Scrypt trvá na iPhonu 15 Pro Max přes HTTPS zhruba 0,55 s (D33, `docs/research/od6-scrypt-safari.md`) |
 | `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | limity vytváření na kyblík /32 nebo /64; na /24 nebo /48 platí pětinásobek. U všech `NYLZO_RATE_*_HOUR`, `_DAY` a `_BYTES_DAY` znamená `0` bez limitu, což se hodí jen pro lokální vývoj |
 | `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | násobek limitů pro hrubý kyblík /24 nebo /48. Požadavek, který odmítne limit /32 nebo /64, se do limitu /24 nebo /48 nezapočítá |
 | `NYLZO_RATE_READ_HOUR` | `300` | metadata, claim a blob na kyblík |
@@ -167,7 +166,7 @@ Stejná binárka `nylzo` posílá a čte zprávy z příkazové řádky (D53, D5
 printf '%s' 'heslo k databázi' | nylzo create --server https://nylzo.example --ttl 1h --manage-token-file spravce.txt
 ```
 
-`create` vypíše jen odkaz. Text bere ze stdin (z terminálu jako jeden skrytý řádek), přílohu z `--from-file`. Passphrase přidá `--passphrase-file soubor` (první řádek), `NYLZO_PASSPHRASE_FILE` nebo `--ask-passphrase` (dvakrát z terminálu bez echa); profil zvolí `--kdf scrypt|pbkdf2`. Server lze zadat i proměnnou `NYLZO_SERVER`. Správcovský token pro stav a zrušení zapíše jen `--manage-token-file` (nový soubor s právy 0600) nebo `--print-manage-token`; má dva řádky, adresu zprávy bez části za `#` a token, a zprávu s ním přečíst nejde.
+`create` vypíše jen odkaz. Text bere ze stdin (z terminálu jako jeden skrytý řádek), přílohu z `--from-file`. Passphrase přidá `--passphrase-file soubor` (první řádek), `NYLZO_PASSPHRASE_FILE` nebo `--ask-passphrase` (dvakrát z terminálu bez echa); klíč z ní vždy odvodí scrypt (D71). Server lze zadat i proměnnou `NYLZO_SERVER`. Správcovský token pro stav a zrušení zapíše jen `--manage-token-file` (nový soubor s právy 0600) nebo `--print-manage-token`; má dva řádky, adresu zprávy bez části za `#` a token, a zprávu s ním přečíst nejde.
 
 ```bash
 nylzo read --link-file odkaz.txt
@@ -176,7 +175,7 @@ nylzo cancel --manage-token-file spravce.txt
 nylzo burn < odkaz.txt
 ```
 
-`read` a `burn` berou odkaz ze stdin, z `--link-file` nebo z `NYLZO_LINK`; když použijí proměnnou, napíšou to na standardní chybový výstup. Odkaz z novější verze protokolu odmítnou s radou stáhnout novější `nylzo`, místo aby ho označily za poškozený. `read` si ještě před otevřením zprávy založí nový adresář s právy 0700 v dočasném adresáři (nebo uvnitř `--out`), zapíše do něj text jako `message.txt` a přílohu pod očištěným názvem, soubory s právy 0600, a vypíše jejich cesty, takže žádná kolize názvů nespotřebuje otevření zbytečně. Když zápis selže, zkusí druhý nový adresář vedle prvního, nikdy jinde. Text na standardní výstup jen s `--stdout`; když jde výstup do terminálu a text obsahuje řídicí znaky, zapíše ho místo toho do souboru. U zprávy s passphrase se zeptá v terminálu, nebo vezme `--passphrase-file`; Ctrl-C během skrytého dotazu vrátí terminálu echo a `nylzo` ukončí. Když se stahování přeruší, zkusí ho v témže běhu znovu přes lease a další otevření nespotřebuje. `status` (s `--json` pro skripty) a `cancel` berou správcovský token ze stdin, z `--manage-token-file` nebo z `NYLZO_MANAGE_TOKEN_FILE`.
+`read` a `burn` berou odkaz ze stdin, z `--link-file` nebo z `NYLZO_LINK`; když použijí proměnnou, napíšou to na standardní chybový výstup. Odkaz z novější verze protokolu odmítnou s radou stáhnout novější `nylzo`, místo aby ho označily za poškozený. Odkaz s vyřazeným profilem passphrase (`kdf_id` 2, D71) odmítnou s radou požádat odesílatele o nový odkaz. `read` si ještě před otevřením zprávy založí nový adresář s právy 0700 v dočasném adresáři (nebo uvnitř `--out`), zapíše do něj text jako `message.txt` a přílohu pod očištěným názvem, soubory s právy 0600, a vypíše jejich cesty, takže žádná kolize názvů nespotřebuje otevření zbytečně. Když zápis selže, zkusí druhý nový adresář vedle prvního, nikdy jinde. Text na standardní výstup jen s `--stdout`; když jde výstup do terminálu a text obsahuje řídicí znaky, zapíše ho místo toho do souboru. U zprávy s passphrase se zeptá v terminálu, nebo vezme `--passphrase-file`; Ctrl-C během skrytého dotazu vrátí terminálu echo a `nylzo` ukončí. Když se stahování přeruší, zkusí ho v témže běhu znovu přes lease a další otevření nespotřebuje. `status` (s `--json` pro skripty) a `cancel` berou správcovský token ze stdin, z `--manage-token-file` nebo z `NYLZO_MANAGE_TOKEN_FILE`.
 
 ```bash
 nylzo verify-client --server https://nylzo.example

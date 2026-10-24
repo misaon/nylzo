@@ -252,7 +252,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	id := core.NewID().String()
 	created := time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
-	m := &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, KDF: 2, Size: 64, BlobRef: id}
+	m := &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, KDF: 1, Size: 64, BlobRef: id}
 	if err := blobs.Put(ctx, id, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 	id := core.NewID().String()
 	created := time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
-	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, KDF: 2, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, Size: 64, BlobRef: id}); err != nil {
+	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, KDF: 1, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, Size: 64, BlobRef: id}); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", "file:"+path)

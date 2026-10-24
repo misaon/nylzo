@@ -153,7 +153,7 @@ func TestCreateValidation(t *testing.T) {
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "v")
 	header := wrongKDF.createHeader(0)
-	wrongKDF.object[1] = 2
+	wrongKDF.object[1] = byte(core.KDFScrypt)
 	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, headers: map[string]string{"X-Nylzo-Create": header}})
 	if resp.StatusCode != 400 {
 		t.Fatalf("kdf mismatch between header and envelope: %d", resp.StatusCode)
@@ -337,7 +337,6 @@ func TestConfigFromEnv(t *testing.T) {
 		"NYLZO_MAX_STREAMS":      "0",
 		"NYLZO_MIN_FREE_BYTES":   "-1",
 		"NYLZO_POW_CONCURRENCY":  "9223372036854775807",
-		"NYLZO_DEFAULT_KDF":      "0",
 	} {
 		_, err := server.FromEnv(func(k string) string {
 			if k == key {
@@ -580,7 +579,6 @@ func TestConfigBounds(t *testing.T) {
 		"ip-scope-removed":     with("NYLZO_PASSPHRASE_IP_SCOPE", "on"),
 		"max-opens-above-100":  with("NYLZO_MAX_OPENS", "101"),
 		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
-		"default-kdf-none":     with("NYLZO_DEFAULT_KDF", "0"),
 		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
 		"source-rps-nan":       with("NYLZO_RATE_SOURCE_RPS", "NaN"),
 		"source-burst-inf":     with("NYLZO_RATE_SOURCE_BURST", "+Inf"),
@@ -597,15 +595,12 @@ func TestConfigBounds(t *testing.T) {
 	}
 }
 
-func TestDefaultPassphraseProfileIsScrypt(t *testing.T) {
+func TestInstanceOffersNoPassphraseProfile(t *testing.T) {
 	t.Parallel()
-	if got := server.Defaults().Limits.DefaultKDF; got != core.KDFScrypt {
-		t.Fatalf("default kdf %d, D33 makes it scrypt", got)
-	}
 	h := newHarness(t, baseConfig(pepperA, nil))
 	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
-	if got := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; got != float64(core.KDFScrypt) {
-		t.Fatalf("instance reports default_kdf_id %v", got)
+	if _, ok := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; ok {
+		t.Fatal("the instance still reports default_kdf_id, but D71 leaves one profile")
 	}
 }
 

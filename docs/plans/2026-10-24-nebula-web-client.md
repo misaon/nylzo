@@ -14,7 +14,7 @@ D74: pohyb jen přes opacitu a transformace (AK19). Barva se nemění přechodem
 
 D75: poctivé tempo animací. Šifrování trvá na obrazovce nejméně 5 s, otevření nejméně 3,8 s s passphrase a 2,6 s bez ní (při `prefers-reduced-motion` 1,2 s a 1 s). Krok ani průběh nikdy nepředběhne skutečnou práci (`web/app/src/lib/pacing.ts`) a chyba se ukáže hned, bez čekání na konec animace.
 
-D76: formulář nabízí jen scrypt. Volba PBKDF2 zmizela ve shodě s D71 (PR 26). Odkazy s PBKDF2 klient na této větvi dál otevře, dokud D71 nepřijde do `main`.
+D76: formulář nabízí jen scrypt. Volba PBKDF2 zmizela ve shodě s D71 (PR 26). Od sloučení PR 26 klient odkaz s PBKDF2 neotevře a ukáže oznámení o vyřazené ochraně passphrase.
 
 D77: klient zůstává jeden JS balík. Rozdělení podle stránek by na mobilu ušetřilo zhruba 40 KiB nepoužitého JS, ale změnilo by zavádění modulů pod CSP jen s nonce a přidalo další soubory, které hlídá `verify-client`. Za dva až tři body v Lighthouse to nestojí.
 

@@ -63,7 +63,7 @@ func TestCreateHeaderRules(t *testing.T) {
 	t.Parallel()
 	cfg := server.Defaults()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	pw := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
+	pw := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	if !server.ParseCreateHeaderForTest(cfg, none.createHeader(0)) || !server.ParseCreateHeaderForTest(cfg, pw.createHeader(0)) {
 		t.Fatal("valid headers rejected")
 	}
@@ -72,7 +72,8 @@ func TestCreateHeaderRules(t *testing.T) {
 		"unknown-key":           mutateHeader(t, none, func(f map[string]any) { f["extra"] = 1 }),
 		"case-variant-key":      mutateHeader(t, none, func(f map[string]any) { f["ID"] = f["id"]; delete(f, "id") }),
 		"verifier-with-kdf0":    mutateHeader(t, none, func(f map[string]any) { f["verifier_key"] = publicKey(core.NewSecret()) }),
-		"no-verifier-with-kdf2": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_key") }),
+		"no-verifier-with-kdf1": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_key") }),
+		"kdf-2-retired":         mutateHeader(t, pw, func(f map[string]any) { f["kdf_id"] = 2 }),
 		"opens-0":               mutateHeader(t, none, func(f map[string]any) { f["opens_max"] = 0 }),
 		"ttl-59":                mutateHeader(t, none, func(f map[string]any) { f["ttl_s"] = 59 }),
 		"kdf-3":                 mutateHeader(t, none, func(f map[string]any) { f["kdf_id"] = 3 }),
@@ -90,7 +91,7 @@ func TestCreateHeaderRules(t *testing.T) {
 func TestClaimBodyVariants(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
+	m := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	h.mustCreate(m)
 	path := "/api/v1/messages/" + m.id.String() + "/claim"
 	for name, req := range map[string]request{
@@ -124,7 +125,7 @@ func TestClaimBodyVariants(t *testing.T) {
 func TestPassphraseBackoffIsSharedByEveryReader(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
+	m := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	h.mustCreate(m)
 	wrong := core.Encode(make([]byte, 32))
 	for i := 1; i <= 6; i++ {

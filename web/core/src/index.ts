@@ -34,6 +34,7 @@ export {
   KdfError,
   KdfMismatchError,
   LinkError,
+  LinkRetiredKdfError,
   LinkVersionError,
   MetaError,
   MalformedPassphraseError,
@@ -48,22 +49,19 @@ export {
 export { hash, idToString, newSecret, parseId } from './ids.ts';
 export {
   KDF_NONE,
-  KDF_PBKDF2,
+  KDF_RETIRED,
   KDF_SCRYPT,
   MIN_PASSPHRASE_CHARS,
-  PBKDF2_ITERATIONS,
   SCRYPT_N,
   SCRYPT_P,
   SCRYPT_R,
   assertStrongPassphrase,
   assertWellFormedPassphrase,
-  derivePassphraseKey,
   isKdfId,
   kdfRequiresPassphrase,
   normalizePassphrase,
   parseKdfId,
   type KdfId,
-  type NativeKdfId,
 } from './kdf.ts';
 export * from './limits.ts';
 export {

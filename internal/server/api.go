@@ -96,7 +96,6 @@ type instanceLimits struct {
 	MaxTTL         int64 `json:"max_ttl_s"`
 	DefaultTTL     int64 `json:"default_ttl_s"`
 	MaxOpens       int   `json:"max_opens"`
-	DefaultKDF     int   `json:"default_kdf_id"`
 }
 
 type instancePoW struct {

@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrLink        = errors.New("core: invalid link")
-	ErrLinkVersion = fmt.Errorf("%w: a newer fragment version", ErrLink)
+	ErrLink           = errors.New("core: invalid link")
+	ErrLinkVersion    = fmt.Errorf("%w: a newer fragment version", ErrLink)
+	ErrLinkRetiredKDF = fmt.Errorf("%w: a retired passphrase profile", ErrLink)
 )
 
 var versionLabel = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
@@ -39,12 +40,17 @@ func parseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
 	if len(parts) != 3 || parts[0] != FragmentLabel {
 		return 0, nil, ErrLink
 	}
-	kdf, err := ParseKDF(parts[1])
+	s, err := Decode32(parts[2])
 	if err != nil {
 		return 0, nil, ErrLink
 	}
-	s, err := Decode32(parts[2])
+	if parts[1] == KDFRetired.String() {
+		clear(s[:])
+		return 0, nil, ErrLinkRetiredKDF
+	}
+	kdf, err := ParseKDF(parts[1])
 	if err != nil {
+		clear(s[:])
 		return 0, nil, ErrLink
 	}
 	return kdf, s, nil

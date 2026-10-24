@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KDF_SCRYPT, MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARS } from '@nylzo/core';
+  import { MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARS } from '@nylzo/core';
   import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import { prefersReducedMotion } from 'svelte/motion';
@@ -333,7 +333,7 @@
       await showProblems([attachment.problem]);
       return;
     }
-    const input: CreateInput = { text, file: attachment.file, ttlSeconds, opensMax, passphrase: protect ? passphrase : '', kdfId: KDF_SCRYPT };
+    const input: CreateInput = { text, file: attachment.file, ttlSeconds, opensMax, passphrase: protect ? passphrase : '' };
     const unset: CreateProblem[] = protect && passphrase === '' ? [{ field: 'passphrase', code: 'too_short' }] : [];
     const invalid = [...unset, ...validateCreate(input, allowed)];
     if (invalid.length > 0) {

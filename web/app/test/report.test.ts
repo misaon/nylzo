@@ -10,7 +10,7 @@ const ORIGIN = 'https://nylzo.test';
 async function setup(options: FakeOptions = {}): Promise<{ api: FakeApi; link: string; id: string }> {
   const api = fakeApi(options);
   const deps: CreateDeps = { api, origin: ORIGIN, scrypt: async () => new Uint8Array(32), solvePow: async () => '' };
-  const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', kdfId: 0 }, deps);
+  const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, deps);
   api.calls.length = 0;
   return { api, link: created.link, id: created.id };
 }
@@ -51,6 +51,13 @@ describe('reporting a pasted link (D41)', () => {
     const { api, link } = await setup();
     expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_newer'] });
     expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), '')).toEqual({ outcome: 'invalid', problems: ['link_invalid'] });
+    expect(api.calls).toEqual([]);
+  });
+
+  it('tells a link with the retired passphrase profile apart and sends nothing', async () => {
+    const { api, link } = await setup();
+    expect(await reportLink(api, ORIGIN, link.replace('#1.0.', '#1.2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_retired'] });
+    expect(await reportLink(api, ORIGIN, link.replace('/m/', '/x/').replace('#1.0.', '#1.2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_invalid'] });
     expect(api.calls).toEqual([]);
   });
 

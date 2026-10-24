@@ -1,5 +1,5 @@
-import { KDF_PBKDF2, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, parseFragment, parsePath, requestKey } from '@nylzo/core';
-import { anyPassphraseKey } from '@nylzo/core/scrypt';
+import { KDF_NONE, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, parseFragment, parsePath, requestKey } from '@nylzo/core';
+import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import type { Page, Request } from '@playwright/test';
 
 import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openViaUi, setPassphrase, test } from './helpers.ts';
@@ -38,7 +38,7 @@ async function linkSecrets(link: string, passphrase: string) {
   const id = parsePath(url.pathname);
   const { s } = parseFragment(url.hash);
   const { r, saltPw } = await deriveLink(id, s);
-  const p = await anyPassphraseKey(KDF_SCRYPT, passphrase, saltPw);
+  const p = scryptPassphraseKey(passphrase, saltPw);
   const { v } = await deriveContent(id, s, p);
   return { s, r, saltPw, p, v };
 }
@@ -142,7 +142,7 @@ const hiddenStates = {
 for (const [state, script] of Object.entries(hiddenStates)) {
   test(`a ${state} page does not start reading until it is shown (AK16)`, async ({ page }) => {
     const passphrase = 'four random words here';
-    const message = await createViaApi({ passphrase, kdfId: KDF_PBKDF2, text: 'shown' });
+    const message = await createViaApi({ passphrase, kdfId: KDF_SCRYPT, text: 'shown' });
     await page.addInitScript(script);
     await openViaUi(page, message.link, passphrase);
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -160,7 +160,7 @@ for (const [state, script] of Object.entries(hiddenStates)) {
 
 test('the reader stops without a verifier when the server reports another profile (AK24)', async ({ page }) => {
   const passphrase = 'four random words here';
-  const message = await createViaApi({ passphrase, kdfId: KDF_PBKDF2 });
+  const message = await createViaApi({ passphrase, kdfId: KDF_SCRYPT });
   const sensitive: string[] = [];
   page.on('request', (request) => {
     if (request.url().endsWith('/claim') || request.headers()['x-nylzo-verifier']) {
@@ -170,7 +170,7 @@ test('the reader stops without a verifier when the server reports another profil
   await page.route(`${BASE_URL}/api/v1/messages/${message.idText}`, async (route) => {
     const response = await route.fetch();
     const json = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...json, kdf_id: 1 } });
+    await route.fulfill({ response, json: { ...json, kdf_id: KDF_NONE } });
   });
   await page.goto(message.link);
   await expect(page.getByText(/cannot be opened safely/)).toBeVisible();
@@ -181,7 +181,7 @@ test('the reader stops without a verifier when the server reports another profil
 });
 
 test('the passphrase fields give password managers nothing and the message field is not spell checked (D38)', async ({ page }) => {
-  const message = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_PBKDF2 });
+  const message = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_SCRYPT });
   await page.goto('/');
   const text = page.getByLabel('Message text');
   await expect(text).toHaveAttribute('spellcheck', 'false');

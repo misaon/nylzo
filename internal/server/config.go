@@ -31,7 +31,6 @@ type Limits struct {
 	MaxTTL         time.Duration
 	DefaultTTL     time.Duration
 	MaxOpens       int
-	DefaultKDF     core.KDF
 }
 
 type Rates struct {
@@ -77,7 +76,6 @@ func Defaults() Config {
 			MaxTTL:         MaxTTL,
 			DefaultTTL:     24 * time.Hour,
 			MaxOpens:       10,
-			DefaultKDF:     core.KDFScrypt,
 		},
 		Rates: Rates{
 			CreatePerHour:     20,
@@ -181,11 +179,6 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_MAX_TTL", func(v string) error { return parseDuration(v, &c.Limits.MaxTTL) })
 	set("NYLZO_DEFAULT_TTL", func(v string) error { return parseDuration(v, &c.Limits.DefaultTTL) })
 	set("NYLZO_MAX_OPENS", func(v string) error { return parseInt(v, &c.Limits.MaxOpens) })
-	set("NYLZO_DEFAULT_KDF", func(v string) error {
-		k, kerr := core.ParseKDF(v)
-		c.Limits.DefaultKDF = k
-		return kerr
-	})
 	set("NYLZO_RATE_CREATE_HOUR", func(v string) error { return parseInt64(v, &c.Rates.CreatePerHour) })
 	set("NYLZO_RATE_CREATE_DAY", func(v string) error { return parseInt64(v, &c.Rates.CreatePerDay) })
 	set("NYLZO_RATE_CREATE_BYTES_DAY", func(v string) error { return parseInt64(v, &c.Rates.CreateBytesPerDay) })
@@ -268,7 +261,6 @@ func (c Config) Validate() error {
 		{fmt.Sprintf("NYLZO_MAX_OPENS must be between 1 and %d", MaxOpens), c.Limits.MaxOpens >= 1 && c.Limits.MaxOpens <= MaxOpens},
 		{fmt.Sprintf("NYLZO_MAX_TTL must be between %s and %s", minTTL, MaxTTL), c.Limits.MaxTTL >= minTTL && c.Limits.MaxTTL <= MaxTTL},
 		{fmt.Sprintf("NYLZO_DEFAULT_TTL must be between %s and NYLZO_MAX_TTL", minTTL), c.Limits.DefaultTTL >= minTTL && c.Limits.DefaultTTL <= c.Limits.MaxTTL},
-		{"NYLZO_DEFAULT_KDF must be 1 (scrypt) or 2 (PBKDF2)", c.Limits.DefaultKDF.RequiresPassphrase()},
 		{fmt.Sprintf("NYLZO_POW_DIFFICULTY must be between 0 and %d", MaxPoWDifficulty), c.PoWDifficulty >= 0 && c.PoWDifficulty <= MaxPoWDifficulty},
 		{fmt.Sprintf("NYLZO_POW_CONCURRENCY must be between 1 and %d", MaxPoWConcurrency), c.PoWConcurrency >= 1 && c.PoWConcurrency <= MaxPoWConcurrency},
 		{fmt.Sprintf("NYLZO_MAX_STREAMS must be between 1 and %d", MaxStreams), c.MaxStreams >= 1 && c.MaxStreams <= MaxStreams},

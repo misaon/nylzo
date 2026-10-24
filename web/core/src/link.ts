@@ -1,8 +1,8 @@
 import { decode32, encodeBase64url } from './base64url.ts';
 import { assertLength } from './bytes.ts';
-import { KdfMismatchError, LinkError, LinkVersionError } from './errors.ts';
+import { KdfMismatchError, LinkError, LinkRetiredKdfError, LinkVersionError } from './errors.ts';
 import { idToString, parseId } from './ids.ts';
-import { parseKdfId, type KdfId } from './kdf.ts';
+import { KDF_RETIRED, parseKdfId, type KdfId } from './kdf.ts';
 import { FRAGMENT_VERSION, SECRET_LEN } from './limits.ts';
 
 export const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
@@ -41,9 +41,20 @@ function parseFragmentBody(text: string): Fragment {
   if (parts.length !== 3 || label !== FRAGMENT_LABEL) {
     throw new LinkError();
   }
+  let s: Uint8Array<ArrayBuffer>;
   try {
-    return { kdfId: parseKdfId(kdfText), s: decode32(secretText) };
+    s = decode32(secretText);
   } catch {
+    throw new LinkError();
+  }
+  if (kdfText === String(KDF_RETIRED)) {
+    s.fill(0);
+    throw new LinkRetiredKdfError();
+  }
+  try {
+    return { kdfId: parseKdfId(kdfText), s };
+  } catch {
+    s.fill(0);
     throw new LinkError();
   }
 }

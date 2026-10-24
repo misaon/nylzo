@@ -1,4 +1,4 @@
-import { ID_LEN, LinkVersionError, deriveLink, encodedLength, parseLink, requestKey, utf8, wipeRequestKey, type Link, type LinkKeys, type RequestKey } from '@nylzo/core';
+import { ID_LEN, LinkRetiredKdfError, LinkVersionError, deriveLink, encodedLength, parseLink, requestKey, utf8, wipeRequestKey, type Link, type LinkKeys, type RequestKey } from '@nylzo/core';
 
 import { ApiError, type Api } from './api.ts';
 
@@ -11,7 +11,7 @@ const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
 const TOKEN_RUN = new RegExp(`[A-Za-z0-9_-]{${encodedLength(ID_LEN)},}`, 'g');
 const REDACTED = '[redacted]';
 
-export type ReportProblem = 'link_invalid' | 'link_newer' | 'link_foreign' | 'reason_too_long';
+export type ReportProblem = 'link_invalid' | 'link_newer' | 'link_retired' | 'link_foreign' | 'reason_too_long';
 
 export type ReportOutcome =
   | { readonly outcome: 'accepted' }
@@ -84,6 +84,13 @@ export async function sendReport(api: Api, id: Uint8Array, readKey: RequestKey, 
   }
 }
 
+function linkProblem(error: unknown): ReportProblem {
+  if (error instanceof LinkVersionError) {
+    return 'link_newer';
+  }
+  return error instanceof LinkRetiredKdfError ? 'link_retired' : 'link_invalid';
+}
+
 export async function reportLink(api: Api, origin: string, pasted: string, reason: string): Promise<ReportOutcome> {
   const raw = pasted.trim();
   const problems: ReportProblem[] = [];
@@ -91,7 +98,7 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
   try {
     link = parseLink(raw);
   } catch (error) {
-    problems.push(error instanceof LinkVersionError ? 'link_newer' : 'link_invalid');
+    problems.push(linkProblem(error));
   }
   if (link && LINK_ORIGIN.exec(raw)?.[1]?.toLowerCase() !== origin.toLowerCase()) {
     problems.push('link_foreign');

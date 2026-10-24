@@ -135,14 +135,15 @@ type FileContent struct {
 }
 
 type Link struct {
-	Name      string  `json:"name"`
-	Input     string  `json:"input"`
-	Valid     bool    `json:"valid"`
-	Canonical bool    `json:"canonical,omitempty"`
-	ID        *string `json:"id,omitempty"`
-	KDFID     *int    `json:"kdf_id,omitempty"`
-	S         *string `json:"s_hex,omitempty"`
-	Newer     bool    `json:"newer_version,omitempty"`
+	Name       string  `json:"name"`
+	Input      string  `json:"input"`
+	Valid      bool    `json:"valid"`
+	Canonical  bool    `json:"canonical,omitempty"`
+	ID         *string `json:"id,omitempty"`
+	KDFID      *int    `json:"kdf_id,omitempty"`
+	S          *string `json:"s_hex,omitempty"`
+	Newer      bool    `json:"newer_version,omitempty"`
+	RetiredKDF bool    `json:"retired_kdf,omitempty"`
 }
 
 type MetaCase struct {
@@ -255,21 +256,16 @@ func deriveCases() []deriveCase {
 		{"scrypt-ascii", core.KDFScrypt, new("correct horse battery staple")},
 		{"scrypt-nfc-composed", core.KDFScrypt, new("héslo s češtinou")},
 		{"scrypt-nfc-decomposed", core.KDFScrypt, new("héslo s češtinou")},
-		{"pbkdf2-nfc-composed", core.KDFPBKDF2, new("héslo s češtinou")},
-		{"pbkdf2-nfc-decomposed", core.KDFPBKDF2, new("héslo s češtinou")},
-		{"pbkdf2-ascii", core.KDFPBKDF2, new("password")},
-		{"pbkdf2-emoji", core.KDFPBKDF2, new("\U0001F510 tajné heslo")},
-		{"pbkdf2-empty", core.KDFPBKDF2, new("")},
+		{"scrypt-emoji", core.KDFScrypt, new("\U0001F510 tajné heslo")},
+		{"scrypt-empty", core.KDFScrypt, new("")},
 	}
 }
 
 func (f *File) derive() error {
 	for _, c := range deriveCases() {
 		label := c.name
-		for _, nfc := range []string{"scrypt-nfc", "pbkdf2-nfc"} {
-			if strings.HasPrefix(c.name, nfc) {
-				label = nfc
-			}
+		if strings.HasPrefix(c.name, "scrypt-nfc") {
+			label = "scrypt-nfc"
 		}
 		id := detID(label)
 		s := det32("s/" + label)
@@ -330,11 +326,11 @@ func envCases() []envCase {
 		{name: "file-empty", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "empty.bin", fileMime: "application/octet-stream", fileSize: 0},
 		{name: "file-one-byte", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "b.bin", fileMime: "application/octet-stream", fileSize: 1, fileHex: true},
 		{name: "file-65536", kdf: core.KDFNone, opens: 3, ttl: 259200, fileName: "block.bin", fileMime: "", fileSize: 65536},
-		{name: "file-and-text-pbkdf2", kdf: core.KDFPBKDF2, pw: new("password"), opens: 1, ttl: 86400, text: new("příloha v příloze"), fileName: "příloha č.1.pdf", fileMime: "application/pdf", fileSize: 1000, fileHex: true},
+		{name: "file-and-text-scrypt", kdf: core.KDFScrypt, pw: new("password"), opens: 1, ttl: 86400, text: new("příloha v příloze"), fileName: "příloha č.1.pdf", fileMime: "application/pdf", fileSize: 1000, fileHex: true},
 		{name: "file-5mib", kdf: core.KDFNone, opens: 1, ttl: 604800, fileName: "big.bin", fileMime: "application/octet-stream", fileSize: core.MaxFileBytes},
 		{name: "scrypt-text", kdf: core.KDFScrypt, pw: new("correct horse battery staple"), opens: 1, ttl: 86400, text: new("scrypt protected")},
 		{name: "scrypt-nfc-decomposed", kdf: core.KDFScrypt, pw: new("héslo s češtinou"), opens: 1, ttl: 86400, text: new("nfc")},
-		{name: "pbkdf2-empty-passphrase", kdf: core.KDFPBKDF2, pw: new(""), opens: 1, ttl: 86400, text: new("empty passphrase")},
+		{name: "scrypt-empty-passphrase", kdf: core.KDFScrypt, pw: new(""), opens: 1, ttl: 86400, text: new("empty passphrase")},
 		{name: "opens-10-ttl-7d", kdf: core.KDFNone, opens: 10, ttl: 604800, text: new("many opens")},
 	}
 }
@@ -395,13 +391,20 @@ func (f *File) link() error {
 	}
 	valid("valid-kdf0", core.KDFNone)
 	valid("valid-kdf1", core.KDFScrypt)
-	valid("valid-kdf2", core.KDFPBKDF2)
 	frag := core.Fragment(core.KDFScrypt, s)
 	sEnc := core.Encode(s[:])
 	idEnc := id.String()
 	invalid := func(name, input string) {
 		f.Link = append(f.Link, Link{Name: name, Input: input, Valid: false})
 	}
+	retired := func(name, input string) {
+		f.Link = append(f.Link, Link{Name: name, Input: input, Valid: false, RetiredKDF: true})
+	}
+	retired("retired-kdf2", core.FormatLink(base, id, core.KDFRetired, s))
+	retired("retired-kdf2-query", base+"/m/"+idEnc+"?utm=x#1.2."+sEnc)
+	invalid("retired-kdf2-damaged-secret", base+"/m/"+idEnc+"#1.2."+sEnc[:42]+nonCanonicalLast(sEnc[42]))
+	invalid("retired-kdf2-path-not-m", base+"/x/"+idEnc+"#1.2."+sEnc)
+	invalid("retired-kdf2-leading-zero", base+"/m/"+idEnc+"#1.02."+sEnc)
 	newer := func(name, input string) {
 		f.Link = append(f.Link, Link{Name: name, Input: input, Valid: false, Newer: true})
 	}

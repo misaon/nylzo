@@ -1,21 +1,18 @@
-import { arrayBufferBacked, utf8 } from './bytes.ts';
+import { utf8 } from './bytes.ts';
 import { KdfError, MalformedPassphraseError, WeakPassphraseError } from './errors.ts';
-import { KEY_LEN } from './limits.ts';
 
 export const KDF_NONE = 0;
 export const KDF_SCRYPT = 1;
-export const KDF_PBKDF2 = 2;
+export const KDF_RETIRED = 2;
 
-export type KdfId = typeof KDF_NONE | typeof KDF_SCRYPT | typeof KDF_PBKDF2;
-export type NativeKdfId = Exclude<KdfId, typeof KDF_SCRYPT>;
+export type KdfId = typeof KDF_NONE | typeof KDF_SCRYPT;
 
 export const SCRYPT_N = 1 << 17;
 export const SCRYPT_R = 8;
 export const SCRYPT_P = 1;
-export const PBKDF2_ITERATIONS = 600000;
 
 export function isKdfId(value: number): value is KdfId {
-  return value === KDF_NONE || value === KDF_SCRYPT || value === KDF_PBKDF2;
+  return value === KDF_NONE || value === KDF_SCRYPT;
 }
 
 export function parseKdfId(text: string): KdfId {
@@ -24,8 +21,6 @@ export function parseKdfId(text: string): KdfId {
       return KDF_NONE;
     case '1':
       return KDF_SCRYPT;
-    case '2':
-      return KDF_PBKDF2;
     default:
       throw new KdfError();
   }
@@ -54,30 +49,4 @@ export function assertWellFormedPassphrase(kdfId: KdfId, passphrase: string): vo
   if (kdfId !== KDF_NONE && !passphrase.isWellFormed()) {
     throw new MalformedPassphraseError();
   }
-}
-
-export async function derivePassphraseKey(
-  kdfId: NativeKdfId,
-  passphrase: string,
-  saltPw: Uint8Array,
-): Promise<Uint8Array<ArrayBuffer>> {
-  if (kdfId === KDF_NONE) {
-    return new Uint8Array(0);
-  }
-  assertWellFormedPassphrase(kdfId, passphrase);
-  if (kdfId === KDF_PBKDF2) {
-    return pbkdf2(normalizePassphrase(passphrase), saltPw);
-  }
-  throw new KdfError();
-}
-
-async function pbkdf2(password: Uint8Array<ArrayBuffer>, salt: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-  const key = await crypto.subtle.importKey('raw', password, 'PBKDF2', false, ['deriveBits']);
-  const params: Pbkdf2Params = {
-    name: 'PBKDF2',
-    hash: 'SHA-256',
-    salt: arrayBufferBacked(salt),
-    iterations: PBKDF2_ITERATIONS,
-  };
-  return new Uint8Array(await crypto.subtle.deriveBits(params, key, KEY_LEN * 8));
 }

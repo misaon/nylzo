@@ -1,4 +1,3 @@
-import { KDF_SCRYPT } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../src/lib/api.ts';
@@ -12,7 +11,6 @@ const limits: InstanceLimits = {
   maxTtlSeconds: 604800,
   defaultTtlSeconds: 86400,
   maxOpens: 10,
-  defaultKdfId: KDF_SCRYPT,
 };
 
 describe('create form', () => {

@@ -6,7 +6,6 @@ import {
   authorizationHeader,
   encodeBase64url,
   idToString,
-  isKdfId,
   parseChallenge,
   parseId,
   signRequest,
@@ -79,7 +78,6 @@ export interface InstanceLimits {
   readonly maxTtlSeconds: number;
   readonly defaultTtlSeconds: number;
   readonly maxOpens: number;
-  readonly defaultKdfId: KdfId;
 }
 
 export interface Operator {
@@ -262,10 +260,6 @@ function retryAfterHeader(response: Response): number | undefined {
 }
 
 function parseLimits(limits: Json): InstanceLimits {
-  const defaultKdfId = integer(limits, 'default_kdf_id');
-  if (!isKdfId(defaultKdfId)) {
-    throw new ResponseError('unknown default kdf profile');
-  }
   return {
     maxFileBytes: integer(limits, 'max_file_bytes'),
     maxTextBytes: integer(limits, 'max_text_bytes'),
@@ -273,7 +267,6 @@ function parseLimits(limits: Json): InstanceLimits {
     maxTtlSeconds: integer(limits, 'max_ttl_s'),
     defaultTtlSeconds: integer(limits, 'default_ttl_s'),
     maxOpens: integer(limits, 'max_opens'),
-    defaultKdfId,
   };
 }
 

@@ -70,7 +70,6 @@ const instanceBody = {
     max_ttl_s: 604800,
     default_ttl_s: 86400,
     max_opens: 10,
-    default_kdf_id: 1,
   },
   pow: { required: true, difficulty: 4, challenge: 'x' },
   create: { id: 'AAAAAAAAAAAAAAAAAAAAAA', id_token: 'token', expires_at: '2026-10-23T10:10:00Z' },
@@ -78,13 +77,15 @@ const instanceBody = {
 };
 
 describe('api client', () => {
-  it('reads the instance and refuses an unknown default profile', async () => {
+  it('reads the instance and takes no passphrase profile from it', async () => {
     const good = fakeServer(() => json(200, instanceBody));
     const instance = await good.api.instance();
-    expect(instance.limits.defaultKdfId).toBe(1);
+    expect(instance.limits).not.toHaveProperty('defaultKdfId');
     expect(instance.pow).toEqual({ required: true, difficulty: 4, challenge: 'x' });
     expect(idToString(instance.create.id)).toBe('AAAAAAAAAAAAAAAAAAAAAA');
-    const bad = fakeServer(() => json(200, { ...instanceBody, limits: { ...instanceBody.limits, default_kdf_id: 7 } }));
+    const legacy = fakeServer(() => json(200, { ...instanceBody, limits: { ...instanceBody.limits, default_kdf_id: 0 } }));
+    expect((await legacy.api.instance()).limits).not.toHaveProperty('defaultKdfId');
+    const bad = fakeServer(() => json(200, { ...instanceBody, limits: { ...instanceBody.limits, max_opens: 'ten' } }));
     await expect(bad.api.instance()).rejects.toThrow(ResponseError);
   });
 
@@ -387,7 +388,7 @@ describe('transparency', () => {
   const report = (change: Record<string, unknown> = {}) => ({
     server: 'v1.2.3',
     operator: { name: 'Example s.r.o.', contact: 'abuse@example.org' },
-    limits: { max_file_bytes: 5242880, max_text_bytes: 102400, max_object_bytes: 5373983, max_ttl_s: 604800, default_ttl_s: 86400, max_opens: 10, default_kdf_id: 1 },
+    limits: { max_file_bytes: 5242880, max_text_bytes: 102400, max_object_bytes: 5373983, max_ttl_s: 604800, default_ttl_s: 86400, max_opens: 10 },
     rates: { create_per_hour: 20, create_per_day: 100, create_bytes_per_day: 50000000, read_per_hour: 300, abuse_per_hour: 5, coarse_multiplier: 5, global_daily_creates: 0, pow_difficulty: 4 },
     retention: { tombstone_s: 604800, abuse_report_s: 604800, daily_counter_s: 86400 },
     ...change,

@@ -14,7 +14,6 @@ Test vectors for every client-side construction live in `spec/vectors.json`. Bot
 | HKDF | HKDF-SHA-256 (RFC 5869); `Extract(salt, IKM)` and `Expand(PRK, info, L)` |
 | AEAD | AES-256-GCM, 96-bit IV, 128-bit tag (NIST SP 800-38D) |
 | scrypt | RFC 7914 |
-| PBKDF2 | PBKDF2-HMAC-SHA-256 (RFC 8018) |
 | HMAC | HMAC-SHA-256 (RFC 2104) |
 | Ed25519 | EdDSA over edwards25519 (RFC 8032), 32-byte seed, 32-byte public key, 64-byte signature |
 | CSPRNG | `crypto.getRandomValues` in browsers, `crypto/rand` in Go |
@@ -55,17 +54,17 @@ R       = HKDF-Expand(PRK_S,  "nylzo/v1/read",     32)                  seed of 
 salt_pw = HKDF-Expand(PRK_S,  "nylzo/v1/pw-salt",  32)                  passphrase salt
 P       = kdf_id 0: empty (0 bytes)
           kdf_id 1: scrypt(pw, salt_pw, N = 2^17, r = 8, p = 1, dkLen = 32)
-          kdf_id 2: PBKDF2-HMAC-SHA-256(pw, salt_pw, iterations = 600000, dkLen = 32)
 PRK_SP  = HKDF-Extract(salt = hsalt, IKM = S || P)
 K       = HKDF-Expand(PRK_SP, "nylzo/v1/content",  32)                  content key
 V       = HKDF-Expand(PRK_SP, "nylzo/v1/verifier", 32)                  seed of the verifier key
 pk_X    = Ed25519 public key of seed X (RFC 8032 §5.1.5), for X in R, V, M
 ```
 
-- `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8, for both profiles. Derivation accepts any well-formed passphrase, so a recipient can always open a message and the vectors stay valid. A client MUST refuse to create a message with a passphrase shorter than 12 characters (Unicode code points after NFC) and SHOULD warn unless the passphrase has at least 16 characters and at least 4 words (D37); both cores expose this check.
+- `pw` is the passphrase normalised to Unicode NFC and encoded as UTF-8. Derivation accepts any well-formed passphrase, so a recipient can always open a message and the vectors stay valid. A client MUST refuse to create a message with a passphrase shorter than 12 characters (Unicode code points after NFC) and SHOULD warn unless the passphrase has at least 16 characters and at least 4 words (D37); both cores expose this check.
 - The passphrase MUST be well-formed Unicode. A core rejects invalid UTF-8 or a lone surrogate before it derives anything, so two cores never derive different keys from the same input.
 - The string literals are ASCII without a terminating NUL. `info` strings are passed to HKDF-Expand verbatim.
 - `S || P` has a fixed length per profile (32 or 64 bytes), so the concatenation is unambiguous.
+- `kdf_id` 2 is reserved and MUST NOT be assigned again. It named PBKDF2-HMAC-SHA-256 with 600,000 iterations, which Nylzo dropped before its first release (D71), so a passphrase always uses profile 1. A client MUST NOT derive anything for `kdf_id` 2 (§4).
 - `K` MUST never leave the client. In the browser the client MUST derive `K` as a non-extractable `CryptoKey` (`deriveKey`, `extractable = false`) and use `deriveBits` only for `R`, `salt_pw` and `V`.
 - `pk_R`, `pk_V` and `pk_M` are sent at creation. `R`, `V` and `M` never leave the client; every authenticated request carries a public key and a signature over a single-use server challenge instead (§5.5), so a recorded request cannot be replayed.
 - `kdf_id` for derivation MUST come from the URL fragment. A client MUST NOT derive `V` with a profile supplied by the server; when the server reports a different profile for a live message (metadata in state `available` or `opened`, or `X-Nylzo-Policy`), the client MUST stop and MUST NOT send any verifier signature. Tombstone metadata reports `kdf_id` 0, which is no profile; a client MUST NOT compare it.
@@ -82,7 +81,7 @@ object     = header || ciphertext
 ```
 
 - `version` MUST be `0x01`. A decoder MUST reject any other value.
-- `kdf_id` MUST be 0, 1 or 2 and MUST equal the profile in the URL fragment.
+- `kdf_id` MUST be 0 or 1 and MUST equal the profile in the URL fragment.
 - `flags`: bit 0 is reserved for the HPKE mode and MUST be 0 in v1; all other bits MUST be 0. A decoder MUST reject non-zero flags. No flag reveals whether a message carries a file, but the object length does: text-only plaintext is padded to 4 KiB and file plaintext to 64 KiB, so apart from one shared length (65567 bytes) the length of an object shows whether a file is attached (D16).
 - `iv`: 12 bytes from the CSPRNG, fresh per message. One `K` encrypts exactly one envelope.
 - `opens_max` and `ttl_s` are the sender's policy. The recipient obtains them from `X-Nylzo-Policy` (§6.4) and the metadata response and decrypts with them; any change by the server or an intermediary fails authentication.
@@ -113,9 +112,10 @@ https://{host}/m/{id}#1.{kdf_id}.{S}
 ```
 
 - Path `/m/{id}` with `id` in canonical base64url (22 characters). The server serves a static page for it; loading it consumes nothing.
-- Fragment: fragment version `1`, then `kdf_id` (`0`, `1` or `2`), then `S` in canonical base64url (43 characters), separated by `.`. The fragment never leaves the browser in any request.
+- Fragment: fragment version `1`, then `kdf_id` (`0` or `1`), then `S` in canonical base64url (43 characters), separated by `.`. The fragment never leaves the browser in any request.
 - A client MUST reject an unknown fragment version, an unknown `kdf_id`, or a non-canonical `S`.
 - A newer fragment version gets its own error, so that the client can say the link needs a newer client instead of calling it damaged. The version label is the text after `#` up to the first `.`, or the whole fragment without a `.`. It is newer when it is a decimal integer without a leading zero, at most 9 digits, and greater than the version the client implements. The client checks this before the path and the rest of the fragment, because a later version may change both, but only after the text before `#` passes the scheme and authority rules below with any path that starts with `/`. Every other label, such as `0`, `01` or `v2`, is an invalid link.
+- A link or fragment that would be valid but carries the reserved `kdf_id` `2` (§2) gets its own error too, so that the client can say the link uses a passphrase profile Nylzo no longer supports instead of calling it damaged. The client sends no request for such a link.
 - A client parses a link without URL normalisation. The text before the first `#` MUST match `scheme "://" authority path ["?" query]`: `scheme` is `http` or `https` in any letter case, `authority` contains only ASCII letters, digits, `.`, `-`, `:`, `[` and `]`, `path` is exactly `/m/{id}`, and the query is ignored. The fragment is everything after the first `#`, so a link with `##` carries the unknown fragment version `#1` and is invalid. In the scheme, authority and path, relative references, dot segments, backslashes, userinfo, percent-encoding and leading or trailing whitespace are therefore rejected; the query may contain any character except `#`. Both reference cores accept the same set of links.
 
 ## 5. Server-side tokens and secrets
@@ -321,7 +321,7 @@ Blob downloads count in the read rate limit and are capped at 3 per lease. The b
 POST /api/v1/messages/{id}/burn     signed with R → 204; state = deleted, blob deleted
 POST /api/v1/messages/{id}/cancel   signed with M → 204; state = cancelled, blob deleted
 GET  /api/v1/messages/{id}/status   signed with M → 200 {"state":"…","opens_used":N,"opens_max":N,"created_at":"…","expires_at":"…","first_opened_at":"…"?,"ended_at":"…"?,"failed_passphrase_attempts":N}
-GET  /api/v1/instance               → 200 {"limits":{"max_file_bytes":N,"max_text_bytes":N,"max_object_bytes":N,"max_ttl_s":N,"default_ttl_s":N,"max_opens":N,"default_kdf_id":N},"pow":{"required":bool,"difficulty":N,"challenge":"…"?},"create":{"id":"…","id_token":"…","expires_at":"…"},"versions":{"api":1,"envelope":1,"fragment":1,"server":"…"}}
+GET  /api/v1/instance               → 200 {"limits":{"max_file_bytes":N,"max_text_bytes":N,"max_object_bytes":N,"max_ttl_s":N,"default_ttl_s":N,"max_opens":N},"pow":{"required":bool,"difficulty":N,"challenge":"…"?},"create":{"id":"…","id_token":"…","expires_at":"…"},"versions":{"api":1,"envelope":1,"fragment":1,"server":"…"}}
 GET  /api/v1/challenge              → 200 {"challenge":"…","expires_at":"…"} (§5.5)
 POST /api/v1/abuse                  signed with R, {"id":"…","reason":"…"?} → 202 {"status":"accepted"} for known, unknown and malformed ids alike; a malformed id is answered before any rate counter
 ```
@@ -411,7 +411,7 @@ The server logs time, truncated to the minute (D50), method, route pattern and s
 
 ## 11. Versioning
 
-Envelope version in the first byte, fragment version before the first dot, API under `/api/v1`, `kdf_id` in the envelope header and the fragment. A client MUST reject an unknown version or non-zero flags. A new KDF profile or the HPKE mode is a new value in an existing field, not a new format.
+Envelope version in the first byte, fragment version before the first dot, API under `/api/v1`, `kdf_id` in the envelope header and the fragment. A client MUST reject an unknown version or non-zero flags. A new KDF profile or the HPKE mode is a new value in an existing field, not a new format. A retired value stays reserved and is never reused (`kdf_id` 2, §2).
 
 ## 12. Data model (reference)
 

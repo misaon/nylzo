@@ -30,6 +30,7 @@
     | 'unknown'
     | 'invalid'
     | 'newer'
+    | 'retired'
     | 'tampered'
     | 'failed'
     | 'busy'
@@ -67,6 +68,7 @@
     unknown: 'search',
     invalid: 'broken',
     newer: 'update',
+    retired: 'key',
     tampered: 'shield',
     failed: 'alert',
     busy: 'clock',
@@ -387,6 +389,7 @@
         return 'busy';
       case 'invalid':
       case 'newer':
+      case 'retired':
       case 'unknown':
       case 'tampered':
       case 'failed':

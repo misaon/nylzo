@@ -2,16 +2,8 @@ import { scrypt } from '@noble/hashes/scrypt.js';
 
 import { arrayBufferBacked } from './bytes.ts';
 import { deriveContent, deriveLink, type DerivedKeys } from './derive.ts';
-import {
-  KDF_SCRYPT,
-  SCRYPT_N,
-  SCRYPT_P,
-  SCRYPT_R,
-  assertWellFormedPassphrase,
-  derivePassphraseKey,
-  normalizePassphrase,
-  type KdfId,
-} from './kdf.ts';
+import { KdfError } from './errors.ts';
+import { KDF_NONE, KDF_SCRYPT, SCRYPT_N, SCRYPT_P, SCRYPT_R, assertWellFormedPassphrase, normalizePassphrase, type KdfId } from './kdf.ts';
 import { KEY_LEN } from './limits.ts';
 
 export function scryptPassphraseKey(
@@ -25,7 +17,13 @@ export function scryptPassphraseKey(
 }
 
 export async function anyPassphraseKey(kdfId: KdfId, passphrase: string, saltPw: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-  return kdfId === KDF_SCRYPT ? scryptPassphraseKey(passphrase, saltPw) : derivePassphraseKey(kdfId, passphrase, saltPw);
+  if (kdfId === KDF_SCRYPT) {
+    return scryptPassphraseKey(passphrase, saltPw);
+  }
+  if (kdfId === KDF_NONE) {
+    return new Uint8Array(0);
+  }
+  throw new KdfError();
 }
 
 export async function deriveAll(

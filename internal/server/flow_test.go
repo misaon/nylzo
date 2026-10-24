@@ -19,7 +19,7 @@ import (
 func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFPBKDF2, "tajná fráze", 1, 3600, "plaintext secret body")
+	m := newMessage(t, core.KDFScrypt, "tajná fráze", 1, 3600, "plaintext secret body")
 	h.mustCreate(m)
 	captured := h.lastCreateRequest()
 	if !strings.Contains(string(captured), "X-Nylzo-Create: "+h.withIDToken(m.createHeader(0))) || !strings.Contains(string(captured), string(m.object)) {
@@ -161,7 +161,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	cfg := h.cfg
 	cfg.Rates.ReadPerHour = 100000
 	h.reopen(cfg)
-	m := newMessage(t, core.KDFPBKDF2, "correct", 2, 604800, "guarded")
+	m := newMessage(t, core.KDFScrypt, "correct", 2, 604800, "guarded")
 	m.ip = "203.0.113.10"
 	h.mustCreate(m)
 	wrong := core.Encode(make([]byte, 32))
@@ -217,7 +217,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	if st["failed_passphrase_attempts"].(float64) != 100 {
 		t.Fatalf("status after cap: %v", st)
 	}
-	fresh := newMessage(t, core.KDFPBKDF2, "pw", 1, 3600, "x")
+	fresh := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	h.mustCreate(fresh)
 	resp, body = h.claim(fresh, "", "192.0.2.78")
 	j = decodeJSON(t, body)

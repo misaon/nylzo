@@ -30,7 +30,6 @@ export const baseCs = {
   'problem.opens.out_of_range': 'Počet otevření musí být 1 až {max}.',
   'problem.passphrase.too_short': 'Passphrase musí mít aspoň {min} znaků.',
   'problem.passphrase.malformed': 'Passphrase obsahuje neplatné znaky.',
-  'problem.passphrase.out_of_range': 'Zvolte způsob odvození klíče.',
 
   'failure.instance': 'Nastavení služby se nepodařilo načíst.',
   'failure.rate_limited': 'Za krátkou dobu přišlo příliš mnoho zpráv. Zkuste to za {time}.',
@@ -138,6 +137,7 @@ export const baseCs = {
   'report.failed': 'Hlášení se nepodařilo odeslat. Zkuste to znovu.',
   'report.problem.link_invalid': 'Odkaz je neúplný nebo poškozený.',
   'report.problem.link_newer': 'Odkaz potřebuje novější verzi Nylzo.',
+  'report.problem.link_retired': 'Odkaz má vyřazenou ochranu passphrase.',
   'report.problem.link_foreign': 'Odkaz patří jiné službě.',
   'report.problem.reason_too_long': 'Důvod je delší než {bytes} bajtů.',
 
@@ -214,7 +214,6 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'problem.opens.out_of_range': 'The number of opens must be 1 to {max}.',
   'problem.passphrase.too_short': 'The passphrase needs at least {min} characters.',
   'problem.passphrase.malformed': 'The passphrase contains invalid characters.',
-  'problem.passphrase.out_of_range': 'Choose a key derivation.',
 
   'failure.instance': 'The service settings could not be loaded.',
   'failure.rate_limited': 'Too many messages in a short time. Try again in {time}.',
@@ -322,6 +321,7 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'report.failed': 'The report could not be sent. Try again.',
   'report.problem.link_invalid': 'The link is incomplete or damaged.',
   'report.problem.link_newer': 'The link needs a newer version of Nylzo.',
+  'report.problem.link_retired': 'The link uses a retired passphrase method.',
   'report.problem.link_foreign': 'The link belongs to another service.',
   'report.problem.reason_too_long': 'The reason is longer than {bytes} bytes.',
 

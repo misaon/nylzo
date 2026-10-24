@@ -1,6 +1,5 @@
 import {
   KDF_NONE,
-  KDF_PBKDF2,
   KDF_SCRYPT,
   MAX_MIME,
   MAX_TEXT_BYTES,
@@ -12,7 +11,6 @@ import {
   assertStrongPassphrase,
   deriveContent,
   deriveLink,
-  derivePassphraseKey,
   formatLink,
   idToString,
   newHeader,
@@ -45,14 +43,13 @@ export interface CreateInput {
   readonly ttlSeconds: number;
   readonly opensMax: number;
   readonly passphrase: string;
-  readonly kdfId: KdfId;
 }
 
 export type CreateProblem =
   | { readonly field: 'content'; readonly code: 'missing' }
   | { readonly field: 'text' | 'file'; readonly code: 'too_large' }
   | { readonly field: 'ttl' | 'opens'; readonly code: 'out_of_range' }
-  | { readonly field: 'passphrase'; readonly code: 'too_short' | 'malformed' | 'out_of_range' };
+  | { readonly field: 'passphrase'; readonly code: 'too_short' | 'malformed' };
 
 export type CreateField = CreateProblem['field'];
 
@@ -112,8 +109,8 @@ export function passphraseIsWeak(passphrase: string): boolean {
   return [...normalized].length < WEAK_BELOW_CHARS || words < WEAK_BELOW_WORDS;
 }
 
-export function effectiveKdf(input: Pick<CreateInput, 'passphrase' | 'kdfId'>): KdfId {
-  return input.passphrase === '' ? KDF_NONE : input.kdfId;
+export function effectiveKdf(input: Pick<CreateInput, 'passphrase'>): KdfId {
+  return input.passphrase === '' ? KDF_NONE : KDF_SCRYPT;
 }
 
 export function validateCreate(input: CreateInput, limits: InstanceLimits): CreateProblem[] {
@@ -136,9 +133,6 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
   if (input.passphrase !== '') {
     try {
       assertStrongPassphrase(input.passphrase);
-      if (input.kdfId !== KDF_SCRYPT && input.kdfId !== KDF_PBKDF2) {
-        problems.push({ field: 'passphrase', code: 'out_of_range' });
-      }
     } catch (error) {
       if (error instanceof WeakPassphraseError) {
         problems.push({ field: 'passphrase', code: 'too_short' });
@@ -162,14 +156,11 @@ function meta(input: CreateInput): Meta {
 }
 
 async function passphraseKey(input: CreateInput, kdfId: KdfId, saltPw: Uint8Array<ArrayBuffer>, deps: CreateDeps, onProgress: (p: CreateProgress) => void) {
-  if (kdfId === KDF_SCRYPT) {
-    onProgress({ step: 'deriving', fraction: 0 });
-    return deps.scrypt(input.passphrase, saltPw, (fraction) => onProgress({ step: 'deriving', fraction }));
+  if (kdfId === KDF_NONE) {
+    return new Uint8Array(0);
   }
-  if (kdfId === KDF_PBKDF2) {
-    onProgress({ step: 'deriving' });
-  }
-  return derivePassphraseKey(kdfId, input.passphrase, saltPw);
+  onProgress({ step: 'deriving', fraction: 0 });
+  return deps.scrypt(input.passphrase, saltPw, (fraction) => onProgress({ step: 'deriving', fraction }));
 }
 
 async function prove(id: Uint8Array<ArrayBuffer>, deps: CreateDeps, onProgress: (p: CreateProgress) => void): Promise<string | undefined> {

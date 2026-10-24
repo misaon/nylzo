@@ -1,8 +1,6 @@
 package core
 
 import (
-	"crypto/pbkdf2"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"unicode/utf8"
@@ -14,16 +12,15 @@ import (
 type KDF uint8
 
 const (
-	KDFNone   KDF = 0
-	KDFScrypt KDF = 1
-	KDFPBKDF2 KDF = 2
+	KDFNone    KDF = 0
+	KDFScrypt  KDF = 1
+	KDFRetired KDF = 2
 )
 
 const (
-	ScryptN          = 1 << 17
-	ScryptR          = 8
-	ScryptP          = 1
-	PBKDF2Iterations = 600000
+	ScryptN = 1 << 17
+	ScryptR = 8
+	ScryptP = 1
 )
 
 var (
@@ -35,7 +32,7 @@ var (
 const MinPassphraseChars = 12
 
 func (k KDF) Valid() bool {
-	return k <= KDFPBKDF2
+	return k <= KDFScrypt
 }
 
 func (k KDF) RequiresPassphrase() bool {
@@ -48,8 +45,6 @@ func ParseKDF(s string) (KDF, error) {
 		return KDFNone, nil
 	case "1":
 		return KDFScrypt, nil
-	case "2":
-		return KDFPBKDF2, nil
 	}
 	return 0, ErrKDF
 }
@@ -88,8 +83,6 @@ func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, er
 		return nil, nil
 	case KDFScrypt:
 		return scrypt.Key(NormalizePassphrase(passphrase), salt[:], ScryptN, ScryptR, ScryptP, KeyLen)
-	case KDFPBKDF2:
-		return pbkdf2.Key(sha256.New, string(NormalizePassphrase(passphrase)), salt[:], PBKDF2Iterations, KeyLen)
 	}
 	return nil, ErrKDF
 }

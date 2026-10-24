@@ -139,6 +139,10 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await reporter.getByRole('button', { name: 'Send report' }).click();
     await expect(reporter.getByText('The link needs a newer version of Nylzo.')).toBeVisible();
     await expectStable(reporter, 'report refused as newer');
+    await reporter.getByLabel('Link to the message').fill(message.link.replace('#1.0.', '#1.2.'));
+    await reporter.getByRole('button', { name: 'Send report' }).click();
+    await expect(reporter.getByText('The link uses a retired passphrase method.')).toBeVisible();
+    await expectStable(reporter, 'report refused as retired');
     await reporter.getByLabel('Link to the message').fill(message.link);
     await reporter.getByRole('button', { name: 'Send report' }).click();
     await expect(reporter.getByText('We received the report.')).toBeVisible();
@@ -266,6 +270,9 @@ test('the notice screens pass axe and keep touch targets at 44 px on a phone (AK
   await reload(page, `${BASE_URL}/m/${message.idText}#2.0.${message.secret}`);
   await expect(page.getByText(/^This link comes from a newer version of Nylzo$/)).toBeVisible();
   await expectAccessible(page, 'newer');
+  await reload(page, `${BASE_URL}/m/${message.idText}#1.2.${message.secret}`);
+  await expect(page.getByText(/^This link uses a retired passphrase method$/)).toBeVisible();
+  await expectAccessible(page, 'retired');
   await reload(page, `${BASE_URL}/m/${message.idText}#1.0.${'A'.repeat(43)}`);
   await expect(page.getByText(/does not exist or can no longer be opened/)).toBeVisible();
   await expectAccessible(page, 'unknown');
