@@ -44,7 +44,6 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	required := map[string]string{
 		"Referrer-Policy":              "no-referrer",
 		"Cache-Control":                "no-store",
-		"X-Robots-Tag":                 "noindex, nofollow",
 		"X-Content-Type-Options":       "nosniff",
 		"Cross-Origin-Opener-Policy":   "same-origin",
 		"Cross-Origin-Resource-Policy": "same-origin",
@@ -56,6 +55,9 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 			if resp.Header.Get(k) != v {
 				t.Fatalf("%s: header %s = %q", path, k, resp.Header.Get(k))
 			}
+		}
+		if robots := resp.Header.Get("X-Robots-Tag"); (path == "/") != (robots == "") || (path != "/" && robots != "noindex, nofollow") {
+			t.Fatalf("%s: X-Robots-Tag = %q, only the home page may be indexed (D80)", path, robots)
 		}
 		if csp := resp.Header.Get("Content-Security-Policy"); !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") && csp != "default-src 'none'; frame-ancestors 'none'" {
 			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
@@ -86,6 +88,12 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	}
 	nonceAttr := regexp.MustCompile(`nonce="[^"]*"`)
 	_, home := h.do(request{method: "GET", path: "/"})
+	if strings.Contains(string(home), `name="robots"`) {
+		t.Fatal("the client HTML must leave robots to the X-Robots-Tag header (D80)")
+	}
+	if !strings.Contains(string(body), `name="robots" content="noindex, nofollow"`) {
+		t.Fatal("the preview page must stay noindex")
+	}
 	if _, botHome := h.do(request{method: "GET", path: "/", headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}}); nonceAttr.ReplaceAllString(string(botHome), "") != nonceAttr.ReplaceAllString(string(home), "") {
 		t.Fatalf("a preview agent must get the normal home page: %s", botHome)
 	}
@@ -481,7 +489,6 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 	want := map[string]string{
 		"Referrer-Policy":              "no-referrer",
 		"Cache-Control":                "no-store",
-		"X-Robots-Tag":                 "noindex, nofollow",
 		"X-Content-Type-Options":       "nosniff",
 		"Cross-Origin-Opener-Policy":   "same-origin",
 		"Cross-Origin-Resource-Policy": "same-origin",
@@ -498,12 +505,23 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 				t.Fatalf("%s: %s = %q", name, k, resp.Header.Get(k))
 			}
 		}
+		robots := "noindex, nofollow"
+		if name == "page" || name == "page-head" {
+			robots = ""
+		}
+		if resp.Header.Get("X-Robots-Tag") != robots {
+			t.Fatalf("%s: X-Robots-Tag = %q", name, resp.Header.Get("X-Robots-Tag"))
+		}
 	}
 	resp, _ := h.do(request{method: "GET", path: "/"})
 	check("page", resp, 200)
 	if !strings.Contains(resp.Header.Get("Content-Security-Policy"), "'nonce-") {
 		t.Fatal("CSP missing on /")
 	}
+	resp, _ = h.do(request{method: "HEAD", path: "/"})
+	check("page-head", resp, 200)
+	resp, _ = h.do(request{method: "POST", path: "/"})
+	check("page-post", resp, 405)
 	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
 	check("sec-purpose", resp, 503)
 	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: []byte("x")})
