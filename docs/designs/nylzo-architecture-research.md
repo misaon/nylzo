@@ -943,7 +943,7 @@ Zbytková rizika:
 7. Compose příklad s Caddy; image na ghcr.io s podpisem a provenance; AK15. Rozhodnutí D42 až D45 a postup jsou v plánu `docs/plans/2026-10-23-release-pipeline.md`.
 8. Stránka transparentnosti, SECURITY.md, DSA podmínky a kontaktní místo; právní posouzení. Stránka `/transparency`, manifest klienta, `nylzo verify-client` a SECURITY.md jsou hotové (D60 až D62, plán `docs/plans/2026-10-24-milestone-6-transparency.md`); podmínky, kontaktní místo podle DSA a právní posouzení zůstávají vlastníkovi.
 9. Nasazení veřejné instance; AK17.
-10. Druhá verze: MCP, API klíče. Skill nad CLI je hotový v první verzi (D70, plán `docs/plans/2026-10-24-agent-skill.md`).
+10. Druhá verze: MCP, API klíče. Skill nad CLI je hotový v první verzi (D70, plán `docs/plans/2026-10-24-agent-skill.md`). MCP server plánuje `docs/plans/2026-10-24-milestone-7-mcp.md`; rozhodnutí OD-M1 až OD-M5 čekají na vlastníka.
 
 ## The Assignment
 
