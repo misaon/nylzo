@@ -491,6 +491,70 @@
     {
       "name": "fragment-version-2",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false,
+      "newer_version": true
+    },
+    {
+      "name": "fragment-version-2-bare",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#2",
+      "valid": false,
+      "newer_version": true
+    },
+    {
+      "name": "fragment-version-10-new-path-and-shape",
+      "input": "https://nylzo.example/m2/VYkVuDHE8iM238s_29iTmAAAAA#10.x.y.z",
+      "valid": false,
+      "newer_version": true
+    },
+    {
+      "name": "fragment-version-9-digits",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#999999999.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false,
+      "newer_version": true
+    },
+    {
+      "name": "fragment-version-0",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#0.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-leading-zero",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#02.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-10-digits",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1000000000.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-letter",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#v2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-2-relative-reference",
+      "input": "/m/VYkVuDHE8iM238s_29iTmA#2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-2-userinfo",
+      "input": "https://user@nylzo.example/m/VYkVuDHE8iM238s_29iTmA#2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-2-no-path",
+      "input": "https://nylzo.example#2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-plus-2",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#+2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-fullwidth-2",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#２.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": false
     },
     {

@@ -1,4 +1,4 @@
-import { ID_LEN, deriveLink, encodedLength, parseLink, requestKey, utf8, wipeRequestKey, type Link, type LinkKeys, type RequestKey } from '@nylzo/core';
+import { ID_LEN, LinkVersionError, deriveLink, encodedLength, parseLink, requestKey, utf8, wipeRequestKey, type Link, type LinkKeys, type RequestKey } from '@nylzo/core';
 
 import { ApiError, type Api } from './api.ts';
 
@@ -11,7 +11,7 @@ const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
 const TOKEN_RUN = new RegExp(`[A-Za-z0-9_-]{${encodedLength(ID_LEN)},}`, 'g');
 const REDACTED = '[redacted]';
 
-export type ReportProblem = 'link_invalid' | 'link_foreign' | 'reason_too_long';
+export type ReportProblem = 'link_invalid' | 'link_newer' | 'link_foreign' | 'reason_too_long';
 
 export type ReportOutcome =
   | { readonly outcome: 'accepted' }
@@ -90,8 +90,8 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
   let link: Link | undefined;
   try {
     link = parseLink(raw);
-  } catch {
-    problems.push('link_invalid');
+  } catch (error) {
+    problems.push(error instanceof LinkVersionError ? 'link_newer' : 'link_invalid');
   }
   if (link && LINK_ORIGIN.exec(raw)?.[1]?.toLowerCase() !== origin.toLowerCase()) {
     problems.push('link_foreign');

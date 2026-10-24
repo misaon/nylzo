@@ -1,12 +1,13 @@
 import { decode32, encodeBase64url } from './base64url.ts';
 import { assertLength } from './bytes.ts';
-import { KdfMismatchError, LinkError } from './errors.ts';
+import { KdfMismatchError, LinkError, LinkVersionError } from './errors.ts';
 import { idToString, parseId } from './ids.ts';
 import { parseKdfId, type KdfId } from './kdf.ts';
 import { FRAGMENT_VERSION, SECRET_LEN } from './limits.ts';
 
 export const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
 const LINK_PATH_PREFIX = '/m/';
+const VERSION_LABEL = /^[1-9][0-9]{0,8}$/;
 
 export interface Fragment {
   readonly kdfId: KdfId;
@@ -26,7 +27,15 @@ export function parseFragment(text: string): Fragment {
   return parseFragmentBody(text.startsWith('#') ? text.slice(1) : text);
 }
 
+function newerFragment(text: string): boolean {
+  const [label = ''] = text.split('.', 1);
+  return VERSION_LABEL.test(label) && Number(label) > FRAGMENT_VERSION;
+}
+
 function parseFragmentBody(text: string): Fragment {
+  if (newerFragment(text)) {
+    throw new LinkVersionError();
+  }
   const parts = text.split('.');
   const [label, kdfText = '', secretText = ''] = parts;
   if (parts.length !== 3 || label !== FRAGMENT_LABEL) {
@@ -63,8 +72,12 @@ export function parseLink(raw: string): Link {
   if (path === undefined) {
     throw new LinkError();
   }
+  const text = raw.slice(hash + 1);
+  if (newerFragment(text)) {
+    throw new LinkVersionError();
+  }
   const id = parsePath(path);
-  const { kdfId, s } = parseFragmentBody(raw.slice(hash + 1));
+  const { kdfId, s } = parseFragmentBody(text);
   return { id, kdfId, s };
 }
 

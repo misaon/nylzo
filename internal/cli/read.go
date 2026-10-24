@@ -23,6 +23,7 @@ const (
 	privateDirMode   = 0o700
 	outputDirPrefix  = "nylzo-"
 	attachmentPrefix = "attachment-"
+	releasesURL      = "https://github.com/misaon/nylzo/releases"
 )
 
 var (
@@ -54,6 +55,9 @@ func (l *openLink) wipe() {
 
 func parseOpenLink(raw string) (openLink, error) {
 	parsed, err := core.ParseLink(raw)
+	if errors.Is(err, core.ErrLinkVersion) {
+		return openLink{}, errors.New("the link was made by a newer version of nylzo; update nylzo from " + releasesURL)
+	}
 	if err != nil {
 		return openLink{}, errors.New("the link is incomplete or damaged")
 	}

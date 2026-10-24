@@ -132,6 +132,8 @@
 
   {#if view.view === 'invalid'}
     <p role="alert">{t('read.invalid')}</p>
+  {:else if view.view === 'newer'}
+    <p role="alert">{t('read.newer')}</p>
   {:else if view.view === 'unknown'}
     <p role="alert">{t('read.unknown')}</p>
   {:else if view.view === 'tampered'}

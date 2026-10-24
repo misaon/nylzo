@@ -23,9 +23,10 @@
   let form: HTMLFormElement | undefined;
 
   const problems = $derived(outcome?.outcome === 'invalid' ? outcome.problems : []);
-  const linkProblem = $derived(
-    problems.includes('link_invalid') ? t('report.problem.link_invalid') : problems.includes('link_foreign') ? t('report.problem.link_foreign') : '',
-  );
+  const linkProblem = $derived.by(() => {
+    const problem = problems.find((p) => p.startsWith('link_'));
+    return problem ? t(`report.problem.${problem}`) : '';
+  });
   const reasonProblem = $derived(problems.includes('reason_too_long') ? t('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES }) : '');
   const result = $derived.by(() => {
     switch (outcome?.outcome) {

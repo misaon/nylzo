@@ -8,6 +8,7 @@ import {
   KdfError,
   KdfMismatchError,
   LinkError,
+  LinkVersionError,
   assertProfile,
   decode32,
   decodeBase64urlExact,
@@ -23,6 +24,7 @@ import {
   parsePath,
 } from '../src/index.ts';
 import { newId } from '../src/ids.ts';
+import { thrownBy } from './helpers.ts';
 
 const base = 'https://nylzo.example';
 
@@ -187,4 +189,25 @@ describe('message ids', () => {
     expect(api['newId']).toBeUndefined();
     expect(typeof api['parseId']).toBe('function');
   });
+});
+
+describe('a newer fragment version', () => {
+  const s = encodeBase64url(new Uint8Array(32));
+  const cases: readonly (readonly [string, boolean])[] = [
+    [`#2.1.${s}`, true],
+    ['2', true],
+    ['#7.a.b.c', true],
+    [`#1.9.${s}`, false],
+    [`#0.1.${s}`, false],
+    ['#02.1.', false],
+    ['#-2.1.', false],
+    ['', false],
+  ];
+  for (const [text, newer] of cases) {
+    it(`parseFragment(${JSON.stringify(text)}) tells a newer version apart: ${String(newer)}`, () => {
+      const error = thrownBy(() => parseFragment(text));
+      expect(error).toBeInstanceOf(LinkError);
+      expect(error instanceof LinkVersionError).toBe(newer);
+    });
+  }
 });

@@ -135,6 +135,10 @@ for (const viewport of [MOBILE, DESKTOP]) {
     await reporter.getByRole('button', { name: 'Send report' }).click();
     await expect(reporter.getByText('The link is incomplete or damaged.')).toBeVisible();
     await expectStable(reporter, 'report refused');
+    await reporter.getByLabel('Link to the message').fill(message.link.replace('#1.', '#2.'));
+    await reporter.getByRole('button', { name: 'Send report' }).click();
+    await expect(reporter.getByText('The link needs a newer version of Nylzo.')).toBeVisible();
+    await expectStable(reporter, 'report refused as newer');
     await reporter.getByLabel('Link to the message').fill(message.link);
     await reporter.getByRole('button', { name: 'Send report' }).click();
     await expect(reporter.getByText('We received the report.')).toBeVisible();
@@ -212,9 +216,12 @@ test('every screen passes axe and keeps touch targets at 44 px on a phone (AK20)
   await expect(page.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 
-  await page.goto(`${BASE_URL}/m/${message.idText}#2.0.${message.secret}`);
+  await page.goto(`${BASE_URL}/m/${message.idText}#0.0.${message.secret}`);
   await expect(page.getByText(/The link is incomplete or damaged/)).toBeVisible();
   await expectAccessible(page, 'invalid');
+  await reload(page, `${BASE_URL}/m/${message.idText}#2.0.${message.secret}`);
+  await expect(page.getByText(/^This link comes from a newer version of Nylzo than this server runs/)).toBeVisible();
+  await expectAccessible(page, 'newer');
   await reload(page, `${BASE_URL}/m/${message.idText}#1.0.${'A'.repeat(43)}`);
   await expect(page.getByText(/does not exist or can no longer be opened/)).toBeVisible();
   await expectAccessible(page, 'unknown');
