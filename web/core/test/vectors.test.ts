@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import {
   HEADER_LEN,
   KDF_NONE,
+  LinkError,
+  LinkVersionError,
   TAG_LEN,
   VERSION,
   WeakPassphraseError,
@@ -37,7 +39,7 @@ import {
   type Policy,
 } from '../src/index.ts';
 import { anyPassphraseKey, deriveAll } from '../src/scrypt.ts';
-import { bytesToHex, fileBytes, hexToBytes, loadVectors, metaOf, sha256Hex } from './helpers.ts';
+import { bytesToHex, fileBytes, hexToBytes, loadVectors, metaOf, sha256Hex, thrownBy } from './helpers.ts';
 
 const vectors = loadVectors();
 const slow = { timeout: 120_000 };
@@ -163,7 +165,9 @@ describe('link', () => {
   for (const v of vectors.link) {
     it(v.name, () => {
       if (!v.valid) {
-        expect(() => parseLink(v.input)).toThrow();
+        const error = thrownBy(() => parseLink(v.input));
+        expect(error).toBeInstanceOf(LinkError);
+        expect(error instanceof LinkVersionError).toBe(v.newer_version === true);
         return;
       }
       const link = parseLink(v.input);

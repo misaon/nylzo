@@ -108,6 +108,7 @@ const cs = {
   'read.title': 'Jednorázová zpráva',
   'read.loading': 'Načítám zprávu…',
   'read.invalid': 'Odkaz je neúplný nebo poškozený. Zkontrolujte, že jste zkopírovali celý odkaz včetně části za #.',
+  'read.newer': 'Odkaz pochází z novější verze Nylzo, než jakou používá tento server, takže ho tady otevřít nejde. Požádejte odesílatele o nový odkaz.',
   'read.unknown': 'Zpráva neexistuje nebo ji už nejde otevřít.',
   'read.tampered': 'Zprávu nejde bezpečně otevřít: server nebo spojení vrátilo jiná data, než odesílatel vytvořil.',
   'read.failed': 'Něco se pokazilo. Zkuste to znovu.',
@@ -167,6 +168,7 @@ const cs = {
   'report.accepted': 'Hlášení jsme přijali. Uchováme ho, jen pokud zpráva ještě existuje.',
   'report.failed': 'Hlášení se nepodařilo odeslat. Zkuste to znovu.',
   'report.problem.link_invalid': 'Odkaz je neúplný nebo poškozený.',
+  'report.problem.link_newer': 'Odkaz potřebuje novější verzi Nylzo.',
   'report.problem.link_foreign': 'Odkaz patří jiné službě.',
   'report.problem.reason_too_long': 'Důvod je delší než {bytes} bajtů.',
 
@@ -322,6 +324,7 @@ const en: Record<MessageKey, string> = {
   'read.title': 'One-time message',
   'read.loading': 'Loading the message…',
   'read.invalid': 'The link is incomplete or damaged. Check that you copied the whole link, including the part after #.',
+  'read.newer': 'This link comes from a newer version of Nylzo than this server runs, so it cannot be opened here. Ask the sender for a new link.',
   'read.unknown': 'The message does not exist or can no longer be opened.',
   'read.tampered': 'The message cannot be opened safely: the server or the connection returned other data than the sender created.',
   'read.failed': 'Something went wrong. Try again.',
@@ -381,6 +384,7 @@ const en: Record<MessageKey, string> = {
   'report.accepted': 'We received the report. We keep it only if the message still exists.',
   'report.failed': 'The report could not be sent. Try again.',
   'report.problem.link_invalid': 'The link is incomplete or damaged.',
+  'report.problem.link_newer': 'The link needs a newer version of Nylzo.',
   'report.problem.link_foreign': 'The link belongs to another service.',
   'report.problem.reason_too_long': 'The reason is longer than {bytes} bytes.',
 

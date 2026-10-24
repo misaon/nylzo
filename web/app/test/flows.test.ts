@@ -307,12 +307,22 @@ describe('reading a message', () => {
     expect(session.map.size).toBe(0);
   });
 
-  it('tells a malformed link from an unknown one', async () => {
+  it('tells a malformed link, a link from a newer version and an unknown one apart', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDeps(api));
-    const broken = reader(api, created.link.replace('#1.', '#2.'));
+    const before = api.calls.length;
+    const broken = reader(api, created.link.replace('#1.', '#0.'));
     await broken.load();
     expect(broken.last()).toEqual({ view: 'invalid' });
+    const brokenPath = reader(api, created.link.replace('/m/', '/m/x'));
+    await brokenPath.load();
+    expect(brokenPath.last()).toEqual({ view: 'invalid' });
+    for (const newerLink of [created.link.replace('#1.', '#2.'), created.link.replace('/m/', '/m/x').replace(/#.*$/, '#10.a.b.c')]) {
+      const newer = reader(api, newerLink);
+      await newer.load();
+      expect(newer.last()).toEqual({ view: 'newer' });
+    }
+    expect(api.calls.slice(before).filter((call) => !call.startsWith('view:'))).toEqual([]);
     const other = encodeBase64url(new Uint8Array(32).fill(5));
     const unknown = reader(api, created.link.replace(/#1\.0\..*$/, `#1.0.${other}`));
     await unknown.load();

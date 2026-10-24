@@ -47,6 +47,13 @@ describe('reporting a pasted link (D41)', () => {
     expect(api.calls).toEqual([]);
   });
 
+  it('tells a link from a newer version apart and sends nothing', async () => {
+    const { api, link } = await setup();
+    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_newer'] });
+    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), '')).toEqual({ outcome: 'invalid', problems: ['link_invalid'] });
+    expect(api.calls).toEqual([]);
+  });
+
   it('passes on a rate limit and other failures', async () => {
     const limited = await setup({ failReport: [new ApiError(429, 'rate_limited', 60)] });
     expect(await reportLink(limited.api, ORIGIN, limited.link, '')).toEqual({ outcome: 'retry_later', retryAfter: 60 });

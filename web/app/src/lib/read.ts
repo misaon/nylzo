@@ -2,6 +2,7 @@ import {
   KDF_NONE,
   KDF_PBKDF2,
   KdfMismatchError,
+  LinkVersionError,
   MalformedPassphraseError,
   assertProfile,
   assertWellFormedPassphrase,
@@ -13,6 +14,7 @@ import {
   parseFragment,
   parsePath,
   requestKey,
+  type Fragment,
   type KdfId,
   type Link,
   type LinkKeys,
@@ -38,6 +40,7 @@ export interface RevealedFile {
 export type ReadView =
   | { readonly view: 'loading' }
   | { readonly view: 'invalid' }
+  | { readonly view: 'newer' }
   | { readonly view: 'unknown' }
   | { readonly view: 'tampered' }
   | { readonly view: 'failed' }
@@ -271,11 +274,18 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
 
   async function load(): Promise<void> {
     onView({ view: 'loading' });
+    let parsed: Fragment;
+    try {
+      parsed = parseFragment(deps.location.hash);
+    } catch (error) {
+      onView({ view: error instanceof LinkVersionError ? 'newer' : 'invalid' });
+      return;
+    }
     let fragment: Link;
     try {
-      const id = parsePath(deps.location.pathname);
-      fragment = { id, ...parseFragment(deps.location.hash) };
+      fragment = { id: parsePath(deps.location.pathname), ...parsed };
     } catch {
+      parsed.s.fill(0);
       onView({ view: 'invalid' });
       return;
     }

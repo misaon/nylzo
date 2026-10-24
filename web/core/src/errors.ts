@@ -76,9 +76,16 @@ export class MetaError extends Error {
 }
 
 export class LinkError extends Error {
-  override readonly name = 'LinkError';
+  override readonly name: string = 'LinkError';
   constructor(message = 'invalid link') {
     super(message);
+  }
+}
+
+export class LinkVersionError extends LinkError {
+  override readonly name = 'LinkVersionError';
+  constructor() {
+    super('invalid link: a newer fragment version');
   }
 }
 

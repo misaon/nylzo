@@ -83,6 +83,7 @@ export interface LinkVector {
   readonly id?: string;
   readonly kdf_id?: number;
   readonly s_hex?: string;
+  readonly newer_version?: boolean;
 }
 
 export interface MetaVector {
@@ -178,4 +179,13 @@ export function withByteFlipped(bytes: Uint8Array, index: number, mask = 0x01): 
   const copy = concat(bytes);
   copy[index] = (copy[index] ?? 0) ^ mask;
   return copy;
+}
+
+export function thrownBy(run: () => unknown): unknown {
+  try {
+    run();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }
