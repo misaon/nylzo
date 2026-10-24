@@ -44,7 +44,7 @@ jobs:
           fi
 
   go-lint:
-    name: Go static checks
+    name: Go static checks and vectors (AK9)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -84,6 +84,10 @@ jobs:
           version: v2.15.0
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: The Go core regenerates exactly the committed vectors, which the TypeScript job tests against (AK9)
+        run: |
+          go run ./cmd/nylzo-vectors -out spec/vectors.json
+          git diff --exit-code -- spec/vectors.json
       - if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -224,27 +228,8 @@ jobs:
         env:
           NYLZO_HEAVY_TESTS: "1"
 
-  vectors:
-    name: Cross-check vectors (AK9)
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
-      - name: The Go core regenerates exactly the committed vectors, which the TypeScript job tests against
-        run: |
-          go run ./cmd/nylzo-vectors -out spec/vectors.json
-          git diff --exit-code -- spec/vectors.json
-
   e2e:
-    name: Web client end to end (${{ matrix.browser }} ${{ matrix.shard }}/2)
+    name: Web client end to end (${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.shards }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.runner }}
@@ -252,16 +237,40 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
-        shard: [1, 2]
         include:
           - browser: chromium
+            shard: 1
+            shards: 2
+            runner: ubuntu-latest
+            install: --with-deps --only-shell chromium
+          - browser: chromium
+            shard: 2
+            shards: 2
             runner: ubuntu-latest
             install: --with-deps --only-shell chromium
           - browser: firefox
+            shard: 1
+            shards: 2
+            runner: ubuntu-latest
+            install: --with-deps firefox
+          - browser: firefox
+            shard: 2
+            shards: 2
             runner: ubuntu-latest
             install: --with-deps firefox
           - browser: webkit
+            shard: 1
+            shards: 3
+            runner: macos-latest
+            install: webkit
+          - browser: webkit
+            shard: 2
+            shards: 3
+            runner: macos-latest
+            install: webkit
+          - browser: webkit
+            shard: 3
+            shards: 3
             runner: macos-latest
             install: webkit
     steps:
@@ -301,7 +310,7 @@ jobs:
           exit 1
       - name: ${{ matrix.browser }} against nylzo
         working-directory: web/e2e
-        run: pnpm e2e --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/2
+        run: pnpm e2e --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.shards }}
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
