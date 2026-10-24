@@ -24,8 +24,12 @@ func PageCSP(nonce string) string {
 	return fmt.Sprintf(cspTemplate, nonce, nonce)
 }
 
-func SecurityHeaders() map[string]string {
-	return maps.Clone(securityHeaderValues)
+func SecurityHeaders(path string) map[string]string {
+	headers := maps.Clone(securityHeaderValues)
+	if path != homePath {
+		headers["X-Robots-Tag"] = robotsTag
+	}
+	return headers
 }
 
 type ClientFile struct {

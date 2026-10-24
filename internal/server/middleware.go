@@ -12,10 +12,14 @@ const apiCSP = "default-src 'none'; frame-ancestors 'none'"
 
 const cspTemplate = "default-src 'none'; script-src 'nonce-%s'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
 
+const (
+	robotsTag = "noindex, nofollow"
+	homePath  = "/"
+)
+
 var securityHeaderValues = map[string]string{
 	"Referrer-Policy":              "no-referrer",
 	"Cache-Control":                "no-store",
-	"X-Robots-Tag":                 "noindex, nofollow",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
 	"Cross-Origin-Resource-Policy": "same-origin",
@@ -29,9 +33,16 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		for name, value := range securityHeaderValues {
 			h.Set(name, value)
 		}
+		if !isHomePage(r) {
+			h.Set("X-Robots-Tag", robotsTag)
+		}
 		h.Set("Content-Security-Policy", apiCSP)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isHomePage(r *http.Request) bool {
+	return (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == homePath
 }
 
 func (s *Server) prefetchGuard(next http.Handler) http.Handler {

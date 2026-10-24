@@ -31,6 +31,8 @@ for (const path of ['/', '/sent', '/report', `/m/${id}`]) {
     expect(nonces).toHaveLength(2);
     expect(nonces[0]).toBe(nonces[1]);
     expect(nonces[0]?.length ?? 0).toBeGreaterThanOrEqual(22);
+    expect(response?.headers()['x-robots-tag']).toBe(path === '/' ? undefined : 'noindex, nofollow');
+    await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await violations()).toEqual([]);
   });

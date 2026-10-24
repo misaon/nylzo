@@ -147,7 +147,7 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
 	}
-	if err := v.headers(fetched.Header, "text/html; charset=utf-8", false, where); err != nil {
+	if err := v.headers(fetched.Header, "text/html; charset=utf-8", false, path, where); err != nil {
 		return err
 	}
 	csp := fetched.Header.Get("Content-Security-Policy")
@@ -180,7 +180,7 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
 	}
-	if err := v.headers(fetched.Header, asset.ContentType, true, where); err != nil {
+	if err := v.headers(fetched.Header, asset.ContentType, true, path, where); err != nil {
 		return err
 	}
 	if fetched.Header.Get("Content-Security-Policy") != server.AssetCSP || fetched.Header.Get("Vary") != "Accept-Encoding" {
@@ -196,8 +196,8 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 	return nil
 }
 
-func (v *verifier) headers(header http.Header, contentType string, asset bool, where string) error {
-	expected := server.SecurityHeaders()
+func (v *verifier) headers(header http.Header, contentType string, asset bool, path, where string) error {
+	expected := server.SecurityHeaders(path)
 	expected["Content-Type"] = contentType
 	for name, value := range expected {
 		if values := header.Values(name); len(values) != 1 || values[0] != value {
