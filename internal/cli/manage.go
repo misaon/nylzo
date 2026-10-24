@@ -35,13 +35,20 @@ func runStatus(ctx context.Context, env Env, args []string) int {
 		fmt.Fprintln(env.Stdout, string(out))
 		return exitOK
 	}
-	fmt.Fprintf(env.Stdout, "state: %s\nopens: %d of %d used\n", status.State, status.OpensUsed, status.OpensMax)
+	fmt.Fprintf(env.Stdout, "state: %s\n", status.State)
+	if status.EndedAt == "" {
+		fmt.Fprintf(env.Stdout, "opens: %d of %d used\n", status.OpensUsed, status.OpensMax)
+	}
 	for _, row := range []struct{ label, value string }{
 		{"created", status.CreatedAt}, {"expires", status.ExpiresAt}, {"first opened", status.FirstOpenedAt}, {"ended", status.EndedAt},
 	} {
 		if row.value != "" {
 			fmt.Fprintf(env.Stdout, "%s: %s\n", row.label, row.value)
 		}
+	}
+	if status.EndedAt != "" {
+		fmt.Fprintln(env.Stdout, "opens and failed passphrase attempts: no longer kept")
+		return exitOK
 	}
 	fmt.Fprintf(env.Stdout, "failed passphrase attempts: %d\n", status.FailedPassphraseAttempts)
 	return exitOK

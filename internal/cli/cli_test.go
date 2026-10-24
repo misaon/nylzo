@@ -213,6 +213,11 @@ func TestCreateAndReadText(t *testing.T) {
 	if res := runWith(t, link, nil, nil, "read"); res.code != exitError || !strings.Contains(res.stderr, "the sender cancelled the message") {
 		t.Fatalf("read after cancel: %d %q", res.code, res.stderr)
 	}
+	ended := runWith(t, "", nil, nil, "status", "--manage-token-file", manage)
+	if ended.code != exitOK || !strings.Contains(ended.stdout, "state: cancelled\n") || !strings.Contains(ended.stdout, "\nended: ") ||
+		!strings.HasSuffix(ended.stdout, "\nopens and failed passphrase attempts: no longer kept\n") || strings.Contains(ended.stdout, "of 0 used") {
+		t.Fatalf("status after cancel: %d %q", ended.code, ended.stdout)
+	}
 }
 
 func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
