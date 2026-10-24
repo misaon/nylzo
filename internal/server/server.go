@@ -60,33 +60,34 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 type Server struct {
-	cfg          Config
-	store        store.Store
-	blobs        store.Blobs
-	ring         *pepper.Ring
-	clock        func() time.Time
-	afterFunc    func(time.Duration, func())
-	timers       *timers
-	log          *slog.Logger
-	bucket       *keyedLimiter
-	sources      *keyedLimiter
-	prefixes     *keyedLimiter
-	addrKey      *addrKey
-	counters     *addrCounters
-	spent        *spentChallenges
-	spends       *spendBatcher
-	powSlots     chan struct{}
-	powSlotWait  time.Duration
-	streams      *streamSlots
-	freeSpace    func(string) (uint64, error)
-	diskLow      atomic.Bool
-	diskReserved atomic.Int64
-	handler      http.Handler
-	abuseMu      sync.Mutex
-	abuseDir     string
-	webFiles     fs.FS
-	web          webClient
-	manifest     ClientManifest
+	cfg           Config
+	store         store.Store
+	blobs         store.Blobs
+	ring          *pepper.Ring
+	clock         func() time.Time
+	afterFunc     func(time.Duration, func())
+	timers        *timers
+	log           *slog.Logger
+	bucket        *keyedLimiter
+	sources       *keyedLimiter
+	prefixes      *keyedLimiter
+	addrKey       *addrKey
+	counters      *addrCounters
+	forwardNotice atomic.Int64
+	spent         *spentChallenges
+	spends        *spendBatcher
+	powSlots      chan struct{}
+	powSlotWait   time.Duration
+	streams       *streamSlots
+	freeSpace     func(string) (uint64, error)
+	diskLow       atomic.Bool
+	diskReserved  atomic.Int64
+	handler       http.Handler
+	abuseMu       sync.Mutex
+	abuseDir      string
+	webFiles      fs.FS
+	web           webClient
+	manifest      ClientManifest
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
@@ -320,5 +321,5 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+ClientManifestPath, s.handleClientManifest)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return s.logging(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux))))))
+	return s.logging(s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux)))))))
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server"
 )
 
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
@@ -79,5 +80,51 @@ func TestHTTPErrorLogReportsAndResetsDroppedLines(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(h.logBuf.String()), "\n")
 	if n := len(lines); n < 2 || !strings.Contains(lines[n-2], `"dropped":20`) || !strings.Contains(lines[n-1], `"dropped":0`) {
 		t.Fatalf("dropped lines must be reported once and then reset: %v", lines[max(0, len(lines)-2):])
+	}
+}
+
+func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T) {
+	t.Parallel()
+	cfg := baseConfig(pepperA, nil)
+	cfg.TrustedProxies = nil
+	h := newHarness(t, cfg)
+	h.statusFrom(request{method: "GET", path: "/api/v1/instance"})
+	if strings.Contains(h.logBuf.String(), "forwarded-header-ignored") {
+		t.Fatal("a request without a forwarding header must not warn")
+	}
+	for range 3 {
+		h.statusFrom(request{method: "GET", path: "/api/v1/instance", ip: "198.51.100.7"})
+	}
+	if n := strings.Count(h.logBuf.String(), `"msg":"forwarded-header-ignored","header":"X-Forwarded-For"`); n != 1 {
+		t.Fatalf("want one warning in the hour, got %d: %s", n, h.logBuf.String())
+	}
+	h.clock.Advance(time.Hour)
+	h.statusFrom(request{method: "GET", path: "/", headers: map[string]string{"Forwarded": "for=198.51.100.7"}})
+	logs := h.logBuf.String()
+	if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"header":"Forwarded"`) {
+		t.Fatalf("the next hour must warn again, for pages too: %s", logs)
+	}
+	if strings.Contains(logs, "198.51.100") {
+		t.Fatal("the log names a client address")
+	}
+}
+
+func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, baseConfig(pepperA, nil))
+	h.statusFrom(request{method: "GET", path: "/api/v1/instance", ip: "198.51.100.7"})
+	scaleway := baseConfig(pepperA, nil)
+	scaleway.ProxyMode = server.ProxyModeScaleway
+	s := newHarness(t, scaleway)
+	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"}})
+	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}})
+	for _, logs := range []string{h.logBuf.String(), s.logBuf.String()} {
+		if strings.Contains(logs, "forwarded-header-ignored") {
+			t.Fatalf("a header the server used must not warn: %s", logs)
+		}
+	}
+	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Real-IP": "not an address"}})
+	if !strings.Contains(s.logBuf.String(), `"msg":"forwarded-header-ignored","header":"X-Real-IP"`) {
+		t.Fatalf("an unusable X-Real-IP must warn in scaleway mode: %s", s.logBuf.String())
 	}
 }
