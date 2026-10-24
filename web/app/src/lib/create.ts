@@ -242,10 +242,11 @@ async function sealMessage(
     if (object.length > instance.limits.maxObjectBytes) {
       throw new CreateError({ kind: 'too_large' });
     }
-    const [readKey, manageKey] = await Promise.all([requestKey(link.r), newRequestKey()]);
+    const readKey = await requestKey(link.r);
     wipeRequestKey(readKey);
     const verifier = kdfId === KDF_NONE ? undefined : await requestKey(content.v);
     wipeRequestKey(verifier);
+    const manageKey = await newRequestKey();
     return { object, readPublicKey: readKey.publicKey, manageKey, verifierKey: verifier?.publicKey };
   } finally {
     link?.r.fill(0);

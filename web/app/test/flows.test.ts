@@ -943,6 +943,29 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
     }
   });
 
+  it('wipes the fallback seed once the shown message can be neither deleted nor reported', async () => {
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
+      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    try {
+      const api = fakeApi();
+      const created = await createMessage(input(), createDeps(api));
+      const r = reader(api, created.link);
+      await r.load();
+      let usedKey: { seed?: Uint8Array } | undefined;
+      const ack = api.ack.bind(api);
+      api.ack = async (...args: Parameters<typeof ack>) => {
+        usedKey = args[1] as { seed?: Uint8Array };
+        return ack(...args);
+      };
+      await r.reveal();
+      expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+      await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
+    } finally {
+      refuse.mockRestore();
+    }
+  });
+
   it('keeps the fallback seed for an ack that is still on its way when the page is left', async () => {
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
     const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>

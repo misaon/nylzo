@@ -158,7 +158,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (view.view !== 'ready' && view.view !== 'busy') {
       forget();
     }
-    if (view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') {
+    if ((view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') || (view.view === 'revealed' && !view.burnable)) {
       held = undefined;
     }
     wipeUnused();
@@ -290,6 +290,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       return;
     }
     secrets = linked;
+    if (readKey && !busy && !reporting && !acknowledging) {
+      wipeRequestKey(readKey);
+    }
     readKey = linked.readKey;
     held = { id: linked.id, readKey: linked.readKey };
     try {
@@ -399,6 +402,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       return access;
     }
     if (left) {
+      wipeRequestKey(access.verifierKey);
       return { view: 'cleared' };
     }
     const fetched = await fetchEnvelope(current, access.verifierKey).finally(() => wipeRequestKey(access.verifierKey));
@@ -523,6 +527,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       return await sendReport(deps.api, current.id, current.readKey, reason);
     } finally {
       reporting = false;
+      if (current.readKey !== readKey) {
+        wipeRequestKey(current.readKey);
+      }
       wipeUnused();
     }
   }

@@ -108,6 +108,7 @@ describe('request signatures', () => {
       expect('seed' in fallback && fallback.seed[0]).toBe(0);
       wipeRequestKey(fallback);
       expect('seed' in fallback && fallback.seed.every((byte) => byte === 0)).toBe(true);
+      await expect(signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body)).rejects.toThrow('wiped');
     } finally {
       refuse.mockRestore();
     }

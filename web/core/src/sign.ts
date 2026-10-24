@@ -111,6 +111,9 @@ export async function signRequest(
   body: Uint8Array = new Uint8Array(0),
 ): Promise<RequestSignature> {
   const message = await requestMessage(purpose, method, path, challenge, body);
+  if ('seed' in key && key.seed.every((byte) => byte === 0)) {
+    throw new Error('the request key was wiped');
+  }
   const signature =
     'seed' in key ? arrayBufferBacked(ed25519.sign(message, key.seed)) : new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
   return { publicKey: key.publicKey, challenge: arrayBufferBacked(challenge), signature };
