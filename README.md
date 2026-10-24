@@ -14,7 +14,8 @@ Tento repozitář obsahuje protokol v1, jádro v Go a v TypeScriptu svázané sp
 | `internal/pepper` | serverové klíče podle účelu z pepperu a rotace |
 | `internal/store` | rozhraní úložiště, adaptér `sqlite` a `disk`, sdílená testovací sada |
 | `internal/server` | HTTP server: endpointy, limity, PoW, hlavičky, úklid |
-| `cmd/nylzo`, `internal/cli`, `internal/client` | binárka `nylzo`: příkazy `create`, `read`, `status`, `cancel`, `burn`, `serve`, `sweep-once`, `version` a HTTP klient nad jádrem |
+| `cmd/nylzo`, `internal/cli`, `internal/client` | binárka `nylzo`: příkazy `create`, `read`, `status`, `cancel`, `report`, `burn`, `serve`, `sweep-once`, `takedown`, `verify-client`, `version` a HTTP klient nad jádrem |
+| `skills/nylzo` | skill pro agenty (Agent Skills): jak poslat a otevřít tajemství přes CLI, aby nezůstalo v chatu (D70) |
 | `cmd/nylzo-vectors` | generátor vektorů |
 | `web/core` | TypeScript jádro `@nylzo/core` (Web Crypto, scrypt z `@noble/hashes`, PoW) |
 | `web/app` | webový klient `@nylzo/web` (Svelte 5, Vite 8, Tailwind 4): HTTP klient, toky vytvoření a čtení, worker pro scrypt a PoW, obrazovky bez vzhledu a slovník cs a en |
@@ -182,6 +183,8 @@ nylzo report --link-file odkaz.txt --reason-file duvod.txt
 ```
 
 `report` nahlásí zprávu provozovateli stejně jako stránka `/report`: odkaz bere ze stdin, z `--link-file` nebo z `NYLZO_LINK` a podepíše hlášení klíčem čtení. Důvod bere ze souboru `--reason-file`, ne z argumentu, protože vložený odkaz by v argumentu viděl každý proces přes `ps` (AK14). Před odesláním z něj odstraní odkazy a dlouhé kódy stejně jako webový klient a server (spec §6.6) a stejně jako webový klient odmítne důvod, který je i potom delší než 1000 bajtů. Hlášení zprávy, která už skončila, server přijme, ale neuloží.
+
+Agentům (Claude Code a dalším, kteří umějí Agent Skills) říká skill `skills/nylzo/SKILL.md`, jak tajemství poslat a otevřít jen přes `nylzo`: tajemství i odkaz v souborech v soukromém adresáři mimo repozitář, nikdy v chatu ani v argumentu, nikdy WebFetch nebo curl na odkaz, a dešifrovaný obsah předat programu přímo ze souboru, ne modelu (D70). Do Claude Code ho přidáte zkopírováním adresáře `skills/nylzo` do `~/.claude/skills/` nebo do `.claude/skills/` projektu. Skill je jen návod; vynucení dělají výchozí chování CLI, oprávnění a sandbox.
 
 Klíče a passphrase `nylzo` po použití přepíše nulami, ve vlastních kopiích i v kopiích, které dělá jádro při odvození klíčů a podpisu. V Go je to jen snaha: passphrase jako řetězec přepsat nejde, knihovny a úklid paměti mohou nechat další kopie a co jednou prošlo terminálem nebo rourou, mohlo zůstat jinde. Na Windows práva 0700 a 0600 přístup neomezují: soubory dědí oprávnění cílového adresáře. Výchozí dočasný adresář uživatele je soukromý, ale `--out` na sdílené složce zprávu zpřístupní i ostatním. Návratové kódy: 0 úspěch, 1 chyba, 2 špatné použití včetně tajemství v argumentu.
 

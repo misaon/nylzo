@@ -123,16 +123,20 @@ func Run(args []string, env Env) int {
 func usage() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "usage: %s <command> [flags]\n\n", program)
+	width := len("help")
 	for _, c := range commands() {
-		fmt.Fprintf(&b, "  %-11s %s\n", c.name, c.summary)
+		width = max(width, len(c.name))
 	}
-	fmt.Fprintf(&b, `  %-11s print this help
+	for _, c := range commands() {
+		fmt.Fprintf(&b, "  %-*s %s\n", width, c.name, c.summary)
+	}
+	fmt.Fprintf(&b, `  %-*s print this help
 
 Links, passphrases and manage tokens never go on the command line: they come
 from stdin, from files, from NYLZO_* variables or from the terminal without
 echo. Run "%s <command> -h" for the flags of a command. The server reads its
 configuration from NYLZO_* variables, described in README.md.
-`, "help", program)
+`, width, "help", program)
 	return b.String()
 }
 
