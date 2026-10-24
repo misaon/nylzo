@@ -84,7 +84,7 @@ go run ./cmd/nylzo sweep-once
 
 Příkaz `sweep-once` pepper nepotřebuje. Databázi nemigruje: když má starší schéma, skončí chybou a migraci provede až `nylzo serve`, takže plánovač nikdy nezmění schéma pod běžícím starším serverem. Image plánovače proto aktualizujte až po serveru.
 
-Serverové příkazy `nylzo` jsou `serve` a `sweep-once`; žádný nebere argumenty ani přepínače, konfiguraci čtou z proměnných prostředí. `nylzo` bez příkazu vypíše nápovědu. Neznámý příkaz nebo argument vypíše nápovědu na standardní chybový výstup a skončí kódem 2, chyba za běhu kódem 1. Chybu konfigurace server zaloguje i s názvem proměnné. Server běží na Linuxu a macOS; na Windows `serve` odmítne start, protože tam chybí fsync adresáře i kontrola volného místa (D54), a doporučí WSL nebo Docker.
+Serverové příkazy `nylzo` jsou `serve`, `sweep-once` a `takedown`; žádný nebere argumenty ani přepínače, konfiguraci čtou z proměnných prostředí a `takedown` navíc id zpráv ze stdin. `nylzo` bez příkazu vypíše nápovědu. Neznámý příkaz nebo argument vypíše nápovědu na standardní chybový výstup a skončí kódem 2, chyba za běhu kódem 1. Chybu konfigurace server zaloguje i s názvem proměnné. Server běží na Linuxu a macOS; na Windows `serve` odmítne start, protože tam chybí fsync adresáře i kontrola volného místa (D54), a doporučí WSL nebo Docker.
 
 ### Proměnné prostředí
 
@@ -121,6 +121,16 @@ Všechny limity na kyblík adresy drží každý proces jen v paměti, s klíče
 Hodnota `0` u proměnných `NYLZO_RATE_*_HOUR`, `NYLZO_RATE_*_DAY` a `NYLZO_RATE_COARSE_MULTIPLIER` limit vypíná, neblokuje.
 
 Hlášení zneužití podepsaná klíčem čtení zprávy se zapisují pro ruční posouzení do souboru na každý den UTC, `data/abuse/RRRR-MM-DD.jsonl`; server do něj jen připisuje. Hlášení musí mít `Content-Type: application/json`. Server důvod hlášení dekóduje z procentového kódování, řídicí znaky nahradí mezerou, neviditelné formátovací znaky (třeba přepínače směru textu) zahodí, vymaže fragmenty odkazů a dlouhé tokeny a důvod zkrátí. Hlášení o už ukončené zprávě přijme, ale neuloží. Na jednu zprávu uloží nejvýš 3 hlášení denně. Limit platí jen na zprávu, aby žádný řádek nespojoval zprávu s adresou, a jeden ohlašovatel ho proto může vyčerpat. Když by hlášení zvětšilo soubory dohromady nad 16 MiB, server na hlášení, které by uložil, odpovídá 503 a loguje chybu `abuse-file-full`; soubory je pak potřeba zpracovat a smazat. Hlášení obsahuje jen datum UTC, id a upravený důvod, čas dne v něm není a čas změny souboru server nastaví na začátek dne. Soubory starší než 7 dní server smaže při každém úklidu, i při `sweep-once`, a před každým novým hlášením.
+
+Po posouzení ukončí provozovatel zprávu příkazem `takedown` na stroji se serverem (D63). Bere id ze stdin, jedno na řádek, s `NYLZO_DATA_DIR` jako `sweep-once`, a každou zprávu ukončí stejně jako burn, takže příjemce uvidí, že byla smazána. Když některý řádek není id, třeba vložený odkaz s klíčem, odmítne celý vstup a nic nezmění. Pro každé id vypíše, jak dopadlo. Do logu serveru nic nezapíše.
+
+```bash
+jq -r .id data/abuse/2026-10-24.jsonl | sort -u > k-posouzeni.txt
+```
+
+```bash
+nylzo takedown < ukoncit.txt
+```
 
 Paměť: bez proměnné `GOMEMLIMIT` si `nylzo serve` nastaví měkký limit paměti 192 MiB, aby se ověřování PoW a čekající uploady vešly do kontejneru s 256 MB. Vlastní `GOMEMLIMIT` má přednost. Mezipaměť SQLite leží mimo tento limit, proto je omezená na 512 KiB na spojení. Přes nešifrované HTTP/2 (h2c) drží server nejvýš 64 KiB nepřečteného těla na stream a 1 MiB na spojení.
 

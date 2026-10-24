@@ -44,6 +44,20 @@ Potřebujete Docker Compose v2, doménu s DNS záznamem na tento stroj a otevře
 - Caddy drží nečinné spojení na `nylzo` nejvýš 25 s. `nylzo` zavírá nečinná spojení po 30 s, takže Caddy nepošle požadavek do spojení, které server právě zavírá, a klient kvůli tomu nedostane 502.
 - Caddy odstraní hlavičky `Server` a `Via` z odpovědí pro `NYLZO_DOMAIN`, i z chybových (například 502 při restartu `nylzo`) a z přesměrování z HTTP na HTTPS. Spojení s jiným hostem, třeba s holou IP adresou, ukončí bez odpovědi, takže neprozradí, jaký proxy server běží. Bezpečnostní hlavičky a CSP nastavuje `nylzo`.
 
+## Hlášení zneužití
+
+Hlášení leží ve volume dat v `abuse/`, jeden soubor na den UTC. Image nemá shell, proto je zkopírujte ven, posuďte a id zpráv, které chcete ukončit, pošlete příkazu `takedown` (D63):
+
+```bash
+docker compose cp nylzo:/home/nonroot/abuse ./abuse
+```
+
+```bash
+docker compose exec -T nylzo /ko-app/nylzo takedown < ukoncit.txt
+```
+
+`takedown` si vezme `NYLZO_DATA_DIR` z prostředí kontejneru a ukončí každou zprávu stejně jako burn. Zkopírované soubory po posouzení smažte, obsahují id zpráv.
+
 ## Rotace pepperu a aktualizace
 
 - Rotace: starý pepper přesuňte do souboru, přidejte secret pro `NYLZO_PEPPER_PREVIOUS_FILE` a vygenerujte nový pepper. Starý nechte 14 dní a jeden interval úklidu (README v kořeni repozitáře).
