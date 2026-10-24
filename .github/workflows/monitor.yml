@@ -29,6 +29,21 @@ jobs:
             exit 1
           fi
           echo "tag=v${version#v}" >> "${GITHUB_OUTPUT}"
+      - name: The server runs the latest release, or the one before for a day
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          latest=$(gh release view -R "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)
+          published=$(gh release view -R "${GITHUB_REPOSITORY}" --json publishedAt --jq .publishedAt)
+          if [[ "${TAG}" != "${latest}" ]]; then
+            newest=$(printf '%s\n%s\n' "${TAG}" "${latest}" | sort -V | tail -n 1)
+            age=$(( $(date -u +%s) - $(date -u -d "${published}" +%s) ))
+            if [[ "${newest}" != "${TAG}" && "${age}" -gt 86400 ]]; then
+              echo "The server runs ${TAG}, older than ${latest}, which was published more than a day ago."
+              exit 1
+            fi
+          fi
       - name: Download that release and verify its signature
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,4 +63,10 @@ jobs:
           read -ra headers <<< "${ALLOW}"
           args=()
           for header in "${headers[@]}"; do args+=(--allow-header "${header}"); done
+          token=$(openssl rand -hex 16)
+          echo "::stop-commands::${token}"
+          set +e
           ./nylzo verify-client --server "${URL}" "${args[@]}"
+          status=$?
+          echo "::${token}::"
+          exit "${status}"
