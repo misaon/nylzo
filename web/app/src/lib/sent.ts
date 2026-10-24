@@ -1,4 +1,4 @@
-import { PUBLIC_KEY_LEN, parseId, type RequestKey } from '@nylzo/core';
+import { PUBLIC_KEY_LEN, parseId, type CryptoRequestKey } from '@nylzo/core';
 
 import { ApiError, type Api, type Status } from './api.ts';
 
@@ -17,7 +17,7 @@ export interface SentRecord {
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly endedAt?: number | undefined;
-  readonly manageKey: RequestKey;
+  readonly manageKey: CryptoRequestKey;
 }
 
 export interface StoredRecord {

@@ -16,6 +16,7 @@ import {
   type KdfId,
   type Link,
   type LinkKeys,
+  wipeRequestKey,
   type RequestKey,
 } from '@nylzo/core';
 
@@ -144,6 +145,8 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   let deviceFailed = false;
   let busy = false;
   let acknowledged: Promise<void> = Promise.resolve();
+  let acknowledging = false;
+  let readKey: RequestKey | undefined;
   let lease: string | undefined;
   let revealable = false;
   let left = false;
@@ -158,8 +161,16 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') {
       held = undefined;
     }
+    wipeUnused();
     notify(view);
   };
+
+  function wipeUnused(): void {
+    if (!held && !busy && !reporting && !acknowledging) {
+      wipeRequestKey(readKey);
+      readKey = undefined;
+    }
+  }
 
   function cleared(view: ReadView): ReadView {
     if (view.view === 'revealed') {
@@ -279,6 +290,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       return;
     }
     secrets = linked;
+    readKey = linked.readKey;
     held = { id: linked.id, readKey: linked.readKey };
     try {
       metadata = await deps.api.metadata(linked.id, linked.readKey);
@@ -389,7 +401,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (left) {
       return { view: 'cleared' };
     }
-    const fetched = await fetchEnvelope(current, access.verifierKey);
+    const fetched = await fetchEnvelope(current, access.verifierKey).finally(() => wipeRequestKey(access.verifierKey));
     if ('view' in fetched) {
       return fetched;
     }
@@ -417,10 +429,15 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file } : undefined,
       burnable: remaining > 0,
     });
+    acknowledging = true;
     acknowledged = deps.api
       .ack(current.id, current.readKey, fetched.lease)
       .catch(() => undefined)
-      .then(forgetLease);
+      .then(() => {
+        acknowledging = false;
+        forgetLease();
+        wipeUnused();
+      });
     return undefined;
   }
 
@@ -439,6 +456,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       onView({ view: 'failed' });
     } finally {
       busy = false;
+      wipeUnused();
     }
   }
 
@@ -479,6 +497,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       outcome = burnOutcome(error);
     } finally {
       busy = false;
+      wipeUnused();
     }
     if (shown) {
       if (revealed === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
@@ -504,6 +523,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       return await sendReport(deps.api, current.id, current.readKey, reason);
     } finally {
       reporting = false;
+      wipeUnused();
     }
   }
 

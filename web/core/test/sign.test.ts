@@ -10,9 +10,11 @@ import {
   newRequestKey,
   requestKey,
   requestMessage,
+  seedRequestKey,
   signRequest,
   utf8,
   verifierHeader,
+  wipeRequestKey,
 } from '../src/index.ts';
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
@@ -44,7 +46,7 @@ describe('request signatures', () => {
   it('signs with a non-extractable key and formats the verifier header', async () => {
     const seed = new Uint8Array(TOKEN_LEN).fill(7);
     const key = await requestKey(seed);
-    expect(key.privateKey.extractable).toBe(false);
+    expect('privateKey' in key && key.privateKey.extractable).toBe(false);
     const sig = await signRequest(key, PURPOSE_READ, 'POST', `${path}/claim`, new Uint8Array(CHALLENGE_LEN));
     expect(sig.signature).toHaveLength(SIGNATURE_LEN);
     expect(verifierHeader(sig)).toBe(`${encodeBase64url(key.publicKey)}.${encodeBase64url(sig.signature)}`);
@@ -85,6 +87,61 @@ describe('request signatures', () => {
       }
       expect(imported.length, `fail at ${failAt}`).toBeGreaterThan(0);
       expect(imported.every((pkcs8) => pkcs8.every((byte) => byte === 0)), `fail at ${failAt}`).toBe(true);
+    }
+  });
+
+  it('falls back to a seed key when Web Crypto refuses the seed, as WebKit on Linux does for a leading zero byte', async () => {
+    const seed = crypto.getRandomValues(new Uint8Array(TOKEN_LEN));
+    seed[0] = 0;
+    const native = await requestKey(seed);
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockRejectedValue(new DOMException('refused', 'DataError'));
+    try {
+      const fallback = await requestKey(seed);
+      expect('seed' in fallback).toBe(true);
+      expect(fallback.publicKey).toEqual(native.publicKey);
+      const challenge = new Uint8Array(CHALLENGE_LEN).fill(5);
+      const body = utf8('{"reason":"spam"}');
+      const a = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
+      const b = await signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
+      expect(b.signature).toEqual(a.signature);
+      seed.fill(9);
+      expect('seed' in fallback && fallback.seed[0]).toBe(0);
+      wipeRequestKey(fallback);
+      expect('seed' in fallback && fallback.seed.every((byte) => byte === 0)).toBe(true);
+    } finally {
+      refuse.mockRestore();
+    }
+  });
+
+  it('keeps other import errors', async () => {
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockRejectedValue(new DOMException('no', 'NotSupportedError'));
+    try {
+      await expect(requestKey(new Uint8Array(TOKEN_LEN).fill(1))).rejects.toMatchObject({ name: 'NotSupportedError' });
+    } finally {
+      refuse.mockRestore();
+    }
+  });
+
+  it('tries generateKey again when it fails, as WebKit on Linux sometimes does', async () => {
+    const generate = crypto.subtle.generateKey.bind(crypto.subtle);
+    let calls = 0;
+    const flaky = vi.spyOn(crypto.subtle, 'generateKey').mockImplementation(((...args: Parameters<typeof generate>) => {
+      calls++;
+      return calls <= 2 ? Promise.reject(new DOMException('flaky', 'OperationError')) : generate(...args);
+    }) as typeof crypto.subtle.generateKey);
+    try {
+      const key = await newRequestKey();
+      expect(calls).toBe(3);
+      expect(key.privateKey.extractable).toBe(false);
+    } finally {
+      flaky.mockRestore();
+    }
+    const broken = vi.spyOn(crypto.subtle, 'generateKey').mockRejectedValue(new DOMException('broken', 'OperationError'));
+    try {
+      await expect(newRequestKey()).rejects.toMatchObject({ name: 'OperationError' });
+      expect(broken).toHaveBeenCalledTimes(8);
+    } finally {
+      broken.mockRestore();
     }
   });
 });

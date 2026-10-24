@@ -25,6 +25,7 @@ import {
   parseChallenge,
   parseLink,
   requestKey,
+  seedRequestKey,
   requestMessage,
   seal,
   signRequest,
@@ -220,8 +221,10 @@ describe('request', () => {
   for (const v of vectors.request) {
     it(v.name, async () => {
       const key = await requestKey(hexToBytes(v.seed_hex));
-      expect(key.privateKey.extractable).toBe(false);
+      expect('privateKey' in key && key.privateKey.extractable).toBe(false);
       expect(encodeBase64url(key.publicKey)).toBe(v.public_key);
+      const fallback = seedRequestKey(hexToBytes(v.seed_hex));
+      expect(encodeBase64url(fallback.publicKey)).toBe(v.public_key);
 
       const challenge = parseChallenge(v.challenge);
       const body = hexToBytes(v.body_hex);
@@ -229,6 +232,7 @@ describe('request', () => {
 
       const sig = await signRequest(key, v.purpose, v.method, v.path, challenge, body);
       expect(encodeBase64url(sig.signature)).toBe(v.signature);
+      expect(encodeBase64url((await signRequest(fallback, v.purpose, v.method, v.path, challenge, body)).signature)).toBe(v.signature);
       if (v.purpose === 'verifier') {
         expect(v.authorization).toBeUndefined();
         expect(verifierHeader(sig)).toBe(v.verifier_header);

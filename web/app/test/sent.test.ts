@@ -1,4 +1,4 @@
-import { newSecret, parseId, requestKey, type RequestKey } from '@nylzo/core';
+import { newSecret, parseId, requestKey, type CryptoRequestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../src/lib/api.ts';
@@ -92,7 +92,15 @@ async function setup(options: FakeOptions = {}, count = 2) {
   return { api, records, store, sent: page(api, store) };
 }
 
-async function extractableKey(): Promise<RequestKey> {
+async function manageKeyOf(seed: Uint8Array): Promise<CryptoRequestKey> {
+  const key = await requestKey(seed);
+  if (!('privateKey' in key)) {
+    throw new Error('Web Crypto refused the test seed');
+  }
+  return key;
+}
+
+async function extractableKey(): Promise<CryptoRequestKey> {
   const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
   return { privateKey: pair.privateKey, publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)) };
 }
@@ -104,14 +112,14 @@ describe('stored records of sent messages (D39)', () => {
   });
 
   it('stores the key object itself, never its bytes', async () => {
-    const manageKey = await requestKey(newSecret());
+    const manageKey = await manageKeyOf(newSecret());
     const stored = storedForm({ id: ID, createdAt: NOW, expiresAt: NOW, manageKey });
     expect(stored.privateKey).toBe(manageKey.privateKey);
     expect(Object.keys(stored).sort()).toEqual(['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey']);
   });
 
   it('refuses to store impossible times', async () => {
-    const manageKey = await requestKey(newSecret());
+    const manageKey = await manageKeyOf(newSecret());
     for (const times of [
       { createdAt: NOW, expiresAt: NOW - 1 },
       { createdAt: -1, expiresAt: NOW },
@@ -125,7 +133,7 @@ describe('stored records of sent messages (D39)', () => {
   });
 
   it('reads back only well-formed records with a non-extractable Ed25519 signing key', async () => {
-    const manageKey = await requestKey(newSecret());
+    const manageKey = await manageKeyOf(newSecret());
     const good = storedForm({ id: ID, createdAt: NOW, expiresAt: NOW + 1, manageKey });
     expect(recordFrom(good)).toEqual({ id: ID, createdAt: NOW, expiresAt: NOW + 1, manageKey: { privateKey: manageKey.privateKey, publicKey: manageKey.publicKey } });
     const loose = await extractableKey();
@@ -150,7 +158,7 @@ describe('stored records of sent messages (D39)', () => {
   });
 
   it('drops records 7 days after their message expired and sorts the rest newest first', async () => {
-    const manageKey = await requestKey(newSecret());
+    const manageKey = await manageKeyOf(newSecret());
     const make = (id: string, createdAt: number, expiresAt: number) => ({ id, createdAt, expiresAt, manageKey });
     const store = memoryStore([
       make('AAAAAAAAAAAAAAAAAAAAAA', 1, NOW - RETENTION_MS),
@@ -347,7 +355,7 @@ describe('the sent page', () => {
 
 describe('remembering a new message', () => {
   async function record(): Promise<SentRecord> {
-    return { id: ID, createdAt: NOW, expiresAt: NOW + 3_600_000, manageKey: await requestKey(newSecret()) };
+    return { id: ID, createdAt: NOW, expiresAt: NOW + 3_600_000, manageKey: await manageKeyOf(newSecret()) };
   }
 
   it('reports a saved record', async () => {
