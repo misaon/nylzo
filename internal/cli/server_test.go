@@ -259,3 +259,27 @@ func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 		t.Fatalf("sweep-once on a newer schema: exit %d, %s", code, stderr)
 	}
 }
+
+func TestUsageAlignsEverySummary(t *testing.T) {
+	names := []string{"help"}
+	for _, c := range commands() {
+		names = append(names, c.name)
+	}
+	columns := map[int][]string{}
+	for line := range strings.SplitSeq(usage(), "\n") {
+		for _, name := range names {
+			if rest, ok := strings.CutPrefix(line, "  "+name+" "); ok {
+				column := len(line) - len(strings.TrimLeft(rest, " "))
+				columns[column] = append(columns[column], name)
+			}
+		}
+	}
+	if len(columns) != 1 {
+		t.Fatalf("the summaries start at different columns: %v", columns)
+	}
+	for _, listed := range columns {
+		if len(listed) != len(names) {
+			t.Fatalf("usage lists %v, want %v", listed, names)
+		}
+	}
+}
