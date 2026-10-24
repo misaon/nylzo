@@ -10,6 +10,14 @@ class FakeMediaQueryList extends EventTarget {
   }
 }
 
+class FakeNode extends EventTarget {}
+
+class FakeElement extends FakeNode {
+  matches(): boolean {
+    return false;
+  }
+}
+
 export default {
   name: 'svelte-client',
   viteEnvironment: 'client',
@@ -20,11 +28,12 @@ export default {
       queries.set(media, query);
       return query;
     };
-    Object.assign(global, { window: { matchMedia }, Node: class FakeNode extends EventTarget {} });
+    Object.assign(global, { window: { matchMedia }, Node: FakeNode, Element: FakeElement });
     return {
       teardown() {
         Reflect.deleteProperty(global, 'window');
         Reflect.deleteProperty(global, 'Node');
+        Reflect.deleteProperty(global, 'Element');
       },
     };
   },

@@ -367,7 +367,7 @@
     }
   }
 
-  function another() {
+  function reset() {
     sealed = undefined;
     remembered = 'off';
     text = '';
@@ -375,7 +375,25 @@
     protect = false;
     removeFile();
     phase = 'compose';
+  }
+
+  function another() {
+    reset();
     tick().then(() => field('text')?.focus());
+  }
+
+  function leave() {
+    stopTimeline();
+    pending = undefined;
+    cipher = '';
+    menu = null;
+    reset();
+  }
+
+  function returned(event: PageTransitionEvent) {
+    if (event.persisted) {
+      location.reload();
+    }
   }
 
   async function rememberMessage(created: Created): Promise<boolean> {
@@ -393,7 +411,7 @@
   const chipProblem = 'bg-rose-500/10 text-rose-200 ring-rose-300/50';
 </script>
 
-<svelte:window onclick={onwindowclick} />
+<svelte:window onclick={onwindowclick} onpagehide={leave} onpageshow={returned} />
 
 <section id="napsat" class="px-4 pt-20 pb-32 sm:px-6 md:pt-28 md:pb-40" aria-labelledby="{uid}-title" {@attach cleanup}>
   <div class="mx-auto max-w-[860px] text-center">

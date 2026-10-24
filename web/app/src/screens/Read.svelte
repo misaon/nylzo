@@ -9,7 +9,7 @@
   import Pipeline from '../components/ui/Pipeline.svelte';
   import Popover from '../components/ui/Popover.svelte';
   import { createApi, type Metadata } from '../lib/api.ts';
-  import { fileExtension, isKnownSafeFile, saveFile } from '../lib/download.ts';
+  import { fileExtension, isKnownSafeFile, saveFile, splitFileName } from '../lib/download.ts';
   import { formatBytes, formatWait } from '../lib/format.ts';
   import { keepFocus } from '../lib/focus.ts';
   import { getI18n, type MessageKey } from '../lib/i18n.svelte.ts';
@@ -494,9 +494,6 @@
   }
 
   function toggleReport() {
-    if (!reporting && !reportSent) {
-      reportRound++;
-    }
     reporting = !reporting;
   }
 
@@ -556,7 +553,10 @@
     focusDownload();
   }
 
-  function cancelDownload() {
+  function cancelDownload(event: MouseEvent) {
+    if (event.detail > 1) {
+      return;
+    }
     confirming = false;
     focusDownload();
   }
@@ -572,11 +572,6 @@
     downloaded = true;
     clearTimeout(downloadedTimer);
     downloadedTimer = setTimeout(() => (downloaded = false), FLASH_MS);
-  }
-
-  function nameParts(name: string): { readonly stem: string; readonly extension: string } {
-    const dot = name.lastIndexOf('.');
-    return dot > 0 ? { stem: name.slice(0, dot), extension: name.slice(dot) } : { stem: name, extension: '' };
   }
 
   async function copyText() {
@@ -785,7 +780,7 @@
             {#if revealed.file}
               {@const file = revealed.file}
               {@const extension = fileExtension(file.name)}
-              {@const parts = nameParts(file.name)}
+              {@const parts = splitFileName(file.name)}
               <div class="stack shrink-0 rounded-pane bg-white/3 py-2.5 pr-2.5 pl-3 ring-1 ring-white/8">
                 <div class={['fade-swap flex items-center gap-3.5', confirming ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={confirming}>
                   <span class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30" aria-hidden="true">

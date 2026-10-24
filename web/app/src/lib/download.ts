@@ -32,6 +32,11 @@ function truncateBytes(text: string, max: number): string {
   return out;
 }
 
+export function splitFileName(name: string): { readonly stem: string; readonly extension: string } {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 && name.length - dot - 1 <= MAX_EXTENSION_CHARS ? { stem: name.slice(0, dot), extension: name.slice(dot) } : { stem: name, extension: '' };
+}
+
 export function sanitizeFileName(name: string): string {
   let clean = name.normalize('NFC').replace(INVISIBLE, '').replace(RESERVED, '_').replace(/\s+/gu, ' ').trim();
   clean = clean.replace(/^[.\s]+/u, '').replace(/[.\s]+$/u, '');
@@ -44,9 +49,7 @@ export function sanitizeFileName(name: string): string {
   if (byteLength(clean) <= MAX_NAME_BYTES) {
     return clean;
   }
-  const dot = clean.lastIndexOf('.');
-  const extension = dot > 0 && clean.length - dot - 1 <= MAX_EXTENSION_CHARS ? clean.slice(dot) : '';
-  const stem = extension ? clean.slice(0, dot) : clean;
+  const { stem, extension } = splitFileName(clean);
   return truncateBytes(stem, MAX_NAME_BYTES - byteLength(extension)) + extension;
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fileExtension, isKnownSafeFile, sanitizeFileName } from '../src/lib/download.ts';
+import { fileExtension, isKnownSafeFile, sanitizeFileName, splitFileName } from '../src/lib/download.ts';
 
 describe('file names', () => {
   it.each([
@@ -31,6 +31,14 @@ describe('file names', () => {
     ['cafe\u0301.txt', 'caf\u00e9.txt'],
   ])('sanitises %j to %j', (input, expected) => {
     expect(sanitizeFileName(input)).toBe(expected);
+  });
+
+  it('splits a name at its last dot only when the extension is short', () => {
+    expect(splitFileName('report.final.pdf')).toEqual({ stem: 'report.final', extension: '.pdf' });
+    expect(splitFileName('.bashrc')).toEqual({ stem: '.bashrc', extension: '' });
+    expect(splitFileName('archive')).toEqual({ stem: 'archive', extension: '' });
+    expect(splitFileName(`a.${'x'.repeat(16)}`)).toEqual({ stem: 'a', extension: `.${'x'.repeat(16)}` });
+    expect(splitFileName(`a.${'x'.repeat(17)}`)).toEqual({ stem: `a.${'x'.repeat(17)}`, extension: '' });
   });
 
   it('keeps the extension when it cuts a long name to 255 bytes', () => {

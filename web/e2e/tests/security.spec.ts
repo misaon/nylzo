@@ -2,7 +2,7 @@ import { KDF_PBKDF2, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, par
 import { anyPassphraseKey } from '@nylzo/core/scrypt';
 import type { Page, Request } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openViaUi, setPassphrase, test } from './helpers.ts';
 
 interface Recorded {
   readonly url: string;
@@ -234,6 +234,33 @@ test('leaving the page removes the shown message and closes its dialog, so the b
   await expect(live(page, page.getByRole('dialog').or(page.getByRole('alertdialog')))).toHaveCount(0);
   await expect(live(page, page.getByRole('button', { name: 'Delete the remaining opens' }))).toHaveCount(0);
   await expect(live(page, page.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
+});
+
+test('leaving the create page wipes the draft, the passphrase, the file and the created link', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Message text').fill('wipe me');
+  await setPassphrase(page, 'four random words here');
+  await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
+  await leave(page);
+  await expect(page.getByLabel('Message text')).toHaveValue('');
+  await expect(page.getByLabel('Passphrase, optional')).toHaveValue('');
+  expect(await page.getByLabel(/Attachment, up to/).evaluate((input: HTMLInputElement) => input.files?.length ?? 0)).toBe(0);
+
+  await page.getByLabel('Message text').fill('created, then left');
+  await page.getByRole('button', { name: 'Create link' }).click();
+  const link = page.getByLabel('Link to the message');
+  await expect(link).toBeVisible({ timeout: 45_000 });
+  const key = new URL(await link.inputValue()).hash.slice(5, 20);
+  await leave(page);
+  await expect(link).toHaveCount(0);
+  const stillShown = (secret: string) =>
+    document.body.textContent?.includes(secret) === true || [...document.querySelectorAll('input, textarea')].some((field) => (field as HTMLInputElement).value.includes(secret));
+  expect(await page.evaluate(stillShown, key)).toBe(false);
+
+  const reloaded = page.waitForEvent('load');
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  await reloaded;
+  await expect(page.getByLabel('Message text')).toHaveValue('');
 });
 
 test('a page restored from the back/forward cache loads again and spends no open', async ({ page }) => {

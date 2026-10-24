@@ -44,8 +44,10 @@ export class AutoCycle {
     this.pointer = false;
   };
 
-  readonly focusIn = (): void => {
-    this.focused = true;
+  readonly focusIn = (event: FocusEvent): void => {
+    if (event.target instanceof Element && event.target.matches(':focus-visible')) {
+      this.focused = true;
+    }
   };
 
   readonly focusOut = (event: FocusEvent): void => {

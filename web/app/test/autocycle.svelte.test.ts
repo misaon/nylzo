@@ -17,6 +17,11 @@ function runCycle(): { readonly cycle: AutoCycle; readonly stop: () => void } {
   return { cycle, stop };
 }
 
+function focusOn(keyboard: boolean): FocusEvent {
+  const target = Object.assign(new Element(), { matches: (selector: string) => keyboard && selector === ':focus-visible' });
+  return { target } as unknown as FocusEvent;
+}
+
 function reducedMotion(matches: boolean): void {
   const query = window.matchMedia('(prefers-reduced-motion: reduce)') as MediaQueryList & { matches: boolean };
   query.matches = matches;
@@ -40,13 +45,13 @@ describe('AutoCycle', () => {
     stop();
   });
 
-  it('pauses while the pointer or the focus is inside', () => {
+  it('pauses while the pointer or the keyboard focus is inside', () => {
     const { cycle, stop } = runCycle();
     cycle.pointerEnter();
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(0);
-    cycle.focusIn();
+    cycle.focusIn(focusOn(true));
     cycle.pointerLeave();
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
@@ -58,8 +63,9 @@ describe('AutoCycle', () => {
     stop();
   });
 
-  it('holds a manual pick for 15 s and then moves on', () => {
+  it('holds a manual pick for 15 s and then moves on, even when the click focused it', () => {
     const { cycle, stop } = runCycle();
+    cycle.focusIn(focusOn(false));
     cycle.select(2);
     flushSync();
     vi.advanceTimersByTime(14_000);

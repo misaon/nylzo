@@ -61,10 +61,8 @@ test('a refused deletion says so where it can be seen and lets the reader try ag
   expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ state: 'available', opensUsed: 0 });
 });
 
-test('the risky download prompt cancels back to the button and a double click saves the file once (D35)', async ({ browser }) => {
-  const sender = await (await browser.newContext()).newPage();
-  const recipient = await (await browser.newContext()).newPage();
-  await recipient.addInitScript(() => {
+async function countSaves(page: Page): Promise<() => Promise<number>> {
+  await page.addInitScript(() => {
     let saved = 0;
     Object.defineProperty(window, 'nylzoSaved', { get: () => saved });
     const original = URL.createObjectURL.bind(URL);
@@ -73,6 +71,13 @@ test('the risky download prompt cancels back to the button and a double click sa
       return original(object);
     };
   });
+  return () => page.evaluate(() => (window as unknown as { nylzoSaved: number }).nylzoSaved);
+}
+
+test('the risky download prompt cancels back to the button and a double click saves the file once (D35)', async ({ browser }) => {
+  const sender = await (await browser.newContext()).newPage();
+  const recipient = await (await browser.newContext()).newPage();
+  const savedCount = await countSaves(recipient);
   const downloads: string[] = [];
   recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
   const link = await createViaUi(sender, { file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') } });
@@ -80,15 +85,16 @@ test('the risky download prompt cancels back to the button and a double click sa
   await expectRevealed(recipient);
   const download = recipient.getByRole('button', { name: 'Download attachment' });
   const cancel = recipient.getByRole('button', { name: 'Do not download' });
-  await download.click();
-  await expect(cancel).toBeFocused();
+  const prompt = live(recipient, recipient.getByRole('alert')).filter({ hasText: /can run code/ });
+  await download.dblclick();
+  await expect(prompt).toHaveCount(1);
   await cancel.click();
-  await expect(recipient.getByText(/can run code/)).toHaveCount(0);
+  await expect(prompt).toHaveCount(0);
   await expect(download).toBeFocused();
   expect(downloads).toEqual([]);
 
-  const savedCount = () => recipient.evaluate(() => (window as unknown as { nylzoSaved: number }).nylzoSaved);
   await download.click();
+  await expect(cancel).toBeFocused();
   const first = recipient.waitForEvent('download');
   await recipient.getByRole('button', { name: 'Download anyway' }).click();
   expect((await first).suggestedFilename()).toBe('setup.exe');
@@ -102,6 +108,19 @@ test('the risky download prompt cancels back to the button and a double click sa
   await expect(recipient.getByText(/can run code/)).toHaveCount(0);
   expect(await savedCount()).toBe(2);
   expect(downloads).toEqual(['setup.exe', 'setup.exe']);
+});
+
+test('a double click on Download saves a safe file once', async ({ browser }) => {
+  const sender = await (await browser.newContext()).newPage();
+  const recipient = await (await browser.newContext()).newPage();
+  const savedCount = await countSaves(recipient);
+  const link = await createViaUi(sender, { file: { name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') } });
+  await openViaUi(recipient, link);
+  await expectRevealed(recipient);
+  const saved = recipient.waitForEvent('download');
+  await recipient.getByRole('button', { name: 'Download attachment' }).dblclick();
+  expect((await saved).suggestedFilename()).toBe('report.pdf');
+  expect(await savedCount()).toBe(1);
 });
 
 test('the reader acknowledges the open only once the message is on the screen', async ({ page }) => {
@@ -148,7 +167,7 @@ test('leaving while the message opens neither acknowledges nor loses it', async 
   expect(acks).toHaveLength(1);
 });
 
-test('a second Enter while the message opens starts nothing new', async ({ page }) => {
+test('a second submit while the message opens starts nothing new', async ({ page }) => {
   const passphrase = 'four random words here';
   const message = await createViaApi({ text: 'once', passphrase, kdfId: KDF_SCRYPT, opensMax: 2 });
   const claims: string[] = [];
@@ -160,8 +179,10 @@ test('a second Enter while the message opens starts nothing new', async ({ page 
   await page.goto(message.link);
   const field = page.getByLabel('Passphrase', { exact: true });
   await field.fill(passphrase);
-  await field.press('Enter');
-  await page.keyboard.press('Enter');
+  await field.evaluate((input: HTMLInputElement) => {
+    input.form?.requestSubmit();
+    input.form?.requestSubmit();
+  });
   await expectRevealed(page);
   await expect(page.locator('pre')).toHaveText('once');
   await expect(page.getByText('Enter the passphrase from the sender.')).toHaveCount(0);
