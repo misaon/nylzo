@@ -424,6 +424,7 @@ describe('transparency', () => {
       [report(), manifest({ files: [{ path: '/', sha256: 'A'.repeat(64) }] })],
       [report(), manifest({ files: [{ path: 'assets/x.js', sha256: sha }] })],
       [report(), manifest({ built: 'yes' })],
+      [report(), manifest({ files: [{ path: '/', sha256: sha }, { path: '/', sha256: sha }] })],
       [report({ operator: { name: 'x'.repeat(201) } }), manifest()],
       [report({ operator: { contact: 7 } }), manifest()],
       [report({ operator: 'Example' }), manifest()],

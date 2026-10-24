@@ -1,18 +1,11 @@
-const EMAIL = /^[^\s@<>()[\]\\,;:"?#/]+@[^\s@<>()[\]\\,;:"?#/]+\.[^\s@<>()[\]\\,;:"?#/.]+$/u;
+const EMAIL = /^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/u;
+const HTTPS = /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?$/u;
 
 export function contactHref(contact: string): string | undefined {
   if (EMAIL.test(contact)) {
     return `mailto:${contact}`;
   }
-  if (!contact.startsWith('https://') || /[\s<>"\\]/u.test(contact)) {
-    return undefined;
-  }
-  try {
-    const url = new URL(contact);
-    return url.hostname !== '' && url.username === '' && url.password === '' ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
+  return HTTPS.test(contact) ? contact : undefined;
 }
 
 export function verifyCommand(origin: string): string {

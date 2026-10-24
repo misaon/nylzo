@@ -151,6 +151,11 @@ func TestOperatorConfiguration(t *testing.T) {
 		{"https with a quote", map[string]string{"NYLZO_CONTACT": `https://example.org/"onmouseover`}, false},
 		{"https with a space", map[string]string{"NYLZO_CONTACT": "https://example.org/a b"}, false},
 		{"address with query", map[string]string{"NYLZO_CONTACT": "abuse@example.org?subject=x"}, false},
+		{"address with two dots", map[string]string{"NYLZO_CONTACT": "a..b@example.org"}, false},
+		{"address with a leading dot", map[string]string{"NYLZO_CONTACT": ".a@example.org"}, false},
+		{"address without a dot in the domain", map[string]string{"NYLZO_CONTACT": "abuse@localhost"}, false},
+		{"https with a port", map[string]string{"NYLZO_CONTACT": "https://example.org:8443/report?lang=cs#form"}, true},
+		{"https with a bidi override", map[string]string{"NYLZO_CONTACT": "https://example.org/\u202e"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -113,14 +113,14 @@ func browserAsks(path string) func(*http.Request) bool {
 	}
 }
 
-func runVerify(t *testing.T, url string, local fs.FS) result {
+func runVerify(t *testing.T, url string, local fs.FS, flags ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := Env{
 		Stdout: &stdout, Stderr: &stderr, Getenv: env(nil), Terminal: noTerminal{}, Version: "test", TempDir: t.TempDir(),
 		WebClient: func() (server.EmbeddedClient, error) { return server.LoadEmbedded(local) },
 	}
-	code := Run([]string{"verify-client", "--server", url}, env)
+	code := Run(append([]string{"verify-client", "--server", url}, flags...), env)
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -131,7 +131,7 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	if res.code != exitOK || res.stdout != "the server sends the web client of nylzo test unchanged: 5 pages and 3 files checked\n" {
 		t.Fatalf("%+v", res)
 	}
-	if !strings.Contains(res.stderr, "targeted attack") {
+	if !strings.Contains(res.stderr, "a server can recognise it") {
 		t.Fatalf("the result must say what it cannot see: %q", res.stderr)
 	}
 }
@@ -178,7 +178,7 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		}), "/: the Content-Security-Policy differs"},
 		{"second CSP header", rewrite(pathIs("/sent"), func(s *served) {
 			s.header.Add("Content-Security-Policy", "script-src *")
-		}), "/sent: the Content-Security-Policy differs"},
+		}), "/sent: the Content-Security-Policy header differs"},
 		{"short nonce", rewrite(pathIs("/report"), func(s *served) {
 			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
 			s.header.Set("Content-Security-Policy", server.PageCSP("abc"))
@@ -195,7 +195,33 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		}), "/assets/kdf-worker-c3.js: the headers differ"},
 		{"content type", rewrite(pathIs("/assets/style-b2.css"), func(s *served) {
 			s.header.Set("Content-Type", "text/html; charset=utf-8")
-		}), "/assets/style-b2.css: the Content-Type differs"},
+		}), "/assets/style-b2.css: the Content-Type header differs"},
+		{"two content encodings", rewrite(browserAsks("/assets/index-a1.js"), func(s *served) {
+			s.header.Add("Content-Encoding", "gzip")
+		}), "/assets/index-a1.js (as a browser asks for it): the server sent the Content-Encoding header"},
+		{"refresh to another page", rewrite(pathIs("/"), func(s *served) {
+			s.header.Set("Refresh", "0; url=/elsewhere")
+		}), "/: the server sent the Refresh header"},
+		{"cookie on a file", rewrite(pathIs("/assets/style-b2.css"), func(s *served) {
+			s.header.Set("Set-Cookie", "tracked=1")
+		}), "/assets/style-b2.css: the server sent the Set-Cookie header"},
+		{"second content type", rewrite(pathIs("/report"), func(s *served) {
+			s.header.Add("Content-Type", "text/plain")
+		}), "/report: the Content-Type header differs"},
+		{"compressed page", rewrite(browserAsks("/sent"), func(s *served) {
+			s.body = gzipBytes(t, s.body)
+			s.header.Set("Content-Encoding", "gzip")
+		}), "/sent (as a browser asks for it): the server sent the Content-Encoding header"},
+		{"fixed nonce", rewrite(func(r *http.Request) bool { return r.URL.Path == "/" || r.URL.Path == "/sent" }, func(s *served) {
+			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
+			fixed := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+			s.header.Set("Content-Security-Policy", server.PageCSP(fixed))
+			s.body = bytes.ReplaceAll(s.body, []byte(old), []byte(fixed))
+		}), "the server sent the same nonce twice"},
+		{"style without nonce", rewrite(pathIs("/report"), func(s *served) {
+			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
+			s.body = bytes.Replace(s.body, []byte(`nonce="`+old+`"></head>`), []byte(`nonce="__NYLZO_CSP_NONCE__"></head>`), 1)
+		}), "/report: the page does not use the nonce of its Content-Security-Policy everywhere"},
 		{"manifest", rewrite(pathIs(server.ClientManifestPath), func(s *served) {
 			s.body = bytes.Replace(s.body, []byte(`"sha256":"`), []byte(`"sha256":"0`), 1)
 		}), "the server's client manifest differs"},
@@ -252,5 +278,26 @@ func TestDecodedStopsAtTheLimit(t *testing.T) {
 	body, err := decoded(bomb, browserEncodings, 10, "/x")
 	if err != nil || len(body) != 11 {
 		t.Fatalf("decoded %d bytes, %v", len(body), err)
+	}
+}
+
+func TestVerifyClientAcceptsAllowedProxyHeaders(t *testing.T) {
+	t.Parallel()
+	files := webFiles(t)
+	proxy := rewrite(func(*http.Request) bool { return true }, func(s *served) {
+		s.header.Set("Cf-Ray", "8f0e")
+		s.header.Set("Server", "proxy")
+	})
+	url := newWebTestServer(t, files, "test", proxy)
+	if res := runVerify(t, url, files); res.code != exitError || !strings.Contains(res.stderr, "the server sent the Cf-Ray header") {
+		t.Fatalf("an unknown proxy header must fail until allowed: %+v", res)
+	}
+	if res := runVerify(t, url, files, "--allow-header", "cf-ray"); res.code != exitOK {
+		t.Fatalf("an allowed proxy header must pass: %+v", res)
+	}
+	for _, name := range []string{"Refresh", "set-cookie", "NEL", "Link", "Speculation-Rules"} {
+		if res := runVerify(t, url, files, "--allow-header", name); res.code != exitUsage {
+			t.Fatalf("--allow-header %s must be refused: %+v", name, res)
+		}
 	}
 }

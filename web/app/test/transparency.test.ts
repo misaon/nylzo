@@ -6,6 +6,7 @@ describe('transparency', () => {
   it('links only an email address or an https address', () => {
     expect(contactHref('abuse@example.org')).toBe('mailto:abuse@example.org');
     expect(contactHref('https://example.org/contact')).toBe('https://example.org/contact');
+    expect(contactHref('https://example.org:8443/report?lang=cs#form')).toBe('https://example.org:8443/report?lang=cs#form');
     for (const contact of [
       'javascript:alert(1)',
       'http://example.org',
@@ -17,6 +18,13 @@ describe('transparency', () => {
       'abuse@example.org?subject=x',
       'data:text/html,x',
       '//example.org',
+      'a..b@example.org',
+      '.a@example.org',
+      'abuse@localhost',
+      'https://:443/contact',
+      'https://example.org/a b',
+      'https://example.org/\u202e',
+      'abuse@example.org\u202e',
     ]) {
       expect(contactHref(contact), contact).toBeUndefined();
     }

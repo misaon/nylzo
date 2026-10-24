@@ -3,8 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
-	"net/mail"
-	"net/url"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -46,13 +45,13 @@ func plainText(s string) bool {
 	})
 }
 
+var (
+	emailContact = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+	httpsContact = regexp.MustCompile(`^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$`)
+)
+
 func ValidContact(contact string) bool {
-	if strings.HasPrefix(contact, "https://") {
-		u, err := url.Parse(contact)
-		return err == nil && u.User == nil && u.Hostname() != "" && !strings.ContainsAny(contact, " <>\"\\")
-	}
-	addr, err := mail.ParseAddress(contact)
-	return err == nil && addr.Address == contact && !strings.ContainsAny(contact, "?#/:")
+	return emailContact.MatchString(contact) || httpsContact.MatchString(contact)
 }
 
 type transparencyRates struct {

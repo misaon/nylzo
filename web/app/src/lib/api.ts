@@ -306,15 +306,17 @@ function parseClientFiles(manifest: Json): readonly ClientFile[] {
   if (!Array.isArray(files) || typeof manifest['built'] !== 'boolean') {
     throw new ResponseError();
   }
+  const seen = new Set<string>();
   return files.map((file: unknown) => {
     if (!isObject(file)) {
       throw new ResponseError();
     }
     const path = text(file, 'path');
     const sha256 = text(file, 'sha256');
-    if (!path.startsWith('/') || !SHA256_HEX.test(sha256)) {
+    if (!path.startsWith('/') || !SHA256_HEX.test(sha256) || seen.has(path)) {
       throw new ResponseError();
     }
+    seen.add(path);
     return { path, sha256 };
   });
 }
