@@ -816,7 +816,7 @@ AK21. Odpovědi 404 pro neznámé id, špatné R a špatné M jsou bajtově shod
 AK22. Server přežije 200 pomalých spojení a POST s Content-Length větším než poslaná data: ostatní požadavky dostanou odpověď do 2 s; požadavek bez Content-Length vrací 411, s neshodou proti `size` 400, nad limit 413, vše před čtením těla.
 AK23. Limity podle kyblíků: 21. vytvoření z druhé adresy téhož /64 za hodinu vrací 429; 101. vytvoření z pátého /64 téhož /48 za hodinu vrací 429 (pětinásobek); IPv4 analogicky s /24.
 AK24. Příjemce bere kdf_id z fragmentu: když server v metadatech nebo v X-Nylzo-Policy vrátí jiný profil, klient odmítne pokračovat a žádný ověřovač neodešle.
-AK25. Nezávislý monitor porovná hashe servírovaného index.html, JS a CSS s vydáním každou hodinu; podvržený bundle v testovacím nasazení vyvolá alarm do 60 minut.
+AK25. Nezávislý monitor porovná hashe servírovaného index.html, JS a CSS s vydáním každou hodinu; podvržený bundle v testovacím nasazení vyvolá alarm do 60 minut. Od 24. 10. 2026 to dělá workflow `monitor` s `nylzo verify-client` z ověřeného vydání; alarmem je selhaný běh (D68, plán `docs/plans/2026-10-24-monitor.md`).
 AK26. Veřejná instance vyjednává X25519MLKEM768 v TLS 1.3 (`openssl s_client -groups X25519MLKEM768`); pokud ne, model hrozeb a stránka transparentnosti uvádějí, že post-kvantová výměna na drátě platí jen při terminaci TLS v Go nebo Caddy. Pro self-host Compose to od 24. 10. 2026 ověřuje job „Compose with Caddy“ v CI nástrojem `tools/tlscheck` (D67).
 AK27. Rotace pepperu: po nastavení `NYLZO_PEPPER_PREVIOUS` a nového `NYLZO_PEPPER` se zprávy vytvořené před rotací otevřou, nové se ověřují novým klíčem, a po 7 dnech jde starý pepper odstranit bez ztráty.
 
