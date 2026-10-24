@@ -667,7 +667,7 @@ Server loguje čas zkrácený na minutu (D50, kontrola celého kódu 23. 10. 202
 
 ### Verzování
 
-Verze obálky v prvním bajtu, verze fragmentu v prefixu, API pod /api/v1, kdf_id v hlavičce. Klient odmítne neznámou verzi nebo neznámé flags s jasnou hláškou. Od 24. 10. 2026 platí i pro odkaz: novější verzi fragmentu obě jádra hlásí zvláštní chybou, CLI napíše, že odkaz potřebuje novější `nylzo`, a odkáže na stránku vydání, a webový klient řekne, že odkaz vytvořila novější verze Nylzo, než jakou používá tento server (spec §4). Dřív to klient hlásil jako neúplný nebo poškozený odkaz. Server ukládá verzi v metadatech. Nový profil KDF nebo HPKE režim = nová hodnota v existujících polích, ne změna formátu.
+Verze obálky v prvním bajtu, verze fragmentu v prefixu, API pod /api/v1, kdf_id v hlavičce. Klient odmítne neznámou verzi nebo neznámé flags s jasnou hláškou. Od 24. 10. 2026 platí i pro odkaz: novější verzi fragmentu obě jádra hlásí zvláštní chybou, CLI napíše, že odkaz potřebuje novější `nylzo`, a odkáže na stránku vydání, a webový klient při čtení i na stránce `/report` řekne, že odkaz pochází z novější verze Nylzo (spec §4). Dřív to klient hlásil jako neúplný nebo poškozený odkaz. Server ukládá verzi v metadatech. Nový profil KDF nebo HPKE režim = nová hodnota v existujících polích, ne změna formátu.
 
 ### Odolnost proti hádání
 
