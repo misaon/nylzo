@@ -136,9 +136,22 @@ jobs:
           pnpm -r test
 
   e2e:
-    name: Web client end to end
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    name: Web client end to end (${{ matrix.browser }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - browser: chromium
+            runner: ubuntu-latest
+            install: --with-deps --only-shell chromium
+          - browser: firefox
+            runner: ubuntu-latest
+            install: --with-deps firefox
+          - browser: webkit
+            runner: macos-latest
+            install: webkit
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,23 +173,27 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @nylzo/web build
-      - name: Install the Playwright browsers
+      - name: Install the Playwright browser
         working-directory: web/e2e
         timeout-minutes: 15
+        env:
+          INSTALL: ${{ matrix.install }}
         run: |
+          limit=""
+          if command -v timeout > /dev/null; then limit="timeout 240"; fi
           for attempt in 1 2 3; do
-            timeout 240 pnpm exec playwright install --with-deps chromium firefox webkit && exit 0
+            $limit pnpm exec playwright install $INSTALL && exit 0
             echo "browser install attempt $attempt failed or hung"
           done
           exit 1
-      - name: Chromium, Firefox and WebKit against nylzo
+      - name: ${{ matrix.browser }} against nylzo
         working-directory: web/e2e
-        run: pnpm e2e
+        run: pnpm e2e --project=${{ matrix.browser }}
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.browser }}
           path: web/e2e/test-results
           retention-days: 7
 
