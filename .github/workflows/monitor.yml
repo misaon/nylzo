@@ -1,0 +1,51 @@
+name: monitor
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-client:
+    name: The public instance sends the released web client (AK25)
+    if: vars.NYLZO_MONITOR_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - name: Find the release the server runs
+        id: release
+        env:
+          URL: ${{ vars.NYLZO_MONITOR_URL }}
+        run: |
+          version=$(curl -fsS --proto '=https' --max-redirs 0 --max-time 30 "${URL}/.well-known/nylzo/client.json" | jq -r .server)
+          if [[ ! "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The server does not report a release version, so there is no release to compare with."
+            exit 1
+          fi
+          echo "tag=v${version#v}" >> "${GITHUB_OUTPUT}"
+      - name: Download that release and verify its signature
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release download "${TAG}" -R "${GITHUB_REPOSITORY}" -p checksums.txt -p checksums.txt.sigstore.json -p "nylzo_${TAG#v}_linux_amd64.tar.gz"
+          cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
+          sha256sum --ignore-missing -c checksums.txt
+          tar -xzf "nylzo_${TAG#v}_linux_amd64.tar.gz" nylzo
+      - name: Compare the served web client with the release
+        env:
+          URL: ${{ vars.NYLZO_MONITOR_URL }}
+          ALLOW: ${{ vars.NYLZO_MONITOR_ALLOW_HEADERS }}
+        run: |
+          read -ra headers <<< "${ALLOW}"
+          args=()
+          for header in "${headers[@]}"; do args+=(--allow-header "${header}"); done
+          ./nylzo verify-client --server "${URL}" "${args[@]}"
