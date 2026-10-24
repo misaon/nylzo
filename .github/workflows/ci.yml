@@ -279,6 +279,7 @@ jobs:
           id=$(head -c 16 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')
           code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" -H 'X-Nylzo-Lease: lease-that-must-not-be-logged' "https://localhost/m/$id")
           test "$code" = 502
+          sleep 2
           docker compose logs caddy > "$RUNNER_TEMP/caddy.log" 2>&1
           if grep -F -e "$id" -e '/m/' -e 'lease-that-must-not-be-logged' "$RUNNER_TEMP/caddy.log"; then exit 1; fi
           docker compose start nylzo
@@ -291,7 +292,11 @@ jobs:
           for i in 1 2 3 4; do
             curl -s -o /dev/null -w '%{http_code}\n' --cacert "$RUNNER_TEMP/root.crt" -H "X-Forwarded-For: 10.0.0.$i" https://localhost/api/v1/instance
           done | tee "$RUNNER_TEMP/codes.txt"
-          test "$(tail -n 1 "$RUNNER_TEMP/codes.txt")" = 429
+          test "$(tr '\n' ' ' < "$RUNNER_TEMP/codes.txt")" = "200 200 200 429 "
+          other=$(hostname -I | awk '{print $1}')
+          code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" --resolve "localhost:443:${other}" https://localhost/api/v1/instance)
+          echo "a second real source: $code"
+          test "$code" = 200
       - name: Logs of a failed run
         if: failure()
         working-directory: deploy/compose

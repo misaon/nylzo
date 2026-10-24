@@ -42,11 +42,11 @@ func check(addr, ca string) error {
 		RootCAs:          roots,
 		ServerName:       host,
 		MinVersion:       tls.VersionTLS13,
-		CurvePreferences: []tls.CurveID{tls.X25519MLKEM768},
+		CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.X25519},
 	}}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("handshake offering only X25519MLKEM768: %w", err)
+		return fmt.Errorf("handshake offering X25519MLKEM768 and X25519: %w", err)
 	}
 	defer conn.Close()
 	if state := conn.(*tls.Conn).ConnectionState(); state.CurveID != tls.X25519MLKEM768 {

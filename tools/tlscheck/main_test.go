@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -34,7 +35,8 @@ func TestCheckAcceptsAHybridKeyExchange(t *testing.T) {
 func TestCheckRefusesAClassicalKeyExchange(t *testing.T) {
 	t.Parallel()
 	addr, ca := server(t, []tls.CurveID{tls.X25519})
-	if err := check(addr, ca); err == nil {
-		t.Fatal("a server without X25519MLKEM768 passed")
+	err := check(addr, ca)
+	if err == nil || !strings.Contains(err.Error(), "negotiated X25519 instead") {
+		t.Fatalf("a server without X25519MLKEM768 must be refused after the handshake, got %v", err)
 	}
 }
