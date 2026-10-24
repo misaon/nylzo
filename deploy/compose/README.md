@@ -49,7 +49,7 @@ Potřebujete Docker Compose v2, doménu s DNS záznamem na tento stroj a otevře
 Hlášení leží ve volume dat v `abuse/`, jeden soubor na den UTC. Image nemá shell, proto je zkopírujte ven, posuďte a id zpráv, které chcete ukončit, pošlete příkazu `takedown` (D63):
 
 ```bash
-docker compose cp nylzo:/home/nonroot/abuse ./abuse
+docker compose cp nylzo:/home/nonroot/abuse/. ./abuse
 ```
 
 ```bash
