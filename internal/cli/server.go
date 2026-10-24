@@ -20,7 +20,7 @@ import (
 
 var (
 	errSweepFailed       = errors.New("sweep failed; see the sweep-once log line")
-	errNoStore           = errors.New("sweep-once found no store in NYLZO_DATA_DIR")
+	errNoStore           = errors.New("found no store in NYLZO_DATA_DIR")
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
 )
 
