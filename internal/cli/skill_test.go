@@ -11,10 +11,12 @@ import (
 )
 
 var (
-	skillName  = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
-	skillFlag  = regexp.MustCompile(`^--([a-z][a-z-]*)`)
-	inlineCode = regexp.MustCompile("`([^`]+)`")
-	usageFlag  = regexp.MustCompile(`(?m)^ +-([a-z][a-z-]*)`)
+	skillName   = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	skillField  = regexp.MustCompile(`^(name|description|license|compatibility): ([^>|\s].*)$`)
+	skillFlag   = regexp.MustCompile(`^--([a-z][a-z-]*)`)
+	inlineCode  = regexp.MustCompile("`([^`]+)`")
+	usageFlag   = regexp.MustCompile(`(?m)^ +-([a-z][a-z-]*)`)
+	skillClient = []string{"create", "read", "status", "cancel", "burn", "report", "verify-client"}
 )
 
 func TestSkillFollowsTheAgentSkillsSpec(t *testing.T) {
@@ -22,8 +24,14 @@ func TestSkillFollowsTheAgentSkillsSpec(t *testing.T) {
 	dir, front, body := readSkill(t)
 	fields := map[string]string{}
 	for line := range strings.SplitSeq(front, "\n") {
-		key, value, _ := strings.Cut(line, ": ")
-		fields[key] = value
+		m := skillField.FindStringSubmatch(line)
+		if m == nil {
+			t.Fatalf("frontmatter line %q is not a single-line name, description, license or compatibility", line)
+		}
+		if _, seen := fields[m[1]]; seen {
+			t.Fatalf("frontmatter repeats %s", m[1])
+		}
+		fields[m[1]] = m[2]
 	}
 	if name := fields["name"]; len(name) > 64 || !skillName.MatchString(name) || name != filepath.Base(dir) {
 		t.Errorf("name %q must be 1 to 64 lowercase letters, digits and single hyphens and match the directory", name)
@@ -39,68 +47,104 @@ func TestSkillFollowsTheAgentSkillsSpec(t *testing.T) {
 	}
 }
 
+type skillSection struct {
+	heading  string
+	commands []string
+	flags    []string
+}
+
 func TestSkillUsesOnlyCommandsAndFlagsTheCLIHas(t *testing.T) {
 	t.Parallel()
 	_, _, body := readSkill(t)
 	known := map[string]map[string]bool{}
 	every := map[string]bool{}
-	for _, c := range commands() {
-		if c.name == "serve" || c.name == "sweep-once" || c.name == "takedown" {
-			continue
-		}
-		res := runWith(t, "", nil, nil, c.name, "-h")
-		known[c.name] = map[string]bool{}
+	for _, name := range skillClient {
+		res := runWith(t, "", nil, nil, name, "-h")
+		known[name] = map[string]bool{}
 		for _, m := range usageFlag.FindAllStringSubmatch(res.stdout+res.stderr, -1) {
-			known[c.name][m[1]] = true
+			known[name][m[1]] = true
 			every[m[1]] = true
 		}
 	}
-	var commandLines, flagMentions []string
+	used := map[string]bool{}
+	sections := []*skillSection{{heading: "(top)"}}
 	inBlock := false
 	for line := range strings.SplitSeq(body, "\n") {
-		if strings.HasPrefix(line, "```") {
+		section := sections[len(sections)-1]
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(line), "```"):
 			inBlock = !inBlock
-			continue
-		}
-		if inBlock {
-			if strings.HasPrefix(line, "nylzo ") {
-				commandLines = append(commandLines, line)
-			}
-			continue
-		}
-		for _, m := range inlineCode.FindAllStringSubmatch(line, -1) {
-			switch {
-			case strings.HasPrefix(m[1], "nylzo "):
-				commandLines = append(commandLines, m[1])
-			case strings.HasPrefix(m[1], "--"):
-				flagMentions = append(flagMentions, m[1])
+		case inBlock:
+			section.commands = append(section.commands, checkInvocations(t, line, known, used)...)
+		case strings.HasPrefix(line, "## "):
+			sections = append(sections, &skillSection{heading: line})
+		default:
+			for _, m := range inlineCode.FindAllStringSubmatch(line, -1) {
+				if strings.HasPrefix(m[1], "--") {
+					section.flags = append(section.flags, m[1])
+				} else {
+					section.commands = append(section.commands, checkInvocations(t, m[1], known, used)...)
+				}
 			}
 		}
 	}
-	if len(commandLines) < 8 || len(flagMentions) < 8 {
-		t.Fatalf("found %d commands and %d flag mentions in the skill, expected more", len(commandLines), len(flagMentions))
+	for _, name := range skillClient {
+		if !used[name] {
+			t.Errorf("the skill never shows nylzo %s", name)
+		}
 	}
-	for _, line := range commandLines {
-		words := strings.Fields(line)
-		flags, ok := known[words[1]]
+	for _, section := range sections {
+		for _, mention := range section.flags {
+			m := skillFlag.FindStringSubmatch(mention)
+			if m == nil {
+				continue
+			}
+			if len(section.commands) == 0 {
+				if !every[m[1]] {
+					t.Errorf("%s mentions %q, which no nylzo command has", section.heading, mention)
+				}
+				continue
+			}
+			if !slices.ContainsFunc(section.commands, func(name string) bool { return known[name][m[1]] }) {
+				t.Errorf("%s mentions %q, which none of its commands %v has", section.heading, mention, section.commands)
+			}
+		}
+	}
+}
+
+func checkInvocations(t *testing.T, line string, known map[string]map[string]bool, used map[string]bool) []string {
+	t.Helper()
+	var names []string
+	words := strings.Fields(line)
+	for i := 0; i < len(words); i++ {
+		if strings.TrimLeft(words[i], "(") != "nylzo" {
+			continue
+		}
+		if i+1 == len(words) {
+			break
+		}
+		name := words[i+1]
+		flags, ok := known[name]
 		if !ok {
-			t.Errorf("%q: nylzo has no client command %q", line, words[1])
+			t.Errorf("%q: nylzo has no client command %q", line, name)
 			continue
 		}
-		for _, word := range words[2:] {
-			if m := skillFlag.FindStringSubmatch(word); m != nil && !flags[m[1]] {
-				t.Errorf("%q: nylzo %s has no flag --%s", line, words[1], m[1])
+		names = append(names, name)
+		used[name] = true
+		for i += 2; i < len(words) && !shellOperator(words[i]); i++ {
+			if m := skillFlag.FindStringSubmatch(words[i]); m != nil && !flags[m[1]] {
+				t.Errorf("%q: nylzo %s has no flag --%s", line, name, m[1])
+			}
+			if fragmentLike.MatchString(words[i]) {
+				t.Errorf("%q puts a link in an argument", line)
 			}
 		}
-		if slices.ContainsFunc(words, fragmentLike.MatchString) {
-			t.Errorf("%q puts a link in an argument", line)
-		}
 	}
-	for _, mention := range flagMentions {
-		if m := skillFlag.FindStringSubmatch(mention); m != nil && !every[m[1]] {
-			t.Errorf("the skill mentions %q, which no nylzo command has", mention)
-		}
-	}
+	return names
+}
+
+func shellOperator(word string) bool {
+	return slices.Contains([]string{"|", "||", "&&", ";", "&"}, word) || strings.HasPrefix(word, "<") || strings.HasPrefix(word, ">") || strings.HasSuffix(word, ";") || strings.HasSuffix(word, ")")
 }
 
 func readSkill(t *testing.T) (dir, front, body string) {
