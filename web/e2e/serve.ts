@@ -22,6 +22,7 @@ const server = spawn(binary, ['serve'], {
   env: {
     ...process.env,
     NYLZO_LISTEN: `127.0.0.1:${port}`,
+    NYLZO_PUBLIC_URL: `http://127.0.0.1:${port}`,
     NYLZO_DATA_DIR: dir,
     NYLZO_PEPPER: randomBytes(32).toString('hex'),
     NYLZO_RATE_CREATE_HOUR: '0',

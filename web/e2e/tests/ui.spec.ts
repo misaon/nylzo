@@ -6,7 +6,7 @@ import { KDF_SCRYPT } from '@nylzo/core';
 import type { Page } from '@playwright/test';
 import { transform, type Declaration } from 'lightningcss';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, setPassphrase, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openApp, openViaUi, setPassphrase, test } from './helpers.ts';
 
 const ASSETS = new URL('../../../internal/server/web/dist/assets/', import.meta.url);
 const MOBILE = { width: 430, height: 932 };
@@ -82,7 +82,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
     const passphrase = 'four random words here';
     const sender = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(sender);
-    await sender.goto('/');
+    await openApp(sender, '/');
     await expect(sender.getByLabel('Message text')).toBeVisible();
     await expectStable(sender, 'create loaded');
     await sender.getByLabel('Message text').fill('layout');
@@ -228,7 +228,7 @@ async function expectAccessible(page: Page, screen: string, scope?: string): Pro
 test('the create screens pass axe and keep touch targets at 44 px on a phone (AK20)', async ({ browser }) => {
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
   const page = await context.newPage();
-  await page.goto('/');
+  await openApp(page, '/');
   await setPassphrase(page, 'four random words here');
   await expectAccessible(page, 'create');
   await page.getByLabel('Message text').fill('axe');
@@ -292,7 +292,7 @@ test('the confirmation before a risky download passes axe (AK20, D35)', async ({
 test('with reduced motion the composer popovers and the attachment pass axe (AK20)', async ({ browser }) => {
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true, reducedMotion: 'reduce' });
   const page = await context.newPage();
-  await page.goto('/');
+  await openApp(page, '/');
   await expect(page.getByLabel('Message text')).toBeVisible();
   const triggers = page.locator('button[aria-haspopup="dialog"]');
   await expect(triggers).toHaveCount(3);
@@ -311,8 +311,9 @@ test('with reduced motion the composer popovers and the attachment pass axe (AK2
 test('with reduced motion every tab passes axe (AK20)', async ({ browser }) => {
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true, reducedMotion: 'reduce' });
   const page = await context.newPage();
-  await page.goto('/');
+  await openApp(page, '/');
   const tabs = page.getByRole('tab');
+  await expect(tabs.first()).toBeVisible();
   const count = await tabs.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < count; index++) {

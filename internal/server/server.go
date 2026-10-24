@@ -87,6 +87,9 @@ type Server struct {
 	abuseDir      string
 	webFiles      fs.FS
 	web           webClient
+	pages         map[string]page
+	robots        []byte
+	sitemap       []byte
 	manifest      ClientManifest
 }
 
@@ -118,8 +121,15 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	if s.web, err = loadWebClient(s.webFiles); err != nil {
 		return nil, err
 	}
-	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets))
-	s.manifest = s.web.embedded().Manifest(cfg.Version)
+	if s.pages, err = renderPages(s.web, cfg.PublicURL); err != nil {
+		return nil, err
+	}
+	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets), "public_url", cfg.PublicURL)
+	s.robots = robotsTxt(cfg.PublicURL)
+	if cfg.PublicURL != "" {
+		s.sitemap = sitemapXML(cfg.PublicURL)
+	}
+	s.manifest = s.web.embedded().Manifest(cfg.Version, cfg.PublicURL)
 	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
@@ -315,6 +325,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /m/{id}", s.handlePage)
 	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
 	mux.HandleFunc("GET /{$}", s.handlePage)
+	mux.HandleFunc("GET /cs/{$}", s.handlePage)
+	mux.HandleFunc("GET /cs", s.handleCzechHome)
+	mux.HandleFunc("GET /robots.txt", s.handleRobots)
+	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
 	mux.HandleFunc("GET /sent", s.handlePage)
 	mux.HandleFunc("GET /report", s.handlePage)
 	mux.HandleFunc("GET /transparency", s.handlePage)

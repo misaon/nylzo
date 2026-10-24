@@ -1,21 +1,27 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+
   import SiteFooter from './components/shell/SiteFooter.svelte';
   import SiteHeader from './components/shell/SiteHeader.svelte';
   import Sky from './components/shell/Sky.svelte';
-  import { browserPreferences, createI18n, saveLanguage, savedLanguage, setI18n, type Language } from './lib/i18n.svelte.ts';
+  import { createI18n, setI18n } from './lib/i18n.svelte.ts';
+  import { browserPreferences, saveLanguage, type Language } from './lib/language.ts';
+  import { HOME_PATHS, screenOf, type Screen } from './lib/pages.ts';
   import Create from './screens/Create.svelte';
   import Read from './screens/Read.svelte';
   import Report from './screens/Report.svelte';
   import Sent from './screens/Sent.svelte';
   import Transparency from './screens/Transparency.svelte';
 
-  const preferences = browserPreferences();
-  const i18n = setI18n(createI18n(savedLanguage(preferences, navigator.languages)));
+  interface Props {
+    readonly start: { readonly path: string; readonly language: Language };
+  }
+
+  const { start }: Props = $props();
+  const screen: Screen = $derived(screenOf(start.path));
+  const i18n = setI18n(createI18n(untrack(() => start.language)));
   const { t } = i18n;
-  const path = location.pathname;
-  const screen =
-    path === '/sent' ? 'sent' : path === '/report' ? 'report' : path === '/transparency' ? 'transparency' : path.startsWith('/m/') ? 'read' : 'create';
-  const variant = screen === 'create' ? 'home' : screen === 'read' ? 'read' : 'page';
+  const variant = $derived(screen === 'create' ? 'home' : screen === 'read' ? 'read' : 'page');
 
   function switchLanguage(language: Language) {
     if (i18n.language === language) {
@@ -23,7 +29,10 @@
     }
     i18n.language = language;
     document.documentElement.lang = language;
-    saveLanguage(preferences, language);
+    saveLanguage(browserPreferences(), language);
+    if (screen === 'create') {
+      history.replaceState(history.state, '', `${HOME_PATHS[language]}${location.hash}`);
+    }
   }
 </script>
 

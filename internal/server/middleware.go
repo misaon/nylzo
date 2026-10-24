@@ -12,10 +12,7 @@ const apiCSP = "default-src 'none'; frame-ancestors 'none'"
 
 const cspTemplate = "default-src 'none'; script-src 'nonce-%s'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
 
-const (
-	robotsTag = "noindex, nofollow"
-	homePath  = "/"
-)
+const robotsTag = "noindex, nofollow"
 
 var securityHeaderValues = map[string]string{
 	"Referrer-Policy":              "no-referrer",
@@ -42,7 +39,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 }
 
 func isHomePage(r *http.Request) bool {
-	return (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == homePath
+	return (r.Method == http.MethodGet || r.Method == http.MethodHead) && isHomePath(r.URL.Path)
 }
 
 func (s *Server) prefetchGuard(next http.Handler) http.Handler {

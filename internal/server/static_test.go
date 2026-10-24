@@ -22,6 +22,22 @@ import (
 
 const builtIndex = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
 
+func builtHome(language string) string {
+	return `<!doctype html><html lang="` + language + `"><head><title>home ` + language + `</title>
+<!--nylzo:public-->
+<link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/favicon-e5.png">
+<!--/nylzo:public-->
+<script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body><h1>home ` + language + `</h1></body></html>`
+}
+
+func templates(index, en, cs string) fstest.MapFS {
+	return fstest.MapFS{
+		"web/dist/index.html":   {Data: []byte(index)},
+		"web/dist/home.en.html": {Data: []byte(en)},
+		"web/dist/home.cs.html": {Data: []byte(cs)},
+	}
+}
+
 const (
 	appJS      = "console.log('nylzo')"
 	faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg"/>`
@@ -43,16 +59,17 @@ func gzipped(t *testing.T, data string) []byte {
 
 func builtClient(t *testing.T) fstest.MapFS {
 	t.Helper()
-	return fstest.MapFS{
+	files := templates(builtIndex, builtHome("en"), builtHome("cs"))
+	maps.Copy(files, fstest.MapFS{
 		"web/placeholder.html":             {Data: []byte("placeholder")},
-		"web/dist/index.html":              {Data: []byte(builtIndex)},
 		"web/dist/assets/index-a1.js":      {Data: []byte(appJS)},
 		"web/dist/assets/index-a1.js.gz":   {Data: gzipped(t, appJS)},
 		"web/dist/assets/style-b2.css":     {Data: []byte("body{}")},
 		"web/dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
 		"web/dist/assets/favicon-d4.svg":   {Data: []byte(faviconSVG)},
 		"web/dist/assets/favicon-e5.png":   {Data: []byte(faviconPNG)},
-	}
+	})
+	return files
 }
 
 func newWebServer(t *testing.T, files fs.FS, logs io.Writer) (*httptest.Server, error) {
@@ -118,7 +135,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 	if !strings.Contains(logs.String(), `"msg":"web-client","built":true,"assets":5`) {
 		t.Fatalf("the server did not log the embedded client: %s", logs.String())
 	}
-	for _, path := range []string{"/", "/m/" + core.NewID().String()} {
+	for _, path := range []string{"/", "/cs/", "/m/" + core.NewID().String()} {
 		resp, body := get(t, ts.URL+path, nil)
 		csp := resp.Header.Get("Content-Security-Policy")
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
@@ -211,7 +228,8 @@ func TestPlaceholderWithoutBuild(t *testing.T) {
 
 func TestBuildWithoutAssetsStarts(t *testing.T) {
 	t.Parallel()
-	ts, err := newWebServer(t, fstest.MapFS{"web/dist/index.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">built</p>`)}}, nil)
+	built := `<p nonce="__NYLZO_CSP_NONCE__">built</p>`
+	ts, err := newWebServer(t, templates(built, built, built), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,11 +251,17 @@ func TestNoWebFilesMeansTheEmbeddedClient(t *testing.T) {
 
 func TestBrokenBuildRefusesToStart(t *testing.T) {
 	t.Parallel()
+	const page = `<p nonce="__NYLZO_CSP_NONCE__"></p>`
 	index := func(extra fstest.MapFS) fstest.MapFS {
-		files := fstest.MapFS{"web/dist/index.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__"></p>`)}}
+		files := templates(page, page, page)
 		maps.Copy(files, extra)
 		return files
 	}
+	home := func(cs string) fstest.MapFS {
+		return index(fstest.MapFS{"web/dist/home.cs.html": {Data: []byte(cs)}})
+	}
+	withoutCzech := index(nil)
+	delete(withoutCzech, "web/dist/home.cs.html")
 	for name, files := range map[string]fstest.MapFS{
 		"unknown extension":                 index(fstest.MapFS{"web/dist/assets/index-a1.js.map": {Data: []byte("{}")}}),
 		"nested directory":                  index(fstest.MapFS{"web/dist/assets/sub/a.js": {}}),
@@ -247,11 +271,20 @@ func TestBrokenBuildRefusesToStart(t *testing.T) {
 		"gzip that is not the file":         index(fstest.MapFS{"web/dist/assets/a.js": {Data: []byte("a")}, "web/dist/assets/a.js.gz": {Data: gzipped(t, "b")}}),
 		"gzip that is not gzip":             index(fstest.MapFS{"web/dist/assets/a.js": {Data: []byte("a")}, "web/dist/assets/a.js.gz": {Data: []byte("a")}}),
 		"compressed unknown type":           index(fstest.MapFS{"web/dist/assets/a.map": {}, "web/dist/assets/a.map.gz": {}}),
-		"index without the nonce":           {"web/dist/index.html": {Data: []byte(`<script src="/assets/a.js"></script>`)}, "web/dist/assets/a.js": {}},
-		"index with a missing asset": {
+		"index without the nonce":           index(fstest.MapFS{"web/dist/index.html": {Data: []byte(`<script src="/assets/a.js"></script>`)}, "web/dist/assets/a.js": {}}),
+		"index with a missing asset": index(fstest.MapFS{
 			"web/dist/index.html":  {Data: []byte(`<script nonce="__NYLZO_CSP_NONCE__" src="/assets/a.js"></script><link href="/assets/gone.css">`)},
 			"web/dist/assets/a.js": {},
-		},
+		}),
+		"missing Czech home page":           withoutCzech,
+		"home page without the nonce":       home(`<p></p>`),
+		"public block that does not close":  home(page + `<!--nylzo:public--><link rel="canonical" href="__NYLZO_PUBLIC_URL__/">`),
+		"public block that closes first":    home(page + `<!--/nylzo:public--><!--nylzo:public-->`),
+		"nested public blocks":              home(page + `<!--nylzo:public--><!--nylzo:public--><!--/nylzo:public--><!--/nylzo:public-->`),
+		"public URL outside a public block": home(page + `<link rel="canonical" href="__NYLZO_PUBLIC_URL__/">`),
+		"social image that is not embedded": home(page + `<!--nylzo:public--><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/og-gone.png"><!--/nylzo:public-->`),
+		"inline style with a missing font":  home(page + `<style nonce="__NYLZO_CSP_NONCE__">@font-face{src:url(/assets/gone.woff2)}</style>`),
+		"quoted font that is not embedded":  home(page + `<style nonce="__NYLZO_CSP_NONCE__">@font-face{src:url("/assets/gone.woff2")}</style>`),
 	} {
 		if _, err := newWebServer(t, files, nil); err == nil {
 			t.Fatalf("%s: the server started", name)

@@ -28,6 +28,9 @@ export const copyCs = {
   'hero.title.lead': 'Tajemství na',
   'hero.title.accent': 'jedno otevření',
   'hero.intro': 'Zprávu zašifrujete přímo v\u00a0prohlížeči. Server dostane jen šifru a\u00a0po otevření ji smaže. Klíč zůstává v\u00a0odkazu za znakem # a\u00a0k\u00a0nám nikdy nedorazí.',
+  'seo.title': 'Bezpečně poslat heslo i\u00a0soubor jednorázovým odkazem | Nylzo',
+  'seo.description': 'Pošlete heslo, API klíč nebo soubor šifrovaným odkazem, který se otevře jen jednou. Šifruje se ve vašem prohlížeči a\u00a0server uloží jen šifru, kterou nepřečte.',
+  'seo.image': 'Logo Nylzo na hvězdném nebi',
 
   'compose.placeholder': 'Napište nebo vložte, co nemá zůstat v\u00a0chatu…',
   'compose.counter': '{size} / {max}',
@@ -188,6 +191,9 @@ export const copyEn: Record<keyof typeof copyCs, string> = {
   'hero.title.lead': 'A secret that',
   'hero.title.accent': 'opens once',
   'hero.intro': 'You encrypt the message right in your browser. The server only gets the ciphertext and deletes it after it is opened. The key stays in the link after the # sign and never reaches us.',
+  'seo.title': 'Share passwords and files securely with one-time links | Nylzo',
+  'seo.description': 'Send a password, API key or file through an encrypted link that opens once. Your browser encrypts it, and the server keeps only ciphertext it cannot read.',
+  'seo.image': 'The Nylzo logo on a starry night sky',
 
   'compose.placeholder': 'Type or paste what should not stay in the chat…',
   'compose.counter': '{size} / {max}',

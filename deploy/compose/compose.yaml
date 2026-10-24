@@ -17,6 +17,7 @@ services:
       NYLZO_OPERATOR: ${NYLZO_OPERATOR:-}
       NYLZO_CONTACT: ${NYLZO_CONTACT:-}
       NYLZO_HOSTING: ${NYLZO_HOSTING:-}
+      NYLZO_PUBLIC_URL: https://${NYLZO_DOMAIN:?set NYLZO_DOMAIN to the public host name}
     secrets: [nylzo_pepper]
     volumes:
       - nylzo-data:/home/nonroot

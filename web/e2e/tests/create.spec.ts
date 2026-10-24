@@ -1,4 +1,4 @@
-import { createViaUi, expect, setPassphrase, test } from './helpers.ts';
+import { createViaUi, expect, openApp, setPassphrase, test } from './helpers.ts';
 
 const PHONE = { width: 430, height: 932 };
 
@@ -26,7 +26,7 @@ test('a refused create keeps the message and hands focus back to Create link', a
       ? route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'rate_limited', retry_after: 30 }) })
       : route.continue(),
   );
-  await page.goto('/');
+  await openApp(page, '/');
   await page.getByLabel('Message text').fill('try again later');
   const submit = page.getByRole('button', { name: 'Create link' });
   await submit.click();
@@ -54,7 +54,7 @@ test('on a phone the created panel copies the link and starts a new message', as
       },
     });
   });
-  await page.goto('/');
+  await openApp(page, '/');
   await page.getByLabel('Message text').fill('phone');
   await setPassphrase(page, 'four random words here');
   await page.getByRole('button', { name: 'Create link' }).click();
@@ -76,7 +76,7 @@ test.describe('with full motion', () => {
   test.use({ reducedMotion: 'no-preference' });
 
   test('the derivation step keeps its passphrase wording until the link is ready', async ({ page }) => {
-    await page.goto('/');
+    await openApp(page, '/');
     await page.getByLabel('Message text').fill('scrypt wording');
     await setPassphrase(page, 'four random words here');
     await page.evaluate(() => {
@@ -93,7 +93,7 @@ test.describe('with full motion', () => {
 
   test('the points of view cycle on their own, pause for the keyboard and stop for good after a pick (WCAG 2.2.2)', async ({ page }) => {
     await page.clock.install();
-    await page.goto('/');
+    await openApp(page, '/');
     const tabs = page.getByRole('tablist', { name: 'Point of view' });
     await tabs.evaluate((list) => list.closest('[role="group"]')?.scrollIntoView({ block: 'center' }));
     await expect(tabs.locator('progress')).toHaveClass(/opacity-100/);

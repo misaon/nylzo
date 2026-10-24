@@ -15,6 +15,7 @@
 # Web client build output
 /internal/server/web/dist/
 /web/app/node_modules/
+/web/app/.prerender/
 /web/e2e/node_modules/
 /web/e2e/test-results/
 /web/e2e/playwright-report/

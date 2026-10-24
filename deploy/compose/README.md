@@ -15,7 +15,7 @@ Potřebujete Docker Compose v2, doménu s DNS záznamem na tento stroj a otevře
    echo "NYLZO_IMAGE=ghcr.io/misaon/nylzo:0.1.0@${digest}"
    ```
 
-2. Vytvořte `.env` podle `.env.example`. Do `NYLZO_IMAGE` dejte ověřenou referenci včetně `@sha256:…`, aby Compose nikdy nestáhl jiný image pod stejným tagem. `NYLZO_GLOBAL_DAILY_CREATES` nastavte podle disku (níže). `NYLZO_OPERATOR`, `NYLZO_CONTACT` (e-mail nebo adresa `https://`) a `NYLZO_HOSTING` uvidí návštěvníci na stránce `/transparency`; veřejná instance je potřebuje kvůli kontaktnímu místu podle DSA.
+2. Vytvořte `.env` podle `.env.example`. Do `NYLZO_IMAGE` dejte ověřenou referenci včetně `@sha256:…`, aby Compose nikdy nestáhl jiný image pod stejným tagem. `NYLZO_GLOBAL_DAILY_CREATES` nastavte podle disku (níže). `NYLZO_OPERATOR`, `NYLZO_CONTACT` (e-mail nebo adresa `https://`) a `NYLZO_HOSTING` uvidí návštěvníci na stránce `/transparency`; veřejná instance je potřebuje kvůli kontaktnímu místu podle DSA. `NYLZO_DOMAIN` pište malými písmeny: Compose z něj sestaví i `NYLZO_PUBLIC_URL`, díky které úvodní stránka nese adresy pro vyhledávače a náhledy odkazů a server posílá `/sitemap.xml` (D84).
 
 3. Vygenerujte pepper. Kontejner běží jako uživatel 65532, proto mu soubor patří a nikdo jiný ho nepřečte:
 

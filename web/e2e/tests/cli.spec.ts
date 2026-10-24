@@ -19,7 +19,7 @@ function passphraseFile(): string {
 
 test('verify-client finds the same web client on the server', () => {
   const out = execFileSync(NYLZO_BIN, ['verify-client', '--server', BASE_URL], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  expect(out).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 5 pages and \d+ files checked\n$/);
+  expect(out).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 6 pages and \d+ files checked\n$/);
 });
 
 test('a message from the CLI opens in the browser', async ({ page }) => {

@@ -147,8 +147,6 @@
     }
   }
 
-  loadLimits();
-
   function failureText(value: CreateFailure): string {
     const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
     return t(failureKey(value), { time: formatWait(retryAfter, i18n.language) });
@@ -419,7 +417,10 @@
     return rememberSent(sentStore, record, SAVE_TIMEOUT_MS);
   }
 
-  const cleanup: Attachment = () => () => clearInterval(timer);
+  const cleanup: Attachment = () => {
+    loadLimits();
+    return () => clearInterval(timer);
+  };
 
   const chipBase = 'flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap ring-1 sm:w-auto sm:justify-start md:h-9';
   const chipIdle = 'bg-white/4 text-ink-soft ring-white/10 hover:bg-white/8 hover:text-ink';
@@ -432,10 +433,10 @@
 
 <section id="napsat" class="px-4 pt-20 pb-32 sm:px-6 md:pt-28 md:pb-40" aria-labelledby="{uid}-title" {@attach cleanup}>
   <div class="mx-auto max-w-[860px] text-center">
-    <h1 class="animate-rise font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance sm:text-[50px] lg:text-[62px]">
+    <h1 class="animate-rise-visible font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance sm:text-[50px] lg:text-[62px]">
       {t('hero.title.lead')} <span class="text-aegis-300">{t('hero.title.accent')}</span>
     </h1>
-    <p class="mx-auto mt-6 max-w-[640px] animate-rise text-base leading-[1.75] text-balance text-ink-soft [animation-delay:120ms] sm:text-[17px]">
+    <p class="mx-auto mt-6 max-w-[640px] animate-rise-visible text-base leading-[1.75] text-balance text-ink-soft [animation-delay:120ms] sm:text-[17px]">
       {t('hero.intro')}
     </p>
   </div>

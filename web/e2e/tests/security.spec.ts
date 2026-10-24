@@ -2,7 +2,7 @@ import { KDF_NONE, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, parse
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import type { Page, Request } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openViaUi, setPassphrase, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openApp, openViaUi, setPassphrase, test } from './helpers.ts';
 
 interface Recorded {
   readonly url: string;
@@ -182,7 +182,7 @@ test('the reader stops without a verifier when the server reports another profil
 
 test('the passphrase fields give password managers nothing and the message field is not spell checked (D38)', async ({ page }) => {
   const message = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_SCRYPT });
-  await page.goto('/');
+  await openApp(page, '/');
   const text = page.getByLabel('Message text');
   await expect(text).toHaveAttribute('spellcheck', 'false');
   await expect(text).toHaveAttribute('autocorrect', 'off');
@@ -237,7 +237,7 @@ test('leaving the page removes the shown message and closes its dialog, so the b
 });
 
 test('leaving the create page wipes the draft, the passphrase, the file and the created link', async ({ page }) => {
-  await page.goto('/');
+  await openApp(page, '/');
   await page.getByLabel('Message text').fill('wipe me');
   await setPassphrase(page, 'four random words here');
   await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
@@ -275,7 +275,7 @@ test('leaving while a message is encrypted wipes it and a later answer neither s
     await answer.promise;
     await route.continue();
   });
-  await page.goto('/');
+  await openApp(page, '/');
   const secret = 'zebracorn marmalade quokka';
   await page.getByLabel('Message text').fill(secret);
   await page.getByRole('button', { name: 'Create link' }).click();
@@ -312,7 +312,7 @@ test('a page restored from the back/forward cache loads again and spends no open
 test('back and forward after reading bring back neither the fragment nor the message and spend no open', async ({ page }) => {
   const message = await createViaApi({ text: 'only once in this tab', opensMax: 2 });
   const read = `${BASE_URL}/m/${message.idText}`;
-  await page.goto(`${BASE_URL}/`);
+  await openApp(page, `${BASE_URL}/`);
   await openViaUi(page, message.link);
   await expectRevealed(page);
   await expect(page).toHaveURL(read);

@@ -29,6 +29,7 @@ func TestClientManifestListsTheEmbeddedFiles(t *testing.T) {
 	t.Parallel()
 	cfg := baseConfig(pepperA, nil)
 	cfg.Version = "v1.2.3"
+	cfg.PublicURL = "https://nylzo.example"
 	ts, err := newWebServerWith(t, builtClient(t), nil, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -45,9 +46,12 @@ func TestClientManifestListsTheEmbeddedFiles(t *testing.T) {
 		Server:           "v1.2.3",
 		Built:            true,
 		NoncePlaceholder: "__NYLZO_CSP_NONCE__",
-		Pages:            []string{"/", "/sent", "/report", "/transparency", "/m/{id}"},
+		PublicURL:        "https://nylzo.example",
+		Pages:            []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/{id}"},
 		Files: []server.ClientFile{
-			{Path: "/", SHA256: sha(builtIndex)},
+			{Path: "/", SHA256: sha(builtHome("en"))},
+			{Path: "/cs/", SHA256: sha(builtHome("cs"))},
+			{Path: "/sent", SHA256: sha(builtIndex)},
 			{Path: "/assets/favicon-d4.svg", SHA256: sha(faviconSVG)},
 			{Path: "/assets/favicon-e5.png", SHA256: sha(faviconPNG)},
 			{Path: "/assets/index-a1.js", SHA256: sha(appJS)},
@@ -67,7 +71,7 @@ func TestClientManifestWithoutBuildListsNoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, body := get(t, ts.URL+server.ClientManifestPath, nil)
-	if !strings.Contains(body, `"built":false`) || !strings.Contains(body, `"files":[]`) {
+	if !strings.Contains(body, `"built":false`) || !strings.Contains(body, `"public_url":""`) || !strings.Contains(body, `"files":[]`) {
 		t.Fatalf("manifest without a build: %s", body)
 	}
 }

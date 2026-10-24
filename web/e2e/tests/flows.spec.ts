@@ -1,4 +1,4 @@
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openViaUi, test } from './helpers.ts';
+import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, openApp, openViaUi, test } from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 test('creates and reads a text message under the enforced CSP (AK10)', async ({ browser }) => {
@@ -52,7 +52,7 @@ test('scrypt runs in the worker under the enforced CSP', async ({ browser }) => 
 });
 
 test('a double click on Create link with an attachment creates one message', async ({ page }) => {
-  await page.goto(`${BASE_URL}/`);
+  await openApp(page, `${BASE_URL}/`);
   await expect(page.getByLabel('Message text')).toBeVisible();
   const sent: string[] = [];
   page.on('request', (request) => {

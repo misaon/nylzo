@@ -49,15 +49,16 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 		"Cross-Origin-Resource-Policy": "same-origin",
 		"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
 	}
-	for _, path := range []string{"/", "/sent", "/report", "/m/" + core.NewID().String(), "/api/v1/instance", "/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope"} {
+	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance", "/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope"} {
 		resp, _ := h.do(request{method: "GET", path: path})
 		for k, v := range required {
 			if resp.Header.Get(k) != v {
 				t.Fatalf("%s: header %s = %q", path, k, resp.Header.Get(k))
 			}
 		}
-		if robots := resp.Header.Get("X-Robots-Tag"); (path == "/") != (robots == "") || (path != "/" && robots != "noindex, nofollow") {
-			t.Fatalf("%s: X-Robots-Tag = %q, only the home page may be indexed (D80)", path, robots)
+		home := path == "/" || path == "/cs/"
+		if robots := resp.Header.Get("X-Robots-Tag"); home != (robots == "") || (!home && robots != "noindex, nofollow") {
+			t.Fatalf("%s: X-Robots-Tag = %q, only the home pages may be indexed (D80, D82)", path, robots)
 		}
 		if csp := resp.Header.Get("Content-Security-Policy"); !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") && csp != "default-src 'none'; frame-ancestors 'none'" {
 			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
@@ -65,7 +66,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	}
 	specCSP := htmlCSPFromSpec(t)
 	nonces := map[string]bool{}
-	pages := []string{"/", "/sent", "/report", "/m/" + core.NewID().String()}
+	pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
 	for i := range 2 * len(pages) {
 		resp, body := h.do(request{method: "GET", path: pages[i%len(pages)]})
 		csp := resp.Header.Get("Content-Security-Policy")
@@ -88,8 +89,11 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	}
 	nonceAttr := regexp.MustCompile(`nonce="[^"]*"`)
 	_, home := h.do(request{method: "GET", path: "/"})
-	if client, err := server.Embedded(); err != nil || client.Built && strings.Contains(string(home), `name="robots"`) {
-		t.Fatalf("the built client HTML must leave robots to the X-Robots-Tag header (D80): %v", err)
+	for _, path := range []string{"/", "/cs/", "/sent"} {
+		_, page := h.do(request{method: "GET", path: path})
+		if client, err := server.Embedded(); err != nil || client.Built && strings.Contains(string(page), `name="robots"`) {
+			t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80): %v", path, err)
+		}
 	}
 	if !strings.Contains(string(body), `name="robots" content="noindex, nofollow"`) {
 		t.Fatal("the preview page must stay noindex")
