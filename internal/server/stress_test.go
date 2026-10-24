@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,8 +22,10 @@ import (
 )
 
 const (
-	sweepDirEnv = "NYLZO_TEST_SWEEP_DIR"
-	sweepNowEnv = "NYLZO_TEST_SWEEP_NOW"
+	sweepDirEnv  = "NYLZO_TEST_SWEEP_DIR"
+	sweepNowEnv  = "NYLZO_TEST_SWEEP_NOW"
+	sweptMarker  = "nylzo-test-swept"
+	stressInFlow = 32
 )
 
 func TestMain(m *testing.M) {
@@ -54,6 +57,7 @@ func sweepProcess(dir, at string) int {
 		fmt.Fprintln(os.Stderr, "sweep:", server.ErrorText(err))
 		return 1
 	}
+	fmt.Fprintln(os.Stdout, sweptMarker)
 	return 0
 }
 
@@ -76,9 +80,10 @@ func onlyCheckpointBusy(err error) bool {
 }
 
 type endings struct {
-	claims  atomic.Int32
-	burns   atomic.Int32
-	cancels atomic.Int32
+	claims   atomic.Int32
+	goneAcks atomic.Int32
+	burns    atomic.Int32
+	cancels  atomic.Int32
 }
 
 func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
@@ -117,7 +122,8 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			}
 		}
 	})
-	var processes atomic.Int32
+	var overlapping atomic.Int32
+	var requestsDone atomic.Bool
 	background.Go(func() {
 		for {
 			select {
@@ -125,20 +131,32 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 				return
 			default:
 			}
+			during := !requestsDone.Load()
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
 			cmd.Env = append(os.Environ(), sweepDirEnv+"="+h.dir, sweepNowEnv+"="+h.clock.Now().Format(time.RFC3339Nano))
-			if out, err := cmd.CombinedOutput(); err != nil {
+			out, err := cmd.CombinedOutput()
+			if err != nil || !strings.Contains(string(out), sweptMarker) {
 				t.Errorf("sweep-once in a second process: %v %s", err, out)
 				return
 			}
-			processes.Add(1)
+			if during {
+				overlapping.Add(1)
+			}
 		}
 	})
+	slots := make(chan struct{}, stressInFlow)
+	limit := func(run func()) func() {
+		return func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			run()
+		}
+	}
 	var requests sync.WaitGroup
 	for i, m := range messages {
 		for j := range 4 {
 			ip := fmt.Sprintf("10.%d.%d.1", i, j)
-			requests.Go(func() {
+			requests.Go(limit(func() {
 				resp, _, err := h.tryDo(claimRequest(m, "", ip))
 				if err != nil {
 					t.Error(err)
@@ -155,42 +173,50 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 					return
 				}
 				expect("ack", ack.StatusCode, http.StatusNoContent, http.StatusGone)
-			})
+				if ack.StatusCode == http.StatusGone {
+					got[i].goneAcks.Add(1)
+				}
+			}))
 		}
 		if i%2 == 0 {
-			requests.Go(func() {
+			requests.Go(limit(func() {
 				code := h.statusFrom(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/burn", ip: fmt.Sprintf("10.%d.10.1", i), token: m.readToken})
 				expect("burn", code, http.StatusNoContent, http.StatusGone)
 				if code == http.StatusNoContent {
 					got[i].burns.Add(1)
 				}
-			})
+			}))
 		}
 		if i%3 == 0 {
-			requests.Go(func() {
+			requests.Go(limit(func() {
 				code := h.statusFrom(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", ip: fmt.Sprintf("10.%d.11.1", i), token: m.manageTok})
 				expect("cancel", code, http.StatusNoContent, http.StatusGone)
 				if code == http.StatusNoContent {
 					got[i].cancels.Add(1)
 				}
-			})
+			}))
 		}
-		requests.Go(func() {
+		requests.Go(limit(func() {
 			code := h.statusFrom(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: fmt.Sprintf("10.%d.12.1", i), token: m.manageTok})
 			expect("status", code, http.StatusOK)
-		})
+		}))
 	}
 	requests.Wait()
+	requestsDone.Store(true)
 	close(stop)
 	background.Wait()
-	if processes.Load() == 0 {
-		t.Error("no sweep-once process finished while the requests ran")
+	if overlapping.Load() == 0 {
+		t.Error("no sweep-once process ran while the requests ran")
 	}
 	for i, m := range messages {
-		claims, burns, cancels := got[i].claims.Load(), got[i].burns.Load(), got[i].cancels.Load()
-		if claims > int32(m.policy.OpensMax) || burns+cancels > 1 {
-			t.Errorf("message %d: %d claims of %d opens, %d burns, %d cancels", i, claims, m.policy.OpensMax, burns, cancels)
+		claims, goneAcks, burns, cancels := got[i].claims.Load(), got[i].goneAcks.Load(), got[i].burns.Load(), got[i].cancels.Load()
+		opens := int32(m.policy.OpensMax)
+		if claims > opens || burns+cancels > 1 {
+			t.Errorf("message %d: %d claims of %d opens, %d burns, %d cancels", i, claims, opens, burns, cancels)
 			continue
+		}
+		if burns+cancels == 0 && (claims != opens || goneAcks != 0) {
+			t.Errorf("message %d: with four readers and no deletion, %d of %d opens were claimed and %d acks were refused", i, claims, opens, goneAcks)
 		}
 		_, st := h.status(m)
 		want := "available"
@@ -203,7 +229,10 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			want = "opened"
 		}
 		if st["state"] != want {
-			t.Errorf("message %d ended as %v, want %s (%d claims of %d opens, %d burns, %d cancels)", i, st["state"], want, claims, m.policy.OpensMax, burns, cancels)
+			t.Errorf("message %d ended as %v, want %s (%d claims of %d opens, %d burns, %d cancels)", i, st["state"], want, claims, opens, burns, cancels)
+		}
+		if ended := want != "available"; h.blobExists(m.id) == ended {
+			t.Errorf("message %d in state %s: blob present %v", i, want, !ended)
 		}
 	}
 	h.clock.Advance(2 * time.Hour)
