@@ -248,6 +248,14 @@ test('the sent list and its dialog pass axe (AK20)', async ({ browser }) => {
   await page.getByRole('dialog').getByRole('button', { name: 'Keep it' }).click();
 });
 
+test('the transparency page passes axe (AK20)', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
+  const page = await context.newPage();
+  await page.goto('/transparency');
+  await expect(page.getByText('Nylzo e2e')).toBeVisible();
+  await expectAccessible(page, 'transparency');
+});
+
 test('the report page passes axe with and without problems (AK20)', async ({ browser }) => {
   const context = await browser.newContext({ viewport: MOBILE, bypassCSP: true });
   const page = await context.newPage();

@@ -264,9 +264,8 @@ func liveState(m *store.Message, now time.Time) store.State {
 }
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
-	l := s.cfg.Limits
 	resp := instanceResponse{
-		Limits:   instanceLimits{MaxFileBytes: l.MaxFileBytes, MaxTextBytes: core.MaxTextBytes, MaxObjectBytes: l.MaxObjectBytes, MaxTTL: int64(l.MaxTTL / time.Second), DefaultTTL: int64(l.DefaultTTL / time.Second), MaxOpens: l.MaxOpens, DefaultKDF: int(l.DefaultKDF)},
+		Limits:   s.instanceLimits(),
 		PoW:      instancePoW{Difficulty: s.cfg.PoWDifficulty},
 		Versions: instanceVersions{API: 1, Envelope: core.Version, Fragment: core.FragmentVersion, Server: s.cfg.Version},
 	}

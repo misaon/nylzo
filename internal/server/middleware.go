@@ -12,17 +12,23 @@ const apiCSP = "default-src 'none'; frame-ancestors 'none'"
 
 const cspTemplate = "default-src 'none'; script-src 'nonce-%s'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
 
+var securityHeaderValues = map[string]string{
+	"Referrer-Policy":              "no-referrer",
+	"Cache-Control":                "no-store",
+	"X-Robots-Tag":                 "noindex, nofollow",
+	"X-Content-Type-Options":       "nosniff",
+	"Cross-Origin-Opener-Policy":   "same-origin",
+	"Cross-Origin-Resource-Policy": "same-origin",
+	"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
+	"Permissions-Policy":           "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+}
+
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Cache-Control", "no-store")
-		h.Set("X-Robots-Tag", "noindex, nofollow")
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Cross-Origin-Opener-Policy", "same-origin")
-		h.Set("Cross-Origin-Resource-Policy", "same-origin")
-		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-		h.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+		for name, value := range securityHeaderValues {
+			h.Set(name, value)
+		}
 		h.Set("Content-Security-Policy", apiCSP)
 		next.ServeHTTP(w, r)
 	})

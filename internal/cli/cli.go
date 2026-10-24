@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server"
 )
 
 const (
@@ -29,13 +30,21 @@ const (
 )
 
 type Env struct {
-	Stdin    io.Reader
-	Stdout   io.Writer
-	Stderr   io.Writer
-	Getenv   func(string) string
-	Terminal Terminal
-	Version  string
-	TempDir  string
+	Stdin     io.Reader
+	Stdout    io.Writer
+	Stderr    io.Writer
+	Getenv    func(string) string
+	Terminal  Terminal
+	Version   string
+	TempDir   string
+	WebClient func() (server.EmbeddedClient, error)
+}
+
+func (e Env) webClient() (server.EmbeddedClient, error) {
+	if e.WebClient != nil {
+		return e.WebClient()
+	}
+	return server.Embedded()
 }
 
 func (e Env) tempDir() string {
@@ -70,6 +79,7 @@ func commands() []command {
 		{"burn", "delete the remaining opens of a message from its link", runBurn},
 		{"serve", "run the server with the embedded web client", runServe},
 		{"sweep-once", "run one sweep of the server store and exit", runSweepOnce},
+		{"verify-client", "check that a server sends the same web client as this nylzo", runVerifyClient},
 		{"version", "print the version", runVersion},
 	}
 }

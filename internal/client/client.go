@@ -28,6 +28,7 @@ const (
 	minTransfer    = 120 * time.Second
 	minTransferBPS = 16000
 	maxJSONBytes   = 64 << 10
+	MaxFetchBytes  = 8 << 20
 	userAgent      = "nylzo-cli"
 )
 
@@ -446,6 +447,30 @@ func (c *Client) signedOnce(ctx context.Context, r signedRequest, timeout time.D
 	}
 	maps.Copy(headers, r.headers)
 	return c.do(ctx, r.method, r.path, headers, nil, timeout)
+}
+
+type Fetched struct {
+	Header http.Header
+	Body   []byte
+}
+
+func (c *Client) Fetch(ctx context.Context, path, acceptEncoding string, limit int64) (Fetched, error) {
+	resp, err := c.do(ctx, http.MethodGet, path, map[string]string{"Accept-Encoding": acceptEncoding}, nil, shortTimeout)
+	if err != nil {
+		return Fetched{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return Fetched{}, &APIError{Status: resp.StatusCode, Kind: "unexpected"}
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, min(limit, MaxFetchBytes)+1))
+	if err != nil {
+		return Fetched{}, err
+	}
+	if int64(len(body)) > min(limit, MaxFetchBytes) {
+		return Fetched{}, ErrResponse
+	}
+	return Fetched{Header: resp.Header, Body: body}, nil
 }
 
 func (c *Client) do(ctx context.Context, method, path string, headers map[string]string, body []byte, timeout time.Duration) (*http.Response, error) {

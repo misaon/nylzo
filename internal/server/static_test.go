@@ -51,8 +51,12 @@ func builtClient(t *testing.T) fstest.MapFS {
 
 func newWebServer(t *testing.T, files fs.FS, logs io.Writer) (*httptest.Server, error) {
 	t.Helper()
+	return newWebServerWith(t, files, logs, baseConfig(pepperA, nil))
+}
+
+func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, cfg server.Config) (*httptest.Server, error) {
+	t.Helper()
 	dir := t.TempDir()
-	cfg := baseConfig(pepperA, nil)
 	cfg.DataDir = dir
 	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 	if err != nil {

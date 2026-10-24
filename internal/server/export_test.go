@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/hex"
-	"io/fs"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -71,14 +70,6 @@ func (s *Server) ChallengeForTest() [core.ChallengeLen]byte {
 func (s *Server) ChallengeAtForTest(now time.Time) [core.ChallengeLen]byte {
 	c, _ := s.issueChallenge(now)
 	return c
-}
-
-func WithWebFiles(files fs.FS) Option {
-	return func(s *Server) {
-		if files != nil {
-			s.webFiles = files
-		}
-	}
 }
 
 func (s *Server) SetFreeSpaceForTest(free func(string) (uint64, error)) {

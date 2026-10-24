@@ -123,6 +123,11 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         create: { id, idToken: 'token' },
       };
     },
+
+    async transparency() {
+      calls.push('transparency');
+      throw new Error('the flow tests never load the transparency page');
+    },
     async create(request) {
       calls.push('create');
       const failure = failCreate.shift();
