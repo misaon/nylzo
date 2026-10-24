@@ -24,7 +24,7 @@
 
   const problems = $derived(outcome?.outcome === 'invalid' ? outcome.problems : []);
   const linkProblem = $derived.by(() => {
-    const problem = problems.find((p) => p !== 'reason_too_long');
+    const problem = problems.find((p) => p.startsWith('link_'));
     return problem ? t(`report.problem.${problem}`) : '';
   });
   const reasonProblem = $derived(problems.includes('reason_too_long') ? t('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES }) : '');

@@ -543,6 +543,21 @@
       "valid": false
     },
     {
+      "name": "fragment-version-2-no-path",
+      "input": "https://nylzo.example#2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-plus-2",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#+2.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
+      "name": "fragment-version-fullwidth-2",
+      "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#２.1.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
+      "valid": false
+    },
+    {
       "name": "fragment-kdf-3",
       "input": "https://nylzo.example/m/VYkVuDHE8iM238s_29iTmA#1.3.zvnkXRTzwVJpfjm1e7o8JBaARq9hHh6Nw8w1pNX6UjI",
       "valid": false
