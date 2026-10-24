@@ -768,6 +768,29 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     expect(resumed.last()).toMatchObject({ view: 'revealed', burnable: true });
   });
 
+  it('deletes the rest right after the reveal, after the ack, instead of ignoring the click', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const r = reader(api, created.link);
+    await r.load();
+    const gate = Promise.withResolvers<void>();
+    const ack = api.ack.bind(api);
+    api.ack = async (...args: Parameters<typeof ack>) => {
+      await gate.promise;
+      return ack(...args);
+    };
+    await r.reveal();
+    expect(r.last()).toMatchObject({ view: 'revealed', burnable: true });
+    const burning = r.burn();
+    await Promise.resolve();
+    expect(api.calls).not.toContain('burn');
+    gate.resolve();
+    expect(await burning).toEqual({ outcome: 'deleted' });
+    const order = api.calls.filter((call) => call === 'ack' || call === 'burn');
+    expect(order).toEqual(['ack', 'burn']);
+    expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+  });
+
   it('ignores a deletion while the message is being revealed or already being deleted', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDeps(api));

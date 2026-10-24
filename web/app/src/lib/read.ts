@@ -143,6 +143,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   let metadata: Metadata | undefined;
   let deviceFailed = false;
   let busy = false;
+  let acknowledged: Promise<void> = Promise.resolve();
   let lease: string | undefined;
   let revealable = false;
   let left = false;
@@ -416,8 +417,10 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file } : undefined,
       burnable: remaining > 0,
     });
-    await deps.api.ack(current.id, current.readKey, fetched.lease).catch(() => undefined);
-    forgetLease();
+    acknowledged = deps.api
+      .ack(current.id, current.readKey, fetched.lease)
+      .catch(() => undefined)
+      .then(forgetLease);
     return undefined;
   }
 
@@ -469,6 +472,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     busy = true;
     let outcome: BurnOutcome;
     try {
+      await acknowledged;
       await deps.api.burn(current.id, current.readKey);
       outcome = { outcome: 'deleted' };
     } catch (error) {
