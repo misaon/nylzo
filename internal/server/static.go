@@ -44,12 +44,12 @@ const encodingGzip = "gzip"
 
 var precompressed = map[string]string{".gz": encodingGzip}
 
-var assetReference = regexp.MustCompile(`(?:src|href)="/assets/([^"]*)"`)
+var assetReference = regexp.MustCompile(`(?:src|href|content)="(?:` + publicURLPlaceholder + `)?/assets/([^"]*)"`)
 
 type webClient struct {
-	built  bool
-	index  string
-	assets map[string]webAsset
+	built     bool
+	templates map[string]string
+	assets    map[string]webAsset
 }
 
 type webAsset struct {
@@ -58,30 +58,47 @@ type webAsset struct {
 }
 
 func loadWebClient(files fs.FS) (webClient, error) {
-	index, err := fs.ReadFile(files, "web/dist/index.html")
-	if errors.Is(err, fs.ErrNotExist) {
+	if _, err := fs.Stat(files, "web/dist/"+indexTemplate); errors.Is(err, fs.ErrNotExist) {
 		placeholder, err := fs.ReadFile(files, "web/placeholder.html")
 		if err != nil {
 			return webClient{}, fmt.Errorf("server: web placeholder: %w", err)
 		}
-		return webClient{index: string(placeholder)}, nil
+		client := webClient{templates: map[string]string{}}
+		for _, name := range templateNames {
+			client.templates[name] = string(placeholder)
+		}
+		return client, nil
 	}
-	if err != nil {
-		return webClient{}, fmt.Errorf("server: web client: %w", err)
-	}
-	client := webClient{built: true, index: string(index), assets: map[string]webAsset{}}
-	if !strings.Contains(client.index, noncePlaceholder) {
-		return webClient{}, errors.New("server: web client index.html has no nonce placeholder")
-	}
+	client := webClient{built: true, templates: map[string]string{}, assets: map[string]webAsset{}}
 	if err := client.loadAssets(files); err != nil {
 		return webClient{}, err
 	}
-	for _, match := range assetReference.FindAllStringSubmatch(client.index, -1) {
-		if _, ok := client.assets[match[1]]; !ok {
-			return webClient{}, fmt.Errorf("server: web client index.html references the missing asset %q", match[1])
+	for _, name := range templateNames {
+		if err := client.loadTemplate(files, name); err != nil {
+			return webClient{}, err
 		}
 	}
 	return client, nil
+}
+
+func (c *webClient) loadTemplate(files fs.FS, name string) error {
+	template, err := fs.ReadFile(files, "web/dist/"+name)
+	if err != nil {
+		return fmt.Errorf("server: web client %s: %w", name, err)
+	}
+	if !bytes.Contains(template, []byte(noncePlaceholder)) {
+		return fmt.Errorf("server: web client %s has no nonce placeholder", name)
+	}
+	if _, err := RenderPage(string(template), "https://nylzo.invalid"); err != nil {
+		return fmt.Errorf("server: web client %s: %w", name, err)
+	}
+	for _, match := range assetReference.FindAllSubmatch(template, -1) {
+		if _, ok := c.assets[string(match[1])]; !ok {
+			return fmt.Errorf("server: web client %s references the missing asset %q", name, match[1])
+		}
+	}
+	c.templates[name] = string(template)
+	return nil
 }
 
 func (c *webClient) loadAssets(files fs.FS) error {
@@ -180,13 +197,21 @@ func (s *Server) handlePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	nonce := rand.Text()
-	w.Header().Set("Content-Security-Policy", fmt.Sprintf(cspTemplate, nonce, nonce))
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	h := w.Header()
+	h.Set("Content-Security-Policy", fmt.Sprintf(cspTemplate, nonce, nonce))
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Vary", "Accept-Encoding")
 	if id != "" && isPreviewAgent(r.UserAgent()) {
 		w.Write([]byte(previewHTML))
 		return
 	}
-	w.Write([]byte(strings.ReplaceAll(s.web.index, noncePlaceholder, nonce)))
+	page := s.pages[PageTemplate(r.URL.Path)]
+	if acceptedEncodings(r.Header.Get("Accept-Encoding"))[encodingGzip] {
+		h.Set("Content-Encoding", encodingGzip)
+		w.Write(page.gzip(nonce))
+		return
+	}
+	w.Write(page.plain(nonce))
 }
 
 func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {

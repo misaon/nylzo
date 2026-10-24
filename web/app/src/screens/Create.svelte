@@ -9,7 +9,15 @@
   import Resilience from '../components/home/Resilience.svelte';
   import SelfHost from '../components/home/SelfHost.svelte';
   import WhoSees from '../components/home/WhoSees.svelte';
+  import { getI18n } from '../lib/i18n.svelte.ts';
+
+  const { t } = getI18n();
 </script>
+
+<svelte:head>
+  <title>{t('seo.title')}</title>
+  <meta name="description" content={t('seo.description')} />
+</svelte:head>
 
 <Composer />
 <HowItWorks />

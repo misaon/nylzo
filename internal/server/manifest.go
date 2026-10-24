@@ -18,7 +18,9 @@ const (
 	EncodingGzip       = encodingGzip
 )
 
-var ClientPages = []string{"/", "/sent", "/report", "/transparency", "/m/{id}"}
+var ClientPages = []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/{id}"}
+
+var manifestPages = []string{"/", "/cs/", "/sent"}
 
 func PageCSP(nonce string) string {
 	return fmt.Sprintf(cspTemplate, nonce, nonce)
@@ -26,7 +28,7 @@ func PageCSP(nonce string) string {
 
 func SecurityHeaders(path string) map[string]string {
 	headers := maps.Clone(securityHeaderValues)
-	if path != homePath {
+	if !isHomePath(path) {
 		headers["X-Robots-Tag"] = robotsTag
 	}
 	return headers
@@ -41,6 +43,7 @@ type ClientManifest struct {
 	Server           string       `json:"server"`
 	Built            bool         `json:"built"`
 	NoncePlaceholder string       `json:"nonce_placeholder"`
+	PublicURL        string       `json:"public_url"`
 	Pages            []string     `json:"pages"`
 	Files            []ClientFile `json:"files"`
 }
@@ -52,9 +55,9 @@ type EmbeddedAsset struct {
 }
 
 type EmbeddedClient struct {
-	Built  bool
-	Index  string
-	Assets map[string]EmbeddedAsset
+	Built     bool
+	Templates map[string]string
+	Assets    map[string]EmbeddedAsset
 }
 
 func Embedded() (EmbeddedClient, error) {
@@ -78,19 +81,25 @@ func WithWebFiles(files fs.FS) Option {
 }
 
 func (c webClient) embedded() EmbeddedClient {
-	out := EmbeddedClient{Built: c.built, Index: c.index, Assets: map[string]EmbeddedAsset{}}
+	out := EmbeddedClient{Built: c.built, Templates: maps.Clone(c.templates), Assets: map[string]EmbeddedAsset{}}
 	for name, asset := range c.assets {
 		out.Assets[name] = EmbeddedAsset{ContentType: asset.contentType, Body: asset.bodies[""], Gzip: asset.bodies[encodingGzip]}
 	}
 	return out
 }
 
-func (c EmbeddedClient) Manifest(version string) ClientManifest {
-	m := ClientManifest{Server: version, Built: c.Built, NoncePlaceholder: noncePlaceholder, Pages: slices.Clone(ClientPages), Files: []ClientFile{}}
+func (c EmbeddedClient) Page(path, publicURL string) (string, error) {
+	return RenderPage(c.Templates[PageTemplate(path)], publicURL)
+}
+
+func (c EmbeddedClient) Manifest(version, publicURL string) ClientManifest {
+	m := ClientManifest{Server: version, Built: c.Built, NoncePlaceholder: noncePlaceholder, PublicURL: publicURL, Pages: slices.Clone(ClientPages), Files: []ClientFile{}}
 	if !c.Built {
 		return m
 	}
-	m.Files = append(m.Files, ClientFile{Path: "/", SHA256: sha256Hex([]byte(c.Index))})
+	for _, path := range manifestPages {
+		m.Files = append(m.Files, ClientFile{Path: path, SHA256: sha256Hex([]byte(c.Templates[PageTemplate(path)]))})
+	}
 	for _, name := range slices.Sorted(maps.Keys(c.Assets)) {
 		m.Files = append(m.Files, ClientFile{Path: "/assets/" + name, SHA256: sha256Hex(c.Assets[name].Body)})
 	}

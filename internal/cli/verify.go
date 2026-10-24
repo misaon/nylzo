@@ -45,11 +45,12 @@ type verified struct {
 }
 
 type verifier struct {
-	client  *client.Client
-	local   server.EmbeddedClient
-	version string
-	allowed map[string]bool
-	nonces  map[string]bool
+	client    *client.Client
+	local     server.EmbeddedClient
+	version   string
+	publicURL string
+	allowed   map[string]bool
+	nonces    map[string]bool
 }
 
 func runVerifyClient(ctx context.Context, env Env, args []string) int {
@@ -133,8 +134,14 @@ func (v *verifier) manifest(ctx context.Context) error {
 		}
 		return fmt.Errorf("the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs", version, v.version)
 	}
+	if got.PublicURL != "" {
+		if err := server.CheckPublicURL(got.PublicURL); err != nil {
+			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %v", err)
+		}
+	}
+	v.publicURL = got.PublicURL
 	gotJSON, _ := json.Marshal(got)
-	wantJSON, _ := json.Marshal(v.local.Manifest(v.version))
+	wantJSON, _ := json.Marshal(v.local.Manifest(v.version, v.publicURL))
 	if !bytes.Equal(gotJSON, wantJSON) {
 		return errors.New("the server's client manifest differs from the web client of this nylzo")
 	}
@@ -143,11 +150,15 @@ func (v *verifier) manifest(ctx context.Context) error {
 
 func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	where := describe(path, encoding)
+	want, err := v.local.Page(path, v.publicURL)
+	if err != nil {
+		return fmt.Errorf("%s: %w", where, err)
+	}
 	fetched, err := v.client.Fetch(ctx, path, encoding, maxPageBytes)
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
 	}
-	if err := v.headers(fetched.Header, "text/html; charset=utf-8", false, path, where); err != nil {
+	if err := v.headers(fetched.Header, "text/html; charset=utf-8", path, where); err != nil {
 		return err
 	}
 	csp := fetched.Header.Get("Content-Security-Policy")
@@ -160,14 +171,14 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 		return fmt.Errorf("%s: the server sent the same nonce twice", where)
 	}
 	v.nonces[nonce] = true
-	body, err := decoded(fetched, encoding, int64(len(v.local.Index))+maxPageBytes, where)
+	body, err := decoded(fetched, encoding, int64(len(want))+maxPageBytes, where)
 	if err != nil {
 		return err
 	}
-	if strings.Count(string(body), nonce) != strings.Count(v.local.Index, server.NoncePlaceholder) {
+	if strings.Count(string(body), nonce) != strings.Count(want, server.NoncePlaceholder) {
 		return fmt.Errorf("%s: the page does not use the nonce of its Content-Security-Policy everywhere", where)
 	}
-	if strings.ReplaceAll(string(body), nonce, server.NoncePlaceholder) != v.local.Index {
+	if strings.ReplaceAll(string(body), nonce, server.NoncePlaceholder) != want {
 		return fmt.Errorf("%s: the page differs from the web client of this nylzo", where)
 	}
 	return nil
@@ -180,10 +191,10 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
 	}
-	if err := v.headers(fetched.Header, asset.ContentType, true, path, where); err != nil {
+	if err := v.headers(fetched.Header, asset.ContentType, path, where); err != nil {
 		return err
 	}
-	if fetched.Header.Get("Content-Security-Policy") != server.AssetCSP || fetched.Header.Get("Vary") != "Accept-Encoding" {
+	if fetched.Header.Get("Content-Security-Policy") != server.AssetCSP {
 		return fmt.Errorf("%s: the headers differ from this nylzo", where)
 	}
 	body, err := decoded(fetched, encoding, int64(len(asset.Body)), where)
@@ -196,26 +207,21 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 	return nil
 }
 
-func (v *verifier) headers(header http.Header, contentType string, asset bool, path, where string) error {
+func (v *verifier) headers(header http.Header, contentType, path, where string) error {
 	expected := server.SecurityHeaders(path)
 	expected["Content-Type"] = contentType
+	expected["Vary"] = "Accept-Encoding"
 	for name, value := range expected {
 		if values := header.Values(name); len(values) != 1 || values[0] != value {
 			return fmt.Errorf("%s: the %s header differs from this nylzo", where, name)
 		}
 	}
-	once := []string{"Content-Security-Policy"}
-	if asset {
-		once = append(once, "Vary")
-	}
-	for _, name := range once {
-		if len(header.Values(name)) != 1 {
-			return fmt.Errorf("%s: the %s header differs from this nylzo", where, name)
-		}
+	if len(header.Values("Content-Security-Policy")) != 1 {
+		return fmt.Errorf("%s: the Content-Security-Policy header differs from this nylzo", where)
 	}
 	for name, values := range header {
-		known := expected[name] != "" || slices.Contains(once, name) || slices.Contains(transportHeaders, name) || v.allowed[name]
-		if asset && name == "Content-Encoding" {
+		known := expected[name] != "" || name == "Content-Security-Policy" || slices.Contains(transportHeaders, name) || v.allowed[name]
+		if name == "Content-Encoding" {
 			known = len(values) == 1
 		}
 		if !known {

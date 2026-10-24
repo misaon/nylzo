@@ -379,10 +379,12 @@ test('the language switches in place, keeps a shown message and stays chosen', a
   await expect(recipient.getByRole('button', { name: 'English' })).toHaveAttribute('lang', 'en');
 
   await recipient.goto('/');
+  await expect(recipient).toHaveURL(`${BASE_URL}/cs/`);
   await expect(recipient.getByRole('heading', { name: 'Nová zpráva' })).toBeVisible();
   expect(await recipient.evaluate(() => document.documentElement.lang)).toBe('cs');
   await recipient.getByRole('button', { name: 'English' }).click();
   await expect(recipient.getByRole('heading', { name: 'New message' })).toBeVisible();
+  await expect(recipient).toHaveURL(`${BASE_URL}/`);
 });
 
 test('a failed status can be loaded again (D39)', async ({ browser }) => {

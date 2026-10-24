@@ -313,6 +313,7 @@ test('with reduced motion every tab passes axe (AK20)', async ({ browser }) => {
   const page = await context.newPage();
   await page.goto('/');
   const tabs = page.getByRole('tab');
+  await expect(tabs.first()).toBeVisible();
   const count = await tabs.count();
   expect(count).toBeGreaterThan(0);
   for (let index = 0; index < count; index++) {

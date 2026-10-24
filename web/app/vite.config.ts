@@ -64,8 +64,8 @@ function precompress(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [tailwindcss(), svelte(), withoutNonceMeta(), preloadFonts(), precompress()],
+export default defineConfig(({ isSsrBuild }) => ({
+  plugins: [tailwindcss(), svelte(), ...(isSsrBuild ? [] : [withoutNonceMeta(), preloadFonts(), precompress()])],
   html: { cspNonce: '__NYLZO_CSP_NONCE__' },
   server: { strictPort: true, proxy: { '/api': devApi } },
   build: {
@@ -75,6 +75,7 @@ export default defineConfig({
     cssCodeSplit: false,
     modulePreload: false,
   },
+  ssr: { noExternal: ['@nylzo/core'] },
   worker: { format: 'es' },
   test: {
     projects: [
@@ -90,4 +91,4 @@ export default defineConfig({
       },
     ],
   },
-});
+}));

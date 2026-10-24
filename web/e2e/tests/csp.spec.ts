@@ -22,7 +22,7 @@ function withoutNonce(policy: string): { readonly policy: string; readonly nonce
   return { policy: policy.replaceAll(/'nonce-[^']+'/g, "'nonce-{nonce}'"), nonces };
 }
 
-for (const path of ['/', '/sent', '/report', `/m/${id}`]) {
+for (const path of ['/', '/cs/', '/sent', '/report', `/m/${id}`]) {
   test(`${path} carries exactly the CSP of spec section 9 and renders without violations`, async ({ page }) => {
     const violations = await recordViolations(page);
     const response = await page.goto(path);
@@ -31,7 +31,7 @@ for (const path of ['/', '/sent', '/report', `/m/${id}`]) {
     expect(nonces).toHaveLength(2);
     expect(nonces[0]).toBe(nonces[1]);
     expect(nonces[0]?.length ?? 0).toBeGreaterThanOrEqual(22);
-    expect(response?.headers()['x-robots-tag']).toBe(path === '/' ? undefined : 'noindex, nofollow');
+    expect(response?.headers()['x-robots-tag']).toBe(path === '/' || path === '/cs/' ? undefined : 'noindex, nofollow');
     await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     expect(await violations()).toEqual([]);

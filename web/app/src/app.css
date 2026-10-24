@@ -187,6 +187,9 @@
       scroll-behavior: smooth;
     }
   }
+  html:not([data-ready]) body {
+    visibility: hidden;
+  }
   body {
     background: var(--color-void-950);
     color: var(--color-ink);

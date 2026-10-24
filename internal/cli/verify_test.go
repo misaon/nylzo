@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"compress/gzip"
+	"io"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -21,9 +22,23 @@ import (
 
 const (
 	webIndex = `<!doctype html><html><head><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
+	webHome  = `<!doctype html><html><head><!--nylzo:public--><link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><script type="application/ld+json" nonce="__NYLZO_CSP_NONCE__">{"url":"__NYLZO_PUBLIC_URL__/"}</script><!--/nylzo:public--><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script></head><body><h1>Nylzo</h1></body></html>`
 	webJS    = "console.log('nylzo')"
 	webIcon  = `<svg xmlns="http://www.w3.org/2000/svg"/>`
 )
+
+func gunzipBytes(t *testing.T, data []byte) []byte {
+	t.Helper()
+	reader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plain
+}
 
 func gzipBytes(t *testing.T, data []byte) []byte {
 	t.Helper()
@@ -43,6 +58,8 @@ func webFiles(t *testing.T) fstest.MapFS {
 	return fstest.MapFS{
 		"web/placeholder.html":             {Data: []byte("placeholder")},
 		"web/dist/index.html":              {Data: []byte(webIndex)},
+		"web/dist/home.en.html":            {Data: []byte(webHome)},
+		"web/dist/home.cs.html":            {Data: []byte(strings.Replace(webHome, "<html>", `<html lang="cs">`, 1))},
 		"web/dist/assets/index-a1.js":      {Data: []byte(webJS)},
 		"web/dist/assets/index-a1.js.gz":   {Data: gzipBytes(t, []byte(webJS))},
 		"web/dist/assets/style-b2.css":     {Data: []byte("body{}")},
@@ -54,11 +71,17 @@ func webFiles(t *testing.T) fstest.MapFS {
 
 func newWebTestServer(t *testing.T, files fs.FS, version string, wrap func(http.Handler) http.Handler) string {
 	t.Helper()
+	return newPublicWebTestServer(t, files, version, "", wrap)
+}
+
+func newPublicWebTestServer(t *testing.T, files fs.FS, version, publicURL string, wrap func(http.Handler) http.Handler) string {
+	t.Helper()
 	dir := t.TempDir()
 	cfg := server.Defaults()
 	cfg.DataDir = dir
 	cfg.Pepper = bytes.Repeat([]byte{7}, 32)
 	cfg.Version = version
+	cfg.PublicURL = publicURL
 	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -131,8 +154,12 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
 	res := runVerify(t, newWebTestServer(t, files, "test", nil), files)
-	if res.code != exitOK || res.stdout != "the server sends the web client of nylzo test unchanged: 5 pages and 5 files checked\n" {
+	if res.code != exitOK || res.stdout != "the server sends the web client of nylzo test unchanged: 6 pages and 5 files checked\n" {
 		t.Fatalf("%+v", res)
+	}
+	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)
+	if public.code != exitOK {
+		t.Fatalf("a server with a public URL: %+v", public)
 	}
 	if !strings.Contains(res.stderr, "a server can recognise it") {
 		t.Fatalf("the result must say what it cannot see: %q", res.stderr)
@@ -168,8 +195,20 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			s.header.Set("Content-Encoding", "gzip")
 		}), "compressed a response that was asked for without compression"},
 		{"page for browsers only", rewrite(browserAsks("/"), func(s *served) {
-			s.body = bytes.Replace(s.body, []byte("</head>"), []byte(`<script src="https://evil.example/x.js"></script></head>`), 1)
+			s.body = gzipBytes(t, bytes.Replace(gunzipBytes(t, s.body), []byte("</head>"), []byte(`<script src="https://evil.example/x.js"></script></head>`), 1))
 		}), "/ (as a browser asks for it): the page differs"},
+		{"Czech home page", rewrite(pathIs("/cs/"), func(s *served) {
+			s.body = bytes.Replace(s.body, []byte("<h1>"), []byte(`<h1><img src="https://evil.example/t.gif">`), 1)
+		}), "/cs/: the page differs"},
+		{"page without Vary", rewrite(pathIs("/sent"), func(s *served) {
+			s.header.Del("Vary")
+		}), "/sent: the Vary header differs"},
+		{"public URL in the manifest that the server would refuse", rewrite(pathIs(server.ClientManifestPath), func(s *served) {
+			s.body = bytes.Replace(s.body, []byte(`"public_url":""`), []byte(`"public_url":"http://evil.example"`), 1)
+		}), "names a public URL that this nylzo would refuse"},
+		{"public URL in the manifest that the pages do not use", rewrite(pathIs(server.ClientManifestPath), func(s *served) {
+			s.body = bytes.Replace(s.body, []byte(`"public_url":""`), []byte(`"public_url":"https://evil.example"`), 1)
+		}), "/: the page "},
 		{"weaker referrer policy", rewrite(pathIs("/assets/style-b2.css"), func(s *served) {
 			s.header.Set("Referrer-Policy", "unsafe-url")
 		}), "the Referrer-Policy header differs"},
@@ -214,10 +253,12 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"second content type", rewrite(pathIs("/report"), func(s *served) {
 			s.header.Add("Content-Type", "text/plain")
 		}), "/report: the Content-Type header differs"},
-		{"compressed page", rewrite(browserAsks("/sent"), func(s *served) {
+		{"compressed page to a request without compression", rewrite(func(r *http.Request) bool {
+			return r.URL.Path == "/sent" && r.Header.Get("Accept-Encoding") == "identity"
+		}, func(s *served) {
 			s.body = gzipBytes(t, s.body)
 			s.header.Set("Content-Encoding", "gzip")
-		}), "/sent (as a browser asks for it): the server sent the Content-Encoding header"},
+		}), "/sent: the server compressed a response that was asked for without compression"},
 		{"fixed nonce", rewrite(func(r *http.Request) bool { return r.URL.Path == "/" || r.URL.Path == "/sent" }, func(s *served) {
 			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
 			fixed := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"

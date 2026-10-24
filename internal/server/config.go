@@ -62,6 +62,7 @@ type Config struct {
 	MaxStreams     int
 	MinFreeBytes   int64
 	Operator       Operator
+	PublicURL      string
 	Version        string
 }
 
@@ -197,6 +198,7 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	set("NYLZO_OPERATOR", func(v string) error { c.Operator.Name = v; return nil })
 	set("NYLZO_CONTACT", func(v string) error { c.Operator.Contact = v; return nil })
 	set("NYLZO_HOSTING", func(v string) error { c.Operator.Hosting = v; return nil })
+	set("NYLZO_PUBLIC_URL", func(v string) error { c.PublicURL = v; return CheckPublicURL(v) })
 	if err != nil {
 		return c, err
 	}
@@ -280,6 +282,11 @@ func (c Config) Validate() error {
 	}
 	if err := c.Operator.validate(); err != nil {
 		return fmt.Errorf("%w: %v", ErrConfig, err)
+	}
+	if c.PublicURL != "" {
+		if err := CheckPublicURL(c.PublicURL); err != nil {
+			return fmt.Errorf("%w: NYLZO_PUBLIC_URL: %v", ErrConfig, err)
+		}
 	}
 	return nil
 }

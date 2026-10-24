@@ -147,8 +147,6 @@
     }
   }
 
-  loadLimits();
-
   function failureText(value: CreateFailure): string {
     const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
     return t(failureKey(value), { time: formatWait(retryAfter, i18n.language) });
@@ -419,7 +417,10 @@
     return rememberSent(sentStore, record, SAVE_TIMEOUT_MS);
   }
 
-  const cleanup: Attachment = () => () => clearInterval(timer);
+  const cleanup: Attachment = () => {
+    loadLimits();
+    return () => clearInterval(timer);
+  };
 
   const chipBase = 'flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap ring-1 sm:w-auto sm:justify-start md:h-9';
   const chipIdle = 'bg-white/4 text-ink-soft ring-white/10 hover:bg-white/8 hover:text-ink';

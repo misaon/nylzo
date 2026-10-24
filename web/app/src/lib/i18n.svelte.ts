@@ -418,14 +418,18 @@ export function browserPreferences(): PreferenceStore | undefined {
   }
 }
 
-export function savedLanguage(store: PreferenceStore | undefined, preferred: readonly string[]): Language {
+export function storedLanguage(store: PreferenceStore | undefined): Language | undefined {
   let saved: string | null = null;
   try {
     saved = store?.getItem(LANGUAGE_KEY) ?? null;
   } catch {
     saved = null;
   }
-  return saved === 'cs' || saved === 'en' ? saved : pickLanguage(preferred);
+  return saved === 'cs' || saved === 'en' ? saved : undefined;
+}
+
+export function savedLanguage(store: PreferenceStore | undefined, preferred: readonly string[]): Language {
+  return storedLanguage(store) ?? pickLanguage(preferred);
 }
 
 export function saveLanguage(store: PreferenceStore | undefined, language: Language): void {
