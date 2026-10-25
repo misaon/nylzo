@@ -12,7 +12,7 @@ export const ATTACKERS: readonly { readonly id: Attacker; readonly rate: number;
   { id: 'world', rate: 21, hypothetical: true },
 ];
 
-export type Verdict = 'week' | 'ttl' | 'life' | 'dinosaurs' | 'earth' | 'universe' | 'beyond';
+type Verdict = 'week' | 'ttl' | 'life' | 'dinosaurs' | 'earth' | 'universe' | 'beyond';
 
 const SECONDS_PER_YEAR = 31_557_600;
 const KEY_BITS = 256n;
@@ -33,7 +33,7 @@ function rateOf(attacker: Attacker): number {
   return ATTACKERS.find((item) => item.id === attacker)?.rate ?? 0;
 }
 
-export function averageYearsLog10(attacker: Attacker, quantum: boolean): number {
+function averageYearsLog10(attacker: Attacker, quantum: boolean): number {
   const log2 = Math.log10(2);
   const steps = quantum ? Number(QUANTUM_BITS) * log2 + Math.log10(Math.PI / 4) : (Number(KEY_BITS) - 1) * log2;
   return steps - rateOf(attacker) - Math.log10(SECONDS_PER_YEAR);
@@ -56,7 +56,7 @@ export function judge(attacker: Attacker, quantum: boolean): Judgement {
   return { verdict: last, bigBang: false, yearsLog10 };
 }
 
-export type YearsKey =
+type YearsKey =
   | 'brute.years.billion.fraction'
   | 'brute.years.billion'
   | 'brute.years.million.fraction'

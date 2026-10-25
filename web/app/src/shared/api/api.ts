@@ -103,11 +103,11 @@ export interface Envelope {
   readonly object: Uint8Array<ArrayBuffer>;
 }
 
-export interface Claimed extends Envelope {
+interface Claimed extends Envelope {
   readonly lease: string;
 }
 
-export interface ClaimOptions {
+interface ClaimOptions {
   readonly verifierKey?: RequestKey | undefined;
   readonly onLease?: (lease: string) => void;
   readonly onProgress?: DownloadProgress;

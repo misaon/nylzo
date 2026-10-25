@@ -51,7 +51,7 @@ export type FocusTarget =
 export const PANEL_SHOWN = 'translate-y-0 opacity-100';
 export const PANEL_HIDDEN = 'pointer-events-none translate-y-3 opacity-0';
 
-export const STEPS = [
+const STEPS = [
   { id: 'derive', busy: 'deriving', icon: 'key' },
   { id: 'claim', busy: 'claiming', icon: 'envelopeOpen' },
   { id: 'download', busy: 'downloading', icon: 'download' },

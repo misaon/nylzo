@@ -47,12 +47,10 @@ export interface RevealedFile {
   readonly bytes: Uint8Array<ArrayBuffer>;
 }
 
-export type PassphraseRejection =
+type PassphraseRejection =
   | { readonly reason: 'malformed' }
   | { readonly reason: 'wrong_or_changed' }
   | { readonly reason: 'wrong'; readonly attemptsLeft: number; readonly retryAfter: number; readonly locked: boolean };
-
-export type RevealedView = Extract<ReadView, { view: 'revealed' }>;
 
 export type ReadView =
   | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
@@ -215,6 +213,7 @@ function policyMatches(envelope: Envelope, secrets: Secrets, metadata: Metadata 
 }
 
 export function createReader(dependencies: ReaderDependencies, onView: (view: ReadView) => void): Reader {
+  type RevealedView = Extract<ReadView, { view: 'revealed' }>;
   const { api, session, page } = dependencies;
   let secrets: Secrets | undefined;
   let heldKey: HeldKey | undefined;

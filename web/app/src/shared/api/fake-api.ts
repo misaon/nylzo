@@ -13,7 +13,7 @@ interface Stored {
   endedAt?: string;
 }
 
-export interface Report {
+interface Report {
   readonly id: string;
   readonly signedByReader: boolean;
   readonly reason: string;
