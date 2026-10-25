@@ -11,7 +11,6 @@ import {
   KDF_SCRYPT,
   KdfError,
   type KdfId,
-  kdfRequiresPassphrase,
   KEY_LEN,
   MalformedPassphraseError,
   newHeader,
@@ -109,8 +108,6 @@ describe('kdf profiles', () => {
   it('profile 0 ignores the passphrase and needs none', async () => {
     const salt = new Uint8Array(32);
     expect(await anyPassphraseKey(KDF_NONE, 'anything', salt)).toHaveLength(0);
-    expect(kdfRequiresPassphrase(KDF_NONE)).toBe(false);
-    expect(kdfRequiresPassphrase(KDF_SCRYPT)).toBe(true);
     const id = randomId();
     const s = newSecret();
     const a = await deriveAll(id, s, KDF_NONE, 'a');

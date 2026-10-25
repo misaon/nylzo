@@ -46,7 +46,6 @@ export {
   KDF_RETIRED,
   KDF_SCRYPT,
   type KdfId,
-  kdfRequiresPassphrase,
   MIN_PASSPHRASE_CHARS,
   normalizePassphrase,
   parseKdfId,
