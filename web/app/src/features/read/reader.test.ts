@@ -40,10 +40,10 @@ function refuseSigningKeyImport() {
 }
 
 function workerScrypt(calls: string[] = []): Scrypt {
-  return async (passphrase, saltPw, onProgress) => {
+  return async (passphrase, passphraseSalt, onProgress) => {
     calls.push('scrypt');
     try {
-      return await scrypt(passphrase, saltPw, onProgress);
+      return await scrypt(passphrase, passphraseSalt, onProgress);
     } catch {
       throw new KdfWorkerError();
     }
@@ -222,7 +222,7 @@ describe('reading a message', () => {
       view: 'ready',
       rejected: { reason: 'wrong', attemptsLeft: 4, locked: false },
     });
-    expect(reader.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({
+    expect(reader.views.find((readView) => readView.view === 'busy' && readView.step === 'deriving')).toEqual({
       view: 'busy',
       step: 'deriving',
       fraction: 0,
@@ -252,7 +252,9 @@ describe('reading a message', () => {
       `set nylzo:lease:${id}`,
       `remove nylzo:lease:${id}`,
     ]);
-    expect(reader.views.filter((v) => v.view === 'busy' && v.step === 'deriving').length).toBeGreaterThan(2);
+    expect(
+      reader.views.filter((readView) => readView.view === 'busy' && readView.step === 'deriving').length,
+    ).toBeGreaterThan(2);
   });
 
   it('shows only the sanitised file name (SEC-1)', async () => {
@@ -583,7 +585,7 @@ describe('passphrase handling on the read page', () => {
     await reader.load();
     await reader.reveal('caf\u{D800} correct horse');
     expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason: 'malformed' } });
-    expect(reader.views.some((v) => v.view === 'busy')).toBe(false);
+    expect(reader.views.some((readView) => readView.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);
     expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
     expect(reader.session.map.size).toBe(0);

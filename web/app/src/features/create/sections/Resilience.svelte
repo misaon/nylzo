@@ -25,7 +25,7 @@
   const judgement = $derived(judge(attacker, quantum));
   const counter = $derived(countdown(attacker, quantum, elapsed));
   const years = $derived(yearsAmount(judgement.yearsLog10, translator.language));
-  const sub = $derived(
+  const subtitle = $derived(
     judgement.bigBang
       ? translate('brute.bigbang')
       : translate('brute.about', { time: translate(years.key, { amount: years.amount }) }),
@@ -164,7 +164,7 @@
                 >
                   {translate(`brute.verdict.${judgement.verdict}`)}
                 </p>
-                <p class="mt-3 leading-relaxed text-pretty text-ink-soft">{sub}</p>
+                <p class="mt-3 leading-relaxed text-pretty text-ink-soft">{subtitle}</p>
               </div>
             {/key}
           </div>

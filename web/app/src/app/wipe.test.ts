@@ -18,15 +18,15 @@ const { captured, passphraseKeys, failing } = vi.hoisted(() => ({
 
 vi.mock('@nylzo/core', async (importOriginal) => {
   const core = await importOriginal<typeof Core>();
-  const keep = <T extends Uint8Array>(bytes: T): T => {
+  const keep = <Bytes extends Uint8Array>(bytes: Bytes): Bytes => {
     captured.push(bytes);
     return bytes;
   };
   return {
     ...core,
     newSecret: () => keep(core.newSecret()),
-    parseLink: (raw: string) => {
-      const link = core.parseLink(raw);
+    parseLink: (text: string) => {
+      const link = core.parseLink(text);
       keep(link.s);
       return link;
     },
@@ -136,7 +136,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
       createDependencies(fakeApi()),
     );
     expect(passphraseKeys).toHaveLength(1);
-    expect(passphraseKeys.every((p) => p.length === 32 && wiped(p))).toBe(true);
+    expect(passphraseKeys.every((passphraseKey) => passphraseKey.length === 32 && wiped(passphraseKey))).toBe(true);
   });
 
   it.each<[string, FakeOptions]>([
@@ -145,7 +145,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
       'a retry with a new id fails too',
       { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', { retryAfter: 5 })] },
     ],
-  ])('wipes every S, R, salt_pw, V and P when %s', async (_, options) => {
+  ])('wipes every S, R, salt_pw, V and P when %s', async (_scenario, options) => {
     const api = fakeApi(options);
     await expect(
       createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDependencies(api)),
@@ -213,7 +213,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     await reader.reveal(PASSPHRASE);
     expect(reader.last()?.view).toBe('revealed');
     expect(passphraseKeys).toHaveLength(1);
-    expect(passphraseKeys.every((p) => p.length === 32 && wiped(p))).toBe(true);
+    expect(passphraseKeys.every((passphraseKey) => passphraseKey.length === 32 && wiped(passphraseKey))).toBe(true);
   });
 
   it('wipes S, R and salt_pw when the page cannot make the read key', async () => {
@@ -257,9 +257,9 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     await reader.load();
     await reader.reveal('a wrong passphrase here');
     expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong' } });
-    const [s, r, saltPw, v] = captured;
-    expect([s, saltPw].map((bytes) => bytes && wiped(bytes))).toEqual([false, false]);
-    expect([r, v].map((bytes) => bytes && wiped(bytes))).toEqual([true, true]);
+    const [secret, readSeed, passphraseSalt, verifierSeed] = captured;
+    expect([secret, passphraseSalt].map((bytes) => bytes && wiped(bytes))).toEqual([false, false]);
+    expect([readSeed, verifierSeed].map((bytes) => bytes && wiped(bytes))).toEqual([true, true]);
     expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 });

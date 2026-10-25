@@ -22,8 +22,8 @@ describe('create form', () => {
   });
 
   it('refuses a file over the limit before reading it', async () => {
-    const big = new File([new Uint8Array(17)], 'big.bin');
-    expect(await readAttachment(big, limits)).toEqual({ problem: { field: 'file', code: 'too_large' } });
+    const tooLarge = new File([new Uint8Array(17)], 'big.bin');
+    expect(await readAttachment(tooLarge, limits)).toEqual({ problem: { field: 'file', code: 'too_large' } });
     const small = new File([new Uint8Array([1, 2])], 'small.txt', { type: 'text/plain' });
     expect(await readAttachment(small, limits)).toEqual({
       file: { name: 'small.txt', mime: 'text/plain', bytes: new Uint8Array([1, 2]) },

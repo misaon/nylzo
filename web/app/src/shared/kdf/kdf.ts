@@ -62,10 +62,10 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
 
 export async function scryptInWorker(
   passphrase: string,
-  saltPw: Uint8Array<ArrayBuffer>,
+  passphraseSalt: Uint8Array<ArrayBuffer>,
   onProgress: Progress,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await runWorker({ kind: 'scrypt', passphrase, saltPw }, onProgress);
+  const response = await runWorker({ kind: 'scrypt', passphrase, passphraseSalt }, onProgress);
   if (response.kind !== 'key') {
     throw new KdfWorkerError();
   }

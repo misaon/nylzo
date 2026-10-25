@@ -42,7 +42,7 @@
 
   const SERVER = parts.length;
   const READ_BASE_MS = 1100;
-  const READ_MS_PER_CHAR = 28;
+  const READ_MS_PER_CHARACTER = 28;
   const READ_MIN_MS = 4100;
   const READ_MAX_MS = 6750;
 
@@ -53,7 +53,7 @@
 
   const cycle = new AutoCycle(
     () => parts.length + 1,
-    (index) => Math.min(READ_MAX_MS, Math.max(READ_MIN_MS, READ_BASE_MS + body(index).length * READ_MS_PER_CHAR)),
+    (index) => Math.min(READ_MAX_MS, Math.max(READ_MIN_MS, READ_BASE_MS + body(index).length * READ_MS_PER_CHARACTER)),
   );
 
   const serverView = $derived(cycle.index === SERVER);
@@ -164,14 +164,14 @@
       <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {#each parts as part, index (part.id)}
           {const active = $derived(!serverView && cycle.index === index)}
-          {const lit = $derived(active || (serverView && part.server))}
+          {const highlighted = $derived(active || (serverView && part.server))}
           <button
             type="button"
             aria-pressed={active}
             onclick={() => cycle.select(index)}
             class={[
               'relative overflow-hidden rounded-pane p-4 text-left ring-1 transition-opacity duration-500',
-              lit ? 'bg-white/6 ring-white/20' : 'ring-white/8 hover:bg-white/4',
+              highlighted ? 'bg-white/6 ring-white/20' : 'ring-white/8 hover:bg-white/4',
               serverView && !part.server ? 'opacity-60' : 'opacity-100',
             ]}
           >
@@ -179,10 +179,10 @@
               class={[
                 'pointer-events-none absolute inset-x-0 bottom-0 h-0.5 w-full progress-cycle',
                 part.bar,
-                lit && cycle.running ? 'opacity-100' : 'opacity-0',
+                highlighted && cycle.running ? 'opacity-100' : 'opacity-0',
               ]}
               max="1"
-              value={lit && cycle.running ? cycle.progress : 0}
+              value={highlighted && cycle.running ? cycle.progress : 0}
               aria-hidden="true"
             ></progress>
             <span class={['block h-[3px] w-7 rounded-full', part.dot]}></span>

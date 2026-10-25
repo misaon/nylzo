@@ -34,8 +34,10 @@ function rateOf(attacker: Attacker): number {
 }
 
 function averageYearsLog10(attacker: Attacker, quantum: boolean): number {
-  const log2 = Math.log10(2);
-  const steps = quantum ? Number(QUANTUM_BITS) * log2 + Math.log10(Math.PI / 4) : (Number(KEY_BITS) - 1) * log2;
+  const log10OfTwo = Math.log10(2);
+  const steps = quantum
+    ? Number(QUANTUM_BITS) * log10OfTwo + Math.log10(Math.PI / 4)
+    : (Number(KEY_BITS) - 1) * log10OfTwo;
   return steps - rateOf(attacker) - Math.log10(SECONDS_PER_YEAR);
 }
 

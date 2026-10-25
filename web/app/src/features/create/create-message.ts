@@ -91,7 +91,7 @@ export interface CreateDependencies {
   readonly origin: string;
   readonly scrypt: (
     passphrase: string,
-    saltPw: Uint8Array<ArrayBuffer>,
+    passphraseSalt: Uint8Array<ArrayBuffer>,
     onProgress: Progress,
   ) => Promise<Uint8Array<ArrayBuffer>>;
   readonly solvePow: (
@@ -116,7 +116,7 @@ interface SealedMessage {
 const MAX_ATTEMPTS = 3;
 const POW_ROUNDS = 2;
 const RETRY_WITH_NEW_ID = ['id_token', 'conflict', 'pow'] as const;
-export const WEAK_BELOW_CHARS = 16;
+export const WEAK_BELOW_CHARACTERS = 16;
 export const WEAK_BELOW_WORDS = 4;
 export const POW_BUDGET_MS = 110_000;
 
@@ -124,7 +124,7 @@ export function passphraseIsWeak(passphrase: string): boolean {
   const normalized = passphrase.normalize('NFC');
   const words = normalized.split(/\s+/).filter(Boolean).length;
   const characters = normalized.match(/./gsu)?.length ?? 0;
-  return characters < WEAK_BELOW_CHARS || words < WEAK_BELOW_WORDS;
+  return characters < WEAK_BELOW_CHARACTERS || words < WEAK_BELOW_WORDS;
 }
 
 function passphraseProblem(passphrase: string): CreateProblem | undefined {
@@ -179,7 +179,7 @@ function metaOf(input: CreateInput): Meta {
 async function derivePassphraseKey(
   input: CreateInput,
   kdfId: KdfId,
-  saltPw: Uint8Array<ArrayBuffer>,
+  passphraseSalt: Uint8Array<ArrayBuffer>,
   dependencies: CreateDependencies,
   onProgress: ReportProgress,
 ): Promise<Uint8Array> {
@@ -187,7 +187,9 @@ async function derivePassphraseKey(
     return new Uint8Array(0);
   }
   onProgress({ step: 'deriving', fraction: 0 });
-  return dependencies.scrypt(input.passphrase, saltPw, (fraction) => onProgress({ step: 'deriving', fraction }));
+  return dependencies.scrypt(input.passphrase, passphraseSalt, (fraction) =>
+    onProgress({ step: 'deriving', fraction }),
+  );
 }
 
 async function prove(

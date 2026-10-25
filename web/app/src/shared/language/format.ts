@@ -15,8 +15,8 @@ function durationParts(seconds: number): readonly [value: number, unit: string] 
   return [Math.ceil(seconds / HOUR), 'hour'];
 }
 
-export function formatTime(iso: string, language: Language): string {
-  return new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
+export function formatTime(timestamp: string, language: Language): string {
+  return new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
 }
 
 export function formatDuration(seconds: number, language: Language): string {

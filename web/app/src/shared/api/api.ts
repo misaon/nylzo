@@ -186,14 +186,14 @@ export function createApi(options: ApiOptions = {}): Api {
   const base = options.base ?? '';
   const fetchResource = options.fetch ?? fetch.bind(globalThis);
 
-  async function call(path: string, init: RequestInit, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
+  async function call(path: string, requestInit: RequestInit, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
     return fetchResource(`${base}${path}`, {
       credentials: 'omit',
       cache: 'no-store',
       redirect: 'error',
       referrerPolicy: 'no-referrer',
       signal: AbortSignal.timeout(timeoutMs),
-      ...init,
+      ...requestInit,
     });
   }
 

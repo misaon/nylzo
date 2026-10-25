@@ -107,7 +107,7 @@ export interface ReaderDependencies {
   readonly shown?: () => Promise<void>;
   readonly scrypt: (
     passphrase: string,
-    saltPw: Uint8Array<ArrayBuffer>,
+    passphraseSalt: Uint8Array<ArrayBuffer>,
     onProgress: Progress,
   ) => Promise<Uint8Array<ArrayBuffer>>;
   readonly now: () => number;
@@ -124,8 +124,8 @@ export interface Reader {
 interface Secrets {
   readonly id: Uint8Array<ArrayBuffer>;
   readonly kdfId: KdfId;
-  readonly s: Uint8Array<ArrayBuffer>;
-  readonly saltPw: Uint8Array<ArrayBuffer>;
+  readonly secret: Uint8Array<ArrayBuffer>;
+  readonly passphraseSalt: Uint8Array<ArrayBuffer>;
   readonly readKey: RequestKey;
 }
 
@@ -149,7 +149,7 @@ function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'>
   return state === 'expired' || state === 'cancelled' || state === 'deleted';
 }
 
-function safely<T>(action: () => T, fallback: T): T {
+function safely<Value>(action: () => Value, fallback: Value): Value {
   try {
     return action();
   } catch {
@@ -174,7 +174,7 @@ async function linkSecrets(fragment: Link): Promise<Secrets> {
   try {
     keys = await deriveLink(fragment.id, fragment.s);
     const readKey = await requestKey(keys.r);
-    return { id: fragment.id, kdfId: fragment.kdfId, s: fragment.s, saltPw: keys.saltPw, readKey };
+    return { id: fragment.id, kdfId: fragment.kdfId, secret: fragment.s, passphraseSalt: keys.saltPw, readKey };
   } catch (error) {
     fragment.s.fill(0);
     keys?.saltPw.fill(0);
@@ -247,8 +247,8 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   function forgetSecrets(): void {
-    secrets?.s.fill(0);
-    secrets?.saltPw.fill(0);
+    secrets?.secret.fill(0);
+    secrets?.passphraseSalt.fill(0);
     secrets = undefined;
   }
 
@@ -370,7 +370,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     show({ view: 'busy', step: 'deriving', fraction: 0 });
     safely(() => session.setItem(kdfKey(), '1'), undefined);
     try {
-      return await dependencies.scrypt(passphrase, current.saltPw, (fraction) =>
+      return await dependencies.scrypt(passphrase, current.passphraseSalt, (fraction) =>
         show({ view: 'busy', step: 'deriving', fraction }),
       );
     } finally {
@@ -446,7 +446,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     try {
       assertWellFormedPassphrase(current.kdfId, passphrase);
       passphraseKey = await derivePassphraseKey(current, passphrase);
-      const content = await deriveContent(current.id, current.s, passphraseKey);
+      const content = await deriveContent(current.id, current.secret, passphraseKey);
       verifierSeed = content.v;
       const verifierKey = current.kdfId === KDF_NONE ? undefined : await requestKey(content.v);
       return { contentKey: content.k, verifierKey };

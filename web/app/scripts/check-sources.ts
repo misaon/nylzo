@@ -5,28 +5,28 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
-const app = path.join(import.meta.dirname, '..');
-const web = path.join(app, '..');
-const source = path.join(app, 'src');
+const appDirectory = path.join(import.meta.dirname, '..');
+const webDirectory = path.join(appDirectory, '..');
+const sourceDirectory = path.join(appDirectory, 'src');
 // ESLint has no rule for this binding, which writes markup like innerHTML.
 const MARKUP_BINDING = /\bbind:innerHTML\b/;
 
-const { version } = JSON.parse(await readFile(path.join(app, 'node_modules/svelte/package.json'), 'utf8')) as {
+const { version } = JSON.parse(await readFile(path.join(appDirectory, 'node_modules/svelte/package.json'), 'utf8')) as {
   version: string;
 };
-const names = await readdir(source, { recursive: true });
+const names = await readdir(sourceDirectory, { recursive: true });
 const files = names
   .filter((name) => /\.svelte(?:\.ts)?$/.test(name))
-  .map((name) => path.relative(web, path.join(source, name)));
+  .map((name) => path.relative(webDirectory, path.join(sourceDirectory, name)));
 
 async function problemsOf(file: string): Promise<string[]> {
-  const problems = MARKUP_BINDING.test(await readFile(path.join(web, file), 'utf8'))
+  const problems = MARKUP_BINDING.test(await readFile(path.join(webDirectory, file), 'utf8'))
     ? [`${file}: bind:innerHTML parses markup`]
     : [];
   const { stdout } = await run(
     'pnpm',
-    ['--dir', web, 'exec', 'svelte-mcp', 'svelte-autofixer', file, '--svelte-version', version],
-    { cwd: web, encoding: 'utf8' },
+    ['--dir', webDirectory, 'exec', 'svelte-mcp', 'svelte-autofixer', file, '--svelte-version', version],
+    { cwd: webDirectory, encoding: 'utf8' },
   );
   if (!stdout.includes('issues: []') || !stdout.includes('suggestions: []')) {
     problems.push(`${file}: svelte-autofixer reported\n${stdout}`);

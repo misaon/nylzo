@@ -10,7 +10,7 @@ function reply(message: KdfResponse, transfer: Transferable[] = []): void {
 function handle(request: KdfRequest): void {
   const onProgress = throttledProgress((fraction) => reply({ kind: 'progress', fraction }));
   if (request.kind === 'scrypt') {
-    const key = scryptPassphraseKey(request.passphrase, request.saltPw, onProgress);
+    const key = scryptPassphraseKey(request.passphrase, request.passphraseSalt, onProgress);
     reply({ kind: 'key', key }, [key.buffer]);
     return;
   }

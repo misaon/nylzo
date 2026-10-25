@@ -169,8 +169,8 @@ export async function readJson(response: Response): Promise<Json> {
 }
 
 function retryAfterHeader(response: Response): number | undefined {
-  const raw = response.headers.get('Retry-After');
-  const value = raw === null || raw.trim() === '' ? NaN : Number(raw);
+  const header = response.headers.get('Retry-After');
+  const value = header === null || header.trim() === '' ? NaN : Number(header);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 

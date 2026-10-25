@@ -1,4 +1,4 @@
-export async function attempt<T>(work: Promise<T>): Promise<T | undefined> {
+export async function attempt<Result>(work: Promise<Result>): Promise<Result | undefined> {
   try {
     return await work;
   } catch {

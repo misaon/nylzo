@@ -26,8 +26,9 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
 function fakeServer(handler: Handler) {
   const seen: Request[] = [];
   let issued = 0;
-  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const request = new Request(new URL(input instanceof Request ? input.url : input, 'http://nylzo.test'), init);
+  const fetch = async (input: RequestInfo | URL, requestInit?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input, 'http://nylzo.test');
+    const request = new Request(url, requestInit);
     seen.push(request);
     if (new URL(request.url).pathname === '/api/v1/challenge') {
       issued++;
@@ -62,7 +63,7 @@ async function verifies(
   return crypto.subtle.verify('Ed25519', key, decode(signature), message);
 }
 
-function authParts(header: string): [string, string, string] {
+function authorizationParts(header: string): [string, string, string] {
   const [publicKey = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /, '').split('.', 3);
   return [publicKey, challenge, signature];
 }
@@ -140,7 +141,7 @@ describe('api client', () => {
     const request = server.last();
     const path = `/api/v1/messages/${idToString(id)}`;
     expect(new URL(request.url).pathname).toBe(path);
-    const parts = authParts(request.headers.get('Authorization') ?? '');
+    const parts = authorizationParts(request.headers.get('Authorization') ?? '');
     expect(await verifies(...parts, 'read', 'GET', path)).toBe(true);
     expect(request.headers.get('X-Nylzo-Verifier')).toBeNull();
   });
@@ -180,7 +181,7 @@ describe('api client', () => {
     for (const [index, [method, path, purpose, key]] of expected.entries()) {
       const request = requestAt(signed, index);
       expect([request.method, new URL(request.url).pathname]).toEqual([method, path]);
-      const parts = authParts(request.headers.get('Authorization') ?? '');
+      const parts = authorizationParts(request.headers.get('Authorization') ?? '');
       expect(parts[0]).toBe(encodeBase64url(key.publicKey));
       expect(await verifies(...parts, purpose, method, path)).toBe(true);
       expect(await request.arrayBuffer()).toHaveProperty('byteLength', 0);
@@ -200,7 +201,7 @@ describe('api client', () => {
       expect(request.headers.get('Content-Type')).toBe('application/json');
       const body = new Uint8Array(await request.arrayBuffer());
       bodies.push(JSON.parse(new TextDecoder().decode(body)));
-      const parts = authParts(request.headers.get('Authorization') ?? '');
+      const parts = authorizationParts(request.headers.get('Authorization') ?? '');
       expect(await verifies(...parts, 'read', 'POST', '/api/v1/abuse', body)).toBe(true);
       expect(await verifies(...parts, 'read', 'POST', '/api/v1/abuse')).toBe(false);
     }
@@ -244,7 +245,7 @@ describe('api client', () => {
     const authorization = request.headers.get('Authorization') ?? '';
     const verifier = request.headers.get('X-Nylzo-Verifier') ?? '';
     expect(request.method).toBe('POST');
-    const [publicKey, challenge, signature] = authParts(authorization);
+    const [publicKey, challenge, signature] = authorizationParts(authorization);
     const [verifierPublicKey = '', verifierSignature = '', ...rest] = verifier.split('.');
     expect(rest).toEqual([]);
     expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LEN).fill(1)));

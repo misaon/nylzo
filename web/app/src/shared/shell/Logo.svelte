@@ -7,8 +7,8 @@
   }
 
   const { class: className, label }: Props = $props();
-  const uid = $props.id();
-  const gradient = `${uid}-mark`;
+  const id = $props.id();
+  const gradient = `${id}-mark`;
 </script>
 
 <svg

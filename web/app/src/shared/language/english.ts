@@ -12,7 +12,7 @@ export const english: Record<MessageKey, string> = {
   'create.passphrase': 'Passphrase, optional',
   'create.passphrase.hint':
     'At least {min} characters. Send it to the recipient through another channel than the link.',
-  'create.passphrase.weak': 'We recommend at least {words} random words and {chars} characters.',
+  'create.passphrase.weak': 'We recommend at least {words} random words and {characters} characters.',
   'create.submit': 'Create link',
 
   'ttl.3600': '1 hour',

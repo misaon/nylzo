@@ -26,7 +26,7 @@ import {
   type CreateProgress,
   passphraseIsWeak,
   validateCreate,
-  WEAK_BELOW_CHARS,
+  WEAK_BELOW_CHARACTERS,
   WEAK_BELOW_WORDS,
 } from '../create-message.ts';
 import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
@@ -178,7 +178,9 @@ export class Composer {
       return this.problemOf.passphrase;
     }
     const { translate } = this.#translator;
-    return this.weak ? translate('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : '';
+    return this.weak
+      ? translate('create.passphrase.weak', { words: WEAK_BELOW_WORDS, characters: WEAK_BELOW_CHARACTERS })
+      : '';
   });
 
   readonly notice = $derived.by(() => {

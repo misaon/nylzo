@@ -1,5 +1,5 @@
 export type KdfRequest =
-  | { readonly kind: 'scrypt'; readonly passphrase: string; readonly saltPw: Uint8Array<ArrayBuffer> }
+  | { readonly kind: 'scrypt'; readonly passphrase: string; readonly passphraseSalt: Uint8Array<ArrayBuffer> }
   | {
       readonly kind: 'pow';
       readonly challenge: string;

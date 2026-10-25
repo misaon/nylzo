@@ -21,10 +21,14 @@ function hashedName(prefix: string, extension: string, data: Buffer | string): s
   return `${prefix}-${createHash('sha256').update(data).digest('base64url').slice(0, 8)}.${extension}`;
 }
 
-const png = readFileSync(path.join(root, 'icons/og-image.png'));
-const imageName = hashedName('og-image', 'png', png);
-writeFileSync(path.join(assets, imageName), png);
-const image = { path: `/assets/${imageName}`, width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+const imageFile = readFileSync(path.join(root, 'icons/og-image.png'));
+const imageName = hashedName('og-image', 'png', imageFile);
+writeFileSync(path.join(assets, imageName), imageFile);
+const image = {
+  path: `/assets/${imageName}`,
+  width: imageFile.readUInt32BE(16),
+  height: imageFile.readUInt32BE(20),
+};
 
 const prerender = (await import(pathToFileURL(path.join(root, '.prerender/prerender.js')).href)) as Prerender;
 const index = readFileSync(path.join(distribution, 'index.html'), 'utf8');

@@ -541,12 +541,12 @@ export class ReadPage {
     return translate(keys[rule] ?? 'open.chip.opens.other', { count });
   }
 
-  shortTime(iso: string): string {
+  shortTime(timestamp: string): string {
     return new Intl.DateTimeFormat(this.#translator.language, {
       day: 'numeric',
       month: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
-    }).format(Date.parse(iso));
+    }).format(Date.parse(timestamp));
   }
 }

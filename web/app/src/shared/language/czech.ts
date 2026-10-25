@@ -9,7 +9,7 @@ export const czech = {
   'create.file.clear': 'Odebrat přílohu',
   'create.passphrase': 'Passphrase, volitelná',
   'create.passphrase.hint': 'Nejméně {min} znaků. Pošlete ji příjemci jiným kanálem než odkaz.',
-  'create.passphrase.weak': 'Doporučujeme aspoň {words} náhodná slova a zároveň {chars} znaků.',
+  'create.passphrase.weak': 'Doporučujeme aspoň {words} náhodná slova a zároveň {characters} znaků.',
   'create.submit': 'Vytvořit odkaz',
 
   'ttl.3600': '1 hodina',

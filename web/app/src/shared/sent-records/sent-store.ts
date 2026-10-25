@@ -24,7 +24,7 @@ export function browserDatabases(): IDBFactory | undefined {
   return typeof indexedDB === 'undefined' ? undefined : indexedDB;
 }
 
-async function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+async function requestResult<Result>(request: IDBRequest<Result>): Promise<Result> {
   return new Promise((resolve, reject) => {
     request.addEventListener('success', () => resolve(request.result));
     request.addEventListener('error', () => reject(request.error ?? new SentStoreUnavailableError()));
@@ -71,7 +71,10 @@ function storedId(value: unknown): string | undefined {
 export function browserSentStore(factory = browserDatabases()): SentStore {
   let database: Promise<IDBDatabase> | undefined;
 
-  async function withRecords<T>(mode: IDBTransactionMode, action: (records: IDBObjectStore) => Promise<T>): Promise<T> {
+  async function withRecords<Result>(
+    mode: IDBTransactionMode,
+    action: (records: IDBObjectStore) => Promise<Result>,
+  ): Promise<Result> {
     database ??= openDatabase(factory);
     const opened = await database;
     const transaction = opened.transaction(RECORDS, mode);
