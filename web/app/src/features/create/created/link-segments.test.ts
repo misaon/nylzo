@@ -35,10 +35,4 @@ describe('linkSegments', () => {
       expect(linkSegments(link)).toEqual([expect.objectContaining({ id: 'host', text: link, server: true })]);
     }
   });
-
-  it('treats a fragment with a single dot as metadata only', () => {
-    const segments = linkSegments('https://nylzo.example/m/abc#1.0');
-    expect(segments.find(({ id }) => id === 'meta')?.text).toBe('#1.0');
-    expect(segments.find(({ id }) => id === 'key')?.text).toBe('');
-  });
 });

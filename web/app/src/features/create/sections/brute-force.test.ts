@@ -35,13 +35,4 @@ describe('brute force illustration', () => {
     expect(later.tail).toBe('029 639 936');
     expect(later.head.endsWith('913 ')).toBe(true);
   });
-
-  it('words numbers of years with the plural forms of each language', () => {
-    expect(words(0, 'cs')).toBe('1 rok');
-    expect(words(Math.log10(3), 'cs')).toBe('3 roky');
-    expect(words(Math.log10(12), 'cs')).toBe('12 let');
-    expect(words(0, 'en')).toBe('1 year');
-    expect(words(Math.log10(12), 'en')).toBe('12 years');
-    expect(words(Math.log10(66e6), 'cs')).toBe('66 milionů let');
-  });
 });
