@@ -511,42 +511,42 @@ const recordQuery = `SELECT 'm' AS kind, id, version, kdf_id, flags, state, crea
 UNION ALL
 SELECT 't', id, 0, 0, 0, state, 0, 0, 0, 0, 0, pepper_id, read_mac, manage_mac, NULL, 0, NULL, 0, 0, first_opened_at, ended_at, purge_at, NULL FROM tombstones WHERE id = ?`
 
+type recordRow struct {
+	kind, id, state                               string
+	version, kdf, flags, ttl, pepperID            int64
+	opensMax, opensRemaining                      int64
+	createdAt, expiresAt, size, failCount, nextAt int64
+	readMAC, manageMAC, verifierMAC               []byte
+	blobRef, ending                               sql.NullString
+	firstOpenedAt, endedAt, purgeAt               sql.NullInt64
+}
+
 func scanRecord(row *sql.Row) (store.Record, error) {
-	var (
-		kind                                    string
-		m                                       store.Message
-		state                                   string
-		createdAt, expiresAt                    int64
-		verifier                                []byte
-		blobRef, ending                         sql.NullString
-		firstOpened, endedAt, purgeAt           sql.NullInt64
-		version, kdf, flags, opensMax, opensRem int
-		pepperID, ttl, size, total, nextAttempt int64
-	)
+	var raw recordRow
 	err := row.Scan(
-		&kind,
-		&m.ID,
-		&version,
-		&kdf,
-		&flags,
-		&state,
-		&createdAt,
-		&expiresAt,
-		&ttl,
-		&opensMax,
-		&opensRem,
-		&pepperID,
-		&m.ReadMAC,
-		&m.ManageMAC,
-		&verifier,
-		&size,
-		&blobRef,
-		&total,
-		&nextAttempt,
-		&firstOpened,
-		&endedAt,
-		&purgeAt,
-		&ending,
+		&raw.kind,
+		&raw.id,
+		&raw.version,
+		&raw.kdf,
+		&raw.flags,
+		&raw.state,
+		&raw.createdAt,
+		&raw.expiresAt,
+		&raw.ttl,
+		&raw.opensMax,
+		&raw.opensRemaining,
+		&raw.pepperID,
+		&raw.readMAC,
+		&raw.manageMAC,
+		&raw.verifierMAC,
+		&raw.size,
+		&raw.blobRef,
+		&raw.failCount,
+		&raw.nextAt,
+		&raw.firstOpenedAt,
+		&raw.endedAt,
+		&raw.purgeAt,
+		&raw.ending,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Record{}, store.ErrNotFound
@@ -554,43 +554,77 @@ func scanRecord(row *sql.Row) (store.Record, error) {
 	if err != nil {
 		return store.Record{}, err
 	}
-	if kind != "t" && (opensMax < 1 || opensMax > math.MaxUint16 || opensRem < 0 || opensRem > opensMax) {
-		return store.Record{}, fmt.Errorf("%w: opens %d of %d", errCorruptRow, opensRem, opensMax)
+	if raw.kind == "t" {
+		return raw.tombstone()
 	}
-	if kind == "t" {
-		return store.Record{
-			Tombstone: &store.Tombstone{
-				ID:            m.ID,
-				PepperID:      byte(pepperID),
-				ReadMAC:       m.ReadMAC,
-				ManageMAC:     m.ManageMAC,
-				State:         store.State(state),
-				FirstOpenedAt: optTime(firstOpened),
-				EndedAt:       fromMS(endedAt.Int64).Truncate(time.Minute),
-				PurgeAt:       fromMS(purgeAt.Int64),
-			},
-		}, nil
+	return raw.message()
+}
+
+func (raw *recordRow) tombstone() (store.Record, error) {
+	pepperID, err := narrow[uint8]("pepper_id", raw.pepperID)
+	if err != nil {
+		return store.Record{}, err
 	}
-	m.Version = uint8(version)
-	m.KDF = uint8(kdf)
-	m.Flags = uint8(flags)
-	m.State = store.State(state)
-	m.CreatedAt = fromMS(createdAt)
-	m.ExpiresAt = fromMS(expiresAt)
-	m.TTLSeconds = uint32(ttl)
-	m.OpensMax = uint16(opensMax)
-	m.OpensRemaining = uint16(opensRem)
-	m.PepperID = byte(pepperID)
-	m.VerifierMAC = verifier
-	m.Size = size
-	m.BlobRef = blobRef.String
-	m.FailCountTotal = int(total)
-	if nextAttempt > 0 {
-		m.NextAttemptAt = fromMS(nextAttempt)
+	return store.Record{Tombstone: &store.Tombstone{
+		ID:            raw.id,
+		PepperID:      pepperID,
+		ReadMAC:       raw.readMAC,
+		ManageMAC:     raw.manageMAC,
+		State:         store.State(raw.state),
+		FirstOpenedAt: optTime(raw.firstOpenedAt),
+		EndedAt:       fromMS(raw.endedAt.Int64).Truncate(time.Minute),
+		PurgeAt:       fromMS(raw.purgeAt.Int64),
+	}}, nil
+}
+
+func (raw *recordRow) message() (store.Record, error) {
+	if raw.opensMax < 1 || raw.opensMax > math.MaxUint16 || raw.opensRemaining < 0 ||
+		raw.opensRemaining > raw.opensMax {
+		return store.Record{}, fmt.Errorf("%w: opens %d of %d", errCorruptRow, raw.opensRemaining, raw.opensMax)
 	}
-	m.FirstOpenedAt = optTime(firstOpened)
-	m.Ending = store.State(ending.String)
-	return store.Record{Message: &m}, nil
+	version, versionErr := narrow[uint8]("version", raw.version)
+	kdf, kdfErr := narrow[uint8]("kdf_id", raw.kdf)
+	flags, flagsErr := narrow[uint8]("flags", raw.flags)
+	ttl, ttlErr := narrow[uint32]("ttl_s", raw.ttl)
+	pepperID, pepperErr := narrow[uint8]("pepper_id", raw.pepperID)
+	opensMax, opensMaxErr := narrow[uint16]("opens_max", raw.opensMax)
+	opensRemaining, opensRemainingErr := narrow[uint16]("opens_remaining", raw.opensRemaining)
+	err := errors.Join(versionErr, kdfErr, flagsErr, ttlErr, pepperErr, opensMaxErr, opensRemainingErr)
+	if err != nil {
+		return store.Record{}, err
+	}
+	message := &store.Message{
+		ID:             raw.id,
+		Version:        version,
+		KDF:            kdf,
+		Flags:          flags,
+		State:          store.State(raw.state),
+		CreatedAt:      fromMS(raw.createdAt),
+		ExpiresAt:      fromMS(raw.expiresAt),
+		TTLSeconds:     ttl,
+		OpensMax:       opensMax,
+		OpensRemaining: opensRemaining,
+		PepperID:       pepperID,
+		ReadMAC:        raw.readMAC,
+		ManageMAC:      raw.manageMAC,
+		VerifierMAC:    raw.verifierMAC,
+		Size:           raw.size,
+		BlobRef:        raw.blobRef.String,
+		FailCountTotal: int(raw.failCount),
+		FirstOpenedAt:  optTime(raw.firstOpenedAt),
+		Ending:         store.State(raw.ending.String),
+	}
+	if raw.nextAt > 0 {
+		message.NextAttemptAt = fromMS(raw.nextAt)
+	}
+	return store.Record{Message: message}, nil
+}
+
+func narrow[T uint8 | uint16 | uint32](column string, value int64) (T, error) {
+	if value < 0 || uint64(value) > uint64(^T(0)) {
+		return 0, fmt.Errorf("%w: %s %d", errCorruptRow, column, value)
+	}
+	return T(value), nil
 }
 
 func (s *Store) Get(ctx context.Context, id string) (store.Record, error) {
@@ -616,7 +650,7 @@ func backoff(failCount int) time.Duration {
 }
 
 var (
-	errCorruptRow   = errors.New("sqlite: a message row holds impossible open counters")
+	errCorruptRow   = errors.New("sqlite: a row holds a value its column cannot have")
 	errClaimParams  = errors.New("sqlite: claim needs a clock, and a verifier check when a verifier is sent")
 	errNoLeaseRowID = errors.New("sqlite: no free lease row id")
 )
@@ -736,7 +770,9 @@ func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
 		if err := rows.Scan(&l.RowID, &l.ID, &l.MAC, &pepperID, &expires, &l.Downloads); err != nil {
 			return nil, err
 		}
-		l.PepperID = byte(pepperID)
+		if l.PepperID, err = narrow[uint8]("pepper_id", pepperID); err != nil {
+			return nil, err
+		}
 		l.ExpiresAt = fromMS(expires)
 		out = append(out, l)
 	}

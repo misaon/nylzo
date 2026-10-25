@@ -121,6 +121,14 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 	if _, err := s.Get(ctx, "AAAAAAAAAAAAAAAAAAAAAQ"); !errors.Is(err, errCorruptRow) {
 		t.Fatalf("a row with counters out of range was read: %v", err)
 	}
+	if _, err := s.w.Exec(
+		`UPDATE messages SET opens_max = 1, opens_remaining = 1, kdf_id = 257 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAQ'`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Get(ctx, "AAAAAAAAAAAAAAAAAAAAAQ"); !errors.Is(err, errCorruptRow) {
+		t.Fatalf("a kdf_id that does not fit a byte was read: %v", err)
+	}
 	if _, err := s.Claim(ctx, store.ClaimParams{ID: "AAAAAAAAAAAAAAAAAAAAAA"}); !errors.Is(err, errClaimParams) {
 		t.Fatalf("a claim without a clock: %v", err)
 	}
