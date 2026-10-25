@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
-import { czech, type MessageKey } from './czech.ts';
+import { czech } from './czech.ts';
 import { english } from './english.ts';
 import { pickLanguage, type PreferenceStore, savedLanguage, saveLanguage } from './language.ts';
 
-const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
+function placeholders(messages: Readonly<Record<string, string>>): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(messages).map(([key, text]) => [
+      key,
+      Array.from(text.matchAll(/\{(\w+)\}/g), (match) => match[1] ?? '').toSorted((first, second) =>
+        first.localeCompare(second),
+      ),
+    ]),
+  );
+}
 
 describe('translations', () => {
   it('has the same placeholders in both languages', () => {
-    for (const key of Object.keys(czech) as MessageKey[]) {
-      expect(placeholders(english[key]), key).toEqual(placeholders(czech[key]));
-    }
+    expect(placeholders(english)).toEqual(placeholders(czech));
   });
 
   it('picks the first supported language', () => {
@@ -25,7 +32,9 @@ describe('translations', () => {
     const saved = new Map<string, string>();
     const store: PreferenceStore = {
       getItem: (key) => saved.get(key) ?? null,
-      setItem: (key, value) => void saved.set(key, value),
+      setItem: (key, value) => {
+        saved.set(key, value);
+      },
     };
     expect(savedLanguage(store, ['en'])).toBe('en');
     saveLanguage(store, 'cs');

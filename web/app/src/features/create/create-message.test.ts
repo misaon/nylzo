@@ -17,7 +17,12 @@ import {
 
 type Scrypt = CreateDependencies['scrypt'];
 
-const scrypt: Scrypt = async (passphrase, saltPw, onProgress) => scryptPassphraseKey(passphrase, saltPw, onProgress);
+const scrypt: Scrypt = (passphrase, passphraseSalt, onProgress) =>
+  Promise.resolve(scryptPassphraseKey(passphrase, passphraseSalt, onProgress));
+
+class ImpostorError extends Error {
+  override readonly name = 'KdfWorkerError';
+}
 
 interface PowCall {
   readonly challenge: string;
@@ -58,7 +63,7 @@ describe('creating a message', () => {
     const api = fakeApi({ pow: { required: true, difficulty: 2 } });
     const dependencies = createDependencies(api);
     await createMessage(input({ passphrase: 'correct horse battery staple' }), dependencies);
-    expect(api.calls.filter((c) => c === 'instance' || c === 'solve' || c === 'create')).toEqual([
+    expect(api.calls.filter((call) => ['instance', 'solve', 'create'].includes(call))).toEqual([
       'instance',
       'instance',
       'solve',
@@ -74,18 +79,15 @@ describe('creating a message', () => {
   it('takes a fresh challenge when the first one runs out and fails as PoW after that', async () => {
     const api = fakeApi({ pow: { required: true, difficulty: 2 } });
     let timeouts = 1;
-    const dependencies = createDependencies(api, async (call, id) => {
-      if (timeouts-- > 0) {
-        throw new PowTimeoutError();
-      }
-      return solvePow(call.challenge, id, call.difficulty);
-    });
+    const dependencies = createDependencies(api, (call, id) =>
+      timeouts-- > 0
+        ? Promise.reject(new PowTimeoutError())
+        : Promise.resolve(solvePow(call.challenge, id, call.difficulty)),
+    );
     await createMessage(input(), dependencies);
-    expect(dependencies.powCalls.map((c) => c.challenge)).toEqual([api.challenges[1], api.challenges[2]]);
+    expect(dependencies.powCalls.map((call) => call.challenge)).toEqual([api.challenges[1], api.challenges[2]]);
     const stuck = fakeApi({ pow: { required: true, difficulty: 2 } });
-    const failing = createDependencies(stuck, async () => {
-      throw new PowTimeoutError();
-    });
+    const failing = createDependencies(stuck, () => Promise.reject(new PowTimeoutError()));
     await expect(createMessage(input(), failing)).rejects.toMatchObject({ failure: { kind: 'pow' } });
     expect(stuck.calls).not.toContain('create');
   });
@@ -94,15 +96,15 @@ describe('creating a message', () => {
     const api = fakeApi({ pow: { required: true, difficulty: 1 }, failCreate: [new ApiError(403, 'pow')] });
     const dependencies = createDependencies(api);
     await createMessage(input(), dependencies);
-    expect(api.calls.filter((c) => c === 'create')).toEqual(['create', 'create']);
-    expect(new Set(dependencies.powCalls.map((c) => c.challenge)).size).toBe(2);
+    expect(api.calls.filter((call) => call === 'create')).toEqual(['create', 'create']);
+    expect(new Set(dependencies.powCalls.map((call) => call.challenge)).size).toBe(2);
   });
 
   it('seals every message with its own iv', async () => {
     const api = fakeApi();
     await createMessage(input(), createDependencies(api));
     await createMessage(input(), createDependencies(api));
-    const ivs = [...api.stored.values()].map((message) => message.request.object.slice(3, HEADER_LEN));
+    const ivs = Array.from(api.stored.values(), (message) => message.request.object.slice(3, HEADER_LEN));
     expect(ivs).toHaveLength(2);
     expect(ivs[0]).not.toEqual(ivs[1]);
   });
@@ -113,12 +115,12 @@ describe('creating a message', () => {
       failure: { kind: 'rate_limited', retryAfter: 30 },
     });
     const api = fakeApi();
-    const error = await createMessage(
+    const creating = createMessage(
       input({ text: '', passphrase: 'short', opensMax: 0, ttlSeconds: 30 }),
       createDependencies(api),
-    ).catch((error_: unknown) => error_);
-    expect(error).toBeInstanceOf(CreateError);
-    expect((error as CreateError).failure).toEqual({
+    );
+    await expect(creating).rejects.toBeInstanceOf(CreateError);
+    await expect(creating).rejects.toHaveProperty('failure', {
       kind: 'invalid',
       problems: [
         { field: 'content', code: 'missing' },
@@ -132,27 +134,15 @@ describe('creating a message', () => {
 
   it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
     const api = fakeApi();
-    const failing = {
-      ...createDependencies(api),
-      scrypt: async () => {
-        throw new KdfWorkerError();
-      },
-    };
+    const failing = { ...createDependencies(api), scrypt: () => Promise.reject(new KdfWorkerError()) };
     await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), failing)).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });
-    const renamed = {
-      ...createDependencies(api),
-      scrypt: async () => {
-        throw Object.assign(new Error('worker'), { name: 'KdfWorkerError' });
-      },
-    };
+    const renamed = { ...createDependencies(api), scrypt: () => Promise.reject(new ImpostorError('worker')) };
     await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), renamed)).rejects.toMatchObject({
       failure: { kind: 'failed' },
     });
-    api.create = async () => {
-      throw new TooLargeError();
-    };
+    api.create = () => Promise.reject(new TooLargeError());
     await expect(createMessage(input(), createDependencies(api))).rejects.toMatchObject({
       failure: { kind: 'too_large' },
     });
@@ -160,9 +150,8 @@ describe('creating a message', () => {
 
   it('checks the limits of the instance', async () => {
     const { limits } = await fakeApi().instance();
-    expect(validateCreate(input({ text: 'x'.repeat(102_401) }), limits)).toEqual([
-      { field: 'text', code: 'too_large' },
-    ]);
+    const tooLong = 'x'.repeat(102_401);
+    expect(validateCreate(input({ text: tooLong }), limits)).toEqual([{ field: 'text', code: 'too_large' }]);
     expect(validateCreate(input({ opensMax: 11, ttlSeconds: 604_801 }), limits)).toEqual([
       { field: 'ttl', code: 'out_of_range' },
       { field: 'opens', code: 'out_of_range' },

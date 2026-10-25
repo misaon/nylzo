@@ -6,7 +6,9 @@ describe('progress from the key derivation worker', () => {
   it('posts at most one message per percent and always the end', () => {
     const posted: number[] = [];
     const report = throttledProgress(
-      (fraction) => posted.push(fraction),
+      (fraction) => {
+        posted.push(fraction);
+      },
       () => 0,
     );
     for (let call = 0; call <= 10_083; call++) {
@@ -22,7 +24,9 @@ describe('progress from the key derivation worker', () => {
     let now = 0;
     const posted: number[] = [];
     const report = throttledProgress(
-      (fraction) => posted.push(fraction),
+      (fraction) => {
+        posted.push(fraction);
+      },
       () => now,
     );
     report(1);

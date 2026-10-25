@@ -17,9 +17,7 @@ describe('redaction matches the server (spec/vectors.json)', () => {
   it('has vectors', () => {
     expect(redact.length).toBeGreaterThan(0);
   });
-  for (const v of redact) {
-    it(v.name, () => {
-      expect(redactReason(v.reason)).toBe(v.redacted);
-    });
-  }
+  it.each(redact)('$name', ({ reason, redacted }) => {
+    expect(redactReason(reason)).toBe(redacted);
+  });
 });

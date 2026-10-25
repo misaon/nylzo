@@ -1,3 +1,4 @@
+import { utf8 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import { type CreateDependencies, createMessage } from '../../features/create/create-message.ts';
@@ -7,13 +8,17 @@ import { reasonTooLong, redactReason, reportLink } from './report.ts';
 
 const ORIGIN = 'https://nylzo.test';
 
+function percentEncoded(text: string, prefix: string): string {
+  return Array.from(utf8(text), (byte) => `${prefix}${byte.toString(16)}`).join('');
+}
+
 async function setup(options: FakeOptions = {}): Promise<{ api: FakeApi; link: string; id: string }> {
   const api = fakeApi(options);
   const dependencies: CreateDependencies = {
     api,
     origin: ORIGIN,
-    scrypt: async () => new Uint8Array(32),
-    solvePow: async () => '',
+    scrypt: () => Promise.resolve(new Uint8Array(32)),
+    solvePow: () => Promise.resolve(''),
   };
   const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, dependencies);
   api.calls.length = 0;
@@ -109,26 +114,23 @@ describe('redacting a reason before it is signed (D41)', () => {
     const { api, link } = await setup();
     const secret = link.split('.').at(-1) ?? '';
     const zeroWidth = `${secret.slice(0, 20)}\u{200B}${secret.slice(20)}`;
-    for (const reason of [
+    const redacted = [
       `phishing, see ${link}`,
       `see ${encodeURIComponent(link)}`,
       `see ${encodeURIComponent(encodeURIComponent(link))}`,
       `key ${secret}`,
       `key ${zeroWidth}`,
-      `key ${[...secret].map((c) => `%${c.charCodeAt(0).toString(16)}`).join('')}`,
-    ]) {
-      const redacted = redactReason(reason);
-      expect(redacted, reason).not.toContain(secret);
-      expect(redacted, reason).toContain('[redacted]');
-    }
+      `key ${percentEncoded(secret, '%')}`,
+    ].map((reason) => redactReason(reason));
+    expect(redacted.filter((reason) => reason.includes(secret))).toEqual([]);
+    expect(redacted.filter((reason) => !reason.includes('[redacted]'))).toEqual([]);
     expect(await reportLink(api, ORIGIN, link, `phishing, see ${link}`)).toEqual({ outcome: 'accepted' });
     expect(api.reports[0]?.reason).toBe('phishing, see https://nylzo.test/m/[redacted][redacted]');
   });
 
   it('redacts S that was percent-encoded three times, as deep as the server decodes', () => {
     const secret = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdE';
-    const triple = [...secret].map((c) => `%2525${c.charCodeAt(0).toString(16)}`).join('');
-    expect(redactReason(`key ${triple}`)).toBe('key [redacted]');
+    expect(redactReason(`key ${percentEncoded(secret, '%2525')}`)).toBe('key [redacted]');
   });
 
   it('keeps ordinary text and turns control characters into spaces', () => {
@@ -141,14 +143,10 @@ describe('redacting a reason before it is signed (D41)', () => {
   it('measures the redacted reason against the limit', async () => {
     const { api, link } = await setup();
     const long = `${link.split('.').at(-1) ?? ''} `.repeat(30);
-    expect(utf8Length(long)).toBeGreaterThan(1000);
+    expect(utf8(long).length).toBeGreaterThan(1000);
     expect(await reportLink(api, ORIGIN, link, long)).toEqual({ outcome: 'accepted' });
   });
 });
-
-function utf8Length(text: string): number {
-  return new TextEncoder().encode(text).length;
-}
 
 describe('the reason length after redaction, as nylzo report checks it', () => {
   it.each([

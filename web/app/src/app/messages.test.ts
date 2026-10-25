@@ -22,7 +22,10 @@ describe('messages', () => {
       ['en', english],
     ] as const) {
       const { translate } = new Translator(language);
-      for (const [key, text] of Object.entries(messages).filter(([key]) => !key.startsWith('ttl.'))) {
+      for (const [key, text] of Object.entries(messages)) {
+        if (key.startsWith('ttl.')) {
+          continue;
+        }
         expect(text, `${language} ${key}`).not.toMatch(/\b(?:12|16|1000)\b|\b7 (?:days|dní|dnů)\b/u);
         expect(translate(key as MessageKey, limits), `${language} ${key}`).not.toMatch(
           /\{(?:min|words|chars|bytes|days)\}/,

@@ -1,6 +1,7 @@
 import { type CryptoRequestKey, newSecret, requestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
+import { newGate } from '../testing/gate.ts';
 import { memoryStore } from './memory-sent-store.ts';
 import {
   ExtractableKeyError,
@@ -23,6 +24,14 @@ async function manageKeyOf(seed: Uint8Array): Promise<CryptoRequestKey> {
   return key;
 }
 
+async function newRecord(): Promise<SentRecord> {
+  return { id: ID, createdAt: NOW, expiresAt: NOW + 3_600_000, manageKey: await manageKeyOf(newSecret()) };
+}
+
+function openNothing(name: string): never {
+  throw new Error(`must not open ${name}`);
+}
+
 async function extractableKey(): Promise<CryptoRequestKey> {
   const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   return {
@@ -41,23 +50,19 @@ describe('stored records of sent messages (D39)', () => {
     const manageKey = await manageKeyOf(newSecret());
     const stored = storedForm({ id: ID, createdAt: NOW, expiresAt: NOW, manageKey });
     expect(stored.privateKey).toBe(manageKey.privateKey);
-    expect(Object.keys(stored).sort()).toEqual(['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey']);
+    expect(new Set(Object.keys(stored))).toEqual(new Set(['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey']));
   });
 
-  it('refuses to store impossible times', async () => {
+  it.each([
+    { id: ID, createdAt: NOW, expiresAt: NOW - 1 },
+    { id: ID, createdAt: -1, expiresAt: NOW },
+    { id: ID, createdAt: NOW, expiresAt: NOW + 32 * 24 * 3_600_000 },
+    { id: ID, createdAt: 0.5, expiresAt: NOW },
+    { id: ID, createdAt: NOW, expiresAt: 1e300 },
+    { id: 'not an id', createdAt: NOW, expiresAt: NOW },
+  ])('refuses to store impossible times or ids: %j', async (fields) => {
     const manageKey = await manageKeyOf(newSecret());
-    for (const times of [
-      { createdAt: NOW, expiresAt: NOW - 1 },
-      { createdAt: -1, expiresAt: NOW },
-      { createdAt: NOW, expiresAt: NOW + 32 * 24 * 3_600_000 },
-      { createdAt: 0.5, expiresAt: NOW },
-      { createdAt: NOW, expiresAt: 1e300 },
-    ]) {
-      expect(() => storedForm({ id: ID, ...times, manageKey }), JSON.stringify(times)).toThrow(InvalidRecordError);
-    }
-    expect(() => storedForm({ id: 'not an id', createdAt: NOW, expiresAt: NOW, manageKey })).toThrow(
-      InvalidRecordError,
-    );
+    expect(() => storedForm({ ...fields, manageKey })).toThrow(InvalidRecordError);
   });
 
   it('reads back only well-formed records with a non-extractable Ed25519 signing key', async () => {
@@ -71,7 +76,7 @@ describe('stored records of sent messages (D39)', () => {
     });
     const loose = await extractableKey();
     const ecdsa = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
-    for (const bad of [
+    for (const malformed of [
       { ...good, privateKey: loose.privateKey },
       { ...good, privateKey: ecdsa.privateKey },
       { ...good, privateKey: 'key' },
@@ -86,7 +91,7 @@ describe('stored records of sent messages (D39)', () => {
       null,
       'record',
     ]) {
-      expect(recordFrom(bad)).toBeUndefined();
+      expect(recordFrom(malformed)).toBeUndefined();
     }
   });
 
@@ -100,56 +105,46 @@ describe('stored records of sent messages (D39)', () => {
     ]);
     const kept = await retainedRecords(store, NOW);
     expect(kept.map((record) => record.createdAt)).toEqual([3, 2]);
-    expect([...store.records.keys()].sort()).toEqual(['AAAAAAAAAAAAAAAAAAAAAQ', 'AAAAAAAAAAAAAAAAAAAAAg']);
+    expect(new Set(store.records.keys())).toEqual(new Set(['AAAAAAAAAAAAAAAAAAAAAQ', 'AAAAAAAAAAAAAAAAAAAAAg']));
   });
 });
 
 describe('cleaning up on page load', () => {
   it('neither opens nor creates the database when it does not exist', async () => {
-    const opened: string[] = [];
-    const factory = {
-      databases: async () => [{ name: 'other', version: 1 }],
-      open: (name: string) => {
-        opened.push(name);
-        throw new Error('must not open');
-      },
-    } as unknown as IDBFactory;
-    await purgeSentRecords(factory, NOW);
-    await purgeSentRecords({ open: factory.open } as unknown as IDBFactory, NOW);
+    const open = vi.fn(openNothing);
+    const factory = { databases: () => Promise.resolve([{ name: 'other', version: 1 }]), open };
+    await purgeSentRecords(factory as unknown as IDBFactory, NOW);
+    await purgeSentRecords({ open } as unknown as IDBFactory, NOW);
     await purgeSentRecords(undefined, NOW);
-    expect(opened).toEqual([]);
+    expect(open).not.toHaveBeenCalled();
   });
 });
 
 describe('remembering a new message', () => {
-  async function record(): Promise<SentRecord> {
-    return { id: ID, createdAt: NOW, expiresAt: NOW + 3_600_000, manageKey: await manageKeyOf(newSecret()) };
-  }
-
   it('reports a saved record', async () => {
     const store = memoryStore();
-    expect(await rememberSent(store, await record(), 1000)).toBe(true);
+    expect(await rememberSent(store, await newRecord(), 1000)).toBe(true);
     expect(store.records.has(ID)).toBe(true);
   });
 
   it('reports a store that refuses the record', async () => {
-    expect(await rememberSent(memoryStore([], true), await record(), 1000)).toBe(false);
+    expect(await rememberSent(memoryStore([], true), await newRecord(), 1000)).toBe(false);
   });
 
   it('removes a record that lands after the page said it was not saved', async () => {
     const store = memoryStore();
-    const gate = Promise.withResolvers<void>();
-    const landed = Promise.withResolvers<void>();
+    const gate = newGate();
+    const landed = newGate();
     const put = store.put.bind(store);
-    store.put = async (value) => {
-      await gate.promise;
-      await put(value);
-      landed.resolve();
+    store.put = async (record) => {
+      await gate.opened;
+      await put(record);
+      landed.open();
     };
-    expect(await rememberSent(store, await record(), 10)).toBe(false);
+    expect(await rememberSent(store, await newRecord(), 10)).toBe(false);
     expect(store.records.has(ID)).toBe(false);
-    gate.resolve();
-    await landed.promise;
+    gate.open();
+    await landed.opened;
     await vi.waitFor(() => expect(store.records.has(ID)).toBe(false));
   });
 });

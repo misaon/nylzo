@@ -27,7 +27,7 @@ function fakeServer(handler: Handler) {
   const seen: Request[] = [];
   let issued = 0;
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const request = new Request(new URL(String(input), 'http://nylzo.test'), init);
+    const request = new Request(new URL(input instanceof Request ? input.url : input, 'http://nylzo.test'), init);
     seen.push(request);
     if (new URL(request.url).pathname === '/api/v1/challenge') {
       issued++;
@@ -36,23 +36,20 @@ function fakeServer(handler: Handler) {
     }
     return handler(request);
   };
-  return { api: createApi({ fetch }), seen, issued: () => issued };
+  const last = () => seen.at(-1) ?? expect.unreachable('the client sent no request');
+  return { api: createApi({ fetch }), seen, last, issued: () => issued };
 }
 
-function decode(s: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(
-    atob(
-      s
-        .replaceAll('-', '+')
-        .replaceAll('_', '/')
-        .padEnd(Math.ceil(s.length / 4) * 4, '='),
-    ),
-    (c) => c.charCodeAt(0),
-  );
+function requestAt(requests: readonly Request[], index: number): Request {
+  return requests[index] ?? expect.unreachable(`the client sent no request ${index}`);
+}
+
+function decode(encoded: string): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(Buffer.from(encoded, 'base64url'));
 }
 
 async function verifies(
-  pk: string,
+  publicKey: string,
   challenge: string,
   signature: string,
   purpose: Purpose,
@@ -60,14 +57,14 @@ async function verifies(
   path: string,
   body: Uint8Array = new Uint8Array(0),
 ): Promise<boolean> {
-  const key = await crypto.subtle.importKey('raw', decode(pk), 'Ed25519', false, ['verify']);
+  const key = await crypto.subtle.importKey('raw', decode(publicKey), 'Ed25519', false, ['verify']);
   const message = await requestMessage(purpose, method, path, decode(challenge), body);
   return crypto.subtle.verify('Ed25519', key, decode(signature), message);
 }
 
 function authParts(header: string): [string, string, string] {
-  const [pk = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /, '').split('.', 3);
-  return [pk, challenge, signature];
+  const [publicKey = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /, '').split('.', 3);
+  return [publicKey, challenge, signature];
 }
 
 const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 1, flags: 0 })));
@@ -86,6 +83,19 @@ const instanceBody = {
   versions: { api: 1, envelope: 1, fragment: 1, server: 'dev' },
 };
 
+const CHUNKED_OBJECT = Uint8Array.from({ length: 200_000 }, (_, index) => index % 251);
+
+function chunkedStream(object: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let offset = 0; offset < object.length; offset += 30_000) {
+        controller.enqueue(object.slice(offset, offset + 30_000));
+      }
+      controller.close();
+    },
+  });
+}
+
 describe('api client', () => {
   it('reads the instance and takes no passphrase profile from it', async () => {
     const good = fakeServer(() => json(200, instanceBody));
@@ -96,9 +106,12 @@ describe('api client', () => {
     const legacy = fakeServer(() =>
       json(200, { ...instanceBody, limits: { ...instanceBody.limits, default_kdf_id: 0 } }),
     );
-    expect((await legacy.api.instance()).limits).not.toHaveProperty('defaultKdfId');
-    const bad = fakeServer(() => json(200, { ...instanceBody, limits: { ...instanceBody.limits, max_opens: 'ten' } }));
-    await expect(bad.api.instance()).rejects.toThrow(ResponseError);
+    const { limits } = await legacy.api.instance();
+    expect(limits).not.toHaveProperty('defaultKdfId');
+    const malformed = fakeServer(() =>
+      json(200, { ...instanceBody, limits: { ...instanceBody.limits, max_opens: 'ten' } }),
+    );
+    await expect(malformed.api.instance()).rejects.toThrow(ResponseError);
   });
 
   it('signs metadata with R over a fresh challenge', async () => {
@@ -124,11 +137,12 @@ describe('api client', () => {
       kdfId: 0,
       expiresAt: '2026-10-24T09:00:00Z',
     });
-    const request = server.seen.at(-1);
+    const request = server.last();
     const path = `/api/v1/messages/${idToString(id)}`;
-    expect(new URL(request?.url ?? '').pathname).toBe(path);
-    expect(await verifies(...authParts(request?.headers.get('Authorization') ?? ''), 'read', 'GET', path)).toBe(true);
-    expect(request?.headers.get('X-Nylzo-Verifier')).toBeNull();
+    expect(new URL(request.url).pathname).toBe(path);
+    const parts = authParts(request.headers.get('Authorization') ?? '');
+    expect(await verifies(...parts, 'read', 'GET', path)).toBe(true);
+    expect(request.headers.get('X-Nylzo-Verifier')).toBeNull();
   });
 
   it('burns with R and cancels and reads the status with M, each without a body', async () => {
@@ -164,7 +178,7 @@ describe('api client', () => {
     ] as const;
     expect(signed).toHaveLength(expected.length);
     for (const [index, [method, path, purpose, key]] of expected.entries()) {
-      const request = signed[index]!;
+      const request = requestAt(signed, index);
       expect([request.method, new URL(request.url).pathname]).toEqual([method, path]);
       const parts = authParts(request.headers.get('Authorization') ?? '');
       expect(parts[0]).toBe(encodeBase64url(key.publicKey));
@@ -213,26 +227,30 @@ describe('api client', () => {
     const leases: string[] = [];
     const claimed = await server.api.claim(id, readKey, {
       verifierKey,
-      onLease: (lease) => leases.push(lease),
-      onProgress: (received, total) => progress.push([received, total]),
+      onLease: (lease) => {
+        leases.push(lease);
+      },
+      onProgress: (received, total) => {
+        progress.push([received, total]);
+      },
     });
     expect(leases).toEqual(['lease-token']);
     expect(claimed.lease).toBe('lease-token');
     expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
     expect(claimed.object).toEqual(object);
     expect(progress.at(-1)).toEqual([object.length, object.length]);
-    const request = server.seen.at(-1);
+    const request = server.last();
     const path = `/api/v1/messages/${idToString(id)}/claim`;
-    const auth = request?.headers.get('Authorization') ?? '';
-    const verifier = request?.headers.get('X-Nylzo-Verifier') ?? '';
-    expect(request?.method).toBe('POST');
-    const [pk, challenge, signature] = authParts(auth);
-    const [verifierPk = '', verifierSignature = '', ...rest] = verifier.split('.');
+    const authorization = request.headers.get('Authorization') ?? '';
+    const verifier = request.headers.get('X-Nylzo-Verifier') ?? '';
+    expect(request.method).toBe('POST');
+    const [publicKey, challenge, signature] = authParts(authorization);
+    const [verifierPublicKey = '', verifierSignature = '', ...rest] = verifier.split('.');
     expect(rest).toEqual([]);
     expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LEN).fill(1)));
-    expect(await verifies(pk, challenge, signature, 'read', 'POST', path)).toBe(true);
-    expect(await verifies(verifierPk, challenge, verifierSignature, 'verifier', 'POST', path)).toBe(true);
-    expect(verifierPk).toBe(encodeBase64url(verifierKey.publicKey));
+    expect(await verifies(publicKey, challenge, signature, 'read', 'POST', path)).toBe(true);
+    expect(await verifies(verifierPublicKey, challenge, verifierSignature, 'verifier', 'POST', path)).toBe(true);
+    expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));
   });
 
   it('retries a 404 once with a new challenge and then reports it', async () => {
@@ -286,9 +304,9 @@ describe('api client', () => {
       object,
       powToken: 'chal.0000000000000003',
     });
-    const request = server.seen.at(-1);
-    const header = JSON.parse(
-      atob((request?.headers.get('X-Nylzo-Create') ?? '').replaceAll('-', '+').replaceAll('_', '/')),
+    const request = server.last();
+    const header: unknown = JSON.parse(
+      Buffer.from(request.headers.get('X-Nylzo-Create') ?? '', 'base64url').toString(),
     );
     expect(header).toEqual({
       id: idToString(keys.id),
@@ -300,14 +318,14 @@ describe('api client', () => {
       ttl_s: 3600,
       size: object.length,
     });
-    expect(request?.headers.get('X-Nylzo-Pow')).toBe('chal.0000000000000003');
-    expect(request?.headers.get('Content-Type')).toBe('application/octet-stream');
-    expect(new Uint8Array(await request!.arrayBuffer())).toEqual(object);
+    expect(request.headers.get('X-Nylzo-Pow')).toBe('chal.0000000000000003');
+    expect(request.headers.get('Content-Type')).toBe('application/octet-stream');
+    expect(new Uint8Array(await request.arrayBuffer())).toEqual(object);
   });
 
   it('accepts only a canonical policy header with integer fields', () => {
     expect(servedPolicy(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
-    for (const bad of [
+    for (const malformed of [
       null,
       '',
       `${policy}A`,
@@ -315,7 +333,7 @@ describe('api client', () => {
       encodeBase64url(utf8('[]')),
       encodeBase64url(utf8('{"opens_max":1}')),
     ]) {
-      expect(() => servedPolicy(bad)).toThrow(ResponseError);
+      expect(() => servedPolicy(malformed)).toThrow(ResponseError);
     }
   });
 
@@ -340,9 +358,10 @@ describe('api client', () => {
   it('leaves retryAfter empty when the server sends no Retry-After', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(6));
     const server = fakeServer(() => json(503, { error: 'unavailable' }));
-    const error = await server.api.claim(randomId(), readKey).catch((error_: unknown) => error_);
-    expect(error).toMatchObject({ kind: 'unavailable' });
-    expect((error as ApiError).retryAfter).toBeUndefined();
+    await expect(server.api.claim(randomId(), readKey)).rejects.toMatchObject({
+      kind: 'unavailable',
+      retryAfter: undefined,
+    });
   });
 
   it('refuses an object larger than the protocol allows', async () => {
@@ -404,22 +423,23 @@ describe('api client', () => {
     await server.api.burn(id, readKey);
     await server.api.report(id, readKey, 'spam');
     expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(8);
-    for (const request of server.seen) {
-      expect(
-        {
-          redirect: request.redirect,
-          referrerPolicy: request.referrerPolicy,
-          credentials: request.credentials,
-          cache: request.cache,
-        },
-        request.url,
-      ).toEqual({
+    expect(
+      server.seen.map((request) => ({
+        url: request.url,
+        redirect: request.redirect,
+        referrerPolicy: request.referrerPolicy,
+        credentials: request.credentials,
+        cache: request.cache,
+      })),
+    ).toEqual(
+      server.seen.map((request) => ({
+        url: request.url,
         redirect: 'error',
         referrerPolicy: 'no-referrer',
         credentials: 'omit',
         cache: 'no-store',
-      });
-    }
+      })),
+    );
   });
 
   it('stops reading an object without Content-Length once it passes the protocol maximum', async () => {
@@ -443,32 +463,24 @@ describe('api client', () => {
     expect(sent).toBeLessThanOrEqual(MAX_OBJECT_BYTES + 2 * chunk.length);
   });
 
-  it('reads an object in chunks with and without an exact Content-Length', async () => {
+  it.each([
+    ['no', undefined],
+    ['an exact', CHUNKED_OBJECT.length],
+    ['a wrong', 1000],
+  ])('reads an object in chunks with %s Content-Length', async (_label, length) => {
     const readKey = await requestKey(new Uint8Array(32).fill(9));
-    const object = Uint8Array.from({ length: 200_000 }, (_, i) => i % 251);
-    const chunked = () =>
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          for (let offset = 0; offset < object.length; offset += 30_000) {
-            controller.enqueue(object.slice(offset, offset + 30_000));
-          }
-          controller.close();
-        },
-      });
-    for (const length of [undefined, object.length, 1000]) {
-      const headers: Record<string, string> = {
-        'X-Nylzo-Policy': policy,
-        ...(length !== undefined && { 'Content-Length': String(length) }),
-      };
-      const progress: [number, number | undefined][] = [];
-      const server = fakeServer(() => new Response(chunked(), { status: 200, headers }));
-      const envelope = await server.api.blob(randomId(), readKey, 'l', (received, total) =>
-        progress.push([received, total]),
-      );
-      expect(envelope.object, String(length)).toEqual(object);
-      expect(envelope.object.buffer.byteLength, String(length)).toBe(object.length);
-      expect(progress.at(-1), String(length)).toEqual([object.length, length]);
-    }
+    const headers: Record<string, string> = {
+      'X-Nylzo-Policy': policy,
+      ...(length !== undefined && { 'Content-Length': String(length) }),
+    };
+    const progress: [number, number | undefined][] = [];
+    const server = fakeServer(() => new Response(chunkedStream(CHUNKED_OBJECT), { status: 200, headers }));
+    const envelope = await server.api.blob(randomId(), readKey, 'l', (received, total) => {
+      progress.push([received, total]);
+    });
+    expect(envelope.object).toEqual(CHUNKED_OBJECT);
+    expect(envelope.object.buffer.byteLength).toBe(CHUNKED_OBJECT.length);
+    expect(progress.at(-1)).toEqual([CHUNKED_OBJECT.length, length]);
   });
 
   it('gives a transfer the time the protocol allows the largest object, plus a margin', () => {
@@ -477,9 +489,10 @@ describe('api client', () => {
   });
 });
 
-describe('transparency', () => {
-  const sha = 'a'.repeat(64);
-  const report = (change: Record<string, unknown> = {}) => ({
+const DIGEST = 'a'.repeat(64);
+
+function transparencyReport(change: Record<string, unknown> = {}) {
+  return {
     server: 'v1.2.3',
     operator: { name: 'Example s.r.o.', contact: 'abuse@example.org' },
     limits: {
@@ -502,56 +515,63 @@ describe('transparency', () => {
     },
     retention: { tombstone_s: 604_800, abuse_report_s: 604_800, daily_counter_s: 86_400 },
     ...change,
-  });
-  const manifest = (change: Record<string, unknown> = {}) => ({
+  };
+}
+
+function clientManifest(change: Record<string, unknown> = {}) {
+  return {
     server: 'v1.2.3',
     built: true,
     nonce_placeholder: '__NYLZO_CSP_NONCE__',
     pages: ['/'],
-    files: [{ path: '/', sha256: sha }],
+    files: [{ path: '/', sha256: DIGEST }],
     ...change,
-  });
-  const serve = (body: unknown, client: unknown) =>
-    fakeServer((request) =>
-      json(200, new URL(request.url).pathname === '/.well-known/nylzo/client.json' ? client : body),
-    ).api;
+  };
+}
 
+function serveTransparency(report: unknown, manifest: unknown) {
+  return fakeServer((request) =>
+    json(200, new URL(request.url).pathname === '/.well-known/nylzo/client.json' ? manifest : report),
+  ).api.transparency();
+}
+
+describe('transparency', () => {
   it('reads the report and the client manifest', async () => {
-    const got = await serve(report(), manifest()).transparency();
-    expect(got.server).toBe('v1.2.3');
-    expect(got.operator).toEqual({ name: 'Example s.r.o.', contact: 'abuse@example.org' });
-    expect(got.limits.maxOpens).toBe(10);
-    expect(got.rates.globalDailyCreates).toBe(0);
-    expect(got.retention.tombstoneSeconds).toBe(604_800);
-    expect(got.files).toEqual([{ path: '/', sha256: sha }]);
+    const transparency = await serveTransparency(transparencyReport(), clientManifest());
+    expect(transparency.server).toBe('v1.2.3');
+    expect(transparency.operator).toEqual({ name: 'Example s.r.o.', contact: 'abuse@example.org' });
+    expect(transparency.limits.maxOpens).toBe(10);
+    expect(transparency.rates.globalDailyCreates).toBe(0);
+    expect(transparency.retention.tombstoneSeconds).toBe(604_800);
+    expect(transparency.files).toEqual([{ path: '/', sha256: DIGEST }]);
   });
 
   it('accepts an instance without an operator', async () => {
-    const { operator: _, ...withoutOperator } = report();
-    expect((await serve(withoutOperator, manifest()).transparency()).operator).toBeUndefined();
+    const { operator } = await serveTransparency(transparencyReport({ operator: undefined }), clientManifest());
+    expect(operator).toBeUndefined();
   });
 
   it('refuses malformed details', async () => {
-    for (const [body, client] of [
-      [report({ server: 'v9' }), manifest()],
-      [report(), manifest({ files: [{ path: '/', sha256: 'A'.repeat(64) }] })],
-      [report(), manifest({ files: [{ path: 'assets/x.js', sha256: sha }] })],
-      [report(), manifest({ built: 'yes' })],
+    for (const [report, manifest] of [
+      [transparencyReport({ server: 'v9' }), clientManifest()],
+      [transparencyReport(), clientManifest({ files: [{ path: '/', sha256: 'A'.repeat(64) }] })],
+      [transparencyReport(), clientManifest({ files: [{ path: 'assets/x.js', sha256: DIGEST }] })],
+      [transparencyReport(), clientManifest({ built: 'yes' })],
       [
-        report(),
-        manifest({
+        transparencyReport(),
+        clientManifest({
           files: [
-            { path: '/', sha256: sha },
-            { path: '/', sha256: sha },
+            { path: '/', sha256: DIGEST },
+            { path: '/', sha256: DIGEST },
           ],
         }),
       ],
-      [report({ operator: { name: 'x'.repeat(201) } }), manifest()],
-      [report({ operator: { contact: 7 } }), manifest()],
-      [report({ operator: 'Example' }), manifest()],
-      [report({ rates: {} }), manifest()],
+      [transparencyReport({ operator: { name: 'x'.repeat(201) } }), clientManifest()],
+      [transparencyReport({ operator: { contact: 7 } }), clientManifest()],
+      [transparencyReport({ operator: 'Example' }), clientManifest()],
+      [transparencyReport({ rates: {} }), clientManifest()],
     ]) {
-      await expect(serve(body, client).transparency()).rejects.toBeInstanceOf(ResponseError);
+      await expect(serveTransparency(report, manifest)).rejects.toBeInstanceOf(ResponseError);
     }
   });
 });
