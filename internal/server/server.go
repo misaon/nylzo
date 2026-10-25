@@ -15,6 +15,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -84,11 +85,11 @@ type Server struct {
 	abuseMu       sync.Mutex
 	abuseDir      string
 	webFiles      fs.FS
-	web           webClient
-	pages         map[string]page
+	web           webclient.Build
+	pages         webclient.Pages
 	robots        []byte
 	sitemap       []byte
-	manifest      ClientManifest
+	manifest      webclient.Manifest
 }
 
 func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
@@ -96,6 +97,10 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		return nil, err
 	}
 	ring, err := pepper.NewRing(cfg.Pepper, cfg.PepperPrevious)
+	if err != nil {
+		return nil, err
+	}
+	webFiles, err := embeddedWebFiles()
 	if err != nil {
 		return nil, err
 	}
@@ -115,18 +120,16 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	for _, o := range opts {
 		o(s)
 	}
-	if s.web, err = loadWebClient(s.webFiles); err != nil {
+	if s.web, err = webclient.Load(s.webFiles); err != nil {
 		return nil, err
 	}
-	if s.pages, err = renderPages(s.web, cfg.PublicURL); err != nil {
+	if s.pages, err = s.web.Render(cfg.PublicURL); err != nil {
 		return nil, err
 	}
-	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets), "public_url", cfg.PublicURL)
-	s.robots = robotsTxt(cfg.PublicURL)
-	if cfg.PublicURL != "" {
-		s.sitemap = sitemapXML(cfg.PublicURL)
-	}
-	s.manifest = s.web.embedded().Manifest(cfg.Version, cfg.PublicURL)
+	s.log.Info("web-client", "built", s.web.Built, "assets", len(s.web.Assets), "public_url", cfg.PublicURL)
+	s.robots = webclient.Robots(cfg.PublicURL)
+	s.sitemap = webclient.Sitemap(cfg.PublicURL)
+	s.manifest = s.web.Manifest(cfg.Version, cfg.PublicURL)
 	s.instance = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
 	s.sources = ratelimit.NewLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
@@ -284,7 +287,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /sent", s.handlePage)
 	mux.HandleFunc("GET /report", s.handlePage)
 	mux.HandleFunc("GET /transparency", s.handlePage)
-	mux.HandleFunc("GET "+ClientManifestPath, s.handleClientManifest)
+	mux.HandleFunc("GET "+webclient.ManifestPath, s.handleClientManifest)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	return logging.Requests(s.log,

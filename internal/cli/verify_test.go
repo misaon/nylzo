@@ -16,6 +16,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -56,16 +57,16 @@ func gzipBytes(t *testing.T, data []byte) []byte {
 func webFiles(t *testing.T) fstest.MapFS {
 	t.Helper()
 	return fstest.MapFS{
-		"web/placeholder.html":             {Data: []byte("placeholder")},
-		"web/dist/index.html":              {Data: []byte(webIndex)},
-		"web/dist/home.en.html":            {Data: []byte(webHome)},
-		"web/dist/home.cs.html":            {Data: []byte(strings.Replace(webHome, "<html>", `<html lang="cs">`, 1))},
-		"web/dist/assets/index-a1.js":      {Data: []byte(webJS)},
-		"web/dist/assets/index-a1.js.gz":   {Data: gzipBytes(t, []byte(webJS))},
-		"web/dist/assets/style-b2.css":     {Data: []byte("body{}")},
-		"web/dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
-		"web/dist/assets/favicon-d4.svg":   {Data: []byte(webIcon)},
-		"web/dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
+		"placeholder.html":             {Data: []byte("placeholder")},
+		"dist/index.html":              {Data: []byte(webIndex)},
+		"dist/home.en.html":            {Data: []byte(webHome)},
+		"dist/home.cs.html":            {Data: []byte(strings.Replace(webHome, "<html>", `<html lang="cs">`, 1))},
+		"dist/assets/index-a1.js":      {Data: []byte(webJS)},
+		"dist/assets/index-a1.js.gz":   {Data: gzipBytes(t, []byte(webJS))},
+		"dist/assets/style-b2.css":     {Data: []byte("body{}")},
+		"dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
+		"dist/assets/favicon-d4.svg":   {Data: []byte(webIcon)},
+		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
 	}
 }
 
@@ -154,7 +155,7 @@ func runVerify(t *testing.T, url string, local fs.FS, flags ...string) result {
 		Terminal:  noTerminal{},
 		Version:   "test",
 		TempDir:   t.TempDir(),
-		WebClient: func() (server.EmbeddedClient, error) { return server.LoadEmbedded(local) },
+		WebClient: func() (webclient.Build, error) { return webclient.Load(local) },
 	}
 	code := Run(append([]string{"verify-client", "--server", url}, flags...), env)
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
@@ -214,10 +215,10 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"page without Vary", rewrite(pathIs("/sent"), func(s *served) {
 			s.header.Del("Vary")
 		}), "/sent: the Vary header differs"},
-		{"public URL in the manifest that the server would refuse", rewrite(pathIs(server.ClientManifestPath), func(s *served) {
+		{"public URL in the manifest that the server would refuse", rewrite(pathIs(webclient.ManifestPath), func(s *served) {
 			s.body = bytes.Replace(s.body, []byte(`"public_url":""`), []byte(`"public_url":"http://evil.example"`), 1)
 		}), "names a public URL that this nylzo would refuse"},
-		{"public URL in the manifest that the pages do not use", rewrite(pathIs(server.ClientManifestPath), func(s *served) {
+		{"public URL in the manifest that the pages do not use", rewrite(pathIs(webclient.ManifestPath), func(s *served) {
 			s.body = bytes.Replace(s.body, []byte(`"public_url":""`), []byte(`"public_url":"https://evil.example"`), 1)
 		}), "/: the page "},
 		{"weaker referrer policy", rewrite(pathIs("/assets/style-b2.css"), func(s *served) {
@@ -234,11 +235,11 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		}), "/sent: the Content-Security-Policy header differs"},
 		{"short nonce", rewrite(pathIs("/report"), func(s *served) {
 			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
-			s.header.Set("Content-Security-Policy", server.PageCSP("abc"))
+			s.header.Set("Content-Security-Policy", webclient.PageCSP("abc"))
 			s.body = bytes.ReplaceAll(s.body, []byte(old), []byte("abc"))
 		}), "/report: the Content-Security-Policy differs"},
 		{"nonce that the page does not use", rewrite(pathIs("/transparency"), func(s *served) {
-			s.header.Set("Content-Security-Policy", server.PageCSP("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+			s.header.Set("Content-Security-Policy", webclient.PageCSP("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
 		}), "/transparency: the page does not use the nonce"},
 		{"missing nosniff", rewrite(pathIs("/assets/kdf-worker-c3.js"), func(s *served) {
 			s.header.Del("X-Content-Type-Options")
@@ -273,14 +274,14 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"fixed nonce", rewrite(func(r *http.Request) bool { return r.URL.Path == "/" || r.URL.Path == "/sent" }, func(s *served) {
 			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
 			fixed := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			s.header.Set("Content-Security-Policy", server.PageCSP(fixed))
+			s.header.Set("Content-Security-Policy", webclient.PageCSP(fixed))
 			s.body = bytes.ReplaceAll(s.body, []byte(old), []byte(fixed))
 		}), "the server sent the same nonce twice"},
 		{"style without nonce", rewrite(pathIs("/report"), func(s *served) {
 			old := pageNonce.FindStringSubmatch(s.header.Get("Content-Security-Policy"))[1]
 			s.body = bytes.Replace(s.body, []byte(`nonce="`+old+`"></head>`), []byte(`nonce="__NYLZO_CSP_NONCE__"></head>`), 1)
 		}), "/report: the page does not use the nonce of its Content-Security-Policy everywhere"},
-		{"manifest", rewrite(pathIs(server.ClientManifestPath), func(s *served) {
+		{"manifest", rewrite(pathIs(webclient.ManifestPath), func(s *served) {
 			s.body = bytes.Replace(s.body, []byte(`"sha256":"`), []byte(`"sha256":"0`), 1)
 		}), "the server's client manifest differs"},
 		{"gzip bomb", rewrite(browserAsks("/assets/index-a1.js"), func(s *served) {
@@ -312,7 +313,7 @@ func TestVerifyClientNeedsTheSameRelease(t *testing.T) {
 func TestVerifyClientNeedsALocalClient(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
-	placeholder := fstest.MapFS{"web/placeholder.html": {Data: []byte("placeholder")}}
+	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}}
 	res := runVerify(t, newWebTestServer(t, files, "test", nil), placeholder)
 	if res.code != exitError || !strings.Contains(res.stderr, "carries no web client") {
 		t.Fatalf("%+v", res)

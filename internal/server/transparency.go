@@ -14,7 +14,10 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const maxOperatorField = 200
+const (
+	TransparencyPath = "/.well-known/nylzo/transparency.json"
+	maxOperatorField = 200
+)
 
 type Operator struct {
 	Name    string `json:"name,omitempty"`

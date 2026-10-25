@@ -107,7 +107,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	_, home := h.do(request{method: "GET", path: "/"})
 	for _, path := range []string{"/", "/cs/", "/sent"} {
 		_, page := h.do(request{method: "GET", path: path})
-		if client, err := server.Embedded(); err != nil ||
+		if client, err := server.EmbeddedWebClient(); err != nil ||
 			client.Built && strings.Contains(string(page), `name="robots"`) {
 			t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80): %v", path, err)
 		}
@@ -660,5 +660,33 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	limits := decodeJSON(t, body)["limits"].(map[string]any)
 	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
 		t.Fatalf("instance reports %v", limits)
+	}
+}
+
+func TestPublicURLFromEnv(t *testing.T) {
+	t.Parallel()
+	env := func(publicURL string) func(string) string {
+		return func(key string) string {
+			if key == "NYLZO_PUBLIC_URL" {
+				return publicURL
+			}
+			return ""
+		}
+	}
+	cfg, err := server.FromEnv(env(" https://nylzo.example "), false)
+	if err != nil || cfg.PublicURL != "https://nylzo.example" {
+		t.Fatalf("%q %v", cfg.PublicURL, err)
+	}
+	if _, err := server.FromEnv(
+		env("https://nylzo.example/"),
+		false,
+	); !errors.Is(err, server.ErrConfig) ||
+		!strings.Contains(err.Error(), "NYLZO_PUBLIC_URL") {
+		t.Fatalf("a public URL with a path must stop the server: %v", err)
+	}
+	cfg = baseConfig(pepperA, nil)
+	cfg.PublicURL = "http://nylzo.example"
+	if err := cfg.Validate(); !errors.Is(err, server.ErrConfig) {
+		t.Fatalf("Validate must refuse plain http to a public host: %v", err)
 	}
 }

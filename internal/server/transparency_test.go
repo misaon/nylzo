@@ -1,96 +1,12 @@
 package server_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
-
-func sha(data string) string {
-	sum := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(sum[:])
-}
-
-func decodeAs[T any](t *testing.T, body string) T {
-	t.Helper()
-	var out T
-	if err := json.Unmarshal([]byte(body), &out); err != nil {
-		t.Fatalf("%v: %s", err, body)
-	}
-	return out
-}
-
-func TestClientManifestListsTheEmbeddedFiles(t *testing.T) {
-	t.Parallel()
-	cfg := baseConfig(pepperA, nil)
-	cfg.Version = "v1.2.3"
-	cfg.PublicURL = "https://nylzo.example"
-	ts, err := newWebServerWith(t, builtClient(t), nil, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, body := get(t, ts.URL+server.ClientManifestPath, nil)
-	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "application/json; charset=utf-8" {
-		t.Fatalf("%d %v", resp.StatusCode, resp.Header)
-	}
-	if resp.Header.Get("Content-Security-Policy") != server.AssetCSP || resp.Header.Get("Cache-Control") != "no-store" {
-		t.Fatalf("headers %v", resp.Header)
-	}
-	got := decodeAs[server.ClientManifest](t, body)
-	want := server.ClientManifest{
-		Server:           "v1.2.3",
-		Built:            true,
-		NoncePlaceholder: "__NYLZO_CSP_NONCE__",
-		PublicURL:        "https://nylzo.example",
-		Pages:            []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/{id}"},
-		Files: []server.ClientFile{
-			{Path: "/", SHA256: sha(builtHome("en"))},
-			{Path: "/cs/", SHA256: sha(builtHome("cs"))},
-			{Path: "/sent", SHA256: sha(builtIndex)},
-			{Path: "/assets/favicon-d4.svg", SHA256: sha(faviconSVG)},
-			{Path: "/assets/favicon-e5.png", SHA256: sha(faviconPNG)},
-			{Path: "/assets/index-a1.js", SHA256: sha(appJS)},
-			{Path: "/assets/kdf-worker-c3.js", SHA256: sha("self.onmessage=null")},
-			{Path: "/assets/style-b2.css", SHA256: sha("body{}")},
-		},
-	}
-	if gotJSON, wantJSON := mustJSON(t, got), mustJSON(t, want); gotJSON != wantJSON {
-		t.Fatalf("manifest\n got %s\nwant %s", gotJSON, wantJSON)
-	}
-}
-
-func TestClientManifestWithoutBuildListsNoFiles(t *testing.T) {
-	t.Parallel()
-	ts, err := newWebServer(t, fstest.MapFS{"web/placeholder.html": {Data: []byte("placeholder")}}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, body := get(t, ts.URL+server.ClientManifestPath, nil)
-	if !strings.Contains(body, `"built":false`) || !strings.Contains(body, `"public_url":""`) ||
-		!strings.Contains(body, `"files":[]`) {
-		t.Fatalf("manifest without a build: %s", body)
-	}
-}
-
-func TestTransparencyPageServesTheClient(t *testing.T) {
-	t.Parallel()
-	ts, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, body := get(t, ts.URL+"/transparency", nil)
-	csp := resp.Header.Get("Content-Security-Policy")
-	if resp.StatusCode != 200 || !strings.Contains(csp, "script-src 'nonce-") ||
-		strings.Contains(body, "__NYLZO_CSP_NONCE__") ||
-		!strings.Contains(body, "/assets/index-a1.js") {
-		t.Fatalf("%d %q %s", resp.StatusCode, csp, body)
-	}
-}
 
 func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 	t.Parallel()
@@ -106,7 +22,7 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, body := get(t, ts.URL+server.TransparencyPath, nil)
-	if resp.StatusCode != 200 || resp.Header.Get("Content-Security-Policy") != server.AssetCSP {
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
 		t.Fatalf("%d %v", resp.StatusCode, resp.Header)
 	}
 	for _, want := range []string{
@@ -122,15 +38,11 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 			t.Fatalf("transparency is missing %s: %s", want, body)
 		}
 	}
-}
-
-func TestTransparencyWithoutOperatorOmitsIt(t *testing.T) {
-	t.Parallel()
-	ts, err := newWebServer(t, builtClient(t), nil)
+	plain, err := newWebServer(t, builtClient(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, body := get(t, ts.URL+server.TransparencyPath, nil); strings.Contains(body, "operator") {
+	if _, body := get(t, plain.URL+server.TransparencyPath, nil); strings.Contains(body, "operator") {
 		t.Fatalf("an unset operator must not appear: %s", body)
 	}
 }
@@ -174,13 +86,4 @@ func TestOperatorConfiguration(t *testing.T) {
 			}
 		})
 	}
-}
-
-func mustJSON(t *testing.T, v any) string {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
 }

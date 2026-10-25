@@ -18,6 +18,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const (
@@ -37,14 +38,14 @@ type Env struct {
 	Terminal  Terminal
 	Version   string
 	TempDir   string
-	WebClient func() (server.EmbeddedClient, error)
+	WebClient func() (webclient.Build, error)
 }
 
-func (e Env) webClient() (server.EmbeddedClient, error) {
+func (e Env) webClient() (webclient.Build, error) {
 	if e.WebClient != nil {
 		return e.WebClient()
 	}
-	return server.Embedded()
+	return server.EmbeddedWebClient()
 }
 
 func (e Env) tempDir() string {

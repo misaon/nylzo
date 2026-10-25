@@ -17,7 +17,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const (
@@ -46,7 +46,7 @@ type verified struct {
 
 type verifier struct {
 	client    *client.Client
-	local     server.EmbeddedClient
+	local     webclient.Build
 	version   string
 	publicURL string
 	allowed   map[string]bool
@@ -118,7 +118,7 @@ func (v *verifier) run(ctx context.Context) (verified, error) {
 		return verified{}, err
 	}
 	var out verified
-	for _, page := range server.ClientPages {
+	for _, page := range webclient.PagePaths {
 		path := strings.Replace(page, "{id}", core.NewID().String(), 1)
 		for _, encoding := range []string{identity, browserEncodings} {
 			if err := v.page(ctx, path, encoding); err != nil {
@@ -139,11 +139,11 @@ func (v *verifier) run(ctx context.Context) (verified, error) {
 }
 
 func (v *verifier) manifest(ctx context.Context) error {
-	fetched, err := v.client.Fetch(ctx, server.ClientManifestPath, identity, maxManifestBytes)
+	fetched, err := v.client.Fetch(ctx, webclient.ManifestPath, identity, maxManifestBytes)
 	if err != nil {
-		return fmt.Errorf("%s: %s", server.ClientManifestPath, explain(err))
+		return fmt.Errorf("%s: %s", webclient.ManifestPath, explain(err))
 	}
-	var got server.ClientManifest
+	var got webclient.Manifest
 	if err := json.Unmarshal(fetched.Body, &got); err != nil {
 		return errors.New("the server's client manifest is not valid JSON")
 	}
@@ -159,7 +159,7 @@ func (v *verifier) manifest(ctx context.Context) error {
 		)
 	}
 	if got.PublicURL != "" {
-		if err := server.CheckPublicURL(got.PublicURL); err != nil {
+		if err := webclient.CheckPublicURL(got.PublicURL); err != nil {
 			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %v", err)
 		}
 	}
@@ -187,7 +187,7 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	}
 	csp := fetched.Header.Get("Content-Security-Policy")
 	match := pageNonce.FindStringSubmatch(csp)
-	if match == nil || len(match[1]) < minNonceLength || csp != server.PageCSP(match[1]) {
+	if match == nil || len(match[1]) < minNonceLength || csp != webclient.PageCSP(match[1]) {
 		return fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
 	}
 	nonce := match[1]
@@ -199,16 +199,16 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if err != nil {
 		return err
 	}
-	if strings.Count(string(body), nonce) != strings.Count(want, server.NoncePlaceholder) {
+	if strings.Count(string(body), nonce) != strings.Count(want, webclient.NoncePlaceholder) {
 		return fmt.Errorf("%s: the page does not use the nonce of its Content-Security-Policy everywhere", where)
 	}
-	if strings.ReplaceAll(string(body), nonce, server.NoncePlaceholder) != want {
+	if strings.ReplaceAll(string(body), nonce, webclient.NoncePlaceholder) != want {
 		return fmt.Errorf("%s: the page differs from the web client of this nylzo", where)
 	}
 	return nil
 }
 
-func (v *verifier) asset(ctx context.Context, name string, asset server.EmbeddedAsset, encoding string) error {
+func (v *verifier) asset(ctx context.Context, name string, asset webclient.Asset, encoding string) error {
 	path := "/assets/" + name
 	where := describe(path, encoding)
 	fetched, err := v.client.Fetch(ctx, path, encoding, int64(max(len(asset.Body), len(asset.Gzip)))+maxPageBytes)
@@ -218,7 +218,7 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 	if err := v.headers(fetched.Header, asset.ContentType, path, where); err != nil {
 		return err
 	}
-	if fetched.Header.Get("Content-Security-Policy") != server.AssetCSP {
+	if fetched.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
 		return fmt.Errorf("%s: the headers differ from this nylzo", where)
 	}
 	body, err := decoded(fetched, encoding, int64(len(asset.Body)), where)
@@ -232,7 +232,7 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 }
 
 func (v *verifier) headers(header http.Header, contentType, path, where string) error {
-	expected := server.SecurityHeaders(path)
+	expected := webclient.SecurityHeaders(path)
 	expected["Content-Type"] = contentType
 	expected["Vary"] = "Accept-Encoding"
 	for name, value := range expected {
@@ -271,7 +271,7 @@ func decoded(fetched client.Fetched, encoding string, limit int64, where string)
 	switch fetched.Header.Get("Content-Encoding") {
 	case "":
 		return fetched.Body, nil
-	case server.EncodingGzip:
+	case webclient.EncodingGzip:
 		if encoding == identity {
 			return nil, fmt.Errorf("%s: the server compressed a response that was asked for without compression", where)
 		}
