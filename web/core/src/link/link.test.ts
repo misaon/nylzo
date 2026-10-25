@@ -18,12 +18,12 @@ describe('AK9: link vectors', () => {
     const link = parseLink(vector.input);
     expect(idToString(link.id)).toBe(vector.id);
     expect(link.kdfId).toBe(vector.kdf_id);
-    expect(bytesToHex(link.s)).toBe(vector.s_hex);
+    expect(bytesToHex(link.secret)).toBe(vector.s_hex);
   });
 
   it.each(canonical)('$name formats back to its input', (vector) => {
     const link = parseLink(vector.input);
-    expect(formatLink(base, link.id, link.kdfId, link.s)).toBe(vector.input);
+    expect(formatLink(base, link.id, link.kdfId, link.secret)).toBe(vector.input);
   });
 
   it.each(invalid)('$name is rejected', (vector) => {
@@ -55,7 +55,7 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
   it('exposes nothing but the id and the fragment of a parsed link', () => {
     const id = randomId();
     const secret = newSecret();
-    expect(parseLink(formatLink(base, id, KDF_SCRYPT, secret))).toStrictEqual({ id, kdfId: KDF_SCRYPT, s: secret });
+    expect(parseLink(formatLink(base, id, KDF_SCRYPT, secret))).toStrictEqual({ id, kdfId: KDF_SCRYPT, secret });
   });
 });
 
@@ -71,7 +71,7 @@ describe('links and fragments (spec 4)', () => {
   });
 
   it.each([`1.1.${encoded}`, `#1.1.${encoded}`])('parses the fragment %s', (text) => {
-    expect(parseFragment(text)).toStrictEqual({ kdfId: KDF_SCRYPT, s: secret });
+    expect(parseFragment(text)).toStrictEqual({ kdfId: KDF_SCRYPT, secret });
   });
 
   it.each<[string, new () => LinkError]>([

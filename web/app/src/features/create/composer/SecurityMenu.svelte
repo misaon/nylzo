@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MIN_PASSPHRASE_CHARS } from '@nylzo/core';
+  import { MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 
   import type { Composer } from './composer.svelte.ts';
 
@@ -79,7 +79,7 @@
         ]}
       />
       <p id="{id}-passphrase-hint" class="text-[11px] leading-relaxed text-ink-mute">
-        {translate('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARS })}
+        {translate('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARACTERS })}
       </p>
       <p
         id="{id}-passphrase-problem"

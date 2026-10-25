@@ -6,7 +6,7 @@ import { KdfError, MalformedPassphraseError } from './errors.ts';
 import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
 import { utf8 } from './primitives/bytes.ts';
 import { newSecret } from './primitives/identifiers.ts';
-import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from './scrypt.ts';
+import { deriveAll, derivePassphraseKey, scryptPassphraseKey } from './scrypt.ts';
 
 const salt = new Uint8Array(32);
 const loneSurrogate = 'caf\u{D800}';
@@ -32,24 +32,24 @@ describe('AK9: scrypt vectors of RFC 7914 for the pinned @noble/hashes', () => {
 describe('passphrase key P (spec 2)', () => {
   it('rejects a passphrase that is not well-formed Unicode before deriving anything', async () => {
     expect(() => scryptPassphraseKey(loneSurrogate, salt)).toThrow(MalformedPassphraseError);
-    await expect(anyPassphraseKey(KDF_SCRYPT, loneSurrogate, salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
+    expect(() => derivePassphraseKey(KDF_SCRYPT, loneSurrogate, salt)).toThrow(MalformedPassphraseError);
     await expect(deriveAll(randomId(), newSecret(), KDF_SCRYPT, loneSurrogate)).rejects.toBeInstanceOf(
       MalformedPassphraseError,
     );
   });
 
   it('is empty for profile 0 whatever the passphrase', async () => {
-    expect(await anyPassphraseKey(KDF_NONE, loneSurrogate, salt)).toHaveLength(0);
+    expect(derivePassphraseKey(KDF_NONE, loneSurrogate, salt)).toHaveLength(0);
     const id = randomId();
     const secret = newSecret();
     const first = await deriveAll(id, secret, KDF_NONE, 'first');
     const second = await deriveAll(id, secret, KDF_NONE, 'second');
-    expect(first.content.v).toEqual(second.content.v);
+    expect(first.content.verifierSeed).toEqual(second.content.verifierSeed);
   });
 
   it.each([KDF_RETIRED, 3])('is never derived for profile %i', async (profile) => {
     const kdfId = profile as KdfId;
-    await expect(anyPassphraseKey(kdfId, 'correct horse battery staple', salt)).rejects.toBeInstanceOf(KdfError);
+    expect(() => derivePassphraseKey(kdfId, 'correct horse battery staple', salt)).toThrow(KdfError);
     await expect(deriveAll(randomId(), newSecret(), kdfId, 'correct horse battery staple')).rejects.toBeInstanceOf(
       KdfError,
     );

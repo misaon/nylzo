@@ -2,13 +2,13 @@ import type { KdfId } from '../keys/kdf.ts';
 
 import { IntegrityError, KdfMismatchError, MetaError, PlaintextError, TooLargeError } from '../errors.ts';
 import {
-  HEADER_LEN,
+  HEADER_LENGTH,
   MAX_META_BYTES,
   MAX_OBJECT_BYTES,
   META_LEN_PREFIX,
   PAD_FILE,
   PAD_TEXT,
-  TAG_LEN,
+  TAG_LENGTH,
 } from '../limits.ts';
 import { arrayBufferBacked, concatenate } from '../primitives/bytes.ts';
 import { aad, type Header, headerBytes, parseHeader, type Policy, validateHeader, validatePolicy } from './header.ts';
@@ -62,11 +62,11 @@ export async function open(
   if (header.kdfId !== kdfId) {
     throw new KdfMismatchError();
   }
-  if (object.length > MAX_OBJECT_BYTES || object.length < HEADER_LEN + TAG_LEN) {
+  if (object.length > MAX_OBJECT_BYTES || object.length < HEADER_LENGTH + TAG_LENGTH) {
     throw new IntegrityError();
   }
   const parameters = aesGcmParameters(header, id, policy);
-  const plaintext = await decrypt(contentKey, parameters, object.subarray(HEADER_LEN));
+  const plaintext = await decrypt(contentKey, parameters, object.subarray(HEADER_LENGTH));
   try {
     return { header, payload: parsePlaintext(plaintext) };
   } finally {
@@ -79,7 +79,7 @@ function aesGcmParameters(header: Header, id: Uint8Array, policy: Policy): AesGc
     name: 'AES-GCM',
     iv: arrayBufferBacked(header.iv),
     additionalData: aad(header, id, policy),
-    tagLength: TAG_LEN * 8,
+    tagLength: TAG_LENGTH * 8,
   };
 }
 
@@ -102,7 +102,7 @@ function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
     throw new MetaError('file length differs from meta.file.size');
   }
   const length = paddedLength(META_LEN_PREFIX + meta.length + file.length, payload.meta.file !== undefined);
-  if (HEADER_LEN + length + TAG_LEN > MAX_OBJECT_BYTES) {
+  if (HEADER_LENGTH + length + TAG_LENGTH > MAX_OBJECT_BYTES) {
     throw new TooLargeError();
   }
   const plaintext = new Uint8Array(length);

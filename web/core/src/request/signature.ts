@@ -1,12 +1,12 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 
-import { TOKEN_LEN } from '../limits.ts';
+import { SEED_LENGTH } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
 import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 
-export const PUBLIC_KEY_LEN = 32;
-export const CHALLENGE_LEN = 36;
+export const PUBLIC_KEY_LENGTH = 32;
+export const CHALLENGE_LENGTH = 36;
 export const PURPOSE_READ = 'read';
 export const PURPOSE_VERIFIER = 'verifier';
 export const PURPOSE_MANAGE = 'manage';
@@ -38,12 +38,12 @@ export interface RequestSignature {
 }
 
 export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
-  assertLength(seed, TOKEN_LEN, 'seed');
+  assertLength(seed, SEED_LENGTH, 'seed');
   const pkcs8 = concatenate(PKCS8_ED25519_PREFIX, seed);
   try {
     const exportableKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
     const jwk = await crypto.subtle.exportKey('jwk', exportableKey);
-    const publicKey = decodeBase64urlExact(jwk.x ?? '', PUBLIC_KEY_LEN);
+    const publicKey = decodeBase64urlExact(jwk.x ?? '', PUBLIC_KEY_LENGTH);
     const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
     return { privateKey, publicKey };
   } catch (error) {
@@ -57,7 +57,7 @@ export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
 }
 
 export function seedRequestKey(seed: Uint8Array): SeedRequestKey {
-  assertLength(seed, TOKEN_LEN, 'seed');
+  assertLength(seed, SEED_LENGTH, 'seed');
   const seedCopy = Uint8Array.from(seed);
   return { seed: seedCopy, publicKey: arrayBufferBacked(ed25519.getPublicKey(seedCopy)) };
 }
@@ -91,7 +91,7 @@ export async function requestMessage(
   challenge: Uint8Array,
   body: Uint8Array,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  assertLength(challenge, CHALLENGE_LEN, 'challenge');
+  assertLength(challenge, CHALLENGE_LENGTH, 'challenge');
   const fields = [REQUEST_LABEL, purpose, method, path].flatMap((field) => [utf8(field), FIELD_SEPARATOR]);
   return concatenate(...fields, challenge, await hash(body));
 }
@@ -122,7 +122,7 @@ export function verifierHeader({ publicKey, signature }: RequestSignature): stri
 }
 
 export function parseChallenge(text: string): Uint8Array<ArrayBuffer> {
-  return decodeBase64urlExact(text, CHALLENGE_LEN);
+  return decodeBase64urlExact(text, CHALLENGE_LENGTH);
 }
 
 function signWithSeed(seed: Uint8Array, message: Uint8Array): Uint8Array<ArrayBuffer> {

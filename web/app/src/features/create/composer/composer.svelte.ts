@@ -1,6 +1,6 @@
 import type { Attachment } from 'svelte/attachments';
 
-import { MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARS } from '@nylzo/core';
+import { MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 import { tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
@@ -167,7 +167,7 @@ export class Composer {
       messages[problem.field] ??= translate(problemKey(problem), {
         size: formatBytes(problem.field === 'text' ? this.textLimit : this.fileLimit, language),
         max: this.maxOpens,
-        min: MIN_PASSPHRASE_CHARS,
+        min: MIN_PASSPHRASE_CHARACTERS,
       });
     }
     return messages;

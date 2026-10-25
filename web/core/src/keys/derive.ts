@@ -1,4 +1,4 @@
-import { ID_LEN, KEY_LEN, SECRET_LEN, TOKEN_LEN } from '../limits.ts';
+import { ID_LENGTH, KEY_LENGTH, SECRET_LENGTH, SEED_LENGTH } from '../limits.ts';
 import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 
@@ -7,16 +7,16 @@ const INFO_READ = 'nylzo/v1/read';
 const INFO_PASSPHRASE_SALT = 'nylzo/v1/pw-salt';
 const INFO_CONTENT = 'nylzo/v1/content';
 const INFO_VERIFIER = 'nylzo/v1/verifier';
-const PASSPHRASE_SALT_LEN = 32;
+const PASSPHRASE_SALT_LENGTH = 32;
 
 export interface LinkKeys {
-  readonly r: Uint8Array<ArrayBuffer>;
-  readonly saltPw: Uint8Array<ArrayBuffer>;
+  readonly readSeed: Uint8Array<ArrayBuffer>;
+  readonly passphraseSalt: Uint8Array<ArrayBuffer>;
 }
 
 export interface ContentKeys {
-  readonly k: CryptoKey;
-  readonly v: Uint8Array<ArrayBuffer>;
+  readonly contentKey: CryptoKey;
+  readonly verifierSeed: Uint8Array<ArrayBuffer>;
 }
 
 export interface DerivedKeys {
@@ -25,17 +25,17 @@ export interface DerivedKeys {
 }
 
 export async function hsalt(id: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-  assertLength(id, ID_LEN, 'id');
+  assertLength(id, ID_LENGTH, 'id');
   return hash(concatenate(utf8(HKDF_SALT_LABEL), id));
 }
 
 export async function deriveLink(id: Uint8Array, secret: Uint8Array): Promise<LinkKeys> {
-  assertLength(secret, SECRET_LEN, 'secret');
+  assertLength(secret, SECRET_LENGTH, 'secret');
   const salt = await hsalt(id);
   const keyMaterial = await importKeyMaterial(arrayBufferBacked(secret));
   return {
-    r: await deriveBytes(keyMaterial, salt, INFO_READ, TOKEN_LEN),
-    saltPw: await deriveBytes(keyMaterial, salt, INFO_PASSPHRASE_SALT, PASSPHRASE_SALT_LEN),
+    readSeed: await deriveBytes(keyMaterial, salt, INFO_READ, SEED_LENGTH),
+    passphraseSalt: await deriveBytes(keyMaterial, salt, INFO_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH),
   };
 }
 
@@ -44,7 +44,7 @@ export async function deriveContent(
   secret: Uint8Array,
   passphraseKey: Uint8Array,
 ): Promise<ContentKeys> {
-  assertLength(secret, SECRET_LEN, 'secret');
+  assertLength(secret, SECRET_LENGTH, 'secret');
   const salt = await hsalt(id);
   const secretAndPassphraseKey = concatenate(secret, passphraseKey);
   const keyMaterial = await importKeyMaterial(secretAndPassphraseKey);
@@ -52,11 +52,11 @@ export async function deriveContent(
   const contentKey = await crypto.subtle.deriveKey(
     hkdfParameters(salt, INFO_CONTENT),
     keyMaterial,
-    { name: 'AES-GCM', length: KEY_LEN * 8 },
+    { name: 'AES-GCM', length: KEY_LENGTH * 8 },
     false,
     ['encrypt', 'decrypt'],
   );
-  return { k: contentKey, v: await deriveBytes(keyMaterial, salt, INFO_VERIFIER, TOKEN_LEN) };
+  return { contentKey, verifierSeed: await deriveBytes(keyMaterial, salt, INFO_VERIFIER, SEED_LENGTH) };
 }
 
 function importKeyMaterial(bytes: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {

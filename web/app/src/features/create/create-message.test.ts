@@ -1,4 +1,4 @@
-import { encodeBase64url, HEADER_LEN, PowTimeoutError, solvePow, TooLargeError } from '@nylzo/core';
+import { encodeBase64url, HEADER_LENGTH, PowTimeoutError, solvePow, TooLargeError } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
@@ -104,7 +104,7 @@ describe('creating a message', () => {
     const api = fakeApi();
     await createMessage(input(), createDependencies(api));
     await createMessage(input(), createDependencies(api));
-    const ivs = Array.from(api.stored.values(), (message) => message.request.object.slice(3, HEADER_LEN));
+    const ivs = Array.from(api.stored.values(), (message) => message.request.object.slice(3, HEADER_LENGTH));
     expect(ivs).toHaveLength(2);
     expect(ivs[0]).not.toEqual(ivs[1]);
   });

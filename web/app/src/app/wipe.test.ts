@@ -27,23 +27,23 @@ vi.mock('@nylzo/core', async (importOriginal) => {
     newSecret: () => keep(core.newSecret()),
     parseLink: (text: string) => {
       const link = core.parseLink(text);
-      keep(link.s);
+      keep(link.secret);
       return link;
     },
     parseFragment: (text: string) => {
       const fragment = core.parseFragment(text);
-      keep(fragment.s);
+      keep(fragment.secret);
       return fragment;
     },
     deriveLink: async (id: Uint8Array, secret: Uint8Array) => {
       const keys = await core.deriveLink(id, secret);
-      keep(keys.r);
-      keep(keys.saltPw);
+      keep(keys.readSeed);
+      keep(keys.passphraseSalt);
       return keys;
     },
     deriveContent: async (id: Uint8Array, secret: Uint8Array, passphraseKey: Uint8Array) => {
       const keys = await core.deriveContent(id, secret, passphraseKey);
-      keep(keys.v);
+      keep(keys.verifierSeed);
       return keys;
     },
     requestKey: async (seed: Uint8Array) => {

@@ -1,6 +1,6 @@
 import { KdfMismatchError, LinkError, LinkRetiredKdfError, LinkVersionError } from '../errors.ts';
 import { KDF_RETIRED, type KdfId, parseKdfId } from '../keys/kdf.ts';
-import { FRAGMENT_VERSION, SECRET_LEN } from '../limits.ts';
+import { FRAGMENT_VERSION, SECRET_LENGTH } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
 import { assertLength } from '../primitives/bytes.ts';
 import { idToString, parseId } from '../primitives/identifiers.ts';
@@ -12,7 +12,7 @@ const TEXT_BEFORE_FRAGMENT = /^https?:\/\/[\d.:[\]a-z-]+(\/[^?#]*)(?:\?[^#]*)?$/
 
 export interface Fragment {
   readonly kdfId: KdfId;
-  readonly s: Uint8Array<ArrayBuffer>;
+  readonly secret: Uint8Array<ArrayBuffer>;
 }
 
 export interface Link extends Fragment {
@@ -20,7 +20,7 @@ export interface Link extends Fragment {
 }
 
 export function fragment(kdfId: KdfId, secret: Uint8Array): string {
-  assertLength(secret, SECRET_LEN, 'secret');
+  assertLength(secret, SECRET_LENGTH, 'secret');
   return `${FRAGMENT_LABEL}.${String(kdfId)}.${encodeBase64url(secret)}`;
 }
 
@@ -77,11 +77,11 @@ function parseCurrentFragment(body: string): Fragment {
     throw new LinkRetiredKdfError();
   }
   const kdfId = orLinkError(() => parseKdfId(kdfText));
-  return { kdfId, s: decodeSecret(secretText) };
+  return { kdfId, secret: decodeSecret(secretText) };
 }
 
 function decodeSecret(text: string): Uint8Array<ArrayBuffer> {
-  return orLinkError(() => decodeBase64urlExact(text, SECRET_LEN));
+  return orLinkError(() => decodeBase64urlExact(text, SECRET_LENGTH));
 }
 
 function orLinkError<T>(parse: () => T): T {

@@ -1,4 +1,4 @@
-import { MIN_PASSPHRASE_CHARS } from '@nylzo/core';
+import { MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import { WEAK_BELOW_CHARACTERS, WEAK_BELOW_WORDS } from '../features/create/create-message.ts';
@@ -11,7 +11,7 @@ import { RETENTION_DAYS } from '../shared/sent-records/sent-record.ts';
 describe('messages', () => {
   it('takes the limits it names from the code', () => {
     const limits = {
-      min: MIN_PASSPHRASE_CHARS,
+      min: MIN_PASSPHRASE_CHARACTERS,
       words: WEAK_BELOW_WORDS,
       characters: WEAK_BELOW_CHARACTERS,
       bytes: MAX_REASON_BYTES,
@@ -33,7 +33,7 @@ describe('messages', () => {
       }
     }
     const { translate } = new Translator('en');
-    expect(translate('create.passphrase.hint', limits)).toContain(`${MIN_PASSPHRASE_CHARS} characters`);
+    expect(translate('create.passphrase.hint', limits)).toContain(`${MIN_PASSPHRASE_CHARACTERS} characters`);
     expect(translate('create.passphrase.weak', limits)).toContain(
       `${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARACTERS} characters`,
     );

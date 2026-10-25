@@ -125,13 +125,13 @@ async function storeRaw(
   const keys = await deriveLink(create.id, secret);
   const content = await deriveContent(create.id, secret, new Uint8Array(0));
   const object = await seal(
-    content.k,
+    content.contentKey,
     newHeader(KDF_NONE),
     create.id,
     { opensMax: 1, ttlSeconds: 3600 },
     { meta, file },
   );
-  const readKey = await requestKey(keys.r);
+  const readKey = await requestKey(keys.readSeed);
   const manageKey = await requestKey(newSecret());
   await api.create({
     id: create.id,

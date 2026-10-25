@@ -1,6 +1,14 @@
 import { FlagsError, HeaderError, KdfError, PolicyError, VersionError } from '../errors.ts';
 import { isKdfId, type KdfId } from '../keys/kdf.ts';
-import { HEADER_LEN, ID_LEN, isUnsignedInteger, IV_LEN, MIN_TTL_SECONDS, POLICY_LEN, VERSION } from '../limits.ts';
+import {
+  HEADER_LENGTH,
+  ID_LENGTH,
+  isUnsignedInteger,
+  IV_LENGTH,
+  MIN_TTL_SECONDS,
+  POLICY_LENGTH,
+  VERSION,
+} from '../limits.ts';
 import { assertLength, concatenate } from '../primitives/bytes.ts';
 
 export interface Header {
@@ -20,12 +28,12 @@ const MAX_OPENS = 2 ** 16 - 1;
 const MAX_TTL_SECONDS = 2 ** 32 - 1;
 
 export function newHeader(kdfId: KdfId): Header {
-  return { version: VERSION, kdfId, flags: 0, iv: crypto.getRandomValues(new Uint8Array(IV_LEN)) };
+  return { version: VERSION, kdfId, flags: 0, iv: crypto.getRandomValues(new Uint8Array(IV_LENGTH)) };
 }
 
 export function headerBytes(header: Header): Uint8Array<ArrayBuffer> {
   assertIvLength(header.iv);
-  const bytes = new Uint8Array(HEADER_LEN);
+  const bytes = new Uint8Array(HEADER_LENGTH);
   bytes.set([header.version, header.kdfId, header.flags]);
   bytes.set(header.iv, IV_OFFSET);
   return bytes;
@@ -37,12 +45,12 @@ export function validateHeader(header: Header): void {
 }
 
 export function parseHeader(bytes: Uint8Array): Header {
-  if (bytes.length < HEADER_LEN) {
+  if (bytes.length < HEADER_LENGTH) {
     throw new HeaderError();
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const kdfId = checkHeaderFields(view.getUint8(0), view.getUint8(1), view.getUint8(2));
-  return { version: VERSION, kdfId, flags: 0, iv: bytes.slice(IV_OFFSET, HEADER_LEN) };
+  return { version: VERSION, kdfId, flags: 0, iv: bytes.slice(IV_OFFSET, HEADER_LENGTH) };
 }
 
 export function validatePolicy(policy: Policy): void {
@@ -54,7 +62,7 @@ export function validatePolicy(policy: Policy): void {
 
 function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
   assertPolicyRange(policy);
-  const bytes = new Uint8Array(POLICY_LEN);
+  const bytes = new Uint8Array(POLICY_LENGTH);
   const view = new DataView(bytes.buffer);
   view.setUint16(0, policy.opensMax);
   view.setUint32(2, policy.ttlSeconds);
@@ -62,7 +70,7 @@ function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
 }
 
 export function aad(header: Header, id: Uint8Array, policy: Policy): Uint8Array<ArrayBuffer> {
-  assertLength(id, ID_LEN, 'id');
+  assertLength(id, ID_LENGTH, 'id');
   return concatenate(headerBytes(header), id, policyBytes(policy));
 }
 
@@ -80,8 +88,8 @@ function checkHeaderFields(version: number, kdfId: number, flags: number): KdfId
 }
 
 function assertIvLength(iv: Uint8Array): void {
-  if (iv.length !== IV_LEN) {
-    throw new HeaderError(`iv must be ${IV_LEN} bytes`);
+  if (iv.length !== IV_LENGTH) {
+    throw new HeaderError(`iv must be ${IV_LENGTH} bytes`);
   }
 }
 

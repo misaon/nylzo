@@ -11,7 +11,7 @@ import {
   type KdfId,
   type LinkKeys,
   MalformedPassphraseError,
-  MAX_MIME,
+  MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
   type Meta,
   MIN_TTL_SECONDS,
@@ -170,7 +170,7 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
 function metaOf(input: CreateInput): Meta {
   const file = input.file && {
     name: sanitizeFileName(input.file.name),
-    mime: utf8(input.file.mime).length <= MAX_MIME ? input.file.mime : '',
+    mime: utf8(input.file.mime).length <= MAX_MIME_BYTES ? input.file.mime : '',
     size: input.file.bytes.length,
   };
   return { ...(input.text !== '' && { text: input.text }), ...(file && { file }) };
@@ -244,29 +244,29 @@ async function sealMessage(
   let contentKeys: ContentKeys | undefined;
   try {
     linkKeys = await deriveLink(id, secret);
-    passphraseKey = await derivePassphraseKey(input, kdfId, linkKeys.saltPw, dependencies, onProgress);
+    passphraseKey = await derivePassphraseKey(input, kdfId, linkKeys.passphraseSalt, dependencies, onProgress);
     contentKeys = await deriveContent(id, secret, passphraseKey);
     passphraseKey.fill(0);
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
     onProgress({ step: 'encrypting' });
-    const object = await seal(contentKeys.k, newHeader(kdfId), id, policy, {
+    const object = await seal(contentKeys.contentKey, newHeader(kdfId), id, policy, {
       meta: metaOf(input),
       file: input.file?.bytes,
     });
     if (object.length > instance.limits.maxObjectBytes) {
       throw new CreateError({ kind: 'too_large' });
     }
-    const readKey = await requestKey(linkKeys.r);
+    const readKey = await requestKey(linkKeys.readSeed);
     wipeRequestKey(readKey);
-    const verifierKey = kdfId === KDF_NONE ? undefined : await requestKey(contentKeys.v);
+    const verifierKey = kdfId === KDF_NONE ? undefined : await requestKey(contentKeys.verifierSeed);
     wipeRequestKey(verifierKey);
     const manageKey = await newRequestKey();
     return { object, readPublicKey: readKey.publicKey, manageKey, verifierKey: verifierKey?.publicKey };
   } finally {
-    linkKeys?.r.fill(0);
-    linkKeys?.saltPw.fill(0);
+    linkKeys?.readSeed.fill(0);
+    linkKeys?.passphraseSalt.fill(0);
     passphraseKey?.fill(0);
-    contentKeys?.v.fill(0);
+    contentKeys?.verifierSeed.fill(0);
   }
 }
 

@@ -1,5 +1,5 @@
 import {
-  CHALLENGE_LEN,
+  CHALLENGE_LENGTH,
   encodeBase64url,
   idToString,
   MAX_OBJECT_BYTES,
@@ -32,7 +32,7 @@ function fakeServer(handler: Handler) {
     seen.push(request);
     if (new URL(request.url).pathname === '/api/v1/challenge') {
       issued++;
-      const challenge = new Uint8Array(CHALLENGE_LEN).fill(issued);
+      const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(issued);
       return json(200, { challenge: encodeBase64url(challenge), expires_at: '2026-10-23T10:00:00Z' });
     }
     return handler(request);
@@ -248,7 +248,7 @@ describe('api client', () => {
     const [publicKey, challenge, signature] = authorizationParts(authorization);
     const [verifierPublicKey = '', verifierSignature = '', ...rest] = verifier.split('.');
     expect(rest).toEqual([]);
-    expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LEN).fill(1)));
+    expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)));
     expect(await verifies(publicKey, challenge, signature, 'read', 'POST', path)).toBe(true);
     expect(await verifies(verifierPublicKey, challenge, verifierSignature, 'verifier', 'POST', path)).toBe(true);
     expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));

@@ -1,4 +1,4 @@
-import { type CryptoRequestKey, parseId, PUBLIC_KEY_LEN } from '@nylzo/core';
+import { type CryptoRequestKey, parseId, PUBLIC_KEY_LENGTH } from '@nylzo/core';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RETENTION_DAYS = 7;
@@ -106,7 +106,7 @@ export function recordFrom(value: unknown): SentRecord | undefined {
     !isSigningKey(privateKey) ||
     privateKey.extractable ||
     !(publicKey instanceof Uint8Array) ||
-    publicKey.length !== PUBLIC_KEY_LEN
+    publicKey.length !== PUBLIC_KEY_LENGTH
   ) {
     return undefined;
   }

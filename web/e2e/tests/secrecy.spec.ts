@@ -50,12 +50,12 @@ test(
     await late.goto(link);
     await expect(late.getByText('The message has already been opened')).toBeVisible();
 
-    const { id, s } = parseLink(link);
-    const { r, saltPw } = await deriveLink(id, s);
-    const p = scryptPassphraseKey(PASSPHRASE, saltPw);
-    const { v } = await deriveContent(id, s, p);
-    const readKey = await requestKey(r);
-    const verifierKey = await requestKey(v);
+    const { id, secret } = parseLink(link);
+    const { readSeed, passphraseSalt } = await deriveLink(id, secret);
+    const passphraseKey = scryptPassphraseKey(PASSPHRASE, passphraseSalt);
+    const { verifierSeed } = await deriveContent(id, secret, passphraseKey);
+    const readKey = await requestKey(readSeed);
+    const verifierKey = await requestKey(verifierSeed);
     const requests = [...(await senderRequests()), ...(await recipientRequests())];
     const creation = requests.find((request) => request.headers['x-nylzo-create'] !== undefined);
     const announced = Buffer.from(creation?.headers['x-nylzo-create'] ?? '', 'base64url').toString('utf8');
@@ -71,7 +71,7 @@ test(
       ...textForms(text),
       ...textForms(file.name),
       ...textForms(file.buffer.toString('utf8')),
-      ...[s, r, saltPw, p, v].flatMap((secret) => encodedForms(secret)),
+      ...[secret, readSeed, passphraseSalt, passphraseKey, verifierSeed].flatMap((value) => encodedForms(value)),
     ]);
   },
 );

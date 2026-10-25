@@ -51,12 +51,12 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   }
   const { link, content } = await deriveAll(create.id, secret, kdfId, passphrase);
   const policy = { opensMax: options.opensMax ?? 1, ttlSeconds: 3600 };
-  const object = await seal(content.k, newHeader(kdfId), create.id, policy, {
+  const object = await seal(content.contentKey, newHeader(kdfId), create.id, policy, {
     meta: metaOf(options),
     file: options.file?.buffer,
   });
-  const readKey = await requestKey(link.r);
-  const verifier = kdfId === KDF_NONE ? undefined : await requestKey(content.v);
+  const readKey = await requestKey(link.readSeed);
+  const verifier = kdfId === KDF_NONE ? undefined : await requestKey(content.verifierSeed);
   const manageKey = await newRequestKey();
   await api.create({
     id: create.id,
@@ -77,8 +77,8 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
 }
 
 async function readKeyStartsWithZero(id: Uint8Array, secret: Uint8Array): Promise<boolean> {
-  const { r } = await deriveLink(id, secret);
-  return r[0] === 0;
+  const { readSeed } = await deriveLink(id, secret);
+  return readSeed[0] === 0;
 }
 
 function metaOf({ text, file }: MessageOptions): Meta {

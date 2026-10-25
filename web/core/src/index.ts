@@ -28,13 +28,13 @@ export {
   KDF_NONE,
   KDF_SCRYPT,
   type KdfId,
-  MIN_PASSPHRASE_CHARS,
+  MIN_PASSPHRASE_CHARACTERS,
 } from './keys/kdf.ts';
 export {
-  HEADER_LEN,
-  ID_LEN,
+  HEADER_LENGTH,
+  ID_LENGTH,
   MAX_FILE_BYTES,
-  MAX_MIME,
+  MAX_MIME_BYTES,
   MAX_OBJECT_BYTES,
   MAX_TEXT_BYTES,
   MIN_TTL_SECONDS,
@@ -55,11 +55,11 @@ export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
 export { type SolveOptions, solvePow } from './request/proof-of-work.ts';
 export {
   authorizationHeader,
-  CHALLENGE_LEN,
+  CHALLENGE_LENGTH,
   type CryptoRequestKey,
   newRequestKey,
   parseChallenge,
-  PUBLIC_KEY_LEN,
+  PUBLIC_KEY_LENGTH,
   type Purpose,
   PURPOSE_MANAGE,
   PURPOSE_READ,

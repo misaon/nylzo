@@ -2,21 +2,21 @@ import { describe, expect, it } from 'vitest';
 
 import { bytesToHex, vectors } from '../../test/vectors.ts';
 import { EncodingError, PowError, PowTimeoutError } from '../errors.ts';
-import { ID_LEN } from '../limits.ts';
+import { ID_LENGTH } from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { parseId } from '../primitives/identifiers.ts';
 import {
   leadingZeroBits,
   MAX_POW_DIFFICULTY,
   parsePowChallenge,
-  POW_CHALLENGE_LEN,
+  POW_CHALLENGE_LENGTH,
   powDigest,
   powToken,
   solvePow,
 } from './proof-of-work.ts';
 
-const challenge = encodeBase64url(new Uint8Array(POW_CHALLENGE_LEN));
-const id = new Uint8Array(ID_LEN);
+const challenge = encodeBase64url(new Uint8Array(POW_CHALLENGE_LENGTH));
+const id = new Uint8Array(ID_LENGTH);
 
 describe('AK9: proof-of-work vectors', () => {
   const solvable = vectors.pow.filter((vector) => vector.difficulty !== undefined);

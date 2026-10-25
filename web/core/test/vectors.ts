@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { isKdfId, type KdfId } from '../src/keys/kdf.ts';
-import { ID_LEN } from '../src/limits.ts';
+import { ID_LENGTH } from '../src/limits.ts';
 import { hash } from '../src/primitives/identifiers.ts';
 
 interface ScryptVector {
@@ -181,7 +181,7 @@ export function fileBytes(file: FileVector): Uint8Array<ArrayBuffer> {
 }
 
 export function randomId(): Uint8Array<ArrayBuffer> {
-  return crypto.getRandomValues(new Uint8Array(ID_LEN));
+  return crypto.getRandomValues(new Uint8Array(ID_LENGTH));
 }
 
 export function thrownBy(run: () => unknown): unknown {

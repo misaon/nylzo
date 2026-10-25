@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { bytesToHex, hexToBytes, kdfIdOf, randomId, vectors } from '../../test/vectors.ts';
-import { KEY_LEN } from '../limits.ts';
+import { KEY_LENGTH } from '../limits.ts';
 import { fragment } from '../link/link.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { newSecret, parseId } from '../primitives/identifiers.ts';
 import { requestKey } from '../request/signature.ts';
-import { anyPassphraseKey } from '../scrypt.ts';
+import { derivePassphraseKey } from '../scrypt.ts';
 import { deriveContent, deriveLink, hsalt } from './derive.ts';
 import { KDF_NONE } from './kdf.ts';
 
@@ -23,17 +23,17 @@ describe('AK9: derive vectors', () => {
     expect(bytesToHex(await hsalt(id))).toBe(vector.hsalt_hex);
 
     const link = await deriveLink(id, secret);
-    expect(bytesToHex(link.r)).toBe(vector.r_hex);
-    expect(bytesToHex(link.saltPw)).toBe(vector.salt_pw_hex);
+    expect(bytesToHex(link.readSeed)).toBe(vector.r_hex);
+    expect(bytesToHex(link.passphraseSalt)).toBe(vector.salt_pw_hex);
 
-    const passphraseKey = await anyPassphraseKey(kdfId, vector.passphrase ?? '', link.saltPw);
+    const passphraseKey = derivePassphraseKey(kdfId, vector.passphrase ?? '', link.passphraseSalt);
     expect(bytesToHex(passphraseKey)).toBe(vector.p_hex);
 
     const content = await deriveContent(id, secret, passphraseKey);
-    expect(bytesToHex(content.v)).toBe(vector.v_hex);
-    expect(await publicKeyOf(link.r)).toBe(vector.read_key);
+    expect(bytesToHex(content.verifierSeed)).toBe(vector.v_hex);
+    expect(await publicKeyOf(link.readSeed)).toBe(vector.read_key);
     expect(await publicKeyOf(hexToBytes(vector.m_hex))).toBe(vector.manage_key);
-    expect(kdfId === KDF_NONE ? undefined : await publicKeyOf(content.v)).toBe(vector.verifier_key);
+    expect(kdfId === KDF_NONE ? undefined : await publicKeyOf(content.verifierSeed)).toBe(vector.verifier_key);
     expect(fragment(kdfId, secret)).toBe(vector.fragment);
   });
 
@@ -49,13 +49,13 @@ describe('AK9: derive vectors', () => {
 
 describe('key derivation (spec 2)', () => {
   it('derives K as a non-extractable AES-GCM key for encrypt and decrypt only', async () => {
-    const { k } = await deriveContent(randomId(), newSecret(), new Uint8Array(0));
-    expect(k.type).toBe('secret');
-    expect(k.extractable).toBe(false);
-    expect(k.algorithm).toEqual({ name: 'AES-GCM', length: KEY_LEN * 8 });
-    expect(k.usages.toSorted((left, right) => left.localeCompare(right))).toEqual(['decrypt', 'encrypt']);
-    await expect(crypto.subtle.exportKey('raw', k)).rejects.toThrow();
-    await expect(crypto.subtle.exportKey('jwk', k)).rejects.toThrow();
+    const { contentKey } = await deriveContent(randomId(), newSecret(), new Uint8Array(0));
+    expect(contentKey.type).toBe('secret');
+    expect(contentKey.extractable).toBe(false);
+    expect(contentKey.algorithm).toEqual({ name: 'AES-GCM', length: KEY_LENGTH * 8 });
+    expect(contentKey.usages.toSorted((left, right) => left.localeCompare(right))).toEqual(['decrypt', 'encrypt']);
+    await expect(crypto.subtle.exportKey('raw', contentKey)).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('jwk', contentKey)).rejects.toThrow();
   });
 
   it('rejects an id or a secret of the wrong length', async () => {

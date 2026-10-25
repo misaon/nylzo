@@ -10,7 +10,7 @@ export type KdfId = typeof KDF_NONE | typeof KDF_SCRYPT;
 export const SCRYPT_N = 1 << 17;
 export const SCRYPT_R = 8;
 export const SCRYPT_P = 1;
-export const MIN_PASSPHRASE_CHARS = 12;
+export const MIN_PASSPHRASE_CHARACTERS = 12;
 
 export function isKdfId(value: number): value is KdfId {
   return value === KDF_NONE || value === KDF_SCRYPT;
@@ -39,7 +39,7 @@ export function assertStrongPassphrase(passphrase: string): void {
     throw new MalformedPassphraseError();
   }
   // eslint-disable-next-line @typescript-eslint/no-misused-spread -- spec 2 counts code points, not graphemes
-  if ([...passphrase.normalize('NFC')].length < MIN_PASSPHRASE_CHARS) {
+  if ([...passphrase.normalize('NFC')].length < MIN_PASSPHRASE_CHARACTERS) {
     throw new WeakPassphraseError();
   }
 }

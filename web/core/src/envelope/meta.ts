@@ -4,7 +4,7 @@ import {
   MAX_FILE_BYTES,
   MAX_FILE_NAME,
   MAX_META_BYTES,
-  MAX_MIME,
+  MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
 } from '../limits.ts';
 import { utf8 } from '../primitives/bytes.ts';
@@ -63,7 +63,7 @@ function validateText(text: string): void {
 
 function validateFile(file: FileMeta): void {
   validateFileName(file.name);
-  if (!file.mime.isWellFormed() || utf8(file.mime).length > MAX_MIME) {
+  if (!file.mime.isWellFormed() || utf8(file.mime).length > MAX_MIME_BYTES) {
     throw new MetaError('file.mime is not valid UTF-8 within the limit');
   }
   if (!isUnsignedInteger(file.size, MAX_FILE_BYTES)) {

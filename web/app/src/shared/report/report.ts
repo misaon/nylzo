@@ -1,7 +1,7 @@
 import {
   deriveLink,
   encodedLength,
-  ID_LEN,
+  ID_LENGTH,
   type Link,
   type LinkKeys,
   LinkRetiredKdfError,
@@ -23,7 +23,7 @@ const DECODE_PASSES = 3;
 const PERCENT = 0x25;
 const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/i;
 const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
-const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LEN)},}`, 'g');
+const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'g');
 const HEX_DIGIT = /^[\da-f]$/i;
 
 type ReportProblem = 'link_foreign' | 'link_invalid' | 'link_newer' | 'link_retired' | 'reason_too_long';
@@ -84,7 +84,7 @@ export function redactReason(reason: string): string {
 }
 
 export function reasonTooLong(reason: string): boolean {
-  const body = JSON.stringify({ id: 'A'.repeat(encodedLength(ID_LEN)), reason });
+  const body = JSON.stringify({ id: 'A'.repeat(encodedLength(ID_LENGTH)), reason });
   return utf8(reason).length > MAX_REASON_BYTES || utf8(body).length > MAX_REPORT_BODY_BYTES;
 }
 
@@ -116,14 +116,14 @@ function linkProblem(error: unknown): ReportProblem {
 async function readKeyFrom(link: Link): Promise<RequestKey | undefined> {
   let keys: LinkKeys | undefined;
   try {
-    keys = await deriveLink(link.id, link.s);
-    return await requestKey(keys.r);
+    keys = await deriveLink(link.id, link.secret);
+    return await requestKey(keys.readSeed);
   } catch {
     return undefined;
   } finally {
-    link.s.fill(0);
-    keys?.saltPw.fill(0);
-    keys?.r.fill(0);
+    link.secret.fill(0);
+    keys?.passphraseSalt.fill(0);
+    keys?.readSeed.fill(0);
   }
 }
 
@@ -143,7 +143,7 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
     problems.push('reason_too_long');
   }
   if (!link || problems.length > 0) {
-    link?.s.fill(0);
+    link?.secret.fill(0);
     return { outcome: 'invalid', problems };
   }
   const readKey = await readKeyFrom(link);

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { bytesToHex, hexToBytes, vectors } from '../../test/vectors.ts';
-import { TOKEN_LEN } from '../limits.ts';
+import { SEED_LENGTH } from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { utf8 } from '../primitives/bytes.ts';
 import {
   authorizationHeader,
-  CHALLENGE_LEN,
+  CHALLENGE_LENGTH,
   newRequestKey,
   parseChallenge,
   PURPOSE_MANAGE,
@@ -53,8 +53,8 @@ describe('AK9: request vectors', () => {
 
 describe('request signatures (spec 5.5)', () => {
   it('rejects a seed or challenge of the wrong length', async () => {
-    await expect(requestKey(new Uint8Array(TOKEN_LEN - 1))).rejects.toThrow();
-    const short = new Uint8Array(CHALLENGE_LEN - 1);
+    await expect(requestKey(new Uint8Array(SEED_LENGTH - 1))).rejects.toThrow();
+    const short = new Uint8Array(CHALLENGE_LENGTH - 1);
     await expect(requestMessage(PURPOSE_READ, 'GET', path, short, new Uint8Array(0))).rejects.toThrow();
   });
 
@@ -64,7 +64,7 @@ describe('request signatures (spec 5.5)', () => {
     expect(key.privateKey.usages).toEqual(['sign']);
     expect(key.publicKey).toHaveLength(32);
     await expect(crypto.subtle.exportKey('jwk', key.privateKey)).rejects.toThrow();
-    const challenge = new Uint8Array(CHALLENGE_LEN).fill(3);
+    const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
     const signature = await signRequest(key, PURPOSE_MANAGE, 'POST', path, challenge);
     const verifier = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
     const message = await requestMessage(PURPOSE_MANAGE, 'POST', path, challenge, new Uint8Array(0));
@@ -89,7 +89,7 @@ describe('request signatures (spec 5.5)', () => {
     }) as typeof crypto.subtle.importKey);
     let outcome = 'resolved';
     try {
-      await requestKey(new Uint8Array(TOKEN_LEN).fill(7));
+      await requestKey(new Uint8Array(SEED_LENGTH).fill(7));
     } catch (error) {
       outcome = String(error);
     } finally {
@@ -101,7 +101,7 @@ describe('request signatures (spec 5.5)', () => {
   });
 
   it('falls back to a seed key when Web Crypto refuses the seed, as WebKit on Linux does for a leading zero byte', async () => {
-    const seed = crypto.getRandomValues(new Uint8Array(TOKEN_LEN));
+    const seed = crypto.getRandomValues(new Uint8Array(SEED_LENGTH));
     seed[0] = 0;
     const native = await requestKey(seed);
     const refuse = vi.spyOn(crypto.subtle, 'importKey').mockRejectedValue(new DOMException('refused', 'DataError'));
@@ -109,7 +109,7 @@ describe('request signatures (spec 5.5)', () => {
       const fallback = await requestKey(seed);
       expect('seed' in fallback).toBe(true);
       expect(fallback.publicKey).toEqual(native.publicKey);
-      const challenge = new Uint8Array(CHALLENGE_LEN).fill(5);
+      const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(5);
       const body = utf8('{"reason":"spam"}');
       const nativeSignature = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
       const fallbackSignature = await signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
@@ -129,7 +129,9 @@ describe('request signatures (spec 5.5)', () => {
   it('keeps other import errors', async () => {
     const refuse = vi.spyOn(crypto.subtle, 'importKey').mockRejectedValue(new DOMException('no', 'NotSupportedError'));
     try {
-      await expect(requestKey(new Uint8Array(TOKEN_LEN).fill(1))).rejects.toMatchObject({ name: 'NotSupportedError' });
+      await expect(requestKey(new Uint8Array(SEED_LENGTH).fill(1))).rejects.toMatchObject({
+        name: 'NotSupportedError',
+      });
     } finally {
       refuse.mockRestore();
     }

@@ -13,7 +13,15 @@ import {
 } from '../errors.ts';
 import { deriveContent } from '../keys/derive.ts';
 import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId } from '../keys/kdf.ts';
-import { HEADER_LEN, IV_LEN, MAX_FILE_BYTES, MAX_OBJECT_BYTES, MAX_TEXT_BYTES, TAG_LEN, VERSION } from '../limits.ts';
+import {
+  HEADER_LENGTH,
+  IV_LENGTH,
+  MAX_FILE_BYTES,
+  MAX_OBJECT_BYTES,
+  MAX_TEXT_BYTES,
+  TAG_LENGTH,
+  VERSION,
+} from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { newSecret, parseId } from '../primitives/identifiers.ts';
 import { deriveAll } from '../scrypt.ts';
@@ -33,8 +41,8 @@ const textPayload: Payload = { meta: { text: 'integrity' } };
 const passphraseKey = new Uint8Array(32).fill(1);
 
 async function contentKeyOf(id: Uint8Array, secret: Uint8Array, key: Uint8Array): Promise<CryptoKey> {
-  const { k } = await deriveContent(id, secret, key);
-  return k;
+  const { contentKey } = await deriveContent(id, secret, key);
+  return contentKey;
 }
 
 async function sealed(kdfId: KdfId, payload = textPayload): Promise<Sealed> {
@@ -69,13 +77,13 @@ describe('AK9: envelope vectors', () => {
     expect(new TextDecoder().decode(encodeMeta(meta))).toBe(vector.meta_json);
     expect(bytesToHex(aad(header, id, vectorPolicy))).toBe(vector.aad_hex);
 
-    const object = await seal(content.k, header, id, vectorPolicy, { meta, file });
+    const object = await seal(content.contentKey, header, id, vectorPolicy, { meta, file });
     expect(object.length).toBe(vector.object_len);
-    expect(object.length - HEADER_LEN - TAG_LEN).toBe(vector.plaintext_len);
+    expect(object.length - HEADER_LENGTH - TAG_LENGTH).toBe(vector.plaintext_len);
     expect(await sha256Hex(object)).toBe(vector.object_sha256);
     expect(vector.object_b64 === undefined ? undefined : encodeBase64url(object)).toBe(vector.object_b64);
 
-    const opened = await open(content.k, id, vectorPolicy, kdfId, object);
+    const opened = await open(content.contentKey, id, vectorPolicy, kdfId, object);
     expect(opened.header).toEqual(header);
     expect(opened.payload.meta).toEqual(meta);
     expect(await digestOf(opened.payload.file)).toBe(await digestOf(file));
@@ -91,11 +99,11 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
   it.each<[string, (sealedMessage: Sealed) => Promise<unknown>]>([
     [
       'a flipped ciphertext bit',
-      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, HEADER_LEN)),
+      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, HEADER_LENGTH)),
     ],
     [
       'a flipped bit in the middle',
-      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, HEADER_LEN + 100)),
+      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, HEADER_LENGTH + 100)),
     ],
     [
       'a flipped tag bit',
@@ -138,8 +146,8 @@ describe('open rejects a malformed header before decrypting (spec 3)', () => {
     ['flags 1', (object) => flipped(object, 2), KDF_NONE, FlagsError],
     ['the retired profile 2', (object) => flipped(object, 1, KDF_RETIRED), KDF_RETIRED as KdfId, KdfError],
     ['a profile other than the fragment', (object) => object, KDF_SCRYPT, KdfMismatchError],
-    ['an object without a whole tag', (object) => object.subarray(0, HEADER_LEN + 3), KDF_NONE, IntegrityError],
-    ['a truncated header', (object) => object.subarray(0, HEADER_LEN - 1), KDF_NONE, HeaderError],
+    ['an object without a whole tag', (object) => object.subarray(0, HEADER_LENGTH + 3), KDF_NONE, IntegrityError],
+    ['a truncated header', (object) => object.subarray(0, HEADER_LENGTH - 1), KDF_NONE, HeaderError],
   ])('%s', async (_, change, kdfId, expected) => {
     await expect(open(message.contentKey, message.id, policy, kdfId, change(message.object))).rejects.toBeInstanceOf(
       expected,
@@ -199,7 +207,7 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
 describe('secrets in the envelope', () => {
   it('get a fresh random iv for every message', () => {
     const seen = new Set<string>();
-    const distinct = Array.from({ length: IV_LEN }, () => new Set<number>());
+    const distinct = Array.from({ length: IV_LENGTH }, () => new Set<number>());
     for (let count = 0; count < 4096; count++) {
       const { iv } = newHeader(KDF_NONE);
       seen.add(bytesToHex(iv));

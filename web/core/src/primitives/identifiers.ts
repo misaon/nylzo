@@ -1,18 +1,18 @@
-import { ID_LEN, SECRET_LEN } from '../limits.ts';
+import { ID_LENGTH, SECRET_LENGTH } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from './base64url.ts';
 import { arrayBufferBacked, assertLength } from './bytes.ts';
 
 export function parseId(text: string): Uint8Array<ArrayBuffer> {
-  return decodeBase64urlExact(text, ID_LEN);
+  return decodeBase64urlExact(text, ID_LENGTH);
 }
 
 export function idToString(id: Uint8Array): string {
-  assertLength(id, ID_LEN, 'id');
+  assertLength(id, ID_LENGTH, 'id');
   return encodeBase64url(id);
 }
 
 export function newSecret(): Uint8Array<ArrayBuffer> {
-  return crypto.getRandomValues(new Uint8Array(SECRET_LEN));
+  return crypto.getRandomValues(new Uint8Array(SECRET_LENGTH));
 }
 
 export async function hash(bytes: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {

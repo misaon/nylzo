@@ -172,15 +172,21 @@ function profileMatches(metadata: Metadata, kdfId: KdfId): boolean {
 async function linkSecrets(fragment: Link): Promise<Secrets> {
   let keys: LinkKeys | undefined;
   try {
-    keys = await deriveLink(fragment.id, fragment.s);
-    const readKey = await requestKey(keys.r);
-    return { id: fragment.id, kdfId: fragment.kdfId, secret: fragment.s, passphraseSalt: keys.saltPw, readKey };
+    keys = await deriveLink(fragment.id, fragment.secret);
+    const readKey = await requestKey(keys.readSeed);
+    return {
+      id: fragment.id,
+      kdfId: fragment.kdfId,
+      secret: fragment.secret,
+      passphraseSalt: keys.passphraseSalt,
+      readKey,
+    };
   } catch (error) {
-    fragment.s.fill(0);
-    keys?.saltPw.fill(0);
+    fragment.secret.fill(0);
+    keys?.passphraseSalt.fill(0);
     throw error;
   } finally {
-    keys?.r.fill(0);
+    keys?.readSeed.fill(0);
   }
 }
 
@@ -334,7 +340,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     try {
       fragment = { id: parsePath(dependencies.location.pathname), ...parsed };
     } catch {
-      parsed.s.fill(0);
+      parsed.secret.fill(0);
       show({ view: 'invalid' });
       return;
     }
@@ -447,9 +453,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       assertWellFormedPassphrase(current.kdfId, passphrase);
       passphraseKey = await derivePassphraseKey(current, passphrase);
       const content = await deriveContent(current.id, current.secret, passphraseKey);
-      verifierSeed = content.v;
-      const verifierKey = current.kdfId === KDF_NONE ? undefined : await requestKey(content.v);
-      return { contentKey: content.k, verifierKey };
+      verifierSeed = content.verifierSeed;
+      const verifierKey = current.kdfId === KDF_NONE ? undefined : await requestKey(content.verifierSeed);
+      return { contentKey: content.contentKey, verifierKey };
     } catch (error) {
       if (error instanceof MalformedPassphraseError) {
         return readyView({ reason: 'malformed' });
