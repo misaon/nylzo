@@ -1,120 +1,64 @@
-# Podmínky užívání
+# Podmínky užívání Nylzo
 
-Návrh k posouzení advokátem. Platné od: [DOPLNIT: datum zveřejnění]. Verze: 0.1.
+Platné od [DOPLNIT: datum]. Závazná je česká verze, anglická je překlad.
 
-Tyto podmínky upravují užívání veřejné instance Nylzo na adrese nylzo.com (dále jen „služba“). Software Nylzo je open source pod licencí MIT; jeho užívání, úpravy a šíření upravuje tato licence, ne tyto podmínky. Kdo provozuje vlastní instanci, stanoví pro ni vlastní pravidla.
+## Provozovatel
 
-## 1. Provozovatel
+- Službu na nylzo.com provozuje soukromá osoba (dále „provozovatel“) bezplatně, bez reklamy a mimo své podnikání.
+- Kontakt pro uživatele i úřady: [DOPLNIT: e-mail], česky nebo anglicky.
+- Software Nylzo je open source pod licencí MIT. Tyto podmínky platí jen pro nylzo.com.
 
-Službu provozuje Ondřej Misák, [DOPLNIT: adresa pro doručování; IČO, pokud službu provozuje jako podnikatel] (dále jen „provozovatel“), jako neplacený soukromý projekt. Provozuje ji především pro vlastní potřebu a dává ji k dispozici i ostatním.
+## Souhlas
 
-[⚠️ K POSOUZENÍ ADVOKÁTEM: Zda je neplacená služba provozovaná fyzickou osobou „službou informační společnosti“, která se běžně poskytuje za úplatu, a tedy zda se na ni vztahuje nařízení (EU) 2022/2065 (DSA). Návrh počítá s tím, že ano, a plní povinnosti hostingové služby podle čl. 11, 12, 14, 16 a 17 (rozbor v docs/research/G-eu-legal.md, část 4).]
+- Vytvořením nebo otevřením zprávy s těmito podmínkami souhlasíte.
 
-## 2. Přijetí podmínek
+## Jak služba funguje
 
-Užíváním služby s těmito podmínkami souhlasíte. Pokud s nimi nesouhlasíte, službu neužívejte. Služba je bezplatná a nevyžaduje registraci.
+- Zprávu šifruje váš prohlížeč. Klíč je v odkazu za znakem # a k provozovateli se nedostane, takže obsah nezná, nemůže ho obnovit ani vydat.
+- Zprávu otevře, kdo má odkaz, nejvýše tolikrát, kolikrát určil odesílatel.
+- Po posledním otevření, zrušení, smazání nebo konci platnosti (nejvýše 7 dní) se zpráva smaže a obnovit ji nejde. Služba neslouží k uchovávání dat.
+- Limity ukazuje stránka Transparentnost.
 
-[⚠️ K POSOUZENÍ ADVOKÁTEM: vymahatelnost podmínek přijatých samotným užíváním bez výslovného potvrzení a uzavření smlouvy se spotřebitelem bez registrace.]
+## Co je zakázané
 
-## 3. Jak služba funguje
-
-- Zprávu zašifruje váš prohlížeč (nebo program nylzo) dřív, než ji odešle. Klíč je v části odkazu za znakem #, kterou prohlížeč serveru neposílá. Provozovatel obsah zprávy nezná a nemůže ho obnovit ani vydat.
-- Zprávu otevře, kdo má odkaz, a to nejvýše tolikrát, kolikrát odesílatel nastavil. Pokud odesílatel nastavil passphrase, je potřeba i ta.
-- Po posledním otevření, zrušení odesílatelem, smazání příjemcem nebo po konci platnosti (nejvýše 7 dní) server zprávu smaže. Smazanou zprávu nelze obnovit.
-- Služba slouží k jednorázovému předání, ne k uchovávání dat. Nepoužívejte ji jako jediné místo, kde máte uloženou důležitou informaci.
-- Aktuální limity instance (velikost přílohy, nejdelší platnost, počet otevření, počet zpráv) ukazuje stránka Transparentnost.
-
-## 4. Pravidla užívání
-
-Službu smíte užívat jen v souladu s právem a s těmito podmínkami. Zejména ji nesmíte užívat k tomu, abyste:
-
-- šířili obsah, který je podle práva České republiky nebo Evropské unie nezákonný, například materiály zobrazující sexuální zneužívání dětí, teroristický obsah, podněcování k násilí nebo nenávisti,
-- podváděli jiné lidi, například phishingem, podvodnými výzvami k platbě nebo vydáváním se za někoho jiného,
-- šířili malware nebo jiný škodlivý kód,
-- porušovali práva jiných, například autorská práva, ochranné známky, obchodní tajemství nebo právo na ochranu osobních údajů a soukromí,
-- vyhrožovali jiným lidem, obtěžovali je nebo pronásledovali,
-- posílali nevyžádaná hromadná sdělení,
-- obcházeli limity a ochranu služby proti zahlcení, zahlcovali ji nebo na ni útočili.
+- Nezákonný obsah, například zneužívání dětí, terorismus nebo podněcování k násilí.
+- Podvody, phishing a vydávání se za jiného.
+- Malware a jiný škodlivý kód.
+- Porušování práv jiných, včetně autorských práv a soukromí.
+- Výhrůžky, obtěžování a hromadný spam.
+- Obcházení limitů služby a útoky na ni.
 
 Za obsah zprávy odpovídá ten, kdo ji vytvořil.
 
-## 5. Jak provozovatel postupuje proti nezákonnému obsahu
+## Hlášení a odstranění
 
-Provozovatel obsah zpráv nevidí, nekontroluje ho a nemá k tomu technické prostředky. Postupuje na základě oznámení (část 6):
+- Zprávu nahlásíte na stránce Nahlásit zneužití nebo tlačítkem Nahlásit na stránce zprávy. Uveďte identifikátor zprávy (nikdy celý odkaz), důvod a potvrďte, že hlásíte v dobré víře. E-mail je nepovinný.
+- Když e-mail uvedete, potvrdíme přijetí a sdělíme rozhodnutí.
+- Obsah nevidíme, proto hlášení posoudí člověk podle vašeho vysvětlení. Hrozbu pro život a zneužívání dětí řešíme přednostně.
+- Pokud zpráva porušuje právo nebo tyto podmínky, smažeme ji. Smazání nejde vrátit.
+- K jedné zprávě uložíme nejvýše tři hlášení za den. Když je limit vyčerpaný, stránka vám to řekne.
+- Kontakt na odesílatele ani příjemce nemáme, a proto jim rozhodnutí poslat nemůžeme. Kdo se ozve na kontakt s identifikátorem zprávy, dozví se důvod a může rozhodnutí rozporovat. Soudní cesta zůstává otevřená.
+- Podezření na trestný čin, který ohrožuje život nebo bezpečnost, oznámíme policii.
+- Automatické limity (počet požadavků, denní strop zpráv, čekání a zámek po chybných passphrase) chrání službu a o obsahu nerozhodují.
+- Není jisté, zda se na neplacenou službu vztahuje nařízení (EU) 2022/2065 (DSA). Provozovatel přesto plní povinnosti, které stanoví hostingovým službám.
 
-- Každé oznámení, které služba uloží, posoudí člověk. Ukládá nejvýše tři oznámení na zprávu za den, a jen ke zprávám, které ještě existují. Nic se nemaže automaticky.
-- Pokud provozovatel dojde k závěru, že zpráva porušuje právo nebo tyto podmínky, zprávu smaže. Příjemce pak 7 dní při otevření odkazu uvidí, že zpráva byla smazána, stejně jako po smazání příjemcem; potom, že neexistuje.
-- Automatické nástroje služba používá jen k vlastní ochraně: limity počtu požadavků z jedné adresy nebo rozsahu adres; pokud je nastavený, denní strop nově vytvořených zpráv, od jehož poloviny musí prohlížeč před vytvořením zprávy provést krátký výpočet; čekání po pěti chybných passphrase a zamčení po stovce; a odmítnutí, když serveru dojde kapacita nebo místo na disku. Platí pro všechny stejně a o obsahu nerozhodují.
-- Služba neukládá kontakt na odesílatele ani na příjemce, a proto jim provozovatel nemůže rozhodnutí zaslat. Proti rozhodnutí se můžete ohradit na kontaktu v části 7.
+## Bez záruky
 
-[⚠️ K POSOUZENÍ ADVOKÁTEM: jak splnit povinnost odůvodnění podle čl. 17 DSA, když provozovatel nezná elektronický kontakt dotčené osoby, a zda postačuje stav „odstraněno“ zobrazený u odkazu.]
+- Provozovatel poskytuje službu bezplatně a jen po dobu, po kterou se rozhodne ji provozovat. Není povinen udržovat ji v provozu, doručit nebo uchovat jakoukoli zprávu ani ji provozovat do budoucna. Může ji kdykoli změnit nebo ukončit.
+- Provozovatel nečte zprávy a neslibuje, že služba bude bez chyb nebo odolá každému útoku.
+- Šifra neochrání zprávu na napadeném zařízení. Kdo má odkaz první, otevře ho. Příjemce si obsah může uložit. Passphrase posílejte jinou cestou než odkaz.
 
-## 6. Oznámení nezákonného obsahu
+## Odpovědnost
 
-Zprávu, která podle vás obsahuje nezákonný obsah nebo porušuje tyto podmínky, nahlaste formulářem na stránce Nahlásit zneužití (nylzo.com/report) nebo tlačítkem Nahlásit na stránce zprávy, které je dostupné před otevřením a po otevření, dokud zbývají otevření. Formulář pošle serveru jen identifikátor zprávy, důvod, veřejný klíč odvozený z odkazu, jednorázovou výzvu serveru a podpis. Odkaz ani obsah zprávy stránku neopustí.
+V rozsahu, v jakém to právní předpisy dovolují, provozovatel neodpovídá za újmu vzniklou užíváním služby nebo nemožností ji užívat. To neplatí pro újmu na přirozených právech člověka (například na životě, zdraví nebo soukromí), pro újmu způsobenou úmyslně nebo z hrubé nedbalosti ani v dalších případech, kdy právo nedovoluje odpovědnost předem vyloučit nebo omezit.
 
-Uveďte, proč považujete obsah za nezákonný. Pokud chcete znát výsledek, napište navíc na kontakt v části 7 a uveďte jen identifikátor zprávy. Celý odkaz neposílejte, protože obsahuje klíč.
+## Název a logo
 
-Provozovatel oznámení vyřizuje bez zbytečného odkladu. Služba přijímá oznámení jen ke zprávám, které ještě existují, uchová nejvýše tři oznámení na zprávu za den a smaže je 7 dní po dni, kdy přišla.
+- Licence MIT se týká kódu a souborů v repozitáři. Nedává právo užívat název Nylzo ani logo jako značku jiné služby nebo upravené verze, ani tak, aby to vypadalo jako spojení s nylzo.com.
 
-[⚠️ K POSOUZENÍ ADVOKÁTEM: zda formulář bez kontaktu na oznamovatele splňuje čl. 16 DSA (potvrzení přijetí a vyrozumění oznamovatele), co znamená „bez zbytečného odkladu“ a zda je přípustný strop tří oznámení na zprávu a den.]
+## Ostatní
 
-## 7. Kontaktní místo
-
-Pro uživatele i orgány veřejné moci (čl. 11 a 12 DSA) je kontaktní místo: [DOPLNIT: e-mail]. Komunikovat lze česky a anglicky. Kontakt je uveden také na stránce Transparentnost.
-
-## 8. Bez záruky
-
-Provozovatel službu vytvořil s co největší péčí o bezpečnost, ale poskytuje ji tak, jak je, bez jakékoli záruky. Zejména nezaručuje, že:
-
-- bude služba dostupná nepřetržitě a bez chyb,
-- zpráva bude doručena nebo otevřena,
-- služba bude odolná proti všem útokům,
-- bude služba provozována i v budoucnu.
-
-Službu může provozovatel kdykoli změnit, omezit nebo ukončit, i bez předchozího upozornění.
-
-Šifrování neochrání zprávu na napadeném zařízení odesílatele nebo příjemce. Kdo má odkaz jako první, může zprávu otevřít. Příjemce si obsah může uložit. Odkaz a passphrase posílejte jen lidem, kterým věříte, a každý jinou cestou.
-
-## 9. Odpovědnost
-
-Provozovatel v nejširším rozsahu, který právo dovoluje, neodpovídá za újmu vzniklou užíváním služby nebo tím, že ji užívat nelze, zejména za:
-
-- ztrátu nebo smazání zprávy,
-- nedostupnost služby,
-- únik obsahu z napadeného zařízení, prozrazením odkazu nebo jednáním příjemce,
-- užití služby jinými lidmi v rozporu s těmito podmínkami.
-
-Nic v těchto podmínkách nevylučuje ani neomezuje odpovědnost, kterou právo vyloučit nebo omezit nedovoluje. Jde zejména o odpovědnost za újmu na přirozených právech člověka a za újmu způsobenou úmyslně nebo z hrubé nedbalosti (§ 2898 zákona č. 89/2012 Sb., občanský zákoník) a o práva spotřebitele, kterých se nelze vzdát.
-
-[⚠️ K POSOUZENÍ ADVOKÁTEM: znění omezení odpovědnosti vůči spotřebitelům (§ 1814 a § 2898 občanského zákoníku), případně horní hranice náhrady u bezplatné služby.]
-
-## 10. Duševní vlastnictví
-
-Software Nylzo je dostupný pod licencí MIT na github.com/misaon/nylzo. Licence se týká kódu a souborů v repozitáři. Nedává právo používat název Nylzo tak, aby jiná služba vypadala jako tato služba nebo jako služba, kterou provozovatel podporuje. Obsah zpráv patří těm, kdo je vytvořili. Provozovateli z něj nevznikají žádná práva kromě toho, co je nutné k uložení a vydání zašifrované zprávy.
-
-[⚠️ K POSOUZENÍ ADVOKÁTEM: ochrana názvu a loga Nylzo, které nejsou registrovanou ochrannou známkou a jejichž soubory jsou v repozitáři pod licencí MIT.]
-
-## 11. Omezení přístupu
-
-Provozovatel může smazat zprávu, která porušuje tyto podmínky nebo právo, a dočasně omezit přístup ke službě z rozsahu adres, ze kterého přichází zahlcení nebo útok, a to automatickými limity nebo blokováním v síti. Svou zprávu můžete zrušit v prohlížeči, ve kterém jste ji vytvořili, nebo tokenem pro správu v programu nylzo, a jako příjemce ji můžete smazat.
-
-## 12. Ochrana osobních údajů
-
-Jak služba zachází s osobními údaji, popisují Zásady ochrany osobních údajů na [DOPLNIT: adresa stránky].
-
-## 13. Změny podmínek
-
-Novou verzi podmínek provozovatel zveřejní s datem účinnosti a upozorní na ni na úvodní stránce. Pro zprávy vytvořené před změnou platí podmínky ve znění ke dni jejich vytvoření.
-
-## 14. Rozhodné právo a spory
-
-Tyto podmínky se řídí právem České republiky. Spory rozhodují české soudy. Pokud jste spotřebitel, zůstává vám ochrana, kterou vám poskytuje právo státu, kde máte obvyklé bydliště.
-
-[⚠️ K POSOUZENÍ ADVOKÁTEM: volba práva a soudu vůči spotřebitelům z jiných členských států (čl. 6 nařízení Řím I, nařízení Brusel I bis) a zda se na neplaceného nepodnikajícího provozovatele vztahuje povinnost informovat o mimosoudním řešení spotřebitelských sporů (ČOI).]
-
-## 15. Závěrečná ustanovení
-
-Pokud by některé ustanovení těchto podmínek bylo neplatné, ostatní zůstávají v platnosti. Podmínky jsou vydány česky a anglicky; v případě rozporu má přednost česká verze.
-
-[⚠️ K POSOUZENÍ ADVOKÁTEM: přednost jazykové verze vůči spotřebitelům, kteří česky nerozumí.]
+- Osobní údaje popisují [Zásady ochrany osobních údajů](zasady-ochrany-osobnich-udaju.md).
+- Novou verzi podmínek zveřejníme s datem účinnosti. Zpráva se řídí verzí platnou v den, kdy vznikla.
+- Podmínky a užívání služby se řídí českým právem a spory rozhodují příslušné české soudy. Tím nejsou dotčeny kogentní předpisy státu, kde žijete, ani vaše právo žalovat jinde, kde to zákon dovolí.
+- Pokud je některé ustanovení neplatné, ostatní platí dál.
