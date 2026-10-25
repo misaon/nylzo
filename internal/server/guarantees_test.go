@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -199,22 +197,5 @@ func TestRangeDailyBytesLimit(t *testing.T) {
 	m.ip = "203.0.113.6"
 	if resp, _ := h.create(m); resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("a create past the daily bytes of its /24: %d", resp.StatusCode)
-	}
-}
-
-func TestAbuseReportFilesArePrivate(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	h.mustCreate(m)
-	abuseReport(t, h, m, "203.0.113.45")
-	for _, path := range []string{filepath.Dir(h.abuseFile(h.clock.Now())), h.abuseFile(h.clock.Now())} {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Mode().Perm()&0o077 != 0 {
-			t.Fatalf("%s is readable by other users: %v", filepath.Base(path), info.Mode().Perm())
-		}
 	}
 }

@@ -726,33 +726,6 @@ func abuseReport(t *testing.T, h *harness, m *message, ip string) {
 	}
 }
 
-func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 1, 86400, "abuse")
-	h.mustCreate(m)
-	h.clock.Advance(3*time.Hour + 17*time.Minute + 5*time.Second)
-	abuseReport(t, h, m, "203.0.113.44")
-	data, err := h.abuseReports()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var line map[string]string
-	if err := json.Unmarshal(
-		bytes.TrimSpace(data),
-		&line,
-	); err != nil || line["date"] != "2026-10-22" || line["id"] != m.id.String() ||
-		len(line) != 3 {
-		t.Fatalf("a stored report must carry only the day, the id and the reason: %s %v", data, err)
-	}
-	dayStart := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	for _, path := range []string{h.abuseFile(h.clock.Now()), filepath.Join(h.dir, "abuse")} {
-		if info, err := os.Stat(path); err != nil || !info.ModTime().Equal(dayStart) {
-			t.Fatalf("%s carries the time of the report: %v %v", filepath.Base(path), info.ModTime(), err)
-		}
-	}
-}
-
 func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
@@ -791,62 +764,6 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	abuseReport(t, h, live, "203.0.113.60")
 	if data, err := h.abuseReports(); err != nil || !strings.Contains(string(data), live.id.String()) {
 		t.Fatalf("the report about a live message was not stored: %q %v", data, err)
-	}
-}
-
-func TestOldAbuseReportsAreDropped(t *testing.T) {
-	t.Parallel()
-	h := newHarness(t, baseConfig(pepperA, nil))
-	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	h.mustCreate(m)
-	now := h.clock.Now()
-	oldDays := []time.Time{now.AddDate(0, 0, -21), now.AddDate(0, 0, -8), now.AddDate(0, 0, -7)}
-	recentDay := now.AddDate(0, 0, -6)
-	legacy := filepath.Join(h.dir, "abuse-reports.jsonl")
-	write := func() {
-		if err := os.MkdirAll(filepath.Join(h.dir, "abuse"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		for _, day := range append(oldDays, recentDay) {
-			if err := os.WriteFile(
-				h.abuseFile(day),
-				[]byte(`{"date":"`+day.Format(time.DateOnly)+`","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"x"}`+"\n"),
-				0o600,
-			); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := os.WriteFile(legacy, []byte("{}\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(legacy, oldDays[1], oldDays[1]); err != nil {
-			t.Fatal(err)
-		}
-	}
-	check := func(when string) {
-		t.Helper()
-		for _, day := range oldDays {
-			if _, err := os.Stat(h.abuseFile(day)); !errors.Is(err, os.ErrNotExist) {
-				t.Fatalf("%s kept the reports of %s: %v", when, day.Format(time.DateOnly), err)
-			}
-		}
-		if _, err := os.Stat(legacy); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("%s kept a report file of an older version: %v", when, err)
-		}
-		if _, err := os.Stat(h.abuseFile(recentDay)); err != nil {
-			t.Fatalf("%s dropped reports younger than 7 days: %v", when, err)
-		}
-	}
-	write()
-	if _, err := h.srv.SweepOnce(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	check("the sweep")
-	write()
-	abuseReport(t, h, m, "203.0.113.45")
-	check("a new report")
-	if data, err := os.ReadFile(h.abuseFile(now)); err != nil || !strings.Contains(string(data), m.id.String()) {
-		t.Fatalf("the new report is not in the file of its day: %q %v", data, err)
 	}
 }
 

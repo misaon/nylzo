@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -41,28 +40,6 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 	cancel()
 	if slot, ok, err := s.reserveGlobalCreate(ctx, time.Unix(1_800_000_000, 0)); err != nil || !ok || slot != 1 {
 		t.Fatalf("a canceled request must still learn about the slot it reserved: %d %v %v", slot, ok, err)
-	}
-}
-
-func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
-	t.Parallel()
-	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	s := &Server{
-		store:    cancelAfterCommit{st},
-		abuseDir: filepath.Join(t.TempDir(), "abuse"),
-		log:      slog.New(slog.DiscardHandler),
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	if err := s.recordAbuse(ctx, time.Unix(1_800_000_000, 0), core.NewID().String(), "spam"); err != nil {
-		t.Fatalf("a report whose slot was reserved must be stored even if the client left: %v", err)
-	}
-	if data, err := os.ReadFile(filepath.Join(s.abuseDir, "2027-01-15.jsonl")); err != nil || len(data) == 0 {
-		t.Fatalf("report not stored: %v", err)
 	}
 }
 

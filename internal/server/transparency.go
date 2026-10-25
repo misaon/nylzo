@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/abuse"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -50,7 +52,7 @@ func (s *Server) transparency() transparencyResponse {
 		},
 		Retention: transparencyRetention{
 			TombstoneS:    int64(store.TombstoneTTL / time.Second),
-			AbuseReportS:  int64(abuseRetention / time.Second),
+			AbuseReportS:  int64(abuse.Retention / time.Second),
 			DailyCounterS: int64(day.PurgeAt().Sub(day.End) / time.Second),
 		},
 	}

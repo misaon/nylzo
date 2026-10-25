@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/misaon/nylzo/internal/server/abuse"
 
 	"github.com/misaon/nylzo/internal/server/config"
 
@@ -84,8 +85,7 @@ type Server struct {
 	streams       *ratelimit.Streams
 	disk          *diskspace.Reserver
 	handler       http.Handler
-	abuseMu       sync.Mutex
-	abuseDir      string
+	reports       *abuse.Reports
 	webFiles      fs.FS
 	web           webclient.Build
 	pages         webclient.Pages
@@ -116,7 +116,6 @@ func New(cfg config.Server, st store.Store, blobs store.Blobs, opts ...Option) (
 		afterFunc: pending.after,
 		timers:    pending,
 		log:       logging.New(os.Stderr),
-		abuseDir:  abuseDir(cfg.DataDir),
 		webFiles:  webFiles,
 	}
 	for _, o := range opts {
@@ -142,6 +141,7 @@ func New(cfg config.Server, st store.Store, blobs store.Blobs, opts ...Option) (
 	s.work = proof.NewWork(ring, st, cfg.PoWConcurrency, cfg.PoWDifficulty)
 	s.idTokens = proof.NewIDTokens(ring)
 	s.streams = ratelimit.NewStreams(cfg.MaxStreams)
+	s.reports = abuse.NewReports(cfg.DataDir, st, s.log)
 	s.disk = diskspace.NewReserver(cfg.DataDir, cfg.MinFreeBytes, diskspace.Free, s.log)
 	s.handler = s.routes()
 	return s, nil
@@ -189,7 +189,7 @@ func SweepStore(
 	now time.Time,
 ) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, st, blobs, now)
-	err = errors.Join(err, pruneAbuse(abuseDir(dataDir), now))
+	err = errors.Join(err, abuse.Prune(dataDir, now))
 	done, derr := st.RateGet(ctx, reconcileKey, ratelimit.Day(now).Start)
 	if derr != nil {
 		return report, errors.Join(err, derr)
