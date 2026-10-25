@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -45,7 +46,7 @@ func runTakedown(ctx context.Context, env Env, args []string) int {
 		fmt.Fprintln(env.Stderr, program+" takedown: "+err.Error())
 		return exitUsage
 	}
-	cfg, err := server.FromEnv(env.Getenv, false)
+	cfg, err := config.FromEnv(env.Getenv, false)
 	if err != nil {
 		return failf(env, "%s", err)
 	}

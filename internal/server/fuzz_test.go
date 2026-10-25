@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 )
@@ -18,7 +20,7 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add(core.Encode([]byte(`{"id":"` + m.id.String() + `"}`)))
 	f.Add("")
 	f.Add("not base64!")
-	cfg := server.Defaults()
+	cfg := config.Defaults()
 	allowed := map[string]bool{
 		"id":           true,
 		"id_token":     true,

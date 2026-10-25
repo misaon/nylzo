@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
@@ -54,10 +56,10 @@ type testServer struct {
 	release  chan struct{}
 }
 
-func newTestServer(t *testing.T, change func(*server.Config)) *testServer {
+func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := server.Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Pepper = bytes.Repeat([]byte{7}, 32)
 	cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst = 1<<20, 1<<20
@@ -472,7 +474,7 @@ func TestBurnAndPrintedManageToken(t *testing.T) {
 
 func TestCreateSolvesProofOfWork(t *testing.T) {
 	t.Parallel()
-	ts := newTestServer(t, func(c *server.Config) {
+	ts := newTestServer(t, func(c *config.Server) {
 		c.Rates.GlobalDailyCreates = 4
 		c.PoWDifficulty = 2
 	})

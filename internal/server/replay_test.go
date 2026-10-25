@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
-	"github.com/misaon/nylzo/internal/server"
 )
 
 func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
@@ -20,21 +21,21 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 	const victim, observer = "203.0.113.10", "198.51.100.20"
 	cases := []struct {
 		name   string
-		config func(cfg *server.Config)
+		config func(cfg *config.Server)
 		before func(h *harness, m *message)
 		header map[string]string
 		status int
 	}{
 		{
 			"token bucket 429",
-			func(cfg *server.Config) { cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1e-9, 1 },
+			func(cfg *config.Server) { cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1e-9, 1 },
 			func(h *harness, m *message) {
 				h.do(request{method: "GET", path: "/api/v1/instance", ip: victim})
 			},
 			nil,
 			http.StatusTooManyRequests,
 		},
-		{"read counter 429", func(cfg *server.Config) { cfg.Rates.ReadPerHour = 1 }, func(h *harness, m *message) {
+		{"read counter 429", func(cfg *config.Server) { cfg.Rates.ReadPerHour = 1 }, func(h *harness, m *message) {
 			h.do(
 				signedRequestFrom(
 					victim,

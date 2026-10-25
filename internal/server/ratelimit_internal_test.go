@@ -17,6 +17,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -39,7 +41,7 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	s := &Server{cfg: Config{Rates: Rates{GlobalDailyCreates: 3}}, store: cancelAfterCommit{st}}
+	s := &Server{cfg: config.Server{Rates: config.Rates{GlobalDailyCreates: 3}}, store: cancelAfterCommit{st}}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if slot, ok, err := s.reserveGlobalCreate(ctx, time.Unix(1_800_000_000, 0)); err != nil || !ok || slot != 1 {
@@ -83,7 +85,7 @@ func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateH
 
 func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	t.Parallel()
-	cfg := Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 	st, err := sqlite.Open(t.Context(), filepath.Join(cfg.DataDir, "nylzo.db"))

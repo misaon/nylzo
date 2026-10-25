@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 )
@@ -16,7 +18,7 @@ const (
 	GlobalStoredKey  = globalStoredKey
 )
 
-func ParseCreateHeaderForTest(cfg Config, value string) bool {
+func ParseCreateHeaderForTest(cfg config.Server, value string) bool {
 	s := &Server{cfg: cfg}
 	r, _ := http.NewRequest("POST", "/api/v1/messages", nil)
 	r.Header.Set(headerCreate, value)

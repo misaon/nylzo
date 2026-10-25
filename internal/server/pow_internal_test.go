@@ -16,6 +16,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/vectors"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -28,7 +30,7 @@ func powServer(t *testing.T, concurrency int) *Server {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	cfg := Defaults()
+	cfg := config.Defaults()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 	cfg.PoWConcurrency = concurrency
 	cfg.PoWDifficulty = 1

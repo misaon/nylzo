@@ -14,6 +14,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -83,7 +85,7 @@ func newPublicWebTestServer(
 ) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := server.Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Pepper = bytes.Repeat([]byte{7}, 32)
 	cfg.Version = version

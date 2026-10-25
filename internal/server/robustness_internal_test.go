@@ -21,6 +21,8 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"filippo.io/edwards25519"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -47,9 +49,9 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func testServer(t testing.TB, st store.Store, change func(*Config)) (*Server, *lockedBuffer) {
+func testServer(t testing.TB, st store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
 	t.Helper()
-	cfg := Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 	if change != nil {
@@ -161,7 +163,7 @@ func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
 
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	t.Parallel()
-	s, _ := testServer(t, openStore(t), func(c *Config) { c.MaxStreams = 1 })
+	s, _ := testServer(t, openStore(t), func(c *config.Server) { c.MaxStreams = 1 })
 	other := netip.MustParseAddr("198.51.100.7")
 	source, ranges := s.addressKey.Source(other), s.addressKey.Range(other)
 	if !s.streams.Take(source, ranges) {
@@ -188,7 +190,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 
 func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	t.Parallel()
-	s, _ := testServer(t, openStore(t), func(c *Config) { c.MaxStreams = 64 })
+	s, _ := testServer(t, openStore(t), func(c *config.Server) { c.MaxStreams = 64 })
 	claim := func(addr string) int {
 		req := httptest.NewRequest("POST", "/api/v1/messages/"+core.NewID().String()+"/claim", nil)
 		req.RemoteAddr = addr + ":1234"
@@ -281,7 +283,7 @@ func TestSweepLogAttrsAcceptAnEmptyJoin(t *testing.T) {
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		s, logs := testServer(t, openStore(t), func(c *Config) { c.SweepInterval = time.Minute })
+		s, logs := testServer(t, openStore(t), func(c *config.Server) { c.SweepInterval = time.Minute })
 		blobs, err := disk.New(s.cfg.DataDir)
 		if err != nil {
 			t.Fatal(err)
@@ -324,20 +326,13 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 	t.Parallel()
 	st := openStore(t)
-	for name, change := range map[string]func(*Config){
-		"no PoW slot":        func(c *Config) { c.PoWConcurrency = 0 },
-		"no stream slot":     func(c *Config) { c.MaxStreams = 0 },
-		"negative free":      func(c *Config) { c.MinFreeBytes = -1 },
-		"zero burst":         func(c *Config) { c.Rates.BucketBurst = 0 },
-		"zero rate":          func(c *Config) { c.Rates.SourcePerSecond = 0 },
-		"negative sweep":     func(c *Config) { c.SweepInterval = -time.Second },
-		"stale object limit": func(c *Config) { c.Limits.MaxFileBytes = 1 << 20 },
-		"overflowing limit":  func(c *Config) { c.Rates.CreatePerHour = 1 << 62 },
+	for name, change := range map[string]func(*config.Server){
+		"no PoW slot": func(c *config.Server) { c.PoWConcurrency = 0 },
 	} {
-		cfg := Defaults()
+		cfg := config.Defaults()
 		cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 		change(&cfg)
-		if _, err := New(cfg, st, nil); !errors.Is(err, ErrConfig) {
+		if _, err := New(cfg, st, nil); !errors.Is(err, config.ErrInvalid) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}

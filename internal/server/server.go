@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -60,7 +62,7 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 type Server struct {
-	cfg           Config
+	cfg           config.Server
 	store         store.Store
 	blobs         store.Blobs
 	ring          *pepper.Ring
@@ -92,7 +94,7 @@ type Server struct {
 	manifest      webclient.Manifest
 }
 
-func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
+func New(cfg config.Server, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -134,7 +136,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.sources = ratelimit.NewLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
 	s.prefixes = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
 	s.addressKey = ratelimit.NewAddressKey()
-	s.proxies = ratelimit.Proxies{Trusted: cfg.TrustedProxies, ReadRealIP: cfg.ProxyMode == ProxyModeScaleway}
+	s.proxies = ratelimit.Proxies{Trusted: cfg.TrustedProxies, ReadRealIP: cfg.ProxyMode == config.ProxyModeScaleway}
 	s.counters = ratelimit.NewCounters()
 	s.spent = newSpentChallenges()
 	s.spends = newSpendBatcher(st)

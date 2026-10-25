@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/server/logging"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -96,7 +98,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 	cfg.Rates.CreatePerHour = 1_000_000
 	cfg.Rates.CreatePerDay = 1_000_000
 	cfg.Rates.CreateBytesPerDay = 1 << 40
-	cfg.MaxStreams = server.MaxStreams
+	cfg.MaxStreams = config.MaxStreams
 	h.reopen(cfg)
 	const count = 30
 	messages := make([]*message, count)

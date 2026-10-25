@@ -15,7 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -93,7 +94,7 @@ func TestMemoryLimitYieldsToGOMEMLIMIT(t *testing.T) {
 
 func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(server.Config{DataDir: dir}, sqlite.Open)
+	st, _, err := open(config.Server{DataDir: dir}, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +182,7 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 
 func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(server.Config{DataDir: dir}, sqlite.Open)
+	st, _, err := open(config.Server{DataDir: dir}, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +244,7 @@ func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 }
 
 func TestOpenCreatesPrivateDirectories(t *testing.T) {
-	cfg := server.Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = filepath.Join(t.TempDir(), "data")
 	st, _, err := open(cfg, sqlite.Open)
 	if err != nil {
@@ -263,7 +264,7 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 
 func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(server.Config{DataDir: dir}, sqlite.Open)
+	st, _, err := open(config.Server{DataDir: dir}, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}

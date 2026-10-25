@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
@@ -33,7 +35,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 	cfg.PoWConcurrency = 1
@@ -158,7 +160,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
 
-	cfg := Defaults()
+	cfg := config.Defaults()
 	cfg.DataDir = t.TempDir()
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 	st, err := sqlite.Open(t.Context(), filepath.Join(cfg.DataDir, "nylzo.db"))

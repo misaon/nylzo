@@ -6,11 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 )
 
 func BenchmarkSignedMetadataWithASpentChallenge(b *testing.B) {
-	s, _ := testServer(b, openStore(b), func(c *Config) {
+	s, _ := testServer(b, openStore(b), func(c *config.Server) {
 		c.Rates.SourcePerSecond, c.Rates.SourceBurst = 1e9, 1e9
 		c.Rates.BucketPerSecond, c.Rates.BucketBurst = 1e9, 1e9
 		c.Rates.ReadPerHour = 0

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 )
@@ -63,7 +65,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 
 func TestCreateHeaderRules(t *testing.T) {
 	t.Parallel()
-	cfg := server.Defaults()
+	cfg := config.Defaults()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	pw := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	if !server.ParseCreateHeaderForTest(cfg, none.createHeader(0)) ||

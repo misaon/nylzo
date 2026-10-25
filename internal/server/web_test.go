@@ -15,6 +15,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -82,7 +84,7 @@ func newWebServer(t *testing.T, files fs.FS, logs io.Writer) (*httptest.Server, 
 	return newWebServerWith(t, files, logs, baseConfig(pepperA, nil))
 }
 
-func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, cfg server.Config) (*httptest.Server, error) {
+func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, cfg config.Server) (*httptest.Server, error) {
 	t.Helper()
 	dir := t.TempDir()
 	cfg.DataDir = dir
@@ -320,7 +322,8 @@ func TestWithoutABuildTheServerServesThePlaceholder(t *testing.T) {
 		t.Fatalf("the server did not log that it serves the placeholder: %s", logs.String())
 	}
 	resp, body := get(t, ts.URL+"/", nil)
-	if resp.StatusCode != 200 || !strings.Contains(body, "placeholder") || strings.Contains(body, "__NYLZO_CSP_NONCE__") {
+	if resp.StatusCode != 200 || !strings.Contains(body, "placeholder") ||
+		strings.Contains(body, "__NYLZO_CSP_NONCE__") {
 		t.Fatalf("placeholder: %d %s", resp.StatusCode, body)
 	}
 	if resp, _ := get(t, ts.URL+"/assets/index-a1.js", nil); resp.StatusCode != 404 {

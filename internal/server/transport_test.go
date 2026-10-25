@@ -2,26 +2,21 @@ package server_test
 
 import (
 	"bufio"
-	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptrace"
-	"net/netip"
 	"os"
-	"path/filepath"
 	"regexp"
-	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
-	"github.com/misaon/nylzo/internal/store"
 )
 
 func htmlCSPFromSpec(t *testing.T) string {
@@ -175,7 +170,7 @@ func TestCreateValidation(t *testing.T) {
 			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(int64(len(m.object)+1))))
 		}, 400, "bad_request"},
 		{"size-above-limit-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(server.Defaults().Limits.MaxObjectBytes+1)))
+			r.Header.Set("X-Nylzo-Create", h.withIDToken(m.createHeader(config.Defaults().Limits.MaxObjectBytes+1)))
 		}, 400, "bad_request"},
 		{"chunked", func(t *testing.T, r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
 	}
@@ -312,113 +307,6 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	}
 }
 
-func TestConfigFromEnv(t *testing.T) {
-	t.Parallel()
-	env := map[string]string{
-		"NYLZO_PEPPER":               strings.Repeat("0123456789abcdef", 4),
-		"NYLZO_PEPPER_PREVIOUS":      strings.Repeat("fedcba9876543210", 4),
-		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1",
-		"NYLZO_PROXY_MODE":           "scaleway",
-		"NYLZO_SWEEP_INTERVAL":       "15m",
-		"NYLZO_MAX_TTL":              "172800",
-		"NYLZO_MAX_OPENS":            "3",
-		"NYLZO_RATE_CREATE_HOUR":     "7",
-		"NYLZO_GLOBAL_DAILY_CREATES": "500",
-		"NYLZO_MIN_FREE_BYTES":       "0",
-		"PORT":                       "9090",
-	}
-	cfg, err := server.FromEnv(func(k string) string { return env[k] }, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Listen != ":9090" || len(cfg.TrustedProxies) != 2 || cfg.ProxyMode != "scaleway" ||
-		cfg.SweepInterval != 15*time.Minute ||
-		cfg.Limits.MaxTTL != 48*time.Hour ||
-		cfg.Limits.MaxOpens != 3 ||
-		cfg.Rates.CreatePerHour != 7 ||
-		cfg.Rates.GlobalDailyCreates != 500 ||
-		cfg.MinFreeBytes != 0 ||
-		len(cfg.PepperPrevious) != 32 {
-		t.Fatalf("config %+v", cfg)
-	}
-	if _, err := server.FromEnv(func(string) string { return "" }, true); err == nil {
-		t.Fatal("serve without pepper accepted")
-	}
-	if _, err := server.FromEnv(func(string) string { return "" }, false); err != nil {
-		t.Fatalf("sweep-once without pepper: %v", err)
-	}
-	if _, err := server.FromEnv(func(k string) string {
-		if k == "NYLZO_PEPPER" {
-			return "short"
-		}
-		return ""
-	}, true); err == nil {
-		t.Fatal("bad pepper accepted")
-	}
-	if _, err := server.FromEnv(func(k string) string {
-		if k == "NYLZO_PROXY_MODE" {
-			return "cloudflare"
-		}
-		return env[k]
-	}, true); err == nil {
-		t.Fatal("unknown proxy mode accepted")
-	}
-	for key, value := range map[string]string{
-		"NYLZO_PEPPER":           strings.Repeat("ab", 32),
-		"NYLZO_SWEEP_INTERVAL":   "-1",
-		"NYLZO_MAX_TTL":          "36028797019568768",
-		"NYLZO_RATE_CREATE_HOUR": "4611686018427387905",
-		"NYLZO_MAX_STREAMS":      "0",
-		"NYLZO_MIN_FREE_BYTES":   "-1",
-		"NYLZO_POW_CONCURRENCY":  "9223372036854775807",
-	} {
-		_, err := server.FromEnv(func(k string) string {
-			if k == key {
-				return value
-			}
-			return env[k]
-		}, true)
-		if !errors.Is(err, server.ErrConfig) {
-			t.Fatalf("%s=%s accepted: %v", key, value, err)
-		}
-	}
-	tooBig := strconv.Itoa(core.MaxFileBytes + 1)
-	if _, err := server.FromEnv(func(k string) string {
-		if k == "NYLZO_MAX_FILE_BYTES" {
-			return tooBig
-		}
-		return env[k]
-	}, true); err == nil {
-		t.Fatal("NYLZO_MAX_FILE_BYTES above the protocol limit accepted")
-	}
-	lower, err := server.FromEnv(func(k string) string {
-		if k == "NYLZO_MAX_FILE_BYTES" {
-			return "1048576"
-		}
-		return env[k]
-	}, true)
-	if err != nil || lower.Limits.MaxObjectBytes != core.ObjectLimit(1048576) {
-		t.Fatalf("lower file limit: %v %d", err, lower.Limits.MaxObjectBytes)
-	}
-}
-
-func TestTrustedProxyInMappedForm(t *testing.T) {
-	t.Parallel()
-	cfg, err := server.FromEnv(func(k string) string {
-		if k == "NYLZO_TRUSTED_PROXIES" {
-			return "::ffff:172.17.0.1, ::ffff:10.0.0.0/104"
-		}
-		return ""
-	}, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []netip.Prefix{netip.MustParsePrefix("172.17.0.1/32"), netip.MustParsePrefix("10.0.0.0/8")}
-	if !slices.Equal(cfg.TrustedProxies, want) {
-		t.Fatalf("proxies written in mapped form must be trusted unmapped: %v", cfg.TrustedProxies)
-	}
-}
-
 func TestH2CReceiveBufferIsBounded(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
@@ -427,94 +315,6 @@ func TestH2CReceiveBufferIsBounded(t *testing.T) {
 		c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream ||
 		c.MaxReceiveBufferPerConnection > 1<<20 {
 		t.Fatalf("h2c must bound unread body per stream and leave the connection room for other streams: %+v", c)
-	}
-}
-
-func TestPoWConcurrencyCapMatchesSpec(t *testing.T) {
-	t.Parallel()
-	env := func(v string) func(string) string {
-		return func(k string) string {
-			if k == "NYLZO_POW_CONCURRENCY" {
-				return v
-			}
-			return ""
-		}
-	}
-	if _, err := server.FromEnv(env("4"), false); err != nil {
-		t.Fatalf("the spec allows 4 concurrent PoW checks: %v", err)
-	}
-	if _, err := server.FromEnv(env("5"), false); err == nil {
-		t.Fatal("NYLZO_POW_CONCURRENCY above 4 accepted")
-	}
-}
-
-func TestConfigErrorNamesTheVariable(t *testing.T) {
-	t.Parallel()
-	for name, value := range map[string]string{"NYLZO_POW_CONCURRENCY": "8", "NYLZO_MAX_OPENS": "0", "NYLZO_POW_DIFFICULTY": "9", "NYLZO_DEFAULT_TTL": "30s"} {
-		_, err := server.FromEnv(func(k string) string {
-			if k == name {
-				return value
-			}
-			return ""
-		}, false)
-		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), name) {
-			t.Fatalf("%s=%s: the error must name the variable: %v", name, value, err)
-		}
-	}
-}
-
-func TestConfigPepperFromFile(t *testing.T) {
-	t.Parallel()
-	const current = "00112233445566778899aabbccddeeff00112233445566778899aabbccddee01"
-	const previous = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221102"
-	dir := t.TempDir()
-	write := func(name, content string) string {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(content), 0o400); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	env := func(vars map[string]string) func(string) string {
-		return func(k string) string { return vars[k] }
-	}
-	fromVar, err := server.FromEnv(
-		env(map[string]string{"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous}),
-		true,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fromFile, err := server.FromEnv(env(map[string]string{
-		"NYLZO_PEPPER_FILE":          write("pepper", current+"\n"),
-		"NYLZO_PEPPER_PREVIOUS_FILE": write("previous", "  "+previous+"\r\n"),
-	}), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(fromFile.Pepper, fromVar.Pepper) || !bytes.Equal(fromFile.PepperPrevious, fromVar.PepperPrevious) ||
-		len(fromFile.Pepper) != 32 {
-		t.Fatal("a pepper from a file differs from the same pepper in a variable")
-	}
-	for name, vars := range map[string]map[string]string{
-		"both set":       {"NYLZO_PEPPER": current, "NYLZO_PEPPER_FILE": write("both", current)},
-		"missing file":   {"NYLZO_PEPPER_FILE": filepath.Join(dir, "absent")},
-		"empty file":     {"NYLZO_PEPPER_FILE": write("empty", "\n")},
-		"bad content":    {"NYLZO_PEPPER_FILE": write("bad", "not a pepper")},
-		"too large":      {"NYLZO_PEPPER_FILE": write("large", current+strings.Repeat(" ", 4097))},
-		"bad previous":   {"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
-		"previous twice": {"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previous)},
-	} {
-		_, err := server.FromEnv(env(vars), true)
-		if !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), "_FILE") {
-			t.Fatalf("%s: want a config error naming the _FILE variable, got %v", name, err)
-		}
-		if strings.Contains(err.Error(), current) || strings.Contains(err.Error(), previous) {
-			t.Fatalf("%s: the error leaks the pepper: %v", name, err)
-		}
-	}
-	if _, err := server.FromEnv(env(nil), true); err == nil || !strings.Contains(err.Error(), "NYLZO_PEPPER_FILE") {
-		t.Fatalf("a missing pepper must mention both ways to set it: %v", err)
 	}
 }
 
@@ -606,41 +406,6 @@ func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 	}
 }
 
-func TestConfigBounds(t *testing.T) {
-	t.Parallel()
-	base := map[string]string{"NYLZO_PEPPER": strings.Repeat("0123456789abcdef", 4)}
-	with := func(k, v string) func(string) string {
-		return func(key string) string {
-			if key == k {
-				return v
-			}
-			return base[key]
-		}
-	}
-	for name, env := range map[string]func(string) string{
-		"max-ttl-over-7d":      with("NYLZO_MAX_TTL", "169h"),
-		"max-ttl-over-7d-sec":  with("NYLZO_MAX_TTL", "604801"),
-		"default-ttl-under-60": with("NYLZO_DEFAULT_TTL", "59"),
-		"pow-concurrency-17":   with("NYLZO_POW_CONCURRENCY", "17"),
-		"ip-scope-removed":     with("NYLZO_PASSPHRASE_IP_SCOPE", "on"),
-		"max-opens-above-100":  with("NYLZO_MAX_OPENS", "101"),
-		"pow-difficulty-9":     with("NYLZO_POW_DIFFICULTY", "9"),
-		"source-rps-zero":      with("NYLZO_RATE_SOURCE_RPS", "0"),
-		"source-rps-nan":       with("NYLZO_RATE_SOURCE_RPS", "NaN"),
-		"source-burst-inf":     with("NYLZO_RATE_SOURCE_BURST", "+Inf"),
-		"source-burst-half":    with("NYLZO_RATE_SOURCE_BURST", "0.5"),
-		"bucket-burst-half":    with("NYLZO_RATE_BUCKET_BURST", "0.5"),
-	} {
-		if _, err := server.FromEnv(env, true); err == nil {
-			t.Errorf("%s accepted", name)
-		}
-	}
-	cfg, err := server.FromEnv(with("NYLZO_MAX_TTL", "604800"), true)
-	if err != nil || cfg.Limits.MaxTTL != store.TombstoneTTL {
-		t.Fatalf("max ttl of 7 days: %v %v", err, cfg.Limits.MaxTTL)
-	}
-}
-
 func TestInstanceOffersNoPassphraseProfile(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
@@ -652,41 +417,10 @@ func TestInstanceOffersNoPassphraseProfile(t *testing.T) {
 
 func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	t.Parallel()
-	if got := server.Defaults().Limits.MaxObjectBytes; got != 5373983 {
-		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
-	}
 	h := newHarness(t, baseConfig(pepperA, nil))
 	_, body := h.do(request{method: "GET", path: "/api/v1/instance"})
 	limits := decodeJSON(t, body)["limits"].(map[string]any)
 	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
 		t.Fatalf("instance reports %v", limits)
-	}
-}
-
-func TestPublicURLFromEnv(t *testing.T) {
-	t.Parallel()
-	env := func(publicURL string) func(string) string {
-		return func(key string) string {
-			if key == "NYLZO_PUBLIC_URL" {
-				return publicURL
-			}
-			return ""
-		}
-	}
-	cfg, err := server.FromEnv(env(" https://nylzo.example "), false)
-	if err != nil || cfg.PublicURL != "https://nylzo.example" {
-		t.Fatalf("%q %v", cfg.PublicURL, err)
-	}
-	if _, err := server.FromEnv(
-		env("https://nylzo.example/"),
-		false,
-	); !errors.Is(err, server.ErrConfig) ||
-		!strings.Contains(err.Error(), "NYLZO_PUBLIC_URL") {
-		t.Fatalf("a public URL with a path must stop the server: %v", err)
-	}
-	cfg = baseConfig(pepperA, nil)
-	cfg.PublicURL = "http://nylzo.example"
-	if err := cfg.Validate(); !errors.Is(err, server.ErrConfig) {
-		t.Fatalf("Validate must refuse plain http to a public host: %v", err)
 	}
 }

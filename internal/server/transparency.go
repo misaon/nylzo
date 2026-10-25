@@ -1,66 +1,16 @@
 package server
 
 import (
-	"errors"
 	"net/http"
-	"regexp"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const (
-	TransparencyPath = "/.well-known/nylzo/transparency.json"
-	maxOperatorField = 200
-)
-
-type Operator struct {
-	Name    string `json:"name,omitempty"`
-	Contact string `json:"contact,omitempty"`
-	Hosting string `json:"hosting,omitempty"`
-}
-
-func (o Operator) set() bool {
-	return o != Operator{}
-}
-
-func (o Operator) validate() error {
-	for _, field := range []struct{ key, value string }{
-		{"NYLZO_OPERATOR", o.Name}, {"NYLZO_CONTACT", o.Contact}, {"NYLZO_HOSTING", o.Hosting},
-	} {
-		if !plainText(field.value) {
-			return errors.New(
-				field.key + " must be valid UTF-8 text of at most 200 bytes without control or format characters",
-			)
-		}
-	}
-	if o.Contact != "" && !ValidContact(o.Contact) {
-		return errors.New("NYLZO_CONTACT must be an email address or an https:// address")
-	}
-	return nil
-}
-
-func plainText(s string) bool {
-	return len(s) <= maxOperatorField && utf8.ValidString(s) && !strings.ContainsFunc(s, func(r rune) bool {
-		return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
-	})
-}
-
-var (
-	emailContact = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
-	httpsContact = regexp.MustCompile(
-		`^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$`,
-	)
-)
-
-func ValidContact(contact string) bool {
-	return emailContact.MatchString(contact) || httpsContact.MatchString(contact)
-}
+const TransparencyPath = "/.well-known/nylzo/transparency.json"
 
 type transparencyRates struct {
 	CreatePerHour      int64 `json:"create_per_hour"`
@@ -81,7 +31,7 @@ type transparencyRetention struct {
 
 type transparencyResponse struct {
 	Server    string                `json:"server"`
-	Operator  *Operator             `json:"operator,omitempty"`
+	Operator  *config.Operator      `json:"operator,omitempty"`
 	Limits    instanceLimits        `json:"limits"`
 	Rates     transparencyRates     `json:"rates"`
 	Retention transparencyRetention `json:"retention"`
@@ -104,7 +54,7 @@ func (s *Server) transparency() transparencyResponse {
 			DailyCounterS: int64(day.PurgeAt().Sub(day.End) / time.Second),
 		},
 	}
-	if s.cfg.Operator.set() {
+	if s.cfg.Operator != (config.Operator{}) {
 		operator := s.cfg.Operator
 		resp.Operator = &operator
 	}

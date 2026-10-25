@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -58,7 +60,7 @@ func runServer(env Env, args []string, name string, run func(*slog.Logger) error
 	case err == nil:
 		return exitOK
 	case errors.Is(err, errSweepFailed):
-	case errors.Is(err, server.ErrConfig), errors.Is(err, errServerUnsupported):
+	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported):
 		logger.Error(program, "err", err.Error())
 	default:
 		logger.Error(program, "err", logging.ErrorText(err))
@@ -77,7 +79,7 @@ func buildVersion(version string) string {
 }
 
 func open(
-	cfg server.Config,
+	cfg config.Server,
 	openStore func(context.Context, string) (*sqlite.Store, error),
 ) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
@@ -114,8 +116,8 @@ func applyMemoryLimit(getenv func(string) string) {
 	}
 }
 
-func serveConfig(env Env) (server.Config, error) {
-	cfg, err := server.FromEnv(env.Getenv, true)
+func serveConfig(env Env) (config.Server, error) {
+	cfg, err := config.FromEnv(env.Getenv, true)
 	if err != nil {
 		return cfg, err
 	}
@@ -197,7 +199,7 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	if !serverSupported {
 		return errServerUnsupported
 	}
-	cfg, err := server.FromEnv(getenv, false)
+	cfg, err := config.FromEnv(getenv, false)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store"
@@ -58,7 +60,7 @@ type timer struct {
 
 type harness struct {
 	t      *testing.T
-	cfg    server.Config
+	cfg    config.Server
 	store  store.Store
 	blobs  store.Blobs
 	clock  *fakeClock
@@ -94,8 +96,8 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-func baseConfig(pepper, previous []byte) server.Config {
-	cfg := server.Defaults()
+func baseConfig(pepper, previous []byte) config.Server {
+	cfg := config.Defaults()
 	cfg.Pepper = pepper
 	cfg.PepperPrevious = previous
 	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
@@ -219,7 +221,7 @@ func (h *harness) listen() string {
 	return ln.Addr().String()
 }
 
-func newHarness(t *testing.T, cfg server.Config) *harness {
+func newHarness(t *testing.T, cfg config.Server) *harness {
 	t.Helper()
 	dir := t.TempDir()
 	cfg.DataDir = dir
@@ -273,7 +275,7 @@ func (h *harness) open() {
 	h.client = h.ts.Client()
 }
 
-func (h *harness) reopen(cfg server.Config) {
+func (h *harness) reopen(cfg config.Server) {
 	h.ts.Close()
 	cfg.DataDir = h.dir
 	h.cfg = cfg

@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/config"
+
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
 )
 
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
@@ -60,7 +61,7 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 	h := newHarness(t, baseConfig(pepperA, nil))
 	h.statusFrom(request{method: "GET", path: "/api/v1/instance", ip: "198.51.100.7"})
 	scaleway := baseConfig(pepperA, nil)
-	scaleway.ProxyMode = server.ProxyModeScaleway
+	scaleway.ProxyMode = config.ProxyModeScaleway
 	s := newHarness(t, scaleway)
 	s.statusFrom(
 		request{
@@ -79,10 +80,10 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 	t.Parallel()
 	scaleway := baseConfig(pepperA, nil)
-	scaleway.ProxyMode = server.ProxyModeScaleway
+	scaleway.ProxyMode = config.ProxyModeScaleway
 	for _, tc := range []struct {
 		name    string
-		cfg     server.Config
+		cfg     config.Server
 		headers map[string]string
 		header  string
 	}{
