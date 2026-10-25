@@ -131,7 +131,7 @@ interface VectorFile {
 
 export const vectors = loadVectors();
 
-export function loadVectors(): VectorFile {
+function loadVectors(): VectorFile {
   const file = JSON.parse(readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8')) as VectorFile;
   const sections = [file.derive, file.envelope, file.link, file.meta, file.passphrase_strength, file.request, file.pow];
   const complete =

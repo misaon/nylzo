@@ -5,7 +5,7 @@ import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.t
 import { assertLength } from '../primitives/bytes.ts';
 import { idToString, parseId } from '../primitives/identifiers.ts';
 
-export const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
+const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
 const LINK_PATH_PREFIX = '/m/';
 const VERSION_LABEL = /^[1-9]\d{0,8}$/;
 const TEXT_BEFORE_FRAGMENT = /^https?:\/\/[\d.:[\]a-z-]+(\/[^?#]*)(?:\?[^#]*)?$/i;

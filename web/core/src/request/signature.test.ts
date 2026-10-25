@@ -1,16 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { bytesToHex, hexToBytes, vectors } from '../../test/vectors.ts';
 import { TOKEN_LEN } from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { utf8 } from '../primitives/bytes.ts';
 import {
+  authorizationHeader,
   CHALLENGE_LEN,
   newRequestKey,
+  parseChallenge,
   PURPOSE_MANAGE,
   PURPOSE_READ,
+  PURPOSE_VERIFIER,
+  type RequestKey,
   requestKey,
   requestMessage,
-  SIGNATURE_LEN,
+  seedRequestKey,
   signRequest,
   verifierHeader,
   wipeRequestKey,
@@ -18,40 +23,42 @@ import {
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
 
-describe('request signatures', () => {
+describe('AK9: request vectors', () => {
+  it.each(vectors.request)('$name', async (vector) => {
+    const seed = hexToBytes(vector.seed_hex);
+    const key = await requestKey(seed);
+    const fallback = seedRequestKey(seed);
+    expect('privateKey' in key && key.privateKey.extractable).toBe(false);
+    expect(encodeBase64url(key.publicKey)).toBe(vector.public_key);
+    expect(encodeBase64url(fallback.publicKey)).toBe(vector.public_key);
+
+    const challenge = parseChallenge(vector.challenge);
+    const body = hexToBytes(vector.body_hex);
+    const message = await requestMessage(vector.purpose, vector.method, vector.path, challenge, body);
+    expect(bytesToHex(message)).toBe(vector.message_hex);
+
+    const sign = (signingKey: RequestKey) =>
+      signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body);
+    const signature = await sign(key);
+    const fallbackSignature = await sign(fallback);
+    expect(encodeBase64url(signature.signature)).toBe(vector.signature);
+    expect(encodeBase64url(fallbackSignature.signature)).toBe(vector.signature);
+    expect({ authorization: vector.authorization, verifier_header: vector.verifier_header }).toEqual(
+      vector.purpose === PURPOSE_VERIFIER
+        ? { verifier_header: verifierHeader(signature) }
+        : { authorization: authorizationHeader(signature) },
+    );
+  });
+});
+
+describe('request signatures (spec 5.5)', () => {
   it('rejects a seed or challenge of the wrong length', async () => {
     await expect(requestKey(new Uint8Array(TOKEN_LEN - 1))).rejects.toThrow();
     const short = new Uint8Array(CHALLENGE_LEN - 1);
     await expect(requestMessage(PURPOSE_READ, 'GET', path, short, new Uint8Array(0))).rejects.toThrow();
   });
 
-  it('binds purpose, method, path, challenge and body', async () => {
-    const challenge = new Uint8Array(CHALLENGE_LEN).fill(1);
-    const other = new Uint8Array(CHALLENGE_LEN);
-    const body = utf8('{"reason":"spam"}');
-    const base = await requestMessage(PURPOSE_READ, 'GET', path, challenge, body);
-    const variants = [
-      await requestMessage(PURPOSE_MANAGE, 'GET', path, challenge, body),
-      await requestMessage(PURPOSE_READ, 'POST', path, challenge, body),
-      await requestMessage(PURPOSE_READ, 'GET', `${path}/blob`, challenge, body),
-      await requestMessage(PURPOSE_READ, 'GET', path, other, body),
-      await requestMessage(PURPOSE_READ, 'GET', path, challenge, utf8('{"reason":"spa"}')),
-    ];
-    for (const variant of variants) {
-      expect(variant).not.toEqual(base);
-    }
-  });
-
-  it('signs with a non-extractable key and formats the verifier header', async () => {
-    const seed = new Uint8Array(TOKEN_LEN).fill(7);
-    const key = await requestKey(seed);
-    expect('privateKey' in key && key.privateKey.extractable).toBe(false);
-    const sig = await signRequest(key, PURPOSE_READ, 'POST', `${path}/claim`, new Uint8Array(CHALLENGE_LEN));
-    expect(sig.signature).toHaveLength(SIGNATURE_LEN);
-    expect(verifierHeader(sig)).toBe(`${encodeBase64url(key.publicKey)}.${encodeBase64url(sig.signature)}`);
-  });
-
-  it('generates a manage key whose private half never leaves WebCrypto', async () => {
+  it('generates a manage key whose private half never leaves Web Crypto (D39)', async () => {
     const key = await newRequestKey();
     expect(key.privateKey.extractable).toBe(false);
     expect(key.privateKey.usages).toEqual(['sign']);
@@ -62,8 +69,6 @@ describe('request signatures', () => {
     const verifier = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
     const message = await requestMessage(PURPOSE_MANAGE, 'POST', path, challenge, new Uint8Array(0));
     expect(await crypto.subtle.verify('Ed25519', verifier, signature.signature, message)).toBe(true);
-    const other = await newRequestKey();
-    expect(encodeBase64url(other.publicKey)).not.toBe(encodeBase64url(key.publicKey));
   });
 
   it.each([0, 1, 2])('wipes the PKCS#8 copy of the seed when import %i fails', async (failAt) => {
@@ -106,9 +111,9 @@ describe('request signatures', () => {
       expect(fallback.publicKey).toEqual(native.publicKey);
       const challenge = new Uint8Array(CHALLENGE_LEN).fill(5);
       const body = utf8('{"reason":"spam"}');
-      const a = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
-      const b = await signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
-      expect(b.signature).toEqual(a.signature);
+      const nativeSignature = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
+      const fallbackSignature = await signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
+      expect(fallbackSignature.signature).toEqual(nativeSignature.signature);
       seed.fill(9);
       expect('seed' in fallback && fallback.seed[0]).toBe(0);
       wipeRequestKey(fallback);

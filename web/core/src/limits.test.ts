@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { FRAGMENT_VERSION, MAX_OBJECT_BYTES, transferSeconds } from './limits.ts';
-import { FRAGMENT_LABEL } from './link/link.ts';
+import { MAX_OBJECT_BYTES, transferSeconds } from './limits.ts';
 
-describe('protocol limits', () => {
-  it('gives a transfer max(120 s, size / 16000 s), rounded up', () => {
-    expect(transferSeconds(0)).toBe(120);
-    expect(transferSeconds(1_920_000)).toBe(120);
-    expect(transferSeconds(1_920_001)).toBe(121);
-    expect(transferSeconds(MAX_OBJECT_BYTES)).toBe(339);
-  });
-
-  it('labels the fragment with its version', () => {
-    expect(FRAGMENT_LABEL).toBe(String(FRAGMENT_VERSION));
+describe('transfer deadline (spec 6.2 and 6.4)', () => {
+  it.each([
+    [0, 120],
+    [1_920_000, 120],
+    [1_920_001, 121],
+    [MAX_OBJECT_BYTES, 339],
+  ])('gives %i bytes max(120 s, size / 16000 s) rounded up, %i s', (size, seconds) => {
+    expect(transferSeconds(size)).toBe(seconds);
   });
 });

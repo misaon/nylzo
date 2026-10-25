@@ -6,7 +6,6 @@ import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitive
 import { hash } from '../primitives/identifiers.ts';
 
 export const PUBLIC_KEY_LEN = 32;
-export const SIGNATURE_LEN = 64;
 export const CHALLENGE_LEN = 36;
 const AUTHORIZATION_SCHEME = 'Nylzo-Sig';
 export const PURPOSE_READ = 'read';
