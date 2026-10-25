@@ -32,7 +32,8 @@ Za obsah zprávy odpovídá ten, kdo ji vytvořil.
 
 ## Hlášení a odstranění
 
-- Zprávu nahlásíte na stránce Nahlásit zneužití nebo tlačítkem Nahlásit na stránce zprávy. Uveďte identifikátor zprávy (nikdy celý odkaz), důvod a potvrďte, že hlásíte v dobré víře. E-mail je nepovinný.
+- Zprávu nahlásíte na stránce Nahlásit zneužití nebo tlačítkem Nahlásit na stránce zprávy. Uveďte důvod a potvrďte, že hlásíte v dobré víře; e-mail je nepovinný. Formulář zpracuje odkaz ve vašem prohlížeči a pošle jen identifikátor zprávy, klíč neodejde.
+- Pokud píšete na kontakt, uveďte jen identifikátor zprávy, nikdy celý odkaz.
 - Když e-mail uvedete, potvrdíme přijetí a sdělíme rozhodnutí.
 - Obsah nevidíme, proto hlášení posoudí člověk podle vašeho vysvětlení. Hrozbu pro život a zneužívání dětí řešíme přednostně.
 - Pokud zpráva porušuje právo nebo tyto podmínky, smažeme ji. Smazání nejde vrátit.
