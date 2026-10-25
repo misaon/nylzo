@@ -1,0 +1,43 @@
+import { storedForm, type SentRecord, type SentStore } from './sent-records.ts';
+
+export function memoryStore(
+  initial: SentRecord[] = [],
+  broken = false,
+): SentStore & { readonly records: Map<string, SentRecord> } {
+  const records = new Map(initial.map((record) => [record.id, record]));
+  const check = () => {
+    if (broken) {
+      throw new Error('storage disabled');
+    }
+  };
+  return {
+    records,
+    async list() {
+      check();
+      return [...records.values()];
+    },
+    async put(record) {
+      check();
+      storedForm(record);
+      records.set(record.id, record);
+    },
+    async markEnded(id, endedAt) {
+      check();
+      const record = records.get(id);
+      if (!record || record.endedAt !== undefined) {
+        return record;
+      }
+      const ended = { ...record, endedAt };
+      records.set(id, ended);
+      return ended;
+    },
+    async remove(id) {
+      check();
+      records.delete(id);
+    },
+    async clear() {
+      check();
+      records.clear();
+    },
+  };
+}

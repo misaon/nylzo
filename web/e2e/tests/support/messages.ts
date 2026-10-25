@@ -14,7 +14,7 @@ import {
 } from '@nylzo/core';
 import { deriveAll } from '@nylzo/core/scrypt';
 
-import { createApi, type Status } from '../../../app/src/lib/api.ts';
+import { createApi, type Status } from '../../../app/src/shared/api/api.ts';
 import { BASE_URL } from './servers.ts';
 
 export interface MessageFile {

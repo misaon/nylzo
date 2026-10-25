@@ -80,15 +80,10 @@ export default defineConfig(({ isSsrBuild }) => ({
   worker: { format: 'es' },
   test: {
     projects: [
-      { extends: true, test: { name: 'node', include: ['test/**/*.test.ts'], exclude: ['test/**/*.svelte.test.ts'] } },
+      { test: { name: 'node', include: ['src/**/*.test.ts'], exclude: ['src/**/*.svelte.test.ts'] } },
       {
-        extends: true,
         resolve: { conditions: ['browser'] },
-        test: {
-          name: 'client',
-          include: ['test/**/*.svelte.test.ts'],
-          environment: './test/client-environment.ts',
-        },
+        test: { name: 'client', include: ['src/**/*.svelte.test.ts'], environment: './client-environment.ts' },
       },
     ],
   },
