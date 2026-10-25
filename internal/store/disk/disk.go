@@ -1,6 +1,7 @@
 package disk
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -32,26 +33,139 @@ func New(dataDir string) (*Blobs, error) {
 	if err := os.MkdirAll(filepath.Join(root, tempDir), 0o700); err != nil {
 		return nil, err
 	}
-	b := &Blobs{root: root}
-	if err := b.probe(); err != nil {
+	blobs := &Blobs{root: root}
+	if err := blobs.probe(); err != nil {
 		return nil, fmt.Errorf("disk: the blob directory must support hard links and directory sync: %w", err)
 	}
-	return b, nil
+	return blobs, nil
 }
 
-func (b *Blobs) probe() error {
-	f, err := os.CreateTemp(filepath.Join(b.root, tempDir), "probe-*")
+func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64) error {
+	final, err := b.path(ref)
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
-	f.Close()
-	defer os.Remove(tmp)
-	probe := filepath.Join(b.root, tempDir, filepath.Base(tmp)+".link")
-	if err := os.Link(tmp, probe); err != nil {
+	temp, err := b.writeTemp(content, size)
+	if err == nil {
+		err = os.Link(temp, final)
+	}
+	if temp != "" {
+		os.Remove(temp)
+	}
+	if errors.Is(err, os.ErrExist) {
+		return store.ErrConflict
+	}
+	if err != nil {
 		return err
 	}
-	if err := os.Remove(probe); err != nil {
+	if err = b.syncDir(); err != nil {
+		os.Remove(final)
+		return err
+	}
+	return nil
+}
+
+func (b *Blobs) Open(_ context.Context, ref string) (io.ReadCloser, int64, error) {
+	path, err := b.path(ref)
+	if err != nil {
+		return nil, 0, err
+	}
+	file, err := openBlob(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, store.ErrBlobMissing
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		file.Close()
+		return nil, 0, err
+	}
+	return file, info.Size(), nil
+}
+
+func (b *Blobs) Delete(_ context.Context, ref string) error {
+	if err := b.remove(ref); err != nil {
+		return err
+	}
+	return b.syncDir()
+}
+
+func (b *Blobs) DeleteBatch(_ context.Context, refs []string) []error {
+	errs := make([]error, len(refs))
+	if len(refs) == 0 {
+		return errs
+	}
+	for i, ref := range refs {
+		errs[i] = b.remove(ref)
+	}
+	if syncErr := b.syncDir(); syncErr != nil {
+		for i := range errs {
+			errs[i] = cmp.Or(errs[i], syncErr)
+		}
+	}
+	return errs
+}
+
+func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
+	entries, err := os.ReadDir(b.root)
+	if err != nil {
+		return nil, err
+	}
+	blobs := make([]store.BlobInfo, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ref, decodeErr := hex.DecodeString(entry.Name())
+		if decodeErr != nil {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if errors.Is(infoErr, os.ErrNotExist) {
+			continue
+		}
+		if infoErr != nil {
+			return nil, infoErr
+		}
+		blobs = append(blobs, store.BlobInfo{Ref: string(ref), Modified: info.ModTime()})
+	}
+	return blobs, nil
+}
+
+func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
+	temp := filepath.Join(b.root, tempDir)
+	entries, err := os.ReadDir(temp)
+	if err != nil {
+		return 0, err
+	}
+	purged := 0
+	var errs []error
+	for _, entry := range entries {
+		removed, removeErr := removeStale(temp, entry, olderThan)
+		if removed {
+			purged++
+		}
+		errs = append(errs, removeErr)
+	}
+	return purged, errors.Join(errs...)
+}
+
+func (b *Blobs) probe() error {
+	file, err := os.CreateTemp(filepath.Join(b.root, tempDir), "probe-*")
+	if err != nil {
+		return err
+	}
+	temp := file.Name()
+	file.Close()
+	defer os.Remove(temp)
+	link := filepath.Join(b.root, tempDir, filepath.Base(temp)+".link")
+	err = os.Link(temp, link)
+	if err == nil {
+		err = os.Remove(link)
+	}
+	if err != nil {
 		return err
 	}
 	return b.syncDir()
@@ -64,163 +178,62 @@ func (b *Blobs) path(ref string) (string, error) {
 	return filepath.Join(b.root, hex.EncodeToString([]byte(ref))), nil
 }
 
-func (b *Blobs) syncDir() error {
-	d, err := os.Open(b.root)
+func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
+	file, err := os.CreateTemp(filepath.Join(b.root, tempDir), "blob-*")
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer d.Close()
-	return d.Sync()
-}
-
-func (b *Blobs) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
-	final, err := b.path(ref)
-	if err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Join(b.root, tempDir), "blob-*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	n, err := io.Copy(f, r)
-	if err == nil && n != size {
+	written, err := io.Copy(file, content)
+	if err == nil && written != size {
 		err = io.ErrUnexpectedEOF
 	}
 	if err == nil {
-		err = f.Sync()
+		err = file.Sync()
 	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
 	}
 	if err == nil {
 		minute := time.Now().Truncate(time.Minute)
-		err = os.Chtimes(tmp, minute, minute)
+		err = os.Chtimes(file.Name(), minute, minute)
 	}
-	if err == nil {
-		err = os.Link(tmp, final)
-	}
-	os.Remove(tmp)
-	if errors.Is(err, os.ErrExist) {
-		return store.ErrConflict
-	}
+	return file.Name(), err
+}
+
+func (b *Blobs) syncDir() error {
+	dir, err := os.Open(b.root)
 	if err != nil {
 		return err
 	}
-	if err := b.syncDir(); err != nil {
-		os.Remove(final)
-		return err
-	}
-	return nil
-}
-
-func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
-	p, err := b.path(ref)
-	if err != nil {
-		return nil, 0, err
-	}
-	f, err := openBlob(p)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, 0, store.ErrBlobMissing
-		}
-		return nil, 0, err
-	}
-	st, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, 0, err
-	}
-	return f, st.Size(), nil
-}
-
-func (b *Blobs) Delete(ctx context.Context, ref string) error {
-	if err := b.remove(ref); err != nil {
-		return err
-	}
-	return b.syncDir()
-}
-
-func (b *Blobs) DeleteBatch(ctx context.Context, refs []string) []error {
-	errs := make([]error, len(refs))
-	if len(refs) == 0 {
-		return errs
-	}
-	for i, ref := range refs {
-		errs[i] = b.remove(ref)
-	}
-	if err := b.syncDir(); err != nil {
-		for i := range errs {
-			if errs[i] == nil {
-				errs[i] = err
-			}
-		}
-	}
-	return errs
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func (b *Blobs) remove(ref string) error {
-	p, err := b.path(ref)
+	path, err := b.path(ref)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err = os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil
 }
 
-func (b *Blobs) List(ctx context.Context) ([]store.BlobInfo, error) {
-	entries, err := os.ReadDir(b.root)
+func removeStale(dir string, entry os.DirEntry, olderThan time.Time) (bool, error) {
+	info, err := entry.Info()
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	out := make([]store.BlobInfo, 0, len(entries))
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		ref, err := hex.DecodeString(e.Name())
-		if err != nil {
-			continue
-		}
-		info, err := e.Info()
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, store.BlobInfo{Ref: string(ref), Modified: info.ModTime()})
+	if info.ModTime().After(olderThan) {
+		return false, nil
 	}
-	return out, nil
-}
-
-func (b *Blobs) PurgeTemp(ctx context.Context, olderThan time.Time) (int, error) {
-	entries, err := os.ReadDir(filepath.Join(b.root, tempDir))
-	if err != nil {
-		return 0, err
+	err = os.Remove(filepath.Join(dir, entry.Name()))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
 	}
-	n := 0
-	var errs []error
-	for _, e := range entries {
-		info, err := e.Info()
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		if info.ModTime().After(olderThan) {
-			continue
-		}
-		switch err := os.Remove(filepath.Join(b.root, tempDir, e.Name())); {
-		case err == nil:
-			n++
-		case !errors.Is(err, os.ErrNotExist):
-			errs = append(errs, err)
-		}
-	}
-	return n, errors.Join(errs...)
+	return err == nil, err
 }

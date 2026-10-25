@@ -4,6 +4,6 @@ package disk
 
 import "os"
 
-func openBlob(p string) (*os.File, error) {
-	return os.Open(p)
+func openBlob(path string) (*os.File, error) {
+	return os.Open(path)
 }
