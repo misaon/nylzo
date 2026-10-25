@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/logging"
+
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -80,7 +82,7 @@ func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
 		return
 	}
 	if err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, ratelimit.Day(now).Start); err != nil {
-		s.log.Error("global-release", "err", ErrorText(err))
+		s.log.Error("global-release", "err", logging.ErrorText(err))
 	}
 }
 

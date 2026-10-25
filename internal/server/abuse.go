@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/logging"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -68,7 +70,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err != nil {
-			s.log.Error("abuse-record", "err", ErrorText(err))
+			s.log.Error("abuse-record", "err", logging.ErrorText(err))
 		}
 	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
@@ -88,7 +90,7 @@ func (s *Server) recordAbuse(ctx context.Context, now time.Time, id, reason stri
 	}
 	if err := s.appendAbuse(now, id, reason); err != nil {
 		if rerr := s.store.RateRelease(context.WithoutCancel(ctx), key, d.Start); rerr != nil {
-			s.log.Error("abuse-release", "err", ErrorText(rerr))
+			s.log.Error("abuse-release", "err", logging.ErrorText(rerr))
 		}
 		return err
 	}
@@ -126,7 +128,7 @@ func (s *Server) appendAbuse(now time.Time, id, reason string) error {
 	}
 	day := ratelimit.Day(now).Start
 	if err := errors.Join(os.Chtimes(path, day, day), os.Chtimes(s.abuseDir, day, day)); err != nil {
-		s.log.Error("abuse-times", "err", ErrorText(err))
+		s.log.Error("abuse-times", "err", logging.ErrorText(err))
 	}
 	return nil
 }

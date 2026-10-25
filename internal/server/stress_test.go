@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/logging"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -54,7 +56,7 @@ func sweepProcess(dir, at string) int {
 		return 1
 	}
 	if _, err := server.SweepStore(ctx, st, blobs, dir, now); !onlyCheckpointBusy(err) {
-		fmt.Fprintln(os.Stderr, "sweep:", server.ErrorText(err))
+		fmt.Fprintln(os.Stderr, "sweep:", logging.ErrorText(err))
 		return 1
 	}
 	fmt.Fprintln(os.Stdout, sweptMarker)

@@ -1,8 +1,6 @@
 package server
 
 import (
-	"context"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -88,65 +86,4 @@ func (s *Server) allowAPI(r *http.Request) bool {
 	return s.sources.Allow(s.addressKey.Source(addr), now) &&
 		s.prefixes.Allow(s.addressKey.Range(addr), now) &&
 		s.instance.Allow(ratelimit.Bucket{}, now)
-}
-
-type statusWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (w *statusWriter) Unwrap() http.ResponseWriter {
-	return w.ResponseWriter
-}
-
-func (w *statusWriter) WriteHeader(code int) {
-	if w.status == 0 {
-		w.status = code
-	}
-	w.ResponseWriter.WriteHeader(code)
-}
-
-func (w *statusWriter) ReadFrom(r io.Reader) (int64, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	return io.Copy(w.ResponseWriter, r)
-}
-
-func (w *statusWriter) Write(b []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	return w.ResponseWriter.Write(b)
-}
-
-var objectRoutes = map[string]bool{
-	"POST /api/v1/messages":            true,
-	"POST /api/v1/messages/{id}/claim": true,
-	"GET /api/v1/messages/{id}/blob":   true,
-}
-
-type routeKey struct{}
-
-func (s *Server) logging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		sw := &statusWriter{ResponseWriter: w}
-		route := new(string)
-		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), routeKey{}, route)))
-		attrs := []any{"method", r.Method, "route", *route, "status", sw.status}
-		if *route != "" && !objectRoutes[*route] {
-			attrs = append(attrs, "duration_ms", float64(time.Since(start).Microseconds())/1000)
-		}
-		s.log.Info("request", attrs...)
-	})
-}
-
-func recordRoute(mux http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mux.ServeHTTP(w, r)
-		if route, ok := r.Context().Value(routeKey{}).(*string); ok {
-			*route = r.Pattern
-		}
-	})
 }

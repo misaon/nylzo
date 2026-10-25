@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -51,7 +52,7 @@ func runServer(env Env, args []string, name string, run func(*slog.Logger) error
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code
 	}
-	logger := server.NewLogger(env.Stderr)
+	logger := logging.New(env.Stderr)
 	err := run(logger)
 	switch {
 	case err == nil:
@@ -60,7 +61,7 @@ func runServer(env Env, args []string, name string, run func(*slog.Logger) error
 	case errors.Is(err, server.ErrConfig), errors.Is(err, errServerUnsupported):
 		logger.Error(program, "err", err.Error())
 	default:
-		logger.Error(program, "err", server.ErrorText(err))
+		logger.Error(program, "err", logging.ErrorText(err))
 	}
 	return exitError
 }

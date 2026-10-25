@@ -11,6 +11,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -53,7 +54,7 @@ func runTakedown(ctx context.Context, env Env, args []string) int {
 	}
 	st, blobs, err := open(cfg, sqlite.OpenCurrent)
 	if err != nil {
-		return failf(env, "%s", server.ErrorText(err))
+		return failf(env, "%s", logging.ErrorText(err))
 	}
 	defer st.Close()
 	failed := 0
@@ -68,7 +69,7 @@ func runTakedown(ctx context.Context, env Env, args []string) int {
 			fmt.Fprintf(env.Stdout, "%s no live message\n", id)
 		case err != nil:
 			failed++
-			fmt.Fprintf(env.Stdout, "%s failed: %s\n", id, server.ErrorText(err))
+			fmt.Fprintf(env.Stdout, "%s failed: %s\n", id, logging.ErrorText(err))
 		case final != store.StateDeleted:
 			fmt.Fprintf(env.Stdout, "%s already ended as %s\n", id, final)
 		default:

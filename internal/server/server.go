@@ -1,11 +1,9 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io/fs"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -29,8 +28,6 @@ const (
 	h2cMaxFrame       = 16 << 10
 	streamBusyRetry   = 5 * time.Second
 	diskFullRetry     = 60 * time.Second
-	httpErrorLogRate  = 1
-	httpErrorLogBurst = 20
 	reconcileKey      = "sweep:reconcile:d"
 )
 
@@ -112,7 +109,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		clock:     time.Now,
 		afterFunc: pending.after,
 		timers:    pending,
-		log:       NewLogger(os.Stderr),
+		log:       logging.New(os.Stderr),
 		abuseDir:  abuseDir(cfg.DataDir),
 		webFiles:  webFiles,
 		freeSpace: freeSpace,
@@ -173,68 +170,8 @@ func (s *Server) HTTPServer() *http.Server {
 			MaxReceiveBufferPerStream:     h2cStreamBuffer,
 			MaxReadFrameSize:              h2cMaxFrame,
 		},
-		ErrorLog: log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
+		ErrorLog: logging.NewHTTPErrorLog(s.log, s.clock),
 	}
-}
-
-type sinkLevel struct {
-	bucket  *ratelimit.Limiter
-	dropped int
-}
-
-type httpErrorSink struct {
-	log   *slog.Logger
-	clock func() time.Time
-	mu    sync.Mutex
-	warn  sinkLevel
-	err   sinkLevel
-}
-
-func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
-	return &httpErrorSink{
-		log:   l,
-		clock: clock,
-		warn:  sinkLevel{bucket: ratelimit.NewLimiter(httpErrorLogRate, httpErrorLogBurst)},
-		err:   sinkLevel{bucket: ratelimit.NewLimiter(httpErrorLogRate, httpErrorLogBurst)},
-	}
-}
-
-var httpErrorCategories = []struct {
-	prefix string
-	name   string
-	level  slog.Level
-}{
-	{"http: Accept error", "accept", slog.LevelError},
-	{"http: panic serving", "panic", slog.LevelError},
-	{"http2: panic serving", "panic", slog.LevelError},
-	{"http: TLS handshake error", "tls-handshake", slog.LevelWarn},
-	{"http2: ", "http2", slog.LevelWarn},
-	{"http: superfluous response.WriteHeader", "superfluous-write-header", slog.LevelWarn},
-}
-
-func (h *httpErrorSink) Write(p []byte) (int, error) {
-	name, level := "other", slog.LevelWarn
-	for _, c := range httpErrorCategories {
-		if bytes.HasPrefix(p, []byte(c.prefix)) {
-			name, level = c.name, c.level
-			break
-		}
-	}
-	sink := &h.warn
-	if level >= slog.LevelError {
-		sink = &h.err
-	}
-	h.mu.Lock()
-	if !sink.bucket.Allow(ratelimit.Bucket{}, h.clock()) {
-		sink.dropped++
-		h.mu.Unlock()
-		return len(p), nil
-	}
-	dropped := sink.dropped
-	sink.dropped = 0
-	h.mu.Unlock()
-	h.log.Log(context.Background(), level, "net/http error", "category", name, "dropped", dropped)
-	return len(p), nil
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
@@ -291,7 +228,7 @@ func SweepLogAttrs(report store.SweepReport, err error) []any {
 	if len(leaves) == 0 {
 		leaves = []error{err}
 	}
-	return append(attrs, "errors", len(leaves), "err", ErrorText(leaves[0]))
+	return append(attrs, "errors", len(leaves), "err", logging.ErrorText(leaves[0]))
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
@@ -351,7 +288,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+ClientManifestPath, s.handleClientManifest)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return s.logging(
-		s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux)))))),
+	return logging.Requests(s.log,
+		s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(logging.Route(mux)))))),
 	)
 }

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/logging"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -141,7 +143,7 @@ func failure(ctx context.Context, err error) (slog.Level, string) {
 	if clientGone(ctx, err) {
 		return slog.LevelInfo, "client went away"
 	}
-	return slog.LevelError, ErrorText(err)
+	return slog.LevelError, logging.ErrorText(err)
 }
 
 func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error) {
@@ -540,7 +542,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.store.Create(ctx, m, s.storedCreateCounters(now)...); err != nil {
 		if derr := s.blobs.Delete(context.WithoutCancel(ctx), id.String()); derr != nil {
-			s.log.Error("create-cleanup", "err", ErrorText(derr))
+			s.log.Error("create-cleanup", "err", logging.ErrorText(derr))
 		}
 		if errors.Is(err, store.ErrConflict) {
 			s.rejectCreate(w, r, http.StatusConflict, errConflict)
@@ -569,7 +571,7 @@ func (s *Server) reserveDisk(size int64) (func(), bool) {
 	switch {
 	case s.diskLow.Swap(true):
 	case err != nil:
-		s.log.Error("disk-free", "err", ErrorText(err))
+		s.log.Error("disk-free", "err", logging.ErrorText(err))
 	default:
 		s.log.Error("disk-full")
 	}
@@ -578,14 +580,14 @@ func (s *Server) reserveDisk(size int64) (func(), bool) {
 
 func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {
 	if err := http.NewResponseController(w).SetReadDeadline(bodyBy); err != nil {
-		s.log.Error("read-deadline", "err", ErrorText(err))
+		s.log.Error("read-deadline", "err", logging.ErrorText(err))
 	}
 	s.setWriteDeadline(w, bodyBy.Add(writeTimeout))
 }
 
 func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 	if err := http.NewResponseController(w).SetWriteDeadline(by); err != nil {
-		s.log.Error("write-deadline", "err", ErrorText(err))
+		s.log.Error("write-deadline", "err", logging.ErrorText(err))
 	}
 }
 
@@ -786,7 +788,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		msgID := id.String()
 		s.afterFunc(result.Lease.ExpiresAt.Add(store.LeaseTimerSlack).Sub(s.clock()), func() {
 			if _, err := store.Release(context.Background(), s.store, s.blobs, msgID, s.clock()); err != nil {
-				s.log.Error("lease-timer", "err", ErrorText(err))
+				s.log.Error("lease-timer", "err", logging.ErrorText(err))
 			}
 		})
 	}
@@ -862,7 +864,7 @@ func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State,
 	case errors.Is(err, store.ErrNotFound):
 		return s.endedState(ctx, id)
 	case err != nil:
-		s.log.Error("finish-ending", "err", ErrorText(err))
+		s.log.Error("finish-ending", "err", logging.ErrorText(err))
 		return liveState(rec.Message, now), nil
 	}
 	return state, nil
@@ -900,7 +902,7 @@ func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, id string, s
 		now,
 	); err != nil &&
 		!errors.Is(err, store.ErrNotFound) {
-		s.log.Error("finish-ending", "err", ErrorText(err))
+		s.log.Error("finish-ending", "err", logging.ErrorText(err))
 	}
 	writeGone(w, string(state))
 }

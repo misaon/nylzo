@@ -756,7 +756,8 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 			t,
 			ts,
 			"policy",
-			append([]string{"--opens", "2", "--ttl", "1h", "--manage-token-file", manage}, c.args...)...)
+			append([]string{"--opens", "2", "--ttl", "1h", "--manage-token-file", manage}, c.args...)...,
+		)
 		proxy := rewritingProxy(t, ts.url, func(r *http.Request, body []byte) []byte {
 			if r.Method == http.MethodGet && strings.Count(r.URL.Path, "/") == 4 {
 				return []byte(c.rewrite(string(body)))
