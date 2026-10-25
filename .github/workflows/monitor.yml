@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
 jobs:
   web-client:
     name: The public instance sends the released web client (AK25)

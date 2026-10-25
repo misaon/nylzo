@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build && vite build --ssr src/prerender.ts --outDir .prerender && node scripts/prerender.ts",
+    "build": "vite build && vite build --ssr src/app/prerender.ts --outDir .prerender && node scripts/prerender.ts",
     "check": "node scripts/check-sources.ts",
     "test": "vitest run",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p scripts"

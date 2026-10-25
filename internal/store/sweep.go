@@ -19,51 +19,62 @@ type SweepReport struct {
 }
 
 func (r SweepReport) LogAttrs() []any {
-	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "resumed", r.Resumed, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
+	return []any{
+		"expired", r.Expired,
+		"leases", r.ExpiredLeases,
+		"released", r.BlobsReleased,
+		"tombstones", r.Tombstones,
+		"counters", r.Counters,
+		"resumed", r.Resumed,
+		"orphans", r.OrphanedBlobs,
+		"temp", r.StaleTempFiles,
+	}
 }
 
-func SweepAll(ctx context.Context, s Store, b Blobs, now time.Time) (SweepReport, error) {
-	var r SweepReport
-	var err error
-	r.Expired, err = sweepExpired(ctx, s, b, now)
-	errs := []error{err}
-	r.ExpiredLeases, err = purge(ctx, "leases", s.PurgeLeases, now)
-	errs = append(errs, err)
-	r.BlobsReleased, err = eachPage(ctx, "release", func(after string) ([]string, error) {
-		return s.SpentPage(ctx, after, SweepBatch)
-	}, func(id string) (bool, error) {
-		return Release(ctx, s, b, id, now)
+func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (SweepReport, error) {
+	var report SweepReport
+	var errs []error
+	count := func(total *int, step func() (int, error)) {
+		done, err := step()
+		*total = done
+		errs = append(errs, err)
+	}
+	count(&report.Expired, func() (int, error) { return sweepExpired(ctx, storage, blobs, now) })
+	count(&report.ExpiredLeases, func() (int, error) { return purge(ctx, "leases", storage.PurgeLeases, now) })
+	count(&report.BlobsReleased, func() (int, error) {
+		spent := func(after string) ([]string, error) { return storage.SpentPage(ctx, after, SweepBatch) }
+		release := func(id string) (bool, error) { return Release(ctx, storage, blobs, id, now) }
+		return eachPage(ctx, "release", spent, release)
 	})
-	errs = append(errs, err)
-	r.Resumed, err = eachPage(ctx, "resume ending", func(after string) ([]string, error) {
-		return s.EndingPage(ctx, now, after, SweepBatch)
-	}, func(id string) (bool, error) {
-		_, err := EndMessage(ctx, s, b, id, StateDeleted, now)
-		if errors.Is(err, ErrNotFound) {
-			return false, nil
+	count(&report.Resumed, func() (int, error) {
+		ending := func(after string) ([]string, error) { return storage.EndingPage(ctx, now, after, SweepBatch) }
+		finish := func(id string) (bool, error) {
+			_, err := EndMessage(ctx, storage, blobs, id, StateDeleted, now)
+			if errors.Is(err, ErrNotFound) {
+				return false, nil
+			}
+			return err == nil, err
 		}
-		return err == nil, err
+		return eachPage(ctx, "resume ending", ending, finish)
 	})
-	errs = append(errs, err)
-	r.Tombstones, err = purge(ctx, "tombstones", s.PurgeTombstones, now)
-	errs = append(errs, err)
-	r.Counters, err = purge(ctx, "counters", s.RatePurge, now)
-	errs = append(errs, err, s.Checkpoint(ctx))
-	r.StaleTempFiles, err = b.PurgeTemp(ctx, now.Add(-BlobGrace))
-	return r, errors.Join(append(errs, err)...)
+	count(&report.Tombstones, func() (int, error) { return purge(ctx, "tombstones", storage.PurgeTombstones, now) })
+	count(&report.Counters, func() (int, error) { return purge(ctx, "counters", storage.RatePurge, now) })
+	errs = append(errs, storage.Checkpoint(ctx))
+	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemp(ctx, now.Add(-BlobGrace)) })
+	return report, errors.Join(errs...)
 }
 
-func sweepExpired(ctx context.Context, s Messages, b Blobs, now time.Time) (int, error) {
+func sweepExpired(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (int, error) {
 	var errs []error
 	ended := 0
 	var after ExpiredMessage
 	for ctx.Err() == nil {
-		page, err := s.ExpiredPage(ctx, now, after, SweepBatch)
+		page, err := messages.ExpiredPage(ctx, now, after, SweepBatch)
 		if err != nil {
 			return ended, errors.Join(append(errs, fmt.Errorf("store: list expired: %w", err))...)
 		}
-		n, err := endExpiredPage(context.WithoutCancel(ctx), s, b, page, now)
-		ended += n
+		endedOnPage, err := endExpiredPage(context.WithoutCancel(ctx), messages, blobs, page, now)
+		ended += endedOnPage
 		errs = append(errs, err)
 		if len(page) < SweepBatch {
 			break
@@ -73,38 +84,49 @@ func sweepExpired(ctx context.Context, s Messages, b Blobs, now time.Time) (int,
 	return ended, errors.Join(errs...)
 }
 
-func endExpiredPage(ctx context.Context, s Messages, b Blobs, page []ExpiredMessage, now time.Time) (int, error) {
+func endExpiredPage(
+	ctx context.Context,
+	messages Messages,
+	blobs Blobs,
+	page []ExpiredMessage,
+	now time.Time,
+) (int, error) {
 	refs := make([]string, 0, len(page))
-	for _, m := range page {
-		if m.BlobRef != "" {
-			refs = append(refs, m.BlobRef)
+	for _, expired := range page {
+		if expired.BlobRef != "" {
+			refs = append(refs, expired.BlobRef)
 		}
 	}
 	var deleteErrs []error
 	if len(refs) > 0 {
-		deleteErrs = b.DeleteBatch(ctx, refs)
+		deleteErrs = blobs.DeleteBatch(ctx, refs)
 	}
 	var errs []error
 	ids := make([]string, 0, len(page))
-	for _, m := range page {
-		if m.BlobRef != "" {
-			err := deleteErrs[0]
+	for _, expired := range page {
+		if expired.BlobRef != "" {
+			deleteErr := deleteErrs[0]
 			deleteErrs = deleteErrs[1:]
-			if err != nil {
-				errs = append(errs, fmt.Errorf("store: end expired: %w", err))
+			if deleteErr != nil {
+				errs = append(errs, fmt.Errorf("store: end expired: %w", deleteErr))
 				continue
 			}
 		}
-		ids = append(ids, m.ID)
+		ids = append(ids, expired.ID)
 	}
 	if len(ids) == 0 {
 		return 0, errors.Join(errs...)
 	}
-	n, err := s.EndExpired(ctx, ids, now)
-	return n, errors.Join(append(errs, err)...)
+	ended, err := messages.EndExpired(ctx, ids, now)
+	return ended, errors.Join(append(errs, err)...)
 }
 
-func eachPage(ctx context.Context, step string, page func(after string) ([]string, error), fn func(id string) (bool, error)) (int, error) {
+func eachPage(
+	ctx context.Context,
+	step string,
+	page func(after string) ([]string, error),
+	handle func(id string) (bool, error),
+) (int, error) {
 	var errs []error
 	done := 0
 	after := ""
@@ -113,19 +135,9 @@ func eachPage(ctx context.Context, step string, page func(after string) ([]strin
 		if err != nil {
 			return done, errors.Join(append(errs, fmt.Errorf("store: %s: %w", step, err))...)
 		}
-		for _, id := range ids {
-			if ctx.Err() != nil {
-				break
-			}
-			ok, err := fn(id)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("store: %s: %w", step, err))
-				continue
-			}
-			if ok {
-				done++
-			}
-		}
+		handled, pageErrs := handleAll(ctx, step, ids, handle)
+		done += handled
+		errs = append(errs, pageErrs...)
 		if len(ids) < SweepBatch {
 			break
 		}
@@ -134,15 +146,39 @@ func eachPage(ctx context.Context, step string, page func(after string) ([]strin
 	return done, errors.Join(errs...)
 }
 
-func purge(ctx context.Context, step string, page func(context.Context, time.Time, int) (int, error), now time.Time) (int, error) {
+func handleAll(ctx context.Context, step string, ids []string, handle func(id string) (bool, error)) (int, []error) {
+	done := 0
+	var errs []error
+	for _, id := range ids {
+		if ctx.Err() != nil {
+			break
+		}
+		handled, err := handle(id)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("store: %s: %w", step, err))
+			continue
+		}
+		if handled {
+			done++
+		}
+	}
+	return done, errs
+}
+
+func purge(
+	ctx context.Context,
+	step string,
+	page func(context.Context, time.Time, int) (int, error),
+	now time.Time,
+) (int, error) {
 	total := 0
 	for {
-		n, err := page(ctx, now, SweepBatch)
+		purged, err := page(ctx, now, SweepBatch)
 		if err != nil {
 			return total, fmt.Errorf("store: purge %s: %w", step, err)
 		}
-		total += n
-		if n < SweepBatch {
+		total += purged
+		if purged < SweepBatch {
 			return total, nil
 		}
 	}

@@ -1,11 +1,8 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"io/fs"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,138 +11,127 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/abuse"
+	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/diskspace"
+	"github.com/misaon/nylzo/internal/server/logging"
+	"github.com/misaon/nylzo/internal/server/proof"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/sweep"
+	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	readHeaderTimeout = 5 * time.Second
-	readTimeout       = 120 * time.Second
-	writeTimeout      = 120 * time.Second
-	idleTimeout       = 30 * time.Second
-	maxHeaderBytes    = 8 << 10
-	h2cStreamBuffer   = 64 << 10
-	h2cConnBuffer     = 1 << 20
-	h2cMaxFrame       = 16 << 10
-	streamBusyRetry   = 5 * time.Second
-	diskFullRetry     = 60 * time.Second
-	httpErrorLogRate  = 1
-	httpErrorLogBurst = 20
-	reconcileKey      = "sweep:reconcile:d"
+	readHeaderTimeout   = 5 * time.Second
+	readTimeout         = 120 * time.Second
+	writeTimeout        = 120 * time.Second
+	idleTimeout         = 30 * time.Second
+	maxHeaderBytes      = 8 << 10
+	h2cStreamBuffer     = 64 << 10
+	h2cConnectionBuffer = 1 << 20
+	h2cMaxFrame         = 16 << 10
 )
 
 type Option func(*Server)
 
 func WithClock(clock func() time.Time) Option {
-	return func(s *Server) {
+	return func(server *Server) {
 		if clock != nil {
-			s.clock = clock
+			server.clock = clock
 		}
 	}
 }
 
-func WithAfterFunc(after func(d time.Duration, fn func())) Option {
-	return func(s *Server) {
+func WithAfterFunc(after func(delay time.Duration, run func())) Option {
+	return func(server *Server) {
 		if after != nil {
-			s.afterFunc = after
+			server.after = after
 		}
 	}
 }
 
-func WithLogger(l *slog.Logger) Option {
-	return func(s *Server) {
-		if l != nil {
-			s.log = l
+func WithLogger(logger *slog.Logger) Option {
+	return func(server *Server) {
+		if logger != nil {
+			server.logger = logger
 		}
 	}
 }
 
 type Server struct {
-	cfg           Config
-	store         store.Store
-	blobs         store.Blobs
-	ring          *pepper.Ring
-	clock         func() time.Time
-	afterFunc     func(time.Duration, func())
-	timers        *timers
-	log           *slog.Logger
-	bucket        *keyedLimiter
-	sources       *keyedLimiter
-	prefixes      *keyedLimiter
-	addrKey       *addrKey
-	counters      *addrCounters
-	forwardNotice atomic.Int64
-	spent         *spentChallenges
-	spends        *spendBatcher
-	powSlots      chan struct{}
-	powSlotWait   time.Duration
-	streams       *streamSlots
-	freeSpace     func(string) (uint64, error)
-	diskLow       atomic.Bool
-	diskReserved  atomic.Int64
-	handler       http.Handler
-	abuseMu       sync.Mutex
-	abuseDir      string
-	webFiles      fs.FS
-	web           webClient
-	pages         map[string]page
-	robots        []byte
-	sitemap       []byte
-	manifest      ClientManifest
+	settings        config.Server
+	store           store.Store
+	blobs           store.Blobs
+	ring            *pepper.Ring
+	clock           func() time.Time
+	after           func(time.Duration, func())
+	leaseTimers     *timers
+	logger          *slog.Logger
+	instanceLimiter *ratelimit.Limiter
+	sourceLimiter   *ratelimit.Limiter
+	rangeLimiter    *ratelimit.Limiter
+	addressKey      *ratelimit.AddressKey
+	proxies         ratelimit.Proxies
+	counters        *ratelimit.Counters
+	streams         *ratelimit.Streams
+	forwardedHour   atomic.Int64
+	challenges      *proof.Challenges
+	work            *proof.Work
+	idTokens        proof.IDTokens
+	disk            *diskspace.Reserver
+	reports         *abuse.Reports
+	webFiles        fs.FS
+	webBuild        webclient.Build
+	pages           webclient.Pages
+	robots          []byte
+	sitemap         []byte
+	manifest        webclient.Manifest
+	handler         http.Handler
 }
 
-func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
-	if err := cfg.Validate(); err != nil {
+func New(settings *config.Server, storage store.Store, blobs store.Blobs, options ...Option) (*Server, error) {
+	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
-	ring, err := pepper.NewRing(cfg.Pepper, cfg.PepperPrevious)
+	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
 	if err != nil {
 		return nil, err
 	}
-	pending := &timers{}
-	s := &Server{
-		cfg:       cfg,
-		store:     st,
-		blobs:     blobs,
-		ring:      ring,
-		clock:     time.Now,
-		afterFunc: pending.after,
-		timers:    pending,
-		log:       NewLogger(os.Stderr),
-		abuseDir:  abuseDir(cfg.DataDir),
-		webFiles:  webFiles,
-		freeSpace: freeSpace,
-	}
-	for _, o := range opts {
-		o(s)
-	}
-	if s.web, err = loadWebClient(s.webFiles); err != nil {
+	webFiles, err := embeddedWebFiles()
+	if err != nil {
 		return nil, err
 	}
-	if s.pages, err = renderPages(s.web, cfg.PublicURL); err != nil {
-		return nil, err
+	leaseTimers := &timers{}
+	server := &Server{
+		settings:    *settings,
+		store:       storage,
+		blobs:       blobs,
+		ring:        ring,
+		clock:       time.Now,
+		after:       leaseTimers.after,
+		leaseTimers: leaseTimers,
+		logger:      logging.New(os.Stderr),
+		webFiles:    webFiles,
 	}
-	s.log.Info("web-client", "built", s.web.built, "assets", len(s.web.assets), "public_url", cfg.PublicURL)
-	s.robots = robotsTxt(cfg.PublicURL)
-	if cfg.PublicURL != "" {
-		s.sitemap = sitemapXML(cfg.PublicURL)
+	for _, option := range options {
+		option(server)
 	}
-	s.manifest = s.web.embedded().Manifest(cfg.Version, cfg.PublicURL)
-	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
-	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
-	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
-	s.addrKey = newAddrKey()
-	s.counters = newAddrCounters()
-	s.spent = newSpentChallenges()
-	s.spends = newSpendBatcher(st)
-	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
-	s.powSlotWait = powSlotWait
-	s.streams = newStreamSlots(cfg.MaxStreams)
-	s.handler = s.routes()
-	return s, nil
+	if loadErr := server.loadWebClient(); loadErr != nil {
+		return nil, loadErr
+	}
+	server.setUpLimits()
+	server.challenges = proof.NewChallenges(ring, storage)
+	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
+	server.idTokens = proof.NewIDTokens(ring)
+	server.reports = abuse.NewReports(settings.DataDir, storage, server.logger)
+	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
+	server.handler = server.routes()
+	return server, nil
 }
 
 func (s *Server) Close() {
-	s.timers.stop()
+	s.leaseTimers.stop()
 }
 
 func (s *Server) Handler() http.Handler {
@@ -157,7 +143,7 @@ func (s *Server) HTTPServer() *http.Server {
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	return &http.Server{
-		Addr:              s.cfg.Listen,
+		Addr:              s.settings.Listen,
 		Handler:           s.handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -165,135 +151,35 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cConnBuffer, MaxReceiveBufferPerStream: h2cStreamBuffer, MaxReadFrameSize: h2cMaxFrame},
-		ErrorLog:          log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
+		HTTP2: &http.HTTP2Config{
+			MaxReceiveBufferPerConnection: h2cConnectionBuffer,
+			MaxReceiveBufferPerStream:     h2cStreamBuffer,
+			MaxReadFrameSize:              h2cMaxFrame,
+		},
+		ErrorLog: logging.NewHTTPErrorLog(s.logger, s.clock),
 	}
-}
-
-type sinkLevel struct {
-	bucket  *keyedLimiter
-	dropped int
-}
-
-type httpErrorSink struct {
-	log   *slog.Logger
-	clock func() time.Time
-	mu    sync.Mutex
-	warn  sinkLevel
-	err   sinkLevel
-}
-
-func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
-	return &httpErrorSink{
-		log:   l,
-		clock: clock,
-		warn:  sinkLevel{bucket: newKeyedLimiter(httpErrorLogRate, httpErrorLogBurst)},
-		err:   sinkLevel{bucket: newKeyedLimiter(httpErrorLogRate, httpErrorLogBurst)},
-	}
-}
-
-var httpErrorCategories = []struct {
-	prefix string
-	name   string
-	level  slog.Level
-}{
-	{"http: Accept error", "accept", slog.LevelError},
-	{"http: panic serving", "panic", slog.LevelError},
-	{"http2: panic serving", "panic", slog.LevelError},
-	{"http: TLS handshake error", "tls-handshake", slog.LevelWarn},
-	{"http2: ", "http2", slog.LevelWarn},
-	{"http: superfluous response.WriteHeader", "superfluous-write-header", slog.LevelWarn},
-}
-
-func (h *httpErrorSink) Write(p []byte) (int, error) {
-	name, level := "other", slog.LevelWarn
-	for _, c := range httpErrorCategories {
-		if bytes.HasPrefix(p, []byte(c.prefix)) {
-			name, level = c.name, c.level
-			break
-		}
-	}
-	sink := &h.warn
-	if level >= slog.LevelError {
-		sink = &h.err
-	}
-	h.mu.Lock()
-	if !sink.bucket.allow(singleKey, h.clock()) {
-		sink.dropped++
-		h.mu.Unlock()
-		return len(p), nil
-	}
-	dropped := sink.dropped
-	sink.dropped = 0
-	h.mu.Unlock()
-	h.log.Log(context.Background(), level, "net/http error", "category", name, "dropped", dropped)
-	return len(p), nil
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return SweepStore(ctx, s.store, s.blobs, s.cfg.DataDir, s.clock())
-}
-
-func SweepStore(ctx context.Context, st store.Store, blobs store.Blobs, dataDir string, now time.Time) (store.SweepReport, error) {
-	report, err := store.SweepAll(ctx, st, blobs, now)
-	err = errors.Join(err, pruneAbuse(abuseDir(dataDir), now))
-	done, derr := st.RateGet(ctx, reconcileKey, dayWindow(now).start)
-	if derr != nil {
-		return report, errors.Join(err, derr)
-	}
-	if done.Count == 0 {
-		orphans, listed, rerr := store.Reconcile(ctx, st, blobs, now)
-		report.OrphanedBlobs = orphans
-		if listed {
-			d := dayWindow(now)
-			if _, merr := st.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); merr != nil {
-				rerr = errors.Join(rerr, merr)
-			}
-		}
-		err = errors.Join(err, rerr)
-	}
-	return report, err
-}
-
-func leafErrors(err error) []error {
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		var out []error
-		for _, e := range joined.Unwrap() {
-			out = append(out, leafErrors(e)...)
-		}
-		return out
-	}
-	return []error{err}
-}
-
-func SweepLogAttrs(report store.SweepReport, err error) []any {
-	attrs := report.LogAttrs()
-	if err == nil {
-		return attrs
-	}
-	leaves := leafErrors(err)
-	if len(leaves) == 0 {
-		leaves = []error{err}
-	}
-	return append(attrs, "errors", len(leaves), "err", ErrorText(leaves[0]))
+	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
-	if s.cfg.SweepInterval <= 0 {
+	if s.settings.SweepInterval <= 0 {
 		return
 	}
-	ticker := time.NewTicker(s.cfg.SweepInterval)
+	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
 		report, err := s.SweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
-			s.log.Info("sweep-stopped", report.LogAttrs()...)
+			s.logger.InfoContext(ctx, "sweep-stopped", report.LogAttrs()...)
 			return
 		case err != nil:
-			s.log.Error("sweep", SweepLogAttrs(report, err)...)
+			s.logger.ErrorContext(ctx, "sweep", sweep.LogAttributes(report, err)...)
 		default:
-			s.log.Info("sweep", report.LogAttrs()...)
+			s.logger.InfoContext(ctx, "sweep", report.LogAttrs()...)
 		}
 		select {
 		case <-ctx.Done():
@@ -303,37 +189,44 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	}
 }
 
-func (s *Server) routes() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
-	mux.HandleFunc("HEAD /api/v1/instance", s.handleAPINotFound)
-	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
-	mux.HandleFunc("HEAD /api/v1/challenge", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
-	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
-	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/ack", s.handleAck)
-	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
-	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
-	mux.HandleFunc("GET /api/v1/messages/{id}/status", s.handleStatus)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
-	mux.HandleFunc("/api/", s.handleAPINotFound)
-	mux.HandleFunc("GET /m/{id}", s.handlePage)
-	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
-	mux.HandleFunc("GET /{$}", s.handlePage)
-	mux.HandleFunc("GET /cs/{$}", s.handlePage)
-	mux.HandleFunc("GET /cs", s.handleCzechHome)
-	mux.HandleFunc("GET /robots.txt", s.handleRobots)
-	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
-	mux.HandleFunc("GET /sent", s.handlePage)
-	mux.HandleFunc("GET /report", s.handlePage)
-	mux.HandleFunc("GET /transparency", s.handlePage)
-	mux.HandleFunc("GET "+ClientManifestPath, s.handleClientManifest)
-	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
-	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return s.logging(s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux)))))))
+func (s *Server) setUpLimits() {
+	rates := s.settings.Rates
+	s.instanceLimiter = ratelimit.NewLimiter(rates.BucketPerSecond, rates.BucketBurst)
+	s.sourceLimiter = ratelimit.NewLimiter(rates.SourcePerSecond, rates.SourceBurst)
+	s.rangeLimiter = ratelimit.NewLimiter(rates.BucketPerSecond*rangeShare, max(1, rates.BucketBurst*rangeShare))
+	s.addressKey = ratelimit.NewAddressKey()
+	s.proxies = ratelimit.Proxies{
+		Trusted:    s.settings.TrustedProxies,
+		ReadRealIP: s.settings.ProxyMode == config.ProxyModeScaleway,
+	}
+	s.counters = ratelimit.NewCounters()
+	s.streams = ratelimit.NewStreams(s.settings.MaxStreams)
+}
+
+// timers runs the releases at lease end; stop refuses new ones and waits for those already running.
+type timers struct {
+	mutex   sync.Mutex
+	running sync.WaitGroup
+	closed  bool
+}
+
+func (t *timers) after(delay time.Duration, run func()) {
+	time.AfterFunc(delay, func() {
+		t.mutex.Lock()
+		if t.closed {
+			t.mutex.Unlock()
+			return
+		}
+		t.running.Add(1)
+		t.mutex.Unlock()
+		defer t.running.Done()
+		run()
+	})
+}
+
+func (t *timers) stop() {
+	t.mutex.Lock()
+	t.closed = true
+	t.mutex.Unlock()
+	t.running.Wait()
 }

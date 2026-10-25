@@ -1,0 +1,221 @@
+<script lang="ts">
+  import type { Attachment } from 'svelte/attachments';
+
+  import type { Created } from '../create-message.ts';
+
+  import { formatTime } from '../../../shared/language/format.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import Chip from '../../../shared/ui/Chip.svelte';
+  import { Flash } from '../../../shared/ui/flash.svelte.ts';
+  import { FocusTargets } from '../../../shared/ui/focus.ts';
+  import Icon from '../../../shared/ui/Icon.svelte';
+  import SwapIcon from '../../../shared/ui/SwapIcon.svelte';
+  import { linkSegments } from './link-segments.ts';
+
+  interface Props {
+    readonly created: Created;
+    readonly opensMax: number;
+    readonly passphrase: boolean;
+    readonly onanother: () => void;
+  }
+
+  const { created, opensMax, passphrase, onanother }: Props = $props();
+  const translator = getTranslator();
+  const { translate } = translator;
+  const id = $props.id();
+
+  const BAR_DELAYS = ['delay-[380ms]', 'delay-[490ms]', 'delay-[600ms]', 'delay-[710ms]'] as const;
+  const COPIED_MS = 2400;
+
+  const copied = new Flash(COPIED_MS);
+  const focus = new FocusTargets<'link' | 'title'>();
+  let entered = $state(false);
+  let editing = $state(false);
+
+  const segments = $derived(linkSegments(created.link));
+
+  const enter: Attachment = () => {
+    const frame = requestAnimationFrame(() => {
+      entered = true;
+      focus.focus('title');
+    });
+    return () => cancelAnimationFrame(frame);
+  };
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(created.link);
+      copied.show();
+    } catch {
+      focus.focus('link');
+    }
+  }
+
+  function item(delay: string): string[] {
+    return entered ? ['translate-y-0 opacity-100 duration-500 ease-silk', delay] : ['translate-y-1.5 opacity-0'];
+  }
+</script>
+
+<div
+  class={[
+    'absolute inset-0 flex flex-col overflow-hidden text-left fade-swap',
+    entered ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
+  ]}
+  {@attach enter}
+>
+  <div class="flex min-h-0 flex-1 flex-col justify-center gap-5 px-4 py-5 sm:px-6">
+    <div class="flex items-center gap-4">
+      <span
+        class={[
+          'grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 shadow-[0_0_32px_-6px_oklch(0.56_0.19_258/0.75)] ring-1 ring-aegis-400/35 transition-[opacity,scale]',
+          entered ? 'scale-100 opacity-100 delay-[60ms] duration-700 ease-silk' : 'scale-75 opacity-0',
+        ]}
+        aria-hidden="true"
+      >
+        <Icon name="check" class="size-6" />
+      </span>
+      <div class={['min-w-0 transition-[opacity,translate]', item('delay-[120ms]')]}>
+        <h2
+          {@attach focus.attach('title')}
+          tabindex="-1"
+          class="font-display text-xl font-light tracking-[-0.015em] outline-none md:text-2xl"
+        >
+          {translate('created.title')}
+        </h2>
+        <p class="mt-0.5 text-sm text-pretty text-ink-mute">
+          {translate(passphrase ? 'created.sub.passphrase' : 'created.sub')}
+        </p>
+      </div>
+    </div>
+
+    <div class={['transition-[opacity,translate]', item('delay-[200ms]')]}>
+      <div class="relative rounded-pane">
+        <span
+          class={[
+            'pointer-events-none absolute inset-0 rounded-pane shadow-[0_0_0_1px_oklch(0.77_0.115_249/0.45),0_0_32px_-6px_oklch(0.56_0.19_258/0.8)] transition-opacity duration-500 ease-silk',
+            copied.shown ? 'opacity-100' : 'opacity-0',
+          ]}
+          aria-hidden="true"
+        ></span>
+        <div
+          class="flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 well has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300"
+        >
+          <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
+          <div class="relative min-h-11 min-w-0 flex-1 md:min-h-10">
+            <p
+              class={[
+                'pointer-events-none flex h-full min-h-11 min-w-0 items-center font-mono text-[13px] whitespace-nowrap transition-opacity duration-300 md:min-h-10 md:text-[15px]',
+                editing ? 'opacity-0' : 'opacity-100',
+              ]}
+              aria-hidden="true"
+            >
+              {#each segments as segment, index (segment.id)}
+                <span
+                  class={['relative px-px pt-1 pb-1.5', segment.tone, segment.server ? 'min-w-0 truncate' : 'shrink-0']}
+                >
+                  <span class="sm:hidden">{segment.short}</span>
+                  <span class="hidden sm:inline">{segment.text}</span>
+                  <span
+                    class={[
+                      'absolute inset-x-px bottom-0 h-[3px] origin-left rounded-full transition-transform duration-700 ease-silk',
+                      segment.bar,
+                      entered ? ['scale-x-100', BAR_DELAYS[index]] : 'scale-x-0',
+                    ]}
+                  ></span>
+                </span>
+              {/each}
+            </p>
+            <label for="{id}-link" class="sr-only">{translate('created.link')}</label>
+            <input
+              id="{id}-link"
+              {@attach focus.attach('link')}
+              type="text"
+              readonly
+              value={created.link}
+              onfocus={(event) => {
+                editing = true;
+                event.currentTarget.select();
+              }}
+              onblur={() => (editing = false)}
+              class={[
+                'absolute inset-0 h-full w-full bg-transparent font-mono text-[13px] caret-transparent outline-none md:text-[15px]',
+                editing ? 'text-ink-soft' : 'text-transparent',
+              ]}
+            />
+          </div>
+          <button
+            type="button"
+            onclick={copy}
+            aria-label={translate('created.copy')}
+            title={translate('created.copy')}
+            class="relative grid size-11 shrink-0 place-items-center rounded-[9px] bg-white/4 text-ink-soft ring-1 ring-white/10 hover:bg-white/8 hover:text-ink md:size-9"
+          >
+            <span
+              class={[
+                'absolute inset-0 rounded-[9px] bg-aegis-500/20 shadow-[0_0_18px_-4px_oklch(0.56_0.19_258/0.8)] ring-1 ring-aegis-400/50 transition-opacity duration-500 ease-silk',
+                copied.shown ? 'opacity-100' : 'opacity-0',
+              ]}
+            ></span>
+            <SwapIcon
+              class="relative"
+              from="copy"
+              to="check"
+              swapped={copied.shown}
+              size="size-[18px]"
+              toStroke={2.2}
+              toTone="text-aegis-200"
+            />
+          </button>
+          <span class="sr-only" role="status">{copied.shown ? translate('created.copied') : ''}</span>
+        </div>
+      </div>
+      <div class="mt-2 grid grid-cols-2 gap-2">
+        <div class="rounded-pane bg-white/3 px-3.5 py-3 ring-1 ring-white/8">
+          <span class="flex gap-1" aria-hidden="true"
+            ><span class="h-[3px] w-5 rounded-full bg-ink-mute"></span><span
+              class="h-[3px] w-5 rounded-full bg-nebula-300"
+            ></span></span
+          >
+          <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{translate('created.server.sees')}</span>
+          <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{translate('created.server.sees.what')}</span>
+        </div>
+        <div class="rounded-pane bg-aegis-500/6 px-3.5 py-3 ring-1 ring-aegis-400/20">
+          <span class="flex gap-1" aria-hidden="true"
+            ><span class="h-[3px] w-5 rounded-full bg-rose-300"></span><span
+              class="h-[3px] w-5 rounded-full bg-aegis-400"
+            ></span></span
+          >
+          <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{translate('created.server.blind')}</span>
+          <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{translate('created.server.blind.what')}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class={[
+      'flex flex-col gap-2 border-t border-white/8 p-2.5 transition-[opacity,translate] sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+      item('delay-[280ms]'),
+    ]}
+  >
+    <ul class="flex flex-wrap items-center gap-1.5">
+      <Chip icon="clock"
+        >{translate('created.chip.expires', { time: formatTime(created.expiresAt, translator.language) })}</Chip
+      >
+      <Chip icon="eye"
+        >{translate(opensMax === 1 ? 'compose.opens.one' : 'compose.opens.other', { count: opensMax })}</Chip
+      >
+      {#if passphrase}
+        <Chip icon="key" accent>{translate('compose.passphrase.chip')}</Chip>
+      {/if}
+    </ul>
+    <button
+      type="button"
+      onclick={onanother}
+      class="btn-ghost flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap sm:w-auto md:h-9"
+    >
+      <Icon name="plus" class="size-4 shrink-0" />
+      {translate('created.another')}
+    </button>
+  </div>
+</div>

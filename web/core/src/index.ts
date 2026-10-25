@@ -1,31 +1,6 @@
-export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './base64url.ts';
-export { concat, utf8 } from './bytes.ts';
-export {
-  deriveContent,
-  deriveLink,
-  hsalt,
-  type ContentKeys,
-  type DerivedKeys,
-  type LinkKeys,
-} from './derive.ts';
-export {
-  aad,
-  headerBytes,
-  newHeader,
-  newIv,
-  open,
-  paddedLen,
-  parseHeader,
-  policyBytes,
-  seal,
-  validateHeader,
-  validatePolicy,
-  type Header,
-  type Opened,
-  type OpenedPayload,
-  type Payload,
-  type Policy,
-} from './envelope.ts';
+export { open, type Opened, type OpenedPayload, type Payload, seal } from './envelope/envelope.ts';
+export { type Header, newHeader, type Policy } from './envelope/header.ts';
+export type { FileMeta, Meta } from './envelope/meta.ts';
 export {
   EncodingError,
   FlagsError,
@@ -36,8 +11,8 @@ export {
   LinkError,
   LinkRetiredKdfError,
   LinkVersionError,
-  MetaError,
   MalformedPassphraseError,
+  MetaError,
   PlaintextError,
   PolicyError,
   PowError,
@@ -46,69 +21,55 @@ export {
   VersionError,
   WeakPassphraseError,
 } from './errors.ts';
-export { hash, idToString, newSecret, parseId } from './ids.ts';
+export { type ContentKeys, deriveContent, deriveLink, type LinkKeys } from './keys/derive.ts';
 export {
-  KDF_NONE,
-  KDF_RETIRED,
-  KDF_SCRYPT,
-  MIN_PASSPHRASE_CHARS,
-  SCRYPT_N,
-  SCRYPT_P,
-  SCRYPT_R,
   assertStrongPassphrase,
   assertWellFormedPassphrase,
-  isKdfId,
-  kdfRequiresPassphrase,
-  normalizePassphrase,
-  parseKdfId,
+  KDF_NONE,
+  KDF_SCRYPT,
   type KdfId,
-} from './kdf.ts';
-export * from './limits.ts';
+  MIN_PASSPHRASE_CHARACTERS,
+} from './keys/kdf.ts';
 export {
-  FRAGMENT_LABEL,
+  HEADER_LENGTH,
+  ID_LENGTH,
+  MAX_FILE_BYTES,
+  MAX_MIME_BYTES,
+  MAX_OBJECT_BYTES,
+  MAX_TEXT_BYTES,
+  MIN_TTL_SECONDS,
+  transferSeconds,
+} from './limits.ts';
+export {
   assertProfile,
   formatLink,
-  fragment,
+  type Fragment,
+  type Link,
   parseFragment,
   parseLink,
   parsePath,
-  type Fragment,
-  type Link,
-} from './link.ts';
-export { decodeMeta, encodeMeta, validateMeta, type FileMeta, type Meta } from './meta.ts';
+} from './link/link.ts';
+export { encodeBase64url, encodedLength } from './primitives/base64url.ts';
+export { utf8 } from './primitives/bytes.ts';
+export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
+export { type SolveOptions, solvePow } from './request/proof-of-work.ts';
 export {
-  MAX_POW_DIFFICULTY,
-  POW_CHALLENGE_LEN,
-  POW_N,
-  POW_P,
-  POW_R,
-  leadingZeroBits,
-  parsePowChallenge,
-  powDigest,
-  powToken,
-  solvePow,
-  type SolveOptions,
-} from './pow.ts';
-export {
-  AUTH_SCHEME,
-  CHALLENGE_LEN,
-  PUBLIC_KEY_LEN,
+  authorizationHeader,
+  CHALLENGE_LENGTH,
+  type CryptoRequestKey,
+  newRequestKey,
+  parseChallenge,
+  PUBLIC_KEY_LENGTH,
+  type Purpose,
   PURPOSE_MANAGE,
   PURPOSE_READ,
   PURPOSE_VERIFIER,
-  SIGNATURE_LEN,
-  authorizationHeader,
-  newRequestKey,
-  parseChallenge,
+  type RequestKey,
   requestKey,
   requestMessage,
-  seedRequestKey,
+  type RequestSignature,
+  type SeedRequestKey,
   signRequest,
   verifierHeader,
   wipeRequestKey,
-  type CryptoRequestKey,
-  type Purpose,
-  type RequestKey,
-  type RequestSignature,
-  type SeedRequestKey,
-} from './sign.ts';
+} from './request/signature.ts';

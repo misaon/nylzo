@@ -1,58 +1,202 @@
 version: "2"
+
 run:
-  timeout: 5m
+  timeout: 10m
+
 linters:
-  default: standard
+  default: none
   enable:
+    - asasalint
     - asciicheck
     - bidichk
-    - copyloopvar
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - cyclop
+    - depguard
+    - dupl
+    - durationcheck
+    - embeddedstructfieldcheck
+    - errcheck
+    - errname
     - errorlint
+    - exhaustive
+    - fatcontext
     - forbidigo
+    - funcorder
+    - funlen
+    - gocheckcompilerdirectives
+    - gocognit
+    - goconst
+    - gocritic
+    - godot
+    - gomoddirectives
     - gosec
+    - govet
+    - iface
+    - ineffassign
+    - iotamixing
+    - ireturn
+    - makezero
+    - mirror
     - misspell
     - modernize
+    - musttag
+    - nakedret
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
     - noctx
     - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
+    - perfsprint
+    - predeclared
+    - reassign
+    - recvcheck
+    - revive
+    - rowserrcheck
     - sloglint
+    - sqlclosecheck
+    - staticcheck
+    - thelper
+    - tparallel
     - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
     - usetesting
+    - varnamelen
+    - wastedassign
   settings:
+    cyclop:
+      max-complexity: 15
+    depguard:
+      rules:
+        main:
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/misaon/nylzo
+            - filippo.io/edwards25519
+            - golang.org/x/crypto
+            - golang.org/x/term
+            - golang.org/x/text
+            - modernc.org/sqlite
+          deny:
+            - pkg: math/rand$
+              desc: use crypto/rand, or math/rand/v2 where predictability does not matter
+    dupl:
+      threshold: 100
+    embeddedstructfieldcheck:
+      forbid-mutex: true
     errcheck:
+      check-type-assertions: true
       exclude-functions:
         - (net/http.ResponseWriter).Write
         - (*database/sql.Tx).Rollback
     errorlint:
       errorf: false
+    exhaustive:
+      check: [switch, mapliteral]
     forbidigo:
       forbid:
         - pattern: ^(fmt\.Print.*|print|println)$
         - pattern: ^log\.(Print|Fatal|Panic).*$
         - pattern: ^slog\.(Debug|Info|Warn|Error|Log|LogAttrs|Default|SetDefault)(Context)?$
+    funlen:
+      lines: 80
+      statements: 50
+    gocognit:
+      min-complexity: 15
+    gocritic:
+      enabled-tags: [diagnostic, style, performance, opinionated]
     gosec:
-      excludes: [G104, G115, G404]
+      excludes: [G104]
+    govet:
+      enable-all: true
+      disable: [fieldalignment]
+      settings:
+        shadow:
+          strict: true
+    nakedret:
+      max-func-lines: 0
+    nestif:
+      min-complexity: 4
     nolintlint:
+      require-explanation: true
       require-specific: true
-      require-explanation: false
+    revive:
+      rules:
+        - name: confusing-naming
+        - name: early-return
+        - name: enforce-switch-style
+        - name: exported
+          arguments:
+            - disableChecksOnConstants
+            - disableChecksOnFunctions
+            - disableChecksOnMethods
+            - disableChecksOnTypes
+            - disableChecksOnVariables
+        - name: identical-branches
+        - name: import-shadowing
+        - name: indent-error-flow
+        - name: package-naming
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: redundant-test-main-exit
+        - name: superfluous-else
+        - name: unnecessary-format
+        - name: unnecessary-stmt
+        - name: unused-receiver
+        - name: use-any
+        - name: use-waitgroup-go
+        - name: var-naming
     sloglint:
       no-global: all
       static-msg: true
+      context: scope
+      key-naming-case: snake
     staticcheck:
-      checks: ["all", "-ST1000", "-ST1003", "-ST1020", "-ST1021", "-ST1022"]
+      checks: ["all", "-ST1000", "-ST1020", "-ST1021", "-ST1022"]
+    usetesting:
+      os-temp-dir: true
+      context-background: true
+      context-todo: true
+    varnamelen:
+      ignore-names: [err, ok, id, i, j, tx]
+      ignore-decls:
+        - w http.ResponseWriter
+        - r *http.Request
+        - t *testing.T
+        - b *testing.B
+        - f *testing.F
+        - tb testing.TB
+        - ctx context.Context
   exclusions:
-    presets: [comments, std-error-handling, common-false-positives]
+    warn-unused: true
+    presets: [std-error-handling, common-false-positives]
     rules:
       - path: _test\.go
-        linters: [errcheck, gosec, noctx]
+        linters: [dupl, funlen, gocognit, cyclop, goconst, errcheck, gosec, noctx, varnamelen]
       - path: ^cmd/
         linters: [forbidigo]
-      - path: ^cmd/nylzo-vectors/
-        text: G306
-      - path: ^internal/core/derive\.go
-        text: G101
-      - path: ^internal/cli/secrets\.go
-        text: G101
-      - path: ^internal/store/sqlite/sqlite\.go
-        text: G202
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 formatters:
-  enable: [gofmt]
+  enable: [gofumpt, goimports, golines]
+  settings:
+    gofumpt:
+      module-path: github.com/misaon/nylzo
+      extra:
+        group-params: true
+        clothe-returns: true
+        balance-calls: true
+    goimports:
+      local-prefixes: [github.com/misaon/nylzo]
+    golines:
+      max-len: 120

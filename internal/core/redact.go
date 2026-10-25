@@ -36,7 +36,9 @@ func ReasonTooLong(reason string) bool {
 	var body bytes.Buffer
 	encoder := json.NewEncoder(&body)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(IDLen)), "reason": redacted}); err != nil {
+	if err := encoder.Encode(
+		map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(IDLen)), "reason": redacted},
+	); err != nil {
 		return true
 	}
 	return len(redacted) > MaxReasonBytes || body.Len()-1 > maxReportBodyBytes
@@ -59,24 +61,29 @@ func RedactReason(reason string) string {
 
 func percentDecode(text string) string {
 	for range reasonDecodePasses {
-		decoded := percentEscape.ReplaceAllStringFunc(text, func(esc string) string {
-			b, _ := hex.DecodeString(esc[1:])
-			return string(b)
+		decoded := percentEscape.ReplaceAllStringFunc(text, func(escape string) string {
+			octet, _ := hex.DecodeString(escape[1:])
+			return string(octet)
 		})
 		if decoded == text {
 			break
 		}
 		text = decoded
 	}
-	return strings.ReplaceAll(strings.ToValidUTF8(text, string(unicode.ReplacementChar)), string(unicode.ReplacementChar), "")
+	return strings.ReplaceAll(
+		strings.ToValidUTF8(text, string(unicode.ReplacementChar)),
+		string(unicode.ReplacementChar),
+		"",
+	)
 }
 
-func visibleRune(r rune) rune {
+func visibleRune(character rune) rune {
 	switch {
-	case unicode.Is(unicode.Cf, r):
+	case unicode.Is(unicode.Cf, character):
 		return -1
-	case unicode.IsControl(r):
+	case unicode.IsControl(character):
 		return ' '
+	default:
+		return character
 	}
-	return r
 }

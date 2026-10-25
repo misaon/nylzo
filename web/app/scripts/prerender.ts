@@ -1,52 +1,43 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-type Language = 'en' | 'cs';
-
-interface OgImage {
-  readonly path: string;
-  readonly width: number;
-  readonly height: number;
-}
-
-interface HomeStyles {
-  readonly stylesheet: string;
-  readonly fontStylesheet: string;
-  readonly inline: string;
-}
-
 interface HomeAssets {
-  readonly image: OgImage;
-  readonly styles: HomeStyles;
+  readonly image: { readonly path: string; readonly width: number; readonly height: number };
+  readonly styles: { readonly stylesheet: string; readonly fontStylesheet: string; readonly inline: string };
 }
 
 interface Prerender {
-  readonly LANGUAGES: readonly Language[];
-  splitFontFaces(css: string): { readonly fontFaces: string; readonly inline: string };
-  homeTemplate(index: string, language: Language, assets: HomeAssets): string;
+  readonly splitFontFaces: (css: string) => { readonly fontFaces: string; readonly inline: string };
+  readonly homeTemplates: (index: string, assets: HomeAssets) => ReadonlyMap<string, string>;
 }
 
-const root = resolve(import.meta.dirname, '..');
-const dist = resolve(root, '../../internal/server/web/dist');
+const root = path.resolve(import.meta.dirname, '..');
+const distribution = path.resolve(root, '../../internal/server/web/dist');
+const assets = path.join(distribution, 'assets');
 
-function hashed(prefix: string, extension: string, data: Buffer | string): string {
+function hashedName(prefix: string, extension: string, data: Buffer | string): string {
   return `${prefix}-${createHash('sha256').update(data).digest('base64url').slice(0, 8)}.${extension}`;
 }
 
-const png = readFileSync(join(root, 'icons/og-image.png'));
-const imageName = hashed('og-image', 'png', png);
-writeFileSync(join(dist, 'assets', imageName), png);
-const image: OgImage = { path: `/assets/${imageName}`, width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+const imageFile = readFileSync(path.join(root, 'icons/og-image.png'));
+const imageName = hashedName('og-image', 'png', imageFile);
+writeFileSync(path.join(assets, imageName), imageFile);
+const image = {
+  path: `/assets/${imageName}`,
+  width: imageFile.readUInt32BE(16),
+  height: imageFile.readUInt32BE(20),
+};
 
-const { LANGUAGES, splitFontFaces, homeTemplate } = (await import(pathToFileURL(join(root, '.prerender/prerender.js')).href)) as Prerender;
-const index = readFileSync(join(dist, 'index.html'), 'utf8');
+const prerender = (await import(pathToFileURL(path.join(root, '.prerender/prerender.js')).href)) as Prerender;
+const index = readFileSync(path.join(distribution, 'index.html'), 'utf8');
 const stylesheet = /<link rel="stylesheet"[^>]* href="(\/assets\/[^"]+\.css)"/.exec(index)?.[1] ?? '';
-const { fontFaces, inline } = splitFontFaces(readFileSync(join(dist, stylesheet), 'utf8'));
-const fontStylesheet = hashed('fonts', 'css', fontFaces);
-writeFileSync(join(dist, 'assets', fontStylesheet), fontFaces);
-const styles: HomeStyles = { stylesheet, fontStylesheet: `/assets/${fontStylesheet}`, inline };
-for (const language of LANGUAGES) {
-  writeFileSync(join(dist, `home.${language}.html`), homeTemplate(index, language, { image, styles }));
+const { fontFaces, inline } = prerender.splitFontFaces(readFileSync(path.join(distribution, stylesheet), 'utf8'));
+const fontStylesheet = hashedName('fonts', 'css', fontFaces);
+writeFileSync(path.join(assets, fontStylesheet), fontFaces);
+const styles = { stylesheet, fontStylesheet: `/assets/${fontStylesheet}`, inline };
+const pages = prerender.homeTemplates(index, { image, styles });
+for (const [language, page] of pages) {
+  writeFileSync(path.join(distribution, `home.${language}.html`), page);
 }

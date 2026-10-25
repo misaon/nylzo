@@ -5,9 +5,9 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net"
 
+	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -19,58 +19,76 @@ var endedStates = map[string]string{
 	"deleted":   "the message was deleted",
 }
 
+// explain turns an error into a message that never repeats text from the server or a certificate.
 func explain(err error) string {
-	var apiErr *client.APIError
-	var hostErr x509.HostnameError
-	var authorityErr x509.UnknownAuthorityError
-	var invalidErr x509.CertificateInvalidError
-	var dnsErr *net.DNSError
-	var opErr *net.OpError
-	switch {
-	case errors.As(err, &apiErr):
+	if apiErr, ok := errors.AsType[*client.APIError](err); ok {
 		return explainAPI(apiErr)
-	case errors.As(err, &hostErr):
-		return "the server's TLS certificate is not valid for its address"
-	case errors.As(err, &authorityErr):
-		return "the server's TLS certificate is not from a trusted authority"
-	case errors.As(err, &invalidErr):
-		return "the server's TLS certificate is invalid or has expired"
-	case errors.Is(err, client.ErrInsecureServer), errors.Is(err, client.ErrServerURL), errors.Is(err, client.ErrRedirect), errors.Is(err, client.ErrResponse):
-		return err.Error()
-	case errors.As(err, &dnsErr):
-		return "the server address cannot be resolved"
-	case errors.Is(err, context.DeadlineExceeded):
-		return "the server did not answer in time"
-	case errors.As(err, &opErr):
-		return "cannot connect to the server"
-	case errors.Is(err, core.ErrWeakPassphrase):
-		return fmt.Sprintf("the passphrase must have at least %d characters", core.MinPassphraseChars)
-	case errors.Is(err, core.ErrMalformedPassphrase):
-		return "the passphrase is not valid UTF-8"
-	case errors.Is(err, ErrNoTerminal):
-		return "there is no terminal to ask on; use a file instead"
-	case errors.Is(err, fs.ErrNotExist):
+	}
+	if text, ok := explainCertificate(err); ok {
+		return text
+	}
+	clientRefused := errors.Is(err, client.ErrInsecureServer) || errors.Is(err, client.ErrServerURL) ||
+		errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse)
+	if clientRefused {
 		return err.Error()
 	}
-	return err.Error()
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
+		return "the server address cannot be resolved"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "the server did not answer in time"
+	}
+	if _, ok := errors.AsType[*net.OpError](err); ok {
+		return "cannot connect to the server"
+	}
+	return explainLocal(err)
 }
 
-func explainAPI(e *client.APIError) string {
-	wait := ""
-	if e.RetryAfter > 0 {
-		wait = fmt.Sprintf("; try again in %s", e.RetryAfter)
+func explainCertificate(err error) (string, bool) {
+	if _, ok := errors.AsType[x509.HostnameError](err); ok {
+		return "the server's TLS certificate is not valid for its address", true
 	}
-	switch e.Kind {
+	if _, ok := errors.AsType[x509.UnknownAuthorityError](err); ok {
+		return "the server's TLS certificate is not from a trusted authority", true
+	}
+	if _, ok := errors.AsType[x509.CertificateInvalidError](err); ok {
+		return "the server's TLS certificate is invalid or has expired", true
+	}
+	return "", false
+}
+
+func explainLocal(err error) string {
+	switch {
+	case errors.Is(err, core.ErrWeakPassphrase):
+		return fmt.Sprintf("the passphrase must have at least %d characters", core.MinPassphraseCharacters)
+	case errors.Is(err, core.ErrMalformedPassphrase):
+		return "the passphrase is not valid UTF-8"
+	case errors.Is(err, console.ErrNoTerminal):
+		return "there is no terminal to ask on; use a file instead"
+	default:
+		return err.Error()
+	}
+}
+
+func explainAPI(apiErr *client.APIError) string {
+	wait := ""
+	if apiErr.RetryAfter > 0 {
+		wait = fmt.Sprintf("; try again in %s", apiErr.RetryAfter)
+	}
+	switch apiErr.Kind {
 	case "gone":
-		if text, ok := endedStates[e.State]; ok {
+		if text, ok := endedStates[apiErr.State]; ok {
 			return text
 		}
 		return "the message is no longer available"
 	case "not_found":
 		return "no such message: the link or token is wrong, or the message is gone"
 	case "passphrase":
-		if e.AttemptsLeft > 0 && e.RetryAfter == 0 {
-			return fmt.Sprintf("wrong passphrase; %d attempts left before the message makes every reader wait", e.AttemptsLeft)
+		if apiErr.AttemptsLeft > 0 && apiErr.RetryAfter == 0 {
+			return fmt.Sprintf(
+				"wrong passphrase; %d attempts left before the message makes every reader wait",
+				apiErr.AttemptsLeft,
+			)
 		}
 		return "wrong passphrase, or too many wrong attempts" + wait
 	case "rate_limited":
@@ -85,6 +103,7 @@ func explainAPI(e *client.APIError) string {
 		return "the server refused the new message id; try again"
 	case "internal":
 		return "the server failed; try again later"
+	default:
+		return fmt.Sprintf("the server answered with status %d", apiErr.Status)
 	}
-	return fmt.Sprintf("the server answered with status %d", e.Status)
 }

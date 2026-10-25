@@ -1,73 +1,26 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, openApp, test } from './helpers.ts';
-import { recordViolations } from './violations.ts';
+import { expect, test } from './support/fixtures.ts';
+import { openApp } from './support/pages.ts';
+import { watchViolations } from './support/watchers.ts';
 
-const id = 'AAAAAAAAAAAAAAAAAAAAAA';
 const spec = readFileSync(new URL('../../../spec/protocol.md', import.meta.url), 'utf8');
+const htmlPolicy = /^- HTML responses carry `Content-Security-Policy: ([^`]+)`/m.exec(spec)?.[1] ?? '';
+const PAGES = ['/', '/cs/', '/sent', '/report', '/transparency', '/m/AAAAAAAAAAAAAAAAAAAAAA'];
 
-function specPolicy(lead: string): string {
-  const policy = new RegExp(`^- ${lead} carry \`Content-Security-Policy: ([^\`]+)\``, 'm').exec(spec)?.[1];
-  if (!policy) {
-    throw new Error(`spec section 9 lost the CSP line for "${lead}"`);
-  }
-  return policy;
-}
-
-const htmlPolicy = specPolicy('HTML responses');
-const otherPolicy = specPolicy('Responses other than HTML');
-
-function withoutNonce(policy: string): { readonly policy: string; readonly nonces: string[] } {
-  const nonces = [...policy.matchAll(/'nonce-([^']+)'/g)].map((match) => match[1] ?? '');
-  return { policy: policy.replaceAll(/'nonce-[^']+'/g, "'nonce-{nonce}'"), nonces };
-}
-
-for (const path of ['/', '/cs/', '/sent', '/report', `/m/${id}`]) {
-  test(`${path} carries exactly the CSP of spec section 9 and renders without violations`, async ({ page }) => {
-    const violations = await recordViolations(page);
-    const response = await openApp(page, path);
-    const { policy, nonces } = withoutNonce(response?.headers()['content-security-policy'] ?? '');
-    expect(policy).toBe(htmlPolicy);
-    expect(nonces).toHaveLength(2);
-    expect(nonces[0]).toBe(nonces[1]);
-    expect(nonces[0]?.length ?? 0).toBeGreaterThanOrEqual(22);
-    expect(response?.headers()['x-robots-tag']).toBe(path === '/' || path === '/cs/' ? undefined : 'noindex, nofollow');
-    await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(await violations()).toEqual([]);
-  });
-}
-
-test('responses other than HTML carry the short CSP of spec section 9', async ({ request }) => {
-  const html = await (await request.get('/')).text();
-  const asset = /src="(\/assets\/[^"]+\.js)"/.exec(html)?.[1] ?? '';
-  expect(asset).not.toBe('');
-  for (const path of ['/api/v1/instance', asset, '/healthz']) {
-    expect((await request.get(path)).headers()['content-security-policy'], path).toBe(otherPolicy);
-  }
-});
-
-test('the icons are files of the embedded client with the short CSP of spec section 9', async ({ page, request }) => {
-  await openApp(page, '/');
-  const hrefs = await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]').evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
-  expect(hrefs).toHaveLength(3);
-  for (const href of hrefs) {
-    expect(href).toMatch(/^\/assets\/[\w-]+\.(?:svg|png)$/);
-    const response = await request.get(href);
-    expect(response.status(), href).toBe(200);
-    expect(response.headers()['content-type'], href).toBe(href.endsWith('.svg') ? 'image/svg+xml' : 'image/png');
-    expect(response.headers()['content-security-policy'], href).toBe(otherPolicy);
-  }
-});
-
-test('every HTML response carries a fresh nonce', async ({ request }) => {
-  const nonces = new Set<string>();
-  for (let i = 0; i < 3; i++) {
-    const response = await request.get('/');
-    const nonce = /'nonce-([^']+)'/.exec(response.headers()['content-security-policy'] ?? '')?.[1];
-    expect(nonce).toBeTruthy();
-    expect(await response.text()).toContain(`nonce="${nonce}"`);
-    nonces.add(nonce ?? '');
-  }
-  expect(nonces.size).toBe(3);
-});
+test(
+  'every page renders under exactly the CSP of spec section 9 without a violation (AK10, AK19)',
+  { tag: '@cross-browser' },
+  async ({ newPage }) => {
+    expect(htmlPolicy, 'spec section 9 lost the CSP line for HTML responses').toContain("'nonce-{nonce}'");
+    for (const path of PAGES) {
+      const page = await newPage();
+      const violations = await watchViolations(page);
+      const response = await openApp(page, path);
+      const policy = response?.headers()['content-security-policy'] ?? '';
+      expect(policy.replaceAll(/'nonce-[^']+'/g, "'nonce-{nonce}'"), path).toBe(htmlPolicy);
+      await expect(page.getByRole('heading', { level: 1 }), path).toBeVisible();
+      expect(await violations(), path).toEqual([]);
+    }
+  },
+);

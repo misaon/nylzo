@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,125 +11,156 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 )
 
-func runStatus(ctx context.Context, env Env, args []string) int {
-	fs := newFlags(env, "status")
-	file := fs.String("manage-token-file", "", "read the manage token from this file (or "+envManageToken+", or stdin)")
-	asJSON := fs.Bool("json", false, "print the status as JSON")
-	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+const manageTokenFileUsage = "read the manage token from this file (or " + envManageToken + ", or stdin)"
+
+func runStatus(ctx context.Context, environment *Environment, arguments []string) int {
+	flags := newFlags(environment, "status")
+	file := flags.String("manage-token-file", "", manageTokenFileUsage)
+	asJSON := flags.Bool("json", false, "print the status as JSON")
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	token, err := readManageToken(env, *file)
+	token, api, err := manageClient(environment, *file)
 	if err != nil {
-		return failf(env, "manage token: %s", explain(err))
+		return failf(environment, "%s", err)
 	}
 	defer token.wipe()
-	c, err := client.New(token.origin)
+	status, err := api.Status(ctx, token.id, &token.seed)
 	if err != nil {
-		return failf(env, "%s", explain(err))
-	}
-	status, err := c.Status(ctx, token.id, &token.seed)
-	if err != nil {
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
 	if *asJSON {
-		out, _ := json.Marshal(status)
-		fmt.Fprintln(env.Stdout, string(out))
+		encoded, _ := json.Marshal(status)
+		fmt.Fprintln(environment.Stdout, string(encoded))
 		return exitOK
 	}
-	fmt.Fprintf(env.Stdout, "state: %s\n", status.State)
+	printStatus(environment, &status)
+	return exitOK
+}
+
+func printStatus(environment *Environment, status *client.Status) {
+	fmt.Fprintf(environment.Stdout, "state: %s\n", status.State)
 	if status.EndedAt == "" {
-		fmt.Fprintf(env.Stdout, "opens: %d of %d used\n", status.OpensUsed, status.OpensMax)
+		fmt.Fprintf(environment.Stdout, "opens: %d of %d used\n", status.OpensUsed, status.OpensMax)
 	}
 	for _, row := range []struct{ label, value string }{
-		{"created", status.CreatedAt}, {"expires", status.ExpiresAt}, {"first opened", status.FirstOpenedAt}, {"ended", status.EndedAt},
+		{"created", status.CreatedAt},
+		{"expires", status.ExpiresAt},
+		{"first opened", status.FirstOpenedAt},
+		{"ended", status.EndedAt},
 	} {
 		if row.value != "" {
-			fmt.Fprintf(env.Stdout, "%s: %s\n", row.label, row.value)
+			fmt.Fprintf(environment.Stdout, "%s: %s\n", row.label, row.value)
 		}
 	}
 	if status.EndedAt != "" {
-		fmt.Fprintln(env.Stdout, "opens and failed passphrase attempts: no longer kept")
-		return exitOK
+		fmt.Fprintln(environment.Stdout, "opens and failed passphrase attempts: no longer kept")
+		return
 	}
-	fmt.Fprintf(env.Stdout, "failed passphrase attempts: %d\n", status.FailedPassphraseAttempts)
-	return exitOK
+	fmt.Fprintf(environment.Stdout, "failed passphrase attempts: %d\n", status.FailedPassphraseAttempts)
 }
 
-func runCancel(ctx context.Context, env Env, args []string) int {
-	fs := newFlags(env, "cancel")
-	file := fs.String("manage-token-file", "", "read the manage token from this file (or "+envManageToken+", or stdin)")
-	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+func runCancel(ctx context.Context, environment *Environment, arguments []string) int {
+	flags := newFlags(environment, "cancel")
+	file := flags.String("manage-token-file", "", manageTokenFileUsage)
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	token, err := readManageToken(env, *file)
+	token, api, err := manageClient(environment, *file)
 	if err != nil {
-		return failf(env, "manage token: %s", explain(err))
+		return failf(environment, "%s", err)
 	}
 	defer token.wipe()
-	c, err := client.New(token.origin)
-	if err != nil {
-		return failf(env, "%s", explain(err))
+	if err = api.Cancel(ctx, token.id, &token.seed); err != nil {
+		return failf(environment, "%s", explain(err))
 	}
-	if err := c.Cancel(ctx, token.id, &token.seed); err != nil {
-		return failf(env, "%s", explain(err))
-	}
-	fmt.Fprintln(env.Stdout, "cancelled")
+	fmt.Fprintln(environment.Stdout, "cancelled")
 	return exitOK
 }
 
-func runBurn(ctx context.Context, env Env, args []string) int {
-	fs := newFlags(env, "burn")
-	linkFile := fs.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
-	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+func manageClient(environment *Environment, file string) (*manageToken, *client.Client, error) {
+	token, err := readManageToken(environment, file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("manage token: %s", explain(err))
+	}
+	api, err := client.New(token.origin)
+	if err != nil {
+		token.wipe()
+		return nil, nil, errors.New(explain(err))
+	}
+	return &token, api, nil
+}
+
+func runBurn(ctx context.Context, environment *Environment, arguments []string) int {
+	flags := newFlags(environment, "burn")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	link, err := linkFromInput(env, *linkFile)
+	link, api, err := linkClient(environment, *linkFile)
 	if err != nil {
-		return failf(env, "link: %s", explain(err))
+		return failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	c, err := client.New(link.origin)
-	if err != nil {
-		return failf(env, "%s", explain(err))
+	if err = api.Burn(ctx, link.id, &link.keys.R); err != nil {
+		return failf(environment, "%s", explain(err))
 	}
-	if err := c.Burn(ctx, link.id, &link.keys.R); err != nil {
-		return failf(env, "%s", explain(err))
-	}
-	fmt.Fprintln(env.Stdout, "deleted")
+	fmt.Fprintln(environment.Stdout, "deleted")
 	return exitOK
 }
 
-func runReport(ctx context.Context, env Env, args []string) int {
-	fs := newFlags(env, "report")
-	linkFile := fs.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
-	reasonFile := fs.String("reason-file", "", "read why the message should be removed from this file (optional; links and long codes are removed before sending)")
-	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+func linkClient(environment *Environment, linkFile string) (*openLink, *client.Client, error) {
+	link, err := linkFromInput(environment, linkFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("link: %s", explain(err))
+	}
+	api, err := client.New(link.origin)
+	if err != nil {
+		link.wipe()
+		return nil, nil, errors.New(explain(err))
+	}
+	return &link, api, nil
+}
+
+func runReport(ctx context.Context, environment *Environment, arguments []string) int {
+	flags := newFlags(environment, "report")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	reasonFile := flags.String(
+		"reason-file",
+		"",
+		"read why the message should be removed from this file (optional; links and long codes are removed before sending)",
+	)
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	reason := ""
 	if *reasonFile != "" {
 		raw, err := readFileLimited(*reasonFile, maxSecretInput)
 		if err != nil {
-			return failf(env, "reason: %s", explain(err))
+			return failf(environment, "reason: %s", explain(err))
 		}
 		reason = strings.TrimSpace(string(raw))
 	}
 	if core.ReasonTooLong(reason) {
-		fmt.Fprintf(env.Stderr, "%s report: the reason is longer than %d bytes after links and long codes are removed\n", program, core.MaxReasonBytes)
+		fmt.Fprintf(
+			environment.Stderr,
+			"%s report: the reason is longer than %d bytes after links and long codes are removed\n",
+			program,
+			core.MaxReasonBytes,
+		)
 		return exitUsage
 	}
-	link, err := linkFromInput(env, *linkFile)
+	link, api, err := linkClient(environment, *linkFile)
 	if err != nil {
-		return failf(env, "link: %s", explain(err))
+		return failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	c, err := client.New(link.origin)
-	if err != nil {
-		return failf(env, "%s", explain(err))
+	if err = api.Report(ctx, link.id, &link.keys.R, reason); err != nil {
+		return failf(environment, "%s", explain(err))
 	}
-	if err := c.Report(ctx, link.id, &link.keys.R, reason); err != nil {
-		return failf(env, "%s", explain(err))
-	}
-	fmt.Fprintln(env.Stdout, "the report was sent; a person reviews it, and it is kept only while the message exists")
+	fmt.Fprintln(
+		environment.Stdout,
+		"the report was sent; a person reviews it, and it is kept only while the message exists",
+	)
 	return exitOK
 }

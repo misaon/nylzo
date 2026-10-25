@@ -15,25 +15,24 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	f, err := vectors.Generate()
+	if err := run(*out); err != nil {
+		fmt.Fprintln(os.Stderr, "nylzo-vectors:", err)
+		os.Exit(1)
+	}
+}
+
+func run(out string) error {
+	file, err := vectors.Generate()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "nylzo-vectors:", err)
-		os.Exit(1)
+		return err
 	}
-	data, err := vectors.Marshal(f)
+	data, err := vectors.Marshal(file)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "nylzo-vectors:", err)
-		os.Exit(1)
+		return err
 	}
-	if *out == "" {
-		if _, err := os.Stdout.Write(data); err != nil {
-			fmt.Fprintln(os.Stderr, "nylzo-vectors:", err)
-			os.Exit(1)
-		}
-		return
+	if out == "" {
+		_, err = os.Stdout.Write(data)
+		return err
 	}
-	if err := os.WriteFile(*out, data, 0o644); err != nil {
-		fmt.Fprintln(os.Stderr, "nylzo-vectors:", err)
-		os.Exit(1)
-	}
+	return os.WriteFile(out, data, 0o600)
 }

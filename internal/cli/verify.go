@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"maps"
@@ -17,7 +18,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const (
@@ -37,6 +38,7 @@ var (
 		"Refresh", "Set-Cookie", "Clear-Site-Data", "Link", "Content-Disposition", "Nel", "Report-To",
 		"Reporting-Endpoints", "Speculation-Rules", "Service-Worker-Allowed", "Accept-Ch", "Critical-Ch",
 	}
+	encodings = []string{identity, browserEncodings}
 )
 
 type verified struct {
@@ -45,51 +47,81 @@ type verified struct {
 }
 
 type verifier struct {
-	client    *client.Client
-	local     server.EmbeddedClient
+	api       *client.Client
+	local     webclient.Build
 	version   string
 	publicURL string
 	allowed   map[string]bool
 	nonces    map[string]bool
 }
 
-func runVerifyClient(ctx context.Context, env Env, args []string) int {
-	fs := newFlags(env, "verify-client")
-	serverURL := fs.String("server", "", "server address such as https://nylzo.example (or "+envServer+")")
-	allowed := map[string]bool{}
-	fs.Func("allow-header", "accept this response header, which a proxy in front of the server adds (repeatable)", func(name string) error {
-		name = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
-		if name == "" || slices.Contains(neverAllowed, name) {
-			return errors.New("this header changes what a browser does and cannot be allowed")
-		}
-		allowed[name] = true
-		return nil
-	})
-	if code, done := flagsDone(parseFlags(fs, env, args)); done {
+type verifyOptions struct {
+	server  string
+	allowed map[string]bool
+}
+
+func verifyFlags(environment *Environment) (*flag.FlagSet, *verifyOptions) {
+	options := &verifyOptions{allowed: map[string]bool{}}
+	flags := newFlags(environment, "verify-client")
+	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
+	flags.Func(
+		"allow-header",
+		"accept this response header, which a proxy in front of the server adds (repeatable)",
+		func(name string) error {
+			name = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
+			if name == "" || slices.Contains(neverAllowed, name) {
+				return errors.New("this header changes what a browser does and cannot be allowed")
+			}
+			options.allowed[name] = true
+			return nil
+		},
+	)
+	return flags, options
+}
+
+func runVerifyClient(ctx context.Context, environment *Environment, arguments []string) int {
+	flags, options := verifyFlags(environment)
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	if *serverURL == "" {
-		*serverURL = env.Getenv(envServer)
+	if options.server == "" {
+		options.server = environment.Getenv(envServer)
 	}
-	if *serverURL == "" {
-		fmt.Fprintln(env.Stderr, program+" verify-client needs --server or "+envServer)
+	if options.server == "" {
+		fmt.Fprintln(environment.Stderr, program+" verify-client needs --server or "+envServer)
 		return exitUsage
 	}
-	c, err := client.New(*serverURL)
+	api, err := client.New(options.server)
 	if err != nil {
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
-	local, err := env.webClient()
+	local, err := environment.webClient()
 	if err != nil || !local.Built {
-		return failf(env, "%s", errNoLocalClient)
+		return failf(environment, "%s", errNoLocalClient)
 	}
-	v := &verifier{client: c, local: local, version: buildVersion(env.Version), allowed: allowed, nonces: map[string]bool{}}
-	result, err := v.run(ctx)
+	check := &verifier{
+		api:     api,
+		local:   local,
+		version: buildVersion(environment.Version),
+		allowed: options.allowed,
+		nonces:  map[string]bool{},
+	}
+	result, err := check.run(ctx)
 	if err != nil {
-		return failf(env, "%s", err)
+		return failf(environment, "%s", err)
 	}
-	fmt.Fprintf(env.Stdout, "the server sends the web client of nylzo %s unchanged: %d pages and %d files checked\n", v.version, result.pages, result.files)
-	fmt.Fprintf(env.Stderr, "%s: this covers what the server sent to this command; a server can recognise it and send browsers something else\n", program)
+	fmt.Fprintf(
+		environment.Stdout,
+		"the server sends the web client of nylzo %s unchanged: %d pages and %d files checked\n",
+		check.version,
+		result.pages,
+		result.files,
+	)
+	fmt.Fprintf(
+		environment.Stderr,
+		"%s: this covers what the server sent to this command; a server can recognise it and send browsers something else\n",
+		program,
+	)
 	return exitOK
 }
 
@@ -97,107 +129,117 @@ func (v *verifier) run(ctx context.Context) (verified, error) {
 	if err := v.manifest(ctx); err != nil {
 		return verified{}, err
 	}
-	var out verified
-	for _, page := range server.ClientPages {
+	var result verified
+	for _, page := range webclient.PagePaths {
 		path := strings.Replace(page, "{id}", core.NewID().String(), 1)
-		for _, encoding := range []string{identity, browserEncodings} {
+		for _, encoding := range encodings {
 			if err := v.page(ctx, path, encoding); err != nil {
 				return verified{}, err
 			}
 		}
-		out.pages++
+		result.pages++
 	}
 	for _, name := range slices.Sorted(maps.Keys(v.local.Assets)) {
-		for _, encoding := range []string{identity, browserEncodings} {
-			if err := v.asset(ctx, name, v.local.Assets[name], encoding); err != nil {
+		asset := v.local.Assets[name]
+		for _, encoding := range encodings {
+			if err := v.asset(ctx, name, &asset, encoding); err != nil {
 				return verified{}, err
 			}
 		}
-		out.files++
+		result.files++
 	}
-	return out, nil
+	return result, nil
 }
 
 func (v *verifier) manifest(ctx context.Context) error {
-	fetched, err := v.client.Fetch(ctx, server.ClientManifestPath, identity, maxManifestBytes)
+	fetched, err := v.api.Fetch(ctx, webclient.ManifestPath, identity, maxManifestBytes)
 	if err != nil {
-		return fmt.Errorf("%s: %s", server.ClientManifestPath, explain(err))
+		return fmt.Errorf("%s: %s", webclient.ManifestPath, explain(err))
 	}
-	var got server.ClientManifest
-	if err := json.Unmarshal(fetched.Body, &got); err != nil {
+	var served webclient.Manifest
+	if err = json.Unmarshal(fetched.Body, &served); err != nil {
 		return errors.New("the server's client manifest is not valid JSON")
 	}
-	if got.Server != v.version {
-		version := got.Server
-		if len(version) > maxVersionShown {
-			version = version[:maxVersionShown] + "…"
-		}
-		return fmt.Errorf("the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs", version, v.version)
+	if served.Server != v.version {
+		return fmt.Errorf(
+			"the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs",
+			shortened(served.Server),
+			v.version,
+		)
 	}
-	if got.PublicURL != "" {
-		if err := server.CheckPublicURL(got.PublicURL); err != nil {
-			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %v", err)
+	if served.PublicURL != "" {
+		if err = webclient.CheckPublicURL(served.PublicURL); err != nil {
+			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %w", err)
 		}
 	}
-	v.publicURL = got.PublicURL
-	gotJSON, _ := json.Marshal(got)
-	wantJSON, _ := json.Marshal(v.local.Manifest(v.version, v.publicURL))
-	if !bytes.Equal(gotJSON, wantJSON) {
+	v.publicURL = served.PublicURL
+	servedJSON, _ := json.Marshal(served)
+	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, v.publicURL))
+	if !bytes.Equal(servedJSON, expectedJSON) {
 		return errors.New("the server's client manifest differs from the web client of this nylzo")
 	}
 	return nil
 }
 
+// page checks the served page against the local template with a fresh nonce in every place it belongs.
 func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	where := describe(path, encoding)
-	want, err := v.local.Page(path, v.publicURL)
+	expected, err := v.local.Page(path, v.publicURL)
 	if err != nil {
 		return fmt.Errorf("%s: %w", where, err)
 	}
-	fetched, err := v.client.Fetch(ctx, path, encoding, maxPageBytes)
+	fetched, err := v.api.Fetch(ctx, path, encoding, maxPageBytes)
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
 	}
-	if err := v.headers(fetched.Header, "text/html; charset=utf-8", path, where); err != nil {
-		return err
+	if headersErr := v.headers(fetched.Header, "text/html; charset=utf-8", path, where); headersErr != nil {
+		return headersErr
 	}
-	csp := fetched.Header.Get("Content-Security-Policy")
-	match := pageNonce.FindStringSubmatch(csp)
-	if match == nil || len(match[1]) < minNonceLength || csp != server.PageCSP(match[1]) {
-		return fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
-	}
-	nonce := match[1]
-	if v.nonces[nonce] {
-		return fmt.Errorf("%s: the server sent the same nonce twice", where)
-	}
-	v.nonces[nonce] = true
-	body, err := decoded(fetched, encoding, int64(len(want))+maxPageBytes, where)
+	nonce, err := v.freshNonce(fetched.Header.Get("Content-Security-Policy"), where)
 	if err != nil {
 		return err
 	}
-	if strings.Count(string(body), nonce) != strings.Count(want, server.NoncePlaceholder) {
+	body, err := decoded(&fetched, encoding, int64(len(expected))+maxPageBytes, where)
+	if err != nil {
+		return err
+	}
+	if strings.Count(string(body), nonce) != strings.Count(expected, webclient.NoncePlaceholder) {
 		return fmt.Errorf("%s: the page does not use the nonce of its Content-Security-Policy everywhere", where)
 	}
-	if strings.ReplaceAll(string(body), nonce, server.NoncePlaceholder) != want {
+	if strings.ReplaceAll(string(body), nonce, webclient.NoncePlaceholder) != expected {
 		return fmt.Errorf("%s: the page differs from the web client of this nylzo", where)
 	}
 	return nil
 }
 
-func (v *verifier) asset(ctx context.Context, name string, asset server.EmbeddedAsset, encoding string) error {
+func (v *verifier) freshNonce(policy, where string) (string, error) {
+	match := pageNonce.FindStringSubmatch(policy)
+	if len(match) < 2 || len(match[1]) < minNonceLength || policy != webclient.PageCSP(match[1]) {
+		return "", fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
+	}
+	nonce := match[1]
+	if v.nonces[nonce] {
+		return "", fmt.Errorf("%s: the server sent the same nonce twice", where)
+	}
+	v.nonces[nonce] = true
+	return nonce, nil
+}
+
+func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asset, encoding string) error {
 	path := "/assets/" + name
 	where := describe(path, encoding)
-	fetched, err := v.client.Fetch(ctx, path, encoding, int64(max(len(asset.Body), len(asset.Gzip)))+maxPageBytes)
+	limit := int64(max(len(asset.Body), len(asset.Gzip))) + maxPageBytes
+	fetched, err := v.api.Fetch(ctx, path, encoding, limit)
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
 	}
-	if err := v.headers(fetched.Header, asset.ContentType, path, where); err != nil {
-		return err
+	if headersErr := v.headers(fetched.Header, asset.ContentType, path, where); headersErr != nil {
+		return headersErr
 	}
-	if fetched.Header.Get("Content-Security-Policy") != server.AssetCSP {
+	if fetched.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
 		return fmt.Errorf("%s: the headers differ from this nylzo", where)
 	}
-	body, err := decoded(fetched, encoding, int64(len(asset.Body)), where)
+	body, err := decoded(&fetched, encoding, int64(len(asset.Body)), where)
 	if err != nil {
 		return err
 	}
@@ -207,8 +249,9 @@ func (v *verifier) asset(ctx context.Context, name string, asset server.Embedded
 	return nil
 }
 
+// headers requires every header this version sends exactly once and refuses any other unless it is allowed.
 func (v *verifier) headers(header http.Header, contentType, path, where string) error {
-	expected := server.SecurityHeaders(path)
+	expected := webclient.SecurityHeaders(path)
 	expected["Content-Type"] = contentType
 	expected["Vary"] = "Accept-Encoding"
 	for name, value := range expected {
@@ -220,29 +263,34 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 		return fmt.Errorf("%s: the Content-Security-Policy header differs from this nylzo", where)
 	}
 	for name, values := range header {
-		known := expected[name] != "" || name == "Content-Security-Policy" || slices.Contains(transportHeaders, name) || v.allowed[name]
+		known := expected[name] != "" || name == "Content-Security-Policy" ||
+			slices.Contains(transportHeaders, name) || v.allowed[name]
 		if name == "Content-Encoding" {
 			known = len(values) == 1
 		}
 		if !known {
-			return fmt.Errorf("%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header", where, shortened(name))
+			return fmt.Errorf(
+				"%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header",
+				where,
+				shortened(name),
+			)
 		}
 	}
 	return nil
 }
 
-func shortened(name string) string {
-	if len(name) > maxVersionShown {
-		return name[:maxVersionShown] + "…"
+func shortened(text string) string {
+	if len(text) > maxVersionShown {
+		return text[:maxVersionShown] + "…"
 	}
-	return name
+	return text
 }
 
-func decoded(fetched client.Fetched, encoding string, limit int64, where string) ([]byte, error) {
+func decoded(fetched *client.Fetched, encoding string, limit int64, where string) ([]byte, error) {
 	switch fetched.Header.Get("Content-Encoding") {
 	case "":
 		return fetched.Body, nil
-	case server.EncodingGzip:
+	case webclient.EncodingGzip:
 		if encoding == identity {
 			return nil, fmt.Errorf("%s: the server compressed a response that was asked for without compression", where)
 		}
@@ -255,8 +303,9 @@ func decoded(fetched client.Fetched, encoding string, limit int64, where string)
 			return nil, fmt.Errorf("%s: the compressed response is damaged", where)
 		}
 		return body, nil
+	default:
+		return nil, fmt.Errorf("%s: the server used an encoding that this nylzo never sends", where)
 	}
-	return nil, fmt.Errorf("%s: the server used an encoding that this nylzo never sends", where)
 }
 
 func describe(path, encoding string) string {

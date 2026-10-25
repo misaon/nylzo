@@ -8,6 +8,10 @@ go = "1.27.3"
 node = "24.22.1"
 pnpm = "12.14.0"
 goreleaser = "2.18.3"
+golangci-lint = "2.15.0"
+actionlint = "1.7.12"
+zizmor = "1.31.1"
+shellcheck = "0.11.0"
 
 [env]
 GOTOOLCHAIN = "local"
@@ -25,22 +29,6 @@ run = "pnpm --dir web --filter @nylzo/web build"
 description = "Build bin/nylzo with the web client inside"
 depends = ["build:web"]
 run = "go build -trimpath -o bin/nylzo ./cmd/nylzo"
-
-[tasks.dev]
-description = "Run nylzo on http://localhost:8080 with relaxed rate limits and data in .dev"
-depends = ["build"]
-run = """
-umask 077
-mkdir -p .dev/data
-[ -s .dev/pepper ] || od -An -N32 -tx1 /dev/urandom | tr -d ' \\n' > .dev/pepper
-port="${NYLZO_DEV_PORT:-8080}"
-case "$port" in ''|*[!0-9]*) echo "NYLZO_DEV_PORT must be a port number" >&2; exit 2 ;; esac
-unset NYLZO_PEPPER NYLZO_PEPPER_PREVIOUS NYLZO_PEPPER_PREVIOUS_FILE
-echo "nylzo: http://localhost:$port (Ctrl-C stops it, mise run dev:reset deletes the messages)"
-exec env NYLZO_LISTEN="127.0.0.1:$port" NYLZO_PEPPER_FILE=.dev/pepper NYLZO_DATA_DIR=.dev/data \
-  NYLZO_RATE_CREATE_HOUR=0 NYLZO_RATE_CREATE_DAY=0 NYLZO_RATE_CREATE_BYTES_DAY=0 NYLZO_RATE_READ_HOUR=0 \
-  bin/nylzo serve
-"""
 
 [tasks."dev:web"]
 description = "Vite with hot reload on http://localhost:5173, API from mise run dev"
@@ -62,17 +50,18 @@ run = [
 ]
 
 [tasks.lint]
-description = "The static checks of the Go and TypeScript CI jobs"
+description = "Every static check of CI: Go, TypeScript, workflows and scripts"
 depends = ["install"]
 run = [
   "go mod verify",
   "go mod tidy -diff",
-  "test -z \"$(gofmt -l cmd internal)\" || { gofmt -l cmd internal; exit 1; }",
-  "GOOS=linux go vet ./...",
+  "golangci-lint run ./...",
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
-  "go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
+  "actionlint",
+  "zizmor --persona pedantic .github/workflows",
+  "shellcheck mise-tasks/dev mise-tasks/release/*",
   '''awk '/^minimumReleaseAge:/ { found = 1; if ($2 + 0 < 1440) exit 1 } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
@@ -90,30 +79,3 @@ run = "pnpm --dir web/e2e exec playwright install chromium firefox webkit"
 description = "Playwright end to end in Chromium, Firefox and WebKit"
 depends = ["build:web"]
 run = "pnpm --dir web/e2e e2e"
-
-[tasks."release:verify"]
-description = "Rebuild the checked-out release tag and compare checksums.txt with the published release"
-depends = ["install"]
-run = """
-tag="$(git describe --exact-match --tags HEAD)"
-GORELEASER_CURRENT_TAG="$tag" goreleaser release --clean --skip=publish,sign,sbom,ko,validate
-curl -fsSL "https://github.com/misaon/nylzo/releases/download/$tag/checksums.txt" -o dist/published-checksums.txt
-grep -v sbom dist/published-checksums.txt > dist/published-without-sbom.txt
-grep -v sbom dist/checksums.txt | diff dist/published-without-sbom.txt -
-echo "$tag: the local build matches the published checksums.txt"
-shasum -a 256 dist/published-checksums.txt
-"""
-
-[tasks."release:verify-image"]
-description = "Compare the nylzo binaries in the release image with the local build from release:verify"
-run = """
-tag="$(git describe --exact-match --tags HEAD)"
-for arch in amd64 arm64; do
-  docker pull -q --platform "linux/$arch" "ghcr.io/misaon/nylzo:${tag#v}" > /dev/null
-  container="$(docker create --platform "linux/$arch" "ghcr.io/misaon/nylzo:${tag#v}")"
-  docker cp "$container:/ko-app/nylzo" "dist/image-$arch"
-  docker rm "$container" > /dev/null
-  cmp "dist/image-$arch" dist/nylzo_linux_${arch}_*/nylzo
-  echo "linux/$arch: the image binary matches the local build"
-done
-"""

@@ -1,8 +1,12 @@
 package core
 
-import (
-	"crypto/rand"
-	"crypto/sha256"
+import "crypto/rand"
+
+const (
+	IDLen     = 16
+	SecretLen = 32
+	KeyLen    = 32
+	SeedLen   = 32
 )
 
 type ID [IDLen]byte
@@ -13,12 +17,12 @@ func NewID() ID {
 	return id
 }
 
-func ParseID(s string) (ID, error) {
-	b, err := DecodeExact(s, IDLen)
+func ParseID(text string) (ID, error) {
+	decoded, err := DecodeExact(text, IDLen)
 	if err != nil {
 		return ID{}, err
 	}
-	return ID(b), nil
+	return ID(decoded), nil
 }
 
 func (id ID) String() string {
@@ -26,17 +30,7 @@ func (id ID) String() string {
 }
 
 func NewSecret() *[SecretLen]byte {
-	var s [SecretLen]byte
-	rand.Read(s[:])
-	return &s
-}
-
-func NewIV() [IVLen]byte {
-	var iv [IVLen]byte
-	rand.Read(iv[:])
-	return iv
-}
-
-func Hash(b []byte) [32]byte {
-	return sha256.Sum256(b)
+	var secret [SecretLen]byte
+	rand.Read(secret[:])
+	return &secret
 }

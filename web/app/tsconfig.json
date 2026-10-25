@@ -1,31 +1,12 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "strict": true,
-    "module": "esnext",
+    "module": "preserve",
     "moduleResolution": "bundler",
-    "target": "es2024",
-    "lib": [
-      "es2024",
-      "dom",
-      "dom.iterable"
-    ],
-    "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true,
+    "lib": ["es2024", "dom", "dom.iterable"],
     "allowJs": true,
     "checkJs": true,
-    "allowImportingTsExtensions": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "types": [
-      "vite/client",
-      "svelte"
-    ]
+    "types": ["vite/client", "svelte"]
   },
-  "include": [
-    "src",
-    "test",
-    "vite.config.ts"
-  ]
+  "include": ["src", "client-environment.ts", "vite.config.ts", "svelte.config.js"]
 }

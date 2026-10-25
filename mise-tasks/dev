@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#MISE description="Run nylzo on http://localhost:8080 with relaxed rate limits and data in .dev"
+#MISE depends=["build"]
+set -euo pipefail
+
+umask 077
+mkdir -p .dev/data
+if [[ ! -s .dev/pepper ]]; then
+  od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > .dev/pepper
+fi
+
+port="${NYLZO_DEV_PORT:-8080}"
+if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+  echo "NYLZO_DEV_PORT must be a port number" >&2
+  exit 2
+fi
+
+unset NYLZO_PEPPER NYLZO_PEPPER_PREVIOUS NYLZO_PEPPER_PREVIOUS_FILE
+echo "nylzo: http://localhost:$port (Ctrl-C stops it, mise run dev:reset deletes the messages)"
+exec env \
+  NYLZO_LISTEN="127.0.0.1:$port" \
+  NYLZO_PEPPER_FILE=.dev/pepper \
+  NYLZO_DATA_DIR=.dev/data \
+  NYLZO_RATE_CREATE_HOUR=0 \
+  NYLZO_RATE_CREATE_DAY=0 \
+  NYLZO_RATE_CREATE_BYTES_DAY=0 \
+  NYLZO_RATE_READ_HOUR=0 \
+  bin/nylzo serve

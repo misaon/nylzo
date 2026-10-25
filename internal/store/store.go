@@ -31,11 +31,11 @@ const (
 	MinTransferRate   = 16000
 )
 
-func CeilMinute(t time.Time) time.Time {
-	if r := t.Truncate(time.Minute); !r.Equal(t) {
-		return r.Add(time.Minute)
+func CeilMinute(moment time.Time) time.Time {
+	if truncated := moment.Truncate(time.Minute); !truncated.Equal(moment) {
+		return truncated.Add(time.Minute)
 	}
-	return t
+	return moment
 }
 
 func TransferTime(size int64) time.Duration {
@@ -144,11 +144,17 @@ type Lease struct {
 	Downloads int
 }
 
-func (l Lease) Active(now time.Time) bool {
+func (l *Lease) Active(now time.Time) bool {
 	return now.Before(l.ExpiresAt)
 }
 
-type ClaimParams struct {
+type Ending struct {
+	State    State
+	Ref      string
+	Recorded bool
+}
+
+type ClaimParameters struct {
 	ID            string
 	Clock         func() time.Time
 	VerifierSent  bool
@@ -166,18 +172,11 @@ type RateHit struct {
 	Key         string
 	WindowStart time.Time
 	PurgeAt     time.Time
-	Bytes       int64
 	Limit       int64
-	BytesLimit  int64
-}
-
-func (h RateHit) Over(c RateCount) bool {
-	return (h.Limit > 0 && c.Count > h.Limit) || (h.BytesLimit > 0 && c.Bytes > h.BytesLimit)
 }
 
 type RateCount struct {
 	Count int64
-	Bytes int64
 }
 
 type ExpiredMessage struct {
@@ -187,15 +186,15 @@ type ExpiredMessage struct {
 }
 
 type Messages interface {
-	Create(ctx context.Context, m *Message, counters ...RateHit) error
+	Create(ctx context.Context, message *Message, counters ...RateHit) error
 	Get(ctx context.Context, id string) (Record, error)
-	Claim(ctx context.Context, p ClaimParams) (ClaimResult, error)
+	Claim(ctx context.Context, parameters ClaimParameters) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
-	RecordDownload(ctx context.Context, lease Lease, now time.Time) error
-	Ack(ctx context.Context, lease Lease, now time.Time) (string, error)
+	RecordDownload(ctx context.Context, lease *Lease, now time.Time) error
+	Ack(ctx context.Context, lease *Lease, now time.Time) (string, error)
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
-	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
-	MarkEnding(ctx context.Context, id string, state State, now time.Time) (ending State, ref string, recorded bool, err error)
+	ClearBlob(ctx context.Context, id, blobRef string, now time.Time) error
+	MarkEnding(ctx context.Context, id string, state State, now time.Time) (Ending, error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	EndExpired(ctx context.Context, ids []string, now time.Time) (int, error)
 	ExpiredPage(ctx context.Context, now time.Time, after ExpiredMessage, limit int) ([]ExpiredMessage, error)
@@ -209,7 +208,7 @@ type Messages interface {
 type Counters interface {
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)
-	RateReserve(ctx context.Context, hit RateHit) (int64, bool, error)
+	RateReserve(ctx context.Context, hit RateHit) (int64, error)
 	RateReserveBatch(ctx context.Context, hits []RateHit) ([]bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
 	RatePurge(ctx context.Context, now time.Time, limit int) (int, error)
@@ -228,7 +227,7 @@ type BlobInfo struct {
 }
 
 type Blobs interface {
-	Put(ctx context.Context, ref string, r io.Reader, size int64) error
+	Put(ctx context.Context, ref string, content io.Reader, size int64) error
 	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
 	Delete(ctx context.Context, ref string) error
 	DeleteBatch(ctx context.Context, refs []string) []error

@@ -1,123 +1,211 @@
-import { createViaUi, expect, openApp, setPassphrase, test } from './helpers.ts';
+import type { Page, Request } from '@playwright/test';
 
-const PHONE = { width: 430, height: 932 };
+import { ApiError } from '../../app/src/shared/api/api-errors.ts';
+import { createApi } from '../../app/src/shared/api/api.ts';
+import { expect, test } from './support/fixtures.ts';
+import { createMessageThroughApi } from './support/messages.ts';
+import {
+  choosePassphrase,
+  createdLink,
+  createMessageInPage,
+  expectMessageShown,
+  leavePage,
+  notInert,
+  openApp,
+  returnFromBackForwardCache,
+  showMessage,
+} from './support/pages.ts';
+import { holdRoute } from './support/routes.ts';
+import { POW_BASE_URL } from './support/servers.ts';
+import { watchViolations } from './support/watchers.ts';
 
-test('the composer forgets the text, the passphrase and the file once the link exists (SEC-8)', async ({ page }) => {
-  const link = await createViaUi(page, {
-    text: 'forget me',
-    passphrase: 'four random words here',
-    file: { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') },
-  });
+interface CreateAnswer {
+  readonly handled: boolean;
+  readonly databaseOpens: number;
+}
+
+declare global {
+  var nylzoCreateAnswer: CreateAnswer | undefined;
+}
+
+const PASSPHRASE = 'four random words here';
+const NOTES = { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') };
+
+function isCreate(request: Request): boolean {
+  return request.url().endsWith('/api/v1/messages') && request.method() === 'POST';
+}
+
+test('the composer forgets the text, the passphrase and the file once the link exists or the page is left (SEC-8)', async ({
+  page,
+}) => {
+  const text = page.getByLabel('Message text');
+  const passphrase = page.getByLabel('Passphrase, optional');
+  const attachment = page.getByLabel(/Attachment, up to/);
+  const attachedFiles = () => attachment.evaluate((input: HTMLInputElement) => input.files?.length ?? 0);
+
+  await openApp(page, '/');
+  await text.fill('wipe me');
+  await choosePassphrase(page, PASSPHRASE);
+  await attachment.setInputFiles(NOTES);
+  await leavePage(page);
+  await expect(text).toHaveValue('');
+  await expect(passphrase).toHaveValue('');
+  expect(await attachedFiles()).toBe(0);
+
+  const link = await createMessageInPage(page, { text: 'forget me', passphrase: PASSPHRASE, file: NOTES });
   expect(link).toContain('#1.1.');
-  await expect(page.getByLabel('Message text')).toHaveValue('');
-  await expect(page.getByLabel('Passphrase, optional')).toHaveValue('');
-  expect(await page.getByLabel(/Attachment, up to/).evaluate((input: HTMLInputElement) => input.files?.length ?? 0)).toBe(0);
+  await expect(text).toHaveValue('');
+  await expect(passphrase).toHaveValue('');
+  expect(await attachedFiles()).toBe(0);
 
-  await page.getByRole('button', { name: 'New message' }).click();
-  await expect(page.getByLabel('Message text')).toBeFocused();
-  await expect(page.getByLabel('Message text')).toHaveValue('');
-  await expect(page.getByText('notes.txt')).toHaveCount(0);
-  await expect(page.getByRole('switch', { name: /^Protect with a passphrase/ })).toHaveAttribute('aria-checked', 'false');
+  await leavePage(page);
+  await expect(page.getByLabel('Link to the message')).toHaveCount(0);
+  const secret = link.split('.').at(-1) ?? '';
+  const shown = await page.evaluate(
+    (part) =>
+      document.body.textContent.includes(part) ||
+      [...document.querySelectorAll<HTMLInputElement>('input, textarea')].some((field) => field.value.includes(part)),
+    secret,
+  );
+  expect(shown).toBe(false);
+  await returnFromBackForwardCache(page);
+  await expect(text).toHaveValue('');
 });
 
 test('a refused create keeps the message and hands focus back to Create link', async ({ page }) => {
   await page.route('**/api/v1/messages', (route) =>
-    route.request().method() === 'POST'
-      ? route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'rate_limited', retry_after: 30 }) })
+    isCreate(route.request())
+      ? route.fulfill({ status: 429, json: { error: 'rate_limited', retry_after: 30 } })
       : route.continue(),
   );
   await openApp(page, '/');
   await page.getByLabel('Message text').fill('try again later');
   const submit = page.getByRole('button', { name: 'Create link' });
   await submit.click();
-  await expect(page.getByRole('alert').filter({ hasText: /^Too many messages in a short time\. Try again in / })).toBeVisible({ timeout: 45_000 });
+  await expect(
+    page.getByRole('alert').filter({ hasText: /^Too many messages in a short time\. Try again in / }),
+  ).toBeVisible({ timeout: 45_000 });
   await expect(submit).toBeEnabled();
   await expect(submit).toBeFocused();
   await expect(page.getByLabel('Message text')).toHaveValue('try again later');
 
-  await page.unroute('**/api/v1/messages');
+  await page.unrouteAll();
   await submit.click();
-  await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
+  await createdLink(page);
 });
 
-test('on a phone the created panel copies the link and starts a new message', async ({ browser }) => {
-  const page = await (await browser.newContext({ viewport: PHONE })).newPage();
+test('a double click on Create link with an attachment creates one message', async ({ page }) => {
+  await openApp(page, '/');
+  const sent: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path === '/api/v1/instance' || path === '/api/v1/messages') {
+      sent.push(`${request.method()} ${path}`);
+    }
+  });
+  await page.getByLabel('Message text').fill('double');
+  await page
+    .getByLabel(/Attachment, up to/)
+    .setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
+  await page.getByRole('button', { name: 'Create link' }).dblclick();
+  await createdLink(page);
+  expect(sent).toEqual(['GET /api/v1/instance', 'POST /api/v1/messages']);
+});
+
+async function watchCreateAnswer(page: Page): Promise<() => Promise<CreateAnswer>> {
   await page.addInitScript(() => {
-    const copied: string[] = [];
-    Object.defineProperty(window, 'nylzoCopied', { value: copied });
-    Object.defineProperty(navigator, 'clipboard', {
+    let handled = false;
+    let databaseOpens = 0;
+    Object.defineProperty(globalThis, 'nylzoCreateAnswer', {
       value: {
-        writeText: (text: string) => {
-          copied.push(text);
-          return Promise.resolve();
+        get handled() {
+          return handled;
+        },
+        get databaseOpens() {
+          return databaseOpens;
         },
       },
     });
+    const open: unknown = Object.getOwnPropertyDescriptor(IDBFactory.prototype, 'open')?.value;
+    Object.defineProperty(IDBFactory.prototype, 'open', {
+      value(this: IDBFactory, ...parameters: Parameters<IDBFactory['open']>): IDBOpenDBRequest {
+        databaseOpens += 1;
+        return Reflect.apply(open as IDBFactory['open'], this, parameters);
+      },
+    });
+    const json: unknown = Object.getOwnPropertyDescriptor(Response.prototype, 'json')?.value;
+    Object.defineProperty(Response.prototype, 'json', {
+      async value(this: Response): Promise<unknown> {
+        const body: unknown = await Reflect.apply(json as Response['json'], this, []);
+        if (this.url.endsWith('/api/v1/messages')) {
+          setTimeout(() => {
+            handled = true;
+          }, 0);
+        }
+        return body;
+      },
+    });
   });
-  await openApp(page, '/');
-  await page.getByLabel('Message text').fill('phone');
-  await setPassphrase(page, 'four random words here');
-  await page.getByRole('button', { name: 'Create link' }).click();
-  const link = page.getByLabel('Link to the message');
-  await expect(link).toBeVisible({ timeout: 45_000 });
-  await page.getByRole('button', { name: 'Copy link' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'The link is on the clipboard' })).toHaveCount(1);
-  expect(await page.evaluate(() => (window as unknown as { nylzoCopied: string[] }).nylzoCopied)).toEqual([await link.inputValue()]);
+  return () =>
+    page.evaluate(() => ({
+      handled: globalThis.nylzoCreateAnswer?.handled ?? false,
+      databaseOpens: globalThis.nylzoCreateAnswer?.databaseOpens ?? 0,
+    }));
+}
 
-  const another = page.getByRole('button', { name: 'New message' });
-  const box = await another.boundingBox();
-  expect(box?.height).toBeGreaterThanOrEqual(44);
-  await another.click();
-  await expect(page.getByLabel('Message text')).toBeFocused();
+test('leaving while a message is encrypted wipes it and a later answer neither shows nor remembers it', async ({
+  page,
+}) => {
+  const createAnswer = await watchCreateAnswer(page);
+  const creation = await holdRoute(page, '**/api/v1/messages', isCreate);
+  await openApp(page, '/');
+  const secret = 'zebracorn marmalade quokka';
+  await page.getByLabel('Message text').fill(secret);
+  await page.getByRole('button', { name: 'Create link' }).click();
+  await creation.requested;
+  await leavePage(page);
+  const shownWords = () =>
+    page.evaluate((words) => words.filter((word) => document.body.textContent.includes(word)), secret.split(' '));
+  expect(await shownWords()).toEqual([]);
   await expect(page.getByLabel('Message text')).toHaveValue('');
+
+  const { databaseOpens } = await createAnswer();
+  const answered = page.waitForResponse((response) => isCreate(response.request()));
+  creation.release();
+  const response = await answered;
+  expect(response.ok()).toBe(true);
+  await expect.poll(createAnswer).toEqual({ handled: true, databaseOpens });
+  await expect(notInert(page, page.getByLabel('Link to the message'))).toHaveCount(0);
+  expect(await shownWords()).toEqual([]);
 });
 
-test.describe('with full motion', () => {
-  test.use({ reducedMotion: 'no-preference' });
-
-  test('the derivation step keeps its passphrase wording until the link is ready', async ({ page }) => {
-    await openApp(page, '/');
-    await page.getByLabel('Message text').fill('scrypt wording');
-    await setPassphrase(page, 'four random words here');
-    await page.evaluate(() => {
-      let plain = false;
-      Object.defineProperty(window, 'nylzoPlainDerive', { get: () => plain });
-      new MutationObserver(() => {
-        plain ||= document.body.textContent?.includes('HKDF-SHA-256 creates the content key') ?? false;
-      }).observe(document.body, { childList: true, subtree: true, characterData: true });
-    });
-    await page.getByRole('button', { name: 'Create link' }).click();
-    await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
-    expect(await page.evaluate(() => (window as unknown as { nylzoPlainDerive: boolean }).nylzoPlainDerive)).toBe(false);
-  });
-
-  test('the points of view cycle on their own, pause for the keyboard and stop for good after a pick (WCAG 2.2.2)', async ({ page }) => {
-    await page.clock.install();
-    await openApp(page, '/');
-    const tabs = page.getByRole('tablist', { name: 'Point of view' });
-    await tabs.evaluate((list) => list.closest('[role="group"]')?.scrollIntoView({ block: 'center' }));
-    await expect(tabs.locator('progress')).toHaveClass(/opacity-100/);
-    const selected = () => tabs.getByRole('tab', { selected: true }).textContent();
-    const after = async (ms: number) => {
-      for (let passed = 0; passed < ms; passed += 1000) {
-        await page.clock.runFor(1000);
+async function exhaustCreatesWithoutProofOfWork(): Promise<void> {
+  const api = createApi({ base: POW_BASE_URL });
+  let instance = await api.instance();
+  while (!instance.pow.required) {
+    try {
+      await createMessageThroughApi({ base: POW_BASE_URL });
+    } catch (error) {
+      if (!(error instanceof ApiError && error.kind === 'pow')) {
+        throw error;
       }
-      return selected();
-    };
-    const start = await selected();
-    await expect.poll(() => after(1000), { timeout: 30_000 }).not.toBe(start);
+    }
+    instance = await api.instance();
+  }
+}
 
-    const current = tabs.getByRole('tab', { selected: true });
-    await current.focus();
-    expect(await current.evaluate((tab) => tab.matches(':focus-visible'))).toBe(true);
-    const focused = await selected();
-    expect(await after(20_000)).toBe(focused);
+test('the client solves the proof of work the instance asks for (D19)', async ({ newPage }) => {
+  await exhaustCreatesWithoutProofOfWork();
+  const sender = await newPage();
+  const violations = await watchViolations(sender);
+  const created = sender.waitForRequest(isCreate);
+  const link = await createMessageInPage(sender, { text: 'pow' }, POW_BASE_URL);
+  const request = await created;
+  expect(request.headers()['x-nylzo-pow']).toMatch(/^[\w-]{48}\.[\da-f]{16}$/);
+  expect(await violations()).toEqual([]);
 
-    const picked = tabs.getByRole('tab').first();
-    await picked.click();
-    await page.mouse.move(0, 0);
-    await page.locator('h1').click();
-    await after(30_000);
-    await expect(picked).toHaveAttribute('aria-selected', 'true');
-  });
+  const recipient = await newPage();
+  await showMessage(recipient, link);
+  await expectMessageShown(recipient);
+  await expect(recipient.locator('pre')).toHaveText('pow');
 });

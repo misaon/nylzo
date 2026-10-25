@@ -20,6 +20,9 @@ func TestCommittedVectorsMatchGenerator(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Fatalf("spec/vectors.json is stale; regenerate with `%s` and update web/core tests if the protocol changed", Generator)
+		t.Fatalf(
+			"spec/vectors.json is stale; regenerate with `%s` and update web/core tests if the protocol changed",
+			Generator,
+		)
 	}
 }

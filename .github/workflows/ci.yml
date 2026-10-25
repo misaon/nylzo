@@ -16,6 +16,7 @@ concurrency:
 
 env:
   GOTOOLCHAIN: local
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
 
 jobs:
   changes:
@@ -67,21 +68,20 @@ jobs:
           restore-keys: |
             go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-lint-${{ runner.os }}-
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          version: 2026.10.9
+          install_args: golangci-lint
       - run: go mod verify
       - run: go mod tidy -diff
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l cmd internal)
-          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
       - run: go build ./...
-      - run: go vet ./...
       - run: GOOS=darwin go vet ./...
       - name: go fix (modernize)
         run: go fix -diff ./...
-      - name: golangci-lint
+      - name: golangci-lint with the formatters, the binary from mise.lock
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.15.0
+          install-mode: none
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: The Go core regenerates exactly the committed vectors, which the TypeScript job tests against (AK9)
@@ -95,6 +95,24 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
           key: go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+
+  repository:
+    name: Workflows and scripts
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          version: 2026.10.9
+          install_args: actionlint zizmor shellcheck
+      - run: actionlint
+      - run: zizmor --persona pedantic .github/workflows
+      - run: shellcheck mise-tasks/dev mise-tasks/release/*
 
   go-test:
     name: Go tests (${{ matrix.shard }})
@@ -221,15 +239,17 @@ jobs:
           test -f pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --audit-level=moderate
+      - name: Prettier, ESLint and knip
+        run: pnpm lint
       - run: pnpm -r typecheck
-      - name: No markup sinks, clean svelte-autofixer
+      - name: Clean svelte-autofixer
         run: pnpm --filter @nylzo/web check
       - run: pnpm -r test
         env:
           NYLZO_HEAVY_TESTS: "1"
 
   e2e:
-    name: Web client end to end (${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.shards }})
+    name: Web client end to end (${{ matrix.browser }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.runner }}
@@ -239,38 +259,12 @@ jobs:
       matrix:
         include:
           - browser: chromium
-            shard: 1
-            shards: 2
-            runner: ubuntu-latest
-            install: --with-deps --only-shell chromium
-          - browser: chromium
-            shard: 2
-            shards: 2
             runner: ubuntu-latest
             install: --with-deps --only-shell chromium
           - browser: firefox
-            shard: 1
-            shards: 2
-            runner: ubuntu-latest
-            install: --with-deps firefox
-          - browser: firefox
-            shard: 2
-            shards: 2
             runner: ubuntu-latest
             install: --with-deps firefox
           - browser: webkit
-            shard: 1
-            shards: 3
-            runner: macos-latest
-            install: webkit
-          - browser: webkit
-            shard: 2
-            shards: 3
-            runner: macos-latest
-            install: webkit
-          - browser: webkit
-            shard: 3
-            shards: 3
             runner: macos-latest
             install: webkit
     steps:
@@ -310,12 +304,14 @@ jobs:
           exit 1
       - name: ${{ matrix.browser }} against nylzo
         working-directory: web/e2e
-        run: pnpm e2e --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/${{ matrix.shards }}
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: pnpm e2e --project="$BROWSER"
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-results-${{ matrix.browser }}-${{ matrix.shard }}
+          name: playwright-results-${{ matrix.browser }}
           path: web/e2e/test-results
           retention-days: 7
 
@@ -325,13 +321,11 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           version: 2026.10.9
           cache: false
@@ -346,15 +340,9 @@ jobs:
             for version in $versions; do test "$version" = "v$(mise current goreleaser)"; done
           done
           tools=$(grep -o 'go run [a-z0-9./-]*@v[0-9][0-9.]*' mise.toml | cut -d' ' -f3 | sort -u)
-          test "$(printf '%s\n' "$tools" | wc -l)" -ge 2
+          test -n "$tools"
           for tool in $tools; do
-            case "$tool" in
-              github.com/golangci/golangci-lint/*)
-                lint=$(yq -r '[.jobs[].steps[]? | select(.uses // "" | test("^golangci/golangci-lint-action@")) | .with.version // "missing"] | .[]' .github/workflows/ci.yml)
-                test -n "$lint"
-                for version in $lint; do test "$version" = "${tool##*@}" || { echo "CI lints with golangci-lint $version, mise.toml with ${tool##*@}"; exit 1; }; done ;;
-              *) grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; } ;;
-            esac
+            grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; }
           done
       - run: mise run build
       - name: mise run dev serves the built client

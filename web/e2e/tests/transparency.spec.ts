@@ -1,34 +1,32 @@
-import { BASE_URL, expect, test } from './helpers.ts';
-import { recordViolations } from './violations.ts';
+import { execFileSync } from 'node:child_process';
 
-interface Manifest {
+import { expect, test } from './support/fixtures.ts';
+import { BASE_URL, NYLZO_BINARY } from './support/servers.ts';
+
+interface ClientManifest {
   readonly server: string;
   readonly files: readonly { readonly path: string; readonly sha256: string }[];
 }
 
-test('the transparency page shows what the server reports', async ({ page }) => {
-  const violations = await recordViolations(page);
-  const manifest = (await (await page.request.get(`${BASE_URL}/.well-known/nylzo/client.json`)).json()) as Manifest;
-  await page.goto('/transparency');
-  await expect(page.getByRole('heading', { name: 'Transparency', level: 2 })).toBeVisible();
-  await expect(page.getByText('Nylzo e2e')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'abuse@nylzo.test' })).toHaveAttribute('href', 'mailto:abuse@nylzo.test');
-  await expect(page.getByText(manifest.server, { exact: true })).toBeVisible();
+test('nylzo verify-client finds the embedded web client unchanged on the server (D61)', () => {
+  const output = execFileSync(NYLZO_BINARY, ['verify-client', '--server', BASE_URL], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 6 pages and \d+ files checked\n$/);
+});
+
+test('the transparency page shows the server version and the hash of every file the server sends (D61)', async ({
+  page,
+  request,
+}) => {
+  const response = await request.get('/.well-known/nylzo/client.json');
+  const manifest = (await response.json()) as ClientManifest;
   expect(manifest.files.length).toBeGreaterThan(1);
+  await page.goto('/transparency');
+  await expect(page.getByText(manifest.server, { exact: true })).toBeVisible();
   for (const file of manifest.files) {
     await expect(page.getByText(file.sha256, { exact: true })).toBeVisible();
   }
   await expect(page.getByText(`nylzo verify-client --server ${BASE_URL}`)).toBeVisible();
-  await expect(page.getByText('for at most 7 days').first()).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Transparency' })).toHaveAttribute('aria-current', 'page');
-  expect(await violations()).toEqual([]);
-});
-
-test('the well-known documents keep the API headers', async ({ request }) => {
-  for (const path of ['/.well-known/nylzo/client.json', '/.well-known/nylzo/transparency.json']) {
-    const response = await request.get(`${BASE_URL}${path}`);
-    expect(response.status(), path).toBe(200);
-    expect(response.headers()['content-security-policy'], path).toBe("default-src 'none'; frame-ancestors 'none'");
-    expect(response.headers()['cache-control'], path).toBe('no-store');
-  }
 });

@@ -11,31 +11,37 @@ import (
 	"testing"
 )
 
-func server(t *testing.T, curves []tls.CurveID) (addr, ca string) {
+type testServer struct {
+	address  string
+	rootFile string
+}
+
+func startServer(t *testing.T, curves []tls.CurveID) testServer {
 	t.Helper()
-	ts := httptest.NewUnstartedServer(http.NotFoundHandler())
-	ts.TLS = &tls.Config{CurvePreferences: curves}
-	ts.StartTLS()
-	t.Cleanup(ts.Close)
-	ca = filepath.Join(t.TempDir(), "root.pem")
-	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ts.Certificate().Raw}), 0o600); err != nil {
+	server := httptest.NewUnstartedServer(http.NotFoundHandler())
+	server.TLS = &tls.Config{CurvePreferences: curves}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	rootFile := filepath.Join(t.TempDir(), "root.pem")
+	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	if err := os.WriteFile(rootFile, certificate, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return ts.Listener.Addr().String(), ca
+	return testServer{address: server.Listener.Addr().String(), rootFile: rootFile}
 }
 
 func TestCheckAcceptsAHybridKeyExchange(t *testing.T) {
 	t.Parallel()
-	addr, ca := server(t, []tls.CurveID{tls.X25519MLKEM768, tls.X25519})
-	if err := check(addr, ca); err != nil {
+	server := startServer(t, []tls.CurveID{tls.X25519MLKEM768, tls.X25519})
+	if err := check(server.address, server.rootFile); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestCheckRefusesAClassicalKeyExchange(t *testing.T) {
 	t.Parallel()
-	addr, ca := server(t, []tls.CurveID{tls.X25519})
-	err := check(addr, ca)
+	server := startServer(t, []tls.CurveID{tls.X25519})
+	err := check(server.address, server.rootFile)
 	if err == nil || !strings.Contains(err.Error(), "negotiated X25519 instead") {
 		t.Fatalf("a server without X25519MLKEM768 must be refused after the handshake, got %v", err)
 	}

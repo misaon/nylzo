@@ -1,6 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
+
 const ci = Boolean(process.env['CI']);
+const crossBrowser = /@cross-browser/;
+
+function server(baseUrl: string, profile: string) {
+  return {
+    command: `node serve.ts ${new URL(baseUrl).port} ${profile}`,
+    url: `${baseUrl}/healthz`,
+    reuseExistingServer: !ci,
+    timeout: 180_000,
+  };
+}
 
 export default defineConfig({
   testDir: './tests',
@@ -10,24 +22,11 @@ export default defineConfig({
   workers: ci ? 2 : '50%',
   timeout: 60_000,
   reporter: ci ? 'github' : 'list',
-  use: { baseURL: 'http://127.0.0.1:8090', locale: 'en-US', reducedMotion: 'reduce', trace: 'retain-on-failure' },
+  use: { baseURL: BASE_URL, locale: 'en-US', reducedMotion: 'reduce', trace: 'retain-on-failure' },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'chromium', use: devices['Desktop Chrome'] },
+    { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
+    { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
   ],
-  webServer: [
-    {
-      command: 'node serve.ts 8090',
-      url: 'http://127.0.0.1:8090/healthz',
-      reuseExistingServer: !ci,
-      timeout: 180_000,
-    },
-    {
-      command: 'node serve.ts 8091 pow',
-      url: 'http://127.0.0.1:8091/healthz',
-      reuseExistingServer: !ci,
-      timeout: 180_000,
-    },
-  ],
+  webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow')],
 });
