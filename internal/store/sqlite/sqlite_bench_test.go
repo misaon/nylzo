@@ -118,8 +118,8 @@ func BenchmarkRateHit(b *testing.B) {
 	s := benchStore(b)
 	window := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	hits := []store.RateHit{
-		{Key: "bench:h", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 64},
-		{Key: "bench:d", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 64},
+		{Key: "bench:h", WindowStart: window, PurgeAt: window.Add(2 * time.Hour)},
+		{Key: "bench:d", WindowStart: window, PurgeAt: window.Add(48 * time.Hour)},
 	}
 	for b.Loop() {
 		if _, err := s.RateHit(b.Context(), hits); err != nil {

@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	hitQuery = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, ?, ?)
-		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1, bytes = bytes + excluded.bytes RETURNING count, bytes`
+	hitQuery = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
+		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 RETURNING count`
 	reserveQuery = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`
 )
@@ -26,16 +26,12 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 				return err
 			}
 			counts = append(counts, count)
-			if hits[i].Over(count) {
-				return nil
-			}
 		}
 		return nil
 	})
 	return counts, err
 }
 
-//nolint:gocritic // hugeParam: store.Counters passes the hit by value; see the cross-area list.
 func (s *Store) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
 	count, err := reserveHit(ctx, s.statements.reserveCounter, &hit)
 	return count, count > 0, err
@@ -74,10 +70,10 @@ func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) 
 	var count store.RateCount
 	err := s.reader.QueryRowContext(
 		ctx,
-		`SELECT count, bytes FROM rate_counters WHERE key = ? AND window_start = ?`,
+		`SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`,
 		key,
 		ms(windowStart),
-	).Scan(&count.Count, &count.Bytes)
+	).Scan(&count.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.RateCount{}, nil
 	}
@@ -95,8 +91,7 @@ func (s *Store) RatePurge(ctx context.Context, now time.Time, limit int) (int, e
 
 func countHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (store.RateCount, error) {
 	var count store.RateCount
-	err := statement.QueryRowContext(ctx, hit.Key, ms(hit.WindowStart), hit.Bytes, ms(hit.PurgeAt)).
-		Scan(&count.Count, &count.Bytes)
+	err := statement.QueryRowContext(ctx, hit.Key, ms(hit.WindowStart), ms(hit.PurgeAt)).Scan(&count.Count)
 	return count, err
 }
 

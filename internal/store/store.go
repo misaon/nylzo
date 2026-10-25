@@ -166,18 +166,11 @@ type RateHit struct {
 	Key         string
 	WindowStart time.Time
 	PurgeAt     time.Time
-	Bytes       int64
 	Limit       int64
-	BytesLimit  int64
-}
-
-func (h *RateHit) Over(count RateCount) bool {
-	return (h.Limit > 0 && count.Count > h.Limit) || (h.BytesLimit > 0 && count.Bytes > h.BytesLimit)
 }
 
 type RateCount struct {
 	Count int64
-	Bytes int64
 }
 
 type ExpiredMessage struct {

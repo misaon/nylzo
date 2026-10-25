@@ -52,7 +52,6 @@ func Run(t *testing.T, open Factory) {
 	t.Run("RateHitAtomic", func(t *testing.T) { testRateHit(t, open) })
 	t.Run("CreateCountsWithTheRow", func(t *testing.T) { testCreateCounters(t, open) })
 	t.Run("DownloadAfterRecordedEnding", func(t *testing.T) { testDownloadAfterRecordedEnding(t, open) })
-	t.Run("RateHitStopsAtFirstRefusal", func(t *testing.T) { testRateHitOrder(t, open) })
 	t.Run("SweepBatches", func(t *testing.T) { testSweepBatches(t, open) })
 	t.Run("BlobsIdempotentDelete", func(t *testing.T) { testBlobsDelete(t, open) })
 	t.Run("BlobsDeleteBatch", func(t *testing.T) { testBlobsDeleteBatch(t, open) })
@@ -1189,8 +1188,8 @@ func testRateHit(t *testing.T, open Factory) {
 			counts, err := f.s.RateHit(
 				f.ctx,
 				[]store.RateHit{
-					{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 10},
-					{Key: "daily:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 10},
+					{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour)},
+					{Key: "daily:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour)},
 				},
 			)
 			if err != nil {
@@ -1208,13 +1207,13 @@ func testRateHit(t *testing.T, open Factory) {
 	}
 	counts, err := f.s.RateHit(
 		f.ctx,
-		[]store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 5}},
+		[]store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour)}},
 	)
-	if err != nil || counts[0].Count != 101 || counts[0].Bytes != 1005 {
+	if err != nil || counts[0].Count != 101 {
 		t.Fatalf("final count %+v %v", counts, err)
 	}
 	got, err := f.s.RateGet(f.ctx, "hourly:abc", window)
-	if err != nil || got.Count != 101 || got.Bytes != 1005 {
+	if err != nil || got.Count != 101 {
 		t.Fatalf("RateGet %+v %v", got, err)
 	}
 	if missing, err := f.s.RateGet(f.ctx, "nope", window); err != nil || missing.Count != 0 {
@@ -1230,29 +1229,6 @@ func testRateHit(t *testing.T, open Factory) {
 	report, err := store.SweepAll(f.ctx, f.s, f.b, window.Add(2*time.Hour))
 	if err != nil || report.Counters != 1 {
 		t.Fatalf("counter purge: %+v %v", report, err)
-	}
-}
-
-func testRateHitOrder(t *testing.T, open Factory) {
-	f := newFixture(t, open)
-	window := baseTime.Truncate(time.Hour)
-	hits := []store.RateHit{
-		{Key: "fine", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 40, Limit: 2, BytesLimit: 100},
-		{Key: "coarse", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 40, Limit: 10},
-	}
-	for i, want := range []int{2, 2, 1, 1} {
-		counts, err := f.s.RateHit(f.ctx, hits)
-		if err != nil || len(counts) != want {
-			t.Fatalf("hit %d: %+v %v, want %d counts", i+1, counts, err, want)
-		}
-		if want == 1 && !hits[0].Over(counts[0]) {
-			t.Fatalf("hit %d must be over the first limit: %+v", i+1, counts[0])
-		}
-	}
-	fine, _ := f.s.RateGet(f.ctx, "fine", window)
-	coarse, _ := f.s.RateGet(f.ctx, "coarse", window)
-	if fine.Count != 4 || fine.Bytes != 160 || coarse.Count != 2 || coarse.Bytes != 80 {
-		t.Fatalf("a refused hit must not count against later ones: fine %+v coarse %+v", fine, coarse)
 	}
 }
 
