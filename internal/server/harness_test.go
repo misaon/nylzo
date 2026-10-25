@@ -100,6 +100,10 @@ type testHarness struct {
 	lastCreate []byte
 }
 
+type responseBody []byte
+
+type jsonFields map[string]any
+
 type testResponse struct {
 	StatusCode int
 	Header     http.Header
@@ -253,7 +257,7 @@ func (h *testHarness) pendingTimers() int {
 	return len(h.timers)
 }
 
-func (h *testHarness) do(request *testRequest) (testResponse, []byte) {
+func (h *testHarness) do(request *testRequest) (testResponse, responseBody) {
 	h.t.Helper()
 	response, body, err := h.tryDo(request)
 	if err != nil {
@@ -262,7 +266,7 @@ func (h *testHarness) do(request *testRequest) (testResponse, []byte) {
 	return response, body
 }
 
-func (h *testHarness) tryDo(request *testRequest) (testResponse, []byte, error) {
+func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, error) {
 	var body io.Reader = http.NoBody
 	if request.body != nil {
 		body = bytes.NewReader(request.body)
@@ -316,7 +320,7 @@ func (h *testHarness) lastCreateRequest() []byte {
 	return slices.Clone(h.lastCreate)
 }
 
-func (h *testHarness) create(message *testMessage) (testResponse, []byte) {
+func (h *testHarness) create(message *testMessage) (testResponse, responseBody) {
 	h.t.Helper()
 	return h.do(createRequestFor(message))
 }
@@ -329,7 +333,7 @@ func (h *testHarness) mustCreate(message *testMessage) {
 	}
 }
 
-func (h *testHarness) metadata(message *testMessage) (testResponse, map[string]any) {
+func (h *testHarness) metadata(message *testMessage) (testResponse, jsonFields) {
 	h.t.Helper()
 	response, body := h.do(&testRequest{
 		method:  http.MethodGet,
@@ -340,12 +344,12 @@ func (h *testHarness) metadata(message *testMessage) (testResponse, map[string]a
 	return response, decodeJSON(h.t, body)
 }
 
-func (h *testHarness) claim(message *testMessage, verifier, address string) (testResponse, []byte) {
+func (h *testHarness) claim(message *testMessage, verifier, address string) (testResponse, responseBody) {
 	h.t.Helper()
 	return h.do(claimRequestFor(message, verifier, address))
 }
 
-func (h *testHarness) blob(message *testMessage, lease string) (testResponse, []byte) {
+func (h *testHarness) blob(message *testMessage, lease string) (testResponse, responseBody) {
 	h.t.Helper()
 	return h.do(&testRequest{
 		method:  http.MethodGet,
@@ -368,7 +372,7 @@ func (h *testHarness) ack(message *testMessage, lease string) testResponse {
 	return response
 }
 
-func (h *testHarness) status(message *testMessage) (testResponse, map[string]any) {
+func (h *testHarness) status(message *testMessage) (testResponse, jsonFields) {
 	h.t.Helper()
 	response, body := h.do(&testRequest{
 		method:  http.MethodGet,
@@ -379,7 +383,7 @@ func (h *testHarness) status(message *testMessage) (testResponse, map[string]any
 	return response, decodeJSON(h.t, body)
 }
 
-func (h *testHarness) post(message *testMessage, action, token string) (testResponse, []byte) {
+func (h *testHarness) post(message *testMessage, action, token string) (testResponse, responseBody) {
 	h.t.Helper()
 	return h.do(&testRequest{
 		method: http.MethodPost,
@@ -490,12 +494,6 @@ func (h *testHarness) withFaultyBlobs() *faultyBlobs {
 	return faulty
 }
 
-func (b *faultyBlobs) set(change func(*faultyBlobs)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	change(b)
-}
-
 func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
 	b.mu.Lock()
 	failing, err := b.failDelete[ref], b.deleteErr[ref]
@@ -553,6 +551,12 @@ func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
 		return nil, err
 	}
 	return b.Blobs.List(ctx)
+}
+
+func (b *faultyBlobs) set(change func(*faultyBlobs)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	change(b)
 }
 
 type failingReader struct {
@@ -694,12 +698,12 @@ func mutateHeader(t *testing.T, message *testMessage, change func(map[string]any
 	return core.Encode(encoded)
 }
 
-func decodeJSON(t *testing.T, body []byte) map[string]any {
+func decodeJSON(t *testing.T, body []byte) jsonFields {
 	t.Helper()
 	if len(body) == 0 {
 		return nil
 	}
-	var decoded map[string]any
+	var decoded jsonFields
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		t.Fatalf("invalid json %q: %v", body, err)
 	}
@@ -715,8 +719,8 @@ func decodePolicy(header string) (core.Policy, error) {
 	if err != nil {
 		return core.Policy{}, err
 	}
-	if err = json.Unmarshal(data, &policy); err != nil {
-		return core.Policy{}, err
+	if decodeErr := json.Unmarshal(data, &policy); decodeErr != nil {
+		return core.Policy{}, decodeErr
 	}
 	if policy.OpensMax == 0 {
 		return core.Policy{}, errors.New("policy header without opens_max")

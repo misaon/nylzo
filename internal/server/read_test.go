@@ -1521,52 +1521,6 @@ func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
 	}
 }
 
-func TestReadRateLimitCountsMetadataClaimBlob(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.ReadPerHour = 5
-	harness := newHarness(t, settings)
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-	message.address = "203.0.113.5"
-	harness.mustCreate(message)
-	for i := range 5 {
-		if response, _ := harness.metadata(message); response.StatusCode != http.StatusOK {
-			t.Fatalf("metadata %d: %d", i, response.StatusCode)
-		}
-	}
-	if response, _ := harness.metadata(message); response.StatusCode != http.StatusTooManyRequests {
-		t.Fatal("sixth read not limited")
-	}
-	if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusTooManyRequests {
-		t.Fatal("claim shares the read limit")
-	}
-	message.address = "203.0.113.6"
-	if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
-		t.Fatal("other address")
-	}
-}
-
-func TestReadRateLimitCountsBlob(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.ReadPerHour = 2
-	harness := newHarness(t, settings)
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-	message.address = "203.0.113.5"
-	harness.mustCreate(message)
-	response, _ := harness.claim(message, "", "")
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("claim: %d", response.StatusCode)
-	}
-	lease := response.Header.Get("X-Nylzo-Lease")
-	if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusOK {
-		t.Fatalf("first download: %d", got.StatusCode)
-	}
-	if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("second download over the read limit: %d", got.StatusCode)
-	}
-}
-
 func TestMalformedIDsDoNotSpendReadLimit(t *testing.T) {
 	t.Parallel()
 	settings := baseSettings(pepperA, nil)
@@ -1615,5 +1569,35 @@ func TestRefusedReaderDoesNotSpendItsRange(t *testing.T) {
 	}
 	if code := read("198.51.100.3"); code != http.StatusTooManyRequests {
 		t.Fatalf("the /24 read budget still applies: %d", code)
+	}
+}
+
+func TestReadRateLimitCountsMetadataClaimAndBlob(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.ReadPerHour = 3
+	harness := newHarness(t, settings)
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	message.address = "203.0.113.5"
+	harness.mustCreate(message)
+	for i := range 2 {
+		if response, _ := harness.metadata(message); response.StatusCode != http.StatusOK {
+			t.Fatalf("metadata %d: %d", i, response.StatusCode)
+		}
+	}
+	claimed, _ := harness.claim(message, "", "")
+	lease := claimed.Header.Get("X-Nylzo-Lease")
+	if claimed.StatusCode != http.StatusOK || lease == "" {
+		t.Fatalf("the third read, a claim: %d", claimed.StatusCode)
+	}
+	if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("a download over the read limit: %d", response.StatusCode)
+	}
+	if response, _ := harness.metadata(message); response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("metadata over the read limit: %d", response.StatusCode)
+	}
+	message.address = "203.0.113.6"
+	if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusOK {
+		t.Fatalf("another address keeps its own read budget: %d", response.StatusCode)
 	}
 }

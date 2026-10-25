@@ -837,136 +837,6 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 	})
 }
 
-func TestTokenBucketThrottlesAPIPaths(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.BucketPerSecond = 1
-	settings.Rates.BucketBurst = 3
-	harness := newHarness(t, settings)
-	codes := []int{}
-	for i := range 5 {
-		response, _ := harness.do(
-			&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: fmt.Sprintf("203.0.%d.1", i)},
-		)
-		codes = append(codes, response.StatusCode)
-	}
-	if codes[0] != 200 || codes[2] != 200 || codes[3] != 429 || codes[4] != 429 {
-		t.Fatalf("codes %v", codes)
-	}
-	if response, _ := harness.do(
-		&testRequest{method: http.MethodGet, path: "/healthz"},
-	); response.StatusCode != http.StatusOK {
-		t.Fatal("non-API path throttled")
-	}
-	harness.clock.Advance(2 * time.Second)
-	if response, _ := harness.do(
-		&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "203.0.9.1"},
-	); response.StatusCode != http.StatusOK {
-		t.Fatal("bucket did not refill")
-	}
-}
-
-func TestSourceLimiterIsolatesClients(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.SourcePerSecond = 1
-	settings.Rates.SourceBurst = 2
-	harness := newHarness(t, settings)
-	get := func(ip string) int {
-		response, _ := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: ip})
-		return response.StatusCode
-	}
-	if codes := []int{
-		get("203.0.113.1"),
-		get("203.0.113.1"),
-		get("203.0.113.1"),
-	}; !slices.Equal(
-		codes,
-		[]int{200, 200, 429},
-	) {
-		t.Fatalf("one source must be limited after its burst: %v", codes)
-	}
-	if get("2001:db8:1:1::1") != 200 || get("2001:db8:1:1::2") != 200 || get("2001:db8:1:1::3") != 429 {
-		t.Fatal("addresses in one /64 must share a bucket")
-	}
-	if get("203.0.113.2") != 200 {
-		t.Fatal("a busy source must not throttle other clients")
-	}
-	if response, _ := harness.do(
-		&testRequest{method: http.MethodGet, path: "/healthz", address: "203.0.113.1"},
-	); response.StatusCode != http.StatusOK {
-		t.Fatal("non-API paths are not throttled")
-	}
-	harness.clock.Advance(time.Second)
-	if get("203.0.113.1") != 200 {
-		t.Fatal("the source bucket did not refill")
-	}
-}
-
-func TestRefusedSourceTakesNoInstanceToken(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1, 1
-	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 3
-	harness := newHarness(t, settings)
-	get := func(ip string) int {
-		response, _ := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: ip})
-		return response.StatusCode
-	}
-	if get("203.0.113.1") != 200 {
-		t.Fatal("first request")
-	}
-	for range 5 {
-		if get("203.0.113.1") != 429 {
-			t.Fatal("source not limited")
-		}
-	}
-	if get("198.51.100.2") != 200 || get("192.0.2.3") != 200 {
-		t.Fatal("a refused source drained the instance bucket")
-	}
-}
-
-func TestPrefixTierLimitsOneRange(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 10, 10
-	harness := newHarness(t, settings)
-	codes := []int{}
-	for i := range 8 {
-		response, _ := harness.do(
-			&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: fmt.Sprintf("2001:db8:1:%x::1", i)},
-		)
-		codes = append(codes, response.StatusCode)
-	}
-	if codes[4] != 200 || codes[5] != 429 || codes[7] != 429 {
-		t.Fatalf("one /48 must get at most half of the instance bucket: %v", codes)
-	}
-	if response, _ := harness.do(
-		&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "2001:db8:2::1"},
-	); response.StatusCode != http.StatusOK {
-		t.Fatal("another /48 was throttled")
-	}
-}
-
-func TestRefusedPrefixTakesNoInstanceToken(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 10, 10
-	harness := newHarness(t, settings)
-	for i := range 20 {
-		harness.do(
-			&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: fmt.Sprintf("2001:db8:1:%x::1", i)},
-		)
-	}
-	for i := range 5 {
-		if response, _ := harness.do(
-			&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: fmt.Sprintf("2001:db8:%x::1", i+2)},
-		); response.StatusCode != http.StatusOK {
-			t.Fatalf("a refused /48 drained the instance bucket: request %d got %d", i, response.StatusCode)
-		}
-	}
-}
-
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1501,4 +1371,73 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 	if _, body := get(t, plain.URL+TransparencyPath, nil); strings.Contains(body, "operator") {
 		t.Fatalf("an unset operator must not appear: %s", body)
 	}
+}
+
+func TestTokenBucketsThrottleTheAPIInOrder(t *testing.T) {
+	t.Parallel()
+	statuses := func(harness *testHarness, addresses ...string) []int {
+		var codes []int
+		for _, address := range addresses {
+			response, _ := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: address})
+			codes = append(codes, response.StatusCode)
+		}
+		return codes
+	}
+	ok, refused := http.StatusOK, http.StatusTooManyRequests
+	t.Run("instance", func(t *testing.T) {
+		t.Parallel()
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 3
+		harness := newHarness(t, settings)
+		got := statuses(harness, "203.0.0.1", "203.0.1.1", "203.0.2.1", "203.0.3.1")
+		if !slices.Equal(got, []int{ok, ok, ok, refused}) {
+			t.Fatalf("the instance bucket: %v", got)
+		}
+		if response, _ := harness.do(
+			&testRequest{method: http.MethodGet, path: "/healthz"},
+		); response.StatusCode != ok {
+			t.Fatal("a path outside the API was throttled")
+		}
+		harness.clock.Advance(2 * time.Second)
+		if got = statuses(harness, "203.0.9.1"); got[0] != ok {
+			t.Fatal("the instance bucket did not refill")
+		}
+	})
+	t.Run("source", func(t *testing.T) {
+		t.Parallel()
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1, 2
+		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 6
+		harness := newHarness(t, settings)
+		got := statuses(harness,
+			"203.0.113.1", "203.0.113.1", "203.0.113.1",
+			"2001:db8:1:1::1", "2001:db8:1:1::2", "2001:db8:1:1::3",
+			"203.0.113.2", "192.0.2.3",
+		)
+		if !slices.Equal(got, []int{ok, ok, refused, ok, ok, refused, ok, ok}) {
+			t.Fatalf("a source and its /64 share a bucket and refused requests take no instance token: %v", got)
+		}
+		harness.clock.Advance(2 * time.Second)
+		if got = statuses(harness, "203.0.113.1"); got[0] != ok {
+			t.Fatal("the source bucket did not refill")
+		}
+	})
+	t.Run("range", func(t *testing.T) {
+		t.Parallel()
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 10, 10
+		harness := newHarness(t, settings)
+		var addresses []string
+		for i := range 8 {
+			addresses = append(addresses, fmt.Sprintf("2001:db8:1:%x::1", i))
+		}
+		for i := range 5 {
+			addresses = append(addresses, fmt.Sprintf("2001:db8:%x::1", i+2))
+		}
+		got := statuses(harness, addresses...)
+		want := []int{ok, ok, ok, ok, ok, refused, refused, refused, ok, ok, ok, ok, ok}
+		if !slices.Equal(got, want) {
+			t.Fatalf("one /48 gets at most half of the instance bucket and its refusals take no token: %v", got)
+		}
+	})
 }

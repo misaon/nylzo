@@ -24,33 +24,30 @@ type stolenNeedles struct {
 	named map[string][]byte
 }
 
-func (n *stolenNeedles) secret(name string, b []byte) {
-	n.named[name] = b
-	n.named[name+" base64url"] = []byte(core.Encode(b))
-	n.named[name+" hex"] = []byte(hex.EncodeToString(b))
+func (n *stolenNeedles) secret(name string, value []byte) {
+	n.named[name] = value
+	n.named[name+" base64url"] = []byte(core.Encode(value))
+	n.named[name+" hex"] = []byte(hex.EncodeToString(value))
 }
 
-func (n *stolenNeedles) text(name, s string) {
-	n.named[name] = []byte(s)
+func (n *stolenNeedles) text(name, value string) {
+	n.named[name] = []byte(value)
 }
 
-func (n *stolenNeedles) testMessage(label string, message *testMessage, passphrase string) {
+func (n *stolenNeedles) addMessage(label string, message *testMessage, passphrase string) {
 	n.t.Helper()
 	n.secret(label+" S", message.secret[:])
 	n.secret(label+" R", message.link.R[:])
 	n.secret(label+" K", message.content.K[:])
 	n.secret(label+" V", message.content.V[:])
 	n.secret(label+" M", message.manage[:])
-	pkR, pkV, pkM := core.PublicKey(&message.link.R), core.PublicKey(&message.content.V), core.PublicKey(message.manage)
-	n.secret(label+" pk_R", pkR[:])
-	n.secret(label+" pk_V", pkV[:])
-	n.secret(label+" pk_M", pkM[:])
+	readKey, verifierKey := core.PublicKey(&message.link.R), core.PublicKey(&message.content.V)
+	manageKey := core.PublicKey(message.manage)
+	n.secret(label+" pk_R", readKey[:])
+	n.secret(label+" pk_V", verifierKey[:])
+	n.secret(label+" pk_M", manageKey[:])
 	if passphrase != "" {
-		p, err := core.DerivePassphraseKey(message.kdf, passphrase, &message.link.SaltPW)
-		if err != nil {
-			n.t.Fatal(err)
-		}
-		n.secret(label+" P", p)
+		n.secret(label+" P", testPassphraseKey(message.kdf, passphrase, &message.link.SaltPW))
 		n.text(label+" passphrase", passphrase)
 	}
 	if message.text != "" {
@@ -111,7 +108,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	expired := newMessage(t, core.KDFNone, "", 1, 60, "plaintext expired sentinel")
 	expired.address = ip4
 	harness.mustCreate(expired)
-	needles.testMessage("expired", expired, "")
+	needles.addMessage("expired", expired, "")
 	harness.clock.Advance(2*time.Minute + 17*time.Second)
 	if _, metadata := harness.metadata(expired); metadata["state"] != "expired" {
 		t.Fatalf("expired: %v", metadata)
@@ -120,7 +117,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	opened := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext opened sentinel")
 	opened.address = ip4
 	harness.mustCreate(opened)
-	needles.testMessage("opened", opened, "")
+	needles.addMessage("opened", opened, "")
 	claimed(opened, "", ip4)
 	if response := harness.ack(opened, lease); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("ack: %d", response.StatusCode)
@@ -130,7 +127,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	leased := newMessage(t, core.KDFScrypt, pass, 2, 3600, "plaintext leased sentinel")
 	leased.address = ip6
 	harness.mustCreate(leased)
-	needles.testMessage("leased", leased, pass)
+	needles.addMessage("leased", leased, pass)
 	harness.claim(leased, core.Encode(make([]byte, 32)), ip6)
 	claimed(leased, leased.verifier, ip6)
 
@@ -138,14 +135,14 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	file := fileMessage(t, content)
 	file.address = ip4
 	harness.mustCreate(file)
-	needles.testMessage("file", file, "")
+	needles.addMessage("file", file, "")
 	needles.text("file name", "quarterly-plan-sentinel.pdf")
 	needles.named["file content"] = content[:64]
 
 	burned := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext burned sentinel")
 	burned.address = ip4
 	harness.mustCreate(burned)
-	needles.testMessage("burned", burned, "")
+	needles.addMessage("burned", burned, "")
 	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
@@ -153,7 +150,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	cancelled := newMessage(t, core.KDFScrypt, pass, 1, 3600, "plaintext cancelled sentinel")
 	cancelled.address = ip6
 	harness.mustCreate(cancelled)
-	needles.testMessage("cancelled", cancelled, pass)
+	needles.addMessage("cancelled", cancelled, pass)
 	if response, _ := harness.post(
 		cancelled,
 		"cancel",
@@ -165,7 +162,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	stuck := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext stuck sentinel")
 	stuck.address = ip4
 	harness.mustCreate(stuck)
-	needles.testMessage("stuck", stuck, "")
+	needles.addMessage("stuck", stuck, "")
 	faulty.set(func(b *faultyBlobs) {
 		b.deleteErr[stuck.id.String()] = &fs.PathError{
 			Op:   "remove",
@@ -210,7 +207,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	); response.StatusCode != http.StatusCreated {
 		t.Fatalf("create with PoW: %d %s", response.StatusCode, body)
 	}
-	needles.testMessage("pow", pow, "")
+	needles.addMessage("pow", pow, "")
 
 	link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
 	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "reason": "spam, see " + link})

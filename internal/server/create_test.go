@@ -141,14 +141,10 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 		!strings.Contains(string(captured), string(message.object)) {
 		t.Fatal("wire capture missing the create request")
 	}
-	p, err := core.DerivePassphraseKey(message.kdf, "tajná fráze", &message.link.SaltPW)
-	if err != nil {
-		t.Fatal(err)
-	}
 	secrets := map[string][]byte{
 		"S": message.secret[:],
 		"K": message.content.K[:],
-		"P": p,
+		"P": testPassphraseKey(message.kdf, "tajná fráze", &message.link.SaltPW),
 		"R": message.link.R[:],
 		"V": message.content.V[:],
 		"M": message.manage[:],
@@ -954,62 +950,6 @@ func TestFailedRowWriteRemovesTheUploadedBlob(t *testing.T) {
 	}
 }
 
-func TestDailyCreateLimits(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.CreatePerHour = 1000
-	settings.Rates.CreatePerDay = 2
-	harness := newHarness(t, settings)
-	create := func(ip string) int {
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-		message.address = ip
-		response, _ := harness.create(message)
-		return response.StatusCode
-	}
-	for range 2 {
-		if code := create("203.0.113.1"); code != http.StatusCreated {
-			t.Fatalf("create within the daily limit: %d", code)
-		}
-	}
-	if code := create("203.0.113.1"); code != http.StatusTooManyRequests {
-		t.Fatalf("a third create in one day from one /32: %d", code)
-	}
-	for i := 2; i <= 5; i++ {
-		for range 2 {
-			if code := create(fmt.Sprintf("203.0.113.%d", i)); code != http.StatusCreated {
-				t.Fatalf("create from 203.0.113.%d: %d", i, code)
-			}
-		}
-	}
-	if code := create("203.0.113.6"); code != http.StatusTooManyRequests {
-		t.Fatalf("a create past the daily count of its /24: %d", code)
-	}
-	if code := create("198.51.100.1"); code != http.StatusCreated {
-		t.Fatalf("another /24 must keep its own budget: %d", code)
-	}
-}
-
-func TestRangeDailyBytesLimit(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	harness := newHarness(t, settings)
-	probe := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-	settings.Rates.CreateBytesPerDay = int64(2*len(probe.object) + 1)
-	harness.reopen(settings)
-	for source := 1; source <= 5; source++ {
-		for range 2 {
-			message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-			message.address = fmt.Sprintf("203.0.113.%d", source)
-			harness.mustCreate(message)
-		}
-	}
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-	message.address = "203.0.113.6"
-	if response, _ := harness.create(message); response.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("a create past the daily bytes of its /24: %d", response.StatusCode)
-	}
-}
-
 func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1236,4 +1176,43 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 func parsesCreateHeader(limits config.Limits, raw string) bool {
 	_, ok := parseCreateHeader(raw, limits)
 	return ok
+}
+
+func TestDailyCreateLimitsCountSourcesAndRanges(t *testing.T) {
+	t.Parallel()
+	objectSize := int64(len(newMessage(t, core.KDFNone, "", 1, 3600, "n").object))
+	for name, limit := range map[string]func(*config.Rates){
+		"count": func(rates *config.Rates) { rates.CreatePerDay = 2 },
+		"bytes": func(rates *config.Rates) { rates.CreateBytesPerDay = 2*objectSize + 1 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.CreatePerHour = 1000
+			limit(&settings.Rates)
+			harness := newHarness(t, settings)
+			create := func(address string) int {
+				message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+				message.address = address
+				response, _ := harness.create(message)
+				return response.StatusCode
+			}
+			for source := 1; source <= 5; source++ {
+				for range 2 {
+					if code := create(fmt.Sprintf("203.0.113.%d", source)); code != http.StatusCreated {
+						t.Fatalf("a create within the daily limit of 203.0.113.%d: %d", source, code)
+					}
+				}
+			}
+			if code := create("203.0.113.1"); code != http.StatusTooManyRequests {
+				t.Fatalf("a third create in one day from one /32: %d", code)
+			}
+			if code := create("203.0.113.6"); code != http.StatusTooManyRequests {
+				t.Fatalf("a create past the daily limit of its /24: %d", code)
+			}
+			if code := create("198.51.100.1"); code != http.StatusCreated {
+				t.Fatalf("another /24 must keep its own budget: %d", code)
+			}
+		})
+	}
 }

@@ -111,6 +111,16 @@ func TestWorkTokensFollowTheSpec(t *testing.T) {
 			t.Fatalf("counter %s: %v, want %v", step.counter, err, step.want)
 		}
 	}
+	forged := make([]byte, core.PoWChallengeLen)
+	binary.BigEndian.PutUint32(forged, unixSeconds(now))
+	if err := verify(solve(t, core.Encode(forged), id), id); !errors.Is(err, ErrWork) {
+		t.Fatalf("a challenge with a forged tag: %v", err)
+	}
+	for _, malformed := range []string{"no-dot", challenge + ".00", challenge + ".000000000000000g"} {
+		if err := verify(malformed, id); !errors.Is(err, ErrWork) {
+			t.Fatalf("malformed token %q: %v", malformed, err)
+		}
+	}
 	other := solve(t, work.Challenge(now), id)
 	otherToken, _ := work.parse(other, now)
 	otherID := core.NewID()

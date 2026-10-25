@@ -846,7 +846,7 @@ func TestAK27PepperRotation(t *testing.T) {
 	if got, _ := harness.metadata(old); got.StatusCode != http.StatusNotFound {
 		t.Fatalf("message under a dropped pepper must look unknown: %d", got.StatusCode)
 	}
-	if _, err := New((baseSettings(pepperA, pepperA)), harness.store, harness.blobs); err == nil {
+	if _, err := New(baseSettings(pepperA, pepperA), harness.store, harness.blobs); err == nil {
 		t.Fatal("identical peppers accepted")
 	}
 }
