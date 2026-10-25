@@ -11,7 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const checkpointMS = 250
+const checkpointTimeoutMilliseconds = 250
 
 var ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish because a reader held the log")
 
@@ -24,8 +24,8 @@ func (s *Store) ExpiredPage(
 	rows, err := s.reader.QueryContext(
 		ctx,
 		`SELECT id, blob_ref, expires_at FROM messages WHERE expires_at <= ? AND (expires_at, id) > (?, ?) ORDER BY expires_at, id LIMIT ?`,
-		ms(now),
-		ms(after.ExpiresAt),
+		milliseconds(now),
+		milliseconds(after.ExpiresAt),
 		after.ID,
 		limit,
 	)
@@ -42,7 +42,7 @@ func (s *Store) ExpiredPage(
 			return nil, scanErr
 		}
 		expired.BlobRef = blobRef.String
-		expired.ExpiresAt = fromMS(expiresAt)
+		expired.ExpiresAt = fromMilliseconds(expiresAt)
 		page = append(page, expired)
 	}
 	return page, rows.Err()
@@ -61,7 +61,7 @@ func (s *Store) EndingPage(ctx context.Context, now time.Time, after string, lim
 	return s.strings(
 		ctx,
 		`SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`,
-		ms(now),
+		milliseconds(now),
 		after,
 		limit,
 	)
@@ -98,16 +98,19 @@ func (s *Store) PurgeTombstones(ctx context.Context, now time.Time, limit int) (
 }
 
 func (s *Store) Checkpoint(ctx context.Context) error {
-	conn, err := s.writer.Conn(ctx)
+	connection, err := s.writer.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
-	defer conn.Close()
-	if _, err = conn.ExecContext(ctx, fmt.Sprintf(`PRAGMA busy_timeout = %d`, checkpointMS)); err != nil {
+	defer connection.Close()
+	if _, err = connection.ExecContext(
+		ctx,
+		fmt.Sprintf(`PRAGMA busy_timeout = %d`, checkpointTimeoutMilliseconds),
+	); err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
 	var blocked, frames, moved int
-	err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved)
+	err = connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved)
 	switch {
 	case err != nil:
 		err = fmt.Errorf("sqlite: wal checkpoint: %w", err)
@@ -115,16 +118,16 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 		err = ErrCheckpointBusy
 	default:
 	}
-	restore := fmt.Sprintf(`PRAGMA busy_timeout = %d`, busyMS)
-	if _, restoreErr := conn.ExecContext(context.WithoutCancel(ctx), restore); restoreErr != nil {
-		discarded := conn.Raw(func(any) error { return sqldriver.ErrBadConn })
+	restore := fmt.Sprintf(`PRAGMA busy_timeout = %d`, busyTimeoutMilliseconds)
+	if _, restoreErr := connection.ExecContext(context.WithoutCancel(ctx), restore); restoreErr != nil {
+		discarded := connection.Raw(func(any) error { return sqldriver.ErrBadConn })
 		return errors.Join(err, fmt.Errorf("sqlite: wal checkpoint: %w", restoreErr), ignoreBadConn(discarded))
 	}
 	return err
 }
 
 func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {
-	result, err := s.writer.ExecContext(ctx, query, ms(now), limit)
+	result, err := s.writer.ExecContext(ctx, query, milliseconds(now), limit)
 	if err != nil {
 		return 0, err
 	}
@@ -132,8 +135,8 @@ func (s *Store) purge(ctx context.Context, query string, now time.Time, limit in
 	return int(purged), err
 }
 
-func (s *Store) strings(ctx context.Context, query string, args ...any) ([]string, error) {
-	rows, err := s.reader.QueryContext(ctx, query, args...)
+func (s *Store) strings(ctx context.Context, query string, arguments ...any) ([]string, error) {
+	rows, err := s.reader.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return nil, err
 	}

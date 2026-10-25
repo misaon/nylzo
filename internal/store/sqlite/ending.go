@@ -128,7 +128,7 @@ func endInTx(ctx context.Context, tx *sql.Tx, message *store.Message, state stor
 	}
 	var firstOpenedAt any
 	if message.FirstOpenedAt != nil {
-		firstOpenedAt = ms(*message.FirstOpenedAt)
+		firstOpenedAt = milliseconds(*message.FirstOpenedAt)
 	}
 	ended := now
 	if !now.Before(message.ExpiresAt) {
@@ -144,8 +144,8 @@ func endInTx(ctx context.Context, tx *sql.Tx, message *store.Message, state stor
 		message.ManageMAC,
 		string(state),
 		firstOpenedAt,
-		ms(ended),
-		ms(ended.Add(store.TombstoneTTL)),
+		milliseconds(ended),
+		milliseconds(ended.Add(store.TombstoneTTL)),
 	)
 	return err
 }

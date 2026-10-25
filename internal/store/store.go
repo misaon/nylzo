@@ -182,7 +182,7 @@ type ExpiredMessage struct {
 type Messages interface {
 	Create(ctx context.Context, message *Message, counters ...RateHit) error
 	Get(ctx context.Context, id string) (Record, error)
-	Claim(ctx context.Context, params ClaimParams) (ClaimResult, error)
+	Claim(ctx context.Context, parameters ClaimParams) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
 	RecordDownload(ctx context.Context, lease Lease, now time.Time) error
 	Ack(ctx context.Context, lease Lease, now time.Time) (string, error)

@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	Dir       = "blobs"
-	tempDir   = "tmp"
-	maxRefLen = 64
+	Dir                = "blobs"
+	temporaryDirectory = "tmp"
+	maxRefLen          = 64
 )
 
 var ErrRef = errors.New("disk: invalid blob reference")
@@ -28,9 +28,9 @@ type Blobs struct {
 
 var _ store.Blobs = (*Blobs)(nil)
 
-func New(dataDir string) (*Blobs, error) {
-	root := filepath.Join(dataDir, Dir)
-	if err := os.MkdirAll(filepath.Join(root, tempDir), 0o700); err != nil {
+func New(dataDirectory string) (*Blobs, error) {
+	root := filepath.Join(dataDirectory, Dir)
+	if err := os.MkdirAll(filepath.Join(root, temporaryDirectory), 0o700); err != nil {
 		return nil, err
 	}
 	blobs := &Blobs{root: root}
@@ -45,12 +45,12 @@ func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64
 	if err != nil {
 		return err
 	}
-	temp, err := b.writeTemp(content, size)
+	temporary, err := b.writeTemp(content, size)
 	if err == nil {
-		err = os.Link(temp, final)
+		err = os.Link(temporary, final)
 	}
-	if temp != "" {
-		os.Remove(temp)
+	if temporary != "" {
+		os.Remove(temporary)
 	}
 	if errors.Is(err, os.ErrExist) {
 		return store.ErrConflict
@@ -58,7 +58,7 @@ func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64
 	if err != nil {
 		return err
 	}
-	if err = b.syncDir(); err != nil {
+	if err = b.syncDirectory(); err != nil {
 		os.Remove(final)
 		return err
 	}
@@ -89,7 +89,7 @@ func (b *Blobs) Delete(_ context.Context, ref string) error {
 	if err := b.remove(ref); err != nil {
 		return err
 	}
-	return b.syncDir()
+	return b.syncDirectory()
 }
 
 func (b *Blobs) DeleteBatch(_ context.Context, refs []string) []error {
@@ -100,7 +100,7 @@ func (b *Blobs) DeleteBatch(_ context.Context, refs []string) []error {
 	for i, ref := range refs {
 		errs[i] = b.remove(ref)
 	}
-	if syncErr := b.syncDir(); syncErr != nil {
+	if syncErr := b.syncDirectory(); syncErr != nil {
 		for i := range errs {
 			errs[i] = cmp.Or(errs[i], syncErr)
 		}
@@ -135,15 +135,15 @@ func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
 }
 
 func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
-	temp := filepath.Join(b.root, tempDir)
-	entries, err := os.ReadDir(temp)
+	temporary := filepath.Join(b.root, temporaryDirectory)
+	entries, err := os.ReadDir(temporary)
 	if err != nil {
 		return 0, err
 	}
 	purged := 0
 	var errs []error
 	for _, entry := range entries {
-		removed, removeErr := removeStale(temp, entry, olderThan)
+		removed, removeErr := removeStale(temporary, entry, olderThan)
 		if removed {
 			purged++
 		}
@@ -153,22 +153,22 @@ func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
 }
 
 func (b *Blobs) probe() error {
-	file, err := os.CreateTemp(filepath.Join(b.root, tempDir), "probe-*")
+	file, err := os.CreateTemp(filepath.Join(b.root, temporaryDirectory), "probe-*")
 	if err != nil {
 		return err
 	}
-	temp := file.Name()
+	temporary := file.Name()
 	file.Close()
-	defer os.Remove(temp)
-	link := filepath.Join(b.root, tempDir, filepath.Base(temp)+".link")
-	err = os.Link(temp, link)
+	defer os.Remove(temporary)
+	link := filepath.Join(b.root, temporaryDirectory, filepath.Base(temporary)+".link")
+	err = os.Link(temporary, link)
 	if err == nil {
 		err = os.Remove(link)
 	}
 	if err != nil {
 		return err
 	}
-	return b.syncDir()
+	return b.syncDirectory()
 }
 
 func (b *Blobs) path(ref string) (string, error) {
@@ -179,7 +179,7 @@ func (b *Blobs) path(ref string) (string, error) {
 }
 
 func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
-	file, err := os.CreateTemp(filepath.Join(b.root, tempDir), "blob-*")
+	file, err := os.CreateTemp(filepath.Join(b.root, temporaryDirectory), "blob-*")
 	if err != nil {
 		return "", err
 	}
@@ -200,13 +200,13 @@ func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
 	return file.Name(), err
 }
 
-func (b *Blobs) syncDir() error {
-	dir, err := os.Open(b.root)
+func (b *Blobs) syncDirectory() error {
+	directory, err := os.Open(b.root)
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
-	return dir.Sync()
+	defer directory.Close()
+	return directory.Sync()
 }
 
 func (b *Blobs) remove(ref string) error {
@@ -220,7 +220,7 @@ func (b *Blobs) remove(ref string) error {
 	return nil
 }
 
-func removeStale(dir string, entry os.DirEntry, olderThan time.Time) (bool, error) {
+func removeStale(directory string, entry os.DirEntry, olderThan time.Time) (bool, error) {
 	info, err := entry.Info()
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
@@ -231,7 +231,7 @@ func removeStale(dir string, entry os.DirEntry, olderThan time.Time) (bool, erro
 	if info.ModTime().After(olderThan) {
 		return false, nil
 	}
-	err = os.Remove(filepath.Join(dir, entry.Name()))
+	err = os.Remove(filepath.Join(directory, entry.Name()))
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}

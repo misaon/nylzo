@@ -108,10 +108,10 @@ func (f *fixture) claimWithVerifier(
 	seed int,
 	correct bool,
 ) (store.ClaimResult, error) {
-	params := claimParams(message, now, seed)
-	params.VerifierSent = true
-	params.VerifyMAC = func(_ byte, stored []byte) bool { return correct && bytes.Equal(stored, message.VerifierMAC) }
-	return f.store.Claim(f.t.Context(), params)
+	parameters := claimParams(message, now, seed)
+	parameters.VerifierSent = true
+	parameters.VerifyMAC = func(_ byte, stored []byte) bool { return correct && bytes.Equal(stored, message.VerifierMAC) }
+	return f.store.Claim(f.t.Context(), parameters)
 }
 
 func (f *fixture) claimAndAck(message *store.Message) string {

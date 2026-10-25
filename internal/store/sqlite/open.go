@@ -19,12 +19,12 @@ import (
 )
 
 const (
-	readerConns  = 8
-	openRetryFor = 10 * time.Second
-	openBackoff  = 20 * time.Millisecond
-	openMaxWait  = 200 * time.Millisecond
-	maxCacheKiB  = 512
-	busyMS       = 5000
+	readerConnections       = 8
+	openRetryFor            = 10 * time.Second
+	openBackoff             = 20 * time.Millisecond
+	openMaxWait             = 200 * time.Millisecond
+	maxCacheKiB             = 512
+	busyTimeoutMilliseconds = 5000
 )
 
 type Store struct {
@@ -137,7 +137,7 @@ func busy(err error) bool {
 }
 
 func connect(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {
-	writer, err := sql.Open("sqlite", dsn(path, true))
+	writer, err := sql.Open("sqlite", dataSourceName(path, true))
 	if err != nil {
 		return nil, err
 	}
@@ -146,13 +146,13 @@ func connect(ctx context.Context, path string, prepareSchema func(context.Contex
 		writer.Close()
 		return nil, fmt.Errorf("sqlite: schema: %w", err)
 	}
-	reader, err := sql.Open("sqlite", dsn(path, false))
+	reader, err := sql.Open("sqlite", dataSourceName(path, false))
 	if err != nil {
 		writer.Close()
 		return nil, err
 	}
-	reader.SetMaxOpenConns(readerConns)
-	reader.SetMaxIdleConns(readerConns)
+	reader.SetMaxOpenConns(readerConnections)
+	reader.SetMaxIdleConns(readerConnections)
 	err = reader.PingContext(ctx)
 	var prepared *statements
 	if err == nil {
@@ -166,12 +166,12 @@ func connect(ctx context.Context, path string, prepareSchema func(context.Contex
 	return &Store{writer: writer, reader: reader, statements: prepared}, nil
 }
 
-func dsn(path string, write bool) string {
+func dataSourceName(path string, write bool) string {
 	query := url.Values{}
 	if write {
 		query.Set("_txlock", "immediate")
 	}
-	query.Set("_busy_timeout", strconv.Itoa(busyMS))
+	query.Set("_busy_timeout", strconv.Itoa(busyTimeoutMilliseconds))
 	query.Set("_journal_mode", "WAL")
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "synchronous(FULL)")

@@ -15,31 +15,31 @@ import (
 
 func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "nylzo.db")
-	s, blobs := openStore(t, path), newBlobs(t, dir)
+	directory := t.TempDir()
+	path := filepath.Join(directory, "nylzo.db")
+	storage, blobs := openStore(t, path), newBlobs(t, directory)
 	message := newMessage(1, true)
 	message.CreatedAt = time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
 	message.ExpiresAt = message.CreatedAt.Add(time.Hour)
 	if err := blobs.Put(t.Context(), message.ID, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
-	create(t, s, message)
+	create(t, storage, message)
 	claimedAt := message.CreatedAt.Add(time.Minute)
-	params := claimParams(message, claimedAt)
-	params.VerifierSent = true
-	params.VerifyMAC = func(byte, []byte) bool { return true }
-	claimed, err := s.Claim(t.Context(), params)
+	parameters := claimParams(message, claimedAt)
+	parameters.VerifierSent = true
+	parameters.VerifyMAC = func(byte, []byte) bool { return true }
+	claimed, err := storage.Claim(t.Context(), parameters)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = store.AckLease(t.Context(), s, blobs, claimed.Lease, claimedAt); err != nil {
+	if err = store.AckLease(t.Context(), storage, blobs, claimed.Lease, claimedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.SweepAll(t.Context(), s, blobs, message.CreatedAt.Add(9*24*time.Hour)); err != nil {
+	if _, err = store.SweepAll(t.Context(), storage, blobs, message.CreatedAt.Add(9*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.Get(t.Context(), message.ID); !errors.Is(err, store.ErrNotFound) {
+	if _, err = storage.Get(t.Context(), message.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("the tombstone was not purged: %v", err)
 	}
 	for _, name := range []string{path, path + "-wal"} {
@@ -56,16 +56,16 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 func TestStoredTimesAndRowIDsRevealNoOrder(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s := openStore(t, path)
+	storage := openStore(t, path)
 	locked := newMessage(1, true)
-	create(t, s, locked)
+	create(t, storage, locked)
 	attemptAt := testNow.Add(17*time.Second + 123*time.Millisecond)
-	params := claimParams(locked, attemptAt)
-	params.VerifierSent = true
-	params.VerifyMAC = func(byte, []byte) bool { return false }
+	parameters := claimParams(locked, attemptAt)
+	parameters.VerifierSent = true
+	parameters.VerifyMAC = func(byte, []byte) bool { return false }
 	database := openRaw(t, path)
 	for attempt := 1; attempt <= store.FreeAttempts+1; attempt++ {
-		if _, err := s.Claim(t.Context(), params); !isPassphraseError(err) {
+		if _, err := storage.Claim(t.Context(), parameters); !isPassphraseError(err) {
 			t.Fatalf("attempt %d: %v", attempt, err)
 		}
 		var next int64
@@ -79,9 +79,9 @@ func TestStoredTimesAndRowIDsRevealNoOrder(t *testing.T) {
 		}
 	}
 	shared := newMessage(3, false)
-	create(t, s, shared)
+	create(t, storage, shared)
 	for range 3 {
-		if rowID := claim(t, s, shared, testNow).Lease.RowID; rowID < 1<<32 {
+		if rowID := claim(t, storage, shared, testNow).Lease.RowID; rowID < 1<<32 {
 			t.Fatalf("lease row id %d looks sequential", rowID)
 		}
 	}
@@ -95,9 +95,9 @@ func isPassphraseError(err error) bool {
 func TestWALHoldsOnlyTheLastTransaction(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s := openStore(t, path)
+	storage := openStore(t, path)
 	for range 5 {
-		create(t, s, newMessage(1, false))
+		create(t, storage, newMessage(1, false))
 	}
 	wal, err := os.ReadFile(path + "-wal")
 	if err != nil {
@@ -127,10 +127,10 @@ func walCommits(wal []byte) int {
 
 func TestABlockedCheckpointFailsTheSweepQuickly(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "nylzo.db")
-	s, blobs := openStore(t, path), newBlobs(t, dir)
-	hitCounter(t, s, "a")
+	directory := t.TempDir()
+	path := filepath.Join(directory, "nylzo.db")
+	storage, blobs := openStore(t, path), newBlobs(t, directory)
+	hitCounter(t, storage, "a")
 	reading, err := openRaw(t, path).Begin()
 	if err != nil {
 		t.Fatal(err)
@@ -139,19 +139,19 @@ func TestABlockedCheckpointFailsTheSweepQuickly(t *testing.T) {
 	if err = reading.QueryRow(`SELECT COUNT(*) FROM rate_counters`).Scan(&counters); err != nil {
 		t.Fatal(err)
 	}
-	hitCounter(t, s, "after the reader")
+	hitCounter(t, storage, "after the reader")
 	start := time.Now()
-	if err = s.Checkpoint(t.Context()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
+	if err = storage.Checkpoint(t.Context()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
 		t.Fatalf("a checkpoint with a reader holding the WAL: %v", err)
 	}
 	if held := time.Since(start); held > 2*time.Second {
 		t.Fatalf("a blocked checkpoint held the only writer for %v", held)
 	}
-	if _, err = store.SweepAll(t.Context(), s, blobs, time.Now()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
+	if _, err = store.SweepAll(t.Context(), storage, blobs, time.Now()); !errors.Is(err, sqlite.ErrCheckpointBusy) {
 		t.Fatalf("a sweep with a reader holding the WAL: %v", err)
 	}
 	reading.Rollback()
-	if _, err = store.SweepAll(t.Context(), s, blobs, time.Now()); err != nil {
+	if _, err = store.SweepAll(t.Context(), storage, blobs, time.Now()); err != nil {
 		t.Fatalf("a sweep after the reader left: %v", err)
 	}
 	locking, err := openRaw(t, path+"?_txlock=immediate").Begin()
@@ -160,32 +160,37 @@ func TestABlockedCheckpointFailsTheSweepQuickly(t *testing.T) {
 	}
 	released := time.AfterFunc(time.Second, func() { locking.Rollback() })
 	defer released.Stop()
-	hitCounter(t, s, "b")
+	hitCounter(t, storage, "b")
 }
 
 func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s, ctx := openStore(t, path), t.Context()
+	storage, ctx := openStore(t, path), t.Context()
 	message := newMessage(2, false)
-	create(t, s, message, store.RateHit{Key: "global:stored:d", WindowStart: testNow, PurgeAt: testNow.Add(time.Hour)})
-	claim(t, s, message, testNow)
+	create(
+		t,
+		storage,
+		message,
+		store.RateHit{Key: "global:stored:d", WindowStart: testNow, PurgeAt: testNow.Add(time.Hour)},
+	)
+	claim(t, storage, message, testNow)
 	hit := store.RateHit{Key: "r", WindowStart: testNow, PurgeAt: testNow.Add(time.Hour), Limit: 1}
 	errs := []error{}
-	_, err := s.Get(ctx, message.ID)
+	_, err := storage.Get(ctx, message.ID)
 	errs = append(errs, err)
-	_, err = s.Leases(ctx, message.ID)
+	_, err = storage.Leases(ctx, message.ID)
 	errs = append(errs, err)
-	_, err = s.RateHit(ctx, []store.RateHit{hit})
+	_, err = storage.RateHit(ctx, []store.RateHit{hit})
 	errs = append(errs, err)
-	_, _, err = s.RateReserve(ctx, hit)
+	_, _, err = storage.RateReserve(ctx, hit)
 	errs = append(errs, err)
-	_, err = s.RateReserveBatch(ctx, []store.RateHit{hit})
+	_, err = storage.RateReserveBatch(ctx, []store.RateHit{hit})
 	errs = append(errs, err)
 	if err = errors.Join(errs...); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.Checkpoint(ctx); err != nil {
+	if err = storage.Checkpoint(ctx); err != nil {
 		t.Fatalf("a prepared statement kept a read open: %v", err)
 	}
 	if info, statErr := os.Stat(path + "-wal"); statErr != nil || info.Size() != 0 {

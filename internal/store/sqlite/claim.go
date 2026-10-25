@@ -18,20 +18,20 @@ var (
 	errNoLeaseRowID = errors.New("sqlite: no free lease row id")
 )
 
-func (s *Store) Claim(ctx context.Context, params store.ClaimParams) (store.ClaimResult, error) {
-	if params.Clock == nil || (params.VerifierSent && params.VerifyMAC == nil) {
+func (s *Store) Claim(ctx context.Context, parameters store.ClaimParams) (store.ClaimResult, error) {
+	if parameters.Clock == nil || (parameters.VerifierSent && parameters.VerifyMAC == nil) {
 		return store.ClaimResult{}, errClaimParams
 	}
 	var result store.ClaimResult
 	var refusal *store.PassphraseError
 	err := s.transaction(ctx, func(tx *sql.Tx) error {
-		now := params.Clock()
-		message, err := s.claimable(ctx, tx, params.ID, now)
+		now := parameters.Clock()
+		message, err := s.claimable(ctx, tx, parameters.ID, now)
 		if err != nil {
 			return err
 		}
 		if message.PassphraseRequired() {
-			err = checkPassphrase(ctx, tx, message, &params, now)
+			err = checkPassphrase(ctx, tx, message, &parameters, now)
 			if refused, ok := errors.AsType[*store.PassphraseError](err); ok {
 				refusal = refused
 				return nil
@@ -40,7 +40,7 @@ func (s *Store) Claim(ctx context.Context, params store.ClaimParams) (store.Clai
 				return err
 			}
 		}
-		result, err = consumeOpen(ctx, tx, message, &params, now)
+		result, err = consumeOpen(ctx, tx, message, &parameters, now)
 		return err
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func checkPassphrase(
 	ctx context.Context,
 	tx *sql.Tx,
 	message *store.Message,
-	params *store.ClaimParams,
+	parameters *store.ClaimParams,
 	now time.Time,
 ) error {
 	if message.FailCountTotal >= store.MaxFailedAttempts {
@@ -88,7 +88,7 @@ func checkPassphrase(
 	if message.NextAttemptAt.After(now) {
 		return &store.PassphraseError{RetryAfter: message.NextAttemptAt.Sub(now)}
 	}
-	if params.VerifierSent && params.VerifyMAC(message.PepperID, message.VerifierMAC) {
+	if parameters.VerifierSent && parameters.VerifyMAC(message.PepperID, message.VerifierMAC) {
 		return nil
 	}
 	failures := message.FailCountTotal + 1
@@ -102,7 +102,7 @@ func checkPassphrase(
 		ctx,
 		`UPDATE messages SET fail_count_total = ?, next_attempt_at = ? WHERE id = ?`,
 		failures,
-		attemptMS(next),
+		attemptMilliseconds(next),
 		message.ID,
 	); err != nil {
 		return err
@@ -114,7 +114,7 @@ func consumeOpen(
 	ctx context.Context,
 	tx *sql.Tx,
 	message *store.Message,
-	params *store.ClaimParams,
+	parameters *store.ClaimParams,
 	now time.Time,
 ) (store.ClaimResult, error) {
 	message.OpensRemaining--
@@ -129,13 +129,13 @@ func consumeOpen(
 		`UPDATE messages SET opens_remaining = ?, state = ?, first_opened_at = ? WHERE id = ?`,
 		message.OpensRemaining,
 		string(message.State),
-		ms(*message.FirstOpenedAt),
+		milliseconds(*message.FirstOpenedAt),
 		message.ID,
 	); err != nil {
 		return store.ClaimResult{}, err
 	}
 	expires := store.CeilMinute(now.Add(store.LeaseFor(message.Size)))
-	rowID, err := insertLease(ctx, tx, message.ID, params, expires)
+	rowID, err := insertLease(ctx, tx, message.ID, parameters, expires)
 	if err != nil {
 		return store.ClaimResult{}, err
 	}
@@ -144,8 +144,8 @@ func consumeOpen(
 		Lease: store.Lease{
 			RowID:     rowID,
 			ID:        message.ID,
-			MAC:       params.LeaseMAC,
-			PepperID:  params.LeasePepperID,
+			MAC:       parameters.LeaseMAC,
+			PepperID:  parameters.LeasePepperID,
 			ExpiresAt: expires,
 		},
 	}, nil
@@ -155,7 +155,7 @@ func insertLease(
 	ctx context.Context,
 	tx *sql.Tx,
 	id string,
-	params *store.ClaimParams,
+	parameters *store.ClaimParams,
 	expires time.Time,
 ) (int64, error) {
 	for range leaseInsertAttempts {
@@ -165,9 +165,9 @@ func insertLease(
 			`INSERT INTO leases (row_id, id, lease_mac, pepper_id, lease_expires_at, downloads) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT(row_id) DO NOTHING`,
 			rowID,
 			id,
-			params.LeaseMAC,
-			params.LeasePepperID,
-			ms(expires),
+			parameters.LeaseMAC,
+			parameters.LeasePepperID,
+			milliseconds(expires),
 		)
 		if err != nil {
 			return 0, err
@@ -196,9 +196,9 @@ func backoff(failures int) time.Duration {
 	return min(store.MaxBackoff, time.Second<<min(failures-store.FreeAttempts, 20))
 }
 
-func attemptMS(moment time.Time) int64 {
+func attemptMilliseconds(moment time.Time) int64 {
 	if moment.IsZero() {
 		return 0
 	}
-	return ms(moment)
+	return milliseconds(moment)
 }

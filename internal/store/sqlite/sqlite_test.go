@@ -30,8 +30,8 @@ func TestSQLiteStore(t *testing.T) {
 	t.Parallel()
 	storetest.Run(t, func(t *testing.T) (store.Store, store.Blobs) {
 		t.Helper()
-		dir := t.TempDir()
-		return openStore(t, filepath.Join(dir, "nylzo.db")), newBlobs(t, dir)
+		directory := t.TempDir()
+		return openStore(t, filepath.Join(directory, "nylzo.db")), newBlobs(t, directory)
 	})
 }
 
@@ -45,9 +45,9 @@ func openStore(tb testing.TB, path string) *sqlite.Store {
 	return opened
 }
 
-func newBlobs(t *testing.T, dir string) *disk.Blobs {
+func newBlobs(t *testing.T, directory string) *disk.Blobs {
 	t.Helper()
-	blobs, err := disk.New(dir)
+	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,16 +88,16 @@ func newMessage(opens uint16, passphrase bool) *store.Message {
 	return message
 }
 
-func create(tb testing.TB, s *sqlite.Store, message *store.Message, counters ...store.RateHit) {
+func create(tb testing.TB, storage *sqlite.Store, message *store.Message, counters ...store.RateHit) {
 	tb.Helper()
-	if err := s.Create(tb.Context(), message, counters...); err != nil {
+	if err := storage.Create(tb.Context(), message, counters...); err != nil {
 		tb.Fatal(err)
 	}
 }
 
-func claim(tb testing.TB, s store.Messages, message *store.Message, now time.Time) store.ClaimResult {
+func claim(tb testing.TB, storage store.Messages, message *store.Message, now time.Time) store.ClaimResult {
 	tb.Helper()
-	claimed, err := s.Claim(tb.Context(), claimParams(message, now))
+	claimed, err := storage.Claim(tb.Context(), claimParams(message, now))
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -113,21 +113,21 @@ func claimParams(message *store.Message, now time.Time) store.ClaimParams {
 	}
 }
 
-func hitCounter(t *testing.T, s *sqlite.Store, key string) {
+func hitCounter(t *testing.T, storage *sqlite.Store, key string) {
 	t.Helper()
 	hit := store.RateHit{Key: key, WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}
-	if _, err := s.RateHit(t.Context(), []store.RateHit{hit}); err != nil {
+	if _, err := storage.RateHit(t.Context(), []store.RateHit{hit}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestConcurrentOpenOfANewDatabase(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	directory := t.TempDir()
 	const rounds, roundsAtOnce = 40, 4
 	paths := make(chan string, rounds)
 	for round := range rounds {
-		paths <- filepath.Join(dir, fmt.Sprintf("nylzo-%d.db", round))
+		paths <- filepath.Join(directory, fmt.Sprintf("nylzo-%d.db", round))
 	}
 	close(paths)
 	errs := make([]error, roundsAtOnce)
@@ -211,11 +211,11 @@ func TestDatabaseFilesArePrivateAndAtTheirPath(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"a#b", "a?b", "a%41b", "a b"} {
 		parent := t.TempDir()
-		dir := filepath.Join(parent, name)
-		if err := os.Mkdir(dir, 0o700); err != nil {
+		directory := filepath.Join(parent, name)
+		if err := os.Mkdir(directory, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		path := filepath.Join(dir, "nylzo.db")
+		path := filepath.Join(directory, "nylzo.db")
 		hitCounter(t, openStore(t, path), "k")
 		for _, file := range []string{path, path + "-wal", path + "-shm"} {
 			info, err := os.Stat(file)
@@ -245,20 +245,20 @@ func (b cancelOnDelete) Delete(ctx context.Context, ref string) error {
 
 func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	s, blobs := openStore(t, filepath.Join(dir, "nylzo.db")), newBlobs(t, dir)
+	directory := t.TempDir()
+	storage, blobs := openStore(t, filepath.Join(directory, "nylzo.db")), newBlobs(t, directory)
 	message := newMessage(1, false)
 	if err := blobs.Put(t.Context(), message.ID, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
-	create(t, s, message)
-	claimed := claim(t, s, message, testNow)
+	create(t, storage, message)
+	claimed := claim(t, storage, message, testNow)
 	ctx, cancel := context.WithCancel(t.Context())
 	leaving := cancelOnDelete{Blobs: blobs, cancel: cancel}
-	if err := store.AckLease(ctx, s, leaving, claimed.Lease, testNow); err != nil {
+	if err := store.AckLease(ctx, storage, leaving, claimed.Lease, testNow); err != nil {
 		t.Fatalf("an ack whose client left after the commit: %v", err)
 	}
-	if record, err := s.Get(t.Context(), message.ID); err != nil || record.Tombstone == nil {
+	if record, err := storage.Get(t.Context(), message.ID); err != nil || record.Tombstone == nil {
 		t.Fatalf("the ack left the message without its tombstone: %+v %v", record, err)
 	}
 }

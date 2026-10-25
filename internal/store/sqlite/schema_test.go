@@ -83,12 +83,12 @@ func TestOpenMigratesOlderSchema(t *testing.T) {
 			if err := openConcurrently(t.Context(), path, 4); err != nil {
 				t.Fatal(err)
 			}
-			s := openStore(t, path)
-			state, ref, _, err := s.MarkEnding(t.Context(), legacyID, store.StateCancelled, time.Unix(0, 0))
+			storage := openStore(t, path)
+			state, ref, _, err := storage.MarkEnding(t.Context(), legacyID, store.StateCancelled, time.Unix(0, 0))
 			if err != nil || state != store.StateCancelled || ref == "" {
 				t.Fatalf("mark ending after the migration: %s %q %v", state, ref, err)
 			}
-			record, err := s.Get(t.Context(), legacyID)
+			record, err := storage.Get(t.Context(), legacyID)
 			if err != nil || record.Message == nil || record.Message.Ending != store.StateCancelled {
 				t.Fatalf("get after the migration: %+v %v", record, err)
 			}
@@ -106,15 +106,15 @@ func TestTablesKeepNoInsertionOrder(t *testing.T) {
 	fresh := filepath.Join(t.TempDir(), "nylzo.db")
 	openStore(t, fresh).Close()
 	rebuilt := olderDatabase(t, rowidTables)
-	s := openStore(t, rebuilt)
-	record, err := s.Get(t.Context(), legacyID)
+	storage := openStore(t, rebuilt)
+	record, err := storage.Get(t.Context(), legacyID)
 	if err != nil || record.Tombstone == nil || record.Tombstone.State != store.StateDeleted {
 		t.Fatalf("the tombstone was lost in the rebuild: %+v %v", record, err)
 	}
-	if count, countErr := s.RateGet(t.Context(), "k", time.UnixMilli(0)); countErr != nil || count.Count != 3 {
+	if count, countErr := storage.RateGet(t.Context(), "k", time.UnixMilli(0)); countErr != nil || count.Count != 3 {
 		t.Fatalf("the counter was lost in the rebuild: %+v %v", count, countErr)
 	}
-	s.Close()
+	storage.Close()
 	for _, path := range []string{fresh, rebuilt} {
 		database := openRaw(t, path)
 		for _, table := range []string{"messages", "tombstones", "rate_counters"} {
@@ -134,15 +134,15 @@ func TestTablesKeepNoInsertionOrder(t *testing.T) {
 func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 	t.Parallel()
 	path := olderDatabase(t, version3Tables)
-	s := openStore(t, path)
-	record, err := s.Get(t.Context(), legacyID)
+	storage := openStore(t, path)
+	record, err := storage.Get(t.Context(), legacyID)
 	if err != nil || record.Message == nil || record.Message.OpensRemaining != 1 {
 		t.Fatalf("the message was lost in the rebuild: %+v %v", record, err)
 	}
-	if leases, leasesErr := s.Leases(t.Context(), legacyID); leasesErr != nil || len(leases) != 1 {
+	if leases, leasesErr := storage.Leases(t.Context(), legacyID); leasesErr != nil || len(leases) != 1 {
 		t.Fatalf("the rebuild dropped the lease through its foreign key: %v %v", leases, leasesErr)
 	}
-	s.Close()
+	storage.Close()
 	kept := columnStrings(t, path, `SELECT key FROM rate_counters ORDER BY key`)
 	want := []string{
 		"abuse:id:" + legacyID,
@@ -192,11 +192,11 @@ func TestOpenRefusesANewerSchema(t *testing.T) {
 func TestOlderBuildWritesFail(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
-	s := openStore(t, path)
+	storage := openStore(t, path)
 	message := newMessage(3, false)
-	create(t, s, message)
-	lease := claim(t, s, message, testNow).Lease
-	s.Close()
+	create(t, storage, message)
+	lease := claim(t, storage, message, testNow).Lease
+	storage.Close()
 	older := openRaw(t, path)
 	const counter = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, 4102444800000)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 RETURNING count`

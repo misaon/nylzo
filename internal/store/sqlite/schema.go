@@ -118,11 +118,11 @@ var unorderedTables = []unorderedTable{
 }
 
 type queryRower interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	QueryRowContext(ctx context.Context, query string, arguments ...any) *sql.Row
 }
 
 type executor interface {
-	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, arguments ...any) (sql.Result, error)
 }
 
 func requireCurrent(ctx context.Context, database *sql.DB) error {
@@ -140,33 +140,33 @@ func requireCurrent(ctx context.Context, database *sql.DB) error {
 }
 
 func migrate(ctx context.Context, database *sql.DB) error {
-	conn, err := database.Conn(ctx)
+	connection, err := database.Conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
-	version, err := userVersion(ctx, conn)
+	defer connection.Close()
+	version, err := userVersion(ctx, connection)
 	if err != nil {
 		return err
 	}
 	if version > schemaVersion {
 		return newerSchema(version)
 	}
-	err = execAll(ctx, conn, schema, `PRAGMA foreign_keys = OFF`)
+	err = execAll(ctx, connection, schema, `PRAGMA foreign_keys = OFF`)
 	if err == nil {
-		err = migrateTables(ctx, conn, version)
+		err = migrateTables(ctx, connection, version)
 	}
 	if err == nil {
-		err = execAll(ctx, conn, `PRAGMA foreign_keys = ON`)
+		err = execAll(ctx, connection, `PRAGMA foreign_keys = ON`)
 	}
 	if err != nil || version >= schemaVersion {
 		return err
 	}
-	return execAll(ctx, conn, `VACUUM`, fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
+	return execAll(ctx, connection, `VACUUM`, fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
 }
 
-func migrateTables(ctx context.Context, conn *sql.Conn, version int) error {
-	tx, err := conn.BeginTx(ctx, nil)
+func migrateTables(ctx context.Context, connection *sql.Conn, version int) error {
+	tx, err := connection.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

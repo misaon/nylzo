@@ -14,12 +14,12 @@ import (
 
 func TestBlobReadKeepsAccessTime(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	blobs := newBlobs(t, dir)
+	directory := t.TempDir()
+	blobs := newBlobs(t, directory)
 	if err := blobs.Put(t.Context(), "ref", bytes.NewReader(make([]byte, 4127)), 4127); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, disk.Dir, hex.EncodeToString([]byte("ref")))
+	path := filepath.Join(directory, disk.Dir, hex.EncodeToString([]byte("ref")))
 	before := accessTime(t, path)
 	time.Sleep(50 * time.Millisecond)
 	content, _, err := blobs.Open(t.Context(), "ref")

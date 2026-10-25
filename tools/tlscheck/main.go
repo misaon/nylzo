@@ -44,16 +44,16 @@ func check(address, rootFile string) error {
 		MinVersion:       tls.VersionTLS13,
 		CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.X25519},
 	}}
-	conn, err := dialer.DialContext(ctx, "tcp", address)
+	connection, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return fmt.Errorf("handshake offering X25519MLKEM768 and X25519: %w", err)
 	}
-	defer conn.Close()
-	tlsConn, ok := conn.(*tls.Conn)
+	defer connection.Close()
+	tlsConnection, ok := connection.(*tls.Conn)
 	if !ok {
 		return errors.New("the dialer returned a connection without TLS")
 	}
-	if curve := tlsConn.ConnectionState().CurveID; curve != tls.X25519MLKEM768 {
+	if curve := tlsConnection.ConnectionState().CurveID; curve != tls.X25519MLKEM768 {
 		return fmt.Errorf("negotiated %s instead of X25519MLKEM768", curve)
 	}
 	return nil

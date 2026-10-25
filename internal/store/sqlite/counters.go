@@ -62,7 +62,7 @@ func (s *Store) RateRelease(ctx context.Context, key string, windowStart time.Ti
 		ctx,
 		`UPDATE rate_counters SET count = count - 1 WHERE key = ? AND window_start = ? AND count > 0`,
 		key,
-		ms(windowStart),
+		milliseconds(windowStart),
 	)
 	return err
 }
@@ -73,7 +73,7 @@ func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) 
 		ctx,
 		`SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`,
 		key,
-		ms(windowStart),
+		milliseconds(windowStart),
 	).Scan(&count.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.RateCount{}, nil
@@ -92,13 +92,15 @@ func (s *Store) RatePurge(ctx context.Context, now time.Time, limit int) (int, e
 
 func countHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (store.RateCount, error) {
 	var count store.RateCount
-	err := statement.QueryRowContext(ctx, hit.Key, ms(hit.WindowStart), ms(hit.PurgeAt)).Scan(&count.Count)
+	err := statement.QueryRowContext(ctx, hit.Key, milliseconds(hit.WindowStart), milliseconds(hit.PurgeAt)).
+		Scan(&count.Count)
 	return count, err
 }
 
 func reserveHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (int64, error) {
 	var count int64
-	err := statement.QueryRowContext(ctx, hit.Key, ms(hit.WindowStart), ms(hit.PurgeAt), hit.Limit).Scan(&count)
+	err := statement.QueryRowContext(ctx, hit.Key, milliseconds(hit.WindowStart), milliseconds(hit.PurgeAt), hit.Limit).
+		Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}

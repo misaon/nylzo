@@ -31,7 +31,7 @@ func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
 		if narrowErr := narrow(&lease.PepperID, "pepper_id", pepperID); narrowErr != nil {
 			return nil, narrowErr
 		}
-		lease.ExpiresAt = fromMS(expires)
+		lease.ExpiresAt = fromMilliseconds(expires)
 		leases = append(leases, lease)
 	}
 	return leases, rows.Err()
@@ -41,7 +41,7 @@ func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
 func (s *Store) RecordDownload(ctx context.Context, lease store.Lease, now time.Time) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		found, err := findLease(ctx, tx, &lease)
-		if err == nil && found.expiresAt <= ms(now) {
+		if err == nil && found.expiresAt <= milliseconds(now) {
 			return store.ErrLeaseInvalid
 		}
 		if err != nil {
@@ -137,7 +137,7 @@ func releaseInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (str
 		return "", err
 	}
 	var active int
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM leases WHERE id = ? AND lease_expires_at > ?`, id, ms(now)).
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM leases WHERE id = ? AND lease_expires_at > ?`, id, milliseconds(now)).
 		Scan(&active)
 	if err != nil || active > 0 {
 		return "", err
@@ -147,7 +147,7 @@ func releaseInTx(ctx context.Context, tx *sql.Tx, id string, now time.Time) (str
 		`UPDATE messages SET ending = ? WHERE id = ? AND ending IS NULL AND expires_at > ?`,
 		string(store.StateOpened),
 		id,
-		ms(now),
+		milliseconds(now),
 	)
 	return blobRef.String, err
 }

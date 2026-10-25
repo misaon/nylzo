@@ -82,8 +82,8 @@ func insertMessage(ctx context.Context, tx *sql.Tx, message *store.Message) erro
 		message.KDF,
 		message.Flags,
 		string(store.StateAvailable),
-		ms(message.CreatedAt),
-		ms(message.ExpiresAt),
+		milliseconds(message.CreatedAt),
+		milliseconds(message.ExpiresAt),
 		message.TTLSeconds,
 		message.OpensMax,
 		message.OpensMax,
@@ -153,8 +153,8 @@ func (raw *recordRow) tombstone() (store.Record, error) {
 		ManageMAC:     raw.manageMAC,
 		State:         store.State(raw.state),
 		FirstOpenedAt: optionalTime(raw.firstOpenedAt),
-		EndedAt:       fromMS(raw.endedAt.Int64).Truncate(time.Minute),
-		PurgeAt:       fromMS(raw.purgeAt.Int64),
+		EndedAt:       fromMilliseconds(raw.endedAt.Int64).Truncate(time.Minute),
+		PurgeAt:       fromMilliseconds(raw.purgeAt.Int64),
 	}
 	if err := narrow(&tombstone.PepperID, "pepper_id", raw.pepperID); err != nil {
 		return store.Record{}, err
@@ -170,8 +170,8 @@ func (raw *recordRow) message() (store.Record, error) {
 	message := &store.Message{
 		ID:             raw.id,
 		State:          store.State(raw.state),
-		CreatedAt:      fromMS(raw.createdAt),
-		ExpiresAt:      fromMS(raw.expiresAt),
+		CreatedAt:      fromMilliseconds(raw.createdAt),
+		ExpiresAt:      fromMilliseconds(raw.expiresAt),
 		ReadMAC:        raw.readMAC,
 		ManageMAC:      raw.manageMAC,
 		VerifierMAC:    raw.verifierMAC,
@@ -194,7 +194,7 @@ func (raw *recordRow) message() (store.Record, error) {
 		return store.Record{}, err
 	}
 	if raw.nextAt > 0 {
-		message.NextAttemptAt = fromMS(raw.nextAt)
+		message.NextAttemptAt = fromMilliseconds(raw.nextAt)
 	}
 	return store.Record{Message: message}, nil
 }
@@ -207,11 +207,11 @@ func narrow[T uint8 | uint16 | uint32](target *T, column string, value int64) er
 	return nil
 }
 
-func ms(moment time.Time) int64 {
+func milliseconds(moment time.Time) int64 {
 	return moment.UnixMilli()
 }
 
-func fromMS(milliseconds int64) time.Time {
+func fromMilliseconds(milliseconds int64) time.Time {
 	return time.UnixMilli(milliseconds).UTC()
 }
 
@@ -219,5 +219,5 @@ func optionalTime(milliseconds sql.NullInt64) *time.Time {
 	if !milliseconds.Valid {
 		return nil
 	}
-	return new(fromMS(milliseconds.Int64))
+	return new(fromMilliseconds(milliseconds.Int64))
 }

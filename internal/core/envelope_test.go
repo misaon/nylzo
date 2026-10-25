@@ -50,7 +50,7 @@ func seal(tb testing.TB, text string, file []byte) sealed {
 	return sample
 }
 
-func (s *sealed) gcm(tb testing.TB) cipher.AEAD {
+func (s *sealed) aead(tb testing.TB) cipher.AEAD {
 	tb.Helper()
 	block, err := aes.NewCipher(s.key[:])
 	if err != nil {
@@ -194,7 +194,7 @@ func TestSealEnforcesTheLimits(t *testing.T) {
 func TestOpenRejectsMalformedPlaintext(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "plaintext", nil)
-	aead := sample.gcm(t)
+	aead := sample.aead(t)
 	withMeta := func(metaLength uint32, meta string) []byte {
 		plaintext := make([]byte, core.PadText)
 		binary.BigEndian.PutUint32(plaintext, metaLength)
@@ -238,7 +238,7 @@ func FuzzOpen(f *testing.F) {
 
 func FuzzOpenPlaintext(f *testing.F) {
 	sample := seal(f, "hello", nil)
-	aead := sample.gcm(f)
+	aead := sample.aead(f)
 	plaintext, err := aead.Open(nil, sample.header.IV[:], sample.object[core.HeaderLen:],
 		core.AAD(sample.header, sample.id, sample.policy))
 	if err != nil {

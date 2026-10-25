@@ -19,13 +19,13 @@ import (
 )
 
 const (
-	shortTimeout   = 30 * time.Second
-	transferMargin = 30 * time.Second
-	minTransfer    = 120 * time.Second
-	minTransferBPS = 16000
-	maxJSONBytes   = 64 << 10
-	MaxFetchBytes  = 8 << 20
-	userAgent      = "nylzo-cli"
+	shortTimeout              = 30 * time.Second
+	transferMargin            = 30 * time.Second
+	minTransfer               = 120 * time.Second
+	minTransferBytesPerSecond = 16000
+	maxJSONBytes              = 64 << 10
+	MaxFetchBytes             = 8 << 20
+	userAgent                 = "nylzo-cli"
 )
 
 var (
@@ -260,5 +260,5 @@ func timesValid(times ...string) bool {
 }
 
 func transferTime(size int64) time.Duration {
-	return max(minTransfer, time.Duration(size)*time.Second/minTransferBPS) + transferMargin
+	return max(minTransfer, time.Duration(size)*time.Second/minTransferBytesPerSecond) + transferMargin
 }
