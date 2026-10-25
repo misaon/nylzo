@@ -1,7 +1,7 @@
 import { onDestroy, tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
-import type { Metadata } from '../../shared/api/api.ts';
+import type { Metadata, ReportStatus } from '../../shared/api/api.ts';
 import type { MessageKey } from '../../shared/language/czech.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import type { ReportOutcome, ReportSubmission } from '../../shared/report/report.ts';
@@ -99,7 +99,7 @@ export class ReadPage {
   confirmingDownload = $state(false);
   askingDelete = $state(false);
   reporting = $state(false);
-  reportSent = $state(false);
+  reportSent = $state<ReportStatus>();
   reportRound = $state(0);
   restDeleted = $state(false);
   deleting = $state(false);
@@ -156,7 +156,7 @@ export class ReadPage {
       return translate(`busy.${this.view.step}`);
     }
     if (this.reporting && this.reportSent) {
-      return translate('open.report.sent');
+      return translate(this.reportSent === 'limit' ? 'open.report.limit' : 'open.report.sent');
     }
     return this.burnNote;
   });
@@ -303,10 +303,11 @@ export class ReadPage {
     }
   };
 
-  readonly report = async ({ reason }: ReportSubmission): Promise<ReportOutcome> => this.#reader.report(reason);
+  readonly report = async ({ reason, contact, goodFaith }: ReportSubmission): Promise<ReportOutcome> =>
+    this.#reader.report({ reason, contact, goodFaith });
 
-  readonly reportAccepted = async (): Promise<void> => {
-    this.reportSent = true;
+  readonly reportFinished = async (status: ReportStatus): Promise<void> => {
+    this.reportSent = status;
     await tick();
     if (this.reporting) {
       this.focus.focus('reportPopover');
@@ -476,7 +477,7 @@ export class ReadPage {
       return;
     }
 
-    this.reportSent = false;
+    this.reportSent = undefined;
     this.reportRound++;
     void this.#startReveal(next.text);
   }

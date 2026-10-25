@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CreateDependencies, createMessage } from '../features/create/create-message.ts';
 import { createReader, type ReadView } from '../features/read/reader.ts';
 import { ApiError } from '../shared/api/api-errors.ts';
-import { fakeApi, type FakeApi, type FakeOptions } from '../shared/api/fake-api.ts';
+import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
 import { reportLink } from '../shared/report/report.ts';
 
@@ -170,7 +170,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   it('wipes S, R and salt_pw after reporting a pasted link', async () => {
     const api = fakeApi();
     const link = await created(api);
-    expect(await reportLink(api, ORIGIN, link, 'spam')).toEqual({ outcome: 'accepted' });
+    expect(await reportLink(api, ORIGIN, link, abuseReport('spam'))).toEqual({ outcome: 'accepted' });
     expect(captured).toHaveLength(3);
     expect(zeroed()).toEqual([true, true, true]);
   });
@@ -179,7 +179,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     const api = fakeApi();
     const link = await created(api);
     failing.requestKey = 1;
-    expect(await reportLink(api, ORIGIN, link, 'spam')).toEqual({ outcome: 'failed' });
+    expect(await reportLink(api, ORIGIN, link, abuseReport('spam'))).toEqual({ outcome: 'failed' });
     expect(captured).toHaveLength(3);
     expect(zeroed()).toEqual([true, true, true]);
     expect(api.calls).not.toContain('report');
@@ -188,7 +188,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   it('wipes S when it refuses a link of another service', async () => {
     const api = fakeApi();
     const link = await created(api);
-    expect(await reportLink(api, 'https://other.test', link, '')).toEqual({
+    expect(await reportLink(api, 'https://other.test', link, abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_foreign'],
     });
@@ -203,7 +203,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     await reader.reveal();
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
-    expect(await reader.report('after reading')).toEqual({ outcome: 'accepted' });
+    expect(await reader.report(abuseReport('after reading'))).toEqual({ outcome: 'accepted' });
   });
 
   it('wipes P once the reader shows the message', async () => {

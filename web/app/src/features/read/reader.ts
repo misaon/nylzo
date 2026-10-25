@@ -21,7 +21,7 @@ import {
   wipeRequestKey,
 } from '@nylzo/core';
 
-import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
+import type { AbuseReport, Api, Envelope, Metadata } from '../../shared/api/api.ts';
 import type { DownloadProgress } from '../../shared/api/object-body.ts';
 import type { Progress } from '../../shared/kdf/kdf.ts';
 
@@ -117,7 +117,7 @@ export interface Reader {
   readonly load: () => Promise<void>;
   readonly reveal: (passphrase?: string) => Promise<void>;
   readonly burn: () => Promise<BurnOutcome>;
-  readonly report: (reason: string) => Promise<ReportOutcome>;
+  readonly report: (report: AbuseReport) => Promise<ReportOutcome>;
   readonly clear: () => void;
 }
 
@@ -609,14 +609,14 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     return outcome;
   }
 
-  async function report(reason: string): Promise<ReportOutcome> {
+  async function report(abuseReport: AbuseReport): Promise<ReportOutcome> {
     const current = heldKey;
     if (!current || reporting || revealedView?.burnable === false || !allowed()) {
       return { outcome: 'ignored' };
     }
     reporting = true;
     try {
-      return await sendReport(api, current.id, current.readKey, reason);
+      return await sendReport(api, current.id, current.readKey, abuseReport);
     } finally {
       reporting = false;
       if (current.readKey !== readKey) {

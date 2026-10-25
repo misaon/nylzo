@@ -2,6 +2,7 @@ export const MESSAGE_STATES = ['available', 'opened', 'expired', 'cancelled', 'd
 
 export const ERROR_KINDS = [
   'bad_request',
+  'contact',
   'passphrase',
   'pow',
   'id_token',

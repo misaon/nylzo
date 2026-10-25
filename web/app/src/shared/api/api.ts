@@ -114,6 +114,14 @@ interface ClaimOptions {
   readonly proceed?: () => boolean;
 }
 
+export interface AbuseReport {
+  readonly reason: string;
+  readonly contact: string;
+  readonly goodFaith: boolean;
+}
+
+export type ReportStatus = 'accepted' | 'limit';
+
 export interface ApiOptions {
   readonly base?: string;
   readonly fetch?: typeof fetch;
@@ -129,7 +137,7 @@ export interface Api {
   ack: (id: Uint8Array, readKey: RequestKey, lease: string) => Promise<void>;
   burn: (id: Uint8Array, readKey: RequestKey) => Promise<void>;
   cancel: (id: Uint8Array, manageKey: RequestKey) => Promise<void>;
-  report: (id: Uint8Array, readKey: RequestKey, reason: string) => Promise<void>;
+  report: (id: Uint8Array, readKey: RequestKey, report: AbuseReport) => Promise<ReportStatus>;
   status: (id: Uint8Array, manageKey: RequestKey) => Promise<Status>;
 }
 
@@ -371,9 +379,25 @@ export function createApi(options: ApiOptions = {}): Api {
       await signed({ method: 'POST', path: `${messagePath(id)}/cancel`, purpose: PURPOSE_MANAGE, key: manageKey });
     },
 
-    async report(id, readKey, reason) {
-      const json = { id: idToString(id), ...(reason !== '' && { reason }) };
-      await signed({ method: 'POST', path: '/api/v1/abuse', purpose: PURPOSE_READ, key: readKey, json });
+    async report(id, readKey, { reason, contact, goodFaith }) {
+      const json = {
+        id: idToString(id),
+        ...(reason !== '' && { reason }),
+        ...(contact !== '' && { contact }),
+        ...(goodFaith && { good_faith: true }),
+      };
+      const response = await signed({
+        method: 'POST',
+        path: '/api/v1/abuse',
+        purpose: PURPOSE_READ,
+        key: readKey,
+        json,
+      });
+      const status = text(await readJson(response), 'status');
+      if (status !== 'accepted' && status !== 'limit') {
+        throw new ResponseError('the server answered an unknown report status');
+      }
+      return status;
     },
 
     async status(id, manageKey) {

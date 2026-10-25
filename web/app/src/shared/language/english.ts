@@ -130,21 +130,27 @@ export const english: Record<MessageKey, string> = {
   'report.note':
     'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We keep at most three reports per message a day, and only while the message exists.',
   'report.privacy':
-    'The server receives only the message id, the reason and a signature derived from the link. Neither the link nor the content leaves this page.',
+    'The server receives only the message id, the reason, your email if you give one, the good-faith statement and a signature derived from the link. Neither the link nor the content leaves this page.',
   'report.link': 'Link to the message',
   'report.link.hint': 'Paste the whole link, including the part after #.',
   'report.reason': 'Reason, optional',
   'report.reason.hint':
     'Up to {bytes} bytes. Before sending, the page removes everything after a # sign and any long codes from the reason.',
+  'report.contact': 'Email, optional',
+  'report.contact.hint': 'Only to confirm receipt and tell you the decision.',
+  'report.good_faith': 'I believe in good faith that the information in this report is accurate and complete.',
   'report.submit': 'Send report',
-  'report.accepted':
-    'We received the report. We keep it while the message exists, up to three reports per message a day.',
+  'report.accepted': 'We received the report. We keep it only if the message still exists.',
+  'report.limit':
+    'We did not store this report. The message already has three reports today, and a person reviews them. If you have anything new, write to the contact on the Transparency page.',
   'report.failed': 'The report could not be sent. Try again.',
   'report.problem.link_invalid': 'The link is incomplete or damaged.',
   'report.problem.link_newer': 'The link needs a newer version of Nylzo.',
   'report.problem.link_retired': 'The link uses a retired passphrase method.',
   'report.problem.link_foreign': 'The link belongs to another service.',
   'report.problem.reason_too_long': 'The reason is longer than {bytes} bytes.',
+  'report.problem.contact_invalid': 'This does not look like an email address.',
+  'report.problem.good_faith_missing': 'Confirm this statement to send the report.',
 
   'transparency.title': 'Transparency',
   'transparency.loading': 'Loading the service details…',
@@ -166,7 +172,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.stores.ended':
     'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. After that it keeps only a short record of the ended message for at most {days}: how and when it ended, when it was first opened, and the fingerprints of its keys.',
   'transparency.stores.abuse':
-    'Abuse reports: the date, the message id and the reason without link keys or long codes, for at most {days}.',
+    'Abuse reports: the date, the message id, the reason without link keys or long codes, the good-faith statement and an email address if the reporter chose to give one, for at most {days}.',
   'transparency.stores.counters':
     'Counters without addresses: it keeps daily totals of created messages and of reports per message for {days} after the day ends, and used one-time challenges for a few minutes.',
   'transparency.stores.addresses':
@@ -361,6 +367,9 @@ export const english: Record<MessageKey, string> = {
   'open.report.title': 'Report the message',
   'open.report.sent': 'Report sent',
   'open.report.sent.note': 'A person will review it.',
+  'open.report.limit': 'Report not stored',
+  'open.report.limit.note':
+    'The message already has three reports today, and a person reviews them. Write anything new to the contact on the Transparency page.',
   'open.trust.title': 'How Nylzo protects this message',
   'open.trust.key.title': 'The key is only in the link',
   'open.trust.key.text': 'It sits after the # sign. The browser never sends that part to the server.',

@@ -128,21 +128,27 @@ export const czech = {
   'report.note':
     'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a\u{A0}nic se nemaže automaticky. Uchováme nejvýš tři hlášení na zprávu za den, a\u{A0}jen dokud zpráva existuje.',
   'report.privacy':
-    'Server dostane jen id zprávy, důvod a podpis odvozený z odkazu. Odkaz ani obsah zprávy stránku neopustí.',
+    'Server dostane jen id zprávy, důvod, váš e-mail, pokud ho uvedete, prohlášení o\u{A0}dobré víře a\u{A0}podpis odvozený z\u{A0}odkazu. Odkaz ani obsah zprávy stránku neopustí.',
   'report.link': 'Odkaz na zprávu',
   'report.link.hint': 'Vložte celý odkaz včetně části za #.',
   'report.reason': 'Důvod, volitelný',
   'report.reason.hint':
     'Nejvýš {bytes} bajtů. Stránka z\u{A0}důvodu před odesláním odstraní vše za znakem # a\u{A0}dlouhé kódy.',
+  'report.contact': 'E-mail, volitelný',
+  'report.contact.hint': 'Jen pro potvrzení přijetí a\u{A0}sdělení rozhodnutí.',
+  'report.good_faith': 'V\u{A0}dobré víře potvrzuji, že údaje v\u{A0}hlášení jsou přesné a\u{A0}úplné.',
   'report.submit': 'Odeslat hlášení',
-  'report.accepted':
-    'Hlášení jsme přijali. Uchováme ho, dokud zpráva existuje. Na jednu zprávu uchováme nejvýš tři hlášení denně.',
+  'report.accepted': 'Hlášení jsme přijali. Uchováme ho, jen pokud zpráva ještě existuje.',
+  'report.limit':
+    'Toto hlášení jsme neuložili. Zpráva má dnes už tři hlášení a\u{A0}posoudí je člověk. Pokud máte něco nového, napište na kontakt na stránce Transparentnost.',
   'report.failed': 'Hlášení se nepodařilo odeslat. Zkuste to znovu.',
   'report.problem.link_invalid': 'Odkaz je neúplný nebo poškozený.',
   'report.problem.link_newer': 'Odkaz potřebuje novější verzi Nylzo.',
   'report.problem.link_retired': 'Odkaz má vyřazenou ochranu passphrase.',
   'report.problem.link_foreign': 'Odkaz patří jiné službě.',
   'report.problem.reason_too_long': 'Důvod je delší než {bytes} bajtů.',
+  'report.problem.contact_invalid': 'Tohle nevypadá jako e-mailová adresa.',
+  'report.problem.good_faith_missing': 'Pro odeslání hlášení potvrďte prohlášení.',
 
   'transparency.title': 'Transparentnost',
   'transparency.loading': 'Načítám údaje o službě…',
@@ -164,7 +170,7 @@ export const czech = {
   'transparency.stores.ended':
     'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Pak o\u{A0}ní nejdéle {days} drží jen krátký záznam: jak a\u{A0}kdy skončila, kdy byla poprvé otevřena a\u{A0}otisky jejích klíčů.',
   'transparency.stores.abuse':
-    'Hlášení zneužití: datum, id zprávy a\u{A0}důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, nejdéle {days}.',
+    'Hlášení zneužití: datum, id zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel sám uvedl, nejdéle {days}.',
   'transparency.stores.counters':
     'Počítadla bez adres: denní počty vytvořených zpráv a\u{A0}hlášení na zprávu drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
   'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
@@ -357,6 +363,9 @@ export const czech = {
   'open.report.title': 'Nahlásit zprávu',
   'open.report.sent': 'Hlášení je odeslané',
   'open.report.sent.note': 'Posoudí ho člověk.',
+  'open.report.limit': 'Hlášení jsme neuložili',
+  'open.report.limit.note':
+    'Zpráva má dnes už tři hlášení a\u{A0}posoudí je člověk. Něco nového napište na kontakt na stránce Transparentnost.',
   'open.trust.title': 'Jak Nylzo chrání tuto zprávu',
   'open.trust.key.title': 'Klíč je jen v\u{A0}odkazu',
   'open.trust.key.text': 'Je za znakem #. Prohlížeč tuhle část serveru nikdy neposílá.',

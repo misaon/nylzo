@@ -28,6 +28,9 @@
     off: 'pointer-events-none opacity-0',
   } as const;
 
+  const reportDone = $derived(page.reportSent !== undefined);
+  const reportLimited = $derived(page.reportSent === 'limit');
+
   const deletionButtons: readonly DeletionButton[] = $derived([
     {
       element: 'deleteMessage',
@@ -123,10 +126,7 @@
         class="top-full right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] p-3.5 text-left"
       >
         <div class="stack">
-          <div
-            class={['fade-swap', page.reportSent ? 'pointer-events-none opacity-0' : 'opacity-100']}
-            inert={page.reportSent}
-          >
+          <div class={['fade-swap', reportDone ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={reportDone}>
             <p class="px-0.5 text-[13px] text-ink">{translate('open.report.title')}</p>
             <p class="mt-1 px-0.5 text-[11px] leading-relaxed text-ink-mute">{translate('open.report.note')}</p>
             {#key page.reportRound}
@@ -135,25 +135,34 @@
                 compact
                 hint={translate('open.report.privacy')}
                 onsubmit={page.report}
-                onaccepted={page.reportAccepted}
+                onsent={page.reportFinished}
               />
             {/key}
           </div>
           <div
             class={[
-              'flex flex-col items-center justify-center gap-2 text-center fade-swap',
-              page.reportSent ? 'opacity-100' : 'pointer-events-none opacity-0',
+              'flex flex-col items-center justify-center gap-2 px-2 text-center fade-swap',
+              reportDone ? 'opacity-100' : 'pointer-events-none opacity-0',
             ]}
-            inert={!page.reportSent}
+            inert={!reportDone}
           >
             <span
-              class="grid size-10 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35"
+              class={[
+                'grid size-10 place-items-center rounded-control ring-1',
+                reportLimited
+                  ? 'bg-rose-500/12 text-rose-300 ring-rose-300/35'
+                  : 'bg-aegis-500/15 text-aegis-200 ring-aegis-400/35',
+              ]}
               aria-hidden="true"
             >
-              <Icon name="check" stroke={2} class="size-5" />
+              <Icon name={reportLimited ? 'alert' : 'check'} stroke={2} class="size-5" />
             </span>
-            <p class="text-[13px] text-ink">{translate('open.report.sent')}</p>
-            <p class="text-[11px] text-ink-mute">{translate('open.report.sent.note')}</p>
+            <p class="text-[13px] text-ink">
+              {translate(reportLimited ? 'open.report.limit' : 'open.report.sent')}
+            </p>
+            <p class="text-[11px] leading-relaxed text-ink-mute">
+              {translate(reportLimited ? 'open.report.limit.note' : 'open.report.sent.note')}
+            </p>
           </div>
         </div>
       </Popover>

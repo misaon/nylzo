@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { type CreateDependencies, createMessage } from '../../features/create/create-message.ts';
 import { ApiError } from '../api/api-errors.ts';
-import { fakeApi, type FakeApi, type FakeOptions } from '../api/fake-api.ts';
-import { reasonTooLong, redactReason, reportLink } from './report.ts';
+import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../api/fake-api.ts';
+import { parseContact, reasonTooLong, redactReason, reportLink } from './report.ts';
 
 const ORIGIN = 'https://nylzo.test';
 
@@ -28,15 +28,15 @@ async function setup(options: FakeOptions = {}): Promise<{ api: FakeApi; link: s
 describe('reporting a pasted link (D41)', () => {
   it('signs the report with the read key derived from the link and never claims the message', async () => {
     const { api, link, id } = await setup();
-    expect(await reportLink(api, ORIGIN, `  ${link}\n`, 'phishing')).toEqual({ outcome: 'accepted' });
-    expect(api.reports).toEqual([{ id, signedByReader: true, reason: 'phishing' }]);
+    expect(await reportLink(api, ORIGIN, `  ${link}\n`, abuseReport('phishing'))).toEqual({ outcome: 'accepted' });
+    expect(api.reports).toEqual([{ id, signedByReader: true, ...abuseReport('phishing') }]);
     expect(api.calls).toEqual(['report']);
   });
 
   it('accepts the scheme and host in any letter case', async () => {
     const { api, link } = await setup();
     const shouting = link.replace('https://nylzo.test', 'HTTPS://NYLZO.TEST');
-    expect(await reportLink(api, ORIGIN, shouting, '')).toEqual({ outcome: 'accepted' });
+    expect(await reportLink(api, ORIGIN, shouting, abuseReport(''))).toEqual({ outcome: 'accepted' });
   });
 
   it('refuses a link of another service without sending anything', async () => {
@@ -46,28 +46,35 @@ describe('reporting a pasted link (D41)', () => {
       link.replace('https://', 'http://'),
       link.replace('nylzo.test', 'nylzo.test:8443'),
     ]) {
-      expect(await reportLink(api, ORIGIN, foreign, '')).toEqual({ outcome: 'invalid', problems: ['link_foreign'] });
+      expect(await reportLink(api, ORIGIN, foreign, abuseReport(''))).toEqual({
+        outcome: 'invalid',
+        problems: ['link_foreign'],
+      });
     }
     expect(api.calls).toEqual([]);
   });
 
   it('refuses a damaged link and a long reason together', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.split('#', 1)[0] ?? '', 'ab '.repeat(334))).toEqual({
+    const long = abuseReport('ab '.repeat(334));
+    expect(await reportLink(api, ORIGIN, link.split('#', 1)[0] ?? '', long)).toEqual({
       outcome: 'invalid',
       problems: ['link_invalid', 'reason_too_long'],
     });
-    expect(await reportLink(api, ORIGIN, `${link}x`, '')).toEqual({ outcome: 'invalid', problems: ['link_invalid'] });
+    expect(await reportLink(api, ORIGIN, `${link}x`, abuseReport(''))).toEqual({
+      outcome: 'invalid',
+      problems: ['link_invalid'],
+    });
     expect(api.calls).toEqual([]);
   });
 
   it('tells a link from a newer version apart and sends nothing', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), '')).toEqual({
+    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_newer'],
     });
-    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), '')).toEqual({
+    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_invalid'],
     });
@@ -76,11 +83,13 @@ describe('reporting a pasted link (D41)', () => {
 
   it('tells a link with the retired passphrase profile apart and sends nothing', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.replace('#1.0.', '#1.2.'), '')).toEqual({
+    expect(await reportLink(api, ORIGIN, link.replace('#1.0.', '#1.2.'), abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_retired'],
     });
-    expect(await reportLink(api, ORIGIN, link.replace('/m/', '/x/').replace('#1.0.', '#1.2.'), '')).toEqual({
+    expect(
+      await reportLink(api, ORIGIN, link.replace('/m/', '/x/').replace('#1.0.', '#1.2.'), abuseReport('')),
+    ).toEqual({
       outcome: 'invalid',
       problems: ['link_invalid'],
     });
@@ -89,9 +98,74 @@ describe('reporting a pasted link (D41)', () => {
 
   it('passes on a rate limit and other failures', async () => {
     const limited = await setup({ failReport: [new ApiError(429, 'rate_limited', { retryAfter: 60 })] });
-    expect(await reportLink(limited.api, ORIGIN, limited.link, '')).toEqual({ outcome: 'retry_later', retryAfter: 60 });
+    expect(await reportLink(limited.api, ORIGIN, limited.link, abuseReport(''))).toEqual({
+      outcome: 'retry_later',
+      retryAfter: 60,
+    });
     const broken = await setup({ failReport: [new ApiError(500, 'internal')] });
-    expect(await reportLink(broken.api, ORIGIN, broken.link, '')).toEqual({ outcome: 'failed' });
+    expect(await reportLink(broken.api, ORIGIN, broken.link, abuseReport(''))).toEqual({ outcome: 'failed' });
+  });
+});
+
+describe('the contact and the good-faith statement (DSA Art. 16, spec §6.6)', () => {
+  it('sends a trimmed contact and the statement', async () => {
+    const { api, link, id } = await setup();
+    expect(await reportLink(api, ORIGIN, link, abuseReport('phishing', ' jana@example.cz\n'))).toEqual({
+      outcome: 'accepted',
+    });
+    expect(api.reports).toEqual([{ id, signedByReader: true, ...abuseReport('phishing', 'jana@example.cz') }]);
+  });
+
+  it('refuses an implausible contact and a missing statement without sending anything', async () => {
+    const { api, link } = await setup();
+    expect(await reportLink(api, ORIGIN, link, { reason: '', contact: 'jana@example', goodFaith: false })).toEqual({
+      outcome: 'invalid',
+      problems: ['contact_invalid', 'good_faith_missing'],
+    });
+    expect(api.calls).toEqual([]);
+    const refused = await setup({ failReport: [new ApiError(400, 'contact')] });
+    expect(await reportLink(refused.api, ORIGIN, refused.link, abuseReport('', 'jana@example.cz'))).toEqual({
+      outcome: 'invalid',
+      problems: ['contact_invalid'],
+    });
+  });
+
+  it('keeps the contact rule of the server', () => {
+    const link = `https://nylzo.test/m/${'A'.repeat(22)}#1.0.${'B'.repeat(43)}`;
+    const longest = `${'a'.repeat(243)}@example.cz`;
+    const valid: readonly (readonly [string, string])[] = [
+      ['', ''],
+      [' \t\n', ''],
+      ['  jana@example.cz\n', 'jana@example.cz'],
+      ["o'brien+abuse@mail.example", "o'brien+abuse@mail.example"],
+      ['jiří@háček.example', 'jiří@háček.example'],
+      [longest, longest],
+    ];
+    expect(valid.map(([raw]) => parseContact(raw))).toEqual(valid.map(([, contact]) => contact));
+    const invalid = [
+      'jana',
+      '@example.cz',
+      'jana@',
+      'jana@example',
+      'jana@.example.cz',
+      'jana@example..cz',
+      'jana@example.cz.',
+      'jana@@example.cz',
+      'jana@example@cz.example',
+      'ja na@example.cz',
+      'jana\u{A0}@example.cz',
+      'ja\u{1B}na@example.cz',
+      'ja\u{202E}na@example.cz',
+      'jana#1@example.cz',
+      'jana@example.cz/m/x',
+      'jana@exa_mple.cz',
+      'ja\u{D800}na@example.cz',
+      `${'a'.repeat(244)}@example.cz`,
+      link,
+      `${link}@example.cz`,
+      `jana@example.cz ${link}`,
+    ];
+    expect(invalid.filter((raw) => parseContact(raw) !== undefined)).toEqual([]);
   });
 });
 
@@ -124,7 +198,7 @@ describe('redacting a reason before it is signed (D41)', () => {
     ].map((reason) => redactReason(reason));
     expect(redacted.filter((reason) => reason.includes(secret))).toEqual([]);
     expect(redacted.filter((reason) => !reason.includes('[redacted]'))).toEqual([]);
-    expect(await reportLink(api, ORIGIN, link, `phishing, see ${link}`)).toEqual({ outcome: 'accepted' });
+    expect(await reportLink(api, ORIGIN, link, abuseReport(`phishing, see ${link}`))).toEqual({ outcome: 'accepted' });
     expect(api.reports[0]?.reason).toBe('phishing, see https://nylzo.test/m/[redacted][redacted]');
   });
 
@@ -144,7 +218,7 @@ describe('redacting a reason before it is signed (D41)', () => {
     const { api, link } = await setup();
     const long = `${link.split('.').at(-1) ?? ''} `.repeat(30);
     expect(utf8(long).length).toBeGreaterThan(1000);
-    expect(await reportLink(api, ORIGIN, link, long)).toEqual({ outcome: 'accepted' });
+    expect(await reportLink(api, ORIGIN, link, abuseReport(long))).toEqual({ outcome: 'accepted' });
   });
 });
 
