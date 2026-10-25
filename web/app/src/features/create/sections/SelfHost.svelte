@@ -203,12 +203,13 @@
             >
               {#each screen.lines as line (line.command + line.rest)}
                 <p class="whitespace-pre">
-                  <span class="text-aegis-300 select-none">$ </span><span class="text-aegis-200">{line.command}</span
+                  <span class="text-aegis-300 select-none">$&nbsp;</span><span class="text-aegis-200"
+                    >{line.command}</span
                   ><span class="text-ink-soft">{line.rest}</span>
                 </p>
               {/each}
               <p class="whitespace-pre" aria-hidden="true">
-                <span class="text-aegis-300 select-none">$ </span><span
+                <span class="text-aegis-300 select-none">$&nbsp;</span><span
                   class="inline-block h-[1.05em] w-[0.6em] translate-y-[0.18em] animate-blink bg-aegis-300/80"
                 ></span>
               </p>
