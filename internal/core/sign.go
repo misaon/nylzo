@@ -32,28 +32,28 @@ type Signature struct {
 }
 
 func PublicKey(seed *[TokenLen]byte) [PublicKeyLen]byte {
-	key := ed25519.NewKeyFromSeed(seed[:])
-	defer clear(key)
-	return [PublicKeyLen]byte(key.Public().(ed25519.PublicKey))
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	defer clear(privateKey)
+	return [PublicKeyLen]byte(privateKey[ed25519.SeedSize:])
 }
 
-func ValidPublicKey(pk []byte) bool {
-	p, err := new(edwards25519.Point).SetBytes(pk)
-	if err != nil || !bytes.Equal(p.Bytes(), pk) {
+func ValidPublicKey(publicKey []byte) bool {
+	point, err := new(edwards25519.Point).SetBytes(publicKey)
+	if err != nil || !bytes.Equal(point.Bytes(), publicKey) {
 		return false
 	}
-	return new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) == 0
+	return new(edwards25519.Point).MultByCofactor(point).Equal(edwards25519.NewIdentityPoint()) == 0
 }
 
 func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte, body []byte) []byte {
 	bodyHash := sha256.Sum256(body)
-	msg := make([]byte, 0, len(requestLabel)+len(purpose)+len(method)+len(path)+4+ChallengeLen+len(bodyHash))
+	message := make([]byte, 0, len(requestLabel)+len(purpose)+len(method)+len(path)+4+ChallengeLen+len(bodyHash))
 	for _, part := range []string{requestLabel, purpose, method, path} {
-		msg = append(msg, part...)
-		msg = append(msg, 0)
+		message = append(message, part...)
+		message = append(message, 0)
 	}
-	msg = append(msg, challenge[:]...)
-	return append(msg, bodyHash[:]...)
+	message = append(message, challenge[:]...)
+	return append(message, bodyHash[:]...)
 }
 
 func SignRequest(
@@ -62,23 +62,11 @@ func SignRequest(
 	challenge [ChallengeLen]byte,
 	body []byte,
 ) Signature {
-	key := ed25519.NewKeyFromSeed(seed[:])
-	defer clear(key)
-	out := Signature{PublicKey: PublicKey(seed), Challenge: challenge}
-	copy(out.Sig[:], ed25519.Sign(key, RequestMessage(purpose, method, path, &challenge, body)))
-	return out
-}
-
-func (s Signature) Verify(purpose, method, path string, body []byte) bool {
-	return ed25519.Verify(s.PublicKey[:], RequestMessage(purpose, method, path, &s.Challenge, body), s.Sig[:])
-}
-
-func (s Signature) Authorization() string {
-	return AuthScheme + " " + Encode(s.PublicKey[:]) + "." + Encode(s.Challenge[:]) + "." + Encode(s.Sig[:])
-}
-
-func (s Signature) VerifierHeader() string {
-	return Encode(s.PublicKey[:]) + "." + Encode(s.Sig[:])
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	defer clear(privateKey)
+	signature := Signature{PublicKey: [PublicKeyLen]byte(privateKey[ed25519.SeedSize:]), Challenge: challenge}
+	copy(signature.Sig[:], ed25519.Sign(privateKey, RequestMessage(purpose, method, path, &challenge, body)))
+	return signature
 }
 
 func ParseAuthorization(header string) (Signature, error) {
@@ -86,39 +74,52 @@ func ParseAuthorization(header string) (Signature, error) {
 	if !ok || scheme != AuthScheme {
 		return Signature{}, ErrAuthorization
 	}
-	parts := strings.Split(value, ".")
-	if len(parts) != 3 {
+	fields := strings.Split(value, ".")
+	if len(fields) != 3 {
 		return Signature{}, ErrAuthorization
 	}
-	var out Signature
-	for _, f := range []struct {
-		dst  []byte
-		text string
-	}{{out.PublicKey[:], parts[0]}, {out.Challenge[:], parts[1]}, {out.Sig[:], parts[2]}} {
-		raw, err := DecodeExact(f.text, len(f.dst))
-		if err != nil {
+	var signature Signature
+	targets := [][]byte{signature.PublicKey[:], signature.Challenge[:], signature.Sig[:]}
+	for i, target := range targets {
+		if !decodeInto(target, fields[i]) {
 			return Signature{}, ErrAuthorization
 		}
-		copy(f.dst, raw)
 	}
-	return out, nil
+	return signature, nil
 }
 
 func ParseVerifierHeader(header string, challenge [ChallengeLen]byte) (Signature, error) {
-	pk, sig, ok := strings.Cut(header, ".")
+	encodedPublicKey, encodedSignature, ok := strings.Cut(header, ".")
 	if !ok {
 		return Signature{}, ErrAuthorization
 	}
-	out := Signature{Challenge: challenge}
-	rawPK, err := DecodeExact(pk, PublicKeyLen)
-	if err != nil {
+	signature := Signature{Challenge: challenge}
+	if !decodeInto(signature.PublicKey[:], encodedPublicKey) || !decodeInto(signature.Sig[:], encodedSignature) {
 		return Signature{}, ErrAuthorization
 	}
-	rawSig, err := DecodeExact(sig, SignatureLen)
+	return signature, nil
+}
+
+//nolint:gocritic // hugeParam: internal/server calls these methods on values; see the cross-area list.
+func (s Signature) Verify(purpose, method, path string, body []byte) bool {
+	return ed25519.Verify(s.PublicKey[:], RequestMessage(purpose, method, path, &s.Challenge, body), s.Sig[:])
+}
+
+//nolint:gocritic // hugeParam: internal/server calls these methods on values; see the cross-area list.
+func (s Signature) Authorization() string {
+	return AuthScheme + " " + Encode(s.PublicKey[:]) + "." + Encode(s.Challenge[:]) + "." + Encode(s.Sig[:])
+}
+
+//nolint:gocritic // hugeParam: internal/server calls these methods on values; see the cross-area list.
+func (s Signature) VerifierHeader() string {
+	return Encode(s.PublicKey[:]) + "." + Encode(s.Sig[:])
+}
+
+func decodeInto(target []byte, text string) bool {
+	decoded, err := DecodeExact(text, len(target))
 	if err != nil {
-		return Signature{}, ErrAuthorization
+		return false
 	}
-	copy(out.PublicKey[:], rawPK)
-	copy(out.Sig[:], rawSig)
-	return out, nil
+	copy(target, decoded)
+	return true
 }

@@ -3,8 +3,31 @@ package core
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
+)
+
+const (
+	Version = 1
+
+	IVLen         = 12
+	TagLen        = 16
+	HeaderLen     = 15
+	PolicyLen     = 6
+	AADLen        = HeaderLen + IDLen + PolicyLen
+	MetaLenPrefix = 4
+	ObjectSlack   = 64
+
+	MaxTextBytes   = 100 * 1024
+	MaxFileBytes   = 5 * 1024 * 1024
+	MaxMetaBytes   = 102 * 1024
+	MaxObjectBytes = MaxFileBytes + MaxTextBytes + PadFile + ObjectSlack
+
+	PadText = 4096
+	PadFile = 65536
+
+	MinTTLSeconds = 60
 )
 
 var (
@@ -36,16 +59,25 @@ type Payload struct {
 }
 
 func NewHeader(kdf KDF) Header {
-	return Header{Version: Version, KDF: kdf, IV: NewIV()}
+	header := Header{Version: Version, KDF: kdf}
+	rand.Read(header.IV[:])
+	return header
+}
+
+func ParseHeader(data []byte) (Header, error) {
+	var header Header
+	if len(data) < HeaderLen {
+		return header, ErrHeader
+	}
+	header.Version = data[0]
+	header.KDF = KDF(data[1])
+	header.Flags = data[2]
+	copy(header.IV[:], data[3:HeaderLen])
+	return header, header.Validate()
 }
 
 func (h Header) Bytes() []byte {
-	b := make([]byte, HeaderLen)
-	b[0] = h.Version
-	b[1] = uint8(h.KDF)
-	b[2] = h.Flags
-	copy(b[3:], h.IV[:])
-	return b
+	return append(append(make([]byte, 0, HeaderLen), h.Version, byte(h.KDF), h.Flags), h.IV[:]...)
 }
 
 func (h Header) Validate() error {
@@ -61,18 +93,6 @@ func (h Header) Validate() error {
 	return nil
 }
 
-func ParseHeader(b []byte) (Header, error) {
-	var h Header
-	if len(b) < HeaderLen {
-		return h, ErrHeader
-	}
-	h.Version = b[0]
-	h.KDF = KDF(b[1])
-	h.Flags = b[2]
-	copy(h.IV[:], b[3:HeaderLen])
-	return h, h.Validate()
-}
-
 func (p Policy) Validate() error {
 	if p.OpensMax == 0 || p.TTLSeconds < MinTTLSeconds {
 		return ErrPolicy
@@ -81,41 +101,83 @@ func (p Policy) Validate() error {
 }
 
 func (p Policy) Bytes() []byte {
-	b := make([]byte, PolicyLen)
-	binary.BigEndian.PutUint16(b[0:2], p.OpensMax)
-	binary.BigEndian.PutUint32(b[2:6], p.TTLSeconds)
-	return b
+	return binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
 }
 
-func AAD(h Header, id ID, p Policy) []byte {
-	out := make([]byte, 0, AADLen)
-	out = append(out, h.Bytes()...)
-	out = append(out, id[:]...)
-	out = append(out, p.Bytes()...)
-	return out
+func AAD(header Header, id ID, policy Policy) []byte {
+	aad := make([]byte, 0, AADLen)
+	aad = append(aad, header.Bytes()...)
+	aad = append(aad, id[:]...)
+	return append(aad, policy.Bytes()...)
 }
 
-func PaddedLen(n int, hasFile bool) int {
+func ObjectLimit(maxFileBytes int64) int64 {
+	largestPlaintext := PaddedLen(MetaLenPrefix+MaxMetaBytes+int(maxFileBytes), true)
+	return min(MaxObjectBytes, int64(HeaderLen+TagLen+largestPlaintext))
+}
+
+func PaddedLen(length int, hasFile bool) int {
 	unit := PadText
 	if hasFile {
 		unit = PadFile
 	}
-	if n%unit == 0 {
-		return n
+	if length%unit == 0 {
+		return length
 	}
-	return n + unit - n%unit
+	return length + unit - length%unit
 }
 
-func Seal(k *[KeyLen]byte, h Header, id ID, p Policy, payload Payload) ([]byte, error) {
-	if err := h.Validate(); err != nil {
+func Seal(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payload) ([]byte, error) {
+	if err := header.Validate(); err != nil {
 		return nil, err
 	}
-	if err := p.Validate(); err != nil {
+	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
+	plaintext, err := padPlaintext(payload)
+	if err != nil {
+		return nil, err
+	}
+	aead, err := newAEAD(key)
+	if err != nil {
+		return nil, err
+	}
+	object := make([]byte, 0, HeaderLen+len(plaintext)+TagLen)
+	object = append(object, header.Bytes()...)
+	return aead.Seal(object, header.IV[:], plaintext, AAD(header, id, policy)), nil
+}
+
+func Open(key *[KeyLen]byte, id ID, policy Policy, kdf KDF, object []byte) (Header, Payload, error) {
+	header, err := ParseHeader(object)
+	if err != nil {
+		return header, Payload{}, err
+	}
+	if header.KDF != kdf {
+		return header, Payload{}, ErrKDFMismatch
+	}
+	if len(object) > MaxObjectBytes || len(object) < HeaderLen+TagLen {
+		return header, Payload{}, ErrIntegrity
+	}
+	aead, err := newAEAD(key)
+	if err != nil {
+		return header, Payload{}, err
+	}
+	plaintext, err := aead.Open(nil, header.IV[:], object[HeaderLen:], AAD(header, id, policy))
+	if err != nil {
+		return header, Payload{}, ErrIntegrity
+	}
+	payload, err := parsePlaintext(plaintext)
+	return header, payload, err
+}
+
+func padPlaintext(payload Payload) ([]byte, error) {
 	meta, err := EncodeMeta(payload.Meta)
 	if err != nil {
 		return nil, err
+	}
+	metaLength := uint(len(meta))
+	if metaLength > MaxMetaBytes {
+		return nil, ErrMeta
 	}
 	hasFile := payload.Meta.File != nil
 	if hasFile && int64(len(payload.File)) != payload.Meta.File.Size {
@@ -124,73 +186,42 @@ func Seal(k *[KeyLen]byte, h Header, id ID, p Policy, payload Payload) ([]byte, 
 	if !hasFile && len(payload.File) != 0 {
 		return nil, ErrMeta
 	}
-	raw := MetaLenPrefix + len(meta) + len(payload.File)
-	total := PaddedLen(raw, hasFile)
+	total := PaddedLen(MetaLenPrefix+len(meta)+len(payload.File), hasFile)
 	if HeaderLen+total+TagLen > MaxObjectBytes {
 		return nil, ErrTooLarge
 	}
 	plaintext := make([]byte, total)
-	binary.BigEndian.PutUint32(plaintext[0:MetaLenPrefix], uint32(len(meta)))
+	binary.BigEndian.PutUint32(plaintext, uint32(metaLength))
 	copy(plaintext[MetaLenPrefix:], meta)
 	copy(plaintext[MetaLenPrefix+len(meta):], payload.File)
-	aead, err := newAEAD(k)
-	if err != nil {
-		return nil, err
-	}
-	object := make([]byte, 0, HeaderLen+total+TagLen)
-	object = append(object, h.Bytes()...)
-	object = aead.Seal(object, h.IV[:], plaintext, AAD(h, id, p))
-	return object, nil
+	return plaintext, nil
 }
 
-func Open(k *[KeyLen]byte, id ID, p Policy, kdf KDF, object []byte) (Header, Payload, error) {
-	h, err := ParseHeader(object)
-	if err != nil {
-		return h, Payload{}, err
-	}
-	if h.KDF != kdf {
-		return h, Payload{}, ErrKDFMismatch
-	}
-	if len(object) > MaxObjectBytes || len(object) < HeaderLen+TagLen {
-		return h, Payload{}, ErrIntegrity
-	}
-	aead, err := newAEAD(k)
-	if err != nil {
-		return h, Payload{}, err
-	}
-	plaintext, err := aead.Open(nil, h.IV[:], object[HeaderLen:], AAD(h, id, p))
-	if err != nil {
-		return h, Payload{}, ErrIntegrity
-	}
-	payload, err := parsePlaintext(plaintext)
-	return h, payload, err
-}
-
-func parsePlaintext(pt []byte) (Payload, error) {
-	if len(pt) < MetaLenPrefix {
+func parsePlaintext(plaintext []byte) (Payload, error) {
+	if len(plaintext) < MetaLenPrefix {
 		return Payload{}, ErrPlaintext
 	}
-	lenMeta := binary.BigEndian.Uint32(pt[0:MetaLenPrefix])
-	if lenMeta > MaxMetaBytes || int64(lenMeta) > int64(len(pt)-MetaLenPrefix) {
+	metaLength := int64(binary.BigEndian.Uint32(plaintext))
+	contentStart := MetaLenPrefix + metaLength
+	if metaLength > MaxMetaBytes || contentStart > int64(len(plaintext)) {
 		return Payload{}, ErrPlaintext
 	}
-	meta, err := DecodeMeta(pt[MetaLenPrefix : MetaLenPrefix+lenMeta])
+	meta, err := DecodeMeta(plaintext[MetaLenPrefix:contentStart])
 	if err != nil {
 		return Payload{}, err
 	}
-	payload := Payload{Meta: meta}
-	if meta.File != nil {
-		start := MetaLenPrefix + int64(lenMeta)
-		if meta.File.Size > int64(len(pt))-start {
-			return Payload{}, ErrPlaintext
-		}
-		payload.File = append([]byte(nil), pt[start:start+meta.File.Size]...)
+	if meta.File == nil {
+		return Payload{Meta: meta}, nil
 	}
-	return payload, nil
+	if meta.File.Size > int64(len(plaintext))-contentStart {
+		return Payload{}, ErrPlaintext
+	}
+	file := append([]byte(nil), plaintext[contentStart:contentStart+meta.File.Size]...)
+	return Payload{Meta: meta, File: file}, nil
 }
 
-func newAEAD(k *[KeyLen]byte) (cipher.AEAD, error) {
-	block, err := aes.NewCipher(k[:])
+func newAEAD(key *[KeyLen]byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return nil, err
 	}

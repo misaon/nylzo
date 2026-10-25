@@ -61,9 +61,9 @@ func RedactReason(reason string) string {
 
 func percentDecode(text string) string {
 	for range reasonDecodePasses {
-		decoded := percentEscape.ReplaceAllStringFunc(text, func(esc string) string {
-			b, _ := hex.DecodeString(esc[1:])
-			return string(b)
+		decoded := percentEscape.ReplaceAllStringFunc(text, func(escape string) string {
+			octet, _ := hex.DecodeString(escape[1:])
+			return string(octet)
 		})
 		if decoded == text {
 			break
@@ -77,12 +77,13 @@ func percentDecode(text string) string {
 	)
 }
 
-func visibleRune(r rune) rune {
+func visibleRune(character rune) rune {
 	switch {
-	case unicode.Is(unicode.Cf, r):
+	case unicode.Is(unicode.Cf, character):
 		return -1
-	case unicode.IsControl(r):
+	case unicode.IsControl(character):
 		return ' '
+	default:
+		return character
 	}
-	return r
 }

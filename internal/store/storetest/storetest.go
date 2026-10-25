@@ -3,6 +3,7 @@ package storetest
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -74,8 +75,8 @@ func newFixture(t *testing.T, open Factory) *fixture {
 }
 
 func mac(seed string) []byte {
-	h := core.Hash([]byte(seed))
-	return h[:]
+	sum := sha256.Sum256([]byte(seed))
+	return sum[:]
 }
 
 func (f *fixture) create(opens uint16, ttl time.Duration, passphrase bool) *store.Message {

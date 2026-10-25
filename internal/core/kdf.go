@@ -2,7 +2,7 @@ package core
 
 import (
 	"errors"
-	"fmt"
+	"strconv"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/scrypt"
@@ -21,6 +21,8 @@ const (
 	ScryptN = 1 << 17
 	ScryptR = 8
 	ScryptP = 1
+
+	MinPassphraseChars = 12
 )
 
 var (
@@ -29,7 +31,16 @@ var (
 	ErrWeakPassphrase      = errors.New("core: passphrase is shorter than 12 characters")
 )
 
-const MinPassphraseChars = 12
+func ParseKDF(text string) (KDF, error) {
+	switch text {
+	case "0":
+		return KDFNone, nil
+	case "1":
+		return KDFScrypt, nil
+	default:
+		return 0, ErrKDF
+	}
+}
 
 func (k KDF) Valid() bool {
 	return k <= KDFScrypt
@@ -39,29 +50,12 @@ func (k KDF) RequiresPassphrase() bool {
 	return k != KDFNone
 }
 
-func ParseKDF(s string) (KDF, error) {
-	switch s {
-	case "0":
-		return KDFNone, nil
-	case "1":
-		return KDFScrypt, nil
-	}
-	return 0, ErrKDF
-}
-
 func (k KDF) String() string {
-	return fmt.Sprintf("%d", uint8(k))
+	return strconv.FormatUint(uint64(k), 10)
 }
 
 func NormalizePassphrase(passphrase string) []byte {
 	return []byte(norm.NFC.String(passphrase))
-}
-
-func checkPassphrase(kdf KDF, passphrase string) error {
-	if kdf != KDFNone && !utf8.ValidString(passphrase) {
-		return ErrMalformedPassphrase
-	}
-	return nil
 }
 
 func CheckPassphraseStrength(passphrase string) error {
@@ -83,6 +77,16 @@ func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, er
 		return nil, nil
 	case KDFScrypt:
 		return scrypt.Key(NormalizePassphrase(passphrase), salt[:], ScryptN, ScryptR, ScryptP, KeyLen)
+	case KDFRetired:
+		return nil, ErrKDF
+	default:
+		return nil, ErrKDF
 	}
-	return nil, ErrKDF
+}
+
+func checkPassphrase(kdf KDF, passphrase string) error {
+	if kdf != KDFNone && !utf8.ValidString(passphrase) {
+		return ErrMalformedPassphrase
+	}
+	return nil
 }
