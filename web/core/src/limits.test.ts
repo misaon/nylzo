@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { FRAGMENT_LABEL, FRAGMENT_VERSION, MAX_OBJECT_BYTES, transferSeconds } from './index.ts';
+import { FRAGMENT_VERSION, MAX_OBJECT_BYTES, transferSeconds } from './limits.ts';
+import { FRAGMENT_LABEL } from './link/link.ts';
 
 describe('protocol limits', () => {
   it('gives a transfer max(120 s, size / 16000 s), rounded up', () => {

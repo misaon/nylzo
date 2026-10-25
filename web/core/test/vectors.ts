@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 
-import { concatenate, hash, ID_LEN } from '../src/index.ts';
+import { ID_LEN } from '../src/limits.ts';
+import { concatenate } from '../src/primitives/bytes.ts';
+import { hash } from '../src/primitives/identifiers.ts';
 
 interface ScryptVector {
   readonly name: string;

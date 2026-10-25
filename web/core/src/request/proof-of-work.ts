@@ -5,9 +5,9 @@ import { ID_LEN, isUnsignedInteger, KEY_LEN } from '../limits.ts';
 import { decodeBase64urlExact } from '../primitives/base64url.ts';
 import { arrayBufferBacked, assertLength, concatenate } from '../primitives/bytes.ts';
 
-export const POW_N = 1 << 14;
-export const POW_R = 8;
-export const POW_P = 1;
+const POW_N = 1 << 14;
+const POW_R = 8;
+const POW_P = 1;
 export const POW_CHALLENGE_LEN = 36;
 export const MAX_POW_DIFFICULTY = 8;
 

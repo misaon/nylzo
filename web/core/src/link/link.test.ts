@@ -2,28 +2,17 @@ import { describe, expect, it } from 'vitest';
 
 import { randomId, thrownBy } from '../../test/vectors.ts';
 import {
-  assertProfile,
-  decodeBase64urlExact,
-  encodeBase64url,
   EncodingError,
-  formatLink,
-  fragment,
-  idToString,
-  KDF_NONE,
-  KDF_RETIRED,
-  KDF_SCRYPT,
   KdfError,
   KdfMismatchError,
   LinkError,
   LinkRetiredKdfError,
   LinkVersionError,
-  newSecret,
-  parseFragment,
-  parseId,
-  parseKdfId,
-  parseLink,
-  parsePath,
-} from '../index.ts';
+} from '../errors.ts';
+import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, parseKdfId } from '../keys/kdf.ts';
+import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
+import { idToString, newSecret, parseId } from '../primitives/identifiers.ts';
+import { assertProfile, formatLink, fragment, parseFragment, parseLink, parsePath } from './link.ts';
 
 const base = 'https://nylzo.example';
 

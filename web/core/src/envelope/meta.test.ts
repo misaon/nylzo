@@ -1,19 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  concatenate,
-  decodeMeta,
-  encodeMeta,
-  MAX_FILE_BYTES,
-  MAX_FILE_NAME,
-  MAX_META_BYTES,
-  MAX_MIME,
-  MAX_TEXT_BYTES,
-  type Meta,
-  MetaError,
-  utf8,
-  validateMeta,
-} from '../index.ts';
+import { MetaError } from '../errors.ts';
+import { MAX_FILE_BYTES, MAX_FILE_NAME, MAX_META_BYTES, MAX_MIME, MAX_TEXT_BYTES } from '../limits.ts';
+import { concatenate, utf8 } from '../primitives/bytes.ts';
+import { decodeMeta, encodeMeta, type Meta, validateMeta } from './meta.ts';
 
 const decoder = new TextDecoder();
 

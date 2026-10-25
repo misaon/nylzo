@@ -1,28 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { bytesToHex, randomId } from '../../test/vectors.ts';
-import {
-  deriveContent,
-  deriveLink,
-  hsalt,
-  isKdfId,
-  KDF_NONE,
-  KDF_RETIRED,
-  KDF_SCRYPT,
-  KdfError,
-  type KdfId,
-  KEY_LEN,
-  MalformedPassphraseError,
-  newHeader,
-  newSecret,
-  normalizePassphrase,
-  open,
-  parseKdfId,
-  seal,
-  TOKEN_LEN,
-  utf8,
-} from '../index.ts';
+import { open, seal } from '../envelope/envelope.ts';
+import { newHeader } from '../envelope/header.ts';
+import { KdfError, MalformedPassphraseError } from '../errors.ts';
+import { KEY_LEN, TOKEN_LEN } from '../limits.ts';
+import { utf8 } from '../primitives/bytes.ts';
+import { newSecret } from '../primitives/identifiers.ts';
 import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from '../scrypt.ts';
+import { deriveContent, deriveLink, hsalt } from './derive.ts';
+import { isKdfId, KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId, normalizePassphrase, parseKdfId } from './kdf.ts';
 
 const composed = 'héslo s češtinou';
 const decomposed = 'héslo s češtinou';

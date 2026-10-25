@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { TOKEN_LEN } from '../limits.ts';
+import { encodeBase64url } from '../primitives/base64url.ts';
+import { utf8 } from '../primitives/bytes.ts';
 import {
   CHALLENGE_LEN,
-  encodeBase64url,
   newRequestKey,
   PURPOSE_MANAGE,
   PURPOSE_READ,
@@ -10,11 +12,9 @@ import {
   requestMessage,
   SIGNATURE_LEN,
   signRequest,
-  TOKEN_LEN,
-  utf8,
   verifierHeader,
   wipeRequestKey,
-} from '../index.ts';
+} from './signature.ts';
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
 

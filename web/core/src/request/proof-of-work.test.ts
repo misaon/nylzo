@@ -1,19 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { bytesToHex, loadVectors } from '../../test/vectors.ts';
+import { PowError, PowTimeoutError } from '../errors.ts';
+import { encodeBase64url } from '../primitives/base64url.ts';
+import { parseId } from '../primitives/identifiers.ts';
 import {
-  encodeBase64url,
   leadingZeroBits,
   MAX_POW_DIFFICULTY,
-  parseId,
   parsePowChallenge,
   POW_CHALLENGE_LEN,
   powDigest,
-  PowError,
-  PowTimeoutError,
   powToken,
   solvePow,
-} from '../index.ts';
+} from './proof-of-work.ts';
 
 const vectors = loadVectors().pow;
 

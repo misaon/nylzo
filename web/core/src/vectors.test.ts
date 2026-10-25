@@ -2,47 +2,28 @@ import { scryptAsync } from '@noble/hashes/scrypt.js';
 import { describe, expect, it } from 'vitest';
 
 import { bytesToHex, fileBytes, hexToBytes, loadVectors, sha256Hex, thrownBy } from '../test/vectors.ts';
+import { open, seal } from './envelope/envelope.ts';
+import { aad, type Header, type Policy } from './envelope/header.ts';
+import { decodeMeta, encodeMeta, type Meta } from './envelope/meta.ts';
+import { LinkError, LinkRetiredKdfError, LinkVersionError, MetaError, WeakPassphraseError } from './errors.ts';
+import { deriveContent, deriveLink, hsalt } from './keys/derive.ts';
+import { assertStrongPassphrase, isKdfId, KDF_NONE, type KdfId } from './keys/kdf.ts';
+import { HEADER_LEN, TAG_LEN, VERSION } from './limits.ts';
+import { formatLink, fragment, parseLink } from './link/link.ts';
+import { encodeBase64url } from './primitives/base64url.ts';
+import { utf8 } from './primitives/bytes.ts';
+import { idToString, parseId } from './primitives/identifiers.ts';
 import {
-  aad,
-  assertStrongPassphrase,
   authorizationHeader,
-  decodeMeta,
-  deriveContent,
-  deriveLink,
-  encodeBase64url,
-  encodeMeta,
-  formatLink,
-  fragment,
-  type Header,
-  HEADER_LEN,
-  hsalt,
-  idToString,
-  isKdfId,
-  KDF_NONE,
-  type KdfId,
-  LinkError,
-  LinkRetiredKdfError,
-  LinkVersionError,
-  type Meta,
-  MetaError,
-  open,
   parseChallenge,
-  parseId,
-  parseLink,
-  type Policy,
   PURPOSE_VERIFIER,
   type RequestKey,
   requestKey,
   requestMessage,
-  seal,
   seedRequestKey,
   signRequest,
-  TAG_LEN,
-  utf8,
   verifierHeader,
-  VERSION,
-  WeakPassphraseError,
-} from './index.ts';
+} from './request/signature.ts';
 import { anyPassphraseKey, deriveAll } from './scrypt.ts';
 
 const vectors = loadVectors();

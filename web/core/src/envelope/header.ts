@@ -52,7 +52,7 @@ export function validatePolicy(policy: Policy): void {
   }
 }
 
-export function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
+function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
   assertPolicyRange(policy);
   const bytes = new Uint8Array(POLICY_LEN);
   const view = new DataView(bytes.buffer);

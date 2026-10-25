@@ -1,41 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import type { Meta } from './meta.ts';
+
 import { bytesToHex, randomId, withByteFlipped } from '../../test/vectors.ts';
 import {
-  aad,
-  AAD_LEN,
   FlagsError,
-  type Header,
-  HEADER_LEN,
-  headerBytes,
   HeaderError,
   IntegrityError,
-  IV_LEN,
-  KDF_NONE,
-  KDF_RETIRED,
-  KDF_SCRYPT,
   KdfError,
-  type KdfId,
   KdfMismatchError,
+  MetaError,
+  PolicyError,
+  VersionError,
+} from '../errors.ts';
+import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId } from '../keys/kdf.ts';
+import {
+  AAD_LEN,
+  HEADER_LEN,
+  IV_LEN,
   MAX_FILE_BYTES,
   MAX_OBJECT_BYTES,
   MAX_TEXT_BYTES,
-  type Meta,
-  MetaError,
-  newHeader,
-  newSecret,
-  open,
   PAD_FILE,
-  paddedLength,
-  parseHeader,
-  type Policy,
-  PolicyError,
-  seal,
   TAG_LEN,
   VERSION,
-  VersionError,
-} from '../index.ts';
+} from '../limits.ts';
+import { newSecret } from '../primitives/identifiers.ts';
 import { deriveAll } from '../scrypt.ts';
+import { open, paddedLength, seal } from './envelope.ts';
+import { aad, type Header, headerBytes, newHeader, parseHeader, type Policy } from './header.ts';
 
 interface Sample {
   readonly id: Uint8Array;
