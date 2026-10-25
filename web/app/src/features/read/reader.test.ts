@@ -22,7 +22,8 @@ import { createReader, type ReaderDependencies, type ReadView, type SessionStore
 
 type Scrypt = ReaderDependencies['scrypt'];
 
-const scrypt: Scrypt = scryptPassphraseKey;
+const scrypt: Scrypt = (passphrase, passphraseSalt, onProgress) =>
+  Promise.resolve(scryptPassphraseKey(passphrase, passphraseSalt, onProgress));
 
 class ImpostorError extends Error {
   override readonly name = 'KdfWorkerError';
