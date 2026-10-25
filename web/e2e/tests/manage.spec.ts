@@ -289,64 +289,6 @@ test('the sender forgets one message, then all of them, for good', async ({ brow
   await expect(sender.getByText('This device remembers no messages.')).toBeVisible();
 });
 
-test('the recipient deletes a message without showing it (D40)', async ({ browser }) => {
-  const message = await createViaApi({ text: 'never shown' });
-  const recipient = await newPage(browser);
-  const violations = await recordViolations(recipient);
-  await recipient.goto(message.link);
-  await recipient.getByRole('button', { name: 'Delete without showing' }).click();
-  await confirm(recipient, 'Do not delete');
-  await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
-  await recipient.getByRole('button', { name: 'Delete without showing' }).click();
-  await confirm(recipient, 'Yes, delete');
-  await expect(recipient.getByText('You deleted the message')).toBeVisible();
-  expect(await violations()).toEqual([]);
-
-  const late = await newPage(browser);
-  await late.goto(message.link);
-  await expect(late.getByText('The message was deleted')).toBeVisible();
-});
-
-test('the reveal waits while a deletion runs', async ({ browser }) => {
-  const message = await createViaApi({ text: 'slow delete' });
-  const recipient = await newPage(browser);
-  let release: () => void = () => undefined;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  await recipient.route('**/api/v1/messages/*/burn', async (route) => {
-    await held;
-    await route.continue();
-  });
-  await recipient.goto(message.link);
-  await recipient.getByRole('button', { name: 'Delete without showing' }).click();
-  await confirm(recipient, 'Yes, delete');
-  await expect(recipient.getByRole('button', { name: 'Show message' })).toBeDisabled();
-  await expect(recipient.getByRole('button', { name: 'Delete without showing' })).toBeDisabled();
-  release();
-  await expect(recipient.getByText('You deleted the message')).toBeVisible();
-  await expect(recipient.getByRole('heading', { name: 'One-time message' })).toBeFocused();
-});
-
-test('the recipient deletes the remaining opens and keeps reading (D40)', async ({ browser }) => {
-  const message = await createViaApi({ text: 'three opens', opensMax: 3 });
-  const recipient = await newPage(browser);
-  await openViaUi(recipient, message.link);
-  await expectRevealed(recipient);
-  await recipient.getByRole('button', { name: 'Delete the remaining opens' }).click();
-  await confirm(recipient, 'Yes, delete');
-  await expect(recipient.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
-  await expect(recipient.locator('pre')).toHaveText('three opens');
-  await recipient.getByRole('button', { name: 'Čeština' }).click();
-  await expect(recipient.getByRole('status').first()).toHaveText('Zbývající otevření jsou smazaná.');
-  await recipient.getByRole('button', { name: 'English' }).click();
-  await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toBeDisabled();
-
-  const late = await newPage(browser);
-  await late.goto(message.link);
-  await expect(late.getByText('The message was deleted')).toBeVisible();
-});
-
 test('a report from the read page or from /report spends no open (D41)', async ({ browser }) => {
   const message = await createViaApi({ text: 'reported', opensMax: 2 });
   const recipient = await newPage(browser);

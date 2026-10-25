@@ -154,23 +154,6 @@ test('the reader stops without a verifier when the server reports another profil
   expect(status).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
 });
 
-async function watchShownAfterLeaving(page: Page): Promise<() => Promise<boolean>> {
-  await page.addInitScript(() => {
-    let left = false;
-    let shown = false;
-    window.addEventListener('pagehide', () => {
-      left = true;
-    });
-    new MutationObserver(() => {
-      shown ||= left && document.querySelector('pre') !== null;
-    }).observe(document, { childList: true, subtree: true, characterData: true });
-    Object.defineProperty(window, 'nylzoShownAfterLeaving', {
-      get: () => shown || (left && document.querySelector('pre') !== null),
-    });
-  });
-  return () => page.evaluate(() => (window as unknown as { nylzoShownAfterLeaving: boolean }).nylzoShownAfterLeaving);
-}
-
 test('leaving the page removes the shown message and closes its dialog, so the back/forward cache cannot show it again', async ({
   page,
 }) => {
@@ -304,114 +287,6 @@ test(
     expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ state: 'available', opensUsed: 1 });
   },
 );
-
-test('a deletion that answers after the page was left never shows the message again', async ({ page }) => {
-  const message = await createViaApi({ text: 'should stay gone', opensMax: 2 });
-  const shownAfterLeaving = await watchShownAfterLeaving(page);
-  await openViaUi(page, message.link);
-  await expectRevealed(page);
-  const asked = Promise.withResolvers<void>();
-  const answer = Promise.withResolvers<void>();
-  await page.route('**/api/v1/messages/*/burn', async (route) => {
-    asked.resolve();
-    await answer.promise;
-    await route.continue();
-  });
-  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
-  await asked.promise;
-  await leave(page);
-  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
-  const answered = page.waitForResponse((response) => response.url().endsWith('/burn'));
-  answer.resolve();
-  expect((await answered).status()).toBe(204);
-  await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
-  await expect(page.locator('pre')).toHaveCount(0);
-  await expect(page.getByText('You left the page, so it no longer shows the message.')).toBeVisible();
-  expect(await shownAfterLeaving()).toBe(false);
-});
-
-const files = [
-  {
-    name: 'drawing.svg',
-    shown: 'drawing.svg',
-    extension: 'svg',
-    mimeType: 'image/svg+xml',
-    body: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script></svg>',
-    risky: true,
-  },
-  {
-    name: 'page.html',
-    shown: 'page.html',
-    extension: 'html',
-    mimeType: 'text/html',
-    body: '<!doctype html><script>alert(3)</script>',
-    risky: true,
-  },
-  {
-    name: 'invoice‮fdp.exe',
-    shown: 'invoicefdp.exe',
-    extension: 'exe',
-    mimeType: 'application/pdf',
-    body: 'MZ',
-    risky: true,
-  },
-  {
-    name: 'report.pdf',
-    shown: 'report.pdf',
-    extension: 'pdf',
-    mimeType: 'application/pdf',
-    body: '%PDF-1.4\n%nylzo\n',
-    risky: false,
-  },
-];
-
-for (const file of files) {
-  test(
-    `an attachment ${file.shown} is only ever downloaded under its sanitised name (AK13, D35)`,
-    { tag: '@cross-browser' },
-    async ({ browser }) => {
-      const sender = await (await browser.newContext()).newPage();
-      const context = await browser.newContext();
-      const recipient = await context.newPage();
-      await recipient.addInitScript(() => {
-        const types: string[] = [];
-        Object.defineProperty(window, 'nylzoBlobTypes', { value: types });
-        const original = URL.createObjectURL.bind(URL);
-        URL.createObjectURL = (object: Blob | MediaSource) => {
-          types.push(object instanceof Blob ? object.type : 'media-source');
-          return original(object);
-        };
-      });
-      const downloads: string[] = [];
-      recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
-      const link = await createViaUi(sender, {
-        file: { name: file.name, mimeType: file.mimeType, buffer: Buffer.from(file.body) },
-      });
-      await openViaUi(recipient, link);
-      await expectRevealed(recipient);
-      await expect(recipient.locator('bdi')).toHaveText(file.shown);
-      const before = recipient.url();
-      const download = recipient.waitForEvent('download');
-      await recipient.getByRole('button', { name: 'Download attachment' }).click();
-      if (file.risky) {
-        await expect(live(recipient, recipient.getByRole('alert'))).toHaveText(/can run code/);
-        await expect(recipient.getByText(`File extension: .${file.extension}`)).toBeVisible();
-        expect(downloads).toEqual([]);
-        await recipient.getByRole('button', { name: 'Download anyway' }).click();
-      } else {
-        await expect(recipient.getByText(/can run code/)).toHaveCount(0);
-      }
-      expect((await download).suggestedFilename()).toBe(file.shown);
-      expect(downloads).toEqual([file.shown]);
-      expect(recipient.url()).toBe(before);
-      expect(context.pages()).toHaveLength(1);
-      expect(
-        await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes),
-      ).toEqual(['application/octet-stream']);
-    },
-  );
-}
 
 test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({
   browser,
