@@ -16,7 +16,12 @@
   const formId = `${id}-form`;
 </script>
 
-<svelte:window onpagehide={page.leave} onpageshow={page.returned} onclick={page.onWindowClick} />
+<svelte:window
+  onpagehide={page.leave}
+  onpageshow={page.returned}
+  onhashchange={page.fragmentArrived}
+  onclick={page.onWindowClick}
+/>
 
 <section id="otevrit" class="px-4 pt-20 pb-20 sm:px-6 md:pt-28 md:pb-28" aria-labelledby="read-title">
   <p class="sr-only" role="status" aria-live="polite">{page.status}</p>

@@ -14,6 +14,7 @@ export type Notice =
   | 'locked'
   | 'newer'
   | 'opened'
+  | 'removed'
   | 'retired'
   | 'tampered'
   | 'unknown';
@@ -34,6 +35,7 @@ export const NOTICE_ICONS: Readonly<Record<Notice, IconName>> = {
   unknown: 'search',
   invalid: 'broken',
   newer: 'update',
+  removed: 'eyeOff',
   retired: 'key',
   tampered: 'shield',
   failed: 'alert',
@@ -63,6 +65,7 @@ export function noticeOf(view: ReadView, burned: Burned | undefined): Notice {
     case 'failed':
     case 'invalid':
     case 'newer':
+    case 'removed':
     case 'retired':
     case 'tampered':
     case 'unknown': {

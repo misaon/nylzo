@@ -53,7 +53,10 @@ export type CreateProblem =
   | { readonly field: 'content'; readonly code: 'missing' }
   | { readonly field: 'file' | 'text'; readonly code: 'too_large' }
   | { readonly field: 'opens' | 'ttl'; readonly code: 'out_of_range' }
-  | { readonly field: 'passphrase'; readonly code: 'malformed' | 'too_short' };
+  | {
+      readonly field: 'passphrase';
+      readonly code: 'common' | 'context' | 'malformed' | 'repetitive' | 'sequential' | 'too_short';
+    };
 
 export type CreateField = CreateProblem['field'];
 
@@ -122,7 +125,7 @@ export const POW_BUDGET_MS = 110_000;
 
 export function passphraseIsWeak(passphrase: string): boolean {
   const normalized = passphrase.normalize('NFC');
-  const words = normalized.split(/\s+/).filter(Boolean).length;
+  const words = normalized.split(/[\s-]+/u).filter(Boolean).length;
   const characters = normalized.match(/./gsu)?.length ?? 0;
   return characters < WEAK_BELOW_CHARACTERS || words < WEAK_BELOW_WORDS;
 }
@@ -133,7 +136,7 @@ function passphraseProblem(passphrase: string): CreateProblem | undefined {
     return undefined;
   } catch (error) {
     if (error instanceof WeakPassphraseError) {
-      return { field: 'passphrase', code: 'too_short' };
+      return { field: 'passphrase', code: error.problem === 'short' ? 'too_short' : error.problem };
     }
     if (error instanceof MalformedPassphraseError) {
       return { field: 'passphrase', code: 'malformed' };

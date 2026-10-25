@@ -21,14 +21,11 @@ const (
 	ScryptN = 1 << 17
 	ScryptR = 8
 	ScryptP = 1
-
-	MinPassphraseCharacters = 12
 )
 
 var (
 	ErrKDF                 = errors.New("core: unknown kdf profile")
 	ErrMalformedPassphrase = errors.New("core: passphrase is not well-formed Unicode")
-	ErrWeakPassphrase      = errors.New("core: passphrase is shorter than 12 characters")
 )
 
 func ParseKDF(text string) (KDF, error) {
@@ -58,16 +55,6 @@ func NormalizePassphrase(passphrase string) []byte {
 	return []byte(norm.NFC.String(passphrase))
 }
 
-func CheckPassphraseStrength(passphrase string) error {
-	if !utf8.ValidString(passphrase) {
-		return ErrMalformedPassphrase
-	}
-	if utf8.RuneCountInString(norm.NFC.String(passphrase)) < MinPassphraseCharacters {
-		return ErrWeakPassphrase
-	}
-	return nil
-}
-
 func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, error) {
 	if err := checkPassphrase(kdf, passphrase); err != nil {
 		return nil, err
@@ -76,7 +63,9 @@ func DerivePassphraseKey(kdf KDF, passphrase string, salt *[32]byte) ([]byte, er
 	case KDFNone:
 		return nil, nil
 	case KDFScrypt:
-		return scrypt.Key(NormalizePassphrase(passphrase), salt[:], ScryptN, ScryptR, ScryptP, KeyLen)
+		normalized := NormalizePassphrase(passphrase)
+		defer clear(normalized)
+		return scrypt.Key(normalized, salt[:], ScryptN, ScryptR, ScryptP, KeyLen)
 	case KDFRetired:
 		return nil, ErrKDF
 	default:

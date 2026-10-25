@@ -142,9 +142,15 @@ func Seal(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payloa
 	if err != nil {
 		return nil, err
 	}
+	defer clear(plaintext)
 	object := make([]byte, 0, HeaderLen+len(plaintext)+TagLen)
 	object = append(object, header.Bytes()...)
 	return aead.Seal(object, header.IV[:], plaintext, AAD(header, id, policy)), nil
+}
+
+// MayHoldFile tells from an object length whether the envelope can carry a file (spec section 3, D16).
+func MayHoldFile(objectBytes int64) bool {
+	return objectBytes >= HeaderLen+TagLen && (objectBytes-HeaderLen-TagLen)%PadFile == 0
 }
 
 func Open(key *[KeyLen]byte, id ID, policy Policy, kdf KDF, object []byte) (Header, Payload, error) {
@@ -166,6 +172,7 @@ func Open(key *[KeyLen]byte, id ID, policy Policy, kdf KDF, object []byte) (Head
 	if err != nil {
 		return header, Payload{}, ErrIntegrity
 	}
+	defer clear(plaintext)
 	payload, err := parsePlaintext(plaintext)
 	return header, payload, err
 }
@@ -175,6 +182,7 @@ func padPlaintext(payload Payload) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer clear(meta)
 	metaLength := uint(len(meta))
 	if metaLength > MaxMetaBytes {
 		return nil, ErrMeta

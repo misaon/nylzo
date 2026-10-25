@@ -28,6 +28,7 @@ type File struct {
 	Link      []Link     `json:"link"`
 	Meta      []MetaCase `json:"meta"`
 	Strength  []Strength `json:"passphrase_strength"`
+	ListHash  string     `json:"passphrase_list_sha256"`
 	Request   []Request  `json:"request"`
 	PoW       []PoW      `json:"pow"`
 	Redact    []Redact   `json:"redact"`

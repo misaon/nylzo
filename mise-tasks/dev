@@ -8,6 +8,7 @@ mkdir -p .dev/data
 if [[ ! -s .dev/pepper ]]; then
   od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > .dev/pepper
 fi
+chmod 600 .dev/pepper
 
 port="${NYLZO_DEV_PORT:-8080}"
 if [[ ! "$port" =~ ^[0-9]+$ ]]; then

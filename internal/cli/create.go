@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/misaon/nylzo/internal/client"
@@ -39,6 +40,7 @@ type createOptions struct {
 	ttl         time.Duration
 	opens       int
 	passphrase  passphraseSource
+	generate    string
 	manageFile  string
 	printManage bool
 }
@@ -77,6 +79,12 @@ func createFlags(environment *Environment) (*flag.FlagSet, *createOptions) {
 		"protect the message with a passphrase asked on the terminal without echo",
 	)
 	flags.StringVar(
+		&options.generate,
+		"generate-passphrase-file",
+		"",
+		"protect the message with a generated passphrase written to this new file (mode 0600)",
+	)
+	flags.StringVar(
 		&options.manageFile,
 		"manage-token-file",
 		"",
@@ -107,21 +115,64 @@ func runCreate(ctx context.Context, environment *Environment, arguments []string
 		return failf(environment, "%s", err)
 	}
 	defer message.wipe()
-	passphrase, err := createPassphrase(environment, options.passphrase)
+	passphrase, generated, err := chosenPassphrase(environment, options)
 	if err != nil {
 		return failf(environment, "passphrase: %s", explain(err))
 	}
 	manage, err := reserveManageFile(options.manageFile)
 	if err != nil {
+		generated.discard()
 		return failf(environment, "--manage-token-file: the file already exists or cannot be created")
 	}
 	created, err := createMessage(ctx, environment, api, options, passphrase, &message)
 	if err != nil {
 		manage.discard()
+		generated.discard()
 		return failf(environment, "%s", explain(err))
 	}
 	defer created.wipe()
 	return reportCreated(environment, api, options, &created, manage)
+}
+
+// chosenPassphrase writes a generated passphrase before the create, so a failed write never leaves an unreadable message.
+func chosenPassphrase(environment *Environment, options *createOptions) (string, *generatedPassphrase, error) {
+	if options.generate == "" {
+		passphrase, err := createPassphrase(environment, options.passphrase)
+		return passphrase, nil, err
+	}
+	if options.passphrase.given(environment) {
+		return "", nil, errPassphraseSource
+	}
+	generated, err := writeGeneratedPassphrase(options.generate)
+	if err != nil {
+		return "", nil, err
+	}
+	return generated.passphrase, generated, nil
+}
+
+type generatedPassphrase struct {
+	passphrase string
+	path       string
+}
+
+func (g *generatedPassphrase) discard() {
+	if g != nil {
+		os.Remove(g.path)
+	}
+}
+
+func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
+	passphrase := core.GeneratePassphrase()
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateFileMode)
+	if err != nil {
+		return nil, errors.New("--generate-passphrase-file: the file already exists or cannot be created")
+	}
+	_, err = file.WriteString(passphrase + "\n")
+	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
+		os.Remove(path)
+		return nil, errors.New("--generate-passphrase-file: the passphrase could not be written")
+	}
+	return &generatedPassphrase{passphrase: passphrase, path: path}, nil
 }
 
 func createPassphrase(environment *Environment, source passphraseSource) (string, error) {
@@ -174,7 +225,10 @@ func reportCreated(
 
 func weakPassphrase(passphrase string) bool {
 	normalized := string(core.NormalizePassphrase(passphrase))
-	return utf8.RuneCountInString(normalized) < weakBelowChars || len(strings.Fields(normalized)) < weakBelowWords
+	words := strings.FieldsFunc(normalized, func(character rune) bool {
+		return unicode.IsSpace(character) || character == '-'
+	})
+	return utf8.RuneCountInString(normalized) < weakBelowChars || len(words) < weakBelowWords
 }
 
 func readContent(environment *Environment, fromFile string) (content, error) {

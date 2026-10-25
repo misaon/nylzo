@@ -19,7 +19,9 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/sweep"
 	"github.com/misaon/nylzo/internal/store"
@@ -92,11 +94,24 @@ func runServer(environment *Environment, arguments []string, name string, run fu
 func openStore(
 	dataDir string,
 	open func(context.Context, string) (*sqlite.Store, error),
+	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, nil, err
 	}
-	database, err := open(context.Background(), filepath.Join(dataDir, databaseFile))
+	databasePath := filepath.Join(dataDir, databaseFile)
+	narrowed, err := datadir.Secure(datadir.Layout{
+		Directory: dataDir,
+		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
+		Trees:     []string{filepath.Join(dataDir, disk.Directory), abuse.Directory(dataDir)},
+	})
+	if narrowed > 0 {
+		logger.Warn("permissions-narrowed", "entries", narrowed)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	database, err := open(context.Background(), databasePath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -142,7 +157,7 @@ func serve(ctx context.Context, environment *Environment, logger *slog.Logger) e
 	if err != nil {
 		return err
 	}
-	database, blobs, err := openStore(settings.DataDir, sqlite.Open)
+	database, blobs, err := openStore(settings.DataDir, sqlite.Open, logger)
 	if err != nil {
 		return err
 	}
@@ -154,6 +169,9 @@ func serve(ctx context.Context, environment *Environment, logger *slog.Logger) e
 	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", settings.Listen)
 	if err != nil {
 		return err
+	}
+	if address, ok := listener.Addr().(*net.TCPAddr); !ok || !address.IP.IsLoopback() {
+		logger.WarnContext(ctx, "plain-http-listener", "addr", listener.Addr().String())
 	}
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
@@ -214,7 +232,7 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	if storeErr := requireStore(settings.DataDir); storeErr != nil {
 		return storeErr
 	}
-	database, blobs, err := openStore(settings.DataDir, sqlite.OpenCurrent)
+	database, blobs, err := openStore(settings.DataDir, sqlite.OpenCurrent, logger)
 	if err != nil {
 		return err
 	}
@@ -259,7 +277,11 @@ func runTakedown(ctx context.Context, environment *Environment, arguments []stri
 	if err = requireStore(settings.DataDir); err != nil {
 		return failf(environment, "%s", err)
 	}
-	database, blobs, err := openStore(settings.DataDir, sqlite.OpenCurrent)
+	database, blobs, err := openStore(
+		settings.DataDir,
+		sqlite.OpenCurrent,
+		slog.New(slog.NewTextHandler(environment.Stderr, nil)),
+	)
 	if err != nil {
 		return failf(environment, "%s", logging.ErrorText(err))
 	}

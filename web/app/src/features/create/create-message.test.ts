@@ -160,12 +160,21 @@ describe('creating a message', () => {
     expect(validateCreate(input({ passphrase: '\u{D800} twelve chars' }), limits)).toEqual([
       { field: 'passphrase', code: 'malformed' },
     ]);
+    for (const [passphrase, code] of [
+      ['aaaaaaaaaaaa', 'repetitive'],
+      ['qwertyuiopas', 'sequential'],
+      ['nylzonylzo12', 'context'],
+      ['Password1234', 'common'],
+    ] as const) {
+      expect(validateCreate(input({ passphrase }), limits)).toEqual([{ field: 'passphrase', code }]);
+    }
   });
 
   it('warns unless the passphrase has 16 characters and 4 words (D37)', () => {
     expect(passphraseIsWeak('twelve chars')).toBe(true);
     expect(passphraseIsWeak('sixteencharacter')).toBe(true);
     expect(passphraseIsWeak('one two three four')).toBe(false);
+    expect(passphraseIsWeak('k7m2-x9pz-b4tf-hq3w')).toBe(false);
   });
 });
 

@@ -60,13 +60,32 @@ func explainCertificate(err error) (string, bool) {
 func explainLocal(err error) string {
 	switch {
 	case errors.Is(err, core.ErrWeakPassphrase):
-		return fmt.Sprintf("the passphrase must have at least %d characters", core.MinPassphraseCharacters)
+		return weakPassphraseText(err)
 	case errors.Is(err, core.ErrMalformedPassphrase):
 		return "the passphrase is not valid UTF-8"
 	case errors.Is(err, console.ErrNoTerminal):
 		return "there is no terminal to ask on; use a file instead"
 	default:
 		return err.Error()
+	}
+}
+
+func weakPassphraseText(err error) string {
+	const hint = "; --generate-passphrase-file makes a strong one"
+	weak, _ := errors.AsType[*core.WeakPassphraseError](err)
+	switch weak.Problem {
+	case core.PassphraseShort:
+		return fmt.Sprintf("the passphrase must have at least %d characters%s", core.MinPassphraseCharacters, hint)
+	case core.PassphraseRepetitive:
+		return "the passphrase repeats too few different characters" + hint
+	case core.PassphraseSequential:
+		return "the passphrase is a run of letters, digits or keyboard keys" + hint
+	case core.PassphraseContext:
+		return "the passphrase is mostly the word nylzo" + hint
+	case core.PassphraseCommon:
+		return "the passphrase is on the list of commonly used passwords" + hint
+	default:
+		return "the passphrase is too weak" + hint
 	}
 }
 

@@ -24,6 +24,10 @@ export const czech = {
   'problem.opens.out_of_range': 'Počet otevření musí být 1 až {max}.',
   'problem.passphrase.too_short': 'Passphrase musí mít aspoň {min} znaků.',
   'problem.passphrase.malformed': 'Passphrase obsahuje neplatné znaky.',
+  'problem.passphrase.repetitive': 'Passphrase opakuje příliš málo různých znaků.',
+  'problem.passphrase.sequential': 'Passphrase je souvislá řada písmen, číslic nebo kláves.',
+  'problem.passphrase.context': 'Passphrase tvoří hlavně slovo Nylzo.',
+  'problem.passphrase.common': 'Tato passphrase je na seznamu běžně používaných hesel.',
 
   'failure.instance': 'Nastavení služby se nepodařilo načíst.',
   'failure.rate_limited': 'Za krátkou dobu přišlo příliš mnoho zpráv. Zkuste to za {time}.',
@@ -168,6 +172,8 @@ export const czech = {
   'transparency.stores.counters':
     'Počítadla bez adres: denní počty vytvořených zpráv a\u{A0}hlášení na zprávu drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
   'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
+  'transparency.stores.enforced':
+    'Platnost a\u{A0}počet otevření jsou pravidla, která vynucuje tento server, ne šifrování. Server v\u{A0}cizích rukou by mohl šifrovanou zprávu ponechat, a\u{A0}pak ji chrání jen utajení odkazu a\u{A0}passphrase.',
   'transparency.logs.title': 'Co server loguje',
   'transparency.logs.what':
     'Čas zkrácený na minutu, metodu, typ cesty, stav odpovědi a dobu vyřízení. U vytvoření, otevření a stažení zprávy dobu vyřízení vynechá, protože by prozradila velikost zprávy.',
@@ -196,6 +202,8 @@ export const czech = {
     'Příkaz z vydání nylzo stejné verze ověří, že server posílá právě tyto soubory se stejnými hlavičkami:',
   'transparency.client.limit':
     'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
+  'transparency.client.independent':
+    'Webový klient přichází z\u{A0}tohoto serveru, takže server v\u{A0}cizích rukou by ho mohl změnit. Nejvyšší jistotu dává podepsaný nástroj nylzo pro příkazovou řádku, který ze serveru žádný kód nespouští.',
   'transparency.source': 'Zdrojový kód, specifikace protokolu a model hrozeb',
 
   'nav.top': 'Nylzo, na začátek',
@@ -250,6 +258,7 @@ export const czech = {
   'compose.passphrase.switch': 'Chránit passphrase',
   'compose.passphrase.switch.note': 'Bez ní zprávu neotevře ani ten, kdo odkaz zachytí.',
   'compose.passphrase.placeholder': 'např. {words} náhodná slova',
+  'compose.passphrase.generate': 'Vygenerovat',
   'compose.remember.switch': 'Zrušení z\u{A0}tohoto zařízení',
   'compose.remember.note': 'Klíč pro zrušení zůstane jen v\u{A0}tomto prohlížeči.',
   'compose.attach': 'Příloha',
@@ -338,6 +347,9 @@ export const czech = {
   'open.notice.retired': 'Odkaz chrání vyřazená passphrase',
   'open.notice.retired.text':
     'Tento způsob ochrany Nylzo už nepodporuje, a\u{A0}tak zprávu otevřít nejde. Stránka ji nespotřebovala. Požádejte odesílatele o\u{A0}nový odkaz.',
+  'open.notice.removed': 'Klíč už v\u{A0}adresním řádku není',
+  'open.notice.removed.text':
+    'Stránka klíč z\u{A0}adresy kvůli bezpečnosti odstraní hned po načtení. Pro další pokus otevřete původní odkaz znovu.',
   'open.notice.tampered': 'Zprávu nejde bezpečně otevřít',
   'open.notice.tampered.text': 'Server nebo spojení vrátilo jiná data, než odesílatel vytvořil.',
   'open.notice.failed': 'Něco se pokazilo',

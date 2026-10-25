@@ -37,7 +37,7 @@ D=/tmp/tmp.XXXXXXXXXX; nylzo create --server https://nylzo.example --ttl 1h --op
 
 - `create` reads the text from stdin and prints only the link. `mktemp -d` made the directory with mode 0700, so `link.txt` is private whatever the umask. Tell the user the path of `link.txt` and let them send it. Print the link only if the user asks: a printed link stays in the transcript, and it works until it is opened or expires.
 - An attachment instead of text: `nylzo create --server https://nylzo.example --from-file "$D/report.pdf"`, with the output redirected to `"$D/link.txt"` as above.
-- A passphrase from the first line of a file: `nylzo create --passphrase-file "$D/pass.txt"`. The CLI refuses a passphrase under 12 characters and warns under 4 words or under 16 characters.
+- A passphrase: `nylzo create --generate-passphrase-file "$D/pass.txt"` generates a strong one into a new file with mode 0600 and never prints it; tell the user the path so they can send it by another channel than the link. With the user's own passphrase in the first line of a file, `--passphrase-file "$D/pass.txt"`; the CLI refuses one under 12 characters, a repetition, a run of letters, digits or keyboard keys, and a commonly used password.
 - `--manage-token-file` writes a new file with mode 0600 and refuses an existing one. The token checks and cancels the message but cannot read it.
 - `--server` can come from `NYLZO_SERVER`. `--ttl` and `--opens` default to the instance settings and 1.
 - When the user no longer needs the manage token, suggest deleting the whole directory.
@@ -61,11 +61,11 @@ nylzo read --link-file /tmp/tmp.XXXXXXXXXX/link.txt --out /tmp/tmp.XXXXXXXXXX
 nylzo burn --link-file /tmp/tmp.XXXXXXXXXX/link.txt
 ```
 
-- `read` creates a new private directory (0700) inside `--out`, or in the temporary directory without it, writes the text as `message.txt` and an attachment under a cleaned name (0600), and prints the paths. `--out` must be an existing directory. Reading spends one open. `message.txt` holds the text byte for byte, including a trailing newline if the sender's file had one.
-- A passphrase: `nylzo read --passphrase-file "$D/pass.txt"`. A wrong passphrase spends no open, but attempts are limited.
+- `read` needs `--out`: it creates a new private directory (0700) inside it, writes the text as `message.txt` and an attachment under a cleaned name (0600), and prints the paths. `--out` must be an existing directory. Without `--out` or `--stdout` it refuses to run and spends nothing. Reading spends one open. `message.txt` holds the text byte for byte, including a trailing newline if the sender's file had one.
+- A passphrase: `nylzo read --passphrase-file "$D/pass.txt" --out "$D"`. A wrong passphrase spends no open, but attempts are limited.
 - Do not use `nylzo read --stdout`: it prints the plaintext into your output.
 - Do not read the files. Pass them to the program that needs them, for example `docker login --username deploy --password-stdin < "$D/message.txt"`, or tell the user the path.
-- When the user is done, suggest deleting the directory.
+- When the user is done, delete the directory or suggest it: the files hold the plaintext, and on SSDs and in backups a deletion may not erase them.
 
 Report a message to the operator, with the reason in a file:
 

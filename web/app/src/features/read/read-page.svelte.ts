@@ -323,6 +323,13 @@ export class ReadPage {
     }
   };
 
+  // The page drops the fragment on load, so a link pasted again into the address bar arrives without a new load.
+  readonly fragmentArrived = (): void => {
+    if (location.hash !== '') {
+      location.reload();
+    }
+  };
+
   readonly reveal = (event: SubmitEvent): void => {
     event.preventDefault();
     if (this.#revealing || this.phase !== 'ready' || this.shown.view !== 'ready' || this.deleting) {

@@ -1,6 +1,6 @@
 import type { Attachment } from 'svelte/attachments';
 
-import { MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
+import { generatePassphrase, MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 import { tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
@@ -32,6 +32,8 @@ import {
 import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
 
 export type Menu = 'opens' | 'security' | 'ttl';
+
+type ChosenAttachment = Awaited<ReturnType<typeof readAttachment>>;
 
 export type ComposerTarget = 'file' | 'opens' | 'passphrase' | 'security' | 'submit' | 'text' | 'ttl';
 
@@ -92,7 +94,8 @@ export class Composer {
   opensMax = $state(1);
   protect = $state(false);
   passphrase = $state('');
-  remember = $state(true);
+  passphraseVisible = $state(false);
+  remember = $state(false);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
   failure = $state.raw<CreateFailure>();
@@ -306,6 +309,12 @@ export class Composer {
     this.menu = this.menu === next ? undefined : next;
   };
 
+  readonly generatePassphrase = (): void => {
+    this.passphrase = generatePassphrase();
+    this.passphraseVisible = true;
+    this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
+  };
+
   readonly toggleProtect = async (): Promise<void> => {
     this.protect = !this.protect;
     if (this.protect) {
@@ -313,6 +322,7 @@ export class Composer {
       return;
     }
     this.passphrase = '';
+    this.passphraseVisible = false;
     this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
   };
 
@@ -361,6 +371,7 @@ export class Composer {
     this.remembered = 'off';
     this.text = '';
     this.passphrase = '';
+    this.passphraseVisible = false;
     this.protect = false;
     this.removeFile();
     this.phase = 'compose';
@@ -372,6 +383,16 @@ export class Composer {
     this.menu = undefined;
     this.failure = undefined;
     const chosen = await readAttachment(this.file, limits);
+    try {
+      await this.#sendChosen(chosen, limits, stale);
+    } finally {
+      if ('file' in chosen) {
+        chosen.file?.bytes.fill(0);
+      }
+    }
+  }
+
+  async #sendChosen(chosen: ChosenAttachment, limits: InstanceLimits, stale: () => boolean): Promise<void> {
     if (stale()) {
       return;
     }
@@ -412,6 +433,8 @@ export class Composer {
       const saved = this.remember ? this.#rememberMessage(created) : undefined;
       this.text = '';
       this.passphrase = '';
+      this.passphraseVisible = false;
+      this.passphraseVisible = false;
       this.removeFile();
       this.#pending = { created, opensMax: this.opensMax, passphrase: input.passphrase !== '', saved };
       this.timeline.complete();

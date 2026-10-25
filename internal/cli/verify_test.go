@@ -162,7 +162,6 @@ func runVerify(t *testing.T, url string, local fs.FS, flags ...string) commandRe
 		Getenv:    getenvFrom(nil),
 		Terminal:  noTerminal{},
 		Version:   "test",
-		TempDir:   t.TempDir(),
 		WebClient: func() (webclient.Build, error) { return webclient.Load(local) },
 	}
 	code := Run(append([]string{"verify-client", "--server", url}, flags...), environment)
