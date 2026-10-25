@@ -66,7 +66,15 @@ func TestLeadingZeroBits(t *testing.T) {
 func TestSolvePoWRejectsBadInput(t *testing.T) {
 	challenge := core.Encode(make([]byte, core.PoWChallengeLen))
 	for _, difficulty := range []int{-1, core.MaxPoWDifficulty + 1} {
-		if _, _, err := core.SolvePoW(t.Context(), challenge, core.NewID(), difficulty); !errors.Is(err, core.ErrPoWDifficulty) {
+		if _, _, err := core.SolvePoW(
+			t.Context(),
+			challenge,
+			core.NewID(),
+			difficulty,
+		); !errors.Is(
+			err,
+			core.ErrPoWDifficulty,
+		) {
 			t.Fatalf("difficulty %d: %v", difficulty, err)
 		}
 	}
@@ -75,7 +83,15 @@ func TestSolvePoWRejectsBadInput(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, _, err := core.SolvePoW(ctx, challenge, core.NewID(), core.MaxPoWDifficulty); !errors.Is(err, context.Canceled) {
+	if _, _, err := core.SolvePoW(
+		ctx,
+		challenge,
+		core.NewID(),
+		core.MaxPoWDifficulty,
+	); !errors.Is(
+		err,
+		context.Canceled,
+	) {
 		t.Fatalf("a cancelled solve went on: %v", err)
 	}
 }

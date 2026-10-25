@@ -28,7 +28,9 @@ var (
 	errTooLong          = errors.New("the input is longer than nylzo accepts")
 	errPassphraseSource = errors.New("give the passphrase either in a file or from the terminal, not both")
 	errMismatch         = errors.New("the two passphrases differ")
-	errManageToken      = errors.New("a manage token has two lines: the message address without the part after # and the token")
+	errManageToken      = errors.New(
+		"a manage token has two lines: the message address without the part after # and the token",
+	)
 )
 
 func readLimited(r io.Reader, limit int64) ([]byte, error) {
@@ -172,7 +174,9 @@ func readManageToken(env Env, file string) (manageToken, error) {
 	case path != "":
 		raw, err = readFileLimited(path, maxSecretInput)
 	case env.Terminal.StdinIsTerminal():
-		return manageToken{}, errors.New("pass the manage token with --manage-token-file, " + envManageToken + " or on stdin")
+		return manageToken{}, errors.New(
+			"pass the manage token with --manage-token-file, " + envManageToken + " or on stdin",
+		)
 	default:
 		raw, err = readLimited(env.Stdin, maxSecretInput)
 	}

@@ -37,7 +37,9 @@ var purposes = []Purpose{Read, Verifier, Manage, Lease, PoW, IDToken, Challenge}
 var (
 	ErrSecret    = errors.New("pepper: secret must be 32 bytes in hex or base64url")
 	ErrWeak      = errors.New("pepper: secret has 32 equal bytes; generate one with openssl rand -hex 32")
-	ErrCollision = errors.New("pepper: current and previous pepper share a pepper_id; choose a different previous pepper")
+	ErrCollision = errors.New(
+		"pepper: current and previous pepper share a pepper_id; choose a different previous pepper",
+	)
 )
 
 type Key struct {
@@ -140,7 +142,7 @@ func (r *Ring) byID(id byte) *Key {
 	return nil
 }
 
-func (r *Ring) Verify(p Purpose, input []byte, expected []byte, id byte) bool {
+func (r *Ring) Verify(p Purpose, input, expected []byte, id byte) bool {
 	key := r.byID(id)
 	known := key != nil
 	if !known {

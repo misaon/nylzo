@@ -44,7 +44,16 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 2, 3600, "single use")
 	h.mustCreate(m)
 	path := "/api/v1/messages/" + m.id.String()
-	unknown, notFound := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", "/api/v1/messages/"+core.NewID().String(), h.srv.ChallengeForTest(), nil))
+	unknown, notFound := h.do(
+		signedRequest(
+			&m.link.R,
+			core.PurposeRead,
+			"GET",
+			"/api/v1/messages/"+core.NewID().String(),
+			h.srv.ChallengeForTest(),
+			nil,
+		),
+	)
 	if unknown.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown id: %d", unknown.StatusCode)
 	}
@@ -54,21 +63,49 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 			t.Fatalf("%s: %d %s", name, resp.StatusCode, body)
 		}
 		resp, body := h.do(req)
-		if resp.StatusCode != http.StatusNotFound || string(body) != string(notFound) || !sameHeaders(headersWithoutDate(resp.Header), headersWithoutDate(unknown.Header)) {
+		if resp.StatusCode != http.StatusNotFound || string(body) != string(notFound) ||
+			!sameHeaders(headersWithoutDate(resp.Header), headersWithoutDate(unknown.Header)) {
 			t.Fatalf("%s replay: %d %s %v", name, resp.StatusCode, body, resp.Header)
 		}
 	}
-	replayed("metadata", signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil), http.StatusOK)
-	replayed("status", signedRequest(m.manage, core.PurposeManage, "GET", path+"/status", h.srv.ChallengeForTest(), nil), http.StatusOK)
-	replayed("claim", signedRequest(&m.link.R, core.PurposeRead, "POST", path+"/claim", h.srv.ChallengeForTest(), nil), http.StatusOK)
+	replayed(
+		"metadata",
+		signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil),
+		http.StatusOK,
+	)
+	replayed(
+		"status",
+		signedRequest(m.manage, core.PurposeManage, "GET", path+"/status", h.srv.ChallengeForTest(), nil),
+		http.StatusOK,
+	)
+	replayed(
+		"claim",
+		signedRequest(&m.link.R, core.PurposeRead, "POST", path+"/claim", h.srv.ChallengeForTest(), nil),
+		http.StatusOK,
+	)
 	if _, st := h.status(m); st["opens_used"] != 1.0 {
 		t.Fatalf("a replayed claim spent an open: %v", st)
 	}
-	replayed("burn", signedRequest(&m.link.R, core.PurposeRead, "POST", path+"/burn", h.srv.ChallengeForTest(), nil), http.StatusNoContent)
+	replayed(
+		"burn",
+		signedRequest(&m.link.R, core.PurposeRead, "POST", path+"/burn", h.srv.ChallengeForTest(), nil),
+		http.StatusNoContent,
+	)
 
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "cancel once")
 	h.mustCreate(other)
-	replayed("cancel", signedRequest(other.manage, core.PurposeManage, "POST", "/api/v1/messages/"+other.id.String()+"/cancel", h.srv.ChallengeForTest(), nil), http.StatusNoContent)
+	replayed(
+		"cancel",
+		signedRequest(
+			other.manage,
+			core.PurposeManage,
+			"POST",
+			"/api/v1/messages/"+other.id.String()+"/cancel",
+			h.srv.ChallengeForTest(),
+			nil,
+		),
+		http.StatusNoContent,
+	)
 
 	reported := newMessage(t, core.KDFNone, "", 1, 3600, "reported once")
 	h.mustCreate(reported)
@@ -118,7 +155,10 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 	if resp, _ := h.do(spent); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("a failed attempt must spend its challenge: %d", resp.StatusCode)
 	}
-	if resp, body := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)); resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"state":"available"`) {
+	if resp, body := h.do(
+		signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil),
+	); resp.StatusCode != http.StatusOK ||
+		!strings.Contains(string(body), `"state":"available"`) {
 		t.Fatalf("a fresh signature: %d %s", resp.StatusCode, body)
 	}
 
@@ -148,7 +188,8 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 		header func(challenge [core.ChallengeLen]byte) string
 	}{
 		{"other challenge", func([core.ChallengeLen]byte) string {
-			return core.SignRequest(&m.content.V, core.PurposeVerifier, "POST", path, h.srv.ChallengeForTest(), nil).VerifierHeader()
+			return core.SignRequest(&m.content.V, core.PurposeVerifier, "POST", path, h.srv.ChallengeForTest(), nil).
+				VerifierHeader()
 		}},
 		{"read purpose", func(c [core.ChallengeLen]byte) string {
 			return core.SignRequest(&m.content.V, core.PurposeRead, "POST", path, c, nil).VerifierHeader()
@@ -177,7 +218,8 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 	}
 	challenge := h.srv.ChallengeForTest()
 	req := signedRequest(&m.link.R, core.PurposeRead, "POST", path, challenge, nil)
-	req.headers["X-Nylzo-Verifier"] = core.SignRequest(&m.content.V, core.PurposeVerifier, "POST", path, challenge, nil).VerifierHeader()
+	req.headers["X-Nylzo-Verifier"] = core.SignRequest(&m.content.V, core.PurposeVerifier, "POST", path, challenge, nil).
+		VerifierHeader()
 	if resp, _ := h.do(req); resp.StatusCode != http.StatusOK {
 		t.Fatalf("correct verifier: %d", resp.StatusCode)
 	}
@@ -205,10 +247,13 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 		t.Fatalf("challenge: %d %s", resp.StatusCode, body)
 	}
 	raw, err := core.DecodeExact(issued.Challenge, core.ChallengeLen)
-	if err != nil || len(issued.Challenge) != 48 || issued.ExpiresAt != h.clock.Now().Add(time.Minute).UTC().Format(time.RFC3339) {
+	if err != nil || len(issued.Challenge) != 48 ||
+		issued.ExpiresAt != h.clock.Now().Add(time.Minute).UTC().Format(time.RFC3339) {
 		t.Fatalf("challenge shape: %+v", issued)
 	}
-	if resp, _ := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, [core.ChallengeLen]byte(raw), nil)); resp.StatusCode != http.StatusOK {
+	if resp, _ := h.do(
+		signedRequest(&m.link.R, core.PurposeRead, "GET", path, [core.ChallengeLen]byte(raw), nil),
+	); resp.StatusCode != http.StatusOK {
 		t.Fatalf("issued challenge: %d", resp.StatusCode)
 	}
 
@@ -226,7 +271,9 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 		"forged tag":         {forged, http.StatusNotFound},
 		"all zero challenge": {[core.ChallengeLen]byte{}, http.StatusNotFound},
 	} {
-		if resp, body := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, c.challenge, nil)); resp.StatusCode != c.status {
+		if resp, body := h.do(
+			signedRequest(&m.link.R, core.PurposeRead, "GET", path, c.challenge, nil),
+		); resp.StatusCode != c.status {
 			t.Fatalf("%s: %d %s", name, resp.StatusCode, body)
 		}
 	}
@@ -246,10 +293,14 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 
 	before := h.srv.ChallengeForTest()
 	h.reopen(baseConfig(pepperB, pepperA))
-	if resp, _ := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, before, nil)); resp.StatusCode != http.StatusNotFound {
+	if resp, _ := h.do(
+		signedRequest(&m.link.R, core.PurposeRead, "GET", path, before, nil),
+	); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("a challenge from before the rotation: %d", resp.StatusCode)
 	}
-	if resp, _ := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)); resp.StatusCode != http.StatusOK {
+	if resp, _ := h.do(
+		signedRequest(&m.link.R, core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil),
+	); resp.StatusCode != http.StatusOK {
 		t.Fatalf("a fresh challenge after the rotation: %d", resp.StatusCode)
 	}
 }
@@ -289,7 +340,9 @@ func TestSpentChallengesExpire(t *testing.T) {
 	h.mustCreate(m)
 	path := "/api/v1/messages/" + m.id.String()
 	challenge := h.srv.ChallengeForTest()
-	if resp, _ := h.do(signedRequest(&m.link.R, core.PurposeRead, "GET", path, challenge, nil)); resp.StatusCode != http.StatusOK {
+	if resp, _ := h.do(
+		signedRequest(&m.link.R, core.PurposeRead, "GET", path, challenge, nil),
+	); resp.StatusCode != http.StatusOK {
 		t.Fatalf("metadata: %d", resp.StatusCode)
 	}
 	spentRows := func() int {

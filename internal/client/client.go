@@ -34,9 +34,11 @@ const (
 
 var (
 	ErrInsecureServer = errors.New("client: the server must use https, except localhost")
-	ErrServerURL      = errors.New("client: the server address must be scheme://host[:port] without a path, query or fragment")
-	ErrResponse       = errors.New("client: the server sent a malformed response")
-	ErrRedirect       = errors.New("client: the server answered with a redirect, which nylzo never follows")
+	ErrServerURL      = errors.New(
+		"client: the server address must be scheme://host[:port] without a path, query or fragment",
+	)
+	ErrResponse = errors.New("client: the server sent a malformed response")
+	ErrRedirect = errors.New("client: the server answered with a redirect, which nylzo never follows")
 )
 
 type Client struct {
@@ -49,7 +51,11 @@ func New(server string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true, ResponseHeaderTimeout: minTransfer + transferMargin}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: minTransfer + transferMargin,
+	}
 	if strings.HasPrefix(base, "http://") {
 		transport.Proxy = nil
 		dialer := &net.Dialer{Timeout: shortTimeout, Control: loopbackOnly}
@@ -80,7 +86,9 @@ func (c *Client) Origin() string {
 
 func Origin(server string) (string, error) {
 	u, err := url.Parse(server)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery || strings.Contains(server, "#") || (u.Path != "" && u.Path != "/") {
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery ||
+		strings.Contains(server, "#") ||
+		(u.Path != "" && u.Path != "/") {
 		return "", ErrServerURL
 	}
 	scheme := strings.ToLower(u.Scheme)
@@ -207,8 +215,14 @@ type CreateRequest struct {
 
 func (c *Client) Create(ctx context.Context, r CreateRequest) (time.Time, error) {
 	fields := map[string]any{
-		"id": r.ID.String(), "id_token": r.IDToken, "read_key": core.Encode(r.ReadKey[:]), "manage_key": core.Encode(r.ManageKey[:]),
-		"kdf_id": int(r.KDF), "opens_max": int(r.OpensMax), "ttl_s": int(r.TTLSeconds), "size": len(r.Object),
+		"id":         r.ID.String(),
+		"id_token":   r.IDToken,
+		"read_key":   core.Encode(r.ReadKey[:]),
+		"manage_key": core.Encode(r.ManageKey[:]),
+		"kdf_id":     int(r.KDF),
+		"opens_max":  int(r.OpensMax),
+		"ttl_s":      int(r.TTLSeconds),
+		"size":       len(r.Object),
 	}
 	if r.Verifier != nil {
 		fields["verifier_key"] = core.Encode(r.Verifier[:])
@@ -273,7 +287,11 @@ func messagePath(id core.ID) string {
 }
 
 func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.TokenLen]byte) (Metadata, error) {
-	resp, err := c.signed(ctx, signedRequest{method: http.MethodGet, path: messagePath(id), purpose: core.PurposeRead, seed: read}, shortTimeout)
+	resp, err := c.signed(
+		ctx,
+		signedRequest{method: http.MethodGet, path: messagePath(id), purpose: core.PurposeRead, seed: read},
+		shortTimeout,
+	)
 	if err != nil {
 		return Metadata{}, err
 	}
@@ -299,7 +317,16 @@ type Status struct {
 }
 
 func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.TokenLen]byte) (Status, error) {
-	resp, err := c.signed(ctx, signedRequest{method: http.MethodGet, path: messagePath(id) + "/status", purpose: core.PurposeManage, seed: manage}, shortTimeout)
+	resp, err := c.signed(
+		ctx,
+		signedRequest{
+			method:  http.MethodGet,
+			path:    messagePath(id) + "/status",
+			purpose: core.PurposeManage,
+			seed:    manage,
+		},
+		shortTimeout,
+	)
 	if err != nil {
 		return Status{}, err
 	}
@@ -322,7 +349,11 @@ func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.TokenLen]byte
 }
 
 func (c *Client) end(ctx context.Context, path, purpose string, seed *[core.TokenLen]byte) error {
-	resp, err := c.signed(ctx, signedRequest{method: http.MethodPost, path: path, purpose: purpose, seed: seed}, shortTimeout)
+	resp, err := c.signed(
+		ctx,
+		signedRequest{method: http.MethodPost, path: path, purpose: purpose, seed: seed},
+		shortTimeout,
+	)
 	if err != nil {
 		return err
 	}
@@ -360,8 +391,24 @@ type Claimed struct {
 	Envelope
 }
 
-func (c *Client) Claim(ctx context.Context, id core.ID, read *[core.TokenLen]byte, verifier *[core.TokenLen]byte, size int64, onLease func(string)) (Claimed, error) {
-	resp, err := c.signed(ctx, signedRequest{method: http.MethodPost, path: messagePath(id) + "/claim", purpose: core.PurposeRead, seed: read, verifier: verifier}, transferTime(size))
+func (c *Client) Claim(
+	ctx context.Context,
+	id core.ID,
+	read, verifier *[core.TokenLen]byte,
+	size int64,
+	onLease func(string),
+) (Claimed, error) {
+	resp, err := c.signed(
+		ctx,
+		signedRequest{
+			method:   http.MethodPost,
+			path:     messagePath(id) + "/claim",
+			purpose:  core.PurposeRead,
+			seed:     read,
+			verifier: verifier,
+		},
+		transferTime(size),
+	)
 	if err != nil {
 		return Claimed{}, err
 	}
@@ -380,8 +427,24 @@ func (c *Client) Claim(ctx context.Context, id core.ID, read *[core.TokenLen]byt
 	return Claimed{Lease: lease, Envelope: env}, nil
 }
 
-func (c *Client) Blob(ctx context.Context, id core.ID, read *[core.TokenLen]byte, lease string, size int64) (Envelope, error) {
-	resp, err := c.signed(ctx, signedRequest{method: http.MethodGet, path: messagePath(id) + "/blob", purpose: core.PurposeRead, seed: read, headers: map[string]string{"X-Nylzo-Lease": lease}}, transferTime(size))
+func (c *Client) Blob(
+	ctx context.Context,
+	id core.ID,
+	read *[core.TokenLen]byte,
+	lease string,
+	size int64,
+) (Envelope, error) {
+	resp, err := c.signed(
+		ctx,
+		signedRequest{
+			method:  http.MethodGet,
+			path:    messagePath(id) + "/blob",
+			purpose: core.PurposeRead,
+			seed:    read,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+		transferTime(size),
+	)
 	if err != nil {
 		return Envelope{}, err
 	}
@@ -390,7 +453,17 @@ func (c *Client) Blob(ctx context.Context, id core.ID, read *[core.TokenLen]byte
 }
 
 func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.TokenLen]byte, lease string) error {
-	resp, err := c.signed(ctx, signedRequest{method: http.MethodPost, path: messagePath(id) + "/ack", purpose: core.PurposeRead, seed: read, headers: map[string]string{"X-Nylzo-Lease": lease}}, shortTimeout)
+	resp, err := c.signed(
+		ctx,
+		signedRequest{
+			method:  http.MethodPost,
+			path:    messagePath(id) + "/ack",
+			purpose: core.PurposeRead,
+			seed:    read,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+		shortTimeout,
+	)
 	if err != nil {
 		return err
 	}
@@ -428,13 +501,22 @@ func decodePolicy(header string) (Envelope, error) {
 		KDF      *int `json:"kdf_id"`
 		Flags    *int `json:"flags"`
 	}
-	if err := json.Unmarshal(data, &raw); err != nil || raw.OpensMax == nil || raw.TTL == nil || raw.KDF == nil || raw.Flags == nil {
+	if err := json.Unmarshal(
+		data,
+		&raw,
+	); err != nil || raw.OpensMax == nil || raw.TTL == nil || raw.KDF == nil ||
+		raw.Flags == nil {
 		return Envelope{}, ErrResponse
 	}
-	if *raw.OpensMax < 1 || *raw.OpensMax > 0xffff || *raw.TTL < 1 || int64(*raw.TTL) > 0xffffffff || !core.KDF(*raw.KDF).Valid() {
+	if *raw.OpensMax < 1 || *raw.OpensMax > 0xffff || *raw.TTL < 1 || int64(*raw.TTL) > 0xffffffff ||
+		!core.KDF(*raw.KDF).Valid() {
 		return Envelope{}, ErrResponse
 	}
-	return Envelope{Policy: core.Policy{OpensMax: uint16(*raw.OpensMax), TTLSeconds: uint32(*raw.TTL)}, KDF: core.KDF(*raw.KDF), Flags: *raw.Flags}, nil
+	return Envelope{
+		Policy: core.Policy{OpensMax: uint16(*raw.OpensMax), TTLSeconds: uint32(*raw.TTL)},
+		KDF:    core.KDF(*raw.KDF),
+		Flags:  *raw.Flags,
+	}, nil
 }
 
 type signedRequest struct {
@@ -460,9 +542,12 @@ func (c *Client) signedOnce(ctx context.Context, r signedRequest, timeout time.D
 	if err != nil {
 		return nil, err
 	}
-	headers := map[string]string{"Authorization": core.SignRequest(r.seed, r.purpose, r.method, r.path, challenge, r.body).Authorization()}
+	headers := map[string]string{
+		"Authorization": core.SignRequest(r.seed, r.purpose, r.method, r.path, challenge, r.body).Authorization(),
+	}
 	if r.verifier != nil {
-		headers["X-Nylzo-Verifier"] = core.SignRequest(r.verifier, core.PurposeVerifier, r.method, r.path, challenge, nil).VerifierHeader()
+		headers["X-Nylzo-Verifier"] = core.SignRequest(r.verifier, core.PurposeVerifier, r.method, r.path, challenge, nil).
+			VerifierHeader()
 	}
 	maps.Copy(headers, r.headers)
 	return c.do(ctx, r.method, r.path, headers, r.body, timeout)
@@ -474,7 +559,14 @@ type Fetched struct {
 }
 
 func (c *Client) Fetch(ctx context.Context, path, acceptEncoding string, limit int64) (Fetched, error) {
-	resp, err := c.do(ctx, http.MethodGet, path, map[string]string{"Accept-Encoding": acceptEncoding}, nil, shortTimeout)
+	resp, err := c.do(
+		ctx,
+		http.MethodGet,
+		path,
+		map[string]string{"Accept-Encoding": acceptEncoding},
+		nil,
+		shortTimeout,
+	)
 	if err != nil {
 		return Fetched{}, err
 	}
@@ -492,7 +584,13 @@ func (c *Client) Fetch(ctx context.Context, path, acceptEncoding string, limit i
 	return Fetched{Header: resp.Header, Body: body}, nil
 }
 
-func (c *Client) do(ctx context.Context, method, path string, headers map[string]string, body []byte, timeout time.Duration) (*http.Response, error) {
+func (c *Client) do(
+	ctx context.Context,
+	method, path string,
+	headers map[string]string,
+	body []byte,
+	timeout time.Duration,
+) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	var reader io.Reader
 	if body != nil {
@@ -555,7 +653,12 @@ func apiError(resp *http.Response) error {
 			out.RetryAfter = time.Duration(*raw.RetryAfter) * time.Second
 		}
 	}
-	if seconds, err := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 64); err == nil && seconds >= 0 && out.RetryAfter == 0 {
+	if seconds, err := strconv.ParseInt(
+		resp.Header.Get("Retry-After"),
+		10,
+		64,
+	); err == nil && seconds >= 0 &&
+		out.RetryAfter == 0 {
 		out.RetryAfter = time.Duration(seconds) * time.Second
 	}
 	return out

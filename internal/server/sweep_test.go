@@ -72,7 +72,11 @@ func TestSweepRetriesReconcileAfterFailure(t *testing.T) {
 	fb.set(func(b *faultyBlobs) { b.failList = nil; clear(b.failDelete); b.failDelete["0-stuck"] = true })
 	report, err = h.srv.SweepOnce(t.Context())
 	if err == nil || report.Expired != 1 || report.OrphanedBlobs != 1 {
-		t.Fatalf("a reconcile whose listing failed must run again the same day and skip past a failed delete: %+v %v", report, err)
+		t.Fatalf(
+			"a reconcile whose listing failed must run again the same day and skip past a failed delete: %+v %v",
+			report,
+			err,
+		)
 	}
 	report, err = h.srv.SweepOnce(t.Context())
 	if err != nil || report.OrphanedBlobs != 0 {
@@ -115,7 +119,10 @@ func TestEverySweepPurgesStaleTempFiles(t *testing.T) {
 		t.Fatalf("first sweep: %+v %v", report, err)
 	}
 	stale("blob-second")
-	if report, err := h.srv.SweepOnce(t.Context()); err != nil || report.OrphanedBlobs != 0 || report.StaleTempFiles != 1 {
+	if report, err := h.srv.SweepOnce(
+		t.Context(),
+	); err != nil || report.OrphanedBlobs != 0 ||
+		report.StaleTempFiles != 1 {
 		t.Fatalf("a sweep after the daily reconcile must still purge temp files: %+v %v", report, err)
 	}
 }

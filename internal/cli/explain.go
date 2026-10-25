@@ -35,7 +35,10 @@ func explain(err error) string {
 		return "the server's TLS certificate is not from a trusted authority"
 	case errors.As(err, &invalidErr):
 		return "the server's TLS certificate is invalid or has expired"
-	case errors.Is(err, client.ErrInsecureServer), errors.Is(err, client.ErrServerURL), errors.Is(err, client.ErrRedirect), errors.Is(err, client.ErrResponse):
+	case errors.Is(err, client.ErrInsecureServer),
+		errors.Is(err, client.ErrServerURL),
+		errors.Is(err, client.ErrRedirect),
+		errors.Is(err, client.ErrResponse):
 		return err.Error()
 	case errors.As(err, &dnsErr):
 		return "the server address cannot be resolved"
@@ -70,7 +73,10 @@ func explainAPI(e *client.APIError) string {
 		return "no such message: the link or token is wrong, or the message is gone"
 	case "passphrase":
 		if e.AttemptsLeft > 0 && e.RetryAfter == 0 {
-			return fmt.Sprintf("wrong passphrase; %d attempts left before the message makes every reader wait", e.AttemptsLeft)
+			return fmt.Sprintf(
+				"wrong passphrase; %d attempts left before the message makes every reader wait",
+				e.AttemptsLeft,
+			)
 		}
 		return "wrong passphrase, or too many wrong attempts" + wait
 	case "rate_limited":

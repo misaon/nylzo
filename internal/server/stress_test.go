@@ -133,7 +133,11 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			}
 			during := !requestsDone.Load()
 			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
-			cmd.Env = append(os.Environ(), sweepDirEnv+"="+h.dir, sweepNowEnv+"="+h.clock.Now().Format(time.RFC3339Nano))
+			cmd.Env = append(
+				os.Environ(),
+				sweepDirEnv+"="+h.dir,
+				sweepNowEnv+"="+h.clock.Now().Format(time.RFC3339Nano),
+			)
 			out, err := cmd.CombinedOutput()
 			if err != nil || !strings.Contains(string(out), sweptMarker) {
 				t.Errorf("sweep-once in a second process: %v %s", err, out)
@@ -167,7 +171,15 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 					return
 				}
 				got[i].claims.Add(1)
-				ack, _, err := h.tryDo(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": resp.Header.Get("X-Nylzo-Lease")}})
+				ack, _, err := h.tryDo(
+					request{
+						method:  "POST",
+						path:    "/api/v1/messages/" + m.id.String() + "/ack",
+						ip:      ip,
+						token:   m.readToken,
+						headers: map[string]string{"X-Nylzo-Lease": resp.Header.Get("X-Nylzo-Lease")},
+					},
+				)
 				if err != nil {
 					t.Error(err)
 					return
@@ -180,7 +192,14 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 		}
 		if i%2 == 0 {
 			requests.Go(limit(func() {
-				code := h.statusFrom(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/burn", ip: fmt.Sprintf("10.%d.10.1", i), token: m.readToken})
+				code := h.statusFrom(
+					request{
+						method: "POST",
+						path:   "/api/v1/messages/" + m.id.String() + "/burn",
+						ip:     fmt.Sprintf("10.%d.10.1", i),
+						token:  m.readToken,
+					},
+				)
 				expect("burn", code, http.StatusNoContent, http.StatusGone)
 				if code == http.StatusNoContent {
 					got[i].burns.Add(1)
@@ -189,7 +208,14 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 		}
 		if i%3 == 0 {
 			requests.Go(limit(func() {
-				code := h.statusFrom(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/cancel", ip: fmt.Sprintf("10.%d.11.1", i), token: m.manageTok})
+				code := h.statusFrom(
+					request{
+						method: "POST",
+						path:   "/api/v1/messages/" + m.id.String() + "/cancel",
+						ip:     fmt.Sprintf("10.%d.11.1", i),
+						token:  m.manageTok,
+					},
+				)
 				expect("cancel", code, http.StatusNoContent, http.StatusGone)
 				if code == http.StatusNoContent {
 					got[i].cancels.Add(1)
@@ -197,7 +223,14 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			}))
 		}
 		requests.Go(limit(func() {
-			code := h.statusFrom(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: fmt.Sprintf("10.%d.12.1", i), token: m.manageTok})
+			code := h.statusFrom(
+				request{
+					method: "GET",
+					path:   "/api/v1/messages/" + m.id.String() + "/status",
+					ip:     fmt.Sprintf("10.%d.12.1", i),
+					token:  m.manageTok,
+				},
+			)
 			expect("status", code, http.StatusOK)
 		}))
 	}
@@ -216,7 +249,13 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			continue
 		}
 		if burns+cancels == 0 && (claims != opens || goneAcks != 0) {
-			t.Errorf("message %d: with four readers and no deletion, %d of %d opens were claimed and %d acks were refused", i, claims, opens, goneAcks)
+			t.Errorf(
+				"message %d: with four readers and no deletion, %d of %d opens were claimed and %d acks were refused",
+				i,
+				claims,
+				opens,
+				goneAcks,
+			)
 		}
 		_, st := h.status(m)
 		want := "available"
@@ -229,7 +268,16 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			want = "opened"
 		}
 		if st["state"] != want {
-			t.Errorf("message %d ended as %v, want %s (%d claims of %d opens, %d burns, %d cancels)", i, st["state"], want, claims, opens, burns, cancels)
+			t.Errorf(
+				"message %d ended as %v, want %s (%d claims of %d opens, %d burns, %d cancels)",
+				i,
+				st["state"],
+				want,
+				claims,
+				opens,
+				burns,
+				cancels,
+			)
 		}
 		if ended := want != "available"; h.blobExists(m.id) == ended {
 			t.Errorf("message %d in state %s: blob present %v", i, want, !ended)

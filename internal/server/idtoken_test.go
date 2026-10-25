@@ -33,8 +33,14 @@ func createWithToken(t *testing.T, h *harness, m *message, token any) (*http.Res
 			f["id_token"] = token
 		}
 	})
-	return h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
-		rawCreate: true, headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": header}})
+	return h.do(request{
+		method:    "POST",
+		path:      "/api/v1/messages",
+		body:      m.object,
+		ip:        m.ip,
+		rawCreate: true,
+		headers:   map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": header},
+	})
 }
 
 func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
@@ -61,7 +67,13 @@ func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
 		"malformed":      {m, "not-a-token"},
 		"for another id": {stranger, token},
 	} {
-		if resp, body := createWithToken(t, h, c.m, c.token); resp.StatusCode != http.StatusForbidden || decodeJSON(t, body)["error"] != "id_token" {
+		if resp, body := createWithToken(
+			t,
+			h,
+			c.m,
+			c.token,
+		); resp.StatusCode != http.StatusForbidden ||
+			decodeJSON(t, body)["error"] != "id_token" {
 			t.Fatalf("%s token: %d %s", name, resp.StatusCode, body)
 		}
 	}
@@ -71,7 +83,13 @@ func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
 	if resp, _ := createWithToken(t, h, m, token); resp.StatusCode != http.StatusConflict {
 		t.Fatalf("a second create with the same token: %d", resp.StatusCode)
 	}
-	if resp, body := createWithToken(t, h, m, nil); resp.StatusCode != http.StatusForbidden || decodeJSON(t, body)["error"] != "id_token" {
+	if resp, body := createWithToken(
+		t,
+		h,
+		m,
+		nil,
+	); resp.StatusCode != http.StatusForbidden ||
+		decodeJSON(t, body)["error"] != "id_token" {
 		t.Fatalf("a create without a token must not learn that the id exists: %d %s", resp.StatusCode, body)
 	}
 	late, lateToken, _ := issuedID(t, h)
@@ -80,7 +98,13 @@ func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp, body := createWithToken(t, h, lm, lateToken); resp.StatusCode != http.StatusForbidden || decodeJSON(t, body)["error"] != "id_token" {
+	if resp, body := createWithToken(
+		t,
+		h,
+		lm,
+		lateToken,
+	); resp.StatusCode != http.StatusForbidden ||
+		decodeJSON(t, body)["error"] != "id_token" {
 		t.Fatalf("expired token: %d %s", resp.StatusCode, body)
 	}
 }

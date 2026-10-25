@@ -57,10 +57,16 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 			}
 		}
 		home := path == "/" || path == "/cs/"
-		if robots := resp.Header.Get("X-Robots-Tag"); home != (robots == "") || (!home && robots != "noindex, nofollow") {
+		if robots := resp.Header.Get(
+			"X-Robots-Tag",
+		); home != (robots == "") ||
+			(!home && robots != "noindex, nofollow") {
 			t.Fatalf("%s: X-Robots-Tag = %q, only the home pages may be indexed (D80, D82)", path, robots)
 		}
-		if csp := resp.Header.Get("Content-Security-Policy"); !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") && csp != "default-src 'none'; frame-ancestors 'none'" {
+		if csp := resp.Header.Get(
+			"Content-Security-Policy",
+		); !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") &&
+			csp != "default-src 'none'; frame-ancestors 'none'" {
 			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
 		}
 	}
@@ -79,26 +85,48 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 			t.Fatal("nonce repeated")
 		}
 		nonces[nonce] = true
-		if !strings.Contains(string(body), `nonce="`+nonce+`"`) || strings.Contains(string(body), "__NYLZO_CSP_NONCE__") {
+		if !strings.Contains(string(body), `nonce="`+nonce+`"`) ||
+			strings.Contains(string(body), "__NYLZO_CSP_NONCE__") {
 			t.Fatal("nonce not injected into the page")
 		}
 	}
-	resp, body := h.do(request{method: "GET", path: "/m/" + core.NewID().String(), headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}})
-	if resp.StatusCode != 200 || strings.Contains(string(body), "<script") || strings.Contains(string(body), "<style") || !strings.Contains(string(body), `name="viewport"`) {
+	resp, body := h.do(
+		request{
+			method:  "GET",
+			path:    "/m/" + core.NewID().String(),
+			headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"},
+		},
+	)
+	if resp.StatusCode != 200 || strings.Contains(string(body), "<script") ||
+		strings.Contains(string(body), "<style") ||
+		!strings.Contains(string(body), `name="viewport"`) {
 		t.Fatalf("preview agent page: %d %s", resp.StatusCode, body)
 	}
 	nonceAttr := regexp.MustCompile(`nonce="[^"]*"`)
 	_, home := h.do(request{method: "GET", path: "/"})
 	for _, path := range []string{"/", "/cs/", "/sent"} {
 		_, page := h.do(request{method: "GET", path: path})
-		if client, err := server.Embedded(); err != nil || client.Built && strings.Contains(string(page), `name="robots"`) {
+		if client, err := server.Embedded(); err != nil ||
+			client.Built && strings.Contains(string(page), `name="robots"`) {
 			t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80): %v", path, err)
 		}
 	}
 	if !strings.Contains(string(body), `name="robots" content="noindex, nofollow"`) {
 		t.Fatal("the preview page must stay noindex")
 	}
-	if _, botHome := h.do(request{method: "GET", path: "/", headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"}}); nonceAttr.ReplaceAllString(string(botHome), "") != nonceAttr.ReplaceAllString(string(home), "") {
+	if _, botHome := h.do(
+		request{
+			method:  "GET",
+			path:    "/",
+			headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"},
+		},
+	); nonceAttr.ReplaceAllString(
+		string(botHome),
+		"",
+	) != nonceAttr.ReplaceAllString(
+		string(home),
+		"",
+	) {
 		t.Fatalf("a preview agent must get the normal home page: %s", botHome)
 	}
 	for _, path := range []string{"/m/" + core.NewID().String(), "/api/v1/instance"} {
@@ -110,7 +138,13 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	if resp, _ := h.do(request{method: "GET", path: "/m/not-an-id"}); resp.StatusCode != 404 {
 		t.Fatal("malformed page id")
 	}
-	resp, body = h.do(request{method: "GET", path: "/api/v1/messages/not-an-id", headers: map[string]string{"Authorization": core.AuthScheme + " short"}})
+	resp, body = h.do(
+		request{
+			method:  "GET",
+			path:    "/api/v1/messages/not-an-id",
+			headers: map[string]string{"Authorization": core.AuthScheme + " short"},
+		},
+	)
 	if resp.StatusCode != 404 || string(body) != `{"error":"not_found"}` {
 		t.Fatalf("malformed API id: %d %s", resp.StatusCode, body)
 	}
@@ -127,7 +161,12 @@ func TestCreateValidation(t *testing.T) {
 		errCode string
 	}{
 		{"no-header", func(t *testing.T, r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
-		{"bad-base64", func(t *testing.T, r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") }, 400, "bad_request"},
+		{
+			"bad-base64",
+			func(t *testing.T, r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") },
+			400,
+			"bad_request",
+		},
 		{"unknown-field", func(t *testing.T, r *http.Request) {
 			r.Header.Set("X-Nylzo-Create", h.withIDToken(mutateHeader(t, m, func(f map[string]any) { f["extra"] = 1 })))
 		}, 400, "bad_request"},
@@ -158,7 +197,14 @@ func TestCreateValidation(t *testing.T) {
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "v")
 	header := wrongKDF.createHeader(0)
 	wrongKDF.object[1] = byte(core.KDFScrypt)
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, headers: map[string]string{"X-Nylzo-Create": header}})
+	resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    wrongKDF.object,
+			headers: map[string]string{"X-Nylzo-Create": header},
+		},
+	)
 	if resp.StatusCode != 400 {
 		t.Fatalf("kdf mismatch between header and envelope: %d", resp.StatusCode)
 	}
@@ -203,7 +249,13 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 			t.Fatal(err)
 		}
 		liar := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
-		fmt.Fprintf(c, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", i, len(liar.object), h.withIDToken(liar.createHeader(0)))
+		fmt.Fprintf(
+			c,
+			"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n",
+			i,
+			len(liar.object),
+			h.withIDToken(liar.createHeader(0)),
+		)
 		c.Write(liar.object[:20])
 		conns = append(conns, c)
 	}
@@ -245,7 +297,12 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		}
 		probe := newMessage(t, core.KDFNone, "", 1, 3600, "probe")
 		conn.SetDeadline(time.Now().Add(2 * time.Second))
-		fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n", c.header, h.withIDToken(probe.createHeader(c.sizeOverride)))
+		fmt.Fprintf(
+			conn,
+			"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n",
+			c.header,
+			h.withIDToken(probe.createHeader(c.sizeOverride)),
+		)
 		line, err := bufio.NewReader(conn).ReadString('\n')
 		conn.Close()
 		if err != nil || !strings.Contains(line, " "+c.status+" ") {
@@ -308,7 +365,14 @@ func TestConfigFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Listen != ":9090" || len(cfg.TrustedProxies) != 2 || cfg.ProxyMode != "scaleway" || cfg.SweepInterval != 15*time.Minute || cfg.Limits.MaxTTL != 48*time.Hour || cfg.Limits.MaxOpens != 3 || cfg.Rates.CreatePerHour != 7 || cfg.Rates.GlobalDailyCreates != 500 || cfg.MinFreeBytes != 0 || len(cfg.PepperPrevious) != 32 {
+	if cfg.Listen != ":9090" || len(cfg.TrustedProxies) != 2 || cfg.ProxyMode != "scaleway" ||
+		cfg.SweepInterval != 15*time.Minute ||
+		cfg.Limits.MaxTTL != 48*time.Hour ||
+		cfg.Limits.MaxOpens != 3 ||
+		cfg.Rates.CreatePerHour != 7 ||
+		cfg.Rates.GlobalDailyCreates != 500 ||
+		cfg.MinFreeBytes != 0 ||
+		len(cfg.PepperPrevious) != 32 {
 		t.Fatalf("config %+v", cfg)
 	}
 	if _, err := server.FromEnv(func(string) string { return "" }, true); err == nil {
@@ -394,7 +458,9 @@ func TestH2CReceiveBufferIsBounded(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, baseConfig(pepperA, nil))
 	c := h.srv.HTTPServer().HTTP2
-	if c == nil || c.MaxReceiveBufferPerStream < 64<<10 || c.MaxReceiveBufferPerStream > 256<<10 || c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream || c.MaxReceiveBufferPerConnection > 1<<20 {
+	if c == nil || c.MaxReceiveBufferPerStream < 64<<10 || c.MaxReceiveBufferPerStream > 256<<10 ||
+		c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream ||
+		c.MaxReceiveBufferPerConnection > 1<<20 {
 		t.Fatalf("h2c must bound unread body per stream and leave the connection room for other streams: %+v", c)
 	}
 }
@@ -447,7 +513,10 @@ func TestConfigPepperFromFile(t *testing.T) {
 	env := func(vars map[string]string) func(string) string {
 		return func(k string) string { return vars[k] }
 	}
-	fromVar, err := server.FromEnv(env(map[string]string{"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous}), true)
+	fromVar, err := server.FromEnv(
+		env(map[string]string{"NYLZO_PEPPER": current, "NYLZO_PEPPER_PREVIOUS": previous}),
+		true,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +527,8 @@ func TestConfigPepperFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(fromFile.Pepper, fromVar.Pepper) || !bytes.Equal(fromFile.PepperPrevious, fromVar.PepperPrevious) || len(fromFile.Pepper) != 32 {
+	if !bytes.Equal(fromFile.Pepper, fromVar.Pepper) || !bytes.Equal(fromFile.PepperPrevious, fromVar.PepperPrevious) ||
+		len(fromFile.Pepper) != 32 {
 		t.Fatal("a pepper from a file differs from the same pepper in a variable")
 	}
 	for name, vars := range map[string]map[string]string{
@@ -525,7 +595,9 @@ func TestSecurityHeadersOnEveryResponse(t *testing.T) {
 	check("page-head", resp, 200)
 	resp, _ = h.do(request{method: "POST", path: "/"})
 	check("page-post", resp, 405)
-	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
+	resp, _ = h.do(
+		request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}},
+	)
 	check("sec-purpose", resp, 503)
 	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: []byte("x")})
 	check("create-400", resp, 400)
@@ -544,7 +616,12 @@ func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 	var reused []bool
 	trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused = append(reused, info.Reused) }}
 	send := func(method, path string) *http.Response {
-		r, _ := http.NewRequestWithContext(httptrace.WithClientTrace(t.Context(), trace), method, "http://"+addr+path, nil)
+		r, _ := http.NewRequestWithContext(
+			httptrace.WithClientTrace(t.Context(), trace),
+			method,
+			"http://"+addr+path,
+			nil,
+		)
 		resp, err := client.Do(r)
 		if err != nil {
 			t.Fatal(err)

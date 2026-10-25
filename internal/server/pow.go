@@ -58,7 +58,18 @@ func (s *Server) powVerify(ctx context.Context, token string, id core.ID, now ti
 		return ErrPoW
 	}
 	purge := store.CeilMinute(time.Unix(issued, 0).Add(powNonceTTL))
-	used, err := s.store.RateHit(ctx, []store.RateHit{{Key: powNonceKey + hex.EncodeToString(chal[core.PoWNonceOffset:core.PoWNonceOffset+core.PoWNonceLen]), WindowStart: time.Unix(0, 0), PurgeAt: purge}})
+	used, err := s.store.RateHit(
+		ctx,
+		[]store.RateHit{
+			{
+				Key: powNonceKey + hex.EncodeToString(
+					chal[core.PoWNonceOffset:core.PoWNonceOffset+core.PoWNonceLen],
+				),
+				WindowStart: time.Unix(0, 0),
+				PurgeAt:     purge,
+			},
+		},
+	)
 	if err != nil {
 		return err
 	}

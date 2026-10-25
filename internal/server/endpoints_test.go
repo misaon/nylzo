@@ -19,7 +19,9 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 	cancel := newMessage(t, core.KDFNone, "", 2, 3600, "c")
 	h.mustCreate(burn)
 	h.mustCreate(cancel)
-	unknown, unknownBody := h.do(request{method: "POST", path: "/api/v1/messages/" + core.NewID().String() + "/burn", token: burn.readToken})
+	unknown, unknownBody := h.do(
+		request{method: "POST", path: "/api/v1/messages/" + core.NewID().String() + "/burn", token: burn.readToken},
+	)
 	if unknown.StatusCode != 404 {
 		t.Fatalf("unknown id: %d", unknown.StatusCode)
 	}
@@ -64,14 +66,19 @@ func TestCreateHeaderRules(t *testing.T) {
 	cfg := server.Defaults()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	pw := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
-	if !server.ParseCreateHeaderForTest(cfg, none.createHeader(0)) || !server.ParseCreateHeaderForTest(cfg, pw.createHeader(0)) {
+	if !server.ParseCreateHeaderForTest(cfg, none.createHeader(0)) ||
+		!server.ParseCreateHeaderForTest(cfg, pw.createHeader(0)) {
 		t.Fatal("valid headers rejected")
 	}
 	raw, _ := base64.RawURLEncoding.DecodeString(none.createHeader(0))
 	cases := map[string]string{
-		"unknown-key":           mutateHeader(t, none, func(f map[string]any) { f["extra"] = 1 }),
-		"case-variant-key":      mutateHeader(t, none, func(f map[string]any) { f["ID"] = f["id"]; delete(f, "id") }),
-		"verifier-with-kdf0":    mutateHeader(t, none, func(f map[string]any) { f["verifier_key"] = publicKey(core.NewSecret()) }),
+		"unknown-key":      mutateHeader(t, none, func(f map[string]any) { f["extra"] = 1 }),
+		"case-variant-key": mutateHeader(t, none, func(f map[string]any) { f["ID"] = f["id"]; delete(f, "id") }),
+		"verifier-with-kdf0": mutateHeader(
+			t,
+			none,
+			func(f map[string]any) { f["verifier_key"] = publicKey(core.NewSecret()) },
+		),
 		"no-verifier-with-kdf1": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_key") }),
 		"kdf-2-retired":         mutateHeader(t, pw, func(f map[string]any) { f["kdf_id"] = 2 }),
 		"opens-0":               mutateHeader(t, none, func(f map[string]any) { f["opens_max"] = 0 }),
@@ -107,7 +114,10 @@ func TestClaimBodyVariants(t *testing.T) {
 		t.Fatalf("malformed claim bodies changed the message: %v", st)
 	}
 	r, _ := http.NewRequest("POST", h.ts.URL+path, io.MultiReader(strings.NewReader(`{"verifier":"`+m.verifier+`"}`)))
-	r.Header.Set("Authorization", core.SignRequest(&m.link.R, core.PurposeRead, "POST", path, h.srv.ChallengeForTest(), nil).Authorization())
+	r.Header.Set(
+		"Authorization",
+		core.SignRequest(&m.link.R, core.PurposeRead, "POST", path, h.srv.ChallengeForTest(), nil).Authorization(),
+	)
 	r.Header.Set("X-Forwarded-For", "203.0.113.4")
 	resp, err := h.client.Do(r)
 	if err != nil {

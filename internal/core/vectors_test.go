@@ -123,7 +123,8 @@ func TestDeriveVectors(t *testing.T) {
 				t.Fatal("public keys mismatch")
 			}
 			verifierKey := core.PublicKey(&content.V)
-			if (v.KDFID != 0) != (v.VerifierKey != nil) || (v.VerifierKey != nil && core.Encode(verifierKey[:]) != *v.VerifierKey) {
+			if (v.KDFID != 0) != (v.VerifierKey != nil) ||
+				(v.VerifierKey != nil && core.Encode(verifierKey[:]) != *v.VerifierKey) {
 				t.Fatal("verifier key mismatch")
 			}
 			if core.Fragment(core.KDF(v.KDFID), s) != v.Fragment {
@@ -150,7 +151,8 @@ func TestNFCPassphrasesAgree(t *testing.T) {
 	if *composed.Passphrase == *decomposed.Passphrase {
 		t.Fatal("nfc vectors must use different Unicode forms")
 	}
-	if composed.ID != decomposed.ID || composed.S != decomposed.S || composed.P != decomposed.P || composed.K != decomposed.K {
+	if composed.ID != decomposed.ID || composed.S != decomposed.S || composed.P != decomposed.P ||
+		composed.K != decomposed.K {
 		t.Fatal("NFC forms must derive identical keys")
 	}
 }
@@ -248,7 +250,8 @@ func TestEnvelopeVectors(t *testing.T) {
 				t.Fatal("file presence mismatch after open")
 			}
 			if v.File != nil {
-				if got.Meta.File.Name != v.File.Name || got.Meta.File.Mime != v.File.Mime || got.Meta.File.Size != int64(v.File.Size) {
+				if got.Meta.File.Name != v.File.Name || got.Meta.File.Mime != v.File.Mime ||
+					got.Meta.File.Size != int64(v.File.Size) {
 					t.Fatal("file meta mismatch after open")
 				}
 				if string(got.File) != string(payload.File) {
@@ -326,7 +329,8 @@ func TestMetaVectors(t *testing.T) {
 			if (m.File == nil) != (v.FileName == nil) {
 				t.Fatal("file presence mismatch")
 			}
-			if m.File != nil && (m.File.Name != *v.FileName || m.File.Mime != *v.FileMime || m.File.Size != *v.FileSize) {
+			if m.File != nil &&
+				(m.File.Name != *v.FileName || m.File.Mime != *v.FileMime || m.File.Size != *v.FileSize) {
 				t.Fatal("file mismatch")
 			}
 			again, err := core.DecodeMeta(can)
@@ -367,7 +371,9 @@ func TestVectorsRequestSignatures(t *testing.T) {
 				t.Fatal(err)
 			}
 			body := mustHex(t, v.Body)
-			if hex.EncodeToString(core.RequestMessage(v.Purpose, v.Method, v.Path, (*[core.ChallengeLen]byte)(challenge), body)) != v.Message {
+			if hex.EncodeToString(
+				core.RequestMessage(v.Purpose, v.Method, v.Path, (*[core.ChallengeLen]byte)(challenge), body),
+			) != v.Message {
 				t.Fatal("request message mismatch")
 			}
 			sig := core.SignRequest(seed, v.Purpose, v.Method, v.Path, [core.ChallengeLen]byte(challenge), body)
@@ -389,7 +395,8 @@ func TestVectorsRequestSignatures(t *testing.T) {
 			if err != nil || !parsed.Verify(v.Purpose, v.Method, v.Path, body) {
 				t.Fatalf("the vector header does not verify: %v", err)
 			}
-			if parsed.Verify(v.Purpose, v.Method, v.Path+"x", body) || parsed.Verify(v.Purpose, v.Method, v.Path, append(body, 'x')) {
+			if parsed.Verify(v.Purpose, v.Method, v.Path+"x", body) ||
+				parsed.Verify(v.Purpose, v.Method, v.Path, append(body, 'x')) {
 				t.Fatal("a signature verified for another path or body")
 			}
 		})

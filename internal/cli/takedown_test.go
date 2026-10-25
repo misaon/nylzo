@@ -36,13 +36,28 @@ func TestTakedownEndsReportedMessages(t *testing.T) {
 	if out.code != exitOK || out.stdout != id+" deleted\n"+unknown+" no live message\n" {
 		t.Fatalf("%+v", out)
 	}
-	if read := runWith(t, reported, nil, nil, "read", "--stdout"); read.code != exitError || !strings.Contains(read.stderr, "the message was deleted") {
+	if read := runWith(
+		t,
+		reported,
+		nil,
+		nil,
+		"read",
+		"--stdout",
+	); read.code != exitError ||
+		!strings.Contains(read.stderr, "the message was deleted") {
 		t.Fatalf("a taken down message must read as deleted: %+v", read)
 	}
 	if read := runWith(t, kept, nil, nil, "read", "--stdout"); read.code != exitOK || read.stdout != "v pořádku\n" {
 		t.Fatalf("takedown touched another message: %+v", read)
 	}
-	if again := runWith(t, id+"\n", vars, nil, "takedown"); again.code != exitOK || again.stdout != id+" no live message\n" {
+	if again := runWith(
+		t,
+		id+"\n",
+		vars,
+		nil,
+		"takedown",
+	); again.code != exitOK ||
+		again.stdout != id+" no live message\n" {
 		t.Fatalf("%+v", again)
 	}
 }
@@ -76,10 +91,24 @@ func TestTakedownChecksEveryLineFirst(t *testing.T) {
 func TestTakedownNeedsTheStoreAndAPipe(t *testing.T) {
 	t.Parallel()
 	id := core.NewID().String()
-	if res := runWith(t, id+"\n", map[string]string{"NYLZO_DATA_DIR": t.TempDir()}, nil, "takedown"); res.code != exitError || !strings.Contains(res.stderr, "found no store") {
+	if res := runWith(
+		t,
+		id+"\n",
+		map[string]string{"NYLZO_DATA_DIR": t.TempDir()},
+		nil,
+		"takedown",
+	); res.code != exitError ||
+		!strings.Contains(res.stderr, "found no store") {
 		t.Fatalf("%+v", res)
 	}
-	if res := runWith(t, "", nil, stdinTerminal{}, "takedown"); res.code != exitUsage || !strings.Contains(res.stderr, "from a pipe or a file") {
+	if res := runWith(
+		t,
+		"",
+		nil,
+		stdinTerminal{},
+		"takedown",
+	); res.code != exitUsage ||
+		!strings.Contains(res.stderr, "from a pipe or a file") {
 		t.Fatalf("%+v", res)
 	}
 }

@@ -59,7 +59,8 @@ func TestErrorsCarryTheServerReason(t *testing.T) {
 	}
 	_, err = c.Instance(t.Context())
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Kind != "passphrase" || apiErr.AttemptsLeft != 3 || apiErr.RetryAfter.Seconds() != 7 {
+	if !errors.As(err, &apiErr) || apiErr.Kind != "passphrase" || apiErr.AttemptsLeft != 3 ||
+		apiErr.RetryAfter.Seconds() != 7 {
 		t.Fatalf("%+v", err)
 	}
 }
@@ -149,7 +150,13 @@ func TestServerStringsAreValidated(t *testing.T) {
 	} {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/v1/challenge" {
-				w.Write([]byte(`{"challenge":"` + core.Encode(make([]byte, core.ChallengeLen)) + `","expires_at":"2026-10-24T00:00:00Z"}`))
+				w.Write(
+					[]byte(
+						`{"challenge":"` + core.Encode(
+							make([]byte, core.ChallengeLen),
+						) + `","expires_at":"2026-10-24T00:00:00Z"}`,
+					),
+				)
 				return
 			}
 			w.Write([]byte(body))
@@ -171,7 +178,13 @@ func TestMetadataStringsAreValidated(t *testing.T) {
 	for _, body := range []string{`{"state":"weird","kdf_id":0}`, `{"state":"available","expires_at":"soon","kdf_id":0}`} {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/api/v1/challenge" {
-				w.Write([]byte(`{"challenge":"` + core.Encode(make([]byte, core.ChallengeLen)) + `","expires_at":"2026-10-24T00:00:00Z"}`))
+				w.Write(
+					[]byte(
+						`{"challenge":"` + core.Encode(
+							make([]byte, core.ChallengeLen),
+						) + `","expires_at":"2026-10-24T00:00:00Z"}`,
+					),
+				)
 				return
 			}
 			w.Write([]byte(body))

@@ -194,8 +194,13 @@ type Messages interface {
 	RecordDownload(ctx context.Context, lease Lease, now time.Time) error
 	Ack(ctx context.Context, lease Lease, now time.Time) (string, error)
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
-	ClearBlob(ctx context.Context, id string, blobRef string, now time.Time) error
-	MarkEnding(ctx context.Context, id string, state State, now time.Time) (ending State, ref string, recorded bool, err error)
+	ClearBlob(ctx context.Context, id, blobRef string, now time.Time) error
+	MarkEnding(
+		ctx context.Context,
+		id string,
+		state State,
+		now time.Time,
+	) (ending State, ref string, recorded bool, err error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	EndExpired(ctx context.Context, ids []string, now time.Time) (int, error)
 	ExpiredPage(ctx context.Context, now time.Time, after ExpiredMessage, limit int) ([]ExpiredMessage, error)

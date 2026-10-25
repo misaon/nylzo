@@ -19,7 +19,24 @@ type SweepReport struct {
 }
 
 func (r SweepReport) LogAttrs() []any {
-	return []any{"expired", r.Expired, "leases", r.ExpiredLeases, "released", r.BlobsReleased, "tombstones", r.Tombstones, "counters", r.Counters, "resumed", r.Resumed, "orphans", r.OrphanedBlobs, "temp", r.StaleTempFiles}
+	return []any{
+		"expired",
+		r.Expired,
+		"leases",
+		r.ExpiredLeases,
+		"released",
+		r.BlobsReleased,
+		"tombstones",
+		r.Tombstones,
+		"counters",
+		r.Counters,
+		"resumed",
+		r.Resumed,
+		"orphans",
+		r.OrphanedBlobs,
+		"temp",
+		r.StaleTempFiles,
+	}
 }
 
 func SweepAll(ctx context.Context, s Store, b Blobs, now time.Time) (SweepReport, error) {
@@ -104,7 +121,12 @@ func endExpiredPage(ctx context.Context, s Messages, b Blobs, page []ExpiredMess
 	return n, errors.Join(append(errs, err)...)
 }
 
-func eachPage(ctx context.Context, step string, page func(after string) ([]string, error), fn func(id string) (bool, error)) (int, error) {
+func eachPage(
+	ctx context.Context,
+	step string,
+	page func(after string) ([]string, error),
+	fn func(id string) (bool, error),
+) (int, error) {
 	var errs []error
 	done := 0
 	after := ""
@@ -134,7 +156,12 @@ func eachPage(ctx context.Context, step string, page func(after string) ([]strin
 	return done, errors.Join(errs...)
 }
 
-func purge(ctx context.Context, step string, page func(context.Context, time.Time, int) (int, error), now time.Time) (int, error) {
+func purge(
+	ctx context.Context,
+	step string,
+	page func(context.Context, time.Time, int) (int, error),
+	now time.Time,
+) (int, error) {
 	total := 0
 	for {
 		n, err := page(ctx, now, SweepBatch)

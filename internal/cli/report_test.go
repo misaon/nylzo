@@ -17,7 +17,15 @@ func TestReportSendsARedactedReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, "phishing, see https://evil.example/#1.0.abc\n"))
+	res := runWith(
+		t,
+		link,
+		nil,
+		nil,
+		"report",
+		"--reason-file",
+		writeSecretFile(t, "phishing, see https://evil.example/#1.0.abc\n"),
+	)
 	if res.code != exitOK || !strings.Contains(res.stdout, "the report was sent") {
 		t.Fatalf("%+v", res)
 	}
@@ -29,7 +37,9 @@ func TestReportSendsARedactedReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(stored), parsed.ID.String()) || !strings.Contains(string(stored), "https://evil.example/[redacted]") || strings.Contains(string(stored), "#1.0") {
+	if !strings.Contains(string(stored), parsed.ID.String()) ||
+		!strings.Contains(string(stored), "https://evil.example/[redacted]") ||
+		strings.Contains(string(stored), "#1.0") {
 		t.Fatalf("stored report %s", stored)
 	}
 }
@@ -41,7 +51,8 @@ func TestReportRefusesALongReasonBeforeAnyRequest(t *testing.T) {
 	before := ts.requests.Load()
 	for _, reason := range []string{strings.Repeat("ab ", 400), strings.Repeat("# ", 150)} {
 		res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, reason))
-		if res.code != exitUsage || !strings.Contains(res.stderr, "longer than 1000 bytes") || ts.requests.Load() != before {
+		if res.code != exitUsage || !strings.Contains(res.stderr, "longer than 1000 bytes") ||
+			ts.requests.Load() != before {
 			t.Fatalf("%+v, %d requests", res, ts.requests.Load()-before)
 		}
 	}

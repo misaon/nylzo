@@ -56,7 +56,12 @@ func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte,
 	return append(msg, bodyHash[:]...)
 }
 
-func SignRequest(seed *[TokenLen]byte, purpose, method, path string, challenge [ChallengeLen]byte, body []byte) Signature {
+func SignRequest(
+	seed *[TokenLen]byte,
+	purpose, method, path string,
+	challenge [ChallengeLen]byte,
+	body []byte,
+) Signature {
 	key := ed25519.NewKeyFromSeed(seed[:])
 	defer clear(key)
 	out := Signature{PublicKey: PublicKey(seed), Challenge: challenge}

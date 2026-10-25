@@ -27,9 +27,15 @@ const (
 )
 
 var (
-	errWriteOutput   = errors.New("the files could not be written; check the free space and permissions of the output directory")
-	errTampered      = errors.New("the message could not be decrypted: it was changed, or the link or passphrase is wrong")
-	errPolicyChanged = errors.New("the server sent the message with a different policy than its metadata, so nylzo refused it")
+	errWriteOutput = errors.New(
+		"the files could not be written; check the free space and permissions of the output directory",
+	)
+	errTampered = errors.New(
+		"the message could not be decrypted: it was changed, or the link or passphrase is wrong",
+	)
+	errPolicyChanged = errors.New(
+		"the server sent the message with a different policy than its metadata, so nylzo refused it",
+	)
 )
 
 type readOptions struct {
@@ -59,7 +65,9 @@ func parseOpenLink(raw string) (openLink, error) {
 		return openLink{}, errors.New("the link was made by a newer version of nylzo; update nylzo from " + releasesURL)
 	}
 	if errors.Is(err, core.ErrLinkRetiredKDF) {
-		return openLink{}, errors.New("the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link")
+		return openLink{}, errors.New(
+			"the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link",
+		)
 	}
 	if err != nil {
 		return openLink{}, errors.New("the link is incomplete or damaged")
@@ -90,9 +98,19 @@ func runRead(ctx context.Context, env Env, args []string) int {
 	var o readOptions
 	fs := newFlags(env, "read")
 	fs.StringVar(&o.linkFile, "link-file", "", "read the link from this file (or "+envLink+", or stdin)")
-	fs.StringVar(&o.passphrase.file, "passphrase-file", "", "read the passphrase from the first line of this file (or "+envPassphrase+")")
+	fs.StringVar(
+		&o.passphrase.file,
+		"passphrase-file",
+		"",
+		"read the passphrase from the first line of this file (or "+envPassphrase+")",
+	)
 	fs.BoolVar(&o.passphrase.ask, "ask-passphrase", false, "ask for the passphrase on the terminal without echo")
-	fs.StringVar(&o.out, "out", "", "create the new private directory for the files inside this directory (default: the system temporary directory)")
+	fs.StringVar(
+		&o.out,
+		"out",
+		"",
+		"create the new private directory for the files inside this directory (default: the system temporary directory)",
+	)
 	fs.BoolVar(&o.stdout, "stdout", false, "print the text to stdout instead of writing it to a file")
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code
@@ -125,7 +143,11 @@ func runRead(ctx context.Context, env Env, args []string) int {
 		return failf(env, "the message was opened but could not be saved: %s", err)
 	}
 	if err := c.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, "gone") {
-		fmt.Fprintf(env.Stderr, "%s: warning: the server did not confirm the read; it frees the message when the lease ends\n", program)
+		fmt.Fprintf(
+			env.Stderr,
+			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
+			program,
+		)
 	}
 	for _, path := range paths {
 		fmt.Fprintln(env.Stdout, path)
@@ -138,7 +160,13 @@ type openedMessage struct {
 	lease   string
 }
 
-func readMessage(ctx context.Context, env Env, c *client.Client, link *openLink, src passphraseSource) (openedMessage, error) {
+func readMessage(
+	ctx context.Context,
+	env Env,
+	c *client.Client,
+	link *openLink,
+	src passphraseSource,
+) (openedMessage, error) {
 	meta, err := c.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
 		return openedMessage{}, err
@@ -168,7 +196,8 @@ func readMessage(ctx context.Context, env Env, c *client.Client, link *openLink,
 	if err != nil {
 		return openedMessage{}, err
 	}
-	if env2.Flags != 0 || env2.KDF != link.kdf || int(env2.Policy.OpensMax) != meta.OpensMax || int64(env2.Policy.TTLSeconds) != meta.TTLSeconds {
+	if env2.Flags != 0 || env2.KDF != link.kdf || int(env2.Policy.OpensMax) != meta.OpensMax ||
+		int64(env2.Policy.TTLSeconds) != meta.TTLSeconds {
 		return openedMessage{}, errPolicyChanged
 	}
 	_, payload, err := core.Open(&keys.K, link.id, env2.Policy, link.kdf, env2.Object)
@@ -188,7 +217,9 @@ func passphraseKey(env Env, link *openLink, src passphraseSource) ([]byte, error
 	}
 	passphrase, err := readPassphrase(env, src, false)
 	if errors.Is(err, ErrNoTerminal) {
-		return nil, errors.New("this message needs a passphrase: use --passphrase-file, " + envPassphrase + " or --ask-passphrase")
+		return nil, errors.New(
+			"this message needs a passphrase: use --passphrase-file, " + envPassphrase + " or --ask-passphrase",
+		)
 	}
 	if err != nil {
 		return nil, err
@@ -196,7 +227,13 @@ func passphraseKey(env Env, link *openLink, src passphraseSource) ([]byte, error
 	return core.DerivePassphraseKey(link.kdf, passphrase, &link.keys.SaltPW)
 }
 
-func fetchEnvelope(ctx context.Context, c *client.Client, link *openLink, verifier *[core.TokenLen]byte, size int64) (client.Envelope, string, error) {
+func fetchEnvelope(
+	ctx context.Context,
+	c *client.Client,
+	link *openLink,
+	verifier *[core.TokenLen]byte,
+	size int64,
+) (client.Envelope, string, error) {
 	claimed, err := c.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
@@ -230,7 +267,11 @@ func saveMessage(env Env, dir, base string, toStdout bool, payload core.Payload)
 	var files []outputFile
 	if text := payload.Meta.Text; text != nil {
 		if toStdout && env.Terminal.StdoutIsTerminal() && strings.ContainsFunc(*text, terminalControl) {
-			fmt.Fprintf(env.Stderr, "%s: the text holds terminal control characters, so it goes to a file instead of the terminal\n", program)
+			fmt.Fprintf(
+				env.Stderr,
+				"%s: the text holds terminal control characters, so it goes to a file instead of the terminal\n",
+				program,
+			)
 			toStdout = false
 		}
 		if toStdout {
@@ -255,7 +296,11 @@ func saveMessage(env Env, dir, base string, toStdout bool, payload core.Payload)
 		if ferr != nil {
 			return nil, errWriteOutput
 		}
-		fmt.Fprintf(env.Stderr, "%s: warning: writing the files failed, trying a second new directory next to the first\n", program)
+		fmt.Fprintf(
+			env.Stderr,
+			"%s: warning: writing the files failed, trying a second new directory next to the first\n",
+			program,
+		)
 		if paths, err = writeAll(fallback, files); err != nil {
 			removeIfEmpty(fallback)
 			return nil, errWriteOutput

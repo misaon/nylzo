@@ -93,7 +93,13 @@ func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, cfg server.Conf
 	if logs == nil {
 		logs = io.Discard
 	}
-	srv, err := server.New(cfg, st, blobs, server.WithWebFiles(files), server.WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
+	srv, err := server.New(
+		cfg,
+		st,
+		blobs,
+		server.WithWebFiles(files),
+		server.WithLogger(slog.New(slog.NewJSONHandler(logs, nil))),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +146,9 @@ func TestBuiltClientIsServed(t *testing.T) {
 		csp := resp.Header.Get("Content-Security-Policy")
 		start := strings.Index(csp, "'nonce-") + len("'nonce-")
 		nonce := csp[start : start+strings.Index(csp[start:], "'")]
-		if resp.StatusCode != 200 || strings.Contains(body, "placeholder") || strings.Contains(body, "__NYLZO_CSP_NONCE__") || strings.Count(body, `nonce="`+nonce+`"`) != 2 {
+		if resp.StatusCode != 200 || strings.Contains(body, "placeholder") ||
+			strings.Contains(body, "__NYLZO_CSP_NONCE__") ||
+			strings.Count(body, `nonce="`+nonce+`"`) != 2 {
 			t.Fatalf("%s: %d %s", path, resp.StatusCode, body)
 		}
 	}
@@ -159,7 +167,8 @@ func TestBuiltClientIsServed(t *testing.T) {
 		if csp := resp.Header.Get("Content-Security-Policy"); csp != "default-src 'none'; frame-ancestors 'none'" {
 			t.Fatalf("%s: the worker and the other assets must keep CSP default-src 'none', got %q", path, csp)
 		}
-		if resp.Header.Get("X-Content-Type-Options") != "nosniff" || resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("Vary") != "Accept-Encoding" {
+		if resp.Header.Get("X-Content-Type-Options") != "nosniff" || resp.Header.Get("Cache-Control") != "no-store" ||
+			resp.Header.Get("Vary") != "Accept-Encoding" {
 			t.Fatalf("%s: headers %v", path, resp.Header)
 		}
 	}
@@ -198,7 +207,8 @@ func TestAssetsFollowAcceptEncoding(t *testing.T) {
 		{"*, br;q=0", "gzip", gz},
 	} {
 		resp, body := get(t, ts.URL+"/assets/index-a1.js", map[string]string{"Accept-Encoding": c.accept})
-		if resp.Header.Get("Content-Encoding") != c.encoding || body != c.body || resp.Header.Get("Vary") != "Accept-Encoding" {
+		if resp.Header.Get("Content-Encoding") != c.encoding || body != c.body ||
+			resp.Header.Get("Vary") != "Accept-Encoding" {
 			t.Fatalf("Accept-Encoding %q: got %q %q", c.accept, resp.Header.Get("Content-Encoding"), body)
 		}
 	}
@@ -211,14 +221,23 @@ func TestAssetsFollowAcceptEncoding(t *testing.T) {
 func TestPlaceholderWithoutBuild(t *testing.T) {
 	t.Parallel()
 	var logs bytes.Buffer
-	ts, err := newWebServer(t, fstest.MapFS{"web/placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}}, &logs)
+	ts, err := newWebServer(
+		t,
+		fstest.MapFS{"web/placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}},
+		&logs,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), `"msg":"web-client","built":false,"assets":0`) {
 		t.Fatalf("the server did not log that it serves the placeholder: %s", logs.String())
 	}
-	if resp, body := get(t, ts.URL+"/", nil); resp.StatusCode != 200 || !strings.Contains(body, "placeholder") || strings.Contains(body, "__NYLZO_CSP_NONCE__") {
+	if resp, body := get(
+		t,
+		ts.URL+"/",
+		nil,
+	); resp.StatusCode != 200 || !strings.Contains(body, "placeholder") ||
+		strings.Contains(body, "__NYLZO_CSP_NONCE__") {
 		t.Fatalf("placeholder: %d %s", resp.StatusCode, body)
 	}
 	if resp, _ := get(t, ts.URL+"/assets/index-a1.js", nil); resp.StatusCode != 404 {

@@ -397,7 +397,14 @@ func buildMessage(kdf core.KDF, passphrase string, opens uint16, ttl uint32, tex
 	return buildMessageWithID(core.NewID(), kdf, passphrase, opens, ttl, text)
 }
 
-func buildMessageWithID(id core.ID, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) (*message, error) {
+func buildMessageWithID(
+	id core.ID,
+	kdf core.KDF,
+	passphrase string,
+	opens uint16,
+	ttl uint32,
+	text string,
+) (*message, error) {
 	m := &message{id: id, secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
 	link, content, err := core.DeriveAll(m.id, m.secret, kdf, passphrase)
 	if err != nil {
@@ -406,7 +413,13 @@ func buildMessageWithID(id core.ID, kdf core.KDF, passphrase string, opens uint1
 	m.link = link
 	m.content = content
 	m.policy = core.Policy{OpensMax: opens, TTLSeconds: ttl}
-	object, err := core.Seal(&content.K, core.NewHeader(kdf), m.id, m.policy, core.Payload{Meta: core.Meta{Text: &text}})
+	object, err := core.Seal(
+		&content.K,
+		core.NewHeader(kdf),
+		m.id,
+		m.policy,
+		core.Payload{Meta: core.Meta{Text: &text}},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -439,8 +452,15 @@ func publicKey(seed *[core.TokenLen]byte) string {
 
 func (m *message) createHeader(sizeOverride int64) string {
 	fields := map[string]any{
-		"id": m.id.String(), "read_key": publicKey(&m.link.R), "manage_key": publicKey(m.manage),
-		"kdf_id": int(m.kdf), "opens_max": int(m.policy.OpensMax), "ttl_s": int(m.policy.TTLSeconds), "size": len(m.object),
+		"id":         m.id.String(),
+		"read_key":   publicKey(&m.link.R),
+		"manage_key": publicKey(m.manage),
+		"kdf_id": int(
+			m.kdf,
+		),
+		"opens_max": int(m.policy.OpensMax),
+		"ttl_s":     int(m.policy.TTLSeconds),
+		"size":      len(m.object),
 	}
 	if sizeOverride > 0 {
 		fields["size"] = sizeOverride
@@ -458,8 +478,10 @@ func (h *harness) create(m *message) (*http.Response, []byte) {
 }
 
 func createRequest(m *message) request {
-	return request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
-		headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": m.createHeader(0)}}
+	return request{
+		method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip,
+		headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": m.createHeader(0)},
+	}
 }
 
 func (h *harness) mustCreate(m *message) {
@@ -476,13 +498,19 @@ func (h *harness) metadata(m *message) (*http.Response, map[string]any) {
 	return resp, decodeJSON(h.t, body)
 }
 
-func (h *harness) claim(m *message, verifier string, ip string) (*http.Response, []byte) {
+func (h *harness) claim(m *message, verifier, ip string) (*http.Response, []byte) {
 	h.t.Helper()
 	return h.do(claimRequest(m, verifier, ip))
 }
 
-func claimRequest(m *message, verifier string, ip string) request {
-	req := request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: ip, token: m.readToken, verifier: verifier}
+func claimRequest(m *message, verifier, ip string) request {
+	req := request{
+		method:   "POST",
+		path:     "/api/v1/messages/" + m.id.String() + "/claim",
+		ip:       ip,
+		token:    m.readToken,
+		verifier: verifier,
+	}
 	if ip == "" {
 		req.ip = m.ip
 	}
@@ -491,18 +519,36 @@ func claimRequest(m *message, verifier string, ip string) request {
 
 func (h *harness) blob(m *message, lease string) (*http.Response, []byte) {
 	h.t.Helper()
-	return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+	return h.do(
+		request{
+			method:  "GET",
+			path:    "/api/v1/messages/" + m.id.String() + "/blob",
+			ip:      m.ip,
+			token:   m.readToken,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+	)
 }
 
 func (h *harness) ack(m *message, lease string) *http.Response {
 	h.t.Helper()
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+	resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages/" + m.id.String() + "/ack",
+			ip:      m.ip,
+			token:   m.readToken,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+	)
 	return resp
 }
 
 func (h *harness) status(m *message) (*http.Response, map[string]any) {
 	h.t.Helper()
-	resp, body := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok})
+	resp, body := h.do(
+		request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok},
+	)
 	return resp, decodeJSON(h.t, body)
 }
 
@@ -584,10 +630,16 @@ func verifierHeader(verifier, method, path string, challenge [core.ChallengeLen]
 	if err != nil {
 		return verifier
 	}
-	return core.SignRequest((*[core.TokenLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil).VerifierHeader()
+	return core.SignRequest((*[core.TokenLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil).
+		VerifierHeader()
 }
 
-func signedRequest(seed *[core.TokenLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) request {
+func signedRequest(
+	seed *[core.TokenLen]byte,
+	purpose, method, path string,
+	challenge [core.ChallengeLen]byte,
+	body []byte,
+) request {
 	sig := core.SignRequest(seed, purpose, method, path, challenge, body)
 	return rawAuth(request{method: method, path: path, body: body}, sig.Authorization())
 }

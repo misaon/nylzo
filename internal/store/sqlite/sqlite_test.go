@@ -47,8 +47,16 @@ const olderMessages = `CREATE TABLE messages (id TEXT PRIMARY KEY, version INTEG
 
 func TestOpenMigratesOlderSchema(t *testing.T) {
 	shapes := map[string]string{
-		"without ending":  fmt.Sprintf(olderMessages, "", "CREATE INDEX messages_release ON messages(opens_remaining, blob_ref)"),
-		"with release_id": fmt.Sprintf(olderMessages, ", ending TEXT", "CREATE INDEX messages_release_id ON messages(opens_remaining, id) WHERE blob_ref IS NOT NULL"),
+		"without ending": fmt.Sprintf(
+			olderMessages,
+			"",
+			"CREATE INDEX messages_release ON messages(opens_remaining, blob_ref)",
+		),
+		"with release_id": fmt.Sprintf(
+			olderMessages,
+			", ending TEXT",
+			"CREATE INDEX messages_release_id ON messages(opens_remaining, id) WHERE blob_ref IS NOT NULL",
+		),
 	}
 	for name, ddl := range shapes {
 		t.Run(name, func(t *testing.T) {
@@ -81,7 +89,9 @@ func TestOpenMigratesOlderSchema(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer check.Close()
-			rows, err := check.Query(`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'messages' AND sql IS NOT NULL ORDER BY name`)
+			rows, err := check.Query(
+				`SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'messages' AND sql IS NOT NULL ORDER BY name`,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -116,7 +126,11 @@ func openConcurrently(t *testing.T, path string, n int) {
 		wg.Go(func() {
 			s, err := sqlite.Open(t.Context(), path)
 			if err == nil {
-				if _, gerr := s.Get(t.Context(), "AAAAAAAAAAAAAAAAAAAAAA"); gerr != nil && !errors.Is(gerr, store.ErrNotFound) {
+				if _, gerr := s.Get(
+					t.Context(),
+					"AAAAAAAAAAAAAAAAAAAAAA",
+				); gerr != nil &&
+					!errors.Is(gerr, store.ErrNotFound) {
 					err = gerr
 				}
 				err = errors.Join(err, s.Close())
@@ -145,7 +159,11 @@ func TestLegacyTombstoneEndedAtIsRounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	ended := time.Date(2026, 10, 22, 10, 1, 35, 300e6, time.UTC)
-	if _, err := raw.Exec(`INSERT INTO tombstones (id, pepper_id, read_mac, manage_mac, state, ended_at, purge_at) VALUES ('AAAAAAAAAAAAAAAAAAAAAA', 7, x'00', x'00', 'deleted', ?, ?)`, ended.UnixMilli(), ended.Add(store.TombstoneTTL).UnixMilli()); err != nil {
+	if _, err := raw.Exec(
+		`INSERT INTO tombstones (id, pepper_id, read_mac, manage_mac, state, ended_at, purge_at) VALUES ('AAAAAAAAAAAAAAAAAAAAAA', 7, x'00', x'00', 'deleted', ?, ?)`,
+		ended.UnixMilli(),
+		ended.Add(store.TombstoneTTL).UnixMilli(),
+	); err != nil {
 		t.Fatal(err)
 	}
 	raw.Close()
@@ -198,7 +216,10 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(60, 0)}}); err != nil {
+	if _, err := s.RateHit(
+		t.Context(),
+		[]store.RateHit{{Key: "k", WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(60, 0)}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{path, path + "-wal", path + "-shm"} {
@@ -211,6 +232,7 @@ func TestDatabaseFilesArePrivate(t *testing.T) {
 		}
 	}
 }
+
 func TestOpenKeepsTheDatabaseAtItsPath(t *testing.T) {
 	for _, name := range []string{"a#b", "a?b", "a%41b", "a b"} {
 		parent := t.TempDir()
@@ -223,7 +245,10 @@ func TestOpenKeepsTheDatabaseAtItsPath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", name, err)
 		}
-		if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(60, 0)}}); err != nil {
+		if _, err := s.RateHit(
+			t.Context(),
+			[]store.RateHit{{Key: "k", WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(60, 0)}},
+		); err != nil {
 			t.Fatal(err)
 		}
 		s.Close()
@@ -252,7 +277,23 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	id := core.NewID().String()
 	created := time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
-	m := &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, KDF: 1, Size: 64, BlobRef: id}
+	m := &store.Message{
+		ID:             id,
+		Version:        1,
+		State:          store.StateAvailable,
+		CreatedAt:      created,
+		ExpiresAt:      created.Add(time.Hour),
+		TTLSeconds:     3600,
+		OpensMax:       1,
+		OpensRemaining: 1,
+		PepperID:       7,
+		ReadMAC:        mac,
+		ManageMAC:      mac,
+		VerifierMAC:    mac,
+		KDF:            1,
+		Size:           64,
+		BlobRef:        id,
+	}
 	if err := blobs.Put(ctx, id, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +301,17 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimed := created.Add(time.Minute)
-	res, err := st.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return claimed }, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return true }, LeaseMAC: mac, LeasePepperID: 7})
+	res, err := st.Claim(
+		ctx,
+		store.ClaimParams{
+			ID:            id,
+			Clock:         func() time.Time { return claimed },
+			VerifierSent:  true,
+			VerifyMAC:     func(byte, []byte) bool { return true },
+			LeaseMAC:      mac,
+			LeasePepperID: 7,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,12 +351,14 @@ func TestOpenRebuildsRowidTables(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := old.Exec(`CREATE TABLE tombstones (id TEXT PRIMARY KEY, pepper_id INTEGER NOT NULL, read_mac BLOB NOT NULL, manage_mac BLOB NOT NULL, state TEXT NOT NULL, first_opened_at INTEGER, ended_at INTEGER NOT NULL, purge_at INTEGER NOT NULL);
+	if _, err := old.Exec(
+		`CREATE TABLE tombstones (id TEXT PRIMARY KEY, pepper_id INTEGER NOT NULL, read_mac BLOB NOT NULL, manage_mac BLOB NOT NULL, state TEXT NOT NULL, first_opened_at INTEGER, ended_at INTEGER NOT NULL, purge_at INTEGER NOT NULL);
 		CREATE TABLE passphrase_attempts (id TEXT NOT NULL, bucket BLOB NOT NULL, fail_count INTEGER NOT NULL, next_attempt_at INTEGER NOT NULL, purge_at INTEGER NOT NULL, PRIMARY KEY (id, bucket));
 		CREATE TABLE rate_counters (key TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL, bytes INTEGER NOT NULL, purge_at INTEGER NOT NULL, PRIMARY KEY (key, window_start));
 		INSERT INTO tombstones VALUES ('AAAAAAAAAAAAAAAAAAAAAA', 7, x'00', x'00', 'deleted', NULL, 1800000000000, 1800604800000);
 		INSERT INTO passphrase_attempts VALUES ('AAAAAAAAAAAAAAAAAAAAAA', x'010203', 2, 0, 1800604800000);
-		INSERT INTO rate_counters VALUES ('k', 0, 3, 0, 1800604800000);`); err != nil {
+		INSERT INTO rate_counters VALUES ('k', 0, 3, 0, 1800604800000);`,
+	); err != nil {
 		t.Fatal(err)
 	}
 	old.Close()
@@ -337,7 +390,9 @@ func assertNoRowid(t *testing.T, path string) {
 		}
 	}
 	var n int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'passphrase_attempts' OR sql LIKE '%day_fail%'`).Scan(&n); err != nil || n != 0 {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'passphrase_attempts' OR sql LIKE '%day_fail%'`).
+		Scan(&n); err != nil ||
+		n != 0 {
 		t.Fatalf("per-address attempt rows survive: %d %v", n, err)
 	}
 }
@@ -353,7 +408,26 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 	id := core.NewID().String()
 	created := time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
-	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, KDF: 1, State: store.StateAvailable, CreatedAt: created, ExpiresAt: created.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, VerifierMAC: mac, Size: 64, BlobRef: id}); err != nil {
+	if err := s.Create(
+		ctx,
+		&store.Message{
+			ID:             id,
+			Version:        1,
+			KDF:            1,
+			State:          store.StateAvailable,
+			CreatedAt:      created,
+			ExpiresAt:      created.Add(time.Hour),
+			TTLSeconds:     3600,
+			OpensMax:       1,
+			OpensRemaining: 1,
+			PepperID:       7,
+			ReadMAC:        mac,
+			ManageMAC:      mac,
+			VerifierMAC:    mac,
+			Size:           64,
+			BlobRef:        id,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	db, err := sql.Open("sqlite", "file:"+path)
@@ -363,7 +437,17 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 	defer db.Close()
 	at := created.Add(17*time.Second + 123*time.Millisecond)
 	for i := 1; i <= store.FreeAttempts+1; i++ {
-		_, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return at }, VerifierSent: true, VerifyMAC: func(byte, []byte) bool { return false }, LeaseMAC: mac, LeasePepperID: 7})
+		_, err := s.Claim(
+			ctx,
+			store.ClaimParams{
+				ID:            id,
+				Clock:         func() time.Time { return at },
+				VerifierSent:  true,
+				VerifyMAC:     func(byte, []byte) bool { return false },
+				LeaseMAC:      mac,
+				LeasePepperID: 7,
+			},
+		)
 		if _, ok := errors.AsType[*store.PassphraseError](err); !ok {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
@@ -371,7 +455,8 @@ func TestPassphraseAttemptTimesAreRounded(t *testing.T) {
 		if err := db.QueryRow(`SELECT next_attempt_at FROM messages WHERE id = ?`, id).Scan(&next); err != nil {
 			t.Fatal(err)
 		}
-		if i <= store.FreeAttempts && next != 0 || i > store.FreeAttempts && (next%time.Minute.Milliseconds() != 0 || next <= at.UnixMilli()) {
+		if i <= store.FreeAttempts && next != 0 ||
+			i > store.FreeAttempts && (next%time.Minute.Milliseconds() != 0 || next <= at.UnixMilli()) {
 			t.Fatalf("attempt %d stored next_attempt_at %d, which reveals the attempt time", i, next)
 		}
 	}
@@ -384,7 +469,8 @@ func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 		t.Fatal(err)
 	}
 	const id = "AAAAAAAAAAAAAAAAAAAAAA"
-	if _, err := old.Exec(`CREATE TABLE messages (id TEXT PRIMARY KEY, version INTEGER NOT NULL, kdf_id INTEGER NOT NULL, flags INTEGER NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ttl_s INTEGER NOT NULL, opens_max INTEGER NOT NULL, opens_remaining INTEGER NOT NULL, pepper_id INTEGER NOT NULL, read_mac BLOB NOT NULL, manage_mac BLOB NOT NULL, verifier_mac BLOB, size INTEGER NOT NULL, blob_ref TEXT, fail_count_total INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL DEFAULT 0, first_opened_at INTEGER, ending TEXT);
+	if _, err := old.Exec(
+		`CREATE TABLE messages (id TEXT PRIMARY KEY, version INTEGER NOT NULL, kdf_id INTEGER NOT NULL, flags INTEGER NOT NULL, state TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ttl_s INTEGER NOT NULL, opens_max INTEGER NOT NULL, opens_remaining INTEGER NOT NULL, pepper_id INTEGER NOT NULL, read_mac BLOB NOT NULL, manage_mac BLOB NOT NULL, verifier_mac BLOB, size INTEGER NOT NULL, blob_ref TEXT, fail_count_total INTEGER NOT NULL DEFAULT 0, next_attempt_at INTEGER NOT NULL DEFAULT 0, first_opened_at INTEGER, ending TEXT);
 		CREATE TABLE leases (row_id INTEGER PRIMARY KEY, id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE, lease_mac BLOB NOT NULL, pepper_id INTEGER NOT NULL, lease_expires_at INTEGER NOT NULL, downloads INTEGER NOT NULL DEFAULT 0);
 		CREATE TABLE rate_counters (key TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL, bytes INTEGER NOT NULL, purge_at INTEGER NOT NULL, PRIMARY KEY (key, window_start)) WITHOUT ROWID;
 		INSERT INTO messages VALUES ('` + id + `', 1, 0, 0, 'available', 1800000000000, 4102444800000, 3600, 2, 1, 7, x'00', x'00', NULL, 64, '` + id + `', 0, 0, 1800000000000, NULL);
@@ -392,7 +478,8 @@ func TestOpenRebuildsMessagesAndDropsAddressCounters(t *testing.T) {
 		INSERT INTO rate_counters VALUES ('create:h:0a1b2c', 0, 1, 0, 4102444800000), ('create:d:c:0a1b2c', 0, 1, 4096, 4102444800000), ('read:h:ffffff', 0, 1, 0, 4102444800000), ('abuse:h:c:123456', 0, 1, 0, 4102444800000),
 			('abuse:id:` + id + `', 0, 1, 0, 4102444800000), ('global:d', 0, 5, 0, 4102444800000), ('challenge:00112233445566778899aabbccddeeff', 0, 1, 0, 4102444800000), ('create:h:abc', 0, 1, 0, 4102444800000),
 			('abuse:id:` + id + `:0a1b2c', 0, 1, 0, 4102444800000), ('pow:00ff', 1800000001000, 1, 0, 4102444800000), ('pow:11ee', 0, 1, 0, 4102444800000);
-		PRAGMA user_version = 3;`); err != nil {
+		PRAGMA user_version = 3;`,
+	); err != nil {
 		t.Fatal(err)
 	}
 	old.Close()
@@ -443,11 +530,36 @@ func TestLeaseRowIDsAreRandom(t *testing.T) {
 	id := core.NewID().String()
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
-	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 3, OpensRemaining: 3, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+	if err := s.Create(
+		ctx,
+		&store.Message{
+			ID:             id,
+			Version:        1,
+			State:          store.StateAvailable,
+			CreatedAt:      now,
+			ExpiresAt:      now.Add(time.Hour),
+			TTLSeconds:     3600,
+			OpensMax:       3,
+			OpensRemaining: 3,
+			PepperID:       7,
+			ReadMAC:        mac,
+			ManageMAC:      mac,
+			Size:           64,
+			BlobRef:        id,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 3 {
-		res, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: []byte{byte(i)}, LeasePepperID: 7})
+		res, err := s.Claim(
+			ctx,
+			store.ClaimParams{
+				ID:            id,
+				Clock:         func() time.Time { return now },
+				LeaseMAC:      []byte{byte(i)},
+				LeasePepperID: 7,
+			},
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -469,7 +581,10 @@ func TestSweepReportsABlockedCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.RateHit(t.Context(), []store.RateHit{{Key: "k", WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}}); err != nil {
+	if _, err := s.RateHit(
+		t.Context(),
+		[]store.RateHit{{Key: "k", WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	reader, err := sql.Open("sqlite", "file:"+path)
@@ -502,7 +617,10 @@ func TestABlockedCheckpointGivesUpTheWriterQuickly(t *testing.T) {
 	}
 	defer s.Close()
 	hit := func(key string) error {
-		_, err := s.RateHit(t.Context(), []store.RateHit{{Key: key, WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}})
+		_, err := s.RateHit(
+			t.Context(),
+			[]store.RateHit{{Key: key, WindowStart: time.UnixMilli(0), PurgeAt: time.UnixMilli(0)}},
+		)
 		return err
 	}
 	if err := hit("a"); err != nil {
@@ -585,10 +703,30 @@ func TestOlderBuildWritesFail(t *testing.T) {
 	id := core.NewID().String()
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
-	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 3, OpensRemaining: 3, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+	if err := s.Create(
+		ctx,
+		&store.Message{
+			ID:             id,
+			Version:        1,
+			State:          store.StateAvailable,
+			CreatedAt:      now,
+			ExpiresAt:      now.Add(time.Hour),
+			TTLSeconds:     3600,
+			OpensMax:       3,
+			OpensRemaining: 3,
+			PepperID:       7,
+			ReadMAC:        mac,
+			ManageMAC:      mac,
+			Size:           64,
+			BlobRef:        id,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	res, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7})
+	res, err := s.Claim(
+		ctx,
+		store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -605,8 +743,12 @@ func TestOlderBuildWritesFail(t *testing.T) {
 		key    string
 		window int64
 	}{
-		{"create:h:0a1b2c", day}, {"create:d:c:0a1b2c", day}, {"read:h:ffffff", day}, {"abuse:h:c:123456", day},
-		{"abuse:id:" + id + ":0a1b2c", day}, {"pow:00112233445566778899aabbccddeeff", now.Add(17 * time.Second).UnixMilli()},
+		{"create:h:0a1b2c", day},
+		{"create:d:c:0a1b2c", day},
+		{"read:h:ffffff", day},
+		{"abuse:h:c:123456", day},
+		{"abuse:id:" + id + ":0a1b2c", day},
+		{"pow:00112233445566778899aabbccddeeff", now.Add(17 * time.Second).UnixMilli()},
 	} {
 		var n int
 		if err := old.QueryRow(counter, refused.key, refused.window).Scan(&n); err == nil {
@@ -631,7 +773,9 @@ func TestOlderBuildWritesFail(t *testing.T) {
 			t.Errorf("an older build wrote a %s", name)
 		}
 	}
-	if _, err := old.Exec(fmt.Sprintf(`UPDATE leases SET downloads = 1 WHERE row_id = %d`, res.Lease.RowID)); err != nil {
+	if _, err := old.Exec(
+		fmt.Sprintf(`UPDATE leases SET downloads = 1 WHERE row_id = %d`, res.Lease.RowID),
+	); err != nil {
 		t.Errorf("the guard refused a download count: %v", err)
 	}
 }
@@ -648,7 +792,24 @@ func TestWALHoldsOnlyTheLastTransaction(t *testing.T) {
 	mac := bytes.Repeat([]byte{7}, 32)
 	for range 5 {
 		id := core.NewID().String()
-		if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		if err := s.Create(
+			ctx,
+			&store.Message{
+				ID:             id,
+				Version:        1,
+				State:          store.StateAvailable,
+				CreatedAt:      now,
+				ExpiresAt:      now.Add(time.Hour),
+				TTLSeconds:     3600,
+				OpensMax:       1,
+				OpensRemaining: 1,
+				PepperID:       7,
+				ReadMAC:        mac,
+				ManageMAC:      mac,
+				Size:           64,
+				BlobRef:        id,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -707,10 +868,30 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	if err := blobs.Put(t.Context(), id, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Create(t.Context(), &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+	if err := s.Create(
+		t.Context(),
+		&store.Message{
+			ID:             id,
+			Version:        1,
+			State:          store.StateAvailable,
+			CreatedAt:      now,
+			ExpiresAt:      now.Add(time.Hour),
+			TTLSeconds:     3600,
+			OpensMax:       1,
+			OpensRemaining: 1,
+			PepperID:       7,
+			ReadMAC:        mac,
+			ManageMAC:      mac,
+			Size:           64,
+			BlobRef:        id,
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
-	res, err := s.Claim(t.Context(), store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7})
+	res, err := s.Claim(
+		t.Context(),
+		store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -749,10 +930,31 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
 	id := core.NewID().String()
-	if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 2, OpensRemaining: 2, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}, store.RateHit{Key: "global:stored:d", WindowStart: now, PurgeAt: now.Add(time.Hour)}); err != nil {
+	if err := s.Create(
+		ctx,
+		&store.Message{
+			ID:             id,
+			Version:        1,
+			State:          store.StateAvailable,
+			CreatedAt:      now,
+			ExpiresAt:      now.Add(time.Hour),
+			TTLSeconds:     3600,
+			OpensMax:       2,
+			OpensRemaining: 2,
+			PepperID:       7,
+			ReadMAC:        mac,
+			ManageMAC:      mac,
+			Size:           64,
+			BlobRef:        id,
+		},
+		store.RateHit{Key: "global:stored:d", WindowStart: now, PurgeAt: now.Add(time.Hour)},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7}); err != nil {
+	if _, err := s.Claim(
+		ctx,
+		store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Get(ctx, id); err != nil {
@@ -764,13 +966,22 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	if leases, err := s.Leases(ctx, id); err != nil || len(leases) != 1 {
 		t.Fatalf("leases: %d %v", len(leases), err)
 	}
-	if _, err := s.RateHit(ctx, []store.RateHit{{Key: "k", WindowStart: now, PurgeAt: now.Add(time.Hour)}}); err != nil {
+	if _, err := s.RateHit(
+		ctx,
+		[]store.RateHit{{Key: "k", WindowStart: now, PurgeAt: now.Add(time.Hour)}},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.RateReserve(ctx, store.RateHit{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}); err != nil {
+	if _, _, err := s.RateReserve(
+		ctx,
+		store.RateHit{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1},
+	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.RateReserveBatch(ctx, []store.RateHit{{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}}); err != nil {
+	if _, err := s.RateReserveBatch(
+		ctx,
+		[]store.RateHit{{Key: "r", WindowStart: now, PurgeAt: now.Add(time.Hour), Limit: 1}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Checkpoint(ctx); err != nil {

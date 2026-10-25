@@ -105,7 +105,13 @@ func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 
 func TestSweepOnceLeavesAMissingStoreAlone(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
-	if err := sweepOnce(env(map[string]string{"NYLZO_DATA_DIR": dir}), slog.New(slog.DiscardHandler)); !errors.Is(err, errNoStore) {
+	if err := sweepOnce(
+		env(map[string]string{"NYLZO_DATA_DIR": dir}),
+		slog.New(slog.DiscardHandler),
+	); !errors.Is(
+		err,
+		errNoStore,
+	) {
 		t.Fatalf("sweep-once ran against a missing store: %v", err)
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
@@ -121,13 +127,26 @@ func env(values map[string]string) func(string) string {
 
 func runCLI(args []string, values map[string]string) (int, string, string) {
 	var stdout, stderr strings.Builder
-	code := Run(args, Env{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr, Getenv: env(values), Terminal: noTerminal{}})
+	code := Run(
+		args,
+		Env{
+			Stdin:    strings.NewReader(""),
+			Stdout:   &stdout,
+			Stderr:   &stderr,
+			Getenv:   env(values),
+			Terminal: noTerminal{},
+		},
+	)
 	return code, stdout.String(), stderr.String()
 }
 
 func TestRunAnswersUsageErrorsWithoutRunning(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
-	if code, stdout, stderr := runCLI([]string{"serve", "--help"}, nil); code != 0 || stderr != "" || !strings.HasPrefix(stdout, "usage: nylzo serve") {
+	if code, stdout, stderr := runCLI(
+		[]string{"serve", "--help"},
+		nil,
+	); code != 0 || stderr != "" ||
+		!strings.HasPrefix(stdout, "usage: nylzo serve") {
 		t.Fatalf("serve --help: exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 	for _, args := range [][]string{nil, {"sweep-once", "--dry-run"}, {"serve", "extra"}, {"bogus"}, {"version", "extra"}} {
@@ -140,7 +159,11 @@ func TestRunAnswersUsageErrorsWithoutRunning(t *testing.T) {
 		t.Fatal("a usage error still ran a command")
 	}
 	for _, args := range [][]string{{"help"}, {"-h"}, {"--help"}} {
-		if code, stdout, stderr := runCLI(args, nil); code != 0 || !strings.HasPrefix(stdout, "usage: nylzo ") || stderr != "" {
+		if code, stdout, stderr := runCLI(
+			args,
+			nil,
+		); code != 0 || !strings.HasPrefix(stdout, "usage: nylzo ") ||
+			stderr != "" {
 			t.Fatalf("%v: exit %d, stdout %q, stderr %q", args, code, stdout, stderr)
 		}
 	}
@@ -189,18 +212,32 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer taken.Close()
-	code, _, stderr := runCLI([]string{"serve"}, map[string]string{"NYLZO_DATA_DIR": t.TempDir(), "NYLZO_PEPPER": testPepper, "NYLZO_LISTEN": taken.Addr().String()})
+	code, _, stderr := runCLI(
+		[]string{"serve"},
+		map[string]string{
+			"NYLZO_DATA_DIR": t.TempDir(),
+			"NYLZO_PEPPER":   testPepper,
+			"NYLZO_LISTEN":   taken.Addr().String(),
+		},
+	)
 	if code != 1 || strings.Contains(stderr, `"msg":"sweep`) || strings.Contains(stderr, `"msg":"listening"`) {
 		t.Fatalf("a taken port: exit %d, %s", code, stderr)
 	}
 }
 
 func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
-	_, _, stderr := runCLI([]string{"sweep-once"}, map[string]string{"NYLZO_DATA_DIR": filepath.Join(t.TempDir(), "absent")})
+	_, _, stderr := runCLI(
+		[]string{"sweep-once"},
+		map[string]string{"NYLZO_DATA_DIR": filepath.Join(t.TempDir(), "absent")},
+	)
 	var line struct {
 		Time time.Time `json:"time"`
 	}
-	if err := json.Unmarshal([]byte(stderr), &line); err != nil || line.Time.IsZero() || !line.Time.Equal(line.Time.Truncate(time.Minute)) {
+	if err := json.Unmarshal(
+		[]byte(stderr),
+		&line,
+	); err != nil || line.Time.IsZero() ||
+		!line.Time.Equal(line.Time.Truncate(time.Minute)) {
 		t.Fatalf("a log line of nylzo carries a time finer than the minute: %q %v", stderr, err)
 	}
 }
@@ -255,7 +292,11 @@ func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	if _, err := db.Exec(`PRAGMA user_version = 5`); err != nil {
 		t.Fatal(err)
 	}
-	if code, _, stderr := runCLI([]string{"sweep-once"}, map[string]string{"NYLZO_DATA_DIR": dir}); code != 1 || !strings.Contains(stderr, "newer nylzo") {
+	if code, _, stderr := runCLI(
+		[]string{"sweep-once"},
+		map[string]string{"NYLZO_DATA_DIR": dir},
+	); code != 1 ||
+		!strings.Contains(stderr, "newer nylzo") {
 		t.Fatalf("sweep-once on a newer schema: exit %d, %s", code, stderr)
 	}
 }

@@ -30,7 +30,9 @@ func (o Operator) validate() error {
 		{"NYLZO_OPERATOR", o.Name}, {"NYLZO_CONTACT", o.Contact}, {"NYLZO_HOSTING", o.Hosting},
 	} {
 		if !plainText(field.value) {
-			return errors.New(field.key + " must be valid UTF-8 text of at most 200 bytes without control or format characters")
+			return errors.New(
+				field.key + " must be valid UTF-8 text of at most 200 bytes without control or format characters",
+			)
 		}
 	}
 	if o.Contact != "" && !ValidContact(o.Contact) {
@@ -47,7 +49,9 @@ func plainText(s string) bool {
 
 var (
 	emailContact = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
-	httpsContact = regexp.MustCompile(`^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$`)
+	httpsContact = regexp.MustCompile(
+		`^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$`,
+	)
 )
 
 func ValidContact(contact string) bool {
@@ -105,7 +109,14 @@ func (s *Server) transparency() transparencyResponse {
 
 func (s *Server) instanceLimits() instanceLimits {
 	l := s.cfg.Limits
-	return instanceLimits{MaxFileBytes: l.MaxFileBytes, MaxTextBytes: core.MaxTextBytes, MaxObjectBytes: l.MaxObjectBytes, MaxTTL: int64(l.MaxTTL / time.Second), DefaultTTL: int64(l.DefaultTTL / time.Second), MaxOpens: l.MaxOpens}
+	return instanceLimits{
+		MaxFileBytes:   l.MaxFileBytes,
+		MaxTextBytes:   core.MaxTextBytes,
+		MaxObjectBytes: l.MaxObjectBytes,
+		MaxTTL:         int64(l.MaxTTL / time.Second),
+		DefaultTTL:     int64(l.DefaultTTL / time.Second),
+		MaxOpens:       l.MaxOpens,
+	}
 }
 
 func (s *Server) handleTransparency(w http.ResponseWriter, r *http.Request) {

@@ -37,7 +37,13 @@ func FuzzOpenPlaintext(f *testing.F) {
 	f.Add([]byte{0, 0, 0, 2, '{', '}'})
 	f.Add([]byte{})
 	f.Fuzz(func(t *testing.T, pt []byte) {
-		_, payload, err := core.Open(&content.K, id, pol, core.KDFNone, gcm.Seal(h.Bytes(), h.IV[:], pt, core.AAD(h, id, pol)))
+		_, payload, err := core.Open(
+			&content.K,
+			id,
+			pol,
+			core.KDFNone,
+			gcm.Seal(h.Bytes(), h.IV[:], pt, core.AAD(h, id, pol)),
+		)
 		if err != nil {
 			return
 		}

@@ -101,7 +101,11 @@ func runBurn(ctx context.Context, env Env, args []string) int {
 func runReport(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "report")
 	linkFile := fs.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
-	reasonFile := fs.String("reason-file", "", "read why the message should be removed from this file (optional; links and long codes are removed before sending)")
+	reasonFile := fs.String(
+		"reason-file",
+		"",
+		"read why the message should be removed from this file (optional; links and long codes are removed before sending)",
+	)
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code
 	}
@@ -114,7 +118,12 @@ func runReport(ctx context.Context, env Env, args []string) int {
 		reason = strings.TrimSpace(string(raw))
 	}
 	if core.ReasonTooLong(reason) {
-		fmt.Fprintf(env.Stderr, "%s report: the reason is longer than %d bytes after links and long codes are removed\n", program, core.MaxReasonBytes)
+		fmt.Fprintf(
+			env.Stderr,
+			"%s report: the reason is longer than %d bytes after links and long codes are removed\n",
+			program,
+			core.MaxReasonBytes,
+		)
 		return exitUsage
 	}
 	link, err := linkFromInput(env, *linkFile)

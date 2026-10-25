@@ -100,7 +100,11 @@ func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	s := &Server{store: cancelAfterCommit{st}, abuseDir: filepath.Join(t.TempDir(), "abuse"), log: slog.New(slog.DiscardHandler)}
+	s := &Server{
+		store:    cancelAfterCommit{st},
+		abuseDir: filepath.Join(t.TempDir(), "abuse"),
+		log:      slog.New(slog.DiscardHandler),
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if err := s.recordAbuse(ctx, time.Unix(1_800_000_000, 0), core.NewID().String(), "spam"); err != nil {
@@ -133,7 +137,10 @@ func TestAddrCountersStopAtTheFirstRefusal(t *testing.T) {
 	c := newAddrCounters()
 	w := hourWindow(time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC))
 	fine, coarse := bucket{1}, bucket{2}
-	hits := []addrHit{{kind: "k", bucket: fine, window: w, limit: 1}, {kind: "k:c", bucket: coarse, window: w, limit: 10}}
+	hits := []addrHit{
+		{kind: "k", bucket: fine, window: w, limit: 1},
+		{kind: "k:c", bucket: coarse, window: w, limit: 10},
+	}
 	for range 3 {
 		c.hit(hits, w.start)
 	}
@@ -173,11 +180,22 @@ func TestAddressBucketsComeFromAProcessKey(t *testing.T) {
 	k := newAddrKey()
 	same := netip.MustParseAddr("203.0.113.78")
 	mapped := netip.MustParseAddr("::ffff:203.0.113.77")
-	if k.bucket(addr, false) == k.bucket(same, false) || k.bucket(addr, true) != k.bucket(same, true) || k.bucket(addr, false) != k.bucket(mapped, false) {
+	if k.bucket(addr, false) == k.bucket(same, false) || k.bucket(addr, true) != k.bucket(same, true) ||
+		k.bucket(addr, false) != k.bucket(mapped, false) {
 		t.Fatal("IPv4 buckets do not group by /32 and /24")
 	}
-	v1, v2, v3, v4 := netip.MustParseAddr("2001:db8:1:2:3:4:5:6"), netip.MustParseAddr("2001:db8:1:2:ffff:ffff:ffff:ffff"), netip.MustParseAddr("2001:db8:1:3::1"), netip.MustParseAddr("2001:db8:2::1")
-	if k.bucket(v1, false) != k.bucket(v2, false) || k.bucket(v1, false) == k.bucket(v3, false) || k.bucket(v1, true) != k.bucket(v3, true) || k.bucket(v1, true) == k.bucket(v4, true) {
+	v1, v2, v3, v4 := netip.MustParseAddr(
+		"2001:db8:1:2:3:4:5:6",
+	), netip.MustParseAddr(
+		"2001:db8:1:2:ffff:ffff:ffff:ffff",
+	), netip.MustParseAddr(
+		"2001:db8:1:3::1",
+	), netip.MustParseAddr(
+		"2001:db8:2::1",
+	)
+	if k.bucket(v1, false) != k.bucket(v2, false) || k.bucket(v1, false) == k.bucket(v3, false) ||
+		k.bucket(v1, true) != k.bucket(v3, true) ||
+		k.bucket(v1, true) == k.bucket(v4, true) {
 		t.Fatal("IPv6 buckets do not group by /64 and /48")
 	}
 }
@@ -226,7 +244,11 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	if code := send(); code != http.StatusNotFound {
 		t.Fatalf("the same process accepted the challenge after a failed spend: %d", code)
 	}
-	if c, _ := st.RateGet(t.Context(), challengeSpentKey+fmt.Sprintf("%x", c[4:challengeSigned]), time.Unix(0, 0)); c.Count != 0 {
+	if c, _ := st.RateGet(
+		t.Context(),
+		challengeSpentKey+fmt.Sprintf("%x", c[4:challengeSigned]),
+		time.Unix(0, 0),
+	); c.Count != 0 {
 		t.Fatal("the repeat reached the store although the process had seen the nonce")
 	}
 }
@@ -269,7 +291,12 @@ func testConcurrentSpendsShareATransaction(t *testing.T) {
 	gated := &gatedSpends{Store: st, gate: make(chan struct{})}
 	b := newSpendBatcher(gated)
 	spend := func(key string) store.RateHit {
-		return store.RateHit{Key: challengeSpentKey + key, WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(4102444800, 0), Limit: 1}
+		return store.RateHit{
+			Key:         challengeSpentKey + key,
+			WindowStart: time.Unix(0, 0),
+			PurgeAt:     time.Unix(4102444800, 0),
+			Limit:       1,
+		}
 	}
 	var wg sync.WaitGroup
 	var granted atomic.Int64
@@ -335,7 +362,8 @@ func TestIPv6RangeBucketCoversTheWhole48(t *testing.T) {
 	if k.bucket(low, true) == k.bucket(netip.MustParseAddr("2001:db8:0:ffff::1"), true) {
 		t.Fatal("the /48 range bucket joins two /48s")
 	}
-	if k.bucket(low, false) == k.bucket(netip.MustParseAddr("2001:db8:1:1::1"), false) || k.bucket(low, false) != k.bucket(netip.MustParseAddr("2001:db8:1:0:ffff::1"), false) {
+	if k.bucket(low, false) == k.bucket(netip.MustParseAddr("2001:db8:1:1::1"), false) ||
+		k.bucket(low, false) != k.bucket(netip.MustParseAddr("2001:db8:1:0:ffff::1"), false) {
 		t.Fatal("the source bucket is not exactly one /64")
 	}
 }

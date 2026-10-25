@@ -106,7 +106,12 @@ func TestSkillUsesOnlyCommandsAndFlagsTheCLIHas(t *testing.T) {
 				continue
 			}
 			if !slices.ContainsFunc(section.commands, func(name string) bool { return known[name][m[1]] }) {
-				t.Errorf("%s mentions %q, which none of its commands %v has", section.heading, mention, section.commands)
+				t.Errorf(
+					"%s mentions %q, which none of its commands %v has",
+					section.heading,
+					mention,
+					section.commands,
+				)
 			}
 		}
 	}
@@ -144,7 +149,10 @@ func checkInvocations(t *testing.T, line string, known map[string]map[string]boo
 }
 
 func shellOperator(word string) bool {
-	return slices.Contains([]string{"|", "||", "&&", ";", "&"}, word) || strings.HasPrefix(word, "<") || strings.HasPrefix(word, ">") || strings.HasSuffix(word, ";") || strings.HasSuffix(word, ")")
+	return slices.Contains([]string{"|", "||", "&&", ";", "&"}, word) || strings.HasPrefix(word, "<") ||
+		strings.HasPrefix(word, ">") ||
+		strings.HasSuffix(word, ";") ||
+		strings.HasSuffix(word, ")")
 }
 
 func readSkill(t *testing.T) (dir, front, body string) {

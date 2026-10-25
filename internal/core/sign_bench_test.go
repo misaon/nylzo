@@ -15,7 +15,14 @@ func BenchmarkValidPublicKey(b *testing.B) {
 
 func BenchmarkVerifyRequest(b *testing.B) {
 	var challenge [core.ChallengeLen]byte
-	sig := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", "/api/v1/messages/AAAAAAAAAAAAAAAAAAAAAA", challenge, nil)
+	sig := core.SignRequest(
+		core.NewSecret(),
+		core.PurposeRead,
+		"GET",
+		"/api/v1/messages/AAAAAAAAAAAAAAAAAAAAAA",
+		challenge,
+		nil,
+	)
 	for b.Loop() {
 		if !sig.Verify(core.PurposeRead, "GET", "/api/v1/messages/AAAAAAAAAAAAAAAAAAAAAA", nil) {
 			b.Fatal("signature does not verify")

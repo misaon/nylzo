@@ -36,7 +36,8 @@ func TestTempDirStaysEmptyAfterPut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mtime := info.ModTime(); !mtime.Equal(mtime.Truncate(time.Minute)) || mtime.After(before) || before.Sub(mtime) > time.Minute+time.Second {
+	if mtime := info.ModTime(); !mtime.Equal(mtime.Truncate(time.Minute)) || mtime.After(before) ||
+		before.Sub(mtime) > time.Minute+time.Second {
 		t.Fatalf("a blob file carries the time of its upload: %v", mtime)
 	}
 }

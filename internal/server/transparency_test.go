@@ -71,7 +71,8 @@ func TestClientManifestWithoutBuildListsNoFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, body := get(t, ts.URL+server.ClientManifestPath, nil)
-	if !strings.Contains(body, `"built":false`) || !strings.Contains(body, `"public_url":""`) || !strings.Contains(body, `"files":[]`) {
+	if !strings.Contains(body, `"built":false`) || !strings.Contains(body, `"public_url":""`) ||
+		!strings.Contains(body, `"files":[]`) {
 		t.Fatalf("manifest without a build: %s", body)
 	}
 }
@@ -84,7 +85,9 @@ func TestTransparencyPageServesTheClient(t *testing.T) {
 	}
 	resp, body := get(t, ts.URL+"/transparency", nil)
 	csp := resp.Header.Get("Content-Security-Policy")
-	if resp.StatusCode != 200 || !strings.Contains(csp, "script-src 'nonce-") || strings.Contains(body, "__NYLZO_CSP_NONCE__") || !strings.Contains(body, "/assets/index-a1.js") {
+	if resp.StatusCode != 200 || !strings.Contains(csp, "script-src 'nonce-") ||
+		strings.Contains(body, "__NYLZO_CSP_NONCE__") ||
+		!strings.Contains(body, "/assets/index-a1.js") {
 		t.Fatalf("%d %q %s", resp.StatusCode, csp, body)
 	}
 }

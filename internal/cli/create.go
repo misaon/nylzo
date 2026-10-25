@@ -51,11 +51,31 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "create")
 	fs.StringVar(&o.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
 	fs.StringVar(&o.fromFile, "from-file", "", "send this file as an attachment instead of text from stdin")
-	fs.DurationVar(&o.ttl, "ttl", 0, "how long the message lives, for example 30m or 24h (default: the instance default)")
+	fs.DurationVar(
+		&o.ttl,
+		"ttl",
+		0,
+		"how long the message lives, for example 30m or 24h (default: the instance default)",
+	)
 	fs.IntVar(&o.opens, "opens", 1, "how many times the message can be opened")
-	fs.StringVar(&o.passphrase.file, "passphrase-file", "", "protect the message with the passphrase on the first line of this file (or "+envPassphrase+")")
-	fs.BoolVar(&o.passphrase.ask, "ask-passphrase", false, "protect the message with a passphrase asked on the terminal without echo")
-	fs.StringVar(&o.manageFile, "manage-token-file", "", "write the manage token for status and cancel to this new file (mode 0600)")
+	fs.StringVar(
+		&o.passphrase.file,
+		"passphrase-file",
+		"",
+		"protect the message with the passphrase on the first line of this file (or "+envPassphrase+")",
+	)
+	fs.BoolVar(
+		&o.passphrase.ask,
+		"ask-passphrase",
+		false,
+		"protect the message with a passphrase asked on the terminal without echo",
+	)
+	fs.StringVar(
+		&o.manageFile,
+		"manage-token-file",
+		"",
+		"write the manage token for status and cancel to this new file (mode 0600)",
+	)
 	fs.BoolVar(&o.printManage, "print-manage-token", false, "print the manage token after the link")
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code
@@ -85,7 +105,13 @@ func runCreate(ctx context.Context, env Env, args []string) int {
 			return failf(env, "passphrase: %s", explain(err))
 		}
 		if weakPassphrase(passphrase) {
-			fmt.Fprintf(env.Stderr, "%s: warning: a passphrase of at least %d words and %d characters is much harder to guess\n", program, weakBelowWords, weakBelowChars)
+			fmt.Fprintf(
+				env.Stderr,
+				"%s: warning: a passphrase of at least %d words and %d characters is much harder to guess\n",
+				program,
+				weakBelowWords,
+				weakBelowChars,
+			)
 		}
 	}
 	manage, err := reserveManageFile(o.manageFile)
@@ -134,7 +160,10 @@ func readContent(env Env, fromFile string) (content, error) {
 		if kind == "" || len(kind) > core.MaxMime || !utf8.ValidString(kind) {
 			kind = attachmentMime
 		}
-		return content{meta: core.Meta{File: &core.FileMeta{Name: name, Mime: kind, Size: int64(len(data))}}, file: data}, nil
+		return content{
+			meta: core.Meta{File: &core.FileMeta{Name: name, Mime: kind, Size: int64(len(data))}},
+			file: data,
+		}, nil
 	}
 	var raw []byte
 	var err error
@@ -169,7 +198,14 @@ func (m *createdMessage) wipe() {
 	m.link = ""
 }
 
-func createMessage(ctx context.Context, env Env, c *client.Client, o createOptions, passphrase string, msg content) (createdMessage, error) {
+func createMessage(
+	ctx context.Context,
+	env Env,
+	c *client.Client,
+	o createOptions,
+	passphrase string,
+	msg content,
+) (createdMessage, error) {
 	for attempt := 1; ; attempt++ {
 		created, err := createOnce(ctx, env, c, o, passphrase, msg)
 		if attempt == createAttempts || !retryWithNewID(err) {
@@ -182,7 +218,14 @@ func retryWithNewID(err error) bool {
 	return client.IsKind(err, "id_token") || client.IsKind(err, "conflict") || client.IsKind(err, "pow")
 }
 
-func createOnce(ctx context.Context, env Env, c *client.Client, o createOptions, passphrase string, msg content) (createdMessage, error) {
+func createOnce(
+	ctx context.Context,
+	env Env,
+	c *client.Client,
+	o createOptions,
+	passphrase string,
+	msg content,
+) (createdMessage, error) {
 	inst, err := c.Instance(ctx)
 	if err != nil {
 		return createdMessage{}, err
@@ -251,7 +294,11 @@ var (
 
 func createPolicy(o createOptions, limits client.Limits, msg content) (core.Policy, error) {
 	if msg.meta.Text != nil && int64(len(*msg.meta.Text)) > min(limits.MaxTextBytes, core.MaxTextBytes) {
-		return core.Policy{}, fmt.Errorf("%w: the text is longer than %d bytes", errPolicy, min(limits.MaxTextBytes, core.MaxTextBytes))
+		return core.Policy{}, fmt.Errorf(
+			"%w: the text is longer than %d bytes",
+			errPolicy,
+			min(limits.MaxTextBytes, core.MaxTextBytes),
+		)
 	}
 	if msg.meta.File != nil && msg.meta.File.Size > limits.MaxFileBytes {
 		return core.Policy{}, fmt.Errorf("%w: the file is larger than %d bytes", errPolicy, limits.MaxFileBytes)
@@ -260,8 +307,14 @@ func createPolicy(o createOptions, limits client.Limits, msg content) (core.Poli
 	if o.ttl != 0 {
 		ttl = o.ttl
 	}
-	if ttl%time.Second != 0 || ttl < core.MinTTLSeconds*time.Second || ttl > time.Duration(limits.MaxTTLSeconds)*time.Second {
-		return core.Policy{}, fmt.Errorf("%w: --ttl must be whole seconds between %ds and %ds", errPolicy, core.MinTTLSeconds, limits.MaxTTLSeconds)
+	if ttl%time.Second != 0 || ttl < core.MinTTLSeconds*time.Second ||
+		ttl > time.Duration(limits.MaxTTLSeconds)*time.Second {
+		return core.Policy{}, fmt.Errorf(
+			"%w: --ttl must be whole seconds between %ds and %ds",
+			errPolicy,
+			core.MinTTLSeconds,
+			limits.MaxTTLSeconds,
+		)
 	}
 	if o.opens < 1 || o.opens > limits.MaxOpens {
 		return core.Policy{}, fmt.Errorf("%w: --opens must be between 1 and %d", errPolicy, limits.MaxOpens)
@@ -278,7 +331,12 @@ func prove(ctx context.Context, env Env, c *client.Client, id core.ID) (string, 
 		if !inst.PoW.Required {
 			return "", nil
 		}
-		fmt.Fprintf(env.Stderr, "%s: the server is busy, solving a proof of work (difficulty %d)\n", program, inst.PoW.Difficulty)
+		fmt.Fprintf(
+			env.Stderr,
+			"%s: the server is busy, solving a proof of work (difficulty %d)\n",
+			program,
+			inst.PoW.Difficulty,
+		)
 		solving, cancel := context.WithTimeout(ctx, powBudget)
 		token, _, err := core.SolvePoW(solving, inst.PoW.Challenge, id, inst.PoW.Difficulty)
 		cancel()

@@ -23,7 +23,11 @@ const (
 func runTakedown(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "takedown")
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "usage: %s takedown < ids\n\nEnds every message whose id stands on its own line of stdin, as deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n", program)
+		fmt.Fprintf(
+			fs.Output(),
+			"usage: %s takedown < ids\n\nEnds every message whose id stands on its own line of stdin, as deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n",
+			program,
+		)
 	}
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code

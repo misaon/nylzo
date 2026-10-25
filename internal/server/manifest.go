@@ -83,7 +83,11 @@ func WithWebFiles(files fs.FS) Option {
 func (c webClient) embedded() EmbeddedClient {
 	out := EmbeddedClient{Built: c.built, Templates: maps.Clone(c.templates), Assets: map[string]EmbeddedAsset{}}
 	for name, asset := range c.assets {
-		out.Assets[name] = EmbeddedAsset{ContentType: asset.contentType, Body: asset.bodies[""], Gzip: asset.bodies[encodingGzip]}
+		out.Assets[name] = EmbeddedAsset{
+			ContentType: asset.contentType,
+			Body:        asset.bodies[""],
+			Gzip:        asset.bodies[encodingGzip],
+		}
 	}
 	return out
 }
@@ -93,7 +97,14 @@ func (c EmbeddedClient) Page(path, publicURL string) (string, error) {
 }
 
 func (c EmbeddedClient) Manifest(version, publicURL string) ClientManifest {
-	m := ClientManifest{Server: version, Built: c.Built, NoncePlaceholder: noncePlaceholder, PublicURL: publicURL, Pages: slices.Clone(ClientPages), Files: []ClientFile{}}
+	m := ClientManifest{
+		Server:           version,
+		Built:            c.Built,
+		NoncePlaceholder: noncePlaceholder,
+		PublicURL:        publicURL,
+		Pages:            slices.Clone(ClientPages),
+		Files:            []ClientFile{},
+	}
 	if !c.Built {
 		return m
 	}

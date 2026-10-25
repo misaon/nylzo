@@ -239,7 +239,20 @@ func (f *File) scrypt() error {
 		if err != nil {
 			return err
 		}
-		f.Scrypt = append(f.Scrypt, Scrypt{Name: c.name, Password: c.pw, Salt: c.salt, N: c.n, R: c.r, P: c.p, DKLen: 64, DK: hex.EncodeToString(dk), Heavy: c.heavy})
+		f.Scrypt = append(
+			f.Scrypt,
+			Scrypt{
+				Name:     c.name,
+				Password: c.pw,
+				Salt:     c.salt,
+				N:        c.n,
+				R:        c.r,
+				P:        c.p,
+				DKLen:    64,
+				DK:       hex.EncodeToString(dk),
+				Heavy:    c.heavy,
+			},
+		)
 	}
 	return nil
 }
@@ -289,11 +302,25 @@ func (f *File) derive() error {
 		hs := core.HSalt(id)
 		readKey, manageKey := core.PublicKey(&link.R), core.PublicKey(m)
 		d := Derive{
-			Name: c.name, ID: id.String(), S: hex.EncodeToString(s[:]), KDFID: int(c.kdf), Passphrase: c.pw,
-			HSalt: hex.EncodeToString(hs[:]), R: hex.EncodeToString(link.R[:]), SaltPW: hex.EncodeToString(link.SaltPW[:]),
-			P: hex.EncodeToString(p), K: hex.EncodeToString(content.K[:]), V: hex.EncodeToString(content.V[:]), M: hex.EncodeToString(m[:]),
-			Fragment: core.Fragment(c.kdf, s),
-			ReadKey:  core.Encode(readKey[:]), ManageKey: core.Encode(manageKey[:]),
+			Name:       c.name,
+			ID:         id.String(),
+			S:          hex.EncodeToString(s[:]),
+			KDFID:      int(c.kdf),
+			Passphrase: c.pw,
+			HSalt: hex.EncodeToString(
+				hs[:],
+			),
+			R:      hex.EncodeToString(link.R[:]),
+			SaltPW: hex.EncodeToString(link.SaltPW[:]),
+			P: hex.EncodeToString(
+				p,
+			),
+			K:         hex.EncodeToString(content.K[:]),
+			V:         hex.EncodeToString(content.V[:]),
+			M:         hex.EncodeToString(m[:]),
+			Fragment:  core.Fragment(c.kdf, s),
+			ReadKey:   core.Encode(readKey[:]),
+			ManageKey: core.Encode(manageKey[:]),
 		}
 		if c.kdf != core.KDFNone {
 			verifierKey := core.PublicKey(&content.V)
@@ -320,17 +347,88 @@ type envCase struct {
 func envCases() []envCase {
 	return []envCase{
 		{name: "text-ascii", kdf: core.KDFNone, opens: 1, ttl: 86400, text: new("hello nylzo")},
-		{name: "text-escapes", kdf: core.KDFNone, opens: 2, ttl: 3600, text: new("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash   line sep \U0001F600")},
+		{
+			name:  "text-escapes",
+			kdf:   core.KDFNone,
+			opens: 2,
+			ttl:   3600,
+			text:  new("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash   line sep \U0001F600"),
+		},
 		{name: "text-exact-4096", kdf: core.KDFNone, opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4075))},
 		{name: "text-4097", kdf: core.KDFNone, opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4076))},
-		{name: "file-empty", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "empty.bin", fileMime: "application/octet-stream", fileSize: 0},
-		{name: "file-one-byte", kdf: core.KDFNone, opens: 1, ttl: 86400, fileName: "b.bin", fileMime: "application/octet-stream", fileSize: 1, fileHex: true},
-		{name: "file-65536", kdf: core.KDFNone, opens: 3, ttl: 259200, fileName: "block.bin", fileMime: "", fileSize: 65536},
-		{name: "file-and-text-scrypt", kdf: core.KDFScrypt, pw: new("password"), opens: 1, ttl: 86400, text: new("příloha v příloze"), fileName: "příloha č.1.pdf", fileMime: "application/pdf", fileSize: 1000, fileHex: true},
-		{name: "file-5mib", kdf: core.KDFNone, opens: 1, ttl: 604800, fileName: "big.bin", fileMime: "application/octet-stream", fileSize: core.MaxFileBytes},
-		{name: "scrypt-text", kdf: core.KDFScrypt, pw: new("correct horse battery staple"), opens: 1, ttl: 86400, text: new("scrypt protected")},
-		{name: "scrypt-nfc-decomposed", kdf: core.KDFScrypt, pw: new("héslo s češtinou"), opens: 1, ttl: 86400, text: new("nfc")},
-		{name: "scrypt-empty-passphrase", kdf: core.KDFScrypt, pw: new(""), opens: 1, ttl: 86400, text: new("empty passphrase")},
+		{
+			name:     "file-empty",
+			kdf:      core.KDFNone,
+			opens:    1,
+			ttl:      86400,
+			fileName: "empty.bin",
+			fileMime: "application/octet-stream",
+			fileSize: 0,
+		},
+		{
+			name:     "file-one-byte",
+			kdf:      core.KDFNone,
+			opens:    1,
+			ttl:      86400,
+			fileName: "b.bin",
+			fileMime: "application/octet-stream",
+			fileSize: 1,
+			fileHex:  true,
+		},
+		{
+			name:     "file-65536",
+			kdf:      core.KDFNone,
+			opens:    3,
+			ttl:      259200,
+			fileName: "block.bin",
+			fileMime: "",
+			fileSize: 65536,
+		},
+		{
+			name:     "file-and-text-scrypt",
+			kdf:      core.KDFScrypt,
+			pw:       new("password"),
+			opens:    1,
+			ttl:      86400,
+			text:     new("příloha v příloze"),
+			fileName: "příloha č.1.pdf",
+			fileMime: "application/pdf",
+			fileSize: 1000,
+			fileHex:  true,
+		},
+		{
+			name:     "file-5mib",
+			kdf:      core.KDFNone,
+			opens:    1,
+			ttl:      604800,
+			fileName: "big.bin",
+			fileMime: "application/octet-stream",
+			fileSize: core.MaxFileBytes,
+		},
+		{
+			name:  "scrypt-text",
+			kdf:   core.KDFScrypt,
+			pw:    new("correct horse battery staple"),
+			opens: 1,
+			ttl:   86400,
+			text:  new("scrypt protected"),
+		},
+		{
+			name:  "scrypt-nfc-decomposed",
+			kdf:   core.KDFScrypt,
+			pw:    new("héslo s češtinou"),
+			opens: 1,
+			ttl:   86400,
+			text:  new("nfc"),
+		},
+		{
+			name:  "scrypt-empty-passphrase",
+			kdf:   core.KDFScrypt,
+			pw:    new(""),
+			opens: 1,
+			ttl:   86400,
+			text:  new("empty passphrase"),
+		},
 		{name: "opens-10-ttl-7d", kdf: core.KDFNone, opens: 10, ttl: 604800, text: new("many opens")},
 	}
 }
@@ -369,10 +467,24 @@ func (f *File) envelope() error {
 		}
 		sum := sha256.Sum256(object)
 		e := Envelope{
-			Name: c.name, ID: id.String(), S: hex.EncodeToString(s[:]), KDFID: int(c.kdf), Passphrase: c.pw, Flags: 0,
-			IV: hex.EncodeToString(h.IV[:]), OpensMax: int(c.opens), TTLSeconds: int(c.ttl), Text: c.text, File: fc,
-			MetaJSON: string(metaJSON), PlaintextLen: len(object) - core.HeaderLen - core.TagLen,
-			AAD: hex.EncodeToString(core.AAD(h, id, pol)), ObjectLen: len(object), ObjectSHA256: hex.EncodeToString(sum[:]),
+			Name:         c.name,
+			ID:           id.String(),
+			S:            hex.EncodeToString(s[:]),
+			KDFID:        int(c.kdf),
+			Passphrase:   c.pw,
+			Flags:        0,
+			IV:           hex.EncodeToString(h.IV[:]),
+			OpensMax:     int(c.opens),
+			TTLSeconds:   int(c.ttl),
+			Text:         c.text,
+			File:         fc,
+			MetaJSON:     string(metaJSON),
+			PlaintextLen: len(object) - core.HeaderLen - core.TagLen,
+			AAD: hex.EncodeToString(
+				core.AAD(h, id, pol),
+			),
+			ObjectLen:    len(object),
+			ObjectSHA256: hex.EncodeToString(sum[:]),
 		}
 		if len(object) <= inlineMax {
 			e.Object = new(core.Encode(object))
@@ -387,7 +499,18 @@ func (f *File) link() error {
 	s := det32("link/s")
 	base := "https://nylzo.example"
 	valid := func(name string, kdf core.KDF) {
-		f.Link = append(f.Link, Link{Name: name, Input: core.FormatLink(base, id, kdf, s), Valid: true, Canonical: true, ID: new(id.String()), KDFID: new(int(kdf)), S: new(hex.EncodeToString(s[:]))})
+		f.Link = append(
+			f.Link,
+			Link{
+				Name:      name,
+				Input:     core.FormatLink(base, id, kdf, s),
+				Valid:     true,
+				Canonical: true,
+				ID:        new(id.String()),
+				KDFID:     new(int(kdf)),
+				S:         new(hex.EncodeToString(s[:])),
+			},
+		)
 	}
 	valid("valid-kdf0", core.KDFNone)
 	valid("valid-kdf1", core.KDFScrypt)
@@ -463,7 +586,17 @@ func (f *File) link() error {
 		{"http-localhost-port", "http://localhost:8080/m/" + idEnc + "#" + frag},
 		{"ipv6-literal", "http://[::1]:8080/m/" + idEnc + "#" + frag},
 	} {
-		f.Link = append(f.Link, Link{Name: c[0], Input: c[1], Valid: true, ID: new(idEnc), KDFID: new(int(core.KDFScrypt)), S: new(hex.EncodeToString(s[:]))})
+		f.Link = append(
+			f.Link,
+			Link{
+				Name:  c[0],
+				Input: c[1],
+				Valid: true,
+				ID:    new(idEnc),
+				KDFID: new(int(core.KDFScrypt)),
+				S:     new(hex.EncodeToString(s[:])),
+			},
+		)
 	}
 	return nil
 }
@@ -507,7 +640,11 @@ func (f *File) meta() error {
 	add("duplicate-key-last-wins", `{"v":1,"text":"first","text":"second"}`, true)
 	add("escaped-slash-and-unicode", `{"v":1,"text":"a\/bAé"}`, true)
 	add("mime-missing", `{"v":1,"file":{"name":"a","size":1}}`, true)
-	add("file-key-case-variants-ignored", `{"v":1,"file":{"name":"a.txt","NAME":"b.exe","mime":"text/plain","Mime":"x","size":3,"SIZE":9}}`, true)
+	add(
+		"file-key-case-variants-ignored",
+		`{"v":1,"file":{"name":"a.txt","NAME":"b.exe","mime":"text/plain","Mime":"x","size":3,"SIZE":9}}`,
+		true,
+	)
 	add("top-level-case-variant-v", `{"V":1,"text":"x"}`, false)
 	add("trailing-brace", `{"v":1,"text":"x"}}`, false)
 	add("trailing-bracket", `{"v":1,"text":"x"}]`, false)
@@ -516,12 +653,20 @@ func (f *File) meta() error {
 	add("depth-33", `{"v":1,"text":"x","extra":`+strings.Repeat("[", 32)+strings.Repeat("]", 32)+`}`, false)
 	add("depth-brackets-in-string", `{"v":1,"text":"`+strings.Repeat("[", 40)+`"}`, true)
 	add("depth-escaped-quote-then-brackets", `{"v":1,"text":"\"`+strings.Repeat("[", 40)+`"}`, true)
-	add("depth-escaped-backslash-then-nesting", `{"v":1,"text":"\\","extra":`+strings.Repeat("[", 32)+strings.Repeat("]", 32)+`}`, false)
+	add(
+		"depth-escaped-backslash-then-nesting",
+		`{"v":1,"text":"\\","extra":`+strings.Repeat("[", 32)+strings.Repeat("]", 32)+`}`,
+		false,
+	)
 	add("name-del", `{"v":1,"file":{"name":"a\u007fb","mime":"","size":1}}`, false)
 	add("name-unit-separator", `{"v":1,"file":{"name":"a\u001fb","mime":"","size":1}}`, false)
 	add("mime-null", `{"v":1,"file":{"name":"a","mime":null,"size":1}}`, true)
 	add("size-negative-zero", `{"v":1,"file":{"name":"a","mime":"","size":-0}}`, true)
-	add("duplicate-file-last-wins", `{"v":1,"file":{"name":"first","mime":"x","size":1},"file":{"name":"second","mime":"y","size":2}}`, true)
+	add(
+		"duplicate-file-last-wins",
+		`{"v":1,"file":{"name":"first","mime":"x","size":1},"file":{"name":"second","mime":"y","size":2}}`,
+		true,
+	)
 	add("duplicate-file-incomplete-last", `{"v":1,"file":{"name":"a","size":1},"file":{"mime":"x"}}`, false)
 	add("null-text-with-file", `{"v":1,"text":null,"file":{"name":"a","mime":"","size":1}}`, true)
 	add("null-text-only", `{"v":1,"text":null}`, false)
@@ -565,9 +710,17 @@ func (f *File) request() error {
 			return fmt.Errorf("vectors: request signature %q does not verify", c.name)
 		}
 		f.Request = append(f.Request, Request{
-			Name: c.name, Seed: hex.EncodeToString(seed[:]), PublicKey: core.Encode(sig.PublicKey[:]),
-			Purpose: c.purpose, Method: c.method, Path: c.path, Challenge: core.Encode(challenge[:]),
-			Body: hex.EncodeToString(c.body), Message: hex.EncodeToString(core.RequestMessage(c.purpose, c.method, c.path, &challenge, c.body)),
+			Name:      c.name,
+			Seed:      hex.EncodeToString(seed[:]),
+			PublicKey: core.Encode(sig.PublicKey[:]),
+			Purpose:   c.purpose,
+			Method:    c.method,
+			Path:      c.path,
+			Challenge: core.Encode(challenge[:]),
+			Body: hex.EncodeToString(
+				c.body,
+			),
+			Message:   hex.EncodeToString(core.RequestMessage(c.purpose, c.method, c.path, &challenge, c.body)),
 			Signature: core.Encode(sig.Sig[:]),
 		})
 		if c.purpose == core.PurposeVerifier {
@@ -652,11 +805,19 @@ func (f *File) server() error {
 	}
 	curKey, _ := pepper.NewKey(cur)
 	prevKey, _ := pepper.NewKey(prev)
-	f.Server = Server{Pepper: hex.EncodeToString(cur), PepperID: int(curKey.ID()), PreviousPepper: hex.EncodeToString(prev), PreviousPepperID: int(prevKey.ID())}
+	f.Server = Server{
+		Pepper:           hex.EncodeToString(cur),
+		PepperID:         int(curKey.ID()),
+		PreviousPepper:   hex.EncodeToString(prev),
+		PreviousPepperID: int(prevKey.ID()),
+	}
 	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge} {
 		input := det("mac-input/"+string(p), 32)
 		mac, _ := ring.MAC(p, input)
-		f.Server.MACs = append(f.Server.MACs, MACCase{Purpose: string(p), Input: hex.EncodeToString(input), MAC: hex.EncodeToString(mac[:])})
+		f.Server.MACs = append(
+			f.Server.MACs,
+			MACCase{Purpose: string(p), Input: hex.EncodeToString(input), MAC: hex.EncodeToString(mac[:])},
+		)
 	}
 	return nil
 }
@@ -684,7 +845,10 @@ func (f *File) redact() error {
 		{"glued-secret", "key_1.0." + secret},
 		{"secret-21-chars", "short " + secret[:21] + " stays"},
 		{"secret-22-chars", "long " + secret[:22] + " goes"},
-		{"percent-link", "https://safelinks.example/?url=" + strings.NewReplacer(":", "%3A", "/", "%2F", "#", "%23").Replace(link)},
+		{
+			"percent-link",
+			"https://safelinks.example/?url=" + strings.NewReplacer(":", "%3A", "/", "%2F", "#", "%23").Replace(link),
+		},
 		{"percent-hash-once", "see p%23token-abc def"},
 		{"percent-hash-twice", "see p%2523token-abc def"},
 		{"percent-hash-three-times", "see p%252523token-abc def"},

@@ -114,10 +114,17 @@ func (f *fixture) blobExists(ref string) bool {
 	return true
 }
 
-func (f *fixture) claim(m *store.Message, now time.Time, seed byte, verifierOK bool, verifierSent bool) (store.ClaimResult, error) {
+func (f *fixture) claim(
+	m *store.Message,
+	now time.Time,
+	seed byte,
+	verifierOK, verifierSent bool,
+) (store.ClaimResult, error) {
 	f.t.Helper()
 	return f.s.Claim(f.ctx, store.ClaimParams{
-		ID: m.ID, Clock: func() time.Time { return now }, VerifierSent: verifierSent,
+		ID:            m.ID,
+		Clock:         func() time.Time { return now },
+		VerifierSent:  verifierSent,
 		VerifyMAC:     func(pepperID byte, stored []byte) bool { return verifierOK && bytes.Equal(stored, m.VerifierMAC) },
 		LeaseMAC:      mac(fmt.Sprintf("lease/%s/%d/%d", m.ID, now.UnixNano(), seed)),
 		LeasePepperID: 7,
@@ -137,7 +144,9 @@ func testCreateGetConflict(t *testing.T, open Factory) {
 	f := newFixture(t, open)
 	m := f.create(1, time.Hour, false)
 	rec := f.get(m.ID)
-	if rec.Message == nil || rec.Message.OpensRemaining != 1 || rec.Message.State != store.StateAvailable || !bytes.Equal(rec.Message.ReadMAC, m.ReadMAC) || rec.Message.PepperID != 7 {
+	if rec.Message == nil || rec.Message.OpensRemaining != 1 || rec.Message.State != store.StateAvailable ||
+		!bytes.Equal(rec.Message.ReadMAC, m.ReadMAC) ||
+		rec.Message.PepperID != 7 {
 		t.Fatalf("unexpected record %+v", rec.Message)
 	}
 	if err := f.s.Create(f.ctx, m); !errors.Is(err, store.ErrConflict) {
@@ -153,7 +162,8 @@ func testCreateGetConflict(t *testing.T, open Factory) {
 		t.Fatalf("create over tombstone: %v", err)
 	}
 	rec = f.get(m.ID)
-	if rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || rec.Tombstone.PurgeAt != baseTime.Add(store.TombstoneTTL) {
+	if rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled ||
+		rec.Tombstone.PurgeAt != baseTime.Add(store.TombstoneTTL) {
 		t.Fatalf("unexpected tombstone %+v", rec.Tombstone)
 	}
 }
@@ -203,7 +213,10 @@ func testConcurrentClaims(t *testing.T, open Factory) {
 		if ok != 1 || gone != 1 {
 			t.Fatalf("iteration %d: %d ok, %d gone", i, ok, gone)
 		}
-		if rec := f.get(m.ID); rec.Message.OpensRemaining != 0 || rec.Message.State != store.StateOpened || rec.Message.FirstOpenedAt == nil {
+		if rec := f.get(
+			m.ID,
+		); rec.Message.OpensRemaining != 0 || rec.Message.State != store.StateOpened ||
+			rec.Message.FirstOpenedAt == nil {
 			t.Fatal("state after claims")
 		}
 	}
@@ -230,14 +243,22 @@ func testPassphrasePolicy(t *testing.T, open Factory) {
 	expectFail(1, time.Minute, 0)
 	expectFail(2, time.Minute, 0)
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != 6 || rec.Message.OpensRemaining != 2 {
-		t.Fatalf("counters after backoff probe: total %d opens %d", rec.Message.FailCountTotal, rec.Message.OpensRemaining)
+		t.Fatalf(
+			"counters after backoff probe: total %d opens %d",
+			rec.Message.FailCountTotal,
+			rec.Message.OpensRemaining,
+		)
 	}
 	for range 4 {
 		now = now.Add(time.Minute)
 		expectFail(1, time.Minute, 0)
 	}
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != 10 || rec.Message.OpensRemaining != 2 {
-		t.Fatalf("counters after tenth failure: total %d opens %d", rec.Message.FailCountTotal, rec.Message.OpensRemaining)
+		t.Fatalf(
+			"counters after tenth failure: total %d opens %d",
+			rec.Message.FailCountTotal,
+			rec.Message.OpensRemaining,
+		)
 	}
 	if _, err := f.claim(m, now, 2, true, true); err == nil {
 		t.Fatal("the backoff belongs to the message, so every reader waits, even with the right passphrase")
@@ -274,7 +295,11 @@ func testLifetimeCap(t *testing.T, open Factory) {
 	_, err := f.claim(m, later, 201, true, true)
 	var pe *store.PassphraseError
 	if !errors.As(err, &pe) || pe.RetryAfter != m.ExpiresAt.Sub(later) || pe.AttemptsLeft != 0 {
-		t.Fatalf("after %d failed attempts the message must stay locked until it expires: %v", store.MaxFailedAttempts, err)
+		t.Fatalf(
+			"after %d failed attempts the message must stay locked until it expires: %v",
+			store.MaxFailedAttempts,
+			err,
+		)
 	}
 	if rec := f.get(m.ID); rec.Message.FailCountTotal != store.MaxFailedAttempts || rec.Message.OpensRemaining != 1 {
 		t.Fatal("lifetime cap counters")
@@ -333,7 +358,8 @@ func testLeasesAck(t *testing.T, open Factory) {
 				t.Fatalf("download %d: %v", i, err)
 			}
 			all, err := f.s.Leases(f.ctx, m.ID)
-			if err != nil || !slices.ContainsFunc(all, func(x store.Lease) bool { return x.RowID == l.RowID && x.Downloads == i }) {
+			if err != nil ||
+				!slices.ContainsFunc(all, func(x store.Lease) bool { return x.RowID == l.RowID && x.Downloads == i }) {
 				t.Fatalf("download %d was not counted: %+v %v", i, all, err)
 			}
 		}
@@ -643,7 +669,15 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 		if _, err := f.s.Ack(f.ctx, res.Lease, baseTime); !errors.As(err, &gone) || gone.State != recorded {
 			t.Fatalf("an ack after a recorded %s must report it: %v", recorded, err)
 		}
-		if state, err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateExpired, baseTime); err != nil || state != recorded {
+		if state, err := store.EndMessage(
+			f.ctx,
+			f.s,
+			f.b,
+			m.ID,
+			store.StateExpired,
+			baseTime,
+		); err != nil ||
+			state != recorded {
 			t.Fatalf("finishing: %s %v", state, err)
 		}
 		if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != recorded || f.blobExists(m.ID) {
@@ -665,7 +699,10 @@ func testReleaseKeepsRecordedEnding(t *testing.T, open Factory) {
 	if err != nil || state != store.StateOpened {
 		t.Fatalf("a cancel racing the last release must report opened: %s %v", state, err)
 	}
-	if rec := f.get(opened.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateOpened || f.blobExists(opened.ID) {
+	if rec := f.get(
+		opened.ID,
+	); rec.Tombstone == nil || rec.Tombstone.State != store.StateOpened ||
+		f.blobExists(opened.ID) {
 		t.Fatalf("a cancel after the recorded release must leave an opened tombstone: %+v", rec)
 	}
 }
@@ -830,7 +867,10 @@ func testSweepSurvivesBlobErrors(t *testing.T, open Factory) {
 	bad := f.create(1, time.Minute, false)
 	good := f.create(1, time.Minute, false)
 	window := baseTime.Truncate(time.Hour)
-	if _, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "k", WindowStart: window, PurgeAt: window.Add(time.Minute)}}); err != nil {
+	if _, err := f.s.RateHit(
+		f.ctx,
+		[]store.RateHit{{Key: "k", WindowStart: window, PurgeAt: window.Add(time.Minute)}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	fb := newFailingBlobs(f.b, bad.ID)
@@ -912,13 +952,21 @@ func testSweepEndsAPageTogether(t *testing.T, open Factory) {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
 	if pb.batches != 1 || len(pb.refs) != 3 || pb.deletes != 0 {
-		t.Fatalf("an expired page must be deleted in one batch: %d batches, %d refs, %d single deletes", pb.batches, len(pb.refs), pb.deletes)
+		t.Fatalf(
+			"an expired page must be deleted in one batch: %d batches, %d refs, %d single deletes",
+			pb.batches,
+			len(pb.refs),
+			pb.deletes,
+		)
 	}
 	if len(pb.early) != 0 {
 		t.Fatalf("rows ended before their blobs were deleted: %v", pb.early)
 	}
 	for m, want := range map[*store.Message]store.State{unspent: store.StateExpired, spent: store.StateOpened, burned: store.StateDeleted} {
-		if rec := f.get(m.ID); rec.Tombstone == nil || rec.Tombstone.State != want || !rec.Tombstone.EndedAt.Equal(m.ExpiresAt) || f.blobExists(m.ID) {
+		if rec := f.get(
+			m.ID,
+		); rec.Tombstone == nil || rec.Tombstone.State != want || !rec.Tombstone.EndedAt.Equal(m.ExpiresAt) ||
+			f.blobExists(m.ID) {
 			t.Fatalf("want a %s tombstone ended at expiry and no blob: %+v", want, rec.Tombstone)
 		}
 	}
@@ -969,7 +1017,14 @@ func testExpiry(t *testing.T, open Factory) {
 		t.Fatal("claim on expired message accepted")
 	}
 	var g *store.GoneError
-	if _, err := f.claim(m, baseTime.Add(2*time.Minute), 1, false, false); !errors.As(err, &g) || g.State != store.StateExpired {
+	if _, err := f.claim(
+		m,
+		baseTime.Add(2*time.Minute),
+		1,
+		false,
+		false,
+	); !errors.As(err, &g) ||
+		g.State != store.StateExpired {
 		t.Fatalf("claim on tombstone: %v", err)
 	}
 	report, err = store.SweepAll(f.ctx, f.s, f.b, baseTime.Add(61*time.Second).Add(store.TombstoneTTL))
@@ -981,7 +1036,14 @@ func testExpiry(t *testing.T, open Factory) {
 	}
 	late := f.create(1, time.Minute, false)
 	var gone *store.GoneError
-	if _, err := f.claim(late, baseTime.Add(2*time.Minute), 1, false, false); !errors.As(err, &gone) || gone.State != store.StateExpired {
+	if _, err := f.claim(
+		late,
+		baseTime.Add(2*time.Minute),
+		1,
+		false,
+		false,
+	); !errors.As(err, &gone) ||
+		gone.State != store.StateExpired {
 		t.Fatalf("claim on expired-but-unswept row: %v", err)
 	}
 }
@@ -995,7 +1057,10 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if f.blobExists(burn.ID) {
 		t.Fatal("burn left the blob")
 	}
-	if rec := f.get(burn.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted || rec.Tombstone.FirstOpenedAt != nil {
+	if rec := f.get(
+		burn.ID,
+	); rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted ||
+		rec.Tombstone.FirstOpenedAt != nil {
 		t.Fatal("burn tombstone")
 	}
 	cancel := f.create(2, time.Hour, false)
@@ -1003,16 +1068,43 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateCancelled, baseTime.Add(time.Second)); err != nil {
+	if _, err := store.EndMessage(
+		f.ctx,
+		f.s,
+		f.b,
+		cancel.ID,
+		store.StateCancelled,
+		baseTime.Add(time.Second),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.s.RecordDownload(f.ctx, res.Lease, baseTime.Add(2*time.Second)); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.s.RecordDownload(
+		f.ctx,
+		res.Lease,
+		baseTime.Add(2*time.Second),
+	); !errors.Is(
+		err,
+		store.ErrLeaseInvalid,
+	) {
 		t.Fatalf("lease survived cancel: %v", err)
 	}
-	if rec := f.get(cancel.ID); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || rec.Tombstone.FirstOpenedAt == nil {
+	if rec := f.get(
+		cancel.ID,
+	); rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled ||
+		rec.Tombstone.FirstOpenedAt == nil {
 		t.Fatal("cancel tombstone")
 	}
-	if _, err := store.EndMessage(f.ctx, f.s, f.b, cancel.ID, store.StateDeleted, baseTime); !errors.Is(err, store.ErrNotFound) {
+	if _, err := store.EndMessage(
+		f.ctx,
+		f.s,
+		f.b,
+		cancel.ID,
+		store.StateDeleted,
+		baseTime,
+	); !errors.Is(
+		err,
+		store.ErrNotFound,
+	) {
 		t.Fatalf("end twice: %v", err)
 	}
 	late := f.create(1, time.Hour, false)
@@ -1020,14 +1112,27 @@ func testBurnCancel(t *testing.T, open Factory) {
 	if _, err := store.EndMessage(f.ctx, f.s, f.b, late.ID, store.StateDeleted, endedAt); err != nil {
 		t.Fatal(err)
 	}
-	if rec := f.get(late.ID); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Minute)) || !rec.Tombstone.PurgeAt.Equal(rec.Tombstone.EndedAt.Add(store.TombstoneTTL)) {
+	if rec := f.get(
+		late.ID,
+	); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Minute)) ||
+		!rec.Tombstone.PurgeAt.Equal(rec.Tombstone.EndedAt.Add(store.TombstoneTTL)) {
 		t.Fatalf("ended_at must be rounded down to the minute and purge_at must follow it: %+v", rec.Tombstone)
 	}
 	expired := f.create(1, time.Hour, false)
-	if _, err := store.EndMessage(f.ctx, f.s, f.b, expired.ID, store.StateExpired, baseTime.Add(time.Hour+4*time.Minute+30*time.Second)); err != nil {
+	if _, err := store.EndMessage(
+		f.ctx,
+		f.s,
+		f.b,
+		expired.ID,
+		store.StateExpired,
+		baseTime.Add(time.Hour+4*time.Minute+30*time.Second),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if rec := f.get(expired.ID); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Hour)) || !rec.Tombstone.PurgeAt.Equal(baseTime.Add(time.Hour+store.TombstoneTTL)) {
+	if rec := f.get(
+		expired.ID,
+	); rec.Tombstone == nil || !rec.Tombstone.EndedAt.Equal(baseTime.Add(time.Hour)) ||
+		!rec.Tombstone.PurgeAt.Equal(baseTime.Add(time.Hour+store.TombstoneTTL)) {
 		t.Fatalf("an expiry ends at expires_at, not when it was first noticed: %+v", rec.Tombstone)
 	}
 }
@@ -1062,7 +1167,12 @@ func testDownloadAfterRecordedEnding(t *testing.T, open Factory) {
 		t.Fatal(err)
 	}
 	var gone *store.GoneError
-	if err := f.s.RecordDownload(f.ctx, res.Lease, baseTime.Add(time.Second)); !errors.As(err, &gone) || gone.State != store.StateCancelled {
+	if err := f.s.RecordDownload(
+		f.ctx,
+		res.Lease,
+		baseTime.Add(time.Second),
+	); !errors.As(err, &gone) ||
+		gone.State != store.StateCancelled {
 		t.Fatalf("a download after a recorded ending must report it: %v", err)
 	}
 }
@@ -1075,7 +1185,13 @@ func testRateHit(t *testing.T, open Factory) {
 	seen := map[int64]bool{}
 	for range 100 {
 		wg.Go(func() {
-			counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 10}, {Key: "daily:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 10}})
+			counts, err := f.s.RateHit(
+				f.ctx,
+				[]store.RateHit{
+					{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 10},
+					{Key: "daily:abc", WindowStart: window, PurgeAt: window.Add(48 * time.Hour), Bytes: 10},
+				},
+			)
 			if err != nil {
 				t.Error(err)
 				return
@@ -1089,7 +1205,10 @@ func testRateHit(t *testing.T, open Factory) {
 	if len(seen) != 100 {
 		t.Fatalf("counter lost increments: %d distinct values", len(seen))
 	}
-	counts, err := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 5}})
+	counts, err := f.s.RateHit(
+		f.ctx,
+		[]store.RateHit{{Key: "hourly:abc", WindowStart: window, PurgeAt: window.Add(2 * time.Hour), Bytes: 5}},
+	)
 	if err != nil || counts[0].Count != 101 || counts[0].Bytes != 1005 {
 		t.Fatalf("final count %+v %v", counts, err)
 	}
@@ -1100,7 +1219,10 @@ func testRateHit(t *testing.T, open Factory) {
 	if missing, err := f.s.RateGet(f.ctx, "nope", window); err != nil || missing.Count != 0 {
 		t.Fatalf("RateGet missing %+v %v", missing, err)
 	}
-	other, _ := f.s.RateHit(f.ctx, []store.RateHit{{Key: "hourly:abc", WindowStart: window.Add(time.Hour), PurgeAt: window.Add(3 * time.Hour)}})
+	other, _ := f.s.RateHit(
+		f.ctx,
+		[]store.RateHit{{Key: "hourly:abc", WindowStart: window.Add(time.Hour), PurgeAt: window.Add(3 * time.Hour)}},
+	)
 	if other[0].Count != 1 {
 		t.Fatal("new window must start at 1")
 	}
@@ -1138,7 +1260,10 @@ func testSweepBatches(t *testing.T, open Factory) {
 	window := baseTime
 	hits := make([]store.RateHit, 0, 2500)
 	for i := range 2500 {
-		hits = append(hits, store.RateHit{Key: fmt.Sprintf("k%d", i), WindowStart: window, PurgeAt: window.Add(time.Hour)})
+		hits = append(
+			hits,
+			store.RateHit{Key: fmt.Sprintf("k%d", i), WindowStart: window, PurgeAt: window.Add(time.Hour)},
+		)
 	}
 	if _, err := f.s.RateHit(f.ctx, hits); err != nil {
 		t.Fatal(err)
@@ -1291,11 +1416,20 @@ func testRecordedEndingFinishedAfterExpiry(t *testing.T, open Factory) {
 	if _, _, _, err := f.s.MarkEnding(f.ctx, m.ID, store.StateCancelled, baseTime); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.EndMessage(f.ctx, f.s, f.b, m.ID, store.StateExpired, baseTime.Add(3*time.Hour+17*time.Minute)); err != nil {
+	if _, err := store.EndMessage(
+		f.ctx,
+		f.s,
+		f.b,
+		m.ID,
+		store.StateExpired,
+		baseTime.Add(3*time.Hour+17*time.Minute),
+	); err != nil {
 		t.Fatal(err)
 	}
 	rec := f.get(m.ID)
-	if rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled || !rec.Tombstone.EndedAt.Equal(m.ExpiresAt) || !rec.Tombstone.PurgeAt.Equal(m.ExpiresAt.Add(store.TombstoneTTL)) {
+	if rec.Tombstone == nil || rec.Tombstone.State != store.StateCancelled ||
+		!rec.Tombstone.EndedAt.Equal(m.ExpiresAt) ||
+		!rec.Tombstone.PurgeAt.Equal(m.ExpiresAt.Add(store.TombstoneTTL)) {
 		t.Fatalf("a recorded ending finished after expiry must end at expires_at: %+v", rec.Tombstone)
 	}
 }

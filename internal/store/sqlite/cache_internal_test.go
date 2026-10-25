@@ -24,7 +24,11 @@ func TestPageCacheIsBounded(t *testing.T) {
 		}
 		var temp int
 		if err := db.QueryRow("PRAGMA temp_store").Scan(&temp); err != nil || temp != 2 {
-			t.Fatalf("temp_store %d %v: SQLite may write temporary copies of rows outside the data directory", temp, err)
+			t.Fatalf(
+				"temp_store %d %v: SQLite may write temporary copies of rows outside the data directory",
+				temp,
+				err,
+			)
 		}
 	}
 }

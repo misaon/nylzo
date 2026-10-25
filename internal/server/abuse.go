@@ -75,10 +75,13 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 
 var errAbuseFull = errors.New("server: abuse report files reached their size limit")
 
-func (s *Server) recordAbuse(ctx context.Context, now time.Time, id string, reason string) error {
+func (s *Server) recordAbuse(ctx context.Context, now time.Time, id, reason string) error {
 	d := dayWindow(now)
 	key := "abuse:id:" + id
-	_, ok, err := s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: key, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: abusePerRange})
+	_, ok, err := s.store.RateReserve(
+		context.WithoutCancel(ctx),
+		store.RateHit{Key: key, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: abusePerRange},
+	)
 	if err != nil || !ok {
 		return err
 	}

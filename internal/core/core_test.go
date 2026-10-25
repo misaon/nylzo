@@ -16,7 +16,11 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 )
 
-func buildSample(kdf core.KDF, pw string, file []byte) (core.ID, *[32]byte, core.ContentKeys, core.Header, core.Policy, []byte, error) {
+func buildSample(
+	kdf core.KDF,
+	pw string,
+	file []byte,
+) (core.ID, *[32]byte, core.ContentKeys, core.Header, core.Policy, []byte, error) {
 	id := core.NewID()
 	s := core.NewSecret()
 	_, content, err := core.DeriveAll(id, s, kdf, pw)
@@ -35,7 +39,12 @@ func buildSample(kdf core.KDF, pw string, file []byte) (core.ID, *[32]byte, core
 	return id, s, content, h, pol, object, err
 }
 
-func sampleMessage(t *testing.T, kdf core.KDF, pw string, file []byte) (core.ID, *[32]byte, core.ContentKeys, core.Header, core.Policy, []byte) {
+func sampleMessage(
+	t *testing.T,
+	kdf core.KDF,
+	pw string,
+	file []byte,
+) (core.ID, *[32]byte, core.ContentKeys, core.Header, core.Policy, []byte) {
 	t.Helper()
 	id, s, content, h, pol, object, err := buildSample(kdf, pw, file)
 	if err != nil {
@@ -142,8 +151,14 @@ func TestPaddingBoundaries(t *testing.T) {
 		hasFile bool
 		want    int
 	}{
-		{0, false, 0}, {1, false, 4096}, {4095, false, 4096}, {4096, false, 4096}, {4097, false, 8192},
-		{1, true, 65536}, {65536, true, 65536}, {65537, true, 131072},
+		{0, false, 0},
+		{1, false, 4096},
+		{4095, false, 4096},
+		{4096, false, 4096},
+		{4097, false, 8192},
+		{1, true, 65536},
+		{65536, true, 65536},
+		{65537, true, 131072},
 	}
 	for _, c := range cases {
 		t.Run(fmt.Sprintf("%d/file=%v", c.n, c.hasFile), func(t *testing.T) {
@@ -163,7 +178,13 @@ func TestPaddingBoundaries(t *testing.T) {
 	id := core.NewID()
 	s := core.NewSecret()
 	_, content, _ := core.DeriveAll(id, s, core.KDFNone, "")
-	object, err := core.Seal(&content.K, core.NewHeader(core.KDFNone), id, core.Policy{OpensMax: 1, TTLSeconds: 60}, core.Payload{Meta: core.Meta{Text: &text}})
+	object, err := core.Seal(
+		&content.K,
+		core.NewHeader(core.KDFNone),
+		id,
+		core.Policy{OpensMax: 1, TTLSeconds: 60},
+		core.Payload{Meta: core.Meta{Text: &text}},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,12 +200,27 @@ func TestSealRejectsLimits(t *testing.T) {
 	h := core.NewHeader(core.KDFNone)
 	pol := core.Policy{OpensMax: 1, TTLSeconds: 86400}
 	big := make([]byte, core.MaxFileBytes+1)
-	_, err := core.Seal(&content.K, h, id, pol, core.Payload{Meta: core.Meta{File: &core.FileMeta{Name: "x", Size: int64(len(big))}}, File: big})
+	_, err := core.Seal(
+		&content.K,
+		h,
+		id,
+		pol,
+		core.Payload{Meta: core.Meta{File: &core.FileMeta{Name: "x", Size: int64(len(big))}}, File: big},
+	)
 	if !errors.Is(err, core.ErrMeta) {
 		t.Fatalf("file over limit: got %v", err)
 	}
 	text := strings.Repeat("x", core.MaxTextBytes+1)
-	if _, err := core.Seal(&content.K, h, id, pol, core.Payload{Meta: core.Meta{Text: &text}}); !errors.Is(err, core.ErrMeta) {
+	if _, err := core.Seal(
+		&content.K,
+		h,
+		id,
+		pol,
+		core.Payload{Meta: core.Meta{Text: &text}},
+	); !errors.Is(
+		err,
+		core.ErrMeta,
+	) {
 		t.Fatalf("text over limit: got %v", err)
 	}
 	mismatch := core.Payload{Meta: core.Meta{File: &core.FileMeta{Name: "x", Size: 2}}, File: []byte{1}}
@@ -193,16 +229,46 @@ func TestSealRejectsLimits(t *testing.T) {
 	}
 	ok := "ok"
 	for _, p := range []core.Policy{{OpensMax: 0, TTLSeconds: 60}, {OpensMax: 1, TTLSeconds: 59}} {
-		if _, err := core.Seal(&content.K, h, id, p, core.Payload{Meta: core.Meta{Text: &ok}}); !errors.Is(err, core.ErrPolicy) {
+		if _, err := core.Seal(
+			&content.K,
+			h,
+			id,
+			p,
+			core.Payload{Meta: core.Meta{Text: &ok}},
+		); !errors.Is(
+			err,
+			core.ErrPolicy,
+		) {
 			t.Fatalf("policy %+v: want ErrPolicy, got %v", p, err)
 		}
 	}
-	if _, err := core.Seal(&content.K, core.Header{Version: 1, Flags: 1}, id, pol, core.Payload{Meta: core.Meta{Text: &text}}); !errors.Is(err, core.ErrFlags) {
+	if _, err := core.Seal(
+		&content.K,
+		core.Header{Version: 1, Flags: 1},
+		id,
+		pol,
+		core.Payload{Meta: core.Meta{Text: &text}},
+	); !errors.Is(
+		err,
+		core.ErrFlags,
+	) {
 		t.Fatalf("flags: got %v", err)
 	}
 	max := make([]byte, core.MaxFileBytes)
 	maxText := strings.Repeat("y", core.MaxTextBytes)
-	object, err := core.Seal(&content.K, h, id, pol, core.Payload{Meta: core.Meta{Text: &maxText, File: &core.FileMeta{Name: "max.bin", Mime: "application/octet-stream", Size: int64(len(max))}}, File: max})
+	object, err := core.Seal(
+		&content.K,
+		h,
+		id,
+		pol,
+		core.Payload{
+			Meta: core.Meta{
+				Text: &maxText,
+				File: &core.FileMeta{Name: "max.bin", Mime: "application/octet-stream", Size: int64(len(max))},
+			},
+			File: max,
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +339,14 @@ func TestAssertProfile(t *testing.T) {
 
 func TestIllFormedPassphraseIsRejected(t *testing.T) {
 	var salt [32]byte
-	if _, err := core.DerivePassphraseKey(core.KDFScrypt, "caf\xe9", &salt); !errors.Is(err, core.ErrMalformedPassphrase) {
+	if _, err := core.DerivePassphraseKey(
+		core.KDFScrypt,
+		"caf\xe9",
+		&salt,
+	); !errors.Is(
+		err,
+		core.ErrMalformedPassphrase,
+	) {
 		t.Fatalf("scrypt accepted invalid UTF-8: %v", err)
 	}
 	link, _, err := core.DeriveAll(core.NewID(), core.NewSecret(), core.KDFScrypt, "caf\xe9")
@@ -326,7 +399,9 @@ func TestOpenRejectsMalformedPlaintext(t *testing.T) {
 
 func TestObjectLimitFitsLargestObject(t *testing.T) {
 	for _, maxFile := range []int64{1, 26621, core.PadFile, 1 << 20, core.MaxFileBytes} {
-		largest := int64(core.HeaderLen + core.TagLen + core.PaddedLen(core.MetaLenPrefix+core.MaxMetaBytes+int(maxFile), true))
+		largest := int64(
+			core.HeaderLen + core.TagLen + core.PaddedLen(core.MetaLenPrefix+core.MaxMetaBytes+int(maxFile), true),
+		)
 		if got := core.ObjectLimit(maxFile); got < largest || got > core.MaxObjectBytes {
 			t.Errorf("ObjectLimit(%d) = %d, the largest valid object is %d", maxFile, got, largest)
 		}
@@ -395,8 +470,19 @@ func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
 	identity := append([]byte{1}, make([]byte, 31)...)
 	order8a, _ := hex.DecodeString("26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05")
 	order8b, _ := hex.DecodeString("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a")
-	smallOrder := map[string][]byte{"identity": identity, "order 2": ff(0xec, 0x7f), "order 4": zero, "order 8 a": order8a, "order 8 b": order8b}
-	nonCanonical := map[string][]byte{"y = p": ff(0xed, 0x7f), "y = p + 1": ff(0xee, 0x7f), "identity with sign": withSign(identity), "order 2 with sign": withSign(ff(0xec, 0x7f))}
+	smallOrder := map[string][]byte{
+		"identity":  identity,
+		"order 2":   ff(0xec, 0x7f),
+		"order 4":   zero,
+		"order 8 a": order8a,
+		"order 8 b": order8b,
+	}
+	nonCanonical := map[string][]byte{
+		"y = p":              ff(0xed, 0x7f),
+		"y = p + 1":          ff(0xee, 0x7f),
+		"identity with sign": withSign(identity),
+		"order 2 with sign":  withSign(ff(0xec, 0x7f)),
+	}
 	for name, pk := range smallOrder {
 		p, err := new(edwards25519.Point).SetBytes(pk)
 		if err != nil || new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) != 1 {
@@ -408,7 +494,10 @@ func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
 	}
 	for k := byte(2); k <= 18; k++ {
 		pk := ff(0xed+k, 0x7f)
-		if p, err := new(edwards25519.Point).SetBytes(pk); err == nil && new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) == 0 {
+		if p, err := new(
+			edwards25519.Point,
+		).SetBytes(pk); err == nil &&
+			new(edwards25519.Point).MultByCofactor(p).Equal(edwards25519.NewIdentityPoint()) == 0 {
 			nonCanonical[fmt.Sprintf("y = p + %d", k)] = pk
 		}
 	}
@@ -436,7 +525,9 @@ func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
 			t.Fatalf("rejected a derived key %x", pk)
 		}
 	}
-	mixed, _ := new(edwards25519.Point).SetBytes(func() []byte { pk := core.PublicKey(core.NewSecret()); return pk[:] }())
+	mixed, _ := new(
+		edwards25519.Point,
+	).SetBytes(func() []byte { pk := core.PublicKey(core.NewSecret()); return pk[:] }())
 	torsion, _ := new(edwards25519.Point).SetBytes(order8a)
 	if !core.ValidPublicKey(new(edwards25519.Point).Add(mixed, torsion).Bytes()) {
 		t.Fatal("rejected a key of mixed order, which no third party can forge for")
@@ -474,11 +565,17 @@ func TestRetiredProfileIsRefused(t *testing.T) {
 		"#1.2." + s + ".x": false,
 	} {
 		kdf, secret, err := core.ParseFragment(fragment)
-		if !errors.Is(err, core.ErrLink) || errors.Is(err, core.ErrLinkRetiredKDF) != retired || secret != nil || kdf != core.KDFNone {
+		if !errors.Is(err, core.ErrLink) || errors.Is(err, core.ErrLinkRetiredKDF) != retired || secret != nil ||
+			kdf != core.KDFNone {
 			t.Errorf("%q: got %v, want a link error with retired profile %v", fragment, err, retired)
 		}
 	}
-	if _, err := core.ParseLink("https://nylzo.example/m/" + core.NewID().String() + "#1.2." + s); !errors.Is(err, core.ErrLinkRetiredKDF) {
+	if _, err := core.ParseLink(
+		"https://nylzo.example/m/" + core.NewID().String() + "#1.2." + s,
+	); !errors.Is(
+		err,
+		core.ErrLinkRetiredKDF,
+	) {
 		t.Fatalf("link with kdf_id 2: %v", err)
 	}
 	if _, err := core.ParseKDF("2"); !errors.Is(err, core.ErrKDF) {
@@ -488,10 +585,23 @@ func TestRetiredProfileIsRefused(t *testing.T) {
 		t.Fatal("the retired profile must be invalid")
 	}
 	var salt [32]byte
-	if p, err := core.DerivePassphraseKey(core.KDFRetired, "correct horse battery staple", &salt); !errors.Is(err, core.ErrKDF) || p != nil {
+	if p, err := core.DerivePassphraseKey(
+		core.KDFRetired,
+		"correct horse battery staple",
+		&salt,
+	); !errors.Is(err, core.ErrKDF) ||
+		p != nil {
 		t.Fatalf("derived a key for the retired profile: %v", err)
 	}
-	if _, _, err := core.DeriveAll(core.NewID(), core.NewSecret(), core.KDFRetired, "correct horse battery staple"); !errors.Is(err, core.ErrKDF) {
+	if _, _, err := core.DeriveAll(
+		core.NewID(),
+		core.NewSecret(),
+		core.KDFRetired,
+		"correct horse battery staple",
+	); !errors.Is(
+		err,
+		core.ErrKDF,
+	) {
 		t.Fatalf("DeriveAll accepted the retired profile: %v", err)
 	}
 	header := core.NewHeader(core.KDFScrypt).Bytes()
@@ -499,7 +609,16 @@ func TestRetiredProfileIsRefused(t *testing.T) {
 	if _, err := core.ParseHeader(header); !errors.Is(err, core.ErrKDF) {
 		t.Fatalf("envelope header with kdf_id 2: %v", err)
 	}
-	if _, err := core.Seal(new([core.KeyLen]byte), core.NewHeader(core.KDFRetired), core.NewID(), core.Policy{OpensMax: 1, TTLSeconds: 60}, core.Payload{Meta: core.Meta{Text: new("x")}}); !errors.Is(err, core.ErrKDF) {
+	if _, err := core.Seal(
+		new([core.KeyLen]byte),
+		core.NewHeader(core.KDFRetired),
+		core.NewID(),
+		core.Policy{OpensMax: 1, TTLSeconds: 60},
+		core.Payload{Meta: core.Meta{Text: new("x")}},
+	); !errors.Is(
+		err,
+		core.ErrKDF,
+	) {
 		t.Fatalf("sealed an envelope for the retired profile: %v", err)
 	}
 }

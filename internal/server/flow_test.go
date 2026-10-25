@@ -22,7 +22,8 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 	m := newMessage(t, core.KDFScrypt, "tajná fráze", 1, 3600, "plaintext secret body")
 	h.mustCreate(m)
 	captured := h.lastCreateRequest()
-	if !strings.Contains(string(captured), "X-Nylzo-Create: "+h.withIDToken(m.createHeader(0))) || !strings.Contains(string(captured), string(m.object)) {
+	if !strings.Contains(string(captured), "X-Nylzo-Create: "+h.withIDToken(m.createHeader(0))) ||
+		!strings.Contains(string(captured), string(m.object)) {
 		t.Fatal("wire capture missing the create request")
 	}
 	p, err := core.DerivePassphraseKey(m.kdf, "tajná fráze", &m.link.SaltPW)
@@ -42,7 +43,8 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 			t.Fatalf("create request carries raw %s", name)
 		}
 	}
-	if strings.Contains(string(captured), "plaintext secret body") || strings.Contains(string(captured), "tajná fráze") {
+	if strings.Contains(string(captured), "plaintext secret body") ||
+		strings.Contains(string(captured), "tajná fráze") {
 		t.Fatal("create request carries plaintext or passphrase")
 	}
 }
@@ -61,7 +63,9 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	}
 	for range 5 {
 		resp, meta := h.metadata(m)
-		if resp.StatusCode != 200 || meta["opens_remaining"].(float64) != 1 || meta["state"] != "available" || meta["passphrase_required"] != false || meta["kdf_id"].(float64) != 0 {
+		if resp.StatusCode != 200 || meta["opens_remaining"].(float64) != 1 || meta["state"] != "available" ||
+			meta["passphrase_required"] != false ||
+			meta["kdf_id"].(float64) != 0 {
 			t.Fatalf("metadata %d: %v", resp.StatusCode, meta)
 		}
 	}
@@ -165,11 +169,12 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	m.ip = "203.0.113.10"
 	h.mustCreate(m)
 	wrong := core.Encode(make([]byte, 32))
-	expect := func(ip string, retry float64, left float64) {
+	expect := func(ip string, retry, left float64) {
 		t.Helper()
 		resp, body := h.claim(m, wrong, ip)
 		j := decodeJSON(t, body)
-		if resp.StatusCode != 403 || j["error"] != "passphrase" || j["retry_after"].(float64) != retry || j["attempts_left"].(float64) != left {
+		if resp.StatusCode != 403 || j["error"] != "passphrase" || j["retry_after"].(float64) != retry ||
+			j["attempts_left"].(float64) != left {
 			t.Fatalf("got %d %s, want retry %v left %v", resp.StatusCode, body, retry, left)
 		}
 	}
@@ -368,8 +373,18 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 	if resp, _ := h.metadata(m); resp.StatusCode != 404 {
 		t.Fatalf("after tombstone purge: %d", resp.StatusCode)
 	}
-	if resp, body := createWithToken(t, h, m, nil); resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "id_token" {
-		t.Fatalf("an ended id must not be registered again without a token the server issued: %d %s", resp.StatusCode, body)
+	if resp, body := createWithToken(
+		t,
+		h,
+		m,
+		nil,
+	); resp.StatusCode != 403 ||
+		decodeJSON(t, body)["error"] != "id_token" {
+		t.Fatalf(
+			"an ended id must not be registered again without a token the server issued: %d %s",
+			resp.StatusCode,
+			body,
+		)
 	}
 }
 
@@ -406,7 +421,14 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		t.Fatal("a log line must not name the message, so a stolen log cannot be joined with the database")
 	}
 	leaseBytes, _ := core.DecodeExact(lease, 32)
-	forbidden := map[string][]byte{"S": m.secret[:], "R": m.link.R[:], "V": m.content.V[:], "M": m.manage[:], "K": m.content.K[:], "L": leaseBytes}
+	forbidden := map[string][]byte{
+		"S": m.secret[:],
+		"R": m.link.R[:],
+		"V": m.content.V[:],
+		"M": m.manage[:],
+		"K": m.content.K[:],
+		"L": leaseBytes,
+	}
 	for name, b := range forbidden {
 		if strings.Contains(logs, core.Encode(b)) || strings.Contains(logs, hex.EncodeToString(b)) {
 			t.Fatalf("log contains %s", name)
@@ -436,7 +458,15 @@ func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
 		t.Fatal("an ack with a foreign lease deleted the blob")
 	}
 	h.clock.Advance(store.LeaseDuration + time.Minute)
-	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+	resp, body := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages/" + m.id.String() + "/ack",
+			ip:      m.ip,
+			token:   m.readToken,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+	)
 	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "opened" {
 		t.Fatalf("an ack after the lease ended: %d %s", resp.StatusCode, body)
 	}

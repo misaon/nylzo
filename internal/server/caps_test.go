@@ -53,8 +53,20 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	wrongKDF.ip = "198.51.100.11"
-	headerKDF1 := mutateHeader(t, wrongKDF, func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) })
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: wrongKDF.object, ip: wrongKDF.ip, headers: map[string]string{"X-Nylzo-Create": headerKDF1}}); resp.StatusCode != 400 {
+	headerKDF1 := mutateHeader(
+		t,
+		wrongKDF,
+		func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) },
+	)
+	if resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    wrongKDF.object,
+			ip:      wrongKDF.ip,
+			headers: map[string]string{"X-Nylzo-Create": headerKDF1},
+		},
+	); resp.StatusCode != 400 {
 		t.Fatalf("body kdf differs from the header: %d", resp.StatusCode)
 	}
 	if c, _ := h.store.RateGet(t.Context(), server.GlobalCreatesKey, day); c.Count != 21 {
@@ -97,7 +109,12 @@ func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), h.withIDToken(m.createHeader(0)))
+	fmt.Fprintf(
+		conn,
+		"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n",
+		len(m.object),
+		h.withIDToken(m.createHeader(0)),
+	)
 	conn.Write(m.object[:100])
 	wait := func(ch chan struct{}, what string) {
 		select {
@@ -133,12 +150,22 @@ func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
 	if resp.StatusCode != 503 || resp.Header.Get("Retry-After") != "60" {
 		t.Fatalf("pending creates must ask for a short retry: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
-	if _, err := h.store.RateHit(t.Context(), []store.RateHit{{Key: server.GlobalStoredKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}, {Key: server.GlobalStoredKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}}); err != nil {
+	if _, err := h.store.RateHit(
+		t.Context(),
+		[]store.RateHit{
+			{Key: server.GlobalStoredKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)},
+			{Key: server.GlobalStoredKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour)},
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	resp, _ = h.create(m)
 	if retry, _ := strconv.Atoi(resp.Header.Get("Retry-After")); resp.StatusCode != 503 || retry < 3600 {
-		t.Fatalf("a cap full of stored messages must point to the next day: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
+		t.Fatalf(
+			"a cap full of stored messages must point to the next day: %d %q",
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+		)
 	}
 }
 
@@ -161,7 +188,10 @@ func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
 	inner := h.store
 	h.store = staleGateStore{Store: inner}
 	h.reopen(h.cfg)
-	if resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "c")); resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "pow" {
+	if resp, body := h.create(
+		newMessage(t, core.KDFNone, "", 1, 3600, "c"),
+	); resp.StatusCode != 403 ||
+		decodeJSON(t, body)["error"] != "pow" {
 		t.Fatalf("the third of four slots was taken without PoW: %d %s", resp.StatusCode, body)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
@@ -204,7 +234,11 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	inner := h.store
 	h.store = &fillingStore{Store: inner, fill: func() {
-		if _, ok, err := inner.RateReserve(context.Background(), store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 1}); err != nil || !ok {
+		if _, ok, err := inner.RateReserve(
+			context.Background(),
+			store.RateHit{Key: server.GlobalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 1},
+		); err != nil ||
+			!ok {
 			t.Error(ok, err)
 		}
 	}}

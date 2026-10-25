@@ -53,7 +53,9 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	h.mustCreate(live)
 	ended := newMessage(t, core.KDFNone, "", 1, 3600, "ended")
 	h.mustCreate(ended)
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + ended.id.String() + "/burn", token: ended.readToken}); resp.StatusCode != 204 {
+	if resp, _ := h.do(
+		request{method: "POST", path: "/api/v1/messages/" + ended.id.String() + "/burn", token: ended.readToken},
+	); resp.StatusCode != 204 {
 		t.Fatalf("burn: %d", resp.StatusCode)
 	}
 	if rec, err := h.store.Get(t.Context(), ended.id.String()); err != nil || rec.Tombstone == nil {
@@ -81,10 +83,20 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 			return signedRequest(wrongSeed, core.PurposeManage, "GET", path, h.srv.ChallengeForTest(), nil)
 		}},
 		{"wrong-M", "status", func() request {
-			return signedRequest(wrongSeed, core.PurposeManage, "GET", livePath+"/status", h.srv.ChallengeForTest(), nil)
+			return signedRequest(
+				wrongSeed,
+				core.PurposeManage,
+				"GET",
+				livePath+"/status",
+				h.srv.ChallengeForTest(),
+				nil,
+			)
 		}},
 		{"bad-sig", "metadata", func() request {
-			return rawAuth(request{method: "GET", path: livePath}, badSignature(&live.link.R, core.PurposeRead, "GET", livePath, h.srv.ChallengeForTest()))
+			return rawAuth(
+				request{method: "GET", path: livePath},
+				badSignature(&live.link.R, core.PurposeRead, "GET", livePath, h.srv.ChallengeForTest()),
+			)
 		}},
 		{"off-curve", "metadata", func() request {
 			sig := core.SignRequest(wrongSeed, core.PurposeRead, "GET", livePath, h.srv.ChallengeForTest(), nil)
@@ -92,13 +104,23 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 			return rawAuth(request{method: "GET", path: livePath}, sig.Authorization())
 		}},
 		{"stale", "metadata", func() request {
-			return signedRequest(&live.link.R, core.PurposeRead, "GET", livePath, h.srv.ChallengeAtForTest(h.clock.Now().Add(-2*time.Minute)), nil)
+			return signedRequest(
+				&live.link.R,
+				core.PurposeRead,
+				"GET",
+				livePath,
+				h.srv.ChallengeAtForTest(h.clock.Now().Add(-2*time.Minute)),
+				nil,
+			)
 		}},
 		{"malformed", "metadata", func() request {
 			return rawAuth(request{method: "GET", path: livePath}, core.AuthScheme+" x.y.z")
 		}},
 		{"bad-sig", "status", func() request {
-			return rawAuth(request{method: "GET", path: livePath + "/status"}, badSignature(live.manage, core.PurposeManage, "GET", livePath+"/status", h.srv.ChallengeForTest()))
+			return rawAuth(
+				request{method: "GET", path: livePath + "/status"},
+				badSignature(live.manage, core.PurposeManage, "GET", livePath+"/status", h.srv.ChallengeForTest()),
+			)
 		}},
 	}
 	var refBody []byte
@@ -182,11 +204,24 @@ func measureUniformity(t *testing.T, h *harness, classes []timingClass) string {
 		}
 		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2, D23)
 		if medians[ci]*100 > minMedian[c.endpoint]*medianSlackPercent {
-			return fmt.Sprintf("%s %s median %s exceeds %d%% of the fastest equal-work class %s on the same endpoint", c.endpoint, c.name, medians[ci], medianSlackPercent, minMedian[c.endpoint])
+			return fmt.Sprintf(
+				"%s %s median %s exceeds %d%% of the fastest equal-work class %s on the same endpoint",
+				c.endpoint,
+				c.name,
+				medians[ci],
+				medianSlackPercent,
+				minMedian[c.endpoint],
+			)
 		}
 		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2, D23)
 		if p95s[ci] > 5*minP95[c.endpoint] {
-			return fmt.Sprintf("%s %s p95 %s exceeds 5x the fastest equal-work class %s on the same endpoint", c.endpoint, c.name, p95s[ci], minP95[c.endpoint])
+			return fmt.Sprintf(
+				"%s %s p95 %s exceeds 5x the fastest equal-work class %s on the same endpoint",
+				c.endpoint,
+				c.name,
+				p95s[ci],
+				minP95[c.endpoint],
+			)
 		}
 	}
 	return ""

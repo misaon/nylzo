@@ -165,8 +165,12 @@ func (s *Server) HTTPServer() *http.Server {
 		IdleTimeout:       idleTimeout,
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
-		HTTP2:             &http.HTTP2Config{MaxReceiveBufferPerConnection: h2cConnBuffer, MaxReceiveBufferPerStream: h2cStreamBuffer, MaxReadFrameSize: h2cMaxFrame},
-		ErrorLog:          log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
+		HTTP2: &http.HTTP2Config{
+			MaxReceiveBufferPerConnection: h2cConnBuffer,
+			MaxReceiveBufferPerStream:     h2cStreamBuffer,
+			MaxReadFrameSize:              h2cMaxFrame,
+		},
+		ErrorLog: log.New(newHTTPErrorSink(s.log, s.clock), "", 0),
 	}
 }
 
@@ -234,7 +238,13 @@ func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
 	return SweepStore(ctx, s.store, s.blobs, s.cfg.DataDir, s.clock())
 }
 
-func SweepStore(ctx context.Context, st store.Store, blobs store.Blobs, dataDir string, now time.Time) (store.SweepReport, error) {
+func SweepStore(
+	ctx context.Context,
+	st store.Store,
+	blobs store.Blobs,
+	dataDir string,
+	now time.Time,
+) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, st, blobs, now)
 	err = errors.Join(err, pruneAbuse(abuseDir(dataDir), now))
 	done, derr := st.RateGet(ctx, reconcileKey, dayWindow(now).start)
@@ -246,7 +256,10 @@ func SweepStore(ctx context.Context, st store.Store, blobs store.Blobs, dataDir 
 		report.OrphanedBlobs = orphans
 		if listed {
 			d := dayWindow(now)
-			if _, merr := st.RateHit(ctx, []store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}}); merr != nil {
+			if _, merr := st.RateHit(
+				ctx,
+				[]store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}},
+			); merr != nil {
 				rerr = errors.Join(rerr, merr)
 			}
 		}
@@ -335,5 +348,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+ClientManifestPath, s.handleClientManifest)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return s.logging(s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux)))))))
+	return s.logging(
+		s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(recordRoute(mux)))))),
+	)
 }

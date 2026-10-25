@@ -64,7 +64,13 @@ func fileMessage(t *testing.T, content []byte) *message {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
 	m.text = ""
 	object, err := core.Seal(&m.content.K, core.NewHeader(core.KDFNone), m.id, m.policy, core.Payload{
-		Meta: core.Meta{File: &core.FileMeta{Name: "quarterly-plan-sentinel.pdf", Mime: "application/pdf", Size: int64(len(content))}},
+		Meta: core.Meta{
+			File: &core.FileMeta{
+				Name: "quarterly-plan-sentinel.pdf",
+				Mime: "application/pdf",
+				Size: int64(len(content)),
+			},
+		},
 		File: content,
 	})
 	if err != nil {
@@ -158,7 +164,11 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	h.mustCreate(stuck)
 	needles.message("stuck", stuck, "")
 	fb.set(func(b *faultyBlobs) {
-		b.deleteErr[stuck.id.String()] = &fs.PathError{Op: "remove", Path: filepath.Join(h.dir, "blobs", hex.EncodeToString([]byte(stuck.id.String()))), Err: syscall.EROFS}
+		b.deleteErr[stuck.id.String()] = &fs.PathError{
+			Op:   "remove",
+			Path: filepath.Join(h.dir, "blobs", hex.EncodeToString([]byte(stuck.id.String()))),
+			Err:  syscall.EROFS,
+		}
 	})
 	if resp, _ := h.post(stuck, "burn", stuck.readToken); resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("burn with a failing blob store: %d", resp.StatusCode)
@@ -181,14 +191,35 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp, body := h.do(request{method: "POST", path: "/api/v1/messages", body: pow.object, ip: pow.ip, headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": pow.createHeader(0), "X-Nylzo-Pow": token}}); resp.StatusCode != http.StatusCreated {
+	if resp, body := h.do(
+		request{
+			method: "POST",
+			path:   "/api/v1/messages",
+			body:   pow.object,
+			ip:     pow.ip,
+			headers: map[string]string{
+				"Content-Type":   "application/octet-stream",
+				"X-Nylzo-Create": pow.createHeader(0),
+				"X-Nylzo-Pow":    token,
+			},
+		},
+	); resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create with PoW: %d %s", resp.StatusCode, body)
 	}
 	needles.message("pow", pow, "")
 
 	link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
 	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "reason": "spam, see " + link})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip4, body: body, token: leased.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
+	if resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/abuse",
+			ip:      ip4,
+			body:    body,
+			token:   leased.readToken,
+			headers: map[string]string{"Content-Type": "application/json"},
+		},
+	); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("abuse report: %d", resp.StatusCode)
 	}
 
@@ -260,7 +291,13 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`).Scan(&spent)
 	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`).Scan(&nonces)
 	if tombstones != 4 || leases != 1 || spent == 0 || nonces != 1 {
-		t.Fatalf("the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges, %d PoW nonces", tombstones, leases, spent, nonces)
+		t.Fatalf(
+			"the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges, %d PoW nonces",
+			tombstones,
+			leases,
+			spent,
+			nonces,
+		)
 	}
 	rows, err := db.Query(`SELECT key FROM rate_counters`)
 	if err != nil {
@@ -272,7 +309,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		if err := rows.Scan(&key); err != nil {
 			t.Fatal(err)
 		}
-		if !slices.ContainsFunc([]string{"global:", "pow:", "challenge:", "abuse:id:", "sweep:reconcile:"}, func(p string) bool { return strings.HasPrefix(key, p) }) {
+		if !slices.ContainsFunc(
+			[]string{"global:", "pow:", "challenge:", "abuse:id:", "sweep:reconcile:"},
+			func(p string) bool { return strings.HasPrefix(key, p) },
+		) {
 			t.Errorf("counter %q is not one of the address-free keys", key)
 		}
 		for _, m := range everyone {

@@ -25,11 +25,26 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 		header map[string]string
 		status int
 	}{
-		{"token bucket 429", func(cfg *server.Config) { cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1e-9, 1 }, func(h *harness, m *message) {
-			h.do(request{method: "GET", path: "/api/v1/instance", ip: victim})
-		}, nil, http.StatusTooManyRequests},
+		{
+			"token bucket 429",
+			func(cfg *server.Config) { cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst = 1e-9, 1 },
+			func(h *harness, m *message) {
+				h.do(request{method: "GET", path: "/api/v1/instance", ip: victim})
+			},
+			nil,
+			http.StatusTooManyRequests,
+		},
 		{"read counter 429", func(cfg *server.Config) { cfg.Rates.ReadPerHour = 1 }, func(h *harness, m *message) {
-			h.do(signedRequestFrom(victim, &m.link.R, core.PurposeRead, "GET", "/api/v1/messages/"+m.id.String(), h.srv.ChallengeForTest()))
+			h.do(
+				signedRequestFrom(
+					victim,
+					&m.link.R,
+					core.PurposeRead,
+					"GET",
+					"/api/v1/messages/"+m.id.String(),
+					h.srv.ChallengeForTest(),
+				),
+			)
 		}, nil, http.StatusTooManyRequests},
 		{"prefetch 503", nil, nil, map[string]string{"Sec-Purpose": "prefetch"}, http.StatusServiceUnavailable},
 	}
@@ -46,7 +61,14 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 			if c.before != nil {
 				c.before(h, m)
 			}
-			claim := signedRequestFrom(victim, &m.link.R, core.PurposeRead, "POST", "/api/v1/messages/"+m.id.String()+"/claim", h.srv.ChallengeForTest())
+			claim := signedRequestFrom(
+				victim,
+				&m.link.R,
+				core.PurposeRead,
+				"POST",
+				"/api/v1/messages/"+m.id.String()+"/claim",
+				h.srv.ChallengeForTest(),
+			)
 			maps.Copy(claim.headers, c.header)
 			if resp, _ := h.do(claim); resp.StatusCode != c.status {
 				t.Fatalf("the victim's claim: %d, want %d", resp.StatusCode, c.status)
@@ -58,14 +80,23 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 			if resp, _ := h.do(claim); resp.StatusCode != http.StatusNotFound {
 				t.Fatalf("a recorded claim that the server turned away was accepted later: %d", resp.StatusCode)
 			}
-			if rec, err := h.store.Get(t.Context(), m.id.String()); err != nil || rec.Message == nil || rec.Message.OpensRemaining != 1 {
+			if rec, err := h.store.Get(
+				t.Context(),
+				m.id.String(),
+			); err != nil || rec.Message == nil ||
+				rec.Message.OpensRemaining != 1 {
 				t.Fatalf("the replay spent an open: %+v %v", rec.Message, err)
 			}
 		})
 	}
 }
 
-func signedRequestFrom(ip string, seed *[core.TokenLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte) request {
+func signedRequestFrom(
+	ip string,
+	seed *[core.TokenLen]byte,
+	purpose, method, path string,
+	challenge [core.ChallengeLen]byte,
+) request {
 	req := signedRequest(seed, purpose, method, path, challenge, nil)
 	req.ip = ip
 	return req
@@ -99,7 +130,14 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 		if strings.Contains(name, "verifier") {
 			m = pw
 		}
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": header}})
+		resp, _ := h.do(
+			request{
+				method:  "POST",
+				path:    "/api/v1/messages",
+				body:    m.object,
+				headers: map[string]string{"Content-Type": "application/octet-stream", "X-Nylzo-Create": header},
+			},
+		)
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("%s: %d", name, resp.StatusCode)
 		}
@@ -188,7 +226,10 @@ func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 		}
 	}
 	for _, p := range []string{"/api/v1/instance", "/api/v1/challenge", "/api/v1/messages", "/api/v1/abuse", path + "/claim", path + "/ack"} {
-		if resp, body := h.do(request{method: "HEAD", path: p, ip: m.ip}); resp.StatusCode != http.StatusNotFound || len(body) != 0 {
+		if resp, body := h.do(
+			request{method: "HEAD", path: p, ip: m.ip},
+		); resp.StatusCode != http.StatusNotFound ||
+			len(body) != 0 {
 			t.Fatalf("HEAD %s: %d %q", p, resp.StatusCode, body)
 		}
 	}
@@ -201,7 +242,9 @@ func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
 	h.mustCreate(m)
 	h.clock.Advance(3 * time.Minute)
 	path := "/api/v1/messages/" + m.id.String()
-	if resp, _ := h.do(signedRequest(core.NewSecret(), core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil)); resp.StatusCode != http.StatusNotFound {
+	if resp, _ := h.do(
+		signedRequest(core.NewSecret(), core.PurposeRead, "GET", path, h.srv.ChallengeForTest(), nil),
+	); resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("wrong key: %d", resp.StatusCode)
 	}
 	if rec, err := h.store.Get(t.Context(), m.id.String()); err != nil || rec.Message == nil || !h.blobExists(m.id) {
@@ -235,7 +278,8 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 		route, _ := entry["route"].(string)
 		_, bytes := entry["bytes"]
 		_, latency := entry["duration_ms"]
-		object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") || strings.HasSuffix(route, "/blob")
+		object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") ||
+			strings.HasSuffix(route, "/blob")
 		if bytes {
 			t.Fatalf("%s logs its response size: %s", route, line)
 		}

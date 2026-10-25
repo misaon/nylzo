@@ -18,7 +18,11 @@ func server(t *testing.T, curves []tls.CurveID) (addr, ca string) {
 	ts.StartTLS()
 	t.Cleanup(ts.Close)
 	ca = filepath.Join(t.TempDir(), "root.pem")
-	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ts.Certificate().Raw}), 0o600); err != nil {
+	if err := os.WriteFile(
+		ca,
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ts.Certificate().Raw}),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	return ts.Listener.Addr().String(), ca

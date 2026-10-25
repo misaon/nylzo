@@ -42,7 +42,17 @@ type createHeader struct {
 	Size        int64   `json:"size"`
 }
 
-var createHeaderKeys = map[string]bool{"id": true, "id_token": true, "read_key": true, "verifier_key": true, "manage_key": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
+var createHeaderKeys = map[string]bool{
+	"id":           true,
+	"id_token":     true,
+	"read_key":     true,
+	"verifier_key": true,
+	"manage_key":   true,
+	"kdf_id":       true,
+	"opens_max":    true,
+	"ttl_s":        true,
+	"size":         true,
+}
 
 type policyHeader struct {
 	OpensMax int `json:"opens_max"`
@@ -170,7 +180,13 @@ func signedPurpose(p pepper.Purpose) string {
 	return core.PurposeRead
 }
 
-func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, purpose pepper.Purpose, body []byte) (access, bool, error) {
+func (s *Server) authorize(
+	ctx context.Context,
+	r *http.Request,
+	idStr string,
+	purpose pepper.Purpose,
+	body []byte,
+) (access, bool, error) {
 	id, idErr := core.ParseID(idStr)
 	sig, sigErr := core.ParseAuthorization(r.Header.Get("Authorization"))
 	if sigErr != nil {
@@ -210,7 +226,12 @@ func (s *Server) authorize(ctx context.Context, r *http.Request, idStr string, p
 	return a, true, nil
 }
 
-func (s *Server) settle(ctx context.Context, id string, m *store.Message, now time.Time) (store.Record, []store.Lease, bool) {
+func (s *Server) settle(
+	ctx context.Context,
+	id string,
+	m *store.Message,
+	now time.Time,
+) (store.Record, []store.Lease, bool) {
 	if m == nil {
 		return store.Record{}, nil, false
 	}
@@ -264,9 +285,14 @@ func liveState(m *store.Message, now time.Time) store.State {
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	resp := instanceResponse{
-		Limits:   s.instanceLimits(),
-		PoW:      instancePoW{Difficulty: s.cfg.PoWDifficulty},
-		Versions: instanceVersions{API: 1, Envelope: core.Version, Fragment: core.FragmentVersion, Server: s.cfg.Version},
+		Limits: s.instanceLimits(),
+		PoW:    instancePoW{Difficulty: s.cfg.PoWDifficulty},
+		Versions: instanceVersions{
+			API:      1,
+			Envelope: core.Version,
+			Fragment: core.FragmentVersion,
+			Server:   s.cfg.Version,
+		},
 	}
 	now := s.clock()
 	resp.Create = s.issueID(now)
@@ -324,7 +350,8 @@ func (s *Server) parseCreateHeader(r *http.Request) (createRequest, bool) {
 	}
 	kdf := core.KDF(h.KDFID)
 	kdfOK := h.KDFID >= 0 && h.KDFID <= 255 && kdf.Valid()
-	keysOK := core.ValidPublicKey(req.readKey) && core.ValidPublicKey(req.manageKey) && !bytes.Equal(req.readKey, req.manageKey)
+	keysOK := core.ValidPublicKey(req.readKey) && core.ValidPublicKey(req.manageKey) &&
+		!bytes.Equal(req.readKey, req.manageKey)
 	if !kdfOK || !keysOK || kdf.RequiresPassphrase() != (h.VerifierKey != nil) {
 		return req, false
 	}
@@ -332,7 +359,8 @@ func (s *Server) parseCreateHeader(r *http.Request) (createRequest, bool) {
 		if req.verifierKey, err = core.DecodeExact(*h.VerifierKey, core.PublicKeyLen); err != nil {
 			return req, false
 		}
-		verifierOK := core.ValidPublicKey(req.verifierKey) && !bytes.Equal(req.verifierKey, req.readKey) && !bytes.Equal(req.verifierKey, req.manageKey)
+		verifierOK := core.ValidPublicKey(req.verifierKey) && !bytes.Equal(req.verifierKey, req.readKey) &&
+			!bytes.Equal(req.verifierKey, req.manageKey)
 		if !verifierOK {
 			return req, false
 		}
@@ -399,7 +427,12 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	now := s.clock()
 	if retry := s.limitCreate(now, s.clientAddr(r), h.Size); retry > 0 {
 		setRetryAfter(w, retry)
-		s.rejectCreate(w, r, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(retry)})
+		s.rejectCreate(
+			w,
+			r,
+			http.StatusTooManyRequests,
+			rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(retry)},
+		)
 		return
 	}
 	gate, err := s.globalGate(ctx, now)
@@ -483,10 +516,22 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	manageMAC, _ := s.ring.MAC(pepper.Manage, req.manageKey)
 	uploaded := s.clock()
 	m := &store.Message{
-		ID: id.String(), Version: parsed.Version, KDF: uint8(parsed.KDF), Flags: parsed.Flags, State: store.StateAvailable,
-		CreatedAt: uploaded.UTC().Truncate(time.Minute), ExpiresAt: store.CeilMinute(uploaded.UTC().Add(time.Duration(h.TTLSeconds) * time.Second)), TTLSeconds: uint32(h.TTLSeconds),
-		OpensMax: uint16(h.OpensMax), OpensRemaining: uint16(h.OpensMax), PepperID: pepperID,
-		ReadMAC: readMAC[:], ManageMAC: manageMAC[:], Size: h.Size, BlobRef: id.String(),
+		ID:      id.String(),
+		Version: parsed.Version,
+		KDF:     uint8(parsed.KDF),
+		Flags:   parsed.Flags,
+		State:   store.StateAvailable,
+		CreatedAt: uploaded.UTC().
+			Truncate(time.Minute),
+		ExpiresAt:      store.CeilMinute(uploaded.UTC().Add(time.Duration(h.TTLSeconds) * time.Second)),
+		TTLSeconds:     uint32(h.TTLSeconds),
+		OpensMax:       uint16(h.OpensMax),
+		OpensRemaining: uint16(h.OpensMax),
+		PepperID:       pepperID,
+		ReadMAC:        readMAC[:],
+		ManageMAC:      manageMAC[:],
+		Size:           h.Size,
+		BlobRef:        id.String(),
 	}
 	if req.verifierKey != nil {
 		verifierMAC, _ := s.ring.MAC(pepper.Verifier, req.verifierKey)
@@ -585,7 +630,11 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose pepp
 	return a, true
 }
 
-func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose) (*store.Message, access, bool) {
+func (s *Server) authorizedLive(
+	w http.ResponseWriter,
+	r *http.Request,
+	purpose pepper.Purpose,
+) (*store.Message, access, bool) {
 	a, ok := s.authorized(w, r, purpose)
 	if !ok {
 		return nil, a, false
@@ -628,19 +677,36 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	rec := a.rec
 	if t := rec.Tombstone; t != nil {
-		writeJSON(w, http.StatusOK, metadataResponse{State: string(t.State), FirstOpenedAt: formatOptTime(t.FirstOpenedAt), EndedAt: formatTime(t.EndedAt)})
+		writeJSON(
+			w,
+			http.StatusOK,
+			metadataResponse{
+				State:         string(t.State),
+				FirstOpenedAt: formatOptTime(t.FirstOpenedAt),
+				EndedAt:       formatTime(t.EndedAt),
+			},
+		)
 		return
 	}
 	m := rec.Message
 	writeJSON(w, http.StatusOK, metadataResponse{
-		State: string(liveState(m, s.clock())), CreatedAt: formatTime(m.CreatedAt), ExpiresAt: formatTime(m.ExpiresAt),
-		OpensMax: int(m.OpensMax), OpensRemaining: int(m.OpensRemaining), TTL: int(m.TTLSeconds),
-		PassphraseRequired: m.PassphraseRequired(), KDFID: int(m.KDF), Size: m.Size, FirstOpenedAt: formatOptTime(m.FirstOpenedAt),
+		State:              string(liveState(m, s.clock())),
+		CreatedAt:          formatTime(m.CreatedAt),
+		ExpiresAt:          formatTime(m.ExpiresAt),
+		OpensMax:           int(m.OpensMax),
+		OpensRemaining:     int(m.OpensRemaining),
+		TTL:                int(m.TTLSeconds),
+		PassphraseRequired: m.PassphraseRequired(),
+		KDFID:              int(m.KDF),
+		Size:               m.Size,
+		FirstOpenedAt:      formatOptTime(m.FirstOpenedAt),
 	})
 }
 
 func (s *Server) policyHeader(m *store.Message) string {
-	data, _ := json.Marshal(policyHeader{OpensMax: int(m.OpensMax), TTL: int(m.TTLSeconds), KDFID: int(m.KDF), Flags: int(m.Flags)})
+	data, _ := json.Marshal(
+		policyHeader{OpensMax: int(m.OpensMax), TTL: int(m.TTLSeconds), KDFID: int(m.KDF), Flags: int(m.Flags)},
+	)
 	return core.Encode(data)
 }
 
@@ -698,7 +764,15 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		writeGone(w, string(goneErr.State))
 		return
 	case errors.As(err, &passErr):
-		writeJSON(w, http.StatusForbidden, passphraseRejected{Error: "passphrase", RetryAfter: ceilSeconds(passErr.RetryAfter), AttemptsLeft: passErr.AttemptsLeft})
+		writeJSON(
+			w,
+			http.StatusForbidden,
+			passphraseRejected{
+				Error:        "passphrase",
+				RetryAfter:   ceilSeconds(passErr.RetryAfter),
+				AttemptsLeft: passErr.AttemptsLeft,
+			},
+		)
 		return
 	case errors.Is(err, store.ErrNotFound):
 		writeNotFound(w)
@@ -749,7 +823,14 @@ func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, m *store.Messa
 	return f, size, true
 }
 
-func (s *Server) serveBlob(w http.ResponseWriter, r *http.Request, m *store.Message, lease string, f io.Reader, size int64) {
+func (s *Server) serveBlob(
+	w http.ResponseWriter,
+	r *http.Request,
+	m *store.Message,
+	lease string,
+	f io.Reader,
+	size int64,
+) {
 	s.setWriteDeadline(w, time.Now().Add(max(writeTimeout, store.TransferTime(size))))
 	if lease != "" {
 		w.Header().Set(headerLease, lease)
@@ -809,7 +890,15 @@ func (s *Server) writeCurrentGone(w http.ResponseWriter, r *http.Request, id str
 }
 
 func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, id string, state store.State, now time.Time) {
-	if _, err := store.EndMessage(r.Context(), s.store, s.blobs, id, state, now); err != nil && !errors.Is(err, store.ErrNotFound) {
+	if _, err := store.EndMessage(
+		r.Context(),
+		s.store,
+		s.blobs,
+		id,
+		state,
+		now,
+	); err != nil &&
+		!errors.Is(err, store.ErrNotFound) {
 		s.log.Error("finish-ending", "err", ErrorText(err))
 	}
 	writeGone(w, string(state))
@@ -952,13 +1041,29 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	rec := a.rec
 	if t := rec.Tombstone; t != nil {
-		writeJSON(w, http.StatusOK, statusResponse{State: string(t.State), FirstOpenedAt: formatOptTime(t.FirstOpenedAt), EndedAt: formatTime(t.EndedAt)})
+		writeJSON(
+			w,
+			http.StatusOK,
+			statusResponse{
+				State:         string(t.State),
+				FirstOpenedAt: formatOptTime(t.FirstOpenedAt),
+				EndedAt:       formatTime(t.EndedAt),
+			},
+		)
 		return
 	}
 	m := rec.Message
 	writeJSON(w, http.StatusOK, statusResponse{
-		State: string(liveState(m, s.clock())), OpensUsed: int(m.OpensMax) - int(m.OpensRemaining), OpensMax: int(m.OpensMax),
-		CreatedAt: formatTime(m.CreatedAt), ExpiresAt: formatTime(m.ExpiresAt), FirstOpenedAt: formatOptTime(m.FirstOpenedAt),
+		State: string(
+			liveState(m, s.clock()),
+		),
+		OpensUsed: int(m.OpensMax) - int(m.OpensRemaining),
+		OpensMax:  int(m.OpensMax),
+		CreatedAt: formatTime(
+			m.CreatedAt,
+		),
+		ExpiresAt:                formatTime(m.ExpiresAt),
+		FirstOpenedAt:            formatOptTime(m.FirstOpenedAt),
 		FailedPassphraseAttempts: m.FailCountTotal,
 	})
 }

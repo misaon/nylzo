@@ -54,7 +54,12 @@ func TestTruncatedCreateStoresNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	fmt.Fprintf(conn, "POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n", len(m.object), h.withIDToken(m.createHeader(0)))
+	fmt.Fprintf(
+		conn,
+		"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n",
+		len(m.object),
+		h.withIDToken(m.createHeader(0)),
+	)
 	conn.Write(m.object[:100])
 	conn.(*net.TCPConn).CloseWrite()
 	line, _ := bufio.NewReader(conn).ReadString('\n')
@@ -87,7 +92,10 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 		if _, err := h.srv.SweepOnce(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		if resp, meta := h.metadata(m); resp.StatusCode != 200 || meta["state"] != "available" || meta["opens_remaining"] != float64(opens) {
+		if resp, meta := h.metadata(
+			m,
+		); resp.StatusCode != 200 || meta["state"] != "available" ||
+			meta["opens_remaining"] != float64(opens) {
 			t.Fatalf("opens %d: a lost blob must not spend an open or end the message: %v", opens, meta)
 		}
 	}
@@ -132,7 +140,11 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "deleted" {
 		t.Fatalf("download racing a burn: %d %s", resp.StatusCode, body)
 	}
-	if rec, err := inner.Get(context.Background(), downloaded.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+	if rec, err := inner.Get(
+		context.Background(),
+		downloaded.id.String(),
+	); err != nil || rec.Tombstone == nil ||
+		rec.Tombstone.State != store.StateDeleted {
 		t.Fatalf("the download must finish the interrupted burn: %+v %v", rec, err)
 	}
 }
@@ -158,7 +170,12 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	resp.Body.Close()
 	lease := resp.Header.Get("X-Nylzo-Lease")
 	if resp.StatusCode != 200 || lease == "" || readErr == nil {
-		t.Fatalf("a stream that fails after the claim must still carry the lease: %d %q %v", resp.StatusCode, lease, readErr)
+		t.Fatalf(
+			"a stream that fails after the claim must still carry the lease: %d %q %v",
+			resp.StatusCode,
+			lease,
+			readErr,
+		)
 	}
 	if !strings.Contains(h.logBuf.String(), `"msg":"blob-stream"`) {
 		t.Fatalf("a failed stream must be logged: %s", h.logBuf.String())
@@ -237,7 +254,8 @@ func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
 	fb := h.withFaultyBlobs()
 	fb.set(func(b *faultyBlobs) { b.failPut = store.ErrConflict })
 	late, lateBody := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
-	if early.StatusCode != 409 || late.StatusCode != 409 || late.Close != early.Close || !bytes.Equal(earlyBody, lateBody) {
+	if early.StatusCode != 409 || late.StatusCode != 409 || late.Close != early.Close ||
+		!bytes.Equal(earlyBody, lateBody) {
 		t.Fatalf("early %d close=%v, late %d close=%v", early.StatusCode, early.Close, late.StatusCode, late.Close)
 	}
 }
@@ -283,10 +301,18 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 	fb.set(func(b *faultyBlobs) { b.failDelete[m.id.String()] = true })
-	unknown, unknownBody := h.do(request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), token: m.readToken})
-	wrong, wrongBody := h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String(), token: core.Encode(make([]byte, 32))})
+	unknown, unknownBody := h.do(
+		request{method: "GET", path: "/api/v1/messages/" + core.NewID().String(), token: m.readToken},
+	)
+	wrong, wrongBody := h.do(
+		request{method: "GET", path: "/api/v1/messages/" + m.id.String(), token: core.Encode(make([]byte, 32))},
+	)
 	if unknown.StatusCode != 404 || wrong.StatusCode != 404 || !bytes.Equal(unknownBody, wrongBody) {
-		t.Fatalf("a storage fault must not change the 404 for a wrong token: %d %d", unknown.StatusCode, wrong.StatusCode)
+		t.Fatalf(
+			"a storage fault must not change the 404 for a wrong token: %d %d",
+			unknown.StatusCode,
+			wrong.StatusCode,
+		)
 	}
 	resp, body := h.claim(m, "", "")
 	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "cancelled" {
@@ -306,7 +332,14 @@ func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
 	inner := h.store
 	fb.set(func(b *faultyBlobs) {
 		b.onOpen = func(ref string) {
-			if _, err := store.EndMessage(context.Background(), inner, b.Blobs, ref, store.StateDeleted, h.clock.Now()); err != nil {
+			if _, err := store.EndMessage(
+				context.Background(),
+				inner,
+				b.Blobs,
+				ref,
+				store.StateDeleted,
+				h.clock.Now(),
+			); err != nil {
 				t.Error(err)
 			}
 		}
@@ -339,12 +372,27 @@ func TestAckAfterAConcurrentBurnAnswersGone(t *testing.T) {
 	}
 	inner, blobs := h.store, h.blobs
 	h.store = &ackRacingStore{Store: inner, race: func(id string) {
-		if _, err := store.EndMessage(context.Background(), inner, blobs, id, store.StateDeleted, h.clock.Now()); err != nil {
+		if _, err := store.EndMessage(
+			context.Background(),
+			inner,
+			blobs,
+			id,
+			store.StateDeleted,
+			h.clock.Now(),
+		); err != nil {
 			t.Error(err)
 		}
 	}}
 	h.reopen(h.cfg)
-	resp, body := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+	resp, body := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages/" + m.id.String() + "/ack",
+			ip:      m.ip,
+			token:   m.readToken,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+	)
 	if resp.StatusCode != 410 || decodeJSON(t, body)["state"] != "deleted" {
 		t.Fatalf("ack after a burn removed its lease: %d %s", resp.StatusCode, body)
 	}
@@ -384,7 +432,12 @@ type endingThenFailingGet struct {
 	armed atomic.Bool
 }
 
-func (s *endingThenFailingGet) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.State, string, bool, error) {
+func (s *endingThenFailingGet) MarkEnding(
+	ctx context.Context,
+	id string,
+	state store.State,
+	now time.Time,
+) (store.State, string, bool, error) {
 	if err := s.End(ctx, id, store.StateCancelled, now); err != nil {
 		return "", "", false, err
 	}

@@ -35,7 +35,9 @@ func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 		"plain message": {errors.New("sqlite: database is locked"), "sqlite: database is locked"},
 	} {
 		got := ErrorText(c.err)
-		if got != c.want || strings.Contains(got, "/") || strings.Contains(got, id.String()) || strings.Contains(got, fileName) || strings.Contains(got, fmt.Sprintf("%x", id[:])) {
+		if got != c.want || strings.Contains(got, "/") || strings.Contains(got, id.String()) ||
+			strings.Contains(got, fileName) ||
+			strings.Contains(got, fmt.Sprintf("%x", id[:])) {
 			t.Fatalf("%s: %q, want %q", name, got, c.want)
 		}
 	}

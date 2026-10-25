@@ -57,14 +57,18 @@ func runVerifyClient(ctx context.Context, env Env, args []string) int {
 	fs := newFlags(env, "verify-client")
 	serverURL := fs.String("server", "", "server address such as https://nylzo.example (or "+envServer+")")
 	allowed := map[string]bool{}
-	fs.Func("allow-header", "accept this response header, which a proxy in front of the server adds (repeatable)", func(name string) error {
-		name = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
-		if name == "" || slices.Contains(neverAllowed, name) {
-			return errors.New("this header changes what a browser does and cannot be allowed")
-		}
-		allowed[name] = true
-		return nil
-	})
+	fs.Func(
+		"allow-header",
+		"accept this response header, which a proxy in front of the server adds (repeatable)",
+		func(name string) error {
+			name = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
+			if name == "" || slices.Contains(neverAllowed, name) {
+				return errors.New("this header changes what a browser does and cannot be allowed")
+			}
+			allowed[name] = true
+			return nil
+		},
+	)
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code
 	}
@@ -83,13 +87,29 @@ func runVerifyClient(ctx context.Context, env Env, args []string) int {
 	if err != nil || !local.Built {
 		return failf(env, "%s", errNoLocalClient)
 	}
-	v := &verifier{client: c, local: local, version: buildVersion(env.Version), allowed: allowed, nonces: map[string]bool{}}
+	v := &verifier{
+		client:  c,
+		local:   local,
+		version: buildVersion(env.Version),
+		allowed: allowed,
+		nonces:  map[string]bool{},
+	}
 	result, err := v.run(ctx)
 	if err != nil {
 		return failf(env, "%s", err)
 	}
-	fmt.Fprintf(env.Stdout, "the server sends the web client of nylzo %s unchanged: %d pages and %d files checked\n", v.version, result.pages, result.files)
-	fmt.Fprintf(env.Stderr, "%s: this covers what the server sent to this command; a server can recognise it and send browsers something else\n", program)
+	fmt.Fprintf(
+		env.Stdout,
+		"the server sends the web client of nylzo %s unchanged: %d pages and %d files checked\n",
+		v.version,
+		result.pages,
+		result.files,
+	)
+	fmt.Fprintf(
+		env.Stderr,
+		"%s: this covers what the server sent to this command; a server can recognise it and send browsers something else\n",
+		program,
+	)
 	return exitOK
 }
 
@@ -132,7 +152,11 @@ func (v *verifier) manifest(ctx context.Context) error {
 		if len(version) > maxVersionShown {
 			version = version[:maxVersionShown] + "…"
 		}
-		return fmt.Errorf("the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs", version, v.version)
+		return fmt.Errorf(
+			"the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs",
+			version,
+			v.version,
+		)
 	}
 	if got.PublicURL != "" {
 		if err := server.CheckPublicURL(got.PublicURL); err != nil {
@@ -220,12 +244,17 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 		return fmt.Errorf("%s: the Content-Security-Policy header differs from this nylzo", where)
 	}
 	for name, values := range header {
-		known := expected[name] != "" || name == "Content-Security-Policy" || slices.Contains(transportHeaders, name) || v.allowed[name]
+		known := expected[name] != "" || name == "Content-Security-Policy" || slices.Contains(transportHeaders, name) ||
+			v.allowed[name]
 		if name == "Content-Encoding" {
 			known = len(values) == 1
 		}
 		if !known {
-			return fmt.Errorf("%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header", where, shortened(name))
+			return fmt.Errorf(
+				"%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header",
+				where,
+				shortened(name),
+			)
 		}
 	}
 	return nil

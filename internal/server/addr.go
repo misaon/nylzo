@@ -80,7 +80,10 @@ func (c *addrCounters) hit(hits []addrHit, now time.Time) time.Duration {
 	for _, h := range hits {
 		table := c.tables[h.kind]
 		if table == nil {
-			table = &addrTable{length: int64(h.window.end.Sub(h.window.start) / time.Second), entries: map[bucket]addrCount{}}
+			table = &addrTable{
+				length:  int64(h.window.end.Sub(h.window.start) / time.Second),
+				entries: map[bucket]addrCount{},
+			}
 			c.tables[h.kind] = table
 		}
 		start := uint32(h.window.start.Unix())

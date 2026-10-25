@@ -36,7 +36,9 @@ func ReasonTooLong(reason string) bool {
 	var body bytes.Buffer
 	encoder := json.NewEncoder(&body)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(IDLen)), "reason": redacted}); err != nil {
+	if err := encoder.Encode(
+		map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(IDLen)), "reason": redacted},
+	); err != nil {
 		return true
 	}
 	return len(redacted) > MaxReasonBytes || body.Len()-1 > maxReportBodyBytes
@@ -68,7 +70,11 @@ func percentDecode(text string) string {
 		}
 		text = decoded
 	}
-	return strings.ReplaceAll(strings.ToValidUTF8(text, string(unicode.ReplacementChar)), string(unicode.ReplacementChar), "")
+	return strings.ReplaceAll(
+		strings.ToValidUTF8(text, string(unicode.ReplacementChar)),
+		string(unicode.ReplacementChar),
+		"",
+	)
 }
 
 func visibleRune(r rune) rune {

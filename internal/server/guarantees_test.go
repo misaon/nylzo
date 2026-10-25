@@ -80,7 +80,11 @@ func TestFirstOpenedAtKeepsTheFirstClaim(t *testing.T) {
 		t.Fatalf("ack: %d", code)
 	}
 	if _, ended := h.status(m); ended["first_opened_at"] != first["first_opened_at"] {
-		t.Fatalf("the tombstone moved first_opened_at from %v to %v", first["first_opened_at"], ended["first_opened_at"])
+		t.Fatalf(
+			"the tombstone moved first_opened_at from %v to %v",
+			first["first_opened_at"],
+			ended["first_opened_at"],
+		)
 	}
 }
 

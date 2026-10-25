@@ -36,7 +36,7 @@ func newSpentChallenges() *spentChallenges {
 	return &spentChallenges{max: maxSpentNonces, expires: map[[challengeNonceLen]byte]int64{}}
 }
 
-func (c *spentChallenges) seen(nonce [challengeNonceLen]byte, expires int64, now int64) bool {
+func (c *spentChallenges) seen(nonce [challengeNonceLen]byte, expires, now int64) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.expires[nonce]; ok {

@@ -74,7 +74,12 @@ func newWebTestServer(t *testing.T, files fs.FS, version string, wrap func(http.
 	return newPublicWebTestServer(t, files, version, "", wrap)
 }
 
-func newPublicWebTestServer(t *testing.T, files fs.FS, version, publicURL string, wrap func(http.Handler) http.Handler) string {
+func newPublicWebTestServer(
+	t *testing.T,
+	files fs.FS,
+	version, publicURL string,
+	wrap func(http.Handler) http.Handler,
+) string {
 	t.Helper()
 	dir := t.TempDir()
 	cfg := server.Defaults()
@@ -143,7 +148,12 @@ func runVerify(t *testing.T, url string, local fs.FS, flags ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := Env{
-		Stdout: &stdout, Stderr: &stderr, Getenv: env(nil), Terminal: noTerminal{}, Version: "test", TempDir: t.TempDir(),
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+		Getenv:    env(nil),
+		Terminal:  noTerminal{},
+		Version:   "test",
+		TempDir:   t.TempDir(),
 		WebClient: func() (server.EmbeddedClient, error) { return server.LoadEmbedded(local) },
 	}
 	code := Run(append([]string{"verify-client", "--server", url}, flags...), env)
@@ -154,7 +164,8 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
 	res := runVerify(t, newWebTestServer(t, files, "test", nil), files)
-	if res.code != exitOK || res.stdout != "the server sends the web client of nylzo test unchanged: 6 pages and 5 files checked\n" {
+	if res.code != exitOK ||
+		res.stdout != "the server sends the web client of nylzo test unchanged: 6 pages and 5 files checked\n" {
 		t.Fatalf("%+v", res)
 	}
 	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)
@@ -292,7 +303,8 @@ func TestVerifyClientNeedsTheSameRelease(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
 	res := runVerify(t, newWebTestServer(t, files, "v9.9.9\x1b[31m", nil), files)
-	if res.code != exitError || !strings.Contains(res.stderr, `the server runs nylzo v9.9.9\u001b[31m and this binary is test`) {
+	if res.code != exitError ||
+		!strings.Contains(res.stderr, `the server runs nylzo v9.9.9\u001b[31m and this binary is test`) {
 		t.Fatalf("%+v", res)
 	}
 }
@@ -321,7 +333,10 @@ func TestVerifyClientNeedsAServer(t *testing.T) {
 
 func TestDecodedStopsAtTheLimit(t *testing.T) {
 	t.Parallel()
-	bomb := client.Fetched{Header: http.Header{"Content-Encoding": {"gzip"}}, Body: gzipBytes(t, bytes.Repeat([]byte{'a'}, 64<<20))}
+	bomb := client.Fetched{
+		Header: http.Header{"Content-Encoding": {"gzip"}},
+		Body:   gzipBytes(t, bytes.Repeat([]byte{'a'}, 64<<20)),
+	}
 	body, err := decoded(bomb, browserEncodings, 10, "/x")
 	if err != nil || len(body) != 11 {
 		t.Fatalf("decoded %d bytes, %v", len(body), err)
@@ -336,7 +351,12 @@ func TestVerifyClientAcceptsAllowedProxyHeaders(t *testing.T) {
 		s.header.Set("Server", "proxy")
 	})
 	url := newWebTestServer(t, files, "test", proxy)
-	if res := runVerify(t, url, files); res.code != exitError || !strings.Contains(res.stderr, "the server sent the Cf-Ray header") {
+	if res := runVerify(
+		t,
+		url,
+		files,
+	); res.code != exitError ||
+		!strings.Contains(res.stderr, "the server sent the Cf-Ray header") {
 		t.Fatalf("an unknown proxy header must fail until allowed: %+v", res)
 	}
 	if res := runVerify(t, url, files, "--allow-header", "cf-ray"); res.code != exitOK {

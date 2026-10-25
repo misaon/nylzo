@@ -19,7 +19,17 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("")
 	f.Add("not base64!")
 	cfg := server.Defaults()
-	allowed := map[string]bool{"id": true, "id_token": true, "read_key": true, "verifier_key": true, "manage_key": true, "kdf_id": true, "opens_max": true, "ttl_s": true, "size": true}
+	allowed := map[string]bool{
+		"id":           true,
+		"id_token":     true,
+		"read_key":     true,
+		"verifier_key": true,
+		"manage_key":   true,
+		"kdf_id":       true,
+		"opens_max":    true,
+		"ttl_s":        true,
+		"size":         true,
+	}
 	f.Fuzz(func(t *testing.T, value string) {
 		if !server.ParseCreateHeaderForTest(cfg, value) {
 			return
@@ -47,7 +57,8 @@ func FuzzCreateHeader(f *testing.F) {
 		if (h.KDFID != 0) != (h.VerifierKey != nil) {
 			t.Fatal("verifier_key does not match kdf_id")
 		}
-		if h.OpensMax < 1 || h.OpensMax > cfg.Limits.MaxOpens || h.TTL < core.MinTTLSeconds || h.TTL > int64(cfg.Limits.MaxTTL.Seconds()) {
+		if h.OpensMax < 1 || h.OpensMax > cfg.Limits.MaxOpens || h.TTL < core.MinTTLSeconds ||
+			h.TTL > int64(cfg.Limits.MaxTTL.Seconds()) {
 			t.Fatal("accepted a policy outside the limits")
 		}
 	})

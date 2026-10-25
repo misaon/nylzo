@@ -27,7 +27,9 @@ func TestAPanicInATransactionFreesTheWriter(t *testing.T) {
 	func() {
 		defer func() { recover() }()
 		s.tx(context.WithoutCancel(t.Context()), func(tx *sql.Tx) error {
-			if _, err := tx.Exec(`INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES ('k', 0, 1, 0, 0)`); err != nil {
+			if _, err := tx.Exec(
+				`INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES ('k', 0, 1, 0, 0)`,
+			); err != nil {
 				t.Fatal(err)
 			}
 			panic("test: a bug inside a transaction")
@@ -44,7 +46,9 @@ func TestACommitAfterTheClientLeftReportsTheCancellation(t *testing.T) {
 	s := openTest(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	err := s.tx(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES ('k', 0, 1, 0, 0)`); err != nil {
+		if _, err := tx.Exec(
+			`INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES ('k', 0, 1, 0, 0)`,
+		); err != nil {
 			return err
 		}
 		cancel()
@@ -66,12 +70,32 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	mac := bytes.Repeat([]byte{7}, 32)
 	create := func(id string) {
-		if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Hour), TTLSeconds: 3600, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		if err := s.Create(
+			ctx,
+			&store.Message{
+				ID:             id,
+				Version:        1,
+				State:          store.StateAvailable,
+				CreatedAt:      now,
+				ExpiresAt:      now.Add(time.Hour),
+				TTLSeconds:     3600,
+				OpensMax:       1,
+				OpensRemaining: 1,
+				PepperID:       7,
+				ReadMAC:        mac,
+				ManageMAC:      mac,
+				Size:           64,
+				BlobRef:        id,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	claim := func(id string) error {
-		_, err := s.Claim(ctx, store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7})
+		_, err := s.Claim(
+			ctx,
+			store.ClaimParams{ID: id, Clock: func() time.Time { return now }, LeaseMAC: mac, LeasePepperID: 7},
+		)
 		return err
 	}
 	create("AAAAAAAAAAAAAAAAAAAAAA")
@@ -83,11 +107,15 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 		t.Fatalf("an available row without opens left gave an open: %v", err)
 	}
 	var remaining int
-	if err := s.w.QueryRow(`SELECT opens_remaining FROM messages WHERE id = 'AAAAAAAAAAAAAAAAAAAAAA'`).Scan(&remaining); err != nil || remaining != 0 {
+	if err := s.w.QueryRow(`SELECT opens_remaining FROM messages WHERE id = 'AAAAAAAAAAAAAAAAAAAAAA'`).
+		Scan(&remaining); err != nil ||
+		remaining != 0 {
 		t.Fatalf("the counter wrapped: %d %v", remaining, err)
 	}
 	create("AAAAAAAAAAAAAAAAAAAAAQ")
-	if _, err := s.w.Exec(`UPDATE messages SET opens_max = 70000, opens_remaining = 70000 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAQ'`); err != nil {
+	if _, err := s.w.Exec(
+		`UPDATE messages SET opens_max = 70000, opens_remaining = 70000 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAQ'`,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Get(ctx, "AAAAAAAAAAAAAAAAAAAAAQ"); !errors.Is(err, errCorruptRow) {
@@ -105,7 +133,24 @@ func TestACorruptRowLeavesTheRestOfItsPageToEnd(t *testing.T) {
 	mac := bytes.Repeat([]byte{7}, 32)
 	ids := []string{"AAAAAAAAAAAAAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAQ"}
 	for _, id := range ids {
-		if err := s.Create(ctx, &store.Message{ID: id, Version: 1, State: store.StateAvailable, CreatedAt: now, ExpiresAt: now.Add(time.Minute), TTLSeconds: 60, OpensMax: 1, OpensRemaining: 1, PepperID: 7, ReadMAC: mac, ManageMAC: mac, Size: 64, BlobRef: id}); err != nil {
+		if err := s.Create(
+			ctx,
+			&store.Message{
+				ID:             id,
+				Version:        1,
+				State:          store.StateAvailable,
+				CreatedAt:      now,
+				ExpiresAt:      now.Add(time.Minute),
+				TTLSeconds:     60,
+				OpensMax:       1,
+				OpensRemaining: 1,
+				PepperID:       7,
+				ReadMAC:        mac,
+				ManageMAC:      mac,
+				Size:           64,
+				BlobRef:        id,
+			},
+		); err != nil {
 			t.Fatal(err)
 		}
 	}

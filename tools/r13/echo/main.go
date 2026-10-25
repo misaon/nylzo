@@ -82,7 +82,12 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	log.Printf("r13-echo listening on :%s (started %s, instance %s)", port, startedAt.Format(time.RFC3339Nano), instanceName())
+	log.Printf(
+		"r13-echo listening on :%s (started %s, instance %s)",
+		port,
+		startedAt.Format(time.RFC3339Nano),
+		instanceName(),
+	)
 
 	select {
 	case err := <-errCh:

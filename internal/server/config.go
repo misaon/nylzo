@@ -204,7 +204,10 @@ func FromEnv(getenv envFunc, needPepper bool) (Config, error) {
 	}
 	c.Limits.MaxObjectBytes = core.ObjectLimit(c.Limits.MaxFileBytes)
 	if needPepper && len(c.Pepper) == 0 {
-		return c, fmt.Errorf("%w: NYLZO_PEPPER or NYLZO_PEPPER_FILE is required (32 bytes, hex or base64url)", ErrConfig)
+		return c, fmt.Errorf(
+			"%w: NYLZO_PEPPER or NYLZO_PEPPER_FILE is required (32 bytes, hex or base64url)",
+			ErrConfig,
+		)
 	}
 	return c, c.Validate()
 }

@@ -44,7 +44,9 @@ const encodingGzip = "gzip"
 
 var precompressed = map[string]string{".gz": encodingGzip}
 
-var assetReference = regexp.MustCompile(`(?:(?:src|href|content)="(?:` + publicURLPlaceholder + `)?|url\("?)/assets/([^"')]*)`)
+var assetReference = regexp.MustCompile(
+	`(?:(?:src|href|content)="(?:` + publicURLPlaceholder + `)?|url\("?)/assets/([^"')]*)`,
+)
 
 type webClient struct {
 	built     bool

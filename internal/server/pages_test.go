@@ -54,14 +54,17 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 			t.Fatalf("%s: X-Robots-Tag %q, only the home pages may be indexed (D82)", path, robots)
 		}
 	}
-	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	noFollow := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 	for path, location := range map[string]string{"/cs": "/cs/", "/cs?utm=1": "/cs/"} {
 		resp, err := noFollow.Get(url + path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != 308 || resp.Header.Get("Location") != location || resp.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
+		if resp.StatusCode != 308 || resp.Header.Get("Location") != location ||
+			resp.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
 			t.Fatalf("%s: %d %q %v", path, resp.StatusCode, resp.Header.Get("Location"), resp.Header)
 		}
 	}
@@ -78,7 +81,8 @@ func TestPublicURLFillsTheHomePages(t *testing.T) {
 	without := publicServer(t, builtClient(t), "")
 	for _, path := range []string{"/", "/cs/"} {
 		_, body := get(t, with+path, nil)
-		if !strings.Contains(body, `<link rel="canonical" href="https://nylzo.example/">`) || !strings.Contains(body, `content="https://nylzo.example/assets/favicon-e5.png"`) {
+		if !strings.Contains(body, `<link rel="canonical" href="https://nylzo.example/">`) ||
+			!strings.Contains(body, `content="https://nylzo.example/assets/favicon-e5.png"`) {
 			t.Fatalf("%s with a public URL: %s", path, body)
 		}
 		_, plain := get(t, without+path, nil)
@@ -95,7 +99,10 @@ func TestPublicURLFillsTheHomePages(t *testing.T) {
 
 func TestPagesFollowAcceptEncoding(t *testing.T) {
 	t.Parallel()
-	long := `<!doctype html><script nonce="__NYLZO_CSP_NONCE__"></script>` + strings.Repeat("<p>nylzo</p>", 20000) + `<style nonce="__NYLZO_CSP_NONCE__"></style>__NYLZO_CSP_NONCE____NYLZO_CSP_NONCE__`
+	long := `<!doctype html><script nonce="__NYLZO_CSP_NONCE__"></script>` + strings.Repeat(
+		"<p>nylzo</p>",
+		20000,
+	) + `<style nonce="__NYLZO_CSP_NONCE__"></style>__NYLZO_CSP_NONCE____NYLZO_CSP_NONCE__`
 	files := builtClient(t)
 	files["web/dist/index.html"] = &fstest.MapFile{Data: []byte(long)}
 	url := publicServer(t, files, "https://nylzo.example")
@@ -103,18 +110,35 @@ func TestPagesFollowAcceptEncoding(t *testing.T) {
 		resp, plain := get(t, url+path, nil)
 		zipped, packed := get(t, url+path, map[string]string{"Accept-Encoding": "gzip, deflate, br"})
 		if resp.Header.Get("Content-Encoding") != "" || zipped.Header.Get("Content-Encoding") != "gzip" {
-			t.Fatalf("%s: encodings %q %q", path, resp.Header.Get("Content-Encoding"), zipped.Header.Get("Content-Encoding"))
+			t.Fatalf(
+				"%s: encodings %q %q",
+				path,
+				resp.Header.Get("Content-Encoding"),
+				zipped.Header.Get("Content-Encoding"),
+			)
 		}
 		if resp.Header.Get("Vary") != "Accept-Encoding" || zipped.Header.Get("Vary") != "Accept-Encoding" {
 			t.Fatalf("%s: Vary %q %q", path, resp.Header.Get("Vary"), zipped.Header.Get("Vary"))
 		}
-		first, second := pageNonce(t, resp.Header.Get("Content-Security-Policy")), pageNonce(t, zipped.Header.Get("Content-Security-Policy"))
+		first, second := pageNonce(
+			t,
+			resp.Header.Get("Content-Security-Policy"),
+		), pageNonce(
+			t,
+			zipped.Header.Get("Content-Security-Policy"),
+		)
 		unpacked := gunzipped(t, packed)
-		if first == second || strings.ReplaceAll(unpacked, second, "N") != strings.ReplaceAll(plain, first, "N") || strings.Contains(unpacked, "__NYLZO_CSP_NONCE__") {
+		if first == second || strings.ReplaceAll(unpacked, second, "N") != strings.ReplaceAll(plain, first, "N") ||
+			strings.Contains(unpacked, "__NYLZO_CSP_NONCE__") {
 			t.Fatalf("%s: the compressed page differs from the plain one", path)
 		}
 		if path == "/sent" && (len(packed) > len(plain)/50 || strings.Count(unpacked, second) != 4) {
-			t.Fatalf("/sent: %d bytes compressed from %d, %d nonces", len(packed), len(plain), strings.Count(unpacked, second))
+			t.Fatalf(
+				"/sent: %d bytes compressed from %d, %d nonces",
+				len(packed),
+				len(plain),
+				strings.Count(unpacked, second),
+			)
 		}
 	}
 	_, body := get(t, url+"/sent", map[string]string{"Accept-Encoding": "gzip;q=0, br"})
@@ -127,14 +151,19 @@ func TestRobotsAndSitemap(t *testing.T) {
 	t.Parallel()
 	without := publicServer(t, builtClient(t), "")
 	resp, body := get(t, without+"/robots.txt", nil)
-	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "text/plain; charset=utf-8" || body != "User-agent: *\nDisallow: /api/\n" {
+	if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "text/plain; charset=utf-8" ||
+		body != "User-agent: *\nDisallow: /api/\n" {
 		t.Fatalf("robots.txt: %d %q %q", resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
 	if resp, _ := get(t, without+"/sitemap.xml", nil); resp.StatusCode != 404 {
 		t.Fatalf("sitemap.xml without a public URL: %d", resp.StatusCode)
 	}
 	with := publicServer(t, builtClient(t), "https://nylzo.example:8443")
-	if _, body := get(t, with+"/robots.txt", nil); body != "User-agent: *\nDisallow: /api/\n\nSitemap: https://nylzo.example:8443/sitemap.xml\n" {
+	if _, body := get(
+		t,
+		with+"/robots.txt",
+		nil,
+	); body != "User-agent: *\nDisallow: /api/\n\nSitemap: https://nylzo.example:8443/sitemap.xml\n" {
 		t.Fatalf("robots.txt with a public URL: %q", body)
 	}
 	resp, body = get(t, with+"/sitemap.xml", nil)
@@ -186,7 +215,11 @@ func TestPublicURLFromEnv(t *testing.T) {
 	if err != nil || cfg.PublicURL != "https://nylzo.example" {
 		t.Fatalf("%q %v", cfg.PublicURL, err)
 	}
-	if _, err := server.FromEnv(env("https://nylzo.example/"), false); !errors.Is(err, server.ErrConfig) || !strings.Contains(err.Error(), "NYLZO_PUBLIC_URL") {
+	if _, err := server.FromEnv(
+		env("https://nylzo.example/"),
+		false,
+	); !errors.Is(err, server.ErrConfig) ||
+		!strings.Contains(err.Error(), "NYLZO_PUBLIC_URL") {
 		t.Fatalf("a public URL with a path must stop the server: %v", err)
 	}
 	cfg = baseConfig(pepperA, nil)

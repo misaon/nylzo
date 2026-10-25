@@ -33,7 +33,13 @@ const (
 )
 
 func newKeyedLimiter(rate, burst float64) *keyedLimiter {
-	return &keyedLimiter{rate: rate, burst: burst, max: maxKeyedBuckets, base: time.Now(), buckets: map[bucket]keyedBucket{}}
+	return &keyedLimiter{
+		rate:    rate,
+		burst:   burst,
+		max:     maxKeyedBuckets,
+		base:    time.Now(),
+		buckets: map[bucket]keyedBucket{},
+	}
 }
 
 func (l *keyedLimiter) allow(key bucket, now time.Time) bool {
@@ -106,9 +112,23 @@ func (s *Server) limitCreate(now time.Time, addr netip.Addr, size int64) time.Du
 	m := r.CoarseMultiplier
 	return s.counters.hit([]addrHit{
 		{kind: "create:h", bucket: fine, window: h, limit: r.CreatePerHour},
-		{kind: "create:d", bucket: fine, window: d, bytes: size, limit: r.CreatePerDay, bytesLimit: r.CreateBytesPerDay},
+		{
+			kind:       "create:d",
+			bucket:     fine,
+			window:     d,
+			bytes:      size,
+			limit:      r.CreatePerDay,
+			bytesLimit: r.CreateBytesPerDay,
+		},
 		{kind: "create:h:c", bucket: coarse, window: h, limit: r.CreatePerHour * m},
-		{kind: "create:d:c", bucket: coarse, window: d, bytes: size, limit: r.CreatePerDay * m, bytesLimit: r.CreateBytesPerDay * m},
+		{
+			kind:       "create:d:c",
+			bucket:     coarse,
+			window:     d,
+			bytes:      size,
+			limit:      r.CreatePerDay * m,
+			bytesLimit: r.CreateBytesPerDay * m,
+		},
 	}, now)
 }
 
@@ -137,7 +157,10 @@ func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (slot i
 		return 0, true, nil
 	}
 	d := dayWindow(now)
-	return s.store.RateReserve(context.WithoutCancel(ctx), store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: limit})
+	return s.store.RateReserve(
+		context.WithoutCancel(ctx),
+		store.RateHit{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: limit},
+	)
 }
 
 func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
@@ -161,6 +184,11 @@ func (s *Server) limitHourly(now time.Time, addr netip.Addr, kind string, limit 
 	h := hourWindow(now)
 	return s.counters.hit([]addrHit{
 		{kind: kind + ":h", bucket: s.addrKey.bucket(addr, false), window: h, limit: limit},
-		{kind: kind + ":h:c", bucket: s.addrKey.bucket(addr, true), window: h, limit: limit * s.cfg.Rates.CoarseMultiplier},
+		{
+			kind:   kind + ":h:c",
+			bucket: s.addrKey.bucket(addr, true),
+			window: h,
+			limit:  limit * s.cfg.Rates.CoarseMultiplier,
+		},
 	}, now)
 }

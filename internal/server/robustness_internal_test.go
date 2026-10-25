@@ -91,7 +91,12 @@ func (p *panicOnce) RateReserveBatch(ctx context.Context, hits []store.RateHit) 
 }
 
 func spendHit(key string) store.RateHit {
-	return store.RateHit{Key: challengeSpentKey + key, WindowStart: time.Unix(0, 0), PurgeAt: time.Unix(4102444800, 0), Limit: 1}
+	return store.RateHit{
+		Key:         challengeSpentKey + key,
+		WindowStart: time.Unix(0, 0),
+		PurgeAt:     time.Unix(4102444800, 0),
+		Limit:       1,
+	}
 }
 
 func TestASpendPanicFailsOnlyItsBatch(t *testing.T) {
@@ -143,7 +148,12 @@ func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
 		}
 		close(gated.gate)
 		synctest.Wait()
-		if c, err := gated.RateGet(context.Background(), challengeSpentKey+"follower", time.Unix(0, 0)); err != nil || c.Count != 1 {
+		if c, err := gated.RateGet(
+			context.Background(),
+			challengeSpentKey+"follower",
+			time.Unix(0, 0),
+		); err != nil ||
+			c.Count != 1 {
 			t.Fatalf("the spend of a client that left was not written: %+v %v", c, err)
 		}
 	})
@@ -171,7 +181,8 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	s.streams.release(source, ranges)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/messages/"+id+"/claim", nil))
-	if w.Code != http.StatusNotFound || s.streams.total != 0 || len(s.streams.source) != 0 || len(s.streams.ranges) != 0 {
+	if w.Code != http.StatusNotFound || s.streams.total != 0 || len(s.streams.source) != 0 ||
+		len(s.streams.ranges) != 0 {
 		t.Fatalf("a claim with a free slot: %d, %d slots still held", w.Code, s.streams.total)
 	}
 }
@@ -359,7 +370,14 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 		for _, pk := range []*[core.PublicKeyLen]byte{nil, &offCurve} {
 			r := request(pk)
 			start := time.Now()
-			if _, ok, err := s.authorize(r.Context(), r, path[len("/api/v1/messages/"):], pepper.Read, nil); ok || err != nil {
+			if _, ok, err := s.authorize(
+				r.Context(),
+				r,
+				path[len("/api/v1/messages/"):],
+				pepper.Read,
+				nil,
+			); ok ||
+				err != nil {
 				t.Fatalf("authorize: %v %v", ok, err)
 			}
 			if pk == nil {

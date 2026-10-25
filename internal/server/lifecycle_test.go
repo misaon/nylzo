@@ -32,12 +32,35 @@ type lifecycleKind struct {
 	expect [11]string
 }
 
-var lifecycleActions = [11]string{"burn", "cancel", "expiry by request", "expiry by sweep", "release", "resume by request", "resume by sweep", "claim", "lease download", "blob vanished", "ack"}
+var lifecycleActions = [11]string{
+	"burn",
+	"cancel",
+	"expiry by request",
+	"expiry by sweep",
+	"release",
+	"resume by request",
+	"resume by sweep",
+	"claim",
+	"lease download",
+	"blob vanished",
+	"ack",
+}
 
 func recordedRow(state store.State) [11]string {
 	s := string(state)
-	return [11]string{"410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "200 " + s + " tomb:" + s, "- - tomb:" + s, "- - live:" + s,
-		"200 " + s + " tomb:" + s, "- - tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s, "410 " + s + " tomb:" + s}
+	return [11]string{
+		"410 " + s + " tomb:" + s,
+		"410 " + s + " tomb:" + s,
+		"200 " + s + " tomb:" + s,
+		"- - tomb:" + s,
+		"- - live:" + s,
+		"200 " + s + " tomb:" + s,
+		"- - tomb:" + s,
+		"410 " + s + " tomb:" + s,
+		"410 " + s + " tomb:" + s,
+		"410 " + s + " tomb:" + s,
+		"410 " + s + " tomb:" + s,
+	}
 }
 
 func expiredRow(state store.State) [11]string {
@@ -53,17 +76,52 @@ func openedRow() [11]string {
 }
 
 var lifecycleKinds = []lifecycleKind{
-	{name: "unspent", opens: 2, ttl: 3600, expect: [11]string{"204 - tomb:deleted", "204 - tomb:cancelled", "200 expired tomb:expired", "- - tomb:expired", "- - live:",
-		"200 available live:", "- - live:", "200 - live:", "200 - live:", "500 - live:", "204 - live:"}},
-	{name: "spent during the lease", opens: 1, ttl: 3600, expect: [11]string{"204 - tomb:deleted", "204 - tomb:cancelled", "200 opened tomb:opened", "- - tomb:opened", "- - live:",
-		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "500 - live:", "204 - tomb:opened"}},
-	{name: "spent after the lease", opens: 1, ttl: 3600, after: store.LeaseDuration + store.LeaseTimerSlack, expect: openedRow()},
+	{name: "unspent", opens: 2, ttl: 3600, expect: [11]string{
+		"204 - tomb:deleted", "204 - tomb:cancelled", "200 expired tomb:expired", "- - tomb:expired", "- - live:",
+		"200 available live:", "- - live:", "200 - live:", "200 - live:", "500 - live:", "204 - live:",
+	}},
+	{name: "spent during the lease", opens: 1, ttl: 3600, expect: [11]string{
+		"204 - tomb:deleted", "204 - tomb:cancelled", "200 opened tomb:opened", "- - tomb:opened", "- - live:",
+		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "500 - live:", "204 - tomb:opened",
+	}},
+	{
+		name:   "spent after the lease",
+		opens:  1,
+		ttl:    3600,
+		after:  store.LeaseDuration + store.LeaseTimerSlack,
+		expect: openedRow(),
+	},
 	{name: "unspent and expired", opens: 2, ttl: 60, after: 61 * time.Second, expect: expiredRow(store.StateExpired)},
 	{name: "spent and expired", opens: 1, ttl: 60, after: 61 * time.Second, expect: expiredRow(store.StateOpened)},
-	{name: "recorded deleted", opens: 2, ttl: 3600, ending: store.StateDeleted, expect: recordedRow(store.StateDeleted)},
-	{name: "recorded cancelled", opens: 2, ttl: 3600, ending: store.StateCancelled, expect: recordedRow(store.StateCancelled)},
-	{name: "recorded opened", opens: 1, ttl: 3600, after: store.LeaseDuration + store.LeaseTimerSlack, opened: true, expect: openedRow()},
-	{name: "recorded expired", opens: 2, ttl: 3600, ending: store.StateExpired, expect: recordedRow(store.StateExpired)},
+	{
+		name:   "recorded deleted",
+		opens:  2,
+		ttl:    3600,
+		ending: store.StateDeleted,
+		expect: recordedRow(store.StateDeleted),
+	},
+	{
+		name:   "recorded cancelled",
+		opens:  2,
+		ttl:    3600,
+		ending: store.StateCancelled,
+		expect: recordedRow(store.StateCancelled),
+	},
+	{
+		name:   "recorded opened",
+		opens:  1,
+		ttl:    3600,
+		after:  store.LeaseDuration + store.LeaseTimerSlack,
+		opened: true,
+		expect: openedRow(),
+	},
+	{
+		name:   "recorded expired",
+		opens:  2,
+		ttl:    3600,
+		ending: store.StateExpired,
+		expect: recordedRow(store.StateExpired),
+	},
 }
 
 func TestLifecycleMatrix(t *testing.T) {
@@ -126,7 +184,9 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 			t.Fatal(err)
 		}
 	case "resume by request":
-		return h.do(request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok})
+		return h.do(
+			request{method: "GET", path: "/api/v1/messages/" + m.id.String() + "/status", ip: m.ip, token: m.manageTok},
+		)
 	case "resume by sweep":
 		if _, err := h.srv.SweepOnce(ctx); err != nil {
 			t.Fatal(err)
@@ -141,7 +201,15 @@ func runLifecycleAction(t *testing.T, h *harness, m *message, lease, action stri
 		}
 		return h.claim(m, "", "")
 	case "ack":
-		return h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/ack", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+		return h.do(
+			request{
+				method:  "POST",
+				path:    "/api/v1/messages/" + m.id.String() + "/ack",
+				ip:      m.ip,
+				token:   m.readToken,
+				headers: map[string]string{"X-Nylzo-Lease": lease},
+			},
+		)
 	}
 	return nil, nil
 }
@@ -200,7 +268,11 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 	if resp, _ := h.blob(m, lease); resp.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("download of a vanished blob: %d", resp.StatusCode)
 	}
-	if rec, err := h.store.Get(t.Context(), m.id.String()); err != nil || rec.Message == nil || rec.Message.Ending != "" {
+	if rec, err := h.store.Get(
+		t.Context(),
+		m.id.String(),
+	); err != nil || rec.Message == nil ||
+		rec.Message.Ending != "" {
 		t.Fatalf("the row must stay live without an ending: %+v %v", rec, err)
 	}
 }
@@ -228,7 +300,11 @@ func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
 		t.Fatalf("a download racing the expiry ending: %d %s", resp.StatusCode, body)
 	}
-	if rec, err := h.store.Get(t.Context(), m.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateExpired {
+	if rec, err := h.store.Get(
+		t.Context(),
+		m.id.String(),
+	); err != nil || rec.Tombstone == nil ||
+		rec.Tombstone.State != store.StateExpired {
 		t.Fatalf("the download must finish the expiry: %+v %v", rec, err)
 	}
 }
@@ -264,9 +340,22 @@ func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
 	h.mustCreate(m)
 	var opens atomic.Int32
 	fb.set(func(b *faultyBlobs) { b.onOpen = func(string) { opens.Add(1) } })
-	resp, _ := h.do(request{method: "POST", path: "/api/v1/messages/" + m.id.String() + "/claim", ip: m.ip, body: []byte("{"), token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
+	resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages/" + m.id.String() + "/claim",
+			ip:      m.ip,
+			body:    []byte("{"),
+			token:   m.readToken,
+			headers: map[string]string{"Content-Type": "application/json"},
+		},
+	)
 	if resp.StatusCode != http.StatusBadRequest || opens.Load() != 0 {
-		t.Fatalf("a malformed claim body must be refused before the blob is opened: %d, %d opens", resp.StatusCode, opens.Load())
+		t.Fatalf(
+			"a malformed claim body must be refused before the blob is opened: %d, %d opens",
+			resp.StatusCode,
+			opens.Load(),
+		)
 	}
 }
 
@@ -298,7 +387,15 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 	h.mustCreate(m)
 	resp, _ := h.claim(m, "", "")
 	lease := resp.Header.Get("X-Nylzo-Lease")
-	head, _ := h.do(request{method: "HEAD", path: "/api/v1/messages/" + m.id.String() + "/blob", ip: m.ip, token: m.readToken, headers: map[string]string{"X-Nylzo-Lease": lease}})
+	head, _ := h.do(
+		request{
+			method:  "HEAD",
+			path:    "/api/v1/messages/" + m.id.String() + "/blob",
+			ip:      m.ip,
+			token:   m.readToken,
+			headers: map[string]string{"X-Nylzo-Lease": lease},
+		},
+	)
 	if head.StatusCode != http.StatusNotFound {
 		t.Fatalf("HEAD on /blob: %d", head.StatusCode)
 	}
@@ -318,7 +415,16 @@ func TestMalformedAbuseReportsSpendNoRateLimit(t *testing.T) {
 	h.mustCreate(m)
 	report := func(id string) int {
 		body, _ := json.Marshal(map[string]string{"id": id, "reason": "spam"})
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.44", body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}})
+		resp, _ := h.do(
+			request{
+				method:  "POST",
+				path:    "/api/v1/abuse",
+				ip:      "203.0.113.44",
+				body:    body,
+				token:   m.readToken,
+				headers: map[string]string{"Content-Type": "application/json"},
+			},
+		)
 		return resp.StatusCode
 	}
 	for range 3 {
@@ -427,11 +533,19 @@ func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
 		t.Fatalf("ack: %d", ack.StatusCode)
 	}
 	h.clock.Advance(store.LeaseDuration + store.LeaseTimerSlack)
-	if released, err := store.Release(t.Context(), h.store, h.blobs, m.id.String(), h.clock.Now()); err != nil || released {
+	if released, err := store.Release(
+		t.Context(),
+		h.store,
+		h.blobs,
+		m.id.String(),
+		h.clock.Now(),
+	); err != nil ||
+		released {
 		t.Fatalf("release: %v %v", released, err)
 	}
 	rec, err := h.store.Get(t.Context(), m.id.String())
-	if err != nil || rec.Message == nil || rec.Message.Ending != "" || rec.Message.OpensRemaining != 1 || !h.blobExists(m.id) {
+	if err != nil || rec.Message == nil || rec.Message.Ending != "" || rec.Message.OpensRemaining != 1 ||
+		!h.blobExists(m.id) {
 		t.Fatalf("row %+v %v", rec.Message, err)
 	}
 }
@@ -448,11 +562,20 @@ func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.clock.Advance(store.LeaseDuration + store.LeaseTimerSlack)
-	if released, err := store.Release(t.Context(), h.store, h.blobs, m.id.String(), h.clock.Now()); err != nil || released {
+	if released, err := store.Release(
+		t.Context(),
+		h.store,
+		h.blobs,
+		m.id.String(),
+		h.clock.Now(),
+	); err != nil ||
+		released {
 		t.Fatalf("release: %v %v", released, err)
 	}
 	rec, err := h.store.Get(t.Context(), m.id.String())
-	if err != nil || rec.Message == nil || rec.Message.Ending != store.StateExpired || rec.Message.OpensRemaining != 1 || !h.blobExists(m.id) {
+	if err != nil || rec.Message == nil || rec.Message.Ending != store.StateExpired ||
+		rec.Message.OpensRemaining != 1 ||
+		!h.blobExists(m.id) {
 		t.Fatalf("row %+v %v", rec.Message, err)
 	}
 }
@@ -466,7 +589,14 @@ func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
 	lease := resp.Header.Get("X-Nylzo-Lease")
 	inner := h.store
 	h.store = &racingStore{Store: inner, race: func(id string) {
-		if _, err := store.EndMessage(context.Background(), inner, h.blobs, id, store.StateDeleted, h.clock.Now()); err != nil {
+		if _, err := store.EndMessage(
+			context.Background(),
+			inner,
+			h.blobs,
+			id,
+			store.StateDeleted,
+			h.clock.Now(),
+		); err != nil {
 			t.Error(err)
 		}
 	}}
@@ -497,7 +627,11 @@ func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
 	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
 		t.Fatalf("an ack after a recorded burn: %d %s", resp.StatusCode, body)
 	}
-	if rec, err := inner.Get(t.Context(), m.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted || h.blobExists(m.id) {
+	if rec, err := inner.Get(
+		t.Context(),
+		m.id.String(),
+	); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted ||
+		h.blobExists(m.id) {
 		t.Fatalf("the ack must finish the recorded burn: %+v %v", rec, err)
 	}
 }
@@ -522,8 +656,13 @@ func TestClaimThatWaitsPastExpiryIsRefused(t *testing.T) {
 	h.store = slowWriterStore{Store: h.store, clock: h.clock, wait: 2 * time.Second}
 	h.reopen(h.cfg)
 	resp, body := h.claim(m, "", "")
-	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" || resp.Header.Get("X-Nylzo-Lease") != "" {
-		t.Fatalf("a claim that reached the store after expires_at must be refused: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
+	if resp.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" ||
+		resp.Header.Get("X-Nylzo-Lease") != "" {
+		t.Fatalf(
+			"a claim that reached the store after expires_at must be refused: %d %s",
+			resp.StatusCode,
+			resp.Header.Get("Content-Type"),
+		)
 	}
 }
 
@@ -555,9 +694,17 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 	}}
 	h.reopen(h.cfg)
 	if resp, body := h.post(m, "burn", m.readToken); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("the burn that recorded the first ending must answer 204 when a release finishes it: %d %s", resp.StatusCode, body)
+		t.Fatalf(
+			"the burn that recorded the first ending must answer 204 when a release finishes it: %d %s",
+			resp.StatusCode,
+			body,
+		)
 	}
-	if rec, err := h.store.Get(t.Context(), m.id.String()); err != nil || rec.Tombstone == nil || rec.Tombstone.State != store.StateDeleted {
+	if rec, err := h.store.Get(
+		t.Context(),
+		m.id.String(),
+	); err != nil || rec.Tombstone == nil ||
+		rec.Tombstone.State != store.StateDeleted {
 		t.Fatalf("tombstone: %+v %v", rec, err)
 	}
 }
@@ -565,7 +712,16 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 func abuseReport(t *testing.T, h *harness, m *message, ip string) {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"id": m.id.String(), "reason": "spam"})
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: ip, body: body, token: m.readToken, headers: map[string]string{"Content-Type": "application/json"}}); resp.StatusCode != http.StatusAccepted {
+	if resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/abuse",
+			ip:      ip,
+			body:    body,
+			token:   m.readToken,
+			headers: map[string]string{"Content-Type": "application/json"},
+		},
+	); resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("report: %d", resp.StatusCode)
 	}
 }
@@ -582,7 +738,11 @@ func TestAbuseReportsKeepOnlyTheDay(t *testing.T) {
 		t.Fatal(err)
 	}
 	var line map[string]string
-	if err := json.Unmarshal(bytes.TrimSpace(data), &line); err != nil || line["date"] != "2026-10-22" || line["id"] != m.id.String() || len(line) != 3 {
+	if err := json.Unmarshal(
+		bytes.TrimSpace(data),
+		&line,
+	); err != nil || line["date"] != "2026-10-22" || line["id"] != m.id.String() ||
+		len(line) != 3 {
 		t.Fatalf("a stored report must carry only the day, the id and the reason: %s %v", data, err)
 	}
 	dayStart := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
@@ -605,7 +765,12 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	for _, m := range []*message{burned, expired, opened, ending, live} {
 		h.mustCreate(m)
 	}
-	if _, _, _, err := h.store.MarkEnding(t.Context(), ending.id.String(), store.StateCancelled, h.clock.Now()); err != nil {
+	if _, _, _, err := h.store.MarkEnding(
+		t.Context(),
+		ending.id.String(),
+		store.StateCancelled,
+		h.clock.Now(),
+	); err != nil {
 		t.Fatal(err)
 	}
 	fb.set(func(b *faultyBlobs) { b.failDelete[ending.id.String()] = true })
@@ -643,7 +808,11 @@ func TestOldAbuseReportsAreDropped(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, day := range append(oldDays, recentDay) {
-			if err := os.WriteFile(h.abuseFile(day), []byte(`{"date":"`+day.Format(time.DateOnly)+`","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"x"}`+"\n"), 0o600); err != nil {
+			if err := os.WriteFile(
+				h.abuseFile(day),
+				[]byte(`{"date":"`+day.Format(time.DateOnly)+`","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"x"}`+"\n"),
+				0o600,
+			); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -699,14 +868,16 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 	}
 	defer db.Close()
 	var created, expires, lease int64
-	if err := db.QueryRow(`SELECT m.created_at, m.expires_at, l.lease_expires_at FROM messages m JOIN leases l ON l.id = m.id WHERE m.id = ?`, m.id.String()).Scan(&created, &expires, &lease); err != nil {
+	if err := db.QueryRow(`SELECT m.created_at, m.expires_at, l.lease_expires_at FROM messages m JOIN leases l ON l.id = m.id WHERE m.id = ?`, m.id.String()).
+		Scan(&created, &expires, &lease); err != nil {
 		t.Fatal(err)
 	}
 	minute := time.Minute.Milliseconds()
 	if created%minute != 0 || expires%minute != 0 || lease%minute != 0 {
 		t.Fatalf("stored times must be whole minutes: created %d, expires %d, lease %d", created, expires, lease)
 	}
-	if created != time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC).UnixMilli() || lease < h.clock.Now().Add(store.LeaseDuration).UnixMilli() {
+	if created != time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC).UnixMilli() ||
+		lease < h.clock.Now().Add(store.LeaseDuration).UnixMilli() {
 		t.Fatalf("created_at rounds down, the lease rounds up: created %d, lease %d", created, lease)
 	}
 }

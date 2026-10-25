@@ -78,7 +78,10 @@ func TestHTTPErrorLogReportsAndResetsDroppedLines(t *testing.T) {
 	h.clock.Advance(time.Second)
 	errLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
 	lines := strings.Split(strings.TrimSpace(h.logBuf.String()), "\n")
-	if n := len(lines); n < 2 || !strings.Contains(lines[n-2], `"dropped":20`) || !strings.Contains(lines[n-1], `"dropped":0`) {
+	if n := len(
+		lines,
+	); n < 2 || !strings.Contains(lines[n-2], `"dropped":20`) ||
+		!strings.Contains(lines[n-1], `"dropped":0`) {
 		t.Fatalf("dropped lines must be reported once and then reset: %v", lines[max(0, len(lines)-2):])
 	}
 }
@@ -116,7 +119,13 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 	scaleway := baseConfig(pepperA, nil)
 	scaleway.ProxyMode = server.ProxyModeScaleway
 	s := newHarness(t, scaleway)
-	s.statusFrom(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"}})
+	s.statusFrom(
+		request{
+			method:  "GET",
+			path:    "/api/v1/instance",
+			headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"},
+		},
+	)
 	for _, logs := range []string{h.logBuf.String(), s.logBuf.String()} {
 		if strings.Contains(logs, "forwarded-header-ignored") {
 			t.Fatalf("a header the server used must not warn: %s", logs)

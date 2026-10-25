@@ -189,7 +189,9 @@ func sitemapXML(publicURL string) []byte {
 	}
 	var out strings.Builder
 	out.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
-	out.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n")
+	out.WriteString(
+		`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n",
+	)
 	for _, path := range []string{"/", "/cs/"} {
 		fmt.Fprintf(&out, "<url><loc>%s%s</loc>%s</url>\n", publicURL, path, links.String())
 	}

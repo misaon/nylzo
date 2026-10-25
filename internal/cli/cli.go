@@ -88,7 +88,10 @@ func commands() []command {
 
 func Run(args []string, env Env) int {
 	if secretInArguments(args) {
-		fmt.Fprintln(env.Stderr, program+": a link with its key must not be on the command line; pass it on stdin, with --link-file or in NYLZO_LINK")
+		fmt.Fprintln(
+			env.Stderr,
+			program+": a link with its key must not be on the command line; pass it on stdin, with --link-file or in NYLZO_LINK",
+		)
 		return exitUsage
 	}
 	if len(args) == 0 || slices.Contains([]string{"help", "-h", "--help"}, args[0]) {
@@ -172,7 +175,12 @@ func parseFlags(fs *flag.FlagSet, env Env, args []string) error {
 		if keyLike.MatchString(strings.Join(fs.Args(), " ")) {
 			reason = "takes no arguments, and secrets never go on the command line"
 		}
-		fmt.Fprintf(env.Stderr, "%s %s; pass links, passphrases and tokens on stdin, in files or from the terminal\n", fs.Name(), reason)
+		fmt.Fprintf(
+			env.Stderr,
+			"%s %s; pass links, passphrases and tokens on stdin, in files or from the terminal\n",
+			fs.Name(),
+			reason,
+		)
 		return errUsage
 	}
 	return nil

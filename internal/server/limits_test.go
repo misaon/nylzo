@@ -25,7 +25,8 @@ func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
 	over := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 	over.ip = "203.0.113.5"
 	resp, body := h.create(over)
-	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" || decodeJSON(t, body)["error"] != "rate_limited" {
+	if resp.StatusCode != 429 || resp.Header.Get("Retry-After") == "" ||
+		decodeJSON(t, body)["error"] != "rate_limited" {
 		t.Fatalf("21st create: %d %s", resp.StatusCode, body)
 	}
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -53,7 +54,15 @@ func TestAK12GlobalCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, body = h.do(request{method: "POST", path: "/api/v1/messages", body: second.object, ip: second.ip, headers: map[string]string{"X-Nylzo-Create": second.createHeader(0), "X-Nylzo-Pow": token}})
+	resp, body = h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    second.object,
+			ip:      second.ip,
+			headers: map[string]string{"X-Nylzo-Create": second.createHeader(0), "X-Nylzo-Pow": token},
+		},
+	)
 	if resp.StatusCode != 201 {
 		t.Fatalf("second create with pow: %d %s", resp.StatusCode, body)
 	}
@@ -205,7 +214,8 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 	resp, body := h.do(request{method: "GET", path: "/api/v1/instance"})
 	inst := decodeJSON(t, body)
 	pow := inst["pow"].(map[string]any)
-	if resp.StatusCode != 200 || pow["required"] != true || pow["difficulty"].(float64) != 3 || pow["challenge"] == nil {
+	if resp.StatusCode != 200 || pow["required"] != true || pow["difficulty"].(float64) != 3 ||
+		pow["challenge"] == nil {
 		t.Fatalf("instance: %v", inst)
 	}
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
@@ -227,11 +237,27 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 		bad = newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	}
 	bad.ip = "203.0.113.9"
-	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: bad.object, ip: bad.ip, headers: map[string]string{"X-Nylzo-Create": bad.createHeader(0), "X-Nylzo-Pow": other}})
+	resp, _ = h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    bad.object,
+			ip:      bad.ip,
+			headers: map[string]string{"X-Nylzo-Create": bad.createHeader(0), "X-Nylzo-Pow": other},
+		},
+	)
 	if resp.StatusCode != 403 {
 		t.Fatalf("token bound to another id accepted: %d", resp.StatusCode)
 	}
-	resp, body = h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": m.createHeader(0), "X-Nylzo-Pow": token}})
+	resp, body = h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    m.object,
+			ip:      m.ip,
+			headers: map[string]string{"X-Nylzo-Create": m.createHeader(0), "X-Nylzo-Pow": token},
+		},
+	)
 	if resp.StatusCode != 201 {
 		t.Fatalf("create with pow: %d %s", resp.StatusCode, body)
 	}
@@ -241,7 +267,15 @@ func TestPoWChallengeAndSolve(t *testing.T) {
 	stale := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	stale.ip = "203.0.113.9"
 	staleToken, _ := server.SolvePoW(expiring, stale.id, 3)
-	resp, _ = h.do(request{method: "POST", path: "/api/v1/messages", body: stale.object, ip: stale.ip, headers: map[string]string{"X-Nylzo-Create": stale.createHeader(0), "X-Nylzo-Pow": staleToken}})
+	resp, _ = h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    stale.object,
+			ip:      stale.ip,
+			headers: map[string]string{"X-Nylzo-Create": stale.createHeader(0), "X-Nylzo-Pow": staleToken},
+		},
+	)
 	if resp.StatusCode != 403 {
 		t.Fatalf("expired challenge accepted: %d", resp.StatusCode)
 	}
@@ -253,7 +287,16 @@ func TestAbuseReports(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 	h.mustCreate(m)
 	report := func(id, token string) int {
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/abuse", ip: "203.0.113.77", body: []byte(fmt.Sprintf(`{"id":%q,"reason":"spam"}`, id)), token: token, headers: map[string]string{"Content-Type": "application/json"}})
+		resp, _ := h.do(
+			request{
+				method:  "POST",
+				path:    "/api/v1/abuse",
+				ip:      "203.0.113.77",
+				body:    []byte(fmt.Sprintf(`{"id":%q,"reason":"spam"}`, id)),
+				token:   token,
+				headers: map[string]string{"Content-Type": "application/json"},
+			},
+		)
 		return resp.StatusCode
 	}
 	if report(m.id.String(), m.readToken) != http.StatusAccepted {
@@ -354,10 +397,18 @@ func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
 	h := newHarness(t, cfg)
 	h.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
 	resp, body := h.create(newMessage(t, core.KDFNone, "", 1, 3600, "b"))
-	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "3600" || decodeJSON(t, body)["retry_after"] != float64(3600) {
-		t.Fatalf("an hourly refusal at 10:00 must point to 11:00: %d %q %s", resp.StatusCode, resp.Header.Get("Retry-After"), body)
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "3600" ||
+		decodeJSON(t, body)["retry_after"] != float64(3600) {
+		t.Fatalf(
+			"an hourly refusal at 10:00 must point to 11:00: %d %q %s",
+			resp.StatusCode,
+			resp.Header.Get("Retry-After"),
+			body,
+		)
 	}
-	resp, _ = h.do(request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}})
+	resp, _ = h.do(
+		request{method: "GET", path: "/api/v1/instance", headers: map[string]string{"Sec-Purpose": "prefetch"}},
+	)
 	if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("Retry-After") != "60" {
 		t.Fatalf("prefetch: %d %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
@@ -385,7 +436,15 @@ func TestPoWRejectsForgedAndMalformedTokens(t *testing.T) {
 	}
 	tokens := map[string]string{"no-dot": "abc", "short-counter": forge(h.clock.Now()) + ".00", "zero-tag": zeroTag}
 	for name, token := range tokens {
-		resp, body := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": m.createHeader(0), "X-Nylzo-Pow": token}})
+		resp, body := h.do(
+			request{
+				method:  "POST",
+				path:    "/api/v1/messages",
+				body:    m.object,
+				ip:      m.ip,
+				headers: map[string]string{"X-Nylzo-Create": m.createHeader(0), "X-Nylzo-Pow": token},
+			},
+		)
 		if resp.StatusCode != 403 || decodeJSON(t, body)["error"] != "pow" {
 			t.Fatalf("%s: %d %s", name, resp.StatusCode, body)
 		}
@@ -414,9 +473,21 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	m := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	m.ip = "203.0.113.9"
 	token := solve(m)
-	badHeader := mutateHeader(t, m, func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) })
+	badHeader := mutateHeader(
+		t,
+		m,
+		func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) },
+	)
 	send := func(header, pow string) int {
-		resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: m.object, ip: m.ip, headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow}})
+		resp, _ := h.do(
+			request{
+				method:  "POST",
+				path:    "/api/v1/messages",
+				body:    m.object,
+				ip:      m.ip,
+				headers: map[string]string{"X-Nylzo-Create": header, "X-Nylzo-Pow": pow},
+			},
+		)
 		return resp.StatusCode
 	}
 	if code := send(badHeader, token); code != 400 {
@@ -436,7 +507,15 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp, _ := h.do(request{method: "POST", path: "/api/v1/messages", body: other.object, ip: other.ip, headers: map[string]string{"X-Nylzo-Create": other.createHeader(0), "X-Nylzo-Pow": reuse}}); resp.StatusCode != 403 {
+	if resp, _ := h.do(
+		request{
+			method:  "POST",
+			path:    "/api/v1/messages",
+			body:    other.object,
+			ip:      other.ip,
+			headers: map[string]string{"X-Nylzo-Create": other.createHeader(0), "X-Nylzo-Pow": reuse},
+		},
+	); resp.StatusCode != 403 {
 		t.Fatalf("a second token for a used challenge: %d", resp.StatusCode)
 	}
 	if code := send(m.createHeader(0), solve(m)); code != 201 {
@@ -494,7 +573,14 @@ func TestSourceLimiterIsolatesClients(t *testing.T) {
 		resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: ip})
 		return resp.StatusCode
 	}
-	if codes := []int{get("203.0.113.1"), get("203.0.113.1"), get("203.0.113.1")}; !slices.Equal(codes, []int{200, 200, 429}) {
+	if codes := []int{
+		get("203.0.113.1"),
+		get("203.0.113.1"),
+		get("203.0.113.1"),
+	}; !slices.Equal(
+		codes,
+		[]int{200, 200, 429},
+	) {
 		t.Fatalf("one source must be limited after its burst: %v", codes)
 	}
 	if get("2001:db8:1:1::1") != 200 || get("2001:db8:1:1::2") != 200 || get("2001:db8:1:1::3") != 429 {
@@ -584,7 +670,9 @@ func TestRefusedPrefixTakesNoInstanceToken(t *testing.T) {
 		h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:1:%x::1", i)})
 	}
 	for i := range 5 {
-		if resp, _ := h.do(request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:%x::1", i+2)}); resp.StatusCode != 200 {
+		if resp, _ := h.do(
+			request{method: "GET", path: "/api/v1/instance", ip: fmt.Sprintf("2001:db8:%x::1", i+2)},
+		); resp.StatusCode != 200 {
 			t.Fatalf("a refused /48 drained the instance bucket: request %d got %d", i, resp.StatusCode)
 		}
 	}

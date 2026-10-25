@@ -41,7 +41,12 @@ func runSweepOnce(_ context.Context, env Env, args []string) int {
 func runServer(env Env, args []string, name string, run func(*slog.Logger) error) int {
 	fs := newFlags(env, name)
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "usage: %s %s\n\nThe server takes no flags; it reads NYLZO_* environment variables, described in README.md.\n", program, name)
+		fmt.Fprintf(
+			fs.Output(),
+			"usage: %s %s\n\nThe server takes no flags; it reads NYLZO_* environment variables, described in README.md.\n",
+			program,
+			name,
+		)
 	}
 	if code, done := flagsDone(parseFlags(fs, env, args)); done {
 		return code
@@ -70,7 +75,10 @@ func buildVersion(version string) string {
 	return "dev"
 }
 
-func open(cfg server.Config, openStore func(context.Context, string) (*sqlite.Store, error)) (*sqlite.Store, *disk.Blobs, error) {
+func open(
+	cfg server.Config,
+	openStore func(context.Context, string) (*sqlite.Store, error),
+) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
 		return nil, nil, err
 	}
