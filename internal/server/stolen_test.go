@@ -211,7 +211,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	needles.addMessage("pow", pow, "")
 
 	link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
-	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "reason": "spam, see " + link})
+	contact := "notifier.contact@example.cz"
+	body, _ := json.Marshal(
+		map[string]any{"id": leased.id.String(), "reason": "spam, see " + link, "contact": contact, "good_faith": true},
+	)
 	if response, _ := harness.do(
 		&testRequest{
 			method:  http.MethodPost,
@@ -240,9 +243,20 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"nylzo.db", "nylzo.db-wal", filepath.Join("abuse", harness.clock.Now().UTC().Format(time.DateOnly)+".jsonl")} {
+	reportFile := filepath.Join("abuse", harness.clock.Now().UTC().Format(time.DateOnly)+".jsonl")
+	for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {
 		if _, ok := stolen[want]; !ok {
 			t.Fatalf("the stolen copy misses %s: %v", want, slices.Sorted(maps.Keys(stolen)))
+		}
+	}
+	var report map[string]any
+	if err := json.Unmarshal(stolen[reportFile], &report); err != nil ||
+		!slices.Equal(slices.Sorted(maps.Keys(report)), []string{"contact", "date", "good_faith", "id", "reason"}) {
+		t.Errorf("a stored report holds more than the listed fields: %s %v", stolen[reportFile], err)
+	}
+	for where, data := range stolen {
+		if where != reportFile && bytes.Contains(data, []byte(contact)) {
+			t.Errorf("%s holds the notifier's contact", where)
 		}
 	}
 	for where, data := range stolen {

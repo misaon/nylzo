@@ -786,3 +786,110 @@ func TestAbuseReports(t *testing.T) {
 		t.Fatal("sixth report per hour must be limited")
 	}
 }
+
+func reportAbuse(t *testing.T, harness *testHarness, token string, report map[string]any) string {
+	t.Helper()
+	body, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, answer := harness.do(
+		&testRequest{
+			method:  http.MethodPost,
+			path:    "/api/v1/abuse",
+			address: "203.0.113.90",
+			body:    body,
+			token:   token,
+			headers: map[string]string{"Content-Type": "application/json"},
+		},
+	)
+	var fields struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	if decodeErr := json.Unmarshal(answer, &fields); decodeErr != nil {
+		t.Fatalf("abuse answer %d %q: %v", response.StatusCode, answer, decodeErr)
+	}
+	return fmt.Sprintf("%d %s%s", response.StatusCode, fields.Status, fields.Error)
+}
+
+func TestAbuseReportsRefuseAnImplausibleContactAndStoreAValidOneAsGiven(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.AbusePerHour = 1
+	harness := newHarness(t, settings)
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	harness.mustCreate(message)
+	link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
+	for _, id := range []string{message.id.String(), core.NewID().String(), "not-an-id"} {
+		for _, contact := range []string{"jana", "jana@example", "ja na@example.cz", link + "@example.cz"} {
+			report := map[string]any{"id": id, "reason": "spam", "contact": contact, "good_faith": true}
+			if got := reportAbuse(t, harness, message.readToken, report); got != "400 contact" {
+				t.Fatalf("contact %q about %s: %s", contact, id, got)
+			}
+		}
+	}
+	contact := "abcdefghijklmnopqrstuvwxyz@example.cz"
+	report := map[string]any{
+		"id":         message.id.String(),
+		"reason":     "spam",
+		"contact":    " " + contact + "\n",
+		"good_faith": true,
+	}
+	if got := reportAbuse(t, harness, message.readToken, report); got != "202 accepted" {
+		t.Fatalf("a refused contact spent the rate limit or the valid report failed: %s", got)
+	}
+	data, err := harness.abuseReports()
+	var stored map[string]any
+	if err != nil || json.Unmarshal(data, &stored) != nil || stored["contact"] != contact ||
+		stored["good_faith"] != true {
+		t.Fatalf("the report must keep the trimmed contact without redaction and the good faith: %s %v", data, err)
+	}
+}
+
+func TestAbuseReportsAnswerTheLimitOnlyForALiveMessage(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.AbusePerHour = 0
+	harness := newHarness(t, settings)
+	live := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	burned := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+	harness.mustCreate(live)
+	harness.mustCreate(burned)
+	for _, message := range []*testMessage{live, burned} {
+		for range 3 {
+			if got := reportAbuse(
+				t,
+				harness,
+				message.readToken,
+				map[string]any{"id": message.id.String()},
+			); got != "202 accepted" {
+				t.Fatalf("a report within the daily budget: %s", got)
+			}
+		}
+	}
+	if got := reportAbuse(t, harness, live.readToken, map[string]any{"id": live.id.String()}); got != "202 limit" {
+		t.Fatalf("a fourth report about a live message must not read as received: %s", got)
+	}
+	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
+		t.Fatalf("burn: %d", response.StatusCode)
+	}
+	wrongKey := core.Encode(make([]byte, 32))
+	for name, request := range map[string]struct {
+		token string
+		id    string
+	}{
+		"a wrong key":    {wrongKey, live.id.String()},
+		"an ended id":    {burned.readToken, burned.id.String()},
+		"an unknown id":  {live.readToken, core.NewID().String()},
+		"a malformed id": {live.readToken, "not-an-id"},
+	} {
+		if got := reportAbuse(t, harness, request.token, map[string]any{"id": request.id}); got != "202 accepted" {
+			t.Errorf("%s must keep the uniform answer: %s", name, got)
+		}
+	}
+	data, err := harness.abuseReports()
+	if err != nil || strings.Count(string(data), "\n") != 6 {
+		t.Fatalf("stored reports: %q %v", data, err)
+	}
+}

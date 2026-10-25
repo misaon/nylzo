@@ -163,6 +163,7 @@ type gone struct {
 
 var (
 	errBadRequest     = apiError{Error: "bad_request"}
+	errContact        = apiError{Error: "contact"}
 	errNotFound       = apiError{Error: "not_found"}
 	errConflict       = apiError{Error: "conflict"}
 	errLengthRequired = apiError{Error: "length_required"}
