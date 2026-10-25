@@ -222,7 +222,7 @@ cd web && pnpm install --frozen-lockfile && pnpm -r typecheck && pnpm -r test
 
 Těžký vektor v TypeScriptu běží jen s `NYLZO_HEAVY_TESTS=1` (CI ho zapíná).
 
-`svelte-check` 4.7.7 podporuje TypeScript nejvýš 6, proto `web/app` kontroluje typy přes TypeScript 6.0.3; `web/core` a `web/e2e` používají TypeScript 7.
+`svelte-check` 4.7.7 a typescript-eslint podporují TypeScript nejvýš 6, proto `web/app` a ESLint používají TypeScript 6.0.3; `web/core` a `web/e2e` kontroluje `tsc` 7.
 
 E2e testy sestaví `nylzo` z aktuálního kódu a spustí ho s dočasným adresářem dat. Potřebují sestaveného klienta a prohlížeče Playwright; Go hledají v `PATH`, nebo v proměnné `NYLZO_GO`:
 
@@ -238,14 +238,10 @@ Fuzz cíle (obálka, plaintext obálky, meta JSON, odkaz, fragment, hlavička vy
 go test -run='^$' -fuzz='^FuzzOpen$' -fuzztime=30s ./internal/core
 ```
 
-Lint a modernizace kódu, stejně jako v CI (nastavení je v `.golangci.yml`):
+`mise run lint` spustí všechny statické kontroly CI (D87): golangci-lint s formátovači gofumpt, goimports a golines (`.golangci.yml`), `go vet` pro macOS, `go fix -diff`, govulncheck, actionlint, zizmor, shellcheck na úlohy v `mise-tasks/`, a na webu Prettier, ESLint (`web/eslint.config.js`), knip, kontrolu typů a svelte-autofixer. Formátování opraví:
 
 ```bash
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-```
-
-```bash
-go fix -diff ./...
+golangci-lint fmt && pnpm --dir web format
 ```
 
 Benchmarky kritických cest (ověření podpisu, čtení řádku, dávková spotřeba výzev, podepsaný požadavek):
