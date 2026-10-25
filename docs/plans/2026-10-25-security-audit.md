@@ -39,7 +39,7 @@ D94: přepisování citlivých bajtů v paměti tam, kde to jazyk dovolí.
 - Web: composer přepíše bajty přílohy po vytvoření i po chybě; čtenář už přepisuje text, přílohu a klíče při odchodu.
 - Hranice zůstává a dokumenty ji říkají: řetězce v Go i JavaScriptu jsou neměnné, garbage collector může kopie přesunout a operační systém stránky odložit na disk. Proti napadenému procesu přepisování nepomůže.
 
-D95: čtenář odstraní fragment z adresního řádku hned po načtení do paměti, ještě před prvním požadavkem, a to i u neplatného odkazu. Do `sessionStorage` si uloží značku bez tajemství, aby po obnovení stránky před otevřením vysvětlil, že klíč odstranil kvůli bezpečnosti a odkaz je potřeba otevřít znovu. Jen po dobu lease, tedy od claimu do zobrazení nebo konce lease, drží v `sessionStorage` karty i fragment, aby obnovení stránky dokončilo otevření, které už spotřebovalo, bez ztráty zprávy; po zobrazení nebo konci lease ho smaže. To je kratší a méně viditelné než dosavadní fragment v adrese až do zobrazení. Globální historie a synchronizace prohlížeče mohou původní adresu zachytit už při navigaci; to replaceState nezmění a dokumenty to dál říkají.
+D95: čtenář odstraní fragment z adresního řádku hned po načtení do paměti, ještě před prvním požadavkem, a to i u neplatného odkazu. Do `sessionStorage` si uloží značku bez tajemství, aby po obnovení stránky před otevřením vysvětlil, že klíč odstranil kvůli bezpečnosti a odkaz je potřeba otevřít znovu. Jen po dobu lease, tedy od claimu do zobrazení nebo konce lease, drží v `sessionStorage` karty i fragment, aby obnovení stránky dokončilo otevření, které už spotřebovalo, bez ztráty zprávy; po zobrazení nebo konci lease ho smaže. To je kratší a méně viditelné než dosavadní fragment v adrese až do zobrazení. Odkaz vložený znovu do adresního řádku stránku načte znovu, protože změna samotného fragmentu nový dokument nenačte. Globální historie a synchronizace prohlížeče mohou původní adresu zachytit už při navigaci; to replaceState nezmění a dokumenty to dál říkají.
 
 D96: „Zapamatovat na tomto zařízení“ je ve výchozím stavu vypnuté a odesílatel ho zapne sám. Nahrazuje výchozí stav z D39. Uložený neexportovatelný klíč podepíše stav a zrušení každému skriptu stejného originu, obsah ani odkaz neprozradí.
 
@@ -66,3 +66,12 @@ OD27 (otevřené, pro vlastníka): místní ověřený webový klient. Podepsan�
 4. Server: výchozí listener, režim Scaleway, kontrola oprávnění.
 5. Web: tlačítko generátoru, odmítnutí slabé passphrase, fragment hned pryč, zapamatování vypnuté, přepis přílohy, texty transparentnosti.
 6. `mise run lint`, Go testy s `-race`, testy obou jader a aplikace, e2e v Chromiu a WebKitu.
+
+## Stav (25. 10. 2026 večer)
+
+Hotové na `fix/security-audit`: návrh a specifikace (D92 až D100, OD27), obě jádra (pravidla passphrase, generátor, seznam běžných hesel, přepis bajtů, vektory), CLI (`read` s výslovným cílem, `--generate-passphrase-file`), server (listener na loopbacku, X-Real-IP jen z privátních adres, kontrola oprávnění, kontrola souboru s pepperem) a web (fragment pryč hned po načtení, stránka po vložení odkazu znovu, generátor, zapamatování vypnuté, přepis přílohy, texty transparentnosti).
+
+Ověřeno lokálně: `mise run lint` bez nálezu, `mise run test` (Go s race detektorem, 312 testů jádra a 282 testů aplikace), e2e v Chromiu (52) a WebKitu (10). Firefox se lokálně nespustí, protože chybí build prohlížeče pro Playwright 1.64.1; běží v CI. Přepis bajtů v paměti test nemá, protože v jazyce s garbage collectorem nejde spolehlivě ověřit, že kopie nezůstala.
+
+Otevřené pro vlastníka: OD27 (místní ověřený webový klient).
+
