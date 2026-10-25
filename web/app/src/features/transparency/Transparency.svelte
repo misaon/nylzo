@@ -3,7 +3,7 @@
   import { formatBytes, formatDays, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../shared/shell/repository.ts';
-  import { contactHref, verifyCommand } from './transparency.ts';
+  import { contactHref } from './transparency.ts';
 
   type View =
     | { readonly view: 'loading' }
@@ -17,11 +17,18 @@
   const api = createApi();
 
   let view = $state.raw<View>({ view: 'loading' });
+  const data = $derived(view.view === 'ready' ? view.data : undefined);
+  const operator = $derived(data?.operator);
+  const contactLink = $derived(operator?.contact === undefined ? undefined : contactHref(operator.contact));
 
   const days = (seconds: number) => formatDays(Math.round(seconds / DAY_SECONDS), translator.language);
   const period = (seconds: number) =>
     seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, translator.language);
   const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
+
+  function verifyCommand(): string {
+    return `nylzo verify-client --server ${location.origin}`;
+  }
 
   async function load() {
     view = { view: 'loading' };
@@ -32,7 +39,7 @@
     }
   }
 
-  load();
+  void load();
 </script>
 
 <section aria-labelledby="transparency-title">
@@ -44,11 +51,7 @@
   {:else if view.view === 'failed'}
     <p role="alert">{translate('transparency.failed')}</p>
     <button type="button" onclick={load}>{translate('action.retry')}</button>
-  {:else}
-    {const data = $derived(view.data)}
-    {const operator = $derived(data.operator)}
-    {const href = $derived(operator?.contact === undefined ? undefined : contactHref(operator.contact))}
-
+  {:else if data}
     <h3>{translate('transparency.operator.title')}</h3>
     {#if operator}
       <dl>
@@ -59,8 +62,8 @@
         {#if operator.contact}
           <dt>{translate('transparency.operator.contact')}</dt>
           <dd>
-            {#if href}
-              <a {href} rel="noreferrer" class="wrap-anywhere">{operator.contact}</a>
+            {#if contactLink}
+              <a href={contactLink} rel="noreferrer" class="wrap-anywhere">{operator.contact}</a>
             {:else}
               {operator.contact}
             {/if}
@@ -135,7 +138,7 @@
       {/each}
     </ul>
     <p>{translate('transparency.client.verify')}</p>
-    <p><code class="wrap-anywhere">{verifyCommand(location.origin)}</code></p>
+    <p><code class="wrap-anywhere">{verifyCommand()}</code></p>
     <p>{translate('transparency.client.limit')}</p>
     <p><a href={REPOSITORY_URL} rel="noreferrer">{translate('transparency.source')}</a></p>
   {/if}

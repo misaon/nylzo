@@ -1,9 +1,10 @@
 <script lang="ts">
-  import type { Attachment } from 'svelte/attachments';
-
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
+  import { Flash } from '../../../shared/ui/flash.svelte.ts';
+  import { FocusTargets } from '../../../shared/ui/focus.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { arrowTarget } from '../../../shared/ui/tabs.ts';
 
   const { translate } = getTranslator();
 
@@ -14,8 +15,8 @@
   const points = ['host.point.compose', 'host.point.signed', 'host.point.mit'] as const;
 
   let tab = $state<Tab>('compose');
-  let copied = $state(false);
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  const copied = new Flash(2000);
+  const focus = new FocusTargets<Tab>();
 
   const index = $derived(tabs.indexOf(tab));
   const terminal = $derived(tabs.map((id) => ({ id, lines: lines(id) })));
@@ -43,40 +44,36 @@
     }
   }
 
-  function lines(id: Tab): { readonly cmd: string; readonly rest: string }[] {
+  function lines(id: Tab): { readonly command: string; readonly rest: string }[] {
     return code(id)
       .split('\n')
       .map((line) => {
         const space = line.indexOf(' ');
-        return space === -1 ? { cmd: line, rest: '' } : { cmd: line.slice(0, space), rest: line.slice(space) };
+        return space === -1 ? { command: line, rest: '' } : { command: line.slice(0, space), rest: line.slice(space) };
       });
   }
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(code(tab));
-      copied = true;
-      clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => (copied = false), 2000);
+      copied.show();
     } catch {
-      copied = false;
+      copied.hide();
     }
   }
 
-  const cleanup: Attachment = () => () => clearTimeout(copiedTimer);
-
   function onkeydown(event: KeyboardEvent) {
-    const move = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (move !== 0) {
-      event.preventDefault();
-      const next = tabs[(index + move + tabs.length) % tabs.length] ?? 'compose';
-      tab = next;
-      document.getElementById(`host-tab-${next}`)?.focus();
+    const next = arrowTarget(event.key, index, tabs.length);
+    if (next === undefined) {
+      return;
     }
+    event.preventDefault();
+    tab = tabs[next] ?? 'compose';
+    focus.focus(tab);
   }
 </script>
 
-<section id="self-host" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="host-title" {@attach cleanup}>
+<section id="self-host" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="host-title">
   <div
     class="mx-auto grid max-w-[1160px] items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16"
   >
@@ -118,6 +115,7 @@
           ></span>
           {#each tabs as id (id)}
             <button
+              {@attach focus.attach(id)}
               id="host-tab-{id}"
               type="button"
               role="tab"
@@ -143,7 +141,10 @@
         >
           <span class="stack">
             <span
-              class={['flex items-center gap-2 fade-swap', copied ? 'pointer-events-none opacity-0' : 'opacity-100']}
+              class={[
+                'flex items-center gap-2 fade-swap',
+                copied.shown ? 'pointer-events-none opacity-0' : 'opacity-100',
+              ]}
             >
               <Icon name="copy" class="size-4" />
               {translate('host.copy')}
@@ -151,7 +152,7 @@
             <span
               class={[
                 'flex items-center gap-2 text-aegis-200 fade-swap',
-                copied ? 'opacity-100' : 'pointer-events-none opacity-0',
+                copied.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
               ]}
             >
               <Icon name="check" stroke={2.2} class="size-4" />
@@ -159,7 +160,7 @@
             </span>
           </span>
         </button>
-        <span class="sr-only" role="status">{copied ? translate('host.copied') : ''}</span>
+        <span class="sr-only" role="status">{copied.shown ? translate('host.copied') : ''}</span>
       </div>
       <div
         class="mt-2.5 overflow-hidden rounded-pane bg-void-950/85 shadow-[0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] ring-1 ring-white/10"
@@ -188,11 +189,10 @@
               ]}
               aria-hidden={tab !== screen.id}
             >
-              {#each screen.lines as line (line.cmd + line.rest)}
+              {#each screen.lines as line (line.command + line.rest)}
                 <p class="whitespace-pre">
-                  <span class="text-aegis-300 select-none">$ </span><span class="text-aegis-200">{line.cmd}</span><span
-                    class="text-ink-soft">{line.rest}</span
-                  >
+                  <span class="text-aegis-300 select-none">$ </span><span class="text-aegis-200">{line.command}</span
+                  ><span class="text-ink-soft">{line.rest}</span>
                 </p>
               {/each}
               <p class="whitespace-pre" aria-hidden="true">

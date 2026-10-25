@@ -70,6 +70,11 @@ export interface YearsAmount {
   readonly amount: string;
 }
 
+const PLURAL_KEYS: Partial<Record<Intl.LDMLPluralRule, YearsKey>> = {
+  one: 'brute.years.one',
+  few: 'brute.years.few',
+};
+
 const SCALES: readonly { readonly size: number; readonly fraction: YearsKey; readonly whole: YearsKey }[] = [
   { size: 1e9, fraction: 'brute.years.billion.fraction', whole: 'brute.years.billion' },
   { size: 1e6, fraction: 'brute.years.million.fraction', whole: 'brute.years.million' },
@@ -89,10 +94,7 @@ export function yearsAmount(yearsLog10: number, language: Language): YearsAmount
   }
   const rounded = Math.round(years);
   const rule = new Intl.PluralRules(language).select(rounded);
-  return {
-    key: rule === 'one' ? 'brute.years.one' : rule === 'few' ? 'brute.years.few' : 'brute.years.other',
-    amount: number(rounded, 0),
-  };
+  return { key: PLURAL_KEYS[rule] ?? 'brute.years.other', amount: number(rounded, 0) };
 }
 
 export interface Countdown {
@@ -101,20 +103,25 @@ export interface Countdown {
   readonly done: string;
 }
 
+function changedDigits(after: string, before: string): number {
+  let same = 0;
+  while (same < after.length && after[same] === before[same]) {
+    same++;
+  }
+  return after.length - same;
+}
+
 function grouped(value: bigint): string {
-  return value.toString().replaceAll(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return value.toString().replaceAll(/\B(?=(?:\d{3})+(?!\d))/g, ' ');
 }
 
 export function countdown(attacker: Attacker, quantum: boolean, elapsedMs: number): Countdown {
   const total = quantum ? (2n ** QUANTUM_BITS * QUANTUM_NUMERATOR) / QUANTUM_DENOMINATOR : 2n ** KEY_BITS;
   const done = (10n ** BigInt(rateOf(attacker)) * BigInt(Math.max(0, Math.floor(elapsedMs)))) / 1000n;
   const left = total - done;
-  const before = total.toString();
-  const after = left.toString();
-  const first = [...after].findIndex((digit, index) => digit !== before[index]);
   const text = grouped(left);
   let cut = text.length;
-  for (let digits = first === -1 ? 0 : after.length - first; digits > 0; cut--) {
+  for (let digits = changedDigits(left.toString(), total.toString()); digits > 0; cut--) {
     if (text[cut - 1] !== ' ') {
       digits--;
     }

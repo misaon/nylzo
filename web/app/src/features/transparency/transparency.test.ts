@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { contactHref, verifyCommand } from './transparency.ts';
+import { contactHref } from './transparency.ts';
 
 describe('transparency', () => {
   it('links only an email address or an https address', () => {
@@ -30,9 +30,5 @@ describe('transparency', () => {
     ]) {
       expect(contactHref(contact), contact).toBeUndefined();
     }
-  });
-
-  it('builds the verify command for this origin', () => {
-    expect(verifyCommand('https://nylzo.example')).toBe('nylzo verify-client --server https://nylzo.example');
   });
 });

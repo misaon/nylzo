@@ -1,10 +1,10 @@
 import { parseId } from '@nylzo/core';
 
 import type { Api, Status } from '../../shared/api/api.ts';
+import type { SentRecord } from '../../shared/sent-records/sent-record.ts';
 
-import { ApiError } from '../../shared/api/api-errors.ts';
+import { isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
 import { retainedRecords, type SentStore } from '../../shared/sent-records/sent-store.ts';
-import { type SentRecord } from '../../shared/sent-records/sent-record.ts';
 
 export type ItemState =
   | { readonly kind: 'loading' }
@@ -61,34 +61,24 @@ export function assess(state: ItemState, expiresAt: number, now: number): Pick<S
 }
 
 function failedState(error: unknown): ItemState {
-  if (error instanceof ApiError) {
-    if (error.kind === 'not_found') {
-      return { kind: 'unknown' };
-    }
-    if (error.kind === 'rate_limited' || error.kind === 'unavailable') {
-      return { kind: 'retry_later', retryAfter: error.retryAfter };
-    }
+  if (isApiError(error, 'not_found')) {
+    return { kind: 'unknown' };
+  }
+  if (shouldRetryLater(error)) {
+    return { kind: 'retry_later', retryAfter: error.retryAfter };
   }
   return { kind: 'failed' };
 }
 
 function cancelOutcome(error: unknown): CancelOutcome {
-  if (error instanceof ApiError) {
-    switch (error.kind) {
-      case 'gone': {
-        return { outcome: 'ended' };
-      }
-      case 'not_found': {
-        return { outcome: 'unknown' };
-      }
-      case 'rate_limited':
-      case 'unavailable': {
-        return { outcome: 'retry_later', retryAfter: error.retryAfter };
-      }
-      default: {
-        return { outcome: 'failed' };
-      }
-    }
+  if (isApiError(error, 'gone')) {
+    return { outcome: 'ended' };
+  }
+  if (isApiError(error, 'not_found')) {
+    return { outcome: 'unknown' };
+  }
+  if (shouldRetryLater(error)) {
+    return { outcome: 'retry_later', retryAfter: error.retryAfter };
   }
   return { outcome: 'failed' };
 }
@@ -136,18 +126,27 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
   }
 
   async function stored(id: string): Promise<SentRecord | undefined> {
-    const found = (await dependencies.store.list()).find((record) => record.id === id);
+    const records = await dependencies.store.list();
+    const found = records.find((record) => record.id === id);
     if (!found) {
       drop(id);
     }
     return found;
   }
 
+  async function markEnded(id: string, endedAt: number): Promise<SentRecord | undefined> {
+    try {
+      return await dependencies.store.markEnded(id, endedAt);
+    } catch {
+      return undefined;
+    }
+  }
+
   async function rememberEnd(record: SentRecord, status: Status): Promise<void> {
     if (status.endedAt === undefined || record.endedAt !== undefined) {
       return;
     }
-    const ended = await dependencies.store.markEnded(record.id, Date.parse(status.endedAt)).catch(() => {});
+    const ended = await markEnded(record.id, Date.parse(status.endedAt));
     if (ended) {
       records = records.map((candidate) => (candidate.id === record.id ? ended : candidate));
     }
@@ -179,7 +178,7 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     }
     states = new Map();
     show();
-    for (const { id } of [...records]) {
+    for (const { id } of records) {
       if (current !== generation) {
         return;
       }

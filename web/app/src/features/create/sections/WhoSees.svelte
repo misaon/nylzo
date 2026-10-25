@@ -1,12 +1,15 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { FocusTargets } from '../../../shared/ui/focus.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { arrowTarget } from '../../../shared/ui/tabs.ts';
   import { AutoCycle } from './auto-cycle.svelte.ts';
 
   const { translate } = getTranslator();
 
   const VIEW_MS = 7000;
   const views = ['you', 'server', 'thief'] as const;
+  const focus = new FocusTargets<(typeof views)[number]>();
   const cycle = new AutoCycle(
     () => views.length,
     () => VIEW_MS,
@@ -48,13 +51,13 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    const move = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (move !== 0) {
-      event.preventDefault();
-      const next = (cycle.index + move + views.length) % views.length;
-      cycle.select(next);
-      document.getElementById(`who-tab-${views[next]}`)?.focus();
+    const next = arrowTarget(event.key, cycle.index, views.length);
+    if (next === undefined) {
+      return;
     }
+    event.preventDefault();
+    cycle.select(next);
+    focus.focus(views[next] ?? 'you');
   }
 </script>
 
@@ -107,6 +110,7 @@
         </span>
         {#each views as view, index (view)}
           <button
+            {@attach focus.attach(view)}
             id="who-tab-{view}"
             type="button"
             role="tab"

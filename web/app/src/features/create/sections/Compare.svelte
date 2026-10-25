@@ -139,7 +139,9 @@
                         'bg-aegis-500/8 shadow-[inset_1px_0_0_oklch(0.67_0.16_252/0.3),inset_-1px_0_0_oklch(0.67_0.16_252/0.3)]',
                     ]}
                   >
-                    {#if cell.kind === 'yes'}
+                    {#if cell.kind === 'text'}
+                      <span class={['font-mono text-xs', cell.tone]}>{translate(cell.note)}</span>
+                    {:else if cell.kind === 'yes'}
                       <span class="flex items-center gap-2 text-xs text-aegis-200">
                         <span
                           class={[
@@ -160,15 +162,13 @@
                         >
                         <span class="sr-only">{translate('compare.no')}</span>{cell.note ? translate(cell.note) : ''}
                       </span>
-                    {:else if cell.kind === 'part'}
+                    {:else}
                       <span class="flex items-center gap-2 text-xs text-ink-soft">
                         <span class="grid size-5 shrink-0 place-items-center rounded-[6px] ring-1 ring-white/25"
                           ><Icon name="minus" stroke={2.6} class="size-3" /></span
                         >
                         <span class="sr-only">{translate('compare.part')}</span>{cell.note ? translate(cell.note) : ''}
                       </span>
-                    {:else}
-                      <span class={['font-mono text-xs', cell.tone]}>{translate(cell.note)}</span>
                     {/if}
                   </td>
                 {/each}

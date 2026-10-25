@@ -1,13 +1,14 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
+  import type { Status } from '../../shared/api/api.ts';
   import type { MessageKey } from '../../shared/language/czech.ts';
 
   import { createApi } from '../../shared/api/api.ts';
   import { formatDays, formatTime, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
+  import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
   import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
   import { type CancelOutcome, createSentPage, type ItemState, type SentItem, type SentView } from './sent-page.ts';
@@ -44,20 +45,13 @@
     if (storageFailed) {
       return translate('sent.unavailable');
     }
-    switch (cancelled?.outcome) {
-      case 'cancelled': {
-        return translate('sent.cancelled');
-      }
-      case 'retry_later': {
-        return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.language) });
-      }
-      case 'failed': {
-        return translate('sent.failed');
-      }
-      default: {
-        return '';
-      }
+    if (cancelled?.outcome === 'cancelled') {
+      return translate('sent.cancelled');
     }
+    if (cancelled?.outcome === 'retry_later') {
+      return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.language) });
+    }
+    return cancelled?.outcome === 'failed' ? translate('sent.failed') : '';
   });
 
   void sent.load();
@@ -101,10 +95,7 @@
     return state.status.firstOpenedAt ? time(state.status.firstOpenedAt) : translate('sent.not_opened');
   }
 
-  function counterText(
-    state: ItemState,
-    value: (status: Extract<ItemState, { kind: 'loaded' }>['status']) => string,
-  ): string {
+  function counterText(state: ItemState, value: (status: Status) => string): string {
     if (state.kind !== 'loaded') {
       return '';
     }
