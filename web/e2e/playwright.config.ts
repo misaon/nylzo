@@ -3,6 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
 
 const ci = Boolean(process.env['CI']);
+const crossBrowser = /@cross-browser/;
 
 function server(baseUrl: string, profile: string) {
   return {
@@ -24,8 +25,8 @@ export default defineConfig({
   use: { baseURL: BASE_URL, locale: 'en-US', reducedMotion: 'reduce', trace: 'retain-on-failure' },
   projects: [
     { name: 'chromium', use: devices['Desktop Chrome'] },
-    { name: 'firefox', use: devices['Desktop Firefox'] },
-    { name: 'webkit', use: devices['Desktop Safari'] },
+    { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
+    { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
   ],
   webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow')],
 });

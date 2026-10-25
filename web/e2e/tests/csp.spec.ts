@@ -23,19 +23,25 @@ function withoutNonce(policy: string): { readonly policy: string; readonly nonce
 }
 
 for (const path of ['/', '/cs/', '/sent', '/report', `/m/${id}`]) {
-  test(`${path} carries exactly the CSP of spec section 9 and renders without violations`, async ({ page }) => {
-    const violations = await recordViolations(page);
-    const response = await openApp(page, path);
-    const { policy, nonces } = withoutNonce(response?.headers()['content-security-policy'] ?? '');
-    expect(policy).toBe(htmlPolicy);
-    expect(nonces).toHaveLength(2);
-    expect(nonces[0]).toBe(nonces[1]);
-    expect(nonces[0]?.length ?? 0).toBeGreaterThanOrEqual(22);
-    expect(response?.headers()['x-robots-tag']).toBe(path === '/' || path === '/cs/' ? undefined : 'noindex, nofollow');
-    await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    expect(await violations()).toEqual([]);
-  });
+  test(
+    `${path} carries exactly the CSP of spec section 9 and renders without violations`,
+    { tag: '@cross-browser' },
+    async ({ page }) => {
+      const violations = await recordViolations(page);
+      const response = await openApp(page, path);
+      const { policy, nonces } = withoutNonce(response?.headers()['content-security-policy'] ?? '');
+      expect(policy).toBe(htmlPolicy);
+      expect(nonces).toHaveLength(2);
+      expect(nonces[0]).toBe(nonces[1]);
+      expect(nonces[0]?.length ?? 0).toBeGreaterThanOrEqual(22);
+      expect(response?.headers()['x-robots-tag']).toBe(
+        path === '/' || path === '/cs/' ? undefined : 'noindex, nofollow',
+      );
+      await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      expect(await violations()).toEqual([]);
+    },
+  );
 }
 
 test('responses other than HTML carry the short CSP of spec section 9', async ({ request }) => {

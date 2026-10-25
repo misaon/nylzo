@@ -77,53 +77,57 @@ async function linkSecrets(link: string, passphrase: string) {
   return { s, r, saltPw, p, v };
 }
 
-test('the fragment, the passphrase, the keys and the content never leave the browser in any common encoding (AK1, AK2)', async ({
-  browser,
-}) => {
-  const sender = await (await browser.newContext()).newPage();
-  const recipient = await (await browser.newContext()).newPage();
-  const sent = record(sender);
-  const received = record(recipient);
-  const passphrase = 'four random words here';
-  const text = 'tajné sdělení jen pro příjemce';
-  const file = {
-    name: 'výplatní páska říjen.pdf',
-    mimeType: 'application/pdf',
-    buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n'),
-  };
-  const link = await createViaUi(sender, { text, file, passphrase });
-  await openViaUi(recipient, link, passphrase);
-  await expectRevealed(recipient);
-  await expect(recipient.locator('pre')).toHaveText(text);
-  await expect(recipient.locator('bdi')).toHaveText(file.name);
-  const fragment = new URL(link).hash.slice(1);
-  const keys = await linkSecrets(link, passphrase);
-  expect(keys.s).toHaveLength(32);
-  const forbidden = [
-    fragment,
-    ...textForms(passphrase),
-    ...textForms(text),
-    ...textForms(file.name),
-    ...textForms(file.buffer.toString('utf8')),
-    ...[keys.s, keys.r, keys.saltPw, keys.p, keys.v].flatMap(encodings),
-  ].map((form) => form.toLowerCase());
-  const requests = await Promise.all([...sent, ...received]);
-  expect(requests.length).toBeGreaterThan(6);
-  const create = requests.find((request) => request.headers['x-nylzo-create'] !== undefined);
-  expect(JSON.parse(Buffer.from(create?.headers['x-nylzo-create'] ?? '', 'base64url').toString('utf8'))).toMatchObject({
-    read_key: encodeBase64url((await requestKey(keys.r)).publicKey),
-    verifier_key: encodeBase64url((await requestKey(keys.v)).publicKey),
-  });
-  for (const request of requests) {
-    const flat =
-      `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
-    for (const form of forbidden) {
-      expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
+test(
+  'the fragment, the passphrase, the keys and the content never leave the browser in any common encoding (AK1, AK2)',
+  { tag: '@cross-browser' },
+  async ({ browser }) => {
+    const sender = await (await browser.newContext()).newPage();
+    const recipient = await (await browser.newContext()).newPage();
+    const sent = record(sender);
+    const received = record(recipient);
+    const passphrase = 'four random words here';
+    const text = 'tajné sdělení jen pro příjemce';
+    const file = {
+      name: 'výplatní páska říjen.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n'),
+    };
+    const link = await createViaUi(sender, { text, file, passphrase });
+    await openViaUi(recipient, link, passphrase);
+    await expectRevealed(recipient);
+    await expect(recipient.locator('pre')).toHaveText(text);
+    await expect(recipient.locator('bdi')).toHaveText(file.name);
+    const fragment = new URL(link).hash.slice(1);
+    const keys = await linkSecrets(link, passphrase);
+    expect(keys.s).toHaveLength(32);
+    const forbidden = [
+      fragment,
+      ...textForms(passphrase),
+      ...textForms(text),
+      ...textForms(file.name),
+      ...textForms(file.buffer.toString('utf8')),
+      ...[keys.s, keys.r, keys.saltPw, keys.p, keys.v].flatMap(encodings),
+    ].map((form) => form.toLowerCase());
+    const requests = await Promise.all([...sent, ...received]);
+    expect(requests.length).toBeGreaterThan(6);
+    const create = requests.find((request) => request.headers['x-nylzo-create'] !== undefined);
+    expect(
+      JSON.parse(Buffer.from(create?.headers['x-nylzo-create'] ?? '', 'base64url').toString('utf8')),
+    ).toMatchObject({
+      read_key: encodeBase64url((await requestKey(keys.r)).publicKey),
+      verifier_key: encodeBase64url((await requestKey(keys.v)).publicKey),
+    });
+    for (const request of requests) {
+      const flat =
+        `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
+      for (const form of forbidden) {
+        expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
+      }
+      expect(request.url).not.toContain('#');
+      expect(request.headers['referer']).toBeUndefined();
     }
-    expect(request.url).not.toContain('#');
-    expect(request.headers['referer']).toBeUndefined();
-  }
-});
+  },
+);
 
 test('loading the page and the metadata spends no open (AK3)', async ({ page }) => {
   const message = await createViaApi();
@@ -146,9 +150,7 @@ test('prefetch and prerender requests get 503 (AK16)', async ({ request }) => {
 
 test('a speculation rules prerender reaches the server only as a refused Sec-Purpose request and spends no open (AK16)', async ({
   page,
-  browserName,
 }) => {
-  test.skip(browserName !== 'chromium', 'only Chromium implements speculation rules');
   const message = await createViaApi();
   const path = `/m/${message.idText}`;
   const speculative = page.context().waitForEvent('response', (response) => new URL(response.url()).pathname === path);
@@ -381,28 +383,30 @@ test('a page restored from the back/forward cache loads again and spends no open
   await expect(page.locator('pre')).toHaveText('still unread');
 });
 
-test('back and forward after reading bring back neither the fragment nor the message and spend no open', async ({
-  page,
-}) => {
-  const message = await createViaApi({ text: 'only once in this tab', opensMax: 2 });
-  const read = `${BASE_URL}/m/${message.idText}`;
-  await openApp(page, `${BASE_URL}/`);
-  await openViaUi(page, message.link);
-  await expectRevealed(page);
-  await expect(page).toHaveURL(read);
-  await page.goto(`${BASE_URL}/transparency`);
-  await page.goBack();
-  await expect(page).toHaveURL(read);
-  await expect(page.getByText(/^The link is incomplete or damaged$/)).toBeVisible();
-  await expect(page.locator('pre')).toHaveCount(0);
-  await page.goBack();
-  await expect(page).toHaveURL(`${BASE_URL}/`);
-  await page.goForward();
-  await expect(page).toHaveURL(read);
-  await expect(page.getByText(/^The link is incomplete or damaged$/)).toBeVisible();
-  await expect(page.locator('pre')).toHaveCount(0);
-  expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ state: 'available', opensUsed: 1 });
-});
+test(
+  'back and forward after reading bring back neither the fragment nor the message and spend no open',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createViaApi({ text: 'only once in this tab', opensMax: 2 });
+    const read = `${BASE_URL}/m/${message.idText}`;
+    await openApp(page, `${BASE_URL}/`);
+    await openViaUi(page, message.link);
+    await expectRevealed(page);
+    await expect(page).toHaveURL(read);
+    await page.goto(`${BASE_URL}/transparency`);
+    await page.goBack();
+    await expect(page).toHaveURL(read);
+    await expect(page.getByText(/^The link is incomplete or damaged$/)).toBeVisible();
+    await expect(page.locator('pre')).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(`${BASE_URL}/`);
+    await page.goForward();
+    await expect(page).toHaveURL(read);
+    await expect(page.getByText(/^The link is incomplete or damaged$/)).toBeVisible();
+    await expect(page.locator('pre')).toHaveCount(0);
+    expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ state: 'available', opensUsed: 1 });
+  },
+);
 
 test('a deletion that answers after the page was left never shows the message again', async ({ page }) => {
   const message = await createViaApi({ text: 'should stay gone', opensMax: 2 });
@@ -466,48 +470,50 @@ const files = [
 ];
 
 for (const file of files) {
-  test(`an attachment ${file.shown} is only ever downloaded under its sanitised name (AK13, D35)`, async ({
-    browser,
-  }) => {
-    const sender = await (await browser.newContext()).newPage();
-    const context = await browser.newContext();
-    const recipient = await context.newPage();
-    await recipient.addInitScript(() => {
-      const types: string[] = [];
-      Object.defineProperty(window, 'nylzoBlobTypes', { value: types });
-      const original = URL.createObjectURL.bind(URL);
-      URL.createObjectURL = (object: Blob | MediaSource) => {
-        types.push(object instanceof Blob ? object.type : 'media-source');
-        return original(object);
-      };
-    });
-    const downloads: string[] = [];
-    recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
-    const link = await createViaUi(sender, {
-      file: { name: file.name, mimeType: file.mimeType, buffer: Buffer.from(file.body) },
-    });
-    await openViaUi(recipient, link);
-    await expectRevealed(recipient);
-    await expect(recipient.locator('bdi')).toHaveText(file.shown);
-    const before = recipient.url();
-    const download = recipient.waitForEvent('download');
-    await recipient.getByRole('button', { name: 'Download attachment' }).click();
-    if (file.risky) {
-      await expect(live(recipient, recipient.getByRole('alert'))).toHaveText(/can run code/);
-      await expect(recipient.getByText(`File extension: .${file.extension}`)).toBeVisible();
-      expect(downloads).toEqual([]);
-      await recipient.getByRole('button', { name: 'Download anyway' }).click();
-    } else {
-      await expect(recipient.getByText(/can run code/)).toHaveCount(0);
-    }
-    expect((await download).suggestedFilename()).toBe(file.shown);
-    expect(downloads).toEqual([file.shown]);
-    expect(recipient.url()).toBe(before);
-    expect(context.pages()).toHaveLength(1);
-    expect(await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes)).toEqual([
-      'application/octet-stream',
-    ]);
-  });
+  test(
+    `an attachment ${file.shown} is only ever downloaded under its sanitised name (AK13, D35)`,
+    { tag: '@cross-browser' },
+    async ({ browser }) => {
+      const sender = await (await browser.newContext()).newPage();
+      const context = await browser.newContext();
+      const recipient = await context.newPage();
+      await recipient.addInitScript(() => {
+        const types: string[] = [];
+        Object.defineProperty(window, 'nylzoBlobTypes', { value: types });
+        const original = URL.createObjectURL.bind(URL);
+        URL.createObjectURL = (object: Blob | MediaSource) => {
+          types.push(object instanceof Blob ? object.type : 'media-source');
+          return original(object);
+        };
+      });
+      const downloads: string[] = [];
+      recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
+      const link = await createViaUi(sender, {
+        file: { name: file.name, mimeType: file.mimeType, buffer: Buffer.from(file.body) },
+      });
+      await openViaUi(recipient, link);
+      await expectRevealed(recipient);
+      await expect(recipient.locator('bdi')).toHaveText(file.shown);
+      const before = recipient.url();
+      const download = recipient.waitForEvent('download');
+      await recipient.getByRole('button', { name: 'Download attachment' }).click();
+      if (file.risky) {
+        await expect(live(recipient, recipient.getByRole('alert'))).toHaveText(/can run code/);
+        await expect(recipient.getByText(`File extension: .${file.extension}`)).toBeVisible();
+        expect(downloads).toEqual([]);
+        await recipient.getByRole('button', { name: 'Download anyway' }).click();
+      } else {
+        await expect(recipient.getByText(/can run code/)).toHaveCount(0);
+      }
+      expect((await download).suggestedFilename()).toBe(file.shown);
+      expect(downloads).toEqual([file.shown]);
+      expect(recipient.url()).toBe(before);
+      expect(context.pages()).toHaveLength(1);
+      expect(
+        await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes),
+      ).toEqual(['application/octet-stream']);
+    },
+  );
 }
 
 test('the fields of an abuse report are not spell checked or autocompleted (D38, D41)', async ({ page }) => {

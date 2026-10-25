@@ -76,49 +76,51 @@ async function countSaves(page: Page): Promise<() => Promise<number>> {
   return () => page.evaluate(() => (window as unknown as { nylzoSaved: number }).nylzoSaved);
 }
 
-test('the risky download prompt cancels back to the button and a double click saves the file once (D35)', async ({
-  browser,
-}) => {
-  const sender = await (await browser.newContext()).newPage();
-  const recipient = await (await browser.newContext()).newPage();
-  const savedCount = await countSaves(recipient);
-  const downloads: string[] = [];
-  recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
-  const link = await createViaUi(sender, {
-    file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') },
-  });
-  await openViaUi(recipient, link);
-  await expectRevealed(recipient);
-  const download = recipient.getByRole('button', { name: 'Download attachment' });
-  const cancel = recipient.getByRole('button', { name: 'Do not download' });
-  const prompt = live(recipient, recipient.getByRole('alert')).filter({ hasText: /can run code/ });
-  await download.dblclick();
-  await expect(prompt).toHaveCount(1);
-  await cancel.dispatchEvent('click', { detail: 2 });
-  await expect(prompt).toHaveCount(1);
-  await cancel.click();
-  await expect(prompt).toHaveCount(0);
-  await expect(download).toBeFocused();
-  expect(downloads).toEqual([]);
+test(
+  'the risky download prompt cancels back to the button and a double click saves the file once (D35)',
+  { tag: '@cross-browser' },
+  async ({ browser }) => {
+    const sender = await (await browser.newContext()).newPage();
+    const recipient = await (await browser.newContext()).newPage();
+    const savedCount = await countSaves(recipient);
+    const downloads: string[] = [];
+    recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
+    const link = await createViaUi(sender, {
+      file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') },
+    });
+    await openViaUi(recipient, link);
+    await expectRevealed(recipient);
+    const download = recipient.getByRole('button', { name: 'Download attachment' });
+    const cancel = recipient.getByRole('button', { name: 'Do not download' });
+    const prompt = live(recipient, recipient.getByRole('alert')).filter({ hasText: /can run code/ });
+    await download.dblclick();
+    await expect(prompt).toHaveCount(1);
+    await cancel.dispatchEvent('click', { detail: 2 });
+    await expect(prompt).toHaveCount(1);
+    await cancel.click();
+    await expect(prompt).toHaveCount(0);
+    await expect(download).toBeFocused();
+    expect(downloads).toEqual([]);
 
-  await download.click();
-  await expect(cancel).toBeFocused();
-  const first = recipient.waitForEvent('download');
-  await recipient.getByRole('button', { name: 'Download anyway' }).click();
-  expect((await first).suggestedFilename()).toBe('setup.exe');
-  await expect(download).toBeFocused();
-  expect(await savedCount()).toBe(1);
+    await download.click();
+    await expect(cancel).toBeFocused();
+    const first = recipient.waitForEvent('download');
+    await recipient.getByRole('button', { name: 'Download anyway' }).click();
+    expect((await first).suggestedFilename()).toBe('setup.exe');
+    await expect(download).toBeFocused();
+    expect(await savedCount()).toBe(1);
 
-  await download.click();
-  const second = recipient.waitForEvent('download');
-  await recipient.getByRole('button', { name: 'Download anyway' }).dblclick();
-  expect((await second).suggestedFilename()).toBe('setup.exe');
-  await expect(recipient.getByText(/can run code/)).toHaveCount(0);
-  expect(await savedCount()).toBe(2);
-  expect(downloads).toEqual(['setup.exe', 'setup.exe']);
-});
+    await download.click();
+    const second = recipient.waitForEvent('download');
+    await recipient.getByRole('button', { name: 'Download anyway' }).dblclick();
+    expect((await second).suggestedFilename()).toBe('setup.exe');
+    await expect(recipient.getByText(/can run code/)).toHaveCount(0);
+    expect(await savedCount()).toBe(2);
+    expect(downloads).toEqual(['setup.exe', 'setup.exe']);
+  },
+);
 
-test('a double click on Download saves a safe file once', async ({ browser }) => {
+test('a double click on Download saves a safe file once', { tag: '@cross-browser' }, async ({ browser }) => {
   const sender = await (await browser.newContext()).newPage();
   const recipient = await (await browser.newContext()).newPage();
   const savedCount = await countSaves(recipient);

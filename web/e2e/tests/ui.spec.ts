@@ -96,9 +96,7 @@ async function expectStable(page: Page, screen: string): Promise<void> {
 for (const viewport of [MOBILE, DESKTOP]) {
   test(`nothing shifts or resizes after loading or a click while creating and reading at ${viewport.width}x${viewport.height} (AK18)`, async ({
     browser,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
     const passphrase = 'four random words here';
     const sender = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await watchLayout(sender);
@@ -133,9 +131,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
 for (const viewport of [MOBILE, DESKTOP]) {
   test(`nothing shifts or resizes on the sent list, the report page and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
     browser,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
     const sender = await (await browser.newContext({ viewport, ...FULL_MOTION })).newPage();
     await createViaUi(sender, { text: 'first' });
     await createViaUi(sender, { text: 'second' });
@@ -195,9 +191,7 @@ for (const viewport of [MOBILE, DESKTOP]) {
 for (const viewport of [MOBILE, DESKTOP]) {
   test(`a long message keeps its place while it unscrambles at ${viewport.width}x${viewport.height} (AK18)`, async ({
     browser,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'only Chromium implements the Layout Instability API');
     const text = [
       'Ahoj, posílám přístup k serveru, jak jsme se domluvili včera večer.',
       'Heslo platí jen do pátku, pak ho prosím změň a starý záznam smaž.',
@@ -476,8 +470,7 @@ function motionProblems(css: string): { readonly problems: string[]; readonly an
   return { problems, animated };
 }
 
-test('the motion check reads shorthands and keyframes (AK19)', ({ browserName }) => {
-  test.skip(browserName !== 'chromium', 'runs in Node once');
+test('the motion check reads shorthands and keyframes (AK19)', () => {
   expect(motionProblems('a { transition: opacity .2s, transform .2s }').problems).toEqual([]);
   expect(motionProblems('a { transition: width 1s }').problems).toEqual(['transition animates width']);
   expect(motionProblems('a { transition: all 1s }').problems).toEqual(['transition animates all']);
@@ -495,8 +488,7 @@ test('the motion check reads shorthands and keyframes (AK19)', ({ browserName })
   expect(motionProblems('a { transition: none }')).toEqual({ problems: [], animated: false });
 });
 
-test('the bundle stays within budget and animates only transform and opacity (AK19, AK20)', async ({ browserName }) => {
-  test.skip(browserName !== 'chromium', 'checks the build output once');
+test('the bundle stays within budget and animates only transform and opacity (AK19, AK20)', () => {
   const files = readdirSync(ASSETS).filter((name) => !name.endsWith('.br') && !name.endsWith('.gz'));
   const gzipped = (suffix: string) =>
     files
@@ -525,8 +517,7 @@ test('the bundle stays within budget and animates only transform and opacity (AK
   expect(preloaded.sort()).toEqual(files.filter((name) => name.endsWith('.woff2')).sort());
 });
 
-test('noble scrypt ships only in the key derivation worker (P5)', ({ browserName }) => {
-  test.skip(browserName !== 'chromium', 'checks the build output once');
+test('noble scrypt ships only in the key derivation worker (P5)', () => {
   const scripts = readdirSync(ASSETS).filter((name) => name.endsWith('.js'));
   const withScrypt = scripts.filter((name) =>
     readFileSync(new URL(name, ASSETS), 'utf8').includes(NOBLE_SCRYPT_MARKER),

@@ -161,52 +161,56 @@ test('a dialog closed with Escape opens again on the very next Enter', async ({ 
   }
 });
 
-test('the manage key lies in IndexedDB only as a non-extractable key (D39)', async ({ browser }) => {
-  const sender = await newPage(browser);
-  const link = await createViaUi(sender, { text: 'key' });
-  const id = new URL(link).pathname.slice(3);
-  const stored = await sender.evaluate(
-    () =>
-      new Promise<unknown[]>((resolve, reject) => {
-        const opening = indexedDB.open('nylzo');
-        opening.onerror = () => reject(opening.error);
-        opening.onsuccess = () => {
-          const all = opening.result.transaction('sent').objectStore('sent').getAll();
-          all.onerror = () => reject(all.error);
-          all.onsuccess = async () => {
-            const described = [];
-            for (const record of all.result as { privateKey: CryptoKey; publicKey: Uint8Array }[]) {
-              const exported = await crypto.subtle.exportKey('pkcs8', record.privateKey).then(
-                () => 'exported',
-                () => 'refused',
-              );
-              described.push({
-                keys: Object.keys(record).sort(),
-                id: (record as unknown as { id: string }).id,
-                extractable: record.privateKey.extractable,
-                algorithm: record.privateKey.algorithm.name,
-                usages: record.privateKey.usages,
-                publicKey: record.publicKey.length,
-                exported,
-              });
-            }
-            resolve(described);
+test(
+  'the manage key lies in IndexedDB only as a non-extractable key (D39)',
+  { tag: '@cross-browser' },
+  async ({ browser }) => {
+    const sender = await newPage(browser);
+    const link = await createViaUi(sender, { text: 'key' });
+    const id = new URL(link).pathname.slice(3);
+    const stored = await sender.evaluate(
+      () =>
+        new Promise<unknown[]>((resolve, reject) => {
+          const opening = indexedDB.open('nylzo');
+          opening.onerror = () => reject(opening.error);
+          opening.onsuccess = () => {
+            const all = opening.result.transaction('sent').objectStore('sent').getAll();
+            all.onerror = () => reject(all.error);
+            all.onsuccess = async () => {
+              const described = [];
+              for (const record of all.result as { privateKey: CryptoKey; publicKey: Uint8Array }[]) {
+                const exported = await crypto.subtle.exportKey('pkcs8', record.privateKey).then(
+                  () => 'exported',
+                  () => 'refused',
+                );
+                described.push({
+                  keys: Object.keys(record).sort(),
+                  id: (record as unknown as { id: string }).id,
+                  extractable: record.privateKey.extractable,
+                  algorithm: record.privateKey.algorithm.name,
+                  usages: record.privateKey.usages,
+                  publicKey: record.publicKey.length,
+                  exported,
+                });
+              }
+              resolve(described);
+            };
           };
-        };
-      }),
-  );
-  expect(stored).toEqual([
-    {
-      keys: ['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey'],
-      id,
-      extractable: false,
-      algorithm: 'Ed25519',
-      usages: ['sign'],
-      publicKey: 32,
-      exported: 'refused',
-    },
-  ]);
-});
+        }),
+    );
+    expect(stored).toEqual([
+      {
+        keys: ['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey'],
+        id,
+        extractable: false,
+        algorithm: 'Ed25519',
+        usages: ['sign'],
+        publicKey: 32,
+        exported: 'refused',
+      },
+    ]);
+  },
+);
 
 test('the sent list stores when a remembered message ended', async ({ browser }) => {
   const sender = await newPage(browser);
@@ -463,15 +467,13 @@ test('every page load drops records 7 days after expiry and creates no database 
       opening.onerror = () => reject(opening.error);
       opening.onsuccess = () => {
         const transaction = opening.result.transaction('sent', 'readwrite');
-        transaction
-          .objectStore('sent')
-          .put({
-            id: 'AAAAAAAAAAAAAAAAAAAAAA',
-            createdAt: old - 3_600_000,
-            expiresAt: old,
-            privateKey: pair.privateKey,
-            publicKey,
-          });
+        transaction.objectStore('sent').put({
+          id: 'AAAAAAAAAAAAAAAAAAAAAA',
+          createdAt: old - 3_600_000,
+          expiresAt: old,
+          privateKey: pair.privateKey,
+          publicKey,
+        });
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       };
