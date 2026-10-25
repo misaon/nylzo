@@ -1,4 +1,4 @@
-package server_test
+package server
 
 import (
 	"bytes"
@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
 )
 
 type stolenNeedles struct {
@@ -35,35 +34,35 @@ func (n *stolenNeedles) text(name, s string) {
 	n.named[name] = []byte(s)
 }
 
-func (n *stolenNeedles) message(label string, m *message, passphrase string) {
+func (n *stolenNeedles) testMessage(label string, message *testMessage, passphrase string) {
 	n.t.Helper()
-	n.secret(label+" S", m.secret[:])
-	n.secret(label+" R", m.link.R[:])
-	n.secret(label+" K", m.content.K[:])
-	n.secret(label+" V", m.content.V[:])
-	n.secret(label+" M", m.manage[:])
-	pkR, pkV, pkM := core.PublicKey(&m.link.R), core.PublicKey(&m.content.V), core.PublicKey(m.manage)
+	n.secret(label+" S", message.secret[:])
+	n.secret(label+" R", message.link.R[:])
+	n.secret(label+" K", message.content.K[:])
+	n.secret(label+" V", message.content.V[:])
+	n.secret(label+" M", message.manage[:])
+	pkR, pkV, pkM := core.PublicKey(&message.link.R), core.PublicKey(&message.content.V), core.PublicKey(message.manage)
 	n.secret(label+" pk_R", pkR[:])
 	n.secret(label+" pk_V", pkV[:])
 	n.secret(label+" pk_M", pkM[:])
 	if passphrase != "" {
-		p, err := core.DerivePassphraseKey(m.kdf, passphrase, &m.link.SaltPW)
+		p, err := core.DerivePassphraseKey(message.kdf, passphrase, &message.link.SaltPW)
 		if err != nil {
 			n.t.Fatal(err)
 		}
 		n.secret(label+" P", p)
 		n.text(label+" passphrase", passphrase)
 	}
-	if m.text != "" {
-		n.text(label+" plaintext", m.text)
+	if message.text != "" {
+		n.text(label+" plaintext", message.text)
 	}
 }
 
-func fileMessage(t *testing.T, content []byte) *message {
+func fileMessage(t *testing.T, content []byte) *testMessage {
 	t.Helper()
-	m := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
-	m.text = ""
-	object, err := core.Seal(&m.content.K, core.NewHeader(core.KDFNone), m.id, m.policy, core.Payload{
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
+	message.text = ""
+	object, err := core.Seal(&message.content.K, core.NewHeader(core.KDFNone), message.id, message.policy, core.Payload{
 		Meta: core.Meta{
 			File: &core.FileMeta{
 				Name: "quarterly-plan-sentinel.pdf",
@@ -76,17 +75,17 @@ func fileMessage(t *testing.T, content []byte) *message {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.object = object
-	return m
+	message.object = object
+	return message
 }
 
 func TestStolenServerRevealsNothing(t *testing.T) {
 	t.Parallel()
-	cfg := baseConfig(pepperA, nil)
-	cfg.Rates.GlobalDailyCreates = 16
-	cfg.PoWDifficulty = 1
-	h := newHarness(t, cfg)
-	fb := h.withFaultyBlobs()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.GlobalDailyCreates = 16
+	settings.PoWDifficulty = 1
+	harness := newHarness(t, settings)
+	faulty := harness.withFaultyBlobs()
 	needles := &stolenNeedles{t: t, named: map[string][]byte{}}
 	const ip4, ip6 = "203.0.113.77", "2001:db8:77::1"
 	needles.text("IPv4 address", ip4)
@@ -95,136 +94,141 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	raw6 := netip.MustParseAddr(ip6).As16()
 	needles.named["IPv6 address, raw"] = raw6[:]
 	var lease string
-	claimed := func(m *message, verifier, ip string) {
+	claimed := func(message *testMessage, verifier, ip string) {
 		t.Helper()
-		resp, _ := h.claim(m, verifier, ip)
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("claim: %d", resp.StatusCode)
+		response, _ := harness.claim(message, verifier, ip)
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		lease = resp.Header.Get("X-Nylzo-Lease")
+		lease = response.Header.Get("X-Nylzo-Lease")
 		raw, err := core.DecodeExact(lease, core.TokenLen)
 		if err != nil {
 			t.Fatal(err)
 		}
-		needles.secret("lease of "+m.id.String(), raw)
+		needles.secret("lease of "+message.id.String(), raw)
 	}
 
 	expired := newMessage(t, core.KDFNone, "", 1, 60, "plaintext expired sentinel")
-	expired.ip = ip4
-	h.mustCreate(expired)
-	needles.message("expired", expired, "")
-	h.clock.Advance(2*time.Minute + 17*time.Second)
-	if _, meta := h.metadata(expired); meta["state"] != "expired" {
-		t.Fatalf("expired: %v", meta)
+	expired.address = ip4
+	harness.mustCreate(expired)
+	needles.testMessage("expired", expired, "")
+	harness.clock.Advance(2*time.Minute + 17*time.Second)
+	if _, metadata := harness.metadata(expired); metadata["state"] != "expired" {
+		t.Fatalf("expired: %v", metadata)
 	}
 
 	opened := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext opened sentinel")
-	opened.ip = ip4
-	h.mustCreate(opened)
-	needles.message("opened", opened, "")
+	opened.address = ip4
+	harness.mustCreate(opened)
+	needles.testMessage("opened", opened, "")
 	claimed(opened, "", ip4)
-	if resp := h.ack(opened, lease); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("ack: %d", resp.StatusCode)
+	if response := harness.ack(opened, lease); response.StatusCode != http.StatusNoContent {
+		t.Fatalf("ack: %d", response.StatusCode)
 	}
 
 	const pass = "correct horse battery staple"
 	leased := newMessage(t, core.KDFScrypt, pass, 2, 3600, "plaintext leased sentinel")
-	leased.ip = ip6
-	h.mustCreate(leased)
-	needles.message("leased", leased, pass)
-	h.claim(leased, core.Encode(make([]byte, 32)), ip6)
+	leased.address = ip6
+	harness.mustCreate(leased)
+	needles.testMessage("leased", leased, pass)
+	harness.claim(leased, core.Encode(make([]byte, 32)), ip6)
 	claimed(leased, leased.verifier, ip6)
 
 	content := bytes.Repeat([]byte("file-content-sentinel "), 3000)
 	file := fileMessage(t, content)
-	file.ip = ip4
-	h.mustCreate(file)
-	needles.message("file", file, "")
+	file.address = ip4
+	harness.mustCreate(file)
+	needles.testMessage("file", file, "")
 	needles.text("file name", "quarterly-plan-sentinel.pdf")
 	needles.named["file content"] = content[:64]
 
 	burned := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext burned sentinel")
-	burned.ip = ip4
-	h.mustCreate(burned)
-	needles.message("burned", burned, "")
-	if resp, _ := h.post(burned, "burn", burned.readToken); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("burn: %d", resp.StatusCode)
+	burned.address = ip4
+	harness.mustCreate(burned)
+	needles.testMessage("burned", burned, "")
+	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
+		t.Fatalf("burn: %d", response.StatusCode)
 	}
 
 	cancelled := newMessage(t, core.KDFScrypt, pass, 1, 3600, "plaintext cancelled sentinel")
-	cancelled.ip = ip6
-	h.mustCreate(cancelled)
-	needles.message("cancelled", cancelled, pass)
-	if resp, _ := h.post(cancelled, "cancel", cancelled.manageTok); resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("cancel: %d", resp.StatusCode)
+	cancelled.address = ip6
+	harness.mustCreate(cancelled)
+	needles.testMessage("cancelled", cancelled, pass)
+	if response, _ := harness.post(
+		cancelled,
+		"cancel",
+		cancelled.manageToken,
+	); response.StatusCode != http.StatusNoContent {
+		t.Fatalf("cancel: %d", response.StatusCode)
 	}
 
 	stuck := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext stuck sentinel")
-	stuck.ip = ip4
-	h.mustCreate(stuck)
-	needles.message("stuck", stuck, "")
-	fb.set(func(b *faultyBlobs) {
+	stuck.address = ip4
+	harness.mustCreate(stuck)
+	needles.testMessage("stuck", stuck, "")
+	faulty.set(func(b *faultyBlobs) {
 		b.deleteErr[stuck.id.String()] = &fs.PathError{
 			Op:   "remove",
-			Path: filepath.Join(h.dir, "blobs", hex.EncodeToString([]byte(stuck.id.String()))),
+			Path: filepath.Join(harness.dir, "blobs", hex.EncodeToString([]byte(stuck.id.String()))),
 			Err:  syscall.EROFS,
 		}
 	})
-	if resp, _ := h.post(stuck, "burn", stuck.readToken); resp.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("burn with a failing blob store: %d", resp.StatusCode)
+	if response, _ := harness.post(
+		stuck,
+		"burn",
+		stuck.readToken,
+	); response.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("burn with a failing blob store: %d", response.StatusCode)
 	}
-	if !strings.Contains(h.logBuf.String(), "remove: "+syscall.EROFS.Error()) {
+	if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
 		t.Fatal("the failing delete was not logged")
 	}
 
 	pow := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext pow sentinel")
-	pow.ip = ip6
+	pow.address = ip6
 	filler := newMessage(t, core.KDFNone, "", 1, 3600, "filler")
-	filler.ip = ip4
-	h.mustCreate(filler)
-	_, instance := h.do(request{method: "GET", path: "/api/v1/instance"})
+	filler.address = ip4
+	harness.mustCreate(filler)
+	_, instance := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
 	powInfo := decodeJSON(t, instance)["pow"].(map[string]any)
 	if powInfo["required"] != true {
 		t.Fatalf("PoW is not required yet: %v", powInfo)
 	}
-	token, err := server.SolvePoW(powInfo["challenge"].(string), pow.id, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp, body := h.do(
-		request{
-			method: "POST",
-			path:   "/api/v1/messages",
-			body:   pow.object,
-			ip:     pow.ip,
+	token := solveWork(t, powInfo["challenge"].(string), pow.id, 1)
+	if response, body := harness.do(
+		&testRequest{
+			method:  http.MethodPost,
+			path:    "/api/v1/messages",
+			body:    pow.object,
+			address: pow.address,
 			headers: map[string]string{
 				"Content-Type":   "application/octet-stream",
 				"X-Nylzo-Create": pow.createHeader(0),
 				"X-Nylzo-Pow":    token,
 			},
 		},
-	); resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create with PoW: %d %s", resp.StatusCode, body)
+	); response.StatusCode != http.StatusCreated {
+		t.Fatalf("create with PoW: %d %s", response.StatusCode, body)
 	}
-	needles.message("pow", pow, "")
+	needles.testMessage("pow", pow, "")
 
 	link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
 	body, _ := json.Marshal(map[string]string{"id": leased.id.String(), "reason": "spam, see " + link})
-	if resp, _ := h.do(
-		request{
-			method:  "POST",
+	if response, _ := harness.do(
+		&testRequest{
+			method:  http.MethodPost,
 			path:    "/api/v1/abuse",
-			ip:      ip4,
+			address: ip4,
 			body:    body,
 			token:   leased.readToken,
 			headers: map[string]string{"Content-Type": "application/json"},
 		},
-	); resp.StatusCode != http.StatusAccepted {
-		t.Fatalf("abuse report: %d", resp.StatusCode)
+	); response.StatusCode != http.StatusAccepted {
+		t.Fatalf("abuse report: %d", response.StatusCode)
 	}
 
-	stolen := map[string][]byte{"log": []byte(h.logBuf.String())}
-	if err := filepath.WalkDir(h.dir, func(path string, d fs.DirEntry, err error) error {
+	stolen := map[string][]byte{"log": []byte(harness.logs.String())}
+	if err := filepath.WalkDir(harness.dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -232,13 +236,13 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(h.dir, path)
+		rel, _ := filepath.Rel(harness.dir, path)
 		stolen[rel] = data
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"nylzo.db", "nylzo.db-wal", filepath.Join("abuse", h.clock.Now().UTC().Format(time.DateOnly)+".jsonl")} {
+	for _, want := range []string{"nylzo.db", "nylzo.db-wal", filepath.Join("abuse", harness.clock.Now().UTC().Format(time.DateOnly)+".jsonl")} {
 		if _, ok := stolen[want]; !ok {
 			t.Fatalf("the stolen copy misses %s: %v", want, keys(stolen))
 		}
@@ -250,15 +254,19 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			}
 		}
 	}
-	everyone := []*message{expired, opened, leased, file, burned, cancelled, stuck, pow}
-	for _, m := range everyone {
-		forms := []string{m.id.String(), hex.EncodeToString([]byte(m.id.String())), hex.EncodeToString(m.id[:])}
+	everyone := []*testMessage{expired, opened, leased, file, burned, cancelled, stuck, pow}
+	for _, message := range everyone {
+		forms := []string{
+			message.id.String(),
+			hex.EncodeToString([]byte(message.id.String())),
+			hex.EncodeToString(message.id[:]),
+		}
 		if slices.ContainsFunc(forms, func(form string) bool { return bytes.Contains(stolen["log"], []byte(form)) }) {
-			t.Errorf("the log names message %s", m.id)
+			t.Errorf("the log names message %s", message.id)
 		}
 	}
 
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(h.dir, "nylzo.db"))
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,14 +278,14 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		`SELECT first_opened_at FROM tombstones WHERE first_opened_at IS NOT NULL`, `SELECT ended_at FROM tombstones`, `SELECT purge_at FROM tombstones`,
 		`SELECT window_start FROM rate_counters`, `SELECT purge_at FROM rate_counters`,
 	} {
-		rows, err := db.Query(q)
-		if err != nil {
-			t.Fatal(err)
+		rows, queryErr := db.Query(q)
+		if queryErr != nil {
+			t.Fatal(queryErr)
 		}
 		for rows.Next() {
 			var v int64
-			if err := rows.Scan(&v); err != nil {
-				t.Fatal(err)
+			if scanErr := rows.Scan(&v); scanErr != nil {
+				t.Fatal(scanErr)
 			}
 			if v%minute != 0 {
 				t.Errorf("%s holds %d, which is more precise than a minute", q, v)
@@ -306,8 +314,8 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	defer rows.Close()
 	for rows.Next() {
 		var key string
-		if err := rows.Scan(&key); err != nil {
-			t.Fatal(err)
+		if scanErr := rows.Scan(&key); scanErr != nil {
+			t.Fatal(scanErr)
 		}
 		if !slices.ContainsFunc(
 			[]string{"global:", "pow:", "challenge:", "abuse:id:", "sweep:reconcile:"},
@@ -315,18 +323,77 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		) {
 			t.Errorf("counter %q is not one of the address-free keys", key)
 		}
-		for _, m := range everyone {
-			if strings.Contains(key, m.id.String()) && key != "abuse:id:"+m.id.String() {
-				t.Errorf("counter %q ties message %s to something else", key, m.id)
+		for _, message := range everyone {
+			if strings.Contains(key, message.id.String()) && key != "abuse:id:"+message.id.String() {
+				t.Errorf("counter %q ties message %s to something else", key, message.id)
 			}
 		}
 	}
 }
 
-func keys(m map[string][]byte) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
+func keys(message map[string][]byte) []string {
+	out := make([]string, 0, len(message))
+	for k := range message {
 		out = append(out, k)
 	}
 	return out
+}
+
+func TestAK11LogsContainNoSecrets(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	message := newMessage(t, core.KDFScrypt, "log fráze", 1, 3600, "logged text")
+	message.address = "203.0.113.55"
+	harness.mustCreate(message)
+	response, _ := harness.metadata(message)
+	codes := []int{response.StatusCode}
+	response, _ = harness.claim(message, message.verifier, "")
+	lease := response.Header.Get("X-Nylzo-Lease")
+	if lease == "" {
+		t.Fatalf("the claim gave no lease: %d", response.StatusCode)
+	}
+	codes = append(codes, response.StatusCode)
+	response, _ = harness.blob(message, lease)
+	codes = append(codes, response.StatusCode, harness.ack(message, lease).StatusCode)
+	response, _ = harness.status(message)
+	codes = append(codes, response.StatusCode)
+	response, _ = harness.do(
+		&testRequest{
+			method: http.MethodPost,
+			path:   "/api/v1/messages/" + message.id.String() + "/cancel",
+			token:  message.manageToken,
+		},
+	)
+	codes = append(codes, response.StatusCode)
+	response, _ = harness.do(&testRequest{method: http.MethodGet, path: "/m/" + message.id.String()})
+	codes = append(codes, response.StatusCode)
+	if want := []int{200, 200, 200, 204, 200, 410, 200}; !slices.Equal(codes, want) {
+		t.Fatalf("the flow behind the log check answered %v, want %v", codes, want)
+	}
+	logs := harness.logs.String()
+	if !strings.Contains(logs, "POST /api/v1/messages/{id}/claim") {
+		t.Fatal("log should contain the route pattern")
+	}
+	if strings.Contains(logs, message.id.String()) || strings.Contains(logs, hex.EncodeToString(message.id[:])) {
+		t.Fatal("a log line must not name the message, so a stolen log cannot be joined with the database")
+	}
+	leaseBytes, _ := core.DecodeExact(lease, 32)
+	forbidden := map[string][]byte{
+		"S": message.secret[:],
+		"R": message.link.R[:],
+		"V": message.content.V[:],
+		"M": message.manage[:],
+		"K": message.content.K[:],
+		"L": leaseBytes,
+	}
+	for name, b := range forbidden {
+		if strings.Contains(logs, core.Encode(b)) || strings.Contains(logs, hex.EncodeToString(b)) {
+			t.Fatalf("log contains %s", name)
+		}
+	}
+	for _, needle := range []string{"Authorization", "Bearer", "203.0.113.55", "127.0.0.1", "log fráze", "logged text", "X-Nylzo"} {
+		if strings.Contains(logs, needle) {
+			t.Fatalf("log contains %q", needle)
+		}
+	}
 }
