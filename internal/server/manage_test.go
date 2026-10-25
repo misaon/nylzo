@@ -32,11 +32,11 @@ const (
 	stressInFlow = 32
 )
 
-func TestMain(message *testing.M) {
-	if dir := os.Getenv(sweepDirEnv); dir != "" {
-		os.Exit(sweepProcess(dir, os.Getenv(sweepNowEnv)))
+func TestMain(tests *testing.M) {
+	if directory := os.Getenv(sweepDirEnv); directory != "" {
+		os.Exit(sweepProcess(directory, os.Getenv(sweepNowEnv)))
 	}
-	os.Exit(message.Run())
+	tests.Run()
 }
 
 func sweepProcess(dir, at string) int {
@@ -262,7 +262,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			)
 		}
 		_, status := harness.status(message)
-		want := "available"
+		var want string
 		switch {
 		case cancels == 1:
 			want = "cancelled"
@@ -270,6 +270,8 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			want = "deleted"
 		case claims == int32(message.policy.OpensMax):
 			want = "opened"
+		default:
+			want = "available"
 		}
 		if status["state"] != want {
 			t.Errorf(
@@ -424,7 +426,7 @@ type failingEndStore struct {
 	store.Store
 }
 
-func (s failingEndStore) End(ctx context.Context, id string, state store.State, now time.Time) error {
+func (failingEndStore) End(context.Context, string, store.State, time.Time) error {
 	return errInjected
 }
 
@@ -460,6 +462,7 @@ type endingThenFailingGet struct {
 	armed atomic.Bool
 }
 
+//nolint:gocritic // unnamedResult: store.Store fixes this signature.
 func (s *endingThenFailingGet) MarkEnding(
 	ctx context.Context,
 	id string,

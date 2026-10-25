@@ -504,10 +504,10 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 		"forged tag":         {forged, http.StatusNotFound},
 		"all zero challenge": {[core.ChallengeLen]byte{}, http.StatusNotFound},
 	} {
-		if got, body := harness.do(
-			signedRequest(&message.link.R, core.PurposeRead, "GET", path, c.challenge, nil),
+		if got, refused := harness.do(
+			signedRequest(&message.link.R, core.PurposeRead, http.MethodGet, path, c.challenge, nil),
 		); got.StatusCode != c.status {
-			t.Fatalf("%s: %d %s", name, got.StatusCode, body)
+			t.Fatalf("%s: %d %s", name, got.StatusCode, refused)
 		}
 	}
 	for name, auth := range map[string]string{
@@ -649,6 +649,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			settings := baseSettings(pepperA, nil)
 			if c.config != nil {
 				c.config(settings)
@@ -672,8 +673,8 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 			if response, _ := harness.do(claim); response.StatusCode != c.status {
 				t.Fatalf("the victim's claim: %d, want %d", response.StatusCode, c.status)
 			}
-			for k := range c.header {
-				delete(claim.headers, k)
+			for name := range c.header {
+				delete(claim.headers, name)
 			}
 			claim.address = observer
 			if response, _ := harness.do(claim); response.StatusCode != http.StatusNotFound {
@@ -691,13 +692,13 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 }
 
 func signedRequestFrom(
-	ip string,
+	address string,
 	seed *[core.TokenLen]byte,
 	purpose, method, path string,
 	challenge [core.ChallengeLen]byte,
 ) *testRequest {
 	request := signedRequest(seed, purpose, method, path, challenge, nil)
-	request.address = ip
+	request.address = address
 	return request
 }
 

@@ -137,8 +137,8 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 	message := newMessage(t, core.KDFScrypt, "tajná fráze", 1, 3600, "plaintext secret body")
 	harness.mustCreate(message)
 	captured := harness.lastCreateRequest()
-	if !strings.Contains(string(captured), "X-Nylzo-Create: "+harness.withIDToken(message.createHeader(0))) ||
-		!strings.Contains(string(captured), string(message.object)) {
+	if !bytes.Contains(captured, []byte("X-Nylzo-Create: "+harness.withIDToken(message.createHeader(0)))) ||
+		!bytes.Contains(captured, message.object) {
 		t.Fatal("wire capture missing the create request")
 	}
 	secrets := map[string][]byte{
@@ -149,79 +149,90 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 		"V": message.content.V[:],
 		"M": message.manage[:],
 	}
-	for name, b := range secrets {
-		for _, enc := range []string{core.Encode(b), hex.EncodeToString(b)} {
-			if strings.Contains(string(captured), enc) {
+	for name, secret := range secrets {
+		for _, encoded := range []string{core.Encode(secret), hex.EncodeToString(secret)} {
+			if bytes.Contains(captured, []byte(encoded)) {
 				t.Fatalf("create request carries %s", name)
 			}
 		}
-		if name != "R" && name != "V" && name != "M" && contains(captured, b) {
+		if name != "R" && name != "V" && name != "M" && bytes.Contains(captured, secret) {
 			t.Fatalf("create request carries raw %s", name)
 		}
 	}
-	if strings.Contains(string(captured), "plaintext secret body") ||
-		strings.Contains(string(captured), "tajná fráze") {
+	if bytes.Contains(captured, []byte("plaintext secret body")) ||
+		bytes.Contains(captured, []byte("tajná fráze")) {
 		t.Fatal("create request carries plaintext or passphrase")
 	}
-}
-
-func contains(haystack, needle []byte) bool {
-	return len(needle) > 0 && strings.Contains(string(haystack), string(needle))
 }
 
 func TestCreateValidation(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	message := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "v")
+	setHeader := func(value string) func(*http.Request) {
+		return func(request *http.Request) { request.Header.Set("X-Nylzo-Create", value) }
+	}
 	cases := []struct {
-		name    string
-		mutate  func(t *testing.T, r *http.Request)
-		status  int
-		errCode string
+		name      string
+		mutate    func(request *http.Request)
+		status    int
+		errorCode string
 	}{
-		{"no-header", func(t *testing.T, r *http.Request) { r.Header.Del("X-Nylzo-Create") }, 400, "bad_request"},
 		{
-			"bad-base64",
-			func(t *testing.T, r *http.Request) { r.Header.Set("X-Nylzo-Create", "***") },
-			400,
+			"no header",
+			func(request *http.Request) { request.Header.Del("X-Nylzo-Create") },
+			http.StatusBadRequest,
 			"bad_request",
 		},
-		{"unknown-field", func(t *testing.T, r *http.Request) {
-			r.Header.Set(
-				"X-Nylzo-Create",
-				harness.withIDToken(mutateHeader(t, message, func(f map[string]any) { f["extra"] = 1 })),
-			)
-		}, 400, "bad_request"},
-		{"size-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set("X-Nylzo-Create", harness.withIDToken(message.createHeader(int64(len(message.object)+1))))
-		}, 400, "bad_request"},
-		{"size-above-limit-mismatch", func(t *testing.T, r *http.Request) {
-			r.Header.Set(
-				"X-Nylzo-Create",
-				harness.withIDToken(message.createHeader(config.Defaults().Limits.MaxObjectBytes+1)),
-			)
-		}, 400, "bad_request"},
-		{"chunked", func(t *testing.T, r *http.Request) { r.ContentLength = -1 }, 411, "length_required"},
+		{"bad base64", setHeader("***"), http.StatusBadRequest, "bad_request"},
+		{
+			"unknown field",
+			setHeader(
+				harness.withIDToken(mutateHeader(t, message, func(fields map[string]any) { fields["extra"] = 1 })),
+			),
+			http.StatusBadRequest,
+			"bad_request",
+		},
+		{
+			"size mismatch",
+			setHeader(harness.withIDToken(message.createHeader(int64(len(message.object) + 1)))),
+			http.StatusBadRequest,
+			"bad_request",
+		},
+		{
+			"size above the limit and mismatched",
+			setHeader(harness.withIDToken(message.createHeader(config.Defaults().Limits.MaxObjectBytes + 1))),
+			http.StatusBadRequest,
+			"bad_request",
+		},
+		{
+			"chunked",
+			func(request *http.Request) { request.ContentLength = -1 },
+			http.StatusLengthRequired,
+			"length_required",
+		},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			r, _ := http.NewRequest(
-				"POST",
-				harness.httpServer.URL+"/api/v1/messages",
-				strings.NewReader(string(message.object)),
-			)
-			r.Header.Set("X-Nylzo-Create", harness.withIDToken(message.createHeader(0)))
-			c.mutate(t, r)
-			response, err := harness.client.Do(r)
-			if err != nil {
-				t.Fatal(err)
-			}
-			body, _ := io.ReadAll(response.Body)
-			response.Body.Close()
-			if response.StatusCode != c.status || decodeJSON(t, body)["error"] != c.errCode {
-				t.Fatalf("%d %s", response.StatusCode, body)
-			}
-		})
+		request, err := http.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			harness.httpServer.URL+"/api/v1/messages",
+			bytes.NewReader(message.object),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("X-Nylzo-Create", harness.withIDToken(message.createHeader(0)))
+		c.mutate(request)
+		response, err := harness.client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(response.Body)
+		response.Body.Close()
+		if response.StatusCode != c.status || decodeJSON(t, body)["error"] != c.errorCode {
+			t.Fatalf("%s: %d %s", c.name, response.StatusCode, body)
+		}
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "v")
 	header := wrongKDF.createHeader(0)
@@ -291,7 +302,7 @@ func issuedID(t *testing.T, harness *testHarness) (core.ID, string, time.Time) {
 	return id, c["id_token"].(string), expires
 }
 
-func createWithToken(t *testing.T, harness *testHarness, message *testMessage, token any) (testResponse, []byte) {
+func createWithToken(t *testing.T, harness *testHarness, message *testMessage, token any) (testResponse, responseBody) {
 	t.Helper()
 	header := mutateHeader(t, message, func(f map[string]any) {
 		if token != nil {
@@ -438,6 +449,7 @@ type slotSignals struct {
 	released chan struct{}
 }
 
+//nolint:gocritic // hugeParam: store.Store fixes this signature.
 func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
 	n, ok, err := s.Store.RateReserve(ctx, hit)
 	if hit.Key == globalCreatesKey {
@@ -1143,6 +1155,7 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 
 type cancelAfterCommit struct{ store.Store }
 
+//nolint:gocritic // hugeParam: store.Store fixes this signature.
 func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
 	n, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit)
 	if ctx.Err() != nil {

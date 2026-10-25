@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"maps"
 	"net/http"
 	"net/netip"
 	"os"
@@ -241,7 +242,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}
 	for _, want := range []string{"nylzo.db", "nylzo.db-wal", filepath.Join("abuse", harness.clock.Now().UTC().Format(time.DateOnly)+".jsonl")} {
 		if _, ok := stolen[want]; !ok {
-			t.Fatalf("the stolen copy misses %s: %v", want, keys(stolen))
+			t.Fatalf("the stolen copy misses %s: %v", want, slices.Sorted(maps.Keys(stolen)))
 		}
 	}
 	for where, data := range stolen {
@@ -263,38 +264,29 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 	}
 
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db"))
+	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer database.Close()
 	minute := time.Minute.Milliseconds()
-	for _, q := range []string{
+	for _, query := range []string{
 		`SELECT created_at FROM messages`, `SELECT expires_at FROM messages`, `SELECT next_attempt_at FROM messages`,
 		`SELECT first_opened_at FROM messages WHERE first_opened_at IS NOT NULL`, `SELECT lease_expires_at FROM leases`,
 		`SELECT first_opened_at FROM tombstones WHERE first_opened_at IS NOT NULL`, `SELECT ended_at FROM tombstones`, `SELECT purge_at FROM tombstones`,
 		`SELECT window_start FROM rate_counters`, `SELECT purge_at FROM rate_counters`,
 	} {
-		rows, queryErr := db.Query(q)
-		if queryErr != nil {
-			t.Fatal(queryErr)
-		}
-		for rows.Next() {
-			var v int64
-			if scanErr := rows.Scan(&v); scanErr != nil {
-				t.Fatal(scanErr)
-			}
-			if v%minute != 0 {
-				t.Errorf("%s holds %d, which is more precise than a minute", q, v)
+		for _, value := range column[int64](t, database, query) {
+			if value%minute != 0 {
+				t.Errorf("%s holds %d, which is more precise than a minute", query, value)
 			}
 		}
-		rows.Close()
 	}
-	var tombstones, leases, spent, nonces int
-	db.QueryRow(`SELECT COUNT(*) FROM tombstones`).Scan(&tombstones)
-	db.QueryRow(`SELECT COUNT(*) FROM leases`).Scan(&leases)
-	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`).Scan(&spent)
-	db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`).Scan(&nonces)
+	count := func(query string) int64 { return column[int64](t, database, query)[0] }
+	tombstones := count(`SELECT COUNT(*) FROM tombstones`)
+	leases := count(`SELECT COUNT(*) FROM leases`)
+	spent := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`)
+	nonces := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`)
 	if tombstones != 4 || leases != 1 || spent == 0 || nonces != 1 {
 		t.Fatalf(
 			"the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges, %d PoW nonces",
@@ -304,19 +296,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			nonces,
 		)
 	}
-	rows, err := db.Query(`SELECT key FROM rate_counters`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var key string
-		if scanErr := rows.Scan(&key); scanErr != nil {
-			t.Fatal(scanErr)
-		}
+	for _, key := range column[string](t, database, `SELECT key FROM rate_counters`) {
 		if !slices.ContainsFunc(
 			[]string{"global:", "pow:", "challenge:", "abuse:id:", "sweep:reconcile:"},
-			func(p string) bool { return strings.HasPrefix(key, p) },
+			func(prefix string) bool { return strings.HasPrefix(key, prefix) },
 		) {
 			t.Errorf("counter %q is not one of the address-free keys", key)
 		}
@@ -328,12 +311,25 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}
 }
 
-func keys(message map[string][]byte) []string {
-	out := make([]string, 0, len(message))
-	for k := range message {
-		out = append(out, k)
+func column[T any](t *testing.T, database *sql.DB, query string) []T {
+	t.Helper()
+	rows, err := database.QueryContext(t.Context(), query)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return out
+	defer rows.Close()
+	var values []T
+	for rows.Next() {
+		var value T
+		if scanErr := rows.Scan(&value); scanErr != nil {
+			t.Fatal(scanErr)
+		}
+		values = append(values, value)
+	}
+	if rows.Err() != nil {
+		t.Fatal(rows.Err())
+	}
+	return values
 }
 
 func TestAK11LogsContainNoSecrets(t *testing.T) {

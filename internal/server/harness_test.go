@@ -209,10 +209,6 @@ func (h *testHarness) listen() string {
 	return listener.Addr().String()
 }
 
-func (h *testHarness) startOfNextUTCDay() {
-	h.clock.Set(time.Now().UTC().Truncate(24 * time.Hour).Add(25 * time.Hour))
-}
-
 func (h *testHarness) challenge() [core.ChallengeLen]byte {
 	return h.challengeAt(h.clock.Now())
 }
@@ -526,10 +522,10 @@ func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int6
 		return nil, 0, openErr
 	}
 	blob, size, err := b.Blobs.Open(ctx, ref)
-	if err == nil && readErr != nil {
-		return failingReader{ReadCloser: blob, err: readErr}, size, nil
+	if err != nil || readErr == nil {
+		return blob, size, err
 	}
-	return blob, size, err
+	return failingReader{ReadCloser: blob, err: readErr}, size, nil
 }
 
 func (b *faultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, size int64) error {

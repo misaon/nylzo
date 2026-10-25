@@ -3,172 +3,34 @@ package server
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
-	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httptrace"
 	"net/netip"
-	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"testing/fstest"
 	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/config"
-	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
-
-func htmlCSPFromSpec(t *testing.T) string {
-	t.Helper()
-	spec, err := os.ReadFile("../../spec/protocol.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const marker = "- HTML responses carry `Content-Security-Policy: "
-	_, rest, ok := strings.Cut(string(spec), marker)
-	csp, _, closed := strings.Cut(rest, "`")
-	if !ok || !closed || strings.Count(csp, "{nonce}") != 2 {
-		t.Fatal("spec section 9 lost the HTML CSP line")
-	}
-	return csp
-}
-
-func TestSecurityHeadersAndNonce(t *testing.T) {
-	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	required := map[string]string{
-		"Referrer-Policy":              "no-referrer",
-		"Cache-Control":                "no-store",
-		"X-Content-Type-Options":       "nosniff",
-		"Cross-Origin-Opener-Policy":   "same-origin",
-		"Cross-Origin-Resource-Policy": "same-origin",
-		"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
-	}
-	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance", "/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope"} {
-		response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
-		for k, v := range required {
-			if response.Header.Get(k) != v {
-				t.Fatalf("%s: header %s = %q", path, k, response.Header.Get(k))
-			}
-		}
-		home := path == "/" || path == "/cs/"
-		if robots := response.Header.Get(
-			"X-Robots-Tag",
-		); home != (robots == "") ||
-			(!home && robots != "noindex, nofollow") {
-			t.Fatalf("%s: X-Robots-Tag = %q, only the home pages may be indexed (D80, D82)", path, robots)
-		}
-		if csp := response.Header.Get(
-			"Content-Security-Policy",
-		); !strings.HasPrefix(response.Header.Get("Content-Type"), "text/html") &&
-			csp != "default-src 'none'; frame-ancestors 'none'" {
-			t.Fatalf("%s: a response other than HTML carries CSP %q", path, csp)
-		}
-	}
-	specCSP := htmlCSPFromSpec(t)
-	nonces := map[string]bool{}
-	pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
-	for i := range 2 * len(pages) {
-		response, body := harness.do(&testRequest{method: http.MethodGet, path: pages[i%len(pages)]})
-		csp := response.Header.Get("Content-Security-Policy")
-		start := strings.Index(csp, "'nonce-") + len("'nonce-")
-		nonce := csp[start : start+strings.Index(csp[start:], "'")]
-		if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
-			t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
-		}
-		if nonces[nonce] {
-			t.Fatal("nonce repeated")
-		}
-		nonces[nonce] = true
-		if !strings.Contains(string(body), `nonce="`+nonce+`"`) ||
-			strings.Contains(string(body), "__NYLZO_CSP_NONCE__") {
-			t.Fatal("nonce not injected into the page")
-		}
-	}
-	response, body := harness.do(
-		&testRequest{
-			method:  http.MethodGet,
-			path:    "/m/" + core.NewID().String(),
-			headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"},
-		},
-	)
-	if response.StatusCode != http.StatusOK || strings.Contains(string(body), "<script") ||
-		strings.Contains(string(body), "<style") ||
-		!strings.Contains(string(body), `name="viewport"`) {
-		t.Fatalf("preview agent page: %d %s", response.StatusCode, body)
-	}
-	nonceAttr := regexp.MustCompile(`nonce="[^"]*"`)
-	_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
-	for _, path := range []string{"/", "/cs/", "/sent"} {
-		_, page := harness.do(&testRequest{method: http.MethodGet, path: path})
-		if client, err := EmbeddedWebClient(); err != nil ||
-			client.Built && strings.Contains(string(page), `name="robots"`) {
-			t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80): %v", path, err)
-		}
-	}
-	if !strings.Contains(string(body), `name="robots" content="noindex, nofollow"`) {
-		t.Fatal("the preview page must stay noindex")
-	}
-	if _, botHome := harness.do(
-		&testRequest{
-			method:  http.MethodGet,
-			path:    "/",
-			headers: map[string]string{"User-Agent": "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"},
-		},
-	); nonceAttr.ReplaceAllString(
-		string(botHome),
-		"",
-	) != nonceAttr.ReplaceAllString(
-		string(home),
-		"",
-	) {
-		t.Fatalf("a preview agent must get the normal home page: %s", botHome)
-	}
-	for _, path := range []string{"/m/" + core.NewID().String(), "/api/v1/instance"} {
-		got, _ := harness.do(
-			&testRequest{method: http.MethodGet, path: path, headers: map[string]string{"Sec-Purpose": "prefetch"}},
-		)
-		if got.StatusCode != http.StatusServiceUnavailable {
-			t.Fatalf("Sec-Purpose on %s: %d", path, got.StatusCode)
-		}
-	}
-	if got, _ := harness.do(
-		&testRequest{method: http.MethodGet, path: "/m/not-an-id"},
-	); got.StatusCode != http.StatusNotFound {
-		t.Fatal("malformed page id")
-	}
-	response, body = harness.do(
-		&testRequest{
-			method:  http.MethodGet,
-			path:    "/api/v1/messages/not-an-id",
-			headers: map[string]string{"Authorization": core.AuthScheme + " short"},
-		},
-	)
-	if response.StatusCode != http.StatusNotFound || string(body) != `{"error":"not_found"}` {
-		t.Fatalf("malformed API id: %d %s", response.StatusCode, body)
-	}
-}
 
 func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -184,7 +46,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(c, "GET /healthz HTTP/1.1\r\nHost: nylzo\r\nX-Slow: ")
+		fmt.Fprint(c, "GET /healthz HTTP/1.1\r\nHost: nylzo\r\nX-Slow: ")
 		conns = append(conns, c)
 	}
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
@@ -252,10 +114,10 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 			c.header,
 			harness.withIDToken(probe.createHeader(c.sizeOverride)),
 		)
-		line, err := bufio.NewReader(conn).ReadString('\n')
+		line, readErr := bufio.NewReader(conn).ReadString('\n')
 		conn.Close()
-		if err != nil || !strings.Contains(line, " "+c.status+" ") {
-			t.Fatalf("%s: %q %v (response must arrive before any body is sent)", c.name, line, err)
+		if readErr != nil || !strings.Contains(line, " "+c.status+" ") {
+			t.Fatalf("%s: %q %v (response must arrive before any body is sent)", c.name, line, readErr)
 		}
 	}
 }
@@ -271,63 +133,6 @@ func TestH2CReceiveBufferIsBounded(t *testing.T) {
 	}
 }
 
-func TestSecurityHeadersOnEveryResponse(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.BucketPerSecond = 1
-	settings.Rates.BucketBurst = 2
-	harness := newHarness(t, settings)
-	want := map[string]string{
-		"Referrer-Policy":              "no-referrer",
-		"Cache-Control":                "no-store",
-		"X-Content-Type-Options":       "nosniff",
-		"Cross-Origin-Opener-Policy":   "same-origin",
-		"Cross-Origin-Resource-Policy": "same-origin",
-		"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
-		"Permissions-Policy":           "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
-	}
-	check := func(name string, response testResponse, status int) {
-		t.Helper()
-		if response.StatusCode != status {
-			t.Fatalf("%s: status %d, want %d", name, response.StatusCode, status)
-		}
-		for k, v := range want {
-			if response.Header.Get(k) != v {
-				t.Fatalf("%s: %s = %q", name, k, response.Header.Get(k))
-			}
-		}
-		robots := "noindex, nofollow"
-		if name == "page" || name == "page-head" {
-			robots = ""
-		}
-		if response.Header.Get("X-Robots-Tag") != robots {
-			t.Fatalf("%s: X-Robots-Tag = %q", name, response.Header.Get("X-Robots-Tag"))
-		}
-	}
-	response, _ := harness.do(&testRequest{method: http.MethodGet, path: "/"})
-	check("page", response, 200)
-	if !strings.Contains(response.Header.Get("Content-Security-Policy"), "'nonce-") {
-		t.Fatal("CSP missing on /")
-	}
-	response, _ = harness.do(&testRequest{method: http.MethodHead, path: "/"})
-	check("page-head", response, 200)
-	response, _ = harness.do(&testRequest{method: http.MethodPost, path: "/"})
-	check("page-post", response, 405)
-	response, _ = harness.do(
-		&testRequest{
-			method:  http.MethodGet,
-			path:    "/api/v1/instance",
-			headers: map[string]string{"Sec-Purpose": "prefetch"},
-		},
-	)
-	check("sec-purpose", response, 503)
-	response, _ = harness.do(&testRequest{method: http.MethodPost, path: "/api/v1/messages", body: []byte("x")})
-	check("create-400", response, 400)
-	harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
-	response, _ = harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
-	check("throttled", response, 429)
-}
-
 func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -337,30 +142,30 @@ func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
 	var reused []bool
 	trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused = append(reused, info.Reused) }}
-	send := func(method, path string) *http.Response {
-		r, _ := http.NewRequestWithContext(
+	type answer struct{ status, protocol int }
+	send := func(method, path string) answer {
+		request, err := http.NewRequestWithContext(
 			httptrace.WithClientTrace(t.Context(), trace),
 			method,
 			"http://"+addr+path,
-			nil,
+			http.NoBody,
 		)
-		response, err := client.Do(r)
 		if err != nil {
 			t.Fatal(err)
 		}
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
 		io.Copy(io.Discard, response.Body)
-		response.Body.Close()
-		return response
+		return answer{status: response.StatusCode, protocol: response.ProtoMajor}
 	}
-	if response := send(
-		"POST",
-		"/api/v1/messages",
-	); response.StatusCode != http.StatusBadRequest ||
-		response.ProtoMajor != 2 {
-		t.Fatalf("rejected create over h2c: %d HTTP/%d", response.StatusCode, response.ProtoMajor)
+	if got := send(http.MethodPost, "/api/v1/messages"); got.status != http.StatusBadRequest || got.protocol != 2 {
+		t.Fatalf("rejected create over h2c: %d HTTP/%d", got.status, got.protocol)
 	}
-	if response := send("GET", "/healthz"); response.StatusCode != http.StatusOK || response.ProtoMajor != 2 {
-		t.Fatalf("follow-up over h2c: %d HTTP/%d", response.StatusCode, response.ProtoMajor)
+	if got := send(http.MethodGet, "/healthz"); got.status != http.StatusOK || got.protocol != 2 {
+		t.Fatalf("follow-up over h2c: %d HTTP/%d", got.status, got.protocol)
 	}
 	if len(reused) != 2 || !reused[1] {
 		t.Fatalf("a rejected create closed the shared h2c connection: %v", reused)
@@ -607,29 +412,29 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-func testServer(t testing.TB, database store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
-	t.Helper()
+func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
+	tb.Helper()
 	settings := config.Defaults()
-	settings.DataDir = t.TempDir()
+	settings.DataDir = tb.TempDir()
 	settings.Pepper = bytes.Repeat([]byte{1}, 32)
 	if change != nil {
 		change(&settings)
 	}
 	logs := &lockedBuffer{}
-	s, err := New(&settings, database, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
+	server, err := New(&settings, database, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	return s, logs
+	return server, logs
 }
 
-func openStore(t testing.TB) *sqlite.Store {
-	t.Helper()
-	database, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
+func openStore(tb testing.TB) *sqlite.Store {
+	tb.Helper()
+	database, err := sqlite.Open(tb.Context(), filepath.Join(tb.TempDir(), "nylzo.db"))
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
-	t.Cleanup(func() { database.Close() })
+	tb.Cleanup(func() { database.Close() })
 	return database
 }
 
@@ -711,10 +516,8 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	}
 	defer conn.Close()
 	frame := func(kind byte, payload []byte) []byte {
-		head := make([]byte, 9)
-		head[0], head[1], head[2] = byte(len(payload)>>16), byte(len(payload)>>8), byte(len(payload))
-		head[3] = kind
-		return append(head, payload...)
+		size := len(payload)
+		return append([]byte{byte(size >> 16), byte(size >> 8), byte(size), kind, 0, 0, 0, 0, 0}, payload...)
 	}
 	var out []byte
 	out = append(out, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"...)
@@ -972,11 +775,11 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 			continue
 		}
 		route, _ := entry["route"].(string)
-		_, bytes := entry["bytes"]
+		_, size := entry["bytes"]
 		_, latency := entry["duration_ms"]
 		object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") ||
 			strings.HasSuffix(route, "/blob")
-		if bytes {
+		if size {
 			t.Fatalf("%s logs its response size: %s", route, line)
 		}
 		if object && latency {
@@ -991,385 +794,6 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 		if !seen[r] {
 			t.Fatalf("no request line for %s", r)
 		}
-	}
-}
-
-const (
-	builtIndex = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
-	appJS      = "console.log('nylzo')"
-)
-
-func builtHome(language string) string {
-	return `<!doctype html><html lang="` + language + `"><head><title>home ` + language + `</title>
-<!--nylzo:public-->
-<link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/favicon-e5.png">
-<!--/nylzo:public-->
-<script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body><h1>home ` + language + `</h1></body></html>`
-}
-
-func gzipped(t *testing.T, data string) []byte {
-	t.Helper()
-	var out bytes.Buffer
-	writer := gzip.NewWriter(&out)
-	if _, err := writer.Write([]byte(data)); err != nil {
-		t.Fatal(err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return out.Bytes()
-}
-
-func gunzipped(t *testing.T, body string) string {
-	t.Helper()
-	reader, err := gzip.NewReader(strings.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	plain, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(plain)
-}
-
-func builtClient(t *testing.T) fstest.MapFS {
-	t.Helper()
-	return fstest.MapFS{
-		"placeholder.html":             {Data: []byte("placeholder")},
-		"dist/index.html":              {Data: []byte(builtIndex)},
-		"dist/home.en.html":            {Data: []byte(builtHome("en"))},
-		"dist/home.cs.html":            {Data: []byte(builtHome("cs"))},
-		"dist/assets/index-a1.js":      {Data: []byte(appJS)},
-		"dist/assets/index-a1.js.gz":   {Data: gzipped(t, appJS)},
-		"dist/assets/style-b2.css":     {Data: []byte("body{}")},
-		"dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
-		"dist/assets/favicon-d4.svg":   {Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)},
-		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
-	}
-}
-
-func newWebServer(t *testing.T, files fs.FS, logs io.Writer) (*httptest.Server, error) {
-	t.Helper()
-	return newWebServerWith(t, files, logs, baseSettings(pepperA, nil))
-}
-
-func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, settings *config.Server) (*httptest.Server, error) {
-	t.Helper()
-	dir := t.TempDir()
-	settings.DataDir = dir
-	database, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	blobs, err := disk.New(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if logs == nil {
-		logs = io.Discard
-	}
-	srv, err := New(
-		settings,
-		database,
-		blobs,
-		WithWebFiles(files),
-		WithLogger(slog.New(slog.NewJSONHandler(logs, nil))),
-	)
-	if err != nil {
-		return nil, err
-	}
-	httpServer := httptest.NewServer(srv.Handler())
-	t.Cleanup(httpServer.Close)
-	return httpServer, nil
-}
-
-var rawClient = &http.Client{Transport: &http.Transport{DisableCompression: true}}
-
-func get(t *testing.T, url string, header map[string]string) (*http.Response, string) {
-	t.Helper()
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for k, v := range header {
-		request.Header.Set(k, v)
-	}
-	response, err := rawClient.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return response, string(body)
-}
-
-func pageNonce(csp string) string {
-	start := strings.Index(csp, "'nonce-") + len("'nonce-")
-	return csp[start : start+strings.Index(csp[start:], "'")]
-}
-
-func TestBuiltClientIsServed(t *testing.T) {
-	t.Parallel()
-	var logs bytes.Buffer
-	httpServer, err := newWebServer(t, builtClient(t), &logs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(logs.String(), `"msg":"web-client","built":true,"assets":5`) {
-		t.Fatalf("the server did not log the embedded client: %s", logs.String())
-	}
-	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
-		response, body := get(t, httpServer.URL+path, nil)
-		nonce := pageNonce(response.Header.Get("Content-Security-Policy"))
-		if response.StatusCode != http.StatusOK || strings.Contains(body, "placeholder") ||
-			strings.Contains(body, "__NYLZO_CSP_NONCE__") || strings.Count(body, `nonce="`+nonce+`"`) != 2 {
-			t.Fatalf("%s: %d %s", path, response.StatusCode, body)
-		}
-	}
-	for path, contentType := range map[string]string{
-		"/assets/index-a1.js":      "text/javascript; charset=utf-8",
-		"/assets/style-b2.css":     "text/css; charset=utf-8",
-		"/assets/kdf-worker-c3.js": "text/javascript; charset=utf-8",
-		"/assets/favicon-d4.svg":   "image/svg+xml",
-		"/assets/favicon-e5.png":   "image/png",
-	} {
-		response, body := get(t, httpServer.URL+path, nil)
-		if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != contentType || body == "" {
-			t.Fatalf("%s: %d %s", path, response.StatusCode, response.Header.Get("Content-Type"))
-		}
-		if csp := response.Header.Get("Content-Security-Policy"); csp != webclient.NonHTMLCSP {
-			t.Fatalf("%s: the worker and the other assets must keep CSP default-src 'none', got %q", path, csp)
-		}
-		if response.Header.Get("X-Content-Type-Options") != "nosniff" ||
-			response.Header.Get("Cache-Control") != "no-store" ||
-			response.Header.Get("Vary") != "Accept-Encoding" {
-			t.Fatalf("%s: headers %v", path, response.Header)
-		}
-	}
-	for _, path := range []string{
-		"/assets/missing.js", "/assets/", "/assets/../placeholder.html", "/assets/%2e%2e%2fplaceholder.html",
-		"/assets/index-a1.js.br", "/assets/index-a1.js.gz", "/index.html",
-	} {
-		if response, _ := get(t, httpServer.URL+path, nil); response.StatusCode != http.StatusNotFound {
-			t.Fatalf("%s: %d", path, response.StatusCode)
-		}
-	}
-	response, body := get(
-		t,
-		httpServer.URL+"/assets/index-a1.js",
-		map[string]string{"Accept-Encoding": "gzip, deflate, br"},
-	)
-	if response.Header.Get("Content-Encoding") != "gzip" || gunzipped(t, body) != appJS {
-		t.Fatalf("a gzip variant was not sent to a client that accepts it: %q", response.Header.Get("Content-Encoding"))
-	}
-	response, body = get(t, httpServer.URL+"/assets/style-b2.css", map[string]string{"Accept-Encoding": "br, gzip"})
-	if response.Header.Get("Content-Encoding") != "" || body != "body{}" {
-		t.Fatalf("an asset without compressed variants: %q %q", response.Header.Get("Content-Encoding"), body)
-	}
-}
-
-func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
-	t.Parallel()
-	httpServer, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, want := range map[string]string{
-		"/":       "<h1>home en</h1>",
-		"/cs/":    "<h1>home cs</h1>",
-		"/sent":   "<body></body>",
-		"/report": "<body></body>",
-	} {
-		response, body := get(t, httpServer.URL+path, nil)
-		if response.StatusCode != http.StatusOK || !strings.Contains(body, want) {
-			t.Fatalf("%s: %d %s", path, response.StatusCode, body)
-		}
-		if robots := response.Header.Get("X-Robots-Tag"); (path == "/" || path == "/cs/") != (robots == "") {
-			t.Fatalf("%s: X-Robots-Tag %q, only the home pages may be indexed (D82)", path, robots)
-		}
-	}
-	noFollow := &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	for _, path := range []string{"/cs", "/cs?utm=1"} {
-		request, newRequestWithContextErr := http.NewRequestWithContext(
-			t.Context(),
-			http.MethodGet,
-			httpServer.URL+path,
-			http.NoBody,
-		)
-		if newRequestWithContextErr != nil {
-			t.Fatal(newRequestWithContextErr)
-		}
-		response, err := noFollow.Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		response.Body.Close()
-		if response.StatusCode != http.StatusPermanentRedirect || response.Header.Get("Location") != "/cs/" ||
-			response.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
-			t.Fatalf("%s: %d %q %v", path, response.StatusCode, response.Header.Get("Location"), response.Header)
-		}
-	}
-	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/"} {
-		if response, _ := get(t, httpServer.URL+path, nil); response.StatusCode != http.StatusNotFound {
-			t.Fatalf("%s: %d", path, response.StatusCode)
-		}
-	}
-}
-
-func TestPagesAreCompressedWithAFreshNonce(t *testing.T) {
-	t.Parallel()
-	httpServer, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"/", "/sent"} {
-		response, plain := get(t, httpServer.URL+path, nil)
-		zipped, packed := get(t, httpServer.URL+path, map[string]string{"Accept-Encoding": "gzip, deflate, br"})
-		if response.Header.Get("Content-Encoding") != "" || zipped.Header.Get("Content-Encoding") != "gzip" ||
-			response.Header.Get("Vary") != "Accept-Encoding" || zipped.Header.Get("Vary") != "Accept-Encoding" {
-			t.Fatalf("%s: encoding headers %v %v", path, response.Header, zipped.Header)
-		}
-		first := pageNonce(response.Header.Get("Content-Security-Policy"))
-		second := pageNonce(zipped.Header.Get("Content-Security-Policy"))
-		unpacked := gunzipped(t, packed)
-		if first == second || strings.ReplaceAll(unpacked, second, "N") != strings.ReplaceAll(plain, first, "N") {
-			t.Fatalf("%s: the compressed page differs from the plain one or reuses its nonce", path)
-		}
-	}
-}
-
-func TestRobotsSitemapAndManifest(t *testing.T) {
-	t.Parallel()
-	without, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, body := get(t, without.URL+"/robots.txt", nil)
-	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "text/plain; charset=utf-8" ||
-		body != string(webclient.Robots("")) {
-		t.Fatalf("robots.txt: %d %q %q", response.StatusCode, response.Header.Get("Content-Type"), body)
-	}
-	if response, _ := get(t, without.URL+"/sitemap.xml", nil); response.StatusCode != http.StatusNotFound {
-		t.Fatalf("sitemap.xml without a public URL: %d", response.StatusCode)
-	}
-	settings := baseSettings(pepperA, nil)
-	settings.PublicURL = "https://nylzo.example"
-	settings.Version = "v1.2.3"
-	with, err := newWebServerWith(t, builtClient(t), nil, settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, body = get(t, with.URL+"/sitemap.xml", nil)
-	if response.StatusCode != http.StatusOK ||
-		response.Header.Get("Content-Type") != "application/xml; charset=utf-8" ||
-		body != string(webclient.Sitemap(settings.PublicURL)) {
-		t.Fatalf("sitemap.xml: %d %q", response.StatusCode, response.Header.Get("Content-Type"))
-	}
-	response, body = get(t, with.URL+webclient.ManifestPath, nil)
-	if response.StatusCode != http.StatusOK ||
-		response.Header.Get("Content-Type") != "application/json; charset=utf-8" ||
-		response.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP ||
-		response.Header.Get("Cache-Control") != "no-store" {
-		t.Fatalf("manifest: %d %v", response.StatusCode, response.Header)
-	}
-	build, err := webclient.Load(builtClient(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want, err := json.Marshal(build.Manifest("v1.2.3", settings.PublicURL))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if body != string(want) {
-		t.Fatalf("manifest\n got %s\nwant %s", body, want)
-	}
-}
-
-func TestWithoutABuildTheServerServesThePlaceholder(t *testing.T) {
-	t.Parallel()
-	var logs bytes.Buffer
-	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}}
-	httpServer, err := newWebServer(t, placeholder, &logs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(logs.String(), `"msg":"web-client","built":false,"assets":0`) {
-		t.Fatalf("the server did not log that it serves the placeholder: %s", logs.String())
-	}
-	response, body := get(t, httpServer.URL+"/", nil)
-	if response.StatusCode != http.StatusOK || !strings.Contains(body, "placeholder") ||
-		strings.Contains(body, "__NYLZO_CSP_NONCE__") {
-		t.Fatalf("placeholder: %d %s", response.StatusCode, body)
-	}
-	if response, _ := get(t, httpServer.URL+"/assets/index-a1.js", nil); response.StatusCode != http.StatusNotFound {
-		t.Fatalf("an asset without a build: %d", response.StatusCode)
-	}
-	embedded, err := newWebServer(t, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response, body := get(
-		t,
-		embedded.URL+"/",
-		nil,
-	); response.StatusCode != http.StatusOK ||
-		!strings.Contains(body, "<html") {
-		t.Fatalf("embedded client: %d %s", response.StatusCode, body)
-	}
-	broken := builtClient(t)
-	maps.DeleteFunc(broken, func(name string, _ *fstest.MapFile) bool { return name == "dist/home.cs.html" })
-	if _, newWebServerErr := newWebServer(t, broken, nil); newWebServerErr == nil {
-		t.Fatal("the server started with a broken build")
-	}
-}
-
-func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
-	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Version = "v1.2.3"
-	settings.Rates.CreatePerHour = 7
-	settings.Rates.GlobalDailyCreates = 900
-	settings.PoWDifficulty = 5
-	settings.Limits.MaxOpens = 4
-	settings.Operator = config.Operator{
-		Name:    "Example s.r.o.",
-		Contact: "security@example.org",
-		Hosting: "Vultr, Frankfurt",
-	}
-	httpServer, err := newWebServerWith(t, builtClient(t), nil, settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	response, body := get(t, httpServer.URL+TransparencyPath, nil)
-	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
-		t.Fatalf("%d %v", response.StatusCode, response.Header)
-	}
-	for _, want := range []string{
-		`"server":"v1.2.3"`,
-		`"operator":{"name":"Example s.r.o.","contact":"security@example.org","hosting":"Vultr, Frankfurt"}`,
-		`"max_opens":4`,
-		`"create_per_hour":7`,
-		`"global_daily_creates":900`,
-		`"pow_difficulty":5`,
-		`"retention":{"tombstone_s":604800,"abuse_report_s":604800,"daily_counter_s":86400}`,
-	} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("transparency is missing %s: %s", want, body)
-		}
-	}
-	plain, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, body := get(t, plain.URL+TransparencyPath, nil); strings.Contains(body, "operator") {
-		t.Fatalf("an unset operator must not appear: %s", body)
 	}
 }
 

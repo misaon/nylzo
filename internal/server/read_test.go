@@ -199,7 +199,8 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 		if got.StatusCode != http.StatusForbidden {
 			t.Fatalf("flood attempt %d: %d", i, got.StatusCode)
 		}
-		harness.clock.Advance(time.Duration(decodeJSON(t, body)["retry_after"].(float64)) * time.Second)
+		retryAfter := decodeJSON(t, body)["retry_after"].(float64)
+		harness.clock.Advance(time.Duration(retryAfter * float64(time.Second)))
 	}
 	response, body := harness.claim(message, message.verifier, "192.0.2.77")
 	j := decodeJSON(t, body)
@@ -439,7 +440,7 @@ func TestClaimBodyVariants(t *testing.T) {
 		t.Fatalf("malformed claim bodies changed the message: %v", status)
 	}
 	r, _ := http.NewRequest(
-		"POST",
+		http.MethodPost,
 		harness.httpServer.URL+path,
 		io.MultiReader(strings.NewReader(`{"verifier":"`+message.verifier+`"}`)),
 	)
@@ -663,15 +664,20 @@ func TestLifecycleMatrix(t *testing.T) {
 			t.Run(kind.name+"/"+action, func(t *testing.T) {
 				t.Parallel()
 				harness := newHarness(t, baseSettings(pepperA, nil))
-				message, lease := setupLifecycleKind(t, harness, kind)
-				response, body := runLifecycleAction(t, harness, message, lease, action)
-				checkLifecycleCell(t, harness, message, action, kind.expect[i], response, body)
+				setup := setupLifecycleKind(t, harness, &kind)
+				response, body := runLifecycleAction(t, harness, setup.message, setup.lease, action)
+				checkLifecycleCell(t, harness, setup.message, action, kind.expect[i], response, body)
 			})
 		}
 	}
 }
 
-func setupLifecycleKind(t *testing.T, harness *testHarness, kind lifecycleKind) (*testMessage, string) {
+type lifecycleSetup struct {
+	message *testMessage
+	lease   string
+}
+
+func setupLifecycleKind(t *testing.T, harness *testHarness, kind *lifecycleKind) lifecycleSetup {
 	t.Helper()
 	message := newMessage(t, core.KDFNone, "", kind.opens, kind.ttl, "x")
 	harness.mustCreate(message)
@@ -702,7 +708,7 @@ func setupLifecycleKind(t *testing.T, harness *testHarness, kind lifecycleKind) 
 			t.Fatalf("record opened: %q %v", ref, err)
 		}
 	}
-	return message, lease
+	return lifecycleSetup{message: message, lease: lease}
 }
 
 func runLifecycleAction(
@@ -710,7 +716,7 @@ func runLifecycleAction(
 	harness *testHarness,
 	message *testMessage,
 	lease, action string,
-) (testResponse, []byte) {
+) (testResponse, responseBody) {
 	t.Helper()
 	ctx := t.Context()
 	switch action {
@@ -775,6 +781,8 @@ func runLifecycleAction(
 				headers: map[string]string{"X-Nylzo-Lease": lease},
 			},
 		)
+	default:
+		t.Fatalf("unknown action %q", action)
 	}
 	return testResponse{}, nil
 }
@@ -801,7 +809,7 @@ func checkLifecycleCell(
 	}
 	if code == "410" || code == "500" {
 		if lease := response.Header.Get("X-Nylzo-Lease"); lease != "" && action == "claim" {
-			t.Fatalf("a refused claim handed out a lease")
+			t.Fatal("a refused claim handed out a lease")
 		}
 	}
 	record, err := harness.store.Get(t.Context(), message.id.String())
@@ -824,6 +832,8 @@ func checkLifecycleCell(
 		if exists := harness.blobExists(message.id); exists != (action != "blob vanished") {
 			t.Fatalf("blob present %v on a live row", exists)
 		}
+	default:
+		t.Fatalf("unknown final state %q", final)
 	}
 }
 
@@ -1302,9 +1312,9 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	harness.mustCreate(message)
 	faulty.set(func(b *faultyBlobs) { b.failRead = errInjected })
 	request, err := http.NewRequest(
-		"POST",
+		http.MethodPost,
 		harness.httpServer.URL+"/api/v1/messages/"+message.id.String()+"/claim",
-		nil,
+		http.NoBody,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1394,9 +1404,10 @@ type ackRacingStore struct {
 	race func(id string)
 }
 
-func (s *ackRacingStore) Ack(ctx context.Context, l store.Lease, now time.Time) (string, error) {
-	s.race(l.ID)
-	return s.Store.Ack(ctx, l, now)
+//nolint:gocritic // hugeParam: store.Store fixes this signature.
+func (s *ackRacingStore) Ack(ctx context.Context, lease store.Lease, now time.Time) (string, error) {
+	s.race(lease.ID)
+	return s.Store.Ack(ctx, lease, now)
 }
 
 func TestAckAfterAConcurrentBurnAnswersGone(t *testing.T) {
