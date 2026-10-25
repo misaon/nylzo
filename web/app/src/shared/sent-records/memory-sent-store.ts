@@ -1,4 +1,5 @@
-import { storedForm, type SentRecord, type SentStore } from './sent-records.ts';
+import { type SentRecord, storedForm } from './sent-record.ts';
+import { type SentStore } from './sent-store.ts';
 
 export function memoryStore(
   initial: SentRecord[] = [],

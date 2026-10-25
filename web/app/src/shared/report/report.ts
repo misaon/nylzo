@@ -1,60 +1,61 @@
 import {
-  ID_LEN,
-  LinkRetiredKdfError,
-  LinkVersionError,
   deriveLink,
   encodedLength,
-  parseLink,
-  requestKey,
-  utf8,
-  wipeRequestKey,
+  ID_LEN,
   type Link,
   type LinkKeys,
+  LinkRetiredKdfError,
+  LinkVersionError,
+  parseLink,
+  requestKey,
   type RequestKey,
+  utf8,
+  wipeRequestKey,
 } from '@nylzo/core';
 
-import { ApiError } from '../api/api-errors.ts';
-import { type Api } from '../api/api.ts';
+import type { Api } from '../api/api.ts';
+
+import { shouldRetryLater } from '../api/api-errors.ts';
 
 export const MAX_REASON_BYTES = 1000;
 const MAX_REPORT_BODY_BYTES = 4096;
 const DECODE_PASSES = 3;
-const LINK_ORIGIN = /^([Hh][Tt][Tt][Pp][Ss]?:\/\/[^/?#]+)/;
 const PERCENT = 0x25;
+const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/i;
 const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
-const TOKEN_RUN = new RegExp(`[A-Za-z0-9_-]{${encodedLength(ID_LEN)},}`, 'g');
-const REDACTED = '[redacted]';
+const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LEN)},}`, 'g');
+const HEX_DIGIT = /^[\da-f]$/i;
 
-export type ReportProblem = 'link_invalid' | 'link_newer' | 'link_retired' | 'link_foreign' | 'reason_too_long';
+type ReportProblem = 'link_foreign' | 'link_invalid' | 'link_newer' | 'link_retired' | 'reason_too_long';
 
 export type ReportOutcome =
   | { readonly outcome: 'accepted' }
-  | { readonly outcome: 'invalid'; readonly problems: readonly ReportProblem[] }
-  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined }
   | { readonly outcome: 'failed' }
-  | { readonly outcome: 'ignored' };
+  | { readonly outcome: 'ignored' }
+  | { readonly outcome: 'invalid'; readonly problems: readonly ReportProblem[] }
+  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined };
 
 function hexValue(byte: number | undefined): number {
   if (byte === undefined) {
     return -1;
   }
-  const digit = String.fromCharCode(byte);
-  return /^[0-9A-Fa-f]$/.test(digit) ? parseInt(digit, 16) : -1;
+  const digit = String.fromCodePoint(byte);
+  return HEX_DIGIT.test(digit) ? Number.parseInt(digit, 16) : -1;
 }
 
 function percentDecodePass(bytes: Uint8Array): Uint8Array {
-  const out: number[] = [];
+  const decoded: number[] = [];
   for (let index = 0; index < bytes.length; index++) {
     const high = hexValue(bytes[index + 1]);
     const low = hexValue(bytes[index + 2]);
     if (bytes[index] === PERCENT && high >= 0 && low >= 0) {
-      out.push(high * 16 + low);
+      decoded.push(high * 16 + low);
       index += 2;
     } else {
-      out.push(bytes[index] ?? 0);
+      decoded.push(bytes[index] ?? 0);
     }
   }
-  return Uint8Array.from(out);
+  return Uint8Array.from(decoded);
 }
 
 function percentDecode(text: string): string {
@@ -66,15 +67,15 @@ function percentDecode(text: string): string {
     }
     bytes = decoded;
   }
-  return new TextDecoder().decode(bytes).replaceAll('\uFFFD', '');
+  return new TextDecoder().decode(bytes).replaceAll('\u{FFFD}', '');
 }
 
 export function redactReason(reason: string): string {
   return percentDecode(reason)
-    .replace(/\p{Cf}/gu, '')
-    .replace(/\p{Cc}/gu, ' ')
-    .replace(LINK_FRAGMENT, REDACTED)
-    .replace(TOKEN_RUN, REDACTED);
+    .replaceAll(/\p{Cf}/gu, '')
+    .replaceAll(/\p{Cc}/gu, ' ')
+    .replaceAll(LINK_FRAGMENT, '[redacted]')
+    .replaceAll(TOKEN_RUN, '[redacted]');
 }
 
 export function reasonTooLong(reason: string): boolean {
@@ -96,10 +97,7 @@ export async function sendReport(
     await api.report(id, readKey, redacted);
     return { outcome: 'accepted' };
   } catch (error) {
-    if (error instanceof ApiError && (error.kind === 'rate_limited' || error.kind === 'unavailable')) {
-      return { outcome: 'retry_later', retryAfter: error.retryAfter };
-    }
-    return { outcome: 'failed' };
+    return shouldRetryLater(error) ? { outcome: 'retry_later', retryAfter: error.retryAfter } : { outcome: 'failed' };
   }
 }
 
@@ -110,16 +108,30 @@ function linkProblem(error: unknown): ReportProblem {
   return error instanceof LinkRetiredKdfError ? 'link_retired' : 'link_invalid';
 }
 
+async function readKeyFrom(link: Link): Promise<RequestKey | undefined> {
+  let keys: LinkKeys | undefined;
+  try {
+    keys = await deriveLink(link.id, link.s);
+    return await requestKey(keys.r);
+  } catch {
+    return undefined;
+  } finally {
+    link.s.fill(0);
+    keys?.saltPw.fill(0);
+    keys?.r.fill(0);
+  }
+}
+
 export async function reportLink(api: Api, origin: string, pasted: string, reason: string): Promise<ReportOutcome> {
-  const raw = pasted.trim();
+  const trimmed = pasted.trim();
   const problems: ReportProblem[] = [];
   let link: Link | undefined;
   try {
-    link = parseLink(raw);
+    link = parseLink(trimmed);
   } catch (error) {
     problems.push(linkProblem(error));
   }
-  if (link && LINK_ORIGIN.exec(raw)?.[1]?.toLowerCase() !== origin.toLowerCase()) {
+  if (link && LINK_ORIGIN.exec(trimmed)?.[1]?.toLowerCase() !== origin.toLowerCase()) {
     problems.push('link_foreign');
   }
   if (reasonTooLong(redactReason(reason))) {
@@ -129,22 +141,13 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
     link?.s.fill(0);
     return { outcome: 'invalid', problems };
   }
-  const readKey = await readKeyOf(link).catch(() => undefined);
+  const readKey = await readKeyFrom(link);
+  if (!readKey) {
+    return { outcome: 'failed' };
+  }
   try {
-    return readKey ? await sendReport(api, link.id, readKey, reason) : { outcome: 'failed' };
+    return await sendReport(api, link.id, readKey, reason);
   } finally {
     wipeRequestKey(readKey);
-  }
-}
-
-async function readKeyOf(link: Link): Promise<RequestKey> {
-  let keys: LinkKeys | undefined;
-  try {
-    keys = await deriveLink(link.id, link.s);
-    return await requestKey(keys.r);
-  } finally {
-    link.s.fill(0);
-    keys?.saltPw.fill(0);
-    keys?.r.fill(0);
   }
 }

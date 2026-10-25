@@ -1,12 +1,12 @@
 import { KDF_SCRYPT, type KdfId } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '../shared/api/api-errors.ts';
-import { createMessage, type CreateDeps } from '../features/create/composer/create-message.ts';
-import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
+import { type CreateDeps, createMessage } from '../features/create/composer/create-message.ts';
 import { createReader, type ReadView } from '../features/read/reader.ts';
-import { reportLink } from '../shared/report/report.ts';
+import { ApiError } from '../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../shared/api/fake-api.ts';
+import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
+import { reportLink } from '../shared/report/report.ts';
 
 const { captured, passphraseKeys, failing } = vi.hoisted(() => ({
   captured: [] as Uint8Array[],
@@ -93,9 +93,9 @@ function readerFor(api: FakeApi, link: string, scrypt = scryptStub()) {
     {
       api,
       location: { pathname: url.pathname, hash: url.hash },
-      session: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
+      session: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
       page: { visible: () => true, prerendering: () => false },
-      dropFragment: () => undefined,
+      dropFragment: () => {},
       scrypt,
       now: () => Date.now(),
     },
@@ -141,7 +141,9 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   });
 
   it('wipes S, R and salt_pw when the key derivation fails', async () => {
-    const deps = createDeps(fakeApi(), async () => Promise.reject(new KdfWorkerError()));
+    const deps = createDeps(fakeApi(), async () => {
+      throw new KdfWorkerError();
+    });
     await expect(
       createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, deps),
     ).rejects.toMatchObject({
@@ -213,7 +215,9 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   it('wipes S, R, salt_pw, V and P when the claim fails', async () => {
     const api = fakeApi();
     const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
-    api.claim = async () => Promise.reject(new ApiError(500, 'internal'));
+    api.claim = async () => {
+      throw new ApiError(500, 'internal');
+    };
     await reader.load();
     await reader.reveal(PASSPHRASE);
     expect(reader.last()).toEqual({ view: 'failed' });

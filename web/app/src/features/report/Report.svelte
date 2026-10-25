@@ -1,8 +1,8 @@
 <script lang="ts">
-  import ReportForm from '../../shared/report/ReportForm.svelte';
   import { createApi } from '../../shared/api/api.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { reportLink } from '../../shared/report/report.ts';
+  import ReportForm from '../../shared/report/ReportForm.svelte';
 
   const { translate } = getTranslator();
   const api = createApi();

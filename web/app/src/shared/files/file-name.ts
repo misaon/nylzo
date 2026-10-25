@@ -1,8 +1,8 @@
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}ᅟᅠㅤﾠ]/gu;
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{115F}\u{1160}\u{3164}\u{FFA0}]/gu;
 const RESERVED = /[/\\:*?"<>|]/g;
-const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$)\s*(\.|$)/iu;
+const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[\d¹²³]|lpt[\d¹²³]|conin\$|conout\$)\s*(?:\.|$)/iu;
 const MAX_NAME_BYTES = 255;
-const MAX_EXTENSION_CHARS = 16;
+const MAX_EXTENSION_CHARACTERS = 16;
 const FALLBACK_NAME = 'nylzo';
 
 const SAFE_EXTENSIONS = new Set([
@@ -37,30 +37,36 @@ function byteLength(text: string): number {
   return encoder.encode(text).length;
 }
 
-function truncateBytes(text: string, max: number): string {
-  let out = '';
-  let used = 0;
-  for (const char of text) {
-    const size = byteLength(char);
-    if (used + size > max) {
+function truncateBytes(text: string, maxBytes: number): string {
+  let truncated = '';
+  let usedBytes = 0;
+  for (const character of text) {
+    const size = byteLength(character);
+    if (usedBytes + size > maxBytes) {
       break;
     }
-    out += char;
-    used += size;
+    truncated += character;
+    usedBytes += size;
   }
-  return out;
+  return truncated;
 }
 
 export function splitFileName(name: string): { readonly stem: string; readonly extension: string } {
   const dot = name.lastIndexOf('.');
-  return dot > 0 && name.length - dot - 1 <= MAX_EXTENSION_CHARS
+  return dot > 0 && name.length - dot - 1 <= MAX_EXTENSION_CHARACTERS
     ? { stem: name.slice(0, dot), extension: name.slice(dot) }
     : { stem: name, extension: '' };
 }
 
 export function sanitizeFileName(name: string): string {
-  let clean = name.normalize('NFC').replace(INVISIBLE, '').replace(RESERVED, '_').replace(/\s+/gu, ' ').trim();
-  clean = clean.replace(/^[.\s]+/u, '').replace(/[.\s]+$/u, '');
+  let clean = name
+    .normalize('NFC')
+    .replaceAll(INVISIBLE, '')
+    .replaceAll(RESERVED, '_')
+    .replaceAll(/\s+/gu, ' ')
+    .trim()
+    .replace(/^[.\s]+/u, '')
+    .replace(/[.\s]+$/u, '');
   if (WINDOWS_DEVICE.test(clean)) {
     clean = `_${clean}`;
   }
@@ -82,17 +88,4 @@ export function fileExtension(name: string): string {
 
 export function isKnownSafeFile(name: string): boolean {
   return SAFE_EXTENSIONS.has(fileExtension(name));
-}
-
-export function saveFile(bytes: Uint8Array<ArrayBuffer>, name: string): void {
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = sanitizeFileName(name);
-  link.rel = 'noopener';
-  link.hidden = true;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

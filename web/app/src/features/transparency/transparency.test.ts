@@ -25,8 +25,8 @@ describe('transparency', () => {
       'abuse@localhost',
       'https://:443/contact',
       'https://example.org/a b',
-      'https://example.org/\u202e',
-      'abuse@example.org\u202e',
+      'https://example.org/\u{202E}',
+      'abuse@example.org\u{202E}',
     ]) {
       expect(contactHref(contact), contact).toBeUndefined();
     }

@@ -1,5 +1,6 @@
+import type { Language } from '../../../shared/language/language.ts';
+
 import { TTL_CHOICES } from '../composer/create-form.ts';
-import { type Language } from '../../../shared/language/language.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
 
@@ -101,7 +102,7 @@ export interface Countdown {
 }
 
 function grouped(value: bigint): string {
-  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return value.toString().replaceAll(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
 export function countdown(attacker: Attacker, quantum: boolean, elapsedMs: number): Countdown {
@@ -113,7 +114,7 @@ export function countdown(attacker: Attacker, quantum: boolean, elapsedMs: numbe
   const first = [...after].findIndex((digit, index) => digit !== before[index]);
   const text = grouped(left);
   let cut = text.length;
-  for (let digits = first < 0 ? 0 : after.length - first; digits > 0; cut--) {
+  for (let digits = first === -1 ? 0 : after.length - first; digits > 0; cut--) {
     if (text[cut - 1] !== ' ') {
       digits--;
     }

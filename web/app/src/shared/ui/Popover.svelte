@@ -24,10 +24,12 @@
   };
 
   function onkeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      onclose();
+    if (event.key !== 'Escape') {
+      return;
     }
+
+    event.stopPropagation();
+    onclose();
   }
 </script>
 

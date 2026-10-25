@@ -7,7 +7,7 @@ import { english } from '../shared/language/english.ts';
 import { formatDays } from '../shared/language/format.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
 import { MAX_REASON_BYTES } from '../shared/report/report.ts';
-import { RETENTION_DAYS } from '../shared/sent-records/sent-records.ts';
+import { RETENTION_DAYS } from '../shared/sent-records/sent-record.ts';
 
 describe('messages', () => {
   it('takes the limits it names from the code', () => {

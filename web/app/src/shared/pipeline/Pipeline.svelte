@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PipelineNode } from './pipeline.ts';
+
   import Icon from '../ui/Icon.svelte';
 
   interface Props {
@@ -32,8 +33,8 @@
     </span>
     <ol class={['relative grid w-full', columns]}>
       {#each nodes as node, index (node.id)}
-        {@const isCurrent = active && index === current}
-        {@const isDone = index < current || (!active && current >= nodes.length)}
+        {const isCurrent = $derived(active && index === current)}
+        {const isDone = $derived(index < current || (!active && current >= nodes.length))}
         <li class="relative flex flex-col items-center gap-2">
           <span
             class={[
@@ -81,7 +82,7 @@
   </div>
   <div class="stack w-full max-w-[460px] text-center" aria-hidden="true">
     {#each nodes as node, index (node.id)}
-      {@const shown = active && index === current}
+      {const shown = $derived(active && index === current)}
       <div
         class={[
           'transition-[opacity,translate]',

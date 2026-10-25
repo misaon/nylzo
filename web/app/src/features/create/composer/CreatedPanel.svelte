@@ -2,11 +2,12 @@
   import type { Attachment } from 'svelte/attachments';
 
   import type { Created } from './create-message.ts';
+
   import { formatTime } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import { linkSegments } from './link-segments.ts';
   import Chip from '../../../shared/ui/Chip.svelte';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { linkSegments } from './link-segments.ts';
 
   interface Props {
     readonly created: Created;

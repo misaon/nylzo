@@ -45,9 +45,9 @@
     <p role="alert">{translate('transparency.failed')}</p>
     <button type="button" onclick={load}>{translate('action.retry')}</button>
   {:else}
-    {@const data = view.data}
-    {@const operator = data.operator}
-    {@const href = operator?.contact === undefined ? undefined : contactHref(operator.contact)}
+    {const data = $derived(view.data)}
+    {const operator = $derived(data.operator)}
+    {const href = $derived(operator?.contact === undefined ? undefined : contactHref(operator.contact))}
 
     <h3>{translate('transparency.operator.title')}</h3>
     {#if operator}

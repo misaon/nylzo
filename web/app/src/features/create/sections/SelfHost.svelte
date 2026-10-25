@@ -22,7 +22,7 @@
 
   function code(id: Tab): string {
     switch (id) {
-      case 'compose':
+      case 'compose': {
         return [
           `git clone ${REPOSITORY_URL}`,
           'cd nylzo/deploy/compose',
@@ -31,12 +31,15 @@
           'sudo chown 65532:65532 secrets/pepper && sudo chmod 0400 secrets/pepper',
           'docker compose up -d',
         ].join('\n');
-      case 'binary':
+      }
+      case 'binary': {
         return ['openssl rand -hex 32 > pepper && chmod 0400 pepper', 'NYLZO_PEPPER_FILE=pepper nylzo serve'].join(
           '\n',
         );
-      case 'verify':
+      }
+      case 'verify': {
         return `nylzo verify-client --server https://${translate('host.domain')}`;
+      }
     }
   }
 
@@ -45,7 +48,7 @@
       .split('\n')
       .map((line) => {
         const space = line.indexOf(' ');
-        return space < 0 ? { cmd: line, rest: '' } : { cmd: line.slice(0, space), rest: line.slice(space) };
+        return space === -1 ? { cmd: line, rest: '' } : { cmd: line.slice(0, space), rest: line.slice(space) };
       });
   }
 

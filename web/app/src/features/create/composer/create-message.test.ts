@@ -1,4 +1,4 @@
-import { HEADER_LEN, PowTimeoutError, TooLargeError, encodeBase64url, solvePow } from '@nylzo/core';
+import { encodeBase64url, HEADER_LEN, PowTimeoutError, solvePow, TooLargeError } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
@@ -6,13 +6,13 @@ import { ApiError } from '../../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi } from '../../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../../shared/kdf/kdf-protocol.ts';
 import {
+  type CreateDeps,
   CreateError,
-  POW_BUDGET_MS,
+  type CreateInput,
   createMessage,
   passphraseIsWeak,
+  POW_BUDGET_MS,
   validateCreate,
-  type CreateDeps,
-  type CreateInput,
 } from './create-message.ts';
 
 type Scrypt = CreateDeps['scrypt'];
@@ -31,7 +31,7 @@ function createDeps(api: FakeApi, solve?: (call: PowCall, id: Uint8Array<ArrayBu
     api,
     origin: 'https://nylzo.test',
     scrypt,
-    now: () => 1_000,
+    now: () => 1000,
     solvePow: async (challenge, id, difficulty, deadline) => {
       const call = { challenge, difficulty, deadline };
       powCalls.push(call);
@@ -64,9 +64,9 @@ describe('creating a message', () => {
       'solve',
       'create',
     ]);
-    expect(deps.powCalls).toEqual([{ challenge: api.challenges[1], difficulty: 2, deadline: 1_000 + POW_BUDGET_MS }]);
+    expect(deps.powCalls).toEqual([{ challenge: api.challenges[1], difficulty: 2, deadline: 1000 + POW_BUDGET_MS }]);
     const [message] = api.stored.values();
-    expect(message?.request.powToken).toMatch(new RegExp(`^${api.challenges[1]}\\.[0-9a-f]{16}$`));
+    expect(message?.request.powToken).toMatch(new RegExp(String.raw`^${api.challenges[1]}\.[0-9a-f]{16}$`));
   });
 
   it('takes a fresh challenge when the first one runs out and fails as PoW after that', async () => {
@@ -114,7 +114,7 @@ describe('creating a message', () => {
     const error = await createMessage(
       input({ text: '', passphrase: 'short', opensMax: 0, ttlSeconds: 30 }),
       createDeps(api),
-    ).catch((e: unknown) => e);
+    ).catch((error_: unknown) => error_);
     expect(error).toBeInstanceOf(CreateError);
     expect((error as CreateError).failure).toEqual({
       kind: 'invalid',
@@ -130,30 +130,41 @@ describe('creating a message', () => {
 
   it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
     const api = fakeApi();
-    const failing = { ...createDeps(api), scrypt: async () => Promise.reject(new KdfWorkerError()) };
+    const failing = {
+      ...createDeps(api),
+      scrypt: async () => {
+        throw new KdfWorkerError();
+      },
+    };
     await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), failing)).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });
     const renamed = {
       ...createDeps(api),
-      scrypt: async () => Promise.reject(Object.assign(new Error('worker'), { name: 'KdfWorkerError' })),
+      scrypt: async () => {
+        throw Object.assign(new Error('worker'), { name: 'KdfWorkerError' });
+      },
     };
     await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), renamed)).rejects.toMatchObject({
       failure: { kind: 'failed' },
     });
-    api.create = async () => Promise.reject(new TooLargeError());
+    api.create = async () => {
+      throw new TooLargeError();
+    };
     await expect(createMessage(input(), createDeps(api))).rejects.toMatchObject({ failure: { kind: 'too_large' } });
   });
 
   it('checks the limits of the instance', async () => {
-    const limits = (await fakeApi().instance()).limits;
-    expect(validateCreate(input({ text: 'x'.repeat(102401) }), limits)).toEqual([{ field: 'text', code: 'too_large' }]);
-    expect(validateCreate(input({ opensMax: 11, ttlSeconds: 604801 }), limits)).toEqual([
+    const { limits } = await fakeApi().instance();
+    expect(validateCreate(input({ text: 'x'.repeat(102_401) }), limits)).toEqual([
+      { field: 'text', code: 'too_large' },
+    ]);
+    expect(validateCreate(input({ opensMax: 11, ttlSeconds: 604_801 }), limits)).toEqual([
       { field: 'ttl', code: 'out_of_range' },
       { field: 'opens', code: 'out_of_range' },
     ]);
     expect(validateCreate(input({ passphrase: 'correct horse battery staple' }), limits)).toEqual([]);
-    expect(validateCreate(input({ passphrase: '\ud800 twelve chars' }), limits)).toEqual([
+    expect(validateCreate(input({ passphrase: '\u{D800} twelve chars' }), limits)).toEqual([
       { field: 'passphrase', code: 'malformed' },
     ]);
   });

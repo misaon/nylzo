@@ -1,18 +1,18 @@
 import {
   CHALLENGE_LEN,
-  MAX_OBJECT_BYTES,
   encodeBase64url,
   idToString,
+  MAX_OBJECT_BYTES,
+  type Purpose,
   requestKey,
   requestMessage,
   transferSeconds,
   utf8,
-  type Purpose,
 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, ResponseError, StoppedError } from './api-errors.ts';
-import { TRANSFER_TIMEOUT_MS, createApi } from './api.ts';
+import { type ApiError, ResponseError, StoppedError } from './api-errors.ts';
+import { createApi, TRANSFER_TIMEOUT_MS } from './api.ts';
 import { servedPolicy } from './responses.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
@@ -20,7 +20,7 @@ const randomId = () => crypto.getRandomValues(new Uint8Array(16));
 type Handler = (request: Request) => Response | Promise<Response>;
 
 function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
+  return Response.json(body, { status, headers: { 'Content-Type': 'application/json', ...headers } });
 }
 
 function fakeServer(handler: Handler) {
@@ -66,7 +66,7 @@ async function verifies(
 }
 
 function authParts(header: string): [string, string, string] {
-  const [pk = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /, '').split('.');
+  const [pk = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /, '').split('.', 3);
   return [pk, challenge, signature];
 }
 
@@ -74,11 +74,11 @@ const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, 
 
 const instanceBody = {
   limits: {
-    max_file_bytes: 5242880,
-    max_text_bytes: 102400,
-    max_object_bytes: 5373983,
-    max_ttl_s: 604800,
-    default_ttl_s: 86400,
+    max_file_bytes: 5_242_880,
+    max_text_bytes: 102_400,
+    max_object_bytes: 5_373_983,
+    max_ttl_s: 604_800,
+    default_ttl_s: 86_400,
     max_opens: 10,
   },
   pow: { required: true, difficulty: 4, challenge: 'x' },
@@ -111,7 +111,7 @@ describe('api client', () => {
         expires_at: '2026-10-24T09:00:00Z',
         opens_max: 1,
         opens_remaining: 1,
-        ttl_s: 86400,
+        ttl_s: 86_400,
         passphrase_required: false,
         kdf_id: 0,
         size: 4127,
@@ -197,7 +197,7 @@ describe('api client', () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(1));
     const verifierKey = await requestKey(new Uint8Array(32).fill(2));
-    const object = new Uint8Array(70000).fill(9);
+    const object = new Uint8Array(70_000).fill(9);
     const server = fakeServer(
       () =>
         new Response(object, {
@@ -328,7 +328,7 @@ describe('api client', () => {
         expires_at: '2026-10-24T09:00:00Z',
         opens_max: 1,
         opens_remaining: 1,
-        ttl_s: 86400,
+        ttl_s: 86_400,
         passphrase_required: false,
         kdf_id: 0,
         size: 1,
@@ -340,7 +340,7 @@ describe('api client', () => {
   it('leaves retryAfter empty when the server sends no Retry-After', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(6));
     const server = fakeServer(() => json(503, { error: 'unavailable' }));
-    const error = await server.api.claim(randomId(), readKey).catch((e: unknown) => e);
+    const error = await server.api.claim(randomId(), readKey).catch((error_: unknown) => error_);
     expect(error).toMatchObject({ kind: 'unavailable' });
     expect((error as ApiError).retryAfter).toBeUndefined();
   });
@@ -458,7 +458,7 @@ describe('api client', () => {
     for (const length of [undefined, object.length, 1000]) {
       const headers: Record<string, string> = {
         'X-Nylzo-Policy': policy,
-        ...(length === undefined ? {} : { 'Content-Length': String(length) }),
+        ...(length !== undefined && { 'Content-Length': String(length) }),
       };
       const progress: [number, number | undefined][] = [];
       const server = fakeServer(() => new Response(chunked(), { status: 200, headers }));
@@ -483,24 +483,24 @@ describe('transparency', () => {
     server: 'v1.2.3',
     operator: { name: 'Example s.r.o.', contact: 'abuse@example.org' },
     limits: {
-      max_file_bytes: 5242880,
-      max_text_bytes: 102400,
-      max_object_bytes: 5373983,
-      max_ttl_s: 604800,
-      default_ttl_s: 86400,
+      max_file_bytes: 5_242_880,
+      max_text_bytes: 102_400,
+      max_object_bytes: 5_373_983,
+      max_ttl_s: 604_800,
+      default_ttl_s: 86_400,
       max_opens: 10,
     },
     rates: {
       create_per_hour: 20,
       create_per_day: 100,
-      create_bytes_per_day: 50000000,
+      create_bytes_per_day: 50_000_000,
       read_per_hour: 300,
       abuse_per_hour: 5,
       coarse_multiplier: 5,
       global_daily_creates: 0,
       pow_difficulty: 4,
     },
-    retention: { tombstone_s: 604800, abuse_report_s: 604800, daily_counter_s: 86400 },
+    retention: { tombstone_s: 604_800, abuse_report_s: 604_800, daily_counter_s: 86_400 },
     ...change,
   });
   const manifest = (change: Record<string, unknown> = {}) => ({
@@ -522,7 +522,7 @@ describe('transparency', () => {
     expect(got.operator).toEqual({ name: 'Example s.r.o.', contact: 'abuse@example.org' });
     expect(got.limits.maxOpens).toBe(10);
     expect(got.rates.globalDailyCreates).toBe(0);
-    expect(got.retention.tombstoneSeconds).toBe(604800);
+    expect(got.retention.tombstoneSeconds).toBe(604_800);
     expect(got.files).toEqual([{ path: '/', sha256: sha }]);
   });
 

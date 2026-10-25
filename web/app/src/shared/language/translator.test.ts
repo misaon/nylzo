@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { czech, type MessageKey } from './czech.ts';
 import { english } from './english.ts';
 import { formatBytes, formatDays, formatDuration, formatSize, formatWait } from './format.ts';
-import { pickLanguage, saveLanguage, savedLanguage, type PreferenceStore } from './language.ts';
+import { pickLanguage, type PreferenceStore, savedLanguage, saveLanguage } from './language.ts';
 import { Translator } from './translator.svelte.ts';
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();

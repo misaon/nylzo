@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import { ATTACKERS, countdown, judge, yearsAmount, type Attacker } from './brute-force.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import Switch from '../../../shared/ui/Switch.svelte';
+  import { type Attacker, ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
 
   const translator = getTranslator();
   const { translate } = translator;
@@ -92,7 +92,7 @@
             </div>
             <div class="mt-4 grid gap-2.5" role="radiogroup" aria-labelledby="brute-attacker">
               {#each ATTACKERS as item (item.id)}
-                {@const selected = item.id === attacker}
+                {const selected = $derived(item.id === attacker)}
                 <button
                   type="button"
                   role="radio"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { homeTemplate, LANGUAGES, splitFontFaces } from './prerender.ts';
+import { LANGUAGES } from '../shared/language/language.ts';
+import { homeTemplate, splitFontFaces } from './prerender.ts';
 
 const INDEX = `<!doctype html>
 <html lang="cs">

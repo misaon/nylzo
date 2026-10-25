@@ -1,10 +1,10 @@
 import {
-  KDF_NONE,
-  KDF_SCRYPT,
   deriveContent,
   deriveLink,
   encodeBase64url,
   formatLink,
+  KDF_NONE,
+  KDF_SCRYPT,
   newHeader,
   newSecret,
   requestKey,
@@ -16,7 +16,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import { createMessage, type CreateDeps, type CreateInput } from '../create/composer/create-message.ts';
+import { type CreateDeps, type CreateInput, createMessage } from '../create/composer/create-message.ts';
 import { createReader, type ReaderDeps, type ReadView, type SessionStore } from './reader.ts';
 
 type Scrypt = ReaderDeps['scrypt'];
@@ -81,7 +81,7 @@ function reader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
       session,
       page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
       dropFragment: () => void dropped++,
-      ...(overrides.shown ? { shown: overrides.shown } : {}),
+      ...(overrides.shown && { shown: overrides.shown }),
       scrypt: overrides.scrypt ?? scrypt,
       now: () => Date.now(),
     },
@@ -167,7 +167,7 @@ describe('reading a message', () => {
   it('shows the text before it acknowledges the lease and then drops the fragment and the lease', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDeps(api));
-    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/m\/[A-Za-z0-9_-]{22}#1\.0\.[A-Za-z0-9_-]{43}$/);
+    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/m\/[\w-]{22}#1\.0\.[\w-]{43}$/);
     const r = reader(api, created.link);
     await r.load();
     expect(r.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
@@ -187,7 +187,7 @@ describe('reading a message', () => {
 
   it('rejects a wrong passphrase without spending an open, then opens the file', async () => {
     const api = fakeApi();
-    const bytes = new Uint8Array(70000).map((_, i) => i % 251);
+    const bytes = new Uint8Array(70_000).map((_, i) => i % 251);
     const created = await createMessage(
       input({
         text: '',
@@ -559,7 +559,7 @@ describe('passphrase handling on the read page', () => {
     const derivations: string[] = [];
     const r = reader(api, created.link, { scrypt: workerScrypt(derivations) });
     await r.load();
-    await r.reveal('caf\ud800 correct horse');
+    await r.reveal('caf\u{D800} correct horse');
     expect(r.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason: 'malformed' } });
     expect(r.views.some((v) => v.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);

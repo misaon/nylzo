@@ -1,24 +1,27 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
+
+  import { tick } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
 
+  import type { MessageKey } from '../../shared/language/czech.ts';
+  import type { PipelineNode } from '../../shared/pipeline/pipeline.ts';
+  import type { IconName } from '../../shared/ui/icons.ts';
+
+  import { createApi, type Metadata } from '../../shared/api/api.ts';
+  import { fileExtension, isKnownSafeFile, splitFileName } from '../../shared/files/file-name.ts';
+  import { saveFile } from './save-file.ts';
+  import { scryptInWorker } from '../../shared/kdf/kdf.ts';
+  import { formatBytes, formatWait } from '../../shared/language/format.ts';
+  import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { pace } from '../../shared/pipeline/pacing.ts';
+  import Pipeline from '../../shared/pipeline/Pipeline.svelte';
   import ReportForm from '../../shared/report/ReportForm.svelte';
   import Chip from '../../shared/ui/Chip.svelte';
-  import Icon from '../../shared/ui/Icon.svelte';
-  import Pipeline from '../../shared/pipeline/Pipeline.svelte';
-  import Popover from '../../shared/ui/Popover.svelte';
-  import { createApi, type Metadata } from '../../shared/api/api.ts';
-  import { fileExtension, isKnownSafeFile, saveFile, splitFileName } from '../../shared/files/file-name.ts';
-  import { formatBytes, formatWait } from '../../shared/language/format.ts';
   import { keepFocus } from '../../shared/ui/focus.ts';
-  import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import { type MessageKey } from '../../shared/language/czech.ts';
-  import type { IconName } from '../../shared/ui/icons.ts';
-  import { scryptInWorker } from '../../shared/kdf/kdf.ts';
-  import { pace } from '../../shared/pipeline/pacing.ts';
-  import type { PipelineNode } from '../../shared/pipeline/pipeline.ts';
-  import { createReader, type BurnOutcome, type BusyStep, type ReadView, type RevealedFile } from './reader.ts';
+  import Icon from '../../shared/ui/Icon.svelte';
+  import Popover from '../../shared/ui/Popover.svelte';
+  import { type BurnOutcome, type BusyStep, createReader, type ReadView, type RevealedFile } from './reader.ts';
 
   type Notice =
     | 'loading'
@@ -247,7 +250,7 @@
       },
       dropFragment: () => history.replaceState(null, '', location.pathname),
       shown: displayed,
-      scrypt: (pass, saltPw, onProgress) => scryptInWorker(pass, saltPw, { onProgress }),
+      scrypt: scryptInWorker,
       now: () => Date.now(),
     },
     onView,
@@ -358,7 +361,7 @@
     revealText = text;
     if (text !== undefined && !prefersReducedMotion.current) {
       const started = performance.now();
-      const chars = Array.from(text.slice(0, SCRAMBLED_CHARS));
+      const chars = [...text.slice(0, SCRAMBLED_CHARS)];
       const rest = text.slice(chars.join('').length);
       revealText = scramble(chars, 0) + rest;
       revealTimer = setInterval(() => {
@@ -406,45 +409,55 @@
 
   function noticeOf(current: ReadView): Notice {
     switch (current.view) {
-      case 'ended':
+      case 'ended': {
         return current.state === 'deleted' && burned?.outcome.outcome === 'deleted' && !burned.afterReveal
           ? 'burned'
           : current.state;
-      case 'ready':
+      }
+      case 'ready': {
         return current.rejected?.reason === 'wrong' && current.rejected.locked ? 'locked' : 'loading';
-      case 'retry_later':
+      }
+      case 'retry_later': {
         return 'busy';
+      }
       case 'invalid':
       case 'newer':
       case 'retired':
       case 'unknown':
       case 'tampered':
       case 'failed':
-      case 'cleared':
+      case 'cleared': {
         return current.view;
-      default:
+      }
+      default: {
         return 'loading';
+      }
     }
   }
 
   function noticeTitle(kind: Notice): string {
-    return kind === 'loading' ? translate('read.loading') : translate(`open.notice.${kind}`);
+    return translate(kind === 'loading' ? 'read.loading' : `open.notice.${kind}`);
   }
 
   function noticeText(kind: Notice): string {
     switch (kind) {
-      case 'unknown':
+      case 'unknown': {
         return translate('read.unknown');
-      case 'cleared':
+      }
+      case 'cleared': {
         return translate('read.cleared');
-      case 'busy':
+      }
+      case 'busy': {
         return translate('open.notice.busy.text', {
           time: formatWait(shown.view === 'retry_later' ? shown.retryAfter : undefined, translator.language),
         });
-      case 'loading':
+      }
+      case 'loading': {
         return translate('open.loading.text');
-      default:
+      }
+      default: {
         return translate(`open.notice.${kind}.text`);
+      }
     }
   }
 
@@ -476,18 +489,24 @@
 
   function burnText(outcome: BurnOutcome, afterReveal: boolean): string {
     switch (outcome.outcome) {
-      case 'deleted':
+      case 'deleted': {
         return afterReveal ? translate('read.deleted_rest') : '';
-      case 'ended':
+      }
+      case 'ended': {
         return afterReveal ? translate(`read.ended.${outcome.state}`) : '';
-      case 'retry_later':
+      }
+      case 'retry_later': {
         return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.language) });
-      case 'unknown':
+      }
+      case 'unknown': {
         return afterReveal ? translate('read.delete.failed') : '';
-      case 'failed':
+      }
+      case 'failed': {
         return translate('read.delete.failed');
-      case 'ignored':
+      }
+      case 'ignored': {
         return '';
+      }
     }
   }
 
@@ -506,10 +525,12 @@
   }
 
   function onconfirmkey(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.stopPropagation();
-      cancelDelete();
+    if (event.key !== 'Escape') {
+      return;
     }
+
+    event.stopPropagation();
+    cancelDelete();
   }
 
   async function burn() {
@@ -889,9 +910,9 @@
                 class="max-h-[220px] min-h-0 [scrollbar-width:thin] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink well">{revealText}</pre>
             {/if}
             {#if revealed.file}
-              {@const file = revealed.file}
-              {@const extension = fileExtension(file.name)}
-              {@const parts = splitFileName(file.name)}
+              {const file = $derived(revealed.file)}
+              {const extension = $derived(fileExtension(file.name))}
+              {const parts = $derived(splitFileName(file.name))}
               <div class="stack shrink-0 rounded-pane bg-white/3 py-2.5 pr-2.5 pl-3 ring-1 ring-white/8">
                 <div
                   class={[

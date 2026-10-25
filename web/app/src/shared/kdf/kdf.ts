@@ -1,67 +1,61 @@
 import { PowTimeoutError } from '@nylzo/core';
 
-import { KdfWorkerError, type KdfRequest, type KdfResponse } from './kdf-protocol.ts';
-import workerUrl from './kdf-worker.ts?worker&url';
+import { type KdfRequest, type KdfResponse, KdfWorkerError } from './kdf-protocol.ts';
+import kdfWorkerUrl from './kdf-worker.ts?worker&url';
 
-export const SILENCE_LIMIT_MS = 30_000;
+export type Progress = (fraction: number) => void;
 
-export interface WorkerOptions {
-  readonly onProgress?: (fraction: number) => void;
-  readonly signal?: AbortSignal;
-}
+const SILENCE_LIMIT_MS = 30_000;
 
-let policy: TrustedTypePolicy | undefined;
+let kdfPolicy: TrustedTypePolicy | undefined;
 
 function workerScriptUrl(): string {
-  const factory = globalThis.trustedTypes;
-  if (!factory) {
-    return workerUrl;
+  if (typeof trustedTypes === 'undefined') {
+    return kdfWorkerUrl;
   }
-  policy ??= factory.createPolicy('nylzo-kdf', {
+  // eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Trusted Types refuses a second policy named nylzo-kdf, so later workers reuse the first.
+  kdfPolicy ??= trustedTypes.createPolicy('nylzo-kdf', {
     createScriptURL(input) {
-      if (input !== workerUrl) {
+      if (input !== kdfWorkerUrl) {
         throw new TypeError('unexpected worker url');
       }
       return input;
     },
   });
   // Worker accepts a TrustedScriptURL; the DOM typings only know strings.
-  return policy.createScriptURL(workerUrl) as unknown as string;
+  return kdfPolicy.createScriptURL(kdfWorkerUrl) as unknown as string;
 }
 
-function run(request: KdfRequest, options: WorkerOptions): Promise<KdfResponse> {
-  options.signal?.throwIfAborted();
+async function runWorker(request: KdfRequest, onProgress: Progress): Promise<KdfResponse> {
   const worker = new Worker(workerScriptUrl(), { type: 'module', name: 'nylzo-kdf' });
   return new Promise((resolve, reject) => {
-    let silence: ReturnType<typeof setTimeout> | undefined;
+    let silenceTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (settle: () => void) => {
-      clearTimeout(silence);
+      clearTimeout(silenceTimer);
       worker.terminate();
-      options.signal?.removeEventListener('abort', onAbort);
       settle();
     };
-    const listen = () => {
-      clearTimeout(silence);
-      silence = setTimeout(
-        () => finish(() => reject(new KdfWorkerError('the key derivation worker stopped responding'))),
+    const fail = (error: Error) => finish(() => reject(error));
+    const restartSilenceTimer = () => {
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(
+        () => fail(new KdfWorkerError('the key derivation worker stopped responding')),
         SILENCE_LIMIT_MS,
       );
     };
-    const onAbort = () => finish(() => reject(options.signal?.reason));
-    options.signal?.addEventListener('abort', onAbort, { once: true });
     worker.addEventListener('message', ({ data }: MessageEvent<KdfResponse>) => {
       if (data.kind === 'progress') {
-        listen();
-        options.onProgress?.(data.fraction);
+        restartSilenceTimer();
+        onProgress(data.fraction);
       } else if (data.kind === 'error') {
-        finish(() => reject(data.timeout ? new PowTimeoutError() : new KdfWorkerError()));
+        fail(data.timeout ? new PowTimeoutError() : new KdfWorkerError());
       } else {
         finish(() => resolve(data));
       }
     });
-    worker.addEventListener('error', () => finish(() => reject(new KdfWorkerError())));
-    worker.addEventListener('messageerror', () => finish(() => reject(new KdfWorkerError())));
-    listen();
+    worker.addEventListener('error', () => fail(new KdfWorkerError()));
+    worker.addEventListener('messageerror', () => fail(new KdfWorkerError()));
+    restartSilenceTimer();
     worker.postMessage(request);
   });
 }
@@ -69,9 +63,9 @@ function run(request: KdfRequest, options: WorkerOptions): Promise<KdfResponse> 
 export async function scryptInWorker(
   passphrase: string,
   saltPw: Uint8Array<ArrayBuffer>,
-  options: WorkerOptions = {},
+  onProgress: Progress,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await run({ kind: 'scrypt', passphrase, saltPw }, options);
+  const response = await runWorker({ kind: 'scrypt', passphrase, saltPw }, onProgress);
   if (response.kind !== 'key') {
     throw new KdfWorkerError();
   }
@@ -83,9 +77,9 @@ export async function solvePowInWorker(
   id: Uint8Array<ArrayBuffer>,
   difficulty: number,
   deadline: number,
-  options: WorkerOptions = {},
+  onProgress: Progress,
 ): Promise<string> {
-  const response = await run({ kind: 'pow', challenge, id, difficulty, deadline }, options);
+  const response = await runWorker({ kind: 'pow', challenge, id, difficulty, deadline }, onProgress);
   if (response.kind !== 'token') {
     throw new KdfWorkerError();
   }

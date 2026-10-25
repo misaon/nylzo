@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { AutoCycle } from './auto-cycle.svelte.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { AutoCycle } from './auto-cycle.svelte.ts';
 
   const { translate } = getTranslator();
 

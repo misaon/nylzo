@@ -1,18 +1,18 @@
-import type { Language } from '../shared/language/language.ts';
+import { type Language, LANGUAGES } from '../shared/language/language.ts';
 
-export type Screen = 'create' | 'sent' | 'report' | 'transparency' | 'read';
+export type Screen = 'create' | 'read' | 'report' | 'sent' | 'transparency';
 
 export const HOME_PATHS: Readonly<Record<Language, string>> = { en: '/', cs: '/cs/' };
-
-export function homeLanguage(path: string): Language | undefined {
-  return path === HOME_PATHS.en ? 'en' : path === HOME_PATHS.cs ? 'cs' : undefined;
-}
 
 const PAGES: ReadonlyMap<string, Screen> = new Map([
   ['/sent', 'sent'],
   ['/report', 'report'],
   ['/transparency', 'transparency'],
 ]);
+
+export function homeLanguage(path: string): Language | undefined {
+  return LANGUAGES.find((language) => HOME_PATHS[language] === path);
+}
 
 export function screenOf(path: string): Screen {
   return PAGES.get(path) ?? (path.startsWith('/m/') ? 'read' : 'create');

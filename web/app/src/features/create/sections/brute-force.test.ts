@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
 import { Translator } from '../../../shared/language/translator.svelte.ts';
+import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
 
 function words(yearsLog10: number, language: 'cs' | 'en'): string {
   const { translate } = new Translator(language);
   const { key, amount } = yearsAmount(yearsLog10, language);
-  return translate(key, { amount }).replaceAll(' ', ' ');
+  return translate(key, { amount }).replaceAll('\u{A0}', ' ');
 }
 
 describe('brute force illustration', () => {

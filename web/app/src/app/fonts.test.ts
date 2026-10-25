@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { brotliDecompressSync } from 'node:zlib';
-
 import { describe, expect, it } from 'vitest';
 
 const KNOWN_TAGS = [
@@ -69,8 +68,8 @@ const KNOWN_TAGS = [
   'Sill',
 ];
 const CZECH = [
-  0x10c, 0x10d, 0x10e, 0x10f, 0x11a, 0x11b, 0x147, 0x148, 0x158, 0x159, 0x160, 0x161, 0x164, 0x165, 0x16e, 0x16f, 0x17d,
-  0x17e,
+  0x1_0c, 0x1_0d, 0x1_0e, 0x1_0f, 0x1_1a, 0x1_1b, 0x1_47, 0x1_48, 0x1_58, 0x1_59, 0x1_60, 0x1_61, 0x1_64, 0x1_65,
+  0x1_6e, 0x1_6f, 0x1_7d, 0x1_7e,
 ];
 const FAMILIES = [
   { file: 'geist', name: 'Geist' },
@@ -150,9 +149,9 @@ function mappedCodePoints(path: string): number[] {
     const start = cmap.readUInt16BE(starts + s * 2);
     const delta = cmap.readInt16BE(deltas + s * 2);
     const range = cmap.readUInt16BE(ranges + s * 2);
-    for (let code = start; code <= end && code !== 0xffff; code++) {
+    for (let code = start; code <= end && code !== 0xff_ff; code++) {
       const glyph =
-        range === 0 ? (code + delta) & 0xffff : cmap.readUInt16BE(ranges + s * 2 + range + (code - start) * 2);
+        range === 0 ? (code + delta) & 0xff_ff : cmap.readUInt16BE(ranges + s * 2 + range + (code - start) * 2);
       if (glyph !== 0) {
         mapped.push(code);
       }
@@ -163,7 +162,7 @@ function mappedCodePoints(path: string): number[] {
 
 function codePoints(range: string): number[] {
   return range.split(',').flatMap((part) => {
-    const [from = '', to = from] = part.trim().replace(/^U\+/, '').split('-');
+    const [from = '', to = from] = part.trim().replace(/^U\+/, '').split('-', 2);
     const first = Number.parseInt(from, 16);
     return Array.from({ length: Number.parseInt(to, 16) - first + 1 }, (_, i) => first + i);
   });
@@ -174,7 +173,7 @@ function faceRanges(css: string, family: string): Map<string, number[]> {
   for (const [, body = ''] of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
     const source = /src:\s*url\(['"]([^'"]+)['"]\)/.exec(body)?.[1] ?? '';
     const range = /unicode-range:\s*([^;]+);/.exec(body)?.[1] ?? '';
-    if (new RegExp(`font-family:\\s*['"]${family}['"];`).test(body)) {
+    if (new RegExp(String.raw`font-family:\s*['"]${family}['"];`).test(body)) {
       faces.set(source, codePoints(range));
     }
   }
@@ -202,6 +201,8 @@ describe('Czech font subsets (D86)', () => {
     expect(czech).toEqual(CZECH);
     expect(extended.filter((code) => CZECH.includes(code))).toEqual([]);
     const covered = new Set([...extended, ...CZECH]);
-    expect(Array.from({ length: 0x2bb - 0x100 }, (_, i) => 0x100 + i).filter((code) => !covered.has(code))).toEqual([]);
+    expect(Array.from({ length: 0x2_bb - 0x1_00 }, (_, i) => 0x1_00 + i).filter((code) => !covered.has(code))).toEqual(
+      [],
+    );
   });
 });

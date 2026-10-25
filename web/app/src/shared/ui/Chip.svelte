@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
 
   import type { IconName } from './icons.ts';
+
   import Icon from './Icon.svelte';
 
   interface Props {

@@ -1,10 +1,10 @@
 import { MIN_TTL_SECONDS } from '@nylzo/core';
 
-import { type InstanceLimits } from '../../../shared/api/responses.ts';
+import type { InstanceLimits } from '../../../shared/api/responses.ts';
+import type { MessageKey } from '../../../shared/language/czech.ts';
 import type { CreateFailure, CreateProblem, FileInput } from './create-message.ts';
-import { type MessageKey } from '../../../shared/language/czech.ts';
 
-export const TTL_CHOICES = [3600, 86400, 259200, 604800] as const;
+export const TTL_CHOICES = [3600, 86_400, 259_200, 604_800] as const;
 
 type TtlChoice = (typeof TTL_CHOICES)[number];
 
@@ -26,18 +26,24 @@ export function ttlKey(seconds: number): MessageKey | undefined {
 
 export function problemKey(problem: CreateProblem): MessageKey {
   switch (problem.field) {
-    case 'content':
+    case 'content': {
       return 'problem.content.missing';
-    case 'text':
+    }
+    case 'text': {
       return 'problem.text.too_large';
-    case 'file':
+    }
+    case 'file': {
       return 'problem.file.too_large';
-    case 'ttl':
+    }
+    case 'ttl': {
       return 'problem.ttl.out_of_range';
-    case 'opens':
+    }
+    case 'opens': {
       return 'problem.opens.out_of_range';
-    case 'passphrase':
+    }
+    case 'passphrase': {
       return `problem.passphrase.${problem.code}`;
+    }
   }
 }
 

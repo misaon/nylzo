@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
+
+  import { tick } from 'svelte';
 
   import { formatWait } from '../language/format.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
@@ -37,14 +38,18 @@
   );
   const result = $derived.by(() => {
     switch (outcome?.outcome) {
-      case 'accepted':
+      case 'accepted': {
         return translate('report.accepted');
-      case 'retry_later':
+      }
+      case 'retry_later': {
         return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.language) });
-      case 'failed':
+      }
+      case 'failed': {
         return translate('report.failed');
-      default:
+      }
+      default: {
         return '';
+      }
     }
   });
 

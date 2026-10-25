@@ -1,8 +1,9 @@
 import { createContext } from 'svelte';
 
+import type { Language } from './language.ts';
+
 import { czech, type MessageKey } from './czech.ts';
 import { english } from './english.ts';
-import type { Language } from './language.ts';
 
 const MESSAGES: Readonly<Record<Language, Readonly<Record<MessageKey, string>>>> = { cs: czech, en: english };
 const PLACEHOLDER = /\{(\w+)\}/g;
@@ -14,7 +15,7 @@ export class Translator {
 
   readonly translate: Translate = (key, values = {}) =>
     MESSAGES[this.language][key].replaceAll(PLACEHOLDER, (placeholder, name: string) =>
-      name in values ? String(values[name]) : placeholder,
+      Object.hasOwn(values, name) ? String(values[name]) : placeholder,
     );
 
   constructor(language: Language) {

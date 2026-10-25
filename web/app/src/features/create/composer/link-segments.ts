@@ -14,7 +14,7 @@ function middle(text: string, head: number, tail: number): string {
 export function linkSegments(link: string): LinkSegment[] {
   const hash = link.indexOf('#');
   const path = link.indexOf('/m/');
-  if (hash < 0 || path < 0 || path > hash) {
+  if (hash === -1 || path === -1 || path > hash) {
     return [{ id: 'host', text: link, short: link, server: true, tone: 'text-ink-soft', bar: 'bg-ink-mute' }];
   }
   const host = link.slice(0, path + 3);

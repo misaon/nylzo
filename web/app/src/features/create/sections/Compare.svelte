@@ -1,6 +1,7 @@
 <script lang="ts">
+  import type { MessageKey } from '../../../shared/language/czech.ts';
+
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import { type MessageKey } from '../../../shared/language/czech.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
 
   const { translate } = getTranslator();
@@ -9,9 +10,9 @@
     | { readonly kind: 'yes' | 'no' | 'part'; readonly note?: MessageKey; readonly score: number }
     | { readonly kind: 'text'; readonly note: MessageKey; readonly score: number; readonly tone: string };
 
-  const yes = (note?: MessageKey): Cell => ({ kind: 'yes', score: 2, ...(note ? { note } : {}) });
-  const part = (note?: MessageKey): Cell => ({ kind: 'part', score: 1, ...(note ? { note } : {}) });
-  const no = (note?: MessageKey): Cell => ({ kind: 'no', score: 0, ...(note ? { note } : {}) });
+  const yes = (note?: MessageKey): Cell => ({ kind: 'yes', score: 2, ...(note && { note }) });
+  const part = (note?: MessageKey): Cell => ({ kind: 'part', score: 1, ...(note && { note }) });
+  const no = (note?: MessageKey): Cell => ({ kind: 'no', score: 0, ...(note && { note }) });
   const bits = (score: number, note: MessageKey, tone = 'text-ink-soft'): Cell => ({ kind: 'text', score, note, tone });
 
   const services = ['PrivateBin', 'Yopass', 'OneTimeSecret', 'Bitwarden Send'] as const;
@@ -127,7 +128,7 @@
           </thead>
           <tbody>
             {#each rows as row (row.label)}
-              {@const only = sole(row.cells)}
+              {const only = $derived(sole(row.cells))}
               <tr class="border-b border-white/6 last:border-0">
                 <th scope="row" class="px-6 py-3.5 text-sm font-normal text-ink">{translate(row.label)}</th>
                 {#each row.cells as cell, column (column)}

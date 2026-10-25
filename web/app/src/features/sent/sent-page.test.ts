@@ -1,10 +1,11 @@
-import { KDF_NONE, idToString, newRequestKey, parseId } from '@nylzo/core';
+import { idToString, KDF_NONE, newRequestKey, parseId } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
-import { RETENTION_MS, isRetained, type SentRecord, type SentStore } from '../../shared/sent-records/sent-records.ts';
+import { isRetained, RETENTION_MS, type SentRecord } from '../../shared/sent-records/sent-record.ts';
+import { type SentStore } from '../../shared/sent-records/sent-store.ts';
 import { assess, createSentPage, type SentPage, type SentView } from './sent-page.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
@@ -67,7 +68,7 @@ describe('the sent page', () => {
     api.calls.length = 0;
     await sent.load();
     expect(api.calls).toEqual(['status']);
-    expect(sent.items().map((item) => item.state)).toEqual(Array(3).fill({ kind: 'retry_later', retryAfter: 20 }));
+    expect(sent.items().map((item) => item.state)).toEqual(new Array(3).fill({ kind: 'retry_later', retryAfter: 20 }));
   });
 
   it('shows a message the server no longer knows and a failed status separately', async () => {

@@ -1,4 +1,5 @@
 import type { Attachment } from 'svelte/attachments';
+
 import { prefersReducedMotion } from 'svelte/motion';
 
 const TICK_MS = 50;

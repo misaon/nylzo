@@ -1,14 +1,16 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
-  import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
+  import type { MessageKey } from '../../shared/language/czech.ts';
+
   import { createApi } from '../../shared/api/api.ts';
-  import { keepFocus } from '../../shared/ui/focus.ts';
   import { formatDays, formatTime, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import { type MessageKey } from '../../shared/language/czech.ts';
-  import { RETENTION_DAYS, indexedDbSentStore } from '../../shared/sent-records/sent-records.ts';
-  import { createSentPage, type CancelOutcome, type ItemState, type SentItem, type SentView } from './sent-page.ts';
+  import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
+  import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
+  import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
+  import { keepFocus } from '../../shared/ui/focus.ts';
+  import { type CancelOutcome, createSentPage, type ItemState, type SentItem, type SentView } from './sent-page.ts';
 
   type Confirming = { readonly kind: 'cancel' | 'forget'; readonly id: string } | { readonly kind: 'forget_all' };
 
@@ -29,7 +31,7 @@
   let cancelled = $state.raw<CancelOutcome>();
   let storageFailed = $state(false);
 
-  const sent = createSentPage({ api: createApi(), store: indexedDbSentStore(), now: () => Date.now() }, (next) => {
+  const sent = createSentPage({ api: createApi(), store: browserSentStore(), now: () => Date.now() }, (next) => {
     view = next;
   });
 
@@ -41,14 +43,18 @@
       return translate('sent.unavailable');
     }
     switch (cancelled?.outcome) {
-      case 'cancelled':
+      case 'cancelled': {
         return translate('sent.cancelled');
-      case 'retry_later':
+      }
+      case 'retry_later': {
         return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.language) });
-      case 'failed':
+      }
+      case 'failed': {
         return translate('sent.failed');
-      default:
+      }
+      default: {
         return '';
+      }
     }
   });
 
@@ -60,16 +66,21 @@
 
   function stateText(state: ItemState): string {
     switch (state.kind) {
-      case 'loading':
+      case 'loading': {
         return translate('sent.loading_item');
-      case 'loaded':
+      }
+      case 'loaded': {
         return translate(`sent.state.${state.status.state}`);
-      case 'unknown':
+      }
+      case 'unknown': {
         return translate('sent.unknown');
-      case 'retry_later':
+      }
+      case 'retry_later': {
         return translate('read.retry_later', { time: formatWait(state.retryAfter, translator.language) });
-      case 'failed':
+      }
+      case 'failed': {
         return translate('sent.failed');
+      }
     }
   }
 
@@ -201,7 +212,7 @@
 </section>
 
 {#if confirming}
-  {@const dialog = DIALOGS[confirming.kind]}
+  {const dialog = $derived(DIALOGS[confirming.kind])}
   <ConfirmDialog
     id="sent-confirm"
     message={translate(dialog.message)}

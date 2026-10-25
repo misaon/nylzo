@@ -1,17 +1,17 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import SiteFooter from '../shared/shell/SiteFooter.svelte';
-  import SiteHeader from '../shared/shell/SiteHeader.svelte';
-  import Sky from '../shared/shell/Sky.svelte';
-  import { Translator, setTranslator } from '../shared/language/translator.svelte.ts';
-  import { browserPreferences, saveLanguage, type Language } from '../shared/language/language.ts';
-  import { HOME_PATHS, screenOf, type Screen } from './pages.ts';
   import Create from '../features/create/Create.svelte';
   import Read from '../features/read/Read.svelte';
   import Report from '../features/report/Report.svelte';
   import Sent from '../features/sent/Sent.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
+  import { browserPreferences, type Language, saveLanguage } from '../shared/language/language.ts';
+  import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
+  import SiteFooter from '../shared/shell/SiteFooter.svelte';
+  import SiteHeader from '../shared/shell/SiteHeader.svelte';
+  import Sky from '../shared/shell/Sky.svelte';
+  import { HOME_PATHS, type Screen, screenOf } from './pages.ts';
 
   interface Props {
     readonly start: { readonly path: string; readonly language: Language };

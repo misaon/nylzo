@@ -1,5 +1,5 @@
 import '../app.css';
-import { browserPreferences, savedLanguage, storedLanguage, type Language } from '../shared/language/language.ts';
+import { browserPreferences, type Language, savedLanguage, storedLanguage } from '../shared/language/language.ts';
 import { HOME_PATHS, homeLanguage } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
@@ -8,27 +8,35 @@ const FONTS = ['300 1em Sora', '400 1em Geist', '500 1em Geist', '400 1em "Geist
 const HOME_FONT_SAMPLES: Readonly<Record<Language, string>> = { en: 'Aa', cs: 'Aáčř' };
 const ANY_TEXT_SAMPLE = 'Aáčřł';
 
+async function loadFonts(sample: string): Promise<void> {
+  try {
+    await Promise.all(FONTS.map(async (font) => document.fonts.load(font, sample)));
+  } catch {
+    return;
+  }
+}
+
 async function fontsLoaded(sample: string): Promise<void> {
   if (!('fonts' in document)) {
     return;
   }
-  const loads = Promise.all(FONTS.map((font) => document.fonts.load(font, sample))).then(() => undefined);
   const timeout = new Promise<void>((resolve) => setTimeout(resolve, FONT_WAIT_MS));
-  await Promise.race([loads.catch(() => undefined), timeout]);
+  await Promise.race([loadFonts(sample), timeout]);
 }
 
-function nextTask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve));
+async function nextTask(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function contentPainted(): Promise<void> {
+async function contentPainted(): Promise<void> {
   return new Promise((resolve) => {
     const observer = PerformanceObserver.supportedEntryTypes.includes('paint')
       ? new PerformanceObserver((entries) => {
-          if (entries.getEntriesByName('first-contentful-paint').length > 0) {
-            observer?.disconnect();
-            resolve();
+          if (entries.getEntriesByName('first-contentful-paint').length === 0) {
+            return;
           }
+          observer?.disconnect();
+          resolve();
         })
       : undefined;
     observer?.observe({ type: 'paint', buffered: true });
@@ -39,15 +47,15 @@ function contentPainted(): Promise<void> {
 async function boot(): Promise<void> {
   const path = location.pathname;
   const preferences = browserPreferences();
-  const home = homeLanguage(path);
-  const chosen = storedLanguage(preferences);
-  if (home && chosen && chosen !== home) {
-    location.replace(`${HOME_PATHS[chosen]}${location.search}${location.hash}`);
+  const homePage = homeLanguage(path);
+  const savedChoice = storedLanguage(preferences);
+  if (homePage && savedChoice && savedChoice !== homePage) {
+    location.replace(`${HOME_PATHS[savedChoice]}${location.search}${location.hash}`);
     return;
   }
-  const language = home ?? savedLanguage(preferences, navigator.languages);
+  const language = homePage ?? savedLanguage(preferences, navigator.languages);
   document.documentElement.lang = language;
-  await fontsLoaded(home ? HOME_FONT_SAMPLES[home] : ANY_TEXT_SAMPLE);
+  await fontsLoaded(homePage ? HOME_FONT_SAMPLES[homePage] : ANY_TEXT_SAMPLE);
   document.documentElement.dataset['fonts'] = '';
   if (document.body.firstElementChild) {
     await contentPainted();

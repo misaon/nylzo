@@ -1,10 +1,10 @@
 import { PowTimeoutError, solvePow } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 
-import { throttledProgress, type KdfRequest, type KdfResponse } from './kdf-protocol.ts';
+import { type KdfRequest, type KdfResponse, throttledProgress } from './kdf-protocol.ts';
 
 function reply(message: KdfResponse, transfer: Transferable[] = []): void {
-  self.postMessage(message, { transfer });
+  postMessage(message, { transfer });
 }
 
 function handle(request: KdfRequest): void {
@@ -22,7 +22,7 @@ function handle(request: KdfRequest): void {
   reply({ kind: 'token', token });
 }
 
-self.addEventListener('message', (event: MessageEvent<KdfRequest>) => {
+addEventListener('message', (event: MessageEvent<KdfRequest>) => {
   try {
     handle(event.data);
   } catch (error) {

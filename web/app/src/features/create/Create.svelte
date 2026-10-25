@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Composer from './composer/Composer.svelte';
   import Compare from './sections/Compare.svelte';
   import Extras from './sections/Extras.svelte';
@@ -9,7 +10,6 @@
   import Resilience from './sections/Resilience.svelte';
   import SelfHost from './sections/SelfHost.svelte';
   import WhoSees from './sections/WhoSees.svelte';
-  import { getTranslator } from '../../shared/language/translator.svelte.ts';
 
   const { translate } = getTranslator();
 </script>

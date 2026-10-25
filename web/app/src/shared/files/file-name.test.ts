@@ -7,12 +7,12 @@ describe('file names', () => {
     ['report.pdf', 'report.pdf'],
     ['../../etc/passwd', '_.._etc_passwd'],
     ['C:\\Windows\\evil.exe', 'C__Windows_evil.exe'],
-    ['invoice\u202efdp.exe', 'invoicefdp.exe'],
-    ['bidi\u2066isolate\u2069.txt', 'bidiisolate.txt'],
-    ['zero\u200bwidth.txt', 'zerowidth.txt'],
-    ['soft\u00adhyphen.txt', 'softhyphen.txt'],
-    ['line\u2028separator\u2029.txt', 'lineseparator.txt'],
-    ['hangul\u3164filler\u115f.txt', 'hangulfiller.txt'],
+    ['invoice\u{202E}fdp.exe', 'invoicefdp.exe'],
+    ['bidi\u{2066}isolate\u{2069}.txt', 'bidiisolate.txt'],
+    ['zero\u{200B}width.txt', 'zerowidth.txt'],
+    ['soft\u{AD}hyphen.txt', 'softhyphen.txt'],
+    ['line\u{2028}separator\u{2029}.txt', 'lineseparator.txt'],
+    ['hangul\u{3164}filler\u{115F}.txt', 'hangulfiller.txt'],
     ['tab\tand\nnewline.txt', 'tabandnewline.txt'],
     ['  .hidden  ', 'hidden'],
     ['trailing dot.', 'trailing dot'],
@@ -27,8 +27,8 @@ describe('file names', () => {
     ['com10.txt', 'com10.txt'],
     ['', 'nylzo'],
     ['...', 'nylzo'],
-    ['\u202e', 'nylzo'],
-    ['cafe\u0301.txt', 'caf\u00e9.txt'],
+    ['\u{202E}', 'nylzo'],
+    ['cafe\u{301}.txt', 'caf\u{E9}.txt'],
   ])('sanitises %j to %j', (input, expected) => {
     expect(sanitizeFileName(input)).toBe(expected);
   });
@@ -77,14 +77,14 @@ describe('known safe files (D35)', () => {
     'drawing.svg',
     'archive.zip',
     'no-extension',
-    'invoice\u202efdp.exe',
+    'invoice\u{202E}fdp.exe',
     'report.pdf.exe',
   ])('asks before %j', (name) => {
     expect(isKnownSafeFile(name)).toBe(false);
   });
 
   it('reports the extension that the sanitised name really has', () => {
-    expect(fileExtension('invoice\u202efdp.exe')).toBe('exe');
+    expect(fileExtension('invoice\u{202E}fdp.exe')).toBe('exe');
     expect(fileExtension('Report.PDF')).toBe('pdf');
     expect(fileExtension('.bashrc')).toBe('');
     expect(fileExtension('archive')).toBe('');

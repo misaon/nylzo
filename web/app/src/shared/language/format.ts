@@ -3,19 +3,24 @@ import type { Language } from './language.ts';
 const MINUTE = 60;
 const HOUR = 3600;
 const MEBIBYTE = 1024 * 1024;
-export const DEFAULT_WAIT_SECONDS = 60;
+const DEFAULT_WAIT_SECONDS = 60;
+
+function durationParts(seconds: number): readonly [value: number, unit: string] {
+  if (seconds < MINUTE) {
+    return [Math.max(1, Math.ceil(seconds)), 'second'];
+  }
+  if (seconds < HOUR) {
+    return [Math.ceil(seconds / MINUTE), 'minute'];
+  }
+  return [Math.ceil(seconds / HOUR), 'hour'];
+}
 
 export function formatTime(iso: string, language: Language): string {
   return new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
 }
 
 export function formatDuration(seconds: number, language: Language): string {
-  const [value, unit] =
-    seconds < MINUTE
-      ? [Math.max(1, Math.ceil(seconds)), 'second']
-      : seconds < HOUR
-        ? [Math.ceil(seconds / MINUTE), 'minute']
-        : [Math.ceil(seconds / HOUR), 'hour'];
+  const [value, unit] = durationParts(seconds);
   return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
@@ -40,8 +45,5 @@ export function formatBytes(bytes: number, language: Language): string {
 }
 
 export function formatSize(bytes: number, language: Language): string {
-  if (bytes < 1024) {
-    return `${new Intl.NumberFormat(language).format(bytes)}\u00a0B`;
-  }
-  return formatBytes(bytes, language);
+  return bytes < 1024 ? `${new Intl.NumberFormat(language).format(bytes)}\u{A0}B` : formatBytes(bytes, language);
 }

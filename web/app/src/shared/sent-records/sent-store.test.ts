@@ -1,18 +1,16 @@
-import { newSecret, requestKey, type CryptoRequestKey } from '@nylzo/core';
+import { type CryptoRequestKey, newSecret, requestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { memoryStore } from './memory-sent-store.ts';
 import {
   ExtractableKeyError,
   InvalidRecordError,
-  RETENTION_MS,
-  purgeSentRecords,
   recordFrom,
-  rememberSent,
-  retainedRecords,
-  storedForm,
+  RETENTION_MS,
   type SentRecord,
-} from './sent-records.ts';
+  storedForm,
+} from './sent-record.ts';
+import { purgeSentRecords, rememberSent, retainedRecords } from './sent-store.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 const ID = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -26,7 +24,7 @@ async function manageKeyOf(seed: Uint8Array): Promise<CryptoRequestKey> {
 }
 
 async function extractableKey(): Promise<CryptoRequestKey> {
-  const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+  const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   return {
     privateKey: pair.privateKey,
     publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
@@ -72,10 +70,7 @@ describe('stored records of sent messages (D39)', () => {
       manageKey: { privateKey: manageKey.privateKey, publicKey: manageKey.publicKey },
     });
     const loose = await extractableKey();
-    const ecdsa = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, [
-      'sign',
-      'verify',
-    ])) as CryptoKeyPair;
+    const ecdsa = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
     for (const bad of [
       { ...good, privateKey: loose.privateKey },
       { ...good, privateKey: ecdsa.privateKey },
@@ -83,7 +78,7 @@ describe('stored records of sent messages (D39)', () => {
       { ...good, publicKey: good.publicKey.slice(1) },
       { ...good, id: 'not an id' },
       { ...good, id: `${ID.slice(0, 21)}B` },
-      { ...good, createdAt: Number.NaN },
+      { ...good, createdAt: NaN },
       { ...good, expiresAt: '2026-10-23' },
       { ...good, createdAt: 1e300, expiresAt: 1e300 },
       { ...good, expiresAt: NOW - 1 },

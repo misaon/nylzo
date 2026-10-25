@@ -1,35 +1,36 @@
 import {
-  KDF_NONE,
-  KDF_SCRYPT,
-  MAX_MIME,
-  MAX_TEXT_BYTES,
-  MIN_TTL_SECONDS,
-  MalformedPassphraseError,
-  PowTimeoutError,
-  TooLargeError,
-  WeakPassphraseError,
   assertStrongPassphrase,
+  type ContentKeys,
+  type CryptoRequestKey,
   deriveContent,
   deriveLink,
   formatLink,
   idToString,
+  KDF_NONE,
+  KDF_SCRYPT,
+  type KdfId,
+  type LinkKeys,
+  MalformedPassphraseError,
+  MAX_MIME,
+  MAX_TEXT_BYTES,
+  type Meta,
+  MIN_TTL_SECONDS,
   newHeader,
   newRequestKey,
   newSecret,
+  PowTimeoutError,
   requestKey,
   seal,
+  TooLargeError,
   utf8,
-  type ContentKeys,
-  type KdfId,
-  type LinkKeys,
-  type Meta,
+  WeakPassphraseError,
   wipeRequestKey,
-  type CryptoRequestKey,
 } from '@nylzo/core';
 
+import type { Api, Instance } from '../../../shared/api/api.ts';
+import type { InstanceLimits } from '../../../shared/api/responses.ts';
+
 import { ApiError } from '../../../shared/api/api-errors.ts';
-import { type Api, type Instance } from '../../../shared/api/api.ts';
-import { type InstanceLimits } from '../../../shared/api/responses.ts';
 import { sanitizeFileName } from '../../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../../shared/kdf/kdf-protocol.ts';
 
@@ -162,7 +163,7 @@ function meta(input: CreateInput): Meta {
     mime: utf8(input.file.mime).length <= MAX_MIME ? input.file.mime : '',
     size: input.file.bytes.length,
   };
-  return { ...(input.text === '' ? {} : { text: input.text }), ...(file ? { file } : {}) };
+  return { ...(input.text !== '' && { text: input.text }), ...(file && { file }) };
 }
 
 async function passphraseKey(
@@ -298,13 +299,13 @@ async function attempt(
       id,
       idToken,
       readKey: readPublicKey,
-      ...(verifierKey ? { verifierKey } : {}),
+      ...(verifierKey && { verifierKey }),
       manageKey: manageKey.publicKey,
       kdfId,
       opensMax: input.opensMax,
       ttlSeconds: input.ttlSeconds,
       object,
-      ...(powToken === undefined ? {} : { powToken }),
+      ...(powToken !== undefined && { powToken }),
     });
     return { link: formatLink(deps.origin, id, kdfId, s), expiresAt, id: idToString(id), manageKey };
   } finally {

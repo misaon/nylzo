@@ -1,8 +1,8 @@
 <script lang="ts">
   import { getTranslator } from '../language/translator.svelte.ts';
-  import { REPOSITORY_URL } from './repository.ts';
   import Icon from '../ui/Icon.svelte';
   import Logo from './Logo.svelte';
+  import { REPOSITORY_URL } from './repository.ts';
 
   interface Props {
     readonly variant: 'home' | 'read' | 'page';

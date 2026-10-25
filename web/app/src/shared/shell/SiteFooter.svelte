@@ -1,9 +1,10 @@
 <script lang="ts">
+  import type { MessageKey } from '../language/czech.ts';
+  import type { Language } from '../language/language.ts';
+
   import { getTranslator } from '../language/translator.svelte.ts';
-  import { type Language } from '../language/language.ts';
-  import { type MessageKey } from '../language/czech.ts';
-  import { REPOSITORY_URL } from './repository.ts';
   import Logo from './Logo.svelte';
+  import { REPOSITORY_URL } from './repository.ts';
 
   interface Props {
     readonly compact?: boolean;
@@ -61,7 +62,7 @@
     aria-label={translate('language.label')}
   >
     {#each languages as language (language.code)}
-      {@const active = translator.language === language.code}
+      {const active = $derived(translator.language === language.code)}
       <button
         type="button"
         lang={language.code}

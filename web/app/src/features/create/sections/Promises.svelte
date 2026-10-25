@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { TTL_CHOICES } from '../composer/create-form.ts';
   import { formatDays } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { RETENTION_DAYS } from '../../../shared/sent-records/sent-record.ts';
   import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
-  import { RETENTION_DAYS } from '../../../shared/sent-records/sent-records.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { TTL_CHOICES } from '../composer/create-form.ts';
 
   const translator = getTranslator();
   const { translate } = translator;

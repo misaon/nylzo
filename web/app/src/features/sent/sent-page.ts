@@ -1,8 +1,10 @@
 import { parseId } from '@nylzo/core';
 
+import type { Api, Status } from '../../shared/api/api.ts';
+
 import { ApiError } from '../../shared/api/api-errors.ts';
-import { type Api, type Status } from '../../shared/api/api.ts';
-import { retainedRecords, type SentRecord, type SentStore } from '../../shared/sent-records/sent-records.ts';
+import { retainedRecords, type SentStore } from '../../shared/sent-records/sent-store.ts';
+import { type SentRecord } from '../../shared/sent-records/sent-record.ts';
 
 export type ItemState =
   | { readonly kind: 'loading' }
@@ -73,15 +75,19 @@ function failedState(error: unknown): ItemState {
 function cancelOutcome(error: unknown): CancelOutcome {
   if (error instanceof ApiError) {
     switch (error.kind) {
-      case 'gone':
+      case 'gone': {
         return { outcome: 'ended' };
-      case 'not_found':
+      }
+      case 'not_found': {
         return { outcome: 'unknown' };
+      }
       case 'rate_limited':
-      case 'unavailable':
+      case 'unavailable': {
         return { outcome: 'retry_later', retryAfter: error.retryAfter };
-      default:
+      }
+      default: {
         return { outcome: 'failed' };
+      }
     }
   }
   return { outcome: 'failed' };
@@ -115,10 +121,12 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
   }
 
   function setState(id: string, state: ItemState): void {
-    if (listed(id)) {
-      states.set(id, state);
-      show();
+    if (!listed(id)) {
+      return;
     }
+
+    states.set(id, state);
+    show();
   }
 
   function drop(id: string): void {
@@ -139,7 +147,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
     if (status.endedAt === undefined || record.endedAt !== undefined) {
       return;
     }
-    const ended = await deps.store.markEnded(record.id, Date.parse(status.endedAt)).catch(() => undefined);
+    const ended = await deps.store.markEnded(record.id, Date.parse(status.endedAt)).catch(() => {});
     if (ended) {
       records = records.map((candidate) => (candidate.id === record.id ? ended : candidate));
     }

@@ -1,31 +1,32 @@
 import {
-  KDF_NONE,
-  KdfMismatchError,
-  LinkRetiredKdfError,
-  LinkVersionError,
-  MalformedPassphraseError,
   assertProfile,
   assertWellFormedPassphrase,
   deriveContent,
   deriveLink,
+  type Fragment,
   idToString,
+  KDF_NONE,
+  type KdfId,
+  KdfMismatchError,
+  type Link,
+  type LinkKeys,
+  LinkRetiredKdfError,
+  LinkVersionError,
+  MalformedPassphraseError,
   open,
   parseFragment,
   parsePath,
   requestKey,
-  type Fragment,
-  type KdfId,
-  type Link,
-  type LinkKeys,
-  wipeRequestKey,
   type RequestKey,
+  wipeRequestKey,
 } from '@nylzo/core';
 
-import { ApiError, StoppedError, type MessageState } from '../../shared/api/api-errors.ts';
-import { type Api, type Envelope, type Metadata } from '../../shared/api/api.ts';
+import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
+
+import { ApiError, type MessageState, StoppedError } from '../../shared/api/api-errors.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import { sendReport, type ReportOutcome } from '../../shared/report/report.ts';
+import { type ReportOutcome, sendReport } from '../../shared/report/report.ts';
 
 export type EndedState = Exclude<MessageState, 'available'>;
 
@@ -124,8 +125,6 @@ interface Held {
   readonly readKey: RequestKey;
 }
 
-type Revealed = Extract<ReadView, { view: 'revealed' }>;
-
 interface Fetched {
   readonly envelope: Envelope;
   readonly lease: string;
@@ -150,6 +149,7 @@ function safely<T>(action: () => T, fallback: T): T {
 }
 
 export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void): Reader {
+  type Revealed = Extract<ReadView, { view: 'revealed' }>;
   let secrets: Secrets | undefined;
   let held: Held | undefined;
   let revealed: Revealed | undefined;
@@ -183,10 +183,12 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   };
 
   function wipeUnused(): void {
-    if (!held && !busy && !reporting && !acknowledging) {
-      wipeRequestKey(readKey);
-      readKey = undefined;
+    if (held || busy || reporting || acknowledging) {
+      return;
     }
+
+    wipeRequestKey(readKey);
+    readKey = undefined;
   }
 
   function cleared(view: ReadView): ReadView {
@@ -224,23 +226,26 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       return { view: 'failed' };
     }
     switch (error.kind) {
-      case 'not_found':
+      case 'not_found': {
         return { view: 'unknown' };
-      case 'gone':
+      }
+      case 'gone': {
         return error.state && error.state !== 'available' ? ended(error.state) : { view: 'failed' };
+      }
       case 'rate_limited':
-      case 'unavailable':
+      case 'unavailable': {
         return { view: 'retry_later', retryAfter: error.retryAfter };
-      default:
+      }
+      default: {
         return { view: 'failed' };
+      }
     }
   }
 
   function readyView(rejected?: PassphraseRejection, leaseEnded?: boolean): ReadView {
-    if (!metadata || !secrets) {
-      return { view: 'failed' };
-    }
-    return { view: 'ready', metadata, resumable: storedLease() !== null, deviceFailed, leaseEnded, rejected };
+    return metadata && secrets
+      ? { view: 'ready', metadata, resumable: storedLease() !== null, deviceFailed, leaseEnded, rejected }
+      : { view: 'failed' };
   }
 
   function profileMatches(current: Metadata, kdfId: KdfId): boolean {
@@ -317,7 +322,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       deviceFailed = true;
       safely(() => deps.session.removeItem(kdfKey()), undefined);
     }
-    const linked = await linkSecrets(fragment).catch(() => undefined);
+    const linked = await linkSecrets(fragment).catch(() => {});
     if (!linked) {
       onView({ view: 'failed' });
       return;
@@ -354,7 +359,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
 
   function rejection(error: ApiError): PassphraseRejection {
     const retryAfter = error.retryAfter ?? 0;
-    const expiresAt = metadata?.expiresAt ? Date.parse(metadata.expiresAt) : Number.NaN;
+    const expiresAt = metadata?.expiresAt ? Date.parse(metadata.expiresAt) : NaN;
     const locked =
       (error.attemptsLeft ?? 0) === 0 && Number.isFinite(expiresAt) && deps.now() + retryAfter * 1000 >= expiresAt;
     return { reason: 'wrong', attemptsLeft: error.attemptsLeft ?? 0, retryAfter, locked };
@@ -482,7 +487,7 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     acknowledging = true;
     acknowledged = deps.api
       .ack(current.id, current.readKey, fetched.lease)
-      .catch(() => undefined)
+      .catch(() => {})
       .then(() => {
         acknowledging = false;
         forgetLease();
@@ -517,17 +522,21 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   function burnOutcome(error: unknown): BurnOutcome {
     if (error instanceof ApiError) {
       switch (error.kind) {
-        case 'gone':
+        case 'gone': {
           return error.state && error.state !== 'available'
             ? { outcome: 'ended', state: error.state }
             : { outcome: 'failed' };
-        case 'not_found':
+        }
+        case 'not_found': {
           return { outcome: 'unknown' };
+        }
         case 'rate_limited':
-        case 'unavailable':
+        case 'unavailable': {
           return { outcome: 'retry_later', retryAfter: error.retryAfter };
-        default:
+        }
+        default: {
           return { outcome: 'failed' };
+        }
       }
     }
     return { outcome: 'failed' };

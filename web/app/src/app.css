@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@source not './**/*.test.ts';
 
 @font-face {
   font-family: 'Geist';

@@ -10,4 +10,4 @@ interface TrustedTypePolicyFactory {
   createPolicy(name: string, rules: { createScriptURL(input: string): string }): TrustedTypePolicy;
 }
 
-declare var trustedTypes: TrustedTypePolicyFactory | undefined;
+declare const trustedTypes: TrustedTypePolicyFactory | undefined;

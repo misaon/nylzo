@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { AutoCycle } from './auto-cycle.svelte.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import Switch from '../../../shared/ui/Switch.svelte';
+  import { AutoCycle } from './auto-cycle.svelte.ts';
 
   const { translate } = getTranslator();
 
@@ -136,8 +136,8 @@
         <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
         <p class="flex font-mono text-[13px] whitespace-nowrap md:text-[15px]">
           {#each parts as part, index (part.id)}
-            {@const active = !serverView && cycle.index === index}
-            {@const dimmed = serverView ? !part.server : !active}
+            {const active = $derived(!serverView && cycle.index === index)}
+            {const dimmed = $derived(serverView ? !part.server : !active)}
             <button
               type="button"
               aria-pressed={active}
@@ -163,8 +163,8 @@
 
       <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {#each parts as part, index (part.id)}
-          {@const active = !serverView && cycle.index === index}
-          {@const lit = active || (serverView && part.server)}
+          {const active = $derived(!serverView && cycle.index === index)}
+          {const lit = $derived(active || (serverView && part.server))}
           <button
             type="button"
             aria-pressed={active}

@@ -1,24 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { type InstanceLimits } from '../../../shared/api/responses.ts';
-import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
+import type { InstanceLimits } from '../../../shared/api/responses.ts';
+
 import { english } from '../../../shared/language/english.ts';
+import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
 
 const limits: InstanceLimits = {
   maxFileBytes: 16,
-  maxTextBytes: 102400,
-  maxObjectBytes: 5373983,
-  maxTtlSeconds: 604800,
-  defaultTtlSeconds: 86400,
+  maxTextBytes: 102_400,
+  maxObjectBytes: 5_373_983,
+  maxTtlSeconds: 604_800,
+  defaultTtlSeconds: 86_400,
   maxOpens: 10,
 };
 
 describe('create form', () => {
   it('offers the default expiry of the instance even when it is not a preset', () => {
-    expect(ttlChoices(limits)).toEqual([3600, 86400, 259200, 604800]);
-    expect(ttlChoices({ ...limits, defaultTtlSeconds: 7200 })).toEqual([3600, 7200, 86400, 259200, 604800]);
-    expect(ttlChoices({ ...limits, maxTtlSeconds: 86400, defaultTtlSeconds: 86400 })).toEqual([3600, 86400]);
-    expect(ttlChoices({ ...limits, defaultTtlSeconds: 1 })).toEqual([3600, 86400, 259200, 604800]);
+    expect(ttlChoices(limits)).toEqual([3600, 86_400, 259_200, 604_800]);
+    expect(ttlChoices({ ...limits, defaultTtlSeconds: 7200 })).toEqual([3600, 7200, 86_400, 259_200, 604_800]);
+    expect(ttlChoices({ ...limits, maxTtlSeconds: 86_400, defaultTtlSeconds: 86_400 })).toEqual([3600, 86_400]);
+    expect(ttlChoices({ ...limits, defaultTtlSeconds: 1 })).toEqual([3600, 86_400, 259_200, 604_800]);
   });
 
   it('labels only the presets and leaves other expiries to the duration format', () => {

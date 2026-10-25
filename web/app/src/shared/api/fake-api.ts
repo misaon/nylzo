@@ -1,7 +1,8 @@
 import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
 
-import { ApiError, StoppedError, type MessageState } from './api-errors.ts';
-import { type Api, type CreateRequest, type Instance, type Metadata, type Status } from './api.ts';
+import type { Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
+
+import { ApiError, type MessageState, StoppedError } from './api-errors.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -90,7 +91,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   function envelope(message: Stored) {
     const object = new Uint8Array(message.request.object);
     if (options.tamperObject) {
-      object[object.length - 1] = (object[object.length - 1] ?? 0) ^ 1;
+      object[object.length - 1] = (object.at(-1) ?? 0) ^ 1;
     }
     return {
       policy: {
@@ -112,11 +113,11 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       challenges.push(challenge);
       return {
         limits: {
-          maxFileBytes: 5242880,
-          maxTextBytes: 102400,
-          maxObjectBytes: 5373983,
-          maxTtlSeconds: 604800,
-          defaultTtlSeconds: 86400,
+          maxFileBytes: 5_242_880,
+          maxTextBytes: 102_400,
+          maxObjectBytes: 5_373_983,
+          maxTtlSeconds: 604_800,
+          defaultTtlSeconds: 86_400,
           maxOpens: 10,
         },
         pow: options.pow?.required ? { ...options.pow, challenge } : { required: false, difficulty: 4 },

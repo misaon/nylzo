@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs';
-
 import { expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url));

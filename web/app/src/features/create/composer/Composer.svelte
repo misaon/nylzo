@@ -1,36 +1,38 @@
 <script lang="ts">
+  import type { Attachment } from 'svelte/attachments';
+
   import { MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARS } from '@nylzo/core';
   import { tick } from 'svelte';
-  import type { Attachment } from 'svelte/attachments';
   import { prefersReducedMotion } from 'svelte/motion';
 
+  import type { InstanceLimits } from '../../../shared/api/responses.ts';
+  import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
+
   import { createApi } from '../../../shared/api/api.ts';
-  import { type InstanceLimits } from '../../../shared/api/responses.ts';
+  import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
+  import { formatBytes, formatDuration, formatSize, formatWait } from '../../../shared/language/format.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { pace } from '../../../shared/pipeline/pacing.ts';
+  import Pipeline from '../../../shared/pipeline/Pipeline.svelte';
+  import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
+  import Icon from '../../../shared/ui/Icon.svelte';
+  import Popover from '../../../shared/ui/Popover.svelte';
+  import Switch from '../../../shared/ui/Switch.svelte';
+  import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
   import {
+    type Created,
     CreateError,
-    WEAK_BELOW_CHARS,
-    WEAK_BELOW_WORDS,
-    createMessage,
-    passphraseIsWeak,
-    validateCreate,
     type CreateFailure,
     type CreateField,
     type CreateInput,
+    createMessage,
     type CreateProblem,
     type CreateProgress,
-    type Created,
+    passphraseIsWeak,
+    validateCreate,
+    WEAK_BELOW_CHARS,
+    WEAK_BELOW_WORDS,
   } from './create-message.ts';
-  import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
-  import { formatBytes, formatDuration, formatSize, formatWait } from '../../../shared/language/format.ts';
-  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
-  import { pace } from '../../../shared/pipeline/pacing.ts';
-  import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
-  import { indexedDbSentStore, rememberSent } from '../../../shared/sent-records/sent-records.ts';
-  import Icon from '../../../shared/ui/Icon.svelte';
-  import Pipeline from '../../../shared/pipeline/Pipeline.svelte';
-  import Popover from '../../../shared/ui/Popover.svelte';
-  import Switch from '../../../shared/ui/Switch.svelte';
   import CreatedPanel from './CreatedPanel.svelte';
 
   type Menu = 'ttl' | 'opens' | 'security';
@@ -59,7 +61,7 @@
   const translator = getTranslator();
   const { translate } = translator;
   const api = createApi();
-  const sentStore = indexedDbSentStore();
+  const sentStore = browserSentStore();
   const uid = $props.id();
   const encoder = new TextEncoder();
 
@@ -68,7 +70,7 @@
   let text = $state('');
   let file = $state.raw<File>();
   let dragging = $state(false);
-  let ttlSeconds = $state(86400);
+  let ttlSeconds = $state(86_400);
   let opensMax = $state(1);
   let protect = $state(false);
   let passphrase = $state('');
@@ -227,7 +229,7 @@
     return ALPHABET[Math.floor(Math.random() * ALPHABET.length)] ?? 'A';
   }
 
-  function pickFile(next: File | undefined) {
+  function pickFile(next?: File) {
     file = next;
     problems = problems.filter((problem) => problem.field !== 'file' && problem.field !== 'content');
     if (next && limits && next.size > limits.maxFileBytes) {
@@ -240,7 +242,7 @@
   }
 
   function removeFile() {
-    pickFile(undefined);
+    pickFile();
     const input = field('file');
     if (input instanceof HTMLInputElement) {
       input.value = '';
@@ -278,11 +280,11 @@
 
   function toggleProtect() {
     protect = !protect;
-    if (!protect) {
+    if (protect) {
+      tick().then(() => field('passphrase')?.focus());
+    } else {
       passphrase = '';
       problems = problems.filter((problem) => problem.field !== 'passphrase');
-    } else {
-      tick().then(() => field('passphrase')?.focus());
     }
   }
 
@@ -307,7 +309,7 @@
   }
 
   function startTimeline(source: string) {
-    const plain = source.replace(/\s+/g, ' ').slice(0, 140);
+    const plain = source.replaceAll(/\s+/g, ' ').slice(0, 140);
     startedAt = performance.now();
     elapsed = 0;
     reached = 0;
@@ -391,9 +393,8 @@
         {
           api,
           origin: location.origin,
-          scrypt: (pass, saltPw, report) => scryptInWorker(pass, saltPw, { onProgress: report }),
-          solvePow: (challenge, id, difficulty, deadline, report) =>
-            solvePowInWorker(challenge, id, difficulty, deadline, { onProgress: report }),
+          scrypt: scryptInWorker,
+          solvePow: solvePowInWorker,
         },
         (progress) => {
           if (!stale()) {
