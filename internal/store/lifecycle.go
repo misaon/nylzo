@@ -164,7 +164,7 @@ func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, le
 	if err != nil || !release {
 		return err
 	}
-	return DeleteBlob(ctx, messages, blobs, record.Row.Locator, record.Row.BlobRef)
+	return deleteBlobOf(ctx, messages, blobs, record)
 }
 
 // MarkEnding records burn or cancel unless the message has already ended, and reports the state it ends in.
@@ -198,7 +198,7 @@ func End(
 		return "", err
 	}
 	if record.Row.BlobRef != "" {
-		err = DeleteBlob(ctx, messages, blobs, record.Row.Locator, record.Row.BlobRef)
+		err = deleteBlobOf(ctx, messages, blobs, record)
 	}
 	return final, err
 }
@@ -223,20 +223,31 @@ func Finish(ctx context.Context, messages Messages, blobs Blobs, record *Record,
 	if record.Row.BlobRef == "" {
 		return false, nil
 	}
-	return true, DeleteBlob(ctx, messages, blobs, record.Row.Locator, record.Row.BlobRef)
+	return true, deleteBlobOf(ctx, messages, blobs, record)
 }
 
 // DeleteBlob makes the blob unreadable before it deletes it, so a failure in between leaves nothing to read.
 func DeleteBlob(ctx context.Context, messages Messages, blobs Blobs, locator seal.Locator, ref string) error {
 	ctx = context.WithoutCancel(ctx)
-	due := []DueBlob{{Locator: locator, Ref: ref}}
-	if err := messages.ShredBlobs(ctx, due); err != nil {
+	if err := messages.ShredBlobs(ctx, []DueBlob{{Locator: locator, Ref: ref}}); err != nil {
 		return err
 	}
+	return forgetBlob(ctx, messages, blobs, locator, ref)
+}
+
+// deleteBlobOf skips the shred when the record already holds no blob wrap, which no write ever restores.
+func deleteBlobOf(ctx context.Context, messages Messages, blobs Blobs, record *Record) error {
+	if record.HasBlob() {
+		return DeleteBlob(ctx, messages, blobs, record.Row.Locator, record.Row.BlobRef)
+	}
+	return forgetBlob(context.WithoutCancel(ctx), messages, blobs, record.Row.Locator, record.Row.BlobRef)
+}
+
+func forgetBlob(ctx context.Context, messages Messages, blobs Blobs, locator seal.Locator, ref string) error {
 	if err := blobs.Delete(ctx, ref); err != nil {
 		return err
 	}
-	return messages.ForgetBlobs(ctx, due)
+	return messages.ForgetBlobs(ctx, []DueBlob{{Locator: locator, Ref: ref}})
 }
 
 // CountReport takes one of the reports a message may get on a UTC day and reports false when they are used up.
@@ -295,7 +306,7 @@ func TakeDown(
 	if err != nil || ref == "" {
 		return removal, err
 	}
-	return removal, DeleteBlob(ctx, messages, blobs, locator, ref)
+	return removal, forgetBlob(ctx, messages, blobs, locator, ref)
 }
 
 type ReconcileReport struct {
