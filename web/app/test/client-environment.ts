@@ -28,10 +28,11 @@ export default {
       queries.set(media, query);
       return query;
     };
-    Object.assign(global, { window: { matchMedia }, Node: FakeNode, Element: FakeElement });
+    Object.assign(global, { window: { matchMedia }, matchMedia, Node: FakeNode, Element: FakeElement });
     return {
       teardown() {
         Reflect.deleteProperty(global, 'window');
+        Reflect.deleteProperty(global, 'matchMedia');
         Reflect.deleteProperty(global, 'Node');
         Reflect.deleteProperty(global, 'Element');
       },

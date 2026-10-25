@@ -1,82 +1,68 @@
-import type { Attachment } from 'svelte/attachments';
+import { type Attachment, createAttachmentKey } from 'svelte/attachments';
 import { prefersReducedMotion } from 'svelte/motion';
 
 const TICK_MS = 50;
 const VISIBLE_THRESHOLD = 0.35;
 
 export class AutoCycle {
-  index = $state(0);
-  progress = $state(0);
-  visible = $state(false);
-  pointer = $state(false);
-  focused = $state(false);
-  stopped = $state(false);
-
+  #visible = $state(false);
+  #pointerInside = $state(false);
+  #focusInside = $state(false);
+  #stopped = $state(false);
   readonly #count: () => number;
   readonly #duration: (index: number) => number;
+  index = $state(0);
+  progress = $state(0);
+
+  readonly observe: Attachment<HTMLElement> = (element) => {
+    if (typeof IntersectionObserver === 'undefined') {
+      this.#visible = true;
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        this.#visible = entries.some((entry) => entry.isIntersecting);
+      },
+      { threshold: VISIBLE_THRESHOLD },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  };
+
+  readonly advance: Attachment = () => {
+    if (!this.running) {
+      return;
+    }
+    const timer = setInterval(() => this.#tick(), TICK_MS);
+    return () => clearInterval(timer);
+  };
+
+  readonly region = {
+    onmouseenter: (): void => {
+      this.#pointerInside = true;
+    },
+    onmouseleave: (): void => {
+      this.#pointerInside = false;
+    },
+    onfocusin: (event: FocusEvent): void => {
+      if (event.target instanceof Element && event.target.matches(':focus-visible')) {
+        this.#focusInside = true;
+      }
+    },
+    onfocusout: (event: FocusEvent): void => {
+      const target = event.currentTarget;
+      if (!(target instanceof Node && event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
+        this.#focusInside = false;
+      }
+    },
+    [createAttachmentKey()]: this.observe,
+    [createAttachmentKey()]: this.advance,
+  };
 
   constructor(count: () => number, duration: (index: number) => number) {
     this.#count = count;
     this.#duration = duration;
   }
-
-  get running(): boolean {
-    return this.visible && !this.pointer && !this.focused && !this.stopped && !prefersReducedMotion.current;
-  }
-
-  select(index: number): void {
-    this.index = index;
-    this.progress = 0;
-    this.stopped = true;
-  }
-
-  readonly pointerEnter = (): void => {
-    this.pointer = true;
-  };
-
-  readonly pointerLeave = (): void => {
-    this.pointer = false;
-  };
-
-  readonly focusIn = (event: FocusEvent): void => {
-    if (event.target instanceof Element && event.target.matches(':focus-visible')) {
-      this.focused = true;
-    }
-  };
-
-  readonly focusOut = (event: FocusEvent): void => {
-    const target = event.currentTarget;
-    if (!(target instanceof Node && event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
-      this.focused = false;
-    }
-  };
-
-  readonly observe: Attachment<HTMLElement> = (element) => {
-    const observer =
-      typeof IntersectionObserver === 'undefined'
-        ? undefined
-        : new IntersectionObserver(
-            (entries) => {
-              this.visible = entries.some((entry) => entry.isIntersecting);
-            },
-            { threshold: VISIBLE_THRESHOLD },
-          );
-    if (observer) {
-      observer.observe(element);
-    } else {
-      this.visible = true;
-    }
-
-    $effect(() => {
-      if (!this.running) {
-        return;
-      }
-      const timer = setInterval(() => this.#tick(), TICK_MS);
-      return () => clearInterval(timer);
-    });
-
-    return () => observer?.disconnect();
-  };
 
   #tick(): void {
     const next = this.progress + TICK_MS / Math.max(TICK_MS, this.#duration(this.index));
@@ -86,5 +72,17 @@ export class AutoCycle {
     }
     this.progress = 0;
     this.index = (this.index + 1) % Math.max(1, this.#count());
+  }
+
+  get running(): boolean {
+    return (
+      this.#visible && !this.#pointerInside && !this.#focusInside && !this.#stopped && !prefersReducedMotion.current
+    );
+  }
+
+  select(index: number): void {
+    this.index = index;
+    this.progress = 0;
+    this.#stopped = true;
   }
 }

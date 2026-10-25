@@ -106,11 +106,7 @@
       class="glass mt-6 reveal-up rounded-card p-5 md:p-8"
       role="group"
       aria-labelledby="jak-link-title"
-      {@attach cycle.observe}
-      onmouseenter={cycle.pointerEnter}
-      onmouseleave={cycle.pointerLeave}
-      onfocusin={cycle.focusIn}
-      onfocusout={cycle.focusOut}
+      {...cycle.region}
     >
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>

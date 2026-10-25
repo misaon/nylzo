@@ -77,11 +77,7 @@
       class="glass reveal-right rounded-card p-2.5 md:p-3"
       role="group"
       aria-labelledby="who-title"
-      {@attach cycle.observe}
-      onmouseenter={cycle.pointerEnter}
-      onmouseleave={cycle.pointerLeave}
-      onfocusin={cycle.focusIn}
-      onfocusout={cycle.focusOut}
+      {...cycle.region}
     >
       <div class="relative grid grid-cols-3 rounded-control p-0.5 well" role="tablist" aria-label={t('who.tabs')}>
         <span

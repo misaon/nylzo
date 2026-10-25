@@ -12,7 +12,11 @@ function runCycle(): { readonly cycle: AutoCycle; readonly stop: () => void } {
     () => COUNT,
     () => DURATION_MS,
   );
-  const stop = $effect.root(() => cycle.observe({} as HTMLElement));
+  const element = {} as HTMLElement;
+  const stop = $effect.root(() => {
+    $effect(() => cycle.observe(element));
+    $effect(() => cycle.advance(element));
+  });
   flushSync();
   return { cycle, stop };
 }
@@ -25,7 +29,7 @@ function focusOn(keyboard: boolean): FocusEvent {
 }
 
 function reducedMotion(matches: boolean): void {
-  const query = window.matchMedia('(prefers-reduced-motion: reduce)') as MediaQueryList & { matches: boolean };
+  const query = matchMedia('(prefers-reduced-motion: reduce)') as MediaQueryList & { matches: boolean };
   query.matches = matches;
   query.dispatchEvent(new Event('change'));
   flushSync();
@@ -49,16 +53,16 @@ describe('AutoCycle', () => {
 
   it('pauses while the pointer or the keyboard focus is inside', () => {
     const { cycle, stop } = runCycle();
-    cycle.pointerEnter();
+    cycle.region.onmouseenter();
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(0);
-    cycle.focusIn(focusOn(true));
-    cycle.pointerLeave();
+    cycle.region.onfocusin(focusOn(true));
+    cycle.region.onmouseleave();
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(0);
-    cycle.focusOut(new Event('focusout') as FocusEvent);
+    cycle.region.onfocusout(new Event('focusout') as FocusEvent);
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(1);
@@ -77,7 +81,7 @@ describe('AutoCycle', () => {
 
   it('keeps cycling when a mouse click moves the focus inside', () => {
     const { cycle, stop } = runCycle();
-    cycle.focusIn(focusOn(false));
+    cycle.region.onfocusin(focusOn(false));
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(1);
