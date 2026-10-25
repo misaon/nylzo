@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/sweep"
+
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/server"
@@ -211,9 +213,9 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-	report, err := server.SweepStore(context.Background(), st, blobs, cfg.DataDir, time.Now())
+	report, err := sweep.Run(context.Background(), st, blobs, cfg.DataDir, time.Now())
 	if err != nil {
-		logger.Error("sweep-once", server.SweepLogAttrs(report, err)...)
+		logger.Error("sweep-once", sweep.LogAttributes(report, err)...)
 		return errSweepFailed
 	}
 	logger.Info("sweep-once", report.LogAttrs()...)

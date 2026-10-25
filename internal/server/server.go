@@ -2,13 +2,14 @@ package server
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/misaon/nylzo/internal/server/sweep"
 
 	"github.com/misaon/nylzo/internal/server/abuse"
 
@@ -34,7 +35,6 @@ const (
 	h2cMaxFrame       = 16 << 10
 	streamBusyRetry   = 5 * time.Second
 	diskFullRetry     = 60 * time.Second
-	reconcileKey      = "sweep:reconcile:d"
 )
 
 type Option func(*Server)
@@ -178,60 +178,7 @@ func (s *Server) HTTPServer() *http.Server {
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return SweepStore(ctx, s.store, s.blobs, s.cfg.DataDir, s.clock())
-}
-
-func SweepStore(
-	ctx context.Context,
-	st store.Store,
-	blobs store.Blobs,
-	dataDir string,
-	now time.Time,
-) (store.SweepReport, error) {
-	report, err := store.SweepAll(ctx, st, blobs, now)
-	err = errors.Join(err, abuse.Prune(dataDir, now))
-	done, derr := st.RateGet(ctx, reconcileKey, ratelimit.Day(now).Start)
-	if derr != nil {
-		return report, errors.Join(err, derr)
-	}
-	if done.Count == 0 {
-		orphans, listed, rerr := store.Reconcile(ctx, st, blobs, now)
-		report.OrphanedBlobs = orphans
-		if listed {
-			d := ratelimit.Day(now)
-			if _, merr := st.RateHit(
-				ctx,
-				[]store.RateHit{{Key: reconcileKey, WindowStart: d.Start, PurgeAt: d.PurgeAt()}},
-			); merr != nil {
-				rerr = errors.Join(rerr, merr)
-			}
-		}
-		err = errors.Join(err, rerr)
-	}
-	return report, err
-}
-
-func leafErrors(err error) []error {
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		var out []error
-		for _, e := range joined.Unwrap() {
-			out = append(out, leafErrors(e)...)
-		}
-		return out
-	}
-	return []error{err}
-}
-
-func SweepLogAttrs(report store.SweepReport, err error) []any {
-	attrs := report.LogAttrs()
-	if err == nil {
-		return attrs
-	}
-	leaves := leafErrors(err)
-	if len(leaves) == 0 {
-		leaves = []error{err}
-	}
-	return append(attrs, "errors", len(leaves), "err", logging.ErrorText(leaves[0]))
+	return sweep.Run(ctx, s.store, s.blobs, s.cfg.DataDir, s.clock())
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
@@ -247,7 +194,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 			s.log.Info("sweep-stopped", report.LogAttrs()...)
 			return
 		case err != nil:
-			s.log.Error("sweep", SweepLogAttrs(report, err)...)
+			s.log.Error("sweep", sweep.LogAttributes(report, err)...)
 		default:
 			s.log.Info("sweep", report.LogAttrs()...)
 		}

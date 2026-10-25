@@ -187,14 +187,6 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	}
 }
 
-func TestSweepLogAttrsAcceptAnEmptyJoin(t *testing.T) {
-	t.Parallel()
-	attrs := SweepLogAttrs(store.SweepReport{}, fmt.Errorf("%w %w", nil, nil))
-	if len(attrs) < 4 || attrs[len(attrs)-4] != "errors" || attrs[len(attrs)-3] != 1 {
-		t.Fatalf("attrs: %v", attrs)
-	}
-}
-
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {

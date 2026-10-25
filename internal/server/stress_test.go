@@ -15,12 +15,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/server/sweep"
+
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/server/logging"
 
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -57,7 +58,7 @@ func sweepProcess(dir, at string) int {
 		fmt.Fprintln(os.Stderr, "blobs:", err)
 		return 1
 	}
-	if _, err := server.SweepStore(ctx, st, blobs, dir, now); !onlyCheckpointBusy(err) {
+	if _, err := sweep.Run(ctx, st, blobs, dir, now); !onlyCheckpointBusy(err) {
 		fmt.Fprintln(os.Stderr, "sweep:", logging.ErrorText(err))
 		return 1
 	}
