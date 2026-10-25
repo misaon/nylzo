@@ -156,7 +156,7 @@ func browserAsks(path string) func(*http.Request) bool {
 func runVerify(t *testing.T, url string, local fs.FS, flags ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	env := Env{
+	env := &Env{
 		Stdout:    &stdout,
 		Stderr:    &stderr,
 		Getenv:    env(nil),
@@ -346,7 +346,7 @@ func TestDecodedStopsAtTheLimit(t *testing.T) {
 		Header: http.Header{"Content-Encoding": {"gzip"}},
 		Body:   gzipBytes(t, bytes.Repeat([]byte{'a'}, 64<<20)),
 	}
-	body, err := decoded(bomb, browserEncodings, 10, "/x")
+	body, err := decoded(&bomb, browserEncodings, 10, "/x")
 	if err != nil || len(body) != 11 {
 		t.Fatalf("decoded %d bytes, %v", len(body), err)
 	}

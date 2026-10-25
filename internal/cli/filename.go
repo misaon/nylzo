@@ -6,6 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -24,10 +25,12 @@ func invisible(r rune) bool {
 	switch r {
 	case 0x115F, 0x1160, 0x3164, 0xFFA0:
 		return true
+	default:
+		return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
 	}
-	return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
 }
 
+// attachmentName makes a received file name safe on every system the same way the web client does.
 func attachmentName(name string) string {
 	clean := strings.Map(func(r rune) rune {
 		if invisible(r) {
@@ -55,14 +58,19 @@ func attachmentName(name string) string {
 	return truncateBytes(strings.TrimSuffix(clean, extension), maxNameBytes-len(extension)) + extension
 }
 
-func truncateBytes(s string, limit int) string {
+func truncateBytes(text string, limit int) string {
 	used := 0
-	for i, r := range s {
+	for i, r := range text {
 		size := utf8.RuneLen(r)
 		if used+size > limit {
-			return s[:i]
+			return text[:i]
 		}
 		used += size
 	}
-	return s
+	return text
+}
+
+func sameFileName(first, second string) bool {
+	fold := cases.Fold()
+	return fold.String(norm.NFC.String(first)) == fold.String(norm.NFC.String(second))
 }

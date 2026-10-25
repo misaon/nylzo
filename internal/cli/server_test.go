@@ -26,7 +26,7 @@ func TestSweepOnceNeedsAnExistingStore(t *testing.T) {
 	if err := requireStore(dir); err == nil {
 		t.Fatal("sweep-once accepted an empty data directory")
 	}
-	if err := os.WriteFile(filepath.Join(dir, dbFile), nil, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, databaseFile), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := requireStore(dir); err == nil {
@@ -64,37 +64,31 @@ func TestShutdownPastItsTimeoutIsAnOrderlyExit(t *testing.T) {
 	}
 }
 
-func TestServeConfigSetsASoftMemoryLimit(t *testing.T) {
+func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 	previous := debug.SetMemoryLimit(-1)
 	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
-	debug.SetMemoryLimit(math.MaxInt64)
-	env := map[string]string{"NYLZO_PEPPER": testPepper, "NYLZO_DATA_DIR": t.TempDir()}
-	if _, err := serveConfig(Env{Getenv: func(k string) string { return env[k] }}); err != nil {
-		t.Fatal(err)
-	}
-	if got := debug.SetMemoryLimit(-1); got != defaultMemoryLimit {
-		t.Fatalf("serve must set the soft memory limit, got %d", got)
-	}
-}
-
-func TestMemoryLimitYieldsToGOMEMLIMIT(t *testing.T) {
-	previous := debug.SetMemoryLimit(-1)
-	t.Cleanup(func() { debug.SetMemoryLimit(previous) })
-	debug.SetMemoryLimit(math.MaxInt64)
-	applyMemoryLimit(func(string) string { return "" })
-	if got := debug.SetMemoryLimit(-1); got != defaultMemoryLimit {
-		t.Fatalf("without GOMEMLIMIT the limit must be %d, got %d", defaultMemoryLimit, got)
-	}
-	debug.SetMemoryLimit(math.MaxInt64)
-	applyMemoryLimit(func(k string) string { return map[string]string{"GOMEMLIMIT": "300MiB"}[k] })
-	if got := debug.SetMemoryLimit(-1); got != math.MaxInt64 {
-		t.Fatalf("an operator GOMEMLIMIT must win, got %d", got)
+	for _, c := range []struct {
+		operatorLimit string
+		want          int64
+	}{{"", defaultMemoryLimit}, {"300MiB", math.MaxInt64}} {
+		debug.SetMemoryLimit(math.MaxInt64)
+		variables := map[string]string{
+			"NYLZO_PEPPER":   testPepper,
+			"NYLZO_DATA_DIR": t.TempDir(),
+			"GOMEMLIMIT":     c.operatorLimit,
+		}
+		if _, err := serveSettings(&Env{Getenv: func(k string) string { return variables[k] }}); err != nil {
+			t.Fatal(err)
+		}
+		if got := debug.SetMemoryLimit(-1); got != c.want {
+			t.Fatalf("GOMEMLIMIT %q: the soft memory limit is %d, want %d", c.operatorLimit, got, c.want)
+		}
 	}
 }
 
 func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(config.Server{DataDir: dir}, sqlite.Open)
+	st, _, err := openStore(dir, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +124,7 @@ func runCLI(args []string, values map[string]string) (int, string, string) {
 	var stdout, stderr strings.Builder
 	code := Run(
 		args,
-		Env{
+		&Env{
 			Stdin:    strings.NewReader(""),
 			Stdout:   &stdout,
 			Stderr:   &stderr,
@@ -182,7 +176,7 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 
 func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(config.Server{DataDir: dir}, sqlite.Open)
+	st, _, err := openStore(dir, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +240,7 @@ func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 func TestOpenCreatesPrivateDirectories(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = filepath.Join(t.TempDir(), "data")
-	st, _, err := open(cfg, sqlite.Open)
+	st, _, err := openStore(cfg.DataDir, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,12 +258,12 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 
 func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	dir := t.TempDir()
-	st, _, err := open(config.Server{DataDir: dir}, sqlite.Open)
+	st, _, err := openStore(dir, sqlite.Open)
 	if err != nil {
 		t.Fatal(err)
 	}
 	st.Close()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile))
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(dir, databaseFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +275,7 @@ func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	if code != 1 || !strings.Contains(stderr, "older schema") {
 		t.Fatalf("sweep-once on an older schema: exit %d, %s", code, stderr)
 	}
-	db, err = sql.Open("sqlite", "file:"+filepath.Join(dir, dbFile))
+	db, err = sql.Open("sqlite", "file:"+filepath.Join(dir, databaseFile))
 	if err != nil {
 		t.Fatal(err)
 	}

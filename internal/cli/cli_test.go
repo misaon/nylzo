@@ -25,6 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/cli/console"
+
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/client"
@@ -41,7 +43,7 @@ func TestMain(m *testing.M) {
 		os.Exit(
 			Run(
 				os.Args[1:],
-				Env{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Terminal: noTerminal{}},
+				&Env{Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv, Terminal: noTerminal{}},
 			),
 		)
 	}
@@ -110,7 +112,7 @@ func (s *scriptedTerminal) ReadSecret(string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.secrets) == 0 {
-		return nil, ErrNoTerminal
+		return nil, console.ErrNoTerminal
 	}
 	next := s.secrets[0]
 	s.secrets = s.secrets[1:]
@@ -123,7 +125,7 @@ type result struct {
 	stderr string
 }
 
-func runWith(t *testing.T, stdin string, vars map[string]string, term Terminal, args ...string) result {
+func runWith(t *testing.T, stdin string, vars map[string]string, term console.Terminal, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	if term == nil {
@@ -131,7 +133,7 @@ func runWith(t *testing.T, stdin string, vars map[string]string, term Terminal, 
 	}
 	code := Run(
 		args,
-		Env{
+		&Env{
 			Stdin:    strings.NewReader(stdin),
 			Stdout:   &stdout,
 			Stderr:   &stderr,
@@ -827,7 +829,7 @@ func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
 		meta: core.Meta{Text: &text, File: &core.FileMeta{Name: "MESSAGE.TXT", Mime: "text/plain", Size: 4}},
 		file: []byte("file"),
 	}
-	created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, "", msg)
+	created, err := createOnce(t.Context(), &Env{Stderr: io.Discard}, c, &createOptions{opens: 1}, "", &msg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1106,7 +1108,7 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 			meta: core.Meta{Text: &text, File: &core.FileMeta{Name: name, Mime: "text/plain", Size: 4}},
 			file: []byte("file"),
 		}
-		created, err := createOnce(t.Context(), Env{Stderr: io.Discard}, c, createOptions{opens: 1}, "", msg)
+		created, err := createOnce(t.Context(), &Env{Stderr: io.Discard}, c, &createOptions{opens: 1}, "", &msg)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1139,7 +1141,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 	text := "after a failed write"
 	var stderr bytes.Buffer
 	paths, err := saveMessage(
-		Env{Stdout: io.Discard, Stderr: &stderr, Terminal: noTerminal{}},
+		&Env{Stdout: io.Discard, Stderr: &stderr, Terminal: noTerminal{}},
 		locked,
 		base,
 		false,
@@ -1155,7 +1157,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := saveMessage(
-		Env{Stdout: io.Discard, Stderr: io.Discard, Terminal: noTerminal{}},
+		&Env{Stdout: io.Discard, Stderr: io.Discard, Terminal: noTerminal{}},
 		full,
 		full,
 		false,
@@ -1244,7 +1246,7 @@ func TestASecondSignalStopsTheCommand(t *testing.T) {
 func TestFailureMessagesAreEscaped(t *testing.T) {
 	t.Parallel()
 	var stderr bytes.Buffer
-	failf(Env{Stderr: &stderr}, "%s", "spoof\x1b]0;x\x07\rnylzo: saved")
+	failf(&Env{Stderr: &stderr}, "%s", "spoof\x1b]0;x\x07\rnylzo: saved")
 	if strings.ContainsAny(stderr.String(), "\x1b\x07\r") {
 		t.Fatalf("raw control characters on stderr: %q", stderr.String())
 	}
