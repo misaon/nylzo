@@ -66,8 +66,8 @@ export {
   parseLink,
   parsePath,
 } from './link/link.ts';
-export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './primitives/base64url.ts';
-export { concat, utf8 } from './primitives/bytes.ts';
+export { decodeBase64urlExact, encodeBase64url, encodedLength } from './primitives/base64url.ts';
+export { concatenate, utf8 } from './primitives/bytes.ts';
 export { hash, idToString, newSecret, parseId } from './primitives/identifiers.ts';
 export {
   leadingZeroBits,

@@ -2,10 +2,6 @@ import { ID_LEN, SECRET_LEN } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from './base64url.ts';
 import { arrayBufferBacked, assertLength } from './bytes.ts';
 
-export function newId(): Uint8Array<ArrayBuffer> {
-  return crypto.getRandomValues(new Uint8Array(ID_LEN));
-}
-
 export function parseId(text: string): Uint8Array<ArrayBuffer> {
   return decodeBase64urlExact(text, ID_LEN);
 }

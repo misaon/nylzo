@@ -2,7 +2,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 
 import { TOKEN_LEN } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
-import { arrayBufferBacked, assertLength, concat, utf8 } from '../primitives/bytes.ts';
+import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 
 export const PUBLIC_KEY_LEN = 32;
@@ -42,7 +42,7 @@ const failedWith = (error: unknown, name: string) => error instanceof DOMExcepti
 
 export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
   assertLength(seed, TOKEN_LEN, 'seed');
-  const pkcs8 = concat(PKCS8_ED25519_PREFIX, seed);
+  const pkcs8 = concatenate(PKCS8_ED25519_PREFIX, seed);
   try {
     const exportable = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
     const jwk = await crypto.subtle.exportKey('jwk', exportable);
@@ -100,7 +100,7 @@ export async function requestMessage(
   for (const part of [REQUEST_LABEL, purpose, method, path]) {
     parts.push(utf8(part), zero);
   }
-  return concat(...parts, challenge, await hash(body));
+  return concatenate(...parts, challenge, await hash(body));
 }
 
 export async function signRequest(

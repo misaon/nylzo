@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  concat,
+  concatenate,
   decodeMeta,
   encodeMeta,
   MAX_FILE_BYTES,
@@ -212,7 +212,7 @@ describe('decoding', () => {
   });
 
   it('rejects invalid UTF-8', () => {
-    expect(() => decodeMeta(concat(utf8('{"v":1,"text":"'), Uint8Array.of(255), utf8('"}')))).toThrow(MetaError);
+    expect(() => decodeMeta(concatenate(utf8('{"v":1,"text":"'), Uint8Array.of(255), utf8('"}')))).toThrow(MetaError);
     expect(() => decodeMeta(Uint8Array.of(195))).toThrow(MetaError);
   });
 

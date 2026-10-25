@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { bytesToHex, withByteFlipped } from '../../test/vectors.ts';
+import { bytesToHex, randomId, withByteFlipped } from '../../test/vectors.ts';
 import {
   aad,
   AAD_LEN,
@@ -35,7 +35,6 @@ import {
   VERSION,
   VersionError,
 } from '../index.ts';
-import { newId } from '../primitives/identifiers.ts';
 import { deriveAll } from '../scrypt.ts';
 
 interface Sample {
@@ -56,7 +55,7 @@ function textMeta(text: string, file?: Uint8Array): Meta {
 }
 
 async function sample(kdfId: KdfId, passphrase: string, file?: Uint8Array): Promise<Sample> {
-  const id = newId();
+  const id = randomId();
   const s = newSecret();
   const { content } = await deriveAll(id, s, kdfId, passphrase);
   const header = newHeader(kdfId);
@@ -65,7 +64,7 @@ async function sample(kdfId: KdfId, passphrase: string, file?: Uint8Array): Prom
 }
 
 async function plaintextLength(meta: Meta, file?: Uint8Array): Promise<number> {
-  const id = newId();
+  const id = randomId();
   const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
   const object = await seal(content.k, newHeader(KDF_NONE), id, policy, { meta, file });
   return object.length - HEADER_LEN - TAG_LEN;
@@ -99,7 +98,7 @@ describe('AK8: tampering is detected', () => {
 
   it('a different id fails integrity', async () => {
     const m = await sample(KDF_NONE, '');
-    await expect(open(m.k, newId(), m.policy, KDF_NONE, m.object)).rejects.toBeInstanceOf(IntegrityError);
+    await expect(open(m.k, randomId(), m.policy, KDF_NONE, m.object)).rejects.toBeInstanceOf(IntegrityError);
   });
 
   it('a different key fails integrity', async () => {
@@ -218,7 +217,7 @@ describe('padding', () => {
 
 describe('seal validates its inputs', () => {
   it('rejects content over the limits', async () => {
-    const id = newId();
+    const id = randomId();
     const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
     const header = newHeader(KDF_NONE);
     const big = new Uint8Array(MAX_FILE_BYTES + 1);
@@ -229,7 +228,7 @@ describe('seal validates its inputs', () => {
   });
 
   it('rejects a file whose length differs from meta.file.size', async () => {
-    const id = newId();
+    const id = randomId();
     const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
     const header = newHeader(KDF_NONE);
     const meta: Meta = { file: { name: 'x', mime: '', size: 2 } };
@@ -242,7 +241,7 @@ describe('seal validates its inputs', () => {
   });
 
   it('rejects an invalid policy, flags and iv', async () => {
-    const id = newId();
+    const id = randomId();
     const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
     const header = newHeader(KDF_NONE);
     const payload = { meta: { text: 'policy' } };
@@ -267,7 +266,7 @@ describe('seal validates its inputs', () => {
   });
 
   it('fits the maximal message into MAX_OBJECT_BYTES', async () => {
-    const id = newId();
+    const id = randomId();
     const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
     const file = new Uint8Array(MAX_FILE_BYTES);
     const meta: Meta = {
@@ -294,7 +293,7 @@ describe('header and aad', () => {
 
   it('prefixes the aad with the header bytes', () => {
     const header = newHeader(KDF_NONE);
-    const id = newId();
+    const id = randomId();
     const bytes = aad(header, id, { opensMax: 1, ttlSeconds: 60 });
     expect(bytes.length).toBe(AAD_LEN);
     expect(bytes.subarray(0, HEADER_LEN)).toEqual(headerBytes(header));

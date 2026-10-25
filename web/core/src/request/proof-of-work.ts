@@ -3,7 +3,7 @@ import { scrypt } from '@noble/hashes/scrypt.js';
 import { PowError, PowTimeoutError } from '../errors.ts';
 import { ID_LEN, isUnsignedInteger, KEY_LEN } from '../limits.ts';
 import { decodeBase64urlExact } from '../primitives/base64url.ts';
-import { arrayBufferBacked, assertLength, concat } from '../primitives/bytes.ts';
+import { arrayBufferBacked, assertLength, concatenate } from '../primitives/bytes.ts';
 
 export const POW_N = 1 << 14;
 export const POW_R = 8;
@@ -25,7 +25,7 @@ export function powDigest(challenge: Uint8Array, id: Uint8Array, counter: number
   assertCounter(counter);
   const salt = new Uint8Array(8);
   new DataView(salt.buffer).setBigUint64(0, BigInt(counter));
-  const password = concat(challenge.subarray(NONCE_OFFSET, NONCE_OFFSET + NONCE_LEN), id);
+  const password = concatenate(challenge.subarray(NONCE_OFFSET, NONCE_OFFSET + NONCE_LEN), id);
   return arrayBufferBacked(scrypt(password, salt, { N: POW_N, r: POW_R, p: POW_P, dkLen: KEY_LEN }));
 }
 

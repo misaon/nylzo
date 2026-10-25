@@ -26,7 +26,7 @@ import {
   TAG_LEN,
   VERSION,
 } from '../limits.ts';
-import { arrayBufferBacked, assertLength, concat } from '../primitives/bytes.ts';
+import { arrayBufferBacked, assertLength, concatenate } from '../primitives/bytes.ts';
 import { decodeMeta, encodeMeta, type Meta } from './meta.ts';
 
 export interface Header {
@@ -113,7 +113,7 @@ export function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
 
 export function aad(header: Header, id: Uint8Array, policy: Policy): Uint8Array<ArrayBuffer> {
   assertLength(id, ID_LEN, 'id');
-  return concat(headerBytes(header), id, policyBytes(policy));
+  return concatenate(headerBytes(header), id, policyBytes(policy));
 }
 
 export function paddedLength(n: number, hasFile: boolean): number {
@@ -144,7 +144,7 @@ export async function seal(
       tagLength: GCM_TAG_BITS,
     };
     const ciphertext = await crypto.subtle.encrypt(parameters, k, plaintext);
-    return concat(head, new Uint8Array(ciphertext));
+    return concatenate(head, new Uint8Array(ciphertext));
   } finally {
     plaintext.fill(0);
   }

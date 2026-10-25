@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { bytesToHex } from '../../test/vectors.ts';
+import { bytesToHex, randomId } from '../../test/vectors.ts';
 import {
   deriveContent,
   deriveLink,
@@ -23,7 +23,6 @@ import {
   TOKEN_LEN,
   utf8,
 } from '../index.ts';
-import { newId } from '../primitives/identifiers.ts';
 import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from '../scrypt.ts';
 
 const composed = 'héslo s češtinou';
@@ -31,7 +30,7 @@ const decomposed = 'héslo s češtinou';
 
 describe('content key K', () => {
   it('is a non-extractable AES-GCM CryptoKey for encrypt and decrypt only', async () => {
-    const { content } = await deriveAll(newId(), newSecret(), KDF_NONE, '');
+    const { content } = await deriveAll(randomId(), newSecret(), KDF_NONE, '');
     expect(content.k).toBeInstanceOf(CryptoKey);
     expect(content.k.type).toBe('secret');
     expect(content.k.extractable).toBe(false);
@@ -44,7 +43,7 @@ describe('content key K', () => {
 
 describe('tokens', () => {
   it('R, salt_pw, V and hsalt are 32-byte Uint8Arrays', async () => {
-    const id = newId();
+    const id = randomId();
     const s = newSecret();
     const { link, content } = await deriveAll(id, s, KDF_NONE, '');
     for (const bytes of [link.r, link.saltPw, content.v, await hsalt(id)]) {
@@ -55,10 +54,10 @@ describe('tokens', () => {
   });
 
   it('differ per id and per secret', async () => {
-    const id = newId();
+    const id = randomId();
     const s = newSecret();
     const a = await deriveLink(id, s);
-    const b = await deriveLink(newId(), s);
+    const b = await deriveLink(randomId(), s);
     const c = await deriveLink(id, newSecret());
     expect(a.r).not.toEqual(b.r);
     expect(a.r).not.toEqual(c.r);
@@ -67,7 +66,7 @@ describe('tokens', () => {
 
   it('reject an id or secret of the wrong length', async () => {
     await expect(hsalt(new Uint8Array(15))).rejects.toThrow();
-    await expect(deriveLink(newId(), new Uint8Array(31))).rejects.toThrow();
+    await expect(deriveLink(randomId(), new Uint8Array(31))).rejects.toThrow();
     await expect(deriveContent(new Uint8Array(17), newSecret(), new Uint8Array(0))).rejects.toThrow();
   });
 });
@@ -77,7 +76,7 @@ describe('passphrase normalisation', () => {
     const salt = new Uint8Array(32);
     expect(() => scryptPassphraseKey('caf\u{D800}', salt)).toThrow(MalformedPassphraseError);
     await expect(anyPassphraseKey(KDF_SCRYPT, 'caf\u{D800}', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
-    await expect(deriveAll(newId(), newSecret(), KDF_SCRYPT, 'caf\u{D800}')).rejects.toBeInstanceOf(
+    await expect(deriveAll(randomId(), newSecret(), KDF_SCRYPT, 'caf\u{D800}')).rejects.toBeInstanceOf(
       MalformedPassphraseError,
     );
     await expect(anyPassphraseKey(KDF_NONE, 'caf\u{D800}', salt)).resolves.toHaveLength(0);
@@ -90,7 +89,7 @@ describe('passphrase normalisation', () => {
   });
 
   it('derives identical keys for composed and decomposed input with scrypt', async () => {
-    const id = newId();
+    const id = randomId();
     const s = newSecret();
     const a = await deriveAll(id, s, KDF_SCRYPT, composed);
     const b = await deriveAll(id, s, KDF_SCRYPT, decomposed);
@@ -112,7 +111,7 @@ describe('kdf profiles', () => {
     expect(await anyPassphraseKey(KDF_NONE, 'anything', salt)).toHaveLength(0);
     expect(kdfRequiresPassphrase(KDF_NONE)).toBe(false);
     expect(kdfRequiresPassphrase(KDF_SCRYPT)).toBe(true);
-    const id = newId();
+    const id = randomId();
     const s = newSecret();
     const a = await deriveAll(id, s, KDF_NONE, 'a');
     const b = await deriveAll(id, s, KDF_NONE, 'b');
@@ -126,7 +125,7 @@ describe('kdf profiles', () => {
       await expect(anyPassphraseKey(kdfId, 'correct horse battery staple', new Uint8Array(32))).rejects.toBeInstanceOf(
         KdfError,
       );
-      await expect(deriveAll(newId(), newSecret(), kdfId, 'correct horse battery staple')).rejects.toBeInstanceOf(
+      await expect(deriveAll(randomId(), newSecret(), kdfId, 'correct horse battery staple')).rejects.toBeInstanceOf(
         KdfError,
       );
     }
@@ -146,7 +145,7 @@ describe('kdf profiles', () => {
       return importKey(format as 'raw', data, ...rest);
     }) as typeof crypto.subtle.importKey);
     try {
-      await deriveContent(newId(), newSecret(), new Uint8Array(32).fill(9));
+      await deriveContent(randomId(), newSecret(), new Uint8Array(32).fill(9));
     } finally {
       spy.mockRestore();
     }

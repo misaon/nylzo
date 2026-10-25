@@ -1,5 +1,5 @@
 import { ID_LEN, KEY_LEN, SECRET_LEN, TOKEN_LEN } from '../limits.ts';
-import { arrayBufferBacked, assertLength, concat, utf8 } from '../primitives/bytes.ts';
+import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 
 const HSALT_LABEL = 'nylzo/v1/hkdf-salt';
@@ -25,7 +25,7 @@ export interface DerivedKeys {
 
 export async function hsalt(id: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   assertLength(id, ID_LEN, 'id');
-  return hash(concat(utf8(HSALT_LABEL), id));
+  return hash(concatenate(utf8(HSALT_LABEL), id));
 }
 
 export async function deriveLink(id: Uint8Array, s: Uint8Array): Promise<LinkKeys> {
@@ -41,7 +41,7 @@ export async function deriveLink(id: Uint8Array, s: Uint8Array): Promise<LinkKey
 export async function deriveContent(id: Uint8Array, s: Uint8Array, p: Uint8Array): Promise<ContentKeys> {
   assertLength(s, SECRET_LEN, 'secret');
   const salt = await hsalt(id);
-  const ikm = concat(s, p);
+  const ikm = concatenate(s, p);
   const prk = await importIkm(ikm);
   ikm.fill(0);
   const k = await crypto.subtle.deriveKey(

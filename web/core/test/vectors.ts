@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-import { concat, hash } from '../src/index.ts';
+import { concatenate, hash, ID_LEN } from '../src/index.ts';
 
 interface ScryptVector {
   readonly name: string;
@@ -172,8 +172,12 @@ export function fileBytes(file: FileVector): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+export function randomId(): Uint8Array<ArrayBuffer> {
+  return crypto.getRandomValues(new Uint8Array(ID_LEN));
+}
+
 export function withByteFlipped(bytes: Uint8Array, index: number, mask = 1): Uint8Array<ArrayBuffer> {
-  const copy = concat(bytes);
+  const copy = concatenate(bytes);
   copy[index] = (copy[index] ?? 0) ^ mask;
   return copy;
 }

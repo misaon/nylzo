@@ -9,7 +9,7 @@ export function encodedLength(byteLength: number): number {
 }
 
 export function encodeBase64url(bytes: Uint8Array): string {
-  let out = '';
+  let encoded = '';
   let accumulator = 0;
   let bits = 0;
   for (const byte of bytes) {
@@ -17,20 +17,20 @@ export function encodeBase64url(bytes: Uint8Array): string {
     bits += 8;
     while (bits >= 6) {
       bits -= 6;
-      out += ALPHABET.charAt((accumulator >> bits) & SIX_BITS);
+      encoded += ALPHABET.charAt((accumulator >> bits) & SIX_BITS);
     }
   }
   if (bits > 0) {
-    out += ALPHABET.charAt((accumulator << (6 - bits)) & SIX_BITS);
+    encoded += ALPHABET.charAt((accumulator << (6 - bits)) & SIX_BITS);
   }
-  return out;
+  return encoded;
 }
 
 export function decodeBase64urlExact(text: string, byteLength: number): Uint8Array<ArrayBuffer> {
   if (text.length !== encodedLength(byteLength)) {
     throw new EncodingError();
   }
-  const out = new Uint8Array(byteLength);
+  const decoded = new Uint8Array(byteLength);
   let accumulator = 0;
   let bits = 0;
   let written = 0;
@@ -45,14 +45,10 @@ export function decodeBase64urlExact(text: string, byteLength: number): Uint8Arr
       continue;
     }
     bits -= 8;
-    out[written++] = (accumulator >> bits) & EIGHT_BITS;
+    decoded[written++] = (accumulator >> bits) & EIGHT_BITS;
   }
-  if (written !== byteLength || (accumulator & ((1 << bits) - 1)) !== 0) {
+  if ((accumulator & ((1 << bits) - 1)) !== 0) {
     throw new EncodingError();
   }
-  return out;
-}
-
-export function decode32(text: string): Uint8Array<ArrayBuffer> {
-  return decodeBase64urlExact(text, 32);
+  return decoded;
 }

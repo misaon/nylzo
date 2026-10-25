@@ -1,7 +1,7 @@
 import { KdfMismatchError, LinkError, LinkRetiredKdfError, LinkVersionError } from '../errors.ts';
 import { KDF_RETIRED, type KdfId, parseKdfId } from '../keys/kdf.ts';
 import { FRAGMENT_VERSION, SECRET_LEN } from '../limits.ts';
-import { decode32, encodeBase64url } from '../primitives/base64url.ts';
+import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
 import { assertLength } from '../primitives/bytes.ts';
 import { idToString, parseId } from '../primitives/identifiers.ts';
 
@@ -43,7 +43,7 @@ function parseFragmentBody(text: string): Fragment {
   }
   let s: Uint8Array<ArrayBuffer>;
   try {
-    s = decode32(secretText);
+    s = decodeBase64urlExact(secretText, SECRET_LEN);
   } catch {
     throw new LinkError();
   }

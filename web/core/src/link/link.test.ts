@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { thrownBy } from '../../test/vectors.ts';
+import { randomId, thrownBy } from '../../test/vectors.ts';
 import {
   assertProfile,
-  decode32,
   decodeBase64urlExact,
   encodeBase64url,
   EncodingError,
@@ -25,7 +24,6 @@ import {
   parseLink,
   parsePath,
 } from '../index.ts';
-import { newId } from '../primitives/identifiers.ts';
 
 const base = 'https://nylzo.example';
 
@@ -39,7 +37,7 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
   });
 
   it('a parsed link exposes the fragment profile and nothing else', () => {
-    const id = newId();
+    const id = randomId();
     const s = newSecret();
     const link = parseLink(formatLink(base, id, KDF_SCRYPT, s));
     expect(link.kdfId).toBe(KDF_SCRYPT);
@@ -94,14 +92,14 @@ describe('fragment', () => {
 
 describe('links', () => {
   it('formats with a single /m/ path segment and trims one trailing slash', () => {
-    const id = newId();
+    const id = randomId();
     const s = newSecret();
     const expected = `${base}/m/${idToString(id)}#${fragment(KDF_NONE, s)}`;
     expect(formatLink(base, id, KDF_NONE, s)).toBe(expected);
     expect(formatLink(`${base}/`, id, KDF_NONE, s)).toBe(expected);
   });
 
-  const id = idToString(newId());
+  const id = idToString(randomId());
   const frag = fragment(KDF_NONE, newSecret());
   const badLinks = [
     'not a url',
@@ -127,7 +125,7 @@ describe('links', () => {
 describe('canonical base64url', () => {
   it('ids are 22 characters ending in A, Q, g or w', () => {
     for (let index = 0; index < 200; index++) {
-      const text = idToString(newId());
+      const text = idToString(randomId());
       expect(text).toHaveLength(22);
       expect('AQgw').toContain(text.slice(-1));
       expect(() => parseId(text)).not.toThrow();
@@ -139,11 +137,11 @@ describe('canonical base64url', () => {
       const text = encodeBase64url(newSecret());
       expect(text).toHaveLength(43);
       expect('AEIMQUYcgkosw048').toContain(text.slice(-1));
-      expect(() => decode32(text)).not.toThrow();
+      expect(() => decodeBase64urlExact(text, 32)).not.toThrow();
     }
   });
 
-  const text = idToString(newId());
+  const text = idToString(randomId());
   const badIds = [
     `${text.slice(0, 21)}B`,
     `${text}=`,
@@ -233,7 +231,7 @@ describe('the retired passphrase profile 2', () => {
   }
 
   it('parseLink reports it only for an otherwise valid link', () => {
-    const id = idToString(newId());
+    const id = idToString(randomId());
     expect(thrownBy(() => parseLink(`${base}/m/${id}#1.2.${s}`))).toBeInstanceOf(LinkRetiredKdfError);
     const badPath = thrownBy(() => parseLink(`${base}/x/${id}#1.2.${s}`));
     expect(badPath).toBeInstanceOf(LinkError);
