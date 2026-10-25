@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 )
 
@@ -22,8 +23,38 @@ const (
 	previousPepper = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221102"
 )
 
+var reportKey = func() string {
+	key, err := abuse.NewKeyPair()
+	if err != nil {
+		panic(err)
+	}
+	return core.Encode(key.PublicKey().Bytes())
+}()
+
+// environment gives every configuration the operator's report key unless the test sets the variable itself.
 func environment(variables map[string]string) func(string) string {
-	return func(name string) string { return variables[name] }
+	return func(name string) string {
+		if value, set := variables[name]; set || name != "NYLZO_REPORT_KEY" {
+			return value
+		}
+		return reportKey
+	}
+}
+
+func TestServeNeedsAValidReportKey(t *testing.T) {
+	t.Parallel()
+	for name, value := range map[string]string{"missing": "", "not a key": "AAAA", "an Ed25519 key": core.Encode(make([]byte, 32))} {
+		_, err := config.FromEnv(
+			environment(map[string]string{"NYLZO_PEPPER": currentPepper, "NYLZO_REPORT_KEY": value}),
+			true,
+		)
+		if !errors.Is(err, config.ErrInvalid) || !strings.Contains(err.Error(), "NYLZO_REPORT_KEY") {
+			t.Errorf("%s report key: %v", name, err)
+		}
+	}
+	if _, err := config.FromEnv(environment(map[string]string{"NYLZO_REPORT_KEY": ""}), false); err != nil {
+		t.Fatalf("sweep-once and takedown need no report key: %v", err)
+	}
 }
 
 func withPepper(name, value string) func(string) string {
@@ -65,8 +96,8 @@ func TestFromEnvReadsEveryVariable(t *testing.T) {
 		settings.PublicURL != "https://nylzo.example" || len(settings.PepperPrevious) != 32 {
 		t.Fatalf("settings %+v", settings)
 	}
-	if got := config.Defaults().Limits.MaxObjectBytes; got != 5373983 {
-		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
+	if got := config.Defaults().Limits.MaxObjectBytes; got != 5373952 {
+		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373952", got)
 	}
 	if _, withoutPepper := config.FromEnv(environment(nil), false); withoutPepper != nil {
 		t.Fatalf("sweep-once without pepper: %v", withoutPepper)

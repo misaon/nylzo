@@ -18,6 +18,9 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/server/abuse"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 type stolenNeedles struct {
@@ -80,7 +83,7 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 func TestStolenServerRevealsNothing(t *testing.T) {
 	t.Parallel()
 	settings := baseSettings(pepperA, nil)
-	settings.Rates.GlobalDailyCreates = 16
+	settings.Rates.GlobalDailyCreates = 18
 	settings.PoWDifficulty = 1
 	harness := newHarness(t, settings)
 	faulty := harness.withFaultyBlobs()
@@ -165,9 +168,9 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	harness.mustCreate(stuck)
 	needles.addMessage("stuck", stuck, "")
 	faulty.set(func(blobs *faultyBlobs) {
-		blobs.deleteErr[stuck.id.String()] = &fs.PathError{
+		blobs.deleteErr[harness.blobRef(stuck)] = &fs.PathError{
 			Op:   "remove",
-			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(stuck.id.String()))),
+			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobRef(stuck)))),
 			Err:  syscall.EROFS,
 		}
 	})
@@ -180,6 +183,20 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}
 	if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
 		t.Fatal("the failing delete was not logged")
+	}
+
+	removed := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext removed sentinel")
+	removed.address = ip4
+	harness.mustCreate(removed)
+	needles.addMessage("removed", removed, "")
+	if _, err := store.TakeDown(
+		t.Context(),
+		harness.store,
+		harness.blobs,
+		seal.LocatorOf(removed.id[:]),
+		harness.clock.Now(),
+	); err != nil {
+		t.Fatal(err)
 	}
 
 	pow := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext pow sentinel")
@@ -228,36 +245,29 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		t.Fatalf("abuse report: %d", response.StatusCode)
 	}
 
-	stolen := map[string][]byte{"log": []byte(harness.logs.String())}
-	if err := filepath.WalkDir(harness.directory, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
+	everyone := []*testMessage{expired, opened, leased, file, burned, cancelled, stuck, filler, pow, removed}
+	for _, message := range everyone {
+		needles.secret("id of "+message.id.String(), message.id[:])
+		needles.text("id text of "+message.id.String(), message.id.String())
+		needles.text("hex id text of "+message.id.String(), hex.EncodeToString([]byte(message.id.String())))
+		needles.secret("envelope header of "+message.id.String(), message.object[:core.HeaderLen])
+		if record, err := harness.record(message); err == nil {
+			needles.secret("record key of "+message.id.String(), record.Key[:])
 		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		rel, _ := filepath.Rel(harness.directory, path)
-		stolen[rel] = data
-		return nil
-	}); err != nil {
-		t.Fatal(err)
 	}
-	reportFile := filepath.Join("abuse", harness.clock.Now().UTC().Format(time.DateOnly)+".jsonl")
+	needles.text("contact", contact)
+	needles.text("reason", "spam, see")
+	stolen := harness.stolenCopy()
+	reportFile := filepath.Join("abuse", harness.clock.Now().UTC().Format(time.DateOnly)+abuse.FileExtension)
 	for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {
 		if _, ok := stolen[want]; !ok {
 			t.Fatalf("the stolen copy misses %s: %v", want, slices.Sorted(maps.Keys(stolen)))
 		}
 	}
-	var report map[string]any
-	if err := json.Unmarshal(stolen[reportFile], &report); err != nil ||
-		!slices.Equal(slices.Sorted(maps.Keys(report)), []string{"contact", "date", "good_faith", "id", "reason"}) {
-		t.Errorf("a stored report holds more than the listed fields: %s %v", stolen[reportFile], err)
-	}
-	for where, data := range stolen {
-		if where != reportFile && bytes.Contains(data, []byte(contact)) {
-			t.Errorf("%s holds the notifier's contact", where)
-		}
+	reports, err := abuse.Open(testReportKey, stolen[reportFile])
+	if err != nil || len(reports) != 1 || reports[0].ID != leased.id.String() || reports[0].Contact != contact ||
+		!reports[0].GoodFaith {
+		t.Errorf("the operator's key must open the sealed report: %+v %v", reports, err)
 	}
 	for where, data := range stolen {
 		for what, needle := range needles.named {
@@ -266,61 +276,89 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			}
 		}
 	}
-	everyone := []*testMessage{expired, opened, leased, file, burned, cancelled, stuck, pow}
-	for _, message := range everyone {
-		forms := []string{
-			message.id.String(),
-			hex.EncodeToString([]byte(message.id.String())),
-			hex.EncodeToString(message.id[:]),
-		}
-		if slices.ContainsFunc(forms, func(form string) bool { return bytes.Contains(stolen["log"], []byte(form)) }) {
-			t.Errorf("the log names message %s", message.id)
-		}
-	}
+	checkStolenDatabase(t, harness, len(everyone))
+}
 
+func (h *testHarness) stolenCopy() map[string][]byte {
+	h.t.Helper()
+	stolen := map[string][]byte{"log": []byte(h.logs.String())}
+	if err := filepath.WalkDir(h.directory, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(h.directory, path)
+		stolen[rel] = data
+		return nil
+	}); err != nil {
+		h.t.Fatal(err)
+	}
+	return stolen
+}
+
+// checkStolenDatabase covers D101: a row shows its locator, sealed bytes and two rounded cleanup times, nothing else.
+func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
+	t.Helper()
 	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	minute := time.Minute.Milliseconds()
-	for _, query := range []string{
-		`SELECT created_at FROM messages`, `SELECT expires_at FROM messages`, `SELECT next_attempt_at FROM messages`,
-		`SELECT first_opened_at FROM messages WHERE first_opened_at IS NOT NULL`, `SELECT lease_expires_at FROM leases`,
-		`SELECT first_opened_at FROM tombstones WHERE first_opened_at IS NOT NULL`, `SELECT ended_at FROM tombstones`, `SELECT purge_at FROM tombstones`,
-		`SELECT window_start FROM rate_counters`, `SELECT purge_at FROM rate_counters`,
+	columns := column[string](t, database, `SELECT name FROM pragma_table_info('messages') ORDER BY cid`)
+	if !slices.Equal(
+		columns,
+		[]string{"locator", "read_wrap", "manage_wrap", "record", "blob_ref", "blob_wrap", "blob_purge_at", "purge_at"},
+	) {
+		t.Fatalf("messages keeps more columns than the spec lists: %v", columns)
+	}
+	if tables := column[string](
+		t,
+		database,
+		`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
+	); !slices.Equal(
+		tables,
+		[]string{"messages", "rate_counters"},
+	) {
+		t.Fatalf("the database keeps more tables than the spec lists: %v", tables)
+	}
+	for query, step := range map[string]time.Duration{
+		`SELECT blob_purge_at FROM messages WHERE blob_purge_at IS NOT NULL`: store.BlobPurgeStep,
+		`SELECT purge_at FROM messages`:                                      store.RowPurgeStep,
+		`SELECT window_start FROM rate_counters`:                             time.Minute,
+		`SELECT purge_at FROM rate_counters`:                                 time.Minute,
 	} {
 		for _, value := range column[int64](t, database, query) {
-			if value%minute != 0 {
-				t.Errorf("%s holds %d, which is more precise than a minute", query, value)
+			if value%step.Milliseconds() != 0 {
+				t.Errorf("%s holds %d, which is more precise than %s", query, value, step)
 			}
 		}
 	}
 	count := func(query string) int64 { return column[int64](t, database, query)[0] }
-	tombstones := count(`SELECT COUNT(*) FROM tombstones`)
-	leases := count(`SELECT COUNT(*) FROM leases`)
+	rows, ended := count(
+		`SELECT COUNT(*) FROM messages`,
+	), count(
+		`SELECT COUNT(*) FROM messages WHERE blob_wrap IS NULL`,
+	)
 	spent := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`)
 	nonces := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`)
-	if tombstones != 4 || leases != 1 || spent == 0 || nonces != 1 {
+	if rows != int64(created) || ended != 6 || spent == 0 || nonces != 1 {
 		t.Fatalf(
-			"the flows did not leave the expected rows: %d tombstones, %d leases, %d spent challenges, %d PoW nonces",
-			tombstones,
-			leases,
+			"the flows did not leave the expected rows: %d rows, %d without a blob key, %d spent challenges, %d PoW nonces",
+			rows,
+			ended,
 			spent,
 			nonces,
 		)
 	}
 	for _, key := range column[string](t, database, `SELECT key FROM rate_counters`) {
 		if !slices.ContainsFunc(
-			[]string{"global:", "pow:", "challenge:", "abuse:id:", "sweep:reconcile:"},
+			[]string{"global:", "pow:", "challenge:", "sweep:reconcile:"},
 			func(prefix string) bool { return strings.HasPrefix(key, prefix) },
 		) {
 			t.Errorf("counter %q is not one of the address-free keys", key)
-		}
-		for _, message := range everyone {
-			if strings.Contains(key, message.id.String()) && key != "abuse:id:"+message.id.String() {
-				t.Errorf("counter %q ties message %s to something else", key, message.id)
-			}
 		}
 	}
 }

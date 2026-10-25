@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"crypto/hpke"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -73,9 +76,10 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 	}{{"", defaultMemoryLimit}, {"300MiB", math.MaxInt64}} {
 		debug.SetMemoryLimit(math.MaxInt64)
 		variables := map[string]string{
-			"NYLZO_PEPPER":   testPepper,
-			"NYLZO_DATA_DIR": t.TempDir(),
-			"GOMEMLIMIT":     testCase.operatorLimit,
+			"NYLZO_PEPPER":     testPepper,
+			"NYLZO_REPORT_KEY": testReportKeyText,
+			"NYLZO_DATA_DIR":   t.TempDir(),
+			"GOMEMLIMIT":       testCase.operatorLimit,
 		}
 		if _, err := serveSettings(
 			&Environment{Getenv: func(name string) string { return variables[name] }},
@@ -117,6 +121,16 @@ func TestSweepOnceLeavesAMissingStoreAlone(t *testing.T) {
 }
 
 var testPepper = strings.Repeat("0123456789abcdef", 4)
+
+var testReportKey = func() hpke.PrivateKey {
+	key, err := abuse.NewKeyPair()
+	if err != nil {
+		panic(err)
+	}
+	return key
+}()
+
+var testReportKeyText = core.Encode(testReportKey.PublicKey().Bytes())
 
 func getenvFrom(values map[string]string) func(string) string {
 	return func(name string) string { return values[name] }
@@ -193,9 +207,10 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 		t,
 		"",
 		map[string]string{
-			"NYLZO_DATA_DIR": t.TempDir(),
-			"NYLZO_PEPPER":   testPepper,
-			"NYLZO_LISTEN":   taken.Addr().String(),
+			"NYLZO_DATA_DIR":   t.TempDir(),
+			"NYLZO_PEPPER":     testPepper,
+			"NYLZO_REPORT_KEY": testReportKeyText,
+			"NYLZO_LISTEN":     taken.Addr().String(),
 		},
 		nil,
 		"serve",
@@ -273,7 +288,7 @@ func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	if err = database.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("sweep-once migrated the database under a running older server: version %d %v", version, err)
 	}
-	if _, err = database.Exec(`PRAGMA user_version = 5`); err != nil {
+	if _, err = database.Exec(`PRAGMA user_version = 6`); err != nil {
 		t.Fatal(err)
 	}
 	if result = runWith(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, "sweep-once"); result.code != 1 ||

@@ -75,7 +75,7 @@ const instanceBody = {
   limits: {
     max_file_bytes: 5_242_880,
     max_text_bytes: 102_400,
-    max_object_bytes: 5_373_983,
+    max_object_bytes: 5_373_952,
     max_ttl_s: 604_800,
     default_ttl_s: 86_400,
     max_opens: 10,
@@ -517,7 +517,7 @@ function transparencyReport(change: Record<string, unknown> = {}) {
     limits: {
       max_file_bytes: 5_242_880,
       max_text_bytes: 102_400,
-      max_object_bytes: 5_373_983,
+      max_object_bytes: 5_373_952,
       max_ttl_s: 604_800,
       default_ttl_s: 86_400,
       max_opens: 10,

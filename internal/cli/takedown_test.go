@@ -33,7 +33,7 @@ func TestTakedownEndsReportedMessages(t *testing.T) {
 	variables := map[string]string{"NYLZO_DATA_DIR": instance.directory}
 
 	out := runWith(t, id+"\n\n"+id+"\n"+unknown+"\n", variables, nil, "takedown")
-	if out.code != exitOK || out.stdout != id+" deleted\n"+unknown+" no live message\n" {
+	if out.code != exitOK || out.stdout != id+" deleted\n"+unknown+" no message\n" {
 		t.Fatalf("%+v", out)
 	}
 	if read := runWith(
@@ -57,7 +57,7 @@ func TestTakedownEndsReportedMessages(t *testing.T) {
 		nil,
 		"takedown",
 	); again.code != exitOK ||
-		again.stdout != id+" no live message\n" {
+		again.stdout != id+" already ended\n" {
 		t.Fatalf("%+v", again)
 	}
 }

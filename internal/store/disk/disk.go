@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/store"
@@ -18,7 +19,10 @@ const (
 	Directory          = "blobs"
 	temporaryDirectory = "tmp"
 	maxRefLen          = 64
+	copyBufferLen      = 32 << 10
 )
+
+var copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
 
 var ErrRef = errors.New("disk: invalid blob reference")
 
@@ -183,7 +187,9 @@ func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	written, err := io.Copy(file, content)
+	buffer, _ := copyBuffers.Get().(*[copyBufferLen]byte)
+	written, err := io.CopyBuffer(struct{ io.Writer }{file}, content, buffer[:])
+	copyBuffers.Put(buffer)
 	if err == nil && written != size {
 		err = io.ErrUnexpectedEOF
 	}

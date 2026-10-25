@@ -28,17 +28,17 @@ func TestGeneratedPassphrasesAreStrongAndWellFormed(t *testing.T) {
 
 func TestMayHoldFileFollowsThePadding(t *testing.T) {
 	t.Parallel()
-	const overhead = core.HeaderLen + core.TagLen
 	cases := []struct {
 		objectBytes int64
 		mayHold     bool
 	}{
-		{overhead + core.PadText, false},
-		{overhead + 15*core.PadText, false},
-		{overhead + core.PadFile, true},
-		{overhead + 3*core.PadFile, true},
-		{overhead + 3*core.PadFile + core.PadText, false},
-		{overhead - 1, false},
+		{core.PadText, false},
+		{15 * core.PadText, false},
+		{core.PadFile, true},
+		{3 * core.PadFile, true},
+		{3*core.PadFile + core.PadText, false},
+		{core.PadFile + core.HeaderLen + core.TagLen, false},
+		{0, false},
 	}
 	for _, testCase := range cases {
 		if got := core.MayHoldFile(testCase.objectBytes); got != testCase.mayHold {

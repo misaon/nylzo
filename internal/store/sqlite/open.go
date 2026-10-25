@@ -65,21 +65,17 @@ func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) er
 }
 
 type statements struct {
-	getRecord      *sql.Stmt
-	leases         *sql.Stmt
-	lockedRecord   *sql.Stmt
+	loadRow        *sql.Stmt
 	hitCounter     *sql.Stmt
 	reserveCounter *sql.Stmt
 }
 
 func prepare(ctx context.Context, writer, reader *sql.DB) (*statements, error) {
 	prepared := &statements{}
-	var errs [5]error
-	prepared.getRecord, errs[0] = reader.PrepareContext(ctx, recordQuery)
-	prepared.leases, errs[1] = reader.PrepareContext(ctx, leasesQuery)
-	prepared.lockedRecord, errs[2] = writer.PrepareContext(ctx, recordQuery)
-	prepared.hitCounter, errs[3] = writer.PrepareContext(ctx, hitQuery)
-	prepared.reserveCounter, errs[4] = writer.PrepareContext(ctx, reserveQuery)
+	var errs [3]error
+	prepared.loadRow, errs[0] = reader.PrepareContext(ctx, rowQuery)
+	prepared.hitCounter, errs[1] = writer.PrepareContext(ctx, hitQuery)
+	prepared.reserveCounter, errs[2] = writer.PrepareContext(ctx, reserveQuery)
 	if err := errors.Join(errs[:]...); err != nil {
 		return nil, errors.Join(err, prepared.close())
 	}
@@ -88,7 +84,7 @@ func prepare(ctx context.Context, writer, reader *sql.DB) (*statements, error) {
 
 func (p *statements) close() error {
 	var errs []error
-	for _, statement := range []*sql.Stmt{p.getRecord, p.leases, p.lockedRecord, p.hitCounter, p.reserveCounter} {
+	for _, statement := range []*sql.Stmt{p.loadRow, p.hitCounter, p.reserveCounter} {
 		if statement != nil {
 			errs = append(errs, statement.Close())
 		}

@@ -10,10 +10,10 @@ Effective from [TO FILL IN: date].
 ## What we process
 
 - Message content: your browser encrypts it and we cannot read it. Because we do not know what it contains, we treat it as personal data and only store, deliver and delete it. The sender decides what a message contains and who receives it.
-- Message details: a random identifier, the sender's settings, the state, the number of opens and wrong passphrases, the rounded-up size, times to the minute and key fingerprints. They contain no name or IP address.
+- Message details: the sender's settings, the state, the number of opens and wrong passphrases, the size and times to the minute. We store them sealed and can read them only during a request from whoever has the link or the manage key. Only a fingerprint of the identifier and the time we delete the details stay readable. They contain no name or IP address.
 - IP address: only in the server's memory for anti-flooding limits, turned into a fingerprint with a random key. It is never written to disk or the log and is gone after a restart. The server reads the User-Agent header in memory to recognise link previews.
 - Logs: the time to the minute, the kind of request and the result. No IP address, message identifier or content.
-- Abuse reports: the date, the message identifier, the reason without codes from a link, the good-faith confirmation and your email address if you give one.
+- Abuse reports: the date, the message identifier, the reason without codes from a link, the good-faith confirmation and your email address if you give one. The server seals each report with the operator's key and cannot read it itself.
 
 The Transparency page shows the full, current list.
 
@@ -32,7 +32,7 @@ You can object to processing based on point (f).
 ## How long
 
 - Content: until the last open, cancellation or deletion, at the latest shortly after expiry (7 days at most).
-- Record of an ended message: 7 days.
+- Details of an ended message: 7 days, rounded up to the full hour.
 - IP fingerprints: in memory, at most until the server restarts.
 - Reports, including the email address: 7 days from the day of the report.
 - Logs: [TO FILL IN, 7 days at most].
@@ -47,14 +47,14 @@ You can object to processing based on point (f).
 ## Who receives data
 
 - The hosting provider [TO FILL IN], as a processor. HTTPS is terminated by [TO FILL IN].
-- Authorities only where the law requires it. We cannot hand over message content because we do not have the key.
+- Authorities only where the law requires it. We cannot hand over message content because we do not have the key, and we cannot read message details without the link.
 - Data stays in the EU [TO FILL IN, depending on the hosting].
 
 ## Your rights
 
 - You have the right to access, rectification, erasure, restriction, portability and to object.
 - You can complain to the Czech Office for Personal Data Protection (Pplk. Sochora 27, 170 00 Praha 7, uoou.gov.cz, posta@uoou.gov.cz) or to the authority in the country where you live.
-- We keep no accounts or IP addresses, so we usually cannot tell who you are (Art. 11 GDPR). The message identifier helps, together with proof that the message is yours, such as its status on the Sent messages page or the manage token from the nylzo program. Never send the whole link; it contains the key.
+- We keep no accounts or IP addresses and cannot read message details without the link or the manage key, so we usually cannot tell who you are (Art. 11 GDPR). You can see the details of your message yourself on the Sent messages page or with `nylzo status`. Never send the whole link; it contains the key.
 - We reply within one month, extendable by two months where justified.
 
 ## Other

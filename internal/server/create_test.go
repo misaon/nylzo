@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -40,6 +39,7 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("")
 	f.Add("not base64!")
 	settings := config.Defaults()
+	settings.ReportKey = testReportKey.PublicKey()
 	allowed := map[string]bool{
 		"id":           true,
 		"id_token":     true,
@@ -256,7 +256,7 @@ func TestCreateValidation(t *testing.T) {
 	if response.StatusCode != http.StatusBadRequest {
 		t.Fatalf("kdf mismatch between header and envelope: %d", response.StatusCode)
 	}
-	if harness.blobExists(wrongKDF.id) {
+	if harness.storedBlobs() != 0 {
 		t.Fatal("rejected object stored")
 	}
 	tooMany := newMessage(t, core.KDFNone, "", 11, 3600, "v")
@@ -287,7 +287,7 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
 	limits := decodeJSON(t, body)["limits"].(map[string]any)
-	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
+	if limits["max_object_bytes"] != float64(5373952) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
 		t.Fatalf("instance reports %v", limits)
 	}
 }
@@ -961,7 +961,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 
 type failingCreateStore struct{ store.Store }
 
-func (failingCreateStore) Create(context.Context, *store.Message, ...store.RateHit) error {
+func (failingCreateStore) Create(context.Context, *store.Row, ...store.RateHit) error {
 	return errInjected
 }
 
@@ -974,8 +974,8 @@ func TestFailedRowWriteRemovesTheUploadedBlob(t *testing.T) {
 	if response, _ := harness.create(message); response.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("create with a failing row write: %d", response.StatusCode)
 	}
-	if harness.blobExists(message.id) {
-		t.Fatal("the ciphertext of a create that stored no row stays in the blob store")
+	if objects, err := harness.blobs.List(t.Context()); err != nil || len(objects) != 0 {
+		t.Fatalf("the ciphertext of a create that stored no row stays in the blob store: %v %v", objects, err)
 	}
 }
 
@@ -1020,7 +1020,7 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 		}
 	}
 	for _, message := range []*testMessage{none, withPassphrase} {
-		if _, err := harness.store.Get(t.Context(), message.id.String()); err == nil {
+		if _, err := harness.record(message); err == nil {
 			t.Fatalf("a rejected create stored %s", message.id)
 		}
 	}
@@ -1074,7 +1074,7 @@ func TestTruncatedCreateStoresNothing(t *testing.T) {
 	if !strings.Contains(line, " 400 ") {
 		t.Fatalf("status line %q", line)
 	}
-	if harness.blobExists(message.id) {
+	if harness.storedBlobs() != 0 {
 		t.Fatal("truncated body stored")
 	}
 	if response, _ := harness.metadata(message); response.StatusCode != http.StatusNotFound {
@@ -1150,23 +1150,20 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 	if got, _ := harness.claim(message, "", ""); got.StatusCode != http.StatusOK {
 		t.Fatalf("claim: %d", got.StatusCode)
 	}
-	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
+	record := harness.mustRecord(message)
+	created, expires := record.Message.CreatedAt, record.Message.ExpiresAt
+	lease := record.Message.Leases[0].ExpiresAt
+	if created.Truncate(time.Minute) != created || expires.Truncate(time.Minute) != expires ||
+		lease.Truncate(time.Minute) != lease {
+		t.Fatalf("stored times must be whole minutes: created %v, expires %v, lease %v", created, expires, lease)
 	}
-	defer database.Close()
-	var created, expires, lease int64
-	if queryRowErr := database.QueryRow(`SELECT m.created_at, m.expires_at, l.lease_expires_at FROM messages m JOIN leases l ON l.id = m.id WHERE m.id = ?`, message.id.String()).
-		Scan(&created, &expires, &lease); queryRowErr != nil {
-		t.Fatal(queryRowErr)
+	if !created.Equal(time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)) ||
+		lease.Before(harness.clock.Now().Add(store.LeaseDuration)) {
+		t.Fatalf("created_at rounds down, the lease rounds up: created %v, lease %v", created, lease)
 	}
-	minute := time.Minute.Milliseconds()
-	if created%minute != 0 || expires%minute != 0 || lease%minute != 0 {
-		t.Fatalf("stored times must be whole minutes: created %d, expires %d, lease %d", created, expires, lease)
-	}
-	if created != time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC).UnixMilli() ||
-		lease < harness.clock.Now().Add(store.LeaseDuration).UnixMilli() {
-		t.Fatalf("created_at rounds down, the lease rounds up: created %d, lease %d", created, lease)
+	if blobPurge := record.Row.BlobPurgeAt; blobPurge.Truncate(store.BlobPurgeStep) != blobPurge ||
+		record.Row.PurgeAt.Truncate(store.RowPurgeStep) != record.Row.PurgeAt {
+		t.Fatalf("the cleanup times in the clear must be rounded: %v %v", blobPurge, record.Row.PurgeAt)
 	}
 }
 

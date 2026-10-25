@@ -88,6 +88,7 @@ func newPublicWebTestServer(
 	settings := config.Defaults()
 	settings.DataDir = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.Version = version
 	settings.PublicURL = publicURL
 	storage, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))

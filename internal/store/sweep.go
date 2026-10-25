@@ -5,32 +5,29 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/misaon/nylzo/internal/seal"
 )
 
 type SweepReport struct {
-	Expired        int
-	ExpiredLeases  int
-	BlobsReleased  int
-	Tombstones     int
+	Blobs          int
+	Rows           int
 	Counters       int
-	Resumed        int
 	OrphanedBlobs  int
 	StaleTempFiles int
 }
 
 func (r SweepReport) LogAttrs() []any {
 	return []any{
-		"expired", r.Expired,
-		"leases", r.ExpiredLeases,
-		"released", r.BlobsReleased,
-		"tombstones", r.Tombstones,
+		"blobs", r.Blobs,
+		"rows", r.Rows,
 		"counters", r.Counters,
-		"resumed", r.Resumed,
 		"orphans", r.OrphanedBlobs,
 		"temp", r.StaleTempFiles,
 	}
 }
 
+// SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed.
 func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (SweepReport, error) {
 	var report SweepReport
 	var errs []error
@@ -39,130 +36,60 @@ func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (S
 		*total = done
 		errs = append(errs, err)
 	}
-	count(&report.Expired, func() (int, error) { return sweepExpired(ctx, storage, blobs, now) })
-	count(&report.ExpiredLeases, func() (int, error) { return purge(ctx, "leases", storage.PurgeLeases, now) })
-	count(&report.BlobsReleased, func() (int, error) {
-		spent := func(after string) ([]string, error) { return storage.SpentPage(ctx, after, SweepBatch) }
-		release := func(id string) (bool, error) { return Release(ctx, storage, blobs, id, now) }
-		return eachPage(ctx, "release", spent, release)
-	})
-	count(&report.Resumed, func() (int, error) {
-		ending := func(after string) ([]string, error) { return storage.EndingPage(ctx, now, after, SweepBatch) }
-		finish := func(id string) (bool, error) {
-			_, err := EndMessage(ctx, storage, blobs, id, StateDeleted, now)
-			if errors.Is(err, ErrNotFound) {
-				return false, nil
-			}
-			return err == nil, err
-		}
-		return eachPage(ctx, "resume ending", ending, finish)
-	})
-	count(&report.Tombstones, func() (int, error) { return purge(ctx, "tombstones", storage.PurgeTombstones, now) })
+	count(&report.Blobs, func() (int, error) { return deleteDueBlobs(ctx, storage, blobs, now) })
+	count(&report.Rows, func() (int, error) { return purge(ctx, "rows", storage.PurgeRows, now) })
 	count(&report.Counters, func() (int, error) { return purge(ctx, "counters", storage.RatePurge, now) })
 	errs = append(errs, storage.Checkpoint(ctx))
 	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemp(ctx, now.Add(-BlobGrace)) })
 	return report, errors.Join(errs...)
 }
 
-func sweepExpired(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (int, error) {
+func deleteDueBlobs(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (int, error) {
 	var errs []error
-	ended := 0
-	var after ExpiredMessage
+	deleted := 0
+	var after seal.Locator
 	for ctx.Err() == nil {
-		page, err := messages.ExpiredPage(ctx, now, after, SweepBatch)
+		page, err := messages.DueBlobs(ctx, now, after, SweepBatch)
 		if err != nil {
-			return ended, errors.Join(append(errs, fmt.Errorf("store: list expired: %w", err))...)
+			return deleted, errors.Join(append(errs, fmt.Errorf("store: list due blobs: %w", err))...)
 		}
-		endedOnPage, err := endExpiredPage(context.WithoutCancel(ctx), messages, blobs, page, now)
-		ended += endedOnPage
+		deletedOnPage, err := deleteBlobPage(context.WithoutCancel(ctx), messages, blobs, page)
+		deleted += deletedOnPage
 		errs = append(errs, err)
 		if len(page) < SweepBatch {
 			break
 		}
-		after = page[len(page)-1]
+		after = page[len(page)-1].Locator
 	}
-	return ended, errors.Join(errs...)
+	return deleted, errors.Join(errs...)
 }
 
-func endExpiredPage(
-	ctx context.Context,
-	messages Messages,
-	blobs Blobs,
-	page []ExpiredMessage,
-	now time.Time,
-) (int, error) {
-	refs := make([]string, 0, len(page))
-	for _, expired := range page {
-		if expired.BlobRef != "" {
-			refs = append(refs, expired.BlobRef)
-		}
+func deleteBlobPage(ctx context.Context, messages Messages, blobs Blobs, page []DueBlob) (int, error) {
+	if len(page) == 0 {
+		return 0, nil
 	}
-	var deleteErrs []error
-	if len(refs) > 0 {
-		deleteErrs = blobs.DeleteBatch(ctx, refs)
+	if err := messages.ShredBlobs(ctx, page); err != nil {
+		return 0, fmt.Errorf("store: shred blobs: %w", err)
+	}
+	refs := make([]string, len(page))
+	for i, due := range page {
+		refs[i] = due.Ref
 	}
 	var errs []error
-	ids := make([]string, 0, len(page))
-	for _, expired := range page {
-		if expired.BlobRef != "" {
-			deleteErr := deleteErrs[0]
-			deleteErrs = deleteErrs[1:]
-			if deleteErr != nil {
-				errs = append(errs, fmt.Errorf("store: end expired: %w", deleteErr))
-				continue
-			}
-		}
-		ids = append(ids, expired.ID)
-	}
-	if len(ids) == 0 {
-		return 0, errors.Join(errs...)
-	}
-	ended, err := messages.EndExpired(ctx, ids, now)
-	return ended, errors.Join(append(errs, err)...)
-}
-
-func eachPage(
-	ctx context.Context,
-	step string,
-	page func(after string) ([]string, error),
-	handle func(id string) (bool, error),
-) (int, error) {
-	var errs []error
-	done := 0
-	after := ""
-	for ctx.Err() == nil {
-		ids, err := page(after)
+	deleted := make([]DueBlob, 0, len(page))
+	for i, err := range blobs.DeleteBatch(ctx, refs) {
 		if err != nil {
-			return done, errors.Join(append(errs, fmt.Errorf("store: %s: %w", step, err))...)
-		}
-		handled, pageErrs := handleAll(ctx, step, ids, handle)
-		done += handled
-		errs = append(errs, pageErrs...)
-		if len(ids) < SweepBatch {
-			break
-		}
-		after = ids[len(ids)-1]
-	}
-	return done, errors.Join(errs...)
-}
-
-func handleAll(ctx context.Context, step string, ids []string, handle func(id string) (bool, error)) (int, []error) {
-	done := 0
-	var errs []error
-	for _, id := range ids {
-		if ctx.Err() != nil {
-			break
-		}
-		handled, err := handle(id)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("store: %s: %w", step, err))
+			errs = append(errs, fmt.Errorf("store: delete blob: %w", err))
 			continue
 		}
-		if handled {
-			done++
+		deleted = append(deleted, page[i])
+	}
+	if len(deleted) > 0 {
+		if err := messages.ForgetBlobs(ctx, deleted); err != nil {
+			return 0, errors.Join(append(errs, fmt.Errorf("store: forget blobs: %w", err))...)
 		}
 	}
-	return done, errs
+	return len(deleted), errors.Join(errs...)
 }
 
 func purge(

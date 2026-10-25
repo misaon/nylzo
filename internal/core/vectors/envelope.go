@@ -62,8 +62,8 @@ var envelopeCases = []envelopeCase{
 		ttl:   3600,
 		text:  new("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash \u2028 line sep \U0001F600"),
 	},
-	{name: "text-exact-4096", opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4075))},
-	{name: "text-4097", opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4076))},
+	{name: "text-exact-4096", opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4044))},
+	{name: "text-4097", opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4045))},
 	{name: "file-empty", opens: 1, ttl: 86400, file: &fileCase{name: "empty.bin", mime: octetStream}},
 	{
 		name:  "file-one-byte",

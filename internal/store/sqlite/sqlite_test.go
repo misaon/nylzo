@@ -13,13 +13,12 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 	"github.com/misaon/nylzo/internal/store/storetest"
 )
-
-const legacyID = "AAAAAAAAAAAAAAAAAAAAAA"
 
 var (
 	testNow = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
@@ -64,51 +63,53 @@ func openRaw(t *testing.T, path string) *sql.DB {
 	return database
 }
 
-func newMessage(opens uint16, passphrase bool) *store.Message {
-	id := core.NewID().String()
+func newRecord(opens uint16, passphrase bool) *store.Record {
+	id, ref := core.NewID(), core.NewID()
 	message := &store.Message{
-		ID:             id,
 		Version:        1,
-		State:          store.StateAvailable,
 		CreatedAt:      testNow,
 		ExpiresAt:      testNow.Add(time.Hour),
 		TTLSeconds:     3600,
 		OpensMax:       opens,
 		OpensRemaining: opens,
-		PepperID:       7,
-		ReadMAC:        testMAC,
-		ManageMAC:      testMAC,
 		Size:           64,
-		BlobRef:        id,
 	}
 	if passphrase {
 		message.KDF = 1
 		message.VerifierMAC = testMAC
+		message.VerifierPepperID = 7
 	}
-	return message
+	record := store.NewRecord(
+		seal.LocatorOf(id[:]),
+		message,
+		core.NewSecret()[:],
+		core.NewSecret()[:],
+		ref.String(),
+		seal.NewKey(),
+	)
+	return &record
 }
 
-func create(tb testing.TB, storage *sqlite.Store, message *store.Message, counters ...store.RateHit) {
+func create(tb testing.TB, storage *sqlite.Store, record *store.Record, counters ...store.RateHit) {
 	tb.Helper()
-	if err := storage.Create(tb.Context(), message, counters...); err != nil {
+	if err := storage.Create(tb.Context(), &record.Row, counters...); err != nil {
 		tb.Fatal(err)
 	}
 }
 
-func claim(tb testing.TB, storage store.Messages, message *store.Message, now time.Time) store.ClaimResult {
+func claim(tb testing.TB, storage store.Messages, record *store.Record, now time.Time) store.ClaimResult {
 	tb.Helper()
-	claimed, err := storage.Claim(tb.Context(), claimParams(message, now))
+	claimed, err := store.Claim(tb.Context(), storage, record, claimParams(now))
 	if err != nil {
 		tb.Fatal(err)
 	}
 	return claimed
 }
 
-func claimParams(message *store.Message, now time.Time) store.ClaimParameters {
+func claimParams(now time.Time) store.ClaimParameters {
 	return store.ClaimParameters{
-		ID:            message.ID,
 		Clock:         func() time.Time { return now },
-		LeaseMAC:      testMAC,
+		LeaseMAC:      core.NewSecret()[:],
 		LeasePepperID: 7,
 	}
 }
@@ -155,7 +156,8 @@ func openConcurrently(ctx context.Context, path string, openers int) error {
 				errs[i] = err
 				return
 			}
-			if _, err = opened.Get(ctx, legacyID); err != nil && !errors.Is(err, store.ErrNotFound) {
+			unknown := core.NewID()
+			if _, err = opened.Load(ctx, seal.LocatorOf(unknown[:])); err != nil && !errors.Is(err, store.ErrNotFound) {
 				errs[i] = err
 			}
 			errs[i] = errors.Join(errs[i], opened.Close())
@@ -247,18 +249,19 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	storage, blobs := openStore(t, filepath.Join(directory, "nylzo.db")), newBlobs(t, directory)
-	message := newMessage(1, false)
-	if err := blobs.Put(t.Context(), message.ID, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+	record := newRecord(1, false)
+	if err := blobs.Put(t.Context(), record.Row.BlobRef, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
-	create(t, storage, message)
-	claimed := claim(t, storage, message, testNow)
+	create(t, storage, record)
+	claimed := claim(t, storage, record, testNow)
 	ctx, cancel := context.WithCancel(t.Context())
 	leaving := cancelOnDelete{Blobs: blobs, cancel: cancel}
-	if err := store.AckLease(ctx, storage, leaving, &claimed.Lease, testNow); err != nil {
+	if err := store.Ack(ctx, storage, leaving, record, claimed.Lease.MAC, testNow); err != nil {
 		t.Fatalf("an ack whose client left after the commit: %v", err)
 	}
-	if record, err := storage.Get(t.Context(), message.ID); err != nil || record.Tombstone == nil {
-		t.Fatalf("the ack left the message without its tombstone: %+v %v", record, err)
+	row, err := storage.Load(t.Context(), record.Row.Locator)
+	if err != nil || row.BlobRef != "" || row.BlobWrap != nil {
+		t.Fatalf("the ack left the blob behind: %+v %v", row, err)
 	}
 }

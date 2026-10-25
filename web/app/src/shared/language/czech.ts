@@ -166,17 +166,17 @@ export const czech = {
   'transparency.operator.missing': 'Provozovatel tyto údaje neuvedl.',
   'transparency.stores.title': 'Co server ukládá',
   'transparency.stores.content':
-    'Zašifrovanou zprávu. Klíč je jen v části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
+    'Zašifrovanou zprávu, ještě jednou zašifrovanou vlastním klíčem a\u{A0}doplněnou tak, aby uložená délka prozradila jen přibližnou velikost. Klíč k\u{A0}obsahu je jen v\u{A0}části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
   'transparency.stores.metadata':
-    'U každé zprávy id z odkazu, zda ji chrání passphrase, počet otevření a chybných passphrase, platnost, zarovnanou velikost a časy zaokrouhlené na minutu. Během otevírání navíc záznam o rozpracovaném stažení, dokud neskončí.',
+    'U\u{A0}každé zprávy zapečetěný záznam s\u{A0}jejím nastavením, počty a\u{A0}časy zaokrouhlenými na minutu. Server ho otevře jen během požadavku s\u{A0}odkazem nebo správcovským klíčem, takže kopie serveru z\u{A0}něj nic neukáže. Čitelně drží jen hash id zprávy a\u{A0}čas úklidu zaokrouhlený nahoru na čtvrthodinu nebo hodinu.',
   'transparency.stores.keys':
-    'Místo klíčů jen jejich otisky (HMAC s tajemstvím serveru), které bez odkazu nikomu nepomohou.',
+    'Žádné klíče ani veřejné klíče. Co server potřebuje k\u{A0}otevření záznamu, dostane jen v\u{A0}požadavku s\u{A0}odkazem nebo správcovským klíčem.',
   'transparency.stores.ended':
-    'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Pak o\u{A0}ní nejdéle {days} drží jen krátký záznam: jak a\u{A0}kdy skončila, kdy byla poprvé otevřena a\u{A0}otisky jejích klíčů.',
+    'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Nejdřív zahodí klíč uložené zprávy, takže nejde přečíst ani její zbytek na disku. Zapečetěný záznam skončené zprávy drží nejdéle {days}: jak a\u{A0}kdy skončila a\u{A0}kdy byla poprvé otevřena.',
   'transparency.stores.abuse':
-    'Hlášení zneužití: datum, id zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel sám uvedl, nejdéle {days}.',
+    'Hlášení zneužití, zapečetěná veřejným klíčem provozovatele, takže je server sám nepřečte: datum, id zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel sám uvedl, nejdéle {days}.',
   'transparency.stores.counters':
-    'Počítadla bez adres: denní počty vytvořených zpráv a\u{A0}hlášení na zprávu drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
+    'Počítadla bez adres: denní počty vytvořených zpráv drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut. Hlášení na zprávu počítá v\u{A0}jejím zapečetěném záznamu.',
   'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
   'transparency.stores.enforced':
     'Platnost a\u{A0}počet otevření jsou pravidla, která vynucuje tento server, ne šifrování. Server v\u{A0}cizích rukou by mohl šifrovanou zprávu ponechat, a\u{A0}pak ji chrání jen utajení odkazu a\u{A0}passphrase.',
@@ -188,7 +188,7 @@ export const czech = {
   'transparency.others.hosting':
     'Poskytovatel hostingu a proxy, která ukončuje HTTPS, vidí IP adresy, časy a velikosti požadavků a logují podle svých pravidel. Obsah zprávy nevidí.',
   'transparency.others.client':
-    'Kdo ovládá server nebo hosting, může poslat upravený webový klient a přečíst zprávy, které v něm vytvoříte nebo otevřete. Proti tomu chrání CLI z podepsaného vydání. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
+    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které mezitím někdo otevře nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Proti tomu chrání CLI z\u{A0}podepsaného vydání. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
   'transparency.limits.title': 'Limity této instance',
   'transparency.limits.file': 'Největší příloha',
   'transparency.limits.ttl': 'Nejdelší platnost',

@@ -198,6 +198,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	}
 	gated := &gatedPut{Blobs: blobs, entered: make(chan struct{}), release: make(chan struct{})}
 	settings := config.Defaults()
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.DataDir = directory
 	settings.Pepper = bytes.Repeat([]byte{1}, 32)
 	server, err := New(&settings, database, gated, WithLogger(slog.New(slog.DiscardHandler)))
@@ -298,7 +299,7 @@ func (w *deadlineWriter) SetWriteDeadline(deadline time.Time) error {
 
 func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	t.Parallel()
-	const size = 5373983
+	const size = 5373952
 	want := time.Duration(size) * time.Second / store.MinTransferRate
 	if want <= writeTimeout || store.LeaseFor(size) != want || store.LeaseFor(1000) != store.LeaseDuration {
 		t.Fatalf("lease for %d bytes %v, small %v", size, store.LeaseFor(size), store.LeaseFor(1000))
@@ -307,12 +308,13 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	blobWriter := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	start := time.Now()
-	blobServer.serveBlob(blobWriter, r, &store.Message{ID: "x"}, "", strings.NewReader("x"), size)
+	blobServer.serveBlob(blobWriter, r, &store.Message{Size: size}, "", strings.NewReader("x"))
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
 
 	settings := config.Defaults()
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.DataDir = t.TempDir()
 	settings.Pepper = bytes.Repeat([]byte{1}, 32)
 	database, err := sqlite.Open(t.Context(), filepath.Join(settings.DataDir, "nylzo.db"))
@@ -415,6 +417,7 @@ func (b *lockedBuffer) String() string {
 func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
 	tb.Helper()
 	settings := config.Defaults()
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.DataDir = tb.TempDir()
 	settings.Pepper = bytes.Repeat([]byte{1}, 32)
 	if change != nil {
@@ -607,6 +610,7 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 		"no PoW slot": func(settings *config.Server) { settings.PoWConcurrency = 0 },
 	} {
 		settings := config.Defaults()
+		settings.ReportKey = testReportKey.PublicKey()
 		settings.Pepper = bytes.Repeat([]byte{1}, 32)
 		change(&settings)
 		if _, err := New(&settings, database, nil); !errors.Is(err, config.ErrInvalid) {

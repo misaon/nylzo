@@ -1,7 +1,7 @@
 package abuse
 
 import (
-	"context"
+	"crypto/hpke"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -12,89 +12,38 @@ import (
 	"sync"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/logging"
-	"github.com/misaon/nylzo/internal/server/ratelimit"
-	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	Retention        = 7 * 24 * time.Hour
-	directoryName    = "abuse"
-	fileExtension    = ".jsonl"
-	legacyFile       = "abuse-reports.jsonl"
-	maxFilesBytes    = 16 << 20
-	perMessagePerDay = 3
-	counterKeyPrefix = "abuse:id:"
+	Retention       = 7 * 24 * time.Hour
+	directoryName   = "abuse"
+	FileExtension   = ".sealed"
+	legacyExtension = ".jsonl"
+	legacyFile      = "abuse-reports.jsonl"
+	maxFilesBytes   = 64 << 20
 )
 
-var (
-	ErrFull  = errors.New("server: abuse report files reached their size limit")
-	ErrLimit = errors.New("server: the message already has its reports for the day")
-)
-
-type Report struct {
-	ID        string
-	Reason    string
-	Contact   string
-	GoodFaith bool
-}
-
-type record struct {
-	Date      string `json:"date"`
-	ID        string `json:"id"`
-	Reason    string `json:"reason"`
-	GoodFaith bool   `json:"good_faith"`
-	Contact   string `json:"contact,omitempty"`
-}
+var ErrFull = errors.New("server: abuse report files reached their size limit")
 
 type Reports struct {
 	directory string
-	counters  store.Counters
+	key       hpke.PublicKey
 	logger    *slog.Logger
 	mutex     sync.Mutex
 }
 
-func NewReports(dataDir string, counters store.Counters, logger *slog.Logger) *Reports {
-	return &Reports{directory: Directory(dataDir), counters: counters, logger: logger}
+func NewReports(dataDir string, key hpke.PublicKey, logger *slog.Logger) *Reports {
+	return &Reports{directory: Directory(dataDir), key: key, logger: logger}
 }
 
 func Directory(dataDir string) string {
 	return filepath.Join(dataDir, directoryName)
 }
 
-// Record stores at most three reports per message and UTC day and keeps the count only for stored reports.
-func (r *Reports) Record(ctx context.Context, now time.Time, report *Report) error {
-	day := ratelimit.Day(now)
-	key := counterKeyPrefix + report.ID
-	count, err := r.counters.RateReserve(
-		context.WithoutCancel(ctx),
-		store.RateHit{Key: key, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: perMessagePerDay},
-	)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return ErrLimit
-	}
-	appendErr := r.append(now, report)
-	if appendErr == nil {
-		return nil
-	}
-	if releaseErr := r.counters.RateRelease(context.WithoutCancel(ctx), key, day.Start); releaseErr != nil {
-		r.logger.ErrorContext(ctx, "abuse-release", "err", logging.ErrorText(releaseErr))
-	}
-	return appendErr
-}
-
-func (r *Reports) append(now time.Time, report *Report) error {
-	line, err := json.Marshal(record{
-		Date:      reportDate(now),
-		ID:        report.ID,
-		Reason:    core.RedactReason(report.Reason),
-		GoodFaith: report.GoodFaith,
-		Contact:   report.Contact,
-	})
+// Record seals the report to the operator's public key and appends it to the file of its UTC day.
+func (r *Reports) Record(now time.Time, report *Report) error {
+	sealed, err := Seal(r.key, now, report)
 	if err != nil {
 		return err
 	}
@@ -110,30 +59,91 @@ func (r *Reports) append(now time.Time, report *Report) error {
 	if err != nil {
 		return err
 	}
-	if used+int64(len(line))+1 > maxFilesBytes {
+	if used+int64(len(sealed)) > maxFilesBytes {
 		return ErrFull
 	}
-	path := filepath.Join(r.directory, reportDate(now)+fileExtension)
-	if writeErr := appendLine(path, line); writeErr != nil {
-		return writeErr
-	}
-	start := ratelimit.Day(now).Start
-	if timesErr := errors.Join(os.Chtimes(path, start, start), os.Chtimes(r.directory, start, start)); timesErr != nil {
-		r.logger.Error("abuse-times", "err", logging.ErrorText(timesErr))
-	}
-	return nil
+	return r.appendToDay(reportDate(now), sealed)
 }
 
-func appendLine(path string, line []byte) error {
+// SealLegacy seals the reports that older builds kept in the clear, then deletes their files.
+func (r *Reports) SealLegacy() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	legacy := []string{filepath.Join(filepath.Dir(r.directory), legacyFile)}
+	entries, err := os.ReadDir(r.directory)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), legacyExtension) {
+			legacy = append(legacy, filepath.Join(r.directory, entry.Name()))
+		}
+	}
+	var errs []error
+	for _, path := range legacy {
+		errs = append(errs, r.sealLegacyFile(path))
+	}
+	return errors.Join(errs...)
+}
+
+func (r *Reports) sealLegacyFile(path string) error {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	byDay := map[string][]byte{}
+	for line := range strings.Lines(string(data)) {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var stored Stored
+		if decodeErr := json.Unmarshal([]byte(line), &stored); decodeErr != nil {
+			return decodeErr
+		}
+		if _, dateErr := time.Parse(time.DateOnly, stored.Date); dateErr != nil {
+			return dateErr
+		}
+		sealed, sealErr := sealStored(r.key, &stored)
+		if sealErr != nil {
+			return sealErr
+		}
+		byDay[stored.Date] = append(byDay[stored.Date], sealed...)
+	}
+	if mkdirErr := os.MkdirAll(r.directory, 0o700); mkdirErr != nil {
+		return mkdirErr
+	}
+	for day, sealed := range byDay {
+		if appendErr := r.appendToDay(day, sealed); appendErr != nil {
+			return appendErr
+		}
+	}
+	return removeFile(path)
+}
+
+func (r *Reports) appendToDay(day string, sealed []byte) error {
+	path := filepath.Join(r.directory, day+FileExtension)
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
-	_, err = file.Write(append(line, '\n'))
-	return errors.Join(err, file.Sync(), file.Close())
+	_, writeErr := file.Write(sealed)
+	if closeErr := errors.Join(writeErr, file.Sync(), file.Close()); closeErr != nil {
+		return closeErr
+	}
+	start, err := time.Parse(time.DateOnly, day)
+	if err == nil {
+		err = errors.Join(os.Chtimes(path, start, start), os.Chtimes(r.directory, start, start))
+	}
+	if err != nil {
+		r.logger.Error("abuse-times", "err", logging.ErrorText(err))
+	}
+	return nil
 }
 
-// Prune deletes the day files older than the retention and the report file of older builds.
+// Prune deletes the day files older than the retention, sealed or from older builds.
 func Prune(dataDir string, now time.Time) error {
 	return pruneDirectory(Directory(dataDir), now)
 }
@@ -184,8 +194,11 @@ func reportDate(moment time.Time) string {
 }
 
 func reportDay(name string) (string, bool) {
-	day, ok := strings.CutSuffix(name, fileExtension)
-	if _, err := time.Parse(time.DateOnly, day); !ok || err != nil {
+	day, sealed := strings.CutSuffix(name, FileExtension)
+	if !sealed {
+		day, sealed = strings.CutSuffix(name, legacyExtension)
+	}
+	if _, err := time.Parse(time.DateOnly, day); !sealed || err != nil {
 		return "", false
 	}
 	return day, true

@@ -14,6 +14,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -42,7 +43,11 @@ func FromEnv(getenv func(string) string, needPepper bool) (Server, error) {
 		}
 	}
 	settings.Limits.MaxObjectBytes = core.ObjectLimit(settings.Limits.MaxFileBytes)
-	if needPepper && len(settings.Pepper) == 0 {
+	if !needPepper {
+		err := settings.validateWithoutReports()
+		return settings, err
+	}
+	if len(settings.Pepper) == 0 {
 		return settings, fmt.Errorf(
 			"%w: NYLZO_PEPPER or NYLZO_PEPPER_FILE is required (32 bytes, hex or base64url)",
 			ErrInvalid,
@@ -98,6 +103,11 @@ func (s *Server) variables() []variable {
 		{"NYLZO_OPERATOR", text(&s.Operator.Name)},
 		{"NYLZO_CONTACT", text(&s.Operator.Contact)},
 		{"NYLZO_HOSTING", text(&s.Operator.Hosting)},
+		{"NYLZO_REPORT_KEY", func(value string) error {
+			key, err := abuse.ParsePublicKey(value)
+			s.ReportKey = key
+			return err
+		}},
 		{"NYLZO_PUBLIC_URL", func(value string) error {
 			s.PublicURL = value
 			return webclient.CheckPublicURL(value)

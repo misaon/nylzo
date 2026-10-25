@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -100,7 +101,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	if got := harness.ack(message, lease); got.StatusCode != http.StatusNoContent {
 		t.Fatalf("ack: %d", got.StatusCode)
 	}
-	if harness.blobExists(message.id) {
+	if harness.blobExists(message) {
 		t.Fatal("blob survived the last ack")
 	}
 	if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusGone {
@@ -275,14 +276,14 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 		}
 	}
 	harness.clock.Advance(time.Second)
-	if !harness.blobExists(message.id) {
+	if !harness.blobExists(message) {
 		t.Fatal("blob deleted before any request, timer or sweep")
 	}
 	harness.clock.Advance(store.LeaseTimerSlack)
 	if fired := harness.fireTimers(); fired != 1 {
 		t.Fatalf("timers fired: %d", fired)
 	}
-	if harness.blobExists(message.id) {
+	if harness.blobExists(message) {
 		t.Fatal("timer did not delete the blob")
 	}
 	for _, lease := range leases {
@@ -310,7 +311,7 @@ func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
 	if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusGone {
 		t.Fatalf("blob at expiry: %d", got.StatusCode)
 	}
-	if harness.blobExists(message.id) {
+	if harness.blobExists(message) {
 		t.Fatal("request after the last lease expired must release the blob")
 	}
 	if harness.pendingTimers() != 1 {
@@ -330,14 +331,15 @@ func TestAK6SweepAfterRestart(t *testing.T) {
 	}
 	harness.reopen(&harness.settings)
 	harness.clock.Advance(store.LeaseDuration + time.Second)
-	if !harness.blobExists(message.id) {
+	if !harness.blobExists(message) {
 		t.Fatal("blob gone before sweep")
 	}
+	harness.clock.Set(store.CeilMinute(harness.clock.Now()).Truncate(store.BlobPurgeStep).Add(store.BlobPurgeStep))
 	report, err := harness.server.SweepOnce(t.Context())
-	if err != nil || report.BlobsReleased != 1 {
+	if err != nil || report.Blobs != 1 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
-	if harness.blobExists(message.id) {
+	if harness.blobExists(message) {
 		t.Fatal("sweep left the blob")
 	}
 }
@@ -352,7 +354,7 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 	if response.StatusCode != http.StatusOK || metadata["state"] != "expired" {
 		t.Fatalf("lazy expiry: %d %v", response.StatusCode, metadata)
 	}
-	if harness.blobExists(message.id) {
+	if harness.blobExists(message) {
 		t.Fatal("expired blob kept")
 	}
 	if got, _ := harness.claim(message, "", ""); got.StatusCode != http.StatusGone {
@@ -360,17 +362,17 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 	}
 	secondMessage := newMessage(t, core.KDFNone, "", 1, 60, "swept")
 	harness.mustCreate(secondMessage)
-	harness.clock.Advance(2 * time.Minute)
+	harness.clock.Advance(store.BlobPurgeStep)
 	report, err := harness.server.SweepOnce(t.Context())
-	if err != nil || report.Expired != 1 || harness.blobExists(secondMessage.id) {
+	if err != nil || report.Blobs != 1 || harness.blobExists(secondMessage) {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
-	harness.clock.Advance(7 * 24 * time.Hour)
+	harness.clock.Advance(store.TombstoneTTL + store.RowPurgeStep)
 	if _, sweepOnceErr := harness.server.SweepOnce(t.Context()); sweepOnceErr != nil {
 		t.Fatal(sweepOnceErr)
 	}
 	if got, _ := harness.metadata(message); got.StatusCode != http.StatusNotFound {
-		t.Fatalf("after tombstone purge: %d", got.StatusCode)
+		t.Fatalf("after the row purge: %d", got.StatusCode)
 	}
 	if got, body := createWithToken(
 		t,
@@ -400,7 +402,7 @@ func TestAckRefusesALeaseThatIsNotActive(t *testing.T) {
 	if code := harness.ack(message, core.Encode(core.NewSecret()[:])).StatusCode; code != http.StatusGone {
 		t.Fatalf("an ack with a lease the server never issued: %d", code)
 	}
-	if !harness.blobExists(message.id) {
+	if !harness.blobExists(message) {
 		t.Fatal("an ack with a foreign lease deleted the blob")
 	}
 	harness.clock.Advance(store.LeaseDuration + time.Minute)
@@ -473,7 +475,7 @@ func TestDownloadAfterExpiryWithAStuckDeleteIsGone(t *testing.T) {
 	if response.StatusCode != http.StatusOK || lease == "" {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
-	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[message.id.String()] = true })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(message)] = true })
 	harness.clock.Advance(61 * time.Second)
 	if got, body := harness.blob(
 		message,
@@ -561,7 +563,6 @@ type lifecycleKind struct {
 	ttl    uint32
 	ending store.State
 	after  time.Duration
-	opened bool
 	expect [11]string
 }
 
@@ -586,7 +587,7 @@ func recordedRow(state store.State) [11]string {
 		"410 " + stateName + " tomb:" + stateName,
 		"200 " + stateName + " tomb:" + stateName,
 		"- - tomb:" + stateName,
-		"- - live:" + stateName,
+		"- - tomb:" + stateName,
 		"200 " + stateName + " tomb:" + stateName,
 		"- - tomb:" + stateName,
 		"410 " + stateName + " tomb:" + stateName,
@@ -596,16 +597,15 @@ func recordedRow(state store.State) [11]string {
 	}
 }
 
+// expiredRow and openedRow wait for the sweep until blob_purge_at, which is rounded up to the quarter hour.
 func expiredRow(state store.State) [11]string {
 	row := recordedRow(state)
-	row[4] = "- - live:"
+	row[6] = "- - live:"
 	return row
 }
 
 func openedRow() [11]string {
-	row := recordedRow(store.StateOpened)
-	row[4] = "- - tomb:opened"
-	return row
+	return expiredRow(store.StateOpened)
 }
 
 var lifecycleKinds = []lifecycleKind{
@@ -640,21 +640,6 @@ var lifecycleKinds = []lifecycleKind{
 		ending: store.StateCancelled,
 		expect: recordedRow(store.StateCancelled),
 	},
-	{
-		name:   "recorded opened",
-		opens:  1,
-		ttl:    3600,
-		after:  store.LeaseDuration + store.LeaseTimerSlack,
-		opened: true,
-		expect: openedRow(),
-	},
-	{
-		name:   "recorded expired",
-		opens:  2,
-		ttl:    3600,
-		ending: store.StateExpired,
-		expect: recordedRow(store.StateExpired),
-	},
 }
 
 func TestLifecycleMatrix(t *testing.T) {
@@ -687,26 +672,8 @@ func setupLifecycleKind(t *testing.T, harness *testHarness, kind *lifecycleKind)
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
 	harness.clock.Advance(kind.after)
-	ctx := t.Context()
 	if kind.ending != "" {
-		if _, err := harness.store.MarkEnding(
-			ctx,
-			message.id.String(),
-			kind.ending,
-			harness.clock.Now(),
-		); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if kind.opened {
-		if ref, err := harness.store.ReleaseIfDone(
-			ctx,
-			message.id.String(),
-			harness.clock.Now(),
-		); err != nil ||
-			ref == "" {
-			t.Fatalf("record opened: %q %v", ref, err)
-		}
+		harness.markEnding(message, kind.ending)
 	}
 	return lifecycleSetup{message: message, lease: lease}
 }
@@ -740,13 +707,7 @@ func runLifecycleAction(
 			t.Fatal(err)
 		}
 	case "release":
-		if _, err := store.Release(
-			ctx,
-			harness.store,
-			harness.blobs,
-			message.id.String(),
-			harness.clock.Now(),
-		); err != nil {
+		if _, err := harness.finish(message, harness.clock.Now()); err != nil {
 			t.Fatal(err)
 		}
 	case "resume by request":
@@ -767,7 +728,7 @@ func runLifecycleAction(
 	case "lease download":
 		return harness.blob(message, lease)
 	case "blob vanished":
-		if err := harness.blobs.Delete(ctx, message.id.String()); err != nil {
+		if err := harness.blobs.Delete(ctx, harness.blobRef(message)); err != nil {
 			t.Fatal(err)
 		}
 		return harness.claim(message, "", "")
@@ -812,24 +773,24 @@ func checkLifecycleCell(
 			t.Fatal("a refused claim handed out a lease")
 		}
 	}
-	record, err := harness.store.Get(t.Context(), message.id.String())
+	record, err := harness.record(message)
 	if err != nil {
 		t.Fatal(err)
 	}
 	kind, want, _ := strings.Cut(final, ":")
 	switch kind {
 	case "tomb":
-		if record.Tombstone == nil || string(record.Tombstone.State) != want {
-			t.Fatalf("row %+v %+v, want tombstone %s", record.Message, record.Tombstone, want)
+		if record.HasBlob() || string(record.State(harness.clock.Now())) != want {
+			t.Fatalf("record %+v, want an ended %s without its blob", record.Message, want)
 		}
-		if harness.blobExists(message.id) {
+		if harness.blobExists(message) {
 			t.Fatal("an ended message kept its blob")
 		}
 	case "live":
-		if record.Message == nil || string(record.Message.Ending) != want {
-			t.Fatalf("row %+v %+v, want a live row with ending %q", record.Message, record.Tombstone, want)
+		if !record.HasBlob() || string(record.Message.Ending) != want {
+			t.Fatalf("record %+v, want a blob and the ending %q", record.Message, want)
 		}
-		if exists := harness.blobExists(message.id); exists != (action != "blob vanished") {
+		if exists := harness.blobExists(message); exists != (action != "blob vanished") {
 			t.Fatalf("blob present %v on a live row", exists)
 		}
 	default:
@@ -844,18 +805,14 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 	harness.mustCreate(message)
 	response, _ := harness.claim(message, "", "")
 	lease := response.Header.Get("X-Nylzo-Lease")
-	if err := harness.blobs.Delete(t.Context(), message.id.String()); err != nil {
+	if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("download of a vanished blob: %d", got.StatusCode)
 	}
-	if record, err := harness.store.Get(
-		t.Context(),
-		message.id.String(),
-	); err != nil || record.Message == nil ||
-		record.Message.Ending != "" {
-		t.Fatalf("the row must stay live without an ending: %+v %v", record, err)
+	if record, err := harness.record(message); err != nil || !record.HasBlob() || record.Message.Ending != "" {
+		t.Fatalf("the row must stay live without an ending: %+v %v", record.Message, err)
 	}
 }
 
@@ -882,12 +839,8 @@ func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
 		t.Fatalf("a download racing the expiry ending: %d %s", response.StatusCode, body)
 	}
-	if record, err := harness.store.Get(
-		t.Context(),
-		message.id.String(),
-	); err != nil || record.Tombstone == nil ||
-		record.Tombstone.State != store.StateExpired {
-		t.Fatalf("the download must finish the expiry: %+v %v", record, err)
+	if state, gone := harness.endedState(message); !gone || state != store.StateExpired {
+		t.Fatalf("the download must finish the expiry: %s %v", state, gone)
 	}
 }
 
@@ -923,16 +876,12 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
-	short := message.object[:len(message.object)-1]
-	if err := harness.blobs.Delete(t.Context(), message.id.String()); err != nil {
+	ref := harness.blobRef(message)
+	if err := harness.blobs.Delete(t.Context(), ref); err != nil {
 		t.Fatal(err)
 	}
-	if err := harness.blobs.Put(
-		t.Context(),
-		message.id.String(),
-		bytes.NewReader(short),
-		int64(len(short)),
-	); err != nil {
+	short := message.object[:len(message.object)-1]
+	if err := harness.blobs.Put(t.Context(), ref, bytes.NewReader(short), int64(len(short))); err != nil {
 		t.Fatal(err)
 	}
 	response, _ := harness.claim(message, "", "")
@@ -970,59 +919,20 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 	}
 }
 
-type leaseCount struct {
-	store.Store
-
-	calls *atomic.Int32
-}
-
-func (s leaseCount) Leases(ctx context.Context, id string) ([]store.Lease, error) {
-	s.calls.Add(1)
-	return s.Store.Leases(ctx, id)
-}
-
-func TestDownloadReadsLeasesOnce(t *testing.T) {
-	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	calls := &atomic.Int32{}
-	harness.store = leaseCount{harness.store, calls}
-	harness.reopen(&harness.settings)
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	harness.mustCreate(message)
-	response, _ := harness.claim(message, "", "")
-	calls.Store(0)
-	if got, _ := harness.blob(
-		message,
-		response.Header.Get("X-Nylzo-Lease"),
-	); got.StatusCode != http.StatusOK {
-		t.Fatalf("download: %d", got.StatusCode)
-	}
-	if got := calls.Load(); got != 1 {
-		t.Fatalf("a download read the leases %d times", got)
-	}
-}
-
+// burnAfterClaim burns the message right after the first write, which is the claim transaction.
 type burnAfterClaim struct {
 	store.Store
 
-	blobs store.Blobs
+	once sync.Once
+	burn func()
 }
 
-func (s burnAfterClaim) Claim(ctx context.Context, parameters store.ClaimParameters) (store.ClaimResult, error) {
-	result, err := s.Store.Claim(ctx, parameters)
+func (s *burnAfterClaim) Update(ctx context.Context, locator seal.Locator, change func(*store.Row) error) error {
+	err := s.Store.Update(ctx, locator, change)
 	if err == nil {
-		if _, endMessageErr := store.EndMessage(
-			ctx,
-			s.Store,
-			s.blobs,
-			parameters.ID,
-			store.StateDeleted,
-			parameters.Clock(),
-		); endMessageErr != nil {
-			return result, endMessageErr
-		}
+		s.once.Do(s.burn)
 	}
-	return result, err
+	return err
 }
 
 func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
@@ -1030,7 +940,20 @@ func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	harness.mustCreate(message)
-	harness.store = burnAfterClaim{Store: harness.store, blobs: harness.blobs}
+	inner := harness.store
+	harness.store = &burnAfterClaim{Store: inner, burn: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.End(
+			t.Context(),
+			inner,
+			harness.blobs,
+			&record,
+			store.StateDeleted,
+			harness.clock.Now(),
+		); err != nil {
+			t.Error(err)
+		}
+	}}
 	harness.reopen(&harness.settings)
 	response, object := harness.claim(message, "", "")
 	if response.StatusCode != http.StatusOK || response.Header.Get("X-Nylzo-Lease") == "" ||
@@ -1051,7 +974,7 @@ func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
 	harness.mustCreate(message)
 	response, _ := harness.claim(message, "", "")
 	lease := response.Header.Get("X-Nylzo-Lease")
-	harness.store = failingEndStore{Store: harness.store}
+	harness.store = failingForgetStore{Store: harness.store}
 	harness.reopen(&harness.settings)
 	var once sync.Once
 	faulty.set(func(blobs *faultyBlobs) {
@@ -1080,54 +1003,12 @@ func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
 		t.Fatalf("ack: %d", ack.StatusCode)
 	}
 	harness.clock.Advance(store.LeaseDuration + store.LeaseTimerSlack)
-	if released, err := store.Release(
-		t.Context(),
-		harness.store,
-		harness.blobs,
-		message.id.String(),
-		harness.clock.Now(),
-	); err != nil ||
-		released {
+	if released, err := harness.finish(message, harness.clock.Now()); err != nil || released {
 		t.Fatalf("release: %v %v", released, err)
 	}
-	record, err := harness.store.Get(t.Context(), message.id.String())
-	if err != nil || record.Message == nil || record.Message.Ending != "" || record.Message.OpensRemaining != 1 ||
-		!harness.blobExists(message.id) {
-		t.Fatalf("row %+v %v", record.Message, err)
-	}
-}
-
-func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
-	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
-	harness.mustCreate(message)
-	if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
-		t.Fatalf("claim: %d", response.StatusCode)
-	}
-	if _, err := harness.store.MarkEnding(
-		t.Context(),
-		message.id.String(),
-		store.StateExpired,
-		harness.clock.Now(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	harness.clock.Advance(store.LeaseDuration + store.LeaseTimerSlack)
-	if released, err := store.Release(
-		t.Context(),
-		harness.store,
-		harness.blobs,
-		message.id.String(),
-		harness.clock.Now(),
-	); err != nil ||
-		released {
-		t.Fatalf("release: %v %v", released, err)
-	}
-	record, err := harness.store.Get(t.Context(), message.id.String())
-	if err != nil || record.Message == nil || record.Message.Ending != store.StateExpired ||
-		record.Message.OpensRemaining != 1 ||
-		!harness.blobExists(message.id) {
+	record, err := harness.record(message)
+	if err != nil || !record.HasBlob() || record.Message.Ending != "" || record.Message.OpensRemaining != 1 ||
+		!harness.blobExists(message) {
 		t.Fatalf("row %+v %v", record.Message, err)
 	}
 }
@@ -1140,12 +1021,13 @@ func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
 	response, _ := harness.claim(message, "", "")
 	lease := response.Header.Get("X-Nylzo-Lease")
 	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if _, err := store.EndMessage(
+	harness.store = &racingStore{Store: inner, race: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.End(
 			t.Context(),
 			inner,
 			harness.blobs,
-			id,
+			&record,
 			store.StateDeleted,
 			harness.clock.Now(),
 		); err != nil {
@@ -1169,10 +1051,12 @@ func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
 	response, _ := harness.claim(message, "", "")
 	lease := response.Header.Get("X-Nylzo-Lease")
 	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if _, err := inner.MarkEnding(
+	harness.store = &racingStore{Store: inner, race: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.MarkEnding(
 			t.Context(),
-			id,
+			inner,
+			&record,
 			store.StateDeleted,
 			harness.clock.Now(),
 		); err != nil {
@@ -1184,12 +1068,9 @@ func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
 	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
 		t.Fatalf("an ack after a recorded burn: %d %s", response.StatusCode, body)
 	}
-	if record, err := inner.Get(
-		t.Context(),
-		message.id.String(),
-	); err != nil || record.Tombstone == nil || record.Tombstone.State != store.StateDeleted ||
-		harness.blobExists(message.id) {
-		t.Fatalf("the ack must finish the recorded burn: %+v %v", record, err)
+	if record, err := harness.recordFrom(inner, message); err != nil || record.HasBlob() ||
+		record.State(harness.clock.Now()) != store.StateDeleted || harness.blobExists(message) {
+		t.Fatalf("the ack must finish the recorded burn: %+v %v", record.Message, err)
 	}
 }
 
@@ -1200,9 +1081,9 @@ type slowWriterStore struct {
 	wait  time.Duration
 }
 
-func (s slowWriterStore) Claim(ctx context.Context, parameters store.ClaimParameters) (store.ClaimResult, error) {
+func (s slowWriterStore) Update(ctx context.Context, locator seal.Locator, change func(*store.Row) error) error {
 	s.clock.Advance(s.wait)
-	return s.Store.Claim(ctx, parameters)
+	return s.Store.Update(ctx, locator, change)
 }
 
 func TestClaimThatWaitsPastExpiryIsRefused(t *testing.T) {
@@ -1230,7 +1111,7 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 	for _, opens := range []uint16{1, 2} {
 		message := newMessage(t, core.KDFNone, "", opens, 3600, "x")
 		harness.mustCreate(message)
-		if err := harness.blobs.Delete(t.Context(), message.id.String()); err != nil {
+		if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
 			t.Fatal(err)
 		}
 		response, _ := harness.claim(message, "", "")
@@ -1253,22 +1134,18 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	crash := func(message *testMessage, state store.State) {
-		if _, err := harness.store.MarkEnding(
-			t.Context(),
-			message.id.String(),
-			state,
-			harness.clock.Now(),
-		); err != nil {
+	crash := func(storage store.Store, message *testMessage, state store.State) {
+		record := harness.recordIn(storage, message)
+		if _, err := store.MarkEnding(t.Context(), storage, &record, state, harness.clock.Now()); err != nil {
 			t.Error(err)
 		}
-		if err := harness.blobs.Delete(t.Context(), message.id.String()); err != nil {
+		if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
 			t.Error(err)
 		}
 	}
 	claimed := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	harness.mustCreate(claimed)
-	crash(claimed, store.StateCancelled)
+	crash(harness.store, claimed, store.StateCancelled)
 	response, body := harness.claim(claimed, "", "")
 	if response.StatusCode != http.StatusGone || response.Header.Get("X-Nylzo-Lease") != "" ||
 		decodeJSON(t, body)["state"] != "cancelled" {
@@ -1285,22 +1162,15 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
 	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if id == downloaded.id.String() {
-			crash(downloaded, store.StateDeleted)
-		}
-	}}
+	harness.store = &racingStore{Store: inner, race: func() { crash(inner, downloaded, store.StateDeleted) }}
 	harness.reopen(&harness.settings)
 	response, body = harness.blob(downloaded, lease)
 	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
 		t.Fatalf("download racing a burn: %d %s", response.StatusCode, body)
 	}
-	if record, err := inner.Get(
-		t.Context(),
-		downloaded.id.String(),
-	); err != nil || record.Tombstone == nil ||
-		record.Tombstone.State != store.StateDeleted {
-		t.Fatalf("the download must finish the interrupted burn: %+v %v", record, err)
+	if record, err := harness.recordFrom(inner, downloaded); err != nil || record.HasBlob() ||
+		record.State(harness.clock.Now()) != store.StateDeleted {
+		t.Fatalf("the download must finish the interrupted burn: %+v %v", record.Message, err)
 	}
 }
 
@@ -1378,12 +1248,13 @@ func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
 	harness.mustCreate(message)
 	inner := harness.store
 	faulty.set(func(blobs *faultyBlobs) {
-		blobs.onOpen = func(ref string) {
-			if _, err := store.EndMessage(
+		blobs.onOpen = func(string) {
+			record := harness.recordIn(inner, message)
+			if _, err := store.End(
 				t.Context(),
 				inner,
 				blobs.Blobs,
-				ref,
+				&record,
 				store.StateDeleted,
 				harness.clock.Now(),
 			); err != nil {
@@ -1398,15 +1269,17 @@ func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
 	}
 }
 
+// ackRacingStore burns the message right before the first write, which is the ack transaction.
 type ackRacingStore struct {
 	store.Store
 
-	race func(id string)
+	once sync.Once
+	race func()
 }
 
-func (s *ackRacingStore) Ack(ctx context.Context, lease *store.Lease, now time.Time) (string, error) {
-	s.race(lease.ID)
-	return s.Store.Ack(ctx, lease, now)
+func (s *ackRacingStore) Update(ctx context.Context, locator seal.Locator, change func(*store.Row) error) error {
+	s.once.Do(s.race)
+	return s.Store.Update(ctx, locator, change)
 }
 
 func TestAckAfterAConcurrentBurnAnswersGone(t *testing.T) {
@@ -1420,12 +1293,13 @@ func TestAckAfterAConcurrentBurnAnswersGone(t *testing.T) {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
 	inner, blobs := harness.store, harness.blobs
-	harness.store = &ackRacingStore{Store: inner, race: func(id string) {
-		if _, err := store.EndMessage(
+	harness.store = &ackRacingStore{Store: inner, race: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.End(
 			t.Context(),
 			inner,
 			blobs,
-			id,
+			&record,
 			store.StateDeleted,
 			harness.clock.Now(),
 		); err != nil {
@@ -1453,9 +1327,14 @@ type countingReleaseStore struct {
 	releases atomic.Int32
 }
 
-func (s *countingReleaseStore) ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error) {
+func (s *countingReleaseStore) Update(ctx context.Context, locator seal.Locator, change func(*store.Row) error) error {
 	s.releases.Add(1)
-	return s.Store.ReleaseIfDone(ctx, id, now)
+	return s.Store.Update(ctx, locator, change)
+}
+
+func (s *countingReleaseStore) ShredBlobs(ctx context.Context, due []store.DueBlob) error {
+	s.releases.Add(1)
+	return s.Store.ShredBlobs(ctx, due)
 }
 
 func TestRequestDuringTheLeaseTakesNoWriteLock(t *testing.T) {
@@ -1490,8 +1369,8 @@ func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
 	faulty.set(func(blobs *faultyBlobs) {
-		blobs.failDelete[unspent.id.String()] = true
-		blobs.failDelete[spent.id.String()] = true
+		blobs.failDelete[harness.blobRef(unspent)] = true
+		blobs.failDelete[harness.blobRef(spent)] = true
 	})
 	harness.clock.Advance(time.Hour)
 	if _, metadata := harness.metadata(unspent); metadata["state"] != "expired" {

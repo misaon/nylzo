@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/cipher"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -91,11 +93,12 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	if !s.idAvailable(w, r, request.id) {
 		return
 	}
-	envelopeHeader, ok := s.receiveBlob(w, r, &request)
+	blob := newStoredBlob()
+	envelopeHeader, ok := s.receiveBlob(w, r, &request, &blob)
 	if !ok {
 		return
 	}
-	stored = s.storeMessage(w, r, &request, envelopeHeader, now)
+	stored = s.storeMessage(w, r, &request, envelopeHeader, &blob, now)
 }
 
 func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequest, bool) {
@@ -272,9 +275,9 @@ func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.T
 	rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 }
 
-// idAvailable answers the same 409 for a live id and a tombstone (AK21).
+// idAvailable answers the same 409 for a live message and an ended one (AK21).
 func (s *Server) idAvailable(w http.ResponseWriter, r *http.Request, id core.ID) bool {
-	_, err := s.store.Get(r.Context(), id.String())
+	_, err := s.store.Load(r.Context(), seal.LocatorOf(id[:]))
 	switch {
 	case err == nil:
 		rejectCreate(w, r, http.StatusConflict, errConflict)
@@ -299,7 +302,35 @@ func (t *trackingReader) Read(buffer []byte) (int, error) {
 	return count, err
 }
 
-func (s *Server) receiveBlob(w http.ResponseWriter, r *http.Request, request *createRequest) (core.Header, bool) {
+type storedBlob struct {
+	ref string
+	key seal.Key
+}
+
+func newStoredBlob() storedBlob {
+	ref := core.NewID()
+	return storedBlob{ref: core.Encode(ref[:]), key: seal.NewKey()}
+}
+
+// sealed encrypts the object with the blob key and pads it with Padmé, so the stored length shows only a size class.
+func (b *storedBlob) sealed(object io.Reader, size, padded int64) io.Reader {
+	plain := io.MultiReader(object, io.LimitReader(zeros{}, padded-size))
+	return cipher.StreamReader{S: seal.BlobStream(b.key), R: plain}
+}
+
+type zeros struct{}
+
+func (zeros) Read(buffer []byte) (int, error) {
+	clear(buffer)
+	return len(buffer), nil
+}
+
+func (s *Server) receiveBlob(
+	w http.ResponseWriter,
+	r *http.Request,
+	request *createRequest,
+	blob *storedBlob,
+) (core.Header, bool) {
 	size := request.header.Size
 	body := &trackingReader{reader: http.MaxBytesReader(w, r.Body, size)}
 	var raw [core.HeaderLen]byte
@@ -312,7 +343,13 @@ func (s *Server) receiveBlob(w http.ResponseWriter, r *http.Request, request *cr
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return core.Header{}, false
 	}
-	err = s.blobs.Put(r.Context(), request.id.String(), io.MultiReader(bytes.NewReader(raw[:]), body), size)
+	padded := seal.PaddedSize(size)
+	err = s.blobs.Put(
+		r.Context(),
+		blob.ref,
+		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size, padded),
+		padded,
+	)
 	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
 	if err == nil {
 		return envelopeHeader, true
@@ -340,19 +377,22 @@ func (s *Server) storeMessage(
 	r *http.Request,
 	request *createRequest,
 	envelopeHeader core.Header,
+	blob *storedBlob,
 	now time.Time,
 ) bool {
 	message := s.newMessage(request, envelopeHeader, s.clock())
-	err := s.store.Create(r.Context(), message, s.storedCreateCounters(now)...)
+	locator := seal.LocatorOf(request.id[:])
+	record := store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
+	err := s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
 	if err == nil {
 		writeJSON(
 			w,
 			http.StatusCreated,
-			map[string]string{"id": message.ID, "expires_at": formatTime(message.ExpiresAt)},
+			map[string]string{"id": request.id.String(), "expires_at": formatTime(message.ExpiresAt)},
 		)
 		return true
 	}
-	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), message.ID); deleteErr != nil {
+	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), blob.ref); deleteErr != nil {
 		s.logger.ErrorContext(r.Context(), "create-cleanup", "err", logging.ErrorText(deleteErr))
 	}
 	if errors.Is(err, store.ErrConflict) {
@@ -365,28 +405,21 @@ func (s *Server) storeMessage(
 
 // newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
 func (s *Server) newMessage(request *createRequest, envelopeHeader core.Header, uploaded time.Time) *store.Message {
-	read := s.ring.MAC(pepper.Read, request.readKey)
-	manage := s.ring.MAC(pepper.Manage, request.manageKey)
 	message := &store.Message{
-		ID:             request.id.String(),
 		Version:        envelopeHeader.Version,
 		KDF:            uint8(envelopeHeader.KDF),
 		Flags:          envelopeHeader.Flags,
-		State:          store.StateAvailable,
 		CreatedAt:      uploaded.UTC().Truncate(time.Minute),
 		ExpiresAt:      store.CeilMinute(uploaded.UTC().Add(time.Duration(request.ttlSeconds) * time.Second)),
 		TTLSeconds:     request.ttlSeconds,
 		OpensMax:       request.opensMax,
 		OpensRemaining: request.opensMax,
-		PepperID:       read.PepperID,
-		ReadMAC:        read.MAC[:],
-		ManageMAC:      manage.MAC[:],
 		Size:           request.header.Size,
-		BlobRef:        request.id.String(),
 	}
 	if request.verifierKey != nil {
 		verifier := s.ring.MAC(pepper.Verifier, request.verifierKey)
 		message.VerifierMAC = verifier.MAC[:]
+		message.VerifierPepperID = verifier.PepperID
 	}
 	return message
 }

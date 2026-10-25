@@ -1,114 +1,140 @@
 package storetest
 
 import (
+	"bytes"
 	"errors"
 	"slices"
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 func (f *fixture) leasesAndAcks() {
-	t, ctx := f.t, f.t.Context()
-	message := f.create(3, oneHour, false)
-	leases := f.claimConcurrently(message, 3)
-	if _, err := f.claim(message, baseTime, 9); err == nil {
+	t := f.t
+	created := f.create(3, oneHour, false)
+	leases := f.claimConcurrently(created, 3)
+	if _, err := f.claim(created, baseTime, 9); err == nil {
 		t.Fatal("a fourth claim was accepted")
 	}
 	minute := baseTime.Add(time.Minute)
-	f.downloadUpToTheLimit(message, leases, minute)
-	if ref, _ := f.store.ReleaseIfDone(ctx, message.ID, minute); ref != "" {
+	f.downloadUpToTheLimit(created, leases, minute)
+	if finished, _ := f.finish(created, minute, f.blobs); finished {
 		t.Fatal("released while leases are active")
 	}
-	f.refuseForgedLeases(&leases[0], minute)
+	f.refuseForgedLeases(created, &leases[0], minute)
 	for i, lease := range leases {
-		if _, err := f.store.Ack(ctx, &lease, minute); err != nil {
+		if err := f.ack(created, &lease, minute, f.blobs); err != nil {
 			t.Fatal(err)
 		}
-		released, err := store.Release(ctx, f.store, f.blobs, message.ID, minute)
 		last := i == len(leases)-1
-		if err != nil || released != last || f.blobExists(message.ID) == last {
-			t.Fatalf("ack %d: released %v, %v", i+1, released, err)
+		if f.blobExists(created.ref()) == last || f.get(created).HasBlob() == last {
+			t.Fatalf("ack %d: the blob must go with the last lease and not before", i+1)
 		}
 	}
-	if tombstone := f.tombstone(message.ID); tombstone.State != store.StateOpened || tombstone.FirstOpenedAt == nil {
-		t.Fatalf("expected an opened tombstone, got %+v", tombstone)
+	record := f.get(created)
+	if record.State(minute) != store.StateOpened || record.Message.FirstOpenedAt == nil ||
+		!record.EndedAt(minute).Equal(minute) {
+		t.Fatalf("expected an opened message that ended at the last ack, got %+v", record.Message)
 	}
-	if ref, _ := f.store.ReleaseIfDone(ctx, message.ID, baseTime.Add(time.Hour)); ref != "" {
-		t.Fatal("released after the tombstone")
-	}
-	if err := f.store.RecordDownload(ctx, &leases[0], baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.download(created, &leases[0], baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download on an acked lease: %v", err)
 	}
 }
 
-func (f *fixture) downloadUpToTheLimit(message *store.Message, leases []store.Lease, now time.Time) {
+// aGrownRecordShrinks keeps the length of a sealed record from telling how many leases were once active.
+func (f *fixture) aGrownRecordShrinks() {
 	t, ctx := f.t, f.t.Context()
+	created := f.create(20, oneDay, false)
+	for seed := range 12 {
+		if _, err := f.claim(created, baseTime, seed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if length := len(f.get(created).Row.Record); length <= seal.RecordBlock {
+		t.Fatalf("twelve active leases must not fit in %d bytes, got %d", seal.RecordBlock, length)
+	}
+	later := baseTime.Add(time.Hour)
+	if _, err := store.CountReport(ctx, f.store, f.get(created), later); err != nil {
+		t.Fatal(err)
+	}
+	if length := len(f.get(created).Row.Record); length != seal.RecordBlock {
+		t.Fatalf(
+			"a change after the leases expired must shrink the record to %d bytes, got %d",
+			seal.RecordBlock,
+			length,
+		)
+	}
+}
+
+func (f *fixture) downloadUpToTheLimit(created *message, leases []store.Lease, now time.Time) {
+	t := f.t
 	for _, lease := range leases {
 		if !lease.Active(baseTime.Add(119 * time.Second)) {
 			t.Fatal("a lease was not active before its expiry")
 		}
 		for download := 1; download <= store.MaxLeaseDownload; download++ {
-			if err := f.store.RecordDownload(ctx, &lease, now); err != nil {
+			if err := f.download(created, &lease, now); err != nil {
 				t.Fatalf("download %d: %v", download, err)
 			}
 		}
-		if err := f.store.RecordDownload(ctx, &lease, now); !errors.Is(err, store.ErrLeaseLimit) {
+		if err := f.download(created, &lease, now); !errors.Is(err, store.ErrLeaseLimit) {
 			t.Fatalf("a fourth download: %v", err)
 		}
 	}
-	stored, err := f.store.Leases(ctx, message.ID)
-	if err != nil || len(stored) != len(leases) || slices.ContainsFunc(stored, func(lease store.Lease) bool {
+	stored := f.get(created).Message.Leases
+	if len(stored) != len(leases) || slices.ContainsFunc(stored, func(lease store.Lease) bool {
 		return lease.Downloads != store.MaxLeaseDownload
 	}) {
-		t.Fatalf("the downloads were not counted per lease: %+v %v", stored, err)
+		t.Fatalf("the downloads were not counted per lease: %+v", stored)
 	}
 }
 
-func (f *fixture) refuseForgedLeases(lease *store.Lease, now time.Time) {
-	t, ctx := f.t, f.t.Context()
-	forged, elsewhere := *lease, *lease
+func (f *fixture) refuseForgedLeases(created *message, lease *store.Lease, now time.Time) {
+	t := f.t
+	forged := *lease
 	forged.MAC = slices.Clone(forged.MAC)
 	forged.MAC[0] ^= 1
-	elsewhere.ID = f.create(1, oneHour, false).ID
-	for name, wrong := range map[string]store.Lease{"another lease_mac": forged, "another message id": elsewhere} {
-		if err := f.store.RecordDownload(ctx, &wrong, now); !errors.Is(err, store.ErrLeaseInvalid) {
-			t.Fatalf("download with %s: %v", name, err)
-		}
-		if _, err := f.store.Ack(ctx, &wrong, now); !errors.Is(err, store.ErrLeaseInvalid) {
-			t.Fatalf("ack with %s: %v", name, err)
-		}
+	elsewhere := f.create(1, oneHour, false)
+	if err := f.download(created, &forged, now); !errors.Is(err, store.ErrLeaseInvalid) {
+		t.Fatalf("download with another lease_mac: %v", err)
+	}
+	if err := f.ack(created, &forged, now, f.blobs); !errors.Is(err, store.ErrLeaseInvalid) {
+		t.Fatalf("ack with another lease_mac: %v", err)
+	}
+	if err := f.download(elsewhere, lease, now); !errors.Is(err, store.ErrLeaseInvalid) {
+		t.Fatalf("a lease of another message: %v", err)
 	}
 }
 
-func (f *fixture) claimConcurrently(message *store.Message, count int) []store.Lease {
+func (f *fixture) claimConcurrently(created *message, count int) []store.Lease {
 	f.t.Helper()
 	results := make([]store.ClaimResult, count)
 	errs := make([]error, count)
 	var wait sync.WaitGroup
 	for i := range count {
 		wait.Go(func() {
-			results[i], errs[i] = f.claim(message, baseTime.Add(time.Duration(i)*time.Millisecond), i)
+			results[i], errs[i] = f.claim(created, baseTime.Add(time.Duration(i)*time.Millisecond), i)
 		})
 	}
 	wait.Wait()
 	leases := make([]store.Lease, 0, count)
-	seen := map[int64]bool{}
 	for i, result := range results {
-		if errs[i] != nil || seen[result.Lease.RowID] {
+		if errs[i] != nil || slices.ContainsFunc(leases, func(lease store.Lease) bool {
+			return bytes.Equal(lease.MAC, result.Lease.MAC)
+		}) {
 			f.t.Fatalf("claim %d: %v, or its lease was handed out twice", i, errs[i])
 		}
-		seen[result.Lease.RowID] = true
 		leases = append(leases, result.Lease)
 	}
 	return leases
 }
 
 func (f *fixture) leaseExpiry() {
-	t, ctx := f.t, f.t.Context()
-	message := f.create(1, oneHour, false)
-	claimed, err := f.claim(message, baseTime.Add(17*time.Second), 1)
+	t := f.t
+	created := f.create(1, oneHour, false)
+	claimed, err := f.claim(created, baseTime.Add(17*time.Second), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,67 +145,86 @@ func (f *fixture) leaseExpiry() {
 	if claimed.Lease.Active(expiry) || !claimed.Lease.Active(expiry.Add(-time.Millisecond)) {
 		t.Fatal("a lease must end exclusively at lease_expires_at")
 	}
-	if err = f.store.RecordDownload(ctx, &claimed.Lease, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err = f.download(created, &claimed.Lease, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download at the expiry: %v", err)
 	}
-	if ref, _ := f.store.ReleaseIfDone(ctx, message.ID, expiry.Add(-time.Second)); ref != "" {
-		t.Fatal("released before the expiry")
+	if finished, _ := f.finish(created, expiry.Add(-time.Second), f.blobs); finished || !f.blobExists(created.ref()) {
+		t.Fatal("released before the expiry of the lease")
 	}
-	for range 2 {
-		ref, releaseErr := f.store.ReleaseIfDone(ctx, message.ID, expiry.Add(store.LeaseTimerSlack))
-		if releaseErr != nil || ref != message.ID {
-			t.Fatalf("ReleaseIfDone must keep returning the ref until ClearBlob: %q %v", ref, releaseErr)
-		}
+	if row := f.get(created).Row; !row.BlobPurgeAt.Equal(baseTime.Add(store.BlobPurgeStep)) ||
+		!row.PurgeAt.Equal(baseTime.Add(store.TombstoneTTL+time.Hour)) {
+		t.Fatalf("the last claim must move the cleanup times to the end of its lease, rounded up: %+v", row)
 	}
-	report, err := f.sweep(f.blobs, expiry.Add(store.LeaseTimerSlack))
-	if err != nil || report.BlobsReleased != 1 || report.ExpiredLeases != 1 || f.blobExists(message.ID) {
+	unattended := f.create(1, oneHour, false)
+	if _, err = f.claim(unattended, baseTime.Add(17*time.Second), 2); err != nil {
+		t.Fatal(err)
+	}
+	f.timerReleasesAtTheLeaseEnd(created, expiry)
+	f.sweepReleasesAfterTheLease(unattended, expiry)
+}
+
+func (f *fixture) timerReleasesAtTheLeaseEnd(created *message, expiry time.Time) {
+	t := f.t
+	if finished, err := f.finish(created, expiry.Add(store.LeaseTimerSlack), f.blobs); err != nil || !finished {
+		t.Fatalf("release at the end of the lease: %v %v", finished, err)
+	}
+	if record := f.get(created); record.HasBlob() || f.blobExists(created.ref()) ||
+		!record.EndedAt(expiry).Equal(expiry) {
+		t.Fatalf("the timer must delete the blob and record the minute: %+v", record.Message)
+	}
+}
+
+func (f *fixture) sweepReleasesAfterTheLease(unattended *message, expiry time.Time) {
+	t := f.t
+	if report, err := f.sweep(f.blobs, expiry.Add(store.LeaseTimerSlack)); err != nil || report.Blobs != 0 {
+		t.Fatalf("the sweep must wait for blob_purge_at: %+v %v", report, err)
+	}
+	report, err := f.sweep(f.blobs, baseTime.Add(store.BlobPurgeStep))
+	if err != nil || report.Blobs != 1 || f.blobExists(unattended.ref()) {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
-	if tombstone := f.tombstone(message.ID); tombstone.State != store.StateOpened {
-		t.Fatalf("expected an opened tombstone, got %+v", tombstone)
+	if record := f.get(unattended); record.State(expiry) != store.StateOpened || !record.EndedAt(expiry).Equal(expiry) {
+		t.Fatalf("a release by the sweep ends at the end of the last lease: %+v", record.Message)
 	}
 }
 
 func (f *fixture) blobStaysWhileOpensRemain() {
-	t, ctx := f.t, f.t.Context()
-	message := f.create(2, oneHour, false)
-	f.claimAndAck(message)
-	released, err := store.Release(ctx, f.store, f.blobs, message.ID, baseTime.Add(time.Hour))
-	if err != nil || released || !f.blobExists(message.ID) {
+	t := f.t
+	created := f.create(2, oneHour, false)
+	f.claimAndAck(created)
+	if finished, err := f.finish(created, baseTime.Add(time.Minute), f.blobs); err != nil || finished ||
+		!f.blobExists(created.ref()) {
 		t.Fatal("the blob must stay while opens remain")
 	}
-	if report, _ := f.sweep(f.blobs, baseTime.Add(10*time.Minute)); report.BlobsReleased != 0 ||
-		!f.blobExists(message.ID) {
+	if report, _ := f.sweep(f.blobs, baseTime.Add(10*time.Minute)); report.Blobs != 0 || !f.blobExists(created.ref()) {
 		t.Fatal("the sweep removed a blob with opens remaining")
 	}
 }
 
 func (f *fixture) staleLeaseLeavesOtherMessages() {
-	t, ctx := f.t, f.t.Context()
+	t := f.t
 	first := f.create(1, oneHour, false)
 	claimed, err := f.claim(first, baseTime, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stale := claimed.Lease
-	if _, err = f.store.Ack(ctx, &stale, baseTime); err != nil {
+	if err = f.ack(first, &stale, baseTime, f.blobs); err != nil {
 		t.Fatal(err)
 	}
 	victim := f.create(1, oneHour, false)
 	if _, err = f.claim(victim, baseTime, 2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.store.Ack(ctx, &stale, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
-		t.Fatalf("a second ack of a removed lease: %v", err)
+	if err = f.ack(victim, &stale, baseTime, f.blobs); !errors.Is(err, store.ErrLeaseInvalid) {
+		t.Fatalf("a lease of another message acked this one: %v", err)
 	}
-	if err = f.store.RecordDownload(ctx, &stale, baseTime); err == nil {
-		t.Fatal("a download on an acked lease must fail")
+	if err = f.download(victim, &stale, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+		t.Fatalf("a lease of another message downloaded this one: %v", err)
 	}
-	leases, err := f.store.Leases(ctx, victim.ID)
-	if err != nil || len(leases) != 1 || leases[0].Downloads != 0 {
-		t.Fatalf("a stale lease of another message touched this one: %+v %v", leases, err)
-	}
-	if record := f.get(victim.ID); record.Message == nil || record.Message.Ending != "" || !f.blobExists(victim.ID) {
-		t.Fatalf("a stale lease of another message ended this one: %+v", record)
+	record := f.get(victim)
+	if len(record.Message.Leases) != 1 || record.Message.Leases[0].Downloads != 0 ||
+		record.Message.Ending != "" || !f.blobExists(victim.ref()) {
+		t.Fatalf("a stale lease of another message touched this one: %+v", record.Message)
 	}
 }

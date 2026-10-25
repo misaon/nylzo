@@ -112,8 +112,7 @@ func AAD(header Header, id ID, policy Policy) []byte {
 }
 
 func ObjectLimit(maxFileBytes int64) int64 {
-	largestPlaintext := PaddedLen(MetaLenPrefix+MaxMetaBytes+int(maxFileBytes), true)
-	return min(MaxObjectBytes, int64(HeaderLen+TagLen+largestPlaintext))
+	return min(MaxObjectBytes, int64(PaddedLen(HeaderLen+MetaLenPrefix+MaxMetaBytes+int(maxFileBytes)+TagLen, true)))
 }
 
 func PaddedLen(length int, hasFile bool) int {
@@ -150,7 +149,7 @@ func Seal(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payloa
 
 // MayHoldFile tells from an object length whether the envelope can carry a file (spec section 3, D16).
 func MayHoldFile(objectBytes int64) bool {
-	return objectBytes >= HeaderLen+TagLen && (objectBytes-HeaderLen-TagLen)%PadFile == 0
+	return objectBytes > 0 && objectBytes%PadFile == 0
 }
 
 func Open(key *[KeyLen]byte, id ID, policy Policy, kdf KDF, object []byte) (Header, Payload, error) {
@@ -194,7 +193,7 @@ func padPlaintext(payload Payload) ([]byte, error) {
 	if !hasFile && len(payload.File) != 0 {
 		return nil, ErrMeta
 	}
-	total := PaddedLen(MetaLenPrefix+len(meta)+len(payload.File), hasFile)
+	total := PaddedLen(HeaderLen+MetaLenPrefix+len(meta)+len(payload.File)+TagLen, hasFile) - HeaderLen - TagLen
 	if HeaderLen+total+TagLen > MaxObjectBytes {
 		return nil, ErrTooLarge
 	}

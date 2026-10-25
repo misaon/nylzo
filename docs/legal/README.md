@@ -11,9 +11,10 @@ Odpovědi na právní otázky a zdroje jsou v [reserse.md](reserse.md).
 
 1. Doplnit `[DOPLNIT]` a `[TO FILL IN]`: kontaktní e-mail (stejný jako `NYLZO_CONTACT`), hosting a kdo ukončuje HTTPS, dobu uchování logů (příklad s Docker Compose rotuje logy jen podle velikosti), datum účinnosti.
 2. Nasadit opravy hlášení a seznamu odeslaných zpráv, které dokumenty už popisují.
-3. Zveřejnit dokumenty jako stránky webu s odkazem v patičce a u tlačítek pro vytvoření a otevření zprávy.
+3. Vytvořit klíč pro hlášení (`nylzo report-key`) a soukromý klíč držet mimo server.
+4. Zveřejnit dokumenty jako stránky webu s odkazem v patičce a u tlačítek pro vytvoření a otevření zprávy.
 
 ## Za provozu
 
-- Hlášení číst aspoň jednou za pár dní. Server na ně neupozorňuje a po 7 dnech je maže.
+- Hlášení číst aspoň jednou za pár dní příkazem `nylzo reports` se soukromým klíčem pro hlášení. Server na ně neupozorňuje a po 7 dnech je maže.
 - Kdykoli se změní, co server ukládá, loguje nebo posílá, upravit i zásady.

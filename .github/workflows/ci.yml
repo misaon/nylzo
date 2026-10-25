@@ -394,7 +394,8 @@ jobs:
           openssl rand -hex 32 > secrets/pepper
           sudo chown 65532:65532 secrets/pepper
           sudo chmod 0400 secrets/pepper
-          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\n' > .env
+          report_key=$(../../dist/nylzo report-key --key-file "$RUNNER_TEMP/report-key" | cut -d= -f2-)
+          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
           docker compose up -d
           for _ in $(seq 1 60); do
             docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break

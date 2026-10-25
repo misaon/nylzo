@@ -101,8 +101,10 @@ function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
   if (file.length !== (payload.meta.file?.size ?? 0)) {
     throw new MetaError('file length differs from meta.file.size');
   }
-  const length = paddedLength(META_LEN_PREFIX + meta.length + file.length, payload.meta.file !== undefined);
-  if (HEADER_LENGTH + length + TAG_LENGTH > MAX_OBJECT_BYTES) {
+  const overhead = HEADER_LENGTH + TAG_LENGTH;
+  const content = META_LEN_PREFIX + meta.length + file.length;
+  const length = paddedLength(overhead + content, payload.meta.file !== undefined) - overhead;
+  if (overhead + length > MAX_OBJECT_BYTES) {
     throw new TooLargeError();
   }
   const plaintext = new Uint8Array(length);

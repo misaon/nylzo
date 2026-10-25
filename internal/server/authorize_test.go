@@ -22,6 +22,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -77,8 +78,8 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
-	if record, err := harness.store.Get(t.Context(), ended.id.String()); err != nil || record.Tombstone == nil {
-		t.Fatal("the ended message must be a tombstone before probing 409")
+	if state, gone := harness.endedState(ended); !gone || state != store.StateDeleted {
+		t.Fatal("the ended message must have lost its blob before probing 409")
 	}
 	wrongSeed := core.NewSecret()
 	livePath := "/api/v1/messages/" + live.id.String()
@@ -695,11 +696,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 			if response, _ := harness.do(claim); response.StatusCode != http.StatusNotFound {
 				t.Fatalf("a recorded claim that the server turned away was accepted later: %d", response.StatusCode)
 			}
-			if record, err := harness.store.Get(
-				t.Context(),
-				message.id.String(),
-			); err != nil || record.Message == nil ||
-				record.Message.OpensRemaining != 1 {
+			if record, err := harness.record(message); err != nil || record.Message.OpensRemaining != 1 {
 				t.Fatalf("the replay spent an open: %+v %v", record.Message, err)
 			}
 		})
@@ -740,12 +737,13 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	setMAC := func(message *testMessage, column string, purpose pepper.Purpose) {
-		mac := ring.MAC(purpose, identity[:]).MAC
+	rewrap := func(record *store.Record, column string, purpose seal.Purpose) {
+		locator := record.Row.Locator
+		wrapped := seal.Wrap(seal.KeyFor(identity[:], locator, purpose), record.Key, locator, purpose)
 		if _, execErr := database.Exec(
-			`UPDATE messages SET `+column+` = ? WHERE id = ?`,
-			mac[:],
-			message.id.String(),
+			`UPDATE messages SET `+column+` = ? WHERE locator = ?`,
+			wrapped,
+			locator[:],
 		); execErr != nil {
 			t.Fatal(execErr)
 		}
@@ -753,8 +751,9 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "stored before keys were checked")
 	harness.mustCreate(message)
-	setMAC(message, "read_mac", pepper.Read)
-	setMAC(message, "manage_mac", pepper.Manage)
+	record := harness.mustRecord(message)
+	rewrap(&record, "read_wrap", seal.Read)
+	rewrap(&record, "manage_wrap", seal.Manage)
 	path := "/api/v1/messages/" + message.id.String()
 	for name, request := range map[string]*testRequest{
 		"metadata": rawAuth(&testRequest{method: http.MethodGet, path: path}, forge(core.PurposeRead, "GET", path, harness.challenge()).Authorization()),
@@ -769,7 +768,10 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	const passphrase = "correct horse battery staple"
 	withPassphrase := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "verifier stored before keys were checked")
 	harness.mustCreate(withPassphrase)
-	setMAC(withPassphrase, "verifier_mac", pepper.Verifier)
+	harness.rewrite(withPassphrase, func(message *store.Message) {
+		verifier := ring.MAC(pepper.Verifier, identity[:])
+		message.VerifierMAC, message.VerifierPepperID = verifier.MAC[:], verifier.PepperID
+	})
 	claimPath := "/api/v1/messages/" + withPassphrase.id.String() + "/claim"
 	challenge := harness.challenge()
 	request := signedRequest(&withPassphrase.link.R, core.PurposeRead, "POST", claimPath, challenge, nil)
@@ -821,21 +823,13 @@ func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
 	); response.StatusCode != http.StatusNotFound {
 		t.Fatalf("wrong key: %d", response.StatusCode)
 	}
-	if record, err := harness.store.Get(
-		t.Context(),
-		message.id.String(),
-	); err != nil || record.Message == nil ||
-		!harness.blobExists(message.id) {
+	if record, err := harness.record(message); err != nil || !record.HasBlob() || !harness.blobExists(message) {
 		t.Fatal("a request with a wrong key ended the expired message, so it did more work than an unknown id")
 	}
 	if _, metadata := harness.metadata(message); metadata["state"] != "expired" {
 		t.Fatalf("authorized metadata: %v", metadata)
 	}
-	if record, err := harness.store.Get(
-		t.Context(),
-		message.id.String(),
-	); err != nil || record.Tombstone == nil ||
-		harness.blobExists(message.id) {
+	if _, gone := harness.endedState(message); !gone || harness.blobExists(message) {
 		t.Fatal("the authorized request did not finish the expiry")
 	}
 }
@@ -862,8 +856,11 @@ func TestAK27PepperRotation(t *testing.T) {
 	if got, _ := harness.metadata(fresh); got.StatusCode != http.StatusOK {
 		t.Fatal("new message must verify with the new pepper alone")
 	}
-	if got, _ := harness.metadata(old); got.StatusCode != http.StatusNotFound {
-		t.Fatalf("message under a dropped pepper must look unknown: %d", got.StatusCode)
+	if got, _ := harness.metadata(old); got.StatusCode != http.StatusOK {
+		t.Fatalf("a record opens with the read key, whatever the pepper: %d", got.StatusCode)
+	}
+	if got, body := harness.claim(old, old.verifier, ""); got.StatusCode != http.StatusForbidden {
+		t.Fatalf("a verifier mac under a dropped pepper must not verify: %d %s", got.StatusCode, body)
 	}
 	if _, err := New(baseSettings(pepperA, pepperA), harness.store, harness.blobs); err == nil {
 		t.Fatal("identical peppers accepted")
@@ -886,7 +883,7 @@ func TestAK27PreviousPepperHorizon(t *testing.T) {
 		metadata["state"] != "expired" {
 		t.Fatalf("tombstone with the previous pepper still configured: %d %v", response.StatusCode, metadata)
 	}
-	if record, err := harness.store.Get(t.Context(), old.id.String()); err != nil || record.Message != nil {
+	if record, err := harness.record(old); err != nil || record.HasBlob() {
 		t.Fatal("no live message may remain after the maximum TTL")
 	}
 	harness.clock.Advance(store.TombstoneTTL)
@@ -894,8 +891,8 @@ func TestAK27PreviousPepperHorizon(t *testing.T) {
 		t.Fatal(err)
 	}
 	harness.reopen(baseSettings(pepperB, nil))
-	if _, err := harness.store.Get(t.Context(), old.id.String()); err == nil {
-		t.Fatal("tombstone must be purged before the previous pepper is dropped")
+	if _, err := harness.record(old); err == nil {
+		t.Fatal("an ended message must be purged before the previous pepper is dropped")
 	}
 }
 
@@ -953,7 +950,7 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 				r.Context(),
 				r,
 				path[len("/api/v1/messages/"):],
-				pepper.Read,
+				seal.Read,
 				nil,
 			); ok ||
 				err != nil {
@@ -992,6 +989,7 @@ func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateH
 func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	t.Parallel()
 	settings := config.Defaults()
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.DataDir = t.TempDir()
 	settings.Pepper = bytes.Repeat([]byte{1}, 32)
 	database, err := sqlite.Open(t.Context(), filepath.Join(settings.DataDir, "nylzo.db"))
@@ -1029,15 +1027,8 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 	faulty := harness.withFaultyBlobs()
 	message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	harness.mustCreate(message)
-	if _, err := harness.store.MarkEnding(
-		t.Context(),
-		message.id.String(),
-		store.StateCancelled,
-		harness.clock.Now(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[message.id.String()] = true })
+	harness.markEnding(message, store.StateCancelled)
+	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(message)] = true })
 	unknown, unknownBody := harness.do(
 		&testRequest{
 			method: http.MethodGet,
