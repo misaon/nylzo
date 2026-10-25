@@ -18,7 +18,10 @@
 
   type Confirming = { readonly kind: 'cancel' | 'forget'; readonly id: string } | { readonly kind: 'forget_all' };
 
-  const DIALOGS: Record<Confirming['kind'], { readonly message: MessageKey; readonly confirm: MessageKey; readonly dismiss: MessageKey }> = {
+  const DIALOGS: Record<
+    Confirming['kind'],
+    { readonly message: MessageKey; readonly confirm: MessageKey; readonly dismiss: MessageKey }
+  > = {
     cancel: { message: 'sent.cancel.confirm', confirm: 'sent.cancel.yes', dismiss: 'sent.cancel.no' },
     forget: { message: 'sent.forget.confirm', confirm: 'sent.forget.yes', dismiss: 'sent.keep' },
     forget_all: { message: 'sent.forget_all.confirm', confirm: 'sent.forget_all.yes', dismiss: 'sent.keep' },
@@ -57,7 +60,8 @@
 
   sent.load();
 
-  const time = (value: string | number) => formatTime(typeof value === 'number' ? new Date(value).toISOString() : value, i18n.language);
+  const time = (value: string | number) =>
+    formatTime(typeof value === 'number' ? new Date(value).toISOString() : value, i18n.language);
   const headingId = (id: string) => `sent-item-${id}`;
 
   function stateText(state: ItemState): string {
@@ -90,7 +94,10 @@
     return state.status.firstOpenedAt ? time(state.status.firstOpenedAt) : t('sent.not_opened');
   }
 
-  function counterText(state: ItemState, value: (status: Extract<ItemState, { kind: 'loaded' }>['status']) => string): string {
+  function counterText(
+    state: ItemState,
+    value: (status: Extract<ItemState, { kind: 'loaded' }>['status']) => string,
+  ): string {
     if (state.kind !== 'loaded') {
       return '';
     }
@@ -168,7 +175,9 @@
             <dt>{t('sent.label.first_opened')}</dt>
             <dd>{firstOpenedText(item.state)}</dd>
             <dt>{t('sent.label.opens')}</dt>
-            <dd>{counterText(item.state, (status) => t('sent.opens', { used: status.opensUsed, max: status.opensMax }))}</dd>
+            <dd>
+              {counterText(item.state, (status) => t('sent.opens', { used: status.opensUsed, max: status.opensMax }))}
+            </dd>
             <dt>{t('sent.label.attempts')}</dt>
             <dd>{counterText(item.state, (status) => String(status.failedPassphraseAttempts))}</dd>
           </dl>
@@ -178,9 +187,15 @@
             disabled={!item.cancellable}
             onclick={() => (confirming = { kind: 'cancel', id: item.id })}>{t('sent.cancel')}</button
           >
-          <button type="button" aria-describedby={headingId(item.id)} onclick={() => askForget(item)}>{t('sent.forget')}</button>
+          <button type="button" aria-describedby={headingId(item.id)} onclick={() => askForget(item)}
+            >{t('sent.forget')}</button
+          >
           {#if item.state.kind === 'retry_later' || item.state.kind === 'failed'}
-            <button type="button" aria-describedby={headingId(item.id)} onclick={() => run(() => sent.refresh(item.id), item.id)}>{t('action.retry')}</button>
+            <button
+              type="button"
+              aria-describedby={headingId(item.id)}
+              onclick={() => run(() => sent.refresh(item.id), item.id)}>{t('action.retry')}</button
+            >
           {/if}
         </li>
       {/each}

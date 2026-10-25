@@ -31,7 +31,11 @@ describe('reporting a pasted link (D41)', () => {
 
   it('refuses a link of another service without sending anything', async () => {
     const { api, link } = await setup();
-    for (const foreign of [link.replace('nylzo.test', 'evil.test'), link.replace('https://', 'http://'), link.replace('nylzo.test', 'nylzo.test:8443')]) {
+    for (const foreign of [
+      link.replace('nylzo.test', 'evil.test'),
+      link.replace('https://', 'http://'),
+      link.replace('nylzo.test', 'nylzo.test:8443'),
+    ]) {
       expect(await reportLink(api, ORIGIN, foreign, '')).toEqual({ outcome: 'invalid', problems: ['link_foreign'] });
     }
     expect(api.calls).toEqual([]);
@@ -49,15 +53,27 @@ describe('reporting a pasted link (D41)', () => {
 
   it('tells a link from a newer version apart and sends nothing', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_newer'] });
-    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), '')).toEqual({ outcome: 'invalid', problems: ['link_invalid'] });
+    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), '')).toEqual({
+      outcome: 'invalid',
+      problems: ['link_newer'],
+    });
+    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), '')).toEqual({
+      outcome: 'invalid',
+      problems: ['link_invalid'],
+    });
     expect(api.calls).toEqual([]);
   });
 
   it('tells a link with the retired passphrase profile apart and sends nothing', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.replace('#1.0.', '#1.2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_retired'] });
-    expect(await reportLink(api, ORIGIN, link.replace('/m/', '/x/').replace('#1.0.', '#1.2.'), '')).toEqual({ outcome: 'invalid', problems: ['link_invalid'] });
+    expect(await reportLink(api, ORIGIN, link.replace('#1.0.', '#1.2.'), '')).toEqual({
+      outcome: 'invalid',
+      problems: ['link_retired'],
+    });
+    expect(await reportLink(api, ORIGIN, link.replace('/m/', '/x/').replace('#1.0.', '#1.2.'), '')).toEqual({
+      outcome: 'invalid',
+      problems: ['link_invalid'],
+    });
     expect(api.calls).toEqual([]);
   });
 
@@ -128,7 +144,6 @@ describe('redacting a reason before it is signed (D41)', () => {
 function utf8Length(text: string): number {
   return new TextEncoder().encode(text).length;
 }
-
 
 describe('the reason length after redaction, as nylzo report checks it', () => {
   it.each([

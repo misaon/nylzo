@@ -15,7 +15,9 @@ test('the client solves the proof of work the instance asks for', async ({ brows
   }
   const sender = await (await browser.newContext()).newPage();
   const violations = await recordViolations(sender);
-  const created = sender.waitForRequest((request) => request.url().endsWith('/api/v1/messages') && request.method() === 'POST');
+  const created = sender.waitForRequest(
+    (request) => request.url().endsWith('/api/v1/messages') && request.method() === 'POST',
+  );
   const link = await createViaUi(sender, { text: 'pow' }, POW_BASE_URL);
   expect((await created).headers()['x-nylzo-pow']).toMatch(/^[A-Za-z0-9_-]{48}\.[0-9a-f]{16}$/);
   expect(await violations()).toEqual([]);

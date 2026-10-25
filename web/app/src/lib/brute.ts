@@ -76,16 +76,22 @@ const SCALES: readonly { readonly size: number; readonly fraction: YearsKey; rea
 
 export function yearsAmount(yearsLog10: number, language: Language): YearsAmount {
   const years = 10 ** yearsLog10;
-  const number = (value: number, digits: number) => new Intl.NumberFormat(language, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value);
+  const number = (value: number, digits: number) =>
+    new Intl.NumberFormat(language, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value);
   for (const { size, fraction, whole } of SCALES) {
     if (years >= size) {
       const value = years / size;
-      return value < 10 ? { key: fraction, amount: number(value, 1) } : { key: whole, amount: number(Math.round(value), 0) };
+      return value < 10
+        ? { key: fraction, amount: number(value, 1) }
+        : { key: whole, amount: number(Math.round(value), 0) };
     }
   }
   const rounded = Math.round(years);
   const rule = new Intl.PluralRules(language).select(rounded);
-  return { key: rule === 'one' ? 'brute.years.one' : rule === 'few' ? 'brute.years.few' : 'brute.years.other', amount: number(rounded, 0) };
+  return {
+    key: rule === 'one' ? 'brute.years.one' : rule === 'few' ? 'brute.years.few' : 'brute.years.other',
+    amount: number(rounded, 0),
+  };
 }
 
 export interface Countdown {

@@ -42,7 +42,10 @@ function run(request: KdfRequest, options: WorkerOptions): Promise<KdfResponse> 
     };
     const listen = () => {
       clearTimeout(silence);
-      silence = setTimeout(() => finish(() => reject(new KdfWorkerError('the key derivation worker stopped responding'))), SILENCE_LIMIT_MS);
+      silence = setTimeout(
+        () => finish(() => reject(new KdfWorkerError('the key derivation worker stopped responding'))),
+        SILENCE_LIMIT_MS,
+      );
     };
     const onAbort = () => finish(() => reject(options.signal?.reason));
     options.signal?.addEventListener('abort', onAbort, { once: true });

@@ -85,7 +85,12 @@ function validTimes(createdAt: unknown, expiresAt: unknown, endedAt: unknown): b
 }
 
 function isSigningKey(key: unknown): key is CryptoKey {
-  return key instanceof CryptoKey && key.type === 'private' && key.algorithm.name === 'Ed25519' && key.usages.includes('sign');
+  return (
+    key instanceof CryptoKey &&
+    key.type === 'private' &&
+    key.algorithm.name === 'Ed25519' &&
+    key.usages.includes('sign')
+  );
 }
 
 export function storedForm(record: SentRecord): StoredRecord {
@@ -109,7 +114,9 @@ export function recordFrom(value: unknown): SentRecord | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined;
   }
-  const { id, createdAt, expiresAt, endedAt, privateKey, publicKey } = value as Partial<Record<keyof StoredRecord, unknown>>;
+  const { id, createdAt, expiresAt, endedAt, privateKey, publicKey } = value as Partial<
+    Record<keyof StoredRecord, unknown>
+  >;
   if (
     !validId(id) ||
     !validTimes(createdAt, expiresAt, endedAt) ||
@@ -313,7 +320,8 @@ export function assess(state: ItemState, expiresAt: number, now: number): Pick<S
   }
   const { status } = state;
   const expires = status.expiresAt === undefined ? expiresAt : Date.parse(status.expiresAt);
-  const ended = status.endedAt !== undefined || (status.state !== 'available' && status.state !== 'opened') || expires <= now;
+  const ended =
+    status.endedAt !== undefined || (status.state !== 'available' && status.state !== 'opened') || expires <= now;
   return { ended, cancellable: !ended };
 }
 
@@ -358,7 +366,13 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
       view: 'list',
       items: records.map((record) => {
         const state = states.get(record.id) ?? { kind: 'loading' };
-        return { id: record.id, createdAt: record.createdAt, expiresAt: record.expiresAt, state, ...assess(state, record.expiresAt, now) };
+        return {
+          id: record.id,
+          createdAt: record.createdAt,
+          expiresAt: record.expiresAt,
+          state,
+          ...assess(state, record.expiresAt, now),
+        };
       }),
     });
   }

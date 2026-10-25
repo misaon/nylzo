@@ -61,7 +61,12 @@ export type ReadView =
       readonly rejected?: PassphraseRejection | undefined;
     }
   | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
-  | { readonly view: 'revealed'; readonly text?: string | undefined; readonly file?: RevealedFile | undefined; readonly burnable: boolean };
+  | {
+      readonly view: 'revealed';
+      readonly text?: string | undefined;
+      readonly file?: RevealedFile | undefined;
+      readonly burnable: boolean;
+    };
 
 export type BurnOutcome =
   | { readonly outcome: 'deleted' }
@@ -89,7 +94,11 @@ export interface ReaderDeps {
   readonly page: { visible(): boolean; prerendering(): boolean };
   readonly dropFragment: () => void;
   readonly shown?: () => Promise<void>;
-  readonly scrypt: (passphrase: string, saltPw: Uint8Array<ArrayBuffer>, onProgress: (fraction: number) => void) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly scrypt: (
+    passphrase: string,
+    saltPw: Uint8Array<ArrayBuffer>,
+    onProgress: (fraction: number) => void,
+  ) => Promise<Uint8Array<ArrayBuffer>>;
   readonly now: () => number;
 }
 
@@ -162,7 +171,10 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (view.view !== 'ready' && view.view !== 'busy') {
       forget();
     }
-    if ((view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') || (view.view === 'revealed' && !view.burnable)) {
+    if (
+      (view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') ||
+      (view.view === 'revealed' && !view.burnable)
+    ) {
       held = undefined;
     }
     wipeUnused();
@@ -277,7 +289,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (error instanceof LinkVersionError) {
       return 'newer';
     }
-    return error instanceof LinkRetiredKdfError && safely(() => parsePath(deps.location.pathname), undefined) ? 'retired' : 'invalid';
+    return error instanceof LinkRetiredKdfError && safely(() => parsePath(deps.location.pathname), undefined)
+      ? 'retired'
+      : 'invalid';
   }
 
   async function load(): Promise<void> {
@@ -329,7 +343,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     onView({ view: 'busy', step: 'deriving', fraction: 0 });
     safely(() => deps.session.setItem(kdfKey(), '1'), undefined);
     try {
-      return await deps.scrypt(passphrase, current.saltPw, (fraction) => onView({ view: 'busy', step: 'deriving', fraction }));
+      return await deps.scrypt(passphrase, current.saltPw, (fraction) =>
+        onView({ view: 'busy', step: 'deriving', fraction }),
+      );
     } finally {
       safely(() => deps.session.removeItem(kdfKey()), undefined);
     }
@@ -338,7 +354,8 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
   function rejection(error: ApiError): PassphraseRejection {
     const retryAfter = error.retryAfter ?? 0;
     const expiresAt = metadata?.expiresAt ? Date.parse(metadata.expiresAt) : Number.NaN;
-    const locked = (error.attemptsLeft ?? 0) === 0 && Number.isFinite(expiresAt) && deps.now() + retryAfter * 1000 >= expiresAt;
+    const locked =
+      (error.attemptsLeft ?? 0) === 0 && Number.isFinite(expiresAt) && deps.now() + retryAfter * 1000 >= expiresAt;
     return { reason: 'wrong', attemptsLeft: error.attemptsLeft ?? 0, retryAfter, locked };
   }
 
@@ -361,7 +378,12 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     }
     onView({ view: 'busy', step: 'claiming' });
     try {
-      const claimed = await deps.api.claim(current.id, current.readKey, { verifierKey, onLease: keepLease, onProgress, proceed: () => !left });
+      const claimed = await deps.api.claim(current.id, current.readKey, {
+        verifierKey,
+        onLease: keepLease,
+        onProgress,
+        proceed: () => !left,
+      });
       return { envelope: claimed, lease: claimed.lease, fromLease: false };
     } catch (error) {
       if (error instanceof StoppedError) {
@@ -432,7 +454,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       const policy = { opensMax: fetched.envelope.policy.opensMax, ttlSeconds: fetched.envelope.policy.ttlSeconds };
       opened = await open(access.k, current.id, policy, current.kdfId, fetched.envelope.object);
     } catch {
-      return fetched.fromLease && current.kdfId !== KDF_NONE ? readyView({ reason: 'wrong_or_changed' }) : { view: 'tampered' };
+      return fetched.fromLease && current.kdfId !== KDF_NONE
+        ? readyView({ reason: 'wrong_or_changed' })
+        : { view: 'tampered' };
     }
     if (left) {
       opened.payload.file?.fill(0);
@@ -443,7 +467,10 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     onView({
       view: 'revealed',
       text,
-      file: file && opened.payload.file ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file } : undefined,
+      file:
+        file && opened.payload.file
+          ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file }
+          : undefined,
       burnable: remaining > 0,
     });
     await deps.shown?.();
@@ -490,7 +517,9 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if (error instanceof ApiError) {
       switch (error.kind) {
         case 'gone':
-          return error.state && error.state !== 'available' ? { outcome: 'ended', state: error.state } : { outcome: 'failed' };
+          return error.state && error.state !== 'available'
+            ? { outcome: 'ended', state: error.state }
+            : { outcome: 'failed' };
         case 'not_found':
           return { outcome: 'unknown' };
         case 'rate_limited':

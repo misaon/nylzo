@@ -11,7 +11,14 @@
   const gradient = `${uid}-mark`;
 </script>
 
-<svg class={className} viewBox="36 30 360 96" fill="none" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : 'true'}>
+<svg
+  class={className}
+  viewBox="36 30 360 96"
+  fill="none"
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}
+>
   <defs>
     <linearGradient id={gradient} x1="0%" y1="0%" x2="100%" y2="100%">
       <stop stop-color="#98D5FF"></stop>

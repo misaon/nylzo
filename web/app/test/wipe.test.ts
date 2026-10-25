@@ -77,7 +77,10 @@ function createDeps(api: FakeApi, scrypt = scryptStub()): CreateDeps {
 
 async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0, scrypt = scryptStub()): Promise<string> {
   const passphrase = kdfId === 0 ? '' : PASSPHRASE;
-  const message = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase }, createDeps(api, scrypt));
+  const message = await createMessage(
+    { text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase },
+    createDeps(api, scrypt),
+  );
   captured.length = 0;
   passphraseKeys.length = 0;
   return message.link;
@@ -122,10 +125,15 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it.each<[string, FakeOptions]>([
     ['the upload fails', { failCreate: [new ApiError(500, 'internal')] }],
-    ['a retry with a new id fails too', { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', 5)] }],
+    [
+      'a retry with a new id fails too',
+      { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', 5)] },
+    ],
   ])('wipes every S, R, salt_pw, V and P when %s', async (_, options) => {
     const api = fakeApi(options);
-    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDeps(api))).rejects.toThrow();
+    await expect(
+      createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDeps(api)),
+    ).rejects.toThrow();
     expect(captured.length).toBe(4 * api.calls.filter((call) => call === 'create').length);
     expect(zeroed().every(Boolean)).toBe(true);
     expect(passphraseKeys.length).toBeGreaterThan(0);
@@ -134,7 +142,9 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
 
   it('wipes S, R and salt_pw when the key derivation fails', async () => {
     const deps = createDeps(fakeApi(), async () => Promise.reject(new KdfWorkerError()));
-    await expect(createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, deps)).rejects.toMatchObject({
+    await expect(
+      createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, deps),
+    ).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });
     expect(captured).toHaveLength(3);
@@ -162,7 +172,10 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   it('wipes S when it refuses a link of another service', async () => {
     const api = fakeApi();
     const link = await created(api);
-    expect(await reportLink(api, 'https://other.test', link, '')).toEqual({ outcome: 'invalid', problems: ['link_foreign'] });
+    expect(await reportLink(api, 'https://other.test', link, '')).toEqual({
+      outcome: 'invalid',
+      problems: ['link_foreign'],
+    });
     expect(captured).toHaveLength(1);
     expect(zeroed()).toEqual([true]);
   });

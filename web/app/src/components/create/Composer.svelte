@@ -42,7 +42,13 @@
     readonly saved?: Promise<boolean> | undefined;
   }
 
-  const REACHED: Record<CreateProgress['step'], number> = { preparing: 0, deriving: 1, encrypting: 2, proving: 3, uploading: 3 };
+  const REACHED: Record<CreateProgress['step'], number> = {
+    preparing: 0,
+    deriving: 1,
+    encrypting: 2,
+    proving: 3,
+    uploading: 3,
+  };
   const MIN_MS = 5000;
   const REDUCED_MIN_MS = 1200;
   const TICK_MS = 60;
@@ -93,7 +99,13 @@
       title: t('step.derive.title'),
       detail: t(usesPassphrase ? 'step.derive.detail.passphrase' : 'step.derive.detail'),
     },
-    { id: 'encrypt', label: t('step.encrypt.label'), icon: 'lock', title: t('step.encrypt.title'), detail: t('step.encrypt.detail') },
+    {
+      id: 'encrypt',
+      label: t('step.encrypt.label'),
+      icon: 'lock',
+      title: t('step.encrypt.title'),
+      detail: t('step.encrypt.detail'),
+    },
     {
       id: 'send',
       label: t('step.send.label'),
@@ -101,7 +113,13 @@
       title: t(proving ? 'step.send.title.pow' : 'step.send.title'),
       detail: t(proving ? 'step.send.detail.pow' : 'step.send.detail'),
     },
-    { id: 'link', label: t('step.link.label'), icon: 'link', title: t('step.link.title'), detail: t('step.link.detail') },
+    {
+      id: 'link',
+      label: t('step.link.label'),
+      icon: 'link',
+      title: t('step.link.title'),
+      detail: t('step.link.detail'),
+    },
   ]);
   const minMs = $derived(prefersReducedMotion.current ? REDUCED_MIN_MS : MIN_MS);
   const shown = $derived(pace({ elapsedMs: elapsed, minMs, steps: nodes.length, reached, fraction }));
@@ -122,13 +140,22 @@
     }
     return messages;
   });
-  const passphraseMessage = $derived(problemOf.passphrase ?? (weak ? t('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''));
+  const passphraseMessage = $derived(
+    problemOf.passphrase ??
+      (weak ? t('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''),
+  );
   const notice = $derived(
     loadFailed
       ? t('failure.instance')
       : failure
         ? failureText(failure)
-        : (problemOf.content ?? problemOf.text ?? problemOf.file ?? problemOf.ttl ?? problemOf.opens ?? problemOf.passphrase ?? ''),
+        : (problemOf.content ??
+          problemOf.text ??
+          problemOf.file ??
+          problemOf.ttl ??
+          problemOf.opens ??
+          problemOf.passphrase ??
+          ''),
   );
   const busy = $derived(phase !== 'compose');
   let submitting = false;
@@ -222,7 +249,11 @@
   }
 
   function ondragleave(event: DragEvent) {
-    if (!(event.relatedTarget instanceof Node && event.currentTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) {
+    if (!(
+      event.relatedTarget instanceof Node &&
+      event.currentTarget instanceof Node &&
+      event.currentTarget.contains(event.relatedTarget)
+    )) {
       dragging = false;
     }
   }
@@ -331,7 +362,13 @@
       await showProblems([attachment.problem]);
       return;
     }
-    const input: CreateInput = { text, file: attachment.file, ttlSeconds, opensMax, passphrase: protect ? passphrase : '' };
+    const input: CreateInput = {
+      text,
+      file: attachment.file,
+      ttlSeconds,
+      opensMax,
+      passphrase: protect ? passphrase : '',
+    };
     const unset: CreateProblem[] = protect && passphrase === '' ? [{ field: 'passphrase', code: 'too_short' }] : [];
     const invalid = [...unset, ...validateCreate(input, allowed)];
     if (invalid.length > 0) {
@@ -348,7 +385,8 @@
           api,
           origin: location.origin,
           scrypt: (pass, saltPw, report) => scryptInWorker(pass, saltPw, { onProgress: report }),
-          solvePow: (challenge, id, difficulty, deadline, report) => solvePowInWorker(challenge, id, difficulty, deadline, { onProgress: report }),
+          solvePow: (challenge, id, difficulty, deadline, report) =>
+            solvePowInWorker(challenge, id, difficulty, deadline, { onProgress: report }),
         },
         (progress) => {
           if (!stale()) {
@@ -413,7 +451,12 @@
 
   async function rememberMessage(created: Created): Promise<boolean> {
     const expiresAt = Date.parse(created.expiresAt);
-    const record = { id: created.id, createdAt: Math.min(Date.now(), expiresAt), expiresAt, manageKey: created.manageKey };
+    const record = {
+      id: created.id,
+      createdAt: Math.min(Date.now(), expiresAt),
+      expiresAt,
+      manageKey: created.manageKey,
+    };
     return rememberSent(sentStore, record, SAVE_TIMEOUT_MS);
   }
 
@@ -422,7 +465,8 @@
     return () => clearInterval(timer);
   };
 
-  const chipBase = 'flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap ring-1 sm:w-auto sm:justify-start md:h-9';
+  const chipBase =
+    'flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap ring-1 sm:w-auto sm:justify-start md:h-9';
   const chipIdle = 'bg-white/4 text-ink-soft ring-white/10 hover:bg-white/8 hover:text-ink';
   const chipOpen = 'bg-white/10 text-ink ring-white/25';
   const chipAccent = 'bg-aegis-500/15 text-aegis-200 ring-aegis-400/40 hover:bg-aegis-500/20';
@@ -433,10 +477,14 @@
 
 <section id="napsat" class="px-4 pt-20 pb-32 sm:px-6 md:pt-28 md:pb-40" aria-labelledby="{uid}-title" {@attach cleanup}>
   <div class="mx-auto max-w-[860px] text-center">
-    <h1 class="animate-rise-visible font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance sm:text-[50px] lg:text-[62px]">
+    <h1
+      class="animate-rise-visible font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance sm:text-[50px] lg:text-[62px]"
+    >
       {t('hero.title.lead')} <span class="text-aegis-300">{t('hero.title.accent')}</span>
     </h1>
-    <p class="mx-auto mt-6 max-w-[640px] animate-rise-visible text-base leading-[1.75] text-balance text-ink-soft [animation-delay:120ms] sm:text-[17px]">
+    <p
+      class="mx-auto mt-6 max-w-[640px] animate-rise-visible text-base leading-[1.75] text-balance text-ink-soft [animation-delay:120ms] sm:text-[17px]"
+    >
       {t('hero.intro')}
     </p>
   </div>
@@ -447,9 +495,12 @@
       <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
       <h2 id="{uid}-title" class="sr-only">{t('create.title')}</h2>
 
-      <div class="stack relative">
+      <div class="relative stack">
         <form
-          class={['fade-swap flex flex-col text-left', phase === 'done' ? 'pointer-events-none translate-y-3 opacity-0' : 'translate-y-0 opacity-100']}
+          class={[
+            'flex flex-col text-left fade-swap',
+            phase === 'done' ? 'pointer-events-none translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
+          ]}
           inert={phase === 'done'}
           onsubmit={submit}
           novalidate
@@ -469,22 +520,25 @@
               aria-invalid={problemOf.content !== undefined || problemOf.text !== undefined}
               aria-describedby="{uid}-notice"
               class={[
-                'block min-h-[200px] w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-base leading-[1.7] text-ink caret-aegis-300 outline-none transition-opacity duration-500 placeholder:text-ink-mute md:min-h-[280px] md:text-[17px]',
+                'block min-h-[200px] w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-base leading-[1.7] text-ink caret-aegis-300 transition-opacity duration-500 outline-none placeholder:text-ink-mute md:min-h-[280px] md:text-[17px]',
                 phase === 'encrypting' ? 'opacity-0' : 'opacity-100',
-              ]}
-            ></textarea>
+              ]}></textarea>
             <div class="pointer-events-none absolute inset-x-4 bottom-3 flex items-center justify-between gap-3">
               <span
                 class={[
                   'flex h-8 min-w-0 origin-left items-center gap-2 rounded-[8px] pr-0.5 pl-2.5 text-[13px] ring-1 transition-[opacity,translate,scale] duration-500 ease-silk',
                   problemOf.file ? 'bg-rose-500/10 ring-rose-300/50' : 'bg-nebula-400/10 ring-nebula-300/30',
-                  file && phase === 'compose' ? 'pointer-events-auto translate-y-0 scale-100 opacity-100' : 'translate-y-1 scale-95 opacity-0',
+                  file && phase === 'compose'
+                    ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
+                    : 'translate-y-1 scale-95 opacity-0',
                 ]}
                 inert={!file || phase !== 'compose'}
               >
                 <Icon name="file" class="size-4 shrink-0 text-nebula-300" />
                 <span class="truncate text-ink">{file?.name ?? ''}</span>
-                <span class="shrink-0 font-mono text-[11px] text-ink-mute">{file ? formatBytes(file.size, i18n.language) : ''}</span>
+                <span class="shrink-0 font-mono text-[11px] text-ink-mute"
+                  >{file ? formatBytes(file.size, i18n.language) : ''}</span
+                >
                 <button
                   type="button"
                   onclick={removeFile}
@@ -502,21 +556,31 @@
                 ]}
                 aria-hidden="true"
               >
-                {t('compose.counter', { size: formatSize(textBytes, i18n.language), max: formatBytes(textLimit, i18n.language) })}
+                {t('compose.counter', {
+                  size: formatSize(textBytes, i18n.language),
+                  max: formatBytes(textLimit, i18n.language),
+                })}
               </span>
             </div>
 
             <div
-              class={['pointer-events-none absolute inset-0 overflow-hidden rounded-t-card transition-opacity duration-500', phase === 'encrypting' ? 'opacity-100' : 'opacity-0']}
+              class={[
+                'pointer-events-none absolute inset-0 overflow-hidden rounded-t-card transition-opacity duration-500',
+                phase === 'encrypting' ? 'opacity-100' : 'opacity-0',
+              ]}
               aria-hidden="true"
             >
               <p
-                class="absolute inset-0 px-6 pt-6 font-mono text-[13px] leading-6 break-all text-aegis-200/35 [mask-image:radial-gradient(ellipse_62%_58%_at_50%_50%,transparent_35%,black_100%)]"
+                class="absolute inset-0 [mask-image:radial-gradient(ellipse_62%_58%_at_50%_50%,transparent_35%,black_100%)] px-6 pt-6 font-mono text-[13px] leading-6 break-all text-aegis-200/35"
               >
                 {cipher}
               </p>
-              <div class="absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-400/12 to-transparent"></div>
-              <div class="absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"></div>
+              <div
+                class="absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-400/12 to-transparent"
+              ></div>
+              <div
+                class="absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"
+              ></div>
               <div class="absolute inset-0 flex flex-col items-center justify-center px-4 pb-4">
                 <Pipeline {nodes} current={shown.step} progress={shown.progress} active={phase === 'encrypting'} />
               </div>
@@ -534,7 +598,9 @@
               aria-hidden="true"
             >
               <p class="flex items-center gap-3 px-4 text-center text-aegis-200">
-                <span class="grid size-9 shrink-0 place-items-center rounded-control bg-aegis-500/15 ring-1 ring-aegis-400/35">
+                <span
+                  class="grid size-9 shrink-0 place-items-center rounded-control bg-aegis-500/15 ring-1 ring-aegis-400/35"
+                >
                   <Icon name="upload" class="size-[18px]" />
                 </span>
                 {t('compose.drop')}
@@ -544,7 +610,13 @@
 
           <div class="relative border-t border-white/8">
             <div class="relative flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <div class={['grid grid-cols-2 gap-1.5 transition-opacity duration-500 sm:flex sm:items-center', busy ? 'pointer-events-none opacity-40' : 'opacity-100']} inert={busy}>
+              <div
+                class={[
+                  'grid grid-cols-2 gap-1.5 transition-opacity duration-500 sm:flex sm:items-center',
+                  busy ? 'pointer-events-none opacity-40' : 'opacity-100',
+                ]}
+                inert={busy}
+              >
                 <div class="sm:relative" data-menu>
                   <button
                     id="{uid}-ttl-trigger"
@@ -558,7 +630,14 @@
                   >
                     <Icon name="clock" class="size-4 shrink-0" />
                     {ttlLabel(ttlSeconds)}
-                    <Icon name="chevronDown" stroke={2} class={['size-3.5 shrink-0 opacity-60 transition-transform duration-300', menu === 'ttl' ? 'rotate-180' : 'rotate-0']} />
+                    <Icon
+                      name="chevronDown"
+                      stroke={2}
+                      class={[
+                        'size-3.5 shrink-0 opacity-60 transition-transform duration-300',
+                        menu === 'ttl' ? 'rotate-180' : 'rotate-0',
+                      ]}
+                    />
                   </button>
                   <Popover
                     id="{uid}-ttl"
@@ -582,10 +661,19 @@
                         ]}
                       >
                         {ttlLabel(seconds)}
-                        <Icon name="check" stroke={2.2} class={['size-3.5 text-aegis-300 transition-opacity duration-300', ttlSeconds === seconds ? 'opacity-100' : 'opacity-0']} />
+                        <Icon
+                          name="check"
+                          stroke={2.2}
+                          class={[
+                            'size-3.5 text-aegis-300 transition-opacity duration-300',
+                            ttlSeconds === seconds ? 'opacity-100' : 'opacity-0',
+                          ]}
+                        />
                       </button>
                     {/each}
-                    <p class="px-2.5 pt-1.5 pb-1.5 text-[11px] leading-relaxed text-ink-mute">{t('compose.ttl.note')}</p>
+                    <p class="px-2.5 pt-1.5 pb-1.5 text-[11px] leading-relaxed text-ink-mute">
+                      {t('compose.ttl.note')}
+                    </p>
                   </Popover>
                 </div>
 
@@ -601,7 +689,14 @@
                   >
                     <Icon name="eye" class="size-4 shrink-0" />
                     {opensLabel(opensMax)}
-                    <Icon name="chevronDown" stroke={2} class={['size-3.5 shrink-0 opacity-60 transition-transform duration-300', menu === 'opens' ? 'rotate-180' : 'rotate-0']} />
+                    <Icon
+                      name="chevronDown"
+                      stroke={2}
+                      class={[
+                        'size-3.5 shrink-0 opacity-60 transition-transform duration-300',
+                        menu === 'opens' ? 'rotate-180' : 'rotate-0',
+                      ]}
+                    />
                   </button>
                   <Popover
                     id="{uid}-opens"
@@ -611,7 +706,7 @@
                     class="inset-x-0 top-full mt-2 p-2 sm:inset-x-auto sm:left-0 sm:w-52"
                   >
                     <p class="px-1 pt-0.5 text-[11px] text-ink-mute">{t('compose.opens.title')}</p>
-                    <div class="mt-1.5 flex items-center justify-between rounded-[8px] well p-0.5">
+                    <div class="mt-1.5 flex items-center justify-between rounded-[8px] p-0.5 well">
                       <button
                         type="button"
                         disabled={opensMax <= 1}
@@ -621,7 +716,9 @@
                       >
                         <Icon name="minus" class="size-3.5" stroke={2} />
                       </button>
-                      <output class="text-[15px] font-medium text-ink tabular-nums" aria-live="polite">{opensMax}</output>
+                      <output class="text-[15px] font-medium text-ink tabular-nums" aria-live="polite"
+                        >{opensMax}</output
+                      >
                       <button
                         type="button"
                         disabled={opensMax >= maxOpens}
@@ -632,7 +729,9 @@
                         <Icon name="plus" class="size-3.5" stroke={2} />
                       </button>
                     </div>
-                    <p class="mt-1.5 px-1 pb-0.5 text-[11px] leading-relaxed text-ink-mute">{t('compose.opens.note', { max: maxOpens })}</p>
+                    <p class="mt-1.5 px-1 pb-0.5 text-[11px] leading-relaxed text-ink-mute">
+                      {t('compose.opens.note', { max: maxOpens })}
+                    </p>
                   </Popover>
                 </div>
 
@@ -644,11 +743,27 @@
                     aria-expanded={menu === 'security'}
                     aria-controls="{uid}-security"
                     onclick={() => toggle('security')}
-                    class={[chipBase, menu === 'security' ? chipOpen : problemOf.passphrase ? chipProblem : protect ? chipAccent : chipIdle]}
+                    class={[
+                      chipBase,
+                      menu === 'security'
+                        ? chipOpen
+                        : problemOf.passphrase
+                          ? chipProblem
+                          : protect
+                            ? chipAccent
+                            : chipIdle,
+                    ]}
                   >
                     <Icon name="key" class="size-4 shrink-0" />
                     {t('compose.passphrase.chip')}
-                    <Icon name="chevronDown" stroke={2} class={['size-3.5 shrink-0 opacity-60 transition-transform duration-300', menu === 'security' ? 'rotate-180' : 'rotate-0']} />
+                    <Icon
+                      name="chevronDown"
+                      stroke={2}
+                      class={[
+                        'size-3.5 shrink-0 opacity-60 transition-transform duration-300',
+                        menu === 'security' ? 'rotate-180' : 'rotate-0',
+                      ]}
+                    />
                   </button>
                   <Popover
                     id="{uid}-security"
@@ -657,14 +772,27 @@
                     onclose={() => closeMenu('security')}
                     class="inset-x-0 top-full mt-2 p-1 sm:inset-x-auto sm:left-0 sm:w-72"
                   >
-                    <button type="button" role="switch" aria-checked={protect} onclick={toggleProtect} class="flex w-full items-start gap-3 rounded-[7px] p-2 text-left hover:bg-white/4">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={protect}
+                      onclick={toggleProtect}
+                      class="flex w-full items-start gap-3 rounded-[7px] p-2 text-left hover:bg-white/4"
+                    >
                       <span class="mt-px"><Switch on={protect} /></span>
                       <span>
                         <span class="block text-[13px] text-ink">{t('compose.passphrase.switch')}</span>
-                        <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute">{t('compose.passphrase.switch.note')}</span>
+                        <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
+                          >{t('compose.passphrase.switch.note')}</span
+                        >
                       </span>
                     </button>
-                    <div class={['flex flex-col gap-1.5 px-2 pt-0.5 pb-2 transition-opacity duration-500', protect ? 'opacity-100' : 'opacity-40']}>
+                    <div
+                      class={[
+                        'flex flex-col gap-1.5 px-2 pt-0.5 pb-2 transition-opacity duration-500',
+                        protect ? 'opacity-100' : 'opacity-40',
+                      ]}
+                    >
                       <label for="{uid}-passphrase" class="sr-only">{t('create.passphrase')}</label>
                       <input
                         id="{uid}-passphrase"
@@ -682,12 +810,22 @@
                         aria-invalid={problemOf.passphrase !== undefined}
                         aria-describedby="{uid}-passphrase-hint {uid}-passphrase-problem"
                         class={[
-                          'well h-11 w-full rounded-[7px] px-3 text-[13px] text-ink placeholder:text-ink-mute md:h-8',
+                          'h-11 w-full rounded-[7px] px-3 text-[13px] text-ink well placeholder:text-ink-mute md:h-8',
                           problemOf.passphrase && 'shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]',
                         ]}
                       />
-                      <p id="{uid}-passphrase-hint" class="text-[11px] leading-relaxed text-ink-mute">{t('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARS })}</p>
-                      <p id="{uid}-passphrase-problem" class={['min-h-[1lh] text-[11px] leading-relaxed', problemOf.passphrase ? 'text-rose-300' : 'text-nebula-300']}>{passphraseMessage}</p>
+                      <p id="{uid}-passphrase-hint" class="text-[11px] leading-relaxed text-ink-mute">
+                        {t('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARS })}
+                      </p>
+                      <p
+                        id="{uid}-passphrase-problem"
+                        class={[
+                          'min-h-[1lh] text-[11px] leading-relaxed',
+                          problemOf.passphrase ? 'text-rose-300' : 'text-nebula-300',
+                        ]}
+                      >
+                        {passphraseMessage}
+                      </p>
                     </div>
                     <div class="mx-2 h-px bg-white/8"></div>
                     <button
@@ -700,7 +838,9 @@
                       <span class="mt-px"><Switch on={remember} /></span>
                       <span>
                         <span class="block text-[13px] text-ink">{t('compose.remember.switch')}</span>
-                        <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute">{t('compose.remember.note')}</span>
+                        <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
+                          >{t('compose.remember.note')}</span
+                        >
                       </span>
                     </button>
                   </Popover>
@@ -720,11 +860,17 @@
                     class={[
                       chipBase,
                       'peer-hover:bg-white/8 peer-hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-aegis-300',
-                      problemOf.file ? chipProblem : file ? 'bg-nebula-400/12 text-nebula-300 ring-nebula-300/35' : chipIdle,
+                      problemOf.file
+                        ? chipProblem
+                        : file
+                          ? 'bg-nebula-400/12 text-nebula-300 ring-nebula-300/35'
+                          : chipIdle,
                     ]}
                   >
                     <Icon name="paperclip" class="size-4 shrink-0" />
-                    {t('compose.attach')}<span class="sr-only">{t('compose.attach.limit', { size: formatBytes(fileLimit, i18n.language) })}</span>
+                    {t('compose.attach')}<span class="sr-only"
+                      >{t('compose.attach.limit', { size: formatBytes(fileLimit, i18n.language) })}</span
+                    >
                   </label>
                 </div>
               </div>
@@ -735,7 +881,7 @@
                   type="submit"
                   disabled={!limits || busy}
                   class={[
-                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-[opacity,translate,scale] duration-500 md:h-9 md:px-4',
+                    'btn-primary flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-[opacity,translate,scale] duration-500 md:h-9 md:px-4',
                     busy ? 'pointer-events-none opacity-0' : 'opacity-100',
                   ]}
                 >
@@ -751,14 +897,31 @@
                   ]}
                   aria-hidden={!busy}
                 >
-                  <progress class="progress-fill absolute inset-0 h-full w-full" max="1" value={shown.progress} aria-hidden="true"></progress>
-                  <span class="absolute inset-y-0 left-0 w-1/3 animate-beam bg-linear-to-r from-transparent via-white/15 to-transparent" aria-hidden="true"></span>
+                  <progress
+                    class="absolute inset-0 h-full w-full progress-fill"
+                    max="1"
+                    value={shown.progress}
+                    aria-hidden="true"
+                  ></progress>
+                  <span
+                    class="absolute inset-y-0 left-0 w-1/3 animate-beam bg-linear-to-r from-transparent via-white/15 to-transparent"
+                    aria-hidden="true"
+                  ></span>
                   <svg class="relative size-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.2"></circle>
-                    <path d="M20.5 12A8.5 8.5 0 0 0 12 3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path>
+                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.2"
+                    ></circle>
+                    <path
+                      d="M20.5 12A8.5 8.5 0 0 0 12 3.5"
+                      stroke="currentColor"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                    ></path>
                   </svg>
                   <span class="relative">{t('compose.encrypting')}</span>
-                  <span class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums">{Math.round(shown.progress * 100)} %</span>
+                  <span
+                    class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums"
+                    >{Math.round(shown.progress * 100)} %</span
+                  >
                 </div>
               </div>
             </div>
@@ -766,32 +929,60 @@
         </form>
 
         {#if sealed}
-          <CreatedPanel created={sealed.created} opensMax={sealed.opensMax} passphrase={sealed.passphrase} onanother={another} />
+          <CreatedPanel
+            created={sealed.created}
+            opensMax={sealed.opensMax}
+            passphrase={sealed.passphrase}
+            onanother={another}
+          />
         {/if}
       </div>
     </div>
   </div>
 
   <div class="relative mt-4 text-xs">
-    <p class={['fade-swap flex items-center justify-center gap-2 text-ink-mute', notice === '' && remembered === 'off' ? 'opacity-100' : 'pointer-events-none opacity-0']}>
+    <p
+      class={[
+        'flex items-center justify-center gap-2 text-ink-mute fade-swap',
+        notice === '' && remembered === 'off' ? 'opacity-100' : 'pointer-events-none opacity-0',
+      ]}
+    >
       <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
       {t('compose.note')}
     </p>
-    <div class={['fade-swap absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-3 text-center', notice === '' ? 'pointer-events-none opacity-0' : 'opacity-100']}>
+    <div
+      class={[
+        'absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-3 text-center fade-swap',
+        notice === '' ? 'pointer-events-none opacity-0' : 'opacity-100',
+      ]}
+    >
       <p id="{uid}-notice" role="alert" class="text-rose-300">{notice}</p>
       <button
         type="button"
         onclick={loadLimits}
         inert={!loadFailed}
-        class={['btn-ghost h-11 rounded-[9px] px-3 text-xs md:h-8', loadFailed ? 'opacity-100' : 'pointer-events-none opacity-0']}
+        class={[
+          'btn-ghost h-11 rounded-[9px] px-3 text-xs md:h-8',
+          loadFailed ? 'opacity-100' : 'pointer-events-none opacity-0',
+        ]}
       >
         {t('action.retry')}
       </button>
     </div>
-    <div class={['fade-swap absolute inset-x-0 top-1/2 flex -translate-y-1/2 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center', remembered === 'remembered' || remembered === 'failed' ? 'opacity-100' : 'pointer-events-none opacity-0']} inert={remembered === 'off' || remembered === 'saving'}>
+    <div
+      class={[
+        'absolute inset-x-0 top-1/2 flex -translate-y-1/2 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center fade-swap',
+        remembered === 'remembered' || remembered === 'failed' ? 'opacity-100' : 'pointer-events-none opacity-0',
+      ]}
+      inert={remembered === 'off' || remembered === 'saving'}
+    >
       <p role="status" class={['flex items-center gap-2', remembered === 'failed' ? 'text-rose-300' : 'text-ink-mute']}>
         <Icon name={remembered === 'failed' ? 'alert' : 'check'} class="size-4 shrink-0 text-aegis-300" />
-        {remembered === 'remembered' ? t('created.remembered') : remembered === 'failed' ? t('created.not_remembered') : ''}
+        {remembered === 'remembered'
+          ? t('created.remembered')
+          : remembered === 'failed'
+            ? t('created.not_remembered')
+            : ''}
       </p>
       <a href="/sent" class="inline-flex items-center gap-1.5 text-aegis-300 hover:text-aegis-200">
         {t('created.status_link')}

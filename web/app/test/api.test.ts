@@ -11,7 +11,14 @@ import {
 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, ResponseError, StoppedError, TRANSFER_TIMEOUT_MS, createApi, decodePolicyHeader } from '../src/lib/api.ts';
+import {
+  ApiError,
+  ResponseError,
+  StoppedError,
+  TRANSFER_TIMEOUT_MS,
+  createApi,
+  decodePolicyHeader,
+} from '../src/lib/api.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
 
@@ -38,7 +45,15 @@ function fakeServer(handler: Handler) {
 }
 
 function decode(s: string): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from(atob(s.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(s.length / 4) * 4, '=')), (c) => c.charCodeAt(0));
+  return Uint8Array.from(
+    atob(
+      s
+        .replaceAll('-', '+')
+        .replaceAll('_', '/')
+        .padEnd(Math.ceil(s.length / 4) * 4, '='),
+    ),
+    (c) => c.charCodeAt(0),
+  );
 }
 
 async function verifies(
@@ -83,7 +98,9 @@ describe('api client', () => {
     expect(instance.limits).not.toHaveProperty('defaultKdfId');
     expect(instance.pow).toEqual({ required: true, difficulty: 4, challenge: 'x' });
     expect(idToString(instance.create.id)).toBe('AAAAAAAAAAAAAAAAAAAAAA');
-    const legacy = fakeServer(() => json(200, { ...instanceBody, limits: { ...instanceBody.limits, default_kdf_id: 0 } }));
+    const legacy = fakeServer(() =>
+      json(200, { ...instanceBody, limits: { ...instanceBody.limits, default_kdf_id: 0 } }),
+    );
     expect((await legacy.api.instance()).limits).not.toHaveProperty('defaultKdfId');
     const bad = fakeServer(() => json(200, { ...instanceBody, limits: { ...instanceBody.limits, max_opens: 'ten' } }));
     await expect(bad.api.instance()).rejects.toThrow(ResponseError);
@@ -106,7 +123,12 @@ describe('api client', () => {
       }),
     );
     const metadata = await server.api.metadata(id, readKey);
-    expect(metadata).toMatchObject({ state: 'available', opensRemaining: 1, kdfId: 0, expiresAt: '2026-10-24T09:00:00Z' });
+    expect(metadata).toMatchObject({
+      state: 'available',
+      opensRemaining: 1,
+      kdfId: 0,
+      expiresAt: '2026-10-24T09:00:00Z',
+    });
     const request = server.seen.at(-1);
     const path = `/api/v1/messages/${idToString(id)}`;
     expect(new URL(request?.url ?? '').pathname).toBe(path);
@@ -120,7 +142,13 @@ describe('api client', () => {
     const manageKey = await requestKey(new Uint8Array(32).fill(9));
     const server = fakeServer((request) =>
       new URL(request.url).pathname.endsWith('/status')
-        ? json(200, { state: 'cancelled', opens_used: 0, opens_max: 1, failed_passphrase_attempts: 2, ended_at: '2026-10-23T10:00:00Z' })
+        ? json(200, {
+            state: 'cancelled',
+            opens_used: 0,
+            opens_max: 1,
+            failed_passphrase_attempts: 2,
+            ended_at: '2026-10-23T10:00:00Z',
+          })
         : new Response(null, { status: 204 }),
     );
     await server.api.burn(id, readKey);
@@ -179,7 +207,11 @@ describe('api client', () => {
       () =>
         new Response(object, {
           status: 200,
-          headers: { 'X-Nylzo-Lease': 'lease-token', 'X-Nylzo-Policy': policy, 'Content-Length': String(object.length) },
+          headers: {
+            'X-Nylzo-Lease': 'lease-token',
+            'X-Nylzo-Policy': policy,
+            'Content-Length': String(object.length),
+          },
         }),
     );
     const progress: [number, number | undefined][] = [];
@@ -211,7 +243,9 @@ describe('api client', () => {
   it('retries a 404 once with a new challenge and then reports it', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(3));
     let calls = 0;
-    const flaky = fakeServer(() => (++calls === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 })));
+    const flaky = fakeServer(() =>
+      ++calls === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 }),
+    );
     await flaky.api.ack(randomId(), readKey, 'lease');
     expect(flaky.issued()).toBe(2);
     const gone = fakeServer(() => json(404, { error: 'not_found' }));
@@ -222,9 +256,15 @@ describe('api client', () => {
   it('maps errors from the server', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(4));
     const cases: [Response, Partial<ApiError>][] = [
-      [json(403, { error: 'passphrase', retry_after: 60, attempts_left: 0 }), { kind: 'passphrase', retryAfter: 60, attemptsLeft: 0 }],
+      [
+        json(403, { error: 'passphrase', retry_after: 60, attempts_left: 0 }),
+        { kind: 'passphrase', retryAfter: 60, attemptsLeft: 0 },
+      ],
       [json(410, { error: 'gone', state: 'opened' }), { kind: 'gone', state: 'opened' }],
-      [json(429, { error: 'rate_limited', retry_after: 5 }, { 'Retry-After': '5' }), { kind: 'rate_limited', retryAfter: 5 }],
+      [
+        json(429, { error: 'rate_limited', retry_after: 5 }, { 'Retry-After': '5' }),
+        { kind: 'rate_limited', retryAfter: 5 },
+      ],
       [json(503, { error: 'unavailable' }, { 'Retry-After': '30' }), { kind: 'unavailable', retryAfter: 30 }],
       [new Response('<html>', { status: 502 }), { kind: 'unexpected', status: 502 }],
     ];
@@ -237,10 +277,24 @@ describe('api client', () => {
   it('sends the create header and the proof of work', async () => {
     const server = fakeServer(() => json(201, { id: 'AAAAAAAAAAAAAAAAAAAAAA', expires_at: '2026-10-24T09:00:00Z' }));
     const object = new Uint8Array(4127);
-    const keys = { id: randomId(), idToken: 'token', readKey: new Uint8Array(32).fill(1), manageKey: new Uint8Array(32).fill(3) };
-    await server.api.create({ ...keys, kdfId: 0, opensMax: 1, ttlSeconds: 3600, object, powToken: 'chal.0000000000000003' });
+    const keys = {
+      id: randomId(),
+      idToken: 'token',
+      readKey: new Uint8Array(32).fill(1),
+      manageKey: new Uint8Array(32).fill(3),
+    };
+    await server.api.create({
+      ...keys,
+      kdfId: 0,
+      opensMax: 1,
+      ttlSeconds: 3600,
+      object,
+      powToken: 'chal.0000000000000003',
+    });
     const request = server.seen.at(-1);
-    const header = JSON.parse(atob((request?.headers.get('X-Nylzo-Create') ?? '').replaceAll('-', '+').replaceAll('_', '/')));
+    const header = JSON.parse(
+      atob((request?.headers.get('X-Nylzo-Create') ?? '').replaceAll('-', '+').replaceAll('_', '/')),
+    );
     expect(header).toEqual({
       id: idToString(keys.id),
       id_token: 'token',
@@ -258,7 +312,14 @@ describe('api client', () => {
 
   it('accepts only a canonical policy header with integer fields', () => {
     expect(decodePolicyHeader(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
-    for (const bad of [null, '', `${policy}A`, `${policy}=`, encodeBase64url(utf8('[]')), encodeBase64url(utf8('{"opens_max":1}'))]) {
+    for (const bad of [
+      null,
+      '',
+      `${policy}A`,
+      `${policy}=`,
+      encodeBase64url(utf8('[]')),
+      encodeBase64url(utf8('{"opens_max":1}')),
+    ]) {
       expect(() => decodePolicyHeader(bad)).toThrow(ResponseError);
     }
   });
@@ -266,7 +327,17 @@ describe('api client', () => {
   it('refuses a timestamp that is not RFC 3339', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(5));
     const server = fakeServer(() =>
-      json(200, { state: 'available', created_at: 'yesterday', expires_at: '2026-10-24T09:00:00Z', opens_max: 1, opens_remaining: 1, ttl_s: 86400, passphrase_required: false, kdf_id: 0, size: 1 }),
+      json(200, {
+        state: 'available',
+        created_at: 'yesterday',
+        expires_at: '2026-10-24T09:00:00Z',
+        opens_max: 1,
+        opens_remaining: 1,
+        ttl_s: 86400,
+        passphrase_required: false,
+        kdf_id: 0,
+        size: 1,
+      }),
     );
     await expect(server.api.metadata(randomId(), readKey)).rejects.toThrow(ResponseError);
   });
@@ -282,7 +353,11 @@ describe('api client', () => {
   it('refuses an object larger than the protocol allows', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(8));
     const server = fakeServer(
-      () => new Response(new Uint8Array(16), { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) } }),
+      () =>
+        new Response(new Uint8Array(16), {
+          status: 200,
+          headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) },
+        }),
     );
     await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
   });
@@ -318,7 +393,16 @@ describe('api client', () => {
     });
     const id = randomId();
     await server.api.instance();
-    await server.api.create({ id, idToken: 't', readKey: readKey.publicKey, manageKey: readKey.publicKey, kdfId: 0, opensMax: 1, ttlSeconds: 3600, object });
+    await server.api.create({
+      id,
+      idToken: 't',
+      readKey: readKey.publicKey,
+      manageKey: readKey.publicKey,
+      kdfId: 0,
+      opensMax: 1,
+      ttlSeconds: 3600,
+      object,
+    });
     await server.api.claim(id, readKey);
     await server.api.blob(id, readKey, 'l');
     await server.api.ack(id, readKey, 'l');
@@ -326,7 +410,15 @@ describe('api client', () => {
     await server.api.report(id, readKey, 'spam');
     expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(8);
     for (const request of server.seen) {
-      expect({ redirect: request.redirect, referrerPolicy: request.referrerPolicy, credentials: request.credentials, cache: request.cache }, request.url).toEqual({
+      expect(
+        {
+          redirect: request.redirect,
+          referrerPolicy: request.referrerPolicy,
+          credentials: request.credentials,
+          cache: request.cache,
+        },
+        request.url,
+      ).toEqual({
         redirect: 'error',
         referrerPolicy: 'no-referrer',
         credentials: 'omit',
@@ -349,7 +441,9 @@ describe('api client', () => {
         controller.enqueue(chunk);
       },
     });
-    const server = fakeServer(() => new Response(body, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } }));
+    const server = fakeServer(
+      () => new Response(body, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } }),
+    );
     await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
     expect(sent).toBeLessThanOrEqual(MAX_OBJECT_BYTES + 2 * chunk.length);
   });
@@ -367,10 +461,15 @@ describe('api client', () => {
         },
       });
     for (const length of [undefined, object.length, 1000]) {
-      const headers: Record<string, string> = { 'X-Nylzo-Policy': policy, ...(length === undefined ? {} : { 'Content-Length': String(length) }) };
+      const headers: Record<string, string> = {
+        'X-Nylzo-Policy': policy,
+        ...(length === undefined ? {} : { 'Content-Length': String(length) }),
+      };
       const progress: [number, number | undefined][] = [];
       const server = fakeServer(() => new Response(chunked(), { status: 200, headers }));
-      const envelope = await server.api.blob(randomId(), readKey, 'l', (received, total) => progress.push([received, total]));
+      const envelope = await server.api.blob(randomId(), readKey, 'l', (received, total) =>
+        progress.push([received, total]),
+      );
       expect(envelope.object, String(length)).toEqual(object);
       expect(envelope.object.buffer.byteLength, String(length)).toBe(object.length);
       expect(progress.at(-1), String(length)).toEqual([object.length, length]);
@@ -388,8 +487,24 @@ describe('transparency', () => {
   const report = (change: Record<string, unknown> = {}) => ({
     server: 'v1.2.3',
     operator: { name: 'Example s.r.o.', contact: 'abuse@example.org' },
-    limits: { max_file_bytes: 5242880, max_text_bytes: 102400, max_object_bytes: 5373983, max_ttl_s: 604800, default_ttl_s: 86400, max_opens: 10 },
-    rates: { create_per_hour: 20, create_per_day: 100, create_bytes_per_day: 50000000, read_per_hour: 300, abuse_per_hour: 5, coarse_multiplier: 5, global_daily_creates: 0, pow_difficulty: 4 },
+    limits: {
+      max_file_bytes: 5242880,
+      max_text_bytes: 102400,
+      max_object_bytes: 5373983,
+      max_ttl_s: 604800,
+      default_ttl_s: 86400,
+      max_opens: 10,
+    },
+    rates: {
+      create_per_hour: 20,
+      create_per_day: 100,
+      create_bytes_per_day: 50000000,
+      read_per_hour: 300,
+      abuse_per_hour: 5,
+      coarse_multiplier: 5,
+      global_daily_creates: 0,
+      pow_difficulty: 4,
+    },
     retention: { tombstone_s: 604800, abuse_report_s: 604800, daily_counter_s: 86400 },
     ...change,
   });
@@ -402,7 +517,9 @@ describe('transparency', () => {
     ...change,
   });
   const serve = (body: unknown, client: unknown) =>
-    fakeServer((request) => json(200, new URL(request.url).pathname === '/.well-known/nylzo/client.json' ? client : body)).api;
+    fakeServer((request) =>
+      json(200, new URL(request.url).pathname === '/.well-known/nylzo/client.json' ? client : body),
+    ).api;
 
   it('reads the report and the client manifest', async () => {
     const got = await serve(report(), manifest()).transparency();
@@ -425,7 +542,15 @@ describe('transparency', () => {
       [report(), manifest({ files: [{ path: '/', sha256: 'A'.repeat(64) }] })],
       [report(), manifest({ files: [{ path: 'assets/x.js', sha256: sha }] })],
       [report(), manifest({ built: 'yes' })],
-      [report(), manifest({ files: [{ path: '/', sha256: sha }, { path: '/', sha256: sha }] })],
+      [
+        report(),
+        manifest({
+          files: [
+            { path: '/', sha256: sha },
+            { path: '/', sha256: sha },
+          ],
+        }),
+      ],
       [report({ operator: { name: 'x'.repeat(201) } }), manifest()],
       [report({ operator: { contact: 7 } }), manifest()],
       [report({ operator: 'Example' }), manifest()],
@@ -435,4 +560,3 @@ describe('transparency', () => {
     }
   });
 });
-

@@ -21,18 +21,31 @@ describe('source guard', () => {
     ['a.ts', 'window.setTimeout("alert(1)", 0);'],
     ['a.svelte', '<button onclick={() => setInterval("x()", 5)}>x</button>'],
   ])('refuses %s with %j', (path, line) => {
-    expect(forbidden(path, `ok\n${line}`)).toEqual([expect.stringMatching(new RegExp(`^${path.replace('.', '\\.')}:2: `))]);
+    expect(forbidden(path, `ok\n${line}`)).toEqual([
+      expect.stringMatching(new RegExp(`^${path.replace('.', '\\.')}:2: `)),
+    ]);
   });
 
   it('allows ordinary code and style: in TypeScript', () => {
-    expect(forbidden('a.ts', "new Intl.NumberFormat(language, { style: 'unit' });\nnode.textContent = text;")).toEqual([]);
-    expect(forbidden('a.ts', 'setTimeout(resolve, 0);\nsetInterval(() => tick(), 10);\nconst evaluated = medieval(x);\nconst f: Function = run;')).toEqual([]);
+    expect(forbidden('a.ts', "new Intl.NumberFormat(language, { style: 'unit' });\nnode.textContent = text;")).toEqual(
+      [],
+    );
+    expect(
+      forbidden(
+        'a.ts',
+        'setTimeout(resolve, 0);\nsetInterval(() => tick(), 10);\nconst evaluated = medieval(x);\nconst f: Function = run;',
+      ),
+    ).toEqual([]);
     expect(forbidden('a.svelte', '<p class="text-sm">{text}</p>')).toEqual([]);
   });
 
   it('reads the autofixer report', () => {
-    expect(autofixerIsClean('{\n  issues: [],\n  suggestions: [],\n  require_another_tool_call_after_fixing: false\n}')).toBe(true);
-    expect(autofixerIsClean("{\n  issues: [ '`{@html}` can lead to XSS attack.' ],\n  suggestions: [],\n}")).toBe(false);
+    expect(
+      autofixerIsClean('{\n  issues: [],\n  suggestions: [],\n  require_another_tool_call_after_fixing: false\n}'),
+    ).toBe(true);
+    expect(autofixerIsClean("{\n  issues: [ '`{@html}` can lead to XSS attack.' ],\n  suggestions: [],\n}")).toBe(
+      false,
+    );
     expect(autofixerIsClean("{\n  issues: [],\n  suggestions: [ 'use $derived' ],\n}")).toBe(false);
     expect(autofixerIsClean('')).toBe(false);
   });

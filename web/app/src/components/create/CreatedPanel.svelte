@@ -57,7 +57,10 @@
 </script>
 
 <div
-  class={['fade-swap absolute inset-0 flex flex-col overflow-hidden text-left', entered ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0']}
+  class={[
+    'absolute inset-0 flex flex-col overflow-hidden text-left fade-swap',
+    entered ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
+  ]}
   {@attach enter}
 >
   <div class="flex min-h-0 flex-1 flex-col justify-center gap-5 px-4 py-5 sm:px-6">
@@ -72,8 +75,16 @@
         <Icon name="check" class="size-6" />
       </span>
       <div class={['min-w-0 transition-[opacity,translate]', item('delay-[120ms]')]}>
-        <h2 id="{uid}-title" tabindex="-1" class="font-display text-xl font-light tracking-[-0.015em] outline-none md:text-2xl">{t('created.title')}</h2>
-        <p class="mt-0.5 text-sm text-pretty text-ink-mute">{t(passphrase ? 'created.sub.passphrase' : 'created.sub')}</p>
+        <h2
+          id="{uid}-title"
+          tabindex="-1"
+          class="font-display text-xl font-light tracking-[-0.015em] outline-none md:text-2xl"
+        >
+          {t('created.title')}
+        </h2>
+        <p class="mt-0.5 text-sm text-pretty text-ink-mute">
+          {t(passphrase ? 'created.sub.passphrase' : 'created.sub')}
+        </p>
       </div>
     </div>
 
@@ -86,7 +97,9 @@
           ]}
           aria-hidden="true"
         ></span>
-        <div class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300">
+        <div
+          class="flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 well has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300"
+        >
           <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
           <div class="relative min-h-11 min-w-0 flex-1 md:min-h-10">
             <p
@@ -97,7 +110,9 @@
               aria-hidden="true"
             >
               {#each segments as segment, index (segment.id)}
-                <span class={['relative px-px pt-1 pb-1.5', segment.tone, segment.server ? 'min-w-0 truncate' : 'shrink-0']}>
+                <span
+                  class={['relative px-px pt-1 pb-1.5', segment.tone, segment.server ? 'min-w-0 truncate' : 'shrink-0']}
+                >
                   <span class="sm:hidden">{segment.short}</span>
                   <span class="hidden sm:inline">{segment.text}</span>
                   <span
@@ -140,9 +155,22 @@
                 copied ? 'opacity-100' : 'opacity-0',
               ]}
             ></span>
-            <span class="stack relative place-items-center">
-              <Icon name="copy" class={['size-[18px] transition-[opacity,scale] duration-300 ease-silk', copied ? 'scale-50 opacity-0' : 'scale-100 opacity-100']} />
-              <Icon name="check" stroke={2.2} class={['size-[18px] text-aegis-200 transition-[opacity,scale] duration-300 ease-silk', copied ? 'scale-100 opacity-100' : 'scale-50 opacity-0']} />
+            <span class="relative stack place-items-center">
+              <Icon
+                name="copy"
+                class={[
+                  'size-[18px] transition-[opacity,scale] duration-300 ease-silk',
+                  copied ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
+                ]}
+              />
+              <Icon
+                name="check"
+                stroke={2.2}
+                class={[
+                  'size-[18px] text-aegis-200 transition-[opacity,scale] duration-300 ease-silk',
+                  copied ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+                ]}
+              />
             </span>
           </button>
           <span class="sr-only" role="status">{copied ? t('created.copied') : ''}</span>
@@ -150,12 +178,20 @@
       </div>
       <div class="mt-2 grid grid-cols-2 gap-2">
         <div class="rounded-pane bg-white/3 px-3.5 py-3 ring-1 ring-white/8">
-          <span class="flex gap-1" aria-hidden="true"><span class="h-[3px] w-5 rounded-full bg-ink-mute"></span><span class="h-[3px] w-5 rounded-full bg-nebula-300"></span></span>
+          <span class="flex gap-1" aria-hidden="true"
+            ><span class="h-[3px] w-5 rounded-full bg-ink-mute"></span><span
+              class="h-[3px] w-5 rounded-full bg-nebula-300"
+            ></span></span
+          >
           <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{t('created.server.sees')}</span>
           <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{t('created.server.sees.what')}</span>
         </div>
         <div class="rounded-pane bg-aegis-500/6 px-3.5 py-3 ring-1 ring-aegis-400/20">
-          <span class="flex gap-1" aria-hidden="true"><span class="h-[3px] w-5 rounded-full bg-rose-300"></span><span class="h-[3px] w-5 rounded-full bg-aegis-400"></span></span>
+          <span class="flex gap-1" aria-hidden="true"
+            ><span class="h-[3px] w-5 rounded-full bg-rose-300"></span><span
+              class="h-[3px] w-5 rounded-full bg-aegis-400"
+            ></span></span
+          >
           <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{t('created.server.blind')}</span>
           <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{t('created.server.blind.what')}</span>
         </div>
@@ -163,7 +199,12 @@
     </div>
   </div>
 
-  <div class={['flex flex-col gap-2 border-t border-white/8 p-2.5 transition-[opacity,translate] sm:flex-row sm:items-center sm:justify-between sm:gap-3', item('delay-[280ms]')]}>
+  <div
+    class={[
+      'flex flex-col gap-2 border-t border-white/8 p-2.5 transition-[opacity,translate] sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+      item('delay-[280ms]'),
+    ]}
+  >
     <ul class="flex flex-wrap items-center gap-1.5">
       <Chip icon="clock">{t('created.chip.expires', { time: formatTime(created.expiresAt, i18n.language) })}</Chip>
       <Chip icon="eye">{t(opensMax === 1 ? 'compose.opens.one' : 'compose.opens.other', { count: opensMax })}</Chip>
@@ -171,7 +212,11 @@
         <Chip icon="key" accent>{t('compose.passphrase.chip')}</Chip>
       {/if}
     </ul>
-    <button type="button" onclick={onanother} class="btn-ghost hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap sm:w-auto md:h-9">
+    <button
+      type="button"
+      onclick={onanother}
+      class="btn-ghost flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap sm:w-auto md:h-9"
+    >
       <Icon name="plus" class="size-4 shrink-0" />
       {t('created.another')}
     </button>

@@ -9,7 +9,9 @@ function confirmation(page: Page) {
   return live(page, page.getByRole('alertdialog'));
 }
 
-test('the delete confirmation closes with Escape or Do not delete and hands focus back, before and after reading', async ({ page }) => {
+test('the delete confirmation closes with Escape or Do not delete and hands focus back, before and after reading', async ({
+  page,
+}) => {
   const message = await createViaApi({ text: 'keep me', opensMax: 3 });
   await page.goto(message.link);
   const remove = page.getByRole('button', { name: 'Delete without showing' });
@@ -74,13 +76,17 @@ async function countSaves(page: Page): Promise<() => Promise<number>> {
   return () => page.evaluate(() => (window as unknown as { nylzoSaved: number }).nylzoSaved);
 }
 
-test('the risky download prompt cancels back to the button and a double click saves the file once (D35)', async ({ browser }) => {
+test('the risky download prompt cancels back to the button and a double click saves the file once (D35)', async ({
+  browser,
+}) => {
   const sender = await (await browser.newContext()).newPage();
   const recipient = await (await browser.newContext()).newPage();
   const savedCount = await countSaves(recipient);
   const downloads: string[] = [];
   recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
-  const link = await createViaUi(sender, { file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') } });
+  const link = await createViaUi(sender, {
+    file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') },
+  });
   await openViaUi(recipient, link);
   await expectRevealed(recipient);
   const download = recipient.getByRole('button', { name: 'Download attachment' });
@@ -116,7 +122,9 @@ test('a double click on Download saves a safe file once', async ({ browser }) =>
   const sender = await (await browser.newContext()).newPage();
   const recipient = await (await browser.newContext()).newPage();
   const savedCount = await countSaves(recipient);
-  const link = await createViaUi(sender, { file: { name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') } });
+  const link = await createViaUi(sender, {
+    file: { name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') },
+  });
   await openViaUi(recipient, link);
   await expectRevealed(recipient);
   const saved = recipient.waitForEvent('download');

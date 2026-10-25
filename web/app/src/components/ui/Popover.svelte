@@ -17,7 +17,9 @@
 
   const focusFirst: Attachment<HTMLElement> = (element) => {
     if (open) {
-      element.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')?.focus();
+      element
+        .querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')
+        ?.focus();
     }
   };
 
@@ -38,8 +40,10 @@
   {onkeydown}
   {@attach focusFirst}
   class={[
-    'glass-pop absolute z-30 rounded-pane transition-[opacity,translate] duration-300 ease-silk',
-    open ? 'translate-y-0 opacity-100' : ['pointer-events-none opacity-0', from === 'above' ? '-translate-y-1' : 'translate-y-1'],
+    'absolute z-30 rounded-pane glass-pop transition-[opacity,translate] duration-300 ease-silk',
+    open
+      ? 'translate-y-0 opacity-100'
+      : ['pointer-events-none opacity-0', from === 'above' ? '-translate-y-1' : 'translate-y-1'],
     className,
   ]}
 >

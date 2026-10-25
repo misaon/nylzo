@@ -49,7 +49,9 @@ test('responses other than HTML carry the short CSP of spec section 9', async ({
 
 test('the icons are files of the embedded client with the short CSP of spec section 9', async ({ page, request }) => {
   await openApp(page, '/');
-  const hrefs = await page.locator('link[rel="icon"], link[rel="apple-touch-icon"]').evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
+  const hrefs = await page
+    .locator('link[rel="icon"], link[rel="apple-touch-icon"]')
+    .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
   expect(hrefs).toHaveLength(3);
   for (const href of hrefs) {
     expect(href).toMatch(/^\/assets\/[\w-]+\.(?:svg|png)$/);

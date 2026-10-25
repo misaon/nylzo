@@ -238,7 +238,9 @@ describe('request', () => {
 
       const sig = await signRequest(key, v.purpose, v.method, v.path, challenge, body);
       expect(encodeBase64url(sig.signature)).toBe(v.signature);
-      expect(encodeBase64url((await signRequest(fallback, v.purpose, v.method, v.path, challenge, body)).signature)).toBe(v.signature);
+      expect(
+        encodeBase64url((await signRequest(fallback, v.purpose, v.method, v.path, challenge, body)).signature),
+      ).toBe(v.signature);
       if (v.purpose === 'verifier') {
         expect(v.authorization).toBeUndefined();
         expect(verifierHeader(sig)).toBe(v.verifier_header);

@@ -23,7 +23,6 @@ export const baseCs = {
   'ttl.259200': '3 dny',
   'ttl.604800': '7 dní',
 
-
   'problem.content.missing': 'Napište text nebo přiložte soubor.',
   'problem.text.too_large': 'Text je delší než {size}.',
   'problem.file.too_large': 'Soubor je větší než {size}.',
@@ -50,7 +49,8 @@ export const baseCs = {
   'created.not_remembered': 'Zprávu se na tomto zařízení nepodařilo zapamatovat, takže ji odtud nepůjde zrušit.',
 
   'sent.title': 'Odeslané zprávy',
-  'sent.note': 'Seznam drží jen tento prohlížeč a odkazy na zprávy v něm nejsou. Záznam zmizí {days} po skončení zprávy.',
+  'sent.note':
+    'Seznam drží jen tento prohlížeč a odkazy na zprávy v něm nejsou. Záznam zmizí {days} po skončení zprávy.',
   'sent.loading': 'Načítám odeslané zprávy…',
   'sent.unavailable': 'Tento prohlížeč stránce nedovolí ukládat data, takže si odeslané zprávy nepamatuje.',
   'sent.empty': 'Toto zařízení si nepamatuje žádné zprávy.',
@@ -98,13 +98,16 @@ export const baseCs = {
   'read.passphrase': 'Passphrase',
   'read.reveal': 'Zobrazit zprávu',
   'read.resumable': 'Zprávu jste na této stránce už otevřeli a můžete ji načíst znovu, dokud běží lhůta.',
-  'read.lease_ended': 'Čas na opětovné načtení zprávy na této stránce vypršel. Zobrazení teď spotřebuje další otevření.',
+  'read.lease_ended':
+    'Čas na opětovné načtení zprávy na této stránce vypršel. Zobrazení teď spotřebuje další otevření.',
   'read.cleared': 'Stránku jste opustili, a tak už zprávu nezobrazuje.',
-  'read.device': 'Minule se odvození klíče na tomto zařízení nedokončilo. Pokud se to opakuje, otevřete odkaz na jiném zařízení.',
+  'read.device':
+    'Minule se odvození klíče na tomto zařízení nedokončilo. Pokud se to opakuje, otevřete odkaz na jiném zařízení.',
   'read.rejected.wrong': 'Passphrase nesedí. Zbývající pokusy bez čekání: {count}.',
   'read.rejected.wait': 'Passphrase nesedí. Další pokus je možný za {time}.',
   'read.rejected.malformed': 'Passphrase obsahuje neplatné znaky.',
-  'read.rejected.wrong_or_changed': 'Zprávu se nepodařilo dešifrovat: passphrase nesedí, nebo se data změnila. Zadejte passphrase znovu.',
+  'read.rejected.wrong_or_changed':
+    'Zprávu se nepodařilo dešifrovat: passphrase nesedí, nebo se data změnila. Zadejte passphrase znovu.',
   'read.delete': 'Smazat bez zobrazení',
   'read.delete.rest': 'Smazat zbývající otevření',
   'read.delete.confirm': 'Zprávu pak už nikdo neotevře, ani vy.',
@@ -127,8 +130,10 @@ export const baseCs = {
   'revealed.confirm.cancel': 'Nestahovat',
 
   'report.title': 'Nahlásit zneužití',
-  'report.note': 'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a nic se nemaže automaticky. Hlášení uchováme, jen pokud zpráva v době odeslání ještě existuje.',
-  'report.privacy': 'Server dostane jen id zprávy, důvod a podpis odvozený z odkazu. Odkaz ani obsah zprávy stránku neopustí.',
+  'report.note':
+    'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a nic se nemaže automaticky. Hlášení uchováme, jen pokud zpráva v době odeslání ještě existuje.',
+  'report.privacy':
+    'Server dostane jen id zprávy, důvod a podpis odvozený z odkazu. Odkaz ani obsah zprávy stránku neopustí.',
   'report.link': 'Odkaz na zprávu',
   'report.link.hint': 'Vložte celý odkaz včetně části za #.',
   'report.reason': 'Důvod, volitelný',
@@ -145,26 +150,34 @@ export const baseCs = {
   'transparency.title': 'Transparentnost',
   'transparency.loading': 'Načítám údaje o službě…',
   'transparency.failed': 'Údaje o službě se nepodařilo načíst.',
-  'transparency.intro': 'Co server této instance o zprávách ví, co ukládá a jak dlouho. Verzi, limity, provozovatele a otisky souborů posílá server ze své konfigurace. Popis toho, co ukládá a loguje, platí pro nezměněný server nylzo.',
+  'transparency.intro':
+    'Co server této instance o zprávách ví, co ukládá a jak dlouho. Verzi, limity, provozovatele a otisky souborů posílá server ze své konfigurace. Popis toho, co ukládá a loguje, platí pro nezměněný server nylzo.',
   'transparency.operator.title': 'Provozovatel',
   'transparency.operator.name': 'Provozovatel',
   'transparency.operator.contact': 'Kontakt',
   'transparency.operator.hosting': 'Hosting',
   'transparency.operator.missing': 'Provozovatel tyto údaje neuvedl.',
   'transparency.stores.title': 'Co server ukládá',
-  'transparency.stores.content': 'Zašifrovanou zprávu. Klíč je jen v části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
-  'transparency.stores.metadata': 'U každé zprávy id z odkazu, zda ji chrání passphrase, počet otevření a chybných passphrase, platnost, zarovnanou velikost a časy zaokrouhlené na minutu. Během otevírání navíc záznam o rozpracovaném stažení, dokud neskončí.',
-  'transparency.stores.keys': 'Místo klíčů jen jejich otisky (HMAC s tajemstvím serveru), které bez odkazu nikomu nepomohou.',
-  'transparency.stores.ended': 'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Pak drží jen záznam o tom, jak skončila, nejdéle {days}.',
+  'transparency.stores.content':
+    'Zašifrovanou zprávu. Klíč je jen v části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
+  'transparency.stores.metadata':
+    'U každé zprávy id z odkazu, zda ji chrání passphrase, počet otevření a chybných passphrase, platnost, zarovnanou velikost a časy zaokrouhlené na minutu. Během otevírání navíc záznam o rozpracovaném stažení, dokud neskončí.',
+  'transparency.stores.keys':
+    'Místo klíčů jen jejich otisky (HMAC s tajemstvím serveru), které bez odkazu nikomu nepomohou.',
+  'transparency.stores.ended':
+    'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Pak drží jen záznam o tom, jak skončila, nejdéle {days}.',
   'transparency.stores.abuse': 'Hlášení zneužití: datum, id zprávy a důvod bez odkazů, nejdéle {days}.',
   'transparency.stores.counters': 'Celkové denní počty vytvořených zpráv, bez adres, ještě {days} po konci dne.',
   'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
   'transparency.logs.title': 'Co server loguje',
-  'transparency.logs.what': 'Čas zkrácený na minutu, metodu, typ cesty, stav odpovědi a dobu vyřízení. U vytvoření, otevření a stažení zprávy dobu vyřízení vynechá, protože by prozradila velikost zprávy.',
+  'transparency.logs.what':
+    'Čas zkrácený na minutu, metodu, typ cesty, stav odpovědi a dobu vyřízení. U vytvoření, otevření a stažení zprávy dobu vyřízení vynechá, protože by prozradila velikost zprávy.',
   'transparency.logs.never': 'Nikdy id zprávy, IP adresu, klíče, podpisy, těla požadavků ani velikost zprávy.',
   'transparency.others.title': 'Co vidí ostatní',
-  'transparency.others.hosting': 'Poskytovatel hostingu a proxy, která ukončuje HTTPS, vidí IP adresy, časy a velikosti požadavků a logují podle svých pravidel. Obsah zprávy nevidí.',
-  'transparency.others.client': 'Kdo ovládá server nebo hosting, může poslat upravený webový klient a přečíst zprávy, které v něm vytvoříte nebo otevřete. Proti tomu chrání CLI z podepsaného vydání. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
+  'transparency.others.hosting':
+    'Poskytovatel hostingu a proxy, která ukončuje HTTPS, vidí IP adresy, časy a velikosti požadavků a logují podle svých pravidel. Obsah zprávy nevidí.',
+  'transparency.others.client':
+    'Kdo ovládá server nebo hosting, může poslat upravený webový klient a přečíst zprávy, které v něm vytvoříte nebo otevřete. Proti tomu chrání CLI z podepsaného vydání. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
   'transparency.limits.title': 'Limity této instance',
   'transparency.limits.file': 'Největší příloha',
   'transparency.limits.ttl': 'Nejdelší platnost',
@@ -178,9 +191,12 @@ export const baseCs = {
   'transparency.limits.none': 'bez limitu',
   'transparency.client.title': 'Verze a otisk webového klienta',
   'transparency.client.version': 'Verze serveru',
-  'transparency.client.files': 'SHA-256 souborů webového klienta. U stránky jde o šablonu, do které server vkládá nonce.',
-  'transparency.client.verify': 'Příkaz z vydání nylzo stejné verze ověří, že server posílá právě tyto soubory se stejnými hlavičkami:',
-  'transparency.client.limit': 'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
+  'transparency.client.files':
+    'SHA-256 souborů webového klienta. U stránky jde o šablonu, do které server vkládá nonce.',
+  'transparency.client.verify':
+    'Příkaz z vydání nylzo stejné verze ověří, že server posílá právě tyto soubory se stejnými hlavičkami:',
+  'transparency.client.limit':
+    'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
   'transparency.source': 'Zdrojový kód, specifikace protokolu a model hrozeb',
 } as const;
 
@@ -198,7 +214,8 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'create.text': 'Message text',
   'create.file.clear': 'Remove attachment',
   'create.passphrase': 'Passphrase, optional',
-  'create.passphrase.hint': 'At least {min} characters. Send it to the recipient through another channel than the link.',
+  'create.passphrase.hint':
+    'At least {min} characters. Send it to the recipient through another channel than the link.',
   'create.passphrase.weak': 'We recommend at least {words} random words and {chars} characters.',
   'create.submit': 'Create link',
 
@@ -206,7 +223,6 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'ttl.86400': '24 hours',
   'ttl.259200': '3 days',
   'ttl.604800': '7 days',
-
 
   'problem.content.missing': 'Write a text or attach a file.',
   'problem.text.too_large': 'The text is longer than {size}.',
@@ -234,7 +250,8 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'created.not_remembered': 'This device could not remember the message, so you cannot cancel it from here.',
 
   'sent.title': 'Sent messages',
-  'sent.note': 'Only this browser keeps the list, and it holds no links to the messages. An entry disappears {days} after its message ends.',
+  'sent.note':
+    'Only this browser keeps the list, and it holds no links to the messages. An entry disappears {days} after its message ends.',
   'sent.loading': 'Loading sent messages…',
   'sent.unavailable': 'This browser does not let the page store data, so it cannot remember sent messages.',
   'sent.empty': 'This device remembers no messages.',
@@ -284,11 +301,13 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'read.resumable': 'You already opened the message on this page and can load it again while the lease runs.',
   'read.lease_ended': 'The time to load the message again on this page ran out. Showing it now uses another open.',
   'read.cleared': 'You left the page, so it no longer shows the message.',
-  'read.device': 'The key derivation did not finish on this device last time. If it happens again, open the link on another device.',
+  'read.device':
+    'The key derivation did not finish on this device last time. If it happens again, open the link on another device.',
   'read.rejected.wrong': 'The passphrase does not match. Attempts left without waiting: {count}.',
   'read.rejected.wait': 'The passphrase does not match. The next attempt is possible in {time}.',
   'read.rejected.malformed': 'The passphrase contains invalid characters.',
-  'read.rejected.wrong_or_changed': 'The message could not be decrypted: the passphrase does not match or the data changed. Enter the passphrase again.',
+  'read.rejected.wrong_or_changed':
+    'The message could not be decrypted: the passphrase does not match or the data changed. Enter the passphrase again.',
   'read.delete': 'Delete without showing',
   'read.delete.rest': 'Delete the remaining opens',
   'read.delete.confirm': 'After that nobody can open it, you included.',
@@ -311,8 +330,10 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'revealed.confirm.cancel': 'Do not download',
 
   'report.title': 'Report abuse',
-  'report.note': 'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We keep a report only if the message still exists when you send it.',
-  'report.privacy': 'The server receives only the message id, the reason and a signature derived from the link. Neither the link nor the content leaves this page.',
+  'report.note':
+    'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We keep a report only if the message still exists when you send it.',
+  'report.privacy':
+    'The server receives only the message id, the reason and a signature derived from the link. Neither the link nor the content leaves this page.',
   'report.link': 'Link to the message',
   'report.link.hint': 'Paste the whole link, including the part after #.',
   'report.reason': 'Reason, optional',
@@ -329,26 +350,37 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'transparency.title': 'Transparency',
   'transparency.loading': 'Loading the service details…',
   'transparency.failed': 'The service details could not be loaded.',
-  'transparency.intro': 'What the server of this instance knows about messages, what it stores and for how long. The version, limits, operator and file fingerprints come from the server configuration. The description of what it stores and logs holds for an unmodified nylzo server.',
+  'transparency.intro':
+    'What the server of this instance knows about messages, what it stores and for how long. The version, limits, operator and file fingerprints come from the server configuration. The description of what it stores and logs holds for an unmodified nylzo server.',
   'transparency.operator.title': 'Operator',
   'transparency.operator.name': 'Operator',
   'transparency.operator.contact': 'Contact',
   'transparency.operator.hosting': 'Hosting',
   'transparency.operator.missing': 'The operator has not provided these details.',
   'transparency.stores.title': 'What the server stores',
-  'transparency.stores.content': 'The encrypted message. The key is only in the part of the link after #, which the browser never sends to the server, so the server cannot read the content or the name of an attachment.',
-  'transparency.stores.metadata': 'For each message, the id from the link, whether a passphrase protects it, the number of opens and of wrong passphrases, the expiry, the padded size and times rounded to the minute. While a message is being opened, also a record of the download in progress until it ends.',
-  'transparency.stores.keys': 'Instead of keys, only their fingerprints (HMAC with a server secret), which help no one without the link.',
-  'transparency.stores.ended': 'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. After that it keeps only a record of how the message ended, for at most {days}.',
-  'transparency.stores.abuse': 'Abuse reports: the date, the message id and the reason without links, for at most {days}.',
+  'transparency.stores.content':
+    'The encrypted message. The key is only in the part of the link after #, which the browser never sends to the server, so the server cannot read the content or the name of an attachment.',
+  'transparency.stores.metadata':
+    'For each message, the id from the link, whether a passphrase protects it, the number of opens and of wrong passphrases, the expiry, the padded size and times rounded to the minute. While a message is being opened, also a record of the download in progress until it ends.',
+  'transparency.stores.keys':
+    'Instead of keys, only their fingerprints (HMAC with a server secret), which help no one without the link.',
+  'transparency.stores.ended':
+    'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. After that it keeps only a record of how the message ended, for at most {days}.',
+  'transparency.stores.abuse':
+    'Abuse reports: the date, the message id and the reason without links, for at most {days}.',
   'transparency.stores.counters': 'Daily totals of created messages, without addresses, for {days} after the day ends.',
-  'transparency.stores.addresses': 'It does not store IP addresses. Per-address limits live only in memory and are forgotten on restart.',
+  'transparency.stores.addresses':
+    'It does not store IP addresses. Per-address limits live only in memory and are forgotten on restart.',
   'transparency.logs.title': 'What the server logs',
-  'transparency.logs.what': 'The time truncated to the minute, the method, the kind of path, the response status and how long the request took. For creating, opening and downloading a message it leaves out the duration, because it would reveal the size of the message.',
-  'transparency.logs.never': 'Never a message id, an IP address, keys, signatures, request bodies or the size of a message.',
+  'transparency.logs.what':
+    'The time truncated to the minute, the method, the kind of path, the response status and how long the request took. For creating, opening and downloading a message it leaves out the duration, because it would reveal the size of the message.',
+  'transparency.logs.never':
+    'Never a message id, an IP address, keys, signatures, request bodies or the size of a message.',
   'transparency.others.title': 'What others see',
-  'transparency.others.hosting': 'The hosting provider and the proxy that terminates HTTPS see IP addresses, request times and sizes, and log by their own rules. They do not see the content of a message.',
-  'transparency.others.client': 'Whoever controls the server or the hosting can send a modified web client and read the messages you create or open in it. The CLI from a signed release protects against this. The check below finds such a swap only when the server does not avoid it.',
+  'transparency.others.hosting':
+    'The hosting provider and the proxy that terminates HTTPS see IP addresses, request times and sizes, and log by their own rules. They do not see the content of a message.',
+  'transparency.others.client':
+    'Whoever controls the server or the hosting can send a modified web client and read the messages you create or open in it. The CLI from a signed release protects against this. The check below finds such a swap only when the server does not avoid it.',
   'transparency.limits.title': 'Limits of this instance',
   'transparency.limits.file': 'Largest attachment',
   'transparency.limits.ttl': 'Longest expiry',
@@ -362,9 +394,12 @@ const baseEn: Record<keyof typeof baseCs, string> = {
   'transparency.limits.none': 'no limit',
   'transparency.client.title': 'Version and fingerprint of the web client',
   'transparency.client.version': 'Server version',
-  'transparency.client.files': 'SHA-256 of the web client files. For the page it is the template into which the server inserts a nonce.',
-  'transparency.client.verify': 'This command, from the nylzo release of the same version, checks that the server sends exactly these files with the same headers:',
-  'transparency.client.limit': 'It checks only what the server sent to this command. A server can recognise the command and send browsers other code, so the check finds a broken build or deployment, not a swap the server hides on purpose.',
+  'transparency.client.files':
+    'SHA-256 of the web client files. For the page it is the template into which the server inserts a nonce.',
+  'transparency.client.verify':
+    'This command, from the nylzo release of the same version, checks that the server sends exactly these files with the same headers:',
+  'transparency.client.limit':
+    'It checks only what the server sent to this command. A server can recognise the command and send browsers other code, so the check finds a broken build or deployment, not a swap the server hides on purpose.',
   'transparency.source': 'Source code, protocol specification and threat model',
 };
 
@@ -384,7 +419,9 @@ export class I18n {
   }
 
   readonly t: Translate = (key, values = {}) =>
-    dictionaries[this.language][key].replace(/\{(\w+)\}/g, (match, name: string) => (name in values ? String(values[name]) : match));
+    dictionaries[this.language][key].replace(/\{(\w+)\}/g, (match, name: string) =>
+      name in values ? String(values[name]) : match,
+    );
 }
 
 export function createI18n(language: Language): I18n {

@@ -9,7 +9,9 @@
 </script>
 
 <span class={['relative block shrink-0 rounded-full', large ? 'h-7 w-12' : 'h-5 w-9']} aria-hidden="true">
-  <span class="absolute inset-0 rounded-full bg-void-950/70 shadow-[inset_0_1px_3px_oklch(0.05_0.03_275/0.8),inset_0_0_0_1px_oklch(1_0_0/0.16)]"></span>
+  <span
+    class="absolute inset-0 rounded-full bg-void-950/70 shadow-[inset_0_1px_3px_oklch(0.05_0.03_275/0.8),inset_0_0_0_1px_oklch(1_0_0/0.16)]"
+  ></span>
   <span
     class={[
       'absolute inset-0 rounded-full bg-aegis-500/45 shadow-[inset_0_0_0_1px_oklch(0.77_0.115_249/0.55),0_0_18px_oklch(0.56_0.19_258/0.45)] transition-opacity duration-500 ease-silk',

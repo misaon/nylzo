@@ -55,9 +55,12 @@ export class AutoCycle {
     const observer =
       typeof IntersectionObserver === 'undefined'
         ? undefined
-        : new IntersectionObserver((entries) => {
-            this.visible = entries.some((entry) => entry.isIntersecting);
-          }, { threshold: VISIBLE_THRESHOLD });
+        : new IntersectionObserver(
+            (entries) => {
+              this.visible = entries.some((entry) => entry.isIntersecting);
+            },
+            { threshold: VISIBLE_THRESHOLD },
+          );
     if (observer) {
       observer.observe(element);
     } else {

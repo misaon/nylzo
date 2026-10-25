@@ -12,12 +12,26 @@ describe('linkSegments', () => {
       ['meta', false],
       ['key', false],
     ]);
-    expect(segments.map(({ text }) => text)).toEqual(['https://nylzo.example/m/', 'AbCdEfGhIjKlMnOpQrStUv', '#1.1.', `${'k'.repeat(14)}…${'k'.repeat(6)}`]);
-    expect(segments.map(({ short }) => short)).toEqual(['nylzo.example/m/', 'AbCdEf…', '#1.1.', `${'k'.repeat(8)}…${'k'.repeat(5)}`]);
+    expect(segments.map(({ text }) => text)).toEqual([
+      'https://nylzo.example/m/',
+      'AbCdEfGhIjKlMnOpQrStUv',
+      '#1.1.',
+      `${'k'.repeat(14)}…${'k'.repeat(6)}`,
+    ]);
+    expect(segments.map(({ short }) => short)).toEqual([
+      'nylzo.example/m/',
+      'AbCdEf…',
+      '#1.1.',
+      `${'k'.repeat(8)}…${'k'.repeat(5)}`,
+    ]);
   });
 
   it('keeps a link it cannot split in one server-side segment', () => {
-    for (const link of ['https://nylzo.example/other#x', 'https://nylzo.example/m/abc', 'https://nylzo.example/#/m/abc']) {
+    for (const link of [
+      'https://nylzo.example/other#x',
+      'https://nylzo.example/m/abc',
+      'https://nylzo.example/#/m/abc',
+    ]) {
       expect(linkSegments(link)).toEqual([expect.objectContaining({ id: 'host', text: link, server: true })]);
     }
   });

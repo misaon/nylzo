@@ -25,7 +25,9 @@ describe('proof of work', () => {
     expect(powToken(v.challenge, v.counter)).toBe(v.token);
     if (v.difficulty !== undefined) {
       const attempts: number[] = [];
-      expect(solvePow(v.challenge, parseId(v.id), v.difficulty, { onAttempt: (counter) => attempts.push(counter) })).toBe(v.token);
+      expect(
+        solvePow(v.challenge, parseId(v.id), v.difficulty, { onAttempt: (counter) => attempts.push(counter) }),
+      ).toBe(v.token);
       expect(attempts.at(-1)).toBe(v.counter);
     }
   });

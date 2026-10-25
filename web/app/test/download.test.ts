@@ -49,14 +49,36 @@ describe('file names', () => {
 });
 
 describe('known safe files (D35)', () => {
-  it.each(['notes.txt', 'README.md', 'data.csv', 'report.PDF', 'photo.jpeg', 'scan.HEIC', 'table.xlsx', 'letter.odt'])('trusts %s', (name) => {
-    expect(isKnownSafeFile(name)).toBe(true);
-  });
+  it.each(['notes.txt', 'README.md', 'data.csv', 'report.PDF', 'photo.jpeg', 'scan.HEIC', 'table.xlsx', 'letter.odt'])(
+    'trusts %s',
+    (name) => {
+      expect(isKnownSafeFile(name)).toBe(true);
+    },
+  );
 
   it.each([
-    'setup.exe', 'script.ps1', 'run.pif', 'link.scf', 'console.msc', 'help.chm', 'app.application', 'types.ps1xml',
-    'launch.jnlp', 'macro.docm', 'macro.xlsm', 'macro.pptm', 'disk.img', 'disk.vhd', 'disk.vhdx', 'page.mht', 'page.html',
-    'drawing.svg', 'archive.zip', 'no-extension', 'invoice\u202efdp.exe', 'report.pdf.exe',
+    'setup.exe',
+    'script.ps1',
+    'run.pif',
+    'link.scf',
+    'console.msc',
+    'help.chm',
+    'app.application',
+    'types.ps1xml',
+    'launch.jnlp',
+    'macro.docm',
+    'macro.xlsm',
+    'macro.pptm',
+    'disk.img',
+    'disk.vhd',
+    'disk.vhdx',
+    'page.mht',
+    'page.html',
+    'drawing.svg',
+    'archive.zip',
+    'no-extension',
+    'invoice\u202efdp.exe',
+    'report.pdf.exe',
   ])('asks before %j', (name) => {
     expect(isKnownSafeFile(name)).toBe(false);
   });

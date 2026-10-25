@@ -11,7 +11,11 @@ export function formatTime(iso: string, language: Language): string {
 
 export function formatDuration(seconds: number, language: Language): string {
   const [value, unit] =
-    seconds < MINUTE ? [Math.max(1, Math.ceil(seconds)), 'second'] : seconds < HOUR ? [Math.ceil(seconds / MINUTE), 'minute'] : [Math.ceil(seconds / HOUR), 'hour'];
+    seconds < MINUTE
+      ? [Math.max(1, Math.ceil(seconds)), 'second']
+      : seconds < HOUR
+        ? [Math.ceil(seconds / MINUTE), 'minute']
+        : [Math.ceil(seconds / HOUR), 'hour'];
   return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
@@ -25,8 +29,14 @@ export function formatDays(days: number, language: Language): string {
 }
 
 export function formatBytes(bytes: number, language: Language): string {
-  const [value, unit] = bytes < MEBIBYTE ? [Math.max(1, Math.ceil(bytes / 1024)), 'kilobyte'] : [bytes / MEBIBYTE, 'megabyte'];
-  return new Intl.NumberFormat(language, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 }).format(value);
+  const [value, unit] =
+    bytes < MEBIBYTE ? [Math.max(1, Math.ceil(bytes / 1024)), 'kilobyte'] : [bytes / MEBIBYTE, 'megabyte'];
+  return new Intl.NumberFormat(language, {
+    style: 'unit',
+    unit,
+    unitDisplay: 'short',
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 export function formatSize(bytes: number, language: Language): string {

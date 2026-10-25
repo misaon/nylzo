@@ -152,7 +152,9 @@ describe('open rejects malformed headers before decrypting', () => {
     expect(tampered[1]).toBe(KDF_RETIRED);
     expect(() => parseHeader(tampered)).toThrow(KdfError);
     await expect(open(m.k, m.id, m.policy, KDF_RETIRED as KdfId, tampered)).rejects.toBeInstanceOf(KdfError);
-    await expect(seal(m.k, { ...newHeader(KDF_NONE), kdfId: KDF_RETIRED as KdfId }, m.id, m.policy, { meta: textMeta('x') })).rejects.toBeInstanceOf(KdfError);
+    await expect(
+      seal(m.k, { ...newHeader(KDF_NONE), kdfId: KDF_RETIRED as KdfId }, m.id, m.policy, { meta: textMeta('x') }),
+    ).rejects.toBeInstanceOf(KdfError);
   });
 
   it('a kdf argument that differs from the header is rejected', async () => {
@@ -233,9 +235,9 @@ describe('seal validates its inputs', () => {
     await expect(seal(content.k, header, id, policy, { meta, file: new Uint8Array(1) })).rejects.toBeInstanceOf(
       MetaError,
     );
-    await expect(seal(content.k, header, id, policy, { meta: { text: 't' }, file: new Uint8Array(1) })).rejects.toBeInstanceOf(
-      MetaError,
-    );
+    await expect(
+      seal(content.k, header, id, policy, { meta: { text: 't' }, file: new Uint8Array(1) }),
+    ).rejects.toBeInstanceOf(MetaError);
   });
 
   it('rejects an invalid policy, flags and iv', async () => {
@@ -243,12 +245,18 @@ describe('seal validates its inputs', () => {
     const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
     const header = newHeader(KDF_NONE);
     const payload = { meta: { text: 'policy' } };
-    await expect(seal(content.k, header, id, { opensMax: 0, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(PolicyError);
-    await expect(seal(content.k, header, id, { opensMax: 1, ttlSeconds: 59 }, payload)).rejects.toBeInstanceOf(PolicyError);
+    await expect(seal(content.k, header, id, { opensMax: 0, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
+      PolicyError,
+    );
+    await expect(seal(content.k, header, id, { opensMax: 1, ttlSeconds: 59 }, payload)).rejects.toBeInstanceOf(
+      PolicyError,
+    );
     await expect(seal(content.k, header, id, { opensMax: 65536, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
       PolicyError,
     );
-    await expect(seal(content.k, header, id, { opensMax: 1.5, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(PolicyError);
+    await expect(seal(content.k, header, id, { opensMax: 1.5, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
+      PolicyError,
+    );
     const flagged: Header = { ...header, flags: 1 };
     await expect(seal(content.k, flagged, id, policy, payload)).rejects.toBeInstanceOf(FlagsError);
     const versioned: Header = { ...header, version: 2 };
@@ -330,9 +338,10 @@ describe('plaintext buffers', () => {
       spies.forEach((spy) => spy.mockRestore());
     }
     expect(plaintexts).toHaveLength(2);
-    expect(plaintexts.every((plaintext) => plaintext.length > file.length && plaintext.every((byte) => byte === 0))).toBe(true);
+    expect(
+      plaintexts.every((plaintext) => plaintext.length > file.length && plaintext.every((byte) => byte === 0)),
+    ).toBe(true);
     expect(opened.payload.file).toEqual(file);
     expect(opened.payload.meta.text).toBe('integrity');
   });
 });
-

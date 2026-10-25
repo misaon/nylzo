@@ -105,7 +105,11 @@ export interface Transparency {
     readonly globalDailyCreates: number;
     readonly powDifficulty: number;
   };
-  readonly retention: { readonly tombstoneSeconds: number; readonly abuseReportSeconds: number; readonly dailyCounterSeconds: number };
+  readonly retention: {
+    readonly tombstoneSeconds: number;
+    readonly abuseReportSeconds: number;
+    readonly dailyCounterSeconds: number;
+  };
   readonly files: readonly ClientFile[];
 }
 
@@ -223,7 +227,10 @@ function text(json: Json, key: string): string {
 
 function timestamp(json: Json, key: string): string {
   const value = text(json, key);
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  ) {
     throw new ResponseError(`field ${key} is not an RFC 3339 time`);
   }
   return value;
@@ -291,7 +298,11 @@ function parseOperator(value: unknown): Operator | undefined {
   const name = operatorField(value, 'name');
   const contact = operatorField(value, 'contact');
   const hosting = operatorField(value, 'hosting');
-  return { ...(name === undefined ? {} : { name }), ...(contact === undefined ? {} : { contact }), ...(hosting === undefined ? {} : { hosting }) };
+  return {
+    ...(name === undefined ? {} : { name }),
+    ...(contact === undefined ? {} : { contact }),
+    ...(hosting === undefined ? {} : { hosting }),
+  };
 }
 
 function parseClientFiles(manifest: Json): readonly ClientFile[] {
@@ -335,7 +346,8 @@ async function apiError(response: Response): Promise<ApiError> {
     return new ApiError(response.status, 'unexpected', retryAfterHeader(response));
   }
   const kind = KINDS.find((k) => k === body['error']) ?? 'unexpected';
-  const retryAfter = typeof body['retry_after'] === 'number' ? integer(body, 'retry_after') : retryAfterHeader(response);
+  const retryAfter =
+    typeof body['retry_after'] === 'number' ? integer(body, 'retry_after') : retryAfterHeader(response);
   const attemptsLeft = typeof body['attempts_left'] === 'number' ? integer(body, 'attempts_left') : undefined;
   const ended = typeof body['state'] === 'string' ? state(body) : undefined;
   return new ApiError(response.status, kind, retryAfter, attemptsLeft, ended);
@@ -345,7 +357,12 @@ export function decodePolicyHeader(value: string | null): ServedPolicy {
   if (value === null || !/^[A-Za-z0-9_-]+$/.test(value)) {
     throw new ResponseError('missing or malformed X-Nylzo-Policy');
   }
-  const binary = atob(value.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(value.length / 4) * 4, '='));
+  const binary = atob(
+    value
+      .replaceAll('-', '+')
+      .replaceAll('_', '/')
+      .padEnd(Math.ceil(value.length / 4) * 4, '='),
+  );
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   if (encodeBase64url(bytes) !== value) {
     throw new ResponseError('X-Nylzo-Policy is not canonical base64url');
@@ -517,7 +534,12 @@ export function createApi(options: ApiOptions = {}) {
       const limits = report['limits'];
       const rates = report['rates'];
       const retention = report['retention'];
-      if (!isObject(limits) || !isObject(rates) || !isObject(retention) || text(manifest, 'server') !== text(report, 'server')) {
+      if (
+        !isObject(limits) ||
+        !isObject(rates) ||
+        !isObject(retention) ||
+        text(manifest, 'server') !== text(report, 'server')
+      ) {
         throw new ResponseError();
       }
       return {
@@ -551,12 +573,16 @@ export function createApi(options: ApiOptions = {}) {
       if (request.powToken !== undefined) {
         headers['X-Nylzo-Pow'] = request.powToken;
       }
-      const response = await ensureOk(await call('/api/v1/messages', { method: 'POST', headers, body: request.object }, TRANSFER_TIMEOUT_MS));
+      const response = await ensureOk(
+        await call('/api/v1/messages', { method: 'POST', headers, body: request.object }, TRANSFER_TIMEOUT_MS),
+      );
       return { expiresAt: timestamp(await readJson(response), 'expires_at') };
     },
 
     async metadata(id: Uint8Array, readKey: RequestKey): Promise<Metadata> {
-      const response = await ensureOk(await signed({ method: 'GET', path: messagePath(id), purpose: PURPOSE_READ, key: readKey }));
+      const response = await ensureOk(
+        await signed({ method: 'GET', path: messagePath(id), purpose: PURPOSE_READ, key: readKey }),
+      );
       const json = await readJson(response);
       if (typeof json['passphrase_required'] !== 'boolean') {
         throw new ResponseError();
@@ -576,7 +602,14 @@ export function createApi(options: ApiOptions = {}) {
     async claim(id: Uint8Array, readKey: RequestKey, options: ClaimOptions = {}): Promise<Claimed> {
       const response = await ensureOk(
         await signed(
-          { method: 'POST', path: `${messagePath(id)}/claim`, purpose: PURPOSE_READ, key: readKey, verifier: options.verifierKey, proceed: options.proceed },
+          {
+            method: 'POST',
+            path: `${messagePath(id)}/claim`,
+            purpose: PURPOSE_READ,
+            key: readKey,
+            verifier: options.verifierKey,
+            proceed: options.proceed,
+          },
           TRANSFER_TIMEOUT_MS,
         ),
       );
@@ -591,7 +624,16 @@ export function createApi(options: ApiOptions = {}) {
 
     async blob(id: Uint8Array, readKey: RequestKey, lease: string, onProgress?: DownloadProgress): Promise<Envelope> {
       const response = await ensureOk(
-        await signed({ method: 'GET', path: `${messagePath(id)}/blob`, purpose: PURPOSE_READ, key: readKey, headers: { 'X-Nylzo-Lease': lease } }, TRANSFER_TIMEOUT_MS),
+        await signed(
+          {
+            method: 'GET',
+            path: `${messagePath(id)}/blob`,
+            purpose: PURPOSE_READ,
+            key: readKey,
+            headers: { 'X-Nylzo-Lease': lease },
+          },
+          TRANSFER_TIMEOUT_MS,
+        ),
       );
       const policy = decodePolicyHeader(response.headers.get('X-Nylzo-Policy'));
       return { policy, object: await readBody(response, onProgress) };
@@ -599,25 +641,39 @@ export function createApi(options: ApiOptions = {}) {
 
     async ack(id: Uint8Array, readKey: RequestKey, lease: string): Promise<void> {
       await ensureOk(
-        await signed({ method: 'POST', path: `${messagePath(id)}/ack`, purpose: PURPOSE_READ, key: readKey, headers: { 'X-Nylzo-Lease': lease } }),
+        await signed({
+          method: 'POST',
+          path: `${messagePath(id)}/ack`,
+          purpose: PURPOSE_READ,
+          key: readKey,
+          headers: { 'X-Nylzo-Lease': lease },
+        }),
       );
     },
 
     async burn(id: Uint8Array, readKey: RequestKey): Promise<void> {
-      await ensureOk(await signed({ method: 'POST', path: `${messagePath(id)}/burn`, purpose: PURPOSE_READ, key: readKey }));
+      await ensureOk(
+        await signed({ method: 'POST', path: `${messagePath(id)}/burn`, purpose: PURPOSE_READ, key: readKey }),
+      );
     },
 
     async cancel(id: Uint8Array, manageKey: RequestKey): Promise<void> {
-      await ensureOk(await signed({ method: 'POST', path: `${messagePath(id)}/cancel`, purpose: PURPOSE_MANAGE, key: manageKey }));
+      await ensureOk(
+        await signed({ method: 'POST', path: `${messagePath(id)}/cancel`, purpose: PURPOSE_MANAGE, key: manageKey }),
+      );
     },
 
     async report(id: Uint8Array, readKey: RequestKey, reason: string): Promise<void> {
       const json = { id: idToString(id), ...(reason === '' ? {} : { reason }) };
-      await ensureOk(await signed({ method: 'POST', path: '/api/v1/abuse', purpose: PURPOSE_READ, key: readKey, json }));
+      await ensureOk(
+        await signed({ method: 'POST', path: '/api/v1/abuse', purpose: PURPOSE_READ, key: readKey, json }),
+      );
     },
 
     async status(id: Uint8Array, manageKey: RequestKey): Promise<Status> {
-      const response = await ensureOk(await signed({ method: 'GET', path: `${messagePath(id)}/status`, purpose: PURPOSE_MANAGE, key: manageKey }));
+      const response = await ensureOk(
+        await signed({ method: 'GET', path: `${messagePath(id)}/status`, purpose: PURPOSE_MANAGE, key: manageKey }),
+      );
       const json = await readJson(response);
       return {
         state: state(json),

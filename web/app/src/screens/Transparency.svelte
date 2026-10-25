@@ -5,7 +5,10 @@
   import { REPOSITORY_URL } from '../lib/repository.ts';
   import { contactHref, verifyCommand } from '../lib/transparency.ts';
 
-  type View = { readonly view: 'loading' } | { readonly view: 'failed' } | { readonly view: 'ready'; readonly data: Transparency };
+  type View =
+    | { readonly view: 'loading' }
+    | { readonly view: 'failed' }
+    | { readonly view: 'ready'; readonly data: Transparency };
 
   const DAY_SECONDS = 86_400;
 
@@ -16,7 +19,8 @@
   let view = $state.raw<View>({ view: 'loading' });
 
   const days = (seconds: number) => formatDays(Math.round(seconds / DAY_SECONDS), i18n.language);
-  const period = (seconds: number) => (seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, i18n.language));
+  const period = (seconds: number) =>
+    seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, i18n.language);
   const limit = (value: number) => (value === 0 ? t('transparency.limits.none') : String(value));
 
   async function load() {
@@ -103,7 +107,12 @@
       <dt>{t('transparency.limits.opens')}</dt>
       <dd>{data.limits.maxOpens}</dd>
       <dt>{t('transparency.limits.create')}</dt>
-      <dd>{t('transparency.limits.create.value', { hour: limit(data.rates.createPerHour), day: limit(data.rates.createPerDay) })}</dd>
+      <dd>
+        {t('transparency.limits.create.value', {
+          hour: limit(data.rates.createPerHour),
+          day: limit(data.rates.createPerDay),
+        })}
+      </dd>
       <dt>{t('transparency.limits.read')}</dt>
       <dd>{t('transparency.limits.read.value', { hour: limit(data.rates.readPerHour) })}</dd>
       <dt>{t('transparency.limits.global')}</dt>

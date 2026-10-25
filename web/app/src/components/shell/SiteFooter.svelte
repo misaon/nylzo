@@ -53,7 +53,7 @@
 </script>
 
 {#snippet languageSwitch()}
-  <div class="relative grid w-fit grid-cols-2 rounded-control well p-0.5" role="group" aria-label={t('language.label')}>
+  <div class="relative grid w-fit grid-cols-2 rounded-control p-0.5 well" role="group" aria-label={t('language.label')}>
     {#each languages as language (language.code)}
       {@const active = i18n.language === language.code}
       <button
@@ -74,7 +74,9 @@
 
 <footer class="relative z-10 px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6">
   {#if compact}
-    <div class="glass-soft mx-auto flex max-w-[1160px] flex-col gap-5 rounded-card p-6 sm:flex-row sm:items-center sm:justify-between md:px-8">
+    <div
+      class="glass-soft mx-auto flex max-w-[1160px] flex-col gap-5 rounded-card p-6 sm:flex-row sm:items-center sm:justify-between md:px-8"
+    >
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <Logo class="h-7 w-[105px] shrink-0" label="Nylzo" />
         <p class="text-sm text-ink-mute">{t('footer.tagline')}</p>
@@ -96,14 +98,20 @@
           <nav aria-label={t(group.key)} class="flex flex-col gap-2.5 text-sm">
             <p class="text-xs text-ink-mute">{t(group.key)}</p>
             {#each group.links as link (link.key)}
-              <a href={link.href} aria-current={link.page !== undefined && link.page === current ? 'page' : undefined} class="w-fit text-ink-soft hover:text-ink">
+              <a
+                href={link.href}
+                aria-current={link.page !== undefined && link.page === current ? 'page' : undefined}
+                class="w-fit text-ink-soft hover:text-ink"
+              >
                 {t(link.key)}
               </a>
             {/each}
           </nav>
         {/each}
       </div>
-      <div class="mt-10 flex flex-col gap-4 border-t border-white/8 pt-6 text-xs text-ink-mute sm:flex-row sm:items-center sm:justify-between">
+      <div
+        class="mt-10 flex flex-col gap-4 border-t border-white/8 pt-6 text-xs text-ink-mute sm:flex-row sm:items-center sm:justify-between"
+      >
         <p>{t('footer.note')}</p>
         {@render languageSwitch()}
       </div>

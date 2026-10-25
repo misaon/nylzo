@@ -1,4 +1,17 @@
-import { ID_LEN, LinkRetiredKdfError, LinkVersionError, deriveLink, encodedLength, parseLink, requestKey, utf8, wipeRequestKey, type Link, type LinkKeys, type RequestKey } from '@nylzo/core';
+import {
+  ID_LEN,
+  LinkRetiredKdfError,
+  LinkVersionError,
+  deriveLink,
+  encodedLength,
+  parseLink,
+  requestKey,
+  utf8,
+  wipeRequestKey,
+  type Link,
+  type LinkKeys,
+  type RequestKey,
+} from '@nylzo/core';
 
 import { ApiError, type Api } from './api.ts';
 
@@ -68,7 +81,12 @@ export function reasonTooLong(reason: string): boolean {
   return utf8(reason).length > MAX_REASON_BYTES || utf8(body).length > MAX_REPORT_BODY_BYTES;
 }
 
-export async function sendReport(api: Api, id: Uint8Array, readKey: RequestKey, reason: string): Promise<ReportOutcome> {
+export async function sendReport(
+  api: Api,
+  id: Uint8Array,
+  readKey: RequestKey,
+  reason: string,
+): Promise<ReportOutcome> {
   const redacted = redactReason(reason);
   if (reasonTooLong(redacted)) {
     return { outcome: 'invalid', problems: ['reason_too_long'] };

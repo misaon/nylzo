@@ -10,7 +10,9 @@ interface RedactVector {
   readonly redacted: string;
 }
 
-const { redact } = JSON.parse(readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8')) as { readonly redact: readonly RedactVector[] };
+const { redact } = JSON.parse(readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8')) as {
+  readonly redact: readonly RedactVector[];
+};
 
 describe('redaction matches the server (spec/vectors.json)', () => {
   it('has vectors', () => {

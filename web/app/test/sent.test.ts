@@ -25,7 +25,10 @@ import { fakeApi, type FakeApi, type FakeOptions } from './fake-api.ts';
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 const ID = 'AAAAAAAAAAAAAAAAAAAAAA';
 
-function memoryStore(initial: SentRecord[] = [], broken = false): SentStore & { readonly records: Map<string, SentRecord> } {
+function memoryStore(
+  initial: SentRecord[] = [],
+  broken = false,
+): SentStore & { readonly records: Map<string, SentRecord> } {
   const records = new Map(initial.map((record) => [record.id, record]));
   const check = () => {
     if (broken) {
@@ -65,7 +68,12 @@ function memoryStore(initial: SentRecord[] = [], broken = false): SentStore & { 
 }
 
 async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promise<SentRecord> {
-  const deps: CreateDeps = { api, origin: 'https://nylzo.test', scrypt: async () => new Uint8Array(32), solvePow: async () => '' };
+  const deps: CreateDeps = {
+    api,
+    origin: 'https://nylzo.test',
+    scrypt: async () => new Uint8Array(32),
+    solvePow: async () => '',
+  };
   const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase: '' }, deps);
   return { id: created.id, createdAt, expiresAt: NOW + 3_600_000, manageKey: created.manageKey };
 }
@@ -102,7 +110,10 @@ async function manageKeyOf(seed: Uint8Array): Promise<CryptoRequestKey> {
 
 async function extractableKey(): Promise<CryptoRequestKey> {
   const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair;
-  return { privateKey: pair.privateKey, publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)) };
+  return {
+    privateKey: pair.privateKey,
+    publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
+  };
 }
 
 describe('stored records of sent messages (D39)', () => {
@@ -129,15 +140,25 @@ describe('stored records of sent messages (D39)', () => {
     ]) {
       expect(() => storedForm({ id: ID, ...times, manageKey }), JSON.stringify(times)).toThrow(InvalidRecordError);
     }
-    expect(() => storedForm({ id: 'not an id', createdAt: NOW, expiresAt: NOW, manageKey })).toThrow(InvalidRecordError);
+    expect(() => storedForm({ id: 'not an id', createdAt: NOW, expiresAt: NOW, manageKey })).toThrow(
+      InvalidRecordError,
+    );
   });
 
   it('reads back only well-formed records with a non-extractable Ed25519 signing key', async () => {
     const manageKey = await manageKeyOf(newSecret());
     const good = storedForm({ id: ID, createdAt: NOW, expiresAt: NOW + 1, manageKey });
-    expect(recordFrom(good)).toEqual({ id: ID, createdAt: NOW, expiresAt: NOW + 1, manageKey: { privateKey: manageKey.privateKey, publicKey: manageKey.publicKey } });
+    expect(recordFrom(good)).toEqual({
+      id: ID,
+      createdAt: NOW,
+      expiresAt: NOW + 1,
+      manageKey: { privateKey: manageKey.privateKey, publicKey: manageKey.publicKey },
+    });
     const loose = await extractableKey();
-    const ecdsa = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify'])) as CryptoKeyPair;
+    const ecdsa = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, [
+      'sign',
+      'verify',
+    ])) as CryptoKeyPair;
     for (const bad of [
       { ...good, privateKey: loose.privateKey },
       { ...good, privateKey: ecdsa.privateKey },
@@ -273,10 +294,19 @@ describe('the sent page', () => {
   });
 
   it('treats only a live, unexpired message without an end as cancellable', () => {
-    const status = { state: 'available' as const, opensUsed: 0, opensMax: 1, failedPassphraseAttempts: 0, expiresAt: '2026-10-23T13:00:00Z' };
+    const status = {
+      state: 'available' as const,
+      opensUsed: 0,
+      opensMax: 1,
+      failedPassphraseAttempts: 0,
+      expiresAt: '2026-10-23T13:00:00Z',
+    };
     const later = NOW + 3_600_000;
     expect(assess({ kind: 'loaded', status }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'loaded', status: { ...status, state: 'opened' } }, later, NOW)).toEqual({ ended: false, cancellable: true });
+    expect(assess({ kind: 'loaded', status: { ...status, state: 'opened' } }, later, NOW)).toEqual({
+      ended: false,
+      cancellable: true,
+    });
     for (const ended of [
       { ...status, state: 'opened' as const, endedAt: '2026-10-23T11:00:00Z' },
       { ...status, state: 'expired' as const },
@@ -284,7 +314,10 @@ describe('the sent page', () => {
       { ...status, state: 'deleted' as const },
       { ...status, expiresAt: '2026-10-23T12:00:00Z' },
     ]) {
-      expect(assess({ kind: 'loaded', status: ended }, later, NOW), JSON.stringify(ended)).toEqual({ ended: true, cancellable: false });
+      expect(assess({ kind: 'loaded', status: ended }, later, NOW), JSON.stringify(ended)).toEqual({
+        ended: true,
+        cancellable: false,
+      });
     }
     const { expiresAt: _, ...withoutExpiry } = status;
     expect(assess({ kind: 'loaded', status: withoutExpiry }, NOW, NOW)).toEqual({ ended: true, cancellable: false });
@@ -303,7 +336,10 @@ describe('the sent page', () => {
   });
 
   it('skips a message forgotten while the list loads and still marks the rest to try later', async () => {
-    const { api, records, store, sent } = await setup({ failStatus: [new ApiError(500, 'internal'), new ApiError(429, 'rate_limited', 9)] }, 4);
+    const { api, records, store, sent } = await setup(
+      { failStatus: [new ApiError(500, 'internal'), new ApiError(429, 'rate_limited', 9)] },
+      4,
+    );
     api.calls.length = 0;
     const loading = sent.load();
     await sent.forget(records[2]!.id);
@@ -385,4 +421,3 @@ describe('remembering a new message', () => {
     await vi.waitFor(() => expect(store.records.has(ID)).toBe(false));
   });
 });
-

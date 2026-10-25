@@ -77,7 +77,9 @@ describe('passphrase normalisation', () => {
     const salt = new Uint8Array(32);
     expect(() => scryptPassphraseKey('caf\ud800', salt)).toThrow(MalformedPassphraseError);
     await expect(anyPassphraseKey(KDF_SCRYPT, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
-    await expect(deriveAll(newId(), newSecret(), KDF_SCRYPT, 'caf\ud800')).rejects.toBeInstanceOf(MalformedPassphraseError);
+    await expect(deriveAll(newId(), newSecret(), KDF_SCRYPT, 'caf\ud800')).rejects.toBeInstanceOf(
+      MalformedPassphraseError,
+    );
     await expect(anyPassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
   });
 
@@ -120,15 +122,23 @@ describe('kdf profiles', () => {
     expect(isKdfId(KDF_RETIRED)).toBe(false);
     expect(() => parseKdfId(String(KDF_RETIRED))).toThrow(KdfError);
     for (const kdfId of [KDF_RETIRED, Number('3')] as KdfId[]) {
-      await expect(anyPassphraseKey(kdfId, 'correct horse battery staple', new Uint8Array(32))).rejects.toBeInstanceOf(KdfError);
-      await expect(deriveAll(newId(), newSecret(), kdfId, 'correct horse battery staple')).rejects.toBeInstanceOf(KdfError);
+      await expect(anyPassphraseKey(kdfId, 'correct horse battery staple', new Uint8Array(32))).rejects.toBeInstanceOf(
+        KdfError,
+      );
+      await expect(deriveAll(newId(), newSecret(), kdfId, 'correct horse battery staple')).rejects.toBeInstanceOf(
+        KdfError,
+      );
     }
   });
 
   it('wipes the copy of S and P it feeds into HKDF', async () => {
     const imported: Uint8Array[] = [];
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((format: KeyFormat, data: BufferSource, ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]) => {
+    const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
+      format: KeyFormat,
+      data: BufferSource,
+      ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]
+    ) => {
       if (data instanceof Uint8Array && data.length === 64) {
         imported.push(data);
       }

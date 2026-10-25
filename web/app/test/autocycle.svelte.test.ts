@@ -18,7 +18,9 @@ function runCycle(): { readonly cycle: AutoCycle; readonly stop: () => void } {
 }
 
 function focusOn(keyboard: boolean): FocusEvent {
-  const target = Object.assign(new Element(), { matches: (selector: string) => keyboard && selector === ':focus-visible' });
+  const target = Object.assign(new Element(), {
+    matches: (selector: string) => keyboard && selector === ':focus-visible',
+  });
   return { target } as unknown as FocusEvent;
 }
 

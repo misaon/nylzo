@@ -47,7 +47,10 @@ export function failureKey(failure: CreateFailure): MessageKey {
 
 export type Attachment = { readonly file?: FileInput | undefined } | { readonly problem: CreateProblem };
 
-export async function readAttachment(file: Blob & { readonly name: string } | undefined, limits: InstanceLimits): Promise<Attachment> {
+export async function readAttachment(
+  file: (Blob & { readonly name: string }) | undefined,
+  limits: InstanceLimits,
+): Promise<Attachment> {
   if (!file) {
     return { file: undefined };
   }

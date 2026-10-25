@@ -20,7 +20,11 @@ const INDEX = `<!doctype html>
 `;
 const IMAGE = { path: '/assets/og-image-a1.png', width: 1200, height: 630 };
 const CSS = 'body{color:#fff}@font-face{src:url(/assets/geist-czech-c3.woff2)}h1{margin:0}';
-const STYLES = { stylesheet: '/assets/style-b2.css', fontStylesheet: '/assets/fonts-f7.css', inline: splitFontFaces(CSS).inline };
+const STYLES = {
+  stylesheet: '/assets/style-b2.css',
+  fontStylesheet: '/assets/fonts-f7.css',
+  inline: splitFontFaces(CSS).inline,
+};
 const ASSETS = { image: IMAGE, styles: STYLES };
 
 function count(page: string, pattern: RegExp): number {
@@ -53,7 +57,9 @@ describe('homeTemplate', () => {
     expect(page.replace(block, '')).not.toContain('__NYLZO_PUBLIC_URL__');
     expect(page).toContain(`<meta property="og:locale" content="${language === 'en' ? 'en_US' : 'cs_CZ'}">`);
     expect(page).toContain('<noscript><style nonce="__NYLZO_CSP_NONCE__">');
-    expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/fonts-f7.css" nonce="__NYLZO_CSP_NONCE__">');
+    expect(page).toContain(
+      '<link rel="stylesheet" crossorigin href="/assets/fonts-f7.css" nonce="__NYLZO_CSP_NONCE__">',
+    );
     expect(page).toContain('<style nonce="__NYLZO_CSP_NONCE__">body{color:#fff}h1{margin:0}</style>');
     expect(page).not.toContain('style-b2.css');
     expect(count(page, /-czech-[\w-]+\.woff2" as="font"/)).toBe(language === 'cs' ? 2 : 0);
@@ -63,7 +69,8 @@ describe('homeTemplate', () => {
 
   it('writes structured data that parses and matches the visible description', () => {
     const page = homeTemplate(INDEX, 'cs', ASSETS);
-    const [, json = ''] = /<script type="application\/ld\+json" nonce="__NYLZO_CSP_NONCE__">([^<]*)<\/script>/.exec(page) ?? [];
+    const [, json = ''] =
+      /<script type="application\/ld\+json" nonce="__NYLZO_CSP_NONCE__">([^<]*)<\/script>/.exec(page) ?? [];
     const data = JSON.parse(json) as { '@graph': { '@type': string; url: string; description?: string }[] };
     const types = data['@graph'].map((node) => node['@type']);
     expect(types).toEqual(['WebSite', 'WebApplication']);
@@ -73,10 +80,16 @@ describe('homeTemplate', () => {
   });
 
   it('refuses an index it cannot place the page in', () => {
-    expect(() => homeTemplate(INDEX.replace('<body></body>', '<body><p></p></body>'), 'en', ASSETS)).toThrow(/<body><\/body>/);
+    expect(() => homeTemplate(INDEX.replace('<body></body>', '<body><p></p></body>'), 'en', ASSETS)).toThrow(
+      /<body><\/body>/,
+    );
     expect(() => homeTemplate(INDEX.replace('<title>Nylzo</title>', ''), 'en', ASSETS)).toThrow(/title/);
-    expect(() => homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, stylesheet: '/assets/other.css' } })).toThrow(/stylesheet/);
-    expect(() => homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, inline: 'a{}</style><script>' } })).toThrow(/stylesheet/);
+    expect(() =>
+      homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, stylesheet: '/assets/other.css' } }),
+    ).toThrow(/stylesheet/);
+    expect(() =>
+      homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, inline: 'a{}</style><script>' } }),
+    ).toThrow(/stylesheet/);
     expect(() => homeTemplate(INDEX.replaceAll('-czech-', '-other-'), 'cs', ASSETS)).toThrow(/Czech/);
     expect(() => splitFontFaces('body{}')).toThrow(/fonts/);
   });

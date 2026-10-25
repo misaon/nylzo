@@ -30,7 +30,9 @@
     const problem = problems.find((p) => p.startsWith('link_'));
     return problem ? t(`report.problem.${problem}`) : '';
   });
-  const reasonProblem = $derived(problems.includes('reason_too_long') ? t('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES }) : '');
+  const reasonProblem = $derived(
+    problems.includes('reason_too_long') ? t('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES }) : '',
+  );
   const result = $derived.by(() => {
     switch (outcome?.outcome) {
       case 'accepted':
@@ -82,22 +84,32 @@
       id={`${name}-reason`}
       rows="3"
       placeholder={t('report.reason')}
-      class="well mt-2.5 block w-full resize-none rounded-[8px] px-3 py-2 text-[13px] text-ink placeholder:text-ink-mute aria-invalid:shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]"
+      class="mt-2.5 block w-full resize-none rounded-[8px] px-3 py-2 text-[13px] text-ink well placeholder:text-ink-mute aria-invalid:shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]"
       autocomplete="off"
       autocapitalize="off"
       autocorrect="off"
       spellcheck="false"
       bind:value={reason}
       aria-invalid={reasonProblem !== ''}
-      aria-describedby={`${name}-reason-hint ${name}-reason-problem`}
-    ></textarea>
-    <div class="stack mt-2 px-0.5 text-[11px] leading-relaxed">
-      <p id={`${name}-reason-hint`} class={['fade-swap text-ink-mute', compactProblem ? 'opacity-0' : 'opacity-100']}>
+      aria-describedby={`${name}-reason-hint ${name}-reason-problem`}></textarea>
+    <div class="mt-2 stack px-0.5 text-[11px] leading-relaxed">
+      <p id={`${name}-reason-hint`} class={['text-ink-mute fade-swap', compactProblem ? 'opacity-0' : 'opacity-100']}>
         {hint ?? t('report.reason.hint', { bytes: MAX_REASON_BYTES })}
       </p>
-      <p id={`${name}-reason-problem`} role="alert" data-problem class={['fade-swap text-rose-300', compactProblem ? 'opacity-100' : 'opacity-0']}>{compactProblem}</p>
+      <p
+        id={`${name}-reason-problem`}
+        role="alert"
+        data-problem
+        class={['text-rose-300 fade-swap', compactProblem ? 'opacity-100' : 'opacity-0']}
+      >
+        {compactProblem}
+      </p>
     </div>
-    <button type="submit" disabled={sending} class="btn-primary hover-lift mt-2.5 flex h-11 w-full items-center justify-center rounded-[8px] text-[13px] font-medium md:h-8">
+    <button
+      type="submit"
+      disabled={sending}
+      class="btn-primary mt-2.5 flex h-11 w-full hover-lift items-center justify-center rounded-[8px] text-[13px] font-medium md:h-8"
+    >
       {t('report.submit')}
     </button>
   {:else}
@@ -127,8 +139,7 @@
       spellcheck="false"
       bind:value={reason}
       aria-invalid={reasonProblem !== ''}
-      aria-describedby={`${name}-reason-hint ${name}-reason-problem`}
-    ></textarea>
+      aria-describedby={`${name}-reason-hint ${name}-reason-problem`}></textarea>
     <p id={`${name}-reason-hint`}>{t('report.reason.hint', { bytes: MAX_REASON_BYTES })}</p>
     <p id={`${name}-reason-problem`} data-problem>{reasonProblem}</p>
     <button type="submit" disabled={sending}>{t('report.submit')}</button>

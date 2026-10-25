@@ -48,7 +48,9 @@ describe('create form', () => {
     const big = new File([new Uint8Array(17)], 'big.bin');
     expect(await readAttachment(big, limits)).toEqual({ problem: { field: 'file', code: 'too_large' } });
     const small = new File([new Uint8Array([1, 2])], 'small.txt', { type: 'text/plain' });
-    expect(await readAttachment(small, limits)).toEqual({ file: { name: 'small.txt', mime: 'text/plain', bytes: new Uint8Array([1, 2]) } });
+    expect(await readAttachment(small, limits)).toEqual({
+      file: { name: 'small.txt', mime: 'text/plain', bytes: new Uint8Array([1, 2]) },
+    });
     expect(await readAttachment(undefined, limits)).toEqual({ file: undefined });
   });
 });

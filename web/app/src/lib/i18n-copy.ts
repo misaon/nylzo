@@ -27,9 +27,11 @@ export const copyCs = {
 
   'hero.title.lead': 'Tajemství na',
   'hero.title.accent': 'jedno otevření',
-  'hero.intro': 'Zprávu zašifrujete přímo v\u00a0prohlížeči. Server dostane jen šifru a\u00a0po otevření ji smaže. Klíč zůstává v\u00a0odkazu za znakem # a\u00a0k\u00a0nám nikdy nedorazí.',
+  'hero.intro':
+    'Zprávu zašifrujete přímo v\u00a0prohlížeči. Server dostane jen šifru a\u00a0po otevření ji smaže. Klíč zůstává v\u00a0odkazu za znakem # a\u00a0k\u00a0nám nikdy nedorazí.',
   'seo.title': 'Bezpečně poslat heslo i\u00a0soubor jednorázovým odkazem | Nylzo',
-  'seo.description': 'Pošlete heslo, API klíč nebo soubor šifrovaným odkazem, který se otevře jen jednou. Šifruje se ve vašem prohlížeči a\u00a0server uloží jen šifru, kterou nepřečte.',
+  'seo.description':
+    'Pošlete heslo, API klíč nebo soubor šifrovaným odkazem, který se otevře jen jednou. Šifruje se ve vašem prohlížeči a\u00a0server uloží jen šifru, kterou nepřečte.',
   'seo.image': 'Logo Nylzo na hvězdném nebi',
 
   'compose.placeholder': 'Napište nebo vložte, co nemá zůstat v\u00a0chatu…',
@@ -84,7 +86,8 @@ export const copyCs = {
   'created.server.blind.what': 'verzi a\u00a0klíč',
   'created.chip.expires': 'Platí do {time}',
   'open.title': 'Máte šifrovanou zprávu',
-  'open.intro': 'Dešifruje se až ve vašem prohlížeči. Klíč je v\u00a0odkazu za znakem # a\u00a0server ho nikdy neviděl.',
+  'open.intro':
+    'Dešifruje se až ve vašem prohlížeči. Klíč je v\u00a0odkazu za znakem # a\u00a0server ho nikdy neviděl.',
   'open.ready.title': 'Zpráva čeká na zobrazení',
   'open.ready.sub': 'Otevření se započítá až tlačítkem Zobrazit zprávu.',
   'open.loading.text': 'Ověřujeme odkaz u\u00a0serveru.',
@@ -131,9 +134,11 @@ export const copyCs = {
   'open.notice.invalid': 'Odkaz je neúplný nebo poškozený',
   'open.notice.invalid.text': 'Zkontrolujte, že jste zkopírovali celý odkaz včetně části za #.',
   'open.notice.newer': 'Odkaz je z\u00a0novější verze Nylzo',
-  'open.notice.newer.text': 'Tento server ho otevřít neumí a\u00a0zprávu nespotřeboval. Požádejte odesílatele o\u00a0nový odkaz.',
+  'open.notice.newer.text':
+    'Tento server ho otevřít neumí a\u00a0zprávu nespotřeboval. Požádejte odesílatele o\u00a0nový odkaz.',
   'open.notice.retired': 'Odkaz chrání vyřazená passphrase',
-  'open.notice.retired.text': 'Tento způsob ochrany Nylzo už nepodporuje, a\u00a0tak zprávu otevřít nejde. Stránka ji nespotřebovala. Požádejte odesílatele o\u00a0nový odkaz.',
+  'open.notice.retired.text':
+    'Tento způsob ochrany Nylzo už nepodporuje, a\u00a0tak zprávu otevřít nejde. Stránka ji nespotřebovala. Požádejte odesílatele o\u00a0nový odkaz.',
   'open.notice.tampered': 'Zprávu nejde bezpečně otevřít',
   'open.notice.tampered.text': 'Server nebo spojení vrátilo jiná data, než odesílatel vytvořil.',
   'open.notice.failed': 'Něco se pokazilo',
@@ -147,7 +152,8 @@ export const copyCs = {
   'open.notice.burned': 'Zprávu jste smazali',
   'open.notice.burned.text': 'Už ji nikdo neotevře, ani vy.',
   'open.notice.locked': 'Zpráva je zamčená',
-  'open.notice.locked.text': 'Po mnoha chybných pokusech o\u00a0passphrase ji do konce platnosti nikdo neotevře. Požádejte odesílatele o\u00a0nový odkaz.',
+  'open.notice.locked.text':
+    'Po mnoha chybných pokusech o\u00a0passphrase ji do konce platnosti nikdo neotevře. Požádejte odesílatele o\u00a0nový odkaz.',
   'open.report': 'Nahlásit',
   'open.report.title': 'Nahlásit zprávu',
   'open.report.sent': 'Hlášení je odeslané',
@@ -190,9 +196,11 @@ export const copyEn: Record<keyof typeof copyCs, string> = {
 
   'hero.title.lead': 'A secret that',
   'hero.title.accent': 'opens once',
-  'hero.intro': 'You encrypt the message right in your browser. The server only gets the ciphertext and deletes it after it is opened. The key stays in the link after the # sign and never reaches us.',
+  'hero.intro':
+    'You encrypt the message right in your browser. The server only gets the ciphertext and deletes it after it is opened. The key stays in the link after the # sign and never reaches us.',
   'seo.title': 'Share passwords and files securely with one-time links | Nylzo',
-  'seo.description': 'Send a password, API key or file through an encrypted link that opens once. Your browser encrypts it, and the server keeps only ciphertext it cannot read.',
+  'seo.description':
+    'Send a password, API key or file through an encrypted link that opens once. Your browser encrypts it, and the server keeps only ciphertext it cannot read.',
   'seo.image': 'The Nylzo logo on a starry night sky',
 
   'compose.placeholder': 'Type or paste what should not stay in the chat…',
@@ -247,7 +255,8 @@ export const copyEn: Record<keyof typeof copyCs, string> = {
   'created.server.blind.what': 'the version and the key',
   'created.chip.expires': 'Valid until {time}',
   'open.title': 'You have an encrypted message',
-  'open.intro': 'It is decrypted only in your browser. The key is in the link after the # sign, and the server has never seen it.',
+  'open.intro':
+    'It is decrypted only in your browser. The key is in the link after the # sign, and the server has never seen it.',
   'open.ready.title': 'The message is waiting for you',
   'open.ready.sub': 'An open counts only when you press Show message.',
   'open.loading.text': 'Checking the link with the server.',
@@ -296,7 +305,8 @@ export const copyEn: Record<keyof typeof copyCs, string> = {
   'open.notice.newer': 'This link comes from a newer version of Nylzo',
   'open.notice.newer.text': 'This server cannot open it and did not use up the message. Ask the sender for a new link.',
   'open.notice.retired': 'This link uses a retired passphrase method',
-  'open.notice.retired.text': 'Nylzo no longer supports this protection, so the message cannot be opened. This page did not use it up. Ask the sender for a new link.',
+  'open.notice.retired.text':
+    'Nylzo no longer supports this protection, so the message cannot be opened. This page did not use it up. Ask the sender for a new link.',
   'open.notice.tampered': 'The message cannot be opened safely',
   'open.notice.tampered.text': 'The server or the connection returned other data than the sender created.',
   'open.notice.failed': 'Something went wrong',
@@ -304,13 +314,15 @@ export const copyEn: Record<keyof typeof copyCs, string> = {
   'open.notice.busy': 'The service is busy',
   'open.notice.busy.text': 'Try again in {time}.',
   'open.notice.cleared': 'This page no longer shows the message',
-  'open.report.note': 'Fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically.',
+  'open.report.note':
+    'Fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically.',
   'open.report.privacy': 'Neither the link nor the content leaves this page.',
   'open.chip.burned': 'Deleted without showing',
   'open.notice.burned': 'You deleted the message',
   'open.notice.burned.text': 'Nobody can open it now, you included.',
   'open.notice.locked': 'The message is locked',
-  'open.notice.locked.text': 'After too many wrong passphrase attempts, nobody can open it before it expires. Ask the sender for a new link.',
+  'open.notice.locked.text':
+    'After too many wrong passphrase attempts, nobody can open it before it expires. Ask the sender for a new link.',
   'open.report': 'Report',
   'open.report.title': 'Report the message',
   'open.report.sent': 'Report sent',

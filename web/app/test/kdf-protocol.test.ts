@@ -5,7 +5,10 @@ import { PROGRESS_HEARTBEAT_MS, throttledProgress } from '../src/lib/kdf-protoco
 describe('progress from the key derivation worker', () => {
   it('posts at most one message per percent and always the end', () => {
     const posted: number[] = [];
-    const report = throttledProgress((fraction) => posted.push(fraction), () => 0);
+    const report = throttledProgress(
+      (fraction) => posted.push(fraction),
+      () => 0,
+    );
     for (let call = 0; call <= 10_083; call++) {
       report(call / 10_083);
     }
@@ -18,7 +21,10 @@ describe('progress from the key derivation worker', () => {
   it('keeps posting once a second after the fraction stopped growing', () => {
     let now = 0;
     const posted: number[] = [];
-    const report = throttledProgress((fraction) => posted.push(fraction), () => now);
+    const report = throttledProgress(
+      (fraction) => posted.push(fraction),
+      () => now,
+    );
     report(1);
     report(1);
     now += PROGRESS_HEARTBEAT_MS - 1;

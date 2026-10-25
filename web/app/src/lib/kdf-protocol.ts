@@ -24,7 +24,10 @@ export class KdfWorkerError extends Error {
 export const PROGRESS_STEP = 0.01;
 export const PROGRESS_HEARTBEAT_MS = 1000;
 
-export function throttledProgress(post: (fraction: number) => void, now: () => number = Date.now): (fraction: number) => void {
+export function throttledProgress(
+  post: (fraction: number) => void,
+  now: () => number = Date.now,
+): (fraction: number) => void {
   let last = Number.NEGATIVE_INFINITY;
   let postedAt = Number.NEGATIVE_INFINITY;
   return (fraction) => {

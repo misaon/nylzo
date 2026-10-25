@@ -7,7 +7,9 @@ const HOMES = [
 ] as const;
 
 for (const home of HOMES) {
-  test(`${home.path} comes prerendered in ${home.lang} with its search and preview tags (D82 to D84)`, async ({ request }) => {
+  test(`${home.path} comes prerendered in ${home.lang} with its search and preview tags (D82 to D84)`, async ({
+    request,
+  }) => {
     const response = await request.get(home.path);
     expect(response.status()).toBe(200);
     expect(response.headers()['x-robots-tag']).toBeUndefined();
@@ -26,7 +28,10 @@ for (const home of HOMES) {
     const png = await request.get(image);
     expect(png.headers()['content-type']).toBe('image/png');
     const json = /<script type="application\/ld\+json" nonce="[^"]+">([^<]+)<\/script>/.exec(html)?.[1] ?? '';
-    expect((JSON.parse(json) as { '@graph': { url: string }[] })['@graph'].map((node) => node.url)).toEqual([`${BASE_URL}/`, `${BASE_URL}${home.path}`]);
+    expect((JSON.parse(json) as { '@graph': { url: string }[] })['@graph'].map((node) => node.url)).toEqual([
+      `${BASE_URL}/`,
+      `${BASE_URL}${home.path}`,
+    ]);
   });
 
   test(`${home.path} shows its content without JavaScript`, async ({ browser }) => {
@@ -103,7 +108,9 @@ test('/cs redirects to /cs/, and robots.txt and the sitemap point at both home p
   const redirect = await request.get('/cs', { maxRedirects: 0 });
   expect(redirect.status()).toBe(308);
   expect(redirect.headers()['location']).toBe('/cs/');
-  expect(await (await request.get('/robots.txt')).text()).toBe(`User-agent: *\nDisallow: /api/\n\nSitemap: ${BASE_URL}/sitemap.xml\n`);
+  expect(await (await request.get('/robots.txt')).text()).toBe(
+    `User-agent: *\nDisallow: /api/\n\nSitemap: ${BASE_URL}/sitemap.xml\n`,
+  );
   const sitemap = await request.get('/sitemap.xml');
   expect(sitemap.headers()['content-type']).toBe('application/xml; charset=utf-8');
   const xml = await sitemap.text();

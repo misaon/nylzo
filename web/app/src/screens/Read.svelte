@@ -129,12 +129,16 @@
       detail: t(`open.step.${id}.detail`),
     })),
   );
-  const minMs = $derived(prefersReducedMotion.current ? MIN_MS.reduced : passphraseRequired ? MIN_MS.passphrase : MIN_MS.plain);
+  const minMs = $derived(
+    prefersReducedMotion.current ? MIN_MS.reduced : passphraseRequired ? MIN_MS.passphrase : MIN_MS.plain,
+  );
   const paced = $derived(pace({ elapsedMs: elapsed, minMs, steps: nodes.length, reached, fraction }));
   const ready = $derived(shown.view === 'ready' ? shown : undefined);
   const revealed = $derived(shown.view === 'revealed' ? shown : undefined);
   const locked = $derived(ready?.rejected?.reason === 'wrong' && ready.rejected.locked);
-  const phase = $derived(opening ? 'opening' : revealed ? 'revealed' : (ready && !locked) || shown.view === 'loading' ? 'ready' : 'notice');
+  const phase = $derived(
+    opening ? 'opening' : revealed ? 'revealed' : (ready && !locked) || shown.view === 'loading' ? 'ready' : 'notice',
+  );
   const notice = $derived(noticeOf(shown));
   const burnNote = $derived(burned ? burnText(burned.outcome, burned.afterReveal) : '');
   const burnFailed = $derived(burned !== undefined && FAILED_BURNS.includes(burned.outcome.outcome));
@@ -210,11 +214,20 @@
     return [];
   });
   const actions = $derived(
-    phase === 'opening' ? 'dim' : (phase === 'ready' || phase === 'revealed' || locked) && shown.view !== 'loading' && !askingDelete ? 'on' : 'off',
+    phase === 'opening'
+      ? 'dim'
+      : (phase === 'ready' || phase === 'revealed' || locked) && shown.view !== 'loading' && !askingDelete
+        ? 'on'
+        : 'off',
   );
   const deleteActions = $derived([
     { id: 'delete', label: 'read.delete', shown: ready !== undefined, enabled: ready !== undefined && !deleting },
-    { id: 'delete-rest', label: 'read.delete.rest', shown: revealed !== undefined && (revealed.burnable || restDeleted), enabled: (revealed?.burnable ?? false) && !deleting },
+    {
+      id: 'delete-rest',
+      label: 'read.delete.rest',
+      shown: revealed !== undefined && (revealed.burnable || restDeleted),
+      enabled: (revealed?.burnable ?? false) && !deleting,
+    },
   ] as const);
   const reportable = $derived(ready !== undefined || (revealed?.burnable ?? false));
 
@@ -257,7 +270,10 @@
   }
 
   function stepIndex(step: BusyStep): number {
-    return Math.max(0, steps.findIndex((item) => item.busy === step));
+    return Math.max(
+      0,
+      steps.findIndex((item) => item.busy === step),
+    );
   }
 
   function onView(next: ReadView) {
@@ -366,23 +382,33 @@
 
   function scramble(chars: readonly string[], progress: number): string {
     const cut = Math.floor(chars.length * Math.min(1, progress * 1.15));
-    return chars.map((char, index) => (index < cut || char === ' ' || char === '\n' || char === '\t' ? char : randomChar())).join('');
+    return chars
+      .map((char, index) => (index < cut || char === ' ' || char === '\n' || char === '\t' ? char : randomChar()))
+      .join('');
   }
 
   function shortTime(iso: string): string {
-    return new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+    return new Intl.DateTimeFormat(i18n.language, {
+      day: 'numeric',
+      month: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(new Date(iso));
   }
 
   function opensLeft(count: number): string {
     const rule = new Intl.PluralRules(i18n.language).select(count);
-    const key: MessageKey = rule === 'one' ? 'open.chip.opens.one' : rule === 'few' ? 'open.chip.opens.few' : 'open.chip.opens.other';
+    const key: MessageKey =
+      rule === 'one' ? 'open.chip.opens.one' : rule === 'few' ? 'open.chip.opens.few' : 'open.chip.opens.other';
     return t(key, { count });
   }
 
   function noticeOf(current: ReadView): Notice {
     switch (current.view) {
       case 'ended':
-        return current.state === 'deleted' && burned?.outcome.outcome === 'deleted' && !burned.afterReveal ? 'burned' : current.state;
+        return current.state === 'deleted' && burned?.outcome.outcome === 'deleted' && !burned.afterReveal
+          ? 'burned'
+          : current.state;
       case 'ready':
         return current.rejected?.reason === 'wrong' && current.rejected.locked ? 'locked' : 'loading';
       case 'retry_later':
@@ -411,7 +437,9 @@
       case 'cleared':
         return t('read.cleared');
       case 'busy':
-        return t('open.notice.busy.text', { time: formatWait(shown.view === 'retry_later' ? shown.retryAfter : undefined, i18n.language) });
+        return t('open.notice.busy.text', {
+          time: formatWait(shown.view === 'retry_later' ? shown.retryAfter : undefined, i18n.language),
+        });
       case 'loading':
         return t('open.loading.text');
       default:
@@ -608,7 +636,12 @@
 <svelte:window onpagehide={leave} onpageshow={returned} onclick={onwindowclick} />
 
 {#snippet chips(list: readonly ChipData[], dim = false)}
-  <ul class={['flex flex-wrap items-center gap-1.5 transition-opacity duration-500', dim ? 'pointer-events-none opacity-40' : 'opacity-100']}>
+  <ul
+    class={[
+      'flex flex-wrap items-center gap-1.5 transition-opacity duration-500',
+      dim ? 'pointer-events-none opacity-40' : 'opacity-100',
+    ]}
+  >
     {#each list as data (data.text)}
       <Chip icon={data.icon} accent={data.accent ?? false}>{data.text}</Chip>
     {/each}
@@ -617,8 +650,22 @@
 
 {#snippet swapIcons(first: IconName, second: IconName, swapped: boolean, tone = 'text-aegis-200')}
   <span class="stack place-items-center">
-    <Icon name={first} class={['size-4 transition-[opacity,scale] duration-300 ease-silk', swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100']} />
-    <Icon name={second} stroke={2.2} class={['size-4 transition-[opacity,scale] duration-300 ease-silk', tone, swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0']} />
+    <Icon
+      name={first}
+      class={[
+        'size-4 transition-[opacity,scale] duration-300 ease-silk',
+        swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
+      ]}
+    />
+    <Icon
+      name={second}
+      stroke={2.2}
+      class={[
+        'size-4 transition-[opacity,scale] duration-300 ease-silk',
+        tone,
+        swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+      ]}
+    />
   </span>
 {/snippet}
 
@@ -626,10 +673,16 @@
   <p class="sr-only" role="status" aria-live="polite">{status}</p>
   <div class="mx-auto max-w-[860px] text-center">
     <p class="animate-rise text-sm font-medium text-aegis-300" aria-hidden="true">{t('read.title')}</p>
-    <h1 class="mt-3 animate-rise font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance [animation-delay:80ms] sm:text-[50px] lg:text-[62px]">
+    <h1
+      class="mt-3 animate-rise font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance [animation-delay:80ms] sm:text-[50px] lg:text-[62px]"
+    >
       {t('open.title')}
     </h1>
-    <p class="mx-auto mt-6 max-w-[620px] animate-rise text-base leading-[1.75] text-balance text-ink-soft [animation-delay:160ms] sm:text-[17px]">{t('open.intro')}</p>
+    <p
+      class="mx-auto mt-6 max-w-[620px] animate-rise text-base leading-[1.75] text-balance text-ink-soft [animation-delay:160ms] sm:text-[17px]"
+    >
+      {t('open.intro')}
+    </p>
   </div>
 
   <div class="relative z-20 mx-auto mt-14 max-w-[860px] animate-rise [animation-delay:240ms]">
@@ -638,17 +691,24 @@
       <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
       <h2 id="read-title" tabindex="-1" class="sr-only">{t('read.title')}</h2>
 
-      <div class="stack relative min-h-[420px] md:min-h-[440px]">
+      <div class="relative stack min-h-[420px] md:min-h-[440px]">
         <div
           id="{uid}-ready"
-          class={['fade-swap flex flex-col items-center justify-center gap-7 px-5 py-12 text-center sm:px-10 md:py-14', phase === 'ready' ? SHOWN : HIDDEN]}
+          class={[
+            'flex flex-col items-center justify-center gap-7 px-5 py-12 text-center fade-swap sm:px-10 md:py-14',
+            phase === 'ready' ? SHOWN : HIDDEN,
+          ]}
           inert={phase !== 'ready'}
         >
           <span class="relative grid size-20 place-items-center" aria-hidden="true">
-            <span class="absolute -inset-5 rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.35),transparent)]"></span>
+            <span
+              class="absolute -inset-5 rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.35),transparent)]"
+            ></span>
             <span class="absolute -inset-3 rounded-[28px] ring-1 ring-aegis-300/15"></span>
             <span class="absolute -inset-1.5 animate-pulse-core rounded-[25px] ring-1 ring-aegis-300/30"></span>
-            <span class="relative grid size-20 place-items-center rounded-[22px] bg-aegis-500/15 text-aegis-200 shadow-[0_0_44px_-8px_oklch(0.56_0.19_258/0.85)] ring-1 ring-aegis-400/40">
+            <span
+              class="relative grid size-20 place-items-center rounded-[22px] bg-aegis-500/15 text-aegis-200 shadow-[0_0_44px_-8px_oklch(0.56_0.19_258/0.85)] ring-1 ring-aegis-400/40"
+            >
               <Icon name="envelope" stroke={1.4} class="size-9" />
             </span>
             <span
@@ -658,8 +718,12 @@
             </span>
           </span>
           <div>
-            <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">{t(shown.view === 'loading' ? 'read.loading' : 'open.ready.title')}</h3>
-            <p class="mt-2 text-[15px] text-pretty text-ink-mute">{t(shown.view === 'loading' ? 'open.loading.text' : 'open.ready.sub')}</p>
+            <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">
+              {t(shown.view === 'loading' ? 'read.loading' : 'open.ready.title')}
+            </h3>
+            <p class="mt-2 text-[15px] text-pretty text-ink-mute">
+              {t(shown.view === 'loading' ? 'open.loading.text' : 'open.ready.sub')}
+            </p>
           </div>
           <form id="{uid}-form" class="contents" novalidate onsubmit={reveal}>
             {#if passphraseRequired}
@@ -667,7 +731,7 @@
                 <label for="{uid}-passphrase" class="sr-only">{t('read.passphrase')}</label>
                 <div class="relative rounded-pane">
                   <div
-                    class="well flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300"
+                    class="flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 well has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300"
                   >
                     <Icon name="key" class="size-4 shrink-0 text-nebula-300" />
                     <input
@@ -696,8 +760,20 @@
                       class="grid size-11 shrink-0 place-items-center rounded-[8px] text-ink-mute hover:bg-white/6 hover:text-ink md:size-9"
                     >
                       <span class="stack place-items-center">
-                        <Icon name="eye" class={['size-[18px] transition-[opacity,scale] duration-300 ease-silk', showPassphrase ? 'scale-50 opacity-0' : 'scale-100 opacity-100']} />
-                        <Icon name="eyeOff" class={['size-[18px] transition-[opacity,scale] duration-300 ease-silk', showPassphrase ? 'scale-100 opacity-100' : 'scale-50 opacity-0']} />
+                        <Icon
+                          name="eye"
+                          class={[
+                            'size-[18px] transition-[opacity,scale] duration-300 ease-silk',
+                            showPassphrase ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
+                          ]}
+                        />
+                        <Icon
+                          name="eyeOff"
+                          class={[
+                            'size-[18px] transition-[opacity,scale] duration-300 ease-silk',
+                            showPassphrase ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+                          ]}
+                        />
                       </span>
                     </button>
                   </div>
@@ -709,19 +785,32 @@
                     aria-hidden="true"
                   ></span>
                 </div>
-                <div class="stack mt-3 px-1 text-[13px]">
-                  <p id="{uid}-pass-hint" class={['fade-swap flex items-center gap-2 text-ink-mute', passAlert ? 'opacity-0' : 'opacity-100']}>
+                <div class="mt-3 stack px-1 text-[13px]">
+                  <p
+                    id="{uid}-pass-hint"
+                    class={['flex items-center gap-2 text-ink-mute fade-swap', passAlert ? 'opacity-0' : 'opacity-100']}
+                  >
                     <Icon name="info" class="size-4 shrink-0" />
                     {passHint}
                   </p>
-                  <p id="{uid}-pass-alert" role="alert" class={['fade-swap flex items-center gap-2 text-rose-300', passAlert ? 'opacity-100' : 'opacity-0']}>
+                  <p
+                    id="{uid}-pass-alert"
+                    role="alert"
+                    class={['flex items-center gap-2 text-rose-300 fade-swap', passAlert ? 'opacity-100' : 'opacity-0']}
+                  >
                     <Icon name="alert" class="size-4 shrink-0" />
                     {passAlert}
                   </p>
                 </div>
               </div>
             {:else if readyNote.text}
-              <p role={readyNote.alert ? 'alert' : undefined} class={['flex max-w-[440px] items-center gap-2 text-[13px]', readyNote.alert ? 'text-rose-300' : 'text-ink-mute']}>
+              <p
+                role={readyNote.alert ? 'alert' : undefined}
+                class={[
+                  'flex max-w-[440px] items-center gap-2 text-[13px]',
+                  readyNote.alert ? 'text-rose-300' : 'text-ink-mute',
+                ]}
+              >
                 <Icon name={readyNote.alert ? 'alert' : 'info'} class="size-4 shrink-0" />
                 {readyNote.text}
               </p>
@@ -729,20 +818,36 @@
           </form>
         </div>
 
-        <div class={['fade-swap relative overflow-hidden', phase === 'opening' ? SHOWN : HIDDEN]} aria-hidden="true">
+        <div class={['relative overflow-hidden fade-swap', phase === 'opening' ? SHOWN : HIDDEN]} aria-hidden="true">
           <p
-            class="pointer-events-none absolute inset-0 px-6 pt-6 font-mono text-[13px] leading-6 break-all text-aegis-200/30 [mask-image:radial-gradient(ellipse_62%_58%_at_50%_50%,transparent_35%,black_100%)]"
+            class="pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_62%_58%_at_50%_50%,transparent_35%,black_100%)] px-6 pt-6 font-mono text-[13px] leading-6 break-all text-aegis-200/30"
           >
             {noise}
           </p>
-          <div class="pointer-events-none absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-400/12 to-transparent"></div>
-          <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"></div>
+          <div
+            class="pointer-events-none absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-400/12 to-transparent"
+          ></div>
+          <div
+            class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"
+          ></div>
           <div class="relative flex h-full flex-col items-center justify-center px-4 py-12">
-            <Pipeline {nodes} size="narrow" current={paced.step} progress={paced.progress} active={phase === 'opening'} />
+            <Pipeline
+              {nodes}
+              size="narrow"
+              current={paced.step}
+              progress={paced.progress}
+              active={phase === 'opening'}
+            />
           </div>
         </div>
 
-        <div class={['fade-swap absolute inset-0 flex flex-col justify-center gap-5 px-5 py-6 text-left sm:px-8 sm:py-8', phase === 'revealed' ? SHOWN : HIDDEN]} inert={phase !== 'revealed'}>
+        <div
+          class={[
+            'absolute inset-0 flex flex-col justify-center gap-5 px-5 py-6 text-left fade-swap sm:px-8 sm:py-8',
+            phase === 'revealed' ? SHOWN : HIDDEN,
+          ]}
+          inert={phase !== 'revealed'}
+        >
           {#if revealed}
             <div class="flex items-center justify-between gap-3">
               <div class="flex min-w-0 items-center gap-3">
@@ -753,7 +858,9 @@
                   <Icon name="unlock" stroke={1.7} class="size-5" />
                 </span>
                 <div class="min-w-0">
-                  <h3 id="{uid}-revealed" tabindex="-1" class="text-[15px] text-ink outline-none">{t('revealed.title')}</h3>
+                  <h3 id="{uid}-revealed" tabindex="-1" class="text-[15px] text-ink outline-none">
+                    {t('revealed.title')}
+                  </h3>
                   <p class="truncate text-[13px] text-ink-mute">{t('open.revealed.sub')}</p>
                 </div>
               </div>
@@ -778,43 +885,66 @@
             </div>
             {#if revealText !== undefined}
               <pre
-                class="well min-h-0 max-h-[220px] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink [scrollbar-width:thin]">{revealText}</pre>
+                class="max-h-[220px] min-h-0 [scrollbar-width:thin] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink well">{revealText}</pre>
             {/if}
             {#if revealed.file}
               {@const file = revealed.file}
               {@const extension = fileExtension(file.name)}
               {@const parts = splitFileName(file.name)}
               <div class="stack shrink-0 rounded-pane bg-white/3 py-2.5 pr-2.5 pl-3 ring-1 ring-white/8">
-                <div class={['fade-swap flex items-center gap-3.5', confirming ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={confirming}>
-                  <span class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30" aria-hidden="true">
+                <div
+                  class={[
+                    'flex items-center gap-3.5 fade-swap',
+                    confirming ? 'pointer-events-none opacity-0' : 'opacity-100',
+                  ]}
+                  inert={confirming}
+                >
+                  <span
+                    class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30"
+                    aria-hidden="true"
+                  >
                     <Icon name="file" stroke={1.7} class="size-[18px]" />
                   </span>
                   <span class="min-w-0 flex-1">
-                    <bdi class="flex min-w-0 text-sm text-ink"><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi>
-                    <span class="block font-mono text-[11px] text-ink-mute">{formatBytes(file.bytes.length, i18n.language)}</span>
+                    <bdi class="flex min-w-0 text-sm text-ink"
+                      ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
+                    >
+                    <span class="block font-mono text-[11px] text-ink-mute"
+                      >{formatBytes(file.bytes.length, i18n.language)}</span
+                    >
                   </span>
                   <button
                     id="{uid}-download"
                     type="button"
                     disabled={confirming}
                     onclick={(event) => askDownload(event, file)}
-                    class="btn-ghost hover-lift flex h-11 shrink-0 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9"
+                    class="btn-ghost flex h-11 shrink-0 hover-lift items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9"
                   >
                     {@render swapIcons('download', 'check', downloaded)}
                     {t('open.download')}<span class="sr-only">{t('open.download.suffix')}</span>
                   </button>
                 </div>
                 <div
-                  class={['fade-swap flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between', confirming ? 'opacity-100' : 'pointer-events-none opacity-0']}
+                  class={[
+                    'flex flex-col gap-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between',
+                    confirming ? 'opacity-100' : 'pointer-events-none opacity-0',
+                  ]}
                   inert={!confirming}
                 >
                   <div class="flex min-w-0 items-center gap-3.5">
-                    <span class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-rose-500/12 text-rose-300 ring-1 ring-rose-300/35" aria-hidden="true">
+                    <span
+                      class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-rose-500/12 text-rose-300 ring-1 ring-rose-300/35"
+                      aria-hidden="true"
+                    >
                       <Icon name="alert" stroke={1.7} class="size-[18px]" />
                     </span>
                     <span class="min-w-0">
-                      <span role="alert" class="block text-sm text-ink">{confirming ? t('revealed.confirm.title') : ''}</span>
-                      <span class="block text-[11px] text-ink-mute">{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</span>
+                      <span role="alert" class="block text-sm text-ink"
+                        >{confirming ? t('revealed.confirm.title') : ''}</span
+                      >
+                      <span class="block text-[11px] text-ink-mute"
+                        >{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</span
+                      >
                     </span>
                   </div>
                   <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
@@ -826,7 +956,12 @@
                     >
                       {t('revealed.confirm.download')}
                     </button>
-                    <button id="{uid}-keep-file" type="button" onclick={cancelDownload} class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9">
+                    <button
+                      id="{uid}-keep-file"
+                      type="button"
+                      onclick={cancelDownload}
+                      class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9"
+                    >
                       {t('revealed.confirm.cancel')}
                     </button>
                   </div>
@@ -840,11 +975,19 @@
           {/if}
         </div>
 
-        <div class={['fade-swap flex flex-col items-center justify-center gap-7 px-5 py-12 text-center sm:px-10 md:py-14', phase === 'notice' ? SHOWN : HIDDEN]} inert={phase !== 'notice'}>
+        <div
+          class={[
+            'flex flex-col items-center justify-center gap-7 px-5 py-12 text-center fade-swap sm:px-10 md:py-14',
+            phase === 'notice' ? SHOWN : HIDDEN,
+          ]}
+          inert={phase !== 'notice'}
+        >
           <span
             class={[
               'grid size-20 place-items-center rounded-[22px] ring-1',
-              ALARMING.includes(notice) ? 'bg-rose-500/12 text-rose-300 ring-rose-300/35' : 'bg-white/4 text-ink-soft ring-white/12',
+              ALARMING.includes(notice)
+                ? 'bg-rose-500/12 text-rose-300 ring-rose-300/35'
+                : 'bg-white/4 text-ink-soft ring-white/12',
             ]}
             aria-hidden="true"
           >
@@ -852,7 +995,9 @@
           </span>
           <div>
             <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">{noticeTitle(notice)}</h3>
-            <p class="mx-auto mt-2 max-w-[460px] text-[15px] leading-relaxed text-pretty text-ink-mute">{noticeText(notice)}</p>
+            <p class="mx-auto mt-2 max-w-[460px] text-[15px] leading-relaxed text-pretty text-ink-mute">
+              {noticeText(notice)}
+            </p>
           </div>
         </div>
       </div>
@@ -862,8 +1007,10 @@
           <div
             id="{uid}-bar"
             class={[
-              'fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3',
-              (phase === 'ready' || phase === 'opening') && !askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0',
+              'flex flex-col gap-2 p-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+              (phase === 'ready' || phase === 'opening') && !askingDelete
+                ? 'opacity-100'
+                : 'pointer-events-none opacity-0',
             ]}
             inert={!(phase === 'ready' || phase === 'opening') || askingDelete}
           >
@@ -875,7 +1022,7 @@
                   form="{uid}-form"
                   disabled={!ready || deleting || phase !== 'ready'}
                   class={[
-                    'btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-[opacity,translate,scale] duration-500 md:h-9 md:px-4',
+                    'btn-primary flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-5 text-sm font-medium whitespace-nowrap transition-[opacity,translate,scale] duration-500 md:h-9 md:px-4',
                     phase === 'ready' ? 'opacity-100' : 'pointer-events-none opacity-0',
                   ]}
                 >
@@ -890,14 +1037,29 @@
                   ]}
                   aria-hidden="true"
                 >
-                  <progress class="progress-fill absolute inset-0 h-full w-full" max="1" value={phase === 'opening' ? paced.progress : 0}></progress>
-                  <span class="absolute inset-y-0 left-0 w-1/3 animate-beam bg-linear-to-r from-transparent via-white/15 to-transparent"></span>
+                  <progress
+                    class="absolute inset-0 h-full w-full progress-fill"
+                    max="1"
+                    value={phase === 'opening' ? paced.progress : 0}
+                  ></progress>
+                  <span
+                    class="absolute inset-y-0 left-0 w-1/3 animate-beam bg-linear-to-r from-transparent via-white/15 to-transparent"
+                  ></span>
                   <svg class="relative size-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.2"></circle>
-                    <path d="M20.5 12A8.5 8.5 0 0 0 12 3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path>
+                    <circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-opacity="0.25" stroke-width="2.2"
+                    ></circle>
+                    <path
+                      d="M20.5 12A8.5 8.5 0 0 0 12 3.5"
+                      stroke="currentColor"
+                      stroke-width="2.2"
+                      stroke-linecap="round"
+                    ></path>
                   </svg>
                   <span class="relative">{t('open.opening')}</span>
-                  <span class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums">{Math.round(paced.progress * 100)} %</span>
+                  <span
+                    class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums"
+                    >{Math.round(paced.progress * 100)} %</span
+                  >
                 </div>
               </div>
             </div>
@@ -905,8 +1067,10 @@
 
           <div
             class={[
-              'fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3',
-              (phase === 'revealed' || phase === 'notice') && !askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0',
+              'flex flex-col gap-2 p-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+              (phase === 'revealed' || phase === 'notice') && !askingDelete
+                ? 'opacity-100'
+                : 'pointer-events-none opacity-0',
             ]}
             inert={!(phase === 'revealed' || phase === 'notice') || askingDelete}
           >
@@ -915,13 +1079,16 @@
               <button
                 type="button"
                 onclick={() => reader.load()}
-                class="btn-primary hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-4 text-sm font-medium whitespace-nowrap sm:w-auto md:h-9"
+                class="btn-primary flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-4 text-sm font-medium whitespace-nowrap sm:w-auto md:h-9"
               >
                 <Icon name="refresh" class="size-4 shrink-0" />
                 {t('action.retry')}
               </button>
             {:else}
-              <a href="/" class="btn-ghost hover-lift flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] whitespace-nowrap sm:w-auto md:h-9">
+              <a
+                href="/"
+                class="btn-ghost flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] whitespace-nowrap sm:w-auto md:h-9"
+              >
                 <Icon name="pen" class="size-4 shrink-0" />
                 {t('nav.write')}
               </a>
@@ -933,7 +1100,10 @@
             tabindex="-1"
             aria-labelledby="{uid}-confirm"
             onkeydown={onconfirmkey}
-            class={['fade-swap flex flex-col gap-2 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3', askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0']}
+            class={[
+              'flex flex-col gap-2 p-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between sm:gap-3',
+              askingDelete ? 'opacity-100' : 'pointer-events-none opacity-0',
+            ]}
             inert={!askingDelete}
           >
             <p id="{uid}-confirm" class="flex items-center gap-2 px-1.5 text-[13px] text-ink-soft">
@@ -945,7 +1115,7 @@
                 id="{uid}-keep"
                 type="button"
                 onclick={cancelDelete}
-                class="btn-ghost hover-lift flex h-11 items-center justify-center rounded-[9px] px-4 text-[13px] whitespace-nowrap md:h-9"
+                class="btn-ghost flex h-11 hover-lift items-center justify-center rounded-[9px] px-4 text-[13px] whitespace-nowrap md:h-9"
               >
                 {t('read.delete.no')}
               </button>
@@ -953,7 +1123,7 @@
                 type="button"
                 disabled={!askingDelete}
                 onclick={burn}
-                class="hover-lift flex h-11 items-center justify-center gap-2 rounded-[9px] bg-rose-500/20 px-4 text-[13px] font-medium whitespace-nowrap text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
+                class="flex h-11 hover-lift items-center justify-center gap-2 rounded-[9px] bg-rose-500/20 px-4 text-[13px] font-medium whitespace-nowrap text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
               >
                 {t('read.delete.yes')}
               </button>
@@ -964,19 +1134,39 @@
     </div>
   </div>
 
-  <div class="relative z-30 mx-auto mt-6 flex max-w-[860px] flex-col-reverse items-center gap-4 px-1 sm:flex-row sm:justify-between">
+  <div
+    class="relative z-30 mx-auto mt-6 flex max-w-[860px] flex-col-reverse items-center gap-4 px-1 sm:flex-row sm:justify-between"
+  >
     <div class="stack text-xs">
-      <p class={['fade-swap flex items-center justify-center gap-2 text-center text-ink-mute', burnNote ? 'opacity-0' : 'opacity-100']}>
+      <p
+        class={[
+          'flex items-center justify-center gap-2 text-center text-ink-mute fade-swap',
+          burnNote ? 'opacity-0' : 'opacity-100',
+        ]}
+      >
         <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
         {t('compose.note')}
       </p>
-      <p class={['fade-swap flex items-center justify-center gap-2 text-center', burnFailed ? 'text-rose-300' : 'text-ink-soft', burnNote ? 'opacity-100' : 'opacity-0']}>
+      <p
+        class={[
+          'flex items-center justify-center gap-2 text-center fade-swap',
+          burnFailed ? 'text-rose-300' : 'text-ink-soft',
+          burnNote ? 'opacity-100' : 'opacity-0',
+        ]}
+      >
         <Icon name={burnFailed ? 'alert' : 'check'} stroke={1.7} class="size-4 shrink-0" />
         {burnNote}
       </p>
     </div>
     <div
-      class={['flex items-center gap-1 transition-opacity duration-500', actions === 'on' ? 'opacity-100' : actions === 'dim' ? 'pointer-events-none opacity-40' : 'pointer-events-none opacity-0']}
+      class={[
+        'flex items-center gap-1 transition-opacity duration-500',
+        actions === 'on'
+          ? 'opacity-100'
+          : actions === 'dim'
+            ? 'pointer-events-none opacity-40'
+            : 'pointer-events-none opacity-0',
+      ]}
       inert={actions !== 'on'}
     >
       <div class="stack justify-items-end">
@@ -997,7 +1187,14 @@
           </button>
         {/each}
       </div>
-      <div class={['relative transition-opacity duration-300', reportable ? 'opacity-100' : 'pointer-events-none opacity-0']} inert={!reportable} data-menu>
+      <div
+        class={[
+          'relative transition-opacity duration-300',
+          reportable ? 'opacity-100' : 'pointer-events-none opacity-0',
+        ]}
+        inert={!reportable}
+        data-menu
+      >
         <button
           id="{uid}-report-button"
           type="button"
@@ -1005,7 +1202,10 @@
           aria-expanded={reporting}
           aria-controls="{uid}-report"
           onclick={toggleReport}
-          class={['flex h-11 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9', reporting ? 'bg-white/8 text-ink' : 'text-ink-mute hover:bg-white/5 hover:text-ink']}
+          class={[
+            'flex h-11 items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9',
+            reporting ? 'bg-white/8 text-ink' : 'text-ink-mute hover:bg-white/5 hover:text-ink',
+          ]}
         >
           <Icon name="flag" class="size-4 shrink-0" />
           {t('open.report')}
@@ -1023,11 +1223,26 @@
               <p class="px-0.5 text-[13px] text-ink">{t('open.report.title')}</p>
               <p class="mt-1 px-0.5 text-[11px] leading-relaxed text-ink-mute">{t('open.report.note')}</p>
               {#key reportRound}
-                <ReportForm name="{uid}-report-form" compact hint={t('open.report.privacy')} send={(_link, reason) => reader.report(reason)} onaccepted={reportAccepted} />
+                <ReportForm
+                  name="{uid}-report-form"
+                  compact
+                  hint={t('open.report.privacy')}
+                  send={(_link, reason) => reader.report(reason)}
+                  onaccepted={reportAccepted}
+                />
               {/key}
             </div>
-            <div class={['fade-swap flex flex-col items-center justify-center gap-2 text-center', reportSent ? 'opacity-100' : 'pointer-events-none opacity-0']} inert={!reportSent}>
-              <span class="grid size-10 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35" aria-hidden="true">
+            <div
+              class={[
+                'flex flex-col items-center justify-center gap-2 text-center fade-swap',
+                reportSent ? 'opacity-100' : 'pointer-events-none opacity-0',
+              ]}
+              inert={!reportSent}
+            >
+              <span
+                class="grid size-10 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35"
+                aria-hidden="true"
+              >
                 <Icon name="check" stroke={2} class="size-5" />
               </span>
               <p class="text-[13px] text-ink">{t('open.report.sent')}</p>
@@ -1045,13 +1260,22 @@
     <h2 id="{uid}-trust" class="reveal-up text-center text-sm font-medium text-aegis-300">{t('open.trust.title')}</h2>
     <ol class="mt-8 grid gap-4 md:grid-cols-3 md:gap-6">
       {#each TRUST as card (card.key)}
-        <li class={['glass hover-lift glow-on-hover flex items-start gap-4 rounded-card p-5 text-left md:flex-col md:items-center md:gap-0 md:px-6 md:pt-7 md:pb-8 md:text-center', card.reveal]}>
-          <span class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35">
+        <li
+          class={[
+            'glow-on-hover glass flex hover-lift items-start gap-4 rounded-card p-5 text-left md:flex-col md:items-center md:gap-0 md:px-6 md:pt-7 md:pb-8 md:text-center',
+            card.reveal,
+          ]}
+        >
+          <span
+            class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 ring-1 ring-aegis-400/35"
+          >
             <Icon name={card.icon} stroke={1.6} class="size-6" />
           </span>
           <div class="min-w-0">
             <h3 class="text-[17px] font-medium md:mt-6 md:text-lg">{t(`${card.key}.title`)}</h3>
-            <p class="mt-1 max-w-[300px] text-[15px] leading-relaxed text-pretty text-ink-soft md:mx-auto md:mt-2">{t(`${card.key}.text`)}</p>
+            <p class="mt-1 max-w-[300px] text-[15px] leading-relaxed text-pretty text-ink-soft md:mx-auto md:mt-2">
+              {t(`${card.key}.text`)}
+            </p>
           </div>
         </li>
       {/each}

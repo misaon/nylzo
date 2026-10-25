@@ -7,7 +7,9 @@ import { autofixerIsClean, forbidden } from './forbidden.ts';
 const app = join(import.meta.dirname, '..');
 const web = join(app, '..');
 const source = join(app, 'src');
-const { version } = JSON.parse(readFileSync(join(app, 'node_modules/svelte/package.json'), 'utf8')) as { version: string };
+const { version } = JSON.parse(readFileSync(join(app, 'node_modules/svelte/package.json'), 'utf8')) as {
+  version: string;
+};
 
 const files = readdirSync(source, { recursive: true, encoding: 'utf8' })
   .filter((name) => /\.(?:svelte|ts|js)$/.test(name))
@@ -17,10 +19,14 @@ const problems = files.flatMap((file) => forbidden(relative(app, file), readFile
 
 for (const file of files.filter((name) => name.endsWith('.svelte'))) {
   const path = relative(web, file);
-  const output = execFileSync('pnpm', ['--dir', web, 'exec', 'svelte-mcp', 'svelte-autofixer', path, '--svelte-version', version], {
-    cwd: web,
-    encoding: 'utf8',
-  });
+  const output = execFileSync(
+    'pnpm',
+    ['--dir', web, 'exec', 'svelte-mcp', 'svelte-autofixer', path, '--svelte-version', version],
+    {
+      cwd: web,
+      encoding: 'utf8',
+    },
+  );
   if (!autofixerIsClean(output)) {
     problems.push(`${path}: svelte-autofixer reported\n${output}`);
   }

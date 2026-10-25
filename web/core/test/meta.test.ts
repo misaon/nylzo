@@ -27,9 +27,7 @@ function decodeText(json: string): Meta {
 describe('canonical encoding', () => {
   it('applies the escaping table of the spec', () => {
     const text = 'q"b\\s\b\t\n\f\r\u0001\u001f/é\u2028\u2029\u007f😀';
-    expect(canonical({ text })).toBe(
-      '{"v":1,"text":"q\\"b\\\\s\\b\\t\\n\\f\\r\\u0001\\u001f/é\u2028\u2029\u007f😀"}',
-    );
+    expect(canonical({ text })).toBe('{"v":1,"text":"q\\"b\\\\s\\b\\t\\n\\f\\r\\u0001\\u001f/é\u2028\u2029\u007f😀"}');
   });
 
   it('escapes every other C0 control as lowercase \\u00xx', () => {
@@ -201,7 +199,13 @@ describe('decoding', () => {
   });
 
   it('rejects invalid UTF-8', () => {
-    expect(() => decodeMeta(new Uint8Array([0x7b, 0x22, 0x76, 0x22, 0x3a, 0x31, 0x2c, 0x22, 0x74, 0x65, 0x78, 0x74, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d]))).toThrow(MetaError);
+    expect(() =>
+      decodeMeta(
+        new Uint8Array([
+          0x7b, 0x22, 0x76, 0x22, 0x3a, 0x31, 0x2c, 0x22, 0x74, 0x65, 0x78, 0x74, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d,
+        ]),
+      ),
+    ).toThrow(MetaError);
     expect(() => decodeMeta(new Uint8Array([0xc3]))).toThrow(MetaError);
   });
 

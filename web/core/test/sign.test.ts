@@ -70,7 +70,11 @@ describe('request signatures', () => {
     for (const failAt of [0, 1, 2]) {
       const imported: Uint8Array[] = [];
       const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-      const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((format: KeyFormat, data: BufferSource, ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]) => {
+      const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
+        format: KeyFormat,
+        data: BufferSource,
+        ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]
+      ) => {
         if (format === 'pkcs8' && data instanceof Uint8Array) {
           imported.push(data);
           if (imported.length === failAt) {
@@ -86,7 +90,10 @@ describe('request signatures', () => {
         spy.mockRestore();
       }
       expect(imported.length, `fail at ${failAt}`).toBeGreaterThan(0);
-      expect(imported.every((pkcs8) => pkcs8.every((byte) => byte === 0)), `fail at ${failAt}`).toBe(true);
+      expect(
+        imported.every((pkcs8) => pkcs8.every((byte) => byte === 0)),
+        `fail at ${failAt}`,
+      ).toBe(true);
     }
   });
 
@@ -108,7 +115,9 @@ describe('request signatures', () => {
       expect('seed' in fallback && fallback.seed[0]).toBe(0);
       wipeRequestKey(fallback);
       expect('seed' in fallback && fallback.seed.every((byte) => byte === 0)).toBe(true);
-      await expect(signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body)).rejects.toThrow('wiped');
+      await expect(signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body)).rejects.toThrow(
+        'wiped',
+      );
     } finally {
       refuse.mockRestore();
     }
@@ -137,7 +146,9 @@ describe('request signatures', () => {
     } finally {
       flaky.mockRestore();
     }
-    const broken = vi.spyOn(crypto.subtle, 'generateKey').mockRejectedValue(new DOMException('broken', 'OperationError'));
+    const broken = vi
+      .spyOn(crypto.subtle, 'generateKey')
+      .mockRejectedValue(new DOMException('broken', 'OperationError'));
     try {
       await expect(newRequestKey()).rejects.toMatchObject({ name: 'OperationError' });
       expect(broken).toHaveBeenCalledTimes(8);

@@ -6,7 +6,9 @@ describe('transparency', () => {
   it('links only an email address or an https address', () => {
     expect(contactHref('abuse@example.org')).toBe('mailto:abuse@example.org');
     expect(contactHref('https://example.org/contact')).toBe('https://example.org/contact');
-    expect(contactHref('https://example.org:8443/report?lang=cs#form')).toBe('https://example.org:8443/report?lang=cs#form');
+    expect(contactHref('https://example.org:8443/report?lang=cs#form')).toBe(
+      'https://example.org:8443/report?lang=cs#form',
+    );
     for (const contact of [
       'javascript:alert(1)',
       'http://example.org',

@@ -23,30 +23,50 @@
 
 <section id="sliby" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="promise-title">
   <div class="mx-auto max-w-[1160px]">
-    <div class="reveal-up max-w-[640px]">
+    <div class="max-w-[640px] reveal-up">
       <p class="text-sm font-medium text-aegis-300">{t('promise.eyebrow')}</p>
-      <h2 id="promise-title" class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]">{t('promise.title')}</h2>
+      <h2
+        id="promise-title"
+        class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
+      >
+        {t('promise.title')}
+      </h2>
     </div>
     <div class="mt-14 grid gap-4 md:grid-cols-6 md:gap-5">
-      <article class="glass hover-lift glow-on-hover reveal-zoom rounded-card p-6 md:col-span-4 md:p-8">
-        <span class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30" aria-hidden="true">
+      <article class="glow-on-hover glass hover-lift reveal-zoom rounded-card p-6 md:col-span-4 md:p-8">
+        <span
+          class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30"
+          aria-hidden="true"
+        >
           <Icon name="userOff" stroke={1.5} class="size-6" />
         </span>
-        <h3 class="mt-6 font-display text-xl font-light tracking-[-0.015em] md:text-2xl">{t('promise.account.title')}</h3>
+        <h3 class="mt-6 font-display text-xl font-light tracking-[-0.015em] md:text-2xl">
+          {t('promise.account.title')}
+        </h3>
         <p class="mt-2 max-w-[480px] leading-relaxed text-pretty text-ink-soft">{t('promise.account.text')}</p>
       </article>
       {#each small as item (item.key)}
-        <article class={['glass hover-lift glow-on-hover rounded-card p-6 md:col-span-2 md:p-7', item.reveal]}>
-          <span class="grid size-11 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30" aria-hidden="true">
+        <article class={['glow-on-hover glass hover-lift rounded-card p-6 md:col-span-2 md:p-7', item.reveal]}>
+          <span
+            class="grid size-11 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30"
+            aria-hidden="true"
+          >
             <Icon name={item.icon} stroke={1.5} class="size-5" />
           </span>
           <h3 class="mt-5 text-lg font-medium">{t(`${item.key}.title`, { days: longest })}</h3>
-          <p class="mt-2 text-[15px] leading-relaxed text-pretty text-ink-soft">{t(`${item.key}.text`, { days: forgotten })}</p>
+          <p class="mt-2 text-[15px] leading-relaxed text-pretty text-ink-soft">
+            {t(`${item.key}.text`, { days: forgotten })}
+          </p>
         </article>
       {/each}
-      <article class="glass hover-lift glow-on-hover reveal-tilt flex flex-col gap-6 rounded-card p-6 md:col-span-6 md:flex-row md:items-center md:justify-between md:p-8">
+      <article
+        class="glow-on-hover glass flex hover-lift reveal-tilt flex-col gap-6 rounded-card p-6 md:col-span-6 md:flex-row md:items-center md:justify-between md:p-8"
+      >
         <div class="flex items-start gap-5">
-          <span class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30" aria-hidden="true">
+          <span
+            class="grid size-12 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30"
+            aria-hidden="true"
+          >
             <Icon name="code" stroke={1.5} class="size-6" />
           </span>
           <div>
@@ -54,7 +74,10 @@
             <p class="mt-2 max-w-[640px] leading-relaxed text-pretty text-ink-soft">{t('promise.open.text')}</p>
           </div>
         </div>
-        <a href={REPOSITORY_URL} class="btn-ghost hover-lift flex h-11 shrink-0 items-center justify-center gap-2 self-start rounded-control px-5 text-sm md:self-auto">
+        <a
+          href={REPOSITORY_URL}
+          class="btn-ghost flex h-11 shrink-0 hover-lift items-center justify-center gap-2 self-start rounded-control px-5 text-sm md:self-auto"
+        >
           {t('promise.open.link')}
           <Icon name="arrowRight" class="size-4" />
         </a>

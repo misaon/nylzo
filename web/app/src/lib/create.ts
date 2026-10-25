@@ -85,7 +85,11 @@ export interface Created {
 export interface CreateDeps {
   readonly api: Api;
   readonly origin: string;
-  readonly scrypt: (passphrase: string, saltPw: Uint8Array<ArrayBuffer>, onProgress: (fraction: number) => void) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly scrypt: (
+    passphrase: string,
+    saltPw: Uint8Array<ArrayBuffer>,
+    onProgress: (fraction: number) => void,
+  ) => Promise<Uint8Array<ArrayBuffer>>;
   readonly solvePow: (
     challenge: string,
     id: Uint8Array<ArrayBuffer>,
@@ -124,7 +128,11 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
   if (input.file && input.file.bytes.length > limits.maxFileBytes) {
     problems.push({ field: 'file', code: 'too_large' });
   }
-  if (!Number.isInteger(input.ttlSeconds) || input.ttlSeconds < MIN_TTL_SECONDS || input.ttlSeconds > limits.maxTtlSeconds) {
+  if (
+    !Number.isInteger(input.ttlSeconds) ||
+    input.ttlSeconds < MIN_TTL_SECONDS ||
+    input.ttlSeconds > limits.maxTtlSeconds
+  ) {
     problems.push({ field: 'ttl', code: 'out_of_range' });
   }
   if (!Number.isInteger(input.opensMax) || input.opensMax < 1 || input.opensMax > limits.maxOpens) {
@@ -155,7 +163,13 @@ function meta(input: CreateInput): Meta {
   return { ...(input.text === '' ? {} : { text: input.text }), ...(file ? { file } : {}) };
 }
 
-async function passphraseKey(input: CreateInput, kdfId: KdfId, saltPw: Uint8Array<ArrayBuffer>, deps: CreateDeps, onProgress: (p: CreateProgress) => void) {
+async function passphraseKey(
+  input: CreateInput,
+  kdfId: KdfId,
+  saltPw: Uint8Array<ArrayBuffer>,
+  deps: CreateDeps,
+  onProgress: (p: CreateProgress) => void,
+) {
   if (kdfId === KDF_NONE) {
     return new Uint8Array(0);
   }
@@ -163,7 +177,11 @@ async function passphraseKey(input: CreateInput, kdfId: KdfId, saltPw: Uint8Arra
   return deps.scrypt(input.passphrase, saltPw, (fraction) => onProgress({ step: 'deriving', fraction }));
 }
 
-async function prove(id: Uint8Array<ArrayBuffer>, deps: CreateDeps, onProgress: (p: CreateProgress) => void): Promise<string | undefined> {
+async function prove(
+  id: Uint8Array<ArrayBuffer>,
+  deps: CreateDeps,
+  onProgress: (p: CreateProgress) => void,
+): Promise<string | undefined> {
   const now = deps.now ?? Date.now;
   for (let round = 1; ; round++) {
     const { pow } = await deps.api.instance();
@@ -249,7 +267,11 @@ async function sealMessage(
   }
 }
 
-async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: CreateProgress) => void): Promise<Created> {
+async function attempt(
+  input: CreateInput,
+  deps: CreateDeps,
+  onProgress: (p: CreateProgress) => void,
+): Promise<Created> {
   onProgress({ step: 'preparing' });
   const instance = await deps.api.instance();
   const problems = validateCreate(input, instance.limits);
@@ -260,7 +282,14 @@ async function attempt(input: CreateInput, deps: CreateDeps, onProgress: (p: Cre
   const kdfId = effectiveKdf(input);
   const s = newSecret();
   try {
-    const { object, readPublicKey, manageKey, verifierKey } = await sealMessage(input, instance, kdfId, s, deps, onProgress);
+    const { object, readPublicKey, manageKey, verifierKey } = await sealMessage(
+      input,
+      instance,
+      kdfId,
+      s,
+      deps,
+      onProgress,
+    );
     const powToken = instance.pow.required ? await prove(id, deps, onProgress) : undefined;
     onProgress({ step: 'uploading' });
     const { expiresAt } = await deps.api.create({

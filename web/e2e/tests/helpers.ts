@@ -24,7 +24,12 @@ export const test = base.extend<{ closeOwnContexts: void }>({
     async ({ browser }, use) => {
       const before = new Set(browser.contexts());
       await use();
-      await Promise.all(browser.contexts().filter((context) => !before.has(context)).map((context) => context.close()));
+      await Promise.all(
+        browser
+          .contexts()
+          .filter((context) => !before.has(context))
+          .map((context) => context.close()),
+      );
     },
     { auto: true },
   ],
@@ -67,7 +72,9 @@ export async function createViaApi(options: ApiMessageOptions = {}): Promise<Api
   const p = await anyPassphraseKey(kdfId, options.passphrase ?? '', link.saltPw);
   const content = await deriveContent(create.id, s, p);
   const policy = { opensMax, ttlSeconds: 3600 };
-  const object = await seal(content.k, newHeader(kdfId), create.id, policy, { meta: { text: options.text ?? 'from the api' } });
+  const object = await seal(content.k, newHeader(kdfId), create.id, policy, {
+    meta: { text: options.text ?? 'from the api' },
+  });
   const readKey = await requestKey(link.r);
   const manageKey = await requestKey(newSecret());
   const verifierKey = kdfId === KDF_NONE ? undefined : (await requestKey(content.v)).publicKey;

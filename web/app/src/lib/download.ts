@@ -6,10 +6,29 @@ const MAX_EXTENSION_CHARS = 16;
 const FALLBACK_NAME = 'nylzo';
 
 const SAFE_EXTENSIONS = new Set([
-  'txt', 'md', 'csv', 'log', 'json',
+  'txt',
+  'md',
+  'csv',
+  'log',
+  'json',
   'pdf',
-  'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'heic', 'heif', 'bmp', 'tif', 'tiff',
-  'docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'heic',
+  'heif',
+  'bmp',
+  'tif',
+  'tiff',
+  'docx',
+  'xlsx',
+  'pptx',
+  'odt',
+  'ods',
+  'odp',
 ]);
 
 const encoder = new TextEncoder();
@@ -34,7 +53,9 @@ function truncateBytes(text: string, max: number): string {
 
 export function splitFileName(name: string): { readonly stem: string; readonly extension: string } {
   const dot = name.lastIndexOf('.');
-  return dot > 0 && name.length - dot - 1 <= MAX_EXTENSION_CHARS ? { stem: name.slice(0, dot), extension: name.slice(dot) } : { stem: name, extension: '' };
+  return dot > 0 && name.length - dot - 1 <= MAX_EXTENSION_CHARS
+    ? { stem: name.slice(0, dot), extension: name.slice(dot) }
+    : { stem: name, extension: '' };
 }
 
 export function sanitizeFileName(name: string): string {

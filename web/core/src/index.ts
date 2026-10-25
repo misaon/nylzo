@@ -1,13 +1,6 @@
 export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './base64url.ts';
 export { concat, utf8 } from './bytes.ts';
-export {
-  deriveContent,
-  deriveLink,
-  hsalt,
-  type ContentKeys,
-  type DerivedKeys,
-  type LinkKeys,
-} from './derive.ts';
+export { deriveContent, deriveLink, hsalt, type ContentKeys, type DerivedKeys, type LinkKeys } from './derive.ts';
 export {
   aad,
   headerBytes,

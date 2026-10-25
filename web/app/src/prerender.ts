@@ -54,7 +54,13 @@ function structuredData(language: Language, description: string): unknown {
   return {
     '@context': 'https://schema.org',
     '@graph': [
-      { '@type': 'WebSite', '@id': `${absolute('/')}#website`, name: 'Nylzo', url: absolute('/'), inLanguage: LANGUAGES },
+      {
+        '@type': 'WebSite',
+        '@id': `${absolute('/')}#website`,
+        name: 'Nylzo',
+        url: absolute('/'),
+        inLanguage: LANGUAGES,
+      },
       {
         '@type': 'WebApplication',
         '@id': `${absolute('/')}#app`,
@@ -75,7 +81,8 @@ function structuredData(language: Language, description: string): unknown {
 function seoHead(language: Language, image: OgImage): string {
   const { t } = createI18n(language);
   const other = LANGUAGES.filter((l) => l !== language);
-  const meta = (property: string, content: string) => `<meta property="${property}" content="${escapeAttribute(content)}">`;
+  const meta = (property: string, content: string) =>
+    `<meta property="${property}" content="${escapeAttribute(content)}">`;
   const shared = [
     meta('og:type', 'website'),
     meta('og:site_name', 'Nylzo'),
@@ -147,7 +154,7 @@ export function homeTemplate(index: string, language: Language, { image, styles 
     csp: { nonce: NONCE_PLACEHOLDER },
   });
   let page = replaceOnce(index, /<html lang="[a-z]+">/, `<html lang="${language}">`);
-  page = replaceOnce(page, /<meta name="description"[^>]*>\n?/, '');
+  page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/, '');
   page = replaceOnce(page, /<title>[^<]*<\/title>/, `${head.trim()}\n${seoHead(language, image)}`);
   page = replaceOnce(page, '</head>', `${REVEAL_WITHOUT_SCRIPT}\n</head>`);
   page = fontPreloads(inlineStyles(page, styles), language);

@@ -21,7 +21,10 @@
 </script>
 
 <header class="sticky top-0 z-40 px-3 pt-3 sm:px-6">
-  <nav class="glass-soft mx-auto flex h-14 max-w-[1160px] items-center justify-between gap-4 rounded-card pr-2 pl-4 animate-rise" aria-label={t('nav.label')}>
+  <nav
+    class="glass-soft mx-auto flex h-14 max-w-[1160px] animate-rise items-center justify-between gap-4 rounded-card pr-2 pl-4"
+    aria-label={t('nav.label')}
+  >
     {#if variant === 'page'}
       <h1 class="m-0 flex">
         <a href="/" class="flex items-center rounded-control py-1">
@@ -29,7 +32,11 @@
         </a>
       </h1>
     {:else}
-      <a href={variant === 'home' ? '#napsat' : '/'} class="flex items-center rounded-control py-1" aria-label={t(variant === 'home' ? 'nav.top' : 'nav.home')}>
+      <a
+        href={variant === 'home' ? '#napsat' : '/'}
+        class="flex items-center rounded-control py-1"
+        aria-label={t(variant === 'home' ? 'nav.top' : 'nav.home')}
+      >
         <Logo class="h-7 w-[105px]" />
       </a>
     {/if}
@@ -37,7 +44,11 @@
     {#if variant === 'home'}
       <div class="hidden items-center gap-0.5 lg:flex">
         {#each sections as section (section.href)}
-          <a href={section.href} class="rounded-control px-3.5 py-2 text-sm text-ink-soft hover:bg-white/5 hover:text-ink">{t(section.key)}</a>
+          <a
+            href={section.href}
+            class="rounded-control px-3.5 py-2 text-sm text-ink-soft hover:bg-white/5 hover:text-ink"
+            >{t(section.key)}</a
+          >
         {/each}
       </div>
       <a href={REPOSITORY_URL} class="btn-ghost flex h-11 items-center gap-2 rounded-control px-3.5 text-sm md:h-10">

@@ -3,7 +3,16 @@ import { scrypt } from '@noble/hashes/scrypt.js';
 import { arrayBufferBacked } from './bytes.ts';
 import { deriveContent, deriveLink, type DerivedKeys } from './derive.ts';
 import { KdfError } from './errors.ts';
-import { KDF_NONE, KDF_SCRYPT, SCRYPT_N, SCRYPT_P, SCRYPT_R, assertWellFormedPassphrase, normalizePassphrase, type KdfId } from './kdf.ts';
+import {
+  KDF_NONE,
+  KDF_SCRYPT,
+  SCRYPT_N,
+  SCRYPT_P,
+  SCRYPT_R,
+  assertWellFormedPassphrase,
+  normalizePassphrase,
+  type KdfId,
+} from './kdf.ts';
 import { KEY_LEN } from './limits.ts';
 
 export function scryptPassphraseKey(
@@ -16,7 +25,11 @@ export function scryptPassphraseKey(
   return arrayBufferBacked(scrypt(normalizePassphrase(passphrase), saltPw, params));
 }
 
-export async function anyPassphraseKey(kdfId: KdfId, passphrase: string, saltPw: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+export async function anyPassphraseKey(
+  kdfId: KdfId,
+  passphrase: string,
+  saltPw: Uint8Array,
+): Promise<Uint8Array<ArrayBuffer>> {
   if (kdfId === KDF_SCRYPT) {
     return scryptPassphraseKey(passphrase, saltPw);
   }
@@ -26,12 +39,7 @@ export async function anyPassphraseKey(kdfId: KdfId, passphrase: string, saltPw:
   throw new KdfError();
 }
 
-export async function deriveAll(
-  id: Uint8Array,
-  s: Uint8Array,
-  kdfId: KdfId,
-  passphrase: string,
-): Promise<DerivedKeys> {
+export async function deriveAll(id: Uint8Array, s: Uint8Array, kdfId: KdfId, passphrase: string): Promise<DerivedKeys> {
   assertWellFormedPassphrase(kdfId, passphrase);
   const link = await deriveLink(id, s);
   const p = await anyPassphraseKey(kdfId, passphrase, link.saltPw);

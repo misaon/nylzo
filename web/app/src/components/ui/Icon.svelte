@@ -32,7 +32,13 @@
     {:else if 'rect' in shape}
       <rect x={shape.rect[0]} y={shape.rect[1]} width={shape.rect[2]} height={shape.rect[3]} rx={shape.rect[4]}></rect>
     {:else}
-      <ellipse cx={shape.ellipse[0]} cy={shape.ellipse[1]} rx={shape.ellipse[2]} ry={shape.ellipse[3]} transform={shape.rotate ? `rotate(${shape.rotate} 12 12)` : undefined}></ellipse>
+      <ellipse
+        cx={shape.ellipse[0]}
+        cy={shape.ellipse[1]}
+        rx={shape.ellipse[2]}
+        ry={shape.ellipse[3]}
+        transform={shape.rotate ? `rotate(${shape.rotate} 12 12)` : undefined}
+      ></ellipse>
     {/if}
   {/each}
 </svg>

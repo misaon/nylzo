@@ -48,7 +48,7 @@
           <Create />
         {:else}
           <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
-            <div class="glass legacy-screen rounded-card p-6 md:p-10">
+            <div class="legacy-screen glass rounded-card p-6 md:p-10">
               {#if screen === 'sent'}
                 <Sent />
               {:else if screen === 'report'}

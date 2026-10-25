@@ -8,7 +8,12 @@ import { BASE_URL, NYLZO_BIN, createViaUi, expect, expectRevealed, openViaUi, te
 const PASSPHRASE = 'correct horse battery staple';
 
 function cli(args: readonly string[], input: string, env: Record<string, string> = {}): string {
-  return execFileSync(NYLZO_BIN, args, { input, encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'pipe'] });
+  return execFileSync(NYLZO_BIN, args, {
+    input,
+    encoding: 'utf8',
+    env: { ...process.env, ...env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
 }
 
 function passphraseFile(): string {
@@ -18,7 +23,10 @@ function passphraseFile(): string {
 }
 
 test('verify-client finds the same web client on the server', () => {
-  const out = execFileSync(NYLZO_BIN, ['verify-client', '--server', BASE_URL], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = execFileSync(NYLZO_BIN, ['verify-client', '--server', BASE_URL], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   expect(out).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 6 pages and \d+ files checked\n$/);
 });
 
@@ -43,7 +51,10 @@ test('the CLI reads messages and files created in the browser', async ({ page })
   const guarded = await createViaUi(page, { text: 's heslem', passphrase: PASSPHRASE });
   expect(cli(['read', '--stdout', '--passphrase-file', passphraseFile()], guarded)).toBe('s heslem\n');
   const bytes = Buffer.from(Array.from({ length: 70_000 }, (_, i) => i % 251));
-  const withFile = await createViaUi(page, { text: '', file: { name: 'data.bin', mimeType: 'application/octet-stream', buffer: bytes } });
+  const withFile = await createViaUi(page, {
+    text: '',
+    file: { name: 'data.bin', mimeType: 'application/octet-stream', buffer: bytes },
+  });
   const out = mkdtempSync(join(tmpdir(), 'nylzo-out-'));
   const paths = cli(['read', '--out', out], withFile).trim().split('\n');
   expect(paths).toHaveLength(1);

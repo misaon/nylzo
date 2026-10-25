@@ -11,8 +11,16 @@ describe('pace', () => {
   });
 
   it('holds finished work until the minimum time has passed', () => {
-    expect(pace({ elapsedMs: 2500, minMs: 5000, steps: 5, reached: 5 })).toEqual({ step: 2, progress: 0.5, finished: false });
-    expect(pace({ elapsedMs: 5000, minMs: 5000, steps: 5, reached: 5 })).toEqual({ step: 4, progress: 1, finished: true });
+    expect(pace({ elapsedMs: 2500, minMs: 5000, steps: 5, reached: 5 })).toEqual({
+      step: 2,
+      progress: 0.5,
+      finished: false,
+    });
+    expect(pace({ elapsedMs: 5000, minMs: 5000, steps: 5, reached: 5 })).toEqual({
+      step: 4,
+      progress: 1,
+      finished: true,
+    });
   });
 
   it('caps an unknown or complete fraction below the next step', () => {

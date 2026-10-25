@@ -62,7 +62,9 @@ test('a double click on Create link with an attachment creates one message', asy
     }
   });
   await page.getByLabel('Message text').fill('double');
-  await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
+  await page
+    .getByLabel(/Attachment, up to/)
+    .setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
   await page.getByRole('button', { name: 'Create link' }).dblclick();
   await expect(page.getByLabel('Link to the message')).toBeVisible({ timeout: 45_000 });
   expect(sent).toEqual(['GET /api/v1/instance', 'POST /api/v1/messages']);

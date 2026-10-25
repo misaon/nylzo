@@ -1,6 +1,15 @@
 import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
 
-import { ApiError, StoppedError, type Api, type CreateRequest, type Instance, type MessageState, type Metadata, type Status } from '../src/lib/api.ts';
+import {
+  ApiError,
+  StoppedError,
+  type Api,
+  type CreateRequest,
+  type Instance,
+  type MessageState,
+  type Metadata,
+  type Status,
+} from '../src/lib/api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -133,7 +142,13 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       if (failure) {
         throw failure;
       }
-      stored.set(idToString(request.id), { request, state: 'available', opensRemaining: request.opensMax, failures: 0, leases: new Set() });
+      stored.set(idToString(request.id), {
+        request,
+        state: 'available',
+        opensRemaining: request.opensMax,
+        failures: 0,
+        leases: new Set(),
+      });
       return { expiresAt };
     },
     async metadata(id, readKey): Promise<Metadata> {
@@ -234,7 +249,13 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       }
       const message = managed(id, manageKey);
       if (message.endedAt) {
-        return { state: message.state, opensUsed: 0, opensMax: 0, failedPassphraseAttempts: 0, endedAt: message.endedAt };
+        return {
+          state: message.state,
+          opensUsed: 0,
+          opensMax: 0,
+          failedPassphraseAttempts: 0,
+          endedAt: message.endedAt,
+        };
       }
       return {
         state: message.state,

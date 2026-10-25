@@ -3,8 +3,75 @@ import { brotliDecompressSync } from 'node:zlib';
 
 import { describe, expect, it } from 'vitest';
 
-const KNOWN_TAGS = ['cmap', 'head', 'hhea', 'hmtx', 'maxp', 'name', 'OS/2', 'post', 'cvt ', 'fpgm', 'glyf', 'loca', 'prep', 'CFF ', 'VORG', 'EBDT', 'EBLC', 'gasp', 'hdmx', 'kern', 'LTSH', 'PCLT', 'VDMX', 'vhea', 'vmtx', 'BASE', 'GDEF', 'GPOS', 'GSUB', 'EBSC', 'JSTF', 'MATH', 'CBDT', 'CBLC', 'COLR', 'CPAL', 'SVG ', 'sbix', 'acnt', 'avar', 'bdat', 'bloc', 'bsln', 'cvar', 'fdsc', 'feat', 'fmtx', 'fvar', 'gvar', 'hsty', 'just', 'lcar', 'mort', 'morx', 'opbd', 'prop', 'trak', 'Zapf', 'Silf', 'Glat', 'Gloc', 'Feat', 'Sill'];
-const CZECH = [0x10c, 0x10d, 0x10e, 0x10f, 0x11a, 0x11b, 0x147, 0x148, 0x158, 0x159, 0x160, 0x161, 0x164, 0x165, 0x16e, 0x16f, 0x17d, 0x17e];
+const KNOWN_TAGS = [
+  'cmap',
+  'head',
+  'hhea',
+  'hmtx',
+  'maxp',
+  'name',
+  'OS/2',
+  'post',
+  'cvt ',
+  'fpgm',
+  'glyf',
+  'loca',
+  'prep',
+  'CFF ',
+  'VORG',
+  'EBDT',
+  'EBLC',
+  'gasp',
+  'hdmx',
+  'kern',
+  'LTSH',
+  'PCLT',
+  'VDMX',
+  'vhea',
+  'vmtx',
+  'BASE',
+  'GDEF',
+  'GPOS',
+  'GSUB',
+  'EBSC',
+  'JSTF',
+  'MATH',
+  'CBDT',
+  'CBLC',
+  'COLR',
+  'CPAL',
+  'SVG ',
+  'sbix',
+  'acnt',
+  'avar',
+  'bdat',
+  'bloc',
+  'bsln',
+  'cvar',
+  'fdsc',
+  'feat',
+  'fmtx',
+  'fvar',
+  'gvar',
+  'hsty',
+  'just',
+  'lcar',
+  'mort',
+  'morx',
+  'opbd',
+  'prop',
+  'trak',
+  'Zapf',
+  'Silf',
+  'Glat',
+  'Gloc',
+  'Feat',
+  'Sill',
+];
+const CZECH = [
+  0x10c, 0x10d, 0x10e, 0x10f, 0x11a, 0x11b, 0x147, 0x148, 0x158, 0x159, 0x160, 0x161, 0x164, 0x165, 0x16e, 0x16f, 0x17d,
+  0x17e,
+];
 const FAMILIES = [
   { file: 'geist', name: 'Geist' },
   { file: 'geist-mono', name: 'Geist Mono' },
@@ -84,7 +151,8 @@ function mappedCodePoints(path: string): number[] {
     const delta = cmap.readInt16BE(deltas + s * 2);
     const range = cmap.readUInt16BE(ranges + s * 2);
     for (let code = start; code <= end && code !== 0xffff; code++) {
-      const glyph = range === 0 ? (code + delta) & 0xffff : cmap.readUInt16BE(ranges + s * 2 + range + (code - start) * 2);
+      const glyph =
+        range === 0 ? (code + delta) & 0xffff : cmap.readUInt16BE(ranges + s * 2 + range + (code - start) * 2);
       if (glyph !== 0) {
         mapped.push(code);
       }
@@ -103,11 +171,11 @@ function codePoints(range: string): number[] {
 
 function faceRanges(css: string, family: string): Map<string, number[]> {
   const faces = new Map<string, number[]>();
-  for (const [, body = ''] of css.matchAll(/@font-face \{([^}]*)\}/g)) {
-    const src = /src: url\("([^"]+)"\)/.exec(body)?.[1] ?? '';
-    const range = /unicode-range: ([^;]+);/.exec(body)?.[1] ?? '';
-    if (body.includes(`font-family: "${family}";`)) {
-      faces.set(src, codePoints(range));
+  for (const [, body = ''] of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
+    const source = /src:\s*url\(['"]([^'"]+)['"]\)/.exec(body)?.[1] ?? '';
+    const range = /unicode-range:\s*([^;]+);/.exec(body)?.[1] ?? '';
+    if (new RegExp(`font-family:\\s*['"]${family}['"];`).test(body)) {
+      faces.set(source, codePoints(range));
     }
   }
   return faces;
@@ -117,7 +185,10 @@ describe('Czech font subsets (D86)', () => {
   const css = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
 
   it.each(FAMILIES)('$name comes from the same font release as the packaged latin-ext file', ({ file }) => {
-    const packaged = new URL(`../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`, import.meta.url).pathname;
+    const packaged = new URL(
+      `../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`,
+      import.meta.url,
+    ).pathname;
     const subset = new URL(`../fonts/${file}-czech.woff2`, import.meta.url).pathname;
     expect(fontRevision(subset)).toBe(fontRevision(packaged));
     expect(mappedCodePoints(subset)).toEqual(CZECH);
@@ -126,7 +197,8 @@ describe('Czech font subsets (D86)', () => {
   it.each(FAMILIES)('$name sends Czech letters to the subset and nothing else twice', ({ file, name }) => {
     const faces = faceRanges(css, name);
     const czech = faces.get(`../fonts/${file}-czech.woff2`);
-    const extended = faces.get(`../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`) ?? [];
+    const extended =
+      faces.get(`../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`) ?? [];
     expect(czech).toEqual(CZECH);
     expect(extended.filter((code) => CZECH.includes(code))).toEqual([]);
     const covered = new Set([...extended, ...CZECH]);

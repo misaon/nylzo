@@ -1,8 +1,29 @@
-import { KDF_NONE, KDF_SCRYPT, deriveContent, deriveLink, encodeBase64url, parseFragment, parsePath, requestKey } from '@nylzo/core';
+import {
+  KDF_NONE,
+  KDF_SCRYPT,
+  deriveContent,
+  deriveLink,
+  encodeBase64url,
+  parseFragment,
+  parsePath,
+  requestKey,
+} from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import type { Page, Request } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, leave, live, openApp, openViaUi, setPassphrase, test } from './helpers.ts';
+import {
+  BASE_URL,
+  createViaApi,
+  createViaUi,
+  expect,
+  expectRevealed,
+  leave,
+  live,
+  openApp,
+  openViaUi,
+  setPassphrase,
+  test,
+} from './helpers.ts';
 
 interface Recorded {
   readonly url: string;
@@ -11,21 +32,34 @@ interface Recorded {
 }
 
 function headersOf(request: Request): Promise<Record<string, string>> {
-  const provisional = new Promise<Record<string, string>>((resolve) => setTimeout(() => resolve(request.headers()), 2000));
+  const provisional = new Promise<Record<string, string>>((resolve) =>
+    setTimeout(() => resolve(request.headers()), 2000),
+  );
   return Promise.race([request.allHeaders(), provisional]);
 }
 
 function record(page: Page): Promise<Recorded>[] {
   const seen: Promise<Recorded>[] = [];
   page.on('request', (request: Request) => {
-    seen.push(headersOf(request).then((headers) => ({ url: request.url(), headers, body: request.postDataBuffer()?.toString('latin1') ?? '' })));
+    seen.push(
+      headersOf(request).then((headers) => ({
+        url: request.url(),
+        headers,
+        body: request.postDataBuffer()?.toString('latin1') ?? '',
+      })),
+    );
   });
   return seen;
 }
 
 function encodings(bytes: Uint8Array): string[] {
   const buffer = Buffer.from(bytes);
-  return [buffer.toString('hex'), buffer.toString('base64'), buffer.toString('base64').replace(/=+$/, ''), buffer.toString('base64url')];
+  return [
+    buffer.toString('hex'),
+    buffer.toString('base64'),
+    buffer.toString('base64').replace(/=+$/, ''),
+    buffer.toString('base64url'),
+  ];
 }
 
 function textForms(text: string): string[] {
@@ -43,14 +77,20 @@ async function linkSecrets(link: string, passphrase: string) {
   return { s, r, saltPw, p, v };
 }
 
-test('the fragment, the passphrase, the keys and the content never leave the browser in any common encoding (AK1, AK2)', async ({ browser }) => {
+test('the fragment, the passphrase, the keys and the content never leave the browser in any common encoding (AK1, AK2)', async ({
+  browser,
+}) => {
   const sender = await (await browser.newContext()).newPage();
   const recipient = await (await browser.newContext()).newPage();
   const sent = record(sender);
   const received = record(recipient);
   const passphrase = 'four random words here';
   const text = 'tajné sdělení jen pro příjemce';
-  const file = { name: 'výplatní páska říjen.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n') };
+  const file = {
+    name: 'výplatní páska říjen.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n'),
+  };
   const link = await createViaUi(sender, { text, file, passphrase });
   await openViaUi(recipient, link, passphrase);
   await expectRevealed(recipient);
@@ -75,7 +115,8 @@ test('the fragment, the passphrase, the keys and the content never leave the bro
     verifier_key: encodeBase64url((await requestKey(keys.v)).publicKey),
   });
   for (const request of requests) {
-    const flat = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
+    const flat =
+      `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
     for (const form of forbidden) {
       expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
     }
@@ -103,12 +144,17 @@ test('prefetch and prerender requests get 503 (AK16)', async ({ request }) => {
   }
 });
 
-test('a speculation rules prerender reaches the server only as a refused Sec-Purpose request and spends no open (AK16)', async ({ page, browserName }) => {
+test('a speculation rules prerender reaches the server only as a refused Sec-Purpose request and spends no open (AK16)', async ({
+  page,
+  browserName,
+}) => {
   test.skip(browserName !== 'chromium', 'only Chromium implements speculation rules');
   const message = await createViaApi();
   const path = `/m/${message.idText}`;
   const speculative = page.context().waitForEvent('response', (response) => new URL(response.url()).pathname === path);
-  await page.route(`${BASE_URL}/prerender-host`, (route) => route.fulfill({ contentType: 'text/html', body: `<!doctype html><a href="${message.link}">link</a>` }));
+  await page.route(`${BASE_URL}/prerender-host`, (route) =>
+    route.fulfill({ contentType: 'text/html', body: `<!doctype html><a href="${message.link}">link</a>` }),
+  );
   await page.goto(`${BASE_URL}/prerender-host`);
   await page.unrouteAll();
   await page.evaluate((url) => {
@@ -149,7 +195,10 @@ for (const [state, script] of Object.entries(hiddenStates)) {
     expect(await page.getByRole('button', { name: 'Show message' }).isVisible()).toBe(true);
     await expect(live(page, page.getByLabel('Passphrase', { exact: true }))).toBeEditable();
     expect(await page.getByRole('status').textContent()).toBe('');
-    expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
+    expect(await message.api.status(message.id, message.manageKey)).toMatchObject({
+      opensUsed: 0,
+      failedPassphraseAttempts: 0,
+    });
     await page.evaluate(() => Object.assign(window, { nylzoShown: true }));
     await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
     await page.getByRole('button', { name: 'Show message' }).click();
@@ -180,7 +229,9 @@ test('the reader stops without a verifier when the server reports another profil
   expect(status).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
 });
 
-test('the passphrase fields give password managers nothing and the message field is not spell checked (D38)', async ({ page }) => {
+test('the passphrase fields give password managers nothing and the message field is not spell checked (D38)', async ({
+  page,
+}) => {
   const message = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_SCRYPT });
   await openApp(page, '/');
   const text = page.getByLabel('Message text');
@@ -214,12 +265,16 @@ async function watchShownAfterLeaving(page: Page): Promise<() => Promise<boolean
     new MutationObserver(() => {
       shown ||= left && document.querySelector('pre') !== null;
     }).observe(document, { childList: true, subtree: true, characterData: true });
-    Object.defineProperty(window, 'nylzoShownAfterLeaving', { get: () => shown || (left && document.querySelector('pre') !== null) });
+    Object.defineProperty(window, 'nylzoShownAfterLeaving', {
+      get: () => shown || (left && document.querySelector('pre') !== null),
+    });
   });
   return () => page.evaluate(() => (window as unknown as { nylzoShownAfterLeaving: boolean }).nylzoShownAfterLeaving);
 }
 
-test('leaving the page removes the shown message and closes its dialog, so the back/forward cache cannot show it again', async ({ page }) => {
+test('leaving the page removes the shown message and closes its dialog, so the back/forward cache cannot show it again', async ({
+  page,
+}) => {
   const message = await createViaApi({ text: 'gone after leaving', opensMax: 2 });
   await openViaUi(page, message.link);
   await expectRevealed(page);
@@ -240,11 +295,15 @@ test('leaving the create page wipes the draft, the passphrase, the file and the 
   await openApp(page, '/');
   await page.getByLabel('Message text').fill('wipe me');
   await setPassphrase(page, 'four random words here');
-  await page.getByLabel(/Attachment, up to/).setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
+  await page
+    .getByLabel(/Attachment, up to/)
+    .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await leave(page);
   await expect(page.getByLabel('Message text')).toHaveValue('');
   await expect(page.getByLabel('Passphrase, optional')).toHaveValue('');
-  expect(await page.getByLabel(/Attachment, up to/).evaluate((input: HTMLInputElement) => input.files?.length ?? 0)).toBe(0);
+  expect(
+    await page.getByLabel(/Attachment, up to/).evaluate((input: HTMLInputElement) => input.files?.length ?? 0),
+  ).toBe(0);
 
   await page.getByLabel('Message text').fill('created, then left');
   await page.getByRole('button', { name: 'Create link' }).click();
@@ -254,7 +313,10 @@ test('leaving the create page wipes the draft, the passphrase, the file and the 
   await leave(page);
   await expect(link).toHaveCount(0);
   const stillShown = (secret: string) =>
-    document.body.textContent?.includes(secret) === true || [...document.querySelectorAll('input, textarea')].some((field) => (field as HTMLInputElement).value.includes(secret));
+    document.body.textContent?.includes(secret) === true ||
+    [...document.querySelectorAll('input, textarea')].some((field) =>
+      (field as HTMLInputElement).value.includes(secret),
+    );
   expect(await page.evaluate(stillShown, key)).toBe(false);
 
   const reloaded = page.waitForEvent('load');
@@ -263,7 +325,9 @@ test('leaving the create page wipes the draft, the passphrase, the file and the 
   await expect(page.getByLabel('Message text')).toHaveValue('');
 });
 
-test('leaving while a message is encrypted wipes it and a later answer neither shows nor remembers it', async ({ page }) => {
+test('leaving while a message is encrypted wipes it and a later answer neither shows nor remembers it', async ({
+  page,
+}) => {
   const asked = Promise.withResolvers<void>();
   const answer = Promise.withResolvers<void>();
   await page.route('**/api/v1/messages', async (route) => {
@@ -282,16 +346,24 @@ test('leaving while a message is encrypted wipes it and a later answer neither s
   await asked.promise;
   await leave(page);
   const words = secret.split(' ');
-  const visible = () => page.evaluate((parts) => parts.filter((part) => document.body.textContent?.includes(part)).length, words.filter((word) => word.length > 4));
+  const visible = () =>
+    page.evaluate(
+      (parts) => parts.filter((part) => document.body.textContent?.includes(part)).length,
+      words.filter((word) => word.length > 4),
+    );
   expect(await visible()).toBe(0);
   await expect(page.getByLabel('Message text')).toHaveValue('');
 
-  const answered = page.waitForResponse((response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST');
+  const answered = page.waitForResponse(
+    (response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST',
+  );
   answer.resolve();
   expect((await answered).ok()).toBe(true);
   await page.waitForTimeout(1000);
   await expect(live(page, page.getByLabel('Link to the message'))).toHaveCount(0);
-  expect(await page.evaluate(async () => (await indexedDB.databases()).some(({ name }) => name === 'nylzo'))).toBe(false);
+  expect(await page.evaluate(async () => (await indexedDB.databases()).some(({ name }) => name === 'nylzo'))).toBe(
+    false,
+  );
   expect(await visible()).toBe(0);
 });
 
@@ -309,7 +381,9 @@ test('a page restored from the back/forward cache loads again and spends no open
   await expect(page.locator('pre')).toHaveText('still unread');
 });
 
-test('back and forward after reading bring back neither the fragment nor the message and spend no open', async ({ page }) => {
+test('back and forward after reading bring back neither the fragment nor the message and spend no open', async ({
+  page,
+}) => {
   const message = await createViaApi({ text: 'only once in this tab', opensMax: 2 });
   const read = `${BASE_URL}/m/${message.idText}`;
   await openApp(page, `${BASE_URL}/`);
@@ -357,14 +431,44 @@ test('a deletion that answers after the page was left never shows the message ag
 });
 
 const files = [
-  { name: 'drawing.svg', shown: 'drawing.svg', extension: 'svg', mimeType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script></svg>', risky: true },
-  { name: 'page.html', shown: 'page.html', extension: 'html', mimeType: 'text/html', body: '<!doctype html><script>alert(3)</script>', risky: true },
-  { name: 'invoice‮fdp.exe', shown: 'invoicefdp.exe', extension: 'exe', mimeType: 'application/pdf', body: 'MZ', risky: true },
-  { name: 'report.pdf', shown: 'report.pdf', extension: 'pdf', mimeType: 'application/pdf', body: '%PDF-1.4\n%nylzo\n', risky: false },
+  {
+    name: 'drawing.svg',
+    shown: 'drawing.svg',
+    extension: 'svg',
+    mimeType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script></svg>',
+    risky: true,
+  },
+  {
+    name: 'page.html',
+    shown: 'page.html',
+    extension: 'html',
+    mimeType: 'text/html',
+    body: '<!doctype html><script>alert(3)</script>',
+    risky: true,
+  },
+  {
+    name: 'invoice‮fdp.exe',
+    shown: 'invoicefdp.exe',
+    extension: 'exe',
+    mimeType: 'application/pdf',
+    body: 'MZ',
+    risky: true,
+  },
+  {
+    name: 'report.pdf',
+    shown: 'report.pdf',
+    extension: 'pdf',
+    mimeType: 'application/pdf',
+    body: '%PDF-1.4\n%nylzo\n',
+    risky: false,
+  },
 ];
 
 for (const file of files) {
-  test(`an attachment ${file.shown} is only ever downloaded under its sanitised name (AK13, D35)`, async ({ browser }) => {
+  test(`an attachment ${file.shown} is only ever downloaded under its sanitised name (AK13, D35)`, async ({
+    browser,
+  }) => {
     const sender = await (await browser.newContext()).newPage();
     const context = await browser.newContext();
     const recipient = await context.newPage();
@@ -379,7 +483,9 @@ for (const file of files) {
     });
     const downloads: string[] = [];
     recipient.on('download', (download) => downloads.push(download.suggestedFilename()));
-    const link = await createViaUi(sender, { file: { name: file.name, mimeType: file.mimeType, buffer: Buffer.from(file.body) } });
+    const link = await createViaUi(sender, {
+      file: { name: file.name, mimeType: file.mimeType, buffer: Buffer.from(file.body) },
+    });
     await openViaUi(recipient, link);
     await expectRevealed(recipient);
     await expect(recipient.locator('bdi')).toHaveText(file.shown);
@@ -398,7 +504,9 @@ for (const file of files) {
     expect(downloads).toEqual([file.shown]);
     expect(recipient.url()).toBe(before);
     expect(context.pages()).toHaveLength(1);
-    expect(await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes)).toEqual(['application/octet-stream']);
+    expect(await recipient.evaluate(() => (window as unknown as { nylzoBlobTypes: string[] }).nylzoBlobTypes)).toEqual([
+      'application/octet-stream',
+    ]);
   });
 }
 
@@ -418,7 +526,9 @@ test('the fields of an abuse report are not spell checked or autocompleted (D38,
   }
 });
 
-test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({ browser }) => {
+test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({
+  browser,
+}) => {
   const message = await createViaApi({ text: 'report me' });
   const recipient = await (await browser.newContext()).newPage();
   const reporter = await (await browser.newContext()).newPage();
@@ -435,7 +545,9 @@ test('an abuse report sends the id, the reason and a signature but never the fra
   await expect(reporter.getByText('We received the report.')).toBeVisible();
 
   const fragment = new URL(message.link).hash.slice(1);
-  const forbidden = [fragment, ...encodings(Buffer.from(message.secret, 'base64url'))].map((form) => form.toLowerCase());
+  const forbidden = [fragment, ...encodings(Buffer.from(message.secret, 'base64url'))].map((form) =>
+    form.toLowerCase(),
+  );
   const requests = await Promise.all([...fromPage, ...fromReportPage]);
   const reports = requests.filter((request) => request.url.endsWith('/api/v1/abuse'));
   expect(reports.length).toBeGreaterThanOrEqual(2);
@@ -446,7 +558,9 @@ test('an abuse report sends the id, the reason and a signature but never the fra
     }
   }
   for (const report of reports) {
-    expect(Object.keys(JSON.parse(report.body)).sort()).toEqual(report.body.includes('reason') ? ['id', 'reason'] : ['id']);
+    expect(Object.keys(JSON.parse(report.body)).sort()).toEqual(
+      report.body.includes('reason') ? ['id', 'reason'] : ['id'],
+    );
     expect(JSON.parse(report.body).id).toBe(message.idText);
     expect(report.headers['authorization']).toMatch(/^Nylzo-Sig /);
     expect(report.headers['content-type']).toBe('application/json');

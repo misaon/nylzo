@@ -1,6 +1,16 @@
 import type { Browser, Page } from '@playwright/test';
 
-import { BASE_URL, createViaApi, createViaUi, expect, expectRevealed, live, openApp, openViaUi, test } from './helpers.ts';
+import {
+  BASE_URL,
+  createViaApi,
+  createViaUi,
+  expect,
+  expectRevealed,
+  live,
+  openApp,
+  openViaUi,
+  test,
+} from './helpers.ts';
 import { recordViolations } from './violations.ts';
 
 declare global {
@@ -40,7 +50,12 @@ function storedRecords(page: Page): Promise<{ readonly id: string; readonly ende
           const all = opening.result.transaction('sent').objectStore('sent').getAll();
           all.onerror = () => reject(all.error);
           all.onsuccess = () => {
-            resolve((all.result as { id: string; endedAt?: number }[]).map(({ id, endedAt }) => ({ id, ...(endedAt === undefined ? {} : { endedAt }) })));
+            resolve(
+              (all.result as { id: string; endedAt?: number }[]).map(({ id, endedAt }) => ({
+                id,
+                ...(endedAt === undefined ? {} : { endedAt }),
+              })),
+            );
             opening.result.close();
           };
         };
@@ -108,12 +123,16 @@ test('the sender sees the status of a remembered message and cancels it (D39)', 
   expect(await violations()).toEqual([]);
 });
 
-test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({ browser }) => {
+test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({
+  browser,
+}) => {
   const sender = await (await browser.newContext({ reducedMotion: 'no-preference' })).newPage();
   await countWrites(sender);
   await openApp(sender, '/');
   await sender.getByLabel('Message text').fill('remember early');
-  const created = sender.waitForResponse((response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST');
+  const created = sender.waitForResponse(
+    (response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST',
+  );
   await sender.getByRole('button', { name: 'Create link' }).click();
   expect((await created).ok()).toBe(true);
   await expect.poll(() => sender.evaluate(() => window.nylzoWrites ?? 0)).toBeGreaterThan(0);
@@ -392,7 +411,9 @@ test('a failed status can be loaded again (D39)', async ({ browser }) => {
   await createViaUi(sender, { text: 'retry' });
   let failures = 1;
   await sender.route('**/api/v1/messages/*/status', (route) =>
-    failures-- > 0 ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal"}' }) : route.continue(),
+    failures-- > 0
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal"}' })
+      : route.continue(),
   );
   await sender.goto('/sent');
   const item = sender.getByRole('listitem');
@@ -408,19 +429,27 @@ test('a browser without IndexedDB still gets the link and says it cannot remembe
     Object.defineProperty(window, 'indexedDB', { value: undefined });
   });
   await createViaUi(sender, { text: 'no storage' });
-  await expect(sender.getByText('This device could not remember the message, so you cannot cancel it from here.')).toBeVisible();
+  await expect(
+    sender.getByText('This device could not remember the message, so you cannot cancel it from here.'),
+  ).toBeVisible();
   await sender.goto('/sent');
-  await expect(sender.getByText('This browser does not let the page store data, so it cannot remember sent messages.')).toBeVisible();
+  await expect(
+    sender.getByText('This browser does not let the page store data, so it cannot remember sent messages.'),
+  ).toBeVisible();
 });
 
-test('every page load drops records 7 days after expiry and creates no database for visitors (D39)', async ({ browser }) => {
+test('every page load drops records 7 days after expiry and creates no database for visitors (D39)', async ({
+  browser,
+}) => {
   const message = await createViaApi({ text: 'visitor' });
   const visitor = await newPage(browser);
   await visitor.goto(message.link);
   await expect(visitor.getByRole('button', { name: 'Show message' })).toBeVisible();
   await openApp(visitor, '/');
   await expect(visitor.getByLabel('Message text')).toBeVisible();
-  expect(await visitor.evaluate(async () => (await indexedDB.databases()).map((database) => database.name))).toEqual([]);
+  expect(await visitor.evaluate(async () => (await indexedDB.databases()).map((database) => database.name))).toEqual(
+    [],
+  );
 
   const sender = await newPage(browser);
   const link = await createViaUi(sender, { text: 'kept' });
@@ -434,7 +463,15 @@ test('every page load drops records 7 days after expiry and creates no database 
       opening.onerror = () => reject(opening.error);
       opening.onsuccess = () => {
         const transaction = opening.result.transaction('sent', 'readwrite');
-        transaction.objectStore('sent').put({ id: 'AAAAAAAAAAAAAAAAAAAAAA', createdAt: old - 3_600_000, expiresAt: old, privateKey: pair.privateKey, publicKey });
+        transaction
+          .objectStore('sent')
+          .put({
+            id: 'AAAAAAAAAAAAAAAAAAAAAA',
+            createdAt: old - 3_600_000,
+            expiresAt: old,
+            privateKey: pair.privateKey,
+            publicKey,
+          });
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       };
@@ -457,4 +494,3 @@ test('every page load drops records 7 days after expiry and creates no database 
   await sender.goto('/report');
   await expect.poll(stored).toEqual([kept]);
 });
-

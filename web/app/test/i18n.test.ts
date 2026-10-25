@@ -46,29 +46,49 @@ describe('i18n', () => {
     expect(plain(formatSize(0, 'en'))).toBe('0 B');
     expect(plain(formatSize(312, 'cs'))).toBe('312 B');
     expect(formatSize(5242880, 'en')).toBe('5 MB');
-    expect([1, 60, 3600, 120, 300].map((seconds) => plain(formatWait(seconds, 'cs')))).toEqual(['1 sekundu', '1 minutu', '1 hodinu', '2 minuty', '5 minut']);
+    expect([1, 60, 3600, 120, 300].map((seconds) => plain(formatWait(seconds, 'cs')))).toEqual([
+      '1 sekundu',
+      '1 minutu',
+      '1 hodinu',
+      '2 minuty',
+      '5 minut',
+    ]);
     expect(formatWait(60, 'en')).toBe('1 minute');
     expect(formatWait(undefined, 'en')).toBe('1 minute');
     expect(formatDays(7, 'en')).toBe('7 days');
   });
 
   it('takes the limits it names from the code', () => {
-    const limits = { min: MIN_PASSPHRASE_CHARS, words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS, bytes: MAX_REASON_BYTES, days: RETENTION_DAYS };
+    const limits = {
+      min: MIN_PASSPHRASE_CHARS,
+      words: WEAK_BELOW_WORDS,
+      chars: WEAK_BELOW_CHARS,
+      bytes: MAX_REASON_BYTES,
+      days: RETENTION_DAYS,
+    };
     for (const language of ['cs', 'en'] as const) {
       for (const [key, text] of Object.entries(dictionaries[language]).filter(([key]) => !key.startsWith('ttl.'))) {
         expect(text, `${language} ${key}`).not.toMatch(/\b(12|16|1000)\b|\b7 (days|dní|dnů)\b/u);
-        expect(createI18n(language).t(key as MessageKey, limits), `${language} ${key}`).not.toMatch(/\{(min|words|chars|bytes|days)\}/);
+        expect(createI18n(language).t(key as MessageKey, limits), `${language} ${key}`).not.toMatch(
+          /\{(min|words|chars|bytes|days)\}/,
+        );
       }
     }
     const { t } = createI18n('en');
     expect(t('create.passphrase.hint', limits)).toContain(`${MIN_PASSPHRASE_CHARS} characters`);
-    expect(t('create.passphrase.weak', limits)).toContain(`${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARS} characters`);
+    expect(t('create.passphrase.weak', limits)).toContain(
+      `${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARS} characters`,
+    );
     expect(t('report.problem.reason_too_long', limits)).toContain(`${MAX_REASON_BYTES} bytes`);
   });
 
   it('counts the time a sent entry is kept from the end of its message, as isRetained does (D39)', () => {
-    expect(createI18n('en').t('sent.note', { days: formatDays(RETENTION_DAYS, 'en') })).toContain('disappears 7 days after its message ends.');
-    expect(createI18n('cs').t('sent.note', { days: formatDays(RETENTION_DAYS, 'cs') })).toMatch(/zmizí 7\s+dnů po skončení zprávy\.$/u);
+    expect(createI18n('en').t('sent.note', { days: formatDays(RETENTION_DAYS, 'en') })).toContain(
+      'disappears 7 days after its message ends.',
+    );
+    expect(createI18n('cs').t('sent.note', { days: formatDays(RETENTION_DAYS, 'cs') })).toMatch(
+      /zmizí 7\s+dnů po skončení zprávy\.$/u,
+    );
   });
 
   it('switches the language in place', () => {
@@ -93,7 +113,10 @@ describe('i18n', () => {
 
   it('prefers a saved choice and survives storage that throws', () => {
     const map = new Map<string, string>();
-    const store: PreferenceStore = { getItem: (key) => map.get(key) ?? null, setItem: (key, value) => void map.set(key, value) };
+    const store: PreferenceStore = {
+      getItem: (key) => map.get(key) ?? null,
+      setItem: (key, value) => void map.set(key, value),
+    };
     expect(savedLanguage(store, ['en'])).toBe('en');
     saveLanguage(store, 'cs');
     expect(map.get('nylzo:lang')).toBe('cs');

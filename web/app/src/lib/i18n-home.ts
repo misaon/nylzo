@@ -6,23 +6,29 @@ export const homeCs = {
   'how.step2.title': 'Server uloží jen šifru',
   'how.step2.text': 'Dostane šifrovaná data, náhodné id a\u00a0několik časů. Klíč nezná, takže zprávu přečíst neumí.',
   'how.step3.title': 'Příjemce otevře jednou',
-  'how.step3.text': 'Zpráva se otevře až kliknutím, samotné načtení odkazu nic nespotřebuje. Po posledním otevření server šifru smaže.',
+  'how.step3.text':
+    'Zpráva se otevře až kliknutím, samotné načtení odkazu nic nespotřebuje. Po posledním otevření server šifru smaže.',
   'how.link.title': 'Co je v\u00a0odkazu',
   'how.link.sub': 'Části odkazu se samy střídají. Klepnutím na kteroukoli je zastavíte.',
   'how.link.server': 'Co uvidí server',
   'how.link.host.title': 'Adresa serveru',
   'how.link.host.meta': 'vidí server i\u00a0síť',
-  'how.link.host.body': 'Doména a\u00a0cesta ke zprávě. Tuhle část dostane server, když stránku otevřete, a\u00a0doménu vidí i\u00a0síť, přes kterou jdete.',
+  'how.link.host.body':
+    'Doména a\u00a0cesta ke zprávě. Tuhle část dostane server, když stránku otevřete, a\u00a0doménu vidí i\u00a0síť, přes kterou jdete.',
   'how.link.id.title': 'Id zprávy',
   'how.link.id.meta': '128 bitů, vidí server',
-  'how.link.id.body': 'Náhodné číslo, podle kterého server najde šifrovaná data. Samo nic neotevře: k\u00a0otevření je potřeba klíč, který je až za znakem #.',
+  'how.link.id.body':
+    'Náhodné číslo, podle kterého server najde šifrovaná data. Samo nic neotevře: k\u00a0otevření je potřeba klíč, který je až za znakem #.',
   'how.link.meta.title': 'Verze a\u00a0profil',
   'how.link.meta.meta': 'jen v\u00a0prohlížeči',
-  'how.link.meta.body': 'Jednička je verze formátu odkazu, nula znamená zprávu bez passphrase. Starší Nylzo podle verze pozná odkaz z\u00a0novější verze a\u00a0řekne to, místo aby ho označilo za poškozený.',
+  'how.link.meta.body':
+    'Jednička je verze formátu odkazu, nula znamená zprávu bez passphrase. Starší Nylzo podle verze pozná odkaz z\u00a0novější verze a\u00a0řekne to, místo aby ho označilo za poškozený.',
   'how.link.key.title': 'Klíč zprávy',
   'how.link.key.meta': '256 bitů, jen v\u00a0prohlížeči',
-  'how.link.key.body': 'Všechno za znakem # zůstává v\u00a0prohlížeči. Prohlížeč tuhle část serveru neposílá, takže ji neznáme my ani hosting. Kdo ji nemá, zprávu nepřečte.',
-  'how.link.server.body': 'Server dostane jen adresu stránky a\u00a0id zprávy. Všechno za znakem # prohlížeč při načtení stránky neodesílá, takže klíč server nikdy neuvidí, ani když by chtěl.',
+  'how.link.key.body':
+    'Všechno za znakem # zůstává v\u00a0prohlížeči. Prohlížeč tuhle část serveru neposílá, takže ji neznáme my ani hosting. Kdo ji nemá, zprávu nepřečte.',
+  'how.link.server.body':
+    'Server dostane jen adresu stránky a\u00a0id zprávy. Všechno za znakem # prohlížeč při načtení stránky neodesílá, takže klíč server nikdy neuvidí, ani když by chtěl.',
   'who.eyebrow': 'Kdo co vidí',
   'who.title': 'Ze serveru se zpráva přečíst nedá',
   'who.sub': 'Tatáž zpráva očima tří stran. Přepněte a\u00a0porovnejte, co kdo ve skutečnosti drží.',
@@ -79,7 +85,8 @@ export const homeCs = {
   'who.thief.cta.sub': 'Vyzkoušejte si to o\u00a0kus níž',
   'brute.eyebrow': 'Odolnost proti hádání',
   'brute.title': 'Kolik by trvalo klíč uhodnout',
-  'brute.sub': 'Vyberte, jak silného útočníka si představujete. Ukážeme, jak dlouho by hádal klíč k\u00a0jedné zprávě a\u00a0jakou má šanci.',
+  'brute.sub':
+    'Vyberte, jak silného útočníka si představujete. Ukážeme, jak dlouho by hádal klíč k\u00a0jedné zprávě a\u00a0jakou má šanci.',
   'brute.attacker': 'Útočník',
   'brute.approx': 'rychlosti jsou orientační',
   'brute.hypothetical': 'hypoteticky',
@@ -129,24 +136,31 @@ export const homeCs = {
   'promise.eyebrow': 'Co slibujeme',
   'promise.title': 'Sliby, které si můžete ověřit',
   'promise.account.title': 'Žádný účet',
-  'promise.account.text': 'Nezakládáte účet a\u00a0nedáváte nám e-mail ani telefon. Server si nevede, kdo zprávu poslal ani kdo ji otevřel.',
+  'promise.account.text':
+    'Nezakládáte účet a\u00a0nedáváte nám e-mail ani telefon. Server si nevede, kdo zprávu poslal ani kdo ji otevřel.',
   'promise.preview.title': 'Náhled odkaz nespálí',
-  'promise.preview.text': 'Slack, Teams ani e-mailový skener zprávu neotevřou. Otevření spotřebuje až kliknutí příjemce.',
+  'promise.preview.text':
+    'Slack, Teams ani e-mailový skener zprávu neotevřou. Otevření spotřebuje až kliknutí příjemce.',
   'promise.logs.title': 'Logy bez IP a\u00a0odkazů',
-  'promise.logs.text': 'Do logu nejdou IP adresy, id zpráv, klíče ani obsah. Limity proti zneužití drží server jen v\u00a0paměti.',
+  'promise.logs.text':
+    'Do logu nejdou IP adresy, id zpráv, klíče ani obsah. Limity proti zneužití drží server jen v\u00a0paměti.',
   'promise.ttl.title': 'Nejdéle {days}',
-  'promise.ttl.text': 'Po posledním otevření nebo po vypršení server šifru smaže. Za dalších {days} zapomene i\u00a0to, že zpráva existovala.',
+  'promise.ttl.text':
+    'Po posledním otevření nebo po vypršení server šifru smaže. Za dalších {days} zapomene i\u00a0to, že zpráva existovala.',
   'promise.cancel.title': 'Zrušení na dálku',
-  'promise.cancel.text': 'Poslali jste odkaz špatně? Na stránce Odeslané zprávu zrušíte a\u00a0uvidíte, jestli ji už někdo otevřel.',
+  'promise.cancel.text':
+    'Poslali jste odkaz špatně? Na stránce Odeslané zprávu zrušíte a\u00a0uvidíte, jestli ji už někdo otevřel.',
   'promise.open.title': 'Otevřený kód a\u00a0ověřitelný build',
-  'promise.open.text': 'Kód, specifikace protokolu i\u00a0testovací vektory jsou na GitHubu pod licencí MIT. Ze stejného zdroje vznikne bajt po bajtu stejná binárka, takže vydání může ověřit kdokoli.',
+  'promise.open.text':
+    'Kód, specifikace protokolu i\u00a0testovací vektory jsou na GitHubu pod licencí MIT. Ze stejného zdroje vznikne bajt po bajtu stejná binárka, takže vydání může ověřit kdokoli.',
   'promise.open.link': 'Zdrojový kód',
 
   'extra.eyebrow': 'Pod kapotou',
   'extra.title': 'Co Nylzo dělá navíc',
   'extra.sub': 'Šifrujeme prověřenými standardy. Navíc hlídáme i\u00a0stopy, které po zprávě zůstávají na serveru.',
   'extra.stolen.title': 'Ukradený server obsah neprozradí',
-  'extra.stolen.text': 'Test, který běží s\u00a0každou změnou kódu, zkopíruje databázi, soubory i\u00a0logy serveru a\u00a0hledá v\u00a0nich klíče, obsah, názvy souborů i\u00a0IP adresy. Nesmí najít nic.',
+  'extra.stolen.text':
+    'Test, který běží s\u00a0každou změnou kódu, zkopíruje databázi, soubory i\u00a0logy serveru a\u00a0hledá v\u00a0nich klíče, obsah, názvy souborů i\u00a0IP adresy. Nesmí najít nic.',
   'extra.stolen.copy': 'Kopie serveru',
   'extra.stolen.found': 'Nalezeno: 0',
   'extra.scan.keys': 'Klíče zpráv',
@@ -162,11 +176,13 @@ export const homeCs = {
   'extra.scan.times': 'Přesné časy',
   'extra.scan.times.where': 'jen na minutu',
   'extra.signed.title': 'Bez klíče ani šifra',
-  'extra.signed.text': 'Otevření i\u00a0stažení šifry chtějí podpis klíčem z\u00a0odkazu. Kdo zná jen id zprávy, nestáhne nic.',
+  'extra.signed.text':
+    'Otevření i\u00a0stažení šifry chtějí podpis klíčem z\u00a0odkazu. Kdo zná jen id zprávy, nestáhne nic.',
   'extra.signed.denied': 'zamítnuto',
   'extra.signed.opens': 'otevře',
   'extra.padding.title': 'Heslo i\u00a0odstavec vypadají stejně',
-  'extra.padding.text': 'Šifru doplníme na celé bloky po 4 KiB, takže server nepozná, jestli jste poslali krátké heslo, nebo delší text.',
+  'extra.padding.text':
+    'Šifru doplníme na celé bloky po 4 KiB, takže server nepozná, jestli jste poslali krátké heslo, nebo delší text.',
   'extra.padding.short': 'Heslo',
   'extra.padding.long': 'Dlouhý text',
   'extra.padding.server': 'server vidí',
@@ -181,7 +197,8 @@ export const homeCs = {
 
   'host.eyebrow': 'Vlastní server',
   'host.title': 'Provozujte Nylzo u\u00a0sebe',
-  'host.sub': 'Celé Nylzo je jedna binárka se SQLite a\u00a0soubory na disku, bez další databáze a\u00a0bez služeb třetích stran. Platnost, limity i\u00a0kontakt na stránce transparentnosti nastavíte sami.',
+  'host.sub':
+    'Celé Nylzo je jedna binárka se SQLite a\u00a0soubory na disku, bez další databáze a\u00a0bez služeb třetích stran. Platnost, limity i\u00a0kontakt na stránce transparentnosti nastavíte sami.',
   'host.point.compose': 'Docker Compose s\u00a0Caddy, který vyřídí certifikát i\u00a0TLS na vašem stroji',
   'host.point.signed': 'Podepsané image a\u00a0binárky s\u00a0ověřitelným původem',
   'host.point.mit': 'Licence MIT, takže i\u00a0pro firmy',
@@ -192,9 +209,12 @@ export const homeCs = {
   'host.copy': 'Zkopírovat',
   'host.copied': 'Zkopírováno',
   'host.copy.label': 'Zkopírovat příkazy',
-  'host.compose.note': 'Caddy získá certifikát a\u00a0ukončí TLS na vašem stroji. Než spustíte image, ověřte jeho podpis podle návodu v\u00a0deploy/compose.',
-  'host.binary.note': 'Server naslouchá na portu 8080 a\u00a0data ukládá do ./data. Pepper si uložte, bez něj přestanou fungovat všechny existující odkazy. Běží na Linuxu a\u00a0macOS.',
-  'host.verify.note': 'Porovná webového klienta, kterého server posílá, s\u00a0kopií v\u00a0binárce. Má smysl ho pouštět pravidelně a\u00a0z\u00a0jiné sítě.',
+  'host.compose.note':
+    'Caddy získá certifikát a\u00a0ukončí TLS na vašem stroji. Než spustíte image, ověřte jeho podpis podle návodu v\u00a0deploy/compose.',
+  'host.binary.note':
+    'Server naslouchá na portu 8080 a\u00a0data ukládá do ./data. Pepper si uložte, bez něj přestanou fungovat všechny existující odkazy. Běží na Linuxu a\u00a0macOS.',
+  'host.verify.note':
+    'Porovná webového klienta, kterého server posílá, s\u00a0kopií v\u00a0binárce. Má smysl ho pouštět pravidelně a\u00a0z\u00a0jiné sítě.',
 
   'compare.eyebrow': 'Srovnání',
   'compare.title': 'Jak si Nylzo stojí vedle ostatních',
@@ -241,8 +261,10 @@ export const homeCs = {
 
   'limits.eyebrow': 'Kde naše záruky končí',
   'limits.title': 'Napadené zařízení žádná šifra neochrání',
-  'limits.sub': 'Malware nebo cizí přístup přečte zprávu dřív, než ji zašifrujeme, nebo hned potom, co ji příjemce otevře.',
-  'limits.diagram': 'Nylzo chrání zprávu na cestě a\u00a0na serveru. Zařízení odesílatele a\u00a0příjemce chránit nedokáže.',
+  'limits.sub':
+    'Malware nebo cizí přístup přečte zprávu dřív, než ji zašifrujeme, nebo hned potom, co ji příjemce otevře.',
+  'limits.diagram':
+    'Nylzo chrání zprávu na cestě a\u00a0na serveru. Zařízení odesílatele a\u00a0příjemce chránit nedokáže.',
   'limits.you': 'Vy',
   'limits.server': 'Server',
   'limits.recipient': 'Příjemce',
@@ -256,7 +278,8 @@ export const homeCs = {
   'limits.server.note': 'Ověří ji nylzo verify-client. Kdo jí věřit nechce, pošle zprávu přes CLI.',
   'limits.abuse.title': 'Ne pro podvody a\u00a0malware',
   'limits.abuse.note': 'Ani pro jiný nezákonný obsah.',
-  'limits.liability': 'Za škody způsobené napadeným zařízením, neopatrným sdílením odkazu nebo použitím v\u00a0rozporu s\u00a0podmínkami neneseme odpovědnost.',
+  'limits.liability':
+    'Za škody způsobené napadeným zařízením, neopatrným sdílením odkazu nebo použitím v\u00a0rozporu s\u00a0podmínkami neneseme odpovědnost.',
   'limits.report': 'Nahlásit zneužití',
 
   'cta.title': 'Máte něco, co nepatří do chatu?',
@@ -272,30 +295,39 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'how.eyebrow': 'How it works',
   'how.title': 'You hold the key. The server only guards the ciphertext.',
   'how.step1.title': 'You encrypt on your side',
-  'how.step1.text': 'The browser creates a random 256-bit key and encrypts the message with it before it sends anything.',
+  'how.step1.text':
+    'The browser creates a random 256-bit key and encrypts the message with it before it sends anything.',
   'how.step2.title': 'The server stores only ciphertext',
-  'how.step2.text': 'It gets the encrypted data, a random id and a few timestamps. It does not know the key, so it cannot read the message.',
+  'how.step2.text':
+    'It gets the encrypted data, a random id and a few timestamps. It does not know the key, so it cannot read the message.',
   'how.step3.title': 'The recipient opens it once',
-  'how.step3.text': 'The message opens only with a click; loading the link alone uses nothing up. After the last open the server deletes the ciphertext.',
+  'how.step3.text':
+    'The message opens only with a click; loading the link alone uses nothing up. After the last open the server deletes the ciphertext.',
   'how.link.title': 'What is in the link',
   'how.link.sub': 'The parts of the link take turns on their own. Tap any part to stop them.',
   'how.link.server': 'What the server sees',
   'how.link.host.title': 'Server address',
   'how.link.host.meta': 'seen by the server and the network',
-  'how.link.host.body': 'The domain and the path to the message. The server gets this part when you open the page, and the network you use sees the domain too.',
+  'how.link.host.body':
+    'The domain and the path to the message. The server gets this part when you open the page, and the network you use sees the domain too.',
   'how.link.id.title': 'Message id',
   'how.link.id.meta': '128 bits, seen by the server',
-  'how.link.id.body': 'A random number the server uses to find the encrypted data. On its own it opens nothing: that takes the key, which comes after the # sign.',
+  'how.link.id.body':
+    'A random number the server uses to find the encrypted data. On its own it opens nothing: that takes the key, which comes after the # sign.',
   'how.link.meta.title': 'Version and profile',
   'how.link.meta.meta': 'only in the browser',
-  'how.link.meta.body': 'The 1 is the link format version, the 0 means a message without a passphrase. From the version, an older Nylzo recognises a link from a newer one and says so instead of calling it damaged.',
+  'how.link.meta.body':
+    'The 1 is the link format version, the 0 means a message without a passphrase. From the version, an older Nylzo recognises a link from a newer one and says so instead of calling it damaged.',
   'how.link.key.title': 'Message key',
   'how.link.key.meta': '256 bits, only in the browser',
-  'how.link.key.body': 'Everything after the # sign stays in the browser. The browser does not send this part to the server, so neither we nor the hosting know it. Without it, nobody can read the message.',
-  'how.link.server.body': 'The server only gets the page address and the message id. The browser does not send anything after the # sign when it loads the page, so the server never sees the key, even if it wanted to.',
+  'how.link.key.body':
+    'Everything after the # sign stays in the browser. The browser does not send this part to the server, so neither we nor the hosting know it. Without it, nobody can read the message.',
+  'how.link.server.body':
+    'The server only gets the page address and the message id. The browser does not send anything after the # sign when it loads the page, so the server never sees the key, even if it wanted to.',
   'who.eyebrow': 'Who sees what',
   'who.title': 'Nobody can read the message from the server',
-  'who.sub': 'The same message through the eyes of three parties. Switch between them and compare what each one actually holds.',
+  'who.sub':
+    'The same message through the eyes of three parties. Switch between them and compare what each one actually holds.',
   'who.tabs': 'Point of view',
   'who.you': 'You and the recipient',
   'who.server': 'Server',
@@ -349,7 +381,8 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'who.thief.cta.sub': 'Try it a little further down',
   'brute.eyebrow': 'Resistance to guessing',
   'brute.title': 'How long it would take to guess the key',
-  'brute.sub': 'Pick how strong an attacker you have in mind. We show how long it would take to guess the key to a single message, and what its chances are.',
+  'brute.sub':
+    'Pick how strong an attacker you have in mind. We show how long it would take to guess the key to a single message, and what its chances are.',
   'brute.attacker': 'Attacker',
   'brute.approx': 'speeds are rough estimates',
   'brute.hypothetical': 'hypothetical',
@@ -366,7 +399,8 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'brute.speed.guesses': '{amount} guesses a second',
   'brute.speed.steps': '{amount} steps a second',
   'brute.quantum': 'Add a future quantum computer',
-  'brute.quantum.note': 'It shortens the search a lot. Today’s quantum computers are nowhere near capable of such an attack.',
+  'brute.quantum.note':
+    'It shortens the search a lot. Today’s quantum computers are nowhere near capable of such an attack.',
   'brute.time': 'How long guessing the key would take',
   'brute.verdict.week': 'Less than a week',
   'brute.verdict.ttl': 'Longer than the message is even valid',
@@ -399,24 +433,31 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'promise.eyebrow': 'What we promise',
   'promise.title': 'Promises you can check',
   'promise.account.title': 'No account',
-  'promise.account.text': 'You do not sign up and you do not give us an email address or a phone number. The server keeps no record of who sent a message or who opened it.',
+  'promise.account.text':
+    'You do not sign up and you do not give us an email address or a phone number. The server keeps no record of who sent a message or who opened it.',
   'promise.preview.title': 'Link previews do not burn the message',
-  'promise.preview.text': 'Slack, Teams and email scanners do not open the message. Only the recipient’s click uses up an open.',
+  'promise.preview.text':
+    'Slack, Teams and email scanners do not open the message. Only the recipient’s click uses up an open.',
   'promise.logs.title': 'Logs without IPs or links',
-  'promise.logs.text': 'IP addresses, message ids, keys and content never go into the log. The server keeps its abuse limits in memory only.',
+  'promise.logs.text':
+    'IP addresses, message ids, keys and content never go into the log. The server keeps its abuse limits in memory only.',
   'promise.ttl.title': '{days} at most',
-  'promise.ttl.text': 'After the last open or once it expires, the server deletes the ciphertext. After another {days} it forgets the message ever existed.',
+  'promise.ttl.text':
+    'After the last open or once it expires, the server deletes the ciphertext. After another {days} it forgets the message ever existed.',
   'promise.cancel.title': 'Cancel from afar',
-  'promise.cancel.text': 'Sent the link to the wrong person? Cancel the message on the Sent page and see whether anyone has opened it yet.',
+  'promise.cancel.text':
+    'Sent the link to the wrong person? Cancel the message on the Sent page and see whether anyone has opened it yet.',
   'promise.open.title': 'Open code and a verifiable build',
-  'promise.open.text': 'The code, the protocol specification and the test vectors are on GitHub under the MIT license. The same source builds the same binary byte for byte, so anyone can verify a release.',
+  'promise.open.text':
+    'The code, the protocol specification and the test vectors are on GitHub under the MIT license. The same source builds the same binary byte for byte, so anyone can verify a release.',
   'promise.open.link': 'Source code',
 
   'extra.eyebrow': 'Under the hood',
   'extra.title': 'What Nylzo does on top',
   'extra.sub': 'We encrypt with proven standards. On top of that, we watch the traces a message leaves on the server.',
   'extra.stolen.title': 'A stolen server gives away no content',
-  'extra.stolen.text': 'A test that runs with every code change copies the server’s database, files and logs and searches them for keys, content, file names and IP addresses. It must find nothing.',
+  'extra.stolen.text':
+    'A test that runs with every code change copies the server’s database, files and logs and searches them for keys, content, file names and IP addresses. It must find nothing.',
   'extra.stolen.copy': 'Server copy',
   'extra.stolen.found': 'Found: 0',
   'extra.scan.keys': 'Message keys',
@@ -432,16 +473,19 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'extra.scan.times': 'Exact times',
   'extra.scan.times.where': 'to the minute only',
   'extra.signed.title': 'No key, no ciphertext',
-  'extra.signed.text': 'Opening and downloading the ciphertext both need a signature made with the key from the link. Knowing only the message id gets you nothing.',
+  'extra.signed.text':
+    'Opening and downloading the ciphertext both need a signature made with the key from the link. Knowing only the message id gets you nothing.',
   'extra.signed.denied': 'denied',
   'extra.signed.opens': 'opens',
   'extra.padding.title': 'A password and a paragraph look the same',
-  'extra.padding.text': 'We pad the ciphertext to whole 4 KiB blocks, so the server cannot tell a short password from a longer text.',
+  'extra.padding.text':
+    'We pad the ciphertext to whole 4 KiB blocks, so the server cannot tell a short password from a longer text.',
   'extra.padding.short': 'Password',
   'extra.padding.long': 'Long text',
   'extra.padding.server': 'the server sees',
   'extra.forget.title': 'The server forgets',
-  'extra.forget.text': 'It stores no IP addresses, rounds times to the minute and overwrites deleted records with zeros.',
+  'extra.forget.text':
+    'It stores no IP addresses, rounds times to the minute and overwrites deleted records with zeros.',
   'extra.forget.ip': 'not stored',
   'extra.twin.title': 'Two independent implementations',
   'extra.twin.text': 'The web client and the command line each have their own code, and both must pass the same tests.',
@@ -451,7 +495,8 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
 
   'host.eyebrow': 'Self-hosting',
   'host.title': 'Run Nylzo yourself',
-  'host.sub': 'All of Nylzo is a single binary with SQLite and files on disk: no other database and no third-party services. You set the expiry, the limits and the contact on the transparency page.',
+  'host.sub':
+    'All of Nylzo is a single binary with SQLite and files on disk: no other database and no third-party services. You set the expiry, the limits and the contact on the transparency page.',
   'host.point.compose': 'Docker Compose with Caddy, which handles the certificate and TLS on your machine',
   'host.point.signed': 'Signed images and binaries with verifiable provenance',
   'host.point.mit': 'MIT license, so companies can use it too',
@@ -462,9 +507,12 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'host.copy': 'Copy',
   'host.copied': 'Copied',
   'host.copy.label': 'Copy the commands',
-  'host.compose.note': 'Caddy gets a certificate and terminates TLS on your machine. Before you start the image, verify its signature as described in deploy/compose.',
-  'host.binary.note': 'The server listens on port 8080 and stores data in ./data. Keep the pepper safe: without it, every existing link stops working. Runs on Linux and macOS.',
-  'host.verify.note': 'Compares the web client the server sends with the copy inside the binary. Worth running regularly, and from another network.',
+  'host.compose.note':
+    'Caddy gets a certificate and terminates TLS on your machine. Before you start the image, verify its signature as described in deploy/compose.',
+  'host.binary.note':
+    'The server listens on port 8080 and stores data in ./data. Keep the pepper safe: without it, every existing link stops working. Runs on Linux and macOS.',
+  'host.verify.note':
+    'Compares the web client the server sends with the copy inside the binary. Worth running regularly, and from another network.',
 
   'compare.eyebrow': 'Comparison',
   'compare.title': 'How Nylzo compares',
@@ -511,8 +559,10 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
 
   'limits.eyebrow': 'Where our guarantees end',
   'limits.title': 'No encryption protects a compromised device',
-  'limits.sub': 'Malware or someone else with access can read the message before we encrypt it, or right after the recipient opens it.',
-  'limits.diagram': 'Nylzo protects the message in transit and on the server. It cannot protect the sender’s or the recipient’s device.',
+  'limits.sub':
+    'Malware or someone else with access can read the message before we encrypt it, or right after the recipient opens it.',
+  'limits.diagram':
+    'Nylzo protects the message in transit and on the server. It cannot protect the sender’s or the recipient’s device.',
   'limits.you': 'You',
   'limits.server': 'Server',
   'limits.recipient': 'Recipient',
@@ -523,10 +573,12 @@ export const homeEn: Record<keyof typeof homeCs, string> = {
   'limits.link.title': 'Whoever has the link first opens it',
   'limits.link.note': 'That is why the passphrase goes another way.',
   'limits.server.title': 'A compromised server could serve a fake page',
-  'limits.server.note': 'nylzo verify-client checks it. If you would rather not trust the page, send the message from the CLI.',
+  'limits.server.note':
+    'nylzo verify-client checks it. If you would rather not trust the page, send the message from the CLI.',
   'limits.abuse.title': 'Not for scams or malware',
   'limits.abuse.note': 'Nor for any other illegal content.',
-  'limits.liability': 'We are not liable for damage caused by a compromised device, careless sharing of the link or use that breaks the terms.',
+  'limits.liability':
+    'We are not liable for damage caused by a compromised device, careless sharing of the link or use that breaks the terms.',
   'limits.report': 'Report abuse',
 
   'cta.title': 'Got something that does not belong in a chat?',

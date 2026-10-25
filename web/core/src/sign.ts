@@ -77,7 +77,10 @@ export async function newRequestKey(): Promise<CryptoRequestKey> {
   for (let attempt = 1; ; attempt++) {
     try {
       const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify'])) as CryptoKeyPair;
-      return { privateKey: pair.privateKey, publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)) };
+      return {
+        privateKey: pair.privateKey,
+        publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
+      };
     } catch (error) {
       if (attempt >= GENERATE_ATTEMPTS || !failedWith(error, 'OperationError')) {
         throw error;
@@ -115,7 +118,9 @@ export async function signRequest(
     throw new Error('the request key was wiped');
   }
   const signature =
-    'seed' in key ? arrayBufferBacked(ed25519.sign(message, key.seed)) : new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
+    'seed' in key
+      ? arrayBufferBacked(ed25519.sign(message, key.seed))
+      : new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
   return { publicKey: key.publicKey, challenge: arrayBufferBacked(challenge), signature };
 }
 

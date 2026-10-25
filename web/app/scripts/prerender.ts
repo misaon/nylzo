@@ -40,7 +40,9 @@ const imageName = hashed('og-image', 'png', png);
 writeFileSync(join(dist, 'assets', imageName), png);
 const image: OgImage = { path: `/assets/${imageName}`, width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
 
-const { LANGUAGES, splitFontFaces, homeTemplate } = (await import(pathToFileURL(join(root, '.prerender/prerender.js')).href)) as Prerender;
+const { LANGUAGES, splitFontFaces, homeTemplate } = (await import(
+  pathToFileURL(join(root, '.prerender/prerender.js')).href
+)) as Prerender;
 const index = readFileSync(join(dist, 'index.html'), 'utf8');
 const stylesheet = /<link rel="stylesheet"[^>]* href="(\/assets\/[^"]+\.css)"/.exec(index)?.[1] ?? '';
 const { fontFaces, inline } = splitFontFaces(readFileSync(join(dist, stylesheet), 'utf8'));

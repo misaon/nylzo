@@ -18,7 +18,15 @@ import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type MessageState } from '../src/lib/api.ts';
-import { CreateError, POW_BUDGET_MS, createMessage, passphraseIsWeak, validateCreate, type CreateDeps, type CreateInput } from '../src/lib/create.ts';
+import {
+  CreateError,
+  POW_BUDGET_MS,
+  createMessage,
+  passphraseIsWeak,
+  validateCreate,
+  type CreateDeps,
+  type CreateInput,
+} from '../src/lib/create.ts';
 import { KdfWorkerError } from '../src/lib/kdf-protocol.ts';
 import { createReader, type ReaderDeps, type ReadView, type SessionStore } from '../src/lib/read.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from './fake-api.ts';
@@ -120,15 +128,34 @@ function idTextOf(link: string): string {
   return /\/m\/([^#]+)/.exec(link)?.[1] ?? '';
 }
 
-async function storeRaw(api: FakeApi, meta: { text?: string; file?: { name: string; mime: string; size: number } }, file?: Uint8Array): Promise<string> {
+async function storeRaw(
+  api: FakeApi,
+  meta: { text?: string; file?: { name: string; mime: string; size: number } },
+  file?: Uint8Array,
+): Promise<string> {
   const { create } = await api.instance();
   const s = newSecret();
   const keys = await deriveLink(create.id, s);
   const content = await deriveContent(create.id, s, new Uint8Array(0));
-  const object = await seal(content.k, newHeader(KDF_NONE), create.id, { opensMax: 1, ttlSeconds: 3600 }, { meta, file });
+  const object = await seal(
+    content.k,
+    newHeader(KDF_NONE),
+    create.id,
+    { opensMax: 1, ttlSeconds: 3600 },
+    { meta, file },
+  );
   const readKey = await requestKey(keys.r);
   const manageKey = await requestKey(newSecret());
-  await api.create({ id: create.id, idToken: create.idToken, readKey: readKey.publicKey, manageKey: manageKey.publicKey, kdfId: KDF_NONE, opensMax: 1, ttlSeconds: 3600, object });
+  await api.create({
+    id: create.id,
+    idToken: create.idToken,
+    readKey: readKey.publicKey,
+    manageKey: manageKey.publicKey,
+    kdfId: KDF_NONE,
+    opensMax: 1,
+    ttlSeconds: 3600,
+    object,
+  });
   return formatLink('https://nylzo.test', create.id, KDF_NONE, s);
 }
 
@@ -177,7 +204,13 @@ describe('reading a message', () => {
     expect(r.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
     await r.reveal();
     expect(r.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
-    expect(api.calls.slice(api.calls.indexOf('claim'))).toEqual(['claim', 'view:busy', 'view:busy', 'view:revealed', 'ack']);
+    expect(api.calls.slice(api.calls.indexOf('claim'))).toEqual([
+      'claim',
+      'view:busy',
+      'view:busy',
+      'view:revealed',
+      'ack',
+    ]);
     expect(r.dropped()).toBe(1);
     const lease = `nylzo:lease:${idTextOf(created.link)}`;
     expect(r.session.log).toEqual([`set ${lease}`, `remove ${lease}`]);
@@ -187,7 +220,11 @@ describe('reading a message', () => {
     const api = fakeApi();
     const bytes = new Uint8Array(70000).map((_, i) => i % 251);
     const created = await createMessage(
-      input({ text: '', file: { name: 'report.pdf', mime: 'application/pdf', bytes }, passphrase: 'tři slova a ještě čtvrté' }),
+      input({
+        text: '',
+        file: { name: 'report.pdf', mime: 'application/pdf', bytes },
+        passphrase: 'tři slova a ještě čtvrté',
+      }),
       createDeps(api),
     );
     expect(created.link).toContain('#1.1.');
@@ -195,11 +232,19 @@ describe('reading a message', () => {
     await r.load();
     await r.reveal('špatná passphrase tady');
     expect(r.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4, locked: false } });
-    expect(r.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({ view: 'busy', step: 'deriving', fraction: 0 });
+    expect(r.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({
+      view: 'busy',
+      step: 'deriving',
+      fraction: 0,
+    });
     expect(api.stored.get(idTextOf(created.link))?.opensRemaining).toBe(1);
     await r.reveal('tři slova a ještě čtvrté');
     const last = r.last();
-    expect(last?.view === 'revealed' && last.file).toMatchObject({ name: 'report.pdf', mime: 'application/pdf', bytes });
+    expect(last?.view === 'revealed' && last.file).toMatchObject({
+      name: 'report.pdf',
+      mime: 'application/pdf',
+      bytes,
+    });
     expect(api.calls.filter((c) => c.startsWith('claim'))).toEqual(['claim+verifier', 'claim+verifier']);
   });
 
@@ -211,14 +256,23 @@ describe('reading a message', () => {
     await r.reveal('correct horse battery staple');
     expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
     const id = idTextOf(created.link);
-    expect(r.session.log).toEqual([`set nylzo:kdf:${id}`, `remove nylzo:kdf:${id}`, `set nylzo:lease:${id}`, `remove nylzo:lease:${id}`]);
+    expect(r.session.log).toEqual([
+      `set nylzo:kdf:${id}`,
+      `remove nylzo:kdf:${id}`,
+      `set nylzo:lease:${id}`,
+      `remove nylzo:lease:${id}`,
+    ]);
     expect(r.views.filter((v) => v.view === 'busy' && v.step === 'deriving').length).toBeGreaterThan(2);
   });
 
   it('shows only the sanitised file name (SEC-1)', async () => {
     const api = fakeApi();
     const bytes = new TextEncoder().encode('MZ');
-    const link = await storeRaw(api, { file: { name: 'invoice‮fdp.exe', mime: 'application/pdf', size: bytes.length } }, bytes);
+    const link = await storeRaw(
+      api,
+      { file: { name: 'invoice‮fdp.exe', mime: 'application/pdf', size: bytes.length } },
+      bytes,
+    );
     const r = reader(api, link);
     await r.load();
     await r.reveal();
@@ -236,7 +290,12 @@ describe('reading a message', () => {
     options.tombstone = true;
     const later = reader(api, created.link);
     await later.load();
-    expect(later.last()).toEqual({ view: 'ended', state: 'opened', firstOpenedAt: '2026-10-23T10:00:00Z', endedAt: '2026-10-23T10:05:00Z' });
+    expect(later.last()).toEqual({
+      view: 'ended',
+      state: 'opened',
+      firstOpenedAt: '2026-10-23T10:00:00Z',
+      endedAt: '2026-10-23T10:05:00Z',
+    });
   });
 
   it('stops before any verifier when the server reports another profile (AK24)', async () => {
@@ -286,15 +345,23 @@ describe('reading a message', () => {
     const session = memorySession();
     const id = idTextOf(created.link);
     const stored = api.stored.get(id);
-    await api.claim(stored?.request.id ?? new Uint8Array(16), { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey }, {
-      onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
-    });
+    await api.claim(
+      stored?.request.id ?? new Uint8Array(16),
+      { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
+      {
+        onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
+      },
+    );
     const second = reader(api, created.link, { session });
     await second.load();
     expect(second.last()).toMatchObject({ view: 'ready', resumable: true });
     await second.reveal();
     expect(second.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
-    expect(api.calls.filter((c) => c === 'blob' || c === 'ack' || c.startsWith('claim'))).toEqual(['claim', 'blob', 'ack']);
+    expect(api.calls.filter((c) => c === 'blob' || c === 'ack' || c.startsWith('claim'))).toEqual([
+      'claim',
+      'blob',
+      'ack',
+    ]);
     const third = reader(api, created.link);
     await third.load();
     expect(third.last()).toMatchObject({ view: 'ended', state: 'opened' });
@@ -310,10 +377,14 @@ describe('reading a message', () => {
     await first.reveal(passphrase);
     const id = idTextOf(created.link);
     const stored = api.stored.get(id);
-    await api.claim(stored?.request.id ?? new Uint8Array(16), { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey }, {
-      verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-      onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
-    });
+    await api.claim(
+      stored?.request.id ?? new Uint8Array(16),
+      { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
+      {
+        verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
+        onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
+      },
+    );
     const again = reader(api, created.link, { session });
     await again.load();
     await again.reveal('mistyped passphrase here');
@@ -328,7 +399,10 @@ describe('reading a message', () => {
     const r = reader(api, created.link);
     await r.load();
     await r.reveal('nesprávná passphrase');
-    expect(r.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true } });
+    expect(r.last()).toMatchObject({
+      view: 'ready',
+      rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true },
+    });
   });
 
   it('warns after a key derivation that the system ended', async () => {
@@ -352,7 +426,10 @@ describe('reading a message', () => {
     const brokenPath = reader(api, created.link.replace('/m/', '/m/x'));
     await brokenPath.load();
     expect(brokenPath.last()).toEqual({ view: 'invalid' });
-    for (const newerLink of [created.link.replace('#1.', '#2.'), created.link.replace('/m/', '/m/x').replace(/#.*$/, '#10.a.b.c')]) {
+    for (const newerLink of [
+      created.link.replace('#1.', '#2.'),
+      created.link.replace('/m/', '/m/x').replace(/#.*$/, '#10.a.b.c'),
+    ]) {
       const newer = reader(api, newerLink);
       await newer.load();
       expect(newer.last()).toEqual({ view: 'newer' });
@@ -444,18 +521,21 @@ describe('reading through the lease and claim edge cases', () => {
     expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['claim', 'blob']);
   });
 
-  it.each<MessageState>(['cancelled', 'deleted', 'expired', 'opened'])('shows the end state %s when the message ended after the page loaded', async (state) => {
-    const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
-    const r = reader(api, created.link);
-    await r.load();
-    r.session.setItem(leaseKeyOf(created.link), 'stale');
-    storedOf(api, created.link).state = state;
-    await r.reveal();
-    expect(r.last()).toMatchObject({ view: 'ended', state });
-    expect(r.session.map.has(leaseKeyOf(created.link))).toBe(false);
-    expect(await r.report('late')).toEqual({ outcome: 'ignored' });
-  });
+  it.each<MessageState>(['cancelled', 'deleted', 'expired', 'opened'])(
+    'shows the end state %s when the message ended after the page loaded',
+    async (state) => {
+      const api = fakeApi();
+      const created = await createMessage(input(), createDeps(api));
+      const r = reader(api, created.link);
+      await r.load();
+      r.session.setItem(leaseKeyOf(created.link), 'stale');
+      storedOf(api, created.link).state = state;
+      await r.reveal();
+      expect(r.last()).toMatchObject({ view: 'ended', state });
+      expect(r.session.map.has(leaseKeyOf(created.link))).toBe(false);
+      expect(await r.report('late')).toEqual({ outcome: 'ignored' });
+    },
+  );
 
   it.each([
     [429, 'rate_limited', 7],
@@ -545,7 +625,10 @@ describe('leaving the page', () => {
   it('wipes the shown file and drops the read key', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(5000).fill(7);
-    const created = await createMessage(input({ text: '', file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 3 }), createDeps(api));
+    const created = await createMessage(
+      input({ text: '', file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 3 }),
+      createDeps(api),
+    );
     const r = reader(api, created.link);
     await r.load();
     await r.reveal();
@@ -591,7 +674,10 @@ describe('leaving the page', () => {
   it('keeps the message off the page when a deletion answers after the page was left', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(5000).fill(7);
-    const created = await createMessage(input({ file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 2 }), createDeps(api));
+    const created = await createMessage(
+      input({ file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 2 }),
+      createDeps(api),
+    );
     const r = reader(api, created.link);
     await r.load();
     await r.reveal();
@@ -615,7 +701,10 @@ describe('leaving the page', () => {
   it('keeps a reveal that finishes after the page was left off the page, and a reload resumes it without another open', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(5000).fill(7);
-    const created = await createMessage(input({ text: 'later', file: { name: 'a.pdf', mime: 'application/pdf', bytes } }), createDeps(api));
+    const created = await createMessage(
+      input({ text: 'later', file: { name: 'a.pdf', mime: 'application/pdf', bytes } }),
+      createDeps(api),
+    );
     const session = memorySession();
     const r = reader(api, created.link, { session });
     await r.load();
@@ -686,7 +775,12 @@ describe('creating a message', () => {
     const api = fakeApi({ pow: { required: true, difficulty: 2 } });
     const deps = createDeps(api);
     await createMessage(input({ passphrase: 'correct horse battery staple' }), deps);
-    expect(api.calls.filter((c) => c === 'instance' || c === 'solve' || c === 'create')).toEqual(['instance', 'instance', 'solve', 'create']);
+    expect(api.calls.filter((c) => c === 'instance' || c === 'solve' || c === 'create')).toEqual([
+      'instance',
+      'instance',
+      'solve',
+      'create',
+    ]);
     expect(deps.powCalls).toEqual([{ challenge: api.challenges[1], difficulty: 2, deadline: 1_000 + POW_BUDGET_MS }]);
     const [message] = api.stored.values();
     expect(message?.request.powToken).toMatch(new RegExp(`^${api.challenges[1]}\\.[0-9a-f]{16}$`));
@@ -730,9 +824,14 @@ describe('creating a message', () => {
 
   it('maps rate limits and refuses invalid input before any key is made', async () => {
     const limited = fakeApi({ failCreate: [new ApiError(429, 'rate_limited', 30)] });
-    await expect(createMessage(input(), createDeps(limited))).rejects.toMatchObject({ failure: { kind: 'rate_limited', retryAfter: 30 } });
+    await expect(createMessage(input(), createDeps(limited))).rejects.toMatchObject({
+      failure: { kind: 'rate_limited', retryAfter: 30 },
+    });
     const api = fakeApi();
-    const error = await createMessage(input({ text: '', passphrase: 'short', opensMax: 0, ttlSeconds: 30 }), createDeps(api)).catch((e: unknown) => e);
+    const error = await createMessage(
+      input({ text: '', passphrase: 'short', opensMax: 0, ttlSeconds: 30 }),
+      createDeps(api),
+    ).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(CreateError);
     expect((error as CreateError).failure).toEqual({
       kind: 'invalid',
@@ -749,9 +848,16 @@ describe('creating a message', () => {
   it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
     const api = fakeApi();
     const failing = { ...createDeps(api), scrypt: async () => Promise.reject(new KdfWorkerError()) };
-    await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), failing)).rejects.toMatchObject({ failure: { kind: 'kdf' } });
-    const renamed = { ...createDeps(api), scrypt: async () => Promise.reject(Object.assign(new Error('worker'), { name: 'KdfWorkerError' })) };
-    await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), renamed)).rejects.toMatchObject({ failure: { kind: 'failed' } });
+    await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), failing)).rejects.toMatchObject({
+      failure: { kind: 'kdf' },
+    });
+    const renamed = {
+      ...createDeps(api),
+      scrypt: async () => Promise.reject(Object.assign(new Error('worker'), { name: 'KdfWorkerError' })),
+    };
+    await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), renamed)).rejects.toMatchObject({
+      failure: { kind: 'failed' },
+    });
     api.create = async () => Promise.reject(new TooLargeError());
     await expect(createMessage(input(), createDeps(api))).rejects.toMatchObject({ failure: { kind: 'too_large' } });
   });
@@ -764,7 +870,9 @@ describe('creating a message', () => {
       { field: 'opens', code: 'out_of_range' },
     ]);
     expect(validateCreate(input({ passphrase: 'correct horse battery staple' }), limits)).toEqual([]);
-    expect(validateCreate(input({ passphrase: '\ud800 twelve chars' }), limits)).toEqual([{ field: 'passphrase', code: 'malformed' }]);
+    expect(validateCreate(input({ passphrase: '\ud800 twelve chars' }), limits)).toEqual([
+      { field: 'passphrase', code: 'malformed' },
+    ]);
   });
 
   it('warns unless the passphrase has 16 characters and 4 words (D37)', () => {
@@ -971,8 +1079,12 @@ describe('remembering the manage key (D39)', () => {
 describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
   it('reads, deletes and wipes the fallback seed only once no request needs it', async () => {
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
-      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    const refuse = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation(((...args: Parameters<typeof importKey>) =>
+        args[0] === 'pkcs8'
+          ? Promise.reject(new DOMException('refused', 'DataError'))
+          : importKey(...args)) as typeof crypto.subtle.importKey);
     try {
       const api = fakeApi();
       const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
@@ -1004,8 +1116,12 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
 
   it('wipes the fallback seed once the shown message can be neither deleted nor reported', async () => {
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
-      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    const refuse = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation(((...args: Parameters<typeof importKey>) =>
+        args[0] === 'pkcs8'
+          ? Promise.reject(new DOMException('refused', 'DataError'))
+          : importKey(...args)) as typeof crypto.subtle.importKey);
     try {
       const api = fakeApi();
       const created = await createMessage(input(), createDeps(api));
@@ -1027,8 +1143,12 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
 
   it('keeps the fallback seed for an ack that is still on its way when the page is left', async () => {
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((...args: Parameters<typeof importKey>) =>
-      args[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...args)) as typeof crypto.subtle.importKey);
+    const refuse = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation(((...args: Parameters<typeof importKey>) =>
+        args[0] === 'pkcs8'
+          ? Promise.reject(new DOMException('refused', 'DataError'))
+          : importKey(...args)) as typeof crypto.subtle.importKey);
     try {
       const api = fakeApi();
       const created = await createMessage(input(), createDeps(api));

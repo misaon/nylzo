@@ -25,7 +25,8 @@ function withoutNonceMeta(): Plugin {
   };
 }
 
-const PRELOADED_FONTS = /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/;
+const PRELOADED_FONTS =
+  /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/;
 
 function preloadFonts(): Plugin {
   return {
