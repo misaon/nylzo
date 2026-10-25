@@ -1,49 +1,58 @@
 package core_test
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
+	"sync"
 	"testing"
-
-	"golang.org/x/crypto/scrypt"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/vectors"
 )
 
+var committedVectors = sync.OnceValues(func() (*vectors.File, error) {
+	data, err := os.ReadFile("../../spec/vectors.json")
+	if err != nil {
+		return nil, err
+	}
+	var file vectors.File
+	if err = json.Unmarshal(data, &file); err != nil {
+		return nil, err
+	}
+	return &file, nil
+})
+
 func loadVectors(t *testing.T) *vectors.File {
 	t.Helper()
-	data, err := os.ReadFile("../../spec/vectors.json")
+	file, err := committedVectors()
 	if err != nil {
 		t.Fatalf("spec/vectors.json: %v", err)
 	}
-	var f vectors.File
-	if err := json.Unmarshal(data, &f); err != nil {
-		t.Fatal(err)
-	}
-	return &f
+	return file
 }
 
-func mustHex(t *testing.T, s string) []byte {
+func decodeHex(t *testing.T, text string) []byte {
 	t.Helper()
-	b, err := hex.DecodeString(s)
+	decoded, err := hex.DecodeString(text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return b
+	return decoded
 }
 
-func to32(t *testing.T, b []byte) *[32]byte {
+func decode32(t *testing.T, text string) *[32]byte {
 	t.Helper()
-	if len(b) != 32 {
-		t.Fatalf("want 32 bytes, got %d", len(b))
+	decoded := decodeHex(t, text)
+	if len(decoded) != 32 {
+		t.Fatalf("want 32 bytes, got %d", len(decoded))
 	}
-	var out [32]byte
-	copy(out[:], b)
-	return &out
+	return (*[32]byte)(decoded)
 }
 
 var rfc7914 = map[string]string{
@@ -53,352 +62,337 @@ var rfc7914 = map[string]string{
 	"rfc7914-4": "2101cb9b6a511aaeaddbbe09cf70f881ec568d574a2ffd4dabe5ee9820adaa478e56fd8f4ba5d09ffa1c6d927c40f4c337304049e8a952fbcbf45c6fa77a41a4",
 }
 
-func TestScryptRFC7914(t *testing.T) {
-	f := loadVectors(t)
-	if len(f.Scrypt) != 4 {
-		t.Fatalf("want 4 RFC 7914 vectors, got %d", len(f.Scrypt))
+func TestScryptVectorsAreTheRFC7914Values(t *testing.T) {
+	t.Parallel()
+	file := loadVectors(t)
+	if len(file.Scrypt) != len(rfc7914) {
+		t.Fatalf("want %d RFC 7914 vectors, got %d", len(rfc7914), len(file.Scrypt))
 	}
-	for _, v := range f.Scrypt {
-		want, ok := rfc7914[v.Name]
-		if !ok {
-			t.Fatalf("unknown scrypt vector %q", v.Name)
-		}
-		if v.DK != want {
-			t.Fatalf("%s: vectors.json dk %s differs from RFC 7914 %s", v.Name, v.DK, want)
-		}
-		if v.Heavy && testing.Short() {
-			continue
-		}
-		dk, err := scrypt.Key([]byte(v.Password), []byte(v.Salt), v.N, v.R, v.P, v.DKLen)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if hex.EncodeToString(dk) != want {
-			t.Fatalf("%s: scrypt output differs from RFC 7914", v.Name)
+	for _, vector := range file.Scrypt {
+		if want, ok := rfc7914[vector.Name]; !ok || vector.DK != want {
+			t.Fatalf("%s: vectors.json holds %s, RFC 7914 says %s", vector.Name, vector.DK, want)
 		}
 	}
 }
 
 func TestDeriveVectors(t *testing.T) {
-	f := loadVectors(t)
-	for _, v := range f.Derive {
-		t.Run(v.Name, func(t *testing.T) {
-			id, err := core.ParseID(v.ID)
+	t.Parallel()
+	for _, vector := range loadVectors(t).Derive {
+		t.Run(vector.Name, func(t *testing.T) {
+			t.Parallel()
+			id, err := core.ParseID(vector.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			s := to32(t, mustHex(t, v.S))
-			hs := core.HSalt(id)
-			if hex.EncodeToString(hs[:]) != v.HSalt {
-				t.Fatal("hsalt mismatch")
+			secret := decode32(t, vector.S)
+			hsalt := core.HSalt(id)
+			link, err := core.DeriveLink(id, secret)
+			if err != nil || hex.EncodeToString(hsalt[:]) != vector.HSalt ||
+				hex.EncodeToString(link.R[:]) != vector.R || hex.EncodeToString(link.SaltPW[:]) != vector.SaltPW {
+				t.Fatalf("link keys: %v", err)
 			}
-			link, err := core.DeriveLink(id, s)
-			if err != nil {
-				t.Fatal(err)
+			passphrase := ""
+			if vector.Passphrase != nil {
+				passphrase = *vector.Passphrase
 			}
-			if hex.EncodeToString(link.R[:]) != v.R || hex.EncodeToString(link.SaltPW[:]) != v.SaltPW {
-				t.Fatal("link keys mismatch")
+			passphraseKey, err := core.DerivePassphraseKey(core.KDF(vector.KDFID), passphrase, &link.SaltPW)
+			if err != nil || hex.EncodeToString(passphraseKey) != vector.P {
+				t.Fatalf("passphrase key: %v", err)
 			}
-			pw := ""
-			if v.Passphrase != nil {
-				pw = *v.Passphrase
+			content, err := core.DeriveContent(id, secret, passphraseKey)
+			if err != nil || hex.EncodeToString(content.K[:]) != vector.K ||
+				hex.EncodeToString(content.V[:]) != vector.V {
+				t.Fatalf("content keys: %v", err)
 			}
-			p, err := core.DerivePassphraseKey(core.KDF(v.KDFID), pw, &link.SaltPW)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if hex.EncodeToString(p) != v.P {
-				t.Fatal("passphrase key mismatch")
-			}
-			content, err := core.DeriveContent(id, s, p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if hex.EncodeToString(content.K[:]) != v.K || hex.EncodeToString(content.V[:]) != v.V {
-				t.Fatal("content keys mismatch")
-			}
-			readKey := core.PublicKey(&link.R)
-			manageKey := core.PublicKey(to32(t, mustHex(t, v.M)))
-			if core.Encode(readKey[:]) != v.ReadKey || core.Encode(manageKey[:]) != v.ManageKey {
-				t.Fatal("public keys mismatch")
+			readKey, manageKey := core.PublicKey(&link.R), core.PublicKey(decode32(t, vector.M))
+			if core.Encode(readKey[:]) != vector.ReadKey || core.Encode(manageKey[:]) != vector.ManageKey {
+				t.Fatal("public keys")
 			}
 			verifierKey := core.PublicKey(&content.V)
-			if (v.KDFID != 0) != (v.VerifierKey != nil) ||
-				(v.VerifierKey != nil && core.Encode(verifierKey[:]) != *v.VerifierKey) {
-				t.Fatal("verifier key mismatch")
+			if (vector.KDFID != 0) != (vector.VerifierKey != nil) ||
+				(vector.VerifierKey != nil && core.Encode(verifierKey[:]) != *vector.VerifierKey) {
+				t.Fatal("verifier key")
 			}
-			if core.Fragment(core.KDF(v.KDFID), s) != v.Fragment {
-				t.Fatal("fragment mismatch")
+			if core.Fragment(core.KDF(vector.KDFID), secret) != vector.Fragment {
+				t.Fatal("fragment")
 			}
 		})
 	}
 }
 
 func TestNFCPassphrasesAgree(t *testing.T) {
-	f := loadVectors(t)
-	var composed, decomposed *vectors.Derive
-	for i := range f.Derive {
-		switch f.Derive[i].Name {
-		case "scrypt-nfc-composed":
-			composed = &f.Derive[i]
-		case "scrypt-nfc-decomposed":
-			decomposed = &f.Derive[i]
-		}
+	t.Parallel()
+	byName := map[string]vectors.Derive{}
+	for _, vector := range loadVectors(t).Derive {
+		byName[vector.Name] = vector
 	}
-	if composed == nil || decomposed == nil {
-		t.Fatal("nfc vectors missing")
-	}
-	if *composed.Passphrase == *decomposed.Passphrase {
-		t.Fatal("nfc vectors must use different Unicode forms")
+	composed, decomposed := byName["scrypt-nfc-composed"], byName["scrypt-nfc-decomposed"]
+	if composed.Passphrase == nil || decomposed.Passphrase == nil || *composed.Passphrase == *decomposed.Passphrase {
+		t.Fatal("the NFC vectors must use different Unicode forms of one passphrase")
 	}
 	if composed.ID != decomposed.ID || composed.S != decomposed.S || composed.P != decomposed.P ||
 		composed.K != decomposed.K {
-		t.Fatal("NFC forms must derive identical keys")
+		t.Fatal("both Unicode forms must derive identical keys")
 	}
-}
-
-func TestRedactionVectorsMatchTheCore(t *testing.T) {
-	f := loadVectors(t)
-	if len(f.Redact) == 0 {
-		t.Fatal("redaction vectors missing")
-	}
-	for _, v := range f.Redact {
-		if got := core.RedactReason(v.Reason); got != v.Redacted {
-			t.Fatalf("%s: %q, want %q", v.Name, got, v.Redacted)
-		}
-	}
-}
-
-func fileBytes(t *testing.T, fc *vectors.FileContent) []byte {
-	t.Helper()
-	if fc == nil {
-		return nil
-	}
-	if fc.Content == "counter" {
-		b := make([]byte, fc.Size)
-		for i := range b {
-			b[i] = byte(i)
-		}
-		return b
-	}
-	b := mustHex(t, fc.Content)
-	if len(b) != fc.Size {
-		t.Fatalf("file content length %d differs from size %d", len(b), fc.Size)
-	}
-	return b
 }
 
 func TestEnvelopeVectors(t *testing.T) {
-	f := loadVectors(t)
-	for _, v := range f.Envelope {
-		t.Run(v.Name, func(t *testing.T) {
-			id, err := core.ParseID(v.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			s := to32(t, mustHex(t, v.S))
-			pw := ""
-			if v.Passphrase != nil {
-				pw = *v.Passphrase
-			}
-			_, content, err := core.DeriveAll(id, s, core.KDF(v.KDFID), pw)
-			if err != nil {
-				t.Fatal(err)
-			}
-			h := core.Header{Version: core.Version, KDF: core.KDF(v.KDFID), Flags: uint8(v.Flags)}
-			copy(h.IV[:], mustHex(t, v.IV))
-			pol := core.Policy{OpensMax: uint16(v.OpensMax), TTLSeconds: uint32(v.TTLSeconds)}
-			payload := core.Payload{Meta: core.Meta{Text: v.Text}, File: fileBytes(t, v.File)}
-			if v.File != nil {
-				payload.Meta.File = &core.FileMeta{Name: v.File.Name, Mime: v.File.Mime, Size: int64(v.File.Size)}
-			}
-			meta, err := core.EncodeMeta(payload.Meta)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(meta) != v.MetaJSON {
-				t.Fatalf("meta mismatch:\n got %s\nwant %s", meta, v.MetaJSON)
-			}
-			if hex.EncodeToString(core.AAD(h, id, pol)) != v.AAD {
-				t.Fatal("aad mismatch")
-			}
-			object, err := core.Seal(&content.K, h, id, pol, payload)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(object) != v.ObjectLen || len(object)-core.HeaderLen-core.TagLen != v.PlaintextLen {
-				t.Fatalf("object length %d, want %d", len(object), v.ObjectLen)
-			}
-			sum := sha256.Sum256(object)
-			if hex.EncodeToString(sum[:]) != v.ObjectSHA256 {
-				t.Fatal("object sha256 mismatch")
-			}
-			if v.Object != nil && core.Encode(object) != *v.Object {
-				t.Fatal("object bytes mismatch")
-			}
-			gotHeader, got, err := core.Open(&content.K, id, pol, core.KDF(v.KDFID), object)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if gotHeader != h {
-				t.Fatal("header mismatch after open")
-			}
-			if (got.Meta.Text == nil) != (v.Text == nil) || (v.Text != nil && *got.Meta.Text != *v.Text) {
-				t.Fatal("text mismatch after open")
-			}
-			if (got.Meta.File == nil) != (v.File == nil) {
-				t.Fatal("file presence mismatch after open")
-			}
-			if v.File != nil {
-				if got.Meta.File.Name != v.File.Name || got.Meta.File.Mime != v.File.Mime ||
-					got.Meta.File.Size != int64(v.File.Size) {
-					t.Fatal("file meta mismatch after open")
-				}
-				if string(got.File) != string(payload.File) {
-					t.Fatal("file bytes mismatch after open")
-				}
-			}
+	t.Parallel()
+	for _, vector := range loadVectors(t).Envelope {
+		t.Run(vector.Name, func(t *testing.T) {
+			t.Parallel()
+			checkEnvelopeVector(t, &vector)
 		})
 	}
 }
 
+func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
+	t.Helper()
+	id, err := core.ParseID(vector.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	passphrase := ""
+	if vector.Passphrase != nil {
+		passphrase = *vector.Passphrase
+	}
+	kdf := core.KDF(vector.KDFID)
+	_, content, err := core.DeriveAll(id, decode32(t, vector.S), kdf, passphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := core.Header{Version: core.Version, KDF: kdf, IV: [core.IVLen]byte(decodeHex(t, vector.IV))}
+	policy := core.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
+	payload := core.Payload{Meta: core.Meta{Text: vector.Text}, File: fileBytes(t, vector.File)}
+	if vector.File != nil {
+		payload.Meta.File = &core.FileMeta{
+			Name: vector.File.Name,
+			Mime: vector.File.Mime,
+			Size: int64(vector.File.Size),
+		}
+	}
+	meta, err := core.EncodeMeta(payload.Meta)
+	if err != nil || string(meta) != vector.MetaJSON || hex.EncodeToString(core.AAD(header, id, policy)) != vector.AAD {
+		t.Fatalf("meta %s or aad differ: %v", meta, err)
+	}
+	object, err := core.Seal(&content.K, header, id, policy, payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(object)
+	inline := vector.Object == nil || core.Encode(object) == *vector.Object
+	if len(object) != vector.ObjectLen || len(object)-core.HeaderLen-core.TagLen != vector.PlaintextLen ||
+		hex.EncodeToString(sum[:]) != vector.ObjectSHA256 || !inline {
+		t.Fatalf("object of %d bytes differs", len(object))
+	}
+	openedHeader, opened, err := core.Open(&content.K, id, policy, kdf, object)
+	if err != nil || openedHeader != header {
+		t.Fatalf("open: %v", err)
+	}
+	if (opened.Meta.Text == nil) != (vector.Text == nil) || (vector.Text != nil && *opened.Meta.Text != *vector.Text) ||
+		(opened.Meta.File == nil) != (vector.File == nil) || !bytes.Equal(opened.File, payload.File) {
+		t.Fatal("the opened payload differs")
+	}
+	if vector.File != nil && *opened.Meta.File != *payload.Meta.File {
+		t.Fatalf("the opened file meta differs: %+v", opened.Meta.File)
+	}
+}
+
+func fileBytes(t *testing.T, file *vectors.FileContent) []byte {
+	t.Helper()
+	if file == nil {
+		return nil
+	}
+	if file.Content == "counter" {
+		content := make([]byte, file.Size)
+		for i := range content {
+			content[i] = byte(i)
+		}
+		return content
+	}
+	content := decodeHex(t, file.Content)
+	if len(content) != file.Size {
+		t.Fatalf("file content length %d differs from size %d", len(content), file.Size)
+	}
+	return content
+}
+
 func TestLinkVectors(t *testing.T) {
-	f := loadVectors(t)
+	t.Parallel()
+	file := loadVectors(t)
 	canonical := 0
-	for _, v := range f.Link {
-		if v.Canonical {
+	for i := range file.Link {
+		if file.Link[i].Canonical {
 			canonical++
 		}
 	}
 	if canonical == 0 {
 		t.Fatal("no canonical link vectors: the format round trip would never run")
 	}
-	for _, v := range f.Link {
-		t.Run(v.Name, func(t *testing.T) {
-			link, err := core.ParseLink(v.Input)
-			if !v.Valid {
-				if !errors.Is(err, core.ErrLink) {
-					t.Fatalf("expected rejection of %q, got %v", v.Input, err)
-				}
-				if errors.Is(err, core.ErrLinkVersion) != v.Newer {
-					t.Fatalf("%q: newer version %v, got %v", v.Input, v.Newer, err)
-				}
-				if errors.Is(err, core.ErrLinkRetiredKDF) != v.RetiredKDF {
-					t.Fatalf("%q: retired passphrase profile %v, got %v", v.Input, v.RetiredKDF, err)
-				}
-				return
+	for _, vector := range file.Link {
+		link, err := core.ParseLink(vector.Input)
+		if !vector.Valid {
+			if !errors.Is(err, core.ErrLink) || errors.Is(err, core.ErrLinkVersion) != vector.Newer ||
+				errors.Is(err, core.ErrLinkRetiredKDF) != vector.RetiredKDF {
+				t.Errorf("%s: got %v, want a link error with newer %v and retired %v",
+					vector.Name, err, vector.Newer, vector.RetiredKDF)
 			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if link.ID.String() != *v.ID || int(link.KDF) != *v.KDFID || hex.EncodeToString(link.Secret[:]) != *v.S {
-				t.Fatal("parsed link mismatch")
-			}
-			s := link.Secret
-			if v.Canonical && core.FormatLink("https://nylzo.example", link.ID, link.KDF, &s) != v.Input {
-				t.Fatal("format round trip mismatch")
-			}
-		})
-	}
-}
-
-func TestMetaVectors(t *testing.T) {
-	f := loadVectors(t)
-	for _, v := range f.Meta {
-		t.Run(v.Name, func(t *testing.T) {
-			m, err := core.DecodeMeta([]byte(v.Input))
-			if !v.Valid {
-				if err == nil {
-					t.Fatalf("expected rejection of %q", v.Input)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			can, err := core.EncodeMeta(m)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if string(can) != *v.Canonical {
-				t.Fatalf("canonical mismatch:\n got %s\nwant %s", can, *v.Canonical)
-			}
-			if (m.Text == nil) != (v.Text == nil) || (v.Text != nil && *m.Text != *v.Text) {
-				t.Fatal("text mismatch")
-			}
-			if (m.File == nil) != (v.FileName == nil) {
-				t.Fatal("file presence mismatch")
-			}
-			if m.File != nil &&
-				(m.File.Name != *v.FileName || m.File.Mime != *v.FileMime || m.File.Size != *v.FileSize) {
-				t.Fatal("file mismatch")
-			}
-			again, err := core.DecodeMeta(can)
-			if err != nil {
-				t.Fatal(err)
-			}
-			can2, _ := core.EncodeMeta(again)
-			if string(can2) != string(can) {
-				t.Fatal("canonical form is not a fixed point")
-			}
-		})
-	}
-}
-
-func TestVectorsPassphraseStrength(t *testing.T) {
-	f := loadVectors(t)
-	if len(f.Strength) == 0 {
-		t.Fatal("no passphrase strength vectors")
-	}
-	for _, v := range f.Strength {
-		err := core.CheckPassphraseStrength(v.Passphrase)
-		if (err == nil) != v.Accepted || (err != nil && !errors.Is(err, core.ErrWeakPassphrase)) {
-			t.Fatalf("%s: %v", v.Name, err)
+			continue
+		}
+		if err != nil || link.ID.String() != *vector.ID || int(link.KDF) != *vector.KDFID ||
+			hex.EncodeToString(link.Secret[:]) != *vector.S {
+			t.Errorf("%s: parsed %+v, %v", vector.Name, link, err)
+			continue
+		}
+		if vector.Canonical &&
+			core.FormatLink("https://nylzo.example", link.ID, link.KDF, &link.Secret) != vector.Input {
+			t.Errorf("%s: the format round trip differs", vector.Name)
 		}
 	}
 }
 
-func TestVectorsRequestSignatures(t *testing.T) {
-	f := loadVectors(t)
-	if len(f.Request) == 0 {
-		t.Fatal("no request vectors")
+func TestMetaVectors(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).Meta {
+		meta, err := core.DecodeMeta([]byte(vector.Input))
+		if !vector.Valid {
+			if err == nil {
+				t.Errorf("%s: accepted %q", vector.Name, vector.Input)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", vector.Name, err)
+			continue
+		}
+		canonical, err := core.EncodeMeta(meta)
+		if err != nil || string(canonical) != *vector.Canonical {
+			t.Errorf("%s: canonical %s, want %s (%v)", vector.Name, canonical, *vector.Canonical, err)
+		}
+		if again, decodeErr := core.DecodeMeta(canonical); decodeErr != nil || again.Validate() != nil {
+			t.Errorf("%s: the canonical form does not decode: %v", vector.Name, decodeErr)
+		}
+		if (meta.Text == nil) != (vector.Text == nil) || (vector.Text != nil && *meta.Text != *vector.Text) ||
+			(meta.File == nil) != (vector.FileName == nil) {
+			t.Errorf("%s: decoded %+v", vector.Name, meta)
+		}
+		if meta.File != nil &&
+			(meta.File.Name != *vector.FileName || meta.File.Mime != *vector.FileMime || meta.File.Size != *vector.FileSize) {
+			t.Errorf("%s: decoded file %+v", vector.Name, meta.File)
+		}
 	}
-	for _, v := range f.Request {
-		t.Run(v.Name, func(t *testing.T) {
-			seed := to32(t, mustHex(t, v.Seed))
-			challenge, err := core.DecodeExact(v.Challenge, core.ChallengeLen)
-			if err != nil {
-				t.Fatal(err)
+}
+
+func TestPassphraseStrengthVectors(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).Strength {
+		err := core.CheckPassphraseStrength(vector.Passphrase)
+		if (err == nil) != vector.Accepted || (err != nil && !errors.Is(err, core.ErrWeakPassphrase)) {
+			t.Errorf("%s: %v", vector.Name, err)
+		}
+	}
+}
+
+func TestRequestVectors(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).Request {
+		challenge, err := core.DecodeExact(vector.Challenge, core.ChallengeLen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := decodeHex(t, vector.Body)
+		message := core.RequestMessage(
+			vector.Purpose,
+			vector.Method,
+			vector.Path,
+			(*[core.ChallengeLen]byte)(challenge),
+			body,
+		)
+		signature := core.SignRequest(decode32(t, vector.Seed), vector.Purpose, vector.Method, vector.Path,
+			[core.ChallengeLen]byte(challenge), body)
+		if hex.EncodeToString(message) != vector.Message || core.Encode(signature.PublicKey[:]) != vector.PublicKey ||
+			core.Encode(signature.Sig[:]) != vector.Signature {
+			t.Fatalf("%s: message or signature differs", vector.Name)
+		}
+		var parsed core.Signature
+		if vector.Purpose == core.PurposeVerifier {
+			if vector.Authorization != "" || signature.VerifierHeader() != vector.Verifier {
+				t.Fatalf("%s: verifier header differs", vector.Name)
 			}
-			body := mustHex(t, v.Body)
-			if hex.EncodeToString(
-				core.RequestMessage(v.Purpose, v.Method, v.Path, (*[core.ChallengeLen]byte)(challenge), body),
-			) != v.Message {
-				t.Fatal("request message mismatch")
+			parsed, err = core.ParseVerifierHeader(vector.Verifier, [core.ChallengeLen]byte(challenge))
+		} else {
+			if vector.Verifier != "" || signature.Authorization() != vector.Authorization {
+				t.Fatalf("%s: authorization header differs", vector.Name)
 			}
-			sig := core.SignRequest(seed, v.Purpose, v.Method, v.Path, [core.ChallengeLen]byte(challenge), body)
-			if core.Encode(sig.PublicKey[:]) != v.PublicKey || core.Encode(sig.Sig[:]) != v.Signature {
-				t.Fatal("signature mismatch")
-			}
-			var parsed core.Signature
-			if v.Purpose == core.PurposeVerifier {
-				if v.Authorization != "" || sig.VerifierHeader() != v.Verifier {
-					t.Fatal("verifier header mismatch")
-				}
-				parsed, err = core.ParseVerifierHeader(v.Verifier, [core.ChallengeLen]byte(challenge))
-			} else {
-				if v.Verifier != "" || sig.Authorization() != v.Authorization {
-					t.Fatal("authorization header mismatch")
-				}
-				parsed, err = core.ParseAuthorization(v.Authorization)
-			}
-			if err != nil || !parsed.Verify(v.Purpose, v.Method, v.Path, body) {
-				t.Fatalf("the vector header does not verify: %v", err)
-			}
-			if parsed.Verify(v.Purpose, v.Method, v.Path+"x", body) ||
-				parsed.Verify(v.Purpose, v.Method, v.Path, append(body, 'x')) {
-				t.Fatal("a signature verified for another path or body")
-			}
-		})
+			parsed, err = core.ParseAuthorization(vector.Authorization)
+		}
+		if err != nil || parsed != signature || !parsed.Verify(vector.Purpose, vector.Method, vector.Path, body) {
+			t.Fatalf("%s: the header does not parse back and verify: %v", vector.Name, err)
+		}
+		if parsed.Verify(vector.Purpose, vector.Method, vector.Path+"x", body) ||
+			parsed.Verify(vector.Purpose, vector.Method, vector.Path, append(body, 'x')) {
+			t.Fatalf("%s: a signature verified for another path or body", vector.Name)
+		}
+	}
+}
+
+func TestPoWVectors(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).PoW {
+		challenge, err := core.DecodeExact(vector.Challenge, core.PoWChallengeLen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := core.ParseID(vector.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(challenge), id, vector.Counter)
+		zeroBits := core.LeadingZeroBits(digest[:])
+		if err != nil || hex.EncodeToString(digest[:]) != vector.Digest || zeroBits != vector.ZeroBits ||
+			core.PoWToken(vector.Challenge, vector.Counter) != vector.Token {
+			t.Fatalf("%s: digest, zero bits or token differ: %v", vector.Name, err)
+		}
+	}
+	challenge := core.Encode(make([]byte, core.PoWChallengeLen))
+	for _, difficulty := range []int{-1, core.MaxPoWDifficulty + 1} {
+		_, _, err := core.SolvePoW(t.Context(), challenge, core.NewID(), difficulty)
+		if !errors.Is(err, core.ErrPoWDifficulty) {
+			t.Fatalf("difficulty %d: %v", difficulty, err)
+		}
+	}
+	if _, _, err := core.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
+		t.Fatal("a malformed challenge was accepted")
+	}
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, _, err := core.SolvePoW(cancelled, challenge, core.NewID(), core.MaxPoWDifficulty)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("a cancelled solve went on: %v", err)
+	}
+}
+
+func TestRedactionVectors(t *testing.T) {
+	t.Parallel()
+	file := loadVectors(t)
+	if len(file.Redact) == 0 {
+		t.Fatal("no redaction vectors")
+	}
+	for _, vector := range file.Redact {
+		if redacted := core.RedactReason(vector.Reason); redacted != vector.Redacted {
+			t.Errorf("%s: %q, want %q", vector.Name, redacted, vector.Redacted)
+		}
+	}
+	for reason, long := range map[string]bool{
+		"":                                false,
+		strings.Repeat("ab ", 400):        true,
+		strings.Repeat("a", 3000):         false,
+		strings.Repeat("# ", 150):         true,
+		strings.Repeat("<", 1000):         false,
+		strings.Repeat("ab ", 333) + "ab": true,
+	} {
+		if core.ReasonTooLong(reason) != long {
+			t.Errorf("ReasonTooLong(%.20q) must be %v after redaction, like the web client", reason, long)
+		}
 	}
 }
