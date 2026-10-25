@@ -9,7 +9,7 @@
   import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
   import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
-  import { keepFocus } from '../../shared/ui/focus.ts';
+  import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
   import { type CancelOutcome, createSentPage, type ItemState, type SentItem, type SentView } from './sent-page.ts';
 
   type Confirming = { readonly kind: 'cancel' | 'forget'; readonly id: string } | { readonly kind: 'forget_all' };
@@ -30,6 +30,8 @@
   let confirming = $state.raw<Confirming>();
   let cancelled = $state.raw<CancelOutcome>();
   let storageFailed = $state(false);
+  const focus = new FocusTargets<string>();
+  const dialog = $derived(confirming ? DIALOGS[confirming.kind] : undefined);
 
   const sent = createSentPage({ api: createApi(), store: browserSentStore(), now: () => Date.now() }, (next) => {
     view = next;
@@ -58,7 +60,7 @@
     }
   });
 
-  sent.load();
+  void sent.load();
 
   const time = (value: string | number) =>
     formatTime(typeof value === 'number' ? new Date(value).toISOString() : value, translator.language);
@@ -111,7 +113,7 @@
 
   async function afterAction(id?: string) {
     await tick();
-    keepFocus(document.getElementById(id && document.getElementById(headingId(id)) ? headingId(id) : 'sent-title'));
+    keepFocus((id === undefined ? undefined : focus.get(headingId(id))) ?? focus.get('title'));
   }
 
   async function run(action: () => Promise<unknown>, id?: string) {
@@ -127,14 +129,14 @@
   function dismissed() {
     const current = confirming;
     confirming = undefined;
-    afterAction(current && current.kind !== 'forget_all' ? current.id : undefined);
+    void afterAction(current && current.kind !== 'forget_all' ? current.id : undefined);
   }
 
   function askForget(item: SentItem) {
     if (item.cancellable) {
       confirming = { kind: 'forget', id: item.id };
     } else {
-      run(() => sent.forget(item.id));
+      void run(() => sent.forget(item.id));
     }
   }
 
@@ -160,7 +162,7 @@
 <p role="status" aria-live="polite">{status}</p>
 
 <section aria-labelledby="sent-title">
-  <h2 id="sent-title" tabindex="-1">{translate('sent.title')}</h2>
+  <h2 id="sent-title" tabindex="-1" {@attach focus.attach('title')}>{translate('sent.title')}</h2>
   <p>{translate('sent.note', { days: formatDays(RETENTION_DAYS, translator.language) })}</p>
 
   {#if view.view === 'unavailable'}
@@ -171,7 +173,9 @@
     <ul>
       {#each view.items as item (item.id)}
         <li>
-          <h3 id={headingId(item.id)} tabindex="-1">{translate('sent.item', { time: time(item.createdAt) })}</h3>
+          <h3 id={headingId(item.id)} tabindex="-1" {@attach focus.attach(headingId(item.id))}>
+            {translate('sent.item', { time: time(item.createdAt) })}
+          </h3>
           <dl>
             <dt>{translate('sent.label.state')}</dt>
             <dd>{stateText(item.state)}</dd>
@@ -211,8 +215,7 @@
   {/if}
 </section>
 
-{#if confirming}
-  {const dialog = $derived(DIALOGS[confirming.kind])}
+{#if dialog}
   <ConfirmDialog
     id="sent-confirm"
     message={translate(dialog.message)}

@@ -5,18 +5,18 @@
 
   import { formatWait } from '../language/format.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
-  import { MAX_REASON_BYTES, type ReportOutcome } from './report.ts';
+  import { MAX_REASON_BYTES, type ReportOutcome, type ReportSubmission } from './report.ts';
 
   interface Props {
     readonly name: string;
     readonly withLink?: boolean;
     readonly compact?: boolean;
     readonly hint?: string;
-    readonly send: (link: string, reason: string) => Promise<ReportOutcome>;
+    readonly onsubmit: (submission: ReportSubmission) => Promise<ReportOutcome>;
     readonly onaccepted?: () => void;
   }
 
-  const { name, withLink = false, compact = false, hint, send, onaccepted }: Props = $props();
+  const { name, withLink = false, compact = false, hint, onsubmit, onaccepted }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
 
@@ -28,7 +28,7 @@
 
   const problems = $derived(outcome?.outcome === 'invalid' ? outcome.problems : []);
   const linkProblem = $derived.by(() => {
-    const problem = problems.find((p) => p.startsWith('link_'));
+    const problem = problems.find((problem) => problem.startsWith('link_'));
     return problem ? translate(`report.problem.${problem}`) : '';
   });
   const reasonProblem = $derived(
@@ -37,20 +37,13 @@
       : '',
   );
   const result = $derived.by(() => {
-    switch (outcome?.outcome) {
-      case 'accepted': {
-        return translate('report.accepted');
-      }
-      case 'retry_later': {
-        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.language) });
-      }
-      case 'failed': {
-        return translate('report.failed');
-      }
-      default: {
-        return '';
-      }
+    if (outcome?.outcome === 'accepted') {
+      return translate('report.accepted');
     }
+    if (outcome?.outcome === 'retry_later') {
+      return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.language) });
+    }
+    return outcome?.outcome === 'failed' ? translate('report.failed') : '';
   });
 
   const compactProblem = $derived(reasonProblem || (outcome?.outcome === 'accepted' ? '' : result));
@@ -70,7 +63,7 @@
     sending = true;
     outcome = undefined;
     try {
-      outcome = await send(link, reason);
+      outcome = await onsubmit({ link, reason });
     } finally {
       sending = false;
     }

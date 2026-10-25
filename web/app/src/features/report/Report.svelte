@@ -1,16 +1,20 @@
 <script lang="ts">
   import { createApi } from '../../shared/api/api.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import { reportLink } from '../../shared/report/report.ts';
+  import { reportLink, type ReportOutcome, type ReportSubmission } from '../../shared/report/report.ts';
   import ReportForm from '../../shared/report/ReportForm.svelte';
 
   const { translate } = getTranslator();
   const api = createApi();
+
+  async function submit({ link, reason }: ReportSubmission): Promise<ReportOutcome> {
+    return reportLink(api, location.origin, link, reason);
+  }
 </script>
 
 <section aria-labelledby="report-title">
   <h2 id="report-title">{translate('report.title')}</h2>
   <p>{translate('report.note')}</p>
   <p>{translate('report.privacy')}</p>
-  <ReportForm name="report" withLink send={(link, reason) => reportLink(api, location.origin, link, reason)} />
+  <ReportForm name="report" withLink onsubmit={submit} />
 </section>

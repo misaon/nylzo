@@ -28,6 +28,11 @@ const HEX_DIGIT = /^[\da-f]$/i;
 
 type ReportProblem = 'link_foreign' | 'link_invalid' | 'link_newer' | 'link_retired' | 'reason_too_long';
 
+export interface ReportSubmission {
+  readonly link: string;
+  readonly reason: string;
+}
+
 export type ReportOutcome =
   | { readonly outcome: 'accepted' }
   | { readonly outcome: 'failed' }

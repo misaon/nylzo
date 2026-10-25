@@ -1,7 +1,7 @@
 import { MIN_PASSPHRASE_CHARS } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { WEAK_BELOW_CHARS, WEAK_BELOW_WORDS } from '../features/create/composer/create-message.ts';
+import { WEAK_BELOW_CHARS, WEAK_BELOW_WORDS } from '../features/create/create-message.ts';
 import { czech, type MessageKey } from '../shared/language/czech.ts';
 import { english } from '../shared/language/english.ts';
 import { formatDays } from '../shared/language/format.ts';

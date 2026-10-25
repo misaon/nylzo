@@ -22,15 +22,24 @@ import {
 } from '@nylzo/core';
 
 import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
+import type { DownloadProgress } from '../../shared/api/object-body.ts';
+import type { Progress } from '../../shared/kdf/kdf.ts';
 
-import { ApiError, type MessageState, StoppedError } from '../../shared/api/api-errors.ts';
+import {
+  type ApiError,
+  type EndedState,
+  endedStateOf,
+  isApiError,
+  type MessageState,
+  shouldRetryLater,
+  StoppedError,
+} from '../../shared/api/api-errors.ts';
+import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { type ReportOutcome, sendReport } from '../../shared/report/report.ts';
 
-export type EndedState = Exclude<MessageState, 'available'>;
-
-export type BusyStep = 'deriving' | 'claiming' | 'downloading' | 'decrypting';
+export type BusyStep = 'claiming' | 'decrypting' | 'deriving' | 'downloading';
 
 export interface RevealedFile {
   readonly name: string;
@@ -38,22 +47,26 @@ export interface RevealedFile {
   readonly bytes: Uint8Array<ArrayBuffer>;
 }
 
+export type PassphraseRejection =
+  | { readonly reason: 'malformed' }
+  | { readonly reason: 'wrong_or_changed' }
+  | { readonly reason: 'wrong'; readonly attemptsLeft: number; readonly retryAfter: number; readonly locked: boolean };
+
+export type RevealedView = Extract<ReadView, { view: 'revealed' }>;
+
 export type ReadView =
-  | { readonly view: 'loading' }
-  | { readonly view: 'invalid' }
-  | { readonly view: 'newer' }
-  | { readonly view: 'retired' }
-  | { readonly view: 'unknown' }
-  | { readonly view: 'tampered' }
-  | { readonly view: 'failed' }
+  | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
   | { readonly view: 'cleared' }
-  | { readonly view: 'retry_later'; readonly retryAfter?: number | undefined }
   | {
       readonly view: 'ended';
       readonly state: EndedState;
       readonly firstOpenedAt?: string | undefined;
       readonly endedAt?: string | undefined;
     }
+  | { readonly view: 'failed' }
+  | { readonly view: 'invalid' }
+  | { readonly view: 'loading' }
+  | { readonly view: 'newer' }
   | {
       readonly view: 'ready';
       readonly metadata: Metadata;
@@ -62,54 +75,52 @@ export type ReadView =
       readonly leaseEnded?: boolean | undefined;
       readonly rejected?: PassphraseRejection | undefined;
     }
-  | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
+  | { readonly view: 'retired' }
+  | { readonly view: 'retry_later'; readonly retryAfter?: number | undefined }
   | {
       readonly view: 'revealed';
       readonly text?: string | undefined;
       readonly file?: RevealedFile | undefined;
       readonly burnable: boolean;
-    };
+    }
+  | { readonly view: 'tampered' }
+  | { readonly view: 'unknown' };
 
 export type BurnOutcome =
   | { readonly outcome: 'deleted' }
   | { readonly outcome: 'ended'; readonly state: EndedState }
-  | { readonly outcome: 'unknown' }
-  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined }
   | { readonly outcome: 'failed' }
-  | { readonly outcome: 'ignored' };
-
-export type PassphraseRejection =
-  | { readonly reason: 'malformed' }
-  | { readonly reason: 'wrong_or_changed' }
-  | { readonly reason: 'wrong'; readonly attemptsLeft: number; readonly retryAfter: number; readonly locked: boolean };
+  | { readonly outcome: 'ignored' }
+  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined }
+  | { readonly outcome: 'unknown' };
 
 export interface SessionStore {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
 }
 
-export interface ReaderDeps {
+export interface ReaderDependencies {
   readonly api: Api;
   readonly location: { readonly pathname: string; readonly hash: string };
   readonly session: SessionStore;
-  readonly page: { visible(): boolean; prerendering(): boolean };
+  readonly page: { readonly visible: () => boolean; readonly prerendering: () => boolean };
   readonly dropFragment: () => void;
   readonly shown?: () => Promise<void>;
   readonly scrypt: (
     passphrase: string,
     saltPw: Uint8Array<ArrayBuffer>,
-    onProgress: (fraction: number) => void,
+    onProgress: Progress,
   ) => Promise<Uint8Array<ArrayBuffer>>;
   readonly now: () => number;
 }
 
 export interface Reader {
-  load(): Promise<void>;
-  reveal(passphrase?: string): Promise<void>;
-  burn(): Promise<BurnOutcome>;
-  report(reason: string): Promise<ReportOutcome>;
-  clear(): void;
+  readonly load: () => Promise<void>;
+  readonly reveal: (passphrase?: string) => Promise<void>;
+  readonly burn: () => Promise<BurnOutcome>;
+  readonly report: (reason: string) => Promise<ReportOutcome>;
+  readonly clear: () => void;
 }
 
 interface Secrets {
@@ -120,7 +131,7 @@ interface Secrets {
   readonly readKey: RequestKey;
 }
 
-interface Held {
+interface HeldKey {
   readonly id: Uint8Array<ArrayBuffer>;
   readonly readKey: RequestKey;
 }
@@ -132,7 +143,7 @@ interface Fetched {
 }
 
 interface ContentAccess {
-  readonly k: CryptoKey;
+  readonly contentKey: CryptoKey;
   readonly verifierKey: RequestKey | undefined;
 }
 
@@ -148,98 +159,137 @@ function safely<T>(action: () => T, fallback: T): T {
   }
 }
 
-export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void): Reader {
-  type Revealed = Extract<ReadView, { view: 'revealed' }>;
+function profileMatches(metadata: Metadata, kdfId: KdfId): boolean {
+  try {
+    assertProfile(kdfId, metadata.kdfId);
+  } catch (error) {
+    if (error instanceof KdfMismatchError) {
+      return false;
+    }
+    throw error;
+  }
+  return metadata.passphraseRequired === (kdfId !== KDF_NONE);
+}
+
+async function linkSecrets(fragment: Link): Promise<Secrets> {
+  let keys: LinkKeys | undefined;
+  try {
+    keys = await deriveLink(fragment.id, fragment.s);
+    const readKey = await requestKey(keys.r);
+    return { id: fragment.id, kdfId: fragment.kdfId, s: fragment.s, saltPw: keys.saltPw, readKey };
+  } catch (error) {
+    fragment.s.fill(0);
+    keys?.saltPw.fill(0);
+    throw error;
+  } finally {
+    keys?.r.fill(0);
+  }
+}
+
+function cleared(view: ReadView): ReadView {
+  if (view.view === 'revealed') {
+    view.file?.bytes.fill(0);
+  }
+  return { view: 'cleared' };
+}
+
+function burnOutcomeOf(error: unknown): BurnOutcome {
+  if (isApiError(error, 'gone')) {
+    const state = endedStateOf(error);
+    return state ? { outcome: 'ended', state } : { outcome: 'failed' };
+  }
+  if (isApiError(error, 'not_found')) {
+    return { outcome: 'unknown' };
+  }
+  return shouldRetryLater(error) ? { outcome: 'retry_later', retryAfter: error.retryAfter } : { outcome: 'failed' };
+}
+
+function policyMatches(envelope: Envelope, secrets: Secrets, metadata: Metadata | undefined): boolean {
+  const served = envelope.policy;
+  return (
+    served.flags === 0 &&
+    served.kdfId === secrets.kdfId &&
+    served.opensMax === metadata?.opensMax &&
+    served.ttlSeconds === metadata.ttlSeconds
+  );
+}
+
+export function createReader(dependencies: ReaderDependencies, onView: (view: ReadView) => void): Reader {
+  const { api, session, page } = dependencies;
   let secrets: Secrets | undefined;
-  let held: Held | undefined;
-  let revealed: Revealed | undefined;
-  let reporting = false;
-  let idText = '';
+  let heldKey: HeldKey | undefined;
+  let revealedView: RevealedView | undefined;
+  let messageId = '';
   let metadata: Metadata | undefined;
   let deviceFailed = false;
   let busy = false;
-  let acknowledged: Promise<void> = Promise.resolve();
+  let reporting = false;
   let acknowledging = false;
+  let acknowledged: Promise<unknown> = Promise.resolve();
   let readKey: RequestKey | undefined;
   let lease: string | undefined;
   let revealable = false;
   let left = false;
 
-  const onView = (next: ReadView) => {
-    const view = left ? cleared(next) : next;
-    revealable = view.view === 'ready';
-    revealed = view.view === 'revealed' ? view : undefined;
-    if (view.view !== 'ready' && view.view !== 'busy') {
-      forget();
-    }
-    if (
-      (view.view !== 'ready' && view.view !== 'busy' && view.view !== 'revealed') ||
-      (view.view === 'revealed' && !view.burnable)
-    ) {
-      held = undefined;
-    }
-    wipeUnused();
-    notify(view);
-  };
+  const leaseKey = () => `nylzo:lease:${messageId}`;
+  const kdfKey = () => `nylzo:kdf:${messageId}`;
+  const storedLease = () => lease ?? safely(() => session.getItem(leaseKey()), null);
+  const allowed = () => page.visible() && !page.prerendering();
+  const pageLeft = (): boolean => left;
 
-  function wipeUnused(): void {
-    if (held || busy || reporting || acknowledging) {
-      return;
-    }
-
-    wipeRequestKey(readKey);
-    readKey = undefined;
-  }
-
-  function cleared(view: ReadView): ReadView {
-    if (view.view === 'revealed') {
-      view.file?.bytes.fill(0);
-    }
-    return { view: 'cleared' };
-  }
-
-  const leaseKey = () => `nylzo:lease:${idText}`;
-  const kdfKey = () => `nylzo:kdf:${idText}`;
-  const storedLease = () => lease ?? safely(() => deps.session.getItem(leaseKey()), null);
-  const keepLease = (value: string) => {
+  function keepLease(value: string): void {
     lease = value;
-    safely(() => deps.session.setItem(leaseKey(), value), undefined);
-  };
-  const forgetLease = () => {
-    lease = undefined;
-    safely(() => deps.session.removeItem(leaseKey()), undefined);
-  };
+    safely(() => session.setItem(leaseKey(), value), undefined);
+  }
 
-  function forget(): void {
+  function forgetLease(): void {
+    lease = undefined;
+    safely(() => session.removeItem(leaseKey()), undefined);
+  }
+
+  function forgetSecrets(): void {
     secrets?.s.fill(0);
     secrets?.saltPw.fill(0);
     secrets = undefined;
   }
 
-  function ended(state: EndedState, data: Pick<Metadata, 'firstOpenedAt' | 'endedAt'> = {}): ReadView {
-    forgetLease();
-    return { view: 'ended', state, firstOpenedAt: data.firstOpenedAt, endedAt: data.endedAt };
+  function wipeUnusedReadKey(): void {
+    if (heldKey || busy || reporting || acknowledging) {
+      return;
+    }
+    wipeRequestKey(readKey);
+    readKey = undefined;
   }
 
-  function apiView(error: unknown): ReadView {
-    if (!(error instanceof ApiError)) {
-      return { view: 'failed' };
+  function show(next: ReadView): void {
+    const view = left ? cleared(next) : next;
+    revealable = view.view === 'ready';
+    revealedView = view.view === 'revealed' ? view : undefined;
+    if (view.view !== 'ready' && view.view !== 'busy') {
+      forgetSecrets();
     }
-    switch (error.kind) {
-      case 'not_found': {
-        return { view: 'unknown' };
-      }
-      case 'gone': {
-        return error.state && error.state !== 'available' ? ended(error.state) : { view: 'failed' };
-      }
-      case 'rate_limited':
-      case 'unavailable': {
-        return { view: 'retry_later', retryAfter: error.retryAfter };
-      }
-      default: {
-        return { view: 'failed' };
-      }
+    const keyStillNeeded = view.view === 'ready' || view.view === 'busy' || (view.view === 'revealed' && view.burnable);
+    if (!keyStillNeeded) {
+      heldKey = undefined;
     }
+    wipeUnusedReadKey();
+    onView(view);
+  }
+
+  function endedView(state: EndedState, times: Pick<Metadata, 'endedAt' | 'firstOpenedAt'> = {}): ReadView {
+    forgetLease();
+    return { view: 'ended', state, firstOpenedAt: times.firstOpenedAt, endedAt: times.endedAt };
+  }
+
+  function failureView(error: unknown): ReadView {
+    if (isApiError(error, 'not_found')) {
+      return { view: 'unknown' };
+    }
+    if (isApiError(error, 'gone')) {
+      const state = endedStateOf(error);
+      return state ? endedView(state) : { view: 'failed' };
+    }
+    return shouldRetryLater(error) ? { view: 'retry_later', retryAfter: error.retryAfter } : { view: 'failed' };
   }
 
   function readyView(rejected?: PassphraseRejection, leaseEnded?: boolean): ReadView {
@@ -248,83 +298,55 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       : { view: 'failed' };
   }
 
-  function profileMatches(current: Metadata, kdfId: KdfId): boolean {
-    try {
-      assertProfile(kdfId, current.kdfId);
-    } catch (error) {
-      if (error instanceof KdfMismatchError) {
-        return false;
-      }
-      throw error;
-    }
-    return current.passphraseRequired === (kdfId !== KDF_NONE);
-  }
-
   function metadataView(current: Metadata, kdfId: KdfId): ReadView {
     if (current.endedAt !== undefined) {
-      return current.state === 'available' ? { view: 'failed' } : ended(current.state, current);
+      return current.state === 'available' ? { view: 'failed' } : endedView(current.state, current);
     }
     if (isTerminal(current.state)) {
-      return ended(current.state, current);
+      return endedView(current.state, current);
     }
     if (!profileMatches(current, kdfId)) {
       return { view: 'tampered' };
     }
     if (current.state === 'opened' && storedLease() === null) {
-      return ended('opened', current);
+      return endedView('opened', current);
     }
     return readyView();
   }
 
-  async function linkSecrets(fragment: Link): Promise<Secrets> {
-    let keys: LinkKeys | undefined;
-    try {
-      keys = await deriveLink(fragment.id, fragment.s);
-      const readKey = await requestKey(keys.r);
-      return { id: fragment.id, kdfId: fragment.kdfId, s: fragment.s, saltPw: keys.saltPw, readKey };
-    } catch (error) {
-      fragment.s.fill(0);
-      keys?.saltPw.fill(0);
-      throw error;
-    } finally {
-      keys?.r.fill(0);
-    }
-  }
-
-  function linkErrorView(error: unknown): 'newer' | 'retired' | 'invalid' {
+  function linkProblemView(error: unknown): ReadView {
     if (error instanceof LinkVersionError) {
-      return 'newer';
+      return { view: 'newer' };
     }
-    return error instanceof LinkRetiredKdfError && safely(() => parsePath(deps.location.pathname), undefined)
-      ? 'retired'
-      : 'invalid';
+    const pathIsValid = safely(() => parsePath(dependencies.location.pathname), undefined) !== undefined;
+    return pathIsValid && error instanceof LinkRetiredKdfError ? { view: 'retired' } : { view: 'invalid' };
   }
 
   async function load(): Promise<void> {
-    onView({ view: 'loading' });
+    show({ view: 'loading' });
     let parsed: Fragment;
     try {
-      parsed = parseFragment(deps.location.hash);
+      parsed = parseFragment(dependencies.location.hash);
     } catch (error) {
-      onView({ view: linkErrorView(error) });
+      show(linkProblemView(error));
       return;
     }
     let fragment: Link;
     try {
-      fragment = { id: parsePath(deps.location.pathname), ...parsed };
+      fragment = { id: parsePath(dependencies.location.pathname), ...parsed };
     } catch {
       parsed.s.fill(0);
-      onView({ view: 'invalid' });
+      show({ view: 'invalid' });
       return;
     }
-    idText = idToString(fragment.id);
-    if (safely(() => deps.session.getItem(kdfKey()), null) !== null) {
+    messageId = idToString(fragment.id);
+    if (safely(() => session.getItem(kdfKey()), null) !== null) {
       deviceFailed = true;
-      safely(() => deps.session.removeItem(kdfKey()), undefined);
+      safely(() => session.removeItem(kdfKey()), undefined);
     }
-    const linked = await linkSecrets(fragment).catch(() => {});
+    const linked = await attempt(linkSecrets(fragment));
     if (!linked) {
-      onView({ view: 'failed' });
+      show({ view: 'failed' });
       return;
     }
     secrets = linked;
@@ -332,59 +354,66 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       wipeRequestKey(readKey);
     }
     readKey = linked.readKey;
-    held = { id: linked.id, readKey: linked.readKey };
+    heldKey = { id: linked.id, readKey: linked.readKey };
     try {
-      metadata = await deps.api.metadata(linked.id, linked.readKey);
+      metadata = await api.metadata(linked.id, linked.readKey);
     } catch (error) {
-      onView(apiView(error));
+      show(failureView(error));
       return;
     }
-    onView(metadataView(metadata, fragment.kdfId));
+    show(metadataView(metadata, fragment.kdfId));
   }
 
-  async function passphraseKey(current: Secrets, passphrase: string): Promise<Uint8Array<ArrayBuffer>> {
+  async function derivePassphraseKey(current: Secrets, passphrase: string): Promise<Uint8Array<ArrayBuffer>> {
     if (current.kdfId === KDF_NONE) {
       return new Uint8Array(0);
     }
-    onView({ view: 'busy', step: 'deriving', fraction: 0 });
-    safely(() => deps.session.setItem(kdfKey(), '1'), undefined);
+    show({ view: 'busy', step: 'deriving', fraction: 0 });
+    safely(() => session.setItem(kdfKey(), '1'), undefined);
     try {
-      return await deps.scrypt(passphrase, current.saltPw, (fraction) =>
-        onView({ view: 'busy', step: 'deriving', fraction }),
+      return await dependencies.scrypt(passphrase, current.saltPw, (fraction) =>
+        show({ view: 'busy', step: 'deriving', fraction }),
       );
     } finally {
-      safely(() => deps.session.removeItem(kdfKey()), undefined);
+      safely(() => session.removeItem(kdfKey()), undefined);
     }
   }
 
   function rejection(error: ApiError): PassphraseRejection {
     const retryAfter = error.retryAfter ?? 0;
+    const attemptsLeft = error.attemptsLeft ?? 0;
     const expiresAt = metadata?.expiresAt ? Date.parse(metadata.expiresAt) : NaN;
     const locked =
-      (error.attemptsLeft ?? 0) === 0 && Number.isFinite(expiresAt) && deps.now() + retryAfter * 1000 >= expiresAt;
-    return { reason: 'wrong', attemptsLeft: error.attemptsLeft ?? 0, retryAfter, locked };
+      attemptsLeft === 0 && Number.isFinite(expiresAt) && dependencies.now() + retryAfter * 1000 >= expiresAt;
+    return { reason: 'wrong', attemptsLeft, retryAfter, locked };
   }
 
-  async function fetchEnvelope(current: Secrets, verifierKey: RequestKey | undefined): Promise<Fetched | ReadView> {
-    const onProgress = (received: number, total: number | undefined) =>
-      onView({ view: 'busy', step: 'downloading', fraction: total ? received / total : undefined });
-    const previous = storedLease();
-    if (previous !== null) {
-      try {
-        const envelope = await deps.api.blob(current.id, current.readKey, previous, onProgress);
-        lease = previous;
-        return { envelope, lease: previous, fromLease: true };
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.kind !== 'gone') {
-          return apiView(error);
-        }
-        forgetLease();
-        return error.state === 'available' ? readyView(undefined, true) : apiView(error);
-      }
-    }
-    onView({ view: 'busy', step: 'claiming' });
+  async function fetchFromLease(
+    current: Secrets,
+    previous: string,
+    onProgress: DownloadProgress,
+  ): Promise<Fetched | ReadView> {
     try {
-      const claimed = await deps.api.claim(current.id, current.readKey, {
+      const envelope = await api.blob(current.id, current.readKey, previous, onProgress);
+      lease = previous;
+      return { envelope, lease: previous, fromLease: true };
+    } catch (error) {
+      if (!isApiError(error, 'gone')) {
+        return failureView(error);
+      }
+      forgetLease();
+      return error.state === 'available' ? readyView(undefined, true) : failureView(error);
+    }
+  }
+
+  async function claim(
+    current: Secrets,
+    verifierKey: RequestKey | undefined,
+    onProgress: DownloadProgress,
+  ): Promise<Fetched | ReadView> {
+    show({ view: 'busy', step: 'claiming' });
+    try {
+      const claimed = await api.claim(current.id, current.readKey, {
         verifierKey,
         onLease: keepLease,
         onProgress,
@@ -395,34 +424,33 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       if (error instanceof StoppedError) {
         return { view: 'cleared' };
       }
-      if (error instanceof ApiError && error.kind === 'passphrase') {
+      if (isApiError(error, 'passphrase')) {
         return readyView(rejection(error));
       }
-      return apiView(error);
+      return failureView(error);
     }
   }
 
-  function policyMatches(envelope: Envelope, current: Secrets): boolean {
-    const served = envelope.policy;
-    return (
-      served.flags === 0 &&
-      served.kdfId === current.kdfId &&
-      metadata !== undefined &&
-      served.opensMax === metadata.opensMax &&
-      served.ttlSeconds === metadata.ttlSeconds
-    );
+  function showDownload(received: number, total: number | undefined): void {
+    show({ view: 'busy', step: 'downloading', fraction: total ? received / total : undefined });
+  }
+
+  async function fetchEnvelope(current: Secrets, verifierKey: RequestKey | undefined): Promise<Fetched | ReadView> {
+    const onProgress = showDownload;
+    const previous = storedLease();
+    return previous === null ? claim(current, verifierKey, onProgress) : fetchFromLease(current, previous, onProgress);
   }
 
   async function contentAccess(current: Secrets, passphrase: string): Promise<ContentAccess | ReadView> {
-    let p: Uint8Array | undefined;
-    let v: Uint8Array | undefined;
+    let passphraseKey: Uint8Array | undefined;
+    let verifierSeed: Uint8Array | undefined;
     try {
       assertWellFormedPassphrase(current.kdfId, passphrase);
-      p = await passphraseKey(current, passphrase);
-      const content = await deriveContent(current.id, current.s, p);
-      v = content.v;
+      passphraseKey = await derivePassphraseKey(current, passphrase);
+      const content = await deriveContent(current.id, current.s, passphraseKey);
+      verifierSeed = content.v;
       const verifierKey = current.kdfId === KDF_NONE ? undefined : await requestKey(content.v);
-      return { k: content.k, verifierKey };
+      return { contentKey: content.k, verifierKey };
     } catch (error) {
       if (error instanceof MalformedPassphraseError) {
         return readyView({ reason: 'malformed' });
@@ -433,9 +461,16 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
       }
       return { view: 'failed' };
     } finally {
-      p?.fill(0);
-      v?.fill(0);
+      passphraseKey?.fill(0);
+      verifierSeed?.fill(0);
     }
+  }
+
+  async function acknowledge(current: Secrets, fetched: Fetched): Promise<void> {
+    await attempt(api.ack(current.id, current.readKey, fetched.lease));
+    acknowledging = false;
+    forgetLease();
+    wipeUnusedReadKey();
   }
 
   async function revealOnce(current: Secrets, passphrase: string): Promise<ReadView | undefined> {
@@ -443,34 +478,45 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     if ('view' in access) {
       return access;
     }
-    if (left) {
+    if (pageLeft()) {
       wipeRequestKey(access.verifierKey);
       return { view: 'cleared' };
     }
-    const fetched = await fetchEnvelope(current, access.verifierKey).finally(() => wipeRequestKey(access.verifierKey));
+    let fetched: Fetched | ReadView;
+    try {
+      fetched = await fetchEnvelope(current, access.verifierKey);
+    } finally {
+      wipeRequestKey(access.verifierKey);
+    }
     if ('view' in fetched) {
       return fetched;
     }
-    if (!policyMatches(fetched.envelope, current)) {
+    if (!policyMatches(fetched.envelope, current, metadata)) {
       return { view: 'tampered' };
     }
-    onView({ view: 'busy', step: 'decrypting' });
-    let opened;
+    show({ view: 'busy', step: 'decrypting' });
+    let opened: Awaited<ReturnType<typeof open>>;
     try {
-      const policy = { opensMax: fetched.envelope.policy.opensMax, ttlSeconds: fetched.envelope.policy.ttlSeconds };
-      opened = await open(access.k, current.id, policy, current.kdfId, fetched.envelope.object);
+      const { opensMax, ttlSeconds } = fetched.envelope.policy;
+      opened = await open(
+        access.contentKey,
+        current.id,
+        { opensMax, ttlSeconds },
+        current.kdfId,
+        fetched.envelope.object,
+      );
     } catch {
       return fetched.fromLease && current.kdfId !== KDF_NONE
         ? readyView({ reason: 'wrong_or_changed' })
         : { view: 'tampered' };
     }
-    if (left) {
+    if (pageLeft()) {
       opened.payload.file?.fill(0);
       return { view: 'cleared' };
     }
     const { text, file } = opened.payload.meta;
     const remaining = (metadata?.opensRemaining ?? 0) - (fetched.fromLease ? 0 : 1);
-    onView({
+    show({
       view: 'revealed',
       text,
       file:
@@ -479,72 +525,66 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
           : undefined,
       burnable: remaining > 0,
     });
-    await deps.shown?.();
-    if (left) {
+    await dependencies.shown?.();
+    if (pageLeft()) {
       return undefined;
     }
-    deps.dropFragment();
+    dependencies.dropFragment();
     acknowledging = true;
-    acknowledged = deps.api
-      .ack(current.id, current.readKey, fetched.lease)
-      .catch(() => {})
-      .then(() => {
-        acknowledging = false;
-        forgetLease();
-        wipeUnused();
-      });
+    acknowledged = acknowledge(current, fetched);
     return undefined;
   }
 
   async function reveal(passphrase = ''): Promise<void> {
     const current = secrets;
-    if (!current || !revealable || busy || !deps.page.visible() || deps.page.prerendering()) {
+    if (!current || !revealable || busy || !allowed()) {
       return;
     }
     busy = true;
     try {
       const view = await revealOnce(current, passphrase);
       if (view) {
-        onView(view);
+        show(view);
       }
     } catch {
-      onView({ view: 'failed' });
+      show({ view: 'failed' });
     } finally {
       busy = false;
-      wipeUnused();
+      wipeUnusedReadKey();
     }
   }
 
-  function allowed(): boolean {
-    return deps.page.visible() && !deps.page.prerendering();
-  }
-
-  function burnOutcome(error: unknown): BurnOutcome {
-    if (error instanceof ApiError) {
-      switch (error.kind) {
-        case 'gone': {
-          return error.state && error.state !== 'available'
-            ? { outcome: 'ended', state: error.state }
-            : { outcome: 'failed' };
-        }
-        case 'not_found': {
-          return { outcome: 'unknown' };
-        }
-        case 'rate_limited':
-        case 'unavailable': {
-          return { outcome: 'retry_later', retryAfter: error.retryAfter };
-        }
-        default: {
-          return { outcome: 'failed' };
-        }
+  function showBurnOutcome(outcome: BurnOutcome, shown: RevealedView | undefined): void {
+    if (shown) {
+      if (revealedView === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
+        show({ ...shown, burnable: false });
+      }
+      return;
+    }
+    switch (outcome.outcome) {
+      case 'deleted': {
+        show(endedView('deleted'));
+        break;
+      }
+      case 'ended': {
+        show(endedView(outcome.state));
+        break;
+      }
+      case 'unknown': {
+        show({ view: 'unknown' });
+        break;
+      }
+      case 'failed':
+      case 'ignored':
+      case 'retry_later': {
+        break;
       }
     }
-    return { outcome: 'failed' };
   }
 
   async function burn(): Promise<BurnOutcome> {
-    const current = held;
-    const shown = revealed;
+    const current = heldKey;
+    const shown = revealedView;
     if (!current || busy || !(revealable || shown?.burnable) || !allowed()) {
       return { outcome: 'ignored' };
     }
@@ -552,49 +592,39 @@ export function createReader(deps: ReaderDeps, notify: (view: ReadView) => void)
     let outcome: BurnOutcome;
     try {
       await acknowledged;
-      await deps.api.burn(current.id, current.readKey);
+      await api.burn(current.id, current.readKey);
       outcome = { outcome: 'deleted' };
     } catch (error) {
-      outcome = burnOutcome(error);
+      outcome = burnOutcomeOf(error);
     } finally {
       busy = false;
-      wipeUnused();
+      wipeUnusedReadKey();
     }
-    if (shown) {
-      if (revealed === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
-        onView({ ...shown, burnable: false });
-      }
-    } else if (outcome.outcome === 'deleted') {
-      onView(ended('deleted'));
-    } else if (outcome.outcome === 'ended') {
-      onView(ended(outcome.state));
-    } else if (outcome.outcome === 'unknown') {
-      onView({ view: 'unknown' });
-    }
+    showBurnOutcome(outcome, shown);
     return outcome;
   }
 
   async function report(reason: string): Promise<ReportOutcome> {
-    const current = held;
-    if (!current || reporting || revealed?.burnable === false || !allowed()) {
+    const current = heldKey;
+    if (!current || reporting || revealedView?.burnable === false || !allowed()) {
       return { outcome: 'ignored' };
     }
     reporting = true;
     try {
-      return await sendReport(deps.api, current.id, current.readKey, reason);
+      return await sendReport(api, current.id, current.readKey, reason);
     } finally {
       reporting = false;
       if (current.readKey !== readKey) {
         wipeRequestKey(current.readKey);
       }
-      wipeUnused();
+      wipeUnusedReadKey();
     }
   }
 
   function clear(): void {
     left = true;
-    revealed?.file?.bytes.fill(0);
-    onView({ view: 'cleared' });
+    revealedView?.file?.bytes.fill(0);
+    show({ view: 'cleared' });
   }
 
   return { load, reveal, burn, report, clear };

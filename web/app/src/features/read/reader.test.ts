@@ -16,10 +16,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import { type CreateDeps, type CreateInput, createMessage } from '../create/composer/create-message.ts';
-import { createReader, type ReaderDeps, type ReadView, type SessionStore } from './reader.ts';
+import { type CreateDependencies, type CreateInput, createMessage } from '../create/create-message.ts';
+import { createReader, type ReaderDependencies, type ReadView, type SessionStore } from './reader.ts';
 
-type Scrypt = ReaderDeps['scrypt'];
+type Scrypt = ReaderDependencies['scrypt'];
 
 const scrypt: Scrypt = async (passphrase, saltPw, onProgress) => scryptPassphraseKey(passphrase, saltPw, onProgress);
 
@@ -34,7 +34,7 @@ function workerScrypt(calls: string[] = []): Scrypt {
   };
 }
 
-function createDeps(api: FakeApi): CreateDeps {
+function createDependencies(api: FakeApi): CreateDependencies {
   return { api, origin: 'https://nylzo.test', scrypt, solvePow: async () => '' };
 }
 
@@ -131,7 +131,7 @@ async function storeRaw(
 describe('reading a message', () => {
   it('acknowledges and drops the fragment only once the page shows the message', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const display = Promise.withResolvers<void>();
     const r = reader(api, created.link, { shown: () => display.promise });
     await r.load();
@@ -147,7 +147,7 @@ describe('reading a message', () => {
 
   it('keeps the lease and the fragment when the page is left before it shows the message', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const display = Promise.withResolvers<void>();
     const r = reader(api, created.link, { shown: () => display.promise });
     await r.load();
@@ -166,7 +166,7 @@ describe('reading a message', () => {
 
   it('shows the text before it acknowledges the lease and then drops the fragment and the lease', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     expect(created.link).toMatch(/^https:\/\/nylzo\.test\/m\/[\w-]{22}#1\.0\.[\w-]{43}$/);
     const r = reader(api, created.link);
     await r.load();
@@ -194,7 +194,7 @@ describe('reading a message', () => {
         file: { name: 'report.pdf', mime: 'application/pdf', bytes },
         passphrase: 'tři slova a ještě čtvrté',
       }),
-      createDeps(api),
+      createDependencies(api),
     );
     expect(created.link).toContain('#1.1.');
     const r = reader(api, created.link);
@@ -219,7 +219,7 @@ describe('reading a message', () => {
 
   it('marks the scrypt derivation in the session and removes the mark afterwards', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal('correct horse battery staple');
@@ -252,7 +252,7 @@ describe('reading a message', () => {
   it('reports an opened tombstone as opened, not as tampered (SEC-2)', async () => {
     const options: FakeOptions = {};
     const api = fakeApi(options);
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const first = reader(api, created.link);
     await first.load();
     await first.reveal('correct horse battery staple');
@@ -269,7 +269,7 @@ describe('reading a message', () => {
 
   it('stops before any verifier when the server reports another profile (AK24)', async () => {
     const api = fakeApi({ metadataKdfId: KDF_NONE });
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     expect(r.last()).toEqual({ view: 'tampered' });
@@ -287,7 +287,7 @@ describe('reading a message', () => {
     ['a changed ciphertext', { tamperObject: true }],
   ])('treats %s as tampered and keeps the fragment', async (_, options) => {
     const api = fakeApi(options);
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal();
@@ -298,7 +298,7 @@ describe('reading a message', () => {
 
   it('never claims from a hidden or prerendered page', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     for (const overrides of [{ visible: false }, { prerendering: true }]) {
       const r = reader(api, created.link, overrides);
       await r.load();
@@ -310,7 +310,7 @@ describe('reading a message', () => {
 
   it('resumes from the stored lease after a reload instead of spending another open', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
     const id = idTextOf(created.link);
     const stored = api.stored.get(id);
@@ -339,7 +339,7 @@ describe('reading a message', () => {
   it('lets the reader retry a mistyped passphrase on the lease path (SEC-7)', async () => {
     const api = fakeApi();
     const passphrase = 'correct horse battery staple';
-    const created = await createMessage(input({ passphrase, opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ passphrase, opensMax: 2 }), createDependencies(api));
     const session = memorySession();
     const first = reader(api, created.link, { session });
     await first.load();
@@ -364,7 +364,7 @@ describe('reading a message', () => {
 
   it('tells the reader when wrong attempts locked the message for its lifetime', async () => {
     const api = fakeApi({ lockAfter: 1, expiresInSeconds: 600 });
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal('nesprávná passphrase');
@@ -376,7 +376,7 @@ describe('reading a message', () => {
 
   it('warns after a key derivation that the system ended', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const session = memorySession();
     session.setItem(`nylzo:kdf:${idTextOf(created.link)}`, '1');
     const r = reader(api, created.link, { session });
@@ -387,7 +387,7 @@ describe('reading a message', () => {
 
   it('tells a malformed link, a link from a newer version, one with the retired profile and an unknown one apart', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const before = api.calls.length;
     const broken = reader(api, created.link.replace('#1.', '#0.'));
     await broken.load();
@@ -432,7 +432,7 @@ function storedOf(api: FakeApi, link: string) {
 describe('reading through the lease and claim edge cases', () => {
   it('asks before spending another open when the stored lease ran out', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 3 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 3 }), createDependencies(api));
     const session = memorySession();
     session.setItem(leaseKeyOf(created.link), 'stale');
     const r = reader(api, created.link, { session });
@@ -452,7 +452,7 @@ describe('reading through the lease and claim edge cases', () => {
 
   it('keeps the lease when the download limit of the lease is reached', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const session = memorySession();
     session.setItem(leaseKeyOf(created.link), 'lease-1');
     api.blob = async () => {
@@ -469,7 +469,7 @@ describe('reading through the lease and claim edge cases', () => {
 
   it('keeps the lease when the claim stream breaks, so a reload resumes without another open', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
     const claim = api.claim.bind(api);
     api.claim = async (id, readKey, options = {}) => {
@@ -494,7 +494,7 @@ describe('reading through the lease and claim edge cases', () => {
     'shows the end state %s when the message ended after the page loaded',
     async (state) => {
       const api = fakeApi();
-      const created = await createMessage(input(), createDeps(api));
+      const created = await createMessage(input(), createDependencies(api));
       const r = reader(api, created.link);
       await r.load();
       r.session.setItem(leaseKeyOf(created.link), 'stale');
@@ -511,7 +511,7 @@ describe('reading through the lease and claim edge cases', () => {
     [503, 'unavailable', 5],
   ] as const)('waits after a %i claim without spending an open', async (status, kind, wait) => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     api.claim = async () => {
       api.calls.push('claim');
       throw new ApiError(status, kind, { retryAfter: wait });
@@ -526,7 +526,7 @@ describe('reading through the lease and claim edge cases', () => {
 
   it('reports a link that became unknown at the claim', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     api.claim = async () => {
@@ -538,7 +538,7 @@ describe('reading through the lease and claim edge cases', () => {
 
   it('sends one claim when the reader submits twice before the first reveal ends', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     const claim = api.claim.bind(api);
@@ -555,7 +555,7 @@ describe('reading through the lease and claim edge cases', () => {
 describe('passphrase handling on the read page', () => {
   it('refuses a malformed passphrase before any derivation or claim', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const derivations: string[] = [];
     const r = reader(api, created.link, { scrypt: workerScrypt(derivations) });
     await r.load();
@@ -569,7 +569,7 @@ describe('passphrase handling on the read page', () => {
 
   it('suggests another device when the key derivation worker fails', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const r = reader(api, created.link, {
       scrypt: async () => {
         throw new KdfWorkerError();
@@ -596,7 +596,7 @@ describe('leaving the page', () => {
     const bytes = new Uint8Array(5000).fill(7);
     const created = await createMessage(
       input({ text: '', file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 3 }),
-      createDeps(api),
+      createDependencies(api),
     );
     const r = reader(api, created.link);
     await r.load();
@@ -615,7 +615,7 @@ describe('leaving the page', () => {
 
   it('sends no claim when the page was left while the request was being signed', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     const claim = api.claim.bind(api);
@@ -630,7 +630,7 @@ describe('leaving the page', () => {
 
   it('reveals nothing once the page was left before the reveal', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     r.clear();
@@ -645,7 +645,7 @@ describe('leaving the page', () => {
     const bytes = new Uint8Array(5000).fill(7);
     const created = await createMessage(
       input({ file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 2 }),
-      createDeps(api),
+      createDependencies(api),
     );
     const r = reader(api, created.link);
     await r.load();
@@ -672,7 +672,7 @@ describe('leaving the page', () => {
     const bytes = new Uint8Array(5000).fill(7);
     const created = await createMessage(
       input({ text: 'later', file: { name: 'a.pdf', mime: 'application/pdf', bytes } }),
-      createDeps(api),
+      createDependencies(api),
     );
     const session = memorySession();
     const r = reader(api, created.link, { session });
@@ -710,7 +710,7 @@ describe('leaving the page', () => {
 
   it('sends no claim when the page was left during the key derivation', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDeps(api));
+    const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const gate = Promise.withResolvers<void>();
     const asked = Promise.withResolvers<void>();
     const r = reader(api, created.link, {
@@ -735,7 +735,7 @@ describe('leaving the page', () => {
 describe('deleting and reporting from the read page (D40, D41)', () => {
   it('deletes a message before showing it and then refuses to reveal it', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     expect(await r.burn()).toEqual({ outcome: 'deleted' });
@@ -748,7 +748,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('deletes the remaining opens after showing the message and keeps the content on screen', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 3 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 3 }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal();
@@ -761,7 +761,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('offers no deletion after the last open was shown', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal();
@@ -772,7 +772,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('counts the open of a resumed lease when it decides whether opens remain', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const session = memorySession();
     const first = reader(api, created.link, { session });
     await first.load();
@@ -787,7 +787,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('deletes the rest right after the reveal, after the ack, instead of ignoring the click', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     const gate = Promise.withResolvers<void>();
@@ -810,7 +810,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('ignores a deletion while the message is being revealed or already being deleted', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     const revealing = r.reveal();
@@ -825,7 +825,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('does nothing on a hidden or prerendering page', async () => {
     for (const overrides of [{ visible: false }, { prerendering: true }]) {
       const api = fakeApi();
-      const created = await createMessage(input(), createDeps(api));
+      const created = await createMessage(input(), createDependencies(api));
       const r = reader(api, created.link, overrides);
       await r.load();
       expect(await r.burn()).toEqual({ outcome: 'ignored' });
@@ -837,7 +837,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('shows the end state when the message ended before the deletion', async () => {
     const api = fakeApi({ failBurn: [new ApiError(410, 'gone', { state: 'cancelled' })] });
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     expect(await r.burn()).toEqual({ outcome: 'ended', state: 'cancelled' });
@@ -846,7 +846,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('keeps the page when the deletion is rate limited and allows another attempt', async () => {
     const api = fakeApi({ failBurn: [new ApiError(429, 'rate_limited', { retryAfter: 30 })] });
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     expect(await r.burn()).toEqual({ outcome: 'retry_later', retryAfter: 30 });
@@ -856,7 +856,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('reports a message with the read key before and after it is shown', async () => {
     const api = fakeApi();
-    const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     expect(await r.report('phishing')).toEqual({ outcome: 'accepted' });
@@ -870,7 +870,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('sends one report at a time', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     const [first, second] = await Promise.all([r.report('one'), r.report('two')]);
@@ -880,13 +880,13 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('sends no report once the last open was shown, because the server keeps reports only for live messages (D46)', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.reveal();
     expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
     expect(await r.report('after the last open')).toEqual({ outcome: 'ignored' });
-    const rest = await createMessage(input({ opensMax: 2 }), createDeps(api));
+    const rest = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const other = reader(api, rest.link);
     await other.load();
     await other.reveal();
@@ -897,7 +897,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('drops the read key once the page shows an end state', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     await r.burn();
@@ -907,7 +907,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
 
   it('refuses a reason longer than 1000 bytes without a request', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDeps(api));
+    const created = await createMessage(input(), createDependencies(api));
     const r = reader(api, created.link);
     await r.load();
     expect(await r.report('č'.repeat(501))).toEqual({ outcome: 'invalid', problems: ['reason_too_long'] });
@@ -926,7 +926,7 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
           : importKey(...args)) as typeof crypto.subtle.importKey);
     try {
       const api = fakeApi();
-      const created = await createMessage(input({ opensMax: 2 }), createDeps(api));
+      const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
       const r = reader(api, created.link);
       await r.load();
       await r.reveal();
@@ -963,7 +963,7 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
           : importKey(...args)) as typeof crypto.subtle.importKey);
     try {
       const api = fakeApi();
-      const created = await createMessage(input(), createDeps(api));
+      const created = await createMessage(input(), createDependencies(api));
       const r = reader(api, created.link);
       await r.load();
       let usedKey: { seed?: Uint8Array } | undefined;
@@ -990,7 +990,7 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
           : importKey(...args)) as typeof crypto.subtle.importKey);
     try {
       const api = fakeApi();
-      const created = await createMessage(input(), createDeps(api));
+      const created = await createMessage(input(), createDependencies(api));
       const r = reader(api, created.link);
       await r.load();
       const gate = Promise.withResolvers<void>();

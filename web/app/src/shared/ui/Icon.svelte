@@ -6,7 +6,7 @@
   interface Props {
     readonly name: IconName;
     readonly class?: ClassValue;
-    readonly stroke?: number;
+    readonly stroke?: number | undefined;
   }
 
   const { name, class: className = 'size-4', stroke = 1.8 }: Props = $props();

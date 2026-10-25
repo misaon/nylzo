@@ -35,7 +35,7 @@ export type CancelOutcome =
   | { readonly outcome: 'failed' }
   | { readonly outcome: 'ignored' };
 
-export interface SentDeps {
+export interface SentDependencies {
   readonly api: Api;
   readonly store: SentStore;
   readonly now: () => number;
@@ -93,14 +93,14 @@ function cancelOutcome(error: unknown): CancelOutcome {
   return { outcome: 'failed' };
 }
 
-export function createSentPage(deps: SentDeps, notify: (view: SentView) => void): SentPage {
+export function createSentPage(dependencies: SentDependencies, notify: (view: SentView) => void): SentPage {
   let records: SentRecord[] = [];
   let states = new Map<string, ItemState>();
   let generation = 0;
   const cancelling = new Set<string>();
 
   function show(): void {
-    const now = deps.now();
+    const now = dependencies.now();
     notify({
       view: 'list',
       items: records.map((record) => {
@@ -136,7 +136,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
   }
 
   async function stored(id: string): Promise<SentRecord | undefined> {
-    const found = (await deps.store.list()).find((record) => record.id === id);
+    const found = (await dependencies.store.list()).find((record) => record.id === id);
     if (!found) {
       drop(id);
     }
@@ -147,7 +147,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
     if (status.endedAt === undefined || record.endedAt !== undefined) {
       return;
     }
-    const ended = await deps.store.markEnded(record.id, Date.parse(status.endedAt)).catch(() => {});
+    const ended = await dependencies.store.markEnded(record.id, Date.parse(status.endedAt)).catch(() => {});
     if (ended) {
       records = records.map((candidate) => (candidate.id === record.id ? ended : candidate));
     }
@@ -159,7 +159,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
       if (!record) {
         return undefined;
       }
-      const status = await deps.api.status(parseId(id), record.manageKey);
+      const status = await dependencies.api.status(parseId(id), record.manageKey);
       await rememberEnd(record, status);
       return { kind: 'loaded', status };
     } catch (error) {
@@ -171,7 +171,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
     const current = ++generation;
     notify({ view: 'loading' });
     try {
-      records = await retainedRecords(deps.store, deps.now());
+      records = await retainedRecords(dependencies.store, dependencies.now());
     } catch {
       records = [];
       notify({ view: 'unavailable' });
@@ -222,7 +222,7 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
       if (!record) {
         return { outcome: 'ignored' };
       }
-      await deps.api.cancel(parseId(id), record.manageKey);
+      await dependencies.api.cancel(parseId(id), record.manageKey);
       outcome = { outcome: 'cancelled' };
     } catch (error) {
       outcome = cancelOutcome(error);
@@ -238,13 +238,13 @@ export function createSentPage(deps: SentDeps, notify: (view: SentView) => void)
   }
 
   async function forget(id: string): Promise<void> {
-    await deps.store.remove(id);
+    await dependencies.store.remove(id);
     drop(id);
   }
 
   async function forgetAll(): Promise<void> {
     generation++;
-    await deps.store.clear();
+    await dependencies.store.clear();
     records = [];
     states = new Map();
     show();

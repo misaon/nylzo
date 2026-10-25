@@ -2,7 +2,7 @@ import { MIN_TTL_SECONDS } from '@nylzo/core';
 
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
 import type { MessageKey } from '../../../shared/language/czech.ts';
-import type { CreateFailure, CreateProblem, FileInput } from './create-message.ts';
+import type { CreateFailure, CreateProblem, FileInput } from '../create-message.ts';
 
 export const TTL_CHOICES = [3600, 86_400, 259_200, 604_800] as const;
 
@@ -17,7 +17,7 @@ export function ttlChoices(limits: InstanceLimits): number[] {
   if (limits.defaultTtlSeconds >= MIN_TTL_SECONDS && limits.defaultTtlSeconds <= limits.maxTtlSeconds) {
     choices.add(limits.defaultTtlSeconds);
   }
-  return [...choices].sort((a, b) => a - b);
+  return [...choices].toSorted((first, second) => first - second);
 }
 
 export function ttlKey(seconds: number): MessageKey | undefined {
@@ -51,12 +51,12 @@ export function failureKey(failure: CreateFailure): MessageKey {
   return failure.kind === 'invalid' ? 'failure.failed' : `failure.${failure.kind}`;
 }
 
-export type Attachment = { readonly file?: FileInput | undefined } | { readonly problem: CreateProblem };
+export type ChosenFile = { readonly file?: FileInput | undefined } | { readonly problem: CreateProblem };
 
 export async function readAttachment(
   file: (Blob & { readonly name: string }) | undefined,
   limits: InstanceLimits,
-): Promise<Attachment> {
+): Promise<ChosenFile> {
   if (!file) {
     return { file: undefined };
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { pace } from './pacing.ts';
+import { pace } from './pipeline.ts';
 
 describe('pace', () => {
   it('never shows a step the work has not reached', () => {

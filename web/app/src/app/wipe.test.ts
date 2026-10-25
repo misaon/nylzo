@@ -1,7 +1,7 @@
 import { KDF_SCRYPT, type KdfId } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type CreateDeps, createMessage } from '../features/create/composer/create-message.ts';
+import { type CreateDependencies, createMessage } from '../features/create/create-message.ts';
 import { createReader, type ReadView } from '../features/read/reader.ts';
 import { ApiError } from '../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../shared/api/fake-api.ts';
@@ -63,7 +63,7 @@ function zeroed(): boolean[] {
   return captured.map(wiped);
 }
 
-function scryptStub(): CreateDeps['scrypt'] {
+function scryptStub(): CreateDependencies['scrypt'] {
   return async (passphrase) => {
     const p = new Uint8Array(32).fill(passphrase === PASSPHRASE ? 7 : 9);
     passphraseKeys.push(p);
@@ -71,7 +71,7 @@ function scryptStub(): CreateDeps['scrypt'] {
   };
 }
 
-function createDeps(api: FakeApi, scrypt = scryptStub()): CreateDeps {
+function createDependencies(api: FakeApi, scrypt = scryptStub()): CreateDependencies {
   return { api, origin: ORIGIN, scrypt, solvePow: async () => '' };
 }
 
@@ -79,7 +79,7 @@ async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0, scrypt = sc
   const passphrase = kdfId === 0 ? '' : PASSPHRASE;
   const message = await createMessage(
     { text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase },
-    createDeps(api, scrypt),
+    createDependencies(api, scrypt),
   );
   captured.length = 0;
   passphraseKeys.length = 0;
@@ -112,13 +112,16 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   });
 
   it('wipes S, R, salt_pw and V after creating a message', async () => {
-    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, createDeps(fakeApi()));
+    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, createDependencies(fakeApi()));
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
   });
 
   it('wipes P after creating a message', async () => {
-    await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDeps(fakeApi()));
+    await createMessage(
+      { text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE },
+      createDependencies(fakeApi()),
+    );
     expect(passphraseKeys).toHaveLength(1);
     expect(passphraseKeys.every((p) => p.length === 32 && wiped(p))).toBe(true);
   });
@@ -132,7 +135,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   ])('wipes every S, R, salt_pw, V and P when %s', async (_, options) => {
     const api = fakeApi(options);
     await expect(
-      createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDeps(api)),
+      createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDependencies(api)),
     ).rejects.toThrow();
     expect(captured.length).toBe(4 * api.calls.filter((call) => call === 'create').length);
     expect(zeroed().every(Boolean)).toBe(true);
@@ -141,11 +144,11 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   });
 
   it('wipes S, R and salt_pw when the key derivation fails', async () => {
-    const deps = createDeps(fakeApi(), async () => {
+    const dependencies = createDependencies(fakeApi(), async () => {
       throw new KdfWorkerError();
     });
     await expect(
-      createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, deps),
+      createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, dependencies),
     ).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type CreateDeps, createMessage } from '../../features/create/composer/create-message.ts';
+import { type CreateDependencies, createMessage } from '../../features/create/create-message.ts';
 import { ApiError } from '../api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../api/fake-api.ts';
 import { reasonTooLong, redactReason, reportLink } from './report.ts';
@@ -9,8 +9,13 @@ const ORIGIN = 'https://nylzo.test';
 
 async function setup(options: FakeOptions = {}): Promise<{ api: FakeApi; link: string; id: string }> {
   const api = fakeApi(options);
-  const deps: CreateDeps = { api, origin: ORIGIN, scrypt: async () => new Uint8Array(32), solvePow: async () => '' };
-  const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, deps);
+  const dependencies: CreateDependencies = {
+    api,
+    origin: ORIGIN,
+    scrypt: async () => new Uint8Array(32),
+    solvePow: async () => '',
+  };
+  const created = await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, dependencies);
   api.calls.length = 0;
   return { api, link: created.link, id: created.id };
 }

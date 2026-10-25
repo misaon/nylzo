@@ -1,12 +1,15 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import type { Created } from './create-message.ts';
+  import type { Created } from '../create-message.ts';
 
   import { formatTime } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Chip from '../../../shared/ui/Chip.svelte';
+  import { Flash } from '../../../shared/ui/flash.svelte.ts';
+  import { FocusTargets } from '../../../shared/ui/focus.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import SwapIcon from '../../../shared/ui/SwapIcon.svelte';
   import { linkSegments } from './link-segments.ts';
 
   interface Props {
@@ -19,36 +22,32 @@
   const { created, opensMax, passphrase, onanother }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
-  const uid = $props.id();
+  const id = $props.id();
 
   const BAR_DELAYS = ['delay-[380ms]', 'delay-[490ms]', 'delay-[600ms]', 'delay-[710ms]'] as const;
+  const COPIED_MS = 2400;
 
+  const copied = new Flash(COPIED_MS);
+  const focus = new FocusTargets<'link' | 'title'>();
   let entered = $state(false);
-  let copied = $state(false);
   let editing = $state(false);
-  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
   const segments = $derived(linkSegments(created.link));
 
   const enter: Attachment = () => {
     const frame = requestAnimationFrame(() => {
       entered = true;
-      document.getElementById(`${uid}-title`)?.focus();
+      focus.focus('title');
     });
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(copiedTimer);
-    };
+    return () => cancelAnimationFrame(frame);
   };
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(created.link);
-      copied = true;
-      clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => (copied = false), 2400);
+      copied.show();
     } catch {
-      document.getElementById(`${uid}-link`)?.focus();
+      focus.focus('link');
     }
   }
 
@@ -77,7 +76,7 @@
       </span>
       <div class={['min-w-0 transition-[opacity,translate]', item('delay-[120ms]')]}>
         <h2
-          id="{uid}-title"
+          {@attach focus.attach('title')}
           tabindex="-1"
           class="font-display text-xl font-light tracking-[-0.015em] outline-none md:text-2xl"
         >
@@ -94,7 +93,7 @@
         <span
           class={[
             'pointer-events-none absolute inset-0 rounded-pane shadow-[0_0_0_1px_oklch(0.77_0.115_249/0.45),0_0_32px_-6px_oklch(0.56_0.19_258/0.8)] transition-opacity duration-500 ease-silk',
-            copied ? 'opacity-100' : 'opacity-0',
+            copied.shown ? 'opacity-100' : 'opacity-0',
           ]}
           aria-hidden="true"
         ></span>
@@ -126,9 +125,10 @@
                 </span>
               {/each}
             </p>
-            <label for="{uid}-link" class="sr-only">{translate('created.link')}</label>
+            <label for="{id}-link" class="sr-only">{translate('created.link')}</label>
             <input
-              id="{uid}-link"
+              id="{id}-link"
+              {@attach focus.attach('link')}
               type="text"
               readonly
               value={created.link}
@@ -153,28 +153,20 @@
             <span
               class={[
                 'absolute inset-0 rounded-[9px] bg-aegis-500/20 shadow-[0_0_18px_-4px_oklch(0.56_0.19_258/0.8)] ring-1 ring-aegis-400/50 transition-opacity duration-500 ease-silk',
-                copied ? 'opacity-100' : 'opacity-0',
+                copied.shown ? 'opacity-100' : 'opacity-0',
               ]}
             ></span>
-            <span class="relative stack place-items-center">
-              <Icon
-                name="copy"
-                class={[
-                  'size-[18px] transition-[opacity,scale] duration-300 ease-silk',
-                  copied ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
-                ]}
-              />
-              <Icon
-                name="check"
-                stroke={2.2}
-                class={[
-                  'size-[18px] text-aegis-200 transition-[opacity,scale] duration-300 ease-silk',
-                  copied ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
-                ]}
-              />
-            </span>
+            <SwapIcon
+              class="relative"
+              from="copy"
+              to="check"
+              swapped={copied.shown}
+              size="size-[18px]"
+              toStroke={2.2}
+              toTone="text-aegis-200"
+            />
           </button>
-          <span class="sr-only" role="status">{copied ? translate('created.copied') : ''}</span>
+          <span class="sr-only" role="status">{copied.shown ? translate('created.copied') : ''}</span>
         </div>
       </div>
       <div class="mt-2 grid grid-cols-2 gap-2">

@@ -9,11 +9,12 @@
     readonly open: boolean;
     readonly class?: ClassValue;
     readonly from?: 'above' | 'below';
+    readonly attachment?: Attachment<HTMLElement>;
     readonly onclose: () => void;
     readonly children: Snippet;
   }
 
-  const { id, label, open, class: className, from = 'above', onclose, children }: Props = $props();
+  const { id, label, open, class: className, from = 'above', attachment, onclose, children }: Props = $props();
 
   const focusFirst: Attachment<HTMLElement> = (element) => {
     if (open) {
@@ -27,7 +28,6 @@
     if (event.key !== 'Escape') {
       return;
     }
-
     event.stopPropagation();
     onclose();
   }
@@ -41,6 +41,7 @@
   inert={!open}
   {onkeydown}
   {@attach focusFirst}
+  {@attach attachment}
   class={[
     'absolute z-30 rounded-pane glass-pop transition-[opacity,translate] duration-300 ease-silk',
     open
