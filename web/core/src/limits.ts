@@ -9,7 +9,6 @@ export const IV_LEN = 12;
 export const TAG_LEN = 16;
 export const HEADER_LEN = 15;
 export const POLICY_LEN = 6;
-export const AAD_LEN = HEADER_LEN + ID_LEN + POLICY_LEN;
 
 export const MAX_TEXT_BYTES = 100 * 1024;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;

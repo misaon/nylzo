@@ -28,7 +28,7 @@ export interface Opened {
   readonly payload: OpenedPayload;
 }
 
-export function paddedLength(length: number, hasFile: boolean): number {
+function paddedLength(length: number, hasFile: boolean): number {
   const unit = hasFile ? PAD_FILE : PAD_TEXT;
   return Math.ceil(length / unit) * unit;
 }

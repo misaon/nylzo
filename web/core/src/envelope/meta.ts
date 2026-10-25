@@ -25,7 +25,7 @@ export interface Meta {
 const FORBIDDEN_IN_FILE_NAME = /[\u{0}-\u{1F}\u{7F}/\\]/u;
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
-export function validateMeta(meta: Meta): void {
+function validateMeta(meta: Meta): void {
   if (meta.text === undefined && meta.file === undefined) {
     throw new MetaError('meta needs text or file');
   }

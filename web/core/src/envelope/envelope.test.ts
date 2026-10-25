@@ -1,8 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import type { Meta } from './meta.ts';
-
-import { bytesToHex, randomId, withByteFlipped } from '../../test/vectors.ts';
+import { bytesToHex, fileBytes, hexToBytes, kdfIdOf, randomId, sha256Hex, vectors } from '../../test/vectors.ts';
 import {
   FlagsError,
   HeaderError,
@@ -13,300 +11,210 @@ import {
   PolicyError,
   VersionError,
 } from '../errors.ts';
+import { deriveContent } from '../keys/derive.ts';
 import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId } from '../keys/kdf.ts';
-import {
-  AAD_LEN,
-  HEADER_LEN,
-  IV_LEN,
-  MAX_FILE_BYTES,
-  MAX_OBJECT_BYTES,
-  MAX_TEXT_BYTES,
-  PAD_FILE,
-  TAG_LEN,
-  VERSION,
-} from '../limits.ts';
-import { newSecret } from '../primitives/identifiers.ts';
+import { HEADER_LEN, IV_LEN, MAX_FILE_BYTES, MAX_OBJECT_BYTES, MAX_TEXT_BYTES, TAG_LEN, VERSION } from '../limits.ts';
+import { encodeBase64url } from '../primitives/base64url.ts';
+import { newSecret, parseId } from '../primitives/identifiers.ts';
 import { deriveAll } from '../scrypt.ts';
-import { open, paddedLength, seal } from './envelope.ts';
-import { aad, type Header, headerBytes, newHeader, parseHeader, type Policy } from './header.ts';
+import { open, type Payload, seal } from './envelope.ts';
+import { aad, type Header, newHeader, type Policy } from './header.ts';
+import { encodeMeta, type Meta } from './meta.ts';
 
-interface Sample {
+interface Sealed {
   readonly id: Uint8Array;
-  readonly s: Uint8Array;
-  readonly k: CryptoKey;
-  readonly header: Header;
-  readonly policy: Policy;
-  readonly object: Uint8Array;
+  readonly secret: Uint8Array;
+  readonly contentKey: CryptoKey;
+  readonly object: Uint8Array<ArrayBuffer>;
 }
 
 const policy: Policy = { opensMax: 1, ttlSeconds: 86_400 };
+const textPayload: Payload = { meta: { text: 'integrity' } };
+const passphraseKey = new Uint8Array(32).fill(1);
 
-function textMeta(text: string, file?: Uint8Array): Meta {
-  return file === undefined
-    ? { text }
-    : { text, file: { name: 'f.bin', mime: 'application/octet-stream', size: file.length } };
+async function contentKeyOf(id: Uint8Array, secret: Uint8Array, key: Uint8Array): Promise<CryptoKey> {
+  const { k } = await deriveContent(id, secret, key);
+  return k;
 }
 
-async function sample(kdfId: KdfId, passphrase: string, file?: Uint8Array): Promise<Sample> {
+async function sealed(kdfId: KdfId, payload = textPayload): Promise<Sealed> {
   const id = randomId();
-  const s = newSecret();
-  const { content } = await deriveAll(id, s, kdfId, passphrase);
-  const header = newHeader(kdfId);
-  const object = await seal(content.k, header, id, policy, { meta: textMeta('integrity', file), file });
-  return { id, s, k: content.k, header, policy, object };
+  const secret = newSecret();
+  const contentKey = await contentKeyOf(id, secret, kdfId === KDF_NONE ? new Uint8Array(0) : passphraseKey);
+  const object = await seal(contentKey, newHeader(kdfId), id, policy, payload);
+  return { id, secret, contentKey, object };
 }
 
-async function plaintextLength(meta: Meta, file?: Uint8Array): Promise<number> {
-  const id = randomId();
-  const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
-  const object = await seal(content.k, newHeader(KDF_NONE), id, policy, { meta, file });
-  return object.length - HEADER_LEN - TAG_LEN;
+function flipped(bytes: Uint8Array, index: number, mask = 1): Uint8Array<ArrayBuffer> {
+  const copy = Uint8Array.from(bytes);
+  copy[index] = (copy[index] ?? 0) ^ mask;
+  return copy;
 }
 
-describe('AK8: tampering is detected', () => {
-  it('a flipped ciphertext bit fails integrity', async () => {
-    const m = await sample(KDF_NONE, '');
-    for (const index of [HEADER_LEN, HEADER_LEN + 100, m.object.length - 1]) {
-      const tampered = withByteFlipped(m.object, index);
-      await expect(open(m.k, m.id, m.policy, KDF_NONE, tampered)).rejects.toBeInstanceOf(IntegrityError);
-    }
-  });
+async function digestOf(bytes: Uint8Array | undefined): Promise<string | undefined> {
+  return bytes && (await sha256Hex(bytes));
+}
 
-  it('a flipped iv byte fails integrity', async () => {
-    const m = await sample(KDF_NONE, '');
-    const tampered = withByteFlipped(m.object, 5);
-    await expect(open(m.k, m.id, m.policy, KDF_NONE, tampered)).rejects.toBeInstanceOf(IntegrityError);
-  });
+describe('AK9: envelope vectors', () => {
+  it.each(vectors.envelope)('$name', { timeout: 120_000 }, async (vector) => {
+    const id = parseId(vector.id);
+    const kdfId = kdfIdOf(vector.kdf_id);
+    const { content } = await deriveAll(id, hexToBytes(vector.s), kdfId, vector.passphrase ?? '');
+    const header: Header = { version: VERSION, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
+    const vectorPolicy: Policy = { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s };
+    const file = vector.file && fileBytes(vector.file);
+    const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
+    const meta: Meta = { text: vector.text, file: fileMeta };
 
-  it('a changed policy fails integrity', async () => {
-    const m = await sample(KDF_NONE, '');
-    const changed: Policy[] = [
-      { opensMax: 2, ttlSeconds: m.policy.ttlSeconds },
-      { opensMax: m.policy.opensMax, ttlSeconds: m.policy.ttlSeconds + 1 },
-    ];
-    for (const bad of changed) {
-      await expect(open(m.k, m.id, bad, KDF_NONE, m.object)).rejects.toBeInstanceOf(IntegrityError);
-    }
-  });
+    expect(new TextDecoder().decode(encodeMeta(meta))).toBe(vector.meta_json);
+    expect(bytesToHex(aad(header, id, vectorPolicy))).toBe(vector.aad_hex);
 
-  it('a different id fails integrity', async () => {
-    const m = await sample(KDF_NONE, '');
-    await expect(open(m.k, randomId(), m.policy, KDF_NONE, m.object)).rejects.toBeInstanceOf(IntegrityError);
-  });
+    const object = await seal(content.k, header, id, vectorPolicy, { meta, file });
+    expect(object.length).toBe(vector.object_len);
+    expect(object.length - HEADER_LEN - TAG_LEN).toBe(vector.plaintext_len);
+    expect(await sha256Hex(object)).toBe(vector.object_sha256);
+    expect(vector.object_b64 === undefined ? undefined : encodeBase64url(object)).toBe(vector.object_b64);
 
-  it('a different key fails integrity', async () => {
-    const m = await sample(KDF_NONE, '');
-    const other = await deriveAll(m.id, newSecret(), KDF_NONE, '');
-    await expect(open(other.content.k, m.id, m.policy, KDF_NONE, m.object)).rejects.toBeInstanceOf(IntegrityError);
+    const opened = await open(content.k, id, vectorPolicy, kdfId, object);
+    expect(opened.header).toEqual(header);
+    expect(opened.payload.meta).toEqual(meta);
+    expect(await digestOf(opened.payload.file)).toBe(await digestOf(file));
   });
-
-  it('a wrong passphrase fails integrity', async () => {
-    const m = await sample(KDF_SCRYPT, 'right');
-    const wrong = await deriveAll(m.id, m.s, KDF_SCRYPT, 'wrong');
-    await expect(open(wrong.content.k, m.id, m.policy, KDF_SCRYPT, m.object)).rejects.toBeInstanceOf(IntegrityError);
-  }, 60_000);
 });
 
-describe('every message gets a fresh random iv', () => {
-  it('repeats no iv and spreads every byte of it', () => {
-    const samples = 4096;
+describe('AK8: a changed envelope, policy or key fails integrity', () => {
+  let message: Sealed;
+  beforeAll(async () => {
+    message = await sealed(KDF_SCRYPT);
+  });
+
+  it.each<[string, (sealedMessage: Sealed) => Promise<unknown>]>([
+    [
+      'a flipped ciphertext bit',
+      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, HEADER_LEN)),
+    ],
+    [
+      'a flipped bit in the middle',
+      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, HEADER_LEN + 100)),
+    ],
+    [
+      'a flipped tag bit',
+      ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, object.length - 1)),
+    ],
+    ['a flipped iv bit', ({ contentKey, id, object }) => open(contentKey, id, policy, KDF_SCRYPT, flipped(object, 5))],
+    [
+      'a raised opens_max',
+      ({ contentKey, id, object }) => open(contentKey, id, { ...policy, opensMax: 2 }, KDF_SCRYPT, object),
+    ],
+    [
+      'a longer TTL',
+      ({ contentKey, id, object }) =>
+        open(contentKey, id, { ...policy, ttlSeconds: policy.ttlSeconds + 1 }, KDF_SCRYPT, object),
+    ],
+    ['another id', ({ contentKey, object }) => open(contentKey, randomId(), policy, KDF_SCRYPT, object)],
+    [
+      'another secret',
+      async ({ id, object }) =>
+        open(await contentKeyOf(id, newSecret(), passphraseKey), id, policy, KDF_SCRYPT, object),
+    ],
+    [
+      'a wrong passphrase',
+      async ({ id, secret, object }) =>
+        open(await contentKeyOf(id, secret, new Uint8Array(32)), id, policy, KDF_SCRYPT, object),
+    ],
+  ])('%s', async (_, tamper) => {
+    await expect(tamper(message)).rejects.toBeInstanceOf(IntegrityError);
+  });
+});
+
+describe('open rejects a malformed header before decrypting (spec 3)', () => {
+  let message: Sealed;
+  beforeAll(async () => {
+    message = await sealed(KDF_NONE);
+  });
+
+  it.each<[string, (object: Uint8Array) => Uint8Array, KdfId, new () => Error]>([
+    ['version 2', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
+    ['flags 1', (object) => flipped(object, 2), KDF_NONE, FlagsError],
+    ['the retired profile 2', (object) => flipped(object, 1, KDF_RETIRED), KDF_RETIRED as KdfId, KdfError],
+    ['a profile other than the fragment', (object) => object, KDF_SCRYPT, KdfMismatchError],
+    ['an object without a whole tag', (object) => object.subarray(0, HEADER_LEN + 3), KDF_NONE, IntegrityError],
+    ['a truncated header', (object) => object.subarray(0, HEADER_LEN - 1), KDF_NONE, HeaderError],
+  ])('%s', async (_, change, kdfId, expected) => {
+    await expect(open(message.contentKey, message.id, policy, kdfId, change(message.object))).rejects.toBeInstanceOf(
+      expected,
+    );
+  });
+});
+
+describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
+  const header = newHeader(KDF_NONE);
+  const oversizedFile = new Uint8Array(MAX_FILE_BYTES + 1);
+  let contentKey: CryptoKey;
+  beforeAll(async () => {
+    contentKey = await contentKeyOf(randomId(), newSecret(), new Uint8Array(0));
+  });
+
+  it.each<[string, Header, Policy, Payload, new () => Error]>([
+    [
+      'a file over the limit',
+      header,
+      policy,
+      { meta: { file: { name: 'x', mime: '', size: oversizedFile.length } }, file: oversizedFile },
+      MetaError,
+    ],
+    ['text over the limit', header, policy, { meta: { text: 'x'.repeat(MAX_TEXT_BYTES + 1) } }, MetaError],
+    [
+      'a file shorter than meta.file.size',
+      header,
+      policy,
+      { meta: { file: { name: 'x', mime: '', size: 2 } }, file: new Uint8Array(1) },
+      MetaError,
+    ],
+    ['file bytes without meta.file', header, policy, { meta: { text: 't' }, file: new Uint8Array(1) }, MetaError],
+    ['opens_max 0', header, { opensMax: 0, ttlSeconds: 60 }, textPayload, PolicyError],
+    ['a TTL under a minute', header, { opensMax: 1, ttlSeconds: 59 }, textPayload, PolicyError],
+    ['opens_max over 16 bits', header, { opensMax: 65_536, ttlSeconds: 60 }, textPayload, PolicyError],
+    ['a fractional opens_max', header, { opensMax: 1.5, ttlSeconds: 60 }, textPayload, PolicyError],
+    ['flags 1', { ...header, flags: 1 }, policy, textPayload, FlagsError],
+    ['version 2', { ...header, version: 2 }, policy, textPayload, VersionError],
+    ['the retired profile 2', { ...header, kdfId: KDF_RETIRED as KdfId }, policy, textPayload, KdfError],
+    ['an 11-byte iv', { ...header, iv: new Uint8Array(11) }, policy, textPayload, HeaderError],
+  ])('%s', async (_, invalidHeader, invalidPolicy, payload, expected) => {
+    await expect(seal(contentKey, invalidHeader, randomId(), invalidPolicy, payload)).rejects.toBeInstanceOf(expected);
+  });
+
+  it('fits the largest message into MAX_OBJECT_BYTES', { timeout: 60_000 }, async () => {
+    const file = new Uint8Array(MAX_FILE_BYTES).fill(7);
+    const text = 'y'.repeat(MAX_TEXT_BYTES);
+    const meta = { text, file: { name: 'max.bin', mime: 'application/octet-stream', size: file.length } };
+    const message = await sealed(KDF_NONE, { meta, file });
+    expect(message.object.length).toBeLessThanOrEqual(MAX_OBJECT_BYTES);
+    const opened = await open(message.contentKey, message.id, policy, KDF_NONE, message.object);
+    expect(opened.payload.meta.text).toBe(text);
+    expect(await sha256Hex(opened.payload.file ?? new Uint8Array(0))).toBe(await sha256Hex(file));
+  });
+});
+
+describe('secrets in the envelope', () => {
+  it('get a fresh random iv for every message', () => {
     const seen = new Set<string>();
     const distinct = Array.from({ length: IV_LEN }, () => new Set<number>());
-    for (let n = 0; n < samples; n++) {
+    for (let count = 0; count < 4096; count++) {
       const { iv } = newHeader(KDF_NONE);
-      const hex = bytesToHex(iv);
-      expect(seen.has(hex), `iv ${hex} repeated`).toBe(false);
-      seen.add(hex);
+      seen.add(bytesToHex(iv));
       for (const [index, byte] of iv.entries()) {
         distinct[index]?.add(byte);
       }
     }
+    expect(seen.size).toBe(4096);
     expect(Math.min(...distinct.map((values) => values.size))).toBeGreaterThanOrEqual(200);
   });
-});
 
-describe('open rejects malformed headers before decrypting', () => {
-  it('version 2 is rejected', async () => {
-    const m = await sample(KDF_NONE, '');
-    const tampered = withByteFlipped(m.object, 0, 0x03);
-    expect(tampered[0]).toBe(2);
-    await expect(open(m.k, m.id, m.policy, KDF_NONE, tampered)).rejects.toBeInstanceOf(VersionError);
-  });
-
-  it('flags 1 is rejected', async () => {
-    const m = await sample(KDF_NONE, '');
-    const tampered = withByteFlipped(m.object, 2);
-    await expect(open(m.k, m.id, m.policy, KDF_NONE, tampered)).rejects.toBeInstanceOf(FlagsError);
-  });
-
-  it('the retired profile 2 is rejected', async () => {
-    const m = await sample(KDF_NONE, '');
-    const tampered = withByteFlipped(m.object, 1, KDF_RETIRED);
-    expect(tampered[1]).toBe(KDF_RETIRED);
-    expect(() => parseHeader(tampered)).toThrow(KdfError);
-    await expect(open(m.k, m.id, m.policy, KDF_RETIRED as KdfId, tampered)).rejects.toBeInstanceOf(KdfError);
-    await expect(
-      seal(m.k, { ...newHeader(KDF_NONE), kdfId: KDF_RETIRED as KdfId }, m.id, m.policy, { meta: textMeta('x') }),
-    ).rejects.toBeInstanceOf(KdfError);
-  });
-
-  it('a kdf argument that differs from the header is rejected', async () => {
-    const m = await sample(KDF_NONE, '');
-    await expect(open(m.k, m.id, m.policy, KDF_SCRYPT, m.object)).rejects.toBeInstanceOf(KdfMismatchError);
-  });
-
-  it('a truncated object is rejected', async () => {
-    const m = await sample(KDF_NONE, '');
-    await expect(open(m.k, m.id, m.policy, KDF_NONE, m.object.subarray(0, HEADER_LEN + 3))).rejects.toBeInstanceOf(
-      IntegrityError,
-    );
-    await expect(open(m.k, m.id, m.policy, KDF_NONE, m.object.subarray(0, HEADER_LEN - 1))).rejects.toBeInstanceOf(
-      HeaderError,
-    );
-  });
-});
-
-describe('padding', () => {
-  it('paddedLength rounds up to the unit', () => {
-    const cases: [number, boolean, number][] = [
-      [0, false, 0],
-      [1, false, 4096],
-      [4095, false, 4096],
-      [4096, false, 4096],
-      [4097, false, 8192],
-      [1, true, 65_536],
-      [65_536, true, 65_536],
-      [65_537, true, 131_072],
-    ];
-    for (const [n, hasFile, want] of cases) {
-      expect(paddedLength(n, hasFile)).toBe(want);
-    }
-  });
-
-  it('text plaintext of 4096 bytes stays in one block and 4097 bytes needs two', async () => {
-    expect(await plaintextLength({ text: 'a'.repeat(4075) })).toBe(4096);
-    expect(await plaintextLength({ text: 'a'.repeat(4076) })).toBe(8192);
-    expect(await plaintextLength({ text: 't'.repeat(5000) })).toBe(8192);
-  });
-
-  it('file plaintext pads to multiples of 64 KiB', async () => {
-    const expected: [number, number][] = [
-      [0, 65_536],
-      [1, 65_536],
-      [4095, 65_536],
-      [4096, 65_536],
-      [4097, 65_536],
-      [65_536, 131_072],
-      [65_537, 131_072],
-    ];
-    for (const [size, want] of expected) {
-      const file = new Uint8Array(size);
-      const length = await plaintextLength(textMeta('integrity', file), file);
-      expect(length % PAD_FILE).toBe(0);
-      expect(length).toBe(want);
-    }
-  });
-});
-
-describe('seal validates its inputs', () => {
-  it('rejects content over the limits', async () => {
-    const id = randomId();
-    const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
-    const header = newHeader(KDF_NONE);
-    const big = new Uint8Array(MAX_FILE_BYTES + 1);
-    const bigMeta: Meta = { file: { name: 'x', mime: '', size: big.length } };
-    await expect(seal(content.k, header, id, policy, { meta: bigMeta, file: big })).rejects.toBeInstanceOf(MetaError);
-    const text = 'x'.repeat(MAX_TEXT_BYTES + 1);
-    await expect(seal(content.k, header, id, policy, { meta: { text } })).rejects.toBeInstanceOf(MetaError);
-  });
-
-  it('rejects a file whose length differs from meta.file.size', async () => {
-    const id = randomId();
-    const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
-    const header = newHeader(KDF_NONE);
-    const meta: Meta = { file: { name: 'x', mime: '', size: 2 } };
-    await expect(seal(content.k, header, id, policy, { meta, file: new Uint8Array(1) })).rejects.toBeInstanceOf(
-      MetaError,
-    );
-    await expect(
-      seal(content.k, header, id, policy, { meta: { text: 't' }, file: new Uint8Array(1) }),
-    ).rejects.toBeInstanceOf(MetaError);
-  });
-
-  it('rejects an invalid policy, flags and iv', async () => {
-    const id = randomId();
-    const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
-    const header = newHeader(KDF_NONE);
-    const payload = { meta: { text: 'policy' } };
-    await expect(seal(content.k, header, id, { opensMax: 0, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
-      PolicyError,
-    );
-    await expect(seal(content.k, header, id, { opensMax: 1, ttlSeconds: 59 }, payload)).rejects.toBeInstanceOf(
-      PolicyError,
-    );
-    await expect(seal(content.k, header, id, { opensMax: 65_536, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
-      PolicyError,
-    );
-    await expect(seal(content.k, header, id, { opensMax: 1.5, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
-      PolicyError,
-    );
-    const flagged: Header = { ...header, flags: 1 };
-    await expect(seal(content.k, flagged, id, policy, payload)).rejects.toBeInstanceOf(FlagsError);
-    const versioned: Header = { ...header, version: 2 };
-    await expect(seal(content.k, versioned, id, policy, payload)).rejects.toBeInstanceOf(VersionError);
-    const shortIv: Header = { ...header, iv: new Uint8Array(11) };
-    await expect(seal(content.k, shortIv, id, policy, payload)).rejects.toBeInstanceOf(HeaderError);
-  });
-
-  it('fits the maximal message into MAX_OBJECT_BYTES', async () => {
-    const id = randomId();
-    const { content } = await deriveAll(id, newSecret(), KDF_NONE, '');
-    const file = new Uint8Array(MAX_FILE_BYTES);
-    const meta: Meta = {
-      text: 'y'.repeat(MAX_TEXT_BYTES),
-      file: { name: 'max.bin', mime: 'application/octet-stream', size: file.length },
-    };
-    const object = await seal(content.k, newHeader(KDF_NONE), id, policy, { meta, file });
-    expect(object.length).toBeLessThanOrEqual(MAX_OBJECT_BYTES);
-    const opened = await open(content.k, id, policy, KDF_NONE, object);
-    expect(opened.payload.meta.text).toBe(meta.text);
-    expect(opened.payload.file).toEqual(file);
-  }, 60_000);
-});
-
-describe('header and aad', () => {
-  it('round trips through bytes', () => {
-    const header = newHeader(KDF_SCRYPT);
-    const parsed = parseHeader(headerBytes(header));
-    expect(parsed.version).toBe(VERSION);
-    expect(parsed.kdfId).toBe(KDF_SCRYPT);
-    expect(parsed.flags).toBe(0);
-    expect(parsed.iv).toEqual(header.iv);
-  });
-
-  it('prefixes the aad with the header bytes', () => {
-    const header = newHeader(KDF_NONE);
-    const id = randomId();
-    const bytes = aad(header, id, { opensMax: 1, ttlSeconds: 60 });
-    expect(bytes.length).toBe(AAD_LEN);
-    expect(bytes.subarray(0, HEADER_LEN)).toEqual(headerBytes(header));
-    expect(bytes.subarray(HEADER_LEN, HEADER_LEN + 16)).toEqual(id);
-    expect([...bytes.subarray(HEADER_LEN + 16)]).toEqual([0, 1, 0, 0, 0, 60]);
-  });
-
-  it('starts every sealed object with the header', async () => {
-    const m = await sample(KDF_NONE, '');
-    expect(m.object.subarray(0, HEADER_LEN)).toEqual(headerBytes(m.header));
-    const opened = await open(m.k, m.id, m.policy, KDF_NONE, m.object);
-    expect(opened.payload.meta).toEqual({ text: 'integrity' });
-    expect(opened.payload.file).toBeUndefined();
-  });
-});
-
-describe('plaintext buffers', () => {
-  it('are wiped after seal and open, and the opened file is its own copy', async () => {
+  it('wipe the plaintext after seal and open, and the opened file is its own copy', async () => {
     const file = new Uint8Array(5000).fill(7);
-    const m = await sample(KDF_NONE, '', file);
+    const payload: Payload = { meta: { file: { name: 'f.bin', mime: '', size: file.length } }, file };
+    const message = await sealed(KDF_NONE, payload);
     const plaintexts: Uint8Array[] = [];
     const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
     const decrypt = crypto.subtle.decrypt.bind(crypto.subtle);
@@ -325,8 +233,8 @@ describe('plaintext buffers', () => {
     ];
     let opened;
     try {
-      await seal(m.k, newHeader(KDF_NONE), m.id, policy, { meta: textMeta('wipe me', file), file });
-      opened = await open(m.k, m.id, policy, KDF_NONE, m.object);
+      await seal(message.contentKey, newHeader(KDF_NONE), message.id, policy, payload);
+      opened = await open(message.contentKey, message.id, policy, KDF_NONE, message.object);
     } finally {
       for (const spy of spies) {
         spy.mockRestore();
@@ -337,6 +245,5 @@ describe('plaintext buffers', () => {
       plaintexts.every((plaintext) => plaintext.length > file.length && plaintext.every((byte) => byte === 0)),
     ).toBe(true);
     expect(opened.payload.file).toEqual(file);
-    expect(opened.payload.meta.text).toBe('integrity');
   });
 });

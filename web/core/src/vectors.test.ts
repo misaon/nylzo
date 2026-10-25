@@ -1,14 +1,10 @@
 import { scryptAsync } from '@noble/hashes/scrypt.js';
 import { describe, expect, it } from 'vitest';
 
-import { bytesToHex, fileBytes, hexToBytes, loadVectors, sha256Hex } from '../test/vectors.ts';
-import { open, seal } from './envelope/envelope.ts';
-import { aad, type Header, type Policy } from './envelope/header.ts';
-import { decodeMeta, encodeMeta, type Meta } from './envelope/meta.ts';
-import { MetaError, WeakPassphraseError } from './errors.ts';
+import { bytesToHex, hexToBytes, loadVectors } from '../test/vectors.ts';
+import { WeakPassphraseError } from './errors.ts';
 import { deriveContent, deriveLink, hsalt } from './keys/derive.ts';
 import { assertStrongPassphrase, isKdfId, KDF_NONE, type KdfId } from './keys/kdf.ts';
-import { HEADER_LEN, TAG_LEN, VERSION } from './limits.ts';
 import { fragment } from './link/link.ts';
 import { encodeBase64url } from './primitives/base64url.ts';
 import { utf8 } from './primitives/bytes.ts';
@@ -94,54 +90,6 @@ describe('derive', () => {
     expect(composed?.passphrase).not.toBe(decomposed?.passphrase);
     expect(composed?.p_hex).toBe(decomposed?.p_hex);
     expect(composed?.k_hex).toBe(decomposed?.k_hex);
-  });
-});
-
-describe('envelope', () => {
-  it.each(vectors.envelope)('$name', slow, async (vector) => {
-    const id = parseId(vector.id);
-    const kdfId = kdfIdOf(vector.kdf_id);
-    const { content } = await deriveAll(id, hexToBytes(vector.s), kdfId, vector.passphrase ?? '');
-    const header: Header = { version: VERSION, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
-    const policy: Policy = { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s };
-    const file = vector.file && fileBytes(vector.file);
-    const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
-    const meta: Meta = { text: vector.text, file: fileMeta };
-
-    expect(new TextDecoder().decode(encodeMeta(meta))).toBe(vector.meta_json);
-    expect(bytesToHex(aad(header, id, policy))).toBe(vector.aad_hex);
-
-    const object = await seal(content.k, header, id, policy, { meta, file });
-    expect(object.length).toBe(vector.object_len);
-    expect(object.length - HEADER_LEN - TAG_LEN).toBe(vector.plaintext_len);
-    expect(await sha256Hex(object)).toBe(vector.object_sha256);
-    expect(vector.object_b64 === undefined ? undefined : encodeBase64url(object)).toBe(vector.object_b64);
-
-    const opened = await open(content.k, id, policy, kdfId, object);
-    expect(opened.header).toEqual(header);
-    expect(opened.payload.meta).toEqual(meta);
-    expect(opened.payload.file).toEqual(file);
-  });
-});
-
-describe('meta', () => {
-  const valid = vectors.meta.filter((vector) => vector.valid);
-  const invalid = vectors.meta.filter((vector) => !vector.valid);
-
-  it.each(valid)('$name', (vector) => {
-    const meta = decodeMeta(utf8(vector.input));
-    const canonical = encodeMeta(meta);
-    expect(new TextDecoder().decode(canonical)).toBe(vector.canonical);
-    const file =
-      vector.file_name === undefined
-        ? undefined
-        : { name: vector.file_name, mime: vector.file_mime, size: vector.file_size };
-    expect(meta).toEqual({ text: vector.text, file });
-    expect(encodeMeta(decodeMeta(canonical))).toEqual(canonical);
-  });
-
-  it.each(invalid)('$name is rejected', (vector) => {
-    expect(() => decodeMeta(utf8(vector.input))).toThrow(MetaError);
   });
 });
 

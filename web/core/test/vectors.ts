@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 
+import { isKdfId, type KdfId } from '../src/keys/kdf.ts';
 import { ID_LEN } from '../src/limits.ts';
 import { hash } from '../src/primitives/identifiers.ts';
 
@@ -144,6 +145,13 @@ export function loadVectors(): VectorFile {
   return file;
 }
 
+export function kdfIdOf(value: number): KdfId {
+  if (!isKdfId(value)) {
+    throw new Error(`vector uses unknown kdf_id ${value}`);
+  }
+  return value;
+}
+
 export function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   if (hex.length % 2 !== 0 || !/^[\da-f]*$/.test(hex)) {
     throw new Error(`not lowercase hex: ${hex}`);
@@ -183,10 +191,4 @@ export function thrownBy(run: () => unknown): unknown {
     return error;
   }
   return undefined;
-}
-
-export function withByteFlipped(bytes: Uint8Array, index: number, mask = 1): Uint8Array<ArrayBuffer> {
-  const copy = Uint8Array.from(bytes);
-  copy[index] = (copy[index] ?? 0) ^ mask;
-  return copy;
 }
