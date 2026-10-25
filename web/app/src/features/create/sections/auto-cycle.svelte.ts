@@ -1,4 +1,4 @@
-import { type Attachment, createAttachmentKey } from 'svelte/attachments';
+import type { Attachment } from 'svelte/attachments';
 import { prefersReducedMotion } from 'svelte/motion';
 
 const TICK_MS = 50;
@@ -37,26 +37,25 @@ export class AutoCycle {
     return () => clearInterval(timer);
   };
 
-  readonly region = {
-    onmouseenter: (): void => {
-      this.#pointerInside = true;
-    },
-    onmouseleave: (): void => {
-      this.#pointerInside = false;
-    },
-    onfocusin: (event: FocusEvent): void => {
-      if (event.target instanceof Element && event.target.matches(':focus-visible')) {
-        this.#focusInside = true;
-      }
-    },
-    onfocusout: (event: FocusEvent): void => {
-      const target = event.currentTarget;
-      if (!(target instanceof Node && event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
-        this.#focusInside = false;
-      }
-    },
-    [createAttachmentKey()]: this.observe,
-    [createAttachmentKey()]: this.advance,
+  readonly pointerEnter = (): void => {
+    this.#pointerInside = true;
+  };
+
+  readonly pointerLeave = (): void => {
+    this.#pointerInside = false;
+  };
+
+  readonly focusIn = (event: FocusEvent): void => {
+    if (event.target instanceof Element && event.target.matches(':focus-visible')) {
+      this.#focusInside = true;
+    }
+  };
+
+  readonly focusOut = (event: FocusEvent): void => {
+    const target = event.currentTarget;
+    if (!(target instanceof Node && event.relatedTarget instanceof Node && target.contains(event.relatedTarget))) {
+      this.#focusInside = false;
+    }
   };
 
   constructor(count: () => number, duration: (index: number) => number) {

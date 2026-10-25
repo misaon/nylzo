@@ -53,16 +53,16 @@ describe('AutoCycle', () => {
 
   it('pauses while the pointer or the keyboard focus is inside', () => {
     const { cycle, stop } = runCycle();
-    cycle.region.onmouseenter();
+    cycle.pointerEnter();
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(0);
-    cycle.region.onfocusin(focusOn(true));
-    cycle.region.onmouseleave();
+    cycle.focusIn(focusOn(true));
+    cycle.pointerLeave();
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(0);
-    cycle.region.onfocusout(new Event('focusout') as FocusEvent);
+    cycle.focusOut(new Event('focusout') as FocusEvent);
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(1);
@@ -81,7 +81,7 @@ describe('AutoCycle', () => {
 
   it('keeps cycling when a mouse click moves the focus inside', () => {
     const { cycle, stop } = runCycle();
-    cycle.region.onfocusin(focusOn(false));
+    cycle.focusIn(focusOn(false));
     flushSync();
     vi.advanceTimersByTime(STEP_MS);
     expect(cycle.index).toBe(1);
