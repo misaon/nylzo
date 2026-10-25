@@ -12,114 +12,99 @@ import (
 	"github.com/misaon/nylzo/internal/pepper"
 )
 
-func secret(b byte) []byte {
-	return bytes.Repeat([]byte{b}, 32)
+func secret(fill byte) []byte {
+	return bytes.Repeat([]byte{fill}, pepper.SecretLen)
 }
 
-func TestPurposeKeysDiffer(t *testing.T) {
-	k, err := pepper.NewKey(secret(1))
+func newRing(t *testing.T, current, previous []byte) *pepper.Ring {
+	t.Helper()
+	ring, err := pepper.NewRing(current, previous)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in := []byte("same input")
-	seen := map[[32]byte]pepper.Purpose{}
-	for _, p := range []pepper.Purpose{pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge} {
-		m := k.MAC(p, in)
-		if prev, dup := seen[m]; dup {
-			t.Fatalf("purpose %s and %s share a mac", prev, p)
+	return ring
+}
+
+func TestEveryPurposeHasItsOwnKey(t *testing.T) {
+	ring := newRing(t, secret(1), nil)
+	seen := map[[pepper.MACLen]byte]pepper.Purpose{}
+	purposes := []pepper.Purpose{
+		pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge,
+	}
+	for _, purpose := range purposes {
+		mac, _ := ring.MAC(purpose, []byte("same input"))
+		if other, duplicate := seen[mac]; duplicate {
+			t.Fatalf("purposes %s and %s share a mac", other, purpose)
 		}
-		seen[m] = p
+		seen[mac] = purpose
 	}
-	other, _ := pepper.NewKey(secret(2))
-	if other.MAC(pepper.Read, in) == k.MAC(pepper.Read, in) {
-		t.Fatal("different peppers share a mac")
-	}
-	if other.ID() == k.ID() {
-		t.Fatal("the fixed test peppers must have distinct ids")
-	}
-}
-
-func TestRingVerifyAndRotation(t *testing.T) {
-	old, _ := pepper.NewRing(secret(1), nil)
-	mac, id := old.MAC(pepper.Read, []byte("token"))
-	if !old.Verify(pepper.Read, []byte("token"), mac[:], id) {
-		t.Fatal("own mac rejected")
-	}
-	if old.Verify(pepper.Read, []byte("other"), mac[:], id) {
-		t.Fatal("wrong input accepted")
-	}
-	if old.Verify(pepper.Verifier, []byte("token"), mac[:], id) {
-		t.Fatal("wrong purpose accepted")
-	}
-	rotated, err := pepper.NewRing(secret(2), secret(1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !rotated.Verify(pepper.Read, []byte("token"), mac[:], id) {
-		t.Fatal("previous pepper mac rejected after rotation")
-	}
-	newMac, newID := rotated.MAC(pepper.Read, []byte("token"))
-	if newID == id || newMac == mac {
-		t.Fatal("rotation did not change the writing key")
-	}
-	dropped, _ := pepper.NewRing(secret(2), nil)
-	if dropped.Verify(pepper.Read, []byte("token"), mac[:], id) {
-		t.Fatal("mac verified after the old pepper was dropped")
-	}
-	if !dropped.Verify(pepper.Read, []byte("token"), newMac[:], newID) {
-		t.Fatal("current mac rejected")
-	}
-	if dropped.Verify(pepper.Read, []byte("token"), dropped.Dummy(), newID) {
-		t.Fatal("dummy accepted")
-	}
-	if dropped.Verify(pepper.Read, []byte("token"), dropped.Dummy(), id) {
-		t.Fatal("dummy accepted for unknown pepper id")
+	for _, unknown := range []pepper.Purpose{"", "reed"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("purpose %q got a mac under a key that was never derived", unknown)
+				}
+			}()
+			ring.MAC(unknown, []byte("x"))
+		}()
 	}
 }
 
-func TestRingRejectsCollisionAndBadSecrets(t *testing.T) {
+func TestAK27RotationKeepsOldMacsValid(t *testing.T) {
+	input := []byte("token")
+	old := newRing(t, secret(1), nil)
+	mac, id := old.MAC(pepper.Read, input)
+	if !old.Verify(pepper.Read, input, mac[:], id) || old.Verify(pepper.Read, []byte("other"), mac[:], id) ||
+		old.Verify(pepper.Verifier, input, mac[:], id) {
+		t.Fatal("a mac verifies only its own input and purpose")
+	}
+	rotated := newRing(t, secret(2), secret(1))
+	if !rotated.Verify(pepper.Read, input, mac[:], id) {
+		t.Fatal("the previous pepper's mac was rejected after the rotation")
+	}
+	newMAC, newID := rotated.MAC(pepper.Read, input)
+	if newID == id || newMAC == mac {
+		t.Fatal("the rotation did not change the writing key")
+	}
+	dropped := newRing(t, secret(2), nil)
+	if dropped.Verify(pepper.Read, input, mac[:], id) || !dropped.Verify(pepper.Read, input, newMAC[:], newID) {
+		t.Fatal("after dropping the old pepper only the current macs verify")
+	}
+	for _, pepperID := range []byte{newID, id} {
+		if dropped.Verify(pepper.Read, input, dropped.Dummy(), pepperID) {
+			t.Fatalf("the dummy mac verified for pepper id %d", pepperID)
+		}
+	}
+}
+
+func TestSecretsAreCheckedBeforeUse(t *testing.T) {
 	if _, err := pepper.NewRing(secret(1), secret(1)); !errors.Is(err, pepper.ErrCollision) {
-		t.Fatalf("collision: %v", err)
+		t.Fatalf("two peppers with one pepper_id: %v", err)
 	}
 	if _, err := pepper.NewRing(secret(1)[:31], nil); !errors.Is(err, pepper.ErrSecret) {
-		t.Fatalf("short secret: %v", err)
-	}
-	if _, err := pepper.ParseSecret("zz"); !errors.Is(err, pepper.ErrSecret) {
-		t.Fatal("bad secret parsed")
+		t.Fatalf("a short secret: %v", err)
 	}
 	sequence := make([]byte, pepper.SecretLen)
 	for i := range sequence {
 		sequence[i] = byte(i)
 	}
-	b, err := pepper.ParseSecret(hex.EncodeToString(sequence))
-	if err != nil || !bytes.Equal(b, sequence) {
-		t.Fatal("hex secret")
-	}
-	b, err = pepper.ParseSecret("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8")
-	if err != nil || !bytes.Equal(b, sequence) {
-		t.Fatalf("base64url secret: %v", err)
-	}
-	for _, weak := range []string{hex.EncodeToString(secret(0)), hex.EncodeToString(secret(0xab)), "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM"} {
-		if _, err := pepper.ParseSecret(weak); !errors.Is(err, pepper.ErrWeak) {
-			t.Fatalf("a pepper of equal bytes was accepted: %q %v", weak, err)
+	for _, text := range []string{hex.EncodeToString(sequence), "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"} {
+		if parsed, err := pepper.ParseSecret(text); err != nil || !bytes.Equal(parsed, sequence) {
+			t.Fatalf("%q: %x %v", text, parsed, err)
 		}
 	}
-}
-
-func TestUnknownPurposePanics(t *testing.T) {
-	k, err := pepper.NewKey(secret(1))
-	if err != nil {
-		t.Fatal(err)
+	if _, err := pepper.ParseSecret("zz"); !errors.Is(err, pepper.ErrSecret) {
+		t.Fatalf("a malformed secret: %v", err)
 	}
-	for _, p := range []pepper.Purpose{"", "reed"} {
-		func() {
-			defer func() {
-				if recover() == nil {
-					t.Fatalf("purpose %q got a MAC under a key that was never derived", p)
-				}
-			}()
-			k.MAC(p, []byte("x"))
-		}()
+	weak := []string{
+		hex.EncodeToString(secret(0)),
+		hex.EncodeToString(secret(0xab)),
+		"AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+	}
+	for _, text := range weak {
+		if _, err := pepper.ParseSecret(text); !errors.Is(err, pepper.ErrWeak) {
+			t.Fatalf("a pepper of equal bytes was accepted: %q %v", text, err)
+		}
 	}
 }
 
@@ -128,24 +113,21 @@ func TestServerVectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var f vectors.File
-	if err := json.Unmarshal(data, &f); err != nil {
+	var file vectors.File
+	if err = json.Unmarshal(data, &file); err != nil {
 		t.Fatal(err)
 	}
-	cur, _ := hex.DecodeString(f.Server.Pepper)
-	prev, _ := hex.DecodeString(f.Server.PreviousPepper)
-	ring, err := pepper.NewRing(cur, prev)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if int(ring.CurrentID()) != f.Server.PepperID {
+	current, _ := hex.DecodeString(file.Server.Pepper)
+	previous, _ := hex.DecodeString(file.Server.PreviousPepper)
+	ring := newRing(t, current, previous)
+	if int(ring.CurrentID()) != file.Server.PepperID {
 		t.Fatal("pepper id mismatch")
 	}
-	for _, c := range f.Server.MACs {
-		in, _ := hex.DecodeString(c.Input)
-		mac, _ := ring.MAC(pepper.Purpose(c.Purpose), in)
-		if hex.EncodeToString(mac[:]) != c.MAC {
-			t.Fatalf("mac %s mismatch", c.Purpose)
+	for _, vector := range file.Server.MACs {
+		input, _ := hex.DecodeString(vector.Input)
+		mac, _ := ring.MAC(pepper.Purpose(vector.Purpose), input)
+		if hex.EncodeToString(mac[:]) != vector.MAC {
+			t.Fatalf("mac %s mismatch", vector.Purpose)
 		}
 	}
 }

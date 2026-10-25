@@ -42,97 +42,110 @@ var (
 	)
 )
 
-type Key struct {
-	id   byte
-	keys map[Purpose][32]byte
-}
-
-func NewKey(secret []byte) (*Key, error) {
-	if len(secret) != SecretLen {
-		return nil, ErrSecret
-	}
-	k := &Key{keys: make(map[Purpose][32]byte, len(purposes))}
-	k.id = sha256.Sum256(append([]byte(labelID), secret...))[0]
-	for _, p := range purposes {
-		derived, err := hkdf.Key(sha256.New, secret, nil, infoBase+string(p), 32)
-		if err != nil {
-			return nil, err
-		}
-		k.keys[p] = [32]byte(derived)
-	}
-	return k, nil
-}
-
-func ParseSecret(s string) ([]byte, error) {
-	b, err := decodeSecret(strings.TrimSpace(s))
+func ParseSecret(text string) ([]byte, error) {
+	secret, err := decodeSecret(strings.TrimSpace(text))
 	if err != nil {
 		return nil, err
 	}
-	if bytes.Count(b, b[:1]) == SecretLen {
+	if bytes.Count(secret, secret[:1]) == SecretLen {
 		return nil, ErrWeak
 	}
-	return b, nil
+	return secret, nil
 }
 
-func decodeSecret(s string) ([]byte, error) {
-	if b, err := hex.DecodeString(s); err == nil && len(b) == SecretLen {
-		return b, nil
+func decodeSecret(text string) ([]byte, error) {
+	if secret, err := hex.DecodeString(text); err == nil && len(secret) == SecretLen {
+		return secret, nil
 	}
-	if b, err := base64.RawURLEncoding.Strict().DecodeString(s); err == nil && len(b) == SecretLen {
-		return b, nil
+	if secret, err := base64.RawURLEncoding.Strict().DecodeString(text); err == nil && len(secret) == SecretLen {
+		return secret, nil
 	}
 	return nil, ErrSecret
 }
 
-func (k *Key) ID() byte {
-	return k.id
+type key struct {
+	id      byte
+	macKeys map[Purpose][32]byte
 }
 
-func (k *Key) MAC(p Purpose, input []byte) [MACLen]byte {
-	key, ok := k.keys[p]
-	if !ok {
-		panic("pepper: unknown purpose " + strconv.Quote(string(p)))
+func newKey(secret []byte) (*key, error) {
+	if len(secret) != SecretLen {
+		return nil, ErrSecret
 	}
-	m := hmac.New(sha256.New, key[:])
-	m.Write(input)
-	return [MACLen]byte(m.Sum(nil))
+	derived := &key{
+		id:      sha256.Sum256(append([]byte(labelID), secret...))[0],
+		macKeys: make(map[Purpose][32]byte, len(purposes)),
+	}
+	for _, purpose := range purposes {
+		macKey, err := hkdf.Key(sha256.New, secret, nil, infoBase+string(purpose), 32)
+		if err != nil {
+			return nil, err
+		}
+		derived.macKeys[purpose] = [32]byte(macKey)
+	}
+	return derived, nil
+}
+
+func (k *key) mac(purpose Purpose, input []byte) [MACLen]byte {
+	macKey, ok := k.macKeys[purpose]
+	if !ok {
+		panic("pepper: unknown purpose " + strconv.Quote(string(purpose)))
+	}
+	hash := hmac.New(sha256.New, macKey[:])
+	hash.Write(input)
+	return [MACLen]byte(hash.Sum(nil))
 }
 
 type Ring struct {
-	current  *Key
-	previous *Key
+	current  *key
+	previous *key
 	dummy    [MACLen]byte
 }
 
 func NewRing(current, previous []byte) (*Ring, error) {
-	cur, err := NewKey(current)
+	currentKey, err := newKey(current)
 	if err != nil {
 		return nil, err
 	}
-	r := &Ring{current: cur}
-	if previous != nil {
-		prev, err := NewKey(previous)
-		if err != nil {
-			return nil, err
-		}
-		if prev.id == cur.id {
-			return nil, ErrCollision
-		}
-		r.previous = prev
+	ring := &Ring{current: currentKey, dummy: currentKey.mac(Read, []byte("nylzo/v1/dummy"))}
+	if previous == nil {
+		return ring, nil
 	}
-	r.dummy = cur.MAC(Read, []byte("nylzo/v1/dummy"))
-	return r, nil
+	ring.previous, err = newKey(previous)
+	if err != nil {
+		return nil, err
+	}
+	if ring.previous.id == currentKey.id {
+		return nil, ErrCollision
+	}
+	return ring, nil
 }
 
 func (r *Ring) CurrentID() byte {
 	return r.current.id
 }
 
-func (r *Ring) MAC(p Purpose, input []byte) ([MACLen]byte, byte) {
-	return r.current.MAC(p, input), r.current.id
+//nolint:gocritic // unnamedResult: internal/server calls this signature; see the cross-area list.
+func (r *Ring) MAC(purpose Purpose, input []byte) ([MACLen]byte, byte) {
+	return r.current.mac(purpose, input), r.current.id
 }
 
-func (r *Ring) byID(id byte) *Key {
+func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {
+	verifying := r.keyFor(id)
+	known := verifying != nil
+	if !known {
+		verifying = r.current
+		expected = r.dummy[:]
+	}
+	computed := verifying.mac(purpose, input)
+	return hmac.Equal(computed[:], expected) && known
+}
+
+func (r *Ring) Dummy() []byte {
+	return append([]byte(nil), r.dummy[:]...)
+}
+
+func (r *Ring) keyFor(id byte) *key {
 	if r.current.id == id {
 		return r.current
 	}
@@ -140,19 +153,4 @@ func (r *Ring) byID(id byte) *Key {
 		return r.previous
 	}
 	return nil
-}
-
-func (r *Ring) Verify(p Purpose, input, expected []byte, id byte) bool {
-	key := r.byID(id)
-	known := key != nil
-	if !known {
-		key = r.current
-		expected = r.dummy[:]
-	}
-	got := key.MAC(p, input)
-	return hmac.Equal(got[:], expected) && known
-}
-
-func (r *Ring) Dummy() []byte {
-	return append([]byte(nil), r.dummy[:]...)
 }
