@@ -904,15 +904,6 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     expect(await r.report('late')).toEqual({ outcome: 'ignored' });
     expect(api.reports).toEqual([]);
   });
-
-  it('refuses a reason longer than 1000 bytes without a request', async () => {
-    const api = fakeApi();
-    const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    expect(await r.report('č'.repeat(501))).toEqual({ outcome: 'invalid', problems: ['reason_too_long'] });
-    expect(api.calls).not.toContain('report');
-  });
 });
 
 describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {

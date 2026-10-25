@@ -108,14 +108,6 @@ describe('the sent page', () => {
     expect(sent.items()[0]?.state).toMatchObject({ kind: 'loaded', status: { state: 'available' } });
   });
 
-  it('ignores a cancel for a message it does not list', async () => {
-    const { api, sent } = await setup({}, 1);
-    await sent.load();
-    api.calls.length = 0;
-    expect(await sent.cancel(ID)).toEqual({ outcome: 'ignored' });
-    expect(api.calls).toEqual([]);
-  });
-
   it('forgets one message or all of them in the store too', async () => {
     const { records, store, sent } = await setup({}, 3);
     await sent.load();

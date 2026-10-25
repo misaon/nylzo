@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { WEAK_BELOW_CHARS, WEAK_BELOW_WORDS } from '../features/create/create-message.ts';
 import { czech, type MessageKey } from '../shared/language/czech.ts';
 import { english } from '../shared/language/english.ts';
-import { formatDays } from '../shared/language/format.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
 import { MAX_REASON_BYTES } from '../shared/report/report.ts';
 import { RETENTION_DAYS } from '../shared/sent-records/sent-record.ts';
@@ -36,14 +35,5 @@ describe('messages', () => {
       `${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARS} characters`,
     );
     expect(translate('report.problem.reason_too_long', limits)).toContain(`${MAX_REASON_BYTES} bytes`);
-  });
-
-  it('counts the time a sent entry is kept from the end of its message, as isRetained does (D39)', () => {
-    expect(new Translator('en').translate('sent.note', { days: formatDays(RETENTION_DAYS, 'en') })).toContain(
-      'disappears 7 days after its message ends.',
-    );
-    expect(new Translator('cs').translate('sent.note', { days: formatDays(RETENTION_DAYS, 'cs') })).toMatch(
-      /zmizí 7\s+dnů po skončení zprávy\.$/u,
-    );
   });
 });

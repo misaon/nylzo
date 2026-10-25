@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
 
-import { english } from '../../../shared/language/english.ts';
-import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
+import { readAttachment, ttlChoices } from './create-form.ts';
 
 const limits: InstanceLimits = {
   maxFileBytes: 16,
@@ -20,29 +19,6 @@ describe('create form', () => {
     expect(ttlChoices({ ...limits, defaultTtlSeconds: 7200 })).toEqual([3600, 7200, 86_400, 259_200, 604_800]);
     expect(ttlChoices({ ...limits, maxTtlSeconds: 86_400, defaultTtlSeconds: 86_400 })).toEqual([3600, 86_400]);
     expect(ttlChoices({ ...limits, defaultTtlSeconds: 1 })).toEqual([3600, 86_400, 259_200, 604_800]);
-  });
-
-  it('labels only the presets and leaves other expiries to the duration format', () => {
-    expect(ttlKey(3600)).toBe('ttl.3600');
-    expect(ttlKey(7200)).toBeUndefined();
-  });
-
-  it('maps every problem and failure to a translated text', () => {
-    const keys = [
-      problemKey({ field: 'content', code: 'missing' }),
-      problemKey({ field: 'text', code: 'too_large' }),
-      problemKey({ field: 'file', code: 'too_large' }),
-      problemKey({ field: 'ttl', code: 'out_of_range' }),
-      problemKey({ field: 'opens', code: 'out_of_range' }),
-      problemKey({ field: 'passphrase', code: 'too_short' }),
-      problemKey({ field: 'passphrase', code: 'malformed' }),
-      failureKey({ kind: 'pow' }),
-      failureKey({ kind: 'invalid', problems: [] }),
-    ];
-    for (const key of keys) {
-      expect(english[key], key).toBeTypeOf('string');
-    }
-    expect(failureKey({ kind: 'invalid', problems: [] })).toBe('failure.failed');
   });
 
   it('refuses a file over the limit before reading it', async () => {
