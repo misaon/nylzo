@@ -73,6 +73,7 @@ export type ReadView =
       readonly leaseEnded?: boolean | undefined;
       readonly rejected?: PassphraseRejection | undefined;
     }
+  | { readonly view: 'removed' }
   | { readonly view: 'retired' }
   | { readonly view: 'retry_later'; readonly retryAfter?: number | undefined }
   | {
@@ -236,20 +237,43 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let revealable = false;
   let left = false;
 
+  let fragmentText = '';
   const leaseKey = () => `nylzo:lease:${messageId}`;
+  const linkKey = () => `nylzo:link:${messageId}`;
   const kdfKey = () => `nylzo:kdf:${messageId}`;
   const storedLease = () => lease ?? safely(() => session.getItem(leaseKey()), null);
   const allowed = () => page.visible() && !page.prerendering();
   const pageLeft = (): boolean => left;
 
+  // The fragment waits in the tab's session only while a lease lives, so a reload can finish an open it already spent.
   function keepLease(value: string): void {
     lease = value;
     safely(() => session.setItem(leaseKey(), value), undefined);
+    safely(() => session.setItem(linkKey(), fragmentText), undefined);
   }
 
   function forgetLease(): void {
     lease = undefined;
     safely(() => session.removeItem(leaseKey()), undefined);
+    safely(() => session.removeItem(linkKey()), undefined);
+  }
+
+  function takeFragment(): string | ReadView {
+    const { hash, pathname } = dependencies.location;
+    const pathId = safely(() => idToString(parsePath(pathname)), undefined);
+    if (hash !== '') {
+      dependencies.dropFragment();
+      if (pathId !== undefined) {
+        safely(() => session.setItem(`nylzo:dropped:${pathId}`, '1'), undefined);
+      }
+      return hash;
+    }
+    const stored = pathId === undefined ? null : safely(() => session.getItem(`nylzo:link:${pathId}`), null);
+    if (stored !== null) {
+      return stored;
+    }
+    const dropped = pathId !== undefined && safely(() => session.getItem(`nylzo:dropped:${pathId}`), null) !== null;
+    return dropped ? { view: 'removed' } : hash;
   }
 
   function forgetSecrets(): void {
@@ -329,9 +353,15 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   async function load(): Promise<void> {
     show({ view: 'loading' });
+    const taken = takeFragment();
+    if (typeof taken !== 'string') {
+      show(taken);
+      return;
+    }
+    fragmentText = taken;
     let parsed: Fragment;
     try {
-      parsed = parseFragment(dependencies.location.hash);
+      parsed = parseFragment(taken);
     } catch (error) {
       show(linkProblemView(error));
       return;
@@ -534,7 +564,6 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (pageLeft()) {
       return undefined;
     }
-    dependencies.dropFragment();
     acknowledging = true;
     acknowledged = acknowledge(current, fetched);
     return undefined;

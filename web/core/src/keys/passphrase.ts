@@ -16,7 +16,7 @@ const SEQUENCES = [
 
 const common = new Set(COMMON_PASSPHRASES);
 
-/** Applies spec section 2 in its order, so both cores name the same problem. */
+// Applies spec section 2 in its order, so both cores name the same problem.
 export function assertStrongPassphrase(passphrase: string): void {
   if (!passphrase.isWellFormed()) {
     throw new MalformedPassphraseError();

@@ -57,27 +57,37 @@
       ]}
     >
       <label for="{id}-passphrase" class="sr-only">{translate('create.passphrase')}</label>
-      <input
-        id="{id}-passphrase"
-        {@attach composer.focus.attach('passphrase')}
-        bind:value={composer.passphrase}
-        type="password"
-        disabled={!composer.protect}
-        autocomplete="off"
-        autocapitalize="off"
-        spellcheck="false"
-        data-1p-ignore=""
-        data-lpignore="true"
-        data-bwignore="true"
-        data-form-type="other"
-        placeholder={translate('compose.passphrase.placeholder', { words: WEAK_BELOW_WORDS })}
-        aria-invalid={composer.problemOf.passphrase !== undefined}
-        aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"
-        class={[
-          'h-11 w-full rounded-[7px] px-3 text-[13px] text-ink well placeholder:text-ink-mute md:h-8',
-          composer.problemOf.passphrase && 'shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]',
-        ]}
-      />
+      <div class="flex gap-1.5">
+        <input
+          id="{id}-passphrase"
+          {@attach composer.focus.attach('passphrase')}
+          bind:value={composer.passphrase}
+          type={composer.passphraseVisible ? 'text' : 'password'}
+          disabled={!composer.protect}
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-1p-ignore=""
+          data-lpignore="true"
+          data-bwignore="true"
+          data-form-type="other"
+          placeholder={translate('compose.passphrase.placeholder', { words: WEAK_BELOW_WORDS })}
+          aria-invalid={composer.problemOf.passphrase !== undefined}
+          aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"
+          class={[
+            'h-11 w-full min-w-0 rounded-[7px] px-3 text-[13px] text-ink well placeholder:text-ink-mute md:h-8',
+            composer.problemOf.passphrase && 'shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]',
+          ]}
+        />
+        <button
+          type="button"
+          disabled={!composer.protect}
+          onclick={composer.generatePassphrase}
+          class="h-11 shrink-0 rounded-[7px] px-3 text-[12px] text-nebula-300 well hover:text-ink md:h-8"
+        >
+          {translate('compose.passphrase.generate')}
+        </button>
+      </div>
       <p id="{id}-passphrase-hint" class="text-[11px] leading-relaxed text-ink-mute">
         {translate('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARACTERS })}
       </p>

@@ -27,6 +27,10 @@ export const english: Record<MessageKey, string> = {
   'problem.opens.out_of_range': 'The number of opens must be 1 to {max}.',
   'problem.passphrase.too_short': 'The passphrase needs at least {min} characters.',
   'problem.passphrase.malformed': 'The passphrase contains invalid characters.',
+  'problem.passphrase.repetitive': 'The passphrase repeats too few different characters.',
+  'problem.passphrase.sequential': 'The passphrase is a run of letters, digits or keyboard keys.',
+  'problem.passphrase.context': 'The passphrase is mostly the word Nylzo.',
+  'problem.passphrase.common': 'This passphrase is on a list of commonly used passwords.',
 
   'failure.instance': 'The service settings could not be loaded.',
   'failure.rate_limited': 'Too many messages in a short time. Try again in {time}.',
@@ -171,6 +175,8 @@ export const english: Record<MessageKey, string> = {
     'Counters without addresses: it keeps daily totals of created messages and of reports per message for {days} after the day ends, and used one-time challenges for a few minutes.',
   'transparency.stores.addresses':
     'It does not store IP addresses. Per-address limits live only in memory and are forgotten on restart.',
+  'transparency.stores.enforced':
+    "Expiry and the number of opens are rules this server enforces, not something the encryption guarantees. A server in someone else's hands could keep the encrypted message, and then only the secrecy of the link and of the passphrase protect it.",
   'transparency.logs.title': 'What the server logs',
   'transparency.logs.what':
     'The time truncated to the minute, the method, the kind of path, the response status and how long the request took. For creating, opening and downloading a message it leaves out the duration, because it would reveal the size of the message.',
@@ -200,6 +206,8 @@ export const english: Record<MessageKey, string> = {
     'This command, from the nylzo release of the same version, checks that the server sends exactly these files with the same headers:',
   'transparency.client.limit':
     'It checks only what the server sent to this command. A server can recognise the command and send browsers other code, so the check finds a broken build or deployment, not a swap the server hides on purpose.',
+  'transparency.client.independent':
+    "The web client comes from this server, so a server in someone else's hands could change it. For the highest assurance use the signed nylzo command line tool, which runs no code from the server.",
   'transparency.source': 'Source code, protocol specification and threat model',
 
   'nav.top': 'Nylzo, back to the top',
@@ -254,6 +262,7 @@ export const english: Record<MessageKey, string> = {
   'compose.passphrase.switch': 'Protect with a passphrase',
   'compose.passphrase.switch.note': 'Without it, even someone who intercepts the link cannot open the message.',
   'compose.passphrase.placeholder': 'e.g. {words} random words',
+  'compose.passphrase.generate': 'Generate',
   'compose.remember.switch': 'Cancel from this device',
   'compose.remember.note': 'The key for cancelling stays only in this browser.',
   'compose.attach': 'Attachment',
@@ -341,6 +350,9 @@ export const english: Record<MessageKey, string> = {
   'open.notice.retired': 'This link uses a retired passphrase method',
   'open.notice.retired.text':
     'Nylzo no longer supports this protection, so the message cannot be opened. This page did not use it up. Ask the sender for a new link.',
+  'open.notice.removed': 'The key is no longer in the address bar',
+  'open.notice.removed.text':
+    'For safety this page removes the key from the address as soon as it reads it. To try again, open the original link.',
   'open.notice.tampered': 'The message cannot be opened safely',
   'open.notice.tampered.text': 'The server or the connection returned other data than the sender created.',
   'open.notice.failed': 'Something went wrong',

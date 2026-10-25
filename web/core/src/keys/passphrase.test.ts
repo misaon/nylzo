@@ -23,7 +23,8 @@ describe('AK9: passphrase strength vectors', () => {
   });
 
   it('uses the same list of common passwords as the Go core', async () => {
-    expect(await sha256Hex(utf8(`${COMMON_PASSPHRASES.join('\n')}\n`))).toBe(vectors.passphrase_list_sha256);
+    const list = utf8(`${COMMON_PASSPHRASES.join('\n')}\n`);
+    expect(await sha256Hex(list)).toBe(vectors.passphrase_list_sha256);
   });
 });
 

@@ -135,8 +135,8 @@ for (const viewport of VIEWPORTS) {
     newPage,
   }) => {
     const sender = await newPage({ viewport });
-    await createMessageInPage(sender, { text: 'first' });
-    await createMessageInPage(sender, { text: 'second' });
+    await createMessageInPage(sender, { text: 'first', remember: true });
+    await createMessageInPage(sender, { text: 'second', remember: true });
     await sender.emulateMedia(FULL_MOTION);
     await watchLayout(sender);
     await sender.goto('/sent');

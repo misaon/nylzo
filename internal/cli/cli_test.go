@@ -440,7 +440,10 @@ func TestAskedPassphraseMustMatchAndBeStrong(t *testing.T) {
 		t.Fatalf("a weak but valid passphrase: %d %q", result.code, result.stderr)
 	}
 	link, _, _ := strings.Cut(result.stdout, "\n")
-	paths := readPaths(t, runWith(t, link, nil, &scriptedTerminal{secrets: []string{"twelve chars"}}, "read", "--out", t.TempDir()))
+	paths := readPaths(
+		t,
+		runWith(t, link, nil, &scriptedTerminal{secrets: []string{"twelve chars"}}, "read", "--out", t.TempDir()),
+	)
 	assertPrivate(t, paths[0], "text")
 }
 
@@ -1099,7 +1102,12 @@ func TestReadWritesToDiskOnlyWhenAsked(t *testing.T) {
 	before := instance.requests.Load()
 	if result := runWith(t, link, nil, nil, "read"); result.code != exitUsage ||
 		instance.requests.Load() != before || !strings.Contains(result.stderr, "--stdout") {
-		t.Fatalf("read without a destination: %d %q, %d requests", result.code, result.stderr, instance.requests.Load()-before)
+		t.Fatalf(
+			"read without a destination: %d %q, %d requests",
+			result.code,
+			result.stderr,
+			instance.requests.Load()-before,
+		)
 	}
 	if result := runWith(t, attachment, nil, nil, "read", "--stdout"); result.code != exitError ||
 		!strings.Contains(result.stderr, "add --out DIR") {

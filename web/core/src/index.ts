@@ -13,12 +13,12 @@ export {
   LinkVersionError,
   MalformedPassphraseError,
   MetaError,
+  type PassphraseProblem,
   PlaintextError,
   PolicyError,
   PowError,
   PowTimeoutError,
   TooLargeError,
-  type PassphraseProblem,
   VersionError,
   WeakPassphraseError,
 } from './errors.ts';

@@ -42,7 +42,7 @@ func (e *WeakPassphraseError) Error() string {
 	return "core: weak passphrase (" + string(e.Problem) + ")"
 }
 
-func (e *WeakPassphraseError) Is(target error) bool {
+func (*WeakPassphraseError) Is(target error) bool {
 	return target == ErrWeakPassphrase
 }
 
