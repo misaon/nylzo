@@ -130,14 +130,32 @@ func runReport(ctx context.Context, environment *Environment, arguments []string
 		"",
 		"read why the message should be removed from this file (optional; links and long codes are removed before sending)",
 	)
+	contactFlag := flags.String(
+		"contact",
+		"",
+		"your email address, used only to confirm receipt and to tell you the decision (optional)",
+	)
+	goodFaith := flags.Bool(
+		"good-faith",
+		false,
+		"state that you believe in good faith that the report is accurate and complete",
+	)
 	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
+	contact, err := core.ParseContact(*contactFlag)
+	if err != nil {
+		fmt.Fprintln(
+			environment.Stderr,
+			program+" report: the contact must be an email address such as name@example.com",
+		)
+		return exitUsage
+	}
 	reason := ""
 	if *reasonFile != "" {
-		raw, err := readFileLimited(*reasonFile, maxSecretInput)
-		if err != nil {
-			return failf(environment, "reason: %s", explain(err))
+		raw, readErr := readFileLimited(*reasonFile, maxSecretInput)
+		if readErr != nil {
+			return failf(environment, "reason: %s", explain(readErr))
 		}
 		reason = strings.TrimSpace(string(raw))
 	}
@@ -155,7 +173,20 @@ func runReport(ctx context.Context, environment *Environment, arguments []string
 		return failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	if err = api.Report(ctx, link.id, &link.keys.R, reason); err != nil {
+	err = api.Report(
+		ctx,
+		link.id,
+		&link.keys.R,
+		&client.Report{Reason: reason, Contact: contact, GoodFaith: *goodFaith},
+	)
+	if errors.Is(err, client.ErrReportLimit) {
+		return failf(
+			environment,
+			"the message already has three reports today, so this one was not stored; a person reviews them, "+
+				"and anything new can go to the contact on the /transparency page of the instance",
+		)
+	}
+	if err != nil {
 		return failf(environment, "%s", explain(err))
 	}
 	fmt.Fprintln(
