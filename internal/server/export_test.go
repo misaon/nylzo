@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/diskspace"
 )
 
 const (
@@ -55,6 +56,6 @@ func (s *Server) ChallengeAtForTest(now time.Time) [core.ChallengeLen]byte {
 	return c
 }
 
-func (s *Server) SetFreeSpaceForTest(free func(string) (uint64, error)) {
-	s.freeSpace = free
+func (s *Server) SetFreeSpaceForTest(free diskspace.FreeFunc) {
+	s.disk = diskspace.NewReserver(s.cfg.DataDir, s.cfg.MinFreeBytes, free, s.log)
 }

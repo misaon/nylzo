@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
@@ -78,9 +79,7 @@ type Server struct {
 	powSlots      chan struct{}
 	powSlotWait   time.Duration
 	streams       *ratelimit.Streams
-	freeSpace     func(string) (uint64, error)
-	diskLow       atomic.Bool
-	diskReserved  atomic.Int64
+	disk          *diskspace.Reserver
 	handler       http.Handler
 	abuseMu       sync.Mutex
 	abuseDir      string
@@ -112,7 +111,6 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		log:       logging.New(os.Stderr),
 		abuseDir:  abuseDir(cfg.DataDir),
 		webFiles:  webFiles,
-		freeSpace: freeSpace,
 	}
 	for _, o := range opts {
 		o(s)
@@ -140,6 +138,7 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.powSlotWait = powSlotWait
 	s.streams = ratelimit.NewStreams(cfg.MaxStreams)
+	s.disk = diskspace.NewReserver(cfg.DataDir, cfg.MinFreeBytes, diskspace.Free, s.log)
 	s.handler = s.routes()
 	return s, nil
 }

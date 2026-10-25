@@ -420,7 +420,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setCreateDeadlines(w, time.Now().Add(max(readTimeout, store.TransferTime(h.Size))))
-	releaseDisk, ok := s.reserveDisk(h.Size)
+	releaseDisk, ok := s.disk.Reserve(h.Size)
 	if !ok {
 		setRetryAfter(w, diskFullRetry)
 		s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
@@ -553,29 +553,6 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	stored = true
 	writeJSON(w, http.StatusCreated, map[string]string{"id": id.String(), "expires_at": formatTime(m.ExpiresAt)})
-}
-
-func (s *Server) reserveDisk(size int64) (func(), bool) {
-	if s.cfg.MinFreeBytes == 0 {
-		return func() {}, true
-	}
-	free, err := s.freeSpace(s.cfg.DataDir)
-	needed := uint64(s.cfg.MinFreeBytes) + uint64(s.diskReserved.Add(size))
-	if err == nil && free >= needed {
-		if s.diskLow.Swap(false) {
-			s.log.Info("disk-free-again")
-		}
-		return func() { s.diskReserved.Add(-size) }, true
-	}
-	s.diskReserved.Add(-size)
-	switch {
-	case s.diskLow.Swap(true):
-	case err != nil:
-		s.log.Error("disk-free", "err", logging.ErrorText(err))
-	default:
-		s.log.Error("disk-full")
-	}
-	return nil, false
 }
 
 func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {

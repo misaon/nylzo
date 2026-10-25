@@ -13,6 +13,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/diskspace"
 )
 
 const (
@@ -271,7 +272,7 @@ func (c Config) Validate() error {
 		{fmt.Sprintf("NYLZO_MAX_STREAMS must be between 1 and %d", MaxStreams), c.MaxStreams >= 1 && c.MaxStreams <= MaxStreams},
 		{"NYLZO_SWEEP_INTERVAL must not be negative", c.SweepInterval >= 0},
 		{"NYLZO_MIN_FREE_BYTES must not be negative", c.MinFreeBytes >= 0},
-		{"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzo cannot measure free space", c.MinFreeBytes == 0 || freeSpaceSupported},
+		{"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzo cannot measure free space", c.MinFreeBytes == 0 || diskspace.Measurable},
 		{"NYLZO_PROXY_MODE must be empty or scaleway", c.ProxyMode == ProxyModeNone || c.ProxyMode == ProxyModeScaleway},
 		{"NYLZO_RATE_BUCKET_RPS and NYLZO_RATE_SOURCE_RPS must be positive", r.BucketPerSecond > 0 && r.SourcePerSecond > 0},
 		{"NYLZO_RATE_BUCKET_BURST must be at least 1", r.BucketBurst >= 1},
