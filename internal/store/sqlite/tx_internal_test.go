@@ -26,7 +26,7 @@ func TestAPanicInATransactionFreesTheWriter(t *testing.T) {
 	s := openTest(t)
 	func() {
 		defer func() { recover() }()
-		s.tx(context.WithoutCancel(t.Context()), func(tx *sql.Tx) error {
+		s.transaction(context.WithoutCancel(t.Context()), func(tx *sql.Tx) error {
 			if _, err := tx.Exec(
 				`INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES ('k', 0, 1, 0, 0)`,
 			); err != nil {
@@ -45,7 +45,7 @@ func TestAPanicInATransactionFreesTheWriter(t *testing.T) {
 func TestACommitAfterTheClientLeftReportsTheCancellation(t *testing.T) {
 	s := openTest(t)
 	ctx, cancel := context.WithCancel(t.Context())
-	err := s.tx(ctx, func(tx *sql.Tx) error {
+	err := s.transaction(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.Exec(
 			`INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES ('k', 0, 1, 0, 0)`,
 		); err != nil {
@@ -99,7 +99,9 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 		return err
 	}
 	create("AAAAAAAAAAAAAAAAAAAAAA")
-	if _, err := s.w.Exec(`UPDATE messages SET opens_remaining = 0 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAA'`); err != nil {
+	if _, err := s.writer.Exec(
+		`UPDATE messages SET opens_remaining = 0 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAA'`,
+	); err != nil {
 		t.Fatal(err)
 	}
 	var gone *store.GoneError
@@ -107,13 +109,13 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 		t.Fatalf("an available row without opens left gave an open: %v", err)
 	}
 	var remaining int
-	if err := s.w.QueryRow(`SELECT opens_remaining FROM messages WHERE id = 'AAAAAAAAAAAAAAAAAAAAAA'`).
+	if err := s.writer.QueryRow(`SELECT opens_remaining FROM messages WHERE id = 'AAAAAAAAAAAAAAAAAAAAAA'`).
 		Scan(&remaining); err != nil ||
 		remaining != 0 {
 		t.Fatalf("the counter wrapped: %d %v", remaining, err)
 	}
 	create("AAAAAAAAAAAAAAAAAAAAAQ")
-	if _, err := s.w.Exec(
+	if _, err := s.writer.Exec(
 		`UPDATE messages SET opens_max = 70000, opens_remaining = 70000 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAQ'`,
 	); err != nil {
 		t.Fatal(err)
@@ -121,7 +123,7 @@ func TestClaimRefusesImpossibleOpenCounters(t *testing.T) {
 	if _, err := s.Get(ctx, "AAAAAAAAAAAAAAAAAAAAAQ"); !errors.Is(err, errCorruptRow) {
 		t.Fatalf("a row with counters out of range was read: %v", err)
 	}
-	if _, err := s.w.Exec(
+	if _, err := s.writer.Exec(
 		`UPDATE messages SET opens_max = 1, opens_remaining = 1, kdf_id = 257 WHERE id = 'AAAAAAAAAAAAAAAAAAAAAQ'`,
 	); err != nil {
 		t.Fatal(err)
@@ -162,7 +164,7 @@ func TestACorruptRowLeavesTheRestOfItsPageToEnd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := s.w.Exec(`UPDATE messages SET opens_remaining = 5 WHERE id = ?`, ids[0]); err != nil {
+	if _, err := s.writer.Exec(`UPDATE messages SET opens_remaining = 5 WHERE id = ?`, ids[0]); err != nil {
 		t.Fatal(err)
 	}
 	n, err := s.EndExpired(ctx, ids, now.Add(time.Hour))

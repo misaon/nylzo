@@ -14,7 +14,7 @@ func TestPageCacheIsBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	for _, db := range []*sql.DB{s.w, s.r} {
+	for _, db := range []*sql.DB{s.writer, s.reader} {
 		var kib int
 		if err := db.QueryRow("PRAGMA cache_size").Scan(&kib); err != nil {
 			t.Fatal(err)
