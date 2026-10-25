@@ -5,7 +5,7 @@
   const { translate } = getTranslator();
 
   const scans = ['keys', 'content', 'passphrase', 'ip', 'ids', 'times'] as const;
-  const standards = ['AES-256-GCM', 'HKDF-SHA-256', 'scrypt', 'Ed25519', 'TLS 1.3'] as const;
+  const standards = ['AES-256-GCM', 'HKDF-SHA-256', 'scrypt', 'Ed25519', 'HMAC-SHA-256'] as const;
 </script>
 
 <section id="algoritmy" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="extra-title">

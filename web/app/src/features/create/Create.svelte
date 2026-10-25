@@ -21,9 +21,9 @@
 
 <Composer />
 <HowItWorks />
+<Promises />
 <WhoSees />
 <Resilience />
-<Promises />
 <Extras />
 <SelfHost />
 <Compare />

@@ -94,7 +94,8 @@ export const english: Record<MessageKey, string> = {
   'read.ended.deleted': 'The message was deleted.',
   'read.passphrase': 'Passphrase',
   'read.reveal': 'Show message',
-  'read.resumable': 'You already opened the message on this page and can load it again while the lease runs.',
+  'read.resumable':
+    'You already opened the message on this page. For a short time you can load it again without using another open.',
   'read.lease_ended': 'The time to load the message again on this page ran out. Showing it now uses another open.',
   'read.cleared': 'You left the page, so it no longer shows the message.',
   'read.device':
@@ -118,7 +119,7 @@ export const english: Record<MessageKey, string> = {
   'busy.decrypting': 'Decrypting…',
 
   'revealed.title': 'Message content',
-  'revealed.note': 'Once you close this page, the message is gone.',
+  'revealed.note': 'This page does not keep the message. Copy or download what you need before you close it.',
   'revealed.confirm.title': 'This type of file can run code. Open it only if you trust the sender.',
   'revealed.confirm.extension': 'File extension: .{extension}',
   'revealed.confirm.none': 'The file has no extension.',
@@ -127,15 +128,17 @@ export const english: Record<MessageKey, string> = {
 
   'report.title': 'Report abuse',
   'report.note':
-    'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We keep a report only if the message still exists when you send it.',
+    'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We keep at most three reports per message a day, and only while the message exists.',
   'report.privacy':
     'The server receives only the message id, the reason and a signature derived from the link. Neither the link nor the content leaves this page.',
   'report.link': 'Link to the message',
   'report.link.hint': 'Paste the whole link, including the part after #.',
   'report.reason': 'Reason, optional',
-  'report.reason.hint': 'Up to {bytes} bytes. Links and long codes are removed from the reason before it is sent.',
+  'report.reason.hint':
+    'Up to {bytes} bytes. Before sending, the page removes everything after a # sign and any long codes from the reason.',
   'report.submit': 'Send report',
-  'report.accepted': 'We received the report. We keep it only if the message still exists.',
+  'report.accepted':
+    'We received the report. We keep it while the message exists, up to three reports per message a day.',
   'report.failed': 'The report could not be sent. Try again.',
   'report.problem.link_invalid': 'The link is incomplete or damaged.',
   'report.problem.link_newer': 'The link needs a newer version of Nylzo.',
@@ -161,10 +164,11 @@ export const english: Record<MessageKey, string> = {
   'transparency.stores.keys':
     'Instead of keys, only their fingerprints (HMAC with a server secret), which help no one without the link.',
   'transparency.stores.ended':
-    'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. After that it keeps only a record of how the message ended, for at most {days}.',
+    'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. After that it keeps only a short record of the ended message for at most {days}: how and when it ended, when it was first opened, and the fingerprints of its keys.',
   'transparency.stores.abuse':
-    'Abuse reports: the date, the message id and the reason without links, for at most {days}.',
-  'transparency.stores.counters': 'Daily totals of created messages, without addresses, for {days} after the day ends.',
+    'Abuse reports: the date, the message id and the reason without link keys or long codes, for at most {days}.',
+  'transparency.stores.counters':
+    'Counters without addresses: it keeps daily totals of created messages and of reports per message for {days} after the day ends, and used one-time challenges for a few minutes.',
   'transparency.stores.addresses':
     'It does not store IP addresses. Per-address limits live only in memory and are forgotten on restart.',
   'transparency.logs.title': 'What the server logs',
@@ -186,7 +190,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.limits.read': 'Reads from one address',
   'transparency.limits.read.value': '{hour} requests per hour',
   'transparency.limits.global': 'New messages in total per day',
-  'transparency.limits.global.value': '{max}, with a proof of work from half of that',
+  'transparency.limits.global.value': '{max}, from half of that with an anti-flooding check in the browser',
   'transparency.limits.none': 'no limit',
   'transparency.client.title': 'Version and fingerprint of the web client',
   'transparency.client.version': 'Server version',
@@ -222,15 +226,15 @@ export const english: Record<MessageKey, string> = {
   'footer.github': 'GitHub',
   'footer.selfhost': 'Self-hosting',
   'footer.skill': 'Agent skill',
-  'footer.note': 'No cookies, no analytics.',
+  'footer.note': 'No cookies or analytics.',
 
   'hero.title.lead': 'A secret that',
   'hero.title.accent': 'opens once',
   'hero.intro':
-    'You encrypt the message right in your browser. The server only gets the ciphertext and deletes it after it is opened. The key stays in the link after the # sign and never reaches us.',
+    'Send a password, API key or file through a link that opens once. Your browser encrypts it before upload, and the key stays in the part of the link after the # sign, which the browser never sends to us. The server stores the message only in encrypted form and deletes it after the last open.',
   'seo.title': 'Share passwords and files securely with one-time links | Nylzo',
   'seo.description':
-    'Send a password, API key or file through an encrypted link that opens once. Your browser encrypts it, and the server keeps only ciphertext it cannot read.',
+    'Send a password, API key or file through an encrypted link that opens once. Your browser encrypts it, and the server stores the message only in encrypted form.',
   'seo.image': 'The Nylzo logo on a starry night sky',
 
   'compose.placeholder': 'Type or paste what should not stay in the chat…',
@@ -238,38 +242,38 @@ export const english: Record<MessageKey, string> = {
   'compose.drop': 'Drop the file, it is encrypted along with the text',
   'compose.ttl.label': 'Expiry: {ttl}',
   'compose.ttl.title': 'Link expiry',
-  'compose.ttl.note': 'Then the server deletes the ciphertext, even if nobody opened the message.',
+  'compose.ttl.note': 'Then the server deletes the encrypted message, even if nobody opened it.',
   'compose.opens.one': '{count} open',
   'compose.opens.other': '{count} opens',
   'compose.opens.title': 'How many times the message opens',
   'compose.opens.less': 'Fewer opens',
   'compose.opens.more': 'More opens',
-  'compose.opens.note': 'After the last open the server deletes the ciphertext. At most {max}.',
+  'compose.opens.note': 'After the last open the server deletes the encrypted message. At most {max}.',
   'compose.security': 'Security',
   'compose.passphrase.chip': 'Passphrase',
   'compose.passphrase.switch': 'Protect with a passphrase',
   'compose.passphrase.switch.note': 'Without it, even someone who intercepts the link cannot open the message.',
-  'compose.passphrase.placeholder': 'At least {words} words',
+  'compose.passphrase.placeholder': 'e.g. {words} random words',
   'compose.remember.switch': 'Cancel from this device',
   'compose.remember.note': 'The key for cancelling stays only in this browser.',
   'compose.attach': 'Attachment',
   'compose.attach.limit': ', up to {size}',
   'compose.submit': 'Encrypt and create link',
   'compose.encrypting': 'Encrypting',
-  'compose.note': 'No sign-up. The page stores no cookies and no analytics.',
+  'compose.note': 'Free, with no sign-up. The page stores no cookies or analytics.',
 
   'step.key.label': 'Key',
   'step.key.title': 'Generating a 256-bit key',
   'step.key.detail': 'from the browser’s cryptographic random generator',
   'step.derive.label': 'Derivation',
   'step.derive.title': 'Deriving the keys',
-  'step.derive.detail': 'HKDF-SHA-256 creates the content key and the signing keys',
+  'step.derive.detail': 'HKDF-SHA-256 derives the content key and the keys that sign opening',
   'step.derive.detail.passphrase': 'scrypt from the passphrase, then HKDF-SHA-256',
   'step.encrypt.label': 'Encryption',
   'step.encrypt.title': 'Encrypting the content',
-  'step.encrypt.detail': 'AES-256-GCM, padded to a fixed size',
+  'step.encrypt.detail': 'AES-256-GCM, padded to whole blocks',
   'step.send.label': 'Upload',
-  'step.send.title': 'Sending only the ciphertext',
+  'step.send.title': 'Sending the encrypted data',
   'step.send.detail': 'the server gets the encrypted data and the public keys',
   'step.send.title.pow': 'Working on the anti-flooding check',
   'step.send.detail.pow': 'the service is busy, so the browser solves a short puzzle',
@@ -282,7 +286,7 @@ export const english: Record<MessageKey, string> = {
   'created.server.sees': 'The server sees',
   'created.server.sees.what': 'the address and the message id',
   'created.server.blind': 'The server never sees',
-  'created.server.blind.what': 'the version and the key',
+  'created.server.blind.what': 'the key',
   'created.chip.expires': 'Valid until {time}',
   'open.title': 'You have an encrypted message',
   'open.intro':
@@ -309,9 +313,9 @@ export const english: Record<MessageKey, string> = {
   'open.step.derive.detail': 'scrypt briefly takes 128 MiB of memory',
   'open.step.claim.label': 'Open',
   'open.step.claim.title': 'Opening the message',
-  'open.step.claim.detail': 'the server uses up one open and hands over the ciphertext',
+  'open.step.claim.detail': 'the server uses up one open and hands over the encrypted data',
   'open.step.download.label': 'Download',
-  'open.step.download.title': 'Downloading the ciphertext',
+  'open.step.download.title': 'Downloading the encrypted message',
   'open.step.download.detail': 'only encrypted data arrives, the key stays with you',
   'open.step.decrypt.label': 'Decryption',
   'open.step.decrypt.title': 'Decrypting',
@@ -363,19 +367,19 @@ export const english: Record<MessageKey, string> = {
   'open.trust.click.title': 'It opens only with a click',
   'open.trust.click.text': 'Loading the link uses nothing up. An open counts only when you press the button.',
   'open.trust.gone.title': 'Then it disappears',
-  'open.trust.gone.text': 'After the last open or once it expires, the server deletes the ciphertext.',
+  'open.trust.gone.text': 'After the last open or once it expires, the server deletes the encrypted data.',
 
   'how.eyebrow': 'How it works',
-  'how.title': 'You hold the key. The server only guards the ciphertext.',
+  'how.title': 'You hold the key. The server only ever sees the message encrypted.',
   'how.step1.title': 'You encrypt on your side',
   'how.step1.text':
     'The browser creates a random 256-bit key and encrypts the message with it before it sends anything.',
-  'how.step2.title': 'The server stores only ciphertext',
+  'how.step2.title': 'The server stores it encrypted',
   'how.step2.text':
     'It gets the encrypted data, a random id and a few timestamps. It does not know the key, so it cannot read the message.',
   'how.step3.title': 'The recipient opens it once',
   'how.step3.text':
-    'The message opens only with a click; loading the link alone uses nothing up. After the last open the server deletes the ciphertext.',
+    'The message opens only with a click; loading the link alone uses nothing up. After the last open the server deletes the encrypted data.',
   'how.link.title': 'What is in the link',
   'how.link.sub': 'The parts of the link take turns on their own. Tap any part to stop them.',
   'how.link.server': 'What the server sees',
@@ -388,9 +392,9 @@ export const english: Record<MessageKey, string> = {
   'how.link.id.body':
     'A random number the server uses to find the encrypted data. On its own it opens nothing: that takes the key, which comes after the # sign.',
   'how.link.meta.title': 'Version and profile',
-  'how.link.meta.meta': 'only in the browser',
+  'how.link.meta.meta': 'after the #, known to the server anyway',
   'how.link.meta.body':
-    'The 1 is the link format version, the 0 means a message without a passphrase. From the version, an older Nylzo recognises a link from a newer one and says so instead of calling it damaged.',
+    'The 1 is the link format version, the 0 means a message without a passphrase. From the version, an older Nylzo recognises a link from a newer one and says so instead of calling it damaged. The server stores both values with the message too, so this part tells it nothing new.',
   'how.link.key.title': 'Message key',
   'how.link.key.meta': '256 bits, only in the browser',
   'how.link.key.body':
@@ -448,7 +452,7 @@ export const english: Record<MessageKey, string> = {
   'who.thief.ip.note': 'The server does not write them anywhere',
   'who.thief.ip.result': 'None',
   'who.thief.meta': 'Metadata',
-  'who.thief.meta.note': 'Id, size, times to the minute, number of opens',
+  'who.thief.meta.note': 'Id, padded size, times, number of opens',
   'who.thief.meta.result': 'Visible',
   'who.thief.cta': 'How long would it take to guess the key?',
   'who.thief.cta.sub': 'Try it a little further down',
@@ -513,8 +517,8 @@ export const english: Record<MessageKey, string> = {
     'Slack, Teams and email scanners do not open the message. Only the recipient’s click uses up an open.',
   'promise.logs.title': 'Logs without IPs or links',
   'promise.logs.text':
-    'IP addresses, message ids, keys and content never go into the log. The server keeps its abuse limits in memory only.',
-  'promise.ttl.title': '{days} at most',
+    'IP addresses, message ids, keys and content never go into the log. Per-address limits live only in memory.',
+  'promise.ttl.title': 'Valid for {days} at most',
   'promise.ttl.text':
     'After the last open or once it expires, the server deletes the ciphertext. After another {days} it forgets the message ever existed.',
   'promise.cancel.title': 'Cancel from afar',
@@ -544,21 +548,21 @@ export const english: Record<MessageKey, string> = {
   'extra.scan.ids': 'Message ids in the log',
   'extra.scan.ids.where': 'none',
   'extra.scan.times': 'Exact times',
-  'extra.scan.times.where': 'to the minute only',
-  'extra.signed.title': 'No key, no ciphertext',
+  'extra.scan.times.where': 'in the database, to the minute only',
+  'extra.signed.title': 'Every download needs the key',
   'extra.signed.text':
     'Opening and downloading the ciphertext both need a signature made with the key from the link. Knowing only the message id gets you nothing.',
   'extra.signed.denied': 'denied',
   'extra.signed.opens': 'opens',
   'extra.padding.title': 'A password and a paragraph look the same',
   'extra.padding.text':
-    'We pad the ciphertext to whole 4 KiB blocks, so the server cannot tell a short password from a longer text.',
+    'We pad text to whole 4 KiB blocks and files to 64 KiB blocks, so the server cannot tell a short password from a paragraph. It sees only the size rounded up to a whole block.',
   'extra.padding.short': 'Password',
   'extra.padding.long': 'Long text',
   'extra.padding.server': 'the server sees',
   'extra.forget.title': 'The server forgets',
   'extra.forget.text':
-    'It stores no IP addresses, rounds times to the minute and overwrites deleted records with zeros.',
+    'It stores no IP addresses, rounds the times it records to the minute and overwrites deleted database records with zeros.',
   'extra.forget.ip': 'not stored',
   'extra.twin.title': 'Two independent implementations',
   'extra.twin.text': 'The web client and the command line each have their own code, and both must pass the same tests.',
@@ -569,10 +573,11 @@ export const english: Record<MessageKey, string> = {
   'host.eyebrow': 'Self-hosting',
   'host.title': 'Run Nylzo yourself',
   'host.sub':
-    'All of Nylzo is a single binary with SQLite and files on disk: no other database and no third-party services. You set the expiry, the limits and the contact on the transparency page.',
+    'Nylzo runs as a single binary that keeps its data in SQLite and in files on disk, without another database or third-party services. You choose the expiry and the limits, and the contact you set appears on the transparency page.',
   'host.point.compose': 'Docker Compose with Caddy, which handles the certificate and TLS on your machine',
   'host.point.signed': 'Signed images and binaries with verifiable provenance',
   'host.point.mit': 'MIT license, so companies can use it too',
+  'host.guide': 'Deployment guide on GitHub, in Czech',
   'host.tabs': 'Installation method',
   'host.compose': 'Compose',
   'host.binary': 'Binary',
@@ -581,9 +586,9 @@ export const english: Record<MessageKey, string> = {
   'host.copied': 'Copied',
   'host.copy.label': 'Copy the commands',
   'host.compose.note':
-    'Caddy gets a certificate and terminates TLS on your machine. Before you start the image, verify its signature as described in deploy/compose.',
+    'In .env, set your domain and the image digest you verified as described in deploy/compose. Caddy then gets a certificate and terminates TLS on your machine.',
   'host.binary.note':
-    'The server listens on port 8080 and stores data in ./data. Keep the pepper safe: without it, every existing link stops working. Runs on Linux and macOS.',
+    'The server listens on port 8080 and stores data in ./data. Keep the pepper safe: without it, every existing link stops working. Runs on Linux and on macOS with Apple silicon.',
   'host.verify.note':
     'Compares the web client the server sends with the copy inside the binary. Worth running regularly, and from another network.',
 
@@ -600,7 +605,7 @@ export const english: Record<MessageKey, string> = {
   'compare.row.passphrase': 'The passphrase is part of the encryption',
   'compare.row.secret': 'Secret in the link',
   'compare.row.verify': 'Checks the served code against the release',
-  'compare.row.length': 'Hides the message length',
+  'compare.row.length': 'Rounds the length up to whole blocks',
   'compare.row.id': 'The id alone does not open the message',
   'compare.row.stolen': 'Automated stolen-server test',
   'compare.row.ip': 'The server does not log IP addresses',
@@ -612,11 +617,12 @@ export const english: Record<MessageKey, string> = {
   'compare.note.nojs': 'only a preview without JS',
   'compare.note.replaces': 'replaces the key',
   'compare.note.server_check': 'only a server-side check',
+  'compare.note.server_side': 'on the server',
   'compare.note.bits256': '256 bits',
   'compare.note.bits131': '≈ 131 bits',
   'compare.note.bits128': '128 bits',
   'compare.note.signed_releases': 'signed releases only',
-  'compare.note.blocks': '4 KiB blocks',
+  'compare.note.blocks': '4 KiB, files 64 KiB',
   'compare.note.compression': 'compression only',
   'compare.note.server_sees': 'the server sees the content',
   'compare.note.signed': 'signed requests',
@@ -628,7 +634,7 @@ export const english: Record<MessageKey, string> = {
   'compare.note.truncated': 'truncated IPs',
   'compare.note.collects': 'collects IPs',
   'compare.note.not_yet': 'not yet',
-  'compare.note.send_out': 'Send out of scope',
+  'compare.note.send_out': 'Send not named in audits',
 
   'limits.eyebrow': 'Where our guarantees end',
   'limits.title': 'No encryption protects a compromised device',
@@ -647,7 +653,7 @@ export const english: Record<MessageKey, string> = {
   'limits.link.note': 'That is why the passphrase goes another way.',
   'limits.server.title': 'A compromised server could serve a fake page',
   'limits.server.note':
-    'nylzo verify-client checks it. If you would rather not trust the page, send the message from the CLI.',
+    'nylzo verify-client catches a wrong build, but not a server that hides the swap from it. If you would rather not trust the page, send the message from the CLI.',
   'limits.abuse.title': 'Not for scams or malware',
   'limits.abuse.note': 'Nor for any other illegal content.',
   'limits.liability':
@@ -655,7 +661,7 @@ export const english: Record<MessageKey, string> = {
   'limits.report': 'Report abuse',
 
   'cta.title': 'Got something that does not belong in a chat?',
-  'cta.text': 'You create a link in seconds, with no account and nothing to install.',
+  'cta.text': 'Creating a link takes a few seconds and needs no account or installation.',
   'cta.button': 'Create an encrypted link',
   'host.domain': 'your-domain.example',
   'host.terminal': 'bash — nylzo',

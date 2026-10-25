@@ -34,7 +34,7 @@
         yes(),
         yes(),
         yes('compare.note.replaces'),
-        no('compare.note.server_check'),
+        part('compare.note.server_side'),
         no('compare.note.server_check'),
       ],
     },

@@ -13,6 +13,7 @@
   const tabs: readonly Tab[] = ['compose', 'binary', 'verify'];
   const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]'] as const;
   const points = ['host.point.compose', 'host.point.signed', 'host.point.mit'] as const;
+  const deployGuide = `${REPOSITORY_URL}/tree/main/deploy/compose`;
 
   let tab = $state<Tab>('compose');
   const copied = new Flash(2000);
@@ -28,6 +29,7 @@
           `git clone ${REPOSITORY_URL}`,
           'cd nylzo/deploy/compose',
           'cp .env.example .env',
+          'nano .env',
           'mkdir -p secrets && openssl rand -hex 32 > secrets/pepper',
           'sudo chown 65532:65532 secrets/pepper && sudo chmod 0400 secrets/pepper',
           'docker compose up -d',
@@ -97,6 +99,13 @@
           </li>
         {/each}
       </ul>
+      <a
+        href={deployGuide}
+        class="btn-ghost mt-8 inline-flex h-11 hover-lift items-center gap-2 rounded-control px-5 text-sm"
+      >
+        {translate('host.guide')}
+        <Icon name="arrowRight" class="size-4" />
+      </a>
     </div>
 
     <div class="glass min-w-0 reveal-right rounded-card p-2.5 md:p-3">

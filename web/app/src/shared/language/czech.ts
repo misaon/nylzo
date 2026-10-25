@@ -91,7 +91,8 @@ export const czech = {
   'read.ended.deleted': 'Zpráva byla smazána.',
   'read.passphrase': 'Passphrase',
   'read.reveal': 'Zobrazit zprávu',
-  'read.resumable': 'Zprávu jste na této stránce už otevřeli a můžete ji načíst znovu, dokud běží lhůta.',
+  'read.resumable':
+    'Zprávu jste na této stránce už otevřeli. Ještě chvíli ji můžete načíst znovu, aniž byste spotřebovali další otevření.',
   'read.lease_ended':
     'Čas na opětovné načtení zprávy na této stránce vypršel. Zobrazení teď spotřebuje další otevření.',
   'read.cleared': 'Stránku jste opustili, a tak už zprávu nezobrazuje.',
@@ -116,7 +117,7 @@ export const czech = {
   'busy.decrypting': 'Dešifruji…',
 
   'revealed.title': 'Obsah zprávy',
-  'revealed.note': 'Po zavření stránky už zprávu neuvidíte.',
+  'revealed.note': 'Stránka si zprávu nepamatuje. Co potřebujete, si před zavřením zkopírujte nebo stáhněte.',
   'revealed.confirm.title': 'Tento typ souboru může spustit kód. Otevřete ho, jen pokud odesílateli věříte.',
   'revealed.confirm.extension': 'Přípona souboru: .{extension}',
   'revealed.confirm.none': 'Soubor nemá příponu.',
@@ -125,15 +126,17 @@ export const czech = {
 
   'report.title': 'Nahlásit zneužití',
   'report.note':
-    'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a nic se nemaže automaticky. Hlášení uchováme, jen pokud zpráva v době odeslání ještě existuje.',
+    'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a\u{A0}nic se nemaže automaticky. Uchováme nejvýš tři hlášení na zprávu za den, a\u{A0}jen dokud zpráva existuje.',
   'report.privacy':
     'Server dostane jen id zprávy, důvod a podpis odvozený z odkazu. Odkaz ani obsah zprávy stránku neopustí.',
   'report.link': 'Odkaz na zprávu',
   'report.link.hint': 'Vložte celý odkaz včetně části za #.',
   'report.reason': 'Důvod, volitelný',
-  'report.reason.hint': 'Nejvýš {bytes} bajtů. Odkazy a dlouhé kódy se z důvodu před odesláním odstraní.',
+  'report.reason.hint':
+    'Nejvýš {bytes} bajtů. Stránka z\u{A0}důvodu před odesláním odstraní vše za znakem # a\u{A0}dlouhé kódy.',
   'report.submit': 'Odeslat hlášení',
-  'report.accepted': 'Hlášení jsme přijali. Uchováme ho, jen pokud zpráva ještě existuje.',
+  'report.accepted':
+    'Hlášení jsme přijali. Uchováme ho, dokud zpráva existuje. Na jednu zprávu uchováme nejvýš tři hlášení denně.',
   'report.failed': 'Hlášení se nepodařilo odeslat. Zkuste to znovu.',
   'report.problem.link_invalid': 'Odkaz je neúplný nebo poškozený.',
   'report.problem.link_newer': 'Odkaz potřebuje novější verzi Nylzo.',
@@ -159,9 +162,11 @@ export const czech = {
   'transparency.stores.keys':
     'Místo klíčů jen jejich otisky (HMAC s tajemstvím serveru), které bez odkazu nikomu nepomohou.',
   'transparency.stores.ended':
-    'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Pak drží jen záznam o tom, jak skončila, nejdéle {days}.',
-  'transparency.stores.abuse': 'Hlášení zneužití: datum, id zprávy a důvod bez odkazů, nejdéle {days}.',
-  'transparency.stores.counters': 'Celkové denní počty vytvořených zpráv, bez adres, ještě {days} po konci dne.',
+    'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Pak o\u{A0}ní nejdéle {days} drží jen krátký záznam: jak a\u{A0}kdy skončila, kdy byla poprvé otevřena a\u{A0}otisky jejích klíčů.',
+  'transparency.stores.abuse':
+    'Hlášení zneužití: datum, id zprávy a\u{A0}důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, nejdéle {days}.',
+  'transparency.stores.counters':
+    'Počítadla bez adres: denní počty vytvořených zpráv a\u{A0}hlášení na zprávu drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
   'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
   'transparency.logs.title': 'Co server loguje',
   'transparency.logs.what':
@@ -222,10 +227,10 @@ export const czech = {
   'hero.title.lead': 'Tajemství na',
   'hero.title.accent': 'jedno otevření',
   'hero.intro':
-    'Zprávu zašifrujete přímo v\u{A0}prohlížeči. Server dostane jen šifru a\u{A0}po otevření ji smaže. Klíč zůstává v\u{A0}odkazu za znakem # a\u{A0}k\u{A0}nám nikdy nedorazí.',
+    'Pošlete heslo, API klíč nebo soubor odkazem, který se otevře jen jednou. Prohlížeč zprávu zašifruje ještě před odesláním a\u{A0}klíč zůstane v\u{A0}části odkazu za znakem #, kterou k\u{A0}nám prohlížeč nikdy nepošle. Server zprávu uloží jen zašifrovanou a\u{A0}po posledním otevření ji smaže.',
   'seo.title': 'Bezpečně poslat heslo i\u{A0}soubor jednorázovým odkazem | Nylzo',
   'seo.description':
-    'Pošlete heslo, API klíč nebo soubor šifrovaným odkazem, který se otevře jen jednou. Šifruje se ve vašem prohlížeči a\u{A0}server uloží jen šifru, kterou nepřečte.',
+    'Pošlete heslo, API klíč nebo soubor šifrovaným odkazem, který se otevře jen jednou. Šifruje se ve vašem prohlížeči a\u{A0}server zprávu uloží jen zašifrovanou.',
   'seo.image': 'Logo Nylzo na hvězdném nebi',
 
   'compose.placeholder': 'Napište nebo vložte, co nemá zůstat v\u{A0}chatu…',
@@ -244,27 +249,27 @@ export const czech = {
   'compose.passphrase.chip': 'Passphrase',
   'compose.passphrase.switch': 'Chránit passphrase',
   'compose.passphrase.switch.note': 'Bez ní zprávu neotevře ani ten, kdo odkaz zachytí.',
-  'compose.passphrase.placeholder': 'Aspoň {words} slova',
+  'compose.passphrase.placeholder': 'např. {words} náhodná slova',
   'compose.remember.switch': 'Zrušení z\u{A0}tohoto zařízení',
   'compose.remember.note': 'Klíč pro zrušení zůstane jen v\u{A0}tomto prohlížeči.',
   'compose.attach': 'Příloha',
   'compose.attach.limit': ', nejvýš {size}',
   'compose.submit': 'Zašifrovat a\u{A0}vytvořit odkaz',
   'compose.encrypting': 'Šifrujeme',
-  'compose.note': 'Bez registrace. Stránka neukládá cookies ani analytiku.',
+  'compose.note': 'Zdarma a\u{A0}bez registrace. Stránka neukládá cookies ani analytiku.',
 
   'step.key.label': 'Klíč',
   'step.key.title': 'Generujeme 256bitový klíč',
   'step.key.detail': 'z\u{A0}kryptografického generátoru prohlížeče',
   'step.derive.label': 'Odvození',
   'step.derive.title': 'Odvozujeme klíče',
-  'step.derive.detail': 'HKDF-SHA-256 vytvoří klíč obsahu a\u{A0}podpisové klíče',
+  'step.derive.detail': 'HKDF-SHA-256 odvodí klíč obsahu a\u{A0}klíče, kterými se podepisuje otevření',
   'step.derive.detail.passphrase': 'scrypt z\u{A0}passphrase, pak HKDF-SHA-256',
   'step.encrypt.label': 'Šifrování',
   'step.encrypt.title': 'Šifrujeme obsah',
-  'step.encrypt.detail': 'AES-256-GCM, zarovnané na pevnou velikost',
+  'step.encrypt.detail': 'AES-256-GCM, doplněné na celé bloky',
   'step.send.label': 'Odeslání',
-  'step.send.title': 'Odesíláme jen šifru',
+  'step.send.title': 'Odesíláme šifru',
   'step.send.detail': 'server dostane šifrovaná data a\u{A0}veřejné klíče',
   'step.send.title.pow': 'Počítáme ochranu proti zahlcení',
   'step.send.detail.pow': 'služba je vytížená, prohlížeč řeší krátkou úlohu',
@@ -277,7 +282,7 @@ export const czech = {
   'created.server.sees': 'Server uvidí',
   'created.server.sees.what': 'adresu a\u{A0}id zprávy',
   'created.server.blind': 'Server neuvidí',
-  'created.server.blind.what': 'verzi a\u{A0}klíč',
+  'created.server.blind.what': 'klíč',
   'created.chip.expires': 'Platí do {time}',
   'open.title': 'Máte šifrovanou zprávu',
   'open.intro':
@@ -364,7 +369,7 @@ export const czech = {
   'how.title': 'Klíč držíte vy. Server hlídá jen šifru.',
   'how.step1.title': 'Zašifrujete u\u{A0}sebe',
   'how.step1.text': 'Prohlížeč vytvoří náhodný 256bitový klíč a\u{A0}zprávu jím zašifruje dřív, než cokoli odešle.',
-  'how.step2.title': 'Server uloží jen šifru',
+  'how.step2.title': 'Server ji uloží zašifrovanou',
   'how.step2.text': 'Dostane šifrovaná data, náhodné id a\u{A0}několik časů. Klíč nezná, takže zprávu přečíst neumí.',
   'how.step3.title': 'Příjemce otevře jednou',
   'how.step3.text':
@@ -381,9 +386,9 @@ export const czech = {
   'how.link.id.body':
     'Náhodné číslo, podle kterého server najde šifrovaná data. Samo nic neotevře: k\u{A0}otevření je potřeba klíč, který je až za znakem #.',
   'how.link.meta.title': 'Verze a\u{A0}profil',
-  'how.link.meta.meta': 'jen v\u{A0}prohlížeči',
+  'how.link.meta.meta': 'za #, server je stejně zná',
   'how.link.meta.body':
-    'Jednička je verze formátu odkazu, nula znamená zprávu bez passphrase. Starší Nylzo podle verze pozná odkaz z\u{A0}novější verze a\u{A0}řekne to, místo aby ho označilo za poškozený.',
+    'Jednička je verze formátu odkazu, nula znamená zprávu bez passphrase. Starší Nylzo podle verze pozná odkaz z\u{A0}novější verze a\u{A0}řekne to, místo aby ho označilo za poškozený. Server obě hodnoty zná i\u{A0}ze zprávy, takže mu tahle část nic nového neřekne.',
   'how.link.key.title': 'Klíč zprávy',
   'how.link.key.meta': '256 bitů, jen v\u{A0}prohlížeči',
   'how.link.key.body':
@@ -440,7 +445,7 @@ export const czech = {
   'who.thief.ip.note': 'Server je nikam nezapisuje',
   'who.thief.ip.result': 'Nejsou',
   'who.thief.meta': 'Metadata',
-  'who.thief.meta.note': 'Id, velikost, časy na minutu, počet otevření',
+  'who.thief.meta.note': 'Id, zarovnaná velikost, časy, počet otevření',
   'who.thief.meta.result': 'Vidí',
   'who.thief.cta': 'Kolik by trvalo klíč uhodnout?',
   'who.thief.cta.sub': 'Vyzkoušejte si to o\u{A0}kus níž',
@@ -504,8 +509,8 @@ export const czech = {
     'Slack, Teams ani e-mailový skener zprávu neotevřou. Otevření spotřebuje až kliknutí příjemce.',
   'promise.logs.title': 'Logy bez IP a\u{A0}odkazů',
   'promise.logs.text':
-    'Do logu nejdou IP adresy, id zpráv, klíče ani obsah. Limity proti zneužití drží server jen v\u{A0}paměti.',
-  'promise.ttl.title': 'Nejdéle {days}',
+    'Do logu nejdou IP adresy, id zpráv, klíče ani obsah. Limity na jednotlivé adresy drží server jen v\u{A0}paměti.',
+  'promise.ttl.title': 'Platí nejdéle {days}',
   'promise.ttl.text':
     'Po posledním otevření nebo po vypršení server šifru smaže. Za dalších {days} zapomene i\u{A0}to, že zpráva existovala.',
   'promise.cancel.title': 'Zrušení na dálku',
@@ -535,20 +540,21 @@ export const czech = {
   'extra.scan.ids': 'Id zpráv v\u{A0}logu',
   'extra.scan.ids.where': 'žádné',
   'extra.scan.times': 'Přesné časy',
-  'extra.scan.times.where': 'jen na minutu',
-  'extra.signed.title': 'Bez klíče ani šifra',
+  'extra.scan.times.where': 'v\u{A0}databázi jen na minutu',
+  'extra.signed.title': 'Každé stažení chce klíč',
   'extra.signed.text':
     'Otevření i\u{A0}stažení šifry chtějí podpis klíčem z\u{A0}odkazu. Kdo zná jen id zprávy, nestáhne nic.',
   'extra.signed.denied': 'zamítnuto',
   'extra.signed.opens': 'otevře',
   'extra.padding.title': 'Heslo i\u{A0}odstavec vypadají stejně',
   'extra.padding.text':
-    'Šifru doplníme na celé bloky po 4 KiB, takže server nepozná, jestli jste poslali krátké heslo, nebo delší text.',
+    'Text doplníme na celé bloky po 4 KiB a\u{A0}soubory na bloky po 64 KiB, takže server nepozná krátké heslo od odstavce. Vidí jen velikost zaokrouhlenou nahoru na celé bloky.',
   'extra.padding.short': 'Heslo',
   'extra.padding.long': 'Dlouhý text',
   'extra.padding.server': 'server vidí',
   'extra.forget.title': 'Server zapomíná',
-  'extra.forget.text': 'Neukládá IP adresy, časy zaokrouhlí na minutu a\u{A0}smazané záznamy přepíše nulami.',
+  'extra.forget.text':
+    'Neukládá IP adresy, časy, které zapisuje, zaokrouhlí na minutu a\u{A0}smazané záznamy v\u{A0}databázi přepíše nulami.',
   'extra.forget.ip': 'neukládá se',
   'extra.twin.title': 'Dvě nezávislé implementace',
   'extra.twin.text': 'Web a\u{A0}příkazová řádka mají každý vlastní kód a\u{A0}oba musí projít stejnými testy.',
@@ -563,6 +569,7 @@ export const czech = {
   'host.point.compose': 'Docker Compose s\u{A0}Caddy, který vyřídí certifikát i\u{A0}TLS na vašem stroji',
   'host.point.signed': 'Podepsané image a\u{A0}binárky s\u{A0}ověřitelným původem',
   'host.point.mit': 'Licence MIT, takže i\u{A0}pro firmy',
+  'host.guide': 'Návod k\u{A0}nasazení na GitHubu',
   'host.tabs': 'Způsob instalace',
   'host.compose': 'Compose',
   'host.binary': 'Binárka',
@@ -571,9 +578,9 @@ export const czech = {
   'host.copied': 'Zkopírováno',
   'host.copy.label': 'Zkopírovat příkazy',
   'host.compose.note':
-    'Caddy získá certifikát a\u{A0}ukončí TLS na vašem stroji. Než spustíte image, ověřte jeho podpis podle návodu v\u{A0}deploy/compose.',
+    'V\u{A0}.env nastavte doménu a\u{A0}digest image, který jste ověřili podle návodu v\u{A0}deploy/compose. Caddy pak získá certifikát a\u{A0}ukončí TLS na vašem stroji.',
   'host.binary.note':
-    'Server naslouchá na portu 8080 a\u{A0}data ukládá do ./data. Pepper si uložte, bez něj přestanou fungovat všechny existující odkazy. Běží na Linuxu a\u{A0}macOS.',
+    'Server naslouchá na portu 8080 a\u{A0}data ukládá do ./data. Pepper si uložte, bez něj přestanou fungovat všechny existující odkazy. Běží na Linuxu a\u{A0}na macOS s\u{A0}čipem Apple.',
   'host.verify.note':
     'Porovná webového klienta, kterého server posílá, s\u{A0}kopií v\u{A0}binárce. Má smysl ho pouštět pravidelně a\u{A0}z\u{A0}jiné sítě.',
 
@@ -590,7 +597,7 @@ export const czech = {
   'compare.row.passphrase': 'Passphrase je součástí šifrování',
   'compare.row.secret': 'Tajemství v\u{A0}odkazu',
   'compare.row.verify': 'Ověření servírovaného kódu proti vydání',
-  'compare.row.length': 'Délka zprávy zůstane skrytá',
+  'compare.row.length': 'Zaokrouhlí délku na celé bloky',
   'compare.row.id': 'Samotné id zprávu neotevře',
   'compare.row.stolen': 'Automatický test ukradeného serveru',
   'compare.row.ip': 'Server nezapisuje IP adresy',
@@ -602,11 +609,12 @@ export const czech = {
   'compare.note.nojs': 'jen náhled bez JS',
   'compare.note.replaces': 'nahrazuje klíč',
   'compare.note.server_check': 'jen kontrola na serveru',
+  'compare.note.server_side': 'na serveru',
   'compare.note.bits256': '256 bitů',
   'compare.note.bits131': '≈ 131 bitů',
   'compare.note.bits128': '128 bitů',
   'compare.note.signed_releases': 'jen podepsaná vydání',
-  'compare.note.blocks': 'bloky po 4 KiB',
+  'compare.note.blocks': '4 KiB, soubory 64 KiB',
   'compare.note.compression': 'jen komprese',
   'compare.note.server_sees': 'server vidí obsah',
   'compare.note.signed': 'podepsané požadavky',
@@ -618,7 +626,7 @@ export const czech = {
   'compare.note.truncated': 'zkrácené IP',
   'compare.note.collects': 'sbírá IP',
   'compare.note.not_yet': 'zatím ne',
-  'compare.note.send_out': 'Send mimo rozsah',
+  'compare.note.send_out': 'Send v\u{A0}auditech nejmenovaný',
 
   'limits.eyebrow': 'Kde naše záruky končí',
   'limits.title': 'Napadené zařízení žádná šifra neochrání',
@@ -636,7 +644,8 @@ export const czech = {
   'limits.link.title': 'Odkaz otevře, kdo ho má první',
   'limits.link.note': 'Passphrase proto pošlete jinou cestou.',
   'limits.server.title': 'Napadený server může podvrhnout stránku',
-  'limits.server.note': 'Ověří ji nylzo verify-client. Kdo jí věřit nechce, pošle zprávu přes CLI.',
+  'limits.server.note':
+    'nylzo verify-client odhalí chybné sestavení, ale ne server, který před ním záměnu schová. Kdo stránce věřit nechce, pošle zprávu přes CLI.',
   'limits.abuse.title': 'Ne pro podvody a\u{A0}malware',
   'limits.abuse.note': 'Ani pro jiný nezákonný obsah.',
   'limits.liability':
@@ -644,7 +653,7 @@ export const czech = {
   'limits.report': 'Nahlásit zneužití',
 
   'cta.title': 'Máte něco, co nepatří do chatu?',
-  'cta.text': 'Odkaz vytvoříte za pár vteřin, bez účtu a\u{A0}bez instalace.',
+  'cta.text': 'Odkaz vytvoříte za pár vteřin a\u{A0}nepotřebujete k\u{A0}tomu účet ani instalaci.',
   'cta.button': 'Vytvořit šifrovaný odkaz',
   'host.domain': 'vase-domena.cz',
   'host.terminal': 'bash — nylzo',
