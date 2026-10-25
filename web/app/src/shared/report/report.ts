@@ -13,7 +13,8 @@ import {
   type RequestKey,
 } from '@nylzo/core';
 
-import { ApiError, type Api } from '../api/api.ts';
+import { ApiError } from '../api/api-errors.ts';
+import { type Api } from '../api/api.ts';
 
 export const MAX_REASON_BYTES = 1000;
 const MAX_REPORT_BODY_BYTES = 4096;

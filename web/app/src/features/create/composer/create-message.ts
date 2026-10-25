@@ -27,7 +27,9 @@ import {
   type CryptoRequestKey,
 } from '@nylzo/core';
 
-import { ApiError, type Api, type Instance, type InstanceLimits } from '../../../shared/api/api.ts';
+import { ApiError } from '../../../shared/api/api-errors.ts';
+import { type Api, type Instance } from '../../../shared/api/api.ts';
+import { type InstanceLimits } from '../../../shared/api/responses.ts';
 import { sanitizeFileName } from '../../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../../shared/kdf/kdf-protocol.ts';
 

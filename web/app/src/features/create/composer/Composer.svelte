@@ -4,7 +4,8 @@
   import type { Attachment } from 'svelte/attachments';
   import { prefersReducedMotion } from 'svelte/motion';
 
-  import { createApi, type InstanceLimits } from '../../../shared/api/api.ts';
+  import { createApi } from '../../../shared/api/api.ts';
+  import { type InstanceLimits } from '../../../shared/api/responses.ts';
   import {
     CreateError,
     WEAK_BELOW_CHARS,

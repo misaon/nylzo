@@ -1,7 +1,7 @@
 import { KDF_NONE, idToString, newRequestKey, parseId } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '../../shared/api/api.ts';
+import { ApiError } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
 import { RETENTION_MS, isRetained, type SentRecord, type SentStore } from '../../shared/sent-records/sent-records.ts';
@@ -63,7 +63,7 @@ describe('the sent page', () => {
   });
 
   it('stops at a rate limit and marks the rest to try later', async () => {
-    const { api, sent } = await setup({ failStatus: [new ApiError(429, 'rate_limited', 20)] }, 3);
+    const { api, sent } = await setup({ failStatus: [new ApiError(429, 'rate_limited', { retryAfter: 20 })] }, 3);
     api.calls.length = 0;
     await sent.load();
     expect(api.calls).toEqual(['status']);
@@ -101,7 +101,7 @@ describe('the sent page', () => {
   });
 
   it('reports a rate limited cancel and leaves the message as it was', async () => {
-    const { records, sent } = await setup({ failCancel: [new ApiError(503, 'unavailable', 5)] }, 1);
+    const { records, sent } = await setup({ failCancel: [new ApiError(503, 'unavailable', { retryAfter: 5 })] }, 1);
     await sent.load();
     expect(await sent.cancel(records[0]!.id)).toEqual({ outcome: 'retry_later', retryAfter: 5 });
     expect(sent.items()[0]?.state).toMatchObject({ kind: 'loaded', status: { state: 'available' } });
@@ -176,7 +176,7 @@ describe('the sent page', () => {
 
   it('skips a message forgotten while the list loads and still marks the rest to try later', async () => {
     const { api, records, store, sent } = await setup(
-      { failStatus: [new ApiError(500, 'internal'), new ApiError(429, 'rate_limited', 9)] },
+      { failStatus: [new ApiError(500, 'internal'), new ApiError(429, 'rate_limited', { retryAfter: 9 })] },
       4,
     );
     api.calls.length = 0;

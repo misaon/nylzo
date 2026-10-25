@@ -1,6 +1,6 @@
 import { MIN_TTL_SECONDS } from '@nylzo/core';
 
-import type { InstanceLimits } from '../../../shared/api/api.ts';
+import { type InstanceLimits } from '../../../shared/api/responses.ts';
 import type { CreateFailure, CreateProblem, FileInput } from './create-message.ts';
 import { type MessageKey } from '../../../shared/language/czech.ts';
 

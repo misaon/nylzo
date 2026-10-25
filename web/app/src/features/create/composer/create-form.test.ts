@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { InstanceLimits } from '../../../shared/api/api.ts';
+import { type InstanceLimits } from '../../../shared/api/responses.ts';
 import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
 import { english } from '../../../shared/language/english.ts';
 

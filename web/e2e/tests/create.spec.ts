@@ -1,6 +1,7 @@
 import type { Page, Request } from '@playwright/test';
 
-import { ApiError, createApi } from '../../app/src/shared/api/api.ts';
+import { ApiError } from '../../app/src/shared/api/api-errors.ts';
+import { createApi } from '../../app/src/shared/api/api.ts';
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
 import {

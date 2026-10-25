@@ -2,7 +2,7 @@ import { HEADER_LEN, PowTimeoutError, TooLargeError, encodeBase64url, solvePow }
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError } from '../../../shared/api/api.ts';
+import { ApiError } from '../../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi } from '../../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../../shared/kdf/kdf-protocol.ts';
 import {
@@ -106,7 +106,7 @@ describe('creating a message', () => {
   });
 
   it('maps rate limits and refuses invalid input before any key is made', async () => {
-    const limited = fakeApi({ failCreate: [new ApiError(429, 'rate_limited', 30)] });
+    const limited = fakeApi({ failCreate: [new ApiError(429, 'rate_limited', { retryAfter: 30 })] });
     await expect(createMessage(input(), createDeps(limited))).rejects.toMatchObject({
       failure: { kind: 'rate_limited', retryAfter: 30 },
     });

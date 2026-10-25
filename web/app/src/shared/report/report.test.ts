@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError } from '../api/api.ts';
+import { ApiError } from '../api/api-errors.ts';
 import { createMessage, type CreateDeps } from '../../features/create/composer/create-message.ts';
 import { reasonTooLong, redactReason, reportLink } from './report.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../api/fake-api.ts';
@@ -78,7 +78,7 @@ describe('reporting a pasted link (D41)', () => {
   });
 
   it('passes on a rate limit and other failures', async () => {
-    const limited = await setup({ failReport: [new ApiError(429, 'rate_limited', 60)] });
+    const limited = await setup({ failReport: [new ApiError(429, 'rate_limited', { retryAfter: 60 })] });
     expect(await reportLink(limited.api, ORIGIN, limited.link, '')).toEqual({ outcome: 'retry_later', retryAfter: 60 });
     const broken = await setup({ failReport: [new ApiError(500, 'internal')] });
     expect(await reportLink(broken.api, ORIGIN, broken.link, '')).toEqual({ outcome: 'failed' });

@@ -1,7 +1,7 @@
 import { KDF_SCRYPT, type KdfId } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '../shared/api/api.ts';
+import { ApiError } from '../shared/api/api-errors.ts';
 import { createMessage, type CreateDeps } from '../features/create/composer/create-message.ts';
 import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
 import { createReader, type ReadView } from '../features/read/reader.ts';
@@ -127,7 +127,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     ['the upload fails', { failCreate: [new ApiError(500, 'internal')] }],
     [
       'a retry with a new id fails too',
-      { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', 5)] },
+      { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', { retryAfter: 5 })] },
     ],
   ])('wipes every S, R, salt_pw, V and P when %s', async (_, options) => {
     const api = fakeApi(options);

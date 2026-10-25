@@ -11,7 +11,9 @@ import {
 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, ResponseError, StoppedError, TRANSFER_TIMEOUT_MS, createApi, decodePolicyHeader } from './api.ts';
+import { ApiError, ResponseError, StoppedError } from './api-errors.ts';
+import { TRANSFER_TIMEOUT_MS, createApi } from './api.ts';
+import { servedPolicy } from './responses.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
 
@@ -304,7 +306,7 @@ describe('api client', () => {
   });
 
   it('accepts only a canonical policy header with integer fields', () => {
-    expect(decodePolicyHeader(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
+    expect(servedPolicy(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
     for (const bad of [
       null,
       '',
@@ -313,7 +315,7 @@ describe('api client', () => {
       encodeBase64url(utf8('[]')),
       encodeBase64url(utf8('{"opens_max":1}')),
     ]) {
-      expect(() => decodePolicyHeader(bad)).toThrow(ResponseError);
+      expect(() => servedPolicy(bad)).toThrow(ResponseError);
     }
   });
 

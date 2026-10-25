@@ -21,14 +21,8 @@ import {
   type RequestKey,
 } from '@nylzo/core';
 
-import {
-  ApiError,
-  StoppedError,
-  type Api,
-  type Envelope,
-  type MessageState,
-  type Metadata,
-} from '../../shared/api/api.ts';
+import { ApiError, StoppedError, type MessageState } from '../../shared/api/api-errors.ts';
+import { type Api, type Envelope, type Metadata } from '../../shared/api/api.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { sendReport, type ReportOutcome } from '../../shared/report/report.ts';

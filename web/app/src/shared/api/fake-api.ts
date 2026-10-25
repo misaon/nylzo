@@ -1,15 +1,7 @@
 import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
 
-import {
-  ApiError,
-  StoppedError,
-  type Api,
-  type CreateRequest,
-  type Instance,
-  type MessageState,
-  type Metadata,
-  type Status,
-} from './api.ts';
+import { ApiError, StoppedError, type MessageState } from './api-errors.ts';
+import { type Api, type CreateRequest, type Instance, type Metadata, type Status } from './api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -88,7 +80,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
 
   function end(message: Stored, state: MessageState): void {
     if (message.state !== 'available' && !(message.state === 'opened' && message.leases.size > 0)) {
-      throw new ApiError(410, 'gone', undefined, undefined, message.state);
+      throw new ApiError(410, 'gone', { state: message.state });
     }
     message.state = state;
     message.leases.clear();
@@ -186,12 +178,15 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push(claimOptions.verifierKey ? 'claim+verifier' : 'claim');
       const message = find(id, readKey);
       if (message.state !== 'available') {
-        throw new ApiError(410, 'gone', undefined, undefined, message.state);
+        throw new ApiError(410, 'gone', { state: message.state });
       }
       if (message.request.kdfId !== 0 && !equal(message.request.verifierKey, claimOptions.verifierKey?.publicKey)) {
         message.failures++;
         const locked = message.failures >= (options.lockAfter ?? 100);
-        throw new ApiError(403, 'passphrase', locked ? 3600 : 0, locked ? 0 : Math.max(0, 5 - message.failures));
+        throw new ApiError(403, 'passphrase', {
+          retryAfter: locked ? 3600 : 0,
+          attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures),
+        });
       }
       message.opensRemaining--;
       if (message.opensRemaining === 0) {
@@ -208,7 +203,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push('blob');
       const message = find(id, readKey);
       if (!message.leases.has(lease)) {
-        throw new ApiError(410, 'gone', undefined, undefined, message.state);
+        throw new ApiError(410, 'gone', { state: message.state });
       }
       return envelope(message);
     },

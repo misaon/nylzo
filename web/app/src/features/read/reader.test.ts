@@ -13,7 +13,7 @@ import {
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError, type MessageState } from '../../shared/api/api.ts';
+import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { createMessage, type CreateDeps, type CreateInput } from '../create/composer/create-message.ts';
@@ -457,7 +457,7 @@ describe('reading through the lease and claim edge cases', () => {
     session.setItem(leaseKeyOf(created.link), 'lease-1');
     api.blob = async () => {
       api.calls.push('blob');
-      throw new ApiError(429, 'rate_limited', 90);
+      throw new ApiError(429, 'rate_limited', { retryAfter: 90 });
     };
     const r = reader(api, created.link, { session });
     await r.load();
@@ -514,7 +514,7 @@ describe('reading through the lease and claim edge cases', () => {
     const created = await createMessage(input(), createDeps(api));
     api.claim = async () => {
       api.calls.push('claim');
-      throw new ApiError(status, kind, wait);
+      throw new ApiError(status, kind, { retryAfter: wait });
     };
     const r = reader(api, created.link);
     await r.load();
@@ -836,7 +836,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   });
 
   it('shows the end state when the message ended before the deletion', async () => {
-    const api = fakeApi({ failBurn: [new ApiError(410, 'gone', undefined, undefined, 'cancelled')] });
+    const api = fakeApi({ failBurn: [new ApiError(410, 'gone', { state: 'cancelled' })] });
     const created = await createMessage(input(), createDeps(api));
     const r = reader(api, created.link);
     await r.load();
@@ -845,7 +845,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   });
 
   it('keeps the page when the deletion is rate limited and allows another attempt', async () => {
-    const api = fakeApi({ failBurn: [new ApiError(429, 'rate_limited', 30)] });
+    const api = fakeApi({ failBurn: [new ApiError(429, 'rate_limited', { retryAfter: 30 })] });
     const created = await createMessage(input(), createDeps(api));
     const r = reader(api, created.link);
     await r.load();
