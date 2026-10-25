@@ -26,7 +26,7 @@ import {
   newSecret,
   open,
   PAD_FILE,
-  paddedLength as paddedLengthgth,
+  paddedLength,
   parseHeader,
   type Policy,
   PolicyError,
@@ -186,7 +186,7 @@ describe('padding', () => {
       [65_537, true, 131_072],
     ];
     for (const [n, hasFile, want] of cases) {
-      expect(paddedLengthgth(n, hasFile)).toBe(want);
+      expect(paddedLength(n, hasFile)).toBe(want);
     }
   });
 

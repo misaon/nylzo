@@ -1,21 +1,15 @@
+export { open, type Opened, type OpenedPayload, paddedLength, type Payload, seal } from './envelope/envelope.ts';
 export {
   aad,
   type Header,
   headerBytes,
   newHeader,
-  newIv,
-  open,
-  type Opened,
-  type OpenedPayload,
-  paddedLength,
   parseHeader,
-  type Payload,
   type Policy,
   policyBytes,
-  seal,
   validateHeader,
   validatePolicy,
-} from './envelope/envelope.ts';
+} from './envelope/header.ts';
 export { decodeMeta, encodeMeta, type FileMeta, type Meta, validateMeta } from './envelope/meta.ts';
 export {
   EncodingError,

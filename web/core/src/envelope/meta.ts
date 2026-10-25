@@ -39,7 +39,7 @@ export function validateMeta(meta: Meta): void {
 
 export function encodeMeta(meta: Meta): Uint8Array<ArrayBuffer> {
   validateMeta(meta);
-  const bytes = utf8(metaJson(meta));
+  const bytes = utf8(canonicalJson(meta));
   if (bytes.length > MAX_META_BYTES) {
     throw new MetaError('meta exceeds the size limit');
   }
@@ -80,7 +80,7 @@ function validateFileName(name: string): void {
   }
 }
 
-function metaJson(meta: Meta): string {
+function canonicalJson(meta: Meta): string {
   let json = '{"v":1';
   if (meta.text !== undefined) {
     json += `,"text":${JSON.stringify(meta.text)}`;
@@ -151,9 +151,9 @@ function requireInteger(value: JsonValue | undefined): number {
   if (value?.kind !== 'number' || !isIntegerLiteral(value.literal)) {
     throw new MetaError('expected a JSON integer');
   }
-  const n = Number(value.literal);
-  if (!Number.isSafeInteger(n)) {
+  const integer = Number(value.literal);
+  if (!Number.isSafeInteger(integer)) {
     throw new MetaError('integer is out of range');
   }
-  return n === 0 ? 0 : n;
+  return integer === 0 ? 0 : integer;
 }
