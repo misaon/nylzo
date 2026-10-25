@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,51 +21,6 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
-
-func TestSourceLimiterEvictsIdleSourcesFirst(t *testing.T) {
-	t.Parallel()
-	l := newKeyedLimiter(1, 1)
-	l.max = 16
-	now := time.Unix(1_800_000_000, 0)
-	for i := range 3 {
-		l.allow(bucket{1, byte(i)}, now)
-	}
-	later := now.Add(2 * time.Second)
-	for i := range 13 {
-		key := bucket{2, byte(i)}
-		if !l.allow(key, later) || l.allow(key, later) {
-			t.Fatal("throttled source burst")
-		}
-	}
-	if !l.allow(bucket{3}, later) {
-		t.Fatal("a new source was refused at the cap")
-	}
-	for i := range 13 {
-		if l.allow(bucket{2, byte(i)}, later) {
-			t.Fatalf("eviction reset throttled source %d while idle sources were available", i)
-		}
-	}
-}
-
-func TestSourceLimiterKeepsMostSourcesWhenFull(t *testing.T) {
-	t.Parallel()
-	l := newKeyedLimiter(1, 1)
-	l.max = 64
-	now := time.Unix(1_800_000_000, 0)
-	for i := range 64 {
-		l.allow(bucket{byte(i)}, now)
-	}
-	l.allow(bucket{0, 1}, now)
-	throttled := 0
-	for i := range 64 {
-		if _, ok := l.buckets[bucket{byte(i)}]; ok {
-			throttled++
-		}
-	}
-	if throttled < 48 || throttled == 64 {
-		t.Fatalf("a full table must drop a small share of sources, kept %d of 64", throttled)
-	}
-}
 
 type cancelAfterCommit struct{ store.Store }
 
@@ -112,91 +66,6 @@ func TestAbuseReportKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(s.abuseDir, "2027-01-15.jsonl")); err != nil || len(data) == 0 {
 		t.Fatalf("report not stored: %v", err)
-	}
-}
-
-func TestAddrCountersRefuseWithAtLeastOneSecond(t *testing.T) {
-	t.Parallel()
-	c := newAddrCounters()
-	w := hourWindow(time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC))
-	last := w.end.Add(-time.Nanosecond)
-	hit := []addrHit{{kind: "create:h", window: w, limit: 1}}
-	if retry := c.hit(hit, w.start); retry != 0 {
-		t.Fatalf("first request refused: %v", retry)
-	}
-	if retry := c.hit(hit, last); retry != time.Second {
-		t.Fatalf("a request over the limit just before the window ends got Retry-After %v", retry)
-	}
-	if retry := c.hit([]addrHit{{kind: "create:h", window: hourWindow(w.end), limit: 1}}, w.end); retry != 0 {
-		t.Fatalf("the next window still counts the old requests: %v", retry)
-	}
-}
-
-func TestAddrCountersStopAtTheFirstRefusal(t *testing.T) {
-	t.Parallel()
-	c := newAddrCounters()
-	w := hourWindow(time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC))
-	fine, coarse := bucket{1}, bucket{2}
-	hits := []addrHit{
-		{kind: "k", bucket: fine, window: w, limit: 1},
-		{kind: "k:c", bucket: coarse, window: w, limit: 10},
-	}
-	for range 3 {
-		c.hit(hits, w.start)
-	}
-	if got := c.tables["k:c"].entries[coarse].count; got != 1 {
-		t.Fatalf("refused requests were counted against the coarse bucket: %d", got)
-	}
-}
-
-func TestAddrCountersStayBounded(t *testing.T) {
-	t.Parallel()
-	c := newAddrCounters()
-	c.max = 64
-	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
-	old, cur := hourWindow(now.Add(-time.Hour)), hourWindow(now)
-	for i := range c.max {
-		c.hit([]addrHit{{kind: "k", bucket: bucket{byte(i)}, window: old}}, old.start)
-	}
-	c.hit([]addrHit{{kind: "k", bucket: bucket{0xff, 0xff}, window: cur}}, now)
-	if n := len(c.tables["k"].entries); n != 1 {
-		t.Fatalf("expired buckets were kept: %d", n)
-	}
-	for i := range 4 * c.max {
-		c.hit([]addrHit{{kind: "k", bucket: bucket{byte(i), byte(i >> 8), 1}, window: cur}}, now)
-	}
-	if n := len(c.tables["k"].entries); n > c.max {
-		t.Fatalf("the table grew past its bound: %d", n)
-	}
-}
-
-func TestAddressBucketsComeFromAProcessKey(t *testing.T) {
-	t.Parallel()
-	a, b := newAddrKey(), newAddrKey()
-	addr := netip.MustParseAddr("203.0.113.77")
-	if a.bucket(addr, false) == b.bucket(addr, false) && a.bucket(addr, true) == b.bucket(addr, true) {
-		t.Fatal("two processes derived the same buckets, so the key is not random per process")
-	}
-	k := newAddrKey()
-	same := netip.MustParseAddr("203.0.113.78")
-	mapped := netip.MustParseAddr("::ffff:203.0.113.77")
-	if k.bucket(addr, false) == k.bucket(same, false) || k.bucket(addr, true) != k.bucket(same, true) ||
-		k.bucket(addr, false) != k.bucket(mapped, false) {
-		t.Fatal("IPv4 buckets do not group by /32 and /24")
-	}
-	v1, v2, v3, v4 := netip.MustParseAddr(
-		"2001:db8:1:2:3:4:5:6",
-	), netip.MustParseAddr(
-		"2001:db8:1:2:ffff:ffff:ffff:ffff",
-	), netip.MustParseAddr(
-		"2001:db8:1:3::1",
-	), netip.MustParseAddr(
-		"2001:db8:2::1",
-	)
-	if k.bucket(v1, false) != k.bucket(v2, false) || k.bucket(v1, false) == k.bucket(v3, false) ||
-		k.bucket(v1, true) != k.bucket(v3, true) ||
-		k.bucket(v1, true) == k.bucket(v4, true) {
-		t.Fatal("IPv6 buckets do not group by /64 and /48")
 	}
 }
 
@@ -328,43 +197,6 @@ func testConcurrentSpendsShareATransaction(t *testing.T) {
 	}
 	if calls := gated.calls(); !slices.Equal(calls, []int{1, spendBatchMax, spendBatchMax, 2*pairs - 2*spendBatchMax}) {
 		t.Fatalf("spends written as transactions of %v", calls)
-	}
-}
-
-func TestTokenBucketRefillsAtItsRate(t *testing.T) {
-	t.Parallel()
-	l := newKeyedLimiter(1, 2)
-	var key bucket
-	now := l.base
-	for i := range 2 {
-		if !l.allow(key, now) {
-			t.Fatalf("burst token %d refused", i)
-		}
-	}
-	if l.allow(key, now.Add(500*time.Millisecond)) {
-		t.Fatal("half a second at 1 request per second refilled a whole token")
-	}
-	if !l.allow(key, now.Add(1100*time.Millisecond)) {
-		t.Fatal("one second at 1 request per second refilled nothing")
-	}
-	if l.allow(key, now.Add(1200*time.Millisecond)) {
-		t.Fatal("the bucket refilled more than its rate")
-	}
-}
-
-func TestIPv6RangeBucketCoversTheWhole48(t *testing.T) {
-	t.Parallel()
-	k := newAddrKey()
-	low, high := netip.MustParseAddr("2001:db8:1::1"), netip.MustParseAddr("2001:db8:1:ffff:ffff:ffff:ffff:ffff")
-	if k.bucket(low, true) != k.bucket(high, true) {
-		t.Fatal("the /48 range bucket splits one /48")
-	}
-	if k.bucket(low, true) == k.bucket(netip.MustParseAddr("2001:db8:0:ffff::1"), true) {
-		t.Fatal("the /48 range bucket joins two /48s")
-	}
-	if k.bucket(low, false) == k.bucket(netip.MustParseAddr("2001:db8:1:1::1"), false) ||
-		k.bucket(low, false) != k.bucket(netip.MustParseAddr("2001:db8:1:0:ffff::1"), false) {
-		t.Fatal("the source bucket is not exactly one /64")
 	}
 }
 

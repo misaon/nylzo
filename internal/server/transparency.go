@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -85,7 +86,7 @@ type transparencyResponse struct {
 
 func (s *Server) transparency() transparencyResponse {
 	r := s.cfg.Rates
-	day := dayWindow(time.Unix(0, 0))
+	day := ratelimit.Day(time.Unix(0, 0))
 	resp := transparencyResponse{
 		Server: s.cfg.Version,
 		Limits: s.instanceLimits(),
@@ -97,7 +98,7 @@ func (s *Server) transparency() transparencyResponse {
 		Retention: transparencyRetention{
 			TombstoneS:    int64(store.TombstoneTTL / time.Second),
 			AbuseReportS:  int64(abuseRetention / time.Second),
-			DailyCounterS: int64(day.purgeAt().Sub(day.end) / time.Second),
+			DailyCounterS: int64(day.PurgeAt().Sub(day.End) / time.Second),
 		},
 	}
 	if s.cfg.Operator.set() {

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 )
 
 const apiCSP = "default-src 'none'; frame-ancestors 'none'"
@@ -34,6 +36,22 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 			h.Set("X-Robots-Tag", robotsTag)
 		}
 		h.Set("Content-Security-Policy", apiCSP)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) noticeForwarded(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header := ratelimit.ForwardingHeader(r)
+		if header != "" && s.clientAddr(r) == ratelimit.PeerAddress(r.RemoteAddr) {
+			hour := s.clock().UTC().Truncate(time.Hour).Unix()
+			for last := s.forwardNotice.Load(); hour > last || hour < last-int64(time.Hour/time.Second); last = s.forwardNotice.Load() {
+				if s.forwardNotice.CompareAndSwap(last, hour) {
+					s.log.Warn("forwarded-header-ignored", "header", header)
+					break
+				}
+			}
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -67,9 +85,9 @@ func (s *Server) throttle(next http.Handler) http.Handler {
 func (s *Server) allowAPI(r *http.Request) bool {
 	now := s.clock()
 	addr := s.clientAddr(r)
-	return s.sources.allow(s.addrKey.bucket(addr, false), now) &&
-		s.prefixes.allow(s.addrKey.bucket(addr, true), now) &&
-		s.bucket.allow(singleKey, now)
+	return s.sources.Allow(s.addressKey.Source(addr), now) &&
+		s.prefixes.Allow(s.addressKey.Range(addr), now) &&
+		s.instance.Allow(ratelimit.Bucket{}, now)
 }
 
 type statusWriter struct {

@@ -163,8 +163,8 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	t.Parallel()
 	s, _ := testServer(t, openStore(t), func(c *Config) { c.MaxStreams = 1 })
 	other := netip.MustParseAddr("198.51.100.7")
-	source, ranges := s.addrKey.bucket(other, false), s.addrKey.bucket(other, true)
-	if !s.streams.take(source, ranges) {
+	source, ranges := s.addressKey.Source(other), s.addressKey.Range(other)
+	if !s.streams.Take(source, ranges) {
 		t.Fatal("the only slot was not free")
 	}
 	id := core.NewID().String()
@@ -178,12 +178,11 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 			t.Fatalf("%s with every stream slot busy: %d %q", req.URL.Path, w.Code, w.Header().Get("Retry-After"))
 		}
 	}
-	s.streams.release(source, ranges)
+	s.streams.Release(source, ranges)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/messages/"+id+"/claim", nil))
-	if w.Code != http.StatusNotFound || s.streams.total != 0 || len(s.streams.source) != 0 ||
-		len(s.streams.ranges) != 0 {
-		t.Fatalf("a claim with a free slot: %d, %d slots still held", w.Code, s.streams.total)
+	if w.Code != http.StatusNotFound || !s.streams.Take(source, ranges) {
+		t.Fatalf("a claim with a free slot: %d, or it kept its slot", w.Code)
 	}
 }
 
@@ -199,7 +198,7 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	}
 	hold := func(addr string) {
 		a := netip.MustParseAddr(addr)
-		if !s.streams.take(s.addrKey.bucket(a, false), s.addrKey.bucket(a, true)) {
+		if !s.streams.Take(s.addressKey.Source(a), s.addressKey.Range(a)) {
 			t.Fatalf("no slot for %s", addr)
 		}
 	}

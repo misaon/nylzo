@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -68,17 +69,18 @@ type Server struct {
 	afterFunc     func(time.Duration, func())
 	timers        *timers
 	log           *slog.Logger
-	bucket        *keyedLimiter
-	sources       *keyedLimiter
-	prefixes      *keyedLimiter
-	addrKey       *addrKey
-	counters      *addrCounters
+	instance      *ratelimit.Limiter
+	sources       *ratelimit.Limiter
+	prefixes      *ratelimit.Limiter
+	addressKey    *ratelimit.AddressKey
+	proxies       ratelimit.Proxies
+	counters      *ratelimit.Counters
 	forwardNotice atomic.Int64
 	spent         *spentChallenges
 	spends        *spendBatcher
 	powSlots      chan struct{}
 	powSlotWait   time.Duration
-	streams       *streamSlots
+	streams       *ratelimit.Streams
 	freeSpace     func(string) (uint64, error)
 	diskLow       atomic.Bool
 	diskReserved  atomic.Int64
@@ -130,16 +132,17 @@ func New(cfg Config, st store.Store, blobs store.Blobs, opts ...Option) (*Server
 		s.sitemap = sitemapXML(cfg.PublicURL)
 	}
 	s.manifest = s.web.embedded().Manifest(cfg.Version, cfg.PublicURL)
-	s.bucket = newKeyedLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
-	s.sources = newKeyedLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
-	s.prefixes = newKeyedLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
-	s.addrKey = newAddrKey()
-	s.counters = newAddrCounters()
+	s.instance = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
+	s.sources = ratelimit.NewLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
+	s.prefixes = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
+	s.addressKey = ratelimit.NewAddressKey()
+	s.proxies = ratelimit.Proxies{Trusted: cfg.TrustedProxies, ReadRealIP: cfg.ProxyMode == ProxyModeScaleway}
+	s.counters = ratelimit.NewCounters()
 	s.spent = newSpentChallenges()
 	s.spends = newSpendBatcher(st)
 	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
 	s.powSlotWait = powSlotWait
-	s.streams = newStreamSlots(cfg.MaxStreams)
+	s.streams = ratelimit.NewStreams(cfg.MaxStreams)
 	s.handler = s.routes()
 	return s, nil
 }
@@ -175,7 +178,7 @@ func (s *Server) HTTPServer() *http.Server {
 }
 
 type sinkLevel struct {
-	bucket  *keyedLimiter
+	bucket  *ratelimit.Limiter
 	dropped int
 }
 
@@ -191,8 +194,8 @@ func newHTTPErrorSink(l *slog.Logger, clock func() time.Time) *httpErrorSink {
 	return &httpErrorSink{
 		log:   l,
 		clock: clock,
-		warn:  sinkLevel{bucket: newKeyedLimiter(httpErrorLogRate, httpErrorLogBurst)},
-		err:   sinkLevel{bucket: newKeyedLimiter(httpErrorLogRate, httpErrorLogBurst)},
+		warn:  sinkLevel{bucket: ratelimit.NewLimiter(httpErrorLogRate, httpErrorLogBurst)},
+		err:   sinkLevel{bucket: ratelimit.NewLimiter(httpErrorLogRate, httpErrorLogBurst)},
 	}
 }
 
@@ -222,7 +225,7 @@ func (h *httpErrorSink) Write(p []byte) (int, error) {
 		sink = &h.err
 	}
 	h.mu.Lock()
-	if !sink.bucket.allow(singleKey, h.clock()) {
+	if !sink.bucket.Allow(ratelimit.Bucket{}, h.clock()) {
 		sink.dropped++
 		h.mu.Unlock()
 		return len(p), nil
@@ -247,7 +250,7 @@ func SweepStore(
 ) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, st, blobs, now)
 	err = errors.Join(err, pruneAbuse(abuseDir(dataDir), now))
-	done, derr := st.RateGet(ctx, reconcileKey, dayWindow(now).start)
+	done, derr := st.RateGet(ctx, reconcileKey, ratelimit.Day(now).Start)
 	if derr != nil {
 		return report, errors.Join(err, derr)
 	}
@@ -255,10 +258,10 @@ func SweepStore(
 		orphans, listed, rerr := store.Reconcile(ctx, st, blobs, now)
 		report.OrphanedBlobs = orphans
 		if listed {
-			d := dayWindow(now)
+			d := ratelimit.Day(now)
 			if _, merr := st.RateHit(
 				ctx,
-				[]store.RateHit{{Key: reconcileKey, WindowStart: d.start, PurgeAt: d.purgeAt()}},
+				[]store.RateHit{{Key: reconcileKey, WindowStart: d.Start, PurgeAt: d.PurgeAt()}},
 			); merr != nil {
 				rerr = errors.Join(rerr, merr)
 			}

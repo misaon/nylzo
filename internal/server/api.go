@@ -15,6 +15,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -155,13 +156,13 @@ func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error
 
 func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	addr := s.clientAddr(r)
-	source, ranges := s.addrKey.bucket(addr, false), s.addrKey.bucket(addr, true)
-	if !s.streams.take(source, ranges) {
+	source, ranges := s.addressKey.Source(addr), s.addressKey.Range(addr)
+	if !s.streams.Take(source, ranges) {
 		setRetryAfter(w, streamBusyRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
 		return nil, false
 	}
-	return func() { s.streams.release(source, ranges) }, true
+	return func() { s.streams.Release(source, ranges) }, true
 }
 
 type access struct {
@@ -590,13 +591,13 @@ func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 
 func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.Time) {
 	retry := pendingRetry
-	c, err := s.store.RateGet(r.Context(), globalStoredKey, dayWindow(now).start)
+	c, err := s.store.RateGet(r.Context(), globalStoredKey, ratelimit.Day(now).Start)
 	switch {
 	case err != nil:
 		level, text := failure(r.Context(), err)
 		s.log.Log(r.Context(), level, "global-cap", "err", text)
 	case c.Count >= s.cfg.Rates.GlobalDailyCreates:
-		retry = dayWindow(now).end.Sub(now) + time.Second
+		retry = ratelimit.Day(now).End.Sub(now) + time.Second
 	}
 	setRetryAfter(w, retry)
 	s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)

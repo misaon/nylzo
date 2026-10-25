@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"net/http"
-	"net/netip"
 	"strings"
 	"time"
 
@@ -15,22 +14,6 @@ const (
 	GlobalCreatesKey = globalCreatesKey
 	GlobalStoredKey  = globalStoredKey
 )
-
-func ClientAddrForTest(cfg Config, mode, remote, xff, realIP string) netip.Addr {
-	cfg.ProxyMode = mode
-	s := &Server{cfg: cfg}
-	r, _ := http.NewRequest("GET", "/", nil)
-	r.RemoteAddr = remote
-	if xff != "" {
-		r.Header.Set("X-Forwarded-For", xff)
-	}
-	for value := range strings.SplitSeq(realIP, "\n") {
-		if value != "" {
-			r.Header.Add("X-Real-IP", value)
-		}
-	}
-	return s.clientAddr(r)
-}
 
 func ParseCreateHeaderForTest(cfg Config, value string) bool {
 	s := &Server{cfg: cfg}

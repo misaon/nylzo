@@ -14,6 +14,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -50,7 +51,7 @@ func (c *spentChallenges) seen(nonce [challengeNonceLen]byte, expires, now int64
 }
 
 func (c *spentChallenges) evict(now int64) {
-	evictTo(c.expires, c.max, func(exp int64) bool { return now > exp+int64(clockSkew/time.Second) })
+	ratelimit.Trim(c.expires, c.max, func(exp int64) bool { return now > exp+int64(clockSkew/time.Second) })
 }
 
 type spendBatch struct {

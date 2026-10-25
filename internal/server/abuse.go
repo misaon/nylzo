@@ -15,6 +15,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -76,17 +77,17 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 var errAbuseFull = errors.New("server: abuse report files reached their size limit")
 
 func (s *Server) recordAbuse(ctx context.Context, now time.Time, id, reason string) error {
-	d := dayWindow(now)
+	d := ratelimit.Day(now)
 	key := "abuse:id:" + id
 	_, ok, err := s.store.RateReserve(
 		context.WithoutCancel(ctx),
-		store.RateHit{Key: key, WindowStart: d.start, PurgeAt: d.purgeAt(), Limit: abusePerRange},
+		store.RateHit{Key: key, WindowStart: d.Start, PurgeAt: d.PurgeAt(), Limit: abusePerRange},
 	)
 	if err != nil || !ok {
 		return err
 	}
 	if err := s.appendAbuse(now, id, reason); err != nil {
-		if rerr := s.store.RateRelease(context.WithoutCancel(ctx), key, d.start); rerr != nil {
+		if rerr := s.store.RateRelease(context.WithoutCancel(ctx), key, d.Start); rerr != nil {
 			s.log.Error("abuse-release", "err", ErrorText(rerr))
 		}
 		return err
@@ -123,7 +124,7 @@ func (s *Server) appendAbuse(now time.Time, id, reason string) error {
 	if err = errors.Join(err, f.Sync(), f.Close()); err != nil {
 		return err
 	}
-	day := dayWindow(now).start
+	day := ratelimit.Day(now).Start
 	if err := errors.Join(os.Chtimes(path, day, day), os.Chtimes(s.abuseDir, day, day)); err != nil {
 		s.log.Error("abuse-times", "err", ErrorText(err))
 	}

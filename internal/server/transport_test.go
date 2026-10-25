@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -311,41 +312,6 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	}
 }
 
-func TestClientAddr(t *testing.T) {
-	t.Parallel()
-	cfg := server.Defaults()
-	cfg.Pepper = pepperA
-	cfg.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("fd00::/8")}
-	cases := []struct {
-		remote, xff, realIP, mode, want string
-	}{
-		{"203.0.113.1:1234", "", "", "", "203.0.113.1"},
-		{"203.0.113.1:1234", "198.51.100.1", "", "", "203.0.113.1"},
-		{"10.0.0.5:1234", "198.51.100.1", "", "", "198.51.100.1"},
-		{"10.0.0.5:1234", "198.51.100.1, 10.0.0.9", "", "", "198.51.100.1"},
-		{"10.0.0.5:1234", "192.0.2.4, 198.51.100.1, 10.0.0.9", "", "", "198.51.100.1"},
-		{"10.0.0.5:1234", "garbage", "", "", "10.0.0.5"},
-		{"10.0.0.5:1234", "", "", "", "10.0.0.5"},
-		{"[::ffff:203.0.113.7]:1234", "", "", "", "203.0.113.7"},
-		{"203.0.113.1:1234", "", "198.51.100.2", "", "203.0.113.1"},
-		{"10.0.0.5:1234", "", "198.51.100.2", "", "10.0.0.5"},
-		{"[fd00::5]:1234", "2001:db8::7, fd00::9", "", "", "2001:db8::7"},
-		{"[2001:db8::1]:1234", "2001:db8::7", "", "", "2001:db8::1"},
-		{"10.0.0.5:1234", "198.51.100.1", "198.51.100.2", "scaleway", "198.51.100.2"},
-		{"203.0.113.1:1234", "", "198.51.100.2", "scaleway", "203.0.113.1"},
-		{"10.0.0.5:1234", "", "198.51.100.2\n198.51.100.3", "scaleway", "10.0.0.5"},
-		{"10.0.0.5:1234", "", "198.51.100.2, 198.51.100.3", "scaleway", "10.0.0.5"},
-		{"203.0.113.1:1234", "", "", "scaleway", "203.0.113.1"},
-	}
-	for _, c := range cases {
-		t.Run(fmt.Sprintf("%s/%s/xff=%q/real=%q", c.mode, c.remote, c.xff, c.realIP), func(t *testing.T) {
-			if got := server.ClientAddrForTest(cfg, c.mode, c.remote, c.xff, c.realIP); got.String() != c.want {
-				t.Fatalf("got %s want %s", got, c.want)
-			}
-		})
-	}
-}
-
 func TestConfigFromEnv(t *testing.T) {
 	t.Parallel()
 	env := map[string]string{
@@ -447,10 +413,9 @@ func TestTrustedProxyInMappedForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, remote := range []string{"172.17.0.1:1234", "10.9.8.7:1234"} {
-		if got := server.ClientAddrForTest(cfg, "", remote, "198.51.100.9", ""); got.String() != "198.51.100.9" {
-			t.Fatalf("proxy %s written in mapped form must be trusted: %s", remote, got)
-		}
+	want := []netip.Prefix{netip.MustParsePrefix("172.17.0.1/32"), netip.MustParsePrefix("10.0.0.0/8")}
+	if !slices.Equal(cfg.TrustedProxies, want) {
+		t.Fatalf("proxies written in mapped form must be trusted unmapped: %v", cfg.TrustedProxies)
 	}
 }
 

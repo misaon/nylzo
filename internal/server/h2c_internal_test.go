@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -43,10 +44,10 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.powSlotWait = 3 * time.Second
-	d := dayWindow(time.Now())
+	d := ratelimit.Day(time.Now())
 	if _, err := st.RateHit(
 		t.Context(),
-		[]store.RateHit{{Key: globalCreatesKey, WindowStart: d.start, PurgeAt: d.purgeAt()}},
+		[]store.RateHit{{Key: globalCreatesKey, WindowStart: d.Start, PurgeAt: d.PurgeAt()}},
 	); err != nil {
 		t.Fatal(err)
 	}
