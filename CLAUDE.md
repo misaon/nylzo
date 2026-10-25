@@ -1,5 +1,14 @@
 # Nylzo
 
+## Code
+
+- Spell names out. Use the words of the spec (message, envelope, lease, verifier, tombstone) and no abbreviations such as `rec`, `cfg`, `req`, `msg` or `el`. The only short names allowed are language idioms in a small scope: in Go `ctx`, `err`, `ok`, `id`, `tx`, loop indexes `i` and `j`, `w` and `r` in HTTP handlers, `t`, `b`, `f` and `tb` in tests, and one- or two-letter receivers; in TypeScript loop indexes `i` and `j`.
+- Keep one concept per package or folder. No directory holds more than about 15 files; split by responsibility, not by file type. Tests sit next to the code they test.
+- Use the current language: Go 1.27 with its standard library, TypeScript 7 with ES2024, Svelte 5 runes. Replace deprecated APIs and hand-written code that the standard library or the framework already provides.
+- Write no code comments unless one states a constraint the code cannot show.
+- `mise run lint` passes with zero findings. A `//nolint` or `eslint-disable` names the rule and the reason.
+- Test only what is critical: the protocol vectors, the security guarantees and acceptance criteria (AK ids), spec rules, and regressions that once broke. Do not test copy text, trivial getters or what the type system already proves.
+
 ## Pull requests
 
 - Write the PR title and body in English, whatever language the conversation uses.
