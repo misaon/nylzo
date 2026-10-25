@@ -32,6 +32,7 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 	return counts, err
 }
 
+//nolint:gocritic // unnamedResult: store.Counters declares this signature; see the cross-area list.
 func (s *Store) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
 	count, err := reserveHit(ctx, s.statements.reserveCounter, &hit)
 	return count, count > 0, err
