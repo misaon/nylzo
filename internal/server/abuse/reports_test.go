@@ -26,6 +26,10 @@ func newReports(t *testing.T, dataDir string) *abuse.Reports {
 	return abuse.NewReports(dataDir, storage, slog.New(slog.DiscardHandler))
 }
 
+func spam(id string) *abuse.Report {
+	return &abuse.Report{ID: id, Reason: "spam"}
+}
+
 func dayFile(dataDir string, day time.Time) string {
 	return filepath.Join(abuse.Directory(dataDir), day.UTC().Format(time.DateOnly)+".jsonl")
 }
@@ -35,20 +39,38 @@ func TestStoredReportsKeepOnlyTheDayAndStayPrivate(t *testing.T) {
 	dataDir := t.TempDir()
 	reports := newReports(t, dataDir)
 	now := time.Date(2026, 10, 22, 13, 17, 5, 0, time.UTC)
-	id := core.NewID().String()
+	id, other := core.NewID().String(), core.NewID().String()
 	secret := core.NewSecret()
 	link := core.FormatLink("https://nylzo.example", core.NewID(), core.KDFNone, secret)
-	if err := reports.Record(t.Context(), now, id, "malware at "+link); err != nil {
+	contact := "abcdefghijklmnopqrstuvwxyz@example.cz"
+	report := abuse.Report{ID: id, Reason: "malware at " + link, Contact: contact, GoodFaith: true}
+	if err := reports.Record(t.Context(), now, &report); err != nil {
+		t.Fatal(err)
+	}
+	if err := reports.Record(t.Context(), now, spam(other)); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(dayFile(dataDir, now))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var line map[string]string
-	if decodeErr := json.Unmarshal(data, &line); decodeErr != nil || len(line) != 3 || line["date"] != "2026-10-22" ||
-		line["id"] != id || strings.Contains(line["reason"], core.Encode(secret[:])) {
-		t.Fatalf("a stored report must carry only the day, the id and the redacted reason: %s %v", data, decodeErr)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	var withContact, withoutContact map[string]any
+	if len(lines) != 2 || json.Unmarshal([]byte(lines[0]), &withContact) != nil ||
+		json.Unmarshal([]byte(lines[1]), &withoutContact) != nil {
+		t.Fatalf("stored reports: %s", data)
+	}
+	reason, _ := withContact["reason"].(string)
+	if len(withContact) != 5 || withContact["date"] != "2026-10-22" || withContact["id"] != id ||
+		strings.Contains(reason, core.Encode(secret[:])) || withContact["good_faith"] != true ||
+		withContact["contact"] != contact {
+		t.Fatalf(
+			"a report must store the day, the id, the redacted reason, good faith and the contact as given: %s",
+			lines[0],
+		)
+	}
+	if len(withoutContact) != 4 || withoutContact["id"] != other || withoutContact["good_faith"] != false {
+		t.Fatalf("a report without a contact must store none: %s", lines[1])
 	}
 	dayStart := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	for _, path := range []string{dayFile(dataDir, now), abuse.Directory(dataDir)} {
@@ -65,10 +87,13 @@ func TestReportsAreCappedPerMessageAndDay(t *testing.T) {
 	reports := newReports(t, dataDir)
 	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
 	reported, full := core.NewID().String(), core.NewID().String()
-	for range 4 {
-		if err := reports.Record(t.Context(), now, reported, "spam"); err != nil {
+	for range 3 {
+		if err := reports.Record(t.Context(), now, spam(reported)); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := reports.Record(t.Context(), now, spam(reported)); !errors.Is(err, abuse.ErrLimit) {
+		t.Fatalf("the fourth report of a day must report the limit: %v", err)
 	}
 	stored := func(day time.Time) int {
 		data, _ := os.ReadFile(dayFile(dataDir, day))
@@ -80,17 +105,17 @@ func TestReportsAreCappedPerMessageAndDay(t *testing.T) {
 	if err := os.Truncate(dayFile(dataDir, now), 16<<20); err != nil {
 		t.Fatal(err)
 	}
-	if err := reports.Record(t.Context(), now, reported, "spam"); err != nil {
+	if err := reports.Record(t.Context(), now, spam(reported)); !errors.Is(err, abuse.ErrLimit) {
 		t.Fatalf("an over-budget report needs no room: %v", err)
 	}
-	if err := reports.Record(t.Context(), now, full, "spam"); !errors.Is(err, abuse.ErrFull) {
+	if err := reports.Record(t.Context(), now, spam(full)); !errors.Is(err, abuse.ErrFull) {
 		t.Fatalf("a report that would pass 16 MiB: %v", err)
 	}
 	if err := os.Truncate(dayFile(dataDir, now), 0); err != nil {
 		t.Fatal(err)
 	}
 	for range 3 {
-		if err := reports.Record(t.Context(), now, full, "spam"); err != nil {
+		if err := reports.Record(t.Context(), now, spam(full)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -98,7 +123,7 @@ func TestReportsAreCappedPerMessageAndDay(t *testing.T) {
 		t.Fatalf("a report refused for full files used up the message budget: %d", count)
 	}
 	tomorrow := now.Add(24 * time.Hour)
-	if err := reports.Record(t.Context(), tomorrow, reported, "spam"); err != nil || stored(tomorrow) != 1 {
+	if err := reports.Record(t.Context(), tomorrow, spam(reported)); err != nil || stored(tomorrow) != 1 {
 		t.Fatalf("the budget must reset the next UTC day: %v", err)
 	}
 }
@@ -110,7 +135,7 @@ func TestACanceledReportKeepsItsSlot(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	now := time.Date(2027, 1, 15, 10, 0, 0, 0, time.UTC)
-	if err := reports.Record(ctx, now, core.NewID().String(), "spam"); err != nil {
+	if err := reports.Record(ctx, now, spam(core.NewID().String())); err != nil {
 		t.Fatalf("a report whose slot was reserved must be stored even if the client left: %v", err)
 	}
 	if data, err := os.ReadFile(dayFile(dataDir, now)); err != nil || len(data) == 0 {
@@ -159,7 +184,7 @@ func TestOldReportsAreDropped(t *testing.T) {
 	}
 	check("a prune")
 	write()
-	if err := reports.Record(t.Context(), now, core.NewID().String(), "spam"); err != nil {
+	if err := reports.Record(t.Context(), now, spam(core.NewID().String())); err != nil {
 		t.Fatal(err)
 	}
 	check("a new report")

@@ -7,8 +7,8 @@
   const { translate } = getTranslator();
   const api = createApi();
 
-  async function submit({ link, reason }: ReportSubmission): Promise<ReportOutcome> {
-    return reportLink(api, location.origin, link, reason);
+  async function submit({ link, ...report }: ReportSubmission): Promise<ReportOutcome> {
+    return reportLink(api, location.origin, link, report);
   }
 </script>
 

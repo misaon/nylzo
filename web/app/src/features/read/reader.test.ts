@@ -14,7 +14,7 @@ import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
-import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
+import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { newGate } from '../../shared/testing/gate.ts';
 import { type CreateDependencies, type CreateInput, createMessage } from '../create/create-message.ts';
@@ -556,7 +556,7 @@ describe('reading through the lease and claim edge cases', () => {
       await reader.reveal();
       expect(reader.last()).toMatchObject({ view: 'ended', state });
       expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(false);
-      expect(await reader.report('late')).toEqual({ outcome: 'ignored' });
+      expect(await reader.report(abuseReport('late'))).toEqual({ outcome: 'ignored' });
     },
   );
 
@@ -656,7 +656,7 @@ describe('leaving the page', () => {
     expect(reader.last()).toEqual({ view: 'cleared' });
     expect(file?.bytes.every((byte) => byte === 0)).toBe(true);
     expect(await reader.burn()).toEqual({ outcome: 'ignored' });
-    expect(await reader.report('after leaving')).toEqual({ outcome: 'ignored' });
+    expect(await reader.report(abuseReport('after leaving'))).toEqual({ outcome: 'ignored' });
     expect(api.calls).not.toContain('burn');
     expect(api.calls).not.toContain('report');
   });
@@ -876,7 +876,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
       const reader = openReader(api, created.link, overrides);
       await reader.load();
       expect(await reader.burn()).toEqual({ outcome: 'ignored' });
-      expect(await reader.report('spam')).toEqual({ outcome: 'ignored' });
+      expect(await reader.report(abuseReport('spam'))).toEqual({ outcome: 'ignored' });
       expect(api.calls).not.toContain('burn');
       expect(api.calls).not.toContain('report');
     }
@@ -906,12 +906,12 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const reader = openReader(api, created.link);
     await reader.load();
-    expect(await reader.report('phishing')).toEqual({ outcome: 'accepted' });
+    expect(await reader.report(abuseReport('phishing'))).toEqual({ outcome: 'accepted' });
     await reader.reveal();
-    expect(await reader.report('')).toEqual({ outcome: 'accepted' });
+    expect(await reader.report(abuseReport(''))).toEqual({ outcome: 'accepted' });
     expect(api.reports).toEqual([
-      { id: idTextOf(created.link), signedByReader: true, reason: 'phishing' },
-      { id: idTextOf(created.link), signedByReader: true, reason: '' },
+      { id: idTextOf(created.link), signedByReader: true, ...abuseReport('phishing') },
+      { id: idTextOf(created.link), signedByReader: true, ...abuseReport('') },
     ]);
   });
 
@@ -920,7 +920,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const created = await createMessage(input(), createDependencies(api));
     const reader = openReader(api, created.link);
     await reader.load();
-    const [first, second] = await Promise.all([reader.report('one'), reader.report('two')]);
+    const [first, second] = await Promise.all([reader.report(abuseReport('one')), reader.report(abuseReport('two'))]);
     expect([first, second]).toEqual([{ outcome: 'accepted' }, { outcome: 'ignored' }]);
     expect(api.reports.map((report) => report.reason)).toEqual(['one']);
   });
@@ -932,13 +932,13 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     await reader.load();
     await reader.reveal();
     expect(reader.last()).toMatchObject({ view: 'revealed', burnable: false });
-    expect(await reader.report('after the last open')).toEqual({ outcome: 'ignored' });
+    expect(await reader.report(abuseReport('after the last open'))).toEqual({ outcome: 'ignored' });
     const rest = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const other = openReader(api, rest.link);
     await other.load();
     await other.reveal();
     expect(await other.burn()).toEqual({ outcome: 'deleted' });
-    expect(await other.report('after deleting the rest')).toEqual({ outcome: 'ignored' });
+    expect(await other.report(abuseReport('after deleting the rest'))).toEqual({ outcome: 'ignored' });
     expect(api.calls).not.toContain('report');
   });
 
@@ -948,7 +948,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const reader = openReader(api, created.link);
     await reader.load();
     await reader.burn();
-    expect(await reader.report('late')).toEqual({ outcome: 'ignored' });
+    expect(await reader.report(abuseReport('late'))).toEqual({ outcome: 'ignored' });
     expect(api.reports).toEqual([]);
   });
 });

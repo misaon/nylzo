@@ -155,6 +155,7 @@ for (const viewport of VIEWPORTS) {
     await reporter.goto('/report');
     await expect(link).toBeVisible();
     await expectNothingMoved(reporter, 'report loaded');
+    await reporter.getByRole('checkbox', { name: /^I believe in good faith/ }).check();
     const answers = [
       { link: 'not a link', answer: 'The link is incomplete or damaged.' },
       { link: message.link.replace('#1.', '#2.'), answer: 'The link needs a newer version of Nylzo.' },

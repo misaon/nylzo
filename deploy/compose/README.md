@@ -57,7 +57,7 @@ docker compose cp nylzo:/home/nonroot/abuse/. ./abuse
 docker compose exec -T nylzo /ko-app/nylzo takedown < ukoncit.txt
 ```
 
-`takedown` si vezme `NYLZO_DATA_DIR` z prostředí kontejneru a ukončí každou zprávu stejně jako burn. Zkopírované soubory po posouzení smažte, obsahují id zpráv.
+`takedown` si vezme `NYLZO_DATA_DIR` z prostředí kontejneru a ukončí každou zprávu stejně jako burn. Když hlášení nese e-mail v `contact`, pošlete na něj potvrzení o přijetí a po posouzení rozhodnutí. Zkopírované soubory po posouzení smažte, obsahují id zpráv a e-maily oznamovatelů.
 
 ## Rotace pepperu a aktualizace
 

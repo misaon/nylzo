@@ -11,13 +11,14 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/abuse"
-	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
 	maxAbuseBody   = 4096
 	abuseFullRetry = time.Hour
+	abuseAccepted  = "accepted"
+	abuseLimit     = "limit"
 )
 
 type statusResponse struct {
@@ -32,8 +33,10 @@ type statusResponse struct {
 }
 
 type abuseRequest struct {
-	ID     string `json:"id"`
-	Reason string `json:"reason"`
+	ID        string `json:"id"`
+	Reason    string `json:"reason"`
+	Contact   string `json:"contact"`
+	GoodFaith bool   `json:"good_faith"`
 }
 
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +92,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleAbuse answers 202 for known, unknown and malformed ids alike and stores reports only for live messages.
+// handleAbuse answers the same 202 for unknown, ended and malformed ids and stores reports only for live messages.
 func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -102,8 +105,13 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
+	contact, err := core.ParseContact(report.Contact)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errContact)
+		return
+	}
 	if _, idErr := core.ParseID(report.ID); idErr != nil {
-		writeAccepted(w)
+		writeAbuseStatus(w, abuseAccepted)
 		return
 	}
 	if !s.allowHourly(w, r, "abuse", s.settings.Rates.AbusePerHour) {
@@ -115,28 +123,34 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		s.writeInternal(w, r, err)
 		return
 	}
-	live := ok && granted.record.Message != nil && !ended(granted.record.Message, now)
-	if live && !s.recordAbuse(w, r, now, granted.id.String(), report.Reason) {
+	if !ok || granted.record.Message == nil || ended(granted.record.Message, now) {
+		writeAbuseStatus(w, abuseAccepted)
 		return
 	}
-	writeAccepted(w)
+	s.recordAbuse(w, r, now, &abuse.Report{
+		ID:        granted.id.String(),
+		Reason:    report.Reason,
+		Contact:   contact,
+		GoodFaith: report.GoodFaith,
+	})
 }
 
-func (s *Server) recordAbuse(w http.ResponseWriter, r *http.Request, now time.Time, id, reason string) bool {
-	err := s.reports.Record(r.Context(), now, id, reason)
+func (s *Server) recordAbuse(w http.ResponseWriter, r *http.Request, now time.Time, report *abuse.Report) {
+	err := s.reports.Record(r.Context(), now, report)
 	switch {
+	case errors.Is(err, abuse.ErrLimit):
+		writeAbuseStatus(w, abuseLimit)
 	case errors.Is(err, abuse.ErrFull):
 		s.logger.ErrorContext(r.Context(), "abuse-file-full")
 		setRetryAfter(w, abuseFullRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
-		return false
 	case err != nil:
-		s.logger.ErrorContext(r.Context(), "abuse-record", "err", logging.ErrorText(err))
+		s.writeInternal(w, r, err)
 	default:
+		writeAbuseStatus(w, abuseAccepted)
 	}
-	return true
 }
 
-func writeAccepted(w http.ResponseWriter) {
-	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+func writeAbuseStatus(w http.ResponseWriter, status string) {
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": status})
 }

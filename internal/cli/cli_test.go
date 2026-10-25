@@ -579,6 +579,8 @@ func TestNoFlagTakesASecret(t *testing.T) {
 		"json":                     true,
 		"allow-header":             true,
 		"reason-file":              true,
+		"contact":                  true,
+		"good-faith":               true,
 	}
 	for _, subcommand := range commands() {
 		result := runWith(t, "", nil, nil, subcommand.name, "-h")

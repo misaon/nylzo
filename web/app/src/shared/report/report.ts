@@ -13,32 +13,42 @@ import {
   wipeRequestKey,
 } from '@nylzo/core';
 
-import type { Api } from '../api/api.ts';
+import type { AbuseReport, Api, ReportStatus } from '../api/api.ts';
 
-import { shouldRetryLater } from '../api/api-errors.ts';
+import { isApiError, shouldRetryLater } from '../api/api-errors.ts';
 
 export const MAX_REASON_BYTES = 1000;
 const MAX_REPORT_BODY_BYTES = 4096;
+const MAX_CONTACT_BYTES = 254;
 const DECODE_PASSES = 3;
 const PERCENT = 0x25;
 const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/i;
 const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
 const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'g');
 const HEX_DIGIT = /^[\da-f]$/i;
+const WHITE_SPACE_AT_ENDS = /^\p{White_Space}+|\p{White_Space}+$/gu;
+const CONTACT_LOCAL_PART = /^[^\p{Cc}\p{Cf}\p{White_Space}#@]+$/u;
+const CONTACT_DOMAIN = /^[\p{L}\p{M}\p{Nd}-]+(?:\.[\p{L}\p{M}\p{Nd}-]+)+$/u;
 
-type ReportProblem = 'link_foreign' | 'link_invalid' | 'link_newer' | 'link_retired' | 'reason_too_long';
+type ReportProblem =
+  | 'contact_invalid'
+  | 'good_faith_missing'
+  | 'link_foreign'
+  | 'link_invalid'
+  | 'link_newer'
+  | 'link_retired'
+  | 'reason_too_long';
 
-export interface ReportSubmission {
+export interface ReportSubmission extends AbuseReport {
   readonly link: string;
-  readonly reason: string;
 }
 
 export type ReportOutcome =
-  | { readonly outcome: 'accepted' }
   | { readonly outcome: 'failed' }
   | { readonly outcome: 'ignored' }
   | { readonly outcome: 'invalid'; readonly problems: readonly ReportProblem[] }
-  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined };
+  | { readonly outcome: 'retry_later'; readonly retryAfter?: number | undefined }
+  | { readonly outcome: ReportStatus };
 
 function hexValue(byte: number | undefined): number {
   if (byte === undefined) {
@@ -88,20 +98,53 @@ export function reasonTooLong(reason: string): boolean {
   return utf8(reason).length > MAX_REASON_BYTES || utf8(body).length > MAX_REPORT_BODY_BYTES;
 }
 
+export function parseContact(raw: string): string | undefined {
+  const contact = raw.replaceAll(WHITE_SPACE_AT_ENDS, '');
+  if (contact === '') {
+    return '';
+  }
+  const [localPart = '', domain = '', ...rest] = contact.split('@');
+  const plausible =
+    rest.length === 0 &&
+    contact.isWellFormed() &&
+    utf8(contact).length <= MAX_CONTACT_BYTES &&
+    CONTACT_LOCAL_PART.test(localPart) &&
+    CONTACT_DOMAIN.test(domain);
+  return plausible ? contact : undefined;
+}
+
+function reportProblems({ reason, contact, goodFaith }: AbuseReport): ReportProblem[] {
+  const problems: ReportProblem[] = [];
+  if (reasonTooLong(redactReason(reason))) {
+    problems.push('reason_too_long');
+  }
+  if (parseContact(contact) === undefined) {
+    problems.push('contact_invalid');
+  }
+  if (!goodFaith) {
+    problems.push('good_faith_missing');
+  }
+  return problems;
+}
+
 export async function sendReport(
   api: Api,
   id: Uint8Array,
   readKey: RequestKey,
-  reason: string,
+  report: AbuseReport,
 ): Promise<ReportOutcome> {
-  const redacted = redactReason(reason);
-  if (reasonTooLong(redacted)) {
-    return { outcome: 'invalid', problems: ['reason_too_long'] };
+  const problems = reportProblems(report);
+  const contact = parseContact(report.contact);
+  if (contact === undefined || problems.length > 0) {
+    return { outcome: 'invalid', problems };
   }
   try {
-    await api.report(id, readKey, redacted);
-    return { outcome: 'accepted' };
+    const status = await api.report(id, readKey, { reason: redactReason(report.reason), contact, goodFaith: true });
+    return { outcome: status };
   } catch (error) {
+    if (isApiError(error, 'contact')) {
+      return { outcome: 'invalid', problems: ['contact_invalid'] };
+    }
     return shouldRetryLater(error) ? { outcome: 'retry_later', retryAfter: error.retryAfter } : { outcome: 'failed' };
   }
 }
@@ -127,7 +170,12 @@ async function readKeyFrom(link: Link): Promise<RequestKey | undefined> {
   }
 }
 
-export async function reportLink(api: Api, origin: string, pasted: string, reason: string): Promise<ReportOutcome> {
+export async function reportLink(
+  api: Api,
+  origin: string,
+  pasted: string,
+  report: AbuseReport,
+): Promise<ReportOutcome> {
   const trimmed = pasted.trim();
   const problems: ReportProblem[] = [];
   let link: Link | undefined;
@@ -139,9 +187,7 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
   if (link && LINK_ORIGIN.exec(trimmed)?.[1]?.toLowerCase() !== origin.toLowerCase()) {
     problems.push('link_foreign');
   }
-  if (reasonTooLong(redactReason(reason))) {
-    problems.push('reason_too_long');
-  }
+  problems.push(...reportProblems(report));
   if (!link || problems.length > 0) {
     link?.secret.fill(0);
     return { outcome: 'invalid', problems };
@@ -151,7 +197,7 @@ export async function reportLink(api: Api, origin: string, pasted: string, reaso
     return { outcome: 'failed' };
   }
   try {
-    return await sendReport(api, link.id, readKey, reason);
+    return await sendReport(api, link.id, readKey, report);
   } finally {
     wipeRequestKey(readKey);
   }

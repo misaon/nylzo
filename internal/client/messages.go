@@ -49,6 +49,12 @@ type CreateRequest struct {
 	PoWToken   string
 }
 
+type Report struct {
+	Reason    string
+	Contact   string
+	GoodFaith bool
+}
+
 type Metadata struct {
 	State              string `json:"state"`
 	CreatedAt          string `json:"created_at"`
@@ -203,10 +209,20 @@ func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.SeedLen]byte)
 	return c.end(ctx, messagePath(id)+"/burn", core.PurposeRead, read)
 }
 
-func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, reason string) error {
-	payload := map[string]string{"id": id.String()}
-	if reason = core.RedactReason(reason); reason != "" {
+func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, report *Report) error {
+	contact, err := core.ParseContact(report.Contact)
+	if err != nil {
+		return err
+	}
+	payload := map[string]any{"id": id.String()}
+	if reason := core.RedactReason(report.Reason); reason != "" {
 		payload["reason"] = reason
+	}
+	if contact != "" {
+		payload["contact"] = contact
+	}
+	if report.GoodFaith {
+		payload["good_faith"] = true
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -224,7 +240,20 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byt
 	if err != nil {
 		return err
 	}
-	return drain(response)
+	var answer struct {
+		Status string `json:"status"`
+	}
+	if readErr := readJSON(response, &answer); readErr != nil {
+		return readErr
+	}
+	switch answer.Status {
+	case "accepted":
+		return nil
+	case "limit":
+		return ErrReportLimit
+	default:
+		return ErrResponse
+	}
 }
 
 func (c *Client) end(ctx context.Context, path, purpose string, seed *[core.SeedLen]byte) error {

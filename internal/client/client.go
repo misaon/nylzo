@@ -33,8 +33,11 @@ var (
 	ErrServerURL      = errors.New(
 		"client: the server address must be scheme://host[:port] without a path, query or fragment",
 	)
-	ErrResponse = errors.New("client: the server sent a malformed response")
-	ErrRedirect = errors.New("client: the server answered with a redirect, which nylzo never follows")
+	ErrResponse    = errors.New("client: the server sent a malformed response")
+	ErrRedirect    = errors.New("client: the server answered with a redirect, which nylzo never follows")
+	ErrReportLimit = errors.New(
+		"client: the message already has its reports for the day, so the server did not store this one",
+	)
 )
 
 var states = []string{"available", "opened", "expired", "cancelled", "deleted"}

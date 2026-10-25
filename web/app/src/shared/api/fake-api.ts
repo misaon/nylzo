@@ -1,6 +1,6 @@
 import { encodeBase64url, idToString, type RequestKey } from '@nylzo/core';
 
-import type { Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
+import type { AbuseReport, Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
 
 import { ApiError, type MessageState, StoppedError } from './api-errors.ts';
 
@@ -13,11 +13,12 @@ interface Stored {
   endedAt?: string;
 }
 
-interface Report {
+interface Report extends AbuseReport {
   readonly id: string;
   readonly signedByReader: boolean;
-  readonly reason: string;
 }
+
+const REPORTS_PER_MESSAGE = 3;
 
 export interface FakeOptions {
   pow?: { required: boolean; difficulty: number };
@@ -45,6 +46,10 @@ export interface FakeApi extends Api {
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
   readonly reports: Report[];
+}
+
+export function abuseReport(reason: string, contact = ''): AbuseReport {
+  return { reason, contact, goodFaith: true };
 }
 
 function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined): boolean {
@@ -232,18 +237,20 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       }
       end(managed(id, manageKey), 'cancelled');
     },
-    async report(id, readKey, reason) {
+    async report(id, readKey, report) {
       calls.push('report');
       const failure = failReport.shift();
       if (failure) {
         throw failure;
       }
-      const message = stored.get(idToString(id));
-      reports.push({
-        id: idToString(id),
-        signedByReader: sameBytes(message?.request.readKey, readKey.publicKey),
-        reason,
-      });
+      const key = idToString(id);
+      const signedByReader = sameBytes(stored.get(key)?.request.readKey, readKey.publicKey);
+      const earlier = reports.filter((sent) => sent.id === key && sent.signedByReader);
+      if (signedByReader && earlier.length >= REPORTS_PER_MESSAGE) {
+        return 'limit';
+      }
+      reports.push({ id: key, signedByReader, ...report });
+      return 'accepted';
     },
     async status(id, manageKey): Promise<Status> {
       calls.push('status');

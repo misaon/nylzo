@@ -40,12 +40,16 @@ export async function createdLink(page: Page): Promise<string> {
   return link.inputValue();
 }
 
-export async function chooseRemember(page: Page): Promise<void> {
-  const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
-  const chip = page.getByRole('button', { name: 'Passphrase', exact: true });
-  if ((await chip.getAttribute('aria-expanded')) !== 'true') {
-    await chip.click();
+async function openSecurityMenu(page: Page): Promise<void> {
+  const menu = page.getByRole('button', { name: 'Passphrase', exact: true });
+  if ((await menu.getAttribute('aria-expanded')) !== 'true') {
+    await menu.click();
   }
+}
+
+export async function chooseRemember(page: Page): Promise<void> {
+  await openSecurityMenu(page);
+  const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
   if ((await remember.getAttribute('aria-checked')) !== 'true') {
     await remember.click();
   }
@@ -53,7 +57,7 @@ export async function chooseRemember(page: Page): Promise<void> {
 }
 
 export async function choosePassphrase(page: Page, passphrase: string): Promise<void> {
-  await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
+  await openSecurityMenu(page);
   const protect = page.getByRole('switch', { name: /^Protect with a passphrase/ });
   if ((await protect.getAttribute('aria-checked')) !== 'true') {
     await protect.click();

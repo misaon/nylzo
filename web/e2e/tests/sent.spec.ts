@@ -156,8 +156,7 @@ test('a visitor and a sender who keeps the default leave no database, and every 
   await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
   await openApp(page, '/');
   await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
-  const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
-  await expect(remember).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('switch', { name: /^Cancel from this device/ })).toHaveAttribute('aria-checked', 'false');
   await page.getByLabel('Message text').fill('not remembered');
   await page.getByRole('button', { name: 'Create link' }).click();
   await createdLink(page);

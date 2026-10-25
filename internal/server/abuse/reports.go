@@ -28,7 +28,25 @@ const (
 	counterKeyPrefix = "abuse:id:"
 )
 
-var ErrFull = errors.New("server: abuse report files reached their size limit")
+var (
+	ErrFull  = errors.New("server: abuse report files reached their size limit")
+	ErrLimit = errors.New("server: the message already has its reports for the day")
+)
+
+type Report struct {
+	ID        string
+	Reason    string
+	Contact   string
+	GoodFaith bool
+}
+
+type record struct {
+	Date      string `json:"date"`
+	ID        string `json:"id"`
+	Reason    string `json:"reason"`
+	GoodFaith bool   `json:"good_faith"`
+	Contact   string `json:"contact,omitempty"`
+}
 
 type Reports struct {
 	directory string
@@ -46,17 +64,20 @@ func Directory(dataDir string) string {
 }
 
 // Record stores at most three reports per message and UTC day and keeps the count only for stored reports.
-func (r *Reports) Record(ctx context.Context, now time.Time, id, reason string) error {
+func (r *Reports) Record(ctx context.Context, now time.Time, report *Report) error {
 	day := ratelimit.Day(now)
-	key := counterKeyPrefix + id
+	key := counterKeyPrefix + report.ID
 	count, err := r.counters.RateReserve(
 		context.WithoutCancel(ctx),
 		store.RateHit{Key: key, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: perMessagePerDay},
 	)
-	if err != nil || count == 0 {
+	if err != nil {
 		return err
 	}
-	appendErr := r.append(now, id, reason)
+	if count == 0 {
+		return ErrLimit
+	}
+	appendErr := r.append(now, report)
 	if appendErr == nil {
 		return nil
 	}
@@ -66,8 +87,14 @@ func (r *Reports) Record(ctx context.Context, now time.Time, id, reason string) 
 	return appendErr
 }
 
-func (r *Reports) append(now time.Time, id, reason string) error {
-	line, err := json.Marshal(map[string]string{"date": reportDate(now), "id": id, "reason": core.RedactReason(reason)})
+func (r *Reports) append(now time.Time, report *Report) error {
+	line, err := json.Marshal(record{
+		Date:      reportDate(now),
+		ID:        report.ID,
+		Reason:    core.RedactReason(report.Reason),
+		GoodFaith: report.GoodFaith,
+		Contact:   report.Contact,
+	})
 	if err != nil {
 		return err
 	}

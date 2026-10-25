@@ -32,7 +32,8 @@ Whoever creates a message is responsible for its content.
 
 ## Reports and removal
 
-- Report a message on the Report abuse page or with the Report button on the message page. Give the message identifier (never the whole link) and the reason, and confirm that you report in good faith. An email address is optional.
+- Report a message on the Report abuse page or with the Report button on the message page. Give the reason and confirm that you report in good faith; an email address is optional. The form handles the link in your browser and sends only the message identifier, never the key.
+- If you write to the contact, give only the message identifier, never the whole link.
 - If you give an email address, we confirm receipt and tell you the decision.
 - We cannot see content, so a person decides based on your explanation. Threats to life and child abuse go first.
 - If a message breaks the law or these terms, we delete it. Deletion cannot be undone.
