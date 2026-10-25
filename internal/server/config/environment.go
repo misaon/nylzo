@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/netip"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -178,7 +179,13 @@ func readSecretFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
+	if info, statErr := file.Stat(); statErr != nil {
+		return nil, statErr
+	} else if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+		return nil, errors.New("group or others can access the file; restrict it with chmod 600 or 400")
+	}
 	raw, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
+	defer clear(raw)
 	if err != nil {
 		return nil, err
 	}

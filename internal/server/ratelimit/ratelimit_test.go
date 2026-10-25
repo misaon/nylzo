@@ -244,10 +244,21 @@ func TestClientAddress(t *testing.T) {
 		})
 	}
 	open := Proxies{ReadRealIP: true}
-	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-	r.RemoteAddr = "203.0.113.1:1234"
-	r.Header.Set("X-Real-IP", "198.51.100.2")
-	if got := open.ClientAddress(r); got.String() != "198.51.100.2" {
-		t.Fatalf("X-Real-IP without trusted proxies must count: %s", got)
+	for peer, want := range map[string]string{
+		"10.1.2.3:1234":      "198.51.100.2",
+		"100.64.0.9:1234":    "198.51.100.2",
+		"127.0.0.1:1234":     "198.51.100.2",
+		"[fd00::1]:1234":     "198.51.100.2",
+		"[fe80::1]:1234":     "198.51.100.2",
+		"203.0.113.1:1234":   "203.0.113.1",
+		"[2001:db8::1]:1234": "2001:db8::1",
+		"100.128.0.1:1234":   "100.128.0.1",
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		r.RemoteAddr = peer
+		r.Header.Set("X-Real-IP", "198.51.100.2")
+		if got := open.ClientAddress(r); got.String() != want {
+			t.Fatalf("X-Real-IP without trusted proxies from %s: got %s want %s", peer, got, want)
+		}
 	}
 }

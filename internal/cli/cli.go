@@ -48,7 +48,6 @@ func (e *Environment) webClient() (webclient.Build, error) {
 	return server.EmbeddedWebClient()
 }
 
-
 type command struct {
 	name    string
 	summary string
