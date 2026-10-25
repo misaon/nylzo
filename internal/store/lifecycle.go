@@ -20,7 +20,12 @@ const (
 )
 
 // update opens the row again inside the write transaction, so every change starts from the current record.
-func (r *Record) update(ctx context.Context, messages Messages, change func(current *Record) error) error {
+func (r *Record) update(
+	ctx context.Context,
+	messages Messages,
+	now time.Time,
+	change func(current *Record) error,
+) error {
 	return messages.Update(ctx, r.Row.Locator, func(row *Row) error {
 		current, err := OpenRecord(row, r.Key)
 		if err != nil {
@@ -29,6 +34,7 @@ func (r *Record) update(ctx context.Context, messages Messages, change func(curr
 		if changeErr := change(&current); changeErr != nil {
 			return changeErr
 		}
+		current.pruneLeases(now)
 		current.reseal()
 		*row = current.Row
 		*r = current
@@ -52,7 +58,7 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 	var result ClaimResult
 	var refusal PassphraseError
 	refused := false
-	err := record.update(ctx, messages, func(current *Record) error {
+	err := record.update(ctx, messages, parameters.Clock(), func(current *Record) error {
 		now := parameters.Clock()
 		result, refused = ClaimResult{}, false
 		if state := current.State(now); state != StateAvailable {
@@ -103,7 +109,7 @@ func consumeOpen(record *Record, parameters *ClaimParameters, now time.Time) Lea
 	if message.FirstOpenedAt == nil {
 		message.FirstOpenedAt = new(now.UTC().Truncate(time.Minute))
 	}
-	message.Leases = slices.DeleteFunc(message.Leases, func(lease Lease) bool { return !lease.Active(now) })
+	record.pruneLeases(now)
 	lease := Lease{
 		MAC:       parameters.LeaseMAC,
 		PepperID:  parameters.LeasePepperID,
@@ -126,7 +132,7 @@ func backoff(failures int) time.Duration {
 }
 
 func RecordDownload(ctx context.Context, messages Messages, record *Record, leaseMAC []byte, now time.Time) error {
-	return record.update(ctx, messages, func(current *Record) error {
+	return record.update(ctx, messages, now, func(current *Record) error {
 		lease := current.Lease(leaseMAC)
 		switch {
 		case lease == nil || !lease.Active(now):
@@ -145,7 +151,7 @@ func RecordDownload(ctx context.Context, messages Messages, record *Record, leas
 // Ack ends a lease and deletes the blob when it was the last one.
 func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, leaseMAC []byte, now time.Time) error {
 	release := false
-	err := record.update(ctx, messages, func(current *Record) error {
+	err := record.update(ctx, messages, now, func(current *Record) error {
 		switch {
 		case current.Lease(leaseMAC) == nil:
 			return ErrLeaseInvalid
@@ -170,9 +176,9 @@ func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, le
 // MarkEnding records burn or cancel unless the message has already ended, and reports the state it ends in.
 func MarkEnding(ctx context.Context, messages Messages, record *Record, requested State, now time.Time) (State, error) {
 	var final State
-	err := record.update(ctx, messages, func(current *Record) error {
+	err := record.update(ctx, messages, now, func(current *Record) error {
 		final = current.State(now)
-		if current.Message.Ending != "" || !now.Before(current.Message.ExpiresAt) || !current.HasBlob() {
+		if current.Ended(now) {
 			return nil
 		}
 		final = requested
@@ -210,7 +216,7 @@ func Finish(ctx context.Context, messages Messages, blobs Blobs, record *Record,
 		return false, nil
 	}
 	if !record.Ended(now) {
-		err := record.update(ctx, messages, func(current *Record) error {
+		err := record.update(ctx, messages, now, func(current *Record) error {
 			if !current.Ended(now) && current.Releasable(now) {
 				current.recordEnd(now)
 			}
@@ -242,7 +248,7 @@ func DeleteBlob(ctx context.Context, messages Messages, blobs Blobs, locator sea
 // CountReport takes one of the reports a message may get on a UTC day and reports false when they are used up.
 func CountReport(ctx context.Context, messages Messages, record *Record, now time.Time) (bool, error) {
 	counted := false
-	err := record.update(ctx, messages, func(current *Record) error {
+	err := record.update(ctx, messages, now, func(current *Record) error {
 		counted = false
 		if current.Ended(now) {
 			return &GoneError{State: current.State(now)}
@@ -262,7 +268,7 @@ func CountReport(ctx context.Context, messages Messages, record *Record, now tim
 }
 
 func UncountReport(ctx context.Context, messages Messages, record *Record, now time.Time) error {
-	return record.update(context.WithoutCancel(ctx), messages, func(current *Record) error {
+	return record.update(context.WithoutCancel(ctx), messages, now, func(current *Record) error {
 		if message := current.Message; message.ReportDay == reportDay(now) && message.Reports > 0 {
 			message.Reports--
 		}
@@ -270,7 +276,7 @@ func UncountReport(ctx context.Context, messages Messages, record *Record, now t
 	})
 }
 
-// TakeDown removes a message for the operator, who has its id but no key to open its record.
+// TakeDown removes a message for the operator, who has its id but no key; a blob already due for the sweep counts as ended.
 func TakeDown(
 	ctx context.Context,
 	messages Messages,
@@ -286,6 +292,9 @@ func TakeDown(
 		if row.BlobWrap == nil {
 			removal = AlreadyEnded
 			return nil
+		}
+		if !row.BlobPurgeAt.IsZero() && !now.Before(row.BlobPurgeAt) {
+			removal = AlreadyEnded
 		}
 		row.BlobWrap = nil
 		row.BlobPurgeAt = ceil(now, BlobPurgeStep)

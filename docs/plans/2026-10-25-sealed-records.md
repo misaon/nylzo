@@ -27,6 +27,10 @@ Počet zpráv za posledních zhruba 7 dní, zda řádek ještě má blob, dva za
 - Server drží klíč záznamu v paměti do konce posledního lease, aby blob smazal hned po něm.
 - Provozovatel musí před startem vytvořit klíč pro hlášení.
 
+## Nezávislá kontrola 25. 10. 2026
+
+Kritický ani vážný nález nebyl. Opraveno: upgrade ze schématu 4 smaže značku denního porovnání a staré bloby jdou pryč při prvním úklidu, nezapečetěná hlášení server při startu zapečetí; zaznamenané uvolnění po posledním otevření zprávu ukončí, i když blob ještě leží; zapečetěné hlášení se kóduje bez HTML escapování a vejde se i nejdelší povolené; hlášení jsou binární záznamy po 2944 bajtech s limitem 64 MiB; `takedown` hlásí `already ended` i u blobu, který už čeká na úklid; záznam po vypršení lease zase zmenší a spec nepřehání, co kopie serveru ukáže.
+
 ## Ověření
 
 `TestStolenServerRevealsNothing` hledá v ukradené kopii i id ve všech kódováních, hlavičku obálky, důvod a kontakt hlášení a čas jemnější než čtvrthodina. Sada `storetest` pokrývá souběh claimů, lease, konce zpráv a úklid nad zapečetěnými záznamy. Časové testy AK21 a AK22 platí dál, protože neznámé id stojí stejnou práci jako špatný klíč. E2E testy beze změny klienta.

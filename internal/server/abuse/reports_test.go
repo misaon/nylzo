@@ -55,33 +55,36 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 2 || len(lines[0]) != len(lines[1]) {
-		t.Fatalf("every sealed report must have the same length: %d lines", len(lines))
+	if len(data) != 2*abuse.SealedLen {
+		t.Fatalf("every sealed report must have the same length: %d bytes for two reports", len(data))
 	}
 	for _, readable := range []string{id, other, contact, "malware", "spam", "2026-10-22"} {
 		if strings.Contains(string(data), readable) {
 			t.Fatalf("a stored report holds %q in the clear", readable)
 		}
 	}
-	opened, err := abuse.Open(operatorKey, lines[0])
-	if err != nil || opened.Date != "2026-10-22" || opened.ID != id || !opened.GoodFaith || opened.Contact != contact ||
-		strings.Contains(opened.Reason, core.Encode(secret[:])) {
+	opened, err := abuse.Open(operatorKey, data)
+	if err != nil || len(opened) != 2 || opened[0].Date != "2026-10-22" || opened[0].ID != id ||
+		!opened[0].GoodFaith || opened[0].Contact != contact ||
+		strings.Contains(opened[0].Reason, core.Encode(secret[:])) {
 		t.Fatalf(
 			"the operator must read the day, the id, the redacted reason, good faith and the contact: %+v %v",
 			opened,
 			err,
 		)
 	}
-	if plain, openErr := abuse.Open(operatorKey, lines[1]); openErr != nil || plain.Contact != "" || plain.GoodFaith {
-		t.Fatalf("a report without a contact must store none: %+v %v", plain, openErr)
+	if opened[1].Contact != "" || opened[1].GoodFaith {
+		t.Fatalf("a report without a contact must store none: %+v", opened[1])
 	}
 	stranger, err := abuse.NewKeyPair()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = abuse.Open(stranger, lines[0]); err == nil {
+	if _, err = abuse.Open(stranger, data); err == nil {
 		t.Fatal("another private key opened a report")
+	}
+	if _, err = abuse.Open(operatorKey, data[:len(data)-1]); !errors.Is(err, abuse.ErrSealed) {
+		t.Fatalf("a partial report: %v", err)
 	}
 	dayStart := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	for _, path := range []string{dayFile(dataDir, now, abuse.FileExtension), abuse.Directory(dataDir)} {
@@ -89,6 +92,54 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 		if statErr != nil || !info.ModTime().Equal(dayStart) || info.Mode().Perm()&0o077 != 0 {
 			t.Fatalf("%s must be private and carry the start of the day: %v %v", path, info, statErr)
 		}
+	}
+}
+
+func TestTheLongestReportFitsItsSealedLength(t *testing.T) {
+	t.Parallel()
+	contact := strings.Repeat(`"`, 120) + strings.Repeat("&", 122) + "@example.org"
+	reason := strings.Repeat("<", 2000)
+	sealed, err := abuse.Seal(operatorKey.PublicKey(), time.Now(), &abuse.Report{
+		ID:        core.NewID().String(),
+		Reason:    reason,
+		Contact:   contact,
+		GoodFaith: true,
+	})
+	if err != nil || len(sealed) != abuse.SealedLen {
+		t.Fatalf("the longest allowed report must fit: %d %v", len(sealed), err)
+	}
+	opened, err := abuse.Open(operatorKey, sealed)
+	if err != nil || opened[0].Contact != contact {
+		t.Fatalf("the contact must come back as given: %+v %v", opened, err)
+	}
+}
+
+// TestReportsOfOlderBuildsAreSealedAtStart covers the upgrade: no report stays in the clear.
+func TestReportsOfOlderBuildsAreSealedAtStart(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	day := time.Now().UTC().Format(time.DateOnly)
+	legacyDay := filepath.Join(abuse.Directory(dataDir), day+".jsonl")
+	if err := os.MkdirAll(abuse.Directory(dataDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"date":"` + day + `","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"fraud","good_faith":true,"contact":"a@example.cz"}` + "\n"
+	if err := os.WriteFile(legacyDay, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := newReports(dataDir).SealLegacy(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacyDay); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the report in the clear survived: %v", err)
+	}
+	data, err := os.ReadFile(dayFile(dataDir, time.Now(), abuse.FileExtension))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := abuse.Open(operatorKey, data)
+	if err != nil || len(opened) != 1 || opened[0].Contact != "a@example.cz" || opened[0].Reason != "fraud" {
+		t.Fatalf("the sealed copy of an older report: %+v %v", opened, err)
 	}
 }
 
@@ -100,11 +151,11 @@ func TestReportFilesHaveACap(t *testing.T) {
 	if err := reports.Record(now, spam(core.NewID().String())); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Truncate(dayFile(dataDir, now, abuse.FileExtension), 16<<20); err != nil {
+	if err := os.Truncate(dayFile(dataDir, now, abuse.FileExtension), 64<<20); err != nil {
 		t.Fatal(err)
 	}
 	if err := reports.Record(now, spam(core.NewID().String())); !errors.Is(err, abuse.ErrFull) {
-		t.Fatalf("a report that would pass 16 MiB: %v", err)
+		t.Fatalf("a report that would pass 64 MiB: %v", err)
 	}
 }
 

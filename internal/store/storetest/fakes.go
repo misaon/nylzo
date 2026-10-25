@@ -80,6 +80,15 @@ func (b *failingBlobs) fails(ref string) bool {
 	return true
 }
 
+// failingShred refuses to drop blob keys, which leaves a recorded release with its blob still readable.
+type failingShred struct {
+	store.Store
+}
+
+func (failingShred) ShredBlobs(context.Context, []store.DueBlob) error {
+	return errDisk
+}
+
 type batchRecorder struct {
 	store.Blobs
 

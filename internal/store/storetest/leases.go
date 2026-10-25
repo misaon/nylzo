@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -39,6 +40,31 @@ func (f *fixture) leasesAndAcks() {
 	}
 	if err := f.download(created, &leases[0], baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download on an acked lease: %v", err)
+	}
+}
+
+// aGrownRecordShrinks keeps the length of a sealed record from telling how many leases were once active.
+func (f *fixture) aGrownRecordShrinks() {
+	t, ctx := f.t, f.t.Context()
+	created := f.create(20, oneDay, false)
+	for seed := range 12 {
+		if _, err := f.claim(created, baseTime, seed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if length := len(f.get(created).Row.Record); length <= seal.RecordBlock {
+		t.Fatalf("twelve active leases must not fit in %d bytes, got %d", seal.RecordBlock, length)
+	}
+	later := baseTime.Add(time.Hour)
+	if _, err := store.CountReport(ctx, f.store, f.get(created), later); err != nil {
+		t.Fatal(err)
+	}
+	if length := len(f.get(created).Row.Record); length != seal.RecordBlock {
+		t.Fatalf(
+			"a change after the leases expired must shrink the record to %d bytes, got %d",
+			seal.RecordBlock,
+			length,
+		)
 	}
 }
 

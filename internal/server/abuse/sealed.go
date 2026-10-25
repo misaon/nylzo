@@ -5,18 +5,23 @@ import (
 	"crypto/hpke"
 	"encoding/json"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 )
 
 const (
-	info      = "nylzo/v1/abuse-report"
-	sealedLen = 2048
+	info         = "nylzo/v1/abuse-report"
+	plaintextLen = 1808
+	encLen       = 1120
+	tagLen       = 16
+	SealedLen    = encLen + plaintextLen + tagLen
 )
 
 var (
 	ErrReportKey = errors.New("abuse: the report key is not a MLKEM768-X25519 key in base64url")
+	ErrSealed    = errors.New("abuse: the sealed reports are not whole reports")
 	errTooLong   = errors.New("abuse: the report does not fit the sealed length")
 )
 
@@ -40,40 +45,55 @@ func kem() hpke.KEM { return hpke.MLKEM768X25519() }
 
 // Seal pads the report to one length, so a sealed report shows nothing about its reason or contact.
 func Seal(key hpke.PublicKey, now time.Time, report *Report) ([]byte, error) {
-	plain, err := json.Marshal(Stored{
+	return sealStored(key, &Stored{
 		Date:      reportDate(now),
 		ID:        report.ID,
 		Reason:    core.RedactReason(report.Reason),
 		GoodFaith: report.GoodFaith,
 		Contact:   report.Contact,
 	})
-	if err != nil {
+}
+
+func sealStored(key hpke.PublicKey, stored *Stored) ([]byte, error) {
+	var plain bytes.Buffer
+	encoder := json.NewEncoder(&plain)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(stored); err != nil {
 		return nil, err
 	}
-	if len(plain) > sealedLen {
+	if plain.Len() > plaintextLen {
 		return nil, errTooLong
 	}
-	padded := bytes.Repeat([]byte{' '}, sealedLen)
-	copy(padded, plain)
+	padded := bytes.Repeat([]byte{' '}, plaintextLen)
+	copy(padded, plain.Bytes())
 	sealed, err := hpke.Seal(key, hpke.HKDFSHA256(), hpke.AES256GCM(), []byte(info), padded)
 	if err != nil {
 		return nil, err
 	}
-	return []byte(core.Encode(sealed)), nil
+	if len(sealed) != SealedLen {
+		return nil, errTooLong
+	}
+	return sealed, nil
 }
 
-func Open(key hpke.PrivateKey, line string) (Stored, error) {
-	sealed, err := core.DecodeExact(line, len(line)*3/4)
-	if err != nil {
-		return Stored{}, err
+// Open reads reports that lie one after another, as the server appends them to a day file.
+func Open(key hpke.PrivateKey, sealed []byte) ([]Stored, error) {
+	if len(sealed)%SealedLen != 0 {
+		return nil, ErrSealed
 	}
-	plain, err := hpke.Open(key, hpke.HKDFSHA256(), hpke.AES256GCM(), []byte(info), sealed)
-	if err != nil {
-		return Stored{}, err
+	reports := make([]Stored, 0, len(sealed)/SealedLen)
+	for chunk := range slices.Chunk(sealed, SealedLen) {
+		plain, err := hpke.Open(key, hpke.HKDFSHA256(), hpke.AES256GCM(), []byte(info), chunk)
+		if err != nil {
+			return nil, err
+		}
+		var stored Stored
+		if decodeErr := json.Unmarshal(bytes.TrimRight(plain, " \n"), &stored); decodeErr != nil {
+			return nil, decodeErr
+		}
+		reports = append(reports, stored)
 	}
-	var stored Stored
-	err = json.Unmarshal(bytes.TrimRight(plain, " "), &stored)
-	return stored, err
+	return reports, nil
 }
 
 func NewKeyPair() (hpke.PrivateKey, error) {

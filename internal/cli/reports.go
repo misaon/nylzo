@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"crypto/hpke"
 	"encoding/json"
@@ -93,29 +92,20 @@ func runReports(_ context.Context, environment *Environment, arguments []string)
 	if err != nil {
 		return failf(environment, "give at most 32 MiB of sealed reports on stdin")
 	}
-	return printReports(environment, key, string(sealed))
+	return printReports(environment, key, sealed)
 }
 
-func printReports(environment *Environment, key hpke.PrivateKey, sealed string) int {
-	encoder := json.NewEncoder(environment.Stdout)
-	failed := 0
-	scanner := bufio.NewScanner(strings.NewReader(sealed))
-	scanner.Buffer(nil, maxReportsInput)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		report, err := abuse.Open(key, line)
-		if err == nil {
-			err = encoder.Encode(report)
-		}
-		if err != nil {
-			failed++
-		}
+func printReports(environment *Environment, key hpke.PrivateKey, sealed []byte) int {
+	reports, err := abuse.Open(key, sealed)
+	if err != nil {
+		return failf(environment, "the reports could not be opened with this key, or the input holds a partial report")
 	}
-	if failed > 0 {
-		return failf(environment, "%d reports could not be opened with this key", failed)
+	encoder := json.NewEncoder(environment.Stdout)
+	encoder.SetEscapeHTML(false)
+	for i := range reports {
+		if err = encoder.Encode(&reports[i]); err != nil {
+			return failf(environment, "%s", err)
+		}
 	}
 	return exitOK
 }

@@ -264,9 +264,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			t.Fatalf("the stolen copy misses %s: %v", want, slices.Sorted(maps.Keys(stolen)))
 		}
 	}
-	report, err := abuse.Open(testReportKey, strings.TrimSpace(string(stolen[reportFile])))
-	if err != nil || report.ID != leased.id.String() || report.Contact != contact || !report.GoodFaith {
-		t.Errorf("the operator's key must open the sealed report: %+v %v", report, err)
+	reports, err := abuse.Open(testReportKey, stolen[reportFile])
+	if err != nil || len(reports) != 1 || reports[0].ID != leased.id.String() || reports[0].Contact != contact ||
+		!reports[0].GoodFaith {
+		t.Errorf("the operator's key must open the sealed report: %+v %v", reports, err)
 	}
 	for where, data := range stolen {
 		for what, needle := range needles.named {

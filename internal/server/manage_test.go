@@ -719,7 +719,7 @@ func TestAbuseReportHardening(t *testing.T) {
 	if strings.Contains(string(data), secret) || !strings.Contains(string(data), "[redacted]") {
 		t.Fatalf("the report kept the link secret: %s", data)
 	}
-	if truncateErr := os.Truncate(path, 16<<20); truncateErr != nil {
+	if truncateErr := os.Truncate(path, 64<<20); truncateErr != nil {
 		t.Fatal(truncateErr)
 	}
 	response, _ = harness.do(
@@ -733,7 +733,7 @@ func TestAbuseReportHardening(t *testing.T) {
 		},
 	)
 	info, err := os.Stat(path)
-	if response.StatusCode != http.StatusServiceUnavailable || err != nil || info.Size() != 16<<20 ||
+	if response.StatusCode != http.StatusServiceUnavailable || err != nil || info.Size() != 64<<20 ||
 		!strings.Contains(harness.logs.String(), "abuse-file-full") {
 		t.Fatalf(
 			"a full report file must answer 503, log an error and not grow: %d %v %d",

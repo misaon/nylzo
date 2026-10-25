@@ -40,7 +40,7 @@ func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened := runWith(t, string(sealed)+"\n", nil, nil, "reports", "--key-file", keyFile)
+	opened := runWith(t, string(sealed), nil, nil, "reports", "--key-file", keyFile)
 	var stored abuse.Stored
 	if opened.code != exitOK || json.Unmarshal([]byte(opened.stdout), &stored) != nil ||
 		stored.ID != report.ID || stored.Contact != report.Contact || stored.Date != "2026-10-22" {
@@ -48,7 +48,7 @@ func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 	}
 	otherKey := filepath.Join(t.TempDir(), "other")
 	runWith(t, "", nil, nil, "report-key", "--key-file", otherKey)
-	if wrong := runWith(t, string(sealed)+"\n", nil, nil, "reports", "--key-file", otherKey); wrong.code == exitOK ||
+	if wrong := runWith(t, string(sealed), nil, nil, "reports", "--key-file", otherKey); wrong.code == exitOK ||
 		strings.Contains(wrong.stdout, report.Contact) {
 		t.Fatalf("another private key opened a report: %+v", wrong)
 	}

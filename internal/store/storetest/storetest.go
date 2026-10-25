@@ -29,6 +29,7 @@ var contracts = []contract{
 	{"AK5LifetimeCap", (*fixture).lifetimeCap},
 	{"AK6LeasesAndAcks", (*fixture).leasesAndAcks},
 	{"AK6LeaseExpiry", (*fixture).leaseExpiry},
+	{"AGrownRecordShrinks", (*fixture).aGrownRecordShrinks},
 	{"AK6BlobStaysWhileOpensRemain", (*fixture).blobStaysWhileOpensRemain},
 	{"AK6CrashAroundTheBlobDelete", (*fixture).crashAroundTheBlobDelete},
 	{"AK6CrashBeforeTheEnd", (*fixture).crashBeforeTheEnd},

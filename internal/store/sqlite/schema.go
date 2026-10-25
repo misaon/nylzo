@@ -61,7 +61,9 @@ var (
 	ErrOlderSchema = errors.New("sqlite: the database has an older schema; start nylzo serve to migrate it")
 )
 
-var deleteRevealingCounters = `DELETE FROM rate_counters WHERE key GLOB 'abuse:id:*' OR ` + revealingCounter("")
+var deleteRevealingCounters = `DELETE FROM rate_counters WHERE key GLOB 'abuse:id:*' OR key GLOB 'sweep:reconcile:*' OR ` + revealingCounter(
+	"",
+)
 
 type unorderedTable struct {
 	name, columns, index string

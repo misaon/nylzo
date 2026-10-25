@@ -597,12 +597,12 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		for line := range strings.Lines(string(data)) {
-			report, openErr := abuse.Open(testReportKey, strings.TrimSpace(line))
-			if openErr != nil {
-				return nil, openErr
-			}
-			encoded, encodeErr := json.Marshal(report)
+		reports, openErr := abuse.Open(testReportKey, data)
+		if openErr != nil {
+			return nil, openErr
+		}
+		for i := range reports {
+			encoded, encodeErr := json.Marshal(&reports[i])
 			if encodeErr != nil {
 				return nil, encodeErr
 			}

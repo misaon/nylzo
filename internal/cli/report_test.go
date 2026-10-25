@@ -41,12 +41,16 @@ func TestReportSendsARedactedReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := abuse.Open(testReportKey, strings.TrimSpace(string(sealed)))
-	if err != nil || stored.ID != parsed.ID.String() ||
+	opened, err := abuse.Open(testReportKey, sealed)
+	if err != nil || len(opened) != 1 {
+		t.Fatalf("stored reports %+v %v", opened, err)
+	}
+	stored := opened[0]
+	if stored.ID != parsed.ID.String() ||
 		stored.Reason != "phishing, see https://evil.example/[redacted]" ||
 		!stored.GoodFaith ||
 		stored.Contact != "jana@example.cz" {
-		t.Fatalf("stored report %+v %v", stored, err)
+		t.Fatalf("stored report %+v", stored)
 	}
 }
 

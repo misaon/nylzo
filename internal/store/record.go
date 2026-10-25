@@ -93,9 +93,11 @@ func (r *Record) State(now time.Time) State {
 	}
 }
 
-// Ended tells whether the message refuses claims, downloads and endings; spent opens alone do not end it.
+// Ended tells whether the message refuses claims, downloads and endings; spent opens end it once a release is recorded.
 func (r *Record) Ended(now time.Time) bool {
-	return r.Message.Ending != "" || !now.Before(r.Message.ExpiresAt) || !r.HasBlob()
+	message := r.Message
+	released := message.OpensRemaining == 0 && !message.EndedAt.IsZero()
+	return message.Ending != "" || released || !now.Before(message.ExpiresAt) || !r.HasBlob()
 }
 
 func (r *Record) Releasable(now time.Time) bool {
@@ -130,6 +132,23 @@ func (r *Record) recordEnd(now time.Time) {
 
 func (r *Record) reseal() {
 	r.Row.Record = seal.Record(r.Key, r.Row.Locator, encodeMessage(r.Message))
+}
+
+// pruneLeases drops expired leases but keeps the last one, which dates the end of a message whose opens ran out.
+func (r *Record) pruneLeases(now time.Time) {
+	message := r.Message
+	if len(message.Leases) == 0 {
+		return
+	}
+	latest := slices.MaxFunc(message.Leases, func(first, second Lease) int {
+		return first.ExpiresAt.Compare(second.ExpiresAt)
+	})
+	message.Leases = slices.DeleteFunc(message.Leases, func(lease Lease) bool {
+		return !lease.Active(now)
+	})
+	if len(message.Leases) == 0 && message.OpensRemaining == 0 {
+		message.Leases = append(message.Leases, latest)
+	}
 }
 
 func earlier(first, second time.Time) time.Time {

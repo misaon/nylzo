@@ -132,6 +132,7 @@ func (f *fixture) recordedEndingWins() {
 	for _, recorded := range []store.State{store.StateDeleted, store.StateCancelled} {
 		f.recordedEndingHoldsTheLease(recorded)
 	}
+	f.recordedReleaseEndsTheMessage()
 	opened := f.create(1, oneHour, false)
 	f.claimAndAck(opened)
 	if state, err := f.end(opened, store.StateCancelled, baseTime, f.blobs); err != nil || state != store.StateOpened {
@@ -139,6 +140,40 @@ func (f *fixture) recordedEndingWins() {
 	}
 	if record := f.get(opened); record.Message.Ending != "" || record.State(baseTime) != store.StateOpened {
 		t.Fatalf("a cancel after the release must record nothing: %+v", record.Message)
+	}
+}
+
+// recordedReleaseEndsTheMessage is a regression: a release whose blob is still readable once let a burn or a report in.
+func (f *fixture) recordedReleaseEndsTheMessage() {
+	t, ctx := f.t, f.t.Context()
+	created := f.create(1, oneHour, false)
+	if _, err := f.claim(created, baseTime, 1); err != nil {
+		t.Fatal(err)
+	}
+	afterLease := baseTime.Add(store.LeaseDuration + store.LeaseTimerSlack)
+	record := f.get(created)
+	if _, err := store.Finish(
+		ctx,
+		failingShred{Store: f.store},
+		f.blobs,
+		record,
+		afterLease,
+	); !errors.Is(
+		err,
+		errDisk,
+	) {
+		t.Fatalf("a release whose blob key could not be dropped: %v", err)
+	}
+	record = f.get(created)
+	if !record.HasBlob() || !record.Ended(afterLease) {
+		t.Fatal("a recorded release must end the message even while its blob is still there")
+	}
+	if state, err := store.MarkEnding(ctx, f.store, record, store.StateCancelled, afterLease); err != nil ||
+		state != store.StateOpened {
+		t.Fatalf("a cancel after a recorded release: %s %v", state, err)
+	}
+	if _, err := store.CountReport(ctx, f.store, f.get(created), afterLease); goneState(err) != store.StateOpened {
+		t.Fatalf("a report after a recorded release: %v", err)
 	}
 }
 
@@ -306,6 +341,15 @@ func (f *fixture) takeDownWithoutTheKey() {
 		t.Fatalf("takedown of an unknown id: %v", err)
 	}
 	f.takeDownFinishesThroughTheSweep()
+	expired := f.create(1, oneMinute, false)
+	dueAt := baseTime.Add(store.BlobPurgeStep)
+	if due, dueErr := store.TakeDown(ctx, f.store, f.blobs, expired.Row.Locator, dueAt); dueErr != nil ||
+		due != store.AlreadyEnded || f.blobExists(expired.ref()) {
+		t.Fatalf("a message already due for the sweep: %v %v", due, dueErr)
+	}
+	if state := f.get(expired).State(dueAt); state != store.StateExpired {
+		t.Fatalf("a takedown must not change how an expired message ended: %s", state)
+	}
 }
 
 func (f *fixture) takeDownFinishesThroughTheSweep() {
