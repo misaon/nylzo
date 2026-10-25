@@ -1,4 +1,4 @@
-import { encodeBase64url, idToString, type KdfId, type RequestKey } from '@nylzo/core';
+import { encodeBase64url, idToString, type RequestKey } from '@nylzo/core';
 
 import type { Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
 
@@ -47,8 +47,11 @@ export interface FakeApi extends Api {
   readonly reports: Report[];
 }
 
-const equal = (a: Uint8Array | undefined, b: Uint8Array | undefined) =>
-  a !== undefined && b !== undefined && a.length === b.length && a.every((v, i) => v === b[i]);
+function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined): boolean {
+  return (
+    first !== undefined && second?.length === first.length && first.every((value, index) => value === second[index])
+  );
+}
 
 export function fakeApi(options: FakeOptions = {}): FakeApi {
   const calls: string[] = [];
@@ -65,7 +68,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
 
   function find(id: Uint8Array, readKey: RequestKey): Stored {
     const message = stored.get(idToString(id));
-    if (!message || !equal(message.request.readKey, readKey.publicKey)) {
+    if (!message || !sameBytes(message.request.readKey, readKey.publicKey)) {
       throw new ApiError(404, 'not_found');
     }
     return message;
@@ -73,7 +76,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
 
   function managed(id: Uint8Array, manageKey: RequestKey): Stored {
     const message = stored.get(idToString(id));
-    if (!message || !equal(message.request.manageKey, manageKey.publicKey)) {
+    if (!message || !sameBytes(message.request.manageKey, manageKey.publicKey)) {
       throw new ApiError(404, 'not_found');
     }
     return message;
@@ -104,6 +107,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     };
   }
 
+  /* eslint-disable @typescript-eslint/require-await -- the fake keeps the async methods of Api, so a thrown ApiError rejects the promise as in the real client */
   const api: Api = {
     async instance(): Promise<Instance> {
       calls.push('instance');
@@ -181,7 +185,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       if (message.state !== 'available') {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      if (message.request.kdfId !== 0 && !equal(message.request.verifierKey, claimOptions.verifierKey?.publicKey)) {
+      if (message.request.kdfId !== 0 && !sameBytes(message.request.verifierKey, claimOptions.verifierKey?.publicKey)) {
         message.failures++;
         const locked = message.failures >= (options.lockAfter ?? 100);
         throw new ApiError(403, 'passphrase', {
@@ -235,7 +239,11 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         throw failure;
       }
       const message = stored.get(idToString(id));
-      reports.push({ id: idToString(id), signedByReader: equal(message?.request.readKey, readKey.publicKey), reason });
+      reports.push({
+        id: idToString(id),
+        signedByReader: sameBytes(message?.request.readKey, readKey.publicKey),
+        reason,
+      });
     },
     async status(id, manageKey): Promise<Status> {
       calls.push('status');
@@ -263,5 +271,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       };
     },
   };
+  /* eslint-enable @typescript-eslint/require-await -- only the fake methods above */
   return Object.assign(api, { calls, challenges, stored, issuedIds, reports });
 }
