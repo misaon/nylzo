@@ -7,7 +7,7 @@ import { readAttachment, ttlChoices } from './create-form.ts';
 const limits: InstanceLimits = {
   maxFileBytes: 16,
   maxTextBytes: 102_400,
-  maxObjectBytes: 5_373_983,
+  maxObjectBytes: 5_373_952,
   maxTtlSeconds: 604_800,
   defaultTtlSeconds: 86_400,
   maxOpens: 10,

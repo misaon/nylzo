@@ -121,11 +121,13 @@ func (r *Record) EndedAt(now time.Time) time.Time {
 	}
 }
 
+// recordEnd also drops the blob wrap, so the transaction that ends a message makes its blob unreadable.
 func (r *Record) recordEnd(now time.Time) {
 	end := earlier(now, r.Message.ExpiresAt).UTC().Truncate(time.Minute)
 	if r.Message.EndedAt.IsZero() {
 		r.Message.EndedAt = end
 	}
+	r.Row.BlobWrap = nil
 	r.Row.BlobPurgeAt = ceil(now, BlobPurgeStep)
 	r.Row.PurgeAt = ceil(end.Add(TombstoneTTL), RowPurgeStep)
 }

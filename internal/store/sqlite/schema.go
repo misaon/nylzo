@@ -21,7 +21,6 @@ CREATE TABLE IF NOT EXISTS messages (
 	purge_at INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS messages_purge_at ON messages(purge_at);
-CREATE INDEX IF NOT EXISTS messages_blob_purge_at ON messages(blob_purge_at) WHERE blob_ref IS NOT NULL;
 CREATE TABLE IF NOT EXISTS rate_counters (
 	key TEXT NOT NULL,
 	window_start INTEGER NOT NULL,
@@ -30,7 +29,6 @@ CREATE TABLE IF NOT EXISTS rate_counters (
 	purge_at INTEGER NOT NULL,
 	PRIMARY KEY (key, window_start)
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at);
 `
 
 // unsealedTables held messages in the clear before version 5; without their keys they cannot be sealed.
@@ -38,6 +36,12 @@ var unsealedTables = []string{
 	`DROP TABLE IF EXISTS leases`,
 	`DROP TABLE IF EXISTS tombstones`,
 	`DROP TABLE IF EXISTS passphrase_attempts`,
+}
+
+// unusedIndexes cost a page on every write: the sweep pages blobs by locator, and rate_counters stays small.
+var unusedIndexes = []string{
+	`DROP INDEX IF EXISTS messages_blob_purge_at`,
+	`DROP INDEX IF EXISTS rate_counters_purge_at`,
 }
 
 const olderBuildWrite = `SELECT RAISE(ABORT, 'nylzo: this write comes from an older nylzod than the database schema allows')`
@@ -66,13 +70,12 @@ var deleteRevealingCounters = `DELETE FROM rate_counters WHERE key GLOB 'abuse:i
 )
 
 type unorderedTable struct {
-	name, columns, index string
+	name, columns string
 }
 
 var countersTable = unorderedTable{
 	name:    "rate_counters",
 	columns: "key, window_start, count, bytes, purge_at",
-	index:   "purge_at",
 }
 
 type queryRower interface {
@@ -138,7 +141,7 @@ func migrateTables(ctx context.Context, connection *sql.Conn, version int) error
 	if unsealed {
 		statements = append(statements, `DROP TABLE messages`)
 	}
-	err = execAll(ctx, tx, append(statements, schema)...)
+	err = execAll(ctx, tx, append(append(statements, schema), unusedIndexes...)...)
 	if err == nil {
 		err = dropRowid(ctx, tx, countersTable)
 	}
@@ -174,7 +177,6 @@ func dropRowid(ctx context.Context, tx *sql.Tx, table unorderedTable) error {
 		fmt.Sprintf(`INSERT INTO %s (%s) SELECT %s FROM %s`, rebuilt, table.columns, table.columns, table.name),
 		`DROP TABLE `+table.name,
 		fmt.Sprintf(`ALTER TABLE %s RENAME TO %s`, rebuilt, table.name),
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s_%s ON %s(%s)`, table.name, table.index, table.name, table.index),
 	)
 }
 

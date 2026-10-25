@@ -1,10 +1,12 @@
 package sqlite
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/misaon/nylzo/internal/seal"
@@ -14,6 +16,10 @@ import (
 const (
 	rowColumns = `locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at`
 	rowQuery   = `SELECT ` + rowColumns + ` FROM messages WHERE locator = ?`
+	updateRow  = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
+		blob_purge_at = ? WHERE locator = ?`
+	updateRowAndPurge = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
+		blob_purge_at = ?, purge_at = ? WHERE locator = ?`
 )
 
 func (s *Store) Create(ctx context.Context, row *store.Row, counters ...store.RateHit) error {
@@ -43,23 +49,38 @@ func (s *Store) Load(ctx context.Context, locator seal.Locator) (store.Row, erro
 	return scanRow(s.statements.loadRow.QueryRowContext(ctx, locator[:]))
 }
 
-// Update hands the row to change inside one write transaction and stores it again unless change fails.
+// Update hands the row to change inside one write transaction and stores what change replaced.
 func (s *Store) Update(ctx context.Context, locator seal.Locator, change func(row *store.Row) error) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		row, err := scanRow(tx.QueryRowContext(ctx, rowQuery, locator[:]))
 		if err != nil {
 			return err
 		}
+		stored := row
 		if changeErr := change(&row); changeErr != nil {
 			return changeErr
 		}
-		_, err = tx.ExecContext(
-			ctx,
-			`UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?, blob_purge_at = ?, purge_at = ? WHERE locator = ?`,
-			append(rowValues(&row)[1:], locator[:])...,
-		)
+		values := rowValues(&row)
+		switch {
+		case !stored.PurgeAt.Equal(row.PurgeAt):
+			_, err = tx.ExecContext(ctx, updateRowAndPurge, append(values[1:], locator[:])...)
+		case !sameRow(&stored, &row):
+			_, err = tx.ExecContext(ctx, updateRow, slices.Concat(values[1:7], []any{locator[:]})...)
+		default:
+		}
 		return err
 	})
+}
+
+// sameRow ignores purge_at: SQLite rewrites its index whenever the column is set, even to the value it holds.
+func sameRow(stored, changed *store.Row) bool {
+	return stored.BlobRef == changed.BlobRef &&
+		stored.BlobPurgeAt.Equal(changed.BlobPurgeAt) &&
+		bytes.Equal(stored.ReadWrap, changed.ReadWrap) &&
+		bytes.Equal(stored.ManageWrap, changed.ManageWrap) &&
+		bytes.Equal(stored.Record, changed.Record) &&
+		(stored.BlobWrap == nil) == (changed.BlobWrap == nil) &&
+		bytes.Equal(stored.BlobWrap, changed.BlobWrap)
 }
 
 func rowValues(row *store.Row) []any {

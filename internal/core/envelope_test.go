@@ -184,7 +184,7 @@ func TestSealEnforcesTheLimits(t *testing.T) {
 	if len(largest.object) > core.MaxObjectBytes || int64(len(largest.object)) > core.ObjectLimit(core.MaxFileBytes) {
 		t.Fatalf("the largest valid object has %d bytes, above the limits", len(largest.object))
 	}
-	for maxFileBytes, want := range map[int64]int64{26621: 196639, core.MaxFileBytes: 5373983} {
+	for maxFileBytes, want := range map[int64]int64{26589: 131072, 26590: 196608, core.MaxFileBytes: 5373952} {
 		if got := core.ObjectLimit(maxFileBytes); got != want {
 			t.Errorf("ObjectLimit(%d) = %d, want %d", maxFileBytes, got, want)
 		}

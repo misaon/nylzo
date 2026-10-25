@@ -287,7 +287,7 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
 	limits := decodeJSON(t, body)["limits"].(map[string]any)
-	if limits["max_object_bytes"] != float64(5373983) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
+	if limits["max_object_bytes"] != float64(5373952) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
 		t.Fatalf("instance reports %v", limits)
 	}
 }

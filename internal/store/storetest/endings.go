@@ -143,7 +143,7 @@ func (f *fixture) recordedEndingWins() {
 	}
 }
 
-// recordedReleaseEndsTheMessage is a regression: a release whose blob is still readable once let a burn or a report in.
+// recordedReleaseEndsTheMessage is a regression: a release whose blob was not yet deleted once let a burn or a report in.
 func (f *fixture) recordedReleaseEndsTheMessage() {
 	t, ctx := f.t, f.t.Context()
 	created := f.create(1, oneHour, false)
@@ -151,22 +151,14 @@ func (f *fixture) recordedReleaseEndsTheMessage() {
 		t.Fatal(err)
 	}
 	afterLease := baseTime.Add(store.LeaseDuration + store.LeaseTimerSlack)
-	record := f.get(created)
-	if _, err := store.Finish(
-		ctx,
-		failingShred{Store: f.store},
-		f.blobs,
-		record,
-		afterLease,
-	); !errors.Is(
-		err,
-		errDisk,
-	) {
-		t.Fatalf("a release whose blob key could not be dropped: %v", err)
+	failing := newFailingBlobs(f.blobs)
+	failing.failOnce(created.ref())
+	if _, err := f.finish(created, afterLease, failing); !errors.Is(err, errDisk) {
+		t.Fatalf("a release whose blob file could not be deleted: %v", err)
 	}
-	record = f.get(created)
-	if !record.HasBlob() || !record.Ended(afterLease) {
-		t.Fatal("a recorded release must end the message even while its blob is still there")
+	record := f.get(created)
+	if record.HasBlob() || !record.Ended(afterLease) || !f.blobExists(created.ref()) {
+		t.Fatal("the release must end the message and drop the blob key in one transaction, even if the file stays")
 	}
 	if state, err := store.MarkEnding(ctx, f.store, record, store.StateCancelled, afterLease); err != nil ||
 		state != store.StateOpened {

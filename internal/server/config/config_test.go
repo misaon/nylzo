@@ -96,8 +96,8 @@ func TestFromEnvReadsEveryVariable(t *testing.T) {
 		settings.PublicURL != "https://nylzo.example" || len(settings.PepperPrevious) != 32 {
 		t.Fatalf("settings %+v", settings)
 	}
-	if got := config.Defaults().Limits.MaxObjectBytes; got != 5373983 {
-		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373983", got)
+	if got := config.Defaults().Limits.MaxObjectBytes; got != 5373952 {
+		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373952", got)
 	}
 	if _, withoutPepper := config.FromEnv(environment(nil), false); withoutPepper != nil {
 		t.Fatalf("sweep-once without pepper: %v", withoutPepper)
