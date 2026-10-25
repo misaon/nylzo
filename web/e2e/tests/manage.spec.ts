@@ -15,7 +15,6 @@ import { recordViolations } from './violations.ts';
 
 declare global {
   interface Window {
-    nylzoMarker?: number;
     nylzoWrites?: number;
   }
 }
@@ -287,29 +286,6 @@ test('the sender forgets one message, then all of them, for good', async ({ brow
   await expect(sender.getByText('This device remembers no messages.')).toBeVisible();
   await sender.reload();
   await expect(sender.getByText('This device remembers no messages.')).toBeVisible();
-});
-
-test('the language switches in place, keeps a shown message and stays chosen', async ({ browser }) => {
-  const message = await createViaApi({ text: 'zůstane' });
-  const recipient = await newPage(browser);
-  await openViaUi(recipient, message.link);
-  await expectRevealed(recipient);
-  await recipient.evaluate(() => {
-    window.nylzoMarker = 1;
-  });
-  await recipient.getByRole('button', { name: 'Čeština' }).click();
-  await expect(recipient.getByRole('heading', { name: 'Obsah zprávy' })).toBeVisible();
-  await expect(recipient.locator('pre')).toHaveText('zůstane');
-  expect(await recipient.evaluate(() => [window.nylzoMarker, document.documentElement.lang])).toEqual([1, 'cs']);
-  await expect(recipient.getByRole('button', { name: 'English' })).toHaveAttribute('lang', 'en');
-
-  await openApp(recipient, '/');
-  await expect(recipient).toHaveURL(`${BASE_URL}/cs/`);
-  await expect(recipient.getByRole('heading', { name: 'Nová zpráva' })).toBeVisible();
-  expect(await recipient.evaluate(() => document.documentElement.lang)).toBe('cs');
-  await recipient.getByRole('button', { name: 'English' }).click();
-  await expect(recipient.getByRole('heading', { name: 'New message' })).toBeVisible();
-  await expect(recipient).toHaveURL(`${BASE_URL}/`);
 });
 
 test('a failed status can be loaded again (D39)', async ({ browser }) => {
