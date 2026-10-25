@@ -87,6 +87,7 @@
       <li>{translate('transparency.stores.abuse', { days: days(data.retention.abuseReportSeconds) })}</li>
       <li>{translate('transparency.stores.counters', { days: days(data.retention.dailyCounterSeconds) })}</li>
       <li>{translate('transparency.stores.addresses')}</li>
+      <li>{translate('transparency.stores.enforced')}</li>
     </ul>
 
     <h3>{translate('transparency.logs.title')}</h3>
@@ -140,6 +141,7 @@
     <p>{translate('transparency.client.verify')}</p>
     <p><code class="wrap-anywhere">{verifyCommand()}</code></p>
     <p>{translate('transparency.client.limit')}</p>
+    <p>{translate('transparency.client.independent')}</p>
     <p><a href={REPOSITORY_URL} rel="noreferrer">{translate('transparency.source')}</a></p>
   {/if}
 </section>

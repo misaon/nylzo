@@ -90,7 +90,7 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 
 func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, sqlite.Open)
+	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 
 func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, sqlite.Open)
+	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 func TestOpenCreatesPrivateDirectories(t *testing.T) {
 	settings := config.Defaults()
 	settings.DataDir = filepath.Join(t.TempDir(), "data")
-	storage, _, err := openStore(settings.DataDir, sqlite.Open)
+	storage, _, err := openStore(settings.DataDir, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 
 func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, sqlite.Open)
+	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

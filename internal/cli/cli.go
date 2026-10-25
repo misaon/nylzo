@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"os/signal"
 	"regexp"
 	"runtime/debug"
@@ -39,7 +38,6 @@ type Environment struct {
 	Getenv    func(string) string
 	Terminal  console.Terminal
 	Version   string
-	TempDir   string
 	WebClient func() (webclient.Build, error)
 }
 
@@ -48,13 +46,6 @@ func (e *Environment) webClient() (webclient.Build, error) {
 		return e.WebClient()
 	}
 	return server.EmbeddedWebClient()
-}
-
-func (e *Environment) tempDir() string {
-	if e.TempDir != "" {
-		return e.TempDir
-	}
-	return os.TempDir()
 }
 
 type command struct {

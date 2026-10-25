@@ -12,10 +12,14 @@ export class KdfError extends Error {
   }
 }
 
+export type PassphraseProblem = 'common' | 'context' | 'repetitive' | 'sequential' | 'short';
+
 export class WeakPassphraseError extends Error {
   override readonly name = 'WeakPassphraseError';
-  constructor(message = 'passphrase is shorter than 12 characters') {
-    super(message);
+  readonly problem: PassphraseProblem;
+  constructor(problem: PassphraseProblem) {
+    super(`weak passphrase (${problem})`);
+    this.problem = problem;
   }
 }
 

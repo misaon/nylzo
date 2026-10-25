@@ -985,12 +985,14 @@
     {
       "name": "empty",
       "passphrase": "",
-      "accepted": false
+      "accepted": false,
+      "problem": "short"
     },
     {
       "name": "eleven ASCII characters",
       "passphrase": "eleven char",
-      "accepted": false
+      "accepted": false,
+      "problem": "short"
     },
     {
       "name": "twelve ASCII characters",
@@ -1000,7 +1002,8 @@
     {
       "name": "eleven characters after NFC, twelve code points before",
       "passphrase": "café au lai",
-      "accepted": false
+      "accepted": false,
+      "problem": "short"
     },
     {
       "name": "twelve characters after NFC",
@@ -1010,14 +1013,128 @@
     {
       "name": "eleven astral characters",
       "passphrase": "😀😀😀😀😀😀😀😀😀😀😀",
-      "accepted": false
+      "accepted": false,
+      "problem": "short"
     },
     {
-      "name": "twelve astral characters",
+      "name": "twelve equal astral characters",
       "passphrase": "😀😀😀😀😀😀😀😀😀😀😀😀",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "twelve distinct astral characters",
+      "passphrase": "😀😁😂😃😄😅😆😇😈😉😊😋",
+      "accepted": true
+    },
+    {
+      "name": "one character twelve times",
+      "passphrase": "aaaaaaaaaaaa",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "two characters in turn",
+      "passphrase": "abababababab",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "six distinct characters twice",
+      "passphrase": "abcdefabcdef",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "repetition hidden by letter case",
+      "passphrase": "ABCDEFabcdef",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "part of a repetition",
+      "passphrase": "abcdefgabcdefga",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "alphabet",
+      "passphrase": "abcdefghijkl",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "alphabet backwards",
+      "passphrase": "lkjihgfedcba",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "digits across zero",
+      "passphrase": "7890123456789",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "QWERTY row",
+      "passphrase": "qwertyuiopas",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "QWERTZ row in capitals",
+      "passphrase": "QWERTZUIOPASDF",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "alphabet with separators",
+      "passphrase": "a-b c_d.e-f g_h",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "service name twice",
+      "passphrase": "nylzonylzo12",
+      "accepted": false,
+      "problem": "context"
+    },
+    {
+      "name": "service name with a short word",
+      "passphrase": "NylzoPassword",
+      "accepted": false,
+      "problem": "context"
+    },
+    {
+      "name": "common password",
+      "passphrase": "password1234",
+      "accepted": false,
+      "problem": "common"
+    },
+    {
+      "name": "common password in capitals",
+      "passphrase": "IloveYou1234",
+      "accepted": false,
+      "problem": "common"
+    },
+    {
+      "name": "common keyboard walk outside the sequences",
+      "passphrase": "1qaz2wsx3edc",
+      "accepted": false,
+      "problem": "common"
+    },
+    {
+      "name": "generated passphrase",
+      "passphrase": "k7m2-x9pz-b4tf-hq3w",
+      "accepted": true
+    },
+    {
+      "name": "four words",
+      "passphrase": "correct horse battery staple",
       "accepted": true
     }
   ],
+  "passphrase_list_sha256": "6c77484b36001e3c327ec8be7cd0394be9c4ed965d8e39a2280612c7cbe36776",
   "request": [
     {
       "name": "metadata read",

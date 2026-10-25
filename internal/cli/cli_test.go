@@ -152,7 +152,6 @@ func runWith(
 			Getenv:   getenvFrom(variables),
 			Terminal: terminal,
 			Version:  "test",
-			TempDir:  t.TempDir(),
 		},
 	)
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
@@ -175,6 +174,13 @@ func createText(t *testing.T, instance *testServer, text string, arguments ...st
 	}
 	link, _, _ := strings.Cut(result.stdout, "\n")
 	return link, result
+}
+
+func withDestination(command string) []string {
+	if command == "read" {
+		return []string{command, "--stdout"}
+	}
+	return []string{command}
 }
 
 func readPaths(t *testing.T, result commandResult) []string {
@@ -239,7 +245,7 @@ func TestCreateAndReadText(t *testing.T) {
 	if strings.Contains(created.stderr, "#") {
 		t.Fatalf("create wrote the link to stderr: %q", created.stderr)
 	}
-	paths := readPaths(t, runWith(t, link, nil, nil, "read"))
+	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", t.TempDir()))
 	if len(paths) != 1 || filepath.Base(paths[0]) != textFileName {
 		t.Fatalf("read wrote %v", paths)
 	}
@@ -268,6 +274,8 @@ func TestCreateAndReadText(t *testing.T) {
 		nil,
 		nil,
 		"read",
+		"--out",
+		t.TempDir(),
 	); result.code != exitError ||
 		!strings.Contains(result.stderr, "the sender cancelled the message") {
 		t.Fatalf("read after cancel: %d %q", result.code, result.stderr)
@@ -316,7 +324,7 @@ func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 	newer := "https://nylzo.example/m/" + core.NewID().String() + "#2.1." + secret
 	damaged := "https://nylzo.example/m/" + core.NewID().String() + "#1.9." + secret
 	for _, command := range []string{"read", "burn", "report"} {
-		result := runWith(t, newer, nil, nil, command)
+		result := runWith(t, newer, nil, nil, withDestination(command)...)
 		if result.code != exitError ||
 			!strings.Contains(
 				result.stderr,
@@ -324,7 +332,7 @@ func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 			) {
 			t.Errorf("%s with a newer link: %d %q", command, result.code, result.stderr)
 		}
-		result = runWith(t, damaged, nil, nil, command)
+		result = runWith(t, damaged, nil, nil, withDestination(command)...)
 		if result.code != exitError || !strings.Contains(result.stderr, "the link is incomplete or damaged") ||
 			strings.Contains(result.stderr, "newer") {
 			t.Errorf("%s with a damaged link: %d %q", command, result.code, result.stderr)
@@ -337,7 +345,7 @@ func TestALinkWithTheRetiredProfileAsksForANewLink(t *testing.T) {
 	secret := core.Encode(make([]byte, core.SecretLen))
 	retired := "https://nylzo.example/m/" + core.NewID().String() + "#1.2." + secret
 	for _, command := range []string{"read", "burn", "report"} {
-		result := runWith(t, retired, nil, nil, command)
+		result := runWith(t, retired, nil, nil, withDestination(command)...)
 		if result.code != exitError ||
 			!strings.Contains(
 				result.stderr,
@@ -366,15 +374,15 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 	if !strings.Contains(link, "#1.1.") {
 		t.Fatalf("link %s", link)
 	}
-	result := runWith(t, link, nil, nil, "read", "--passphrase-file", wrong)
+	result := runWith(t, link, nil, nil, "read", "--passphrase-file", wrong, "--out", t.TempDir())
 	if result.code != exitError || !strings.Contains(result.stderr, "wrong passphrase; 4 attempts left") {
 		t.Fatalf("wrong passphrase: %d %q", result.code, result.stderr)
 	}
-	if result = runWith(t, link, nil, nil, "read"); result.code != exitError ||
+	if result = runWith(t, link, nil, nil, "read", "--out", t.TempDir()); result.code != exitError ||
 		!strings.Contains(result.stderr, "needs a passphrase") {
 		t.Fatalf("no passphrase: %d %q", result.code, result.stderr)
 	}
-	paths := readPaths(t, runWith(t, link, map[string]string{envPassphrase: right}, nil, "read"))
+	paths := readPaths(t, runWith(t, link, map[string]string{envPassphrase: right}, nil, "read", "--out", t.TempDir()))
 	assertPrivate(t, paths[0], "behind a passphrase")
 }
 
@@ -407,6 +415,8 @@ func TestAskedPassphraseMustMatchAndBeStrong(t *testing.T) {
 	}{
 		{[]string{"correct horse battery staple", "correct horse battery stapel"}, "the two passphrases differ"},
 		{[]string{"short", "short"}, "at least 12 characters"},
+		{[]string{"aaaaaaaaaaaa", "aaaaaaaaaaaa"}, "repeats too few different characters"},
+		{[]string{"Password1234", "Password1234"}, "commonly used passwords"},
 	} {
 		result := runWith(
 			t,
@@ -430,7 +440,10 @@ func TestAskedPassphraseMustMatchAndBeStrong(t *testing.T) {
 		t.Fatalf("a weak but valid passphrase: %d %q", result.code, result.stderr)
 	}
 	link, _, _ := strings.Cut(result.stdout, "\n")
-	paths := readPaths(t, runWith(t, link, nil, &scriptedTerminal{secrets: []string{"twelve chars"}}, "read"))
+	paths := readPaths(
+		t,
+		runWith(t, link, nil, &scriptedTerminal{secrets: []string{"twelve chars"}}, "read", "--out", t.TempDir()),
+	)
 	assertPrivate(t, paths[0], "text")
 }
 
@@ -551,22 +564,23 @@ var flagLine = regexp.MustCompile(`(?m)^ {2}-([a-z-]+)`)
 func TestNoFlagTakesASecret(t *testing.T) {
 	t.Parallel()
 	allowed := map[string]bool{
-		"server":             true,
-		"from-file":          true,
-		"ttl":                true,
-		"opens":              true,
-		"passphrase-file":    true,
-		"ask-passphrase":     true,
-		"manage-token-file":  true,
-		"print-manage-token": true,
-		"link-file":          true,
-		"out":                true,
-		"stdout":             true,
-		"json":               true,
-		"allow-header":       true,
-		"reason-file":        true,
-		"contact":            true,
-		"good-faith":         true,
+		"server":                   true,
+		"from-file":                true,
+		"ttl":                      true,
+		"opens":                    true,
+		"passphrase-file":          true,
+		"ask-passphrase":           true,
+		"generate-passphrase-file": true,
+		"manage-token-file":        true,
+		"print-manage-token":       true,
+		"link-file":                true,
+		"out":                      true,
+		"stdout":                   true,
+		"json":                     true,
+		"allow-header":             true,
+		"reason-file":              true,
+		"contact":                  true,
+		"good-faith":               true,
 	}
 	for _, subcommand := range commands() {
 		result := runWith(t, "", nil, nil, subcommand.name, "-h")
@@ -682,7 +696,7 @@ func TestBrokenClaimResumesThroughTheLease(t *testing.T) {
 	}))
 	t.Cleanup(proxy.Close)
 	viaProxy := strings.Replace(link, instance.url, proxy.URL, 1)
-	paths := readPaths(t, runWith(t, viaProxy, nil, nil, "read"))
+	paths := readPaths(t, runWith(t, viaProxy, nil, nil, "read", "--out", t.TempDir()))
 	assertPrivate(t, paths[0], strings.Repeat("resume ", 2000))
 	if !broke.Load() {
 		t.Fatal("the claim was never broken")
@@ -804,6 +818,8 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 			map[string]string{envPassphrase: passphrase},
 			nil,
 			"read",
+			"--out",
+			t.TempDir(),
 		)
 		if result.code != exitError || !strings.Contains(result.stderr, testCase.want) {
 			t.Fatalf("%s: %d %q", name, result.code, result.stderr)
@@ -921,7 +937,7 @@ func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 			w.WriteHeader(response.StatusCode)
 			io.Copy(w, response.Body)
 		}))
-		result := runWith(t, strings.Replace(link, instance.url, proxy.URL, 1), nil, nil, "read")
+		result := runWith(t, strings.Replace(link, instance.url, proxy.URL, 1), nil, nil, "read", "--out", t.TempDir())
 		proxy.Close()
 		if result.code != exitError || !strings.Contains(result.stderr, "different policy") {
 			t.Fatalf("%s: %d %q", name, result.code, result.stderr)
@@ -972,7 +988,7 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 		t.Fatal("the retry reused the refused create header")
 	}
 	link, _, _ := strings.Cut(result.stdout, "\n")
-	paths := readPaths(t, runWith(t, link, nil, nil, "read"))
+	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", t.TempDir()))
 	assertPrivate(t, paths[0], "second try")
 	if metadata.Load() != 2 {
 		t.Fatalf("metadata was asked %d times, want one retry after the 404", metadata.Load())
@@ -991,7 +1007,7 @@ func TestReadAcksAndSendsNoVerifierWithoutAPassphrase(t *testing.T) {
 		}
 		return false
 	}
-	readPaths(t, runWith(t, "\n  "+link+"  \n", nil, nil, "read"))
+	readPaths(t, runWith(t, "\n  "+link+"  \n", nil, nil, "read", "--out", t.TempDir()))
 	if verifier.Load() {
 		t.Fatal("a message without a passphrase got a verifier header")
 	}
@@ -1012,12 +1028,12 @@ func TestErrorsNeverEchoSecrets(t *testing.T) {
 		variables map[string]string
 		arguments []string
 	}{
-		"passphrase in the file variable": {map[string]string{envPassphrase: secret}, []string{"read"}},
+		"passphrase in the file variable": {map[string]string{envPassphrase: secret}, []string{"read", "--stdout"}},
 		"token in the file variable":      {map[string]string{envManageToken: token}, []string{"status"}},
-		"passphrase as a file":            {nil, []string{"read", "--passphrase-file", secret}},
+		"passphrase as a file":            {nil, []string{"read", "--stdout", "--passphrase-file", secret}},
 		"passphrase as a duration":        {nil, []string{"create", "--server", instance.url, "--ttl", secret}},
 		"token as a count":                {nil, []string{"create", "--server", instance.url, "--opens", token}},
-		"link with trailing punctuation":  {nil, []string{"read", "--link-file", link + ")"}},
+		"link with trailing punctuation":  {nil, []string{"read", "--stdout", "--link-file", link + ")"}},
 		"link with a carriage return":     {nil, []string{"burn", "--link-file=" + link + "\r"}},
 		"passphrase as --out":             {nil, []string{"read", "--out", filepath.Join(t.TempDir(), secret)}},
 		"token as the manage file":        {nil, []string{"create", "--server", instance.url, "--manage-token-file", existing(t, token)}},
@@ -1054,6 +1070,8 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 		map[string]string{envLink: link, envPassphrase: writeSecretFile(t, "correct horse battery staple")},
 		nil,
 		"read",
+		"--out",
+		t.TempDir(),
 	)
 	paths := readPaths(t, result)
 	assertPrivate(t, paths[0], "first line")
@@ -1068,11 +1086,61 @@ func TestStdoutKeepsControlCharactersOffATerminal(t *testing.T) {
 	instance := newTestServer(t, nil)
 	link, _ := createText(t, instance, "safe\x1b]0;pwned\x07text")
 	result := runWith(t, link, nil, &scriptedTerminal{stdout: true}, "read", "--stdout")
-	if result.code != exitOK || strings.Contains(result.stdout, "\x1b") ||
+	if result.code != exitOK || result.stdout != "safe\\u001b]0;pwned\\u0007text\n" ||
 		!strings.Contains(result.stderr, "control characters") {
 		t.Fatalf("read --stdout to a terminal: %d %q %q", result.code, result.stdout, result.stderr)
 	}
-	assertPrivate(t, strings.TrimSpace(result.stdout), "safe\x1b]0;pwned\x07text")
+}
+
+func TestReadWritesToDiskOnlyWhenAsked(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t, nil)
+	link, _ := createText(t, instance, "stays")
+	source := filepath.Join(t.TempDir(), "notes.bin")
+	if err := os.WriteFile(source, []byte{1, 2, 3}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	attachment, _ := createText(t, instance, "", "--from-file", source)
+	before := instance.requests.Load()
+	if result := runWith(t, link, nil, nil, "read"); result.code != exitUsage ||
+		instance.requests.Load() != before || !strings.Contains(result.stderr, "--stdout") {
+		t.Fatalf(
+			"read without a destination: %d %q, %d requests",
+			result.code,
+			result.stderr,
+			instance.requests.Load()-before,
+		)
+	}
+	if result := runWith(t, attachment, nil, nil, "read", "--stdout"); result.code != exitError ||
+		!strings.Contains(result.stderr, "add --out DIR") {
+		t.Fatalf("read --stdout of an attachment: %d %q", result.code, result.stderr)
+	}
+	paths := readPaths(t, runWith(t, attachment, nil, nil, "read", "--out", t.TempDir()))
+	if len(paths) != 1 || mustRead(t, paths[0]) != "\x01\x02\x03" {
+		t.Fatalf("the refused --stdout spent the open or lost the file: %v", paths)
+	}
+}
+
+func TestGeneratedPassphraseFile(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t, nil)
+	path := filepath.Join(t.TempDir(), "passphrase")
+	link, result := createText(t, instance, "guarded", "--generate-passphrase-file", path)
+	if strings.Contains(result.stderr, "warning") {
+		t.Fatalf("a generated passphrase drew a warning: %q", result.stderr)
+	}
+	passphrase := strings.TrimSpace(mustRead(t, path))
+	if err := core.CheckPassphraseStrength(passphrase); err != nil || strings.Contains(result.stdout, passphrase) {
+		t.Fatalf("generated passphrase %q: %v, stdout %q", passphrase, err, result.stdout)
+	}
+	assertPrivateFile(t, path, passphrase+"\n")
+	if read := runWith(t, link, nil, nil, "read", "--stdout", "--passphrase-file", path); read.stdout != "guarded\n" {
+		t.Fatalf("read with the generated passphrase: %d %q", read.code, read.stderr)
+	}
+	again := runWith(t, "x", nil, nil, "create", "--server", instance.url, "--generate-passphrase-file", path)
+	if again.code != exitError || !strings.Contains(again.stderr, "already exists") {
+		t.Fatalf("an existing passphrase file was replaced: %d %q", again.code, again.stderr)
+	}
 }
 
 func TestWritePrivateStaysInItsDirectory(t *testing.T) {
@@ -1148,7 +1216,7 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 		if createErr != nil {
 			t.Fatal(createErr)
 		}
-		paths := readPaths(t, runWith(t, created.link, nil, nil, "read"))
+		paths := readPaths(t, runWith(t, created.link, nil, nil, "read", "--out", t.TempDir()))
 		if len(paths) != 2 || !strings.HasPrefix(filepath.Base(paths[1]), attachmentPrefix) {
 			t.Fatalf("%s: %v", name, paths)
 		}
@@ -1303,6 +1371,6 @@ func TestAnUnwritableOutDirectoryIsNotNamed(t *testing.T) {
 	if result.code != exitError || strings.Contains(result.stderr, "correct horse") {
 		t.Fatalf("read into an unwritable --out: %d %q", result.code, result.stderr)
 	}
-	paths := readPaths(t, runWith(t, link, nil, nil, "read"))
+	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", t.TempDir()))
 	assertPrivate(t, paths[0], "kept")
 }

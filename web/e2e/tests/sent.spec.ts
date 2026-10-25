@@ -8,13 +8,13 @@ import {
 } from './support/indexed-database.ts';
 import { createMessageThroughApi } from './support/messages.ts';
 import {
+  chooseRemember,
   createdLink,
   createMessageInPage,
   expectMessageShown,
   notInert,
   openApp,
   showMessage,
-  turnOnRemember,
 } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
 import { watchViolations } from './support/watchers.ts';
@@ -84,7 +84,7 @@ test('this device remembers a new message as soon as it exists, before the anima
   const completedWrites = await countCompletedWrites(page);
   await openApp(page, '/');
   await page.getByLabel('Message text').fill('remember early');
-  await turnOnRemember(page);
+  await chooseRemember(page);
   const created = page.waitForResponse(
     (response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST',
   );

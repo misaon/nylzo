@@ -89,6 +89,7 @@ interface StrengthVector {
   readonly name: string;
   readonly passphrase: string;
   readonly accepted: boolean;
+  readonly problem?: string;
 }
 
 interface RequestVector {
@@ -125,6 +126,7 @@ interface VectorFile {
   readonly link: readonly LinkVector[];
   readonly meta: readonly MetaVector[];
   readonly passphrase_strength: readonly StrengthVector[];
+  readonly passphrase_list_sha256: string;
   readonly request: readonly RequestVector[];
   readonly pow: readonly PowVector[];
 }

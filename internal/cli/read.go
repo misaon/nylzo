@@ -34,6 +34,13 @@ var (
 	errPolicyChanged = errors.New(
 		"the server sent the message with a different policy than its metadata, so nylzo refused it",
 	)
+	errNoDestination = errors.New(
+		"read needs --stdout, which prints the text and writes nothing to disk, " +
+			"or --out DIR, which writes the text and any attachment into a new private directory inside DIR",
+	)
+	errAttachmentNeedsOut = errors.New(
+		"this message can carry an attachment, which --stdout cannot deliver; add --out DIR (nothing was opened)",
+	)
 )
 
 type readOptions struct {
@@ -112,9 +119,9 @@ func readFlags(environment *Environment) (*flag.FlagSet, *readOptions) {
 		&options.out,
 		"out",
 		"",
-		"create the new private directory for the files inside this directory (default: the system temporary directory)",
+		"write the text and any attachment into a new private directory inside this existing directory",
 	)
-	flags.BoolVar(&options.stdout, "stdout", false, "print the text to stdout instead of writing it to a file")
+	flags.BoolVar(&options.stdout, "stdout", false, "print the text to stdout and write nothing to disk")
 	return flags, options
 }
 
@@ -123,6 +130,10 @@ func runRead(ctx context.Context, environment *Environment, arguments []string) 
 	flags, options := readFlags(environment)
 	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
+	}
+	if !options.stdout && options.out == "" {
+		fmt.Fprintln(environment.Stderr, program+": "+errNoDestination.Error())
+		return exitUsage
 	}
 	link, err := linkFromInput(environment, options.linkFile)
 	if err != nil {
@@ -133,21 +144,19 @@ func runRead(ctx context.Context, environment *Environment, arguments []string) 
 	if err != nil {
 		return failf(environment, "%s", explain(err))
 	}
-	base := options.out
-	if base == "" {
-		base = environment.tempDir()
+	directory := ""
+	if options.out != "" {
+		if directory, err = outputDir(options.out); err != nil {
+			return failf(environment, "%s", err)
+		}
+		defer removeIfEmpty(directory)
 	}
-	directory, err := outputDir(base, options.out != "")
-	if err != nil {
-		return failf(environment, "%s", err)
-	}
-	defer removeIfEmpty(directory)
-	opened, err := readMessage(ctx, environment, api, &link, options.passphrase)
+	opened, err := readMessage(ctx, environment, api, &link, options.passphrase, directory != "")
 	if err != nil {
 		return failf(environment, "%s", explain(err))
 	}
 	defer clear(opened.payload.File)
-	paths, err := saveMessage(environment, directory, base, options.stdout, opened.payload)
+	paths, err := saveMessage(environment, directory, options.out, options.stdout, opened.payload)
 	if err != nil {
 		return failf(environment, "the message was opened but could not be saved: %s", err)
 	}
@@ -160,6 +169,14 @@ func runRead(ctx context.Context, environment *Environment, arguments []string) 
 	}
 	for _, path := range paths {
 		fmt.Fprintln(environment.Stdout, path)
+	}
+	if len(paths) > 0 {
+		fmt.Fprintf(
+			environment.Stderr,
+			"%s: the files hold the plaintext; delete them when you no longer need them "+
+				"(on SSDs and in backups a deletion may not erase them)\n",
+			program,
+		)
 	}
 	return exitOK
 }
@@ -175,6 +192,7 @@ func readMessage(
 	api *client.Client,
 	link *openLink,
 	source passphraseSource,
+	attachmentsAllowed bool,
 ) (openedMessage, error) {
 	metadata, err := api.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
@@ -182,6 +200,9 @@ func readMessage(
 	}
 	if metadata.State != "available" {
 		return openedMessage{}, &client.APIError{Status: 410, Kind: "gone", State: metadata.State}
+	}
+	if !attachmentsAllowed && core.MayHoldFile(metadata.Size) {
+		return openedMessage{}, errAttachmentNeedsOut
 	}
 	if err = core.AssertProfile(link.kdf, metadata.KDF); err != nil {
 		return openedMessage{}, errors.New("the link does not match the message on the server")
@@ -281,14 +302,6 @@ func saveMessage(
 ) ([]string, error) {
 	var files []outputFile
 	if text := payload.Meta.Text; text != nil {
-		if toStdout && environment.Terminal.StdoutIsTerminal() && strings.ContainsFunc(*text, terminalControl) {
-			fmt.Fprintf(
-				environment.Stderr,
-				"%s: the text holds terminal control characters, so it goes to a file instead of the terminal\n",
-				program,
-			)
-			toStdout = false
-		}
 		if toStdout {
 			printText(environment, *text)
 		} else {
@@ -302,6 +315,13 @@ func saveMessage(
 		}
 		files = append(files, outputFile{name, payload.File})
 	}
+	if len(files) == 0 {
+		return nil, nil
+	}
+	if directory == "" {
+		return nil, errAttachmentNeedsOut
+	}
+	defer wipeOutputFiles(files)
 	paths, err := writeWithFallback(environment, directory, base, files)
 	if err != nil {
 		return nil, err
@@ -315,7 +335,22 @@ func saveMessage(
 	return paths, nil
 }
 
+func wipeOutputFiles(files []outputFile) {
+	for _, file := range files {
+		clear(file.data)
+	}
+}
+
+// printText escapes terminal controls only for a terminal, so a pipe or a file still gets the exact text.
 func printText(environment *Environment, text string) {
+	if environment.Terminal.StdoutIsTerminal() && strings.ContainsFunc(text, terminalControl) {
+		fmt.Fprintf(
+			environment.Stderr,
+			"%s: the text holds terminal control characters, shown escaped; pipe the output to a file for the exact text\n",
+			program,
+		)
+		text = escapeTerminalControls(text)
+	}
 	fmt.Fprint(environment.Stdout, text)
 	if text != "" && !strings.HasSuffix(text, "\n") {
 		fmt.Fprintln(environment.Stdout)
@@ -362,20 +397,27 @@ func writeAll(directory string, files []outputFile) ([]string, error) {
 	return paths, nil
 }
 
-func outputDir(base string, given bool) (string, error) {
-	if given {
-		if info, err := os.Stat(base); err != nil || !info.IsDir() {
-			return "", errors.New("--out must name an existing directory")
+func escapeTerminalControls(text string) string {
+	var out strings.Builder
+	for _, character := range text {
+		if terminalControl(character) {
+			fmt.Fprintf(&out, "\\u%04x", character)
+			continue
 		}
+		out.WriteRune(character)
+	}
+	return out.String()
+}
+
+func outputDir(base string) (string, error) {
+	if info, err := os.Stat(base); err != nil || !info.IsDir() {
+		return "", errors.New("--out must name an existing directory")
 	}
 	directory, err := os.MkdirTemp(base, outputDirPrefix)
-	if err == nil {
-		return directory, nil
-	}
-	if given {
+	if err != nil {
 		return "", errors.New("--out: cannot create a private directory there")
 	}
-	return "", errors.New("cannot create a private directory in the temporary directory")
+	return directory, nil
 }
 
 func removeIfEmpty(directory string) {

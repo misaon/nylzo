@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -183,6 +184,17 @@ func TestPepperFromFile(t *testing.T) {
 		if strings.Contains(refused.Error(), currentPepper) || strings.Contains(refused.Error(), previousPepper) {
 			t.Fatalf("%s: the error leaks the pepper: %v", name, refused)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	shared := write("shared", currentPepper)
+	if err = os.Chmod(shared, 0o640); err != nil {
+		t.Fatal(err)
+	}
+	_, refused := config.FromEnv(environment(map[string]string{"NYLZO_PEPPER_FILE": shared}), true)
+	if !errors.Is(refused, config.ErrInvalid) || !strings.Contains(refused.Error(), "chmod") {
+		t.Fatalf("a pepper file that the group can read: %v", refused)
 	}
 }
 

@@ -19,20 +19,28 @@ declare global {
 
 const PASSPHRASE = 'four random words here';
 const LEFT = 'You left the page, so it no longer shows the message.';
+const REMOVED = /^The key is no longer in the address bar$/;
 
-test('loading, reloading and a return from the back/forward cache spend no open (AK3)', async ({ page }) => {
+test('loading drops the key from the address, and reloading or a return from the back/forward cache spend no open (AK3, D95)', async ({
+  page,
+}) => {
   const message = await createMessageThroughApi({ text: 'still unread' });
   const show = page.getByRole('button', { name: 'Show message' });
   await page.goto(message.link);
   await expect(show).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
   await page.reload();
-  await expect(show).toBeVisible();
+  await expect(page.getByText(REMOVED)).toBeVisible();
+  await page.goto(message.link);
+  await expect(notInert(page, show)).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('');
   await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();
   await returnFromBackForwardCache(page);
-  await expect(show).toBeVisible();
+  await expect(page.getByText(REMOVED)).toBeVisible();
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0 });
-  await show.click();
+  await page.goto(message.link);
+  await notInert(page, show).click();
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('still unread');
 });
@@ -43,7 +51,7 @@ test(
   async ({ page }) => {
     const message = await createMessageThroughApi({ text: 'only once in this tab', opensMax: 2 });
     const readPage = `${BASE_URL}/m/${message.id}`;
-    const damaged = page.getByText(/^The link is incomplete or damaged$/);
+    const removed = page.getByText(REMOVED);
     await openApp(page, '/');
     await showMessage(page, message.link);
     await expectMessageShown(page);
@@ -51,13 +59,13 @@ test(
     await page.goto('/transparency');
     await page.goBack();
     await expect(page).toHaveURL(readPage);
-    await expect(damaged).toBeVisible();
+    await expect(removed).toBeVisible();
     await expect(page.locator('pre')).toHaveCount(0);
     await page.goBack();
     await expect(page).toHaveURL(`${BASE_URL}/`);
     await page.goForward();
     await expect(page).toHaveURL(readPage);
-    await expect(damaged).toBeVisible();
+    await expect(removed).toBeVisible();
     await expect(page.locator('pre')).toHaveCount(0);
     expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
   },
@@ -85,7 +93,7 @@ test('the reader acknowledges the open only once the message is on the screen, a
   await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
-  expect(new URL(page.url()).hash).not.toBe('');
+  expect(new URL(page.url()).hash).toBe('');
   expect(acknowledgements).toEqual([]);
 
   await page.reload();

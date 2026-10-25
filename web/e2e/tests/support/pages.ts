@@ -28,7 +28,7 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
     await choosePassphrase(page, message.passphrase);
   }
   if (message.remember) {
-    await turnOnRemember(page);
+    await chooseRemember(page);
   }
   await page.getByRole('button', { name: 'Create link' }).click();
   return createdLink(page);
@@ -47,11 +47,12 @@ async function openSecurityMenu(page: Page): Promise<void> {
   }
 }
 
-export async function turnOnRemember(page: Page): Promise<void> {
+export async function chooseRemember(page: Page): Promise<void> {
   await openSecurityMenu(page);
   const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
-  await expect(remember).toHaveAttribute('aria-checked', 'false');
-  await remember.click();
+  if ((await remember.getAttribute('aria-checked')) !== 'true') {
+    await remember.click();
+  }
   await expect(remember).toHaveAttribute('aria-checked', 'true');
 }
 

@@ -13,6 +13,7 @@ export {
   LinkVersionError,
   MalformedPassphraseError,
   MetaError,
+  type PassphraseProblem,
   PlaintextError,
   PolicyError,
   PowError,
@@ -22,14 +23,8 @@ export {
   WeakPassphraseError,
 } from './errors.ts';
 export { type ContentKeys, deriveContent, deriveLink, type LinkKeys } from './keys/derive.ts';
-export {
-  assertStrongPassphrase,
-  assertWellFormedPassphrase,
-  KDF_NONE,
-  KDF_SCRYPT,
-  type KdfId,
-  MIN_PASSPHRASE_CHARACTERS,
-} from './keys/kdf.ts';
+export { assertWellFormedPassphrase, KDF_NONE, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
+export { assertStrongPassphrase, generatePassphrase, MIN_PASSPHRASE_CHARACTERS } from './keys/passphrase.ts';
 export {
   HEADER_LENGTH,
   ID_LENGTH,

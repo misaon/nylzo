@@ -68,7 +68,7 @@ type Server struct {
 
 func Defaults() Server {
 	return Server{
-		Listen:        ":8080",
+		Listen:        "127.0.0.1:8080",
 		DataDir:       "data",
 		SweepInterval: 5 * time.Minute,
 		Limits: Limits{
