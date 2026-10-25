@@ -314,8 +314,15 @@ func newStoredBlob() storedBlob {
 
 // sealed encrypts the object with the blob key and pads it with Padmé, so the stored length shows only a size class.
 func (b *storedBlob) sealed(object io.Reader, size, padded int64) io.Reader {
-	plain := io.MultiReader(object, bytes.NewReader(make([]byte, padded-size)))
+	plain := io.MultiReader(object, io.LimitReader(zeros{}, padded-size))
 	return cipher.StreamReader{S: seal.BlobStream(b.key), R: plain}
+}
+
+type zeros struct{}
+
+func (zeros) Read(buffer []byte) (int, error) {
+	clear(buffer)
+	return len(buffer), nil
 }
 
 func (s *Server) receiveBlob(
