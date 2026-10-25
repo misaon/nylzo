@@ -76,7 +76,7 @@ export {
   solvePow,
 } from './request/proof-of-work.ts';
 export {
-  AUTH_SCHEME,
+  AUTHORIZATION_SCHEME,
   authorizationHeader,
   CHALLENGE_LEN,
   type CryptoRequestKey,

@@ -13,7 +13,7 @@ export const MAX_POW_DIFFICULTY = 8;
 
 const NONCE_OFFSET = 4;
 const NONCE_LEN = 16;
-const COUNTER_HEX_CHARS = 16;
+const COUNTER_HEX_DIGITS = 16;
 
 export function parsePowChallenge(text: string): Uint8Array<ArrayBuffer> {
   return decodeBase64urlExact(text, POW_CHALLENGE_LEN);
@@ -42,7 +42,7 @@ export function leadingZeroBits(bytes: Uint8Array): number {
 
 export function powToken(challenge: string, counter: number): string {
   assertCounter(counter);
-  return `${challenge}.${counter.toString(16).padStart(COUNTER_HEX_CHARS, '0')}`;
+  return `${challenge}.${counter.toString(16).padStart(COUNTER_HEX_DIGITS, '0')}`;
 }
 
 export interface SolveOptions {
@@ -55,14 +55,14 @@ export function solvePow(challenge: string, id: Uint8Array, difficulty: number, 
   if (!isUnsignedInteger(difficulty, MAX_POW_DIFFICULTY)) {
     throw new PowError();
   }
-  const raw = parsePowChallenge(challenge);
+  const challengeBytes = parsePowChallenge(challenge);
   const now = options.now ?? Date.now;
   for (let counter = 0; ; counter++) {
     if (options.deadline !== undefined && now() >= options.deadline) {
       throw new PowTimeoutError();
     }
     options.onAttempt?.(counter);
-    if (leadingZeroBits(powDigest(raw, id, counter)) >= difficulty) {
+    if (leadingZeroBits(powDigest(challengeBytes, id, counter)) >= difficulty) {
       return powToken(challenge, counter);
     }
   }
