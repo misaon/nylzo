@@ -255,7 +255,7 @@ export const english: Record<MessageKey, string> = {
   'compose.passphrase.switch.note': 'Without it, even someone who intercepts the link cannot open the message.',
   'compose.passphrase.placeholder': 'e.g. {words} random words',
   'compose.remember.switch': 'Cancel from this device',
-  'compose.remember.note': 'The key for cancelling stays only in this browser.',
+  'compose.remember.note': 'Saves the key for cancelling in this browser only.',
   'compose.attach': 'Attachment',
   'compose.attach.limit': ', up to {size}',
   'compose.submit': 'Encrypt and create link',
@@ -523,7 +523,7 @@ export const english: Record<MessageKey, string> = {
     'After the last open or once it expires, the server deletes the ciphertext. After another {days} it forgets the message ever existed.',
   'promise.cancel.title': 'Cancel from afar',
   'promise.cancel.text':
-    'Sent the link to the wrong person? Cancel the message on the Sent page and see whether anyone has opened it yet.',
+    'Sent the link to the wrong person? If you turned on Cancel from this device, cancel the message on the Sent page and see whether anyone has opened it yet.',
   'promise.open.title': 'Open code and a verifiable build',
   'promise.open.text':
     'The code, the protocol specification and the test vectors are on GitHub under the MIT license. The same source builds the same binary byte for byte, so anyone can verify a release.',

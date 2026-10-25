@@ -14,6 +14,7 @@ import {
   notInert,
   openApp,
   showMessage,
+  turnOnRemember,
 } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
 import { watchViolations } from './support/watchers.ts';
@@ -30,7 +31,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   newPage,
 }) => {
   const violations = await watchViolations(page);
-  const link = await createMessageInPage(page, { text: 'cancel me' });
+  const link = await createMessageInPage(page, { text: 'cancel me', remember: true });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
   await page.getByRole('link', { name: 'Status and cancelling' }).click();
   await expect(page.getByRole('heading', { name: 'Sent messages' })).toBeVisible();
@@ -83,6 +84,7 @@ test('this device remembers a new message as soon as it exists, before the anima
   const completedWrites = await countCompletedWrites(page);
   await openApp(page, '/');
   await page.getByLabel('Message text').fill('remember early');
+  await turnOnRemember(page);
   const created = page.waitForResponse(
     (response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST',
   );
@@ -100,7 +102,7 @@ test(
   'the manage key lies in IndexedDB only as a non-extractable Ed25519 signing key (D39)',
   { tag: '@cross-browser' },
   async ({ page }) => {
-    const link = await createMessageInPage(page, { text: 'key' });
+    const link = await createMessageInPage(page, { text: 'key', remember: true });
     await expect(page.getByText(REMEMBERED)).toBeVisible();
     expect(await sentRecords(page)).toEqual([
       {
@@ -118,7 +120,7 @@ test('a status that answers after the sender forgot the message does not store i
   newPage,
 }) => {
   const completedWrites = await countCompletedWrites(page);
-  const link = await createMessageInPage(page, { text: 'forget me' });
+  const link = await createMessageInPage(page, { text: 'forget me', remember: true });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
   const recipient = await newPage();
   const acknowledged = recipient.waitForResponse((response) => response.url().endsWith('/ack'));
@@ -145,7 +147,7 @@ test('a status that answers after the sender forgot the message does not store i
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
 });
 
-test('a visitor and a sender who opts out leave no database, and every page load drops records 7 days after expiry (D39)', async ({
+test('a visitor and a sender who keeps the default leave no database, and every page load drops records 7 days after expiry (D39)', async ({
   page,
   newPage,
 }) => {
@@ -154,9 +156,7 @@ test('a visitor and a sender who opts out leave no database, and every page load
   await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
   await openApp(page, '/');
   await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
-  const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
-  await remember.click();
-  await expect(remember).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('switch', { name: /^Cancel from this device/ })).toHaveAttribute('aria-checked', 'false');
   await page.getByLabel('Message text').fill('not remembered');
   await page.getByRole('button', { name: 'Create link' }).click();
   await createdLink(page);
@@ -164,7 +164,7 @@ test('a visitor and a sender who opts out leave no database, and every page load
   expect(await databaseNames(page)).toEqual([]);
 
   const sender = await newPage();
-  const kept = idOf(await createMessageInPage(sender, { text: 'kept' }));
+  const kept = idOf(await createMessageInPage(sender, { text: 'kept', remember: true }));
   await expect(sender.getByText(REMEMBERED)).toBeVisible();
   await storeExpiredRecord(sender);
   const storedIds = async () => {
@@ -180,7 +180,7 @@ test('a browser without IndexedDB still creates the link and says it cannot reme
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, 'indexedDB', { value: undefined });
   });
-  await createMessageInPage(page, { text: 'no storage' });
+  await createMessageInPage(page, { text: 'no storage', remember: true });
   await expect(
     page.getByText('This device could not remember the message, so you cannot cancel it from here.'),
   ).toBeVisible();

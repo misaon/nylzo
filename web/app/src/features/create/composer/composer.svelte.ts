@@ -92,7 +92,7 @@ export class Composer {
   opensMax = $state(1);
   protect = $state(false);
   passphrase = $state('');
-  remember = $state(true);
+  remember = $state(false);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
   failure = $state.raw<CreateFailure>();

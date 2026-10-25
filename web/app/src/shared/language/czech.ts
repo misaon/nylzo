@@ -251,7 +251,7 @@ export const czech = {
   'compose.passphrase.switch.note': 'Bez ní zprávu neotevře ani ten, kdo odkaz zachytí.',
   'compose.passphrase.placeholder': 'např. {words} náhodná slova',
   'compose.remember.switch': 'Zrušení z\u{A0}tohoto zařízení',
-  'compose.remember.note': 'Klíč pro zrušení zůstane jen v\u{A0}tomto prohlížeči.',
+  'compose.remember.note': 'Uloží klíč pro zrušení jen v\u{A0}tomto prohlížeči.',
   'compose.attach': 'Příloha',
   'compose.attach.limit': ', nejvýš {size}',
   'compose.submit': 'Zašifrovat a\u{A0}vytvořit odkaz',
@@ -515,7 +515,7 @@ export const czech = {
     'Po posledním otevření nebo po vypršení server šifru smaže. Za dalších {days} zapomene i\u{A0}to, že zpráva existovala.',
   'promise.cancel.title': 'Zrušení na dálku',
   'promise.cancel.text':
-    'Poslali jste odkaz špatně? Na stránce Odeslané zprávu zrušíte a\u{A0}uvidíte, jestli ji už někdo otevřel.',
+    'Poslali jste odkaz špatně? Pokud jste zapnuli Zrušení z\u{A0}tohoto zařízení, na stránce Odeslané zprávu zrušíte a\u{A0}uvidíte, jestli ji už někdo otevřel.',
   'promise.open.title': 'Otevřený kód a\u{A0}ověřitelný build',
   'promise.open.text':
     'Kód, specifikace protokolu i\u{A0}testovací vektory jsou na GitHubu pod licencí MIT. Ze stejného zdroje vznikne bajt po bajtu stejná binárka, takže vydání může ověřit kdokoli.',

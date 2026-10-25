@@ -9,6 +9,7 @@ export interface ComposedMessage {
   readonly text?: string;
   readonly file?: MessageFile;
   readonly passphrase?: string;
+  readonly remember?: boolean;
 }
 
 export async function openApp(page: Page, url: string): Promise<Response | null> {
@@ -26,6 +27,9 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
   if (message.passphrase) {
     await choosePassphrase(page, message.passphrase);
   }
+  if (message.remember) {
+    await turnOnRemember(page);
+  }
   await page.getByRole('button', { name: 'Create link' }).click();
   return createdLink(page);
 }
@@ -36,8 +40,23 @@ export async function createdLink(page: Page): Promise<string> {
   return link.inputValue();
 }
 
+async function openSecurityMenu(page: Page): Promise<void> {
+  const menu = page.getByRole('button', { name: 'Passphrase', exact: true });
+  if ((await menu.getAttribute('aria-expanded')) !== 'true') {
+    await menu.click();
+  }
+}
+
+export async function turnOnRemember(page: Page): Promise<void> {
+  await openSecurityMenu(page);
+  const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
+  await expect(remember).toHaveAttribute('aria-checked', 'false');
+  await remember.click();
+  await expect(remember).toHaveAttribute('aria-checked', 'true');
+}
+
 export async function choosePassphrase(page: Page, passphrase: string): Promise<void> {
-  await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
+  await openSecurityMenu(page);
   const protect = page.getByRole('switch', { name: /^Protect with a passphrase/ });
   if ((await protect.getAttribute('aria-checked')) !== 'true') {
     await protect.click();
