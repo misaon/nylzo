@@ -21,6 +21,12 @@ execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nyl
 });
 
 const dataDirectory = mkdtempSync(path.join(tmpdir(), 'nylzo-e2e-'));
+const keyDirectory = mkdtempSync(path.join(tmpdir(), 'nylzo-e2e-key-'));
+const reportKey = execFileSync(binary, ['report-key', '--key-file', path.join(keyDirectory, 'report-key')], {
+  encoding: 'utf8',
+})
+  .trim()
+  .replace(/^NYLZO_REPORT_KEY=/, '');
 
 const server = spawn(binary, ['serve'], {
   stdio: 'inherit',
@@ -30,6 +36,7 @@ const server = spawn(binary, ['serve'], {
     NYLZO_PUBLIC_URL: `http://127.0.0.1:${port}`,
     NYLZO_DATA_DIR: dataDirectory,
     NYLZO_PEPPER: randomBytes(32).toString('hex'),
+    NYLZO_REPORT_KEY: reportKey,
     NYLZO_RATE_CREATE_HOUR: '0',
     NYLZO_RATE_CREATE_DAY: '0',
     NYLZO_RATE_CREATE_BYTES_DAY: '0',

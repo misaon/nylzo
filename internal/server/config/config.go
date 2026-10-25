@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/hpke"
 	"errors"
 	"fmt"
 	"math"
@@ -52,6 +53,7 @@ type Server struct {
 	DataDir        string
 	Pepper         []byte
 	PepperPrevious []byte
+	ReportKey      hpke.PublicKey
 	TrustedProxies []netip.Prefix
 	ProxyMode      string
 	SweepInterval  time.Duration
@@ -103,7 +105,18 @@ type rule struct {
 	message string
 }
 
+// Validate checks a configuration that serves requests, which needs the operator's report key.
 func (s *Server) Validate() error {
+	if err := s.validateWithoutReports(); err != nil {
+		return err
+	}
+	if s.ReportKey == nil {
+		return fmt.Errorf("%w: NYLZO_REPORT_KEY is required; create a key pair with nylzo report-key", ErrInvalid)
+	}
+	return nil
+}
+
+func (s *Server) validateWithoutReports() error {
 	for _, rule := range s.rules() {
 		if !rule.holds {
 			return fmt.Errorf("%w: %s", ErrInvalid, rule.message)

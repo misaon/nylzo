@@ -29,6 +29,7 @@
           `git clone ${REPOSITORY_URL}`,
           'cd nylzo/deploy/compose',
           'cp .env.example .env',
+          'nylzo report-key --key-file ~/nylzo-report-key >> .env',
           'nano .env',
           'mkdir -p secrets && openssl rand -hex 32 > secrets/pepper',
           'sudo chown 65532:65532 secrets/pepper && sudo chmod 0400 secrets/pepper',
@@ -36,9 +37,11 @@
         ].join('\n');
       }
       case 'binary': {
-        return ['openssl rand -hex 32 > pepper && chmod 0400 pepper', 'NYLZO_PEPPER_FILE=pepper nylzo serve'].join(
-          '\n',
-        );
+        return [
+          'openssl rand -hex 32 > pepper && chmod 0400 pepper',
+          'nylzo report-key --key-file ~/nylzo-report-key > report-key.env',
+          'env $(cat report-key.env) NYLZO_PEPPER_FILE=pepper nylzo serve',
+        ].join('\n');
       }
       case 'verify': {
         return `nylzo verify-client --server https://${translate('host.domain')}`;

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/misaon/nylzo/internal/seal"
 )
 
 type State string
@@ -29,11 +31,18 @@ const (
 	SweepBatch        = 1000
 	BlobGrace         = 15 * time.Minute
 	MinTransferRate   = 16000
+	BlobPurgeStep     = 15 * time.Minute
+	RowPurgeStep      = time.Hour
+	ReportsPerDay     = 3
 )
 
 func CeilMinute(moment time.Time) time.Time {
-	if truncated := moment.Truncate(time.Minute); !truncated.Equal(moment) {
-		return truncated.Add(time.Minute)
+	return ceil(moment, time.Minute)
+}
+
+func ceil(moment time.Time, step time.Duration) time.Time {
+	if truncated := moment.Truncate(step); !truncated.Equal(moment) {
+		return truncated.Add(step)
 	}
 	return moment
 }
@@ -52,6 +61,7 @@ var (
 	ErrLeaseInvalid = errors.New("store: lease is not active")
 	ErrLeaseLimit   = errors.New("store: lease download limit reached")
 	ErrBlobMissing  = errors.New("store: message has no blob")
+	ErrCorrupt      = errors.New("store: a record holds a value it cannot have")
 )
 
 type GoneError struct {
@@ -71,73 +81,34 @@ func (e *PassphraseError) Error() string {
 	return fmt.Sprintf("store: passphrase rejected (retry after %s, %d attempts left)", e.RetryAfter, e.AttemptsLeft)
 }
 
+// Message holds the fields of a sealed record; only a request that brings pk_R or pk_M can read them.
 type Message struct {
-	ID             string
-	Version        uint8
-	KDF            uint8
-	Flags          uint8
-	State          State
-	CreatedAt      time.Time
-	ExpiresAt      time.Time
-	TTLSeconds     uint32
-	OpensMax       uint16
-	OpensRemaining uint16
-	PepperID       byte
-	ReadMAC        []byte
-	ManageMAC      []byte
-	VerifierMAC    []byte
-	Size           int64
-	BlobRef        string
-	FailCountTotal int
-	NextAttemptAt  time.Time
-	FirstOpenedAt  *time.Time
-	Ending         State
+	Version          uint8
+	KDF              uint8
+	Flags            uint8
+	CreatedAt        time.Time
+	ExpiresAt        time.Time
+	TTLSeconds       uint32
+	OpensMax         uint16
+	OpensRemaining   uint16
+	Size             int64
+	VerifierPepperID byte
+	VerifierMAC      []byte
+	FailCountTotal   int
+	NextAttemptAt    time.Time
+	FirstOpenedAt    *time.Time
+	Ending           State
+	EndedAt          time.Time
+	Leases           []Lease
+	ReportDay        int64
+	Reports          int
 }
 
 func (m *Message) PassphraseRequired() bool {
 	return len(m.VerifierMAC) > 0
 }
 
-type Tombstone struct {
-	ID            string
-	PepperID      byte
-	ReadMAC       []byte
-	ManageMAC     []byte
-	State         State
-	FirstOpenedAt *time.Time
-	EndedAt       time.Time
-	PurgeAt       time.Time
-}
-
-type Record struct {
-	Message   *Message
-	Tombstone *Tombstone
-}
-
-func (r Record) PepperID() byte {
-	if r.Message != nil {
-		return r.Message.PepperID
-	}
-	return r.Tombstone.PepperID
-}
-
-func (r Record) ReadMAC() []byte {
-	if r.Message != nil {
-		return r.Message.ReadMAC
-	}
-	return r.Tombstone.ReadMAC
-}
-
-func (r Record) ManageMAC() []byte {
-	if r.Message != nil {
-		return r.Message.ManageMAC
-	}
-	return r.Tombstone.ManageMAC
-}
-
 type Lease struct {
-	RowID     int64
-	ID        string
 	MAC       []byte
 	PepperID  byte
 	ExpiresAt time.Time
@@ -148,14 +119,24 @@ func (l *Lease) Active(now time.Time) bool {
 	return now.Before(l.ExpiresAt)
 }
 
-type Ending struct {
-	State    State
-	Ref      string
-	Recorded bool
+// Row is what the store keeps; only the locator, the blob reference and the two cleanup times are in the clear.
+type Row struct {
+	Locator     seal.Locator
+	ReadWrap    []byte
+	ManageWrap  []byte
+	Record      []byte
+	BlobRef     string
+	BlobWrap    []byte
+	BlobPurgeAt time.Time
+	PurgeAt     time.Time
+}
+
+type DueBlob struct {
+	Locator seal.Locator
+	Ref     string
 }
 
 type ClaimParameters struct {
-	ID            string
 	Clock         func() time.Time
 	VerifierSent  bool
 	VerifyMAC     func(pepperID byte, storedMAC []byte) bool
@@ -179,29 +160,14 @@ type RateCount struct {
 	Count int64
 }
 
-type ExpiredMessage struct {
-	ID        string
-	BlobRef   string
-	ExpiresAt time.Time
-}
-
 type Messages interface {
-	Create(ctx context.Context, message *Message, counters ...RateHit) error
-	Get(ctx context.Context, id string) (Record, error)
-	Claim(ctx context.Context, parameters ClaimParameters) (ClaimResult, error)
-	Leases(ctx context.Context, id string) ([]Lease, error)
-	RecordDownload(ctx context.Context, lease *Lease, now time.Time) error
-	Ack(ctx context.Context, lease *Lease, now time.Time) (string, error)
-	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
-	ClearBlob(ctx context.Context, id, blobRef string, now time.Time) error
-	MarkEnding(ctx context.Context, id string, state State, now time.Time) (Ending, error)
-	End(ctx context.Context, id string, state State, now time.Time) error
-	EndExpired(ctx context.Context, ids []string, now time.Time) (int, error)
-	ExpiredPage(ctx context.Context, now time.Time, after ExpiredMessage, limit int) ([]ExpiredMessage, error)
-	SpentPage(ctx context.Context, after string, limit int) ([]string, error)
-	EndingPage(ctx context.Context, now time.Time, after string, limit int) ([]string, error)
-	PurgeLeases(ctx context.Context, now time.Time, limit int) (int, error)
-	PurgeTombstones(ctx context.Context, now time.Time, limit int) (int, error)
+	Create(ctx context.Context, row *Row, counters ...RateHit) error
+	Load(ctx context.Context, locator seal.Locator) (Row, error)
+	Update(ctx context.Context, locator seal.Locator, change func(row *Row) error) error
+	DueBlobs(ctx context.Context, now time.Time, after seal.Locator, limit int) ([]DueBlob, error)
+	ShredBlobs(ctx context.Context, due []DueBlob) error
+	ForgetBlobs(ctx context.Context, due []DueBlob) error
+	PurgeRows(ctx context.Context, now time.Time, limit int) (int, error)
 	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
 }
 

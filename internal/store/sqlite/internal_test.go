@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -22,30 +23,6 @@ func openTest(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { opened.Close() })
 	return opened
-}
-
-func createTest(t *testing.T, storage *Store, id string, ttl time.Duration) {
-	t.Helper()
-	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
-	mac := bytes.Repeat([]byte{7}, 32)
-	err := storage.Create(t.Context(), &store.Message{
-		ID:             id,
-		Version:        1,
-		State:          store.StateAvailable,
-		CreatedAt:      now,
-		ExpiresAt:      now.Add(ttl),
-		TTLSeconds:     uint32(ttl.Seconds()),
-		OpensMax:       1,
-		OpensRemaining: 1,
-		PepperID:       7,
-		ReadMAC:        mac,
-		ManageMAC:      mac,
-		Size:           64,
-		BlobRef:        id,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestConnectionsKeepTheirCacheAndTemporaryCopiesInMemory(t *testing.T) {
@@ -123,69 +100,26 @@ func TestACommitAfterTheClientLeftReportsTheCancellation(t *testing.T) {
 	}
 }
 
-func TestImpossibleColumnsAreCorruptRows(t *testing.T) {
+func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 	t.Parallel()
 	storage, ctx := openTest(t), t.Context()
-	const spent, corrupt = "AAAAAAAAAAAAAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAQ"
-	createTest(t, storage, spent, time.Hour)
-	createTest(t, storage, corrupt, time.Hour)
-	if _, err := storage.writer.Exec(`UPDATE messages SET opens_remaining = 0 WHERE id = ?`, spent); err != nil {
-		t.Fatal(err)
-	}
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
-	parameters := store.ClaimParameters{
-		ID:            spent,
-		Clock:         func() time.Time { return now },
-		LeaseMAC:      []byte{1},
-		LeasePepperID: 7,
-	}
-	if _, err := storage.Claim(ctx, parameters); goneState(err) != store.StateOpened {
-		t.Fatalf("an available row without opens left gave an open: %v", err)
-	}
-	var remaining int
-	err := storage.writer.QueryRow(`SELECT opens_remaining FROM messages WHERE id = ?`, spent).Scan(&remaining)
-	if err != nil || remaining != 0 {
-		t.Fatalf("the counter wrapped: %d %v", remaining, err)
-	}
-	for _, update := range []string{
-		`UPDATE messages SET opens_max = 70000, opens_remaining = 70000 WHERE id = ?`,
-		`UPDATE messages SET opens_max = 1, opens_remaining = 1, kdf_id = 257 WHERE id = ?`,
-	} {
-		if _, err = storage.writer.Exec(update, corrupt); err != nil {
+	insert := `INSERT INTO messages (locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at)
+		VALUES (?, x'00', x'00', x'00', ?, x'00', ?, ?)`
+	good := bytes.Repeat([]byte{2}, seal.LocatorLen)
+	for locator, ref := range map[string]string{string([]byte{1, 2, 3}): "corrupt", string(good): "good"} {
+		if _, err := storage.writer.Exec(insert, []byte(locator), ref, now.UnixMilli(), now.UnixMilli()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err = storage.Get(ctx, corrupt); !errors.Is(err, errCorruptRow) {
-			t.Fatalf("%s: the row was read: %v", update, err)
-		}
 	}
-	if _, err = storage.Claim(ctx, store.ClaimParameters{ID: spent}); !errors.Is(err, errClaimParameters) {
-		t.Fatalf("a claim without a clock: %v", err)
+	page, err := storage.DueBlobs(ctx, now, seal.Locator{}, store.SweepBatch)
+	if err != nil || len(page) != 1 || page[0].Ref != "good" {
+		t.Fatalf("a row with a corrupt locator must not hide the others: %+v %v", page, err)
 	}
-}
-
-func TestACorruptRowLeavesTheRestOfItsPageToEnd(t *testing.T) {
-	t.Parallel()
-	storage, ctx := openTest(t), t.Context()
-	ids := []string{"AAAAAAAAAAAAAAAAAAAAAA", "AAAAAAAAAAAAAAAAAAAAAQ"}
-	for _, id := range ids {
-		createTest(t, storage, id, time.Minute)
-	}
-	if _, err := storage.writer.Exec(`UPDATE messages SET opens_remaining = 5 WHERE id = ?`, ids[0]); err != nil {
+	if _, err = storage.Load(ctx, seal.Locator(good)); err != nil {
 		t.Fatal(err)
 	}
-	ended, err := storage.EndExpired(ctx, ids, time.Date(2026, 10, 22, 13, 0, 0, 0, time.UTC))
-	if ended != 1 || !errors.Is(err, errCorruptRow) {
-		t.Fatalf("end expired: %d %v", ended, err)
+	if purged, purgeErr := storage.PurgeRows(ctx, now, store.SweepBatch); purgeErr != nil || purged != 2 {
+		t.Fatalf("the purge must remove a corrupt row too: %d %v", purged, purgeErr)
 	}
-	record, err := storage.Get(ctx, ids[1])
-	if err != nil || record.Tombstone == nil || record.Tombstone.State != store.StateExpired {
-		t.Fatalf("the row after a corrupt one did not end: %+v %v", record, err)
-	}
-}
-
-func goneState(err error) store.State {
-	if gone, ok := errors.AsType[*store.GoneError](err); ok {
-		return gone.State
-	}
-	return ""
 }

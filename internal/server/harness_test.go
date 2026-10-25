@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -24,6 +25,8 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/store"
@@ -36,6 +39,14 @@ var (
 	pepperB     = bytes.Repeat([]byte{0x22}, 32)
 	errInjected = errors.New("test: injected storage failure")
 )
+
+var testReportKey = func() hpke.PrivateKey {
+	key, err := abuse.NewKeyPair()
+	if err != nil {
+		panic(err)
+	}
+	return key
+}()
 
 type fakeClock struct {
 	mutex sync.Mutex
@@ -123,6 +134,7 @@ type testRequest struct {
 
 func baseSettings(pepper, previous []byte) *config.Server {
 	settings := config.Defaults()
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.Pepper = pepper
 	settings.PepperPrevious = previous
 	settings.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
@@ -325,7 +337,11 @@ func (h *testHarness) lastCreateRequest() []byte {
 
 func (h *testHarness) create(message *testMessage) (testResponse, responseBody) {
 	h.t.Helper()
-	return h.do(createRequestFor(message))
+	response, body := h.do(createRequestFor(message))
+	if response.StatusCode == http.StatusCreated {
+		h.blobRef(message)
+	}
+	return response, body
 }
 
 func (h *testHarness) mustCreate(message *testMessage) {
@@ -395,14 +411,122 @@ func (h *testHarness) post(message *testMessage, action, token string) (testResp
 	})
 }
 
-func (h *testHarness) blobExists(id core.ID) bool {
+// blobExists checks the file under the blob reference the message got at creation.
+func (h *testHarness) blobExists(message *testMessage) bool {
 	h.t.Helper()
-	blob, _, err := h.blobs.Open(h.t.Context(), id.String())
+	ref := h.blobRef(message)
+	if ref == "" {
+		return false
+	}
+	blob, _, err := h.blobs.Open(h.t.Context(), ref)
 	if err != nil {
 		return false
 	}
 	blob.Close()
 	return true
+}
+
+func (h *testHarness) storedBlobs() int {
+	h.t.Helper()
+	objects, err := h.blobs.List(h.t.Context())
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return len(objects)
+}
+
+func (h *testHarness) blobRef(message *testMessage) string {
+	if message.blobRef == "" {
+		if record, err := h.record(message); err == nil {
+			message.blobRef = record.Row.BlobRef
+		}
+	}
+	return message.blobRef
+}
+
+// record opens the sealed row with the read key, as an authorized request would.
+func (h *testHarness) record(message *testMessage) (store.Record, error) {
+	return h.recordFrom(h.store, message)
+}
+
+func (h *testHarness) recordIn(storage store.Store, message *testMessage) store.Record {
+	h.t.Helper()
+	record, err := h.recordFrom(storage, message)
+	if err != nil {
+		h.t.Error(err)
+	}
+	return record
+}
+
+func (h *testHarness) recordFrom(storage store.Store, message *testMessage) (store.Record, error) {
+	row, err := storage.Load(h.t.Context(), seal.LocatorOf(message.id[:]))
+	if err != nil {
+		return store.Record{}, err
+	}
+	readKey := core.PublicKey(&message.link.R)
+	return openRow(&row, seal.Read, readKey[:])
+}
+
+func (h *testHarness) mustRecord(message *testMessage) store.Record {
+	h.t.Helper()
+	record, err := h.record(message)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return record
+}
+
+// rewrite seals the row again after change, keeping its blob, the way a row stored by an older build would look.
+func (h *testHarness) rewrite(message *testMessage, change func(*store.Message)) {
+	h.t.Helper()
+	record := h.mustRecord(message)
+	blobKey, err := record.BlobKey()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	change(record.Message)
+	readKey, manageKey := core.PublicKey(&message.link.R), core.PublicKey(message.manage)
+	rebuilt := store.NewRecord(
+		record.Row.Locator,
+		record.Message,
+		readKey[:],
+		manageKey[:],
+		record.Row.BlobRef,
+		blobKey,
+	)
+	rebuilt.Row.BlobPurgeAt, rebuilt.Row.PurgeAt = record.Row.BlobPurgeAt, record.Row.PurgeAt
+	err = h.store.Update(h.t.Context(), record.Row.Locator, func(row *store.Row) error {
+		*row = rebuilt.Row
+		return nil
+	})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+// endedState reports the state of a message whose blob is gone, the shape a tombstone had.
+func (h *testHarness) endedState(message *testMessage) (store.State, bool) {
+	record, err := h.record(message)
+	if err != nil || record.HasBlob() {
+		return "", false
+	}
+	return record.State(h.clock.Now()), true
+}
+
+func (h *testHarness) markEnding(message *testMessage, state store.State) {
+	h.t.Helper()
+	record := h.mustRecord(message)
+	if _, err := store.MarkEnding(h.t.Context(), h.store, &record, state, h.clock.Now()); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func (h *testHarness) finish(message *testMessage, now time.Time) (bool, error) {
+	record, err := h.record(message)
+	if err != nil {
+		return false, err
+	}
+	return store.Finish(h.t.Context(), h.store, h.blobs, &record, now)
 }
 
 func (h *testHarness) openObject(message *testMessage, object []byte, policy string) (core.Payload, error) {
@@ -457,11 +581,12 @@ func (h *testHarness) withIDToken(header string) string {
 }
 
 func (h *testHarness) abuseFile(day time.Time) string {
-	return filepath.Join(h.directory, "abuse", day.UTC().Format(time.DateOnly)+".jsonl")
+	return filepath.Join(h.directory, "abuse", day.UTC().Format(time.DateOnly)+abuse.FileExtension)
 }
 
+// abuseReports opens the sealed reports with the operator's key and returns them as JSON lines.
 func (h *testHarness) abuseReports() ([]byte, error) {
-	files, err := filepath.Glob(filepath.Join(h.directory, "abuse", "*.jsonl"))
+	files, err := filepath.Glob(filepath.Join(h.directory, "abuse", "*"+abuse.FileExtension))
 	if err != nil || len(files) == 0 {
 		return nil, cmp.Or(err, os.ErrNotExist)
 	}
@@ -472,7 +597,17 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		all = append(all, data...)
+		for line := range strings.Lines(string(data)) {
+			report, openErr := abuse.Open(testReportKey, strings.TrimSpace(line))
+			if openErr != nil {
+				return nil, openErr
+			}
+			encoded, encodeErr := json.Marshal(report)
+			if encodeErr != nil {
+				return nil, encodeErr
+			}
+			all = append(append(all, encoded...), '\n')
+		}
 	}
 	return all, nil
 }
@@ -586,6 +721,7 @@ type testMessage struct {
 	manageToken string
 	verifier    string
 	address     string
+	blobRef     string
 }
 
 func newMessage(t *testing.T, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) *testMessage {

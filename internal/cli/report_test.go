@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/abuse"
 )
 
 func TestReportSendsARedactedReason(t *testing.T) {
@@ -32,19 +33,20 @@ func TestReportSendsARedactedReason(t *testing.T) {
 	if result.code != exitOK || !strings.Contains(result.stdout, "the report was sent") {
 		t.Fatalf("%+v", result)
 	}
-	files, err := filepath.Glob(filepath.Join(instance.directory, "abuse", "*.jsonl"))
+	files, err := filepath.Glob(filepath.Join(instance.directory, "abuse", "*"+abuse.FileExtension))
 	if err != nil || len(files) != 1 {
 		t.Fatalf("abuse files %v %v", files, err)
 	}
-	stored, err := os.ReadFile(files[0])
+	sealed, err := os.ReadFile(files[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(stored), parsed.ID.String()) ||
-		!strings.Contains(string(stored), "https://evil.example/[redacted]") ||
-		strings.Contains(string(stored), "#1.0") ||
-		!strings.Contains(string(stored), `"good_faith":true,"contact":"jana@example.cz"`) {
-		t.Fatalf("stored report %s", stored)
+	stored, err := abuse.Open(testReportKey, strings.TrimSpace(string(sealed)))
+	if err != nil || stored.ID != parsed.ID.String() ||
+		stored.Reason != "phishing, see https://evil.example/[redacted]" ||
+		!stored.GoodFaith ||
+		stored.Contact != "jana@example.cz" {
+		t.Fatalf("stored report %+v %v", stored, err)
 	}
 }
 

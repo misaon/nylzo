@@ -5,11 +5,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -20,7 +19,6 @@ type access struct {
 	record    store.Record
 	known     bool
 	signature core.Signature
-	leases    []store.Lease
 }
 
 // authorize does the same work for an unknown id, a wrong key and a failed signature (spec §5.5, AK21).
@@ -28,24 +26,28 @@ func (s *Server) authorize(
 	ctx context.Context,
 	r *http.Request,
 	rawID string,
-	purpose pepper.Purpose,
+	purpose seal.Purpose,
 	body []byte,
 ) (access, bool, error) {
 	id, idErr := core.ParseID(rawID)
 	signature, parsed := parseSignature(r)
 	fresh := spentBy(r, signature.Challenge)
 	granted := access{id: id, signature: signature}
+	row := s.dummyRow
 	if idErr == nil {
-		var err error
-		if granted.record, granted.known, err = s.lookUp(ctx, id); err != nil {
+		found, known, err := s.lookUp(ctx, id)
+		if err != nil {
 			return granted, false, err
 		}
+		if known {
+			row, granted.known = found, true
+		}
 	}
-	verified := s.verifySignature(r, &granted, purpose, body)
-	if !granted.known || !parsed || !fresh || !verified {
+	opened := openWithSignature(r, &granted, &row, purpose, body)
+	if !granted.known || !parsed || !fresh || !opened {
 		return granted, false, nil
 	}
-	s.settle(ctx, &granted, s.clock())
+	s.settle(ctx, &granted.record, s.clock())
 	return granted, true, nil
 }
 
@@ -57,51 +59,58 @@ func parseSignature(r *http.Request) (core.Signature, bool) {
 	return signature, true
 }
 
-func (s *Server) lookUp(ctx context.Context, id core.ID) (store.Record, bool, error) {
-	record, err := s.store.Get(ctx, id.String())
+func (s *Server) lookUp(ctx context.Context, id core.ID) (store.Row, bool, error) {
+	row, err := s.store.Load(ctx, seal.LocatorOf(id[:]))
 	if err == nil {
-		return record, true, nil
+		return row, true, nil
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		return store.Record{}, false, nil
+		return store.Row{}, false, nil
 	}
-	return store.Record{}, false, err
+	return store.Row{}, false, err
 }
 
-func (s *Server) verifySignature(r *http.Request, granted *access, purpose pepper.Purpose, body []byte) bool {
-	mac, pepperID := s.ring.Dummy(), s.ring.CurrentID()
-	if granted.known {
-		mac, pepperID = granted.record.ReadMAC(), granted.record.PepperID()
-		if purpose == pepper.Manage {
-			mac = granted.record.ManageMAC()
-		}
-	}
+func openWithSignature(
+	r *http.Request,
+	granted *access,
+	row *store.Row,
+	purpose seal.Purpose,
+	body []byte,
+) bool {
 	signature := granted.signature
 	keyOK := core.ValidPublicKey(signature.PublicKey[:])
 	if !keyOK {
 		signature.PublicKey = dummyPublicKey
 	}
-	macOK := s.ring.Verify(purpose, signature.PublicKey[:], mac, pepperID)
+	record, openErr := openRow(row, purpose, signature.PublicKey[:])
 	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body)
-	return keyOK && macOK && signatureOK
+	granted.record = record
+	return keyOK && openErr == nil && signatureOK
 }
 
-func signedPurpose(purpose pepper.Purpose) string {
-	if purpose == pepper.Manage {
+// openRow opens the record with a zero key after a failed unwrap, so a wrong key costs the same work as a right one.
+func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Record, error) {
+	wrapped := row.ReadWrap
+	if purpose == seal.Manage {
+		wrapped = row.ManageWrap
+	}
+	key, unwrapErr := seal.Unwrap(seal.KeyFor(publicKey, row.Locator, purpose), wrapped, row.Locator, purpose)
+	record, openErr := store.OpenRecord(row, key)
+	return record, errors.Join(unwrapErr, openErr)
+}
+
+func signedPurpose(purpose seal.Purpose) string {
+	if purpose == seal.Manage {
 		return core.PurposeManage
 	}
 	return core.PurposeRead
 }
 
 // settle finishes what only an authorized request may finish: an ending, or the release after the last lease.
-func (s *Server) settle(ctx context.Context, granted *access, now time.Time) {
-	message := granted.record.Message
-	if message == nil {
-		return
-	}
-	settled, err := s.settleMessage(ctx, granted, message, now)
-	if err == nil && settled {
-		err = s.reload(ctx, granted)
+func (s *Server) settle(ctx context.Context, record *store.Record, now time.Time) {
+	finished, err := store.Finish(ctx, s.store, s.blobs, record, now)
+	if err == nil && finished {
+		err = s.reload(ctx, record)
 	}
 	if err != nil {
 		entry := failure(ctx, err)
@@ -109,46 +118,20 @@ func (s *Server) settle(ctx context.Context, granted *access, now time.Time) {
 	}
 }
 
-func (s *Server) reload(ctx context.Context, granted *access) error {
-	record, err := s.store.Get(ctx, granted.id.String())
+func (s *Server) reload(ctx context.Context, record *store.Record) error {
+	row, err := s.store.Load(ctx, record.Row.Locator)
 	if err != nil {
 		return err
 	}
-	granted.record = record
+	reloaded, err := store.OpenRecord(&row, record.Key)
+	if err != nil {
+		return err
+	}
+	*record = reloaded
 	return nil
 }
 
-func (s *Server) settleMessage(
-	ctx context.Context,
-	granted *access,
-	message *store.Message,
-	now time.Time,
-) (bool, error) {
-	id := granted.id.String()
-	var err error
-	switch {
-	case ended(message, now):
-		_, err = store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
-	case message.OpensRemaining == 0:
-		leases, leasesErr := s.store.Leases(ctx, id)
-		if leasesErr != nil {
-			return false, leasesErr
-		}
-		if slices.ContainsFunc(leases, func(lease store.Lease) bool { return lease.Active(now) }) {
-			granted.leases = leases
-			return false, nil
-		}
-		_, err = store.Release(ctx, s.store, s.blobs, id, now)
-	default:
-		return false, nil
-	}
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return false, err
-	}
-	return true, nil
-}
-
-func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose) (access, bool) {
+func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose seal.Purpose) (access, bool) {
 	if !emptyBody(w, r) {
 		return access{}, false
 	}
@@ -164,17 +147,13 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose pepp
 	return granted, true
 }
 
-func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose pepper.Purpose) (access, bool) {
+func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose seal.Purpose) (access, bool) {
 	granted, ok := s.authorized(w, r, purpose)
 	if !ok {
 		return granted, false
 	}
-	if tombstone := granted.record.Tombstone; tombstone != nil {
-		writeGone(w, string(tombstone.State))
-		return granted, false
-	}
-	if now := s.clock(); ended(granted.record.Message, now) {
-		writeGone(w, string(liveState(granted.record.Message, now)))
+	if now := s.clock(); granted.record.Ended(now) {
+		writeGone(w, string(granted.record.State(now)))
 		return granted, false
 	}
 	return granted, true
@@ -197,20 +176,17 @@ func validPathID(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-func ended(message *store.Message, now time.Time) bool {
-	return message.Ending != "" || !now.Before(message.ExpiresAt)
-}
-
-func liveState(message *store.Message, now time.Time) store.State {
-	expired := !now.Before(message.ExpiresAt)
-	switch {
-	case message.Ending != "":
-		return message.Ending
-	case expired && message.OpensRemaining == 0:
-		return store.StateOpened
-	case expired:
-		return store.StateExpired
-	default:
-		return message.State
-	}
+// newDummyRow is opened instead of a missing row; random wrapping keys make sure no public key opens it.
+func newDummyRow() store.Row {
+	id := core.NewID()
+	message := &store.Message{Version: 1, OpensMax: 1, OpensRemaining: 1}
+	record := store.NewRecord(
+		seal.LocatorOf(id[:]),
+		message,
+		core.NewSecret()[:],
+		core.NewSecret()[:],
+		"",
+		seal.NewKey(),
+	)
+	return record.Row
 }

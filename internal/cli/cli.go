@@ -74,7 +74,9 @@ func commands() []command {
 		{"burn", "delete the remaining opens of a message from its link", runBurn},
 		{"serve", "run the server with the embedded web client", runServe},
 		{"sweep-once", "run one sweep of the server store and exit", runSweepOnce},
-		{"takedown", "end reported messages by id from stdin, on the server host", runTakedown},
+		{"takedown", "remove reported messages by id from stdin, on the server host", runTakedown},
+		{"report-key", "create the key pair that seals abuse reports for the operator", runReportKey},
+		{"reports", "open sealed abuse reports from stdin with the operator's private key", runReports},
 		{"verify-client", "check that a server sends the same web client as this nylzo", runVerifyClient},
 		{"version", "print the version", runVersion},
 	}

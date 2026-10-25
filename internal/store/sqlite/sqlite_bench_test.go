@@ -9,27 +9,20 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-func BenchmarkGet(b *testing.B) {
+func BenchmarkLoadAndOpen(b *testing.B) {
 	storage := openStore(b, filepath.Join(b.TempDir(), "nylzo.db"))
-	message := newMessage(1, false)
-	create(b, storage, message)
-	for b.Loop() {
-		if _, err := storage.Get(b.Context(), message.ID); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkLeases(b *testing.B) {
-	storage := openStore(b, filepath.Join(b.TempDir(), "nylzo.db"))
-	message := newMessage(3, false)
-	create(b, storage, message)
+	record := newRecord(3, false)
+	create(b, storage, record)
 	for range 3 {
-		claim(b, storage, message, testNow)
+		claim(b, storage, record, testNow)
 	}
 	for b.Loop() {
-		if leases, err := storage.Leases(b.Context(), message.ID); err != nil || len(leases) != 3 {
-			b.Fatal(len(leases), err)
+		row, err := storage.Load(b.Context(), record.Row.Locator)
+		if err == nil {
+			_, err = store.OpenRecord(&row, record.Key)
+		}
+		if err != nil {
+			b.Fatal(err)
 		}
 	}
 }

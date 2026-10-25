@@ -1,8 +1,7 @@
 package abuse
 
 import (
-	"context"
-	"encoding/json"
+	"crypto/hpke"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -12,89 +11,39 @@ import (
 	"sync"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
-	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	Retention        = 7 * 24 * time.Hour
-	directoryName    = "abuse"
-	fileExtension    = ".jsonl"
-	legacyFile       = "abuse-reports.jsonl"
-	maxFilesBytes    = 16 << 20
-	perMessagePerDay = 3
-	counterKeyPrefix = "abuse:id:"
+	Retention       = 7 * 24 * time.Hour
+	directoryName   = "abuse"
+	FileExtension   = ".sealed"
+	legacyExtension = ".jsonl"
+	legacyFile      = "abuse-reports.jsonl"
+	maxFilesBytes   = 16 << 20
 )
 
-var (
-	ErrFull  = errors.New("server: abuse report files reached their size limit")
-	ErrLimit = errors.New("server: the message already has its reports for the day")
-)
-
-type Report struct {
-	ID        string
-	Reason    string
-	Contact   string
-	GoodFaith bool
-}
-
-type record struct {
-	Date      string `json:"date"`
-	ID        string `json:"id"`
-	Reason    string `json:"reason"`
-	GoodFaith bool   `json:"good_faith"`
-	Contact   string `json:"contact,omitempty"`
-}
+var ErrFull = errors.New("server: abuse report files reached their size limit")
 
 type Reports struct {
 	directory string
-	counters  store.Counters
+	key       hpke.PublicKey
 	logger    *slog.Logger
 	mutex     sync.Mutex
 }
 
-func NewReports(dataDir string, counters store.Counters, logger *slog.Logger) *Reports {
-	return &Reports{directory: Directory(dataDir), counters: counters, logger: logger}
+func NewReports(dataDir string, key hpke.PublicKey, logger *slog.Logger) *Reports {
+	return &Reports{directory: Directory(dataDir), key: key, logger: logger}
 }
 
 func Directory(dataDir string) string {
 	return filepath.Join(dataDir, directoryName)
 }
 
-// Record stores at most three reports per message and UTC day and keeps the count only for stored reports.
-func (r *Reports) Record(ctx context.Context, now time.Time, report *Report) error {
-	day := ratelimit.Day(now)
-	key := counterKeyPrefix + report.ID
-	count, err := r.counters.RateReserve(
-		context.WithoutCancel(ctx),
-		store.RateHit{Key: key, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: perMessagePerDay},
-	)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return ErrLimit
-	}
-	appendErr := r.append(now, report)
-	if appendErr == nil {
-		return nil
-	}
-	if releaseErr := r.counters.RateRelease(context.WithoutCancel(ctx), key, day.Start); releaseErr != nil {
-		r.logger.ErrorContext(ctx, "abuse-release", "err", logging.ErrorText(releaseErr))
-	}
-	return appendErr
-}
-
-func (r *Reports) append(now time.Time, report *Report) error {
-	line, err := json.Marshal(record{
-		Date:      reportDate(now),
-		ID:        report.ID,
-		Reason:    core.RedactReason(report.Reason),
-		GoodFaith: report.GoodFaith,
-		Contact:   report.Contact,
-	})
+// Record seals the report to the operator's public key and appends it to the file of its UTC day.
+func (r *Reports) Record(now time.Time, report *Report) error {
+	line, err := Seal(r.key, now, report)
 	if err != nil {
 		return err
 	}
@@ -113,7 +62,7 @@ func (r *Reports) append(now time.Time, report *Report) error {
 	if used+int64(len(line))+1 > maxFilesBytes {
 		return ErrFull
 	}
-	path := filepath.Join(r.directory, reportDate(now)+fileExtension)
+	path := filepath.Join(r.directory, reportDate(now)+FileExtension)
 	if writeErr := appendLine(path, line); writeErr != nil {
 		return writeErr
 	}
@@ -133,7 +82,7 @@ func appendLine(path string, line []byte) error {
 	return errors.Join(err, file.Sync(), file.Close())
 }
 
-// Prune deletes the day files older than the retention and the report file of older builds.
+// Prune deletes the day files older than the retention, sealed or from older builds.
 func Prune(dataDir string, now time.Time) error {
 	return pruneDirectory(Directory(dataDir), now)
 }
@@ -184,8 +133,11 @@ func reportDate(moment time.Time) string {
 }
 
 func reportDay(name string) (string, bool) {
-	day, ok := strings.CutSuffix(name, fileExtension)
-	if _, err := time.Parse(time.DateOnly, day); !ok || err != nil {
+	day, sealed := strings.CutSuffix(name, FileExtension)
+	if !sealed {
+		day, sealed = strings.CutSuffix(name, legacyExtension)
+	}
+	if _, err := time.Parse(time.DateOnly, day); !sealed || err != nil {
 		return "", false
 	}
 	return day, true

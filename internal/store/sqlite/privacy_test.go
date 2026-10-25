@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,72 +19,94 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "nylzo.db")
 	storage, blobs := openStore(t, path), newBlobs(t, directory)
-	message := newMessage(1, true)
-	message.CreatedAt = time.Date(2026, 10, 22, 12, 34, 56, 789e6, time.UTC)
-	message.ExpiresAt = message.CreatedAt.Add(time.Hour)
-	if err := blobs.Put(t.Context(), message.ID, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+	record := newRecord(1, true)
+	if err := blobs.Put(t.Context(), record.Row.BlobRef, bytes.NewReader(make([]byte, 64)), 64); err != nil {
 		t.Fatal(err)
 	}
-	create(t, storage, message)
-	claimedAt := message.CreatedAt.Add(time.Minute)
-	parameters := claimParams(message, claimedAt)
+	create(t, storage, record)
+	locator, sealed := record.Row.Locator, slices.Clone(record.Row.Record)
+	claimedAt := testNow.Add(time.Minute)
+	parameters := claimParams(claimedAt)
 	parameters.VerifierSent = true
 	parameters.VerifyMAC = func(byte, []byte) bool { return true }
-	claimed, err := storage.Claim(t.Context(), parameters)
+	claimed, err := store.Claim(t.Context(), storage, record, parameters)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = store.AckLease(t.Context(), storage, blobs, &claimed.Lease, claimedAt); err != nil {
+	if err = store.Ack(t.Context(), storage, blobs, record, claimed.Lease.MAC, claimedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = store.SweepAll(t.Context(), storage, blobs, message.CreatedAt.Add(9*24*time.Hour)); err != nil {
+	if _, err = store.SweepAll(t.Context(), storage, blobs, testNow.Add(9*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = storage.Get(t.Context(), message.ID); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("the tombstone was not purged: %v", err)
+	if _, err = storage.Load(t.Context(), locator); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the ended message was not purged: %v", err)
 	}
 	for _, name := range []string{path, path + "-wal"} {
 		data, readErr := os.ReadFile(name)
 		if readErr != nil && !os.IsNotExist(readErr) {
 			t.Fatal(readErr)
 		}
-		if bytes.Contains(data, []byte(message.ID)) {
-			t.Fatalf("%s still holds the id of a purged message", filepath.Base(name))
+		if bytes.Contains(data, locator[:]) || bytes.Contains(data, sealed[:64]) ||
+			bytes.Contains(data, []byte(record.Row.BlobRef)) {
+			t.Fatalf("%s still holds a trace of a purged message", filepath.Base(name))
 		}
 	}
 }
 
-func TestStoredTimesAndRowIDsRevealNoOrder(t *testing.T) {
+// TestTheDatabaseHoldsNoMessageFieldInTheClear covers D101: only the locator, sealed bytes and two rounded times stay readable.
+func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	storage := openStore(t, path)
-	locked := newMessage(1, true)
+	locked := newRecord(1, true)
 	create(t, storage, locked)
 	attemptAt := testNow.Add(17*time.Second + 123*time.Millisecond)
-	parameters := claimParams(locked, attemptAt)
+	parameters := claimParams(attemptAt)
 	parameters.VerifierSent = true
 	parameters.VerifyMAC = func(byte, []byte) bool { return false }
-	database := openRaw(t, path)
 	for attempt := 1; attempt <= store.FreeAttempts+1; attempt++ {
-		if _, err := storage.Claim(t.Context(), parameters); !isPassphraseError(err) {
+		if _, err := store.Claim(t.Context(), storage, locked, parameters); !isPassphraseError(err) {
 			t.Fatalf("attempt %d: %v", attempt, err)
 		}
-		var next int64
-		if err := database.QueryRow(`SELECT next_attempt_at FROM messages WHERE id = ?`, locked.ID).
-			Scan(&next); err != nil {
-			t.Fatal(err)
-		}
-		free := attempt <= store.FreeAttempts
-		if free && next != 0 || !free && (next%time.Minute.Milliseconds() != 0 || next <= attemptAt.UnixMilli()) {
-			t.Fatalf("attempt %d stored next_attempt_at %d, which reveals the attempt time", attempt, next)
+	}
+	shared := newRecord(3, false)
+	create(t, storage, shared)
+	var leaseMACs [][]byte
+	for range 3 {
+		leaseMACs = append(leaseMACs, claim(t, storage, shared, attemptAt).Lease.MAC)
+	}
+	storage.Close()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, secret := range map[string][]byte{
+		"a verifier mac":       testMAC,
+		"a lease mac":          leaseMACs[0],
+		"the record key":       shared.Key[:],
+		"a time to the second": binary.BigEndian.AppendUint64(nil, uint64(testNow.UnixMilli())),
+	} {
+		if bytes.Contains(data, secret) {
+			t.Errorf("the database file holds %s in the clear", name)
 		}
 	}
-	shared := newMessage(3, false)
-	create(t, storage, shared)
-	for range 3 {
-		if rowID := claim(t, storage, shared, testNow).Lease.RowID; rowID < 1<<32 {
-			t.Fatalf("lease row id %d looks sequential", rowID)
+	rows, err := openRaw(t, path).Query(`SELECT blob_purge_at, purge_at FROM messages`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var blobPurgeAt, purgeAt int64
+		if err = rows.Scan(&blobPurgeAt, &purgeAt); err != nil {
+			t.Fatal(err)
 		}
+		if blobPurgeAt%store.BlobPurgeStep.Milliseconds() != 0 || purgeAt%store.RowPurgeStep.Milliseconds() != 0 {
+			t.Fatalf("a cleanup time is finer than its step: %d %d", blobPurgeAt, purgeAt)
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -97,7 +120,7 @@ func TestWALHoldsOnlyTheLastTransaction(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	storage := openStore(t, path)
 	for range 5 {
-		create(t, storage, newMessage(1, false))
+		create(t, storage, newRecord(1, false))
 	}
 	wal, err := os.ReadFile(path + "-wal")
 	if err != nil {
@@ -167,19 +190,17 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	storage, ctx := openStore(t, path), t.Context()
-	message := newMessage(2, false)
+	record := newRecord(2, false)
 	create(
 		t,
 		storage,
-		message,
+		record,
 		store.RateHit{Key: "global:stored:d", WindowStart: testNow, PurgeAt: testNow.Add(time.Hour)},
 	)
-	claim(t, storage, message, testNow)
+	claim(t, storage, record, testNow)
 	hit := store.RateHit{Key: "r", WindowStart: testNow, PurgeAt: testNow.Add(time.Hour), Limit: 1}
 	errs := []error{}
-	_, err := storage.Get(ctx, message.ID)
-	errs = append(errs, err)
-	_, err = storage.Leases(ctx, message.ID)
+	_, err := storage.Load(ctx, record.Row.Locator)
 	errs = append(errs, err)
 	_, err = storage.RateHit(ctx, []store.RateHit{hit})
 	errs = append(errs, err)

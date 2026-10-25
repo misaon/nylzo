@@ -24,7 +24,13 @@ Potřebujete Docker Compose v2, doménu s DNS záznamem na tento stroj a otevře
    sudo chown 65532:65532 secrets/pepper && sudo chmod 0400 secrets/pepper
    ```
 
-   Pepper do databáze nikdy nepatří. Když ho ztratíte, staré odkazy přestanou fungovat. Když unikne s kopií databáze, lze s ním ověřovat odhadnuté klíče (spec §13).
+   Pepper do databáze nikdy nepatří. Když ho ztratíte, zprávy s passphrase přestanou jít otevřít. Když unikne s kopií databáze, lze s ním ověřovat odhadnuté klíče (spec §13).
+
+   Na svém počítači, ne na serveru, vytvořte klíč pro hlášení zneužití a vypsaný řádek `NYLZO_REPORT_KEY=…` vložte do `.env` (D101). Soukromý klíč ze souboru `~/nylzo-report-key` na server nekopírujte; bez něj hlášení nikdo nepřečte:
+
+   ```bash
+   nylzo report-key --key-file ~/nylzo-report-key
+   ```
 
 4. Spusťte:
 
@@ -47,20 +53,24 @@ Potřebujete Docker Compose v2, doménu s DNS záznamem na tento stroj a otevře
 
 ## Hlášení zneužití
 
-Hlášení leží ve volume dat v `abuse/`, jeden soubor na den UTC. Image nemá shell, proto je zkopírujte ven, posuďte a id zpráv, které chcete ukončit, pošlete příkazu `takedown` (D63):
+Hlášení leží ve volume dat v `abuse/`, jeden zapečetěný soubor na den UTC. Image nemá shell, proto je zkopírujte ven, na svém počítači otevřete soukromým klíčem, posuďte a id zpráv, které chcete odstranit, pošlete příkazu `takedown` (D63):
 
 ```bash
 docker compose cp nylzo:/home/nonroot/abuse/. ./abuse
 ```
 
 ```bash
+cat abuse/*.sealed | nylzo reports --key-file ~/nylzo-report-key
+```
+
+```bash
 docker compose exec -T nylzo /ko-app/nylzo takedown < ukoncit.txt
 ```
 
-`takedown` si vezme `NYLZO_DATA_DIR` z prostředí kontejneru a ukončí každou zprávu stejně jako burn. Když hlášení nese e-mail v `contact`, pošlete na něj potvrzení o přijetí a po posouzení rozhodnutí. Zkopírované soubory po posouzení smažte, obsahují id zpráv a e-maily oznamovatelů.
+`takedown` si vezme `NYLZO_DATA_DIR` z prostředí kontejneru a smaže blob každé zprávy; příjemce pak vidí, že byla smazána. Když hlášení nese e-mail v `contact`, pošlete na něj potvrzení o přijetí a po posouzení rozhodnutí. Výpis otevřených hlášení po posouzení smažte, obsahuje id zpráv a e-maily oznamovatelů.
 
 ## Rotace pepperu a aktualizace
 
-- Rotace: starý pepper přesuňte do souboru, přidejte secret pro `NYLZO_PEPPER_PREVIOUS_FILE` a vygenerujte nový pepper. Starý nechte 14 dní a jeden interval úklidu (README v kořeni repozitáře).
+- Rotace: starý pepper přesuňte do souboru, přidejte secret pro `NYLZO_PEPPER_PREVIOUS_FILE` a vygenerujte nový pepper. Starý nechte 7 dní (README v kořeni repozitáře).
 - Aktualizace: ověřte nový image podle kroku 1, změňte `NYLZO_IMAGE` a spusťte `docker compose up -d`.
-- Zálohy: obsah se nezálohuje (OD20). Zálohujte jen `.env` a pepper, odděleně od dat.
+- Zálohy: obsah se nezálohuje (OD20). Zálohujte jen `.env` a pepper, odděleně od dat, a soukromý klíč pro hlášení na svém počítači.

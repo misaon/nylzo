@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/sweep"
@@ -285,7 +286,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 				cancels,
 			)
 		}
-		if ended := want != "available"; harness.blobExists(message.id) == ended {
+		if ended := want != "available"; harness.blobExists(message) == ended {
 			t.Errorf("message %d in state %s: blob present %v", i, want, !ended)
 		}
 	}
@@ -294,7 +295,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i, message := range messages {
-		if harness.blobExists(message.id) {
+		if harness.blobExists(message) {
 			t.Errorf("message %d still has its blob after it expired and was swept", i)
 		}
 	}
@@ -325,7 +326,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 		if response.StatusCode != http.StatusNotFound || string(body) != string(unknownBody) {
 			t.Fatalf("%s with the token of the other purpose: %d %s", testCase.action, response.StatusCode, body)
 		}
-		if !harness.blobExists(testCase.message.id) {
+		if !harness.blobExists(testCase.message) {
 			t.Fatalf("%s with a wrong token removed the blob", testCase.action)
 		}
 	}
@@ -334,7 +335,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 		"burn",
 		burn.readToken,
 	); response.StatusCode != http.StatusNoContent ||
-		harness.blobExists(burn.id) {
+		harness.blobExists(burn) {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
 	if _, metadata := harness.metadata(burn); metadata["state"] != "deleted" {
@@ -348,7 +349,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 		"cancel",
 		cancel.manageToken,
 	); response.StatusCode != http.StatusNoContent ||
-		harness.blobExists(cancel.id) {
+		harness.blobExists(cancel) {
 		t.Fatalf("cancel: %d", response.StatusCode)
 	}
 	if _, status := harness.status(cancel); status["state"] != "cancelled" || status["first_opened_at"] == nil {
@@ -367,15 +368,15 @@ type racingStore struct {
 	store.Store
 
 	once sync.Once
-	race func(id string)
+	race func()
 }
 
-func (s *racingStore) Get(ctx context.Context, id string) (store.Record, error) {
-	record, err := s.Store.Get(ctx, id)
-	if err == nil && record.Message != nil {
-		s.once.Do(func() { s.race(id) })
+func (s *racingStore) Load(ctx context.Context, locator seal.Locator) (store.Row, error) {
+	row, err := s.Store.Load(ctx, locator)
+	if err == nil {
+		s.once.Do(s.race)
 	}
-	return record, err
+	return row, err
 }
 
 func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
@@ -384,8 +385,16 @@ func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
 	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if err := inner.End(t.Context(), id, store.StateCancelled, harness.clock.Now()); err != nil {
+	harness.store = &racingStore{Store: inner, race: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.End(
+			t.Context(),
+			inner,
+			harness.blobs,
+			&record,
+			store.StateCancelled,
+			harness.clock.Now(),
+		); err != nil {
 			t.Error(err)
 		}
 	}}
@@ -402,10 +411,12 @@ func TestBurnFinishesRecordedCancel(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
 	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if _, err := inner.MarkEnding(
+	harness.store = &racingStore{Store: inner, race: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.MarkEnding(
 			t.Context(),
-			id,
+			inner,
+			&record,
 			store.StateCancelled,
 			harness.clock.Now(),
 		); err != nil {
@@ -422,11 +433,11 @@ func TestBurnFinishesRecordedCancel(t *testing.T) {
 	}
 }
 
-type failingEndStore struct {
+type failingForgetStore struct {
 	store.Store
 }
 
-func (failingEndStore) End(context.Context, string, store.State, time.Time) error {
+func (failingForgetStore) ForgetBlobs(context.Context, []store.DueBlob) error {
 	return errInjected
 }
 
@@ -436,16 +447,18 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	harness.mustCreate(message)
 	inner := harness.store
-	harness.store = &racingStore{Store: failingEndStore{Store: inner}, race: func(id string) {
-		if _, err := inner.MarkEnding(
+	harness.store = &racingStore{Store: failingForgetStore{Store: inner}, race: func() {
+		record := harness.recordIn(inner, message)
+		if _, err := store.MarkEnding(
 			t.Context(),
-			id,
+			inner,
+			&record,
 			store.StateCancelled,
 			harness.clock.Now(),
 		); err != nil {
 			t.Error(err)
 		}
-		if err := harness.blobs.Delete(t.Context(), id); err != nil {
+		if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
 			t.Error(err)
 		}
 	}}
@@ -456,30 +469,22 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	}
 }
 
-type endingThenFailingGet struct {
+type vanishingStore struct {
 	store.Store
 
 	armed atomic.Bool
 }
 
-func (s *endingThenFailingGet) MarkEnding(
-	ctx context.Context,
-	id string,
-	state store.State,
-	now time.Time,
-) (store.Ending, error) {
-	if err := s.End(ctx, id, store.StateCancelled, now); err != nil {
-		return store.Ending{}, err
-	}
+func (s *vanishingStore) Update(context.Context, seal.Locator, func(*store.Row) error) error {
 	s.armed.Store(true)
-	return s.Store.MarkEnding(ctx, id, state, now)
+	return store.ErrNotFound
 }
 
-func (s *endingThenFailingGet) Get(ctx context.Context, id string) (store.Record, error) {
+func (s *vanishingStore) Load(ctx context.Context, locator seal.Locator) (store.Row, error) {
 	if s.armed.Load() {
-		return store.Record{}, errInjected
+		return store.Row{}, errInjected
 	}
-	return s.Store.Get(ctx, id)
+	return s.Store.Load(ctx, locator)
 }
 
 func TestBurnWithUnreadableEndAnswers500(t *testing.T) {
@@ -487,7 +492,7 @@ func TestBurnWithUnreadableEndAnswers500(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
-	harness.store = &endingThenFailingGet{Store: harness.store}
+	harness.store = &vanishingStore{Store: harness.store}
 	harness.reopen(&harness.settings)
 	if response, body := harness.post(
 		message,
@@ -521,13 +526,8 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 	raw := harness.blobs
 	harness.blobs = &deleteHookBlobs{Blobs: raw, hook: func() {
 		harness.clock.Advance(store.LeaseDuration)
-		if _, err := store.Release(
-			t.Context(),
-			harness.store,
-			raw,
-			message.id.String(),
-			harness.clock.Now(),
-		); err != nil {
+		record := harness.mustRecord(message)
+		if _, err := store.Finish(t.Context(), harness.store, raw, &record, harness.clock.Now()); err != nil {
 			t.Error(err)
 		}
 	}}
@@ -539,12 +539,8 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 			body,
 		)
 	}
-	if record, err := harness.store.Get(
-		t.Context(),
-		message.id.String(),
-	); err != nil || record.Tombstone == nil ||
-		record.Tombstone.State != store.StateDeleted {
-		t.Fatalf("tombstone: %+v %v", record, err)
+	if state, gone := harness.endedState(message); !gone || state != store.StateDeleted {
+		t.Fatalf("after the burn: %s %v", state, gone)
 	}
 }
 
@@ -577,15 +573,8 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	for _, message := range []*testMessage{burned, expired, opened, ending, live} {
 		harness.mustCreate(message)
 	}
-	if _, err := harness.store.MarkEnding(
-		t.Context(),
-		ending.id.String(),
-		store.StateCancelled,
-		harness.clock.Now(),
-	); err != nil {
-		t.Fatal(err)
-	}
-	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[ending.id.String()] = true })
+	harness.markEnding(ending, store.StateCancelled)
+	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(ending)] = true })
 	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
@@ -722,7 +711,7 @@ func TestAbuseReportHardening(t *testing.T) {
 		t.Fatalf("json report: %d", response.StatusCode)
 	}
 	path := harness.abuseFile(harness.clock.Now())
-	data, err := os.ReadFile(path)
+	data, err := harness.abuseReports()
 	if err != nil {
 		t.Fatal(err)
 	}

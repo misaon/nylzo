@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -15,54 +16,59 @@ const checkpointTimeoutMilliseconds = 250
 
 var ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish because a reader held the log")
 
-func (s *Store) ExpiredPage(
-	ctx context.Context,
-	now time.Time,
-	after store.ExpiredMessage,
-	limit int,
-) ([]store.ExpiredMessage, error) {
+func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator, limit int) ([]store.DueBlob, error) {
 	rows, err := s.reader.QueryContext(
 		ctx,
-		`SELECT id, blob_ref, expires_at FROM messages WHERE expires_at <= ? AND (expires_at, id) > (?, ?) ORDER BY expires_at, id LIMIT ?`,
+		`SELECT locator, blob_ref FROM messages WHERE blob_ref IS NOT NULL AND blob_purge_at <= ? AND locator > ? AND length(locator) = 32 ORDER BY locator LIMIT ?`,
 		milliseconds(now),
-		milliseconds(after.ExpiresAt),
-		after.ID,
+		after[:],
 		limit,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var page []store.ExpiredMessage
+	var page []store.DueBlob
 	for rows.Next() {
-		var expired store.ExpiredMessage
-		var expiresAt int64
-		var blobRef sql.NullString
-		if scanErr := rows.Scan(&expired.ID, &blobRef, &expiresAt); scanErr != nil {
+		var due store.DueBlob
+		var locator []byte
+		if scanErr := rows.Scan(&locator, &due.Ref); scanErr != nil {
 			return nil, scanErr
 		}
-		expired.BlobRef = blobRef.String
-		expired.ExpiresAt = fromMilliseconds(expiresAt)
-		page = append(page, expired)
+		due.Locator = seal.Locator(locator)
+		page = append(page, due)
 	}
 	return page, rows.Err()
 }
 
-func (s *Store) SpentPage(ctx context.Context, after string, limit int) ([]string, error) {
-	return s.strings(
+func (s *Store) ShredBlobs(ctx context.Context, due []store.DueBlob) error {
+	return s.eachDue(ctx, `UPDATE messages SET blob_wrap = NULL WHERE locator = ? AND blob_ref = ?`, due)
+}
+
+func (s *Store) ForgetBlobs(ctx context.Context, due []store.DueBlob) error {
+	return s.eachDue(
 		ctx,
-		`SELECT id FROM messages WHERE opens_remaining = 0 AND blob_ref IS NOT NULL AND id > ? ORDER BY id LIMIT ?`,
-		after,
-		limit,
+		`UPDATE messages SET blob_ref = NULL, blob_wrap = NULL, blob_purge_at = NULL WHERE locator = ? AND blob_ref = ?`,
+		due,
 	)
 }
 
-func (s *Store) EndingPage(ctx context.Context, now time.Time, after string, limit int) ([]string, error) {
-	return s.strings(
+func (s *Store) eachDue(ctx context.Context, query string, due []store.DueBlob) error {
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		for _, blob := range due {
+			if _, err := tx.ExecContext(ctx, query, blob.Locator[:], blob.Ref); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Store) PurgeRows(ctx context.Context, now time.Time, limit int) (int, error) {
+	return s.purge(
 		ctx,
-		`SELECT id FROM messages WHERE ending IS NOT NULL AND expires_at > ? AND id > ? ORDER BY id LIMIT ?`,
-		milliseconds(now),
-		after,
+		`DELETE FROM messages WHERE locator IN (SELECT locator FROM messages WHERE purge_at <= ? LIMIT ?)`,
+		now,
 		limit,
 	)
 }
@@ -77,24 +83,6 @@ func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) 
 		known[ref] = struct{}{}
 	}
 	return known, nil
-}
-
-func (s *Store) PurgeLeases(ctx context.Context, now time.Time, limit int) (int, error) {
-	return s.purge(
-		ctx,
-		`DELETE FROM leases WHERE row_id IN (SELECT row_id FROM leases WHERE lease_expires_at <= ? LIMIT ?)`,
-		now,
-		limit,
-	)
-}
-
-func (s *Store) PurgeTombstones(ctx context.Context, now time.Time, limit int) (int, error) {
-	return s.purge(
-		ctx,
-		`DELETE FROM tombstones WHERE id IN (SELECT id FROM tombstones WHERE purge_at <= ? LIMIT ?)`,
-		now,
-		limit,
-	)
 }
 
 func (s *Store) Checkpoint(ctx context.Context) error {

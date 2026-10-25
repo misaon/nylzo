@@ -1,36 +1,37 @@
 package sqlite
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
-	"math"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const recordQuery = `SELECT 'm' AS kind, id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref, fail_count_total, next_attempt_at, first_opened_at, NULL AS ended_at, NULL AS purge_at, ending FROM messages WHERE id = ?
-UNION ALL
-SELECT 't', id, 0, 0, 0, state, 0, 0, 0, 0, 0, pepper_id, read_mac, manage_mac, NULL, 0, NULL, 0, 0, first_opened_at, ended_at, purge_at, NULL FROM tombstones WHERE id = ?`
+const (
+	rowColumns = `locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at`
+	rowQuery   = `SELECT ` + rowColumns + ` FROM messages WHERE locator = ?`
+)
 
-var errCorruptRow = errors.New("sqlite: a row holds a value its column cannot have")
-
-func (s *Store) Create(ctx context.Context, message *store.Message, counters ...store.RateHit) error {
+func (s *Store) Create(ctx context.Context, row *store.Row, counters ...store.RateHit) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
-		if err := ensureNewID(ctx, tx, message.ID); err != nil {
+		inserted, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO messages (`+rowColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(locator) DO NOTHING`,
+			rowValues(row)...,
+		)
+		if err != nil {
 			return err
 		}
-		if err := insertMessage(ctx, tx, message); err != nil {
-			return err
-		}
-		if len(counters) == 0 {
-			return nil
+		if affected, countErr := inserted.RowsAffected(); countErr != nil || affected == 0 {
+			return cmp.Or(countErr, store.ErrConflict)
 		}
 		statement := tx.StmtContext(ctx, s.statements.hitCounter)
 		for i := range counters {
-			if _, err := countHit(ctx, statement, &counters[i]); err != nil {
+			if _, err = countHit(ctx, statement, &counters[i]); err != nil {
 				return err
 			}
 		}
@@ -38,173 +39,84 @@ func (s *Store) Create(ctx context.Context, message *store.Message, counters ...
 	})
 }
 
-func (s *Store) Get(ctx context.Context, id string) (store.Record, error) {
-	return scanRecord(s.statements.getRecord.QueryRowContext(ctx, id, id))
+func (s *Store) Load(ctx context.Context, locator seal.Locator) (store.Row, error) {
+	return scanRow(s.statements.loadRow.QueryRowContext(ctx, locator[:]))
 }
 
-func (s *Store) recordIn(ctx context.Context, tx *sql.Tx, id string) (store.Record, error) {
-	statement := tx.StmtContext(ctx, s.statements.lockedRecord)
-	defer statement.Close()
-	return scanRecord(statement.QueryRowContext(ctx, id, id))
-}
-
-func ensureNewID(ctx context.Context, tx *sql.Tx, id string) error {
-	var exists int
-	err := tx.QueryRowContext(
-		ctx,
-		`SELECT COUNT(*) FROM (SELECT id FROM messages WHERE id = ? UNION ALL SELECT id FROM tombstones WHERE id = ?)`,
-		id,
-		id,
-	).Scan(&exists)
-	if err != nil {
+// Update hands the row to change inside one write transaction and stores it again unless change fails.
+func (s *Store) Update(ctx context.Context, locator seal.Locator, change func(row *store.Row) error) error {
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		row, err := scanRow(tx.QueryRowContext(ctx, rowQuery, locator[:]))
+		if err != nil {
+			return err
+		}
+		if changeErr := change(&row); changeErr != nil {
+			return changeErr
+		}
+		_, err = tx.ExecContext(
+			ctx,
+			`UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?, blob_purge_at = ?, purge_at = ? WHERE locator = ?`,
+			append(rowValues(&row)[1:], locator[:])...,
+		)
 		return err
-	}
-	if exists > 0 {
-		return store.ErrConflict
-	}
-	return nil
+	})
 }
 
-func insertMessage(ctx context.Context, tx *sql.Tx, message *store.Message) error {
-	var verifierMAC, blobRef any
-	if len(message.VerifierMAC) > 0 {
-		verifierMAC = message.VerifierMAC
+func rowValues(row *store.Row) []any {
+	var blobRef, blobWrap, blobPurgeAt any
+	if row.BlobRef != "" {
+		blobRef = row.BlobRef
 	}
-	if message.BlobRef != "" {
-		blobRef = message.BlobRef
+	if row.BlobWrap != nil {
+		blobWrap = row.BlobWrap
 	}
-	_, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO messages (id, version, kdf_id, flags, state, created_at, expires_at, ttl_s, opens_max, opens_remaining, pepper_id, read_mac, manage_mac, verifier_mac, size, blob_ref)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		message.ID,
-		message.Version,
-		message.KDF,
-		message.Flags,
-		string(store.StateAvailable),
-		milliseconds(message.CreatedAt),
-		milliseconds(message.ExpiresAt),
-		message.TTLSeconds,
-		message.OpensMax,
-		message.OpensMax,
-		message.PepperID,
-		message.ReadMAC,
-		message.ManageMAC,
-		verifierMAC,
-		message.Size,
+	if !row.BlobPurgeAt.IsZero() {
+		blobPurgeAt = milliseconds(row.BlobPurgeAt)
+	}
+	return []any{
+		row.Locator[:],
+		row.ReadWrap,
+		row.ManageWrap,
+		row.Record,
 		blobRef,
-	)
-	return err
+		blobWrap,
+		blobPurgeAt,
+		milliseconds(row.PurgeAt),
+	}
 }
 
-type recordRow struct {
-	kind, id, state                               string
-	version, kdf, flags, ttl, pepperID            int64
-	opensMax, opensRemaining                      int64
-	createdAt, expiresAt, size, failCount, nextAt int64
-	readMAC, manageMAC, verifierMAC               []byte
-	blobRef, ending                               sql.NullString
-	firstOpenedAt, endedAt, purgeAt               sql.NullInt64
-}
-
-func scanRecord(row *sql.Row) (store.Record, error) {
-	var raw recordRow
-	err := row.Scan(
-		&raw.kind,
-		&raw.id,
-		&raw.version,
-		&raw.kdf,
-		&raw.flags,
-		&raw.state,
-		&raw.createdAt,
-		&raw.expiresAt,
-		&raw.ttl,
-		&raw.opensMax,
-		&raw.opensRemaining,
-		&raw.pepperID,
-		&raw.readMAC,
-		&raw.manageMAC,
-		&raw.verifierMAC,
-		&raw.size,
-		&raw.blobRef,
-		&raw.failCount,
-		&raw.nextAt,
-		&raw.firstOpenedAt,
-		&raw.endedAt,
-		&raw.purgeAt,
-		&raw.ending,
+func scanRow(scanner *sql.Row) (store.Row, error) {
+	var row store.Row
+	var locator []byte
+	var blobRef sql.NullString
+	var blobPurgeAt sql.NullInt64
+	var purgeAt int64
+	err := scanner.Scan(
+		&locator,
+		&row.ReadWrap,
+		&row.ManageWrap,
+		&row.Record,
+		&blobRef,
+		&row.BlobWrap,
+		&blobPurgeAt,
+		&purgeAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return store.Record{}, store.ErrNotFound
+		return store.Row{}, store.ErrNotFound
 	}
 	if err != nil {
-		return store.Record{}, err
+		return store.Row{}, err
 	}
-	if raw.kind == "t" {
-		return raw.tombstone()
+	if len(locator) != seal.LocatorLen {
+		return store.Row{}, store.ErrCorrupt
 	}
-	return raw.message()
-}
-
-func (raw *recordRow) tombstone() (store.Record, error) {
-	tombstone := &store.Tombstone{
-		ID:            raw.id,
-		ReadMAC:       raw.readMAC,
-		ManageMAC:     raw.manageMAC,
-		State:         store.State(raw.state),
-		FirstOpenedAt: optionalTime(raw.firstOpenedAt),
-		EndedAt:       fromMilliseconds(raw.endedAt.Int64).Truncate(time.Minute),
-		PurgeAt:       fromMilliseconds(raw.purgeAt.Int64),
+	row.Locator = seal.Locator(locator)
+	row.BlobRef = blobRef.String
+	if blobPurgeAt.Valid {
+		row.BlobPurgeAt = fromMilliseconds(blobPurgeAt.Int64)
 	}
-	if err := narrow(&tombstone.PepperID, "pepper_id", raw.pepperID); err != nil {
-		return store.Record{}, err
-	}
-	return store.Record{Tombstone: tombstone}, nil
-}
-
-func (raw *recordRow) message() (store.Record, error) {
-	if raw.opensMax < 1 || raw.opensMax > math.MaxUint16 || raw.opensRemaining < 0 ||
-		raw.opensRemaining > raw.opensMax {
-		return store.Record{}, fmt.Errorf("%w: opens %d of %d", errCorruptRow, raw.opensRemaining, raw.opensMax)
-	}
-	message := &store.Message{
-		ID:             raw.id,
-		State:          store.State(raw.state),
-		CreatedAt:      fromMilliseconds(raw.createdAt),
-		ExpiresAt:      fromMilliseconds(raw.expiresAt),
-		ReadMAC:        raw.readMAC,
-		ManageMAC:      raw.manageMAC,
-		VerifierMAC:    raw.verifierMAC,
-		Size:           raw.size,
-		BlobRef:        raw.blobRef.String,
-		FailCountTotal: int(raw.failCount),
-		FirstOpenedAt:  optionalTime(raw.firstOpenedAt),
-		Ending:         store.State(raw.ending.String),
-	}
-	err := errors.Join(
-		narrow(&message.Version, "version", raw.version),
-		narrow(&message.KDF, "kdf_id", raw.kdf),
-		narrow(&message.Flags, "flags", raw.flags),
-		narrow(&message.TTLSeconds, "ttl_s", raw.ttl),
-		narrow(&message.OpensMax, "opens_max", raw.opensMax),
-		narrow(&message.OpensRemaining, "opens_remaining", raw.opensRemaining),
-		narrow(&message.PepperID, "pepper_id", raw.pepperID),
-	)
-	if err != nil {
-		return store.Record{}, err
-	}
-	if raw.nextAt > 0 {
-		message.NextAttemptAt = fromMilliseconds(raw.nextAt)
-	}
-	return store.Record{Message: message}, nil
-}
-
-func narrow[T uint8 | uint16 | uint32](target *T, column string, value int64) error {
-	if value < 0 || uint64(value) > uint64(^T(0)) {
-		return fmt.Errorf("%w: %s %d", errCorruptRow, column, value)
-	}
-	*target = T(value)
-	return nil
+	row.PurgeAt = fromMilliseconds(purgeAt)
+	return row, nil
 }
 
 func milliseconds(moment time.Time) int64 {
@@ -213,11 +125,4 @@ func milliseconds(moment time.Time) int64 {
 
 func fromMilliseconds(milliseconds int64) time.Time {
 	return time.UnixMilli(milliseconds).UTC()
-}
-
-func optionalTime(milliseconds sql.NullInt64) *time.Time {
-	if !milliseconds.Valid {
-		return nil
-	}
-	return new(fromMilliseconds(milliseconds.Int64))
 }

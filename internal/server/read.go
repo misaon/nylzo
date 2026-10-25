@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/cipher"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -49,21 +51,23 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	granted, ok := s.authorized(w, r, pepper.Read)
+	granted, ok := s.authorized(w, r, seal.Read)
 	if !ok {
 		return
 	}
-	if tombstone := granted.record.Tombstone; tombstone != nil {
+	now := s.clock()
+	record := &granted.record
+	message := record.Message
+	if !record.HasBlob() {
 		writeJSON(w, http.StatusOK, metadataResponse{
-			State:         string(tombstone.State),
-			FirstOpenedAt: formatOptionalTime(tombstone.FirstOpenedAt),
-			EndedAt:       formatTime(tombstone.EndedAt),
+			State:         string(record.State(now)),
+			FirstOpenedAt: formatOptionalTime(message.FirstOpenedAt),
+			EndedAt:       formatEnd(record.EndedAt(now)),
 		})
 		return
 	}
-	message := granted.record.Message
 	writeJSON(w, http.StatusOK, metadataResponse{
-		State:              string(liveState(message, s.clock())),
+		State:              string(record.State(now)),
 		CreatedAt:          formatTime(message.CreatedAt),
 		ExpiresAt:          formatTime(message.ExpiresAt),
 		OpensMax:           int(message.OpensMax),
@@ -74,6 +78,13 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 		Size:               message.Size,
 		FirstOpenedAt:      formatOptionalTime(message.FirstOpenedAt),
 	})
+}
+
+func formatEnd(end time.Time) string {
+	if end.IsZero() {
+		return ""
+	}
+	return formatTime(end)
 }
 
 // startStream admits a claim or a download; the stream slot is taken before the signature is checked (D24).
@@ -94,7 +105,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	granted, ok := s.authorizedLive(w, r, pepper.Read)
+	granted, ok := s.authorizedLive(w, r, seal.Read)
 	if !ok {
 		return
 	}
@@ -104,15 +115,14 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		verifier.PublicKey = dummyPublicKey
 	}
 	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
-	blob, size, ok := s.openBlob(w, r, granted.record.Message)
+	blob, ok := s.openBlob(w, r, &granted.record)
 	if !ok {
 		return
 	}
 	defer blob.Close()
 	lease := core.NewSecret()
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
-	result, err := s.store.Claim(r.Context(), store.ClaimParameters{
-		ID:           granted.id.String(),
+	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
 		Clock:        s.clock,
 		VerifierSent: verifierSent,
 		VerifyMAC: func(pepperID byte, stored []byte) bool {
@@ -127,9 +137,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.Message.OpensRemaining == 0 {
-		s.releaseAtLeaseEnd(granted.id.String(), result.Lease.ExpiresAt)
+		s.releaseAtLeaseEnd(&granted.record, result.Lease.ExpiresAt)
 	}
-	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob, size)
+	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob)
 }
 
 func parseVerifier(w http.ResponseWriter, r *http.Request) (core.Signature, bool, bool) {
@@ -165,9 +175,16 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 	s.writeInternal(w, r, err)
 }
 
-func (s *Server) releaseAtLeaseEnd(id string, leaseExpires time.Time) {
+// releaseAtLeaseEnd keeps the record key in memory until the last lease ends, so the blob goes at once.
+func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
+	kept := *record
 	s.after(leaseExpires.Add(store.LeaseTimerSlack).Sub(s.clock()), func() {
-		if _, err := store.Release(context.Background(), s.store, s.blobs, id, s.clock()); err != nil {
+		ctx := context.Background()
+		err := s.reload(ctx, &kept)
+		if err == nil {
+			_, err = store.Finish(ctx, s.store, s.blobs, &kept, s.clock())
+		}
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			s.logger.Error("lease-timer", "err", logging.ErrorText(err))
 		}
 	})
@@ -183,16 +200,17 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.RecordDownload(r.Context(), &leased.lease, leased.now); err != nil {
+	err := store.RecordDownload(r.Context(), s.store, &leased.record, leased.lease.MAC, leased.now)
+	if err != nil {
 		s.writeLeaseFailure(w, r, &leased, err)
 		return
 	}
-	blob, size, ok := s.openBlob(w, r, leased.message)
+	blob, ok := s.openBlob(w, r, &leased.record)
 	if !ok {
 		return
 	}
 	defer blob.Close()
-	s.serveBlob(w, r, leased.message, "", blob, size)
+	s.serveBlob(w, r, leased.record.Message, "", blob)
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +218,8 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := store.AckLease(r.Context(), s.store, s.blobs, &leased.lease, leased.now); err != nil {
+	err := store.Ack(r.Context(), s.store, s.blobs, &leased.record, leased.lease.MAC, leased.now)
+	if err != nil {
 		s.writeLeaseFailure(w, r, &leased, err)
 		return
 	}
@@ -209,69 +228,52 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) writeLeaseFailure(w http.ResponseWriter, r *http.Request, leased *leaseAccess, err error) {
 	if goneErr, isGone := errors.AsType[*store.GoneError](err); isGone {
-		s.finishGone(w, r, leased.id, goneErr.State, leased.now)
+		s.finishGone(w, r, &leased.record, goneErr.State)
 		return
 	}
 	switch {
 	case errors.Is(err, store.ErrLeaseLimit):
 		writeRateLimited(w, leased.lease.ExpiresAt.Sub(leased.now))
 	case errors.Is(err, store.ErrLeaseInvalid):
-		s.writeCurrentGone(w, r, leased.id)
+		s.writeCurrentGone(w, r, &leased.record)
 	default:
 		s.writeInternal(w, r, err)
 	}
 }
 
 type leaseAccess struct {
-	message *store.Message
-	id      string
-	lease   store.Lease
-	now     time.Time
+	record store.Record
+	lease  store.Lease
+	now    time.Time
 }
 
 func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAccess, bool) {
-	granted, ok := s.authorizedLive(w, r, pepper.Read)
+	granted, ok := s.authorizedLive(w, r, seal.Read)
 	if !ok {
 		return leaseAccess{}, false
 	}
-	leased := leaseAccess{message: granted.record.Message, id: granted.id.String(), now: s.clock()}
-	lease, active, err := s.findLease(r.Context(), r, &granted, leased.now)
-	switch {
-	case err != nil:
-		s.writeInternal(w, r, err)
-		return leased, false
-	case !active:
-		s.writeCurrentGone(w, r, leased.id)
+	leased := leaseAccess{record: granted.record, now: s.clock()}
+	lease, active := s.findLease(r, &leased.record, leased.now)
+	if !active {
+		s.writeCurrentGone(w, r, &leased.record)
 		return leased, false
 	}
 	leased.lease = lease
 	return leased, true
 }
 
-func (s *Server) findLease(
-	ctx context.Context,
-	r *http.Request,
-	granted *access,
-	now time.Time,
-) (store.Lease, bool, error) {
+func (s *Server) findLease(r *http.Request, record *store.Record, now time.Time) (store.Lease, bool) {
 	raw, ok := leaseToken(r)
 	if !ok {
-		return store.Lease{}, false, nil
+		return store.Lease{}, false
 	}
-	leases := granted.leases
-	if leases == nil {
-		var err error
-		if leases, err = s.store.Leases(ctx, granted.id.String()); err != nil {
-			return store.Lease{}, false, err
-		}
-	}
-	for _, lease := range leases {
+	for _, lease := range record.Message.Leases {
 		if s.ring.Verify(pepper.Lease, raw, lease.MAC, lease.PepperID) {
 			active := lease.Active(now)
-			return lease, active, nil
+			return lease, active
 		}
 	}
-	return store.Lease{}, false, nil
+	return store.Lease{}, false
 }
 
 func leaseToken(r *http.Request) ([]byte, bool) {
@@ -279,28 +281,40 @@ func leaseToken(r *http.Request) ([]byte, bool) {
 	return raw, err == nil
 }
 
-func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, message *store.Message) (io.ReadCloser, int64, bool) {
-	if message.BlobRef == "" {
-		writeGone(w, string(message.State))
-		return nil, 0, false
+type decryptedBlob struct {
+	io.Reader
+	io.Closer
+}
+
+// openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
+func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (io.ReadCloser, bool) {
+	key, err := record.BlobKey()
+	if errors.Is(err, store.ErrBlobMissing) {
+		writeGone(w, string(record.State(s.clock())))
+		return nil, false
 	}
-	blob, size, err := s.blobs.Open(r.Context(), message.BlobRef)
+	var file io.ReadCloser
+	var size int64
+	if err == nil {
+		file, size, err = s.blobs.Open(r.Context(), record.Row.BlobRef)
+	}
 	if errors.Is(err, store.ErrBlobMissing) {
 		var state store.State
-		if state, err = s.finishMissingBlob(r.Context(), message.ID); err == nil {
+		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
 			writeGone(w, string(state))
-			return nil, 0, false
+			return nil, false
 		}
 	}
-	if err == nil && size != message.Size {
-		blob.Close()
+	if err == nil && size != seal.PaddedSize(record.Message.Size) {
+		file.Close()
 		err = errBlobSize
 	}
 	if err != nil {
 		s.writeInternal(w, r, err)
-		return nil, 0, false
+		return nil, false
 	}
-	return blob, size, true
+	plain := cipher.StreamReader{S: seal.BlobStream(key), R: file}
+	return decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}, true
 }
 
 // serveBlob gives the response as long as a lease, so a recipient on a 128 kbit/s link receives the largest object.
@@ -310,8 +324,8 @@ func (s *Server) serveBlob(
 	message *store.Message,
 	lease string,
 	blob io.Reader,
-	size int64,
 ) {
+	size := message.Size
 	s.setWriteDeadline(w, time.Now().Add(max(writeTimeout, store.TransferTime(size))))
 	header := w.Header()
 	if lease != "" {
@@ -337,57 +351,41 @@ func encodePolicy(message *store.Message) string {
 }
 
 // finishMissingBlob ends a message whose blob a concurrent ending already deleted; on a live message it is a fault.
-func (s *Server) finishMissingBlob(ctx context.Context, id string) (store.State, error) {
-	record, err := s.store.Get(ctx, id)
-	if err != nil {
+func (s *Server) finishMissingBlob(ctx context.Context, record *store.Record) (store.State, error) {
+	if err := s.reload(ctx, record); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return store.StateDeleted, nil
+		}
 		return "", err
-	}
-	if record.Tombstone != nil {
-		return record.Tombstone.State, nil
 	}
 	now := s.clock()
-	if !ended(record.Message, now) {
+	if !record.Ended(now) {
 		return "", store.ErrBlobMissing
 	}
-	state, err := store.EndMessage(ctx, s.store, s.blobs, id, store.StateExpired, now)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return s.endedState(ctx, id)
-	case err != nil:
+	if _, err := store.Finish(ctx, s.store, s.blobs, record, now); err != nil {
 		s.logger.ErrorContext(ctx, "finish-ending", "err", logging.ErrorText(err))
-		return liveState(record.Message, now), nil
-	default:
-		return state, nil
 	}
+	return record.State(now), nil
 }
 
-func (s *Server) endedState(ctx context.Context, id string) (store.State, error) {
-	record, err := s.store.Get(ctx, id)
+func (s *Server) writeCurrentGone(w http.ResponseWriter, r *http.Request, record *store.Record) {
+	err := s.reload(r.Context(), record)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return store.StateDeleted, nil
+		writeGone(w, string(store.StateDeleted))
 	case err != nil:
-		return "", err
-	case record.Tombstone != nil:
-		return record.Tombstone.State, nil
-	default:
-		return liveState(record.Message, s.clock()), nil
-	}
-}
-
-func (s *Server) writeCurrentGone(w http.ResponseWriter, r *http.Request, id string) {
-	state, err := s.endedState(r.Context(), id)
-	if err != nil {
 		s.writeInternal(w, r, err)
-		return
+	default:
+		writeGone(w, string(record.State(s.clock())))
 	}
-	writeGone(w, string(state))
 }
 
-func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, id string, state store.State, now time.Time) {
-	_, err := store.EndMessage(r.Context(), s.store, s.blobs, id, state, now)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		s.logger.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
+func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, record *store.Record, state store.State) {
+	if err := s.reload(r.Context(), record); err == nil {
+		_, err = store.Finish(r.Context(), s.store, s.blobs, record, s.clock())
+		if err != nil {
+			s.logger.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
+		}
 	}
 	writeGone(w, string(state))
 }

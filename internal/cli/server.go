@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -78,7 +79,10 @@ func runServer(environment *Environment, arguments []string, name string, run fu
 		return code
 	}
 	logger := logging.New(environment.Stderr)
-	err := run(logger)
+	err := hardenProcess()
+	if err == nil {
+		err = run(logger)
+	}
 	switch {
 	case err == nil:
 		return exitOK
@@ -251,7 +255,7 @@ func runTakedown(ctx context.Context, environment *Environment, arguments []stri
 	flags.Usage = func() {
 		fmt.Fprintf(
 			flags.Output(),
-			"usage: %s takedown < ids\n\nEnds every message whose id stands on its own line of stdin, as deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n",
+			"usage: %s takedown < ids\n\nRemoves every message whose id stands on its own line of stdin; readers then see deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n",
 			program,
 		)
 	}
@@ -260,6 +264,9 @@ func runTakedown(ctx context.Context, environment *Environment, arguments []stri
 	}
 	if !serverSupported {
 		return failf(environment, "%s", errServerUnsupported)
+	}
+	if err := hardenProcess(); err != nil {
+		return failf(environment, "%s", err)
 	}
 	if environment.Terminal.StdinIsTerminal() {
 		fmt.Fprintln(environment.Stderr, program+" takedown reads the ids from a pipe or a file on stdin, one per line")
@@ -289,13 +296,13 @@ func runTakedown(ctx context.Context, environment *Environment, arguments []stri
 	return takeDown(ctx, environment, database, blobs, ids)
 }
 
-// takeDown ends each message like a burn, as deleted (D63).
+// takeDown removes each message without opening its record; readers then see deleted (D63, D101).
 func takeDown(
 	ctx context.Context,
 	environment *Environment,
 	database store.Store,
 	blobs store.Blobs,
-	ids []string,
+	ids []core.ID,
 ) int {
 	failed := 0
 	for _, id := range ids {
@@ -303,33 +310,38 @@ func takeDown(
 			fmt.Fprintln(environment.Stderr, program+": takedown stopped before every id was handled")
 			return exitInterrupted
 		}
-		final, err := store.EndMessage(ctx, database, blobs, id, store.StateDeleted, time.Now())
+		removal, err := store.TakeDown(ctx, database, blobs, seal.LocatorOf(id[:]), time.Now())
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			fmt.Fprintf(environment.Stdout, "%s no live message\n", id)
+			fmt.Fprintf(environment.Stdout, "%s no message\n", id)
 		case err != nil:
 			failed++
 			fmt.Fprintf(environment.Stdout, "%s failed: %s\n", id, logging.ErrorText(err))
-		case final != store.StateDeleted:
-			fmt.Fprintf(environment.Stdout, "%s already ended as %s\n", id, final)
+		case removal == store.AlreadyEnded:
+			fmt.Fprintf(environment.Stdout, "%s already ended\n", id)
 		default:
 			fmt.Fprintf(environment.Stdout, "%s deleted\n", id)
 		}
 	}
 	if failed > 0 {
-		return failf(environment, "%d of %d messages could not be ended; run takedown again for them", failed, len(ids))
+		return failf(
+			environment,
+			"%d of %d messages could not be removed; run takedown again for them",
+			failed,
+			len(ids),
+		)
 	}
 	return exitOK
 }
 
 // readIDs refuses the whole input when one line is not an id, so a pasted link never ends anything.
-func readIDs(reader io.Reader) ([]string, error) {
+func readIDs(reader io.Reader) ([]core.ID, error) {
 	data, err := readLimited(reader, maxTakedownInput)
 	if err != nil {
 		return nil, errors.New("give at most 1 MiB of ids on stdin")
 	}
 	seen := map[string]bool{}
-	var ids []string
+	var ids []core.ID
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for line := 1; scanner.Scan(); line++ {
 		text := strings.TrimSpace(scanner.Text())
@@ -342,7 +354,7 @@ func readIDs(reader io.Reader) ([]string, error) {
 		}
 		if !seen[id.String()] {
 			seen[id.String()] = true
-			ids = append(ids, id.String())
+			ids = append(ids, id)
 		}
 	}
 	if scanner.Err() != nil {

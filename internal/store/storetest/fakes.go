@@ -83,11 +83,12 @@ func (b *failingBlobs) fails(ref string) bool {
 type batchRecorder struct {
 	store.Blobs
 
-	store   store.Store
-	batches int
-	deletes int
-	refs    []string
-	early   []string
+	store    store.Store
+	rows     map[string]*message
+	batches  int
+	deletes  int
+	refs     []string
+	readable []string
 }
 
 func (b *batchRecorder) Delete(ctx context.Context, ref string) error {
@@ -95,12 +96,17 @@ func (b *batchRecorder) Delete(ctx context.Context, ref string) error {
 	return b.Blobs.Delete(ctx, ref)
 }
 
+// DeleteBatch records every blob whose key was still in its row when the batch deleted its file.
 func (b *batchRecorder) DeleteBatch(ctx context.Context, refs []string) []error {
 	b.batches++
 	b.refs = append(b.refs, refs...)
 	for _, ref := range refs {
-		if record, err := b.store.Get(ctx, ref); err != nil || record.Message == nil {
-			b.early = append(b.early, ref)
+		created, known := b.rows[ref]
+		if !known {
+			continue
+		}
+		if row, err := b.store.Load(ctx, created.Row.Locator); err != nil || row.BlobWrap != nil {
+			b.readable = append(b.readable, ref)
 		}
 	}
 	return b.Blobs.DeleteBatch(ctx, refs)

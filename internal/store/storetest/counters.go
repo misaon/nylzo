@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -126,17 +127,23 @@ func (f *fixture) createCountsWithTheRow() {
 	t, ctx := f.t, f.t.Context()
 	day := baseTime.Truncate(24 * time.Hour)
 	hit := store.RateHit{Key: "global:stored:d", WindowStart: day, PurgeAt: day.Add(48 * time.Hour)}
-	message := f.create(1, oneHour, false)
-	duplicate := *message
+	created := f.create(1, oneHour, false)
+	duplicate := created.Row
 	if err := f.store.Create(ctx, &duplicate, hit); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("duplicate create: %v", err)
 	}
-	fresh := *message
-	fresh.ID = core.NewID().String()
-	if err := f.store.Create(ctx, &fresh, hit); err != nil {
-		t.Fatal(err)
-	}
+	f.createRowWith(hit)
 	if count, err := f.store.RateGet(ctx, hit.Key, day); err != nil || count.Count != 1 {
 		t.Fatalf("only the stored create counts: %+v %v", count, err)
+	}
+}
+
+func (f *fixture) createRowWith(hit store.RateHit) {
+	f.t.Helper()
+	fresh := core.NewID()
+	record := store.NewRecord(seal.LocatorOf(fresh[:]), newMessage(1, oneHour, false), core.NewSecret()[:],
+		core.NewSecret()[:], fresh.String(), seal.NewKey())
+	if err := f.store.Create(f.t.Context(), &record.Row, hit); err != nil {
+		f.t.Fatal(err)
 	}
 }

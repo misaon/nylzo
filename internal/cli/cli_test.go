@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
@@ -27,7 +28,9 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/console"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/store"
 
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
@@ -70,6 +73,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	settings := config.Defaults()
 	settings.DataDir = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
+	settings.ReportKey = testReportKey.PublicKey()
 	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1<<20, 1<<20
 	settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1<<20, 1<<20
 	settings.Rates.CreatePerHour, settings.Rates.CreatePerDay, settings.Rates.ReadPerHour = 1000, 1000, 1000
@@ -292,30 +296,64 @@ func TestCreateAndReadText(t *testing.T) {
 func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
-	createText(t, instance, "the same text")
-	createText(t, instance, "the same text")
-	entries, err := os.ReadDir(filepath.Join(instance.directory, disk.Directory))
-	if err != nil {
-		t.Fatal(err)
-	}
+	first, _ := createText(t, instance, "the same text")
+	second, _ := createText(t, instance, "the same text")
 	var ivs [][]byte
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		object, readErr := os.ReadFile(filepath.Join(instance.directory, disk.Directory, entry.Name()))
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		header, parseErr := core.ParseHeader(object)
-		if parseErr != nil {
-			t.Fatalf("a stored blob is not an envelope: %v", parseErr)
+	for _, link := range []string{first, second} {
+		header, err := core.ParseHeader(storedEnvelope(t, instance, link))
+		if err != nil {
+			t.Fatalf("a stored blob is not an envelope: %v", err)
 		}
 		ivs = append(ivs, header.IV[:])
 	}
-	if len(ivs) != 2 || bytes.Equal(ivs[0], ivs[1]) {
+	if bytes.Equal(ivs[0], ivs[1]) {
 		t.Fatalf("stored IVs %x, want two different ones", ivs)
 	}
+}
+
+// storedEnvelope opens the sealed record with the link's read key and decrypts the stored blob, as the server does.
+func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
+	t.Helper()
+	parsed, err := core.ParseLink(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := core.DeriveLink(parsed.ID, &parsed.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage, err := sqlite.Open(t.Context(), filepath.Join(instance.directory, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer storage.Close()
+	locator := seal.LocatorOf(parsed.ID[:])
+	row, err := storage.Load(t.Context(), locator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readKey := core.PublicKey(&keys.R)
+	recordKey, err := seal.Unwrap(seal.KeyFor(readKey[:], locator, seal.Read), row.ReadWrap, locator, seal.Read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.OpenRecord(&row, recordKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blobKey, err := record.BlobKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := os.ReadFile(
+		filepath.Join(instance.directory, disk.Directory, hex.EncodeToString([]byte(row.BlobRef))),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope := make([]byte, record.Message.Size)
+	seal.BlobStream(blobKey).XORKeyStream(envelope, stored[:record.Message.Size])
+	return envelope
 }
 
 func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
@@ -581,6 +619,7 @@ func TestNoFlagTakesASecret(t *testing.T) {
 		"reason-file":              true,
 		"contact":                  true,
 		"good-faith":               true,
+		"key-file":                 true,
 	}
 	for _, subcommand := range commands() {
 		result := runWith(t, "", nil, nil, subcommand.name, "-h")

@@ -81,6 +81,7 @@ type Server struct {
 	idTokens        proof.IDTokens
 	disk            *diskspace.Reserver
 	reports         *abuse.Reports
+	dummyRow        store.Row
 	webFiles        fs.FS
 	webBuild        webclient.Build
 	pages           webclient.Pages
@@ -113,6 +114,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		leaseTimers: leaseTimers,
 		logger:      logging.New(os.Stderr),
 		webFiles:    webFiles,
+		dummyRow:    newDummyRow(),
 	}
 	for _, option := range options {
 		option(server)
@@ -124,7 +126,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.challenges = proof.NewChallenges(ring, storage)
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
 	server.idTokens = proof.NewIDTokens(ring)
-	server.reports = abuse.NewReports(settings.DataDir, storage, server.logger)
+	server.reports = abuse.NewReports(settings.DataDir, settings.ReportKey, server.logger)
 	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
 	server.handler = server.routes()
 	return server, nil
