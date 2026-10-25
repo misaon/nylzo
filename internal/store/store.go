@@ -31,11 +31,11 @@ const (
 	MinTransferRate   = 16000
 )
 
-func CeilMinute(t time.Time) time.Time {
-	if r := t.Truncate(time.Minute); !r.Equal(t) {
-		return r.Add(time.Minute)
+func CeilMinute(moment time.Time) time.Time {
+	if truncated := moment.Truncate(time.Minute); !truncated.Equal(moment) {
+		return truncated.Add(time.Minute)
 	}
-	return t
+	return moment
 }
 
 func TransferTime(size int64) time.Duration {
@@ -144,7 +144,7 @@ type Lease struct {
 	Downloads int
 }
 
-func (l Lease) Active(now time.Time) bool {
+func (l *Lease) Active(now time.Time) bool {
 	return now.Before(l.ExpiresAt)
 }
 
@@ -171,8 +171,8 @@ type RateHit struct {
 	BytesLimit  int64
 }
 
-func (h RateHit) Over(c RateCount) bool {
-	return (h.Limit > 0 && c.Count > h.Limit) || (h.BytesLimit > 0 && c.Bytes > h.BytesLimit)
+func (h *RateHit) Over(count RateCount) bool {
+	return (h.Limit > 0 && count.Count > h.Limit) || (h.BytesLimit > 0 && count.Bytes > h.BytesLimit)
 }
 
 type RateCount struct {
@@ -187,9 +187,9 @@ type ExpiredMessage struct {
 }
 
 type Messages interface {
-	Create(ctx context.Context, m *Message, counters ...RateHit) error
+	Create(ctx context.Context, message *Message, counters ...RateHit) error
 	Get(ctx context.Context, id string) (Record, error)
-	Claim(ctx context.Context, p ClaimParams) (ClaimResult, error)
+	Claim(ctx context.Context, params ClaimParams) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
 	RecordDownload(ctx context.Context, lease Lease, now time.Time) error
 	Ack(ctx context.Context, lease Lease, now time.Time) (string, error)
@@ -233,7 +233,7 @@ type BlobInfo struct {
 }
 
 type Blobs interface {
-	Put(ctx context.Context, ref string, r io.Reader, size int64) error
+	Put(ctx context.Context, ref string, content io.Reader, size int64) error
 	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
 	Delete(ctx context.Context, ref string) error
 	DeleteBatch(ctx context.Context, refs []string) []error
