@@ -33,31 +33,39 @@ D91: vlastní skript se zakázanými vzory (`forbidden.ts`) nahrazují pravidla 
 3. Zkrácení testů až po refaktoringu, aby celá dosavadní sada hlídala, že se chování nezměnilo.
 4. CI podle nových nástrojů a ověření celé sady, Lighthouse a e2e.
 
-## Stav a předání (25. 10. 2026 dopoledne)
+## Stav (25. 10. 2026 odpoledne)
 
-Sloučeno na `refactor/stabilize` a ověřené: nástroje a konfigurace (D87), TypeScriptové jádro, e2e (D90), Go jádro, pepper, úložiště a klient. Všechny testy v Go s race detektorem prochází, `spec/vectors.json` se generuje beze změny.
+Všechny oblasti jsou sloučené na `refactor/stabilize`: nástroje a konfigurace (D87), TypeScriptové jádro, e2e (D90), Go jádro, pepper, úložiště a klient, Go server a CLI, webová aplikace (D89, D91) a přejmenování napříč oblastmi. Zálohy rozpracovaných větví `wip/stabilize-go-server` a `wip/stabilize-web-app` na GitHubu už nejsou potřeba.
 
 Cestou opravené chyby (každá ve vlastním commitu):
 - SQLite úložiště tiše ořezávalo sloupec, který se nevešel do typu v Go, takže `kdf_id` 257 četlo jako profil 1. Takový řádek teď hlásí jako poškozený.
 - Klient přijímal v `X-Nylzo-Policy` `kdf_id` mimo rozsah bajtu jako profil 1. Teď ho odmítne. Odvození klíče se řídí profilem z fragmentu, takže nešlo o downgrade.
 
-Rozpracované větve (zálohy na GitHubu):
-- `wip/stabilize-go-server`: rozdělení `internal/server` na podbalíčky `webclient`, `ratelimit`, `proof`, `config`, `abuse`, `sweep`, `logging`, `diskspace`, handlery podle skupin endpointů, `internal/cli` s balíčkem `console`. Vychází z `1f870a6`. Zbývají jména, nulový lint v oblasti a zkrácení testů. Při zkracování musí zůstat `TestSecurityHeadersAndNonce`, `TestBuiltClientIsServed`, `TestRobotsAndSitemap`, `TestHomePagesHaveTheirOwnAddresses` a testy hlaviček transparentnosti, protože e2e se na ně spoléhá.
-- `wip/stabilize-web-app`: struktura `src/app`, `src/features`, `src/shared`, `forbidden.ts` nahrazený ESLintem (D91), rozdělené `Read.svelte` a `Composer.svelte`. Vychází z `da0e3a3`. Zbývají jména, nulový ESLint, knip a zkrácení testů. Platí pravidla pro Svelte z `CLAUDE.md`.
+Přejmenování napříč oblastmi proběhla podle seznamu níže v Go přes `gopls rename` (v0.24.0) a v TypeScriptu přes jazykovou službu TypeScriptu. Zmizelo s nimi všech 16 dočasných `//nolint:gocritic` (12 v základních balíčcích, 4 v testech serveru). Od seznamu se liší čtyři věci:
+- `TOKEN_LEN` je `SEED_LENGTH`, stejně jako `SeedLen` v Go.
+- `anyPassphraseKey` je synchronní `derivePassphraseKey`, jméno funkce v Go. `passphraseKey` je ve všech volajících jméno hodnoty, kterou funkce vrací.
+- `core.SignRequest` vrací `*Signature`, aby šly metody s ukazatelovým receiverem volat rovnou na výsledku.
+- `pepper.Ring.MAC` vrací `pepper.Tag{MAC, PepperID}`.
 
-Jak navázat:
-1. Dokončit obě větve, nebo převzít jejich stav. Commity přenést na `refactor/stabilize` přes `git cherry-pick <základ>..<větev>`.
-2. Očekávané konflikty: cesta k `app/src/lib/api.ts` v `web/e2e/tests/support/messages.ts` a `web/e2e/tests/create.spec.ts`, pokud ji aplikace přesune. Commit „resolve app modules like the bundler“ je na obou větvích stejný.
-3. Přejmenování napříč oblastmi najednou: v Go přes `gopls rename` (v0.24.0), v TypeScriptu ručně s kontrolou typů. Seznam je níže. S ním zmizí 12 dočasných `//nolint:gocritic`.
-4. Ověřit: `mise run lint` s nulovými nálezy, `mise run test` (včetně AK21 a AK22 zvlášť), build klienta, e2e v Chromiu a WebKitu, Lighthouse 100 na `/` a `/cs/` na mobilu.
-5. Aktualizovat popis PR a v ochraně větve `main` přepsat povinné kontroly na nové názvy e2e jobů.
+Testy: testy serveru a CLI jsou přeskupené podle skupin endpointů a sloučené z 268 na 235. Podle názvů jde převážně o AK, bezpečnostní záruky a regrese z dřívějších review; další zkrácení může posoudit review. Z testů webové aplikace zmizely ještě tři (vyhledání trasy, tvary množného čísla, okrajový případ zobrazení odkazu), aplikace má 281 testů.
 
-Přejmenování napříč oblastmi:
-- `@nylzo/core`: `ID_LEN`, `HEADER_LEN`, `CHALLENGE_LEN`, `PUBLIC_KEY_LEN` a vnitřní `*_LEN` na `*_LENGTH`; `MIN_PASSPHRASE_CHARS` na `MIN_PASSPHRASE_CHARACTERS`; `MAX_MIME` na `MAX_MIME_BYTES`; `LinkKeys.r` a `.saltPw` na `readSeed` a `passphraseSalt`; `ContentKeys.k` a `.v` na `contentKey` a `verifierSeed`; `Fragment.s` a `Link.s` na `secret`; `anyPassphraseKey` (vrací Promise) na synchronní `passphraseKey`.
+Výstup buildu proti stavu před refaktoringem: `index.html`, názvy assetů a pravidla CSS jsou stejné. Domovské stránky se liší v hydratačních komentářích nových komponent a tři tlačítka nabídek v composeru ztratila `id="sN-…-trigger"`, protože fokus teď řídí `FocusTargets`. `start.js` má po gzipu 114 398 B místo 111 663 B (+2,4 %).
+
+Ověřeno na `refactor/stabilize`:
+- `mise run lint` a `pnpm --dir web lint` bez nálezů, `svelte-autofixer` bez nálezů na všech 51 souborech Svelte.
+- `go test -race` pro všechny balíčky, AK21 a AK22 zvlášť; `spec/vectors.json` se generuje beze změny (AK9).
+- `NYLZO_HEAVY_TESTS=1 pnpm --dir web -r test`: jádro 291 testů, aplikace 281.
+- e2e v Chromiu a WebKitu: 62 z 62 za 38 s. Firefox lokálně nejde spustit, běží v CI.
+- Lighthouse na `/` a `/cs/`, mobil i desktop: 100 ve všech kategoriích (TBT 20 ms na mobilu; první studený běh `/` na mobilu dal výkon 99).
+
+Zbývá na vlastníkovi: review PR a v ochraně větve `main` přepsat povinné kontroly na nové názvy e2e jobů (ztratily číslo shardu).
+
+Seznam přejmenování napříč oblastmi:
+- `@nylzo/core`: `ID_LEN`, `HEADER_LEN`, `CHALLENGE_LEN`, `PUBLIC_KEY_LEN` a vnitřní `*_LEN` na `*_LENGTH`; `MIN_PASSPHRASE_CHARS` na `MIN_PASSPHRASE_CHARACTERS`; `MAX_MIME` na `MAX_MIME_BYTES`; `LinkKeys.r` a `.saltPw` na `readSeed` a `passphraseSalt`; `ContentKeys.k` a `.v` na `contentKey` a `verifierSeed`; `Fragment.s` a `Link.s` na `secret`; `anyPassphraseKey` (vrací Promise) na synchronní funkci.
 - `core`: `SolvePoW` vrací `(string, error)` a generátor si nechá vnitřní variantu s čítačem; metody `Signature` `Verify`, `Authorization` a `VerifierHeader` s ukazatelovým receiverem; `Signature.Sig` na `Value`; `LinkKeys.SaltPW` na `PassphraseSalt`; `TokenLen` na `SeedLen`; `MinPassphraseChars` na `MinPassphraseCharacters`.
 - `pepper`: `Ring.MAC` vrací strukturu `{MAC, PepperID}`.
 - `store`: `Messages.MarkEnding` vrací `store.Ending{State, Ref, Recorded}`; `Messages.Ack`, `RecordDownload` a `AckLease` berou `*store.Lease`; `Counters.RateReserve` vrací `(int64, error)` s nulou pro odmítnutí; `Reconcile` vrací `store.ReconcileReport{Orphans, Listed}`; `ClaimParams` na `ClaimParameters`.
-- `client`: `Create` bere `*CreateRequest`. `disk`: `Dir` na `Directory`.
+- `client`: `Create` bere `*CreateRequest`. `disk`: `Dir` na `Directory`. CLI: `cli.Env` na `cli.Environment`.
 
 ## Zdroje
 
