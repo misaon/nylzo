@@ -7,13 +7,13 @@ import { hash } from '../primitives/identifiers.ts';
 
 export const PUBLIC_KEY_LEN = 32;
 export const CHALLENGE_LEN = 36;
-const AUTHORIZATION_SCHEME = 'Nylzo-Sig';
 export const PURPOSE_READ = 'read';
 export const PURPOSE_VERIFIER = 'verifier';
 export const PURPOSE_MANAGE = 'manage';
 
 export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_VERIFIER | typeof PURPOSE_MANAGE;
 
+const AUTHORIZATION_SCHEME = 'Nylzo-Sig';
 const REQUEST_LABEL = 'nylzo/v1/request';
 const FIELD_SEPARATOR = new Uint8Array(1);
 const PKCS8_ED25519_PREFIX = decodeBase64urlExact('MC4CAQAwBQYDK2VwBCIEIA', 16);
