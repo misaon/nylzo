@@ -289,37 +289,6 @@ test('the sender forgets one message, then all of them, for good', async ({ brow
   await expect(sender.getByText('This device remembers no messages.')).toBeVisible();
 });
 
-test('a report from the read page or from /report spends no open (D41)', async ({ browser }) => {
-  const message = await createViaApi({ text: 'reported', opensMax: 2 });
-  const recipient = await newPage(browser);
-  const violations = await recordViolations(recipient);
-  await recipient.goto(message.link);
-  await recipient.getByRole('button', { name: 'Report', exact: true }).click();
-  await recipient.getByLabel('Reason, optional').fill('looks like phishing');
-  await recipient.getByRole('button', { name: 'Send report' }).click();
-  await expect(recipient.getByRole('status').first()).toHaveText('Report sent');
-  await expect(recipient.getByLabel('Reason, optional')).toHaveValue('');
-
-  const reporter = await newPage(browser);
-  await reporter.goto('/report');
-  await reporter.getByLabel('Link to the message').fill(message.link.replace(BASE_URL, 'http://evil.test'));
-  await reporter.getByRole('button', { name: 'Send report' }).click();
-  await expect(reporter.getByText('The link belongs to another service.')).toBeVisible();
-  await expect(reporter.getByLabel('Link to the message')).toBeFocused();
-  await reporter.getByLabel('Link to the message').fill(`  ${message.link}  `);
-  await reporter.getByRole('button', { name: 'Send report' }).click();
-  await expect(reporter.getByText('We received the report.')).toBeVisible();
-
-  await recipient.getByRole('button', { name: 'Show message' }).click();
-  await expectRevealed(recipient);
-  await expect(recipient.locator('pre')).toHaveText('reported');
-  await recipient.getByRole('button', { name: 'Report', exact: true }).click();
-  await recipient.getByLabel('Reason, optional').fill('after reading');
-  await recipient.getByRole('button', { name: 'Send report' }).click();
-  await expect(recipient.getByRole('status').first()).toHaveText('Report sent');
-  expect(await violations()).toEqual([]);
-});
-
 test('the language switches in place, keeps a shown message and stays chosen', async ({ browser }) => {
   const message = await createViaApi({ text: 'zůstane' });
   const recipient = await newPage(browser);

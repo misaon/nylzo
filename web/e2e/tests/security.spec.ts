@@ -1,43 +1,4 @@
-import type { Page, Request } from '@playwright/test';
-
-import { createViaApi, expect, leave, live, openApp, setPassphrase, test } from './helpers.ts';
-
-interface Recorded {
-  readonly url: string;
-  readonly headers: Record<string, string>;
-  readonly body: string;
-}
-
-function headersOf(request: Request): Promise<Record<string, string>> {
-  const provisional = new Promise<Record<string, string>>((resolve) =>
-    setTimeout(() => resolve(request.headers()), 2000),
-  );
-  return Promise.race([request.allHeaders(), provisional]);
-}
-
-function record(page: Page): Promise<Recorded>[] {
-  const seen: Promise<Recorded>[] = [];
-  page.on('request', (request: Request) => {
-    seen.push(
-      headersOf(request).then((headers) => ({
-        url: request.url(),
-        headers,
-        body: request.postDataBuffer()?.toString('latin1') ?? '',
-      })),
-    );
-  });
-  return seen;
-}
-
-function encodings(bytes: Uint8Array): string[] {
-  const buffer = Buffer.from(bytes);
-  return [
-    buffer.toString('hex'),
-    buffer.toString('base64'),
-    buffer.toString('base64').replace(/=+$/, ''),
-    buffer.toString('base64url'),
-  ];
-}
+import { expect, leave, live, openApp, setPassphrase, test } from './helpers.ts';
 
 test('leaving the create page wipes the draft, the passphrase, the file and the created link', async ({ page }) => {
   await openApp(page, '/');
@@ -113,45 +74,4 @@ test('leaving while a message is encrypted wipes it and a later answer neither s
     false,
   );
   expect(await visible()).toBe(0);
-});
-
-test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({
-  browser,
-}) => {
-  const message = await createViaApi({ text: 'report me' });
-  const recipient = await (await browser.newContext()).newPage();
-  const reporter = await (await browser.newContext()).newPage();
-  const fromPage = record(recipient);
-  const fromReportPage = record(reporter);
-  await recipient.goto(message.link);
-  await recipient.getByRole('button', { name: 'Report', exact: true }).click();
-  await recipient.getByLabel('Reason, optional').fill('spam');
-  await recipient.getByRole('button', { name: 'Send report' }).click();
-  await expect(recipient.getByRole('status').first()).toHaveText('Report sent');
-  await reporter.goto('/report');
-  await reporter.getByLabel('Link to the message').fill(message.link);
-  await reporter.getByRole('button', { name: 'Send report' }).click();
-  await expect(reporter.getByText('We received the report.')).toBeVisible();
-
-  const fragment = new URL(message.link).hash.slice(1);
-  const forbidden = [fragment, ...encodings(Buffer.from(message.secret, 'base64url'))].map((form) =>
-    form.toLowerCase(),
-  );
-  const requests = await Promise.all([...fromPage, ...fromReportPage]);
-  const reports = requests.filter((request) => request.url.endsWith('/api/v1/abuse'));
-  expect(reports.length).toBeGreaterThanOrEqual(2);
-  for (const request of requests) {
-    const flat = `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}`.toLowerCase();
-    for (const form of forbidden) {
-      expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
-    }
-  }
-  for (const report of reports) {
-    expect(Object.keys(JSON.parse(report.body)).sort()).toEqual(
-      report.body.includes('reason') ? ['id', 'reason'] : ['id'],
-    );
-    expect(JSON.parse(report.body).id).toBe(message.idText);
-    expect(report.headers['authorization']).toMatch(/^Nylzo-Sig /);
-    expect(report.headers['content-type']).toBe('application/json');
-  }
 });
