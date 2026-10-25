@@ -1,3 +1,5 @@
+import type * as Core from '@nylzo/core';
+
 import { KDF_SCRYPT, type KdfId } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,7 +17,7 @@ const { captured, passphraseKeys, failing } = vi.hoisted(() => ({
 }));
 
 vi.mock('@nylzo/core', async (importOriginal) => {
-  const core = await importOriginal<typeof import('@nylzo/core')>();
+  const core = await importOriginal<typeof Core>();
   const keep = <T extends Uint8Array>(bytes: T): T => {
     captured.push(bytes);
     return bytes;
@@ -33,14 +35,14 @@ vi.mock('@nylzo/core', async (importOriginal) => {
       keep(fragment.s);
       return fragment;
     },
-    deriveLink: async (id: Uint8Array, s: Uint8Array) => {
-      const keys = await core.deriveLink(id, s);
+    deriveLink: async (id: Uint8Array, secret: Uint8Array) => {
+      const keys = await core.deriveLink(id, secret);
       keep(keys.r);
       keep(keys.saltPw);
       return keys;
     },
-    deriveContent: async (id: Uint8Array, s: Uint8Array, p: Uint8Array) => {
-      const keys = await core.deriveContent(id, s, p);
+    deriveContent: async (id: Uint8Array, secret: Uint8Array, passphraseKey: Uint8Array) => {
+      const keys = await core.deriveContent(id, secret, passphraseKey);
       keep(keys.v);
       return keys;
     },
@@ -60,46 +62,57 @@ const PASSPHRASE = 'correct horse battery staple';
 const wiped = (bytes: Uint8Array) => bytes.length > 0 && bytes.every((byte) => byte === 0);
 
 function zeroed(): boolean[] {
-  return captured.map(wiped);
+  return captured.map((bytes) => wiped(bytes));
 }
 
-function scryptStub(): CreateDependencies['scrypt'] {
-  return async (passphrase) => {
-    const p = new Uint8Array(32).fill(passphrase === PASSPHRASE ? 7 : 9);
-    passphraseKeys.push(p);
-    return p;
-  };
+const stubScrypt: CreateDependencies['scrypt'] = (passphrase) => {
+  const passphraseKey = new Uint8Array(32).fill(passphrase === PASSPHRASE ? 7 : 9);
+  passphraseKeys.push(passphraseKey);
+  return Promise.resolve(passphraseKey);
+};
+
+function createDependencies(api: FakeApi, scrypt = stubScrypt): CreateDependencies {
+  return { api, origin: ORIGIN, scrypt, solvePow: () => Promise.resolve('') };
 }
 
-function createDependencies(api: FakeApi, scrypt = scryptStub()): CreateDependencies {
-  return { api, origin: ORIGIN, scrypt, solvePow: async () => '' };
-}
-
-async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0, scrypt = scryptStub()): Promise<string> {
+async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0): Promise<string> {
   const passphrase = kdfId === 0 ? '' : PASSPHRASE;
   const message = await createMessage(
     { text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase },
-    createDependencies(api, scrypt),
+    createDependencies(api),
   );
   captured.length = 0;
   passphraseKeys.length = 0;
   return message.link;
 }
 
-function readerFor(api: FakeApi, link: string, scrypt = scryptStub()) {
+function readerFor(api: FakeApi, link: string) {
   const url = new URL(link);
   const views: ReadView[] = [];
+  const session = new Map<string, string>();
   const reader = createReader(
     {
       api,
       location: { pathname: url.pathname, hash: url.hash },
-      session: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+      session: {
+        getItem: (key) => session.get(key) ?? null,
+        setItem: (key, value) => {
+          session.set(key, value);
+        },
+        removeItem: (key) => {
+          session.delete(key);
+        },
+      },
       page: { visible: () => true, prerendering: () => false },
-      dropFragment: () => {},
-      scrypt,
+      dropFragment: () => {
+        url.hash = '';
+      },
+      scrypt: stubScrypt,
       now: () => Date.now(),
     },
-    (view) => views.push(view),
+    (view) => {
+      views.push(view);
+    },
   );
   return { ...reader, last: () => views.at(-1) };
 }
@@ -140,13 +153,11 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(captured.length).toBe(4 * api.calls.filter((call) => call === 'create').length);
     expect(zeroed().every(Boolean)).toBe(true);
     expect(passphraseKeys.length).toBeGreaterThan(0);
-    expect(passphraseKeys.every(wiped)).toBe(true);
+    expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 
   it('wipes S, R and salt_pw when the key derivation fails', async () => {
-    const dependencies = createDependencies(fakeApi(), async () => {
-      throw new KdfWorkerError();
-    });
+    const dependencies = createDependencies(fakeApi(), () => Promise.reject(new KdfWorkerError()));
     await expect(
       createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, dependencies),
     ).rejects.toMatchObject({
@@ -218,15 +229,13 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   it('wipes S, R, salt_pw, V and P when the claim fails', async () => {
     const api = fakeApi();
     const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
-    api.claim = async () => {
-      throw new ApiError(500, 'internal');
-    };
+    api.claim = () => Promise.reject(new ApiError(500, 'internal'));
     await reader.load();
     await reader.reveal(PASSPHRASE);
     expect(reader.last()).toEqual({ view: 'failed' });
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
-    expect(passphraseKeys.every(wiped)).toBe(true);
+    expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 
   it('wipes S, R, salt_pw, V and P when the verifier key cannot be made', async () => {
@@ -239,7 +248,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(captured).toHaveLength(4);
     expect(zeroed()).toEqual([true, true, true, true]);
     expect(passphraseKeys).toHaveLength(1);
-    expect(passphraseKeys.every(wiped)).toBe(true);
+    expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 
   it('wipes V and P after a wrong passphrase while it keeps S and salt_pw for the next try', async () => {
@@ -251,6 +260,6 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     const [s, r, saltPw, v] = captured;
     expect([s, saltPw].map((bytes) => bytes && wiped(bytes))).toEqual([false, false]);
     expect([r, v].map((bytes) => bytes && wiped(bytes))).toEqual([true, true]);
-    expect(passphraseKeys.every(wiped)).toBe(true);
+    expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 });
