@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/misaon/nylzo/internal/server/config"
@@ -16,11 +15,8 @@ const (
 	GlobalStoredKey  = globalStoredKey
 )
 
-func ParseCreateHeaderForTest(cfg config.Server, value string) bool {
-	s := &Server{cfg: cfg}
-	r, _ := http.NewRequest("POST", "/api/v1/messages", nil)
-	r.Header.Set(headerCreate, value)
-	_, ok := s.parseCreateHeader(r)
+func ParseCreateHeaderForTest(settings config.Server, value string) bool {
+	_, ok := parseCreateHeader(value, settings.Limits)
 	return ok
 }
 
@@ -45,5 +41,5 @@ func (s *Server) ChallengeAtForTest(now time.Time) [core.ChallengeLen]byte {
 }
 
 func (s *Server) SetFreeSpaceForTest(free diskspace.FreeFunc) {
-	s.disk = diskspace.NewReserver(s.cfg.DataDir, s.cfg.MinFreeBytes, free, s.log)
+	s.disk = diskspace.NewReserver(s.settings.DataDir, s.settings.MinFreeBytes, free, s.logger)
 }

@@ -141,7 +141,7 @@ func serve(ctx context.Context, env Env, logger *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-	srv, err := server.New(cfg, st, blobs, server.WithLogger(logger))
+	srv, err := server.New(&cfg, st, blobs, server.WithLogger(logger))
 	if err != nil {
 		return err
 	}

@@ -77,7 +77,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(cfg, st, blobs, server.WithLogger(slog.New(slog.DiscardHandler)))
+	srv, err := server.New(&cfg, st, blobs, server.WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}

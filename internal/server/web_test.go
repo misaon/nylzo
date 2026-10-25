@@ -101,7 +101,7 @@ func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, cfg config.Serv
 		logs = io.Discard
 	}
 	srv, err := server.New(
-		cfg,
+		&cfg,
 		st,
 		blobs,
 		server.WithWebFiles(files),

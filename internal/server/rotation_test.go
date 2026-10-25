@@ -34,7 +34,7 @@ func TestAK27PepperRotation(t *testing.T) {
 	if resp, _ := h.metadata(old); resp.StatusCode != 404 {
 		t.Fatalf("message under a dropped pepper must look unknown: %d", resp.StatusCode)
 	}
-	if _, err := server.New(baseConfig(pepperA, pepperA), h.store, h.blobs); err == nil {
+	if _, err := server.New(new(baseConfig(pepperA, pepperA)), h.store, h.blobs); err == nil {
 		t.Fatal("identical peppers accepted")
 	}
 }

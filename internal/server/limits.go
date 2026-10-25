@@ -7,106 +7,144 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/server/logging"
-
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const prefixShare = 0.5
-
 const (
+	rangeShare       = 0.5
+	streamBusyRetry  = 5 * time.Second
 	globalCreatesKey = "global:d"
 	globalStoredKey  = "global:stored:d"
 )
 
-func (s *Server) limitCreate(now time.Time, addr netip.Addr, size int64) time.Duration {
-	fine, coarse := s.addressKey.Source(addr), s.addressKey.Range(addr)
-	h, d := ratelimit.Hour(now), ratelimit.Day(now)
-	r := s.cfg.Rates
-	m := r.CoarseMultiplier
+func (s *Server) clientAddress(r *http.Request) netip.Addr {
+	return s.proxies.ClientAddress(r)
+}
+
+// allowAPI asks the token buckets in order, so a refused source or range takes no later token.
+func (s *Server) allowAPI(r *http.Request) bool {
+	now := s.clock()
+	address := s.clientAddress(r)
+	return s.sourceLimiter.Allow(s.addressKey.Source(address), now) &&
+		s.rangeLimiter.Allow(s.addressKey.Range(address), now) &&
+		s.instanceLimiter.Allow(ratelimit.Bucket{}, now)
+}
+
+func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
+	return s.allowHourly(w, r, "read", s.settings.Rates.ReadPerHour)
+}
+
+func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string, limit int64) bool {
+	now := s.clock()
+	address := s.clientAddress(r)
+	hour := ratelimit.Hour(now)
+	retry := s.counters.Count([]ratelimit.Hit{
+		{Kind: kind + ":h", Bucket: s.addressKey.Source(address), Window: hour, Limit: limit},
+		{
+			Kind:   kind + ":h:c",
+			Bucket: s.addressKey.Range(address),
+			Window: hour,
+			Limit:  limit * s.settings.Rates.CoarseMultiplier,
+		},
+	}, now)
+	if retry > 0 {
+		writeRateLimited(w, retry)
+		return false
+	}
+	return true
+}
+
+// takeStream holds one of the slots that bound claim and blob responses; it answers 503 when none is free.
+func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
+	address := s.clientAddress(r)
+	source, addressRange := s.addressKey.Source(address), s.addressKey.Range(address)
+	if !s.streams.Take(source, addressRange) {
+		setRetryAfter(w, streamBusyRetry)
+		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		return nil, false
+	}
+	return func() { s.streams.Release(source, addressRange) }, true
+}
+
+func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time.Duration {
+	source, addressRange := s.addressKey.Source(address), s.addressKey.Range(address)
+	hour, day := ratelimit.Hour(now), ratelimit.Day(now)
+	rates := s.settings.Rates
+	coarse := rates.CoarseMultiplier
 	return s.counters.Count([]ratelimit.Hit{
-		{Kind: "create:h", Bucket: fine, Window: h, Limit: r.CreatePerHour},
+		{Kind: "create:h", Bucket: source, Window: hour, Limit: rates.CreatePerHour},
 		{
 			Kind:       "create:d",
-			Bucket:     fine,
-			Window:     d,
+			Bucket:     source,
+			Window:     day,
 			Bytes:      size,
-			Limit:      r.CreatePerDay,
-			BytesLimit: r.CreateBytesPerDay,
+			Limit:      rates.CreatePerDay,
+			BytesLimit: rates.CreateBytesPerDay,
 		},
-		{Kind: "create:h:c", Bucket: coarse, Window: h, Limit: r.CreatePerHour * m},
+		{Kind: "create:h:c", Bucket: addressRange, Window: hour, Limit: rates.CreatePerHour * coarse},
 		{
 			Kind:       "create:d:c",
-			Bucket:     coarse,
-			Window:     d,
+			Bucket:     addressRange,
+			Window:     day,
 			Bytes:      size,
-			Limit:      r.CreatePerDay * m,
-			BytesLimit: r.CreateBytesPerDay * m,
+			Limit:      rates.CreatePerDay * coarse,
+			BytesLimit: rates.CreateBytesPerDay * coarse,
 		},
 	}, now)
 }
 
-type globalState struct {
-	full      bool
-	powNeeded bool
+type globalGate struct {
+	full       bool
+	workNeeded bool
 }
 
-func (s *Server) globalGate(ctx context.Context, now time.Time) (globalState, error) {
-	limit := s.cfg.Rates.GlobalDailyCreates
+func (s *Server) globalGate(ctx context.Context, now time.Time) (globalGate, error) {
+	limit := s.settings.Rates.GlobalDailyCreates
 	if limit <= 0 {
-		return globalState{}, nil
+		return globalGate{}, nil
 	}
-	c, err := s.store.RateGet(ctx, globalCreatesKey, ratelimit.Day(now).Start)
-	return globalState{full: c.Count >= limit, powNeeded: s.powNeededAfter(c.Count)}, err
+	creates, err := s.store.RateGet(ctx, globalCreatesKey, ratelimit.Day(now).Start)
+	return globalGate{full: creates.Count >= limit, workNeeded: s.workNeededAfter(creates.Count)}, err
 }
 
-func (s *Server) powNeededAfter(creates int64) bool {
-	limit := s.cfg.Rates.GlobalDailyCreates
+func (s *Server) workNeededAfter(creates int64) bool {
+	limit := s.settings.Rates.GlobalDailyCreates
 	return limit > 0 && creates*2 >= limit
 }
 
-func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (slot int64, ok bool, err error) {
-	limit := s.cfg.Rates.GlobalDailyCreates
+type globalSlot struct {
+	number   int64
+	reserved bool
+}
+
+func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (globalSlot, error) {
+	limit := s.settings.Rates.GlobalDailyCreates
 	if limit <= 0 {
-		return 0, true, nil
+		return globalSlot{reserved: true}, nil
 	}
-	d := ratelimit.Day(now)
-	return s.store.RateReserve(
+	day := ratelimit.Day(now)
+	number, reserved, err := s.store.RateReserve(
 		context.WithoutCancel(ctx),
-		store.RateHit{Key: globalCreatesKey, WindowStart: d.Start, PurgeAt: d.PurgeAt(), Limit: limit},
+		store.RateHit{Key: globalCreatesKey, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: limit},
 	)
+	return globalSlot{number: number, reserved: reserved}, err
 }
 
 func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
-	if s.cfg.Rates.GlobalDailyCreates <= 0 {
+	if s.settings.Rates.GlobalDailyCreates <= 0 {
 		return
 	}
-	if err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, ratelimit.Day(now).Start); err != nil {
-		s.log.Error("global-release", "err", logging.ErrorText(err))
+	err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, ratelimit.Day(now).Start)
+	if err != nil {
+		s.logger.ErrorContext(ctx, "global-release", "err", logging.ErrorText(err))
 	}
 }
 
 func (s *Server) storedCreateCounters(now time.Time) []store.RateHit {
-	if s.cfg.Rates.GlobalDailyCreates <= 0 {
+	if s.settings.Rates.GlobalDailyCreates <= 0 {
 		return nil
 	}
-	d := ratelimit.Day(now)
-	return []store.RateHit{{Key: globalStoredKey, WindowStart: d.Start, PurgeAt: d.PurgeAt()}}
-}
-
-func (s *Server) limitHourly(now time.Time, addr netip.Addr, kind string, limit int64) time.Duration {
-	h := ratelimit.Hour(now)
-	return s.counters.Count([]ratelimit.Hit{
-		{Kind: kind + ":h", Bucket: s.addressKey.Source(addr), Window: h, Limit: limit},
-		{
-			Kind:   kind + ":h:c",
-			Bucket: s.addressKey.Range(addr),
-			Window: h,
-			Limit:  limit * s.cfg.Rates.CoarseMultiplier,
-		},
-	}, now)
-}
-
-func (s *Server) clientAddr(r *http.Request) netip.Addr {
-	return s.proxies.ClientAddress(r)
+	day := ratelimit.Day(now)
+	return []store.RateHit{{Key: globalStoredKey, WindowStart: day.Start, PurgeAt: day.PurgeAt()}}
 }

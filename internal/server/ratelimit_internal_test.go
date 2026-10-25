@@ -35,11 +35,15 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	s := &Server{cfg: config.Server{Rates: config.Rates{GlobalDailyCreates: 3}}, store: cancelAfterCommit{st}}
+	s := &Server{settings: config.Server{Rates: config.Rates{GlobalDailyCreates: 3}}, store: cancelAfterCommit{st}}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if slot, ok, err := s.reserveGlobalCreate(ctx, time.Unix(1_800_000_000, 0)); err != nil || !ok || slot != 1 {
-		t.Fatalf("a canceled request must still learn about the slot it reserved: %d %v %v", slot, ok, err)
+	if slot, err := s.reserveGlobalCreate(
+		ctx,
+		time.Unix(1_800_000_000, 0),
+	); err != nil || !slot.reserved ||
+		slot.number != 1 {
+		t.Fatalf("a canceled request must still learn about the slot it reserved: %+v %v", slot, err)
 	}
 }
 
@@ -66,7 +70,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 	failing := &failingSpends{Store: st, fail: true}
-	s, err := New(cfg, failing, nil, WithLogger(slog.New(slog.DiscardHandler)))
+	s, err := New(&cfg, failing, nil, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}

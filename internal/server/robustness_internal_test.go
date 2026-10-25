@@ -59,7 +59,7 @@ func testServer(t testing.TB, st store.Store, change func(*config.Server)) (*Ser
 		change(&cfg)
 	}
 	logs := &lockedBuffer{}
-	s, err := New(cfg, st, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
+	s, err := New(&cfg, st, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		s, logs := testServer(t, openStore(t), func(c *config.Server) { c.SweepInterval = time.Minute })
-		blobs, err := disk.New(s.cfg.DataDir)
+		blobs, err := disk.New(s.settings.DataDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -239,7 +239,7 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 		cfg := config.Defaults()
 		cfg.Pepper = bytes.Repeat([]byte{1}, 32)
 		change(&cfg)
-		if _, err := New(cfg, st, nil); !errors.Is(err, config.ErrInvalid) {
+		if _, err := New(&cfg, st, nil); !errors.Is(err, config.ErrInvalid) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}

@@ -6,35 +6,31 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/misaon/nylzo/internal/server/sweep"
-
-	"github.com/misaon/nylzo/internal/server/abuse"
-
-	"github.com/misaon/nylzo/internal/server/config"
-
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/abuse"
+	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/sweep"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	readHeaderTimeout = 5 * time.Second
-	readTimeout       = 120 * time.Second
-	writeTimeout      = 120 * time.Second
-	idleTimeout       = 30 * time.Second
-	maxHeaderBytes    = 8 << 10
-	h2cStreamBuffer   = 64 << 10
-	h2cConnBuffer     = 1 << 20
-	h2cMaxFrame       = 16 << 10
-	streamBusyRetry   = 5 * time.Second
-	diskFullRetry     = 60 * time.Second
+	readHeaderTimeout   = 5 * time.Second
+	readTimeout         = 120 * time.Second
+	writeTimeout        = 120 * time.Second
+	idleTimeout         = 30 * time.Second
+	maxHeaderBytes      = 8 << 10
+	h2cStreamBuffer     = 64 << 10
+	h2cConnectionBuffer = 1 << 20
+	h2cMaxFrame         = 16 << 10
 )
 
 type Option func(*Server)
@@ -47,58 +43,58 @@ func WithClock(clock func() time.Time) Option {
 	}
 }
 
-func WithAfterFunc(after func(d time.Duration, fn func())) Option {
+func WithAfterFunc(after func(delay time.Duration, run func())) Option {
 	return func(s *Server) {
 		if after != nil {
-			s.afterFunc = after
+			s.after = after
 		}
 	}
 }
 
-func WithLogger(l *slog.Logger) Option {
+func WithLogger(logger *slog.Logger) Option {
 	return func(s *Server) {
-		if l != nil {
-			s.log = l
+		if logger != nil {
+			s.logger = logger
 		}
 	}
 }
 
 type Server struct {
-	cfg           config.Server
-	store         store.Store
-	blobs         store.Blobs
-	ring          *pepper.Ring
-	clock         func() time.Time
-	afterFunc     func(time.Duration, func())
-	timers        *timers
-	log           *slog.Logger
-	instance      *ratelimit.Limiter
-	sources       *ratelimit.Limiter
-	prefixes      *ratelimit.Limiter
-	addressKey    *ratelimit.AddressKey
-	proxies       ratelimit.Proxies
-	counters      *ratelimit.Counters
-	forwardNotice atomic.Int64
-	challenges    *proof.Challenges
-	work          *proof.Work
-	idTokens      proof.IDTokens
-	streams       *ratelimit.Streams
-	disk          *diskspace.Reserver
-	handler       http.Handler
-	reports       *abuse.Reports
-	webFiles      fs.FS
-	web           webclient.Build
-	pages         webclient.Pages
-	robots        []byte
-	sitemap       []byte
-	manifest      webclient.Manifest
+	settings        config.Server
+	store           store.Store
+	blobs           store.Blobs
+	ring            *pepper.Ring
+	clock           func() time.Time
+	after           func(time.Duration, func())
+	leaseTimers     *timers
+	logger          *slog.Logger
+	instanceLimiter *ratelimit.Limiter
+	sourceLimiter   *ratelimit.Limiter
+	rangeLimiter    *ratelimit.Limiter
+	addressKey      *ratelimit.AddressKey
+	proxies         ratelimit.Proxies
+	counters        *ratelimit.Counters
+	streams         *ratelimit.Streams
+	forwardedHour   atomic.Int64
+	challenges      *proof.Challenges
+	work            *proof.Work
+	idTokens        proof.IDTokens
+	disk            *diskspace.Reserver
+	reports         *abuse.Reports
+	webFiles        fs.FS
+	webBuild        webclient.Build
+	pages           webclient.Pages
+	robots          []byte
+	sitemap         []byte
+	manifest        webclient.Manifest
+	handler         http.Handler
 }
 
-func New(cfg config.Server, st store.Store, blobs store.Blobs, opts ...Option) (*Server, error) {
-	if err := cfg.Validate(); err != nil {
+func New(settings *config.Server, storage store.Store, blobs store.Blobs, options ...Option) (*Server, error) {
+	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
-	ring, err := pepper.NewRing(cfg.Pepper, cfg.PepperPrevious)
+	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
 	if err != nil {
 		return nil, err
 	}
@@ -106,49 +102,36 @@ func New(cfg config.Server, st store.Store, blobs store.Blobs, opts ...Option) (
 	if err != nil {
 		return nil, err
 	}
-	pending := &timers{}
-	s := &Server{
-		cfg:       cfg,
-		store:     st,
-		blobs:     blobs,
-		ring:      ring,
-		clock:     time.Now,
-		afterFunc: pending.after,
-		timers:    pending,
-		log:       logging.New(os.Stderr),
-		webFiles:  webFiles,
+	leaseTimers := &timers{}
+	server := &Server{
+		settings:    *settings,
+		store:       storage,
+		blobs:       blobs,
+		ring:        ring,
+		clock:       time.Now,
+		after:       leaseTimers.after,
+		leaseTimers: leaseTimers,
+		logger:      logging.New(os.Stderr),
+		webFiles:    webFiles,
 	}
-	for _, o := range opts {
-		o(s)
+	for _, option := range options {
+		option(server)
 	}
-	if s.web, err = webclient.Load(s.webFiles); err != nil {
-		return nil, err
+	if loadErr := server.loadWebClient(); loadErr != nil {
+		return nil, loadErr
 	}
-	if s.pages, err = s.web.Render(cfg.PublicURL); err != nil {
-		return nil, err
-	}
-	s.log.Info("web-client", "built", s.web.Built, "assets", len(s.web.Assets), "public_url", cfg.PublicURL)
-	s.robots = webclient.Robots(cfg.PublicURL)
-	s.sitemap = webclient.Sitemap(cfg.PublicURL)
-	s.manifest = s.web.Manifest(cfg.Version, cfg.PublicURL)
-	s.instance = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond, cfg.Rates.BucketBurst)
-	s.sources = ratelimit.NewLimiter(cfg.Rates.SourcePerSecond, cfg.Rates.SourceBurst)
-	s.prefixes = ratelimit.NewLimiter(cfg.Rates.BucketPerSecond*prefixShare, max(1, cfg.Rates.BucketBurst*prefixShare))
-	s.addressKey = ratelimit.NewAddressKey()
-	s.proxies = ratelimit.Proxies{Trusted: cfg.TrustedProxies, ReadRealIP: cfg.ProxyMode == config.ProxyModeScaleway}
-	s.counters = ratelimit.NewCounters()
-	s.challenges = proof.NewChallenges(ring, st)
-	s.work = proof.NewWork(ring, st, cfg.PoWConcurrency, cfg.PoWDifficulty)
-	s.idTokens = proof.NewIDTokens(ring)
-	s.streams = ratelimit.NewStreams(cfg.MaxStreams)
-	s.reports = abuse.NewReports(cfg.DataDir, st, s.log)
-	s.disk = diskspace.NewReserver(cfg.DataDir, cfg.MinFreeBytes, diskspace.Free, s.log)
-	s.handler = s.routes()
-	return s, nil
+	server.setUpLimits()
+	server.challenges = proof.NewChallenges(ring, storage)
+	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
+	server.idTokens = proof.NewIDTokens(ring)
+	server.reports = abuse.NewReports(settings.DataDir, storage, server.logger)
+	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
+	server.handler = server.routes()
+	return server, nil
 }
 
 func (s *Server) Close() {
-	s.timers.stop()
+	s.leaseTimers.stop()
 }
 
 func (s *Server) Handler() http.Handler {
@@ -160,7 +143,7 @@ func (s *Server) HTTPServer() *http.Server {
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	return &http.Server{
-		Addr:              s.cfg.Listen,
+		Addr:              s.settings.Listen,
 		Handler:           s.handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
@@ -169,34 +152,34 @@ func (s *Server) HTTPServer() *http.Server {
 		MaxHeaderBytes:    maxHeaderBytes,
 		Protocols:         &protocols,
 		HTTP2: &http.HTTP2Config{
-			MaxReceiveBufferPerConnection: h2cConnBuffer,
+			MaxReceiveBufferPerConnection: h2cConnectionBuffer,
 			MaxReceiveBufferPerStream:     h2cStreamBuffer,
 			MaxReadFrameSize:              h2cMaxFrame,
 		},
-		ErrorLog: logging.NewHTTPErrorLog(s.log, s.clock),
+		ErrorLog: logging.NewHTTPErrorLog(s.logger, s.clock),
 	}
 }
 
 func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return sweep.Run(ctx, s.store, s.blobs, s.cfg.DataDir, s.clock())
+	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
 }
 
 func (s *Server) RunSweeper(ctx context.Context) {
-	if s.cfg.SweepInterval <= 0 {
+	if s.settings.SweepInterval <= 0 {
 		return
 	}
-	ticker := time.NewTicker(s.cfg.SweepInterval)
+	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
 		report, err := s.SweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
-			s.log.Info("sweep-stopped", report.LogAttrs()...)
+			s.logger.InfoContext(ctx, "sweep-stopped", report.LogAttrs()...)
 			return
 		case err != nil:
-			s.log.Error("sweep", sweep.LogAttributes(report, err)...)
+			s.logger.ErrorContext(ctx, "sweep", sweep.LogAttributes(report, err)...)
 		default:
-			s.log.Info("sweep", report.LogAttrs()...)
+			s.logger.InfoContext(ctx, "sweep", report.LogAttrs()...)
 		}
 		select {
 		case <-ctx.Done():
@@ -206,39 +189,44 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	}
 }
 
-func (s *Server) routes() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
-	mux.HandleFunc("HEAD /api/v1/instance", s.handleAPINotFound)
-	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
-	mux.HandleFunc("HEAD /api/v1/challenge", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
-	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
-	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/ack", s.handleAck)
-	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
-	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
-	mux.HandleFunc("GET /api/v1/messages/{id}/status", s.handleStatus)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", s.handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
-	mux.HandleFunc("/api/", s.handleAPINotFound)
-	mux.HandleFunc("GET /m/{id}", s.handlePage)
-	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
-	mux.HandleFunc("GET /{$}", s.handlePage)
-	mux.HandleFunc("GET /cs/{$}", s.handlePage)
-	mux.HandleFunc("GET /cs", s.handleCzechHome)
-	mux.HandleFunc("GET /robots.txt", s.handleRobots)
-	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
-	mux.HandleFunc("GET /sent", s.handlePage)
-	mux.HandleFunc("GET /report", s.handlePage)
-	mux.HandleFunc("GET /transparency", s.handlePage)
-	mux.HandleFunc("GET "+webclient.ManifestPath, s.handleClientManifest)
-	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
-	mux.HandleFunc("GET /healthz", s.handleHealth)
-	return logging.Requests(s.log,
-		s.noticeForwarded(s.securityHeaders(s.spendChallenges(s.prefetchGuard(s.throttle(logging.Route(mux)))))),
-	)
+func (s *Server) setUpLimits() {
+	rates := s.settings.Rates
+	s.instanceLimiter = ratelimit.NewLimiter(rates.BucketPerSecond, rates.BucketBurst)
+	s.sourceLimiter = ratelimit.NewLimiter(rates.SourcePerSecond, rates.SourceBurst)
+	s.rangeLimiter = ratelimit.NewLimiter(rates.BucketPerSecond*rangeShare, max(1, rates.BucketBurst*rangeShare))
+	s.addressKey = ratelimit.NewAddressKey()
+	s.proxies = ratelimit.Proxies{
+		Trusted:    s.settings.TrustedProxies,
+		ReadRealIP: s.settings.ProxyMode == config.ProxyModeScaleway,
+	}
+	s.counters = ratelimit.NewCounters()
+	s.streams = ratelimit.NewStreams(s.settings.MaxStreams)
+}
+
+// timers runs the releases at lease end; stop refuses new ones and waits for those already running.
+type timers struct {
+	mu      sync.Mutex
+	running sync.WaitGroup
+	closed  bool
+}
+
+func (t *timers) after(delay time.Duration, run func()) {
+	time.AfterFunc(delay, func() {
+		t.mu.Lock()
+		if t.closed {
+			t.mu.Unlock()
+			return
+		}
+		t.running.Add(1)
+		t.mu.Unlock()
+		defer t.running.Done()
+		run()
+	})
+}
+
+func (t *timers) stop() {
+	t.mu.Lock()
+	t.closed = true
+	t.mu.Unlock()
+	t.running.Wait()
 }

@@ -51,7 +51,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
-	s, err := New(cfg, st, gated, WithLogger(slog.New(slog.DiscardHandler)))
+	s, err := New(&cfg, st, gated, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := New(cfg, st, blobs, WithLogger(slog.New(slog.DiscardHandler)))
+	cs, err := New(&cfg, st, blobs, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}

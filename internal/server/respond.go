@@ -1,27 +1,18 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/misaon/nylzo/internal/server/logging"
 )
 
-const (
-	pendingRetry   = time.Minute
-	powBusyRetry   = 5 * time.Second
-	abuseFullRetry = time.Hour
-	prefetchRetry  = time.Minute
-	throttleRetry  = time.Second
-)
-
-func retrySeconds(d time.Duration) int64 {
-	return max(1, ceilSeconds(d))
-}
-
-func setRetryAfter(w http.ResponseWriter, d time.Duration) {
-	w.Header().Set("Retry-After", strconv.FormatInt(retrySeconds(d), 10))
-}
+const timeFormat = time.RFC3339
 
 type apiError struct {
 	Error string `json:"error"`
@@ -50,13 +41,13 @@ var (
 	errLengthRequired = apiError{Error: "length_required"}
 	errTooLarge       = apiError{Error: "too_large"}
 	errUnavailable    = apiError{Error: "unavailable"}
-	errPoWRequired    = apiError{Error: "pow"}
+	errWorkRequired   = apiError{Error: "pow"}
 	errIDToken        = apiError{Error: "id_token"}
 	errInternal       = apiError{Error: "internal"}
 )
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	body, err := json.Marshal(v)
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	body, err := json.Marshal(value)
 	if err != nil {
 		body = []byte(`{"error":"internal"}`)
 		status = http.StatusInternalServerError
@@ -67,8 +58,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Write(body)
 }
 
-func writeError(w http.ResponseWriter, status int, e apiError) {
-	writeJSON(w, status, e)
+func writeError(w http.ResponseWriter, status int, apiErr apiError) {
+	writeJSON(w, status, apiErr)
 }
 
 func writeNotFound(w http.ResponseWriter) {
@@ -79,7 +70,57 @@ func writeGone(w http.ResponseWriter, state string) {
 	writeJSON(w, http.StatusGone, gone{Error: "gone", State: state})
 }
 
-func writeRateLimited(w http.ResponseWriter, d time.Duration) {
-	setRetryAfter(w, d)
-	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(d)})
+func writeRateLimited(w http.ResponseWriter, wait time.Duration) {
+	setRetryAfter(w, wait)
+	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(wait)})
+}
+
+func setRetryAfter(w http.ResponseWriter, wait time.Duration) {
+	w.Header().Set("Retry-After", strconv.FormatInt(retrySeconds(wait), 10))
+}
+
+func retrySeconds(wait time.Duration) int64 {
+	return max(1, ceilSeconds(wait))
+}
+
+func ceilSeconds(wait time.Duration) int64 {
+	if wait <= 0 {
+		return 0
+	}
+	return int64((wait + time.Second - 1) / time.Second)
+}
+
+func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error) {
+	entry := failure(r.Context(), err)
+	s.logger.Log(r.Context(), entry.level, "handler", "route", r.Pattern, "err", entry.text)
+	if entry.clientGone {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return
+	}
+	writeError(w, http.StatusInternalServerError, errInternal)
+}
+
+type failureEntry struct {
+	clientGone bool
+	level      slog.Level
+	text       string
+}
+
+// failure logs at info level a failure that only means that the client went away.
+func failure(ctx context.Context, err error) failureEntry {
+	if ctx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		return failureEntry{clientGone: true, level: slog.LevelInfo, text: "client went away"}
+	}
+	return failureEntry{level: slog.LevelError, text: logging.ErrorText(err)}
+}
+
+func formatTime(t time.Time) string {
+	return t.UTC().Format(timeFormat)
+}
+
+func formatOptionalTime(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return formatTime(*t)
 }

@@ -99,7 +99,13 @@ func newPublicWebTestServer(
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := server.New(cfg, st, blobs, server.WithWebFiles(files), server.WithLogger(slog.New(slog.DiscardHandler)))
+	srv, err := server.New(
+		&cfg,
+		st,
+		blobs,
+		server.WithWebFiles(files),
+		server.WithLogger(slog.New(slog.DiscardHandler)),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -243,7 +243,7 @@ func newHarness(t *testing.T, cfg config.Server) *harness {
 func (h *harness) open() {
 	h.t.Helper()
 	logger := slog.New(slog.NewJSONHandler(h.logBuf, nil))
-	srv, err := server.New(h.cfg, h.store, h.blobs,
+	srv, err := server.New(&h.cfg, h.store, h.blobs,
 		server.WithClock(h.clock.Now),
 		server.WithLogger(logger),
 		server.WithAfterFunc(func(d time.Duration, fn func()) {
