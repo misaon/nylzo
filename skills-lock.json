@@ -145,6 +145,12 @@
       "skillPath": "skills/golang-troubleshooting/SKILL.md",
       "computedHash": "5e754f70758a1096b9e0fd6c0b24cc2200e2808b4f0285ea8dcf2e6c4981fd2a"
     },
+    "privacy-policy": {
+      "source": "phuryn/pm-skills",
+      "sourceType": "github",
+      "skillPath": "pm-toolkit/skills/privacy-policy/SKILL.md",
+      "computedHash": "b7de21713e3b59e8a152b47135f4a501e8ecf22e5e550dc64937f18ced7e6eae"
+    },
     "product-marketing": {
       "source": "coreyhaines31/marketingskills",
       "sourceType": "github",
