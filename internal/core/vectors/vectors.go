@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"sync"
 
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -46,10 +48,14 @@ func Generate() (*File, error) {
 		file.redact,
 		file.server,
 	}
-	for _, step := range steps {
-		if err := step(); err != nil {
-			return nil, err
-		}
+	errs := make([]error, len(steps))
+	var wait sync.WaitGroup
+	for i, step := range steps {
+		wait.Go(func() { errs[i] = step() })
+	}
+	wait.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	return file, nil
 }

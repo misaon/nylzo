@@ -3,7 +3,9 @@ package vectors
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -38,14 +40,14 @@ var powCases = []powCase{
 }
 
 func (f *File) pow() error {
-	for _, vector := range powCases {
-		pow, err := powVector(vector)
-		if err != nil {
-			return err
-		}
-		f.PoW = append(f.PoW, pow)
+	f.PoW = make([]PoW, len(powCases))
+	errs := make([]error, len(powCases))
+	var wait sync.WaitGroup
+	for i, vector := range powCases {
+		wait.Go(func() { f.PoW[i], errs[i] = powVector(vector) })
 	}
-	return nil
+	wait.Wait()
+	return errors.Join(errs...)
 }
 
 func powVector(vector powCase) (PoW, error) {
