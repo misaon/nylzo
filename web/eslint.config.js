@@ -69,6 +69,7 @@ export default defineConfig(
       'unicorn/filename-case': ['error', { cases: { kebabCase: true, pascalCase: true } }],
       'unicorn/name-replacements': ['error', { allowList: { Props: true, props: true } }],
       'unicorn/no-null': 'off',
+      'unicorn/number-literal-case': ['error', { hexadecimalValue: 'lowercase' }],
     },
   },
   {
