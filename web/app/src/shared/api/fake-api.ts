@@ -124,7 +124,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         limits: {
           maxFileBytes: 5_242_880,
           maxTextBytes: 102_400,
-          maxObjectBytes: 5_373_983,
+          maxObjectBytes: 5_373_952,
           maxTtlSeconds: 604_800,
           defaultTtlSeconds: 86_400,
           maxOpens: 10,

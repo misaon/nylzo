@@ -299,7 +299,7 @@ func (w *deadlineWriter) SetWriteDeadline(deadline time.Time) error {
 
 func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	t.Parallel()
-	const size = 5373983
+	const size = 5373952
 	want := time.Duration(size) * time.Second / store.MinTransferRate
 	if want <= writeTimeout || store.LeaseFor(size) != want || store.LeaseFor(1000) != store.LeaseDuration {
 		t.Fatalf("lease for %d bytes %v, small %v", size, store.LeaseFor(size), store.LeaseFor(1000))
