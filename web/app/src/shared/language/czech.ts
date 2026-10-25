@@ -126,7 +126,7 @@ export const czech = {
 
   'report.title': 'Nahlásit zneužití',
   'report.note':
-    'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a\u{A0}nic se nemaže automaticky. Uchováme nejvýš tři hlášení na zprávu za den, a\u{A0}jen dokud zpráva existuje.',
+    'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a\u{A0}nic se nemaže automaticky. Hlášení přijímáme jen ke zprávám, které ještě existují, a\u{A0}nejvýš tři na zprávu za den.',
   'report.privacy':
     'Server dostane jen id zprávy, důvod, váš e-mail, pokud ho uvedete, prohlášení o\u{A0}dobré víře a\u{A0}podpis odvozený z\u{A0}odkazu. Odkaz ani obsah zprávy stránku neopustí.',
   'report.link': 'Odkaz na zprávu',

@@ -128,7 +128,7 @@ export const english: Record<MessageKey, string> = {
 
   'report.title': 'Report abuse',
   'report.note':
-    'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We keep at most three reports per message a day, and only while the message exists.',
+    'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We accept reports only about messages that still exist, at most three per message a day.',
   'report.privacy':
     'The server receives only the message id, the reason, your email if you give one, the good-faith statement and a signature derived from the link. Neither the link nor the content leaves this page.',
   'report.link': 'Link to the message',
