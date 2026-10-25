@@ -2,6 +2,8 @@
 
 Ověřeno 25. 10. 2026 (seznam zdrojů na konci). Stav zdroje: ověřeno znamená přečteno na stránce, částečně znamená nepřímý nebo neúplný údaj, nenalezeno znamená, že oficiální zdroj jsem nenašel. Tvrzení, na kterých návrh stojí, jsem ověřil druhým čtením stránky nebo v místní instalaci Go 1.27.3.
 
+Rozhodnutí vlastníka 25. 10. 2026 (D101): zabezpečit jen aplikaci, a to co nejvíc. Vrstvu 2 (šifrovaný svazek) a vrstvu 3 (síť) neřešíme; vrstvu 1 rozšiřuje plán `docs/plans/2026-10-25-sealed-records.md`.
+
 ## Shrnutí
 
 - Ukradenou kopii dat (disk, zálohu, snímek i s konfigurací) jde udělat pro útočníka nečitelnou až na počet zpráv a jejich zaokrouhlené velikosti. Potřebuje to dvě vrstvy: zapečetěné záznamy v aplikaci a šifrovaný datový svazek s klíčem mimo server.
