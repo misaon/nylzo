@@ -1,12 +1,12 @@
 import comments from '@eslint-community/eslint-plugin-eslint-comments/configs';
 import javascript from '@eslint/js';
 import vitest from '@vitest/eslint-plugin';
-import { defineConfig } from 'eslint/config';
 import perfectionist from 'eslint-plugin-perfectionist';
 import playwright from 'eslint-plugin-playwright';
 import regexp from 'eslint-plugin-regexp';
 import svelte from 'eslint-plugin-svelte';
 import unicorn from 'eslint-plugin-unicorn';
+import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import typescript from 'typescript-eslint';
 
