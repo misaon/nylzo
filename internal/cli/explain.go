@@ -60,7 +60,7 @@ func explainCertificate(err error) (string, bool) {
 func explainLocal(err error) string {
 	switch {
 	case errors.Is(err, core.ErrWeakPassphrase):
-		return fmt.Sprintf("the passphrase must have at least %d characters", core.MinPassphraseChars)
+		return fmt.Sprintf("the passphrase must have at least %d characters", core.MinPassphraseCharacters)
 	case errors.Is(err, core.ErrMalformedPassphrase):
 		return "the passphrase is not valid UTF-8"
 	case errors.Is(err, console.ErrNoTerminal):

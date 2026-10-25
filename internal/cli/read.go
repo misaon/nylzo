@@ -54,7 +54,7 @@ type openLink struct {
 func (l *openLink) wipe() {
 	clear(l.secret[:])
 	clear(l.keys.R[:])
-	clear(l.keys.SaltPW[:])
+	clear(l.keys.PassphraseSalt[:])
 }
 
 func parseOpenLink(raw string) (openLink, error) {
@@ -197,7 +197,7 @@ func readMessage(
 	}
 	defer clear(keys.K[:])
 	defer clear(keys.V[:])
-	var verifier *[core.TokenLen]byte
+	var verifier *[core.SeedLen]byte
 	if link.kdf != core.KDFNone {
 		verifier = &keys.V
 	}
@@ -233,7 +233,7 @@ func passphraseKey(environment *Environment, link *openLink, source passphraseSo
 	if err != nil {
 		return nil, err
 	}
-	return core.DerivePassphraseKey(link.kdf, passphrase, &link.keys.SaltPW)
+	return core.DerivePassphraseKey(link.kdf, passphrase, &link.keys.PassphraseSalt)
 }
 
 // fetchEnvelope resumes a broken claim through the lease it already received, so it never spends a second open.
@@ -241,7 +241,7 @@ func fetchEnvelope(
 	ctx context.Context,
 	api *client.Client,
 	link *openLink,
-	verifier *[core.TokenLen]byte,
+	verifier *[core.SeedLen]byte,
 	size int64,
 ) (client.Envelope, string, error) {
 	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)

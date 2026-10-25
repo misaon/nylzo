@@ -689,7 +689,7 @@ func setupLifecycleKind(t *testing.T, harness *testHarness, kind *lifecycleKind)
 	harness.clock.Advance(kind.after)
 	ctx := t.Context()
 	if kind.ending != "" {
-		if _, _, _, err := harness.store.MarkEnding(
+		if _, err := harness.store.MarkEnding(
 			ctx,
 			message.id.String(),
 			kind.ending,
@@ -1008,7 +1008,7 @@ type burnAfterClaim struct {
 	blobs store.Blobs
 }
 
-func (s burnAfterClaim) Claim(ctx context.Context, parameters store.ClaimParams) (store.ClaimResult, error) {
+func (s burnAfterClaim) Claim(ctx context.Context, parameters store.ClaimParameters) (store.ClaimResult, error) {
 	result, err := s.Store.Claim(ctx, parameters)
 	if err == nil {
 		if _, endMessageErr := store.EndMessage(
@@ -1105,7 +1105,7 @@ func TestReleaseAfterLastLeaseKeepsRecordedExpiry(t *testing.T) {
 	if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
-	if _, _, _, err := harness.store.MarkEnding(
+	if _, err := harness.store.MarkEnding(
 		t.Context(),
 		message.id.String(),
 		store.StateExpired,
@@ -1170,7 +1170,7 @@ func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
 	lease := response.Header.Get("X-Nylzo-Lease")
 	inner := harness.store
 	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if _, _, _, err := inner.MarkEnding(
+		if _, err := inner.MarkEnding(
 			t.Context(),
 			id,
 			store.StateDeleted,
@@ -1200,7 +1200,7 @@ type slowWriterStore struct {
 	wait  time.Duration
 }
 
-func (s slowWriterStore) Claim(ctx context.Context, parameters store.ClaimParams) (store.ClaimResult, error) {
+func (s slowWriterStore) Claim(ctx context.Context, parameters store.ClaimParameters) (store.ClaimResult, error) {
 	s.clock.Advance(s.wait)
 	return s.Store.Claim(ctx, parameters)
 }
@@ -1254,7 +1254,7 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	crash := func(message *testMessage, state store.State) {
-		if _, _, _, err := harness.store.MarkEnding(
+		if _, err := harness.store.MarkEnding(
 			t.Context(),
 			message.id.String(),
 			state,
@@ -1404,8 +1404,7 @@ type ackRacingStore struct {
 	race func(id string)
 }
 
-//nolint:gocritic // hugeParam: store.Store fixes this signature.
-func (s *ackRacingStore) Ack(ctx context.Context, lease store.Lease, now time.Time) (string, error) {
+func (s *ackRacingStore) Ack(ctx context.Context, lease *store.Lease, now time.Time) (string, error) {
 	s.race(lease.ID)
 	return s.Store.Ack(ctx, lease, now)
 }

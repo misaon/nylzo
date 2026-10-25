@@ -37,10 +37,9 @@ func (s *Store) Leases(ctx context.Context, id string) ([]store.Lease, error) {
 	return leases, rows.Err()
 }
 
-//nolint:gocritic // hugeParam: store.Messages passes the lease by value; see the cross-area list.
-func (s *Store) RecordDownload(ctx context.Context, lease store.Lease, now time.Time) error {
+func (s *Store) RecordDownload(ctx context.Context, lease *store.Lease, now time.Time) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
-		found, err := findLease(ctx, tx, &lease)
+		found, err := findLease(ctx, tx, lease)
 		if err == nil && found.expiresAt <= milliseconds(now) {
 			return store.ErrLeaseInvalid
 		}
@@ -63,11 +62,10 @@ func (s *Store) RecordDownload(ctx context.Context, lease store.Lease, now time.
 	})
 }
 
-//nolint:gocritic // hugeParam: store.Messages passes the lease by value; see the cross-area list.
-func (s *Store) Ack(ctx context.Context, lease store.Lease, now time.Time) (string, error) {
+func (s *Store) Ack(ctx context.Context, lease *store.Lease, now time.Time) (string, error) {
 	var ref string
 	err := s.transaction(ctx, func(tx *sql.Tx) error {
-		found, err := findLease(ctx, tx, &lease)
+		found, err := findLease(ctx, tx, lease)
 		if err != nil {
 			return err
 		}

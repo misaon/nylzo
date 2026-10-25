@@ -6,7 +6,7 @@ const (
 	IDLen     = 16
 	SecretLen = 32
 	KeyLen    = 32
-	TokenLen  = 32
+	SeedLen   = 32
 )
 
 type ID [IDLen]byte

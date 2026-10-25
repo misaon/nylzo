@@ -70,7 +70,7 @@ func requestVector(vector *requestCase) (Request, error) {
 		Challenge: core.Encode(challenge[:]),
 		Body:      hex.EncodeToString(vector.body),
 		Message:   hex.EncodeToString(message),
-		Signature: core.Encode(signature.Sig[:]),
+		Signature: core.Encode(signature.Value[:]),
 	}
 	if vector.purpose == core.PurposeVerifier {
 		request.Verifier = signature.VerifierHeader()

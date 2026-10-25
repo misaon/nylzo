@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	Dir                = "blobs"
+	Directory          = "blobs"
 	temporaryDirectory = "tmp"
 	maxRefLen          = 64
 )
@@ -29,7 +29,7 @@ type Blobs struct {
 var _ store.Blobs = (*Blobs)(nil)
 
 func New(dataDirectory string) (*Blobs, error) {
-	root := filepath.Join(dataDirectory, Dir)
+	root := filepath.Join(dataDirectory, Directory)
 	if err := os.MkdirAll(filepath.Join(root, temporaryDirectory), 0o700); err != nil {
 		return nil, err
 	}

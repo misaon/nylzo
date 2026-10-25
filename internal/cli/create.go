@@ -228,7 +228,7 @@ func readAttachment(path string) (content, error) {
 type createdMessage struct {
 	link    string
 	id      core.ID
-	manage  [core.TokenLen]byte
+	manage  [core.SeedLen]byte
 	expires time.Time
 }
 
@@ -295,7 +295,7 @@ func createOnce(
 			return createdMessage{}, err
 		}
 	}
-	expires, err := api.Create(ctx, request)
+	expires, err := api.Create(ctx, &request)
 	if err != nil {
 		return createdMessage{}, err
 	}
@@ -320,8 +320,8 @@ func sealMessage(
 		return client.CreateRequest{}, err
 	}
 	defer clear(link.R[:])
-	defer clear(link.SaltPW[:])
-	passphraseKey, err := core.DerivePassphraseKey(kdf, passphrase, &link.SaltPW)
+	defer clear(link.PassphraseSalt[:])
+	passphraseKey, err := core.DerivePassphraseKey(kdf, passphrase, &link.PassphraseSalt)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
@@ -397,7 +397,7 @@ func prove(ctx context.Context, environment *Environment, api *client.Client, id
 			instance.PoW.Difficulty,
 		)
 		solving, cancel := context.WithTimeout(ctx, workBudget)
-		token, _, err := core.SolvePoW(solving, instance.PoW.Challenge, id, instance.PoW.Difficulty)
+		token, err := core.SolvePoW(solving, instance.PoW.Challenge, id, instance.PoW.Difficulty)
 		cancel()
 		if err == nil {
 			return token, nil

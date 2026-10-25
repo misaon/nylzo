@@ -48,10 +48,13 @@ func TestBlobFilesAreLowerHexWithMinuteTimes(t *testing.T) {
 		t.Fatal("a short Put was accepted")
 	}
 	before := time.Now()
-	if temporary, err := os.ReadDir(filepath.Join(directory, disk.Dir, "tmp")); err != nil || len(temporary) != 0 {
+	if temporary, err := os.ReadDir(
+		filepath.Join(directory, disk.Directory, "tmp"),
+	); err != nil ||
+		len(temporary) != 0 {
 		t.Fatalf("temporary files left: %v %v", temporary, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(directory, disk.Dir))
+	entries, err := os.ReadDir(filepath.Join(directory, disk.Directory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +83,7 @@ func TestPurgeTempRemovesOnlyStaleFiles(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
-	temporary := filepath.Join(directory, disk.Dir, "tmp")
+	temporary := filepath.Join(directory, disk.Directory, "tmp")
 	stale, fresh := filepath.Join(temporary, "blob-stale"), filepath.Join(temporary, "blob-fresh")
 	writeAged(t, stale, time.Hour)
 	writeAged(t, fresh, 0)
@@ -103,7 +106,7 @@ func TestPurgeTempReportsFailedRemovals(t *testing.T) {
 	}
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
-	temporary := filepath.Join(directory, disk.Dir, "tmp")
+	temporary := filepath.Join(directory, disk.Directory, "tmp")
 	writeAged(t, filepath.Join(temporary, "blob-stale"), time.Hour)
 	if err := os.Chmod(temporary, 0o500); err != nil {
 		t.Fatal(err)
@@ -121,7 +124,7 @@ func TestDeleteBatchFailsEveryRefWhenTheSyncFails(t *testing.T) {
 	if err := blobs.Put(t.Context(), "a", strings.NewReader("x"), 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(directory, disk.Dir)); err != nil {
+	if err := os.RemoveAll(filepath.Join(directory, disk.Directory)); err != nil {
 		t.Fatal(err)
 	}
 	if errs := blobs.DeleteBatch(t.Context(), []string{"a", "b"}); len(errs) != 2 || errs[0] == nil || errs[1] == nil {

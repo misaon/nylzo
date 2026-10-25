@@ -125,9 +125,13 @@ func (r *Ring) CurrentID() byte {
 	return r.current.id
 }
 
-//nolint:gocritic // unnamedResult: internal/server calls this signature; see the cross-area list.
-func (r *Ring) MAC(purpose Purpose, input []byte) ([MACLen]byte, byte) {
-	return r.current.mac(purpose, input), r.current.id
+type Tag struct {
+	MAC      [MACLen]byte
+	PepperID byte
+}
+
+func (r *Ring) MAC(purpose Purpose, input []byte) Tag {
+	return Tag{MAC: r.current.mac(purpose, input), PepperID: r.current.id}
 }
 
 func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {

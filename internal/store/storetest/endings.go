@@ -121,13 +121,13 @@ func (f *fixture) recordedEndingHoldsTheLease(recorded store.State) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err = f.store.MarkEnding(ctx, message.ID, recorded, baseTime); err != nil {
+	if _, err = f.store.MarkEnding(ctx, message.ID, recorded, baseTime); err != nil {
 		t.Fatal(err)
 	}
-	if err = f.store.RecordDownload(ctx, claimed.Lease, baseTime); goneState(err) != recorded {
+	if err = f.store.RecordDownload(ctx, &claimed.Lease, baseTime); goneState(err) != recorded {
 		t.Fatalf("a download after a recorded %s must report it: %v", recorded, err)
 	}
-	if _, err = f.store.Ack(ctx, claimed.Lease, baseTime); goneState(err) != recorded {
+	if _, err = f.store.Ack(ctx, &claimed.Lease, baseTime); goneState(err) != recorded {
 		t.Fatalf("an ack after a recorded %s must report it: %v", recorded, err)
 	}
 	if state, endErr := f.end(message.ID, store.StateExpired, baseTime); endErr != nil || state != recorded {
@@ -179,7 +179,7 @@ func (f *fixture) burnAndCancel() {
 	if _, err = f.end(cancelled.ID, store.StateCancelled, baseTime.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	err = f.store.RecordDownload(t.Context(), claimed.Lease, baseTime.Add(2*time.Second))
+	err = f.store.RecordDownload(t.Context(), &claimed.Lease, baseTime.Add(2*time.Second))
 	if !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("a lease survived the cancel: %v", err)
 	}
@@ -212,7 +212,7 @@ func (f *fixture) endedTimes() {
 		t.Fatal(err)
 	}
 	recorded := f.create(1, oneHour, false)
-	if _, _, _, err := f.store.MarkEnding(t.Context(), recorded.ID, store.StateCancelled, baseTime); err != nil {
+	if _, err := f.store.MarkEnding(t.Context(), recorded.ID, store.StateCancelled, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.end(recorded.ID, store.StateExpired, baseTime.Add(3*time.Hour+17*time.Minute)); err != nil {

@@ -84,9 +84,9 @@ func TestOpenMigratesOlderSchema(t *testing.T) {
 				t.Fatal(err)
 			}
 			storage := openStore(t, path)
-			state, ref, _, err := storage.MarkEnding(t.Context(), legacyID, store.StateCancelled, time.Unix(0, 0))
-			if err != nil || state != store.StateCancelled || ref == "" {
-				t.Fatalf("mark ending after the migration: %s %q %v", state, ref, err)
+			ending, err := storage.MarkEnding(t.Context(), legacyID, store.StateCancelled, time.Unix(0, 0))
+			if err != nil || ending.State != store.StateCancelled || ending.Ref == "" {
+				t.Fatalf("mark ending after the migration: %+v %v", ending, err)
 			}
 			record, err := storage.Get(t.Context(), legacyID)
 			if err != nil || record.Message == nil || record.Message.Ending != store.StateCancelled {

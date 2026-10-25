@@ -88,14 +88,16 @@ func TestDeriveVectors(t *testing.T) {
 			hsalt := core.HSalt(id)
 			link, err := core.DeriveLink(id, secret)
 			if err != nil || hex.EncodeToString(hsalt[:]) != vector.HSalt ||
-				hex.EncodeToString(link.R[:]) != vector.R || hex.EncodeToString(link.SaltPW[:]) != vector.SaltPW {
+				hex.EncodeToString(
+					link.R[:],
+				) != vector.R || hex.EncodeToString(link.PassphraseSalt[:]) != vector.PassphraseSalt {
 				t.Fatalf("link keys: %v", err)
 			}
 			passphrase := ""
 			if vector.Passphrase != nil {
 				passphrase = *vector.Passphrase
 			}
-			passphraseKey, err := core.DerivePassphraseKey(core.KDF(vector.KDFID), passphrase, &link.SaltPW)
+			passphraseKey, err := core.DerivePassphraseKey(core.KDF(vector.KDFID), passphrase, &link.PassphraseSalt)
 			if err != nil || hex.EncodeToString(passphraseKey) != vector.P {
 				t.Fatalf("passphrase key: %v", err)
 			}
@@ -311,7 +313,7 @@ func TestRequestVectors(t *testing.T) {
 		signature := core.SignRequest(decode32(t, vector.Seed), vector.Purpose, vector.Method, vector.Path,
 			[core.ChallengeLen]byte(challenge), body)
 		if hex.EncodeToString(message) != vector.Message || core.Encode(signature.PublicKey[:]) != vector.PublicKey ||
-			core.Encode(signature.Sig[:]) != vector.Signature {
+			core.Encode(signature.Value[:]) != vector.Signature {
 			t.Fatalf("%s: message or signature differs", vector.Name)
 		}
 		var parsed core.Signature
@@ -326,7 +328,7 @@ func TestRequestVectors(t *testing.T) {
 			}
 			parsed, err = core.ParseAuthorization(vector.Authorization)
 		}
-		if err != nil || parsed != signature || !parsed.Verify(vector.Purpose, vector.Method, vector.Path, body) {
+		if err != nil || parsed != *signature || !parsed.Verify(vector.Purpose, vector.Method, vector.Path, body) {
 			t.Fatalf("%s: the header does not parse back and verify: %v", vector.Name, err)
 		}
 		if parsed.Verify(vector.Purpose, vector.Method, vector.Path+"x", body) ||
@@ -356,17 +358,17 @@ func TestPoWVectors(t *testing.T) {
 	}
 	challenge := core.Encode(make([]byte, core.PoWChallengeLen))
 	for _, difficulty := range []int{-1, core.MaxPoWDifficulty + 1} {
-		_, _, err := core.SolvePoW(t.Context(), challenge, core.NewID(), difficulty)
+		_, err := core.SolvePoW(t.Context(), challenge, core.NewID(), difficulty)
 		if !errors.Is(err, core.ErrPoWDifficulty) {
 			t.Fatalf("difficulty %d: %v", difficulty, err)
 		}
 	}
-	if _, _, err := core.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
+	if _, err := core.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
 		t.Fatal("a malformed challenge was accepted")
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, _, err := core.SolvePoW(cancelled, challenge, core.NewID(), core.MaxPoWDifficulty)
+	_, err := core.SolvePoW(cancelled, challenge, core.NewID(), core.MaxPoWDifficulty)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled solve went on: %v", err)
 	}

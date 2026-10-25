@@ -104,8 +104,8 @@ func claim(tb testing.TB, storage store.Messages, message *store.Message, now ti
 	return claimed
 }
 
-func claimParams(message *store.Message, now time.Time) store.ClaimParams {
-	return store.ClaimParams{
+func claimParams(message *store.Message, now time.Time) store.ClaimParameters {
+	return store.ClaimParameters{
 		ID:            message.ID,
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      testMAC,
@@ -255,7 +255,7 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	claimed := claim(t, storage, message, testNow)
 	ctx, cancel := context.WithCancel(t.Context())
 	leaving := cancelOnDelete{Blobs: blobs, cancel: cancel}
-	if err := store.AckLease(ctx, storage, leaving, claimed.Lease, testNow); err != nil {
+	if err := store.AckLease(ctx, storage, leaving, &claimed.Lease, testNow); err != nil {
 		t.Fatalf("an ack whose client left after the commit: %v", err)
 	}
 	if record, err := storage.Get(t.Context(), message.ID); err != nil || record.Tombstone == nil {

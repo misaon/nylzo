@@ -124,11 +124,11 @@ func (s *Server) reserveGlobalCreate(ctx context.Context, now time.Time) (global
 		return globalSlot{reserved: true}, nil
 	}
 	day := ratelimit.Day(now)
-	number, reserved, err := s.store.RateReserve(
+	number, err := s.store.RateReserve(
 		context.WithoutCancel(ctx),
 		store.RateHit{Key: globalCreatesKey, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: limit},
 	)
-	return globalSlot{number: number, reserved: reserved}, err
+	return globalSlot{number: number, reserved: number > 0}, err
 }
 
 func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {

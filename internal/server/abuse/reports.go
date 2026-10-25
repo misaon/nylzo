@@ -49,11 +49,11 @@ func Directory(dataDir string) string {
 func (r *Reports) Record(ctx context.Context, now time.Time, id, reason string) error {
 	day := ratelimit.Day(now)
 	key := counterKeyPrefix + id
-	_, reserved, err := r.counters.RateReserve(
+	count, err := r.counters.RateReserve(
 		context.WithoutCancel(ctx),
 		store.RateHit{Key: key, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: perMessagePerDay},
 	)
-	if err != nil || !reserved {
+	if err != nil || count == 0 {
 		return err
 	}
 	appendErr := r.append(now, id, reason)

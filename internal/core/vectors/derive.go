@@ -8,22 +8,22 @@ import (
 )
 
 type Derive struct {
-	Name        string  `json:"name"`
-	ID          string  `json:"id"`
-	S           string  `json:"s"`
-	KDFID       int     `json:"kdf_id"`
-	Passphrase  *string `json:"passphrase,omitempty"`
-	HSalt       string  `json:"hsalt_hex"`
-	R           string  `json:"r_hex"`
-	SaltPW      string  `json:"salt_pw_hex"`
-	P           string  `json:"p_hex"`
-	K           string  `json:"k_hex"`
-	V           string  `json:"v_hex"`
-	M           string  `json:"m_hex"`
-	Fragment    string  `json:"fragment"`
-	ReadKey     string  `json:"read_key"`
-	VerifierKey *string `json:"verifier_key,omitempty"`
-	ManageKey   string  `json:"manage_key"`
+	Name           string  `json:"name"`
+	ID             string  `json:"id"`
+	S              string  `json:"s"`
+	KDFID          int     `json:"kdf_id"`
+	Passphrase     *string `json:"passphrase,omitempty"`
+	HSalt          string  `json:"hsalt_hex"`
+	R              string  `json:"r_hex"`
+	PassphraseSalt string  `json:"salt_pw_hex"`
+	P              string  `json:"p_hex"`
+	K              string  `json:"k_hex"`
+	V              string  `json:"v_hex"`
+	M              string  `json:"m_hex"`
+	Fragment       string  `json:"fragment"`
+	ReadKey        string  `json:"read_key"`
+	VerifierKey    *string `json:"verifier_key,omitempty"`
+	ManageKey      string  `json:"manage_key"`
 }
 
 type deriveCase struct {
@@ -64,7 +64,7 @@ func deriveVector(vector deriveCase) (Derive, error) {
 	if err != nil {
 		return Derive{}, err
 	}
-	passphraseKey, err := core.DerivePassphraseKey(vector.kdf, valueOr(vector.passphrase), &link.SaltPW)
+	passphraseKey, err := core.DerivePassphraseKey(vector.kdf, valueOr(vector.passphrase), &link.PassphraseSalt)
 	if err != nil {
 		return Derive{}, err
 	}
@@ -75,21 +75,21 @@ func deriveVector(vector deriveCase) (Derive, error) {
 	hsalt := core.HSalt(id)
 	readKey, manageKey := core.PublicKey(&link.R), core.PublicKey(manageSeed)
 	derived := Derive{
-		Name:       vector.name,
-		ID:         id.String(),
-		S:          hex.EncodeToString(secret[:]),
-		KDFID:      int(vector.kdf),
-		Passphrase: vector.passphrase,
-		HSalt:      hex.EncodeToString(hsalt[:]),
-		R:          hex.EncodeToString(link.R[:]),
-		SaltPW:     hex.EncodeToString(link.SaltPW[:]),
-		P:          hex.EncodeToString(passphraseKey),
-		K:          hex.EncodeToString(content.K[:]),
-		V:          hex.EncodeToString(content.V[:]),
-		M:          hex.EncodeToString(manageSeed[:]),
-		Fragment:   core.Fragment(vector.kdf, secret),
-		ReadKey:    core.Encode(readKey[:]),
-		ManageKey:  core.Encode(manageKey[:]),
+		Name:           vector.name,
+		ID:             id.String(),
+		S:              hex.EncodeToString(secret[:]),
+		KDFID:          int(vector.kdf),
+		Passphrase:     vector.passphrase,
+		HSalt:          hex.EncodeToString(hsalt[:]),
+		R:              hex.EncodeToString(link.R[:]),
+		PassphraseSalt: hex.EncodeToString(link.PassphraseSalt[:]),
+		P:              hex.EncodeToString(passphraseKey),
+		K:              hex.EncodeToString(content.K[:]),
+		V:              hex.EncodeToString(content.V[:]),
+		M:              hex.EncodeToString(manageSeed[:]),
+		Fragment:       core.Fragment(vector.kdf, secret),
+		ReadKey:        core.Encode(readKey[:]),
+		ManageKey:      core.Encode(manageKey[:]),
 	}
 	if vector.kdf != core.KDFNone {
 		verifierKey := core.PublicKey(&content.V)

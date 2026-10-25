@@ -56,8 +56,8 @@ func BenchmarkRateReserve(b *testing.B) {
 		Limit:       1 << 62,
 	}
 	for b.Loop() {
-		if _, ok, err := storage.RateReserve(b.Context(), hit); err != nil || !ok {
-			b.Fatal(ok, err)
+		if count, err := storage.RateReserve(b.Context(), hit); err != nil || count == 0 {
+			b.Fatal(count, err)
 		}
 	}
 }

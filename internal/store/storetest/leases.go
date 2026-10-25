@@ -23,7 +23,7 @@ func (f *fixture) leasesAndAcks() {
 	}
 	f.refuseForgedLeases(&leases[0], minute)
 	for i, lease := range leases {
-		if _, err := f.store.Ack(ctx, lease, minute); err != nil {
+		if _, err := f.store.Ack(ctx, &lease, minute); err != nil {
 			t.Fatal(err)
 		}
 		released, err := store.Release(ctx, f.store, f.blobs, message.ID, minute)
@@ -38,7 +38,7 @@ func (f *fixture) leasesAndAcks() {
 	if ref, _ := f.store.ReleaseIfDone(ctx, message.ID, baseTime.Add(time.Hour)); ref != "" {
 		t.Fatal("released after the tombstone")
 	}
-	if err := f.store.RecordDownload(ctx, leases[0], baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err := f.store.RecordDownload(ctx, &leases[0], baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download on an acked lease: %v", err)
 	}
 }
@@ -50,11 +50,11 @@ func (f *fixture) downloadUpToTheLimit(message *store.Message, leases []store.Le
 			t.Fatal("a lease was not active before its expiry")
 		}
 		for download := 1; download <= store.MaxLeaseDownload; download++ {
-			if err := f.store.RecordDownload(ctx, lease, now); err != nil {
+			if err := f.store.RecordDownload(ctx, &lease, now); err != nil {
 				t.Fatalf("download %d: %v", download, err)
 			}
 		}
-		if err := f.store.RecordDownload(ctx, lease, now); !errors.Is(err, store.ErrLeaseLimit) {
+		if err := f.store.RecordDownload(ctx, &lease, now); !errors.Is(err, store.ErrLeaseLimit) {
 			t.Fatalf("a fourth download: %v", err)
 		}
 	}
@@ -73,10 +73,10 @@ func (f *fixture) refuseForgedLeases(lease *store.Lease, now time.Time) {
 	forged.MAC[0] ^= 1
 	elsewhere.ID = f.create(1, oneHour, false).ID
 	for name, wrong := range map[string]store.Lease{"another lease_mac": forged, "another message id": elsewhere} {
-		if err := f.store.RecordDownload(ctx, wrong, now); !errors.Is(err, store.ErrLeaseInvalid) {
+		if err := f.store.RecordDownload(ctx, &wrong, now); !errors.Is(err, store.ErrLeaseInvalid) {
 			t.Fatalf("download with %s: %v", name, err)
 		}
-		if _, err := f.store.Ack(ctx, wrong, now); !errors.Is(err, store.ErrLeaseInvalid) {
+		if _, err := f.store.Ack(ctx, &wrong, now); !errors.Is(err, store.ErrLeaseInvalid) {
 			t.Fatalf("ack with %s: %v", name, err)
 		}
 	}
@@ -119,7 +119,7 @@ func (f *fixture) leaseExpiry() {
 	if claimed.Lease.Active(expiry) || !claimed.Lease.Active(expiry.Add(-time.Millisecond)) {
 		t.Fatal("a lease must end exclusively at lease_expires_at")
 	}
-	if err = f.store.RecordDownload(ctx, claimed.Lease, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err = f.store.RecordDownload(ctx, &claimed.Lease, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download at the expiry: %v", err)
 	}
 	if ref, _ := f.store.ReleaseIfDone(ctx, message.ID, expiry.Add(-time.Second)); ref != "" {
@@ -162,17 +162,17 @@ func (f *fixture) staleLeaseLeavesOtherMessages() {
 		t.Fatal(err)
 	}
 	stale := claimed.Lease
-	if _, err = f.store.Ack(ctx, stale, baseTime); err != nil {
+	if _, err = f.store.Ack(ctx, &stale, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	victim := f.create(1, oneHour, false)
 	if _, err = f.claim(victim, baseTime, 2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.store.Ack(ctx, stale, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
+	if _, err = f.store.Ack(ctx, &stale, baseTime); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("a second ack of a removed lease: %v", err)
 	}
-	if err = f.store.RecordDownload(ctx, stale, baseTime); err == nil {
+	if err = f.store.RecordDownload(ctx, &stale, baseTime); err == nil {
 		t.Fatal("a download on an acked lease must fail")
 	}
 	leases, err := f.store.Leases(ctx, victim.ID)

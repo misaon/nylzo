@@ -148,7 +148,13 @@ func (l *Lease) Active(now time.Time) bool {
 	return now.Before(l.ExpiresAt)
 }
 
-type ClaimParams struct {
+type Ending struct {
+	State    State
+	Ref      string
+	Recorded bool
+}
+
+type ClaimParameters struct {
 	ID            string
 	Clock         func() time.Time
 	VerifierSent  bool
@@ -182,18 +188,13 @@ type ExpiredMessage struct {
 type Messages interface {
 	Create(ctx context.Context, message *Message, counters ...RateHit) error
 	Get(ctx context.Context, id string) (Record, error)
-	Claim(ctx context.Context, parameters ClaimParams) (ClaimResult, error)
+	Claim(ctx context.Context, parameters ClaimParameters) (ClaimResult, error)
 	Leases(ctx context.Context, id string) ([]Lease, error)
-	RecordDownload(ctx context.Context, lease Lease, now time.Time) error
-	Ack(ctx context.Context, lease Lease, now time.Time) (string, error)
+	RecordDownload(ctx context.Context, lease *Lease, now time.Time) error
+	Ack(ctx context.Context, lease *Lease, now time.Time) (string, error)
 	ReleaseIfDone(ctx context.Context, id string, now time.Time) (string, error)
 	ClearBlob(ctx context.Context, id, blobRef string, now time.Time) error
-	MarkEnding(
-		ctx context.Context,
-		id string,
-		state State,
-		now time.Time,
-	) (ending State, ref string, recorded bool, err error)
+	MarkEnding(ctx context.Context, id string, state State, now time.Time) (Ending, error)
 	End(ctx context.Context, id string, state State, now time.Time) error
 	EndExpired(ctx context.Context, ids []string, now time.Time) (int, error)
 	ExpiredPage(ctx context.Context, now time.Time, after ExpiredMessage, limit int) ([]ExpiredMessage, error)
@@ -207,7 +208,7 @@ type Messages interface {
 type Counters interface {
 	RateHit(ctx context.Context, hits []RateHit) ([]RateCount, error)
 	RateGet(ctx context.Context, key string, windowStart time.Time) (RateCount, error)
-	RateReserve(ctx context.Context, hit RateHit) (int64, bool, error)
+	RateReserve(ctx context.Context, hit RateHit) (int64, error)
 	RateReserveBatch(ctx context.Context, hits []RateHit) ([]bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
 	RatePurge(ctx context.Context, now time.Time, limit int) (int, error)

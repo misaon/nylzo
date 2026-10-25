@@ -13,7 +13,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-var dummyPublicKey = core.PublicKey(new([core.TokenLen]byte))
+var dummyPublicKey = core.PublicKey(new([core.SeedLen]byte))
 
 type access struct {
 	id        core.ID

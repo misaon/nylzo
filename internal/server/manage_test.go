@@ -403,7 +403,7 @@ func TestBurnFinishesRecordedCancel(t *testing.T) {
 	harness.mustCreate(message)
 	inner := harness.store
 	harness.store = &racingStore{Store: inner, race: func(id string) {
-		if _, _, _, err := inner.MarkEnding(
+		if _, err := inner.MarkEnding(
 			t.Context(),
 			id,
 			store.StateCancelled,
@@ -437,7 +437,7 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	harness.mustCreate(message)
 	inner := harness.store
 	harness.store = &racingStore{Store: failingEndStore{Store: inner}, race: func(id string) {
-		if _, _, _, err := inner.MarkEnding(
+		if _, err := inner.MarkEnding(
 			t.Context(),
 			id,
 			store.StateCancelled,
@@ -462,15 +462,14 @@ type endingThenFailingGet struct {
 	armed atomic.Bool
 }
 
-//nolint:gocritic // unnamedResult: store.Store fixes this signature.
 func (s *endingThenFailingGet) MarkEnding(
 	ctx context.Context,
 	id string,
 	state store.State,
 	now time.Time,
-) (store.State, string, bool, error) {
+) (store.Ending, error) {
 	if err := s.End(ctx, id, store.StateCancelled, now); err != nil {
-		return "", "", false, err
+		return store.Ending{}, err
 	}
 	s.armed.Store(true)
 	return s.Store.MarkEnding(ctx, id, state, now)
@@ -578,7 +577,7 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	for _, message := range []*testMessage{burned, expired, opened, ending, live} {
 		harness.mustCreate(message)
 	}
-	if _, _, _, err := harness.store.MarkEnding(
+	if _, err := harness.store.MarkEnding(
 		t.Context(),
 		ending.id.String(),
 		store.StateCancelled,

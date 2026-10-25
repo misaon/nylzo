@@ -27,7 +27,7 @@ type Claimed struct {
 func (c *Client) Claim(
 	ctx context.Context,
 	id core.ID,
-	read, verifier *[core.TokenLen]byte,
+	read, verifier *[core.SeedLen]byte,
 	size int64,
 	onLease func(string),
 ) (Claimed, error) {
@@ -60,7 +60,7 @@ func (c *Client) Claim(
 func (c *Client) Blob(
 	ctx context.Context,
 	id core.ID,
-	read *[core.TokenLen]byte,
+	read *[core.SeedLen]byte,
 	lease string,
 	size int64,
 ) (Envelope, error) {
@@ -79,7 +79,7 @@ func (c *Client) Blob(
 	return readEnvelope(response)
 }
 
-func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.TokenLen]byte, lease string) error {
+func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, lease string) error {
 	request := signedRequest{
 		method:  http.MethodPost,
 		path:    messagePath(id) + "/ack",

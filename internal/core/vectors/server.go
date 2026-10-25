@@ -49,7 +49,7 @@ func (f *File) server() error {
 	}
 	for _, purpose := range purposes {
 		input := deterministic("mac-input/"+string(purpose), 32)
-		mac, _ := ring.MAC(purpose, input)
+		mac := ring.MAC(purpose, input).MAC
 		f.Server.MACs = append(f.Server.MACs, MACCase{
 			Purpose: string(purpose),
 			Input:   hex.EncodeToString(input),

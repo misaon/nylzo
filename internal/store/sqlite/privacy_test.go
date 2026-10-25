@@ -33,7 +33,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = store.AckLease(t.Context(), storage, blobs, claimed.Lease, claimedAt); err != nil {
+	if err = store.AckLease(t.Context(), storage, blobs, &claimed.Lease, claimedAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.SweepAll(t.Context(), storage, blobs, message.CreatedAt.Add(9*24*time.Hour)); err != nil {
@@ -183,7 +183,7 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	errs = append(errs, err)
 	_, err = storage.RateHit(ctx, []store.RateHit{hit})
 	errs = append(errs, err)
-	_, _, err = storage.RateReserve(ctx, hit)
+	_, err = storage.RateReserve(ctx, hit)
 	errs = append(errs, err)
 	_, err = storage.RateReserveBatch(ctx, []store.RateHit{hit})
 	errs = append(errs, err)

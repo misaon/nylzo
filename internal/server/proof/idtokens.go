@@ -42,6 +42,6 @@ func (t IDTokens) Valid(id core.ID, token string, now time.Time) bool {
 }
 
 func (t IDTokens) tag(id core.ID, expires []byte) []byte {
-	mac, _ := t.ring.MAC(pepper.IDToken, append(id[:], expires...))
+	mac := t.ring.MAC(pepper.IDToken, append(id[:], expires...)).MAC
 	return mac[:idTokenTagLength]
 }

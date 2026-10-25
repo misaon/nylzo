@@ -110,8 +110,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	defer blob.Close()
 	lease := core.NewSecret()
-	leaseMAC, leasePepperID := s.ring.MAC(pepper.Lease, lease[:])
-	result, err := s.store.Claim(r.Context(), store.ClaimParams{
+	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
+	result, err := s.store.Claim(r.Context(), store.ClaimParameters{
 		ID:           granted.id.String(),
 		Clock:        s.clock,
 		VerifierSent: verifierSent,
@@ -119,8 +119,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 			macOK := s.ring.Verify(pepper.Verifier, verifier.PublicKey[:], stored, pepperID)
 			return macOK && verifierSigned
 		},
-		LeaseMAC:      leaseMAC[:],
-		LeasePepperID: leasePepperID,
+		LeaseMAC:      leaseTag.MAC[:],
+		LeasePepperID: leaseTag.PepperID,
 	})
 	if err != nil {
 		s.writeClaimFailure(w, r, err)
@@ -183,7 +183,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.RecordDownload(r.Context(), leased.lease, leased.now); err != nil {
+	if err := s.store.RecordDownload(r.Context(), &leased.lease, leased.now); err != nil {
 		s.writeLeaseFailure(w, r, &leased, err)
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := store.AckLease(r.Context(), s.store, s.blobs, leased.lease, leased.now); err != nil {
+	if err := store.AckLease(r.Context(), s.store, s.blobs, &leased.lease, leased.now); err != nil {
 		s.writeLeaseFailure(w, r, &leased, err)
 		return
 	}
@@ -275,7 +275,7 @@ func (s *Server) findLease(
 }
 
 func leaseToken(r *http.Request) ([]byte, bool) {
-	raw, err := core.DecodeExact(r.Header.Get(leaseHeaderName), core.TokenLen)
+	raw, err := core.DecodeExact(r.Header.Get(leaseHeaderName), core.SeedLen)
 	return raw, err == nil
 }
 

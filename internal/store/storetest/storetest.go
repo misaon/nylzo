@@ -120,7 +120,7 @@ func (f *fixture) claimAndAck(message *store.Message) string {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	ref, err := f.store.Ack(f.t.Context(), claimed.Lease, baseTime)
+	ref, err := f.store.Ack(f.t.Context(), &claimed.Lease, baseTime)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func (f *fixture) sweep(blobs store.Blobs, now time.Time) (store.SweepReport, er
 
 func (f *fixture) crashAfterDelete(message *store.Message, state store.State) {
 	f.t.Helper()
-	if _, _, _, err := f.store.MarkEnding(f.t.Context(), message.ID, state, baseTime); err != nil {
+	if _, err := f.store.MarkEnding(f.t.Context(), message.ID, state, baseTime); err != nil {
 		f.t.Fatal(err)
 	}
 	if err := f.blobs.Delete(f.t.Context(), message.BlobRef); err != nil {
@@ -200,8 +200,8 @@ func newMessage(opens uint16, ttlSeconds uint32, passphrase bool) *store.Message
 	return message
 }
 
-func claimParams(message *store.Message, now time.Time, seed int) store.ClaimParams {
-	return store.ClaimParams{
+func claimParams(message *store.Message, now time.Time, seed int) store.ClaimParameters {
+	return store.ClaimParameters{
 		ID:            message.ID,
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      mac(fmt.Sprintf("lease/%s/%d/%d", message.ID, now.UnixNano(), seed)),

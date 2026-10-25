@@ -22,7 +22,7 @@ const (
 	ScryptR = 8
 	ScryptP = 1
 
-	MinPassphraseChars = 12
+	MinPassphraseCharacters = 12
 )
 
 var (
@@ -62,7 +62,7 @@ func CheckPassphraseStrength(passphrase string) error {
 	if !utf8.ValidString(passphrase) {
 		return ErrMalformedPassphrase
 	}
-	if utf8.RuneCountInString(norm.NFC.String(passphrase)) < MinPassphraseChars {
+	if utf8.RuneCountInString(norm.NFC.String(passphrase)) < MinPassphraseCharacters {
 		return ErrWeakPassphrase
 	}
 	return nil

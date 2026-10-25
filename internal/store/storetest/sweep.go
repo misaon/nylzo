@@ -89,7 +89,7 @@ func (f *fixture) sweepEndsAnExpiredPageTogether() {
 		t.Fatal(err)
 	}
 	burned := f.create(1, oneMinute, false)
-	if _, _, _, err := f.store.MarkEnding(t.Context(), burned.ID, store.StateDeleted, baseTime); err != nil {
+	if _, err := f.store.MarkEnding(t.Context(), burned.ID, store.StateDeleted, baseTime); err != nil {
 		t.Fatal(err)
 	}
 	live := f.create(1, oneHour, false)
@@ -140,14 +140,15 @@ func (f *fixture) reconcile() {
 		}
 	}
 	live := f.create(1, oneHour, false)
-	orphans, listed, err := store.Reconcile(ctx, f.store, f.blobs, time.Now())
-	if err != nil || !listed || orphans != 0 || !f.blobExists(fresh) {
-		t.Fatalf("a reconcile inside the grace window must keep fresh objects: %d %v", orphans, err)
+	report, err := store.Reconcile(ctx, f.store, f.blobs, time.Now())
+	if err != nil || !report.Listed || report.Orphans != 0 || !f.blobExists(fresh) {
+		t.Fatalf("a reconcile inside the grace window must keep fresh objects: %+v %v", report, err)
 	}
 	failing := newFailingBlobs(f.blobs, failingA, failingB)
-	orphans, listed, err = store.Reconcile(ctx, f.store, failing, time.Now().Add(store.BlobGrace+time.Minute))
-	if !errors.Is(err, errDisk) || !listed || orphans != 2 || f.blobExists(fresh) || f.blobExists(orphan) {
-		t.Fatalf("a failing delete must not stop the others: %d %v %v", orphans, listed, err)
+	report, err = store.Reconcile(ctx, f.store, failing, time.Now().Add(store.BlobGrace+time.Minute))
+	if !errors.Is(err, errDisk) || !report.Listed || report.Orphans != 2 || f.blobExists(fresh) ||
+		f.blobExists(orphan) {
+		t.Fatalf("a failing delete must not stop the others: %+v %v", report, err)
 	}
 	if failing.attemptsOn(failingA) != 1 || failing.attemptsOn(failingB) != 1 || !f.blobExists(live.ID) {
 		t.Fatal("the reconcile skipped an orphan after a failure or deleted a live blob")

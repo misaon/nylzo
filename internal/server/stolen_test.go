@@ -48,7 +48,7 @@ func (n *stolenNeedles) addMessage(label string, message *testMessage, passphras
 	n.secret(label+" pk_V", verifierKey[:])
 	n.secret(label+" pk_M", manageKey[:])
 	if passphrase != "" {
-		n.secret(label+" P", testPassphraseKey(message.kdf, passphrase, &message.link.SaltPW))
+		n.secret(label+" P", testPassphraseKey(message.kdf, passphrase, &message.link.PassphraseSalt))
 		n.text(label+" passphrase", passphrase)
 	}
 	if message.text != "" {
@@ -99,7 +99,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
 		lease = response.Header.Get("X-Nylzo-Lease")
-		raw, err := core.DecodeExact(lease, core.TokenLen)
+		raw, err := core.DecodeExact(lease, core.SeedLen)
 		if err != nil {
 			t.Fatal(err)
 		}

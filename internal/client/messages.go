@@ -78,8 +78,8 @@ type signedRequest struct {
 	method   string
 	path     string
 	purpose  string
-	seed     *[core.TokenLen]byte
-	verifier *[core.TokenLen]byte
+	seed     *[core.SeedLen]byte
+	verifier *[core.SeedLen]byte
 	headers  map[string]string
 	body     []byte
 }
@@ -112,8 +112,7 @@ func (c *Client) Instance(ctx context.Context) (Instance, error) {
 	return Instance{Limits: *body.Limits, PoW: *body.PoW, Create: Issued{ID: id, IDToken: body.Create.IDToken}}, nil
 }
 
-//nolint:gocritic // hugeParam: internal/cli passes the request by value; see the cross-area list.
-func (c *Client) Create(ctx context.Context, request CreateRequest) (time.Time, error) {
+func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time, error) {
 	fields := map[string]any{
 		"id":         request.ID.String(),
 		"id_token":   request.IDToken,
@@ -155,7 +154,7 @@ func (c *Client) Create(ctx context.Context, request CreateRequest) (time.Time, 
 	return expires, nil
 }
 
-func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.TokenLen]byte) (Metadata, error) {
+func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.SeedLen]byte) (Metadata, error) {
 	request := signedRequest{method: http.MethodGet, path: messagePath(id), purpose: core.PurposeRead, seed: read}
 	response, err := c.signed(ctx, &request, shortTimeout)
 	if err != nil {
@@ -173,7 +172,7 @@ func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.TokenLen]
 	return metadata, nil
 }
 
-func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.TokenLen]byte) (Status, error) {
+func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.SeedLen]byte) (Status, error) {
 	request := signedRequest{
 		method:  http.MethodGet,
 		path:    messagePath(id) + "/status",
@@ -196,15 +195,15 @@ func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.TokenLen]
 	return status, nil
 }
 
-func (c *Client) Cancel(ctx context.Context, id core.ID, manage *[core.TokenLen]byte) error {
+func (c *Client) Cancel(ctx context.Context, id core.ID, manage *[core.SeedLen]byte) error {
 	return c.end(ctx, messagePath(id)+"/cancel", core.PurposeManage, manage)
 }
 
-func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.TokenLen]byte) error {
+func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.SeedLen]byte) error {
 	return c.end(ctx, messagePath(id)+"/burn", core.PurposeRead, read)
 }
 
-func (c *Client) Report(ctx context.Context, id core.ID, read *[core.TokenLen]byte, reason string) error {
+func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, reason string) error {
 	payload := map[string]string{"id": id.String()}
 	if reason = core.RedactReason(reason); reason != "" {
 		payload["reason"] = reason
@@ -228,7 +227,7 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.TokenLen]by
 	return drain(response)
 }
 
-func (c *Client) end(ctx context.Context, path, purpose string, seed *[core.TokenLen]byte) error {
+func (c *Client) end(ctx context.Context, path, purpose string, seed *[core.SeedLen]byte) error {
 	request := signedRequest{method: http.MethodPost, path: path, purpose: purpose, seed: seed}
 	response, err := c.signed(ctx, &request, shortTimeout)
 	if err != nil {

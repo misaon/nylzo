@@ -125,7 +125,7 @@ func (w *Work) spend(ctx context.Context, challenge *[core.PoWChallengeLen]byte)
 }
 
 func (w *Work) tag(signed []byte) []byte {
-	mac, _ := w.ring.MAC(pepper.PoW, signed)
+	mac := w.ring.MAC(pepper.PoW, signed).MAC
 	return mac[:core.PoWTagLen]
 }
 

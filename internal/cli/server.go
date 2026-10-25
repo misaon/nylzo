@@ -114,7 +114,7 @@ func requireStore(dataDir string) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{databaseFile, disk.Dir} {
+	for _, name := range []string{databaseFile, disk.Directory} {
 		if _, statErr := os.Stat(filepath.Join(directory, name)); statErr != nil {
 			return fmt.Errorf("%w: %s", errNoStore, name)
 		}

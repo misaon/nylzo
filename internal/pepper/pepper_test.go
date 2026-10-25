@@ -32,7 +32,7 @@ func TestEveryPurposeHasItsOwnKey(t *testing.T) {
 		pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge,
 	}
 	for _, purpose := range purposes {
-		mac, _ := ring.MAC(purpose, []byte("same input"))
+		mac := ring.MAC(purpose, []byte("same input")).MAC
 		if other, duplicate := seen[mac]; duplicate {
 			t.Fatalf("purposes %s and %s share a mac", other, purpose)
 		}
@@ -53,7 +53,8 @@ func TestEveryPurposeHasItsOwnKey(t *testing.T) {
 func TestAK27RotationKeepsOldMacsValid(t *testing.T) {
 	input := []byte("token")
 	old := newRing(t, secret(1), nil)
-	mac, id := old.MAC(pepper.Read, input)
+	tag := old.MAC(pepper.Read, input)
+	mac, id := tag.MAC, tag.PepperID
 	if !old.Verify(pepper.Read, input, mac[:], id) || old.Verify(pepper.Read, []byte("other"), mac[:], id) ||
 		old.Verify(pepper.Verifier, input, mac[:], id) {
 		t.Fatal("a mac verifies only its own input and purpose")
@@ -62,7 +63,8 @@ func TestAK27RotationKeepsOldMacsValid(t *testing.T) {
 	if !rotated.Verify(pepper.Read, input, mac[:], id) {
 		t.Fatal("the previous pepper's mac was rejected after the rotation")
 	}
-	newMAC, newID := rotated.MAC(pepper.Read, input)
+	rotatedTag := rotated.MAC(pepper.Read, input)
+	newMAC, newID := rotatedTag.MAC, rotatedTag.PepperID
 	if newID == id || newMAC == mac {
 		t.Fatal("the rotation did not change the writing key")
 	}
@@ -125,7 +127,7 @@ func TestServerVectors(t *testing.T) {
 	}
 	for _, vector := range file.Server.MACs {
 		input, _ := hex.DecodeString(vector.Input)
-		mac, _ := ring.MAC(pepper.Purpose(vector.Purpose), input)
+		mac := ring.MAC(pepper.Purpose(vector.Purpose), input).MAC
 		if hex.EncodeToString(mac[:]) != vector.MAC {
 			t.Fatalf("mac %s mismatch", vector.Purpose)
 		}

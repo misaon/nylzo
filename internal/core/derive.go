@@ -14,13 +14,13 @@ const (
 )
 
 type LinkKeys struct {
-	R      [TokenLen]byte
-	SaltPW [32]byte
+	R              [SeedLen]byte
+	PassphraseSalt [32]byte
 }
 
 type ContentKeys struct {
 	K [KeyLen]byte
-	V [TokenLen]byte
+	V [SeedLen]byte
 }
 
 func HSalt(id ID) [32]byte {
@@ -29,7 +29,7 @@ func HSalt(id ID) [32]byte {
 
 func DeriveLink(id ID, secret *[SecretLen]byte) (LinkKeys, error) {
 	var keys LinkKeys
-	err := expandAll(id, secret[:], []expansion{{infoRead, keys.R[:]}, {infoKDFSalt, keys.SaltPW[:]}})
+	err := expandAll(id, secret[:], []expansion{{infoRead, keys.R[:]}, {infoKDFSalt, keys.PassphraseSalt[:]}})
 	if err != nil {
 		return LinkKeys{}, err
 	}
@@ -57,7 +57,7 @@ func DeriveAll(id ID, secret *[SecretLen]byte, kdf KDF, passphrase string) (Link
 	if err != nil {
 		return link, ContentKeys{}, err
 	}
-	passphraseKey, err := DerivePassphraseKey(kdf, passphrase, &link.SaltPW)
+	passphraseKey, err := DerivePassphraseKey(kdf, passphrase, &link.PassphraseSalt)
 	if err != nil {
 		return link, ContentKeys{}, err
 	}

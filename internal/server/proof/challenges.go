@@ -61,7 +61,7 @@ func (c *Challenges) Spend(ctx context.Context, challenge [core.ChallengeLen]byt
 }
 
 func (c *Challenges) tag(signed []byte) []byte {
-	mac, _ := c.ring.MAC(pepper.Challenge, signed)
+	mac := c.ring.MAC(pepper.Challenge, signed).MAC
 	return mac[:core.ChallengeLen-challengeSignedEnd]
 }
 

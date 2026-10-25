@@ -14,8 +14,7 @@ func Release(ctx context.Context, messages Messages, blobs Blobs, id string, now
 	return true, deleteReleasedBlob(ctx, messages, blobs, id, ref, now)
 }
 
-//nolint:gocritic // hugeParam: internal/server passes the lease by value; see the cross-area list.
-func AckLease(ctx context.Context, messages Messages, blobs Blobs, lease Lease, now time.Time) error {
+func AckLease(ctx context.Context, messages Messages, blobs Blobs, lease *Lease, now time.Time) error {
 	ref, err := messages.Ack(ctx, lease, now)
 	if err != nil || ref == "" {
 		return err
@@ -32,32 +31,36 @@ func EndMessage(
 	now time.Time,
 ) (State, error) {
 	ctx = context.WithoutCancel(ctx)
-	ending, ref, recorded, err := messages.MarkEnding(ctx, id, state, now)
+	ending, err := messages.MarkEnding(ctx, id, state, now)
 	if err != nil {
 		return "", err
 	}
-	if ref != "" {
-		err = blobs.Delete(ctx, ref)
+	if ending.Ref != "" {
+		err = blobs.Delete(ctx, ending.Ref)
 		if err != nil {
-			return ending, err
+			return ending.State, err
 		}
 	}
-	err = messages.End(ctx, id, ending, now)
-	if recorded && errors.Is(err, ErrNotFound) {
-		return ending, nil
+	err = messages.End(ctx, id, ending.State, now)
+	if ending.Recorded && errors.Is(err, ErrNotFound) {
+		return ending.State, nil
 	}
-	return ending, err
+	return ending.State, err
 }
 
-//nolint:gocritic // unnamedResult: internal/server calls this signature; see the cross-area list.
-func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (int, bool, error) {
+type ReconcileReport struct {
+	Orphans int
+	Listed  bool
+}
+
+func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (ReconcileReport, error) {
 	known, err := messages.KnownBlobRefs(ctx)
 	if err != nil {
-		return 0, false, err
+		return ReconcileReport{}, err
 	}
 	objects, err := blobs.List(ctx)
 	if err != nil {
-		return 0, false, err
+		return ReconcileReport{}, err
 	}
 	cutoff := now.Add(-BlobGrace)
 	orphans := 0
@@ -75,7 +78,7 @@ func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Tim
 		}
 		orphans++
 	}
-	return orphans, true, errors.Join(errs...)
+	return ReconcileReport{Orphans: orphans, Listed: true}, errors.Join(errs...)
 }
 
 func deleteReleasedBlob(ctx context.Context, messages Messages, blobs Blobs, id, ref string, now time.Time) error {

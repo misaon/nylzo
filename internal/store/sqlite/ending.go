@@ -10,16 +10,8 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-//nolint:gocritic // unnamedResult: store.Messages declares this signature; see the cross-area list.
-func (s *Store) MarkEnding(
-	ctx context.Context,
-	id string,
-	state store.State,
-	now time.Time,
-) (store.State, string, bool, error) {
-	var ending store.State
-	var ref string
-	recorded := false
+func (s *Store) MarkEnding(ctx context.Context, id string, state store.State, now time.Time) (store.Ending, error) {
+	var ending store.Ending
 	err := s.transaction(ctx, func(tx *sql.Tx) error {
 		record, err := s.recordIn(ctx, tx, id)
 		if err != nil {
@@ -29,18 +21,24 @@ func (s *Store) MarkEnding(
 		if message == nil {
 			return store.ErrNotFound
 		}
-		ref = message.BlobRef
-		ending = chooseEnding(message, state, now)
+		ending.Ref = message.BlobRef
+		ending.State = chooseEnding(message, state, now)
 		if message.Ending != "" || !now.Before(message.ExpiresAt) {
 			return nil
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE messages SET ending = ? WHERE id = ?`, string(ending), id); err != nil {
+		if _, err = tx.ExecContext(
+			ctx,
+			`UPDATE messages SET ending = ? WHERE id = ?`,
+			string(ending.State),
+			id,
+		); err != nil {
 			return err
 		}
-		recorded = true
+		ending.Recorded = true
 		return nil
 	})
-	return ending, ref, recorded && err == nil, err
+	ending.Recorded = ending.Recorded && err == nil
+	return ending, err
 }
 
 func (s *Store) End(ctx context.Context, id string, state store.State, now time.Time) error {

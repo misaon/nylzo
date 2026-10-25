@@ -286,7 +286,7 @@ func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
 	instance := newTestServer(t, nil)
 	createText(t, instance, "the same text")
 	createText(t, instance, "the same text")
-	entries, err := os.ReadDir(filepath.Join(instance.directory, disk.Dir))
+	entries, err := os.ReadDir(filepath.Join(instance.directory, disk.Directory))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
 		if entry.IsDir() {
 			continue
 		}
-		object, readErr := os.ReadFile(filepath.Join(instance.directory, disk.Dir, entry.Name()))
+		object, readErr := os.ReadFile(filepath.Join(instance.directory, disk.Directory, entry.Name()))
 		if readErr != nil {
 			t.Fatal(readErr)
 		}

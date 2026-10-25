@@ -51,20 +51,19 @@ func PoWToken(challenge string, counter uint64) string {
 	return fmt.Sprintf("%s.%0*x", challenge, 2*PoWCounterLen, counter)
 }
 
-//nolint:gocritic // unnamedResult: internal/server and internal/cli call this signature; see the cross-area list.
-func SolvePoW(ctx context.Context, challenge string, id ID, difficulty int) (string, uint64, error) {
+func SolvePoW(ctx context.Context, challenge string, id ID, difficulty int) (string, error) {
 	if difficulty < 0 || difficulty > MaxPoWDifficulty {
-		return "", 0, ErrPoWDifficulty
+		return "", ErrPoWDifficulty
 	}
 	decoded, err := DecodeExact(challenge, PoWChallengeLen)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	counter, err := firstSolution(ctx, (*[PoWChallengeLen]byte)(decoded), id, difficulty)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
-	return PoWToken(challenge, counter), counter, nil
+	return PoWToken(challenge, counter), nil
 }
 
 func firstSolution(ctx context.Context, challenge *[PoWChallengeLen]byte, id ID, difficulty int) (uint64, error) {

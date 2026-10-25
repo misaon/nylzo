@@ -97,8 +97,8 @@ func TestAPanicInATransactionFreesTheWriter(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
-	if _, ok, err := storage.RateReserve(ctx, store.RateHit{Key: "k", Limit: 1}); err != nil || !ok {
-		t.Fatalf("the writer stayed locked after a panic, or the panicking transaction committed: %v %v", ok, err)
+	if count, err := storage.RateReserve(ctx, store.RateHit{Key: "k", Limit: 1}); err != nil || count == 0 {
+		t.Fatalf("the writer stayed locked after a panic, or the panicking transaction committed: %d %v", count, err)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestImpossibleColumnsAreCorruptRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
-	parameters := store.ClaimParams{
+	parameters := store.ClaimParameters{
 		ID:            spent,
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      []byte{1},
@@ -158,7 +158,7 @@ func TestImpossibleColumnsAreCorruptRows(t *testing.T) {
 			t.Fatalf("%s: the row was read: %v", update, err)
 		}
 	}
-	if _, err = storage.Claim(ctx, store.ClaimParams{ID: spent}); !errors.Is(err, errClaimParams) {
+	if _, err = storage.Claim(ctx, store.ClaimParameters{ID: spent}); !errors.Is(err, errClaimParameters) {
 		t.Fatalf("a claim without a clock: %v", err)
 	}
 }

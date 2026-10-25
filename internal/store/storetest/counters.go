@@ -19,11 +19,11 @@ func (f *fixture) rateReserveIsAtomic() {
 	var wait sync.WaitGroup
 	for range 40 {
 		wait.Go(func() {
-			_, ok, err := f.store.RateReserve(ctx, hit)
+			count, err := f.store.RateReserve(ctx, hit)
 			if err != nil {
 				t.Error(err)
 			}
-			if ok {
+			if count > 0 {
 				granted.Add(1)
 			}
 		})
@@ -35,8 +35,8 @@ func (f *fixture) rateReserveIsAtomic() {
 	if err := f.store.RateRelease(ctx, hit.Key, hit.WindowStart); err != nil {
 		t.Fatal(err)
 	}
-	if count, ok, err := f.store.RateReserve(ctx, hit); err != nil || !ok || count != 10 {
-		t.Fatalf("a released slot must be reusable: %d %v %v", count, ok, err)
+	if count, err := f.store.RateReserve(ctx, hit); err != nil || count != 10 {
+		t.Fatalf("a released slot must be reusable: %d %v", count, err)
 	}
 	if count, _ := f.store.RateGet(ctx, hit.Key, hit.WindowStart); count.Count != 10 {
 		t.Fatalf("count: %+v", count)

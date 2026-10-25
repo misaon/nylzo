@@ -33,15 +33,15 @@ func reconcileOncePerDay(ctx context.Context, storage store.Store, blobs store.B
 	if err != nil || done.Count > 0 {
 		return 0, err
 	}
-	orphans, listed, err := store.Reconcile(ctx, storage, blobs, now)
-	if !listed {
-		return orphans, err
+	report, err := store.Reconcile(ctx, storage, blobs, now)
+	if !report.Listed {
+		return report.Orphans, err
 	}
 	_, markErr := storage.RateHit(
 		ctx,
 		[]store.RateHit{{Key: reconcileKey, WindowStart: day.Start, PurgeAt: day.PurgeAt()}},
 	)
-	return orphans, errors.Join(err, markErr)
+	return report.Orphans, errors.Join(err, markErr)
 }
 
 func LogAttributes(report store.SweepReport, err error) []any {

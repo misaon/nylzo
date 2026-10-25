@@ -365,8 +365,8 @@ func (s *Server) storeMessage(
 
 // newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
 func (s *Server) newMessage(request *createRequest, envelopeHeader core.Header, uploaded time.Time) *store.Message {
-	readMAC, pepperID := s.ring.MAC(pepper.Read, request.readKey)
-	manageMAC, _ := s.ring.MAC(pepper.Manage, request.manageKey)
+	read := s.ring.MAC(pepper.Read, request.readKey)
+	manage := s.ring.MAC(pepper.Manage, request.manageKey)
 	message := &store.Message{
 		ID:             request.id.String(),
 		Version:        envelopeHeader.Version,
@@ -378,15 +378,15 @@ func (s *Server) newMessage(request *createRequest, envelopeHeader core.Header, 
 		TTLSeconds:     request.ttlSeconds,
 		OpensMax:       request.opensMax,
 		OpensRemaining: request.opensMax,
-		PepperID:       pepperID,
-		ReadMAC:        readMAC[:],
-		ManageMAC:      manageMAC[:],
+		PepperID:       read.PepperID,
+		ReadMAC:        read.MAC[:],
+		ManageMAC:      manage.MAC[:],
 		Size:           request.header.Size,
 		BlobRef:        request.id.String(),
 	}
 	if request.verifierKey != nil {
-		verifierMAC, _ := s.ring.MAC(pepper.Verifier, request.verifierKey)
-		message.VerifierMAC = verifierMAC[:]
+		verifier := s.ring.MAC(pepper.Verifier, request.verifierKey)
+		message.VerifierMAC = verifier.MAC[:]
 	}
 	return message
 }

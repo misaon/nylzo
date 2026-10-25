@@ -152,7 +152,7 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 	secrets := map[string][]byte{
 		"S": message.secret[:],
 		"K": message.content.K[:],
-		"P": testPassphraseKey(message.kdf, "tajná fráze", &message.link.SaltPW),
+		"P": testPassphraseKey(message.kdf, "tajná fráze", &message.link.PassphraseSalt),
 		"R": message.link.R[:],
 		"V": message.content.V[:],
 		"M": message.manage[:],
@@ -460,13 +460,12 @@ type slotSignals struct {
 	released chan struct{}
 }
 
-//nolint:gocritic // hugeParam: store.Store fixes this signature.
-func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
-	count, ok, err := s.Store.RateReserve(ctx, hit)
+func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit) (int64, error) {
+	count, err := s.Store.RateReserve(ctx, hit)
 	if hit.Key == globalCreatesKey {
 		s.reserved <- struct{}{}
 	}
-	return count, ok, err
+	return count, err
 }
 
 func (s *slotSignals) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
@@ -527,8 +526,8 @@ func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	hit := store.RateHit{Key: globalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 2}
 	for range 2 {
-		if _, ok, err := harness.store.RateReserve(t.Context(), hit); err != nil || !ok {
-			t.Fatal(err)
+		if count, err := harness.store.RateReserve(t.Context(), hit); err != nil || count == 0 {
+			t.Fatal(count, err)
 		}
 	}
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
@@ -616,12 +615,11 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
 	inner := harness.store
 	harness.store = &fillingStore{Store: inner, fill: func() {
-		if _, ok, err := inner.RateReserve(
+		if count, err := inner.RateReserve(
 			t.Context(),
 			store.RateHit{Key: globalCreatesKey, WindowStart: day, PurgeAt: day.Add(48 * time.Hour), Limit: 1},
-		); err != nil ||
-			!ok {
-			t.Error(ok, err)
+		); err != nil || count == 0 {
+			t.Error(count, err)
 		}
 	}}
 	harness.reopen(&harness.settings)
@@ -1174,13 +1172,12 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 
 type cancelAfterCommit struct{ store.Store }
 
-//nolint:gocritic // hugeParam: store.Store fixes this signature.
-func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
-	count, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit)
+func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (int64, error) {
+	count, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit)
 	if ctx.Err() != nil {
-		return 0, false, ctx.Err()
+		return 0, ctx.Err()
 	}
-	return count, ok, err
+	return count, err
 }
 
 func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {

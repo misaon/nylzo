@@ -575,7 +575,7 @@ func (f failingReader) Read([]byte) (int, error) {
 type testMessage struct {
 	id          core.ID
 	secret      *[core.SecretLen]byte
-	manage      *[core.TokenLen]byte
+	manage      *[core.SeedLen]byte
 	kdf         core.KDF
 	link        core.LinkKeys
 	content     core.ContentKeys
@@ -619,7 +619,7 @@ func buildMessageWithID(
 	if err != nil {
 		return nil, err
 	}
-	content, err := core.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.SaltPW))
+	content, err := core.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.PassphraseSalt))
 	if err != nil {
 		return nil, err
 	}
@@ -635,7 +635,7 @@ func buildMessageWithID(
 	return message, nil
 }
 
-func publicKey(seed *[core.TokenLen]byte) string {
+func publicKey(seed *[core.SeedLen]byte) string {
 	key := core.PublicKey(seed)
 	return core.Encode(key[:])
 }
@@ -732,24 +732,24 @@ func decodePolicy(header string) (core.Policy, error) {
 }
 
 func signedHeader(token, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) string {
-	seed, err := core.DecodeExact(token, core.TokenLen)
+	seed, err := core.DecodeExact(token, core.SeedLen)
 	if err != nil {
 		return core.AuthScheme + " " + token
 	}
-	return core.SignRequest((*[core.TokenLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
+	return core.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
 }
 
 func verifierHeader(verifier, method, path string, challenge [core.ChallengeLen]byte) string {
-	seed, err := core.DecodeExact(verifier, core.TokenLen)
+	seed, err := core.DecodeExact(verifier, core.SeedLen)
 	if err != nil {
 		return verifier
 	}
-	signature := core.SignRequest((*[core.TokenLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil)
+	signature := core.SignRequest((*[core.SeedLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil)
 	return signature.VerifierHeader()
 }
 
 func signedRequest(
-	seed *[core.TokenLen]byte,
+	seed *[core.SeedLen]byte,
 	purpose, method, path string,
 	challenge [core.ChallengeLen]byte,
 	body []byte,
@@ -773,7 +773,7 @@ func rawAuth(request *testRequest, authorization string) *testRequest {
 
 func solveWork(t *testing.T, challenge string, id core.ID, difficulty int) string {
 	t.Helper()
-	token, _, err := core.SolvePoW(t.Context(), challenge, id, difficulty)
+	token, err := core.SolvePoW(t.Context(), challenge, id, difficulty)
 	if err != nil {
 		t.Fatal(err)
 	}

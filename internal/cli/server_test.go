@@ -32,7 +32,7 @@ func TestSweepOnceNeedsAnExistingStore(t *testing.T) {
 	if err := requireStore(directory); err == nil {
 		t.Fatal("sweep-once accepted a store without a blob directory")
 	}
-	if err := os.Mkdir(filepath.Join(directory, disk.Dir), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(directory, disk.Directory), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := requireStore(directory); err != nil {
@@ -234,7 +234,7 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	storage.Close()
-	for _, directory := range []string{settings.DataDir, filepath.Join(settings.DataDir, disk.Dir), filepath.Join(settings.DataDir, disk.Dir, "tmp")} {
+	for _, directory := range []string{settings.DataDir, filepath.Join(settings.DataDir, disk.Directory), filepath.Join(settings.DataDir, disk.Directory, "tmp")} {
 		info, statErr := os.Stat(directory)
 		if statErr != nil {
 			t.Fatal(statErr)

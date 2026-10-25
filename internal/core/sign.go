@@ -28,10 +28,10 @@ var ErrAuthorization = errors.New("core: malformed request signature")
 type Signature struct {
 	PublicKey [PublicKeyLen]byte
 	Challenge [ChallengeLen]byte
-	Sig       [SignatureLen]byte
+	Value     [SignatureLen]byte
 }
 
-func PublicKey(seed *[TokenLen]byte) [PublicKeyLen]byte {
+func PublicKey(seed *[SeedLen]byte) [PublicKeyLen]byte {
 	privateKey := ed25519.NewKeyFromSeed(seed[:])
 	defer clear(privateKey)
 	return [PublicKeyLen]byte(privateKey[ed25519.SeedSize:])
@@ -57,15 +57,15 @@ func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte,
 }
 
 func SignRequest(
-	seed *[TokenLen]byte,
+	seed *[SeedLen]byte,
 	purpose, method, path string,
 	challenge [ChallengeLen]byte,
 	body []byte,
-) Signature {
+) *Signature {
 	privateKey := ed25519.NewKeyFromSeed(seed[:])
 	defer clear(privateKey)
-	signature := Signature{PublicKey: [PublicKeyLen]byte(privateKey[ed25519.SeedSize:]), Challenge: challenge}
-	copy(signature.Sig[:], ed25519.Sign(privateKey, RequestMessage(purpose, method, path, &challenge, body)))
+	signature := &Signature{PublicKey: [PublicKeyLen]byte(privateKey[ed25519.SeedSize:]), Challenge: challenge}
+	copy(signature.Value[:], ed25519.Sign(privateKey, RequestMessage(purpose, method, path, &challenge, body)))
 	return signature
 }
 
@@ -79,7 +79,7 @@ func ParseAuthorization(header string) (Signature, error) {
 		return Signature{}, ErrAuthorization
 	}
 	var signature Signature
-	targets := [][]byte{signature.PublicKey[:], signature.Challenge[:], signature.Sig[:]}
+	targets := [][]byte{signature.PublicKey[:], signature.Challenge[:], signature.Value[:]}
 	for i, target := range targets {
 		if !decodeInto(target, fields[i]) {
 			return Signature{}, ErrAuthorization
@@ -94,25 +94,22 @@ func ParseVerifierHeader(header string, challenge [ChallengeLen]byte) (Signature
 		return Signature{}, ErrAuthorization
 	}
 	signature := Signature{Challenge: challenge}
-	if !decodeInto(signature.PublicKey[:], encodedPublicKey) || !decodeInto(signature.Sig[:], encodedSignature) {
+	if !decodeInto(signature.PublicKey[:], encodedPublicKey) || !decodeInto(signature.Value[:], encodedSignature) {
 		return Signature{}, ErrAuthorization
 	}
 	return signature, nil
 }
 
-//nolint:gocritic // hugeParam: internal/server calls these methods on values; see the cross-area list.
-func (s Signature) Verify(purpose, method, path string, body []byte) bool {
-	return ed25519.Verify(s.PublicKey[:], RequestMessage(purpose, method, path, &s.Challenge, body), s.Sig[:])
+func (s *Signature) Verify(purpose, method, path string, body []byte) bool {
+	return ed25519.Verify(s.PublicKey[:], RequestMessage(purpose, method, path, &s.Challenge, body), s.Value[:])
 }
 
-//nolint:gocritic // hugeParam: internal/server calls these methods on values; see the cross-area list.
-func (s Signature) Authorization() string {
-	return AuthScheme + " " + Encode(s.PublicKey[:]) + "." + Encode(s.Challenge[:]) + "." + Encode(s.Sig[:])
+func (s *Signature) Authorization() string {
+	return AuthScheme + " " + Encode(s.PublicKey[:]) + "." + Encode(s.Challenge[:]) + "." + Encode(s.Value[:])
 }
 
-//nolint:gocritic // hugeParam: internal/server calls these methods on values; see the cross-area list.
-func (s Signature) VerifierHeader() string {
-	return Encode(s.PublicKey[:]) + "." + Encode(s.Sig[:])
+func (s *Signature) VerifierHeader() string {
+	return Encode(s.PublicKey[:]) + "." + Encode(s.Value[:])
 }
 
 func decodeInto(target []byte, text string) bool {

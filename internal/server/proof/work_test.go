@@ -41,7 +41,7 @@ func openStore(t *testing.T) *sqlite.Store {
 
 func solve(t *testing.T, challenge string, id core.ID) string {
 	t.Helper()
-	token, _, err := core.SolvePoW(t.Context(), challenge, id, 1)
+	token, err := core.SolvePoW(t.Context(), challenge, id, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

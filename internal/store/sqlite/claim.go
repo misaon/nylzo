@@ -14,13 +14,13 @@ import (
 const leaseInsertAttempts = 4
 
 var (
-	errClaimParams  = errors.New("sqlite: claim needs a clock, and a verifier check when a verifier is sent")
-	errNoLeaseRowID = errors.New("sqlite: no free lease row id")
+	errClaimParameters = errors.New("sqlite: claim needs a clock, and a verifier check when a verifier is sent")
+	errNoLeaseRowID    = errors.New("sqlite: no free lease row id")
 )
 
-func (s *Store) Claim(ctx context.Context, parameters store.ClaimParams) (store.ClaimResult, error) {
+func (s *Store) Claim(ctx context.Context, parameters store.ClaimParameters) (store.ClaimResult, error) {
 	if parameters.Clock == nil || (parameters.VerifierSent && parameters.VerifyMAC == nil) {
-		return store.ClaimResult{}, errClaimParams
+		return store.ClaimResult{}, errClaimParameters
 	}
 	var result store.ClaimResult
 	var refusal *store.PassphraseError
@@ -79,7 +79,7 @@ func checkPassphrase(
 	ctx context.Context,
 	tx *sql.Tx,
 	message *store.Message,
-	parameters *store.ClaimParams,
+	parameters *store.ClaimParameters,
 	now time.Time,
 ) error {
 	if message.FailCountTotal >= store.MaxFailedAttempts {
@@ -114,7 +114,7 @@ func consumeOpen(
 	ctx context.Context,
 	tx *sql.Tx,
 	message *store.Message,
-	parameters *store.ClaimParams,
+	parameters *store.ClaimParameters,
 	now time.Time,
 ) (store.ClaimResult, error) {
 	message.OpensRemaining--
@@ -155,7 +155,7 @@ func insertLease(
 	ctx context.Context,
 	tx *sql.Tx,
 	id string,
-	parameters *store.ClaimParams,
+	parameters *store.ClaimParameters,
 	expires time.Time,
 ) (int64, error) {
 	for range leaseInsertAttempts {

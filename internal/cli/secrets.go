@@ -157,14 +157,14 @@ func passphraseFromFile(path string) (string, error) {
 type manageToken struct {
 	origin string
 	id     core.ID
-	seed   [core.TokenLen]byte
+	seed   [core.SeedLen]byte
 }
 
 func (m *manageToken) wipe() {
 	clear(m.seed[:])
 }
 
-func formatManageToken(origin string, id core.ID, seed *[core.TokenLen]byte) string {
+func formatManageToken(origin string, id core.ID, seed *[core.SeedLen]byte) string {
 	return fmt.Sprintf("%s/m/%s\n%s\n", origin, id, core.Encode(seed[:]))
 }
 

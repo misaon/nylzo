@@ -252,9 +252,9 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 	return ""
 }
 
-func badSignature(seed *[core.TokenLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte) string {
+func badSignature(seed *[core.SeedLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte) string {
 	signature := core.SignRequest(seed, purpose, method, path, challenge, nil)
-	signature.Sig[0] ^= 1
+	signature.Value[0] ^= 1
 	return signature.Authorization()
 }
 
@@ -555,7 +555,7 @@ func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 	path := "/api/v1/messages/" + message.id.String()
 	for _, endpoint := range []struct {
 		method, suffix, purpose string
-		seed                    *[core.TokenLen]byte
+		seed                    *[core.SeedLen]byte
 	}{
 		{"GET", "", core.PurposeRead, &message.link.R},
 		{"POST", "/claim", core.PurposeRead, &message.link.R},
@@ -708,7 +708,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 
 func signedRequestFrom(
 	address string,
-	seed *[core.TokenLen]byte,
+	seed *[core.SeedLen]byte,
 	purpose, method, path string,
 	challenge [core.ChallengeLen]byte,
 ) *testRequest {
@@ -725,8 +725,8 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := [core.PublicKeyLen]byte{1}
-	forge := func(purpose, method, path string, challenge [core.ChallengeLen]byte) core.Signature {
-		signature := core.Signature{PublicKey: identity, Challenge: challenge, Sig: [core.SignatureLen]byte{1}}
+	forge := func(purpose, method, path string, challenge [core.ChallengeLen]byte) *core.Signature {
+		signature := &core.Signature{PublicKey: identity, Challenge: challenge, Value: [core.SignatureLen]byte{1}}
 		if !signature.Verify(purpose, method, path, nil) {
 			t.Fatal("the forged signature does not verify, so the test proves nothing")
 		}
@@ -741,7 +741,7 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	}
 	defer database.Close()
 	setMAC := func(message *testMessage, column string, purpose pepper.Purpose) {
-		mac, _ := ring.MAC(purpose, identity[:])
+		mac := ring.MAC(purpose, identity[:]).MAC
 		if _, execErr := database.Exec(
 			`UPDATE messages SET `+column+` = ? WHERE id = ?`,
 			mac[:],
@@ -1029,7 +1029,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 	faulty := harness.withFaultyBlobs()
 	message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 	harness.mustCreate(message)
-	if _, _, _, err := harness.store.MarkEnding(
+	if _, err := harness.store.MarkEnding(
 		t.Context(),
 		message.id.String(),
 		store.StateCancelled,
