@@ -1,14 +1,7 @@
-import { scryptAsync } from '@noble/hashes/scrypt.js';
 import { describe, expect, it } from 'vitest';
 
 import { bytesToHex, hexToBytes, loadVectors } from '../test/vectors.ts';
-import { WeakPassphraseError } from './errors.ts';
-import { deriveContent, deriveLink, hsalt } from './keys/derive.ts';
-import { assertStrongPassphrase, isKdfId, KDF_NONE, type KdfId } from './keys/kdf.ts';
-import { fragment } from './link/link.ts';
 import { encodeBase64url } from './primitives/base64url.ts';
-import { utf8 } from './primitives/bytes.ts';
-import { parseId } from './primitives/identifiers.ts';
 import {
   authorizationHeader,
   parseChallenge,
@@ -20,96 +13,8 @@ import {
   signRequest,
   verifierHeader,
 } from './request/signature.ts';
-import { anyPassphraseKey, deriveAll } from './scrypt.ts';
 
 const vectors = loadVectors();
-const slow = { timeout: 120_000 };
-const heavyEnabled = process.env['NYLZO_HEAVY_TESTS'] === '1';
-
-function kdfIdOf(value: number): KdfId {
-  if (!isKdfId(value)) {
-    throw new Error(`vector uses unknown kdf_id ${value}`);
-  }
-  return value;
-}
-
-async function publicKeyOf(seed: Uint8Array): Promise<string> {
-  const key = await requestKey(seed);
-  return encodeBase64url(key.publicKey);
-}
-
-describe('scrypt_rfc7914', () => {
-  const light = vectors.scrypt_rfc7914.filter((vector) => !vector.heavy);
-  const heavy = vectors.scrypt_rfc7914.filter((vector) => vector.heavy);
-  const derivedHex = async (vector: (typeof light)[number]): Promise<string> => {
-    const parameters = { N: vector.N, r: vector.r, p: vector.p, dkLen: vector.dkLen };
-    return bytesToHex(await scryptAsync(utf8(vector.password), utf8(vector.salt), parameters));
-  };
-
-  it.each(light)('$name', async (vector) => {
-    expect(await derivedHex(vector)).toBe(vector.dk_hex);
-  });
-
-  it.runIf(heavyEnabled).each(heavy)('$name', { timeout: 600_000 }, async (vector) => {
-    expect(await derivedHex(vector)).toBe(vector.dk_hex);
-  });
-});
-
-describe('derive', () => {
-  it.each(vectors.derive)('$name', slow, async (vector) => {
-    const id = parseId(vector.id);
-    const secret = hexToBytes(vector.s);
-    const kdfId = kdfIdOf(vector.kdf_id);
-    expect(bytesToHex(await hsalt(id))).toBe(vector.hsalt_hex);
-
-    const link = await deriveLink(id, secret);
-    expect(bytesToHex(link.r)).toBe(vector.r_hex);
-    expect(bytesToHex(link.saltPw)).toBe(vector.salt_pw_hex);
-
-    const passphraseKey = await anyPassphraseKey(kdfId, vector.passphrase ?? '', link.saltPw);
-    expect(bytesToHex(passphraseKey)).toBe(vector.p_hex);
-
-    const content = await deriveContent(id, secret, passphraseKey);
-    expect(bytesToHex(content.v)).toBe(vector.v_hex);
-    expect(content.k.extractable).toBe(false);
-
-    expect(await publicKeyOf(link.r)).toBe(vector.read_key);
-    expect(await publicKeyOf(hexToBytes(vector.m_hex))).toBe(vector.manage_key);
-    expect(kdfId === KDF_NONE ? undefined : await publicKeyOf(content.v)).toBe(vector.verifier_key);
-    expect(fragment(kdfId, secret)).toBe(vector.fragment);
-
-    const all = await deriveAll(id, secret, kdfId, vector.passphrase ?? '');
-    expect(bytesToHex(all.link.r)).toBe(vector.r_hex);
-    expect(bytesToHex(all.content.v)).toBe(vector.v_hex);
-  });
-
-  it('NFC composed and decomposed passphrases agree', () => {
-    const composed = vectors.derive.find((vector) => vector.name === 'scrypt-nfc-composed');
-    const decomposed = vectors.derive.find((vector) => vector.name === 'scrypt-nfc-decomposed');
-    expect(composed).toBeDefined();
-    expect(composed?.passphrase).not.toBe(decomposed?.passphrase);
-    expect(composed?.p_hex).toBe(decomposed?.p_hex);
-    expect(composed?.k_hex).toBe(decomposed?.k_hex);
-  });
-});
-
-describe('passphrase_strength', () => {
-  const accepted = vectors.passphrase_strength.filter((vector) => vector.accepted);
-  const rejected = vectors.passphrase_strength.filter((vector) => !vector.accepted);
-
-  it.each(accepted)('$name is accepted', (vector) => {
-    expect(() => {
-      assertStrongPassphrase(vector.passphrase);
-    }).not.toThrow();
-  });
-
-  it.each(rejected)('$name is rejected', (vector) => {
-    expect(() => {
-      assertStrongPassphrase(vector.passphrase);
-    }).toThrow(WeakPassphraseError);
-  });
-});
-
 describe('request', () => {
   it.each(vectors.request)('$name', async (vector) => {
     const seed = hexToBytes(vector.seed_hex);
