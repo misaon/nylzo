@@ -26,7 +26,7 @@ const (
 var (
 	errEmpty            = errors.New("the input is empty")
 	errTooLong          = errors.New("the input is longer than nylzo accepts")
-	errPassphraseSource = errors.New("give the passphrase either in a file or from the terminal, not both")
+	errPassphraseSource = errors.New("give the passphrase in one way only: a file, the terminal or a generated file")
 	errMismatch         = errors.New("the two passphrases differ")
 	errManageToken      = errors.New(
 		"a manage token has two lines: the message address without the part after # and the token",
