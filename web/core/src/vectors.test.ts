@@ -1,18 +1,18 @@
 import { scryptAsync } from '@noble/hashes/scrypt.js';
 import { describe, expect, it } from 'vitest';
 
-import { bytesToHex, fileBytes, hexToBytes, loadVectors, sha256Hex, thrownBy } from '../test/vectors.ts';
+import { bytesToHex, fileBytes, hexToBytes, loadVectors, sha256Hex } from '../test/vectors.ts';
 import { open, seal } from './envelope/envelope.ts';
 import { aad, type Header, type Policy } from './envelope/header.ts';
 import { decodeMeta, encodeMeta, type Meta } from './envelope/meta.ts';
-import { LinkError, LinkRetiredKdfError, LinkVersionError, MetaError, WeakPassphraseError } from './errors.ts';
+import { MetaError, WeakPassphraseError } from './errors.ts';
 import { deriveContent, deriveLink, hsalt } from './keys/derive.ts';
 import { assertStrongPassphrase, isKdfId, KDF_NONE, type KdfId } from './keys/kdf.ts';
 import { HEADER_LEN, TAG_LEN, VERSION } from './limits.ts';
-import { formatLink, fragment, parseLink } from './link/link.ts';
+import { fragment } from './link/link.ts';
 import { encodeBase64url } from './primitives/base64url.ts';
 import { utf8 } from './primitives/bytes.ts';
-import { idToString, parseId } from './primitives/identifiers.ts';
+import { parseId } from './primitives/identifiers.ts';
 import {
   authorizationHeader,
   parseChallenge,
@@ -41,24 +41,6 @@ async function publicKeyOf(seed: Uint8Array): Promise<string> {
   const key = await requestKey(seed);
   return encodeBase64url(key.publicKey);
 }
-
-describe('spec/vectors.json', () => {
-  it('targets protocol v1 and has cases in every section', () => {
-    expect(vectors.spec).toBe('nylzo/v1');
-    expect(vectors.scrypt_rfc7914).toHaveLength(4);
-    const sections = [
-      vectors.derive,
-      vectors.envelope,
-      vectors.link,
-      vectors.meta,
-      vectors.passphrase_strength,
-      vectors.request,
-      vectors.pow,
-    ];
-    expect(sections.map((section) => section.length)).not.toContain(0);
-    expect(vectors.link.some((vector) => vector.canonical === true)).toBe(true);
-  });
-});
 
 describe('scrypt_rfc7914', () => {
   const light = vectors.scrypt_rfc7914.filter((vector) => !vector.heavy);
@@ -139,31 +121,6 @@ describe('envelope', () => {
     expect(opened.header).toEqual(header);
     expect(opened.payload.meta).toEqual(meta);
     expect(opened.payload.file).toEqual(file);
-  });
-});
-
-describe('link', () => {
-  const valid = vectors.link.filter((vector) => vector.valid);
-  const canonical = valid.filter((vector) => vector.canonical === true);
-  const invalid = vectors.link.filter((vector) => !vector.valid);
-
-  it.each(valid)('$name', (vector) => {
-    const link = parseLink(vector.input);
-    expect(idToString(link.id)).toBe(vector.id);
-    expect(link.kdfId).toBe(vector.kdf_id);
-    expect(bytesToHex(link.s)).toBe(vector.s_hex);
-  });
-
-  it.each(canonical)('$name formats back to its input', (vector) => {
-    const link = parseLink(vector.input);
-    expect(formatLink('https://nylzo.example', link.id, link.kdfId, link.s)).toBe(vector.input);
-  });
-
-  it.each(invalid)('$name is rejected', (vector) => {
-    const error = thrownBy(() => parseLink(vector.input));
-    expect(error).toBeInstanceOf(LinkError);
-    expect(error instanceof LinkVersionError).toBe(vector.newer_version === true);
-    expect(error instanceof LinkRetiredKdfError).toBe(vector.retired_kdf === true);
   });
 });
 

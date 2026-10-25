@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 
 import { ID_LEN } from '../src/limits.ts';
-import { concatenate } from '../src/primitives/bytes.ts';
 import { hash } from '../src/primitives/identifiers.ts';
 
 interface ScryptVector {
@@ -33,21 +32,6 @@ interface DeriveVector {
   readonly read_key: string;
   readonly verifier_key?: string;
   readonly manage_key: string;
-}
-
-interface RequestVector {
-  readonly name: string;
-  readonly seed_hex: string;
-  readonly public_key: string;
-  readonly purpose: 'read' | 'verifier' | 'manage';
-  readonly method: string;
-  readonly path: string;
-  readonly challenge: string;
-  readonly body_hex: string;
-  readonly message_hex: string;
-  readonly signature: string;
-  readonly authorization?: string;
-  readonly verifier_header?: string;
 }
 
 interface FileVector {
@@ -100,17 +84,25 @@ interface MetaVector {
   readonly file_size?: number;
 }
 
-interface VectorFile {
-  readonly spec: string;
-  readonly generator: string;
-  readonly scrypt_rfc7914: readonly ScryptVector[];
-  readonly derive: readonly DeriveVector[];
-  readonly envelope: readonly EnvelopeVector[];
-  readonly link: readonly LinkVector[];
-  readonly meta: readonly MetaVector[];
-  readonly passphrase_strength: readonly StrengthVector[];
-  readonly request: readonly RequestVector[];
-  readonly pow: readonly PowVector[];
+interface StrengthVector {
+  readonly name: string;
+  readonly passphrase: string;
+  readonly accepted: boolean;
+}
+
+interface RequestVector {
+  readonly name: string;
+  readonly seed_hex: string;
+  readonly public_key: string;
+  readonly purpose: 'manage' | 'read' | 'verifier';
+  readonly method: string;
+  readonly path: string;
+  readonly challenge: string;
+  readonly body_hex: string;
+  readonly message_hex: string;
+  readonly signature: string;
+  readonly authorization?: string;
+  readonly verifier_header?: string;
 }
 
 interface PowVector {
@@ -124,50 +116,56 @@ interface PowVector {
   readonly difficulty?: number;
 }
 
-interface StrengthVector {
-  readonly name: string;
-  readonly passphrase: string;
-  readonly accepted: boolean;
+interface VectorFile {
+  readonly spec: string;
+  readonly scrypt_rfc7914: readonly ScryptVector[];
+  readonly derive: readonly DeriveVector[];
+  readonly envelope: readonly EnvelopeVector[];
+  readonly link: readonly LinkVector[];
+  readonly meta: readonly MetaVector[];
+  readonly passphrase_strength: readonly StrengthVector[];
+  readonly request: readonly RequestVector[];
+  readonly pow: readonly PowVector[];
 }
 
+export const vectors = loadVectors();
+
 export function loadVectors(): VectorFile {
-  const text = readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8');
-  return JSON.parse(text) as VectorFile;
+  const file = JSON.parse(readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8')) as VectorFile;
+  const sections = [file.derive, file.envelope, file.link, file.meta, file.passphrase_strength, file.request, file.pow];
+  const complete =
+    file.spec === 'nylzo/v1' &&
+    file.scrypt_rfc7914.length === 4 &&
+    sections.every((section) => section.length > 0) &&
+    file.link.some((vector) => vector.canonical === true);
+  if (!complete) {
+    throw new Error('spec/vectors.json lacks the nylzo/v1 cases these tests check');
+  }
+  return file;
 }
 
 export function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   if (hex.length % 2 !== 0 || !/^[\da-f]*$/.test(hex)) {
     throw new Error(`not lowercase hex: ${hex}`);
   }
-  const out = new Uint8Array(hex.length / 2);
-  for (let index = 0; index < out.length; index++) {
-    out[index] = Number.parseInt(hex.slice(2 * index, 2 * index + 2), 16);
-  }
-  return out;
+  return Uint8Array.from({ length: hex.length / 2 }, (_, index) =>
+    Number.parseInt(hex.slice(2 * index, 2 * index + 2), 16),
+  );
 }
 
 export function bytesToHex(bytes: Uint8Array): string {
-  let out = '';
-  for (const byte of bytes) {
-    out += byte.toString(16).padStart(2, '0');
-  }
-  return out;
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return bytesToHex(await hash(bytes));
 }
 
-function counterBytes(size: number): Uint8Array<ArrayBuffer> {
-  const out = new Uint8Array(size);
-  for (let index = 0; index < size; index++) {
-    out[index] = index % 256;
-  }
-  return out;
-}
-
 export function fileBytes(file: FileVector): Uint8Array<ArrayBuffer> {
-  const bytes = file.content === 'counter' ? counterBytes(file.size) : hexToBytes(file.content);
+  const bytes =
+    file.content === 'counter'
+      ? Uint8Array.from({ length: file.size }, (_, index) => index % 256)
+      : hexToBytes(file.content);
   if (bytes.length !== file.size) {
     throw new Error(`file content length ${bytes.length} differs from size ${file.size}`);
   }
@@ -178,12 +176,6 @@ export function randomId(): Uint8Array<ArrayBuffer> {
   return crypto.getRandomValues(new Uint8Array(ID_LEN));
 }
 
-export function withByteFlipped(bytes: Uint8Array, index: number, mask = 1): Uint8Array<ArrayBuffer> {
-  const copy = concatenate(bytes);
-  copy[index] = (copy[index] ?? 0) ^ mask;
-  return copy;
-}
-
 export function thrownBy(run: () => unknown): unknown {
   try {
     run();
@@ -191,4 +183,10 @@ export function thrownBy(run: () => unknown): unknown {
     return error;
   }
   return undefined;
+}
+
+export function withByteFlipped(bytes: Uint8Array, index: number, mask = 1): Uint8Array<ArrayBuffer> {
+  const copy = Uint8Array.from(bytes);
+  copy[index] = (copy[index] ?? 0) ^ mask;
+  return copy;
 }
