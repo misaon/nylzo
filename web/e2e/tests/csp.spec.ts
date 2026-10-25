@@ -11,10 +11,11 @@ const PAGES = ['/', '/cs/', '/sent', '/report', '/transparency', '/m/AAAAAAAAAAA
 test(
   'every page renders under exactly the CSP of spec section 9 without a violation (AK10, AK19)',
   { tag: '@cross-browser' },
-  async ({ page }) => {
+  async ({ newPage }) => {
     expect(htmlPolicy, 'spec section 9 lost the CSP line for HTML responses').toContain("'nonce-{nonce}'");
-    const violations = await watchViolations(page);
     for (const path of PAGES) {
+      const page = await newPage();
+      const violations = await watchViolations(page);
       const response = await openApp(page, path);
       const policy = response?.headers()['content-security-policy'] ?? '';
       expect(policy.replaceAll(/'nonce-[^']+'/g, "'nonce-{nonce}'"), path).toBe(htmlPolicy);
