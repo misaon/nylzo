@@ -1,7 +1,7 @@
 import { hydrate, mount } from 'svelte';
 
 import App from './App.svelte';
-import type { Language } from '../shared/i18n/language.ts';
+import type { Language } from '../shared/language/language.ts';
 import { purgeSentRecords } from '../shared/sent-records/sent-records.ts';
 
 export function start(page: { readonly path: string; readonly language: Language }): void {

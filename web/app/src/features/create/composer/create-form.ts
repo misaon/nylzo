@@ -2,7 +2,7 @@ import { MIN_TTL_SECONDS } from '@nylzo/core';
 
 import type { InstanceLimits } from '../../../shared/api/api.ts';
 import type { CreateFailure, CreateProblem, FileInput } from './create-message.ts';
-import type { MessageKey } from '../../../shared/i18n/i18n.svelte.ts';
+import { type MessageKey } from '../../../shared/language/czech.ts';
 
 export const TTL_CHOICES = [3600, 86400, 259200, 604800] as const;
 

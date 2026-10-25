@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createApi, type Transparency } from '../../shared/api/api.ts';
-  import { formatBytes, formatDays, formatDuration } from '../../shared/i18n/format.ts';
-  import { getI18n } from '../../shared/i18n/i18n.svelte.ts';
+  import { formatBytes, formatDays, formatDuration } from '../../shared/language/format.ts';
+  import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../shared/shell/repository.ts';
   import { contactHref, verifyCommand } from './transparency.ts';
 
@@ -12,16 +12,16 @@
 
   const DAY_SECONDS = 86_400;
 
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
   const api = createApi();
 
   let view = $state.raw<View>({ view: 'loading' });
 
-  const days = (seconds: number) => formatDays(Math.round(seconds / DAY_SECONDS), i18n.language);
+  const days = (seconds: number) => formatDays(Math.round(seconds / DAY_SECONDS), translator.language);
   const period = (seconds: number) =>
-    seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, i18n.language);
-  const limit = (value: number) => (value === 0 ? t('transparency.limits.none') : String(value));
+    seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, translator.language);
+  const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
 
   async function load() {
     view = { view: 'loading' };
@@ -36,28 +36,28 @@
 </script>
 
 <section aria-labelledby="transparency-title">
-  <h2 id="transparency-title">{t('transparency.title')}</h2>
-  <p>{t('transparency.intro')}</p>
+  <h2 id="transparency-title">{translate('transparency.title')}</h2>
+  <p>{translate('transparency.intro')}</p>
 
   {#if view.view === 'loading'}
-    <p role="status">{t('transparency.loading')}</p>
+    <p role="status">{translate('transparency.loading')}</p>
   {:else if view.view === 'failed'}
-    <p role="alert">{t('transparency.failed')}</p>
-    <button type="button" onclick={load}>{t('action.retry')}</button>
+    <p role="alert">{translate('transparency.failed')}</p>
+    <button type="button" onclick={load}>{translate('action.retry')}</button>
   {:else}
     {@const data = view.data}
     {@const operator = data.operator}
     {@const href = operator?.contact === undefined ? undefined : contactHref(operator.contact)}
 
-    <h3>{t('transparency.operator.title')}</h3>
+    <h3>{translate('transparency.operator.title')}</h3>
     {#if operator}
       <dl>
         {#if operator.name}
-          <dt>{t('transparency.operator.name')}</dt>
+          <dt>{translate('transparency.operator.name')}</dt>
           <dd>{operator.name}</dd>
         {/if}
         {#if operator.contact}
-          <dt>{t('transparency.operator.contact')}</dt>
+          <dt>{translate('transparency.operator.contact')}</dt>
           <dd>
             {#if href}
               <a {href} rel="noreferrer" class="wrap-anywhere">{operator.contact}</a>
@@ -67,76 +67,76 @@
           </dd>
         {/if}
         {#if operator.hosting}
-          <dt>{t('transparency.operator.hosting')}</dt>
+          <dt>{translate('transparency.operator.hosting')}</dt>
           <dd>{operator.hosting}</dd>
         {/if}
       </dl>
     {:else}
-      <p>{t('transparency.operator.missing')}</p>
+      <p>{translate('transparency.operator.missing')}</p>
     {/if}
 
-    <h3>{t('transparency.stores.title')}</h3>
+    <h3>{translate('transparency.stores.title')}</h3>
     <ul>
-      <li>{t('transparency.stores.content')}</li>
-      <li>{t('transparency.stores.metadata')}</li>
-      <li>{t('transparency.stores.keys')}</li>
-      <li>{t('transparency.stores.ended', { days: days(data.retention.tombstoneSeconds) })}</li>
-      <li>{t('transparency.stores.abuse', { days: days(data.retention.abuseReportSeconds) })}</li>
-      <li>{t('transparency.stores.counters', { days: days(data.retention.dailyCounterSeconds) })}</li>
-      <li>{t('transparency.stores.addresses')}</li>
+      <li>{translate('transparency.stores.content')}</li>
+      <li>{translate('transparency.stores.metadata')}</li>
+      <li>{translate('transparency.stores.keys')}</li>
+      <li>{translate('transparency.stores.ended', { days: days(data.retention.tombstoneSeconds) })}</li>
+      <li>{translate('transparency.stores.abuse', { days: days(data.retention.abuseReportSeconds) })}</li>
+      <li>{translate('transparency.stores.counters', { days: days(data.retention.dailyCounterSeconds) })}</li>
+      <li>{translate('transparency.stores.addresses')}</li>
     </ul>
 
-    <h3>{t('transparency.logs.title')}</h3>
+    <h3>{translate('transparency.logs.title')}</h3>
     <ul>
-      <li>{t('transparency.logs.what')}</li>
-      <li>{t('transparency.logs.never')}</li>
+      <li>{translate('transparency.logs.what')}</li>
+      <li>{translate('transparency.logs.never')}</li>
     </ul>
 
-    <h3>{t('transparency.others.title')}</h3>
+    <h3>{translate('transparency.others.title')}</h3>
     <ul>
-      <li>{t('transparency.others.hosting')}</li>
-      <li>{t('transparency.others.client')}</li>
+      <li>{translate('transparency.others.hosting')}</li>
+      <li>{translate('transparency.others.client')}</li>
     </ul>
 
-    <h3>{t('transparency.limits.title')}</h3>
+    <h3>{translate('transparency.limits.title')}</h3>
     <dl>
-      <dt>{t('transparency.limits.file')}</dt>
-      <dd>{formatBytes(data.limits.maxFileBytes, i18n.language)}</dd>
-      <dt>{t('transparency.limits.ttl')}</dt>
+      <dt>{translate('transparency.limits.file')}</dt>
+      <dd>{formatBytes(data.limits.maxFileBytes, translator.language)}</dd>
+      <dt>{translate('transparency.limits.ttl')}</dt>
       <dd>{period(data.limits.maxTtlSeconds)}</dd>
-      <dt>{t('transparency.limits.opens')}</dt>
+      <dt>{translate('transparency.limits.opens')}</dt>
       <dd>{data.limits.maxOpens}</dd>
-      <dt>{t('transparency.limits.create')}</dt>
+      <dt>{translate('transparency.limits.create')}</dt>
       <dd>
-        {t('transparency.limits.create.value', {
+        {translate('transparency.limits.create.value', {
           hour: limit(data.rates.createPerHour),
           day: limit(data.rates.createPerDay),
         })}
       </dd>
-      <dt>{t('transparency.limits.read')}</dt>
-      <dd>{t('transparency.limits.read.value', { hour: limit(data.rates.readPerHour) })}</dd>
-      <dt>{t('transparency.limits.global')}</dt>
+      <dt>{translate('transparency.limits.read')}</dt>
+      <dd>{translate('transparency.limits.read.value', { hour: limit(data.rates.readPerHour) })}</dd>
+      <dt>{translate('transparency.limits.global')}</dt>
       <dd>
         {data.rates.globalDailyCreates === 0
-          ? t('transparency.limits.none')
-          : t('transparency.limits.global.value', { max: data.rates.globalDailyCreates })}
+          ? translate('transparency.limits.none')
+          : translate('transparency.limits.global.value', { max: data.rates.globalDailyCreates })}
       </dd>
     </dl>
 
-    <h3>{t('transparency.client.title')}</h3>
+    <h3>{translate('transparency.client.title')}</h3>
     <dl>
-      <dt>{t('transparency.client.version')}</dt>
+      <dt>{translate('transparency.client.version')}</dt>
       <dd><code class="wrap-anywhere">{data.server}</code></dd>
     </dl>
-    <p>{t('transparency.client.files')}</p>
+    <p>{translate('transparency.client.files')}</p>
     <ul>
       {#each data.files as file (file.path)}
         <li><code class="wrap-anywhere">{file.path}</code> <code class="wrap-anywhere">{file.sha256}</code></li>
       {/each}
     </ul>
-    <p>{t('transparency.client.verify')}</p>
+    <p>{translate('transparency.client.verify')}</p>
     <p><code class="wrap-anywhere">{verifyCommand(location.origin)}</code></p>
-    <p>{t('transparency.client.limit')}</p>
-    <p><a href={REPOSITORY_URL} rel="noreferrer">{t('transparency.source')}</a></p>
+    <p>{translate('transparency.client.limit')}</p>
+    <p><a href={REPOSITORY_URL} rel="noreferrer">{translate('transparency.source')}</a></p>
   {/if}
 </section>

@@ -2,8 +2,8 @@
   import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
-  import { formatWait } from '../i18n/format.ts';
-  import { getI18n } from '../i18n/i18n.svelte.ts';
+  import { formatWait } from '../language/format.ts';
+  import { getTranslator } from '../language/translator.svelte.ts';
   import { MAX_REASON_BYTES, type ReportOutcome } from './report.ts';
 
   interface Props {
@@ -16,8 +16,8 @@
   }
 
   const { name, withLink = false, compact = false, hint, send, onaccepted }: Props = $props();
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
 
   let link = $state('');
   let reason = $state('');
@@ -28,19 +28,21 @@
   const problems = $derived(outcome?.outcome === 'invalid' ? outcome.problems : []);
   const linkProblem = $derived.by(() => {
     const problem = problems.find((p) => p.startsWith('link_'));
-    return problem ? t(`report.problem.${problem}`) : '';
+    return problem ? translate(`report.problem.${problem}`) : '';
   });
   const reasonProblem = $derived(
-    problems.includes('reason_too_long') ? t('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES }) : '',
+    problems.includes('reason_too_long')
+      ? translate('report.problem.reason_too_long', { bytes: MAX_REASON_BYTES })
+      : '',
   );
   const result = $derived.by(() => {
     switch (outcome?.outcome) {
       case 'accepted':
-        return t('report.accepted');
+        return translate('report.accepted');
       case 'retry_later':
-        return t('read.retry_later', { time: formatWait(outcome.retryAfter, i18n.language) });
+        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.language) });
       case 'failed':
-        return t('report.failed');
+        return translate('report.failed');
       default:
         return '';
     }
@@ -79,11 +81,11 @@
 
 <form onsubmit={submit} novalidate {@attach rememberForm}>
   {#if compact}
-    <label for={`${name}-reason`} class="sr-only">{t('report.reason')}</label>
+    <label for={`${name}-reason`} class="sr-only">{translate('report.reason')}</label>
     <textarea
       id={`${name}-reason`}
       rows="3"
-      placeholder={t('report.reason')}
+      placeholder={translate('report.reason')}
       class="mt-2.5 block w-full resize-none rounded-[8px] px-3 py-2 text-[13px] text-ink well placeholder:text-ink-mute aria-invalid:shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]"
       autocomplete="off"
       autocapitalize="off"
@@ -94,7 +96,7 @@
       aria-describedby={`${name}-reason-hint ${name}-reason-problem`}></textarea>
     <div class="mt-2 stack px-0.5 text-[11px] leading-relaxed">
       <p id={`${name}-reason-hint`} class={['text-ink-mute fade-swap', compactProblem ? 'opacity-0' : 'opacity-100']}>
-        {hint ?? t('report.reason.hint', { bytes: MAX_REASON_BYTES })}
+        {hint ?? translate('report.reason.hint', { bytes: MAX_REASON_BYTES })}
       </p>
       <p
         id={`${name}-reason-problem`}
@@ -110,11 +112,11 @@
       disabled={sending}
       class="btn-primary mt-2.5 flex h-11 w-full hover-lift items-center justify-center rounded-[8px] text-[13px] font-medium md:h-8"
     >
-      {t('report.submit')}
+      {translate('report.submit')}
     </button>
   {:else}
     {#if withLink}
-      <label for={`${name}-link`}>{t('report.link')}</label>
+      <label for={`${name}-link`}>{translate('report.link')}</label>
       <input
         id={`${name}-link`}
         type="text"
@@ -127,10 +129,10 @@
         aria-invalid={linkProblem !== ''}
         aria-describedby={`${name}-link-hint ${name}-link-problem`}
       />
-      <p id={`${name}-link-hint`}>{t('report.link.hint')}</p>
+      <p id={`${name}-link-hint`}>{translate('report.link.hint')}</p>
       <p id={`${name}-link-problem`} data-problem>{linkProblem}</p>
     {/if}
-    <label for={`${name}-reason`}>{t('report.reason')}</label>
+    <label for={`${name}-reason`}>{translate('report.reason')}</label>
     <textarea
       id={`${name}-reason`}
       autocomplete="off"
@@ -140,9 +142,9 @@
       bind:value={reason}
       aria-invalid={reasonProblem !== ''}
       aria-describedby={`${name}-reason-hint ${name}-reason-problem`}></textarea>
-    <p id={`${name}-reason-hint`}>{t('report.reason.hint', { bytes: MAX_REASON_BYTES })}</p>
+    <p id={`${name}-reason-hint`}>{translate('report.reason.hint', { bytes: MAX_REASON_BYTES })}</p>
     <p id={`${name}-reason-problem`} data-problem>{reasonProblem}</p>
-    <button type="submit" disabled={sending}>{t('report.submit')}</button>
+    <button type="submit" disabled={sending}>{translate('report.submit')}</button>
   {/if}
 </form>
 {#if !compact}

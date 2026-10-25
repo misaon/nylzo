@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { getI18n } from '../../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
 
-  const { t } = getI18n();
+  const { translate } = getTranslator();
 
   const limits = [
     { key: 'limits.save', icon: 'camera' },
@@ -21,7 +21,7 @@
     </span>
     <span class="mt-3 text-[13px] text-ink">{label}</span>
     <span class="text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-nebula-300 uppercase"
-      >{t('limits.outside')}</span
+      >{translate('limits.outside')}</span
     >
   </div>
 {/snippet}
@@ -51,19 +51,19 @@
     ></div>
     <div class="relative grid items-center gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-14">
       <div>
-        <p class="text-sm font-medium text-nebula-300">{t('limits.eyebrow')}</p>
+        <p class="text-sm font-medium text-nebula-300">{translate('limits.eyebrow')}</p>
         <h2
           id="limits-title"
           class="mt-3 font-display text-[26px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[36px]"
         >
-          {t('limits.title')}
+          {translate('limits.title')}
         </h2>
-        <p class="mt-4 max-w-[440px] leading-relaxed text-pretty text-ink-soft">{t('limits.sub')}</p>
+        <p class="mt-4 max-w-[440px] leading-relaxed text-pretty text-ink-soft">{translate('limits.sub')}</p>
       </div>
 
-      <div class="rounded-pane px-4 py-6 well md:px-8 md:py-8" role="img" aria-label={t('limits.diagram')}>
+      <div class="rounded-pane px-4 py-6 well md:px-8 md:py-8" role="img" aria-label={translate('limits.diagram')}>
         <div class="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-start" aria-hidden="true">
-          {@render device('laptop', t('limits.you'))}
+          {@render device('laptop', translate('limits.you'))}
           {@render wire('out')}
           <div class="flex w-[84px] flex-col items-center text-center">
             <span
@@ -71,13 +71,13 @@
             >
               <Icon name="database" stroke={1.6} class="size-6" />
             </span>
-            <span class="mt-3 text-[13px] text-ink">{t('limits.server')}</span>
+            <span class="mt-3 text-[13px] text-ink">{translate('limits.server')}</span>
             <span class="text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-aegis-300 uppercase"
-              >{t('limits.ours')}</span
+              >{translate('limits.ours')}</span
             >
           </div>
           {@render wire('in')}
-          {@render device('phone', t('limits.recipient'))}
+          {@render device('phone', translate('limits.recipient'))}
         </div>
       </div>
     </div>
@@ -91,20 +91,20 @@
             <Icon name={limit.icon} stroke={1.6} class="size-5" />
           </span>
           <span class="min-w-0">
-            <span class="block text-[15px] text-ink">{t(`${limit.key}.title`)}</span>
-            <span class="mt-0.5 block text-[13px] leading-relaxed text-ink-mute">{t(`${limit.key}.note`)}</span>
+            <span class="block text-[15px] text-ink">{translate(`${limit.key}.title`)}</span>
+            <span class="mt-0.5 block text-[13px] leading-relaxed text-ink-mute">{translate(`${limit.key}.note`)}</span>
           </span>
         </li>
       {/each}
     </ul>
     <div class="relative mt-6 flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-      <p class="max-w-[760px] text-xs leading-relaxed text-ink-mute">{t('limits.liability')}</p>
+      <p class="max-w-[760px] text-xs leading-relaxed text-ink-mute">{translate('limits.liability')}</p>
       <a
         href="/report"
         class="btn-ghost flex h-11 shrink-0 items-center justify-center gap-2 self-start rounded-control px-4 text-[13px] sm:self-auto md:h-9"
       >
         <Icon name="flag" class="size-4" />
-        {t('limits.report')}
+        {translate('limits.report')}
       </a>
     </div>
   </div>

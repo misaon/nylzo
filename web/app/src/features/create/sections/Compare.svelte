@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { getI18n, type MessageKey } from '../../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { type MessageKey } from '../../../shared/language/czech.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
 
-  const { t } = getI18n();
+  const { translate } = getTranslator();
 
   type Cell =
     | { readonly kind: 'yes' | 'no' | 'part'; readonly note?: MessageKey; readonly score: number }
@@ -88,15 +89,15 @@
   <div class="mx-auto max-w-[1160px]">
     <div class="flex reveal-up flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="max-w-[600px]">
-        <p class="text-sm font-medium text-aegis-300">{t('compare.eyebrow')}</p>
+        <p class="text-sm font-medium text-aegis-300">{translate('compare.eyebrow')}</p>
         <h2
           id="compare-title"
           class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
         >
-          {t('compare.title')}
+          {translate('compare.title')}
         </h2>
       </div>
-      <p class="max-w-[320px] text-xs leading-relaxed text-pretty text-ink-mute">{t('compare.source')}</p>
+      <p class="max-w-[320px] text-xs leading-relaxed text-pretty text-ink-mute">{translate('compare.source')}</p>
     </div>
     <div class="glass mt-12 reveal-tilt overflow-hidden rounded-card">
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
@@ -107,10 +108,12 @@
         tabindex="0"
       >
         <table class="w-full min-w-[820px] border-collapse text-left">
-          <caption class="sr-only">{t('compare.caption')}</caption>
+          <caption class="sr-only">{translate('compare.caption')}</caption>
           <thead>
             <tr class="border-b border-white/8">
-              <th scope="col" class="w-[27%] px-6 py-4 text-xs font-normal text-ink-mute">{t('compare.feature')}</th>
+              <th scope="col" class="w-[27%] px-6 py-4 text-xs font-normal text-ink-mute"
+                >{translate('compare.feature')}</th
+              >
               <th
                 scope="col"
                 class="bg-aegis-500/12 px-5 py-4 font-display text-[15px] font-normal text-aegis-200 shadow-[inset_1px_0_0_oklch(0.67_0.16_252/0.3),inset_-1px_0_0_oklch(0.67_0.16_252/0.3),inset_0_2px_0_oklch(0.77_0.115_249/0.7)]"
@@ -126,7 +129,7 @@
             {#each rows as row (row.label)}
               {@const only = sole(row.cells)}
               <tr class="border-b border-white/6 last:border-0">
-                <th scope="row" class="px-6 py-3.5 text-sm font-normal text-ink">{t(row.label)}</th>
+                <th scope="row" class="px-6 py-3.5 text-sm font-normal text-ink">{translate(row.label)}</th>
                 {#each row.cells as cell, column (column)}
                   <td
                     class={[
@@ -147,24 +150,24 @@
                         >
                           <Icon name="check" stroke={2.6} class="size-3" />
                         </span>
-                        <span class="sr-only">{t('compare.yes')}</span>{cell.note ? t(cell.note) : ''}
+                        <span class="sr-only">{translate('compare.yes')}</span>{cell.note ? translate(cell.note) : ''}
                       </span>
                     {:else if cell.kind === 'no'}
                       <span class="flex items-center gap-2 text-xs text-ink-mute">
                         <span class="grid size-5 shrink-0 place-items-center rounded-[6px] ring-1 ring-white/15"
                           ><Icon name="close" stroke={2.6} class="size-2.5" /></span
                         >
-                        <span class="sr-only">{t('compare.no')}</span>{cell.note ? t(cell.note) : ''}
+                        <span class="sr-only">{translate('compare.no')}</span>{cell.note ? translate(cell.note) : ''}
                       </span>
                     {:else if cell.kind === 'part'}
                       <span class="flex items-center gap-2 text-xs text-ink-soft">
                         <span class="grid size-5 shrink-0 place-items-center rounded-[6px] ring-1 ring-white/25"
                           ><Icon name="minus" stroke={2.6} class="size-3" /></span
                         >
-                        <span class="sr-only">{t('compare.part')}</span>{cell.note ? t(cell.note) : ''}
+                        <span class="sr-only">{translate('compare.part')}</span>{cell.note ? translate(cell.note) : ''}
                       </span>
                     {:else if cell.kind === 'text'}
-                      <span class={['font-mono text-xs', cell.tone]}>{t(cell.note)}</span>
+                      <span class={['font-mono text-xs', cell.tone]}>{translate(cell.note)}</span>
                     {/if}
                   </td>
                 {/each}

@@ -9,14 +9,14 @@
   import Resilience from './sections/Resilience.svelte';
   import SelfHost from './sections/SelfHost.svelte';
   import WhoSees from './sections/WhoSees.svelte';
-  import { getI18n } from '../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../shared/language/translator.svelte.ts';
 
-  const { t } = getI18n();
+  const { translate } = getTranslator();
 </script>
 
 <svelte:head>
-  <title>{t('seo.title')}</title>
-  <meta name="description" content={t('seo.description')} />
+  <title>{translate('seo.title')}</title>
+  <meta name="description" content={translate('seo.description')} />
 </svelte:head>
 
 <Composer />

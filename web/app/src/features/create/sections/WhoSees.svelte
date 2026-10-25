@@ -1,9 +1,9 @@
 <script lang="ts">
   import { AutoCycle } from './auto-cycle.svelte.ts';
-  import { getI18n } from '../../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
 
-  const { t } = getI18n();
+  const { translate } = getTranslator();
 
   const VIEW_MS = 7000;
   const views = ['you', 'server', 'thief'] as const;
@@ -63,14 +63,14 @@
     class="mx-auto grid max-w-[1160px] items-start gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16"
   >
     <div class="reveal-left lg:sticky lg:top-28">
-      <p class="text-sm font-medium text-aegis-300">{t('who.eyebrow')}</p>
+      <p class="text-sm font-medium text-aegis-300">{translate('who.eyebrow')}</p>
       <h2
         id="who-title"
         class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
       >
-        {t('who.title')}
+        {translate('who.title')}
       </h2>
-      <p class="mt-5 max-w-[440px] leading-relaxed text-pretty text-ink-soft">{t('who.sub')}</p>
+      <p class="mt-5 max-w-[440px] leading-relaxed text-pretty text-ink-soft">{translate('who.sub')}</p>
     </div>
 
     <div
@@ -84,7 +84,11 @@
       onfocusin={cycle.focusIn}
       onfocusout={cycle.focusOut}
     >
-      <div class="relative grid grid-cols-3 rounded-control p-0.5 well" role="tablist" aria-label={t('who.tabs')}>
+      <div
+        class="relative grid grid-cols-3 rounded-control p-0.5 well"
+        role="tablist"
+        aria-label={translate('who.tabs')}
+      >
         <span
           class={[
             'absolute inset-y-0.5 left-0.5 w-[calc((100%-0.25rem)/3)] overflow-hidden rounded-[8px] bg-aegis-500/25 ring-1 ring-aegis-400/50 transition-transform duration-500 ease-silk',
@@ -116,7 +120,7 @@
               cycle.index === index ? 'text-ink' : 'text-ink-soft hover:text-ink',
             ]}
           >
-            {t(`who.${view}`)}
+            {translate(`who.${view}`)}
           </button>
         {/each}
       </div>
@@ -136,12 +140,12 @@
               >
                 <Icon name="unlock" class="size-4" />
               </span>
-              {t('who.you.title')}
+              {translate('who.you.title')}
             </p>
             <span
               class="flex items-center gap-1.5 rounded-full bg-aegis-500/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-aegis-200 uppercase ring-1 ring-aegis-400/25"
             >
-              <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300" aria-hidden="true"></span>{t(
+              <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300" aria-hidden="true"></span>{translate(
                 'who.you.badge',
               )}
             </span>
@@ -156,22 +160,26 @@
               class="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-aegis-300/70 to-transparent"
               aria-hidden="true"
             ></span>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t('who.you.message')}</p>
+            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
+              {translate('who.you.message')}
+            </p>
             <p class="mt-3 text-[15px] leading-relaxed text-ink">
-              {t('who.you.line1')}
+              {translate('who.you.line1')}
               <span
                 class="rounded-[6px] bg-aegis-500/12 px-1.5 py-0.5 font-mono text-[13px] whitespace-nowrap text-aegis-200 ring-1 ring-aegis-400/30"
                 >Lr7!vQ2-mT9#kd</span
               >
             </p>
-            <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{t('who.you.line2')}</p>
+            <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{translate('who.you.line2')}</p>
             <p class="mt-auto flex items-center gap-2 border-t border-white/6 pt-3 text-[13px] text-ink-mute">
               <Icon name="check" class="size-4 shrink-0 text-aegis-300" />
-              {t('who.you.deleted')}
+              {translate('who.you.deleted')}
             </p>
           </div>
           <div class={['rounded-pane p-4 well transition-[opacity,translate]', item(0, 2)]}>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t('who.you.attachment')}</p>
+            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
+              {translate('who.you.attachment')}
+            </p>
             <div class="mt-3 flex items-center gap-3">
               <span
                 class="grid size-10 shrink-0 place-items-center rounded-control bg-nebula-400/12 text-nebula-300 ring-1 ring-nebula-300/30"
@@ -179,8 +187,8 @@
                 <Icon name="file" stroke={1.7} class="size-5" />
               </span>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-[15px] text-ink">{t('who.you.file')}</p>
-                <p class="font-mono text-[13px] text-ink-mute">{t('who.you.filemeta')}</p>
+                <p class="truncate text-[15px] text-ink">{translate('who.you.file')}</p>
+                <p class="font-mono text-[13px] text-ink-mute">{translate('who.you.filemeta')}</p>
               </div>
               <span
                 class="grid size-9 shrink-0 place-items-center rounded-control bg-white/5 text-ink-soft ring-1 ring-white/10"
@@ -191,8 +199,8 @@
             </div>
           </div>
           <div class={['rounded-pane p-4 well transition-[opacity,translate]', item(0, 3)]}>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t('who.you.key')}</p>
-            <p class="mt-3 text-[13px] leading-relaxed text-ink-soft">{t('who.you.keynote')}</p>
+            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{translate('who.you.key')}</p>
+            <p class="mt-3 text-[13px] leading-relaxed text-ink-soft">{translate('who.you.keynote')}</p>
             <p class="mt-1.5 font-mono text-[13px] break-all text-ink-mute">
               nylzo.example/m/Q3tN0xvR8kLp2WcY5aHf1g<span class="rounded-[4px] bg-aegis-500/15 px-0.5 text-aegis-200"
                 >#1.0.Vh2sXq9LmB4tRk7PzW1eNc…</span
@@ -215,12 +223,12 @@
               >
                 <Icon name="database" stroke={1.7} class="size-4" />
               </span>
-              {t('who.server.title')}
+              {translate('who.server.title')}
             </p>
             <span
               class="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-ink-soft uppercase ring-1 ring-white/10"
             >
-              {t('who.server.badge')}
+              {translate('who.server.badge')}
             </span>
           </div>
           <div
@@ -230,7 +238,9 @@
             ]}
           >
             <div class="flex items-center justify-between gap-3">
-              <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t('who.server.data')}</p>
+              <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
+                {translate('who.server.data')}
+              </p>
               <p class="font-mono text-[11px] text-aegis-300">AES-256-GCM</p>
             </div>
             <p
@@ -247,22 +257,22 @@
           <dl class={['grid grid-cols-2 gap-3 transition-[opacity,translate]', item(1, 2)]}>
             {#each facts as fact (fact.key)}
               <div class="min-w-0 rounded-pane px-4 py-3 well">
-                <dt class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t(fact.key)}</dt>
+                <dt class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{translate(fact.key)}</dt>
                 <dd class="mt-1 truncate font-mono text-[13px] text-ink">
-                  {'value' in fact ? fact.value : t(`${fact.key}.value`)}
+                  {'value' in fact ? fact.value : translate(`${fact.key}.value`)}
                 </dd>
-                <dd class="mt-0.5 text-[13px] text-ink-mute">{t(`${fact.key}.note`)}</dd>
+                <dd class="mt-0.5 text-[13px] text-ink-mute">{translate(`${fact.key}.note`)}</dd>
               </div>
             {/each}
           </dl>
           <div class={['flex items-start gap-4 rounded-pane p-4 well transition-[opacity,translate]', item(1, 3)]}>
             <p class="w-12 shrink-0 pt-0.5 text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
-              {t('who.server.lacks')}
+              {translate('who.server.lacks')}
             </p>
             <ul class="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 text-[13px] text-ink-soft">
               {#each lacks as lack (lack)}
                 <li class="flex items-center gap-2">
-                  <Icon name="ban" class="size-4 shrink-0 text-aegis-300" />{t(lack)}
+                  <Icon name="ban" class="size-4 shrink-0 text-aegis-300" />{translate(lack)}
                 </li>
               {/each}
             </ul>
@@ -283,22 +293,24 @@
               >
                 <Icon name="copy" stroke={1.7} class="size-4" />
               </span>
-              {t('who.thief.title')}
+              {translate('who.thief.title')}
             </p>
             <span
               class="rounded-full bg-nebula-400/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-nebula-300 uppercase ring-1 ring-nebula-300/25"
             >
-              {t('who.thief.badge')}
+              {translate('who.thief.badge')}
             </span>
           </div>
           <div class={['flex grow flex-col rounded-pane p-4 well transition-[opacity,translate]', item(2, 1)]}>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{t('who.thief.finds')}</p>
+            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
+              {translate('who.thief.finds')}
+            </p>
             <ul class="mt-1 grid grow divide-y divide-white/6">
               {#each finds as find (find.key)}
                 <li class="flex items-center gap-3 py-3 last:pb-0">
                   <div class="min-w-0 flex-1">
-                    <p class="text-[15px] text-ink">{t(find.key)}</p>
-                    <p class="text-[13px] text-ink-mute">{t(`${find.key}.note`)}</p>
+                    <p class="text-[15px] text-ink">{translate(find.key)}</p>
+                    <p class="text-[13px] text-ink-mute">{translate(`${find.key}.note`)}</p>
                   </div>
                   <span
                     class={[
@@ -308,7 +320,7 @@
                         : 'bg-white/5 text-ink-soft ring-white/10',
                     ]}
                   >
-                    {t(`${find.key}.result`)}
+                    {translate(`${find.key}.result`)}
                   </span>
                 </li>
               {/each}
@@ -320,8 +332,8 @@
               class="group flex items-center justify-between gap-3 rounded-pane bg-linear-to-r from-aegis-500/20 via-aegis-500/10 to-nebula-400/10 p-4 ring-1 ring-aegis-400/30 hover:ring-aegis-300/60"
             >
               <span>
-                <span class="block text-[15px] text-ink">{t('who.thief.cta')}</span>
-                <span class="mt-0.5 block text-[13px] text-ink-soft">{t('who.thief.cta.sub')}</span>
+                <span class="block text-[15px] text-ink">{translate('who.thief.cta')}</span>
+                <span class="mt-0.5 block text-[13px] text-ink-soft">{translate('who.thief.cta.sub')}</span>
               </span>
               <Icon
                 name="arrowRight"

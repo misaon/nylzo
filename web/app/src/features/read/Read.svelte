@@ -10,9 +10,10 @@
   import Popover from '../../shared/ui/Popover.svelte';
   import { createApi, type Metadata } from '../../shared/api/api.ts';
   import { fileExtension, isKnownSafeFile, saveFile, splitFileName } from '../../shared/files/file-name.ts';
-  import { formatBytes, formatWait } from '../../shared/i18n/format.ts';
+  import { formatBytes, formatWait } from '../../shared/language/format.ts';
   import { keepFocus } from '../../shared/ui/focus.ts';
-  import { getI18n, type MessageKey } from '../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { type MessageKey } from '../../shared/language/czech.ts';
   import type { IconName } from '../../shared/ui/icons.ts';
   import { scryptInWorker } from '../../shared/kdf/kdf.ts';
   import { pace } from '../../shared/pipeline/pacing.ts';
@@ -82,8 +83,8 @@
     { key: 'open.trust.gone', icon: 'trash', reveal: 'reveal-up reveal-step-2' },
   ] as const;
 
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
   const uid = $props.id();
 
   let view = $state.raw<ReadView>({ view: 'loading' });
@@ -123,10 +124,10 @@
   const nodes: readonly PipelineNode[] = $derived(
     steps.map(({ id, icon }) => ({
       id,
-      label: t(`open.step.${id}.label`),
+      label: translate(`open.step.${id}.label`),
       icon,
-      title: t(`open.step.${id}.title`),
-      detail: t(`open.step.${id}.detail`),
+      title: translate(`open.step.${id}.title`),
+      detail: translate(`open.step.${id}.detail`),
     })),
   );
   const minMs = $derived(
@@ -144,42 +145,42 @@
   const burnFailed = $derived(burned !== undefined && FAILED_BURNS.includes(burned.outcome.outcome));
   const status = $derived.by(() => {
     if (shown.view === 'loading') {
-      return t('read.loading');
+      return translate('read.loading');
     }
     if (opening && view.view === 'busy') {
-      return t(`busy.${view.step}`);
+      return translate(`busy.${view.step}`);
     }
     if (reporting && reportSent) {
-      return t('open.report.sent');
+      return translate('open.report.sent');
     }
     return burnNote;
   });
   const passError = $derived.by(() => {
     if (emptyPassphrase) {
-      return t('open.passphrase.empty');
+      return translate('open.passphrase.empty');
     }
     const rejected = typedAgain ? undefined : ready?.rejected;
     if (rejected?.reason === 'malformed') {
-      return t('read.rejected.malformed');
+      return translate('read.rejected.malformed');
     }
     if (rejected?.reason === 'wrong_or_changed') {
-      return t('read.rejected.wrong_or_changed');
+      return translate('read.rejected.wrong_or_changed');
     }
     if (rejected && rejected.retryAfter > 0) {
-      return t('read.rejected.wait', { time: formatWait(rejected.retryAfter, i18n.language) });
+      return translate('read.rejected.wait', { time: formatWait(rejected.retryAfter, translator.language) });
     }
-    return rejected ? t('read.rejected.wrong', { count: rejected.attemptsLeft }) : '';
+    return rejected ? translate('read.rejected.wrong', { count: rejected.attemptsLeft }) : '';
   });
   const readyNote = $derived.by(() => {
     if (ready?.deviceFailed) {
-      return { alert: true, text: t('read.device') };
+      return { alert: true, text: translate('read.device') };
     }
     if (ready?.leaseEnded) {
-      return { alert: true, text: t('read.lease_ended') };
+      return { alert: true, text: translate('read.lease_ended') };
     }
-    return { alert: false, text: ready?.resumable ? t('read.resumable') : '' };
+    return { alert: false, text: ready?.resumable ? translate('read.resumable') : '' };
   });
-  const passHint = $derived(readyNote.text || t('open.passphrase.hint'));
+  const passHint = $derived(readyNote.text || translate('open.passphrase.hint'));
   const passAlert = $derived(passError || (readyNote.alert ? readyNote.text : ''));
   const readyChips = $derived.by((): ChipData[] => {
     if (!metadata) {
@@ -187,29 +188,29 @@
     }
     const chips: ChipData[] = [];
     if (metadata.expiresAt) {
-      chips.push({ icon: 'clock', text: t('open.chip.expires', { time: shortTime(metadata.expiresAt) }) });
+      chips.push({ icon: 'clock', text: translate('open.chip.expires', { time: shortTime(metadata.expiresAt) }) });
     }
     chips.push({ icon: 'eye', text: opensLeft(metadata.opensRemaining) });
     if (metadata.passphraseRequired) {
-      chips.push({ icon: 'key', text: t('compose.passphrase.chip'), accent: true });
+      chips.push({ icon: 'key', text: translate('compose.passphrase.chip'), accent: true });
     }
     return chips;
   });
   const afterChips = $derived.by((): ChipData[] => {
     if (revealed) {
       return [
-        { icon: 'check', text: t('open.chip.now') },
-        { icon: 'eye', text: revealed.burnable && !restDeleted ? t('open.chip.more') : opensLeft(0) },
+        { icon: 'check', text: translate('open.chip.now') },
+        { icon: 'eye', text: revealed.burnable && !restDeleted ? translate('open.chip.more') : opensLeft(0) },
       ];
     }
     if (notice === 'burned') {
-      return [{ icon: 'check', text: t('open.chip.burned') }];
+      return [{ icon: 'check', text: translate('open.chip.burned') }];
     }
     if (shown.view === 'ended' && shown.firstOpenedAt) {
-      return [{ icon: 'eye', text: t('open.chip.first_opened', { time: shortTime(shown.firstOpenedAt) }) }];
+      return [{ icon: 'eye', text: translate('open.chip.first_opened', { time: shortTime(shown.firstOpenedAt) }) }];
     }
     if (shown.view === 'ended' && shown.endedAt) {
-      return [{ icon: 'clock', text: t('open.chip.ended', { time: shortTime(shown.endedAt) }) }];
+      return [{ icon: 'clock', text: translate('open.chip.ended', { time: shortTime(shown.endedAt) }) }];
     }
     return [];
   });
@@ -388,7 +389,7 @@
   }
 
   function shortTime(iso: string): string {
-    return new Intl.DateTimeFormat(i18n.language, {
+    return new Intl.DateTimeFormat(translator.language, {
       day: 'numeric',
       month: 'numeric',
       hour: 'numeric',
@@ -397,10 +398,10 @@
   }
 
   function opensLeft(count: number): string {
-    const rule = new Intl.PluralRules(i18n.language).select(count);
+    const rule = new Intl.PluralRules(translator.language).select(count);
     const key: MessageKey =
       rule === 'one' ? 'open.chip.opens.one' : rule === 'few' ? 'open.chip.opens.few' : 'open.chip.opens.other';
-    return t(key, { count });
+    return translate(key, { count });
   }
 
   function noticeOf(current: ReadView): Notice {
@@ -427,23 +428,23 @@
   }
 
   function noticeTitle(kind: Notice): string {
-    return kind === 'loading' ? t('read.loading') : t(`open.notice.${kind}`);
+    return kind === 'loading' ? translate('read.loading') : translate(`open.notice.${kind}`);
   }
 
   function noticeText(kind: Notice): string {
     switch (kind) {
       case 'unknown':
-        return t('read.unknown');
+        return translate('read.unknown');
       case 'cleared':
-        return t('read.cleared');
+        return translate('read.cleared');
       case 'busy':
-        return t('open.notice.busy.text', {
-          time: formatWait(shown.view === 'retry_later' ? shown.retryAfter : undefined, i18n.language),
+        return translate('open.notice.busy.text', {
+          time: formatWait(shown.view === 'retry_later' ? shown.retryAfter : undefined, translator.language),
         });
       case 'loading':
-        return t('open.loading.text');
+        return translate('open.loading.text');
       default:
-        return t(`open.notice.${kind}.text`);
+        return translate(`open.notice.${kind}.text`);
     }
   }
 
@@ -476,15 +477,15 @@
   function burnText(outcome: BurnOutcome, afterReveal: boolean): string {
     switch (outcome.outcome) {
       case 'deleted':
-        return afterReveal ? t('read.deleted_rest') : '';
+        return afterReveal ? translate('read.deleted_rest') : '';
       case 'ended':
-        return afterReveal ? t(`read.ended.${outcome.state}`) : '';
+        return afterReveal ? translate(`read.ended.${outcome.state}`) : '';
       case 'retry_later':
-        return t('read.retry_later', { time: formatWait(outcome.retryAfter, i18n.language) });
+        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.language) });
       case 'unknown':
-        return afterReveal ? t('read.delete.failed') : '';
+        return afterReveal ? translate('read.delete.failed') : '';
       case 'failed':
-        return t('read.delete.failed');
+        return translate('read.delete.failed');
       case 'ignored':
         return '';
     }
@@ -672,16 +673,16 @@
 <section id="otevrit" class="px-4 pt-20 pb-20 sm:px-6 md:pt-28 md:pb-28" aria-labelledby="read-title" {@attach cleanup}>
   <p class="sr-only" role="status" aria-live="polite">{status}</p>
   <div class="mx-auto max-w-[860px] text-center">
-    <p class="animate-rise text-sm font-medium text-aegis-300" aria-hidden="true">{t('read.title')}</p>
+    <p class="animate-rise text-sm font-medium text-aegis-300" aria-hidden="true">{translate('read.title')}</p>
     <h1
       class="mt-3 animate-rise font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance [animation-delay:80ms] sm:text-[50px] lg:text-[62px]"
     >
-      {t('open.title')}
+      {translate('open.title')}
     </h1>
     <p
       class="mx-auto mt-6 max-w-[620px] animate-rise text-base leading-[1.75] text-balance text-ink-soft [animation-delay:160ms] sm:text-[17px]"
     >
-      {t('open.intro')}
+      {translate('open.intro')}
     </p>
   </div>
 
@@ -689,7 +690,7 @@
     <div class="glow-under" aria-hidden="true"></div>
     <div class="glass rounded-card">
       <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
-      <h2 id="read-title" tabindex="-1" class="sr-only">{t('read.title')}</h2>
+      <h2 id="read-title" tabindex="-1" class="sr-only">{translate('read.title')}</h2>
 
       <div class="relative stack min-h-[420px] md:min-h-[440px]">
         <div
@@ -719,16 +720,16 @@
           </span>
           <div>
             <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">
-              {t(shown.view === 'loading' ? 'read.loading' : 'open.ready.title')}
+              {translate(shown.view === 'loading' ? 'read.loading' : 'open.ready.title')}
             </h3>
             <p class="mt-2 text-[15px] text-pretty text-ink-mute">
-              {t(shown.view === 'loading' ? 'open.loading.text' : 'open.ready.sub')}
+              {translate(shown.view === 'loading' ? 'open.loading.text' : 'open.ready.sub')}
             </p>
           </div>
           <form id="{uid}-form" class="contents" novalidate onsubmit={reveal}>
             {#if passphraseRequired}
               <div class="w-full max-w-[440px] text-left">
-                <label for="{uid}-passphrase" class="sr-only">{t('read.passphrase')}</label>
+                <label for="{uid}-passphrase" class="sr-only">{translate('read.passphrase')}</label>
                 <div class="relative rounded-pane">
                   <div
                     class="flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 well has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300"
@@ -746,7 +747,7 @@
                       data-lpignore="true"
                       data-bwignore="true"
                       data-form-type="other"
-                      placeholder={t('open.passphrase.placeholder')}
+                      placeholder={translate('open.passphrase.placeholder')}
                       aria-invalid={passAlert !== ''}
                       aria-describedby="{uid}-pass-hint {uid}-pass-alert"
                       oninput={typed}
@@ -755,7 +756,7 @@
                     <button
                       type="button"
                       onclick={() => (showPassphrase = !showPassphrase)}
-                      aria-label={t(showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
+                      aria-label={translate(showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
                       aria-pressed={showPassphrase}
                       class="grid size-11 shrink-0 place-items-center rounded-[8px] text-ink-mute hover:bg-white/6 hover:text-ink md:size-9"
                     >
@@ -859,17 +860,17 @@
                 </span>
                 <div class="min-w-0">
                   <h3 id="{uid}-revealed" tabindex="-1" class="text-[15px] text-ink outline-none">
-                    {t('revealed.title')}
+                    {translate('revealed.title')}
                   </h3>
-                  <p class="truncate text-[13px] text-ink-mute">{t('open.revealed.sub')}</p>
+                  <p class="truncate text-[13px] text-ink-mute">{translate('open.revealed.sub')}</p>
                 </div>
               </div>
               {#if revealed.text !== undefined}
                 <button
                   type="button"
                   onclick={copyText}
-                  aria-label={t('open.copy.text')}
-                  title={t('open.copy.text')}
+                  aria-label={translate('open.copy.text')}
+                  title={translate('open.copy.text')}
                   class="relative grid size-11 shrink-0 place-items-center rounded-[9px] bg-white/4 text-ink-soft ring-1 ring-white/10 hover:bg-white/8 hover:text-ink md:size-9"
                 >
                   <span
@@ -880,7 +881,7 @@
                   ></span>
                   <span class="relative">{@render swapIcons('copy', 'check', copied)}</span>
                 </button>
-                <span class="sr-only" role="status">{copied ? t('open.copied.text') : ''}</span>
+                <span class="sr-only" role="status">{copied ? translate('open.copied.text') : ''}</span>
               {/if}
             </div>
             {#if revealText !== undefined}
@@ -910,7 +911,7 @@
                       ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
                     >
                     <span class="block font-mono text-[11px] text-ink-mute"
-                      >{formatBytes(file.bytes.length, i18n.language)}</span
+                      >{formatBytes(file.bytes.length, translator.language)}</span
                     >
                   </span>
                   <button
@@ -921,7 +922,7 @@
                     class="btn-ghost flex h-11 shrink-0 hover-lift items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9"
                   >
                     {@render swapIcons('download', 'check', downloaded)}
-                    {t('open.download')}<span class="sr-only">{t('open.download.suffix')}</span>
+                    {translate('open.download')}<span class="sr-only">{translate('open.download.suffix')}</span>
                   </button>
                 </div>
                 <div
@@ -940,10 +941,12 @@
                     </span>
                     <span class="min-w-0">
                       <span role="alert" class="block text-sm text-ink"
-                        >{confirming ? t('revealed.confirm.title') : ''}</span
+                        >{confirming ? translate('revealed.confirm.title') : ''}</span
                       >
                       <span class="block text-[11px] text-ink-mute"
-                        >{extension ? t('revealed.confirm.extension', { extension }) : t('revealed.confirm.none')}</span
+                        >{extension
+                          ? translate('revealed.confirm.extension', { extension })
+                          : translate('revealed.confirm.none')}</span
                       >
                     </span>
                   </div>
@@ -954,7 +957,7 @@
                       onclick={(event) => confirmDownload(event, file)}
                       class="h-11 rounded-[9px] bg-rose-500/20 px-3 text-[13px] font-medium text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
                     >
-                      {t('revealed.confirm.download')}
+                      {translate('revealed.confirm.download')}
                     </button>
                     <button
                       id="{uid}-keep-file"
@@ -962,7 +965,7 @@
                       onclick={cancelDownload}
                       class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9"
                     >
-                      {t('revealed.confirm.cancel')}
+                      {translate('revealed.confirm.cancel')}
                     </button>
                   </div>
                 </div>
@@ -970,7 +973,7 @@
             {/if}
             <p class="flex shrink-0 items-center gap-2 px-1 text-[13px] text-ink-mute">
               <Icon name="eyeOff" class="size-4 shrink-0 text-nebula-300" />
-              {t('revealed.note')}
+              {translate('revealed.note')}
             </p>
           {/if}
         </div>
@@ -1028,7 +1031,7 @@
                 >
                   <span class="sheen" aria-hidden="true"></span>
                   <Icon name="eye" stroke={2} class="size-4 shrink-0" />
-                  {t('read.reveal')}
+                  {translate('read.reveal')}
                 </button>
                 <div
                   class={[
@@ -1055,7 +1058,7 @@
                       stroke-linecap="round"
                     ></path>
                   </svg>
-                  <span class="relative">{t('open.opening')}</span>
+                  <span class="relative">{translate('open.opening')}</span>
                   <span
                     class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums"
                     >{Math.round(paced.progress * 100)} %</span
@@ -1082,7 +1085,7 @@
                 class="btn-primary flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-4 text-sm font-medium whitespace-nowrap sm:w-auto md:h-9"
               >
                 <Icon name="refresh" class="size-4 shrink-0" />
-                {t('action.retry')}
+                {translate('action.retry')}
               </button>
             {:else}
               <a
@@ -1090,7 +1093,7 @@
                 class="btn-ghost flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] whitespace-nowrap sm:w-auto md:h-9"
               >
                 <Icon name="pen" class="size-4 shrink-0" />
-                {t('nav.write')}
+                {translate('nav.write')}
               </a>
             {/if}
           </div>
@@ -1108,7 +1111,7 @@
           >
             <p id="{uid}-confirm" class="flex items-center gap-2 px-1.5 text-[13px] text-ink-soft">
               <Icon name="trash" class="size-4 shrink-0 text-rose-300" />
-              {t('read.delete.confirm')}
+              {translate('read.delete.confirm')}
             </p>
             <div class="grid grid-cols-2 gap-1.5 sm:flex sm:items-center">
               <button
@@ -1117,7 +1120,7 @@
                 onclick={cancelDelete}
                 class="btn-ghost flex h-11 hover-lift items-center justify-center rounded-[9px] px-4 text-[13px] whitespace-nowrap md:h-9"
               >
-                {t('read.delete.no')}
+                {translate('read.delete.no')}
               </button>
               <button
                 type="button"
@@ -1125,7 +1128,7 @@
                 onclick={burn}
                 class="flex h-11 hover-lift items-center justify-center gap-2 rounded-[9px] bg-rose-500/20 px-4 text-[13px] font-medium whitespace-nowrap text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
               >
-                {t('read.delete.yes')}
+                {translate('read.delete.yes')}
               </button>
             </div>
           </div>
@@ -1145,7 +1148,7 @@
         ]}
       >
         <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
-        {t('compose.note')}
+        {translate('compose.note')}
       </p>
       <p
         class={[
@@ -1183,7 +1186,7 @@
             ]}
           >
             <Icon name="trash" class="size-4 shrink-0" />
-            {t(action.label)}
+            {translate(action.label)}
           </button>
         {/each}
       </div>
@@ -1208,11 +1211,11 @@
           ]}
         >
           <Icon name="flag" class="size-4 shrink-0" />
-          {t('open.report')}
+          {translate('open.report')}
         </button>
         <Popover
           id="{uid}-report"
-          label={t('open.report.title')}
+          label={translate('open.report.title')}
           open={reporting}
           from="below"
           onclose={closeReport}
@@ -1220,13 +1223,13 @@
         >
           <div class="stack">
             <div class={['fade-swap', reportSent ? 'pointer-events-none opacity-0' : 'opacity-100']} inert={reportSent}>
-              <p class="px-0.5 text-[13px] text-ink">{t('open.report.title')}</p>
-              <p class="mt-1 px-0.5 text-[11px] leading-relaxed text-ink-mute">{t('open.report.note')}</p>
+              <p class="px-0.5 text-[13px] text-ink">{translate('open.report.title')}</p>
+              <p class="mt-1 px-0.5 text-[11px] leading-relaxed text-ink-mute">{translate('open.report.note')}</p>
               {#key reportRound}
                 <ReportForm
                   name="{uid}-report-form"
                   compact
-                  hint={t('open.report.privacy')}
+                  hint={translate('open.report.privacy')}
                   send={(_link, reason) => reader.report(reason)}
                   onaccepted={reportAccepted}
                 />
@@ -1245,8 +1248,8 @@
               >
                 <Icon name="check" stroke={2} class="size-5" />
               </span>
-              <p class="text-[13px] text-ink">{t('open.report.sent')}</p>
-              <p class="text-[11px] text-ink-mute">{t('open.report.sent.note')}</p>
+              <p class="text-[13px] text-ink">{translate('open.report.sent')}</p>
+              <p class="text-[11px] text-ink-mute">{translate('open.report.sent.note')}</p>
             </div>
           </div>
         </Popover>
@@ -1257,7 +1260,9 @@
 
 <section class="px-4 pb-28 sm:px-6 md:pb-36" aria-labelledby="{uid}-trust">
   <div class="mx-auto max-w-[1160px]">
-    <h2 id="{uid}-trust" class="reveal-up text-center text-sm font-medium text-aegis-300">{t('open.trust.title')}</h2>
+    <h2 id="{uid}-trust" class="reveal-up text-center text-sm font-medium text-aegis-300">
+      {translate('open.trust.title')}
+    </h2>
     <ol class="mt-8 grid gap-4 md:grid-cols-3 md:gap-6">
       {#each TRUST as card (card.key)}
         <li
@@ -1272,9 +1277,9 @@
             <Icon name={card.icon} stroke={1.6} class="size-6" />
           </span>
           <div class="min-w-0">
-            <h3 class="text-[17px] font-medium md:mt-6 md:text-lg">{t(`${card.key}.title`)}</h3>
+            <h3 class="text-[17px] font-medium md:mt-6 md:text-lg">{translate(`${card.key}.title`)}</h3>
             <p class="mt-1 max-w-[300px] text-[15px] leading-relaxed text-pretty text-ink-soft md:mx-auto md:mt-2">
-              {t(`${card.key}.text`)}
+              {translate(`${card.key}.text`)}
             </p>
           </div>
         </li>

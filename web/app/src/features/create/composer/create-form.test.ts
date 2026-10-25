@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../../../shared/api/api.ts';
 import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
-import { dictionaries } from '../../../shared/i18n/i18n.svelte.ts';
+import { english } from '../../../shared/language/english.ts';
 
 const limits: InstanceLimits = {
   maxFileBytes: 16,
@@ -39,7 +39,7 @@ describe('create form', () => {
       failureKey({ kind: 'invalid', problems: [] }),
     ];
     for (const key of keys) {
-      expect(dictionaries.en[key], key).toBeTypeOf('string');
+      expect(english[key], key).toBeTypeOf('string');
     }
     expect(failureKey({ kind: 'invalid', problems: [] })).toBe('failure.failed');
   });

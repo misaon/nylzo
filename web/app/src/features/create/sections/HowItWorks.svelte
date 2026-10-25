@@ -1,10 +1,10 @@
 <script lang="ts">
   import { AutoCycle } from './auto-cycle.svelte.ts';
-  import { getI18n } from '../../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import Switch from '../../../shared/ui/Switch.svelte';
 
-  const { t } = getI18n();
+  const { translate } = getTranslator();
 
   const steps = [
     { icon: 'lock', key: 'how.step1', reveal: 'reveal-left' },
@@ -48,7 +48,7 @@
 
   function body(index: number): string {
     const part = parts[index];
-    return t(part ? `how.link.${part.id}.body` : 'how.link.server.body');
+    return translate(part ? `how.link.${part.id}.body` : 'how.link.server.body');
   }
 
   const cycle = new AutoCycle(
@@ -62,12 +62,12 @@
 <section id="jak" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="jak-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="mx-auto max-w-[640px] reveal-up text-center">
-      <p class="text-sm font-medium text-aegis-300">{t('how.eyebrow')}</p>
+      <p class="text-sm font-medium text-aegis-300">{translate('how.eyebrow')}</p>
       <h2
         id="jak-title"
         class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
       >
-        {t('how.title')}
+        {translate('how.title')}
       </h2>
     </div>
 
@@ -93,9 +93,9 @@
             >
               <Icon name={step.icon} stroke={1.6} class="size-6" />
             </span>
-            <h3 class="mt-6 text-lg font-medium">{t(`${step.key}.title`)}</h3>
+            <h3 class="mt-6 text-lg font-medium">{translate(`${step.key}.title`)}</h3>
             <p class="mt-2 max-w-[300px] text-[15px] leading-relaxed text-pretty text-ink-soft">
-              {t(`${step.key}.text`)}
+              {translate(`${step.key}.text`)}
             </p>
           </li>
         {/each}
@@ -116,9 +116,9 @@
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h3 id="jak-link-title" class="font-display text-xl font-light tracking-[-0.015em] md:text-2xl">
-            {t('how.link.title')}
+            {translate('how.link.title')}
           </h3>
-          <p class="mt-1 text-sm text-ink-mute">{t('how.link.sub')}</p>
+          <p class="mt-1 text-sm text-ink-mute">{translate('how.link.sub')}</p>
         </div>
         <button
           type="button"
@@ -128,7 +128,7 @@
           class="flex h-11 shrink-0 items-center gap-3 self-start rounded-control text-sm text-ink-soft hover:text-ink md:h-9 md:self-auto"
         >
           <Switch on={serverView} size="md" />
-          {t('how.link.server')}
+          {translate('how.link.server')}
         </button>
       </div>
 
@@ -148,7 +148,7 @@
                 dimmed ? 'opacity-60 hover:opacity-90' : 'opacity-100',
               ]}
             >
-              <span class="sr-only">{t(`how.link.${part.id}.title`)}: </span>{part.text}
+              <span class="sr-only">{translate(`how.link.${part.id}.title`)}: </span>{part.text}
               <span
                 class={[
                   'absolute inset-x-px bottom-0 h-[3px] rounded-full transition-opacity duration-500',
@@ -186,8 +186,8 @@
               aria-hidden="true"
             ></progress>
             <span class={['block h-[3px] w-7 rounded-full', part.dot]}></span>
-            <span class="mt-3 block text-[15px] text-ink">{t(`how.link.${part.id}.title`)}</span>
-            <span class="mt-1 block font-mono text-xs text-ink-mute">{t(`how.link.${part.id}.meta`)}</span>
+            <span class="mt-3 block text-[15px] text-ink">{translate(`how.link.${part.id}.title`)}</span>
+            <span class="mt-1 block font-mono text-xs text-ink-mute">{translate(`how.link.${part.id}.meta`)}</span>
           </button>
         {/each}
       </div>

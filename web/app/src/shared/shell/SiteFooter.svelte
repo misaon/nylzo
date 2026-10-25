@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { getI18n, type Language, type MessageKey } from '../i18n/i18n.svelte.ts';
+  import { getTranslator } from '../language/translator.svelte.ts';
+  import { type Language } from '../language/language.ts';
+  import { type MessageKey } from '../language/czech.ts';
   import { REPOSITORY_URL } from './repository.ts';
   import Logo from './Logo.svelte';
 
@@ -10,8 +12,8 @@
   }
 
   const { compact = false, current, onlanguage }: Props = $props();
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
 
   interface FooterLink {
     readonly href: string;
@@ -53,9 +55,13 @@
 </script>
 
 {#snippet languageSwitch()}
-  <div class="relative grid w-fit grid-cols-2 rounded-control p-0.5 well" role="group" aria-label={t('language.label')}>
+  <div
+    class="relative grid w-fit grid-cols-2 rounded-control p-0.5 well"
+    role="group"
+    aria-label={translate('language.label')}
+  >
     {#each languages as language (language.code)}
-      {@const active = i18n.language === language.code}
+      {@const active = translator.language === language.code}
       <button
         type="button"
         lang={language.code}
@@ -79,11 +85,11 @@
     >
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <Logo class="h-7 w-[105px] shrink-0" label="Nylzo" />
-        <p class="text-sm text-ink-mute">{t('footer.tagline')}</p>
+        <p class="text-sm text-ink-mute">{translate('footer.tagline')}</p>
       </div>
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
-        <a href="/#jak" class="text-ink-soft hover:text-ink">{t('footer.how')}</a>
-        <a href={REPOSITORY_URL} class="text-ink-soft hover:text-ink">{t('footer.github')}</a>
+        <a href="/#jak" class="text-ink-soft hover:text-ink">{translate('footer.how')}</a>
+        <a href={REPOSITORY_URL} class="text-ink-soft hover:text-ink">{translate('footer.github')}</a>
         {@render languageSwitch()}
       </div>
     </div>
@@ -92,18 +98,18 @@
       <div class="grid gap-10 sm:grid-cols-2 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
         <div>
           <Logo class="h-8 w-[120px]" label="Nylzo" />
-          <p class="mt-4 max-w-[280px] text-sm leading-relaxed text-ink-mute">{t('footer.tagline')}</p>
+          <p class="mt-4 max-w-[280px] text-sm leading-relaxed text-ink-mute">{translate('footer.tagline')}</p>
         </div>
         {#each groups as group (group.key)}
-          <nav aria-label={t(group.key)} class="flex flex-col gap-2.5 text-sm">
-            <p class="text-xs text-ink-mute">{t(group.key)}</p>
+          <nav aria-label={translate(group.key)} class="flex flex-col gap-2.5 text-sm">
+            <p class="text-xs text-ink-mute">{translate(group.key)}</p>
             {#each group.links as link (link.key)}
               <a
                 href={link.href}
                 aria-current={link.page !== undefined && link.page === current ? 'page' : undefined}
                 class="w-fit text-ink-soft hover:text-ink"
               >
-                {t(link.key)}
+                {translate(link.key)}
               </a>
             {/each}
           </nav>
@@ -112,7 +118,7 @@
       <div
         class="mt-10 flex flex-col gap-4 border-t border-white/8 pt-6 text-xs text-ink-mute sm:flex-row sm:items-center sm:justify-between"
       >
-        <p>{t('footer.note')}</p>
+        <p>{translate('footer.note')}</p>
         {@render languageSwitch()}
       </div>
     </div>

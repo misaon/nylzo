@@ -1,7 +1,8 @@
 import { render } from 'svelte/server';
 
 import App from './App.svelte';
-import { createI18n, type Language } from '../shared/i18n/i18n.svelte.ts';
+import { Translator } from '../shared/language/translator.svelte.ts';
+import { type Language } from '../shared/language/language.ts';
 import { HOME_PATHS } from './pages.ts';
 
 export const NONCE_PLACEHOLDER = '__NYLZO_CSP_NONCE__';
@@ -79,15 +80,15 @@ function structuredData(language: Language, description: string): unknown {
 }
 
 function seoHead(language: Language, image: OgImage): string {
-  const { t } = createI18n(language);
+  const { translate } = new Translator(language);
   const other = LANGUAGES.filter((l) => l !== language);
   const meta = (property: string, content: string) =>
     `<meta property="${property}" content="${escapeAttribute(content)}">`;
   const shared = [
     meta('og:type', 'website'),
     meta('og:site_name', 'Nylzo'),
-    meta('og:title', t('seo.title')),
-    meta('og:description', t('seo.description')),
+    meta('og:title', translate('seo.title')),
+    meta('og:description', translate('seo.description')),
     meta('og:locale', OG_LOCALES[language]),
     ...other.map((l) => meta('og:locale:alternate', OG_LOCALES[l])),
     '<meta name="twitter:card" content="summary_large_image">',
@@ -104,8 +105,8 @@ function seoHead(language: Language, image: OgImage): string {
     meta('og:image:type', 'image/png'),
     meta('og:image:width', String(image.width)),
     meta('og:image:height', String(image.height)),
-    meta('og:image:alt', t('seo.image')),
-    `<script type="application/ld+json" nonce="${NONCE_PLACEHOLDER}">${jsonScript(structuredData(language, t('seo.description')))}</script>`,
+    meta('og:image:alt', translate('seo.image')),
+    `<script type="application/ld+json" nonce="${NONCE_PLACEHOLDER}">${jsonScript(structuredData(language, translate('seo.description')))}</script>`,
   ];
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
 }

@@ -1,5 +1,5 @@
 import { TTL_CHOICES } from '../composer/create-form.ts';
-import type { Language } from '../../../shared/i18n/i18n.svelte.ts';
+import { type Language } from '../../../shared/language/language.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
 

@@ -2,12 +2,12 @@
   import type { Attachment } from 'svelte/attachments';
 
   import { ATTACKERS, countdown, judge, yearsAmount, type Attacker } from './brute-force.ts';
-  import { getI18n } from '../../../shared/i18n/i18n.svelte.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import Switch from '../../../shared/ui/Switch.svelte';
 
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
 
   const TICK_MS = 100;
   const VISIBLE_THRESHOLD = 0.35;
@@ -24,9 +24,11 @@
 
   const judgement = $derived(judge(attacker, quantum));
   const counter = $derived(countdown(attacker, quantum, elapsed));
-  const years = $derived(yearsAmount(judgement.yearsLog10, i18n.language));
+  const years = $derived(yearsAmount(judgement.yearsLog10, translator.language));
   const sub = $derived(
-    judgement.bigBang ? t('brute.bigbang') : t('brute.about', { time: t(years.key, { amount: years.amount }) }),
+    judgement.bigBang
+      ? translate('brute.bigbang')
+      : translate('brute.about', { time: translate(years.key, { amount: years.amount }) }),
   );
 
   function restart(change: () => void) {
@@ -70,14 +72,14 @@
 <section id="odolnost" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="brute-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="mx-auto max-w-[640px] reveal-up text-center">
-      <p class="text-sm font-medium text-aegis-300">{t('brute.eyebrow')}</p>
+      <p class="text-sm font-medium text-aegis-300">{translate('brute.eyebrow')}</p>
       <h2
         id="brute-title"
         class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
       >
-        {t('brute.title')}
+        {translate('brute.title')}
       </h2>
-      <p class="mx-auto mt-5 max-w-[520px] leading-relaxed text-pretty text-ink-soft">{t('brute.sub')}</p>
+      <p class="mx-auto mt-5 max-w-[520px] leading-relaxed text-pretty text-ink-soft">{translate('brute.sub')}</p>
     </div>
 
     <div class="glass mt-14 reveal-zoom overflow-hidden rounded-card">
@@ -85,8 +87,8 @@
         <div class="flex flex-col gap-6 border-b border-white/8 p-6 md:p-10 lg:border-r lg:border-b-0">
           <div>
             <div class="flex items-baseline justify-between gap-4">
-              <p id="brute-attacker" class="text-sm text-ink-mute">{t('brute.attacker')}</p>
-              <p class="text-xs text-ink-mute">{t('brute.approx')}</p>
+              <p id="brute-attacker" class="text-sm text-ink-mute">{translate('brute.attacker')}</p>
+              <p class="text-xs text-ink-mute">{translate('brute.approx')}</p>
             </div>
             <div class="mt-4 grid gap-2.5" role="radiogroup" aria-labelledby="brute-attacker">
               {#each ATTACKERS as item (item.id)}
@@ -118,16 +120,16 @@
                   </span>
                   <span class="min-w-0 flex-1">
                     <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-ink">
-                      {t(`brute.${item.id}`)}
+                      {translate(`brute.${item.id}`)}
                       {#if item.hypothetical}
                         <span class="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-ink-mute"
-                          >{t('brute.hypothetical')}</span
+                          >{translate('brute.hypothetical')}</span
                         >
                       {/if}
                     </span>
                     <span class="mt-1 block text-sm text-ink-mute"
-                      >{t(quantum ? 'brute.speed.steps' : 'brute.speed.guesses', {
-                        amount: t(`brute.amount.${item.id}`),
+                      >{translate(quantum ? 'brute.speed.steps' : 'brute.speed.guesses', {
+                        amount: translate(`brute.amount.${item.id}`),
                       })}</span
                     >
                   </span>
@@ -144,23 +146,23 @@
           >
             <span class="mt-0.5"><Switch on={quantum} size="md" /></span>
             <span>
-              <span class="block text-[15px] text-ink">{t('brute.quantum')}</span>
+              <span class="block text-[15px] text-ink">{translate('brute.quantum')}</span>
               <span class="mt-1.5 block text-sm leading-relaxed text-pretty text-ink-mute"
-                >{t('brute.quantum.note')}</span
+                >{translate('brute.quantum.note')}</span
               >
             </span>
           </button>
         </div>
 
         <div class="flex flex-col p-6 md:p-10">
-          <p class="text-sm text-ink-mute">{t('brute.time')}</p>
+          <p class="text-sm text-ink-mute">{translate('brute.time')}</p>
           <div class="mt-4 min-h-[9.75rem] md:min-h-[8.5rem]" aria-live="polite">
             {#key swap}
               <div class={swap > 0 ? 'animate-wave' : ''}>
                 <p
                   class="font-display text-[30px] leading-[1.15] font-light tracking-[-0.02em] text-balance text-aegis-200 md:text-[40px]"
                 >
-                  {t(`brute.verdict.${judgement.verdict}`)}
+                  {translate(`brute.verdict.${judgement.verdict}`)}
                 </p>
                 <p class="mt-3 leading-relaxed text-pretty text-ink-soft">{sub}</p>
               </div>
@@ -174,14 +176,13 @@
             {#key swap}
               <div class="flex items-center justify-between gap-4">
                 <p class={['text-sm text-ink-mute', swap > 0 && 'animate-wave [animation-delay:80ms]']}>
-                  {t(quantum ? 'brute.left.steps' : 'brute.left.keys')}
+                  {translate(quantum ? 'brute.left.steps' : 'brute.left.keys')}
                 </p>
                 <span
                   class="flex items-center gap-1.5 rounded-full bg-aegis-500/10 px-2.5 py-1 text-xs text-aegis-200 ring-1 ring-aegis-400/25"
                 >
-                  <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300" aria-hidden="true"></span>{t(
-                    'brute.live',
-                  )}
+                  <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300" aria-hidden="true"
+                  ></span>{translate('brute.live')}
                 </span>
               </div>
               <div
@@ -200,7 +201,7 @@
                   swap > 0 && 'animate-wave [animation-delay:200ms]',
                 ]}
               >
-                <p class="text-sm text-ink-mute">{t(quantum ? 'brute.done.steps' : 'brute.done.keys')}</p>
+                <p class="text-sm text-ink-mute">{translate(quantum ? 'brute.done.steps' : 'brute.done.keys')}</p>
                 <p class="font-mono text-sm text-ink tabular-nums" aria-hidden="true">{counter.done}</p>
               </div>
             {/key}
@@ -224,8 +225,8 @@
                 <Icon name={fact.icon} stroke={1.6} class="size-5" />
               </span>
               <span class="min-w-0">
-                <span class="block text-[15px] text-ink">{t(fact.key)}</span>
-                <span class="mt-1 block text-sm text-ink-mute">{t(`${fact.key}.note`)}</span>
+                <span class="block text-[15px] text-ink">{translate(fact.key)}</span>
+                <span class="mt-1 block text-sm text-ink-mute">{translate(`${fact.key}.note`)}</span>
               </span>
             </li>
           {/each}

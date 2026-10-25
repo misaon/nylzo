@@ -4,8 +4,8 @@
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
-  import { createI18n, setI18n } from '../shared/i18n/i18n.svelte.ts';
-  import { browserPreferences, saveLanguage, type Language } from '../shared/i18n/language.ts';
+  import { Translator, setTranslator } from '../shared/language/translator.svelte.ts';
+  import { browserPreferences, saveLanguage, type Language } from '../shared/language/language.ts';
   import { HOME_PATHS, screenOf, type Screen } from './pages.ts';
   import Create from '../features/create/Create.svelte';
   import Read from '../features/read/Read.svelte';
@@ -19,15 +19,15 @@
 
   const { start }: Props = $props();
   const screen: Screen = $derived(screenOf(start.path));
-  const i18n = setI18n(createI18n(untrack(() => start.language)));
-  const { t } = i18n;
+  const translator = setTranslator(new Translator(untrack(() => start.language)));
+  const { translate } = translator;
   const variant = $derived(screen === 'create' ? 'home' : screen === 'read' ? 'read' : 'page');
 
   function switchLanguage(language: Language) {
-    if (i18n.language === language) {
+    if (translator.language === language) {
       return;
     }
-    i18n.language = language;
+    translator.language = language;
     document.documentElement.lang = language;
     saveLanguage(browserPreferences(), language);
     if (screen === 'create') {
@@ -62,7 +62,7 @@
 
         {#snippet failed()}
           <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
-            <p role="alert" class="glass rounded-card p-6 text-ink-soft md:p-10">{t('app.crashed')}</p>
+            <p role="alert" class="glass rounded-card p-6 text-ink-soft md:p-10">{translate('app.crashed')}</p>
           </div>
         {/snippet}
       </svelte:boundary>

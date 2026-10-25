@@ -2,8 +2,8 @@
   import type { Attachment } from 'svelte/attachments';
 
   import type { Created } from './create-message.ts';
-  import { formatTime } from '../../../shared/i18n/format.ts';
-  import { getI18n } from '../../../shared/i18n/i18n.svelte.ts';
+  import { formatTime } from '../../../shared/language/format.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { linkSegments } from './link-segments.ts';
   import Chip from '../../../shared/ui/Chip.svelte';
   import Icon from '../../../shared/ui/Icon.svelte';
@@ -16,8 +16,8 @@
   }
 
   const { created, opensMax, passphrase, onanother }: Props = $props();
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
   const uid = $props.id();
 
   const BAR_DELAYS = ['delay-[380ms]', 'delay-[490ms]', 'delay-[600ms]', 'delay-[710ms]'] as const;
@@ -80,10 +80,10 @@
           tabindex="-1"
           class="font-display text-xl font-light tracking-[-0.015em] outline-none md:text-2xl"
         >
-          {t('created.title')}
+          {translate('created.title')}
         </h2>
         <p class="mt-0.5 text-sm text-pretty text-ink-mute">
-          {t(passphrase ? 'created.sub.passphrase' : 'created.sub')}
+          {translate(passphrase ? 'created.sub.passphrase' : 'created.sub')}
         </p>
       </div>
     </div>
@@ -125,7 +125,7 @@
                 </span>
               {/each}
             </p>
-            <label for="{uid}-link" class="sr-only">{t('created.link')}</label>
+            <label for="{uid}-link" class="sr-only">{translate('created.link')}</label>
             <input
               id="{uid}-link"
               type="text"
@@ -145,8 +145,8 @@
           <button
             type="button"
             onclick={copy}
-            aria-label={t('created.copy')}
-            title={t('created.copy')}
+            aria-label={translate('created.copy')}
+            title={translate('created.copy')}
             class="relative grid size-11 shrink-0 place-items-center rounded-[9px] bg-white/4 text-ink-soft ring-1 ring-white/10 hover:bg-white/8 hover:text-ink md:size-9"
           >
             <span
@@ -173,7 +173,7 @@
               />
             </span>
           </button>
-          <span class="sr-only" role="status">{copied ? t('created.copied') : ''}</span>
+          <span class="sr-only" role="status">{copied ? translate('created.copied') : ''}</span>
         </div>
       </div>
       <div class="mt-2 grid grid-cols-2 gap-2">
@@ -183,8 +183,8 @@
               class="h-[3px] w-5 rounded-full bg-nebula-300"
             ></span></span
           >
-          <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{t('created.server.sees')}</span>
-          <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{t('created.server.sees.what')}</span>
+          <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{translate('created.server.sees')}</span>
+          <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{translate('created.server.sees.what')}</span>
         </div>
         <div class="rounded-pane bg-aegis-500/6 px-3.5 py-3 ring-1 ring-aegis-400/20">
           <span class="flex gap-1" aria-hidden="true"
@@ -192,8 +192,8 @@
               class="h-[3px] w-5 rounded-full bg-aegis-400"
             ></span></span
           >
-          <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{t('created.server.blind')}</span>
-          <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{t('created.server.blind.what')}</span>
+          <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{translate('created.server.blind')}</span>
+          <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{translate('created.server.blind.what')}</span>
         </div>
       </div>
     </div>
@@ -206,10 +206,14 @@
     ]}
   >
     <ul class="flex flex-wrap items-center gap-1.5">
-      <Chip icon="clock">{t('created.chip.expires', { time: formatTime(created.expiresAt, i18n.language) })}</Chip>
-      <Chip icon="eye">{t(opensMax === 1 ? 'compose.opens.one' : 'compose.opens.other', { count: opensMax })}</Chip>
+      <Chip icon="clock"
+        >{translate('created.chip.expires', { time: formatTime(created.expiresAt, translator.language) })}</Chip
+      >
+      <Chip icon="eye"
+        >{translate(opensMax === 1 ? 'compose.opens.one' : 'compose.opens.other', { count: opensMax })}</Chip
+      >
       {#if passphrase}
-        <Chip icon="key" accent>{t('compose.passphrase.chip')}</Chip>
+        <Chip icon="key" accent>{translate('compose.passphrase.chip')}</Chip>
       {/if}
     </ul>
     <button
@@ -218,7 +222,7 @@
       class="btn-ghost flex h-11 w-full hover-lift items-center justify-center gap-2 rounded-[9px] px-3 text-[13px] whitespace-nowrap sm:w-auto md:h-9"
     >
       <Icon name="plus" class="size-4 shrink-0" />
-      {t('created.another')}
+      {translate('created.another')}
     </button>
   </div>
 </div>

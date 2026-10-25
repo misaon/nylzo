@@ -1,4 +1,4 @@
-import type { Language } from '../shared/i18n/language.ts';
+import type { Language } from '../shared/language/language.ts';
 
 export type Screen = 'create' | 'sent' | 'report' | 'transparency' | 'read';
 

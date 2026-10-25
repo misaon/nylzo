@@ -1,5 +1,5 @@
 import '../app.css';
-import { browserPreferences, savedLanguage, storedLanguage, type Language } from '../shared/i18n/language.ts';
+import { browserPreferences, savedLanguage, storedLanguage, type Language } from '../shared/language/language.ts';
 import { HOME_PATHS, homeLanguage } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;

@@ -20,8 +20,8 @@
     type Created,
   } from './create-message.ts';
   import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
-  import { formatBytes, formatDuration, formatSize, formatWait } from '../../../shared/i18n/format.ts';
-  import { getI18n } from '../../../shared/i18n/i18n.svelte.ts';
+  import { formatBytes, formatDuration, formatSize, formatWait } from '../../../shared/language/format.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
   import { pace } from '../../../shared/pipeline/pacing.ts';
   import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
@@ -55,8 +55,8 @@
   const SAVE_TIMEOUT_MS = 5000;
   const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
-  const i18n = getI18n();
-  const { t } = i18n;
+  const translator = getTranslator();
+  const { translate } = translator;
   const api = createApi();
   const sentStore = indexedDbSentStore();
   const uid = $props.id();
@@ -91,34 +91,40 @@
 
   const usesPassphrase = $derived(phase === 'compose' ? protect && passphrase !== '' : sealingWithPassphrase);
   const nodes: readonly PipelineNode[] = $derived([
-    { id: 'key', label: t('step.key.label'), icon: 'key', title: t('step.key.title'), detail: t('step.key.detail') },
+    {
+      id: 'key',
+      label: translate('step.key.label'),
+      icon: 'key',
+      title: translate('step.key.title'),
+      detail: translate('step.key.detail'),
+    },
     {
       id: 'derive',
-      label: t('step.derive.label'),
+      label: translate('step.derive.label'),
       icon: 'fork',
-      title: t('step.derive.title'),
-      detail: t(usesPassphrase ? 'step.derive.detail.passphrase' : 'step.derive.detail'),
+      title: translate('step.derive.title'),
+      detail: translate(usesPassphrase ? 'step.derive.detail.passphrase' : 'step.derive.detail'),
     },
     {
       id: 'encrypt',
-      label: t('step.encrypt.label'),
+      label: translate('step.encrypt.label'),
       icon: 'lock',
-      title: t('step.encrypt.title'),
-      detail: t('step.encrypt.detail'),
+      title: translate('step.encrypt.title'),
+      detail: translate('step.encrypt.detail'),
     },
     {
       id: 'send',
-      label: t('step.send.label'),
+      label: translate('step.send.label'),
       icon: 'upload',
-      title: t(proving ? 'step.send.title.pow' : 'step.send.title'),
-      detail: t(proving ? 'step.send.detail.pow' : 'step.send.detail'),
+      title: translate(proving ? 'step.send.title.pow' : 'step.send.title'),
+      detail: translate(proving ? 'step.send.detail.pow' : 'step.send.detail'),
     },
     {
       id: 'link',
-      label: t('step.link.label'),
+      label: translate('step.link.label'),
       icon: 'link',
-      title: t('step.link.title'),
-      detail: t('step.link.detail'),
+      title: translate('step.link.title'),
+      detail: translate('step.link.detail'),
     },
   ]);
   const minMs = $derived(prefersReducedMotion.current ? REDUCED_MIN_MS : MIN_MS);
@@ -132,8 +138,8 @@
   const problemOf = $derived.by(() => {
     const messages: Partial<Record<CreateField, string>> = {};
     for (const problem of problems) {
-      messages[problem.field] ??= t(problemKey(problem), {
-        size: formatBytes(problem.field === 'text' ? textLimit : fileLimit, i18n.language),
+      messages[problem.field] ??= translate(problemKey(problem), {
+        size: formatBytes(problem.field === 'text' ? textLimit : fileLimit, translator.language),
         max: maxOpens,
         min: MIN_PASSPHRASE_CHARS,
       });
@@ -142,11 +148,11 @@
   });
   const passphraseMessage = $derived(
     problemOf.passphrase ??
-      (weak ? t('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''),
+      (weak ? translate('create.passphrase.weak', { words: WEAK_BELOW_WORDS, chars: WEAK_BELOW_CHARS }) : ''),
   );
   const notice = $derived(
     loadFailed
-      ? t('failure.instance')
+      ? translate('failure.instance')
       : failure
         ? failureText(failure)
         : (problemOf.content ??
@@ -176,16 +182,16 @@
 
   function failureText(value: CreateFailure): string {
     const retryAfter = value.kind === 'rate_limited' || value.kind === 'unavailable' ? value.retryAfter : undefined;
-    return t(failureKey(value), { time: formatWait(retryAfter, i18n.language) });
+    return translate(failureKey(value), { time: formatWait(retryAfter, translator.language) });
   }
 
   function ttlLabel(seconds: number): string {
     const key = ttlKey(seconds);
-    return key ? t(key) : formatDuration(seconds, i18n.language);
+    return key ? translate(key) : formatDuration(seconds, translator.language);
   }
 
   function opensLabel(count: number): string {
-    return t(count === 1 ? 'compose.opens.one' : 'compose.opens.other', { count });
+    return translate(count === 1 ? 'compose.opens.one' : 'compose.opens.other', { count });
   }
 
   function toggle(next: Menu) {
@@ -480,12 +486,12 @@
     <h1
       class="animate-rise-visible font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance sm:text-[50px] lg:text-[62px]"
     >
-      {t('hero.title.lead')} <span class="text-aegis-300">{t('hero.title.accent')}</span>
+      {translate('hero.title.lead')} <span class="text-aegis-300">{translate('hero.title.accent')}</span>
     </h1>
     <p
       class="mx-auto mt-6 max-w-[640px] animate-rise-visible text-base leading-[1.75] text-balance text-ink-soft [animation-delay:120ms] sm:text-[17px]"
     >
-      {t('hero.intro')}
+      {translate('hero.intro')}
     </p>
   </div>
 
@@ -493,7 +499,7 @@
     <div class="glow-under" aria-hidden="true"></div>
     <div class="glass rounded-card">
       <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
-      <h2 id="{uid}-title" class="sr-only">{t('create.title')}</h2>
+      <h2 id="{uid}-title" class="sr-only">{translate('create.title')}</h2>
 
       <div class="relative stack">
         <form
@@ -506,7 +512,7 @@
           novalidate
         >
           <div class="group relative" role="presentation" {ondragover} ondragenter={ondragover} {ondragleave} {ondrop}>
-            <label for="{uid}-text" class="sr-only">{t('create.text')}</label>
+            <label for="{uid}-text" class="sr-only">{translate('create.text')}</label>
             <textarea
               id="{uid}-text"
               bind:value={text}
@@ -516,7 +522,7 @@
               autocapitalize="off"
               autocorrect="off"
               readonly={busy}
-              placeholder={t('compose.placeholder')}
+              placeholder={translate('compose.placeholder')}
               aria-invalid={problemOf.content !== undefined || problemOf.text !== undefined}
               aria-describedby="{uid}-notice"
               class={[
@@ -537,12 +543,12 @@
                 <Icon name="file" class="size-4 shrink-0 text-nebula-300" />
                 <span class="truncate text-ink">{file?.name ?? ''}</span>
                 <span class="shrink-0 font-mono text-[11px] text-ink-mute"
-                  >{file ? formatBytes(file.size, i18n.language) : ''}</span
+                  >{file ? formatBytes(file.size, translator.language) : ''}</span
                 >
                 <button
                   type="button"
                   onclick={removeFile}
-                  aria-label={t('create.file.clear')}
+                  aria-label={translate('create.file.clear')}
                   class="grid size-7 shrink-0 place-items-center rounded-[6px] text-ink-soft hover:bg-white/8 hover:text-ink max-md:-my-1.5 max-md:size-11"
                 >
                   <Icon name="close" class="size-3.5" stroke={2} />
@@ -556,9 +562,9 @@
                 ]}
                 aria-hidden="true"
               >
-                {t('compose.counter', {
-                  size: formatSize(textBytes, i18n.language),
-                  max: formatBytes(textLimit, i18n.language),
+                {translate('compose.counter', {
+                  size: formatSize(textBytes, translator.language),
+                  max: formatBytes(textLimit, translator.language),
                 })}
               </span>
             </div>
@@ -603,7 +609,7 @@
                 >
                   <Icon name="upload" class="size-[18px]" />
                 </span>
-                {t('compose.drop')}
+                {translate('compose.drop')}
               </p>
             </div>
           </div>
@@ -624,7 +630,7 @@
                     aria-haspopup="dialog"
                     aria-expanded={menu === 'ttl'}
                     aria-controls="{uid}-ttl"
-                    aria-label={t('compose.ttl.label', { ttl: ttlLabel(ttlSeconds) })}
+                    aria-label={translate('compose.ttl.label', { ttl: ttlLabel(ttlSeconds) })}
                     onclick={() => toggle('ttl')}
                     class={[chipBase, menu === 'ttl' ? chipOpen : problemOf.ttl ? chipProblem : chipIdle]}
                   >
@@ -641,12 +647,12 @@
                   </button>
                   <Popover
                     id="{uid}-ttl"
-                    label={t('compose.ttl.title')}
+                    label={translate('compose.ttl.title')}
                     open={menu === 'ttl'}
                     onclose={() => closeMenu('ttl')}
                     class="inset-x-0 top-full mt-2 p-1 sm:inset-x-auto sm:left-0 sm:w-56"
                   >
-                    <p class="px-2.5 pt-1.5 pb-1 text-[11px] text-ink-mute">{t('compose.ttl.title')}</p>
+                    <p class="px-2.5 pt-1.5 pb-1 text-[11px] text-ink-mute">{translate('compose.ttl.title')}</p>
                     {#each choices as seconds (seconds)}
                       <button
                         type="button"
@@ -672,7 +678,7 @@
                       </button>
                     {/each}
                     <p class="px-2.5 pt-1.5 pb-1.5 text-[11px] leading-relaxed text-ink-mute">
-                      {t('compose.ttl.note')}
+                      {translate('compose.ttl.note')}
                     </p>
                   </Popover>
                 </div>
@@ -700,18 +706,18 @@
                   </button>
                   <Popover
                     id="{uid}-opens"
-                    label={t('compose.opens.title')}
+                    label={translate('compose.opens.title')}
                     open={menu === 'opens'}
                     onclose={() => closeMenu('opens')}
                     class="inset-x-0 top-full mt-2 p-2 sm:inset-x-auto sm:left-0 sm:w-52"
                   >
-                    <p class="px-1 pt-0.5 text-[11px] text-ink-mute">{t('compose.opens.title')}</p>
+                    <p class="px-1 pt-0.5 text-[11px] text-ink-mute">{translate('compose.opens.title')}</p>
                     <div class="mt-1.5 flex items-center justify-between rounded-[8px] p-0.5 well">
                       <button
                         type="button"
                         disabled={opensMax <= 1}
                         onclick={() => (opensMax = Math.max(1, opensMax - 1))}
-                        aria-label={t('compose.opens.less')}
+                        aria-label={translate('compose.opens.less')}
                         class="grid size-11 place-items-center rounded-[7px] text-ink-soft hover:bg-white/8 hover:text-ink disabled:opacity-40 md:size-8"
                       >
                         <Icon name="minus" class="size-3.5" stroke={2} />
@@ -723,14 +729,14 @@
                         type="button"
                         disabled={opensMax >= maxOpens}
                         onclick={() => (opensMax = Math.min(maxOpens, opensMax + 1))}
-                        aria-label={t('compose.opens.more')}
+                        aria-label={translate('compose.opens.more')}
                         class="grid size-11 place-items-center rounded-[7px] text-ink-soft hover:bg-white/8 hover:text-ink disabled:opacity-40 md:size-8"
                       >
                         <Icon name="plus" class="size-3.5" stroke={2} />
                       </button>
                     </div>
                     <p class="mt-1.5 px-1 pb-0.5 text-[11px] leading-relaxed text-ink-mute">
-                      {t('compose.opens.note', { max: maxOpens })}
+                      {translate('compose.opens.note', { max: maxOpens })}
                     </p>
                   </Popover>
                 </div>
@@ -755,7 +761,7 @@
                     ]}
                   >
                     <Icon name="key" class="size-4 shrink-0" />
-                    {t('compose.passphrase.chip')}
+                    {translate('compose.passphrase.chip')}
                     <Icon
                       name="chevronDown"
                       stroke={2}
@@ -767,7 +773,7 @@
                   </button>
                   <Popover
                     id="{uid}-security"
-                    label={t('compose.security')}
+                    label={translate('compose.security')}
                     open={menu === 'security'}
                     onclose={() => closeMenu('security')}
                     class="inset-x-0 top-full mt-2 p-1 sm:inset-x-auto sm:left-0 sm:w-72"
@@ -781,9 +787,9 @@
                     >
                       <span class="mt-px"><Switch on={protect} /></span>
                       <span>
-                        <span class="block text-[13px] text-ink">{t('compose.passphrase.switch')}</span>
+                        <span class="block text-[13px] text-ink">{translate('compose.passphrase.switch')}</span>
                         <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
-                          >{t('compose.passphrase.switch.note')}</span
+                          >{translate('compose.passphrase.switch.note')}</span
                         >
                       </span>
                     </button>
@@ -793,7 +799,7 @@
                         protect ? 'opacity-100' : 'opacity-40',
                       ]}
                     >
-                      <label for="{uid}-passphrase" class="sr-only">{t('create.passphrase')}</label>
+                      <label for="{uid}-passphrase" class="sr-only">{translate('create.passphrase')}</label>
                       <input
                         id="{uid}-passphrase"
                         bind:value={passphrase}
@@ -806,7 +812,7 @@
                         data-lpignore="true"
                         data-bwignore="true"
                         data-form-type="other"
-                        placeholder={t('compose.passphrase.placeholder', { words: WEAK_BELOW_WORDS })}
+                        placeholder={translate('compose.passphrase.placeholder', { words: WEAK_BELOW_WORDS })}
                         aria-invalid={problemOf.passphrase !== undefined}
                         aria-describedby="{uid}-passphrase-hint {uid}-passphrase-problem"
                         class={[
@@ -815,7 +821,7 @@
                         ]}
                       />
                       <p id="{uid}-passphrase-hint" class="text-[11px] leading-relaxed text-ink-mute">
-                        {t('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARS })}
+                        {translate('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARS })}
                       </p>
                       <p
                         id="{uid}-passphrase-problem"
@@ -837,9 +843,9 @@
                     >
                       <span class="mt-px"><Switch on={remember} /></span>
                       <span>
-                        <span class="block text-[13px] text-ink">{t('compose.remember.switch')}</span>
+                        <span class="block text-[13px] text-ink">{translate('compose.remember.switch')}</span>
                         <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
-                          >{t('compose.remember.note')}</span
+                          >{translate('compose.remember.note')}</span
                         >
                       </span>
                     </button>
@@ -868,8 +874,8 @@
                     ]}
                   >
                     <Icon name="paperclip" class="size-4 shrink-0" />
-                    {t('compose.attach')}<span class="sr-only"
-                      >{t('compose.attach.limit', { size: formatBytes(fileLimit, i18n.language) })}</span
+                    {translate('compose.attach')}<span class="sr-only"
+                      >{translate('compose.attach.limit', { size: formatBytes(fileLimit, translator.language) })}</span
                     >
                   </label>
                 </div>
@@ -887,8 +893,8 @@
                 >
                   <span class="sheen" aria-hidden="true"></span>
                   <Icon name="lock" stroke={2} class="size-4 shrink-0" />
-                  <span class="hidden lg:inline">{t('compose.submit')}</span>
-                  <span class="lg:hidden">{t('create.submit')}</span>
+                  <span class="hidden lg:inline">{translate('compose.submit')}</span>
+                  <span class="lg:hidden">{translate('create.submit')}</span>
                 </button>
                 <div
                   class={[
@@ -917,7 +923,7 @@
                       stroke-linecap="round"
                     ></path>
                   </svg>
-                  <span class="relative">{t('compose.encrypting')}</span>
+                  <span class="relative">{translate('compose.encrypting')}</span>
                   <span
                     class="relative inline-block w-[4ch] font-mono text-[13px] whitespace-nowrap text-white/75 tabular-nums"
                     >{Math.round(shown.progress * 100)} %</span
@@ -948,7 +954,7 @@
       ]}
     >
       <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
-      {t('compose.note')}
+      {translate('compose.note')}
     </p>
     <div
       class={[
@@ -966,7 +972,7 @@
           loadFailed ? 'opacity-100' : 'pointer-events-none opacity-0',
         ]}
       >
-        {t('action.retry')}
+        {translate('action.retry')}
       </button>
     </div>
     <div
@@ -979,13 +985,13 @@
       <p role="status" class={['flex items-center gap-2', remembered === 'failed' ? 'text-rose-300' : 'text-ink-mute']}>
         <Icon name={remembered === 'failed' ? 'alert' : 'check'} class="size-4 shrink-0 text-aegis-300" />
         {remembered === 'remembered'
-          ? t('created.remembered')
+          ? translate('created.remembered')
           : remembered === 'failed'
-            ? t('created.not_remembered')
+            ? translate('created.not_remembered')
             : ''}
       </p>
       <a href="/sent" class="inline-flex items-center gap-1.5 text-aegis-300 hover:text-aegis-200">
-        {t('created.status_link')}
+        {translate('created.status_link')}
         <Icon name="arrowRight" class="size-3.5" />
       </a>
     </div>

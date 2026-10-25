@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getI18n } from '../i18n/i18n.svelte.ts';
+  import { getTranslator } from '../language/translator.svelte.ts';
   import { REPOSITORY_URL } from './repository.ts';
   import Icon from '../ui/Icon.svelte';
   import Logo from './Logo.svelte';
@@ -9,7 +9,7 @@
   }
 
   const { variant }: Props = $props();
-  const { t } = getI18n();
+  const { translate } = getTranslator();
 
   const sections = [
     { href: '#jak', key: 'nav.how' },
@@ -23,19 +23,19 @@
 <header class="sticky top-0 z-40 px-3 pt-3 sm:px-6">
   <nav
     class="glass-soft mx-auto flex h-14 max-w-[1160px] animate-rise items-center justify-between gap-4 rounded-card pr-2 pl-4"
-    aria-label={t('nav.label')}
+    aria-label={translate('nav.label')}
   >
     {#if variant === 'page'}
       <h1 class="m-0 flex">
         <a href="/" class="flex items-center rounded-control py-1">
-          <Logo class="h-7 w-[105px]" label={t('nav.home')} />
+          <Logo class="h-7 w-[105px]" label={translate('nav.home')} />
         </a>
       </h1>
     {:else}
       <a
         href={variant === 'home' ? '#napsat' : '/'}
         class="flex items-center rounded-control py-1"
-        aria-label={t(variant === 'home' ? 'nav.top' : 'nav.home')}
+        aria-label={translate(variant === 'home' ? 'nav.top' : 'nav.home')}
       >
         <Logo class="h-7 w-[105px]" />
       </a>
@@ -47,7 +47,7 @@
           <a
             href={section.href}
             class="rounded-control px-3.5 py-2 text-sm text-ink-soft hover:bg-white/5 hover:text-ink"
-            >{t(section.key)}</a
+            >{translate(section.key)}</a
           >
         {/each}
       </div>
@@ -62,8 +62,8 @@
     {:else}
       <a href="/" class="btn-ghost flex h-11 items-center gap-2 rounded-control px-3.5 text-sm md:h-10">
         <Icon name="pen" />
-        <span class="sm:hidden">{t('nav.write.short')}</span>
-        <span class="hidden sm:inline">{t('nav.write')}</span>
+        <span class="sm:hidden">{translate('nav.write.short')}</span>
+        <span class="hidden sm:inline">{translate('nav.write')}</span>
       </a>
     {/if}
   </nav>
