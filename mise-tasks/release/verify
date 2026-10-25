@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Rebuild the checked-out release tag and compare checksums.txt with the published release"
+#MISE depends=["install"]
+set -euo pipefail
+
+tag="$(git describe --exact-match --tags HEAD)"
+GORELEASER_CURRENT_TAG="$tag" goreleaser release --clean --skip=publish,sign,sbom,ko,validate
+curl -fsSL "https://github.com/misaon/nylzo/releases/download/$tag/checksums.txt" -o dist/published-checksums.txt
+grep -v sbom dist/published-checksums.txt > dist/published-without-sbom.txt
+grep -v sbom dist/checksums.txt | diff dist/published-without-sbom.txt -
+echo "$tag: the local build matches the published checksums.txt"
+shasum -a 256 dist/published-checksums.txt

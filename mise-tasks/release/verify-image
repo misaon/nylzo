@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#MISE description="Compare the nylzo binaries in the release image with the local build from release:verify"
+set -euo pipefail
+
+tag="$(git describe --exact-match --tags HEAD)"
+image="ghcr.io/misaon/nylzo:${tag#v}"
+for architecture in amd64 arm64; do
+  docker pull -q --platform "linux/$architecture" "$image" > /dev/null
+  container="$(docker create --platform "linux/$architecture" "$image")"
+  docker cp "$container:/ko-app/nylzo" "dist/image-$architecture"
+  docker rm "$container" > /dev/null
+  local_build=(dist/nylzo_linux_"${architecture}"_*/nylzo)
+  cmp "dist/image-$architecture" "${local_build[0]}"
+  echo "linux/$architecture: the image binary matches the local build"
+done
