@@ -12,7 +12,6 @@ const MaxContactBytes = 254
 
 var ErrContact = errors.New("core: the contact is not a plausible email address")
 
-// ParseContact trims a notifier's email address and returns "" when none was given.
 func ParseContact(raw string) (string, error) {
 	contact := strings.TrimSpace(raw)
 	if contact == "" {
