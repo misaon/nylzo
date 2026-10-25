@@ -7,26 +7,26 @@ import (
 	"github.com/misaon/nylzo/internal/server/logging"
 )
 
-type FreeFunc func(dir string) (uint64, error)
+type FreeFunc func(directory string) (uint64, error)
 
 type Reserver struct {
-	dir      string
-	minFree  int64
-	free     FreeFunc
-	logger   *slog.Logger
-	reserved atomic.Int64
-	low      atomic.Bool
+	directory string
+	minFree   int64
+	free      FreeFunc
+	logger    *slog.Logger
+	reserved  atomic.Int64
+	low       atomic.Bool
 }
 
-func NewReserver(dir string, minFree int64, free FreeFunc, logger *slog.Logger) *Reserver {
-	return &Reserver{dir: dir, minFree: minFree, free: free, logger: logger}
+func NewReserver(directory string, minFree int64, free FreeFunc, logger *slog.Logger) *Reserver {
+	return &Reserver{directory: directory, minFree: minFree, free: free, logger: logger}
 }
 
 func (r *Reserver) Reserve(size int64) (func(), bool) {
 	if r.minFree == 0 {
 		return func() {}, true
 	}
-	free, err := r.free(r.dir)
+	free, err := r.free(r.directory)
 	reserved := r.reserved.Add(size)
 	if err == nil && r.fits(free, reserved) {
 		if r.low.Swap(false) {

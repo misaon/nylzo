@@ -124,11 +124,11 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		t.Fatalf("ack: %d", response.StatusCode)
 	}
 
-	const pass = "correct horse battery staple"
-	leased := newMessage(t, core.KDFScrypt, pass, 2, 3600, "plaintext leased sentinel")
+	const passphrase = "correct horse battery staple"
+	leased := newMessage(t, core.KDFScrypt, passphrase, 2, 3600, "plaintext leased sentinel")
 	leased.address = ip6
 	harness.mustCreate(leased)
-	needles.addMessage("leased", leased, pass)
+	needles.addMessage("leased", leased, passphrase)
 	harness.claim(leased, core.Encode(make([]byte, 32)), ip6)
 	claimed(leased, leased.verifier, ip6)
 
@@ -148,10 +148,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
 
-	cancelled := newMessage(t, core.KDFScrypt, pass, 1, 3600, "plaintext cancelled sentinel")
+	cancelled := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "plaintext cancelled sentinel")
 	cancelled.address = ip6
 	harness.mustCreate(cancelled)
-	needles.addMessage("cancelled", cancelled, pass)
+	needles.addMessage("cancelled", cancelled, passphrase)
 	if response, _ := harness.post(
 		cancelled,
 		"cancel",
@@ -164,10 +164,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	stuck.address = ip4
 	harness.mustCreate(stuck)
 	needles.addMessage("stuck", stuck, "")
-	faulty.set(func(b *faultyBlobs) {
-		b.deleteErr[stuck.id.String()] = &fs.PathError{
+	faulty.set(func(blobs *faultyBlobs) {
+		blobs.deleteErr[stuck.id.String()] = &fs.PathError{
 			Op:   "remove",
-			Path: filepath.Join(harness.dir, "blobs", hex.EncodeToString([]byte(stuck.id.String()))),
+			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(stuck.id.String()))),
 			Err:  syscall.EROFS,
 		}
 	})
@@ -226,15 +226,15 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 	}
 
 	stolen := map[string][]byte{"log": []byte(harness.logs.String())}
-	if err := filepath.WalkDir(harness.dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	if err := filepath.WalkDir(harness.directory, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
 			return err
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(harness.dir, path)
+		rel, _ := filepath.Rel(harness.directory, path)
 		stolen[rel] = data
 		return nil
 	}); err != nil {
@@ -264,7 +264,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 	}
 
-	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db"))
+	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,8 +379,9 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		"K": message.content.K[:],
 		"L": leaseBytes,
 	}
-	for name, b := range forbidden {
-		if strings.Contains(logs, core.Encode(b)) || strings.Contains(logs, hex.EncodeToString(b)) {
+	for name, forbiddenBytes := range forbidden {
+		if strings.Contains(logs, core.Encode(forbiddenBytes)) ||
+			strings.Contains(logs, hex.EncodeToString(forbiddenBytes)) {
 			t.Fatalf("log contains %s", name)
 		}
 	}

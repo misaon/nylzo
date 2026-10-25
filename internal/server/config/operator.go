@@ -40,7 +40,8 @@ func (o Operator) validate() error {
 }
 
 func plainText(text string) bool {
-	return len(text) <= maxOperatorField && utf8.ValidString(text) && !strings.ContainsFunc(text, func(r rune) bool {
-		return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
-	})
+	return len(text) <= maxOperatorField && utf8.ValidString(text) &&
+		!strings.ContainsFunc(text, func(character rune) bool {
+			return unicode.IsControl(character) || unicode.Is(unicode.Cf, character)
+		})
 }

@@ -22,17 +22,17 @@ func linkID(t *testing.T, link string) string {
 
 func TestTakedownEndsReportedMessages(t *testing.T) {
 	t.Parallel()
-	ts := newTestServer(t, nil)
-	reported, res := createText(t, ts, "podvod")
-	if res.code != exitOK {
-		t.Fatalf("%+v", res)
+	instance := newTestServer(t, nil)
+	reported, result := createText(t, instance, "podvod")
+	if result.code != exitOK {
+		t.Fatalf("%+v", result)
 	}
-	kept, _ := createText(t, ts, "v pořádku")
+	kept, _ := createText(t, instance, "v pořádku")
 	unknown := core.NewID().String()
 	id := linkID(t, reported)
-	vars := map[string]string{"NYLZO_DATA_DIR": ts.dir}
+	variables := map[string]string{"NYLZO_DATA_DIR": instance.directory}
 
-	out := runWith(t, id+"\n\n"+id+"\n"+unknown+"\n", vars, nil, "takedown")
+	out := runWith(t, id+"\n\n"+id+"\n"+unknown+"\n", variables, nil, "takedown")
 	if out.code != exitOK || out.stdout != id+" deleted\n"+unknown+" no live message\n" {
 		t.Fatalf("%+v", out)
 	}
@@ -53,7 +53,7 @@ func TestTakedownEndsReportedMessages(t *testing.T) {
 	if again := runWith(
 		t,
 		id+"\n",
-		vars,
+		variables,
 		nil,
 		"takedown",
 	); again.code != exitOK ||
@@ -64,10 +64,10 @@ func TestTakedownEndsReportedMessages(t *testing.T) {
 
 func TestTakedownChecksEveryLineFirst(t *testing.T) {
 	t.Parallel()
-	ts := newTestServer(t, nil)
-	link, _ := createText(t, ts, "zůstane")
+	instance := newTestServer(t, nil)
+	link, _ := createText(t, instance, "zůstane")
 	id := linkID(t, link)
-	vars := map[string]string{"NYLZO_DATA_DIR": ts.dir}
+	variables := map[string]string{"NYLZO_DATA_DIR": instance.directory}
 	for _, input := range []string{
 		id + "\n" + link + "\n",
 		id + "\nnot-an-id\n",
@@ -75,12 +75,12 @@ func TestTakedownChecksEveryLineFirst(t *testing.T) {
 		strings.Repeat("A", 70000) + "\n",
 		manyIDs(10001),
 	} {
-		res := runWith(t, input, vars, nil, "takedown")
-		if res.code != exitUsage || res.stdout != "" {
-			t.Fatalf("want a usage error before any change, got %+v", res)
+		result := runWith(t, input, variables, nil, "takedown")
+		if result.code != exitUsage || result.stdout != "" {
+			t.Fatalf("want a usage error before any change, got %+v", result)
 		}
-		if strings.Contains(res.stderr, "#") || strings.Contains(res.stderr, "not-an-id") {
-			t.Fatalf("the error must not repeat the input: %q", res.stderr)
+		if strings.Contains(result.stderr, "#") || strings.Contains(result.stderr, "not-an-id") {
+			t.Fatalf("the error must not repeat the input: %q", result.stderr)
 		}
 	}
 	if read := runWith(t, link, nil, nil, "read", "--stdout"); read.code != exitOK {
@@ -91,32 +91,32 @@ func TestTakedownChecksEveryLineFirst(t *testing.T) {
 func TestTakedownNeedsTheStoreAndAPipe(t *testing.T) {
 	t.Parallel()
 	id := core.NewID().String()
-	if res := runWith(
+	if result := runWith(
 		t,
 		id+"\n",
 		map[string]string{"NYLZO_DATA_DIR": t.TempDir()},
 		nil,
 		"takedown",
-	); res.code != exitError ||
-		!strings.Contains(res.stderr, "found no store") {
-		t.Fatalf("%+v", res)
+	); result.code != exitError ||
+		!strings.Contains(result.stderr, "found no store") {
+		t.Fatalf("%+v", result)
 	}
-	if res := runWith(
+	if result := runWith(
 		t,
 		"",
 		nil,
 		stdinTerminal{},
 		"takedown",
-	); res.code != exitUsage ||
-		!strings.Contains(res.stderr, "from a pipe or a file") {
-		t.Fatalf("%+v", res)
+	); result.code != exitUsage ||
+		!strings.Contains(result.stderr, "from a pipe or a file") {
+		t.Fatalf("%+v", result)
 	}
 }
 
-func manyIDs(n int) string {
-	var b strings.Builder
-	for range n {
-		b.WriteString(core.NewID().String() + "\n")
+func manyIDs(count int) string {
+	var builder strings.Builder
+	for range count {
+		builder.WriteString(core.NewID().String() + "\n")
 	}
-	return b.String()
+	return builder.String()
 }

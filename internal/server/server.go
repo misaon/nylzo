@@ -36,25 +36,25 @@ const (
 type Option func(*Server)
 
 func WithClock(clock func() time.Time) Option {
-	return func(s *Server) {
+	return func(server *Server) {
 		if clock != nil {
-			s.clock = clock
+			server.clock = clock
 		}
 	}
 }
 
 func WithAfterFunc(after func(delay time.Duration, run func())) Option {
-	return func(s *Server) {
+	return func(server *Server) {
 		if after != nil {
-			s.after = after
+			server.after = after
 		}
 	}
 }
 
 func WithLogger(logger *slog.Logger) Option {
-	return func(s *Server) {
+	return func(server *Server) {
 		if logger != nil {
-			s.logger = logger
+			server.logger = logger
 		}
 	}
 }
@@ -205,28 +205,28 @@ func (s *Server) setUpLimits() {
 
 // timers runs the releases at lease end; stop refuses new ones and waits for those already running.
 type timers struct {
-	mu      sync.Mutex
+	mutex   sync.Mutex
 	running sync.WaitGroup
 	closed  bool
 }
 
 func (t *timers) after(delay time.Duration, run func()) {
 	time.AfterFunc(delay, func() {
-		t.mu.Lock()
+		t.mutex.Lock()
 		if t.closed {
-			t.mu.Unlock()
+			t.mutex.Unlock()
 			return
 		}
 		t.running.Add(1)
-		t.mu.Unlock()
+		t.mutex.Unlock()
 		defer t.running.Done()
 		run()
 	})
 }
 
 func (t *timers) stop() {
-	t.mu.Lock()
+	t.mutex.Lock()
 	t.closed = true
-	t.mu.Unlock()
+	t.mutex.Unlock()
 	t.running.Wait()
 }

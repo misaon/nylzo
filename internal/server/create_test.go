@@ -63,9 +63,9 @@ func FuzzCreateHeader(f *testing.F) {
 		if unmarshalErr := json.Unmarshal(data, &fields); unmarshalErr != nil {
 			t.Fatalf("accepted invalid JSON: %v", unmarshalErr)
 		}
-		for k := range fields {
-			if !allowed[k] {
-				t.Fatalf("accepted key %q", k)
+		for name := range fields {
+			if !allowed[name] {
+				t.Fatalf("accepted key %q", name)
 			}
 		}
 		var harness struct {
@@ -101,28 +101,36 @@ func TestCreateHeaderRules(t *testing.T) {
 	t.Parallel()
 	settings := config.Defaults()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	pw := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
+	withPassphrase := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	if !parsesCreateHeader(settings.Limits, none.createHeader(0)) ||
-		!parsesCreateHeader(settings.Limits, pw.createHeader(0)) {
+		!parsesCreateHeader(settings.Limits, withPassphrase.createHeader(0)) {
 		t.Fatal("valid headers rejected")
 	}
 	raw, _ := base64.RawURLEncoding.DecodeString(none.createHeader(0))
 	cases := map[string]string{
-		"unknown-key":      mutateHeader(t, none, func(f map[string]any) { f["extra"] = 1 }),
-		"case-variant-key": mutateHeader(t, none, func(f map[string]any) { f["ID"] = f["id"]; delete(f, "id") }),
+		"unknown-key": mutateHeader(t, none, func(fields map[string]any) { fields["extra"] = 1 }),
+		"case-variant-key": mutateHeader(
+			t,
+			none,
+			func(fields map[string]any) { fields["ID"] = fields["id"]; delete(fields, "id") },
+		),
 		"verifier-with-kdf0": mutateHeader(
 			t,
 			none,
-			func(f map[string]any) { f["verifier_key"] = publicKey(core.NewSecret()) },
+			func(fields map[string]any) { fields["verifier_key"] = publicKey(core.NewSecret()) },
 		),
-		"no-verifier-with-kdf1": mutateHeader(t, pw, func(f map[string]any) { delete(f, "verifier_key") }),
-		"kdf-2-retired":         mutateHeader(t, pw, func(f map[string]any) { f["kdf_id"] = 2 }),
-		"opens-0":               mutateHeader(t, none, func(f map[string]any) { f["opens_max"] = 0 }),
-		"ttl-59":                mutateHeader(t, none, func(f map[string]any) { f["ttl_s"] = 59 }),
-		"kdf-3":                 mutateHeader(t, none, func(f map[string]any) { f["kdf_id"] = 3 }),
-		"trailing-brace":        core.Encode(append(append([]byte(nil), raw...), '}')),
-		"trailing-object":       core.Encode(append(append([]byte(nil), raw...), []byte(" {}")...)),
-		"not-an-object":         core.Encode([]byte(`[1,2]`)),
+		"no-verifier-with-kdf1": mutateHeader(
+			t,
+			withPassphrase,
+			func(fields map[string]any) { delete(fields, "verifier_key") },
+		),
+		"kdf-2-retired":   mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["kdf_id"] = 2 }),
+		"opens-0":         mutateHeader(t, none, func(fields map[string]any) { fields["opens_max"] = 0 }),
+		"ttl-59":          mutateHeader(t, none, func(fields map[string]any) { fields["ttl_s"] = 59 }),
+		"kdf-3":           mutateHeader(t, none, func(fields map[string]any) { fields["kdf_id"] = 3 }),
+		"trailing-brace":  core.Encode(append(append([]byte(nil), raw...), '}')),
+		"trailing-object": core.Encode(append(append([]byte(nil), raw...), []byte(" {}")...)),
+		"not-an-object":   core.Encode([]byte(`[1,2]`)),
 	}
 	for name, value := range cases {
 		if parsesCreateHeader(settings.Limits, value) {
@@ -212,7 +220,7 @@ func TestCreateValidation(t *testing.T) {
 			"length_required",
 		},
 	}
-	for _, c := range cases {
+	for _, testCase := range cases {
 		request, err := http.NewRequestWithContext(
 			t.Context(),
 			http.MethodPost,
@@ -223,15 +231,15 @@ func TestCreateValidation(t *testing.T) {
 			t.Fatal(err)
 		}
 		request.Header.Set("X-Nylzo-Create", harness.withIDToken(message.createHeader(0)))
-		c.mutate(request)
+		testCase.mutate(request)
 		response, err := harness.client.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
 		body, _ := io.ReadAll(response.Body)
 		response.Body.Close()
-		if response.StatusCode != c.status || decodeJSON(t, body)["error"] != c.errorCode {
-			t.Fatalf("%s: %d %s", c.name, response.StatusCode, body)
+		if response.StatusCode != testCase.status || decodeJSON(t, body)["error"] != testCase.errorCode {
+			t.Fatalf("%s: %d %s", testCase.name, response.StatusCode, body)
 		}
 	}
 	wrongKDF := newMessage(t, core.KDFNone, "", 1, 3600, "v")
@@ -287,26 +295,26 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 func issuedID(t *testing.T, harness *testHarness) (core.ID, string, time.Time) {
 	t.Helper()
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
-	c, ok := decodeJSON(t, body)["create"].(map[string]any)
+	create, ok := decodeJSON(t, body)["create"].(map[string]any)
 	if !ok {
 		t.Fatalf("instance carries no create block: %s", body)
 	}
-	id, err := core.ParseID(c["id"].(string))
+	id, err := core.ParseID(create["id"].(string))
 	if err != nil {
 		t.Fatal(err)
 	}
-	expires, err := time.Parse(time.RFC3339, c["expires_at"].(string))
+	expires, err := time.Parse(time.RFC3339, create["expires_at"].(string))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return id, c["id_token"].(string), expires
+	return id, create["id_token"].(string), expires
 }
 
 func createWithToken(t *testing.T, harness *testHarness, message *testMessage, token any) (testResponse, responseBody) {
 	t.Helper()
-	header := mutateHeader(t, message, func(f map[string]any) {
+	header := mutateHeader(t, message, func(fields map[string]any) {
 		if token != nil {
-			f["id_token"] = token
+			fields["id_token"] = token
 		}
 	})
 	return harness.do(&testRequest{
@@ -334,7 +342,7 @@ func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	stranger := newMessage(t, core.KDFNone, "", 1, 3600, "chosen by the client")
-	for name, c := range map[string]struct {
+	for name, testCase := range map[string]struct {
 		message *testMessage
 		token   any
 	}{
@@ -346,8 +354,8 @@ func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
 		if response, body := createWithToken(
 			t,
 			harness,
-			c.message,
-			c.token,
+			testCase.message,
+			testCase.token,
 		); response.StatusCode != http.StatusForbidden ||
 			decodeJSON(t, body)["error"] != "id_token" {
 			t.Fatalf("%s token: %d %s", name, response.StatusCode, body)
@@ -370,14 +378,14 @@ func TestCreateNeedsAnIssuedIDToken(t *testing.T) {
 	}
 	late, lateToken, _ := issuedID(t, harness)
 	harness.clock.Advance(10*time.Minute + 6*time.Second)
-	lm, err := buildMessageWithID(late, core.KDFNone, "", 1, 3600, "late")
+	lateMessage, err := buildMessageWithID(late, core.KDFNone, "", 1, 3600, "late")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if response, body := createWithToken(
 		t,
 		harness,
-		lm,
+		lateMessage,
 		lateToken,
 	); response.StatusCode != http.StatusForbidden ||
 		decodeJSON(t, body)["error"] != "id_token" {
@@ -396,8 +404,8 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 		harness.create(message)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, err := harness.store.RateGet(t.Context(), globalCreatesKey, day); err != nil || c.Count != 20 {
-		t.Fatalf("rate-limited attempts moved the global counter: %+v %v", c, err)
+	if count, err := harness.store.RateGet(t.Context(), globalCreatesKey, day); err != nil || count.Count != 20 {
+		t.Fatalf("rate-limited attempts moved the global counter: %+v %v", count, err)
 	}
 	small := baseSettings(pepperA, nil)
 	small.Rates.GlobalDailyCreates = 40
@@ -409,8 +417,8 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 			t.Fatalf("create without pow at 50 percent: %d", response.StatusCode)
 		}
 	}
-	if c, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); c.Count != 20 {
-		t.Fatalf("PoW failures moved the global counter: %+v", c)
+	if count, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); count.Count != 20 {
+		t.Fatalf("PoW failures moved the global counter: %+v", count)
 	}
 	harness.reopen(settings)
 	existing := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -424,7 +432,10 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	headerKDF1 := mutateHeader(
 		t,
 		wrongKDF,
-		func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) },
+		func(fields map[string]any) {
+			fields["kdf_id"] = 1
+			fields["verifier_key"] = publicKey(core.NewSecret())
+		},
 	)
 	if response, _ := harness.do(
 		&testRequest{
@@ -437,8 +448,8 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 	); response.StatusCode != http.StatusBadRequest {
 		t.Fatalf("body kdf differs from the header: %d", response.StatusCode)
 	}
-	if c, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); c.Count != 21 {
-		t.Fatalf("only stored messages may move the global counter: %+v", c)
+	if count, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); count.Count != 21 {
+		t.Fatalf("only stored messages may move the global counter: %+v", count)
 	}
 }
 
@@ -451,11 +462,11 @@ type slotSignals struct {
 
 //nolint:gocritic // hugeParam: store.Store fixes this signature.
 func (s *slotSignals) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
-	n, ok, err := s.Store.RateReserve(ctx, hit)
+	count, ok, err := s.Store.RateReserve(ctx, hit)
 	if hit.Key == globalCreatesKey {
 		s.reserved <- struct{}{}
 	}
-	return n, ok, err
+	return count, ok, err
 }
 
 func (s *slotSignals) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
@@ -475,31 +486,36 @@ func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	harness.store = signals
 	harness.reopen(&harness.settings)
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	conn, err := net.Dial("tcp", harness.listen())
+	connection, err := net.Dial("tcp", harness.listen())
 	if err != nil {
 		t.Fatal(err)
 	}
 	fmt.Fprintf(
-		conn,
+		connection,
 		"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n",
 		len(message.object),
 		harness.withIDToken(message.createHeader(0)),
 	)
-	conn.Write(message.object[:100])
-	wait := func(ch chan struct{}, what string) {
+	connection.Write(message.object[:100])
+	wait := func(signal chan struct{}, what string) {
 		select {
-		case <-ch:
+		case <-signal:
 		// gstack-timing-ok: an upper bound on waiting for the event, not a measurement
 		case <-time.After(5 * time.Second):
 			t.Fatalf("the create never %s its cap slot", what)
 		}
 	}
 	wait(signals.reserved, "reserved")
-	conn.Close()
+	connection.Close()
 	wait(signals.released, "released")
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, rateGetErr := harness.store.RateGet(t.Context(), globalCreatesKey, day); rateGetErr != nil || c.Count != 0 {
-		t.Fatalf("a disconnected create kept its cap slot: %+v %v", c, rateGetErr)
+	if count, rateGetErr := harness.store.RateGet(
+		t.Context(),
+		globalCreatesKey,
+		day,
+	); rateGetErr != nil ||
+		count.Count != 0 {
+		t.Fatalf("a disconnected create kept its cap slot: %+v %v", count, rateGetErr)
 	}
 }
 
@@ -548,11 +564,11 @@ func TestCapFullOfPendingCreatesAsksForAShortRetry(t *testing.T) {
 
 type staleGateStore struct{ store.Store }
 
-func (s staleGateStore) RateGet(ctx context.Context, key string, ws time.Time) (store.RateCount, error) {
+func (s staleGateStore) RateGet(ctx context.Context, key string, windowStart time.Time) (store.RateCount, error) {
 	if key == globalCreatesKey {
 		return store.RateCount{}, nil
 	}
-	return s.Store.RateGet(ctx, key, ws)
+	return s.Store.RateGet(ctx, key, windowStart)
 }
 
 func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
@@ -572,8 +588,8 @@ func TestSlotPastHalfTheCapNeedsPoW(t *testing.T) {
 		t.Fatalf("the third of four slots was taken without PoW: %d %s", response.StatusCode, body)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, err := inner.RateGet(t.Context(), globalCreatesKey, day); err != nil || c.Count != 2 {
-		t.Fatalf("the refused create must return its slot: %+v %v", c, err)
+	if count, err := inner.RateGet(t.Context(), globalCreatesKey, day); err != nil || count.Count != 2 {
+		t.Fatalf("the refused create must return its slot: %+v %v", count, err)
 	}
 }
 
@@ -584,12 +600,12 @@ type fillingStore struct {
 	fill func()
 }
 
-func (s *fillingStore) RateGet(ctx context.Context, key string, ws time.Time) (store.RateCount, error) {
-	c, err := s.Store.RateGet(ctx, key, ws)
+func (s *fillingStore) RateGet(ctx context.Context, key string, windowStart time.Time) (store.RateCount, error) {
+	count, err := s.Store.RateGet(ctx, key, windowStart)
 	if key == globalCreatesKey {
 		s.once.Do(s.fill)
 	}
-	return c, err
+	return count, err
 }
 
 func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
@@ -613,8 +629,8 @@ func TestReservationLostAfterTheGateAnswers503(t *testing.T) {
 	if response, _ := harness.create(message); response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("a create that lost its reservation: %d", response.StatusCode)
 	}
-	if c, _ := inner.RateGet(t.Context(), globalCreatesKey, day); c.Count != 1 {
-		t.Fatalf("the cap was exceeded: %+v", c)
+	if count, _ := inner.RateGet(t.Context(), globalCreatesKey, day); count.Count != 1 {
+		t.Fatalf("the cap was exceeded: %+v", count)
 	}
 	if response, _ := harness.metadata(message); response.StatusCode != http.StatusNotFound {
 		t.Fatalf("a refused create stored a row: %d", response.StatusCode)
@@ -642,14 +658,14 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 			t.Fatalf("create on a nearly full disk: %d %q", response.StatusCode, response.Header.Get("Retry-After"))
 		}
 	}
-	if c, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); c.Count != before.Count {
-		t.Fatalf("a create refused for disk space took a global slot: %d, before %d", c.Count, before.Count)
+	if count, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); count.Count != before.Count {
+		t.Fatalf("a create refused for disk space took a global slot: %d, before %d", count.Count, before.Count)
 	}
 	if response, _ := harness.post(live, "burn", live.readToken); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("burn on a nearly full disk: %d", response.StatusCode)
 	}
-	if n := strings.Count(harness.logs.String(), `"msg":"disk-full"`); n != 1 {
-		t.Fatalf("logged disk-full %d times, want once per change", n)
+	if count := strings.Count(harness.logs.String(), `"msg":"disk-full"`); count != 1 {
+		t.Fatalf("logged disk-full %d times, want once per change", count)
 	}
 	harness.setFreeSpace(func(string) (uint64, error) { return math.MaxUint64, errors.New("statfs failed") })
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -671,8 +687,8 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 			response.StatusCode,
 		)
 	}
-	if n := strings.Count(harness.logs.String(), `"msg":"disk-free-again"`); n != 1 {
-		t.Fatalf("logged disk-free-again %d times", n)
+	if count := strings.Count(harness.logs.String(), `"msg":"disk-free-again"`); count != 1 {
+		t.Fatalf("logged disk-free-again %d times", count)
 	}
 
 	off := baseSettings(pepperA, nil)
@@ -815,9 +831,9 @@ func TestAK23PrefixBuckets(t *testing.T) {
 		message.address = fmt.Sprintf("203.0.113.%d", 20+i)
 		harness.mustCreate(message)
 	}
-	v4 := newMessage(t, core.KDFNone, "", 1, 3600, "n")
-	v4.address = "203.0.113.250"
-	if response, _ := harness.create(v4); response.StatusCode != http.StatusTooManyRequests {
+	lastInRange := newMessage(t, core.KDFNone, "", 1, 3600, "n")
+	lastInRange.address = "203.0.113.250"
+	if response, _ := harness.create(lastInRange); response.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("101st create in the same /24: %d", response.StatusCode)
 	}
 }
@@ -898,7 +914,10 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 	badHeader := mutateHeader(
 		t,
 		message,
-		func(f map[string]any) { f["kdf_id"] = 1; f["verifier_key"] = publicKey(core.NewSecret()) },
+		func(fields map[string]any) {
+			fields["kdf_id"] = 1
+			fields["verifier_key"] = publicKey(core.NewSecret())
+		},
 	)
 	send := func(header, pow string) int {
 		response, _ := harness.do(
@@ -919,8 +938,8 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 		t.Fatalf("replayed token: %d", code)
 	}
 	day := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	if c, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); c.Count != 2 {
-		t.Fatalf("failed and replayed creates moved the global counter: %+v", c)
+	if count, _ := harness.store.RateGet(t.Context(), globalCreatesKey, day); count.Count != 2 {
+		t.Fatalf("failed and replayed creates moved the global counter: %+v", count)
 	}
 	other := newMessage(t, core.KDFNone, "", 1, 3600, "pow")
 	other.address = "203.0.113.10"
@@ -968,27 +987,27 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 	identity := core.Encode(append([]byte{1}, make([]byte, 31)...))
 	order4 := core.Encode(make([]byte, 32))
 	nonCanonical := func() string {
-		b := make([]byte, 32)
-		for i := range b {
-			b[i] = 0xff
+		key := make([]byte, 32)
+		for i := range key {
+			key[i] = 0xff
 		}
-		b[0], b[31] = 0xee, 0x7f
-		return core.Encode(b)
+		key[0], key[31] = 0xee, 0x7f
+		return core.Encode(key)
 	}()
 	none := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	pw := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "x")
+	withPassphrase := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "x")
 	for name, header := range map[string]string{
-		"identity read key":      mutateHeader(t, none, func(f map[string]any) { f["read_key"] = identity }),
-		"small-order manage key": mutateHeader(t, none, func(f map[string]any) { f["manage_key"] = order4 }),
-		"non-canonical read key": mutateHeader(t, none, func(f map[string]any) { f["read_key"] = nonCanonical }),
-		"identity verifier key":  mutateHeader(t, pw, func(f map[string]any) { f["verifier_key"] = identity }),
-		"manage key equals read": mutateHeader(t, none, func(f map[string]any) { f["manage_key"] = f["read_key"] }),
-		"verifier equals read":   mutateHeader(t, pw, func(f map[string]any) { f["verifier_key"] = f["read_key"] }),
-		"verifier equals manage": mutateHeader(t, pw, func(f map[string]any) { f["verifier_key"] = f["manage_key"] }),
+		"identity read key":      mutateHeader(t, none, func(fields map[string]any) { fields["read_key"] = identity }),
+		"small-order manage key": mutateHeader(t, none, func(fields map[string]any) { fields["manage_key"] = order4 }),
+		"non-canonical read key": mutateHeader(t, none, func(fields map[string]any) { fields["read_key"] = nonCanonical }),
+		"identity verifier key":  mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["verifier_key"] = identity }),
+		"manage key equals read": mutateHeader(t, none, func(fields map[string]any) { fields["manage_key"] = fields["read_key"] }),
+		"verifier equals read":   mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["verifier_key"] = fields["read_key"] }),
+		"verifier equals manage": mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["verifier_key"] = fields["manage_key"] }),
 	} {
 		message := none
 		if strings.Contains(name, "verifier") {
-			message = pw
+			message = withPassphrase
 		}
 		response, _ := harness.do(
 			&testRequest{
@@ -1002,7 +1021,7 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 			t.Fatalf("%s: %d", name, response.StatusCode)
 		}
 	}
-	for _, message := range []*testMessage{none, pw} {
+	for _, message := range []*testMessage{none, withPassphrase} {
 		if _, err := harness.store.Get(t.Context(), message.id.String()); err == nil {
 			t.Fatalf("a rejected create stored %s", message.id)
 		}
@@ -1016,12 +1035,12 @@ func TestConcurrentCreateWithSameID(t *testing.T) {
 	for i := range 20 {
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "race")
 		message.address = fmt.Sprintf("198.51.100.%d", i+1)
-		var wg sync.WaitGroup
+		var wait sync.WaitGroup
 		codes := make([]int, 2)
 		for j := range codes {
-			wg.Go(func() { codes[j] = harness.statusFrom(createRequestFor(message)) })
+			wait.Go(func() { codes[j] = harness.statusFrom(createRequestFor(message)) })
 		}
-		wg.Wait()
+		wait.Wait()
 		if !slices.Equal(slices.Sorted(slices.Values(codes)), []int{201, 409}) {
 			t.Fatalf("iteration %d: %v", i, codes)
 		}
@@ -1039,21 +1058,21 @@ func TestTruncatedCreateStoresNothing(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "short")
-	conn, err := net.Dial("tcp", harness.listen())
+	connection, err := net.Dial("tcp", harness.listen())
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	connection.SetDeadline(time.Now().Add(5 * time.Second))
 	fmt.Fprintf(
-		conn,
+		connection,
 		"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n",
 		len(message.object),
 		harness.withIDToken(message.createHeader(0)),
 	)
-	conn.Write(message.object[:100])
-	conn.(*net.TCPConn).CloseWrite()
-	line, _ := bufio.NewReader(conn).ReadString('\n')
-	conn.Close()
+	connection.Write(message.object[:100])
+	connection.(*net.TCPConn).CloseWrite()
+	line, _ := bufio.NewReader(connection).ReadString('\n')
+	connection.Close()
 	if !strings.Contains(line, " 400 ") {
 		t.Fatalf("status line %q", line)
 	}
@@ -1069,7 +1088,7 @@ func TestCreateStorageFailureAnswers500(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	faulty := harness.withFaultyBlobs()
-	faulty.set(func(b *faultyBlobs) { b.failPut = errInjected })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failPut = errInjected })
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	if response, _ := harness.create(message); response.StatusCode != http.StatusInternalServerError {
 		t.Fatalf("storage failure: %d", response.StatusCode)
@@ -1086,7 +1105,7 @@ func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
 	harness.mustCreate(existing)
 	early, earlyBody := harness.create(existing)
 	faulty := harness.withFaultyBlobs()
-	faulty.set(func(b *faultyBlobs) { b.failPut = store.ErrConflict })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failPut = store.ErrConflict })
 	late, lateBody := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
 	if early.StatusCode != http.StatusConflict || late.StatusCode != http.StatusConflict || late.Close != early.Close ||
 		!bytes.Equal(earlyBody, lateBody) {
@@ -1101,9 +1120,9 @@ type slowPutBlobs struct {
 	delay time.Duration
 }
 
-func (b slowPutBlobs) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
+func (b slowPutBlobs) Put(ctx context.Context, ref string, body io.Reader, size int64) error {
 	b.clock.Advance(b.delay)
-	return b.Blobs.Put(ctx, ref, r, size)
+	return b.Blobs.Put(ctx, ref, body, size)
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
@@ -1133,13 +1152,13 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 	if got, _ := harness.claim(message, "", ""); got.StatusCode != http.StatusOK {
 		t.Fatalf("claim: %d", got.StatusCode)
 	}
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db"))
+	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer database.Close()
 	var created, expires, lease int64
-	if queryRowErr := db.QueryRow(`SELECT m.created_at, m.expires_at, l.lease_expires_at FROM messages m JOIN leases l ON l.id = m.id WHERE m.id = ?`, message.id.String()).
+	if queryRowErr := database.QueryRow(`SELECT m.created_at, m.expires_at, l.lease_expires_at FROM messages m JOIN leases l ON l.id = m.id WHERE m.id = ?`, message.id.String()).
 		Scan(&created, &expires, &lease); queryRowErr != nil {
 		t.Fatal(queryRowErr)
 	}
@@ -1157,11 +1176,11 @@ type cancelAfterCommit struct{ store.Store }
 
 //nolint:gocritic // hugeParam: store.Store fixes this signature.
 func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (int64, bool, error) {
-	n, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit)
+	count, ok, err := s.Store.RateReserve(context.WithoutCancel(ctx), hit)
 	if ctx.Err() != nil {
 		return 0, false, ctx.Err()
 	}
-	return n, ok, err
+	return count, ok, err
 }
 
 func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
@@ -1171,13 +1190,13 @@ func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	s := &Server{
+	server := &Server{
 		settings: config.Server{Rates: config.Rates{GlobalDailyCreates: 3}},
 		store:    cancelAfterCommit{database},
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if slot, reserveGlobalCreateErr := s.reserveGlobalCreate(
+	if slot, reserveGlobalCreateErr := server.reserveGlobalCreate(
 		ctx,
 		time.Unix(1_800_000_000, 0),
 	); reserveGlobalCreateErr != nil || !slot.reserved ||

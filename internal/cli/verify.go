@@ -60,9 +60,9 @@ type verifyOptions struct {
 	allowed map[string]bool
 }
 
-func verifyFlags(env *Env) (*flag.FlagSet, *verifyOptions) {
+func verifyFlags(environment *Environment) (*flag.FlagSet, *verifyOptions) {
 	options := &verifyOptions{allowed: map[string]bool{}}
-	flags := newFlags(env, "verify-client")
+	flags := newFlags(environment, "verify-client")
 	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
 	flags.Func(
 		"allow-header",
@@ -79,46 +79,46 @@ func verifyFlags(env *Env) (*flag.FlagSet, *verifyOptions) {
 	return flags, options
 }
 
-func runVerifyClient(ctx context.Context, env *Env, args []string) int {
-	flags, options := verifyFlags(env)
-	if code, done := flagsDone(parseFlags(flags, env, args)); done {
+func runVerifyClient(ctx context.Context, environment *Environment, arguments []string) int {
+	flags, options := verifyFlags(environment)
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if options.server == "" {
-		options.server = env.Getenv(envServer)
+		options.server = environment.Getenv(envServer)
 	}
 	if options.server == "" {
-		fmt.Fprintln(env.Stderr, program+" verify-client needs --server or "+envServer)
+		fmt.Fprintln(environment.Stderr, program+" verify-client needs --server or "+envServer)
 		return exitUsage
 	}
 	api, err := client.New(options.server)
 	if err != nil {
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
-	local, err := env.webClient()
+	local, err := environment.webClient()
 	if err != nil || !local.Built {
-		return failf(env, "%s", errNoLocalClient)
+		return failf(environment, "%s", errNoLocalClient)
 	}
 	check := &verifier{
 		api:     api,
 		local:   local,
-		version: buildVersion(env.Version),
+		version: buildVersion(environment.Version),
 		allowed: options.allowed,
 		nonces:  map[string]bool{},
 	}
 	result, err := check.run(ctx)
 	if err != nil {
-		return failf(env, "%s", err)
+		return failf(environment, "%s", err)
 	}
 	fmt.Fprintf(
-		env.Stdout,
+		environment.Stdout,
 		"the server sends the web client of nylzo %s unchanged: %d pages and %d files checked\n",
 		check.version,
 		result.pages,
 		result.files,
 	)
 	fmt.Fprintf(
-		env.Stderr,
+		environment.Stderr,
 		"%s: this covers what the server sent to this command; a server can recognise it and send browsers something else\n",
 		program,
 	)

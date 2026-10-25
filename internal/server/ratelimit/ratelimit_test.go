@@ -141,14 +141,14 @@ func TestCountersStayBounded(t *testing.T) {
 		counters.Count([]Hit{{Kind: "k", Bucket: Bucket{byte(i)}, Window: old}}, old.Start)
 	}
 	counters.Count([]Hit{{Kind: "k", Bucket: Bucket{0xff, 0xff}, Window: current}}, now)
-	if n := len(counters.tables["k"].entries); n != 1 {
-		t.Fatalf("expired buckets were kept: %d", n)
+	if count := len(counters.tables["k"].entries); count != 1 {
+		t.Fatalf("expired buckets were kept: %d", count)
 	}
 	for i := range 4 * counters.maxEntries {
 		counters.Count([]Hit{{Kind: "k", Bucket: Bucket{byte(i), byte(i >> 8), 1}, Window: current}}, now)
 	}
-	if n := len(counters.tables["k"].entries); n > counters.maxEntries {
-		t.Fatalf("the table grew past its bound: %d", n)
+	if count := len(counters.tables["k"].entries); count > counters.maxEntries {
+		t.Fatalf("the table grew past its bound: %d", count)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestClientAddress(t *testing.T) {
 		netip.MustParsePrefix("fd00::/8"),
 		netip.MustParsePrefix("172.17.0.1/32"),
 	}
-	for _, c := range []struct {
+	for _, testCase := range []struct {
 		remote, forwardedFor, realIP string
 		readRealIP                   bool
 		want                         string
@@ -218,22 +218,28 @@ func TestClientAddress(t *testing.T) {
 		{"10.0.0.5:1234", "", "198.51.100.2, 198.51.100.3", true, "10.0.0.5"},
 		{"203.0.113.1:1234", "", "", true, "203.0.113.1"},
 	} {
-		name := fmt.Sprintf("real=%v/%s/xff=%q/real=%q", c.readRealIP, c.remote, c.forwardedFor, c.realIP)
+		name := fmt.Sprintf(
+			"real=%v/%s/xff=%q/real=%q",
+			testCase.readRealIP,
+			testCase.remote,
+			testCase.forwardedFor,
+			testCase.realIP,
+		)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-			r.RemoteAddr = c.remote
-			if c.forwardedFor != "" {
-				r.Header.Set("X-Forwarded-For", c.forwardedFor)
+			r.RemoteAddr = testCase.remote
+			if testCase.forwardedFor != "" {
+				r.Header.Set("X-Forwarded-For", testCase.forwardedFor)
 			}
-			for value := range strings.SplitSeq(c.realIP, "\n") {
+			for value := range strings.SplitSeq(testCase.realIP, "\n") {
 				if value != "" {
 					r.Header.Add("X-Real-IP", value)
 				}
 			}
-			proxies := Proxies{Trusted: trusted, ReadRealIP: c.readRealIP}
-			if got := proxies.ClientAddress(r); got.String() != c.want {
-				t.Fatalf("got %s want %s", got, c.want)
+			proxies := Proxies{Trusted: trusted, ReadRealIP: testCase.readRealIP}
+			if got := proxies.ClientAddress(r); got.String() != testCase.want {
+				t.Fatalf("got %s want %s", got, testCase.want)
 			}
 		})
 	}

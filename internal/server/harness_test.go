@@ -38,42 +38,42 @@ var (
 )
 
 type fakeClock struct {
-	mu  sync.Mutex
-	now time.Time
+	mutex sync.Mutex
+	now   time.Time
 }
 
 func (c *fakeClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	return c.now
 }
 
 func (c *fakeClock) Advance(step time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.now = c.now.Add(step)
 }
 
 func (c *fakeClock) Set(now time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	c.now = now
 }
 
 type syncBuffer struct {
-	mu     sync.Mutex
+	mutex  sync.Mutex
 	buffer bytes.Buffer
 }
 
 func (b *syncBuffer) Write(data []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	return b.buffer.Write(data)
 }
 
 func (b *syncBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	return b.buffer.String()
 }
 
@@ -93,7 +93,7 @@ type testHarness struct {
 	server     *Server
 	httpServer *httptest.Server
 	client     *http.Client
-	dir        string
+	directory  string
 	timersMu   sync.Mutex
 	timers     []pendingTimer
 	captureMu  sync.Mutex
@@ -135,18 +135,25 @@ func baseSettings(pepper, previous []byte) *config.Server {
 
 func newHarness(t *testing.T, settings *config.Server) *testHarness {
 	t.Helper()
-	dir := t.TempDir()
-	settings.DataDir = dir
-	database, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
+	directory := t.TempDir()
+	settings.DataDir = directory
+	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
-	blobs, err := disk.New(dir)
+	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	harness := &testHarness{t: t, settings: *settings, store: database, blobs: blobs, dir: dir, logs: &syncBuffer{}}
+	harness := &testHarness{
+		t:         t,
+		settings:  *settings,
+		store:     database,
+		blobs:     blobs,
+		directory: directory,
+		logs:      &syncBuffer{},
+	}
 	harness.clock = &fakeClock{now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)}
 	harness.open()
 	return harness
@@ -192,7 +199,7 @@ func (h *testHarness) capture(r *http.Request) {
 
 func (h *testHarness) reopen(settings *config.Server) {
 	h.httpServer.Close()
-	settings.DataDir = h.dir
+	settings.DataDir = h.directory
 	h.settings = *settings
 	h.open()
 }
@@ -450,11 +457,11 @@ func (h *testHarness) withIDToken(header string) string {
 }
 
 func (h *testHarness) abuseFile(day time.Time) string {
-	return filepath.Join(h.dir, "abuse", day.UTC().Format(time.DateOnly)+".jsonl")
+	return filepath.Join(h.directory, "abuse", day.UTC().Format(time.DateOnly)+".jsonl")
 }
 
 func (h *testHarness) abuseReports() ([]byte, error) {
-	files, err := filepath.Glob(filepath.Join(h.dir, "abuse", "*.jsonl"))
+	files, err := filepath.Glob(filepath.Join(h.directory, "abuse", "*.jsonl"))
 	if err != nil || len(files) == 0 {
 		return nil, cmp.Or(err, os.ErrNotExist)
 	}
@@ -473,7 +480,7 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 type faultyBlobs struct {
 	store.Blobs
 
-	mu         sync.Mutex
+	mutex      sync.Mutex
 	failDelete map[string]bool
 	deleteErr  map[string]error
 	failOpen   error
@@ -491,9 +498,9 @@ func (h *testHarness) withFaultyBlobs() *faultyBlobs {
 }
 
 func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
-	b.mu.Lock()
+	b.mutex.Lock()
 	failing, err := b.failDelete[ref], b.deleteErr[ref]
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	if err != nil {
 		return err
 	}
@@ -512,9 +519,9 @@ func (b *faultyBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
 }
 
 func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
-	b.mu.Lock()
+	b.mutex.Lock()
 	openErr, readErr, hook := b.failOpen, b.failRead, b.onOpen
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	if hook != nil {
 		hook(ref)
 	}
@@ -529,9 +536,9 @@ func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int6
 }
 
 func (b *faultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, size int64) error {
-	b.mu.Lock()
+	b.mutex.Lock()
 	err := b.failPut
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	if err != nil {
 		io.Copy(io.Discard, reader)
 		return err
@@ -540,9 +547,9 @@ func (b *faultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, siz
 }
 
 func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
-	b.mu.Lock()
+	b.mutex.Lock()
 	err := b.failList
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -550,8 +557,8 @@ func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
 }
 
 func (b *faultyBlobs) set(change func(*faultyBlobs)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	change(b)
 }
 

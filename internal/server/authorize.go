@@ -182,7 +182,7 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 
 func emptyBody(w http.ResponseWriter, r *http.Request) bool {
 	var one [1]byte
-	if n, err := io.ReadFull(r.Body, one[:]); n != 0 || !errors.Is(err, io.EOF) {
+	if extraBytes, err := io.ReadFull(r.Body, one[:]); extraBytes != 0 || !errors.Is(err, io.EOF) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return false
 	}

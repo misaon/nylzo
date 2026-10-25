@@ -25,12 +25,12 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	message := newMessage(t, core.KDFNone, "", 1, 86400, "hello")
 	harness.mustCreate(message)
-	for _, ua := range []string{"", "Slackbot-LinkExpanding 1.0"} {
+	for _, userAgent := range []string{"", "Slackbot-LinkExpanding 1.0"} {
 		harness.do(
 			&testRequest{
 				method:  http.MethodGet,
 				path:    "/m/" + message.id.String(),
-				headers: map[string]string{"User-Agent": ua},
+				headers: map[string]string{"User-Agent": userAgent},
 			},
 		)
 	}
@@ -134,12 +134,12 @@ func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
 	for i := range 100 {
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "race")
 		harness.mustCreate(message)
-		var wg sync.WaitGroup
+		var wait sync.WaitGroup
 		codes := make([]int, 2)
 		for j := range codes {
-			wg.Go(func() { codes[j] = harness.statusFrom(claimRequestFor(message, "", "")) })
+			wait.Go(func() { codes[j] = harness.statusFrom(claimRequestFor(message, "", "")) })
 		}
-		wg.Wait()
+		wait.Wait()
 		if !slices.Equal(slices.Sorted(slices.Values(codes)), []int{200, 410}) {
 			t.Fatalf("iteration %d: %v", i, codes)
 		}
@@ -159,10 +159,10 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	expect := func(ip string, retry, left float64) {
 		t.Helper()
 		response, body := harness.claim(message, wrong, ip)
-		j := decodeJSON(t, body)
-		if response.StatusCode != http.StatusForbidden || j["error"] != "passphrase" ||
-			j["retry_after"].(float64) != retry ||
-			j["attempts_left"].(float64) != left {
+		fields := decodeJSON(t, body)
+		if response.StatusCode != http.StatusForbidden || fields["error"] != "passphrase" ||
+			fields["retry_after"].(float64) != retry ||
+			fields["attempts_left"].(float64) != left {
 			t.Fatalf("got %d %s, want retry %v left %v", response.StatusCode, body, retry, left)
 		}
 	}
@@ -203,9 +203,9 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 		harness.clock.Advance(time.Duration(retryAfter * float64(time.Second)))
 	}
 	response, body := harness.claim(message, message.verifier, "192.0.2.77")
-	j := decodeJSON(t, body)
-	if response.StatusCode != http.StatusForbidden || j["retry_after"].(float64) <= 0 ||
-		j["attempts_left"].(float64) != 0 {
+	fields := decodeJSON(t, body)
+	if response.StatusCode != http.StatusForbidden || fields["retry_after"].(float64) <= 0 ||
+		fields["attempts_left"].(float64) != 0 {
 		t.Fatalf("100 failed attempts must lock the message for every address: %d %s", response.StatusCode, body)
 	}
 	harness.clock.Advance(24 * time.Hour)
@@ -223,9 +223,9 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	fresh := newMessage(t, core.KDFScrypt, "pw", 1, 3600, "x")
 	harness.mustCreate(fresh)
 	response, body = harness.claim(fresh, "", "192.0.2.78")
-	j = decodeJSON(t, body)
-	if response.StatusCode != http.StatusForbidden || j["attempts_left"].(float64) != 4 ||
-		j["retry_after"].(float64) != 0 {
+	fields = decodeJSON(t, body)
+	if response.StatusCode != http.StatusForbidden || fields["attempts_left"].(float64) != 4 ||
+		fields["retry_after"].(float64) != 0 {
 		t.Fatalf("missing verifier: %d %s", response.StatusCode, body)
 	}
 	if _, statusNow := harness.status(fresh); statusNow["failed_passphrase_attempts"].(float64) != 1 {
@@ -242,10 +242,10 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 3, 86400, "three")
 	harness.mustCreate(message)
 	var leases []string
-	var wg sync.WaitGroup
-	var mu sync.Mutex
+	var wait sync.WaitGroup
+	var mutex sync.Mutex
 	for i := range 3 {
-		wg.Go(func() {
+		wait.Go(func() {
 			response, _, err := harness.tryDo(claimRequestFor(message, "", fmt.Sprintf("198.51.100.%d", 20+i)))
 			if err != nil {
 				t.Error(err)
@@ -255,22 +255,22 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 				t.Errorf("claim: %d", response.StatusCode)
 				return
 			}
-			mu.Lock()
+			mutex.Lock()
 			leases = append(leases, response.Header.Get("X-Nylzo-Lease"))
-			mu.Unlock()
+			mutex.Unlock()
 		})
 	}
-	wg.Wait()
+	wait.Wait()
 	distinct := map[string]bool{}
-	for _, l := range leases {
-		distinct[l] = true
+	for _, lease := range leases {
+		distinct[lease] = true
 	}
 	if len(distinct) != 3 {
 		t.Fatalf("leases not distinct: %v", leases)
 	}
 	harness.clock.Advance(store.LeaseDuration - time.Second)
-	for _, l := range leases {
-		if response, _ := harness.blob(message, l); response.StatusCode != http.StatusOK {
+	for _, lease := range leases {
+		if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusOK {
 			t.Fatalf("blob within lease: %d", response.StatusCode)
 		}
 	}
@@ -285,8 +285,8 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 	if harness.blobExists(message.id) {
 		t.Fatal("timer did not delete the blob")
 	}
-	for _, l := range leases {
-		if response, _ := harness.blob(message, l); response.StatusCode != http.StatusGone {
+	for _, lease := range leases {
+		if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusGone {
 			t.Fatalf("blob after lease expiry: %d", response.StatusCode)
 		}
 	}
@@ -473,7 +473,7 @@ func TestDownloadAfterExpiryWithAStuckDeleteIsGone(t *testing.T) {
 	if response.StatusCode != http.StatusOK || lease == "" {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
-	faulty.set(func(b *faultyBlobs) { b.failDelete[message.id.String()] = true })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[message.id.String()] = true })
 	harness.clock.Advance(61 * time.Second)
 	if got, body := harness.blob(
 		message,
@@ -580,19 +580,19 @@ var lifecycleActions = [11]string{
 }
 
 func recordedRow(state store.State) [11]string {
-	s := string(state)
+	stateName := string(state)
 	return [11]string{
-		"410 " + s + " tomb:" + s,
-		"410 " + s + " tomb:" + s,
-		"200 " + s + " tomb:" + s,
-		"- - tomb:" + s,
-		"- - live:" + s,
-		"200 " + s + " tomb:" + s,
-		"- - tomb:" + s,
-		"410 " + s + " tomb:" + s,
-		"410 " + s + " tomb:" + s,
-		"410 " + s + " tomb:" + s,
-		"410 " + s + " tomb:" + s,
+		"410 " + stateName + " tomb:" + stateName,
+		"410 " + stateName + " tomb:" + stateName,
+		"200 " + stateName + " tomb:" + stateName,
+		"- - tomb:" + stateName,
+		"- - live:" + stateName,
+		"200 " + stateName + " tomb:" + stateName,
+		"- - tomb:" + stateName,
+		"410 " + stateName + " tomb:" + stateName,
+		"410 " + stateName + " tomb:" + stateName,
+		"410 " + stateName + " tomb:" + stateName,
+		"410 " + stateName + " tomb:" + stateName,
 	}
 }
 
@@ -868,11 +868,11 @@ func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 	response, _ := harness.claim(message, "", "")
 	lease := response.Header.Get("X-Nylzo-Lease")
 	var once sync.Once
-	faulty.set(func(b *faultyBlobs) {
-		b.onOpen = func(ref string) {
+	faulty.set(func(blobs *faultyBlobs) {
+		blobs.onOpen = func(ref string) {
 			once.Do(func() {
 				harness.clock.Advance(61 * time.Second)
-				if err := b.Blobs.Delete(t.Context(), ref); err != nil {
+				if err := blobs.Blobs.Delete(t.Context(), ref); err != nil {
 					t.Error(err)
 				}
 			})
@@ -898,7 +898,7 @@ func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
 	var opens atomic.Int32
-	faulty.set(func(b *faultyBlobs) { b.onOpen = func(string) { opens.Add(1) } })
+	faulty.set(func(blobs *faultyBlobs) { blobs.onOpen = func(string) { opens.Add(1) } })
 	response, _ := harness.do(
 		&testRequest{
 			method:  http.MethodPost,
@@ -973,31 +973,31 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 type leaseCount struct {
 	store.Store
 
-	n *atomic.Int32
+	calls *atomic.Int32
 }
 
 func (s leaseCount) Leases(ctx context.Context, id string) ([]store.Lease, error) {
-	s.n.Add(1)
+	s.calls.Add(1)
 	return s.Store.Leases(ctx, id)
 }
 
 func TestDownloadReadsLeasesOnce(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	n := &atomic.Int32{}
-	harness.store = leaseCount{harness.store, n}
+	calls := &atomic.Int32{}
+	harness.store = leaseCount{harness.store, calls}
 	harness.reopen(&harness.settings)
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
 	response, _ := harness.claim(message, "", "")
-	n.Store(0)
+	calls.Store(0)
 	if got, _ := harness.blob(
 		message,
 		response.Header.Get("X-Nylzo-Lease"),
 	); got.StatusCode != http.StatusOK {
 		t.Fatalf("download: %d", got.StatusCode)
 	}
-	if got := n.Load(); got != 1 {
+	if got := calls.Load(); got != 1 {
 		t.Fatalf("a download read the leases %d times", got)
 	}
 }
@@ -1008,21 +1008,21 @@ type burnAfterClaim struct {
 	blobs store.Blobs
 }
 
-func (s burnAfterClaim) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResult, error) {
-	res, err := s.Store.Claim(ctx, p)
+func (s burnAfterClaim) Claim(ctx context.Context, parameters store.ClaimParams) (store.ClaimResult, error) {
+	result, err := s.Store.Claim(ctx, parameters)
 	if err == nil {
 		if _, endMessageErr := store.EndMessage(
 			ctx,
 			s.Store,
 			s.blobs,
-			p.ID,
+			parameters.ID,
 			store.StateDeleted,
-			p.Clock(),
+			parameters.Clock(),
 		); endMessageErr != nil {
-			return res, endMessageErr
+			return result, endMessageErr
 		}
 	}
-	return res, err
+	return result, err
 }
 
 func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
@@ -1054,11 +1054,11 @@ func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
 	harness.store = failingEndStore{Store: harness.store}
 	harness.reopen(&harness.settings)
 	var once sync.Once
-	faulty.set(func(b *faultyBlobs) {
-		b.onOpen = func(ref string) {
+	faulty.set(func(blobs *faultyBlobs) {
+		blobs.onOpen = func(ref string) {
 			once.Do(func() {
 				harness.clock.Advance(61 * time.Second)
-				if err := b.Blobs.Delete(t.Context(), ref); err != nil {
+				if err := blobs.Blobs.Delete(t.Context(), ref); err != nil {
 					t.Error(err)
 				}
 			})
@@ -1200,9 +1200,9 @@ type slowWriterStore struct {
 	wait  time.Duration
 }
 
-func (s slowWriterStore) Claim(ctx context.Context, p store.ClaimParams) (store.ClaimResult, error) {
+func (s slowWriterStore) Claim(ctx context.Context, parameters store.ClaimParams) (store.ClaimResult, error) {
 	s.clock.Advance(s.wait)
-	return s.Store.Claim(ctx, p)
+	return s.Store.Claim(ctx, parameters)
 }
 
 func TestClaimThatWaitsPastExpiryIsRefused(t *testing.T) {
@@ -1310,7 +1310,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 	faulty := harness.withFaultyBlobs()
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
-	faulty.set(func(b *faultyBlobs) { b.failRead = errInjected })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failRead = errInjected })
 	request, err := http.NewRequest(
 		http.MethodPost,
 		harness.httpServer.URL+"/api/v1/messages/"+message.id.String()+"/claim",
@@ -1351,7 +1351,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			t.Fatalf("the stream warning carries more than its name: %s", line)
 		}
 	}
-	faulty.set(func(b *faultyBlobs) { b.failRead = nil })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failRead = nil })
 	response, object := harness.blob(message, lease)
 	if response.StatusCode != http.StatusOK || !bytes.Equal(object, message.object) {
 		t.Fatalf("retry through the lease: %d", response.StatusCode)
@@ -1362,7 +1362,7 @@ func TestStorageCancellationIsInternalWhileClientWaits(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	faulty := harness.withFaultyBlobs()
-	faulty.set(func(b *faultyBlobs) { b.failPut = context.Canceled })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failPut = context.Canceled })
 	if response, _ := harness.create(
 		newMessage(t, core.KDFNone, "", 1, 3600, "x"),
 	); response.StatusCode != http.StatusInternalServerError {
@@ -1377,12 +1377,12 @@ func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
 	inner := harness.store
-	faulty.set(func(b *faultyBlobs) {
-		b.onOpen = func(ref string) {
+	faulty.set(func(blobs *faultyBlobs) {
+		blobs.onOpen = func(ref string) {
 			if _, err := store.EndMessage(
 				t.Context(),
 				inner,
-				b.Blobs,
+				blobs.Blobs,
 				ref,
 				store.StateDeleted,
 				harness.clock.Now(),
@@ -1474,8 +1474,8 @@ func TestRequestDuringTheLeaseTakesNoWriteLock(t *testing.T) {
 	wrong.readToken = core.Encode(core.NewSecret()[:])
 	harness.metadata(message)
 	harness.metadata(&wrong)
-	if n := counting.releases.Load(); n != 0 {
-		t.Fatalf("requests during the lease tried to release the blob %d times", n)
+	if releases := counting.releases.Load(); releases != 0 {
+		t.Fatalf("requests during the lease tried to release the blob %d times", releases)
 	}
 }
 
@@ -1490,9 +1490,9 @@ func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
 	if response, _ := harness.claim(spent, "", ""); response.StatusCode != http.StatusOK {
 		t.Fatalf("claim: %d", response.StatusCode)
 	}
-	faulty.set(func(b *faultyBlobs) {
-		b.failDelete[unspent.id.String()] = true
-		b.failDelete[spent.id.String()] = true
+	faulty.set(func(blobs *faultyBlobs) {
+		blobs.failDelete[unspent.id.String()] = true
+		blobs.failDelete[spent.id.String()] = true
 	})
 	harness.clock.Advance(time.Hour)
 	if _, metadata := harness.metadata(unspent); metadata["state"] != "expired" {
@@ -1517,7 +1517,7 @@ func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
 	faulty := harness.withFaultyBlobs()
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 	harness.mustCreate(message)
-	faulty.set(func(b *faultyBlobs) { b.failOpen = errInjected })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failOpen = errInjected })
 	response, _ := harness.claim(message, "", "")
 	if response.StatusCode != http.StatusInternalServerError || response.Header.Get("X-Nylzo-Lease") != "" {
 		t.Fatalf(
@@ -1526,7 +1526,7 @@ func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
 			response.Header.Get("X-Nylzo-Lease"),
 		)
 	}
-	faulty.set(func(b *faultyBlobs) { b.failOpen = nil })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failOpen = nil })
 	if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
 		t.Fatalf("an open error spent an open: %v", metadata)
 	}

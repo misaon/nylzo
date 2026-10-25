@@ -84,17 +84,17 @@ func parseOpenLink(raw string) (openLink, error) {
 	return link, nil
 }
 
-func linkFromInput(env *Env, linkFile string) (openLink, error) {
-	raw, err := readLink(env, linkFile)
+func linkFromInput(environment *Environment, linkFile string) (openLink, error) {
+	raw, err := readLink(environment, linkFile)
 	if err != nil {
 		return openLink{}, err
 	}
 	return parseOpenLink(raw)
 }
 
-func readFlags(env *Env) (*flag.FlagSet, *readOptions) {
+func readFlags(environment *Environment) (*flag.FlagSet, *readOptions) {
 	options := &readOptions{}
-	flags := newFlags(env, "read")
+	flags := newFlags(environment, "read")
 	flags.StringVar(&options.linkFile, "link-file", "", "read the link from this file (or "+envLink+", or stdin)")
 	flags.StringVar(
 		&options.passphrase.file,
@@ -119,47 +119,47 @@ func readFlags(env *Env) (*flag.FlagSet, *readOptions) {
 }
 
 // runRead creates the output directory before the claim, so a write problem never spends an open.
-func runRead(ctx context.Context, env *Env, args []string) int {
-	flags, options := readFlags(env)
-	if code, done := flagsDone(parseFlags(flags, env, args)); done {
+func runRead(ctx context.Context, environment *Environment, arguments []string) int {
+	flags, options := readFlags(environment)
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	link, err := linkFromInput(env, options.linkFile)
+	link, err := linkFromInput(environment, options.linkFile)
 	if err != nil {
-		return failf(env, "link: %s", explain(err))
+		return failf(environment, "link: %s", explain(err))
 	}
 	defer link.wipe()
 	api, err := client.New(link.origin)
 	if err != nil {
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
 	base := options.out
 	if base == "" {
-		base = env.tempDir()
+		base = environment.tempDir()
 	}
-	dir, err := outputDir(base, options.out != "")
+	directory, err := outputDir(base, options.out != "")
 	if err != nil {
-		return failf(env, "%s", err)
+		return failf(environment, "%s", err)
 	}
-	defer removeIfEmpty(dir)
-	opened, err := readMessage(ctx, env, api, &link, options.passphrase)
+	defer removeIfEmpty(directory)
+	opened, err := readMessage(ctx, environment, api, &link, options.passphrase)
 	if err != nil {
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
 	defer clear(opened.payload.File)
-	paths, err := saveMessage(env, dir, base, options.stdout, opened.payload)
+	paths, err := saveMessage(environment, directory, base, options.stdout, opened.payload)
 	if err != nil {
-		return failf(env, "the message was opened but could not be saved: %s", err)
+		return failf(environment, "the message was opened but could not be saved: %s", err)
 	}
 	if err = api.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, "gone") {
 		fmt.Fprintf(
-			env.Stderr,
+			environment.Stderr,
 			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
 			program,
 		)
 	}
 	for _, path := range paths {
-		fmt.Fprintln(env.Stdout, path)
+		fmt.Fprintln(environment.Stdout, path)
 	}
 	return exitOK
 }
@@ -171,7 +171,7 @@ type openedMessage struct {
 
 func readMessage(
 	ctx context.Context,
-	env *Env,
+	environment *Environment,
 	api *client.Client,
 	link *openLink,
 	source passphraseSource,
@@ -186,7 +186,7 @@ func readMessage(
 	if err = core.AssertProfile(link.kdf, metadata.KDF); err != nil {
 		return openedMessage{}, errors.New("the link does not match the message on the server")
 	}
-	passphraseKey, err := passphraseKey(env, link, source)
+	passphraseKey, err := passphraseKey(environment, link, source)
 	if err != nil {
 		return openedMessage{}, err
 	}
@@ -217,14 +217,14 @@ func readMessage(
 	return openedMessage{payload: payload, lease: lease}, nil
 }
 
-func passphraseKey(env *Env, link *openLink, source passphraseSource) ([]byte, error) {
+func passphraseKey(environment *Environment, link *openLink, source passphraseSource) ([]byte, error) {
 	if link.kdf == core.KDFNone {
 		return nil, nil
 	}
-	if !source.given(env) {
+	if !source.given(environment) {
 		source.ask = true
 	}
-	passphrase, err := readPassphrase(env, source, false)
+	passphrase, err := readPassphrase(environment, source, false)
 	if errors.Is(err, console.ErrNoTerminal) {
 		return nil, errors.New(
 			"this message needs a passphrase: use --passphrase-file, " + envPassphrase + " or --ask-passphrase",
@@ -264,8 +264,8 @@ func fetchEnvelope(
 	return client.Envelope{}, "", err
 }
 
-func terminalControl(r rune) bool {
-	return r != '\n' && r != '\t' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r))
+func terminalControl(character rune) bool {
+	return character != '\n' && character != '\t' && (unicode.IsControl(character) || unicode.Is(unicode.Cf, character))
 }
 
 type outputFile struct {
@@ -273,19 +273,24 @@ type outputFile struct {
 	data []byte
 }
 
-func saveMessage(env *Env, dir, base string, toStdout bool, payload core.Payload) ([]string, error) {
+func saveMessage(
+	environment *Environment,
+	directory, base string,
+	toStdout bool,
+	payload core.Payload,
+) ([]string, error) {
 	var files []outputFile
 	if text := payload.Meta.Text; text != nil {
-		if toStdout && env.Terminal.StdoutIsTerminal() && strings.ContainsFunc(*text, terminalControl) {
+		if toStdout && environment.Terminal.StdoutIsTerminal() && strings.ContainsFunc(*text, terminalControl) {
 			fmt.Fprintf(
-				env.Stderr,
+				environment.Stderr,
 				"%s: the text holds terminal control characters, so it goes to a file instead of the terminal\n",
 				program,
 			)
 			toStdout = false
 		}
 		if toStdout {
-			printText(env, *text)
+			printText(environment, *text)
 		} else {
 			files = append(files, outputFile{textFileName, []byte(*text)})
 		}
@@ -297,29 +302,29 @@ func saveMessage(env *Env, dir, base string, toStdout bool, payload core.Payload
 		}
 		files = append(files, outputFile{name, payload.File})
 	}
-	paths, err := writeWithFallback(env, dir, base, files)
+	paths, err := writeWithFallback(environment, directory, base, files)
 	if err != nil {
 		return nil, err
 	}
 	if toStdout {
 		for _, path := range paths {
-			fmt.Fprintf(env.Stderr, "%s: the attachment is in %s\n", program, path)
+			fmt.Fprintf(environment.Stderr, "%s: the attachment is in %s\n", program, path)
 		}
 		return nil, nil
 	}
 	return paths, nil
 }
 
-func printText(env *Env, text string) {
-	fmt.Fprint(env.Stdout, text)
+func printText(environment *Environment, text string) {
+	fmt.Fprint(environment.Stdout, text)
 	if text != "" && !strings.HasSuffix(text, "\n") {
-		fmt.Fprintln(env.Stdout)
+		fmt.Fprintln(environment.Stdout)
 	}
 }
 
 // writeWithFallback tries a second new directory next to the first, so a failed write does not lose the message.
-func writeWithFallback(env *Env, dir, base string, files []outputFile) ([]string, error) {
-	paths, err := writeAll(dir, files)
+func writeWithFallback(environment *Environment, directory, base string, files []outputFile) ([]string, error) {
+	paths, err := writeAll(directory, files)
 	if err == nil {
 		return paths, nil
 	}
@@ -328,7 +333,7 @@ func writeWithFallback(env *Env, dir, base string, files []outputFile) ([]string
 		return nil, errWriteOutput
 	}
 	fmt.Fprintf(
-		env.Stderr,
+		environment.Stderr,
 		"%s: warning: writing the files failed, trying a second new directory next to the first\n",
 		program,
 	)
@@ -339,12 +344,12 @@ func writeWithFallback(env *Env, dir, base string, files []outputFile) ([]string
 	return paths, nil
 }
 
-func writeAll(dir string, files []outputFile) ([]string, error) {
+func writeAll(directory string, files []outputFile) ([]string, error) {
 	var paths []string
 	for _, file := range files {
-		path, err := writePrivate(dir, file.name, file.data)
+		path, err := writePrivate(directory, file.name, file.data)
 		if errors.Is(err, fs.ErrExist) && !strings.HasPrefix(file.name, attachmentPrefix) {
-			path, err = writePrivate(dir, attachmentPrefix+file.name, file.data)
+			path, err = writePrivate(directory, attachmentPrefix+file.name, file.data)
 		}
 		if err != nil {
 			for _, written := range paths {
@@ -363,9 +368,9 @@ func outputDir(base string, given bool) (string, error) {
 			return "", errors.New("--out must name an existing directory")
 		}
 	}
-	dir, err := os.MkdirTemp(base, outputDirPrefix)
+	directory, err := os.MkdirTemp(base, outputDirPrefix)
 	if err == nil {
-		return dir, nil
+		return directory, nil
 	}
 	if given {
 		return "", errors.New("--out: cannot create a private directory there")
@@ -373,15 +378,15 @@ func outputDir(base string, given bool) (string, error) {
 	return "", errors.New("cannot create a private directory in the temporary directory")
 }
 
-func removeIfEmpty(dir string) {
-	if entries, err := os.ReadDir(dir); err == nil && len(entries) == 0 {
-		os.Remove(dir)
+func removeIfEmpty(directory string) {
+	if entries, err := os.ReadDir(directory); err == nil && len(entries) == 0 {
+		os.Remove(directory)
 	}
 }
 
 // writePrivate creates a new file only inside dir and never replaces one.
-func writePrivate(dir, name string, data []byte) (string, error) {
-	root, err := os.OpenRoot(dir)
+func writePrivate(directory, name string, data []byte) (string, error) {
+	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return "", err
 	}
@@ -395,5 +400,5 @@ func writePrivate(dir, name string, data []byte) (string, error) {
 		_ = root.Remove(name)
 		return "", err
 	}
-	return filepath.Join(dir, name), nil
+	return filepath.Join(directory, name), nil
 }

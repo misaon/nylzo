@@ -241,13 +241,13 @@ func failure(ctx context.Context, err error) failureEntry {
 	return failureEntry{level: slog.LevelError, text: logging.ErrorText(err)}
 }
 
-func formatTime(t time.Time) string {
-	return t.UTC().Format(timeFormat)
+func formatTime(moment time.Time) string {
+	return moment.UTC().Format(timeFormat)
 }
 
-func formatOptionalTime(t *time.Time) string {
-	if t == nil {
+func formatOptionalTime(moment *time.Time) string {
+	if moment == nil {
 		return ""
 	}
-	return formatTime(*t)
+	return formatTime(*moment)
 }

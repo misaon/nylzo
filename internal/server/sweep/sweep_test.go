@@ -23,15 +23,15 @@ var errInjected = errors.New("test: injected storage failure")
 type faultyBlobs struct {
 	store.Blobs
 
-	mu         sync.Mutex
+	mutex      sync.Mutex
 	failList   bool
 	failDelete map[string]bool
 }
 
 func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
-	b.mu.Lock()
+	b.mutex.Lock()
 	failing := b.failDelete[ref]
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	if failing {
 		return errInjected
 	}
@@ -47,9 +47,9 @@ func (b *faultyBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
 }
 
 func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
-	b.mu.Lock()
+	b.mutex.Lock()
 	failing := b.failList
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	if failing {
 		return nil, errInjected
 	}
@@ -57,8 +57,8 @@ func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
 }
 
 func (b *faultyBlobs) fail(list bool, refs ...string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	b.failList = list
 	b.failDelete = map[string]bool{}
 	for _, ref := range refs {
@@ -75,16 +75,16 @@ type fixture struct {
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	dataDir := t.TempDir()
-	st, err := sqlite.Open(t.Context(), filepath.Join(dataDir, "nylzo.db"))
+	storage, err := sqlite.Open(t.Context(), filepath.Join(dataDir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { storage.Close() })
 	blobs, err := disk.New(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{dataDir: dataDir, store: st, blobs: &faultyBlobs{Blobs: blobs}}
+	return fixture{dataDir: dataDir, store: storage, blobs: &faultyBlobs{Blobs: blobs}}
 }
 
 func (f fixture) putBlob(t *testing.T, ref string) {
@@ -129,24 +129,24 @@ func nextDay() time.Time {
 
 func TestRunEndsExpiredMessagesAndPurgesStaleUploads(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t)
+	setup := newFixture(t)
 	now := nextDay()
-	id := f.createExpiring(t, now)
+	id := setup.createExpiring(t, now)
 	stale := func(name string) {
-		if err := os.WriteFile(filepath.Join(f.dataDir, "blobs", "tmp", name), []byte("x"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(setup.dataDir, "blobs", "tmp", name), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	stale("blob-first")
-	report, err := f.run(t, now.Add(2*time.Minute))
+	report, err := setup.run(t, now.Add(2*time.Minute))
 	if err != nil || report.Expired != 1 || report.StaleTempFiles != 1 {
 		t.Fatalf("first sweep: %+v %v", report, err)
 	}
-	if _, _, openErr := f.blobs.Open(t.Context(), id); !errors.Is(openErr, store.ErrBlobMissing) {
+	if _, _, openErr := setup.blobs.Open(t.Context(), id); !errors.Is(openErr, store.ErrBlobMissing) {
 		t.Fatalf("the blob of an expired message survived the sweep: %v", openErr)
 	}
 	stale("blob-second")
-	report, err = f.run(t, now.Add(3*time.Minute))
+	report, err = setup.run(t, now.Add(3*time.Minute))
 	if err != nil || report.StaleTempFiles != 1 {
 		t.Fatalf("a sweep after the daily reconcile must still purge temp files: %+v %v", report, err)
 	}
@@ -154,26 +154,26 @@ func TestRunEndsExpiredMessagesAndPurgesStaleUploads(t *testing.T) {
 
 func TestReconcileRunsOncePerDayUntilItHasListedTheStore(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t)
+	setup := newFixture(t)
 	now := nextDay()
-	f.putBlob(t, "orphan-one")
-	if report, err := f.run(t, now); err != nil || report.OrphanedBlobs != 1 {
+	setup.putBlob(t, "orphan-one")
+	if report, err := setup.run(t, now); err != nil || report.OrphanedBlobs != 1 {
 		t.Fatalf("first sweep of the day: %+v %v", report, err)
 	}
-	f.putBlob(t, "orphan-two")
-	if report, err := f.run(t, now.Add(time.Hour)); err != nil || report.OrphanedBlobs != 0 {
+	setup.putBlob(t, "orphan-two")
+	if report, err := setup.run(t, now.Add(time.Hour)); err != nil || report.OrphanedBlobs != 0 {
 		t.Fatalf("a second sweep reconciled twice in one day: %+v %v", report, err)
 	}
 	tomorrow := now.Add(24 * time.Hour)
-	f.putBlob(t, "0-stuck")
-	id := f.createExpiring(t, tomorrow)
-	f.blobs.fail(true, id)
-	report, err := f.run(t, tomorrow.Add(2*time.Minute))
+	setup.putBlob(t, "0-stuck")
+	id := setup.createExpiring(t, tomorrow)
+	setup.blobs.fail(true, id)
+	report, err := setup.run(t, tomorrow.Add(2*time.Minute))
 	if err == nil || report.Expired != 0 || report.OrphanedBlobs != 0 {
 		t.Fatalf("a failed listing: %+v %v", report, err)
 	}
-	f.blobs.fail(false, "0-stuck")
-	report, err = f.run(t, tomorrow.Add(3*time.Minute))
+	setup.blobs.fail(false, "0-stuck")
+	report, err = setup.run(t, tomorrow.Add(3*time.Minute))
 	if err == nil || report.Expired != 1 || report.OrphanedBlobs != 1 {
 		t.Fatalf(
 			"a reconcile whose listing failed must run again the same day and skip a failed delete: %+v %v",
@@ -181,7 +181,7 @@ func TestReconcileRunsOncePerDayUntilItHasListedTheStore(t *testing.T) {
 			err,
 		)
 	}
-	report, err = f.run(t, tomorrow.Add(4*time.Minute))
+	report, err = setup.run(t, tomorrow.Add(4*time.Minute))
 	if err != nil || report.OrphanedBlobs != 0 {
 		t.Fatalf("a reconcile that listed the store must be recorded for the day: %+v %v", report, err)
 	}
@@ -189,10 +189,10 @@ func TestReconcileRunsOncePerDayUntilItHasListedTheStore(t *testing.T) {
 
 func TestLogAttributesCountEveryFailedItem(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t)
+	setup := newFixture(t)
 	now := nextDay()
-	f.blobs.fail(false, f.createExpiring(t, now), f.createExpiring(t, now))
-	report, err := f.run(t, now.Add(2*time.Minute))
+	setup.blobs.fail(false, setup.createExpiring(t, now), setup.createExpiring(t, now))
+	report, err := setup.run(t, now.Add(2*time.Minute))
 	attributes := sweep.LogAttributes(report, err)
 	got := map[any]any{}
 	for i := 0; i+1 < len(attributes); i += 2 {

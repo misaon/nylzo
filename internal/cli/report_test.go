@@ -11,13 +11,13 @@ import (
 
 func TestReportSendsARedactedReason(t *testing.T) {
 	t.Parallel()
-	ts := newTestServer(t, nil)
-	link, _ := createText(t, ts, "podvod")
+	instance := newTestServer(t, nil)
+	link, _ := createText(t, instance, "podvod")
 	parsed, err := core.ParseLink(link)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res := runWith(
+	result := runWith(
 		t,
 		link,
 		nil,
@@ -26,10 +26,10 @@ func TestReportSendsARedactedReason(t *testing.T) {
 		"--reason-file",
 		writeSecretFile(t, "phishing, see https://evil.example/#1.0.abc\n"),
 	)
-	if res.code != exitOK || !strings.Contains(res.stdout, "the report was sent") {
-		t.Fatalf("%+v", res)
+	if result.code != exitOK || !strings.Contains(result.stdout, "the report was sent") {
+		t.Fatalf("%+v", result)
 	}
-	files, err := filepath.Glob(filepath.Join(ts.dir, "abuse", "*.jsonl"))
+	files, err := filepath.Glob(filepath.Join(instance.directory, "abuse", "*.jsonl"))
 	if err != nil || len(files) != 1 {
 		t.Fatalf("abuse files %v %v", files, err)
 	}
@@ -46,18 +46,26 @@ func TestReportSendsARedactedReason(t *testing.T) {
 
 func TestReportRefusesALongReasonBeforeAnyRequest(t *testing.T) {
 	t.Parallel()
-	ts := newTestServer(t, nil)
-	link, _ := createText(t, ts, "podvod")
-	before := ts.requests.Load()
+	instance := newTestServer(t, nil)
+	link, _ := createText(t, instance, "podvod")
+	before := instance.requests.Load()
 	for _, reason := range []string{strings.Repeat("ab ", 400), strings.Repeat("# ", 150)} {
-		res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, reason))
-		if res.code != exitUsage || !strings.Contains(res.stderr, "longer than 1000 bytes") ||
-			ts.requests.Load() != before {
-			t.Fatalf("%+v, %d requests", res, ts.requests.Load()-before)
+		result := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, reason))
+		if result.code != exitUsage || !strings.Contains(result.stderr, "longer than 1000 bytes") ||
+			instance.requests.Load() != before {
+			t.Fatalf("%+v, %d requests", result, instance.requests.Load()-before)
 		}
 	}
 	short := strings.Repeat("# ", 50)
-	if res := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, short)); res.code != exitOK {
-		t.Fatalf("a reason that fits after redaction must pass: %+v", res)
+	if result := runWith(
+		t,
+		link,
+		nil,
+		nil,
+		"report",
+		"--reason-file",
+		writeSecretFile(t, short),
+	); result.code != exitOK {
+		t.Fatalf("a reason that fits after redaction must pass: %+v", result)
 	}
 }

@@ -10,7 +10,7 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], &cli.Env{
+	os.Exit(cli.Run(os.Args[1:], &cli.Environment{
 		Stdin:    os.Stdin,
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,

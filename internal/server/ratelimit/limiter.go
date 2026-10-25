@@ -12,7 +12,7 @@ const (
 )
 
 type Limiter struct {
-	mu         sync.Mutex
+	mutex      sync.Mutex
 	rate       float64
 	burst      float64
 	maxEntries int
@@ -36,8 +36,8 @@ func NewLimiter(rate, burst float64) *Limiter {
 }
 
 func (l *Limiter) Allow(key Bucket, now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
 	sinceBase := int64(now.Sub(l.base))
 	bucket, ok := l.buckets[key]
 	if !ok {

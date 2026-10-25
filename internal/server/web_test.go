@@ -85,7 +85,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 		checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
 	}
 	prefetch := map[string]string{"Sec-Purpose": "prefetch"}
-	for _, c := range []struct {
+	for _, testCase := range []struct {
 		request   *testRequest
 		status    int
 		indexable bool
@@ -101,12 +101,12 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 		{&testRequest{method: http.MethodPost, path: "/api/v1/messages", body: []byte("x")}, http.StatusBadRequest, false},
 		{&testRequest{method: http.MethodGet, path: "/m/not-an-id"}, http.StatusNotFound, false},
 	} {
-		name := c.request.method + " " + c.request.path
-		response, _ := harness.do(c.request)
-		if response.StatusCode != c.status {
-			t.Fatalf("%s: status %d, want %d", name, response.StatusCode, c.status)
+		name := testCase.request.method + " " + testCase.request.path
+		response, _ := harness.do(testCase.request)
+		if response.StatusCode != testCase.status {
+			t.Fatalf("%s: status %d, want %d", name, response.StatusCode, testCase.status)
 		}
-		checkSecurityHeaders(t, name, response, c.indexable)
+		checkSecurityHeaders(t, name, response, testCase.indexable)
 	}
 	response, body := harness.do(&testRequest{
 		method:  http.MethodGet,

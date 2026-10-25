@@ -52,9 +52,9 @@ func (c *content) wipe() {
 	clear(c.file)
 }
 
-func createFlags(env *Env) (*flag.FlagSet, *createOptions) {
+func createFlags(environment *Environment) (*flag.FlagSet, *createOptions) {
 	options := &createOptions{}
-	flags := newFlags(env, "create")
+	flags := newFlags(environment, "create")
 	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
 	flags.StringVar(&options.fromFile, "from-file", "", "send this file as an attachment instead of text from stdin")
 	flags.DurationVar(
@@ -86,49 +86,49 @@ func createFlags(env *Env) (*flag.FlagSet, *createOptions) {
 	return flags, options
 }
 
-func runCreate(ctx context.Context, env *Env, args []string) int {
-	flags, options := createFlags(env)
-	if code, done := flagsDone(parseFlags(flags, env, args)); done {
+func runCreate(ctx context.Context, environment *Environment, arguments []string) int {
+	flags, options := createFlags(environment)
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if options.server == "" {
-		options.server = env.Getenv(envServer)
+		options.server = environment.Getenv(envServer)
 	}
 	if options.server == "" {
-		fmt.Fprintln(env.Stderr, program+" create needs --server or "+envServer)
+		fmt.Fprintln(environment.Stderr, program+" create needs --server or "+envServer)
 		return exitUsage
 	}
 	api, err := client.New(options.server)
 	if err != nil {
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
-	message, err := readContent(env, options.fromFile)
+	message, err := readContent(environment, options.fromFile)
 	if err != nil {
-		return failf(env, "%s", err)
+		return failf(environment, "%s", err)
 	}
 	defer message.wipe()
-	passphrase, err := createPassphrase(env, options.passphrase)
+	passphrase, err := createPassphrase(environment, options.passphrase)
 	if err != nil {
-		return failf(env, "passphrase: %s", explain(err))
+		return failf(environment, "passphrase: %s", explain(err))
 	}
 	manage, err := reserveManageFile(options.manageFile)
 	if err != nil {
-		return failf(env, "--manage-token-file: the file already exists or cannot be created")
+		return failf(environment, "--manage-token-file: the file already exists or cannot be created")
 	}
-	created, err := createMessage(ctx, env, api, options, passphrase, &message)
+	created, err := createMessage(ctx, environment, api, options, passphrase, &message)
 	if err != nil {
 		manage.discard()
-		return failf(env, "%s", explain(err))
+		return failf(environment, "%s", explain(err))
 	}
 	defer created.wipe()
-	return reportCreated(env, api, options, &created, manage)
+	return reportCreated(environment, api, options, &created, manage)
 }
 
-func createPassphrase(env *Env, source passphraseSource) (string, error) {
-	if !source.given(env) {
+func createPassphrase(environment *Environment, source passphraseSource) (string, error) {
+	if !source.given(environment) {
 		return "", nil
 	}
-	passphrase, err := readPassphrase(env, source, true)
+	passphrase, err := readPassphrase(environment, source, true)
 	if err != nil {
 		return "", err
 	}
@@ -137,7 +137,7 @@ func createPassphrase(env *Env, source passphraseSource) (string, error) {
 	}
 	if weakPassphrase(passphrase) {
 		fmt.Fprintf(
-			env.Stderr,
+			environment.Stderr,
 			"%s: warning: a passphrase of at least %d words and %d characters is much harder to guess\n",
 			program,
 			weakBelowWords,
@@ -148,7 +148,7 @@ func createPassphrase(env *Env, source passphraseSource) (string, error) {
 }
 
 func reportCreated(
-	env *Env,
+	environment *Environment,
 	api *client.Client,
 	options *createOptions,
 	created *createdMessage,
@@ -156,14 +156,19 @@ func reportCreated(
 ) int {
 	token := formatManageToken(api.Origin(), created.id, &created.manage)
 	if err := manage.write(token); err != nil {
-		fmt.Fprintln(env.Stdout, created.link)
-		return failf(env, "the message was created, but its manage token file could not be written")
+		fmt.Fprintln(environment.Stdout, created.link)
+		return failf(environment, "the message was created, but its manage token file could not be written")
 	}
-	fmt.Fprintln(env.Stdout, created.link)
+	fmt.Fprintln(environment.Stdout, created.link)
 	if options.printManage {
-		fmt.Fprint(env.Stdout, token)
+		fmt.Fprint(environment.Stdout, token)
 	}
-	fmt.Fprintf(env.Stderr, "%s: the link works until %s\n", program, created.expires.Local().Format(time.RFC1123))
+	fmt.Fprintf(
+		environment.Stderr,
+		"%s: the link works until %s\n",
+		program,
+		created.expires.Local().Format(time.RFC1123),
+	)
 	return exitOK
 }
 
@@ -172,16 +177,16 @@ func weakPassphrase(passphrase string) bool {
 	return utf8.RuneCountInString(normalized) < weakBelowChars || len(strings.Fields(normalized)) < weakBelowWords
 }
 
-func readContent(env *Env, fromFile string) (content, error) {
+func readContent(environment *Environment, fromFile string) (content, error) {
 	if fromFile != "" {
 		return readAttachment(fromFile)
 	}
 	var raw []byte
 	var err error
-	if env.Terminal.StdinIsTerminal() {
-		raw, err = env.Terminal.ReadSecret("Message, one line (hidden): ")
+	if environment.Terminal.StdinIsTerminal() {
+		raw, err = environment.Terminal.ReadSecret("Message, one line (hidden): ")
 	} else {
-		raw, err = readLimited(env.Stdin, core.MaxTextBytes)
+		raw, err = readLimited(environment.Stdin, core.MaxTextBytes)
 	}
 	if err != nil {
 		return content{}, err
@@ -235,14 +240,14 @@ func (m *createdMessage) wipe() {
 // createMessage retries with a fresh id when the server refused the id or the proof of work.
 func createMessage(
 	ctx context.Context,
-	env *Env,
+	environment *Environment,
 	api *client.Client,
 	options *createOptions,
 	passphrase string,
 	message *content,
 ) (createdMessage, error) {
 	for attempt := 1; ; attempt++ {
-		created, err := createOnce(ctx, env, api, options, passphrase, message)
+		created, err := createOnce(ctx, environment, api, options, passphrase, message)
 		if attempt == createAttempts || !retryWithNewID(err) {
 			return created, err
 		}
@@ -255,7 +260,7 @@ func retryWithNewID(err error) bool {
 
 func createOnce(
 	ctx context.Context,
-	env *Env,
+	environment *Environment,
 	api *client.Client,
 	options *createOptions,
 	passphrase string,
@@ -286,7 +291,7 @@ func createOnce(
 	}
 	request.IDToken = instance.Create.IDToken
 	if instance.PoW.Required {
-		if request.PoWToken, err = prove(ctx, env, api, id); err != nil {
+		if request.PoWToken, err = prove(ctx, environment, api, id); err != nil {
 			return createdMessage{}, err
 		}
 	}
@@ -376,7 +381,7 @@ func createPolicy(options *createOptions, limits client.Limits, message *content
 }
 
 // prove solves the proof of work and fetches a new challenge once if the first one runs out of time.
-func prove(ctx context.Context, env *Env, api *client.Client, id core.ID) (string, error) {
+func prove(ctx context.Context, environment *Environment, api *client.Client, id core.ID) (string, error) {
 	for round := 1; ; round++ {
 		instance, err := api.Instance(ctx)
 		if err != nil {
@@ -386,7 +391,7 @@ func prove(ctx context.Context, env *Env, api *client.Client, id core.ID) (strin
 			return "", nil
 		}
 		fmt.Fprintf(
-			env.Stderr,
+			environment.Stderr,
 			"%s: the server is busy, solving a proof of work (difficulty %d)\n",
 			program,
 			instance.PoW.Difficulty,

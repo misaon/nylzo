@@ -69,23 +69,23 @@ func unreadable(err error) error {
 	}
 }
 
-func noteSource(env *Env, what, variable string) {
-	fmt.Fprintf(env.Stderr, "%s: using the %s named by %s\n", program, what, variable)
+func noteSource(environment *Environment, what, variable string) {
+	fmt.Fprintf(environment.Stderr, "%s: using the %s named by %s\n", program, what, variable)
 }
 
-func readLink(env *Env, linkFile string) (string, error) {
+func readLink(environment *Environment, linkFile string) (string, error) {
 	var raw []byte
 	var err error
 	switch {
 	case linkFile != "":
 		raw, err = readFileLimited(linkFile, maxSecretInput)
-	case env.Getenv(envLink) != "":
-		noteSource(env, "link", envLink)
-		raw = []byte(env.Getenv(envLink))
-	case env.Terminal.StdinIsTerminal():
-		raw, err = env.Terminal.ReadSecret("Link (hidden): ")
+	case environment.Getenv(envLink) != "":
+		noteSource(environment, "link", envLink)
+		raw = []byte(environment.Getenv(envLink))
+	case environment.Terminal.StdinIsTerminal():
+		raw, err = environment.Terminal.ReadSecret("Link (hidden): ")
 	default:
-		raw, err = readLimited(env.Stdin, maxSecretInput)
+		raw, err = readLimited(environment.Stdin, maxSecretInput)
 	}
 	if err != nil {
 		return "", err
@@ -103,15 +103,15 @@ type passphraseSource struct {
 	ask  bool
 }
 
-func (p passphraseSource) given(env *Env) bool {
-	return p.file != "" || env.Getenv(envPassphrase) != "" || p.ask
+func (p passphraseSource) given(environment *Environment) bool {
+	return p.file != "" || environment.Getenv(envPassphrase) != "" || p.ask
 }
 
-func readPassphrase(env *Env, source passphraseSource, confirm bool) (string, error) {
+func readPassphrase(environment *Environment, source passphraseSource, confirm bool) (string, error) {
 	path := source.file
-	if path == "" && env.Getenv(envPassphrase) != "" {
-		path = env.Getenv(envPassphrase)
-		noteSource(env, "passphrase file", envPassphrase)
+	if path == "" && environment.Getenv(envPassphrase) != "" {
+		path = environment.Getenv(envPassphrase)
+		noteSource(environment, "passphrase file", envPassphrase)
 	}
 	if path != "" && source.ask {
 		return "", errPassphraseSource
@@ -119,7 +119,7 @@ func readPassphrase(env *Env, source passphraseSource, confirm bool) (string, er
 	if path != "" {
 		return passphraseFromFile(path)
 	}
-	first, err := env.Terminal.ReadSecret("Passphrase (hidden): ")
+	first, err := environment.Terminal.ReadSecret("Passphrase (hidden): ")
 	if err != nil {
 		return "", err
 	}
@@ -128,7 +128,7 @@ func readPassphrase(env *Env, source passphraseSource, confirm bool) (string, er
 		return "", errEmpty
 	}
 	if confirm {
-		second, secondErr := env.Terminal.ReadSecret("Passphrase again: ")
+		second, secondErr := environment.Terminal.ReadSecret("Passphrase again: ")
 		if secondErr != nil {
 			return "", secondErr
 		}
@@ -168,23 +168,23 @@ func formatManageToken(origin string, id core.ID, seed *[core.TokenLen]byte) str
 	return fmt.Sprintf("%s/m/%s\n%s\n", origin, id, core.Encode(seed[:]))
 }
 
-func readManageToken(env *Env, file string) (manageToken, error) {
+func readManageToken(environment *Environment, file string) (manageToken, error) {
 	path := file
-	if path == "" && env.Getenv(envManageToken) != "" {
-		path = env.Getenv(envManageToken)
-		noteSource(env, "manage token file", envManageToken)
+	if path == "" && environment.Getenv(envManageToken) != "" {
+		path = environment.Getenv(envManageToken)
+		noteSource(environment, "manage token file", envManageToken)
 	}
 	var raw []byte
 	var err error
 	switch {
 	case path != "":
 		raw, err = readFileLimited(path, maxSecretInput)
-	case env.Terminal.StdinIsTerminal():
+	case environment.Terminal.StdinIsTerminal():
 		return manageToken{}, errors.New(
 			"pass the manage token with --manage-token-file, " + envManageToken + " or on stdin",
 		)
 	default:
-		raw, err = readLimited(env.Stdin, maxSecretInput)
+		raw, err = readLimited(environment.Stdin, maxSecretInput)
 	}
 	if err != nil {
 		return manageToken{}, err

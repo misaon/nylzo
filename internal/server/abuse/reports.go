@@ -34,7 +34,7 @@ type Reports struct {
 	directory string
 	counters  store.Counters
 	logger    *slog.Logger
-	mu        sync.Mutex
+	mutex     sync.Mutex
 }
 
 func NewReports(dataDir string, counters store.Counters, logger *slog.Logger) *Reports {
@@ -71,8 +71,8 @@ func (r *Reports) append(now time.Time, id, reason string) error {
 	if err != nil {
 		return err
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
 	if pruneErr := pruneDirectory(r.directory, now); pruneErr != nil {
 		return pruneErr
 	}
@@ -152,8 +152,8 @@ func filesBytes(directory string) (int64, error) {
 	return total, nil
 }
 
-func reportDate(t time.Time) string {
-	return t.UTC().Format(time.DateOnly)
+func reportDate(moment time.Time) string {
+	return moment.UTC().Format(time.DateOnly)
 }
 
 func reportDay(name string) (string, bool) {

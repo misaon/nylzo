@@ -18,12 +18,12 @@ import (
 
 func newReports(t *testing.T, dataDir string) *abuse.Reports {
 	t.Helper()
-	st, err := sqlite.Open(t.Context(), filepath.Join(dataDir, "nylzo.db"))
+	storage, err := sqlite.Open(t.Context(), filepath.Join(dataDir, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
-	return abuse.NewReports(dataDir, st, slog.New(slog.DiscardHandler))
+	t.Cleanup(func() { storage.Close() })
+	return abuse.NewReports(dataDir, storage, slog.New(slog.DiscardHandler))
 }
 
 func dayFile(dataDir string, day time.Time) string {
@@ -74,8 +74,8 @@ func TestReportsAreCappedPerMessageAndDay(t *testing.T) {
 		data, _ := os.ReadFile(dayFile(dataDir, day))
 		return strings.Count(string(data), "\n")
 	}
-	if n := stored(now); n != 3 {
-		t.Fatalf("one message stored %d reports in a day, want 3", n)
+	if count := stored(now); count != 3 {
+		t.Fatalf("one message stored %d reports in a day, want 3", count)
 	}
 	if err := os.Truncate(dayFile(dataDir, now), 16<<20); err != nil {
 		t.Fatal(err)
@@ -94,8 +94,8 @@ func TestReportsAreCappedPerMessageAndDay(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := stored(now); n != 3 {
-		t.Fatalf("a report refused for full files used up the message budget: %d", n)
+	if count := stored(now); count != 3 {
+		t.Fatalf("a report refused for full files used up the message budget: %d", count)
 	}
 	tomorrow := now.Add(24 * time.Hour)
 	if err := reports.Record(t.Context(), tomorrow, reported, "spam"); err != nil || stored(tomorrow) != 1 {

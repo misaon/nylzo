@@ -267,7 +267,8 @@ func (s *Server) findLease(
 	}
 	for _, lease := range leases {
 		if s.ring.Verify(pepper.Lease, raw, lease.MAC, lease.PepperID) {
-			return lease, lease.Active(now), nil
+			active := lease.Active(now)
+			return lease, active, nil
 		}
 	}
 	return store.Lease{}, false, nil

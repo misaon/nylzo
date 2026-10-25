@@ -23,7 +23,7 @@ func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 	id := core.NewID()
 	fileName := hex.EncodeToString([]byte(id.String()))
 	hexPath := "/data/blobs/" + fileName
-	for name, c := range map[string]struct {
+	for name, testCase := range map[string]struct {
 		err  error
 		want string
 	}{
@@ -47,11 +47,11 @@ func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 		"file name":     {errors.New("disk: " + fileName + " is busy"), "disk: [redacted] is busy"},
 		"plain message": {errors.New("sqlite: database is locked"), "sqlite: database is locked"},
 	} {
-		got := logging.ErrorText(c.err)
+		got := logging.ErrorText(testCase.err)
 		leaks := strings.Contains(got, "/") || strings.Contains(got, id.String()) ||
 			strings.Contains(got, fileName) || strings.Contains(got, hex.EncodeToString(id[:]))
-		if got != c.want || leaks {
-			t.Errorf("%s: %q, want %q", name, got, c.want)
+		if got != testCase.want || leaks {
+			t.Errorf("%s: %q, want %q", name, got, testCase.want)
 		}
 	}
 }
@@ -94,8 +94,8 @@ func TestHTTPErrorLogKeepsCategoriesOnlyAndLimitsThem(t *testing.T) {
 			t.Fatalf("%s missing: %s", want, logs)
 		}
 	}
-	if n := strings.Count(logs, `"level":"WARN","msg":"net/http error"`); n != 20 {
-		t.Fatalf("net/http warnings must be limited to a burst of 20, got %d", n)
+	if count := strings.Count(logs, `"level":"WARN","msg":"net/http error"`); count != 20 {
+		t.Fatalf("net/http warnings must be limited to a burst of 20, got %d", count)
 	}
 	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, "boom") {
 		t.Fatal("net/http error text reached the log")

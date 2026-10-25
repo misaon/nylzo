@@ -292,11 +292,11 @@ type trackingReader struct {
 }
 
 func (t *trackingReader) Read(buffer []byte) (int, error) {
-	n, err := t.reader.Read(buffer)
+	count, err := t.reader.Read(buffer)
 	if err != nil && !errors.Is(err, io.EOF) {
 		t.err = err
 	}
-	return n, err
+	return count, err
 }
 
 func (s *Server) receiveBlob(w http.ResponseWriter, r *http.Request, request *createRequest) (core.Header, bool) {

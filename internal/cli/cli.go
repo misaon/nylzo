@@ -32,7 +32,7 @@ const (
 	exitInterrupted = 130
 )
 
-type Env struct {
+type Environment struct {
 	Stdin     io.Reader
 	Stdout    io.Writer
 	Stderr    io.Writer
@@ -43,14 +43,14 @@ type Env struct {
 	WebClient func() (webclient.Build, error)
 }
 
-func (e *Env) webClient() (webclient.Build, error) {
+func (e *Environment) webClient() (webclient.Build, error) {
 	if e.WebClient != nil {
 		return e.WebClient()
 	}
 	return server.EmbeddedWebClient()
 }
 
-func (e *Env) tempDir() string {
+func (e *Environment) tempDir() string {
 	if e.TempDir != "" {
 		return e.TempDir
 	}
@@ -60,7 +60,7 @@ func (e *Env) tempDir() string {
 type command struct {
 	name    string
 	summary string
-	run     func(context.Context, *Env, []string) int
+	run     func(context.Context, *Environment, []string) int
 }
 
 var (
@@ -90,29 +90,29 @@ func commands() []command {
 }
 
 // Run refuses a link with its key anywhere in the arguments, where other processes could read it (AK14).
-func Run(args []string, env *Env) int {
-	if slices.ContainsFunc(args, fragmentLike.MatchString) {
+func Run(arguments []string, environment *Environment) int {
+	if slices.ContainsFunc(arguments, fragmentLike.MatchString) {
 		fmt.Fprintln(
-			env.Stderr,
+			environment.Stderr,
 			program+": a link with its key must not be on the command line; pass it on stdin, with --link-file or in NYLZO_LINK",
 		)
 		return exitUsage
 	}
-	if len(args) == 0 {
-		fmt.Fprint(env.Stderr, usage())
+	if len(arguments) == 0 {
+		fmt.Fprint(environment.Stderr, usage())
 		return exitUsage
 	}
-	if slices.Contains([]string{"help", "-h", "--help"}, args[0]) {
-		fmt.Fprint(env.Stdout, usage())
+	if slices.Contains([]string{"help", "-h", "--help"}, arguments[0]) {
+		fmt.Fprint(environment.Stdout, usage())
 		return exitOK
 	}
-	index := slices.IndexFunc(commands(), func(candidate command) bool { return candidate.name == args[0] })
+	index := slices.IndexFunc(commands(), func(candidate command) bool { return candidate.name == arguments[0] })
 	if index < 0 {
 		name := "unknown command"
-		if commandLike.MatchString(args[0]) {
-			name += " " + args[0]
+		if commandLike.MatchString(arguments[0]) {
+			name += " " + arguments[0]
 		}
-		fmt.Fprintf(env.Stderr, "%s: %s\n\n%s", program, name, usage())
+		fmt.Fprintf(environment.Stderr, "%s: %s\n\n%s", program, name, usage())
 		return exitUsage
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -121,7 +121,7 @@ func Run(args []string, env *Env) int {
 		<-ctx.Done()
 		stop()
 	}()
-	return commands()[index].run(ctx, env, args[1:])
+	return commands()[index].run(ctx, environment, arguments[1:])
 }
 
 func usage() string {
@@ -144,27 +144,33 @@ configuration from NYLZO_* variables, described in README.md.
 	return out.String()
 }
 
-func newFlags(env *Env, name string) *flag.FlagSet {
+func newFlags(environment *Environment, name string) *flag.FlagSet {
 	flags := flag.NewFlagSet(program+" "+name, flag.ContinueOnError)
-	flags.SetOutput(env.Stderr)
+	flags.SetOutput(environment.Stderr)
 	return flags
 }
 
 // parseFlags reports bad flags without echoing their values, which could hold a secret.
-func parseFlags(flags *flag.FlagSet, env *Env, args []string) error {
+func parseFlags(flags *flag.FlagSet, environment *Environment, arguments []string) error {
 	flags.SetOutput(io.Discard)
-	err := flags.Parse(args)
-	flags.SetOutput(env.Stderr)
+	err := flags.Parse(arguments)
+	flags.SetOutput(environment.Stderr)
 	switch {
 	case errors.Is(err, flag.ErrHelp):
-		flags.SetOutput(env.Stdout)
+		flags.SetOutput(environment.Stdout)
 		flags.Usage()
 		return errHelp
 	case err != nil:
 		if match := badFlagValue.FindStringSubmatch(err.Error()); match != nil {
-			fmt.Fprintf(env.Stderr, "%s: invalid value for -%s; run %s -h\n", flags.Name(), match[1], flags.Name())
+			fmt.Fprintf(
+				environment.Stderr,
+				"%s: invalid value for -%s; run %s -h\n",
+				flags.Name(),
+				match[1],
+				flags.Name(),
+			)
 		} else {
-			fmt.Fprintf(env.Stderr, "%s: unknown or incomplete flag; run %s -h\n", flags.Name(), flags.Name())
+			fmt.Fprintf(environment.Stderr, "%s: unknown or incomplete flag; run %s -h\n", flags.Name(), flags.Name())
 		}
 		return errUsage
 	case flags.NArg() > 0:
@@ -173,7 +179,7 @@ func parseFlags(flags *flag.FlagSet, env *Env, args []string) error {
 			reason = "takes no arguments, and secrets never go on the command line"
 		}
 		fmt.Fprintf(
-			env.Stderr,
+			environment.Stderr,
 			"%s %s; pass links, passphrases and tokens on stdin, in files or from the terminal\n",
 			flags.Name(),
 			reason,
@@ -195,29 +201,29 @@ func flagsDone(err error) (int, bool) {
 	}
 }
 
-func failf(env *Env, format string, arguments ...any) int {
-	fmt.Fprintln(env.Stderr, program+": "+printable(fmt.Sprintf(format, arguments...)))
+func failf(environment *Environment, format string, arguments ...any) int {
+	fmt.Fprintln(environment.Stderr, program+": "+printable(fmt.Sprintf(format, arguments...)))
 	return exitError
 }
 
 func printable(text string) string {
 	var out strings.Builder
-	for _, r := range text {
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == utf8.RuneError {
-			fmt.Fprintf(&out, "\\u%04x", r)
+	for _, character := range text {
+		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError {
+			fmt.Fprintf(&out, "\\u%04x", character)
 			continue
 		}
-		out.WriteRune(r)
+		out.WriteRune(character)
 	}
 	return out.String()
 }
 
-func runVersion(_ context.Context, env *Env, args []string) int {
-	flags := newFlags(env, "version")
-	if code, done := flagsDone(parseFlags(flags, env, args)); done {
+func runVersion(_ context.Context, environment *Environment, arguments []string) int {
+	flags := newFlags(environment, "version")
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	fmt.Fprintln(env.Stdout, buildVersion(env.Version))
+	fmt.Fprintln(environment.Stdout, buildVersion(environment.Version))
 	return exitOK
 }
 

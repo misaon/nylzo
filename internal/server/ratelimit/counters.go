@@ -36,7 +36,7 @@ type Hit struct {
 }
 
 type Counters struct {
-	mu         sync.Mutex
+	mutex      sync.Mutex
 	maxEntries int
 	tables     map[string]*counterTable
 }
@@ -58,8 +58,8 @@ func NewCounters() *Counters {
 
 // Count stops at the first hit over its limit, so a refused request spends no later budget.
 func (c *Counters) Count(hits []Hit, now time.Time) time.Duration {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	for i := range hits {
 		hit := &hits[i]
 		entry := c.add(hit, now)

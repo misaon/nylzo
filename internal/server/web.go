@@ -28,9 +28,9 @@ func embeddedWebFiles() (fs.FS, error) {
 }
 
 func WithWebFiles(files fs.FS) Option {
-	return func(s *Server) {
+	return func(server *Server) {
 		if files != nil {
-			s.webFiles = files
+			server.webFiles = files
 		}
 	}
 }

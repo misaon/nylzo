@@ -21,26 +21,26 @@ var (
 	windowsDevice = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$) *(\.|$)`)
 )
 
-func invisible(r rune) bool {
-	switch r {
+func invisible(character rune) bool {
+	switch character {
 	case 0x115F, 0x1160, 0x3164, 0xFFA0:
 		return true
 	default:
-		return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
+		return unicode.In(character, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
 	}
 }
 
 // attachmentName makes a received file name safe on every system the same way the web client does.
 func attachmentName(name string) string {
-	clean := strings.Map(func(r rune) rune {
-		if invisible(r) {
+	clean := strings.Map(func(character rune) rune {
+		if invisible(character) {
 			return -1
 		}
-		return r
+		return character
 	}, norm.NFC.String(strings.ToValidUTF8(name, "")))
 	clean = reservedRunes.ReplaceAllString(clean, "_")
 	clean = strings.Join(strings.FieldsFunc(clean, unicode.IsSpace), " ")
-	dotOrSpace := func(r rune) bool { return r == '.' || r == ' ' }
+	dotOrSpace := func(character rune) bool { return character == '.' || character == ' ' }
 	clean = strings.TrimRightFunc(strings.TrimLeftFunc(clean, dotOrSpace), dotOrSpace)
 	if windowsDevice.MatchString(clean) {
 		clean = "_" + clean
@@ -60,8 +60,8 @@ func attachmentName(name string) string {
 
 func truncateBytes(text string, limit int) string {
 	used := 0
-	for i, r := range text {
-		size := utf8.RuneLen(r)
+	for i, character := range text {
+		size := utf8.RuneLen(character)
 		if used+size > limit {
 			return text[:i]
 		}

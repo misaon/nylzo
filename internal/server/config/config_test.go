@@ -74,7 +74,7 @@ func TestFromEnvReadsEveryVariable(t *testing.T) {
 
 func TestFromEnvRefusesInvalidValues(t *testing.T) {
 	t.Parallel()
-	for _, c := range []struct {
+	for _, testCase := range []struct {
 		name, value string
 	}{
 		{"NYLZO_PEPPER", "short"},
@@ -104,9 +104,9 @@ func TestFromEnvRefusesInvalidValues(t *testing.T) {
 		{"NYLZO_MIN_FREE_BYTES", "-1"},
 		{"NYLZO_PUBLIC_URL", "https://nylzo.example/"},
 	} {
-		_, err := config.FromEnv(withPepper(c.name, c.value), true)
-		if !errors.Is(err, config.ErrInvalid) || !strings.Contains(err.Error(), c.name) {
-			t.Errorf("%s=%s: want an error naming the variable, got %v", c.name, c.value, err)
+		_, err := config.FromEnv(withPepper(testCase.name, testCase.value), true)
+		if !errors.Is(err, config.ErrInvalid) || !strings.Contains(err.Error(), testCase.name) {
+			t.Errorf("%s=%s: want an error naming the variable, got %v", testCase.name, testCase.value, err)
 		}
 	}
 	if _, err := config.FromEnv(
@@ -121,15 +121,15 @@ func TestFromEnvRefusesInvalidValues(t *testing.T) {
 func TestValidateRefusesSettingsOutsideTheLimits(t *testing.T) {
 	t.Parallel()
 	for name, change := range map[string]func(*config.Server){
-		"no PoW slot":         func(s *config.Server) { s.PoWConcurrency = 0 },
-		"no stream slot":      func(s *config.Server) { s.MaxStreams = 0 },
-		"negative free":       func(s *config.Server) { s.MinFreeBytes = -1 },
-		"zero burst":          func(s *config.Server) { s.Rates.BucketBurst = 0 },
-		"zero rate":           func(s *config.Server) { s.Rates.SourcePerSecond = 0 },
-		"negative sweep":      func(s *config.Server) { s.SweepInterval = -time.Second },
-		"stale object limit":  func(s *config.Server) { s.Limits.MaxFileBytes = 1 << 20 },
-		"overflowing limit":   func(s *config.Server) { s.Rates.CreatePerHour = 1 << 62 },
-		"plain http publicly": func(s *config.Server) { s.PublicURL = "http://nylzo.example" },
+		"no PoW slot":         func(settings *config.Server) { settings.PoWConcurrency = 0 },
+		"no stream slot":      func(settings *config.Server) { settings.MaxStreams = 0 },
+		"negative free":       func(settings *config.Server) { settings.MinFreeBytes = -1 },
+		"zero burst":          func(settings *config.Server) { settings.Rates.BucketBurst = 0 },
+		"zero rate":           func(settings *config.Server) { settings.Rates.SourcePerSecond = 0 },
+		"negative sweep":      func(settings *config.Server) { settings.SweepInterval = -time.Second },
+		"stale object limit":  func(settings *config.Server) { settings.Limits.MaxFileBytes = 1 << 20 },
+		"overflowing limit":   func(settings *config.Server) { settings.Rates.CreatePerHour = 1 << 62 },
+		"plain http publicly": func(settings *config.Server) { settings.PublicURL = "http://nylzo.example" },
 	} {
 		settings := config.Defaults()
 		change(&settings)
@@ -141,9 +141,9 @@ func TestValidateRefusesSettingsOutsideTheLimits(t *testing.T) {
 
 func TestPepperFromFile(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	directory := t.TempDir()
 	write := func(name, content string) string {
-		path := filepath.Join(dir, name)
+		path := filepath.Join(directory, name)
 		if err := os.WriteFile(path, []byte(content), 0o400); err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +169,7 @@ func TestPepperFromFile(t *testing.T) {
 	}
 	for name, variables := range map[string]map[string]string{
 		"both set":       {"NYLZO_PEPPER": currentPepper, "NYLZO_PEPPER_FILE": write("both", currentPepper)},
-		"missing file":   {"NYLZO_PEPPER_FILE": filepath.Join(dir, "absent")},
+		"missing file":   {"NYLZO_PEPPER_FILE": filepath.Join(directory, "absent")},
 		"empty file":     {"NYLZO_PEPPER_FILE": write("empty", "\n")},
 		"bad content":    {"NYLZO_PEPPER_FILE": write("bad", "not a pepper")},
 		"too large":      {"NYLZO_PEPPER_FILE": write("large", currentPepper+strings.Repeat(" ", 4097))},
@@ -188,7 +188,7 @@ func TestPepperFromFile(t *testing.T) {
 
 func TestOperatorConfiguration(t *testing.T) {
 	t.Parallel()
-	for _, c := range []struct {
+	for _, testCase := range []struct {
 		name      string
 		variables map[string]string
 		valid     bool
@@ -217,8 +217,8 @@ func TestOperatorConfiguration(t *testing.T) {
 		{"address with a leading dot", map[string]string{"NYLZO_CONTACT": ".a@example.org"}, false},
 		{"address without a dot in the domain", map[string]string{"NYLZO_CONTACT": "abuse@localhost"}, false},
 	} {
-		if _, err := config.FromEnv(environment(c.variables), false); (err == nil) != c.valid {
-			t.Errorf("%s: %v, want valid %v", c.name, err, c.valid)
+		if _, err := config.FromEnv(environment(testCase.variables), false); (err == nil) != testCase.valid {
+			t.Errorf("%s: %v, want valid %v", testCase.name, err, testCase.valid)
 		}
 	}
 }

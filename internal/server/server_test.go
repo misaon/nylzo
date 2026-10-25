@@ -34,41 +34,41 @@ import (
 
 func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	addr := harness.listen()
-	var conns []net.Conn
+	address := harness.listen()
+	var connections []net.Conn
 	t.Cleanup(func() {
-		for _, c := range conns {
-			c.Close()
+		for _, connection := range connections {
+			connection.Close()
 		}
 	})
 	for range 100 {
-		c, err := net.Dial("tcp", addr)
+		connection, err := net.Dial("tcp", address)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprint(c, "GET /healthz HTTP/1.1\r\nHost: nylzo\r\nX-Slow: ")
-		conns = append(conns, c)
+		fmt.Fprint(connection, "GET /healthz HTTP/1.1\r\nHost: nylzo\r\nX-Slow: ")
+		connections = append(connections, connection)
 	}
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
 	for i := range 100 {
-		c, err := net.Dial("tcp", addr)
+		connection, err := net.Dial("tcp", address)
 		if err != nil {
 			t.Fatal(err)
 		}
 		liar := newMessage(t, core.KDFNone, "", 1, 3600, "liar")
 		fmt.Fprintf(
-			c,
+			connection,
 			"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 10.9.%d.1\r\nContent-Length: %d\r\nX-Nylzo-Create: %s\r\n\r\n",
 			i,
 			len(liar.object),
 			harness.withIDToken(liar.createHeader(0)),
 		)
-		c.Write(liar.object[:20])
-		conns = append(conns, c)
+		connection.Write(liar.object[:20])
+		connections = append(connections, connection)
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
 	start := time.Now()
-	response, err := client.Get("http://" + addr + "/healthz")
+	response, err := client.Get("http://" + address + "/healthz")
 	if err != nil {
 		t.Fatalf("healthz during slowloris: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 	}
 	r, _ := http.NewRequest(
 		http.MethodPost,
-		"http://"+addr+"/api/v1/messages",
+		"http://"+address+"/api/v1/messages",
 		strings.NewReader(string(message.object)),
 	)
 	r.Header.Set("X-Nylzo-Create", harness.withIDToken(message.createHeader(0)))
@@ -101,23 +101,23 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		{"too-large", fmt.Sprintf("Content-Length: %d\r\n", tooLarge), tooLarge, "413"},
 		{"too-large-mismatch", fmt.Sprintf("Content-Length: %d\r\n", tooLarge), 0, "400"},
 	}
-	for _, c := range checks {
-		conn, dialErr := net.Dial("tcp", addr)
+	for _, check := range checks {
+		connection, dialErr := net.Dial("tcp", address)
 		if dialErr != nil {
 			t.Fatal(dialErr)
 		}
 		probe := newMessage(t, core.KDFNone, "", 1, 3600, "probe")
-		conn.SetDeadline(time.Now().Add(2 * time.Second))
+		connection.SetDeadline(time.Now().Add(2 * time.Second))
 		fmt.Fprintf(
-			conn,
+			connection,
 			"POST /api/v1/messages HTTP/1.1\r\nHost: nylzo\r\nX-Forwarded-For: 192.0.2.9\r\n%sX-Nylzo-Create: %s\r\n\r\n",
-			c.header,
-			harness.withIDToken(probe.createHeader(c.sizeOverride)),
+			check.header,
+			harness.withIDToken(probe.createHeader(check.sizeOverride)),
 		)
-		line, readErr := bufio.NewReader(conn).ReadString('\n')
-		conn.Close()
-		if readErr != nil || !strings.Contains(line, " "+c.status+" ") {
-			t.Fatalf("%s: %q %v (response must arrive before any body is sent)", c.name, line, readErr)
+		line, readErr := bufio.NewReader(connection).ReadString('\n')
+		connection.Close()
+		if readErr != nil || !strings.Contains(line, " "+check.status+" ") {
+			t.Fatalf("%s: %q %v (response must arrive before any body is sent)", check.name, line, readErr)
 		}
 	}
 }
@@ -125,18 +125,18 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 func TestH2CReceiveBufferIsBounded(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	c := harness.server.HTTPServer().HTTP2
-	if c == nil || c.MaxReceiveBufferPerStream < 64<<10 || c.MaxReceiveBufferPerStream > 256<<10 ||
-		c.MaxReceiveBufferPerConnection < 4*c.MaxReceiveBufferPerStream ||
-		c.MaxReceiveBufferPerConnection > 1<<20 {
-		t.Fatalf("h2c must bound unread body per stream and leave the connection room for other streams: %+v", c)
+	http2 := harness.server.HTTPServer().HTTP2
+	if http2 == nil || http2.MaxReceiveBufferPerStream < 64<<10 || http2.MaxReceiveBufferPerStream > 256<<10 ||
+		http2.MaxReceiveBufferPerConnection < 4*http2.MaxReceiveBufferPerStream ||
+		http2.MaxReceiveBufferPerConnection > 1<<20 {
+		t.Fatalf("h2c must bound unread body per stream and leave the connection room for other streams: %+v", http2)
 	}
 }
 
 func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	addr := harness.listen()
+	address := harness.listen()
 	var protocols http.Protocols
 	protocols.SetUnencryptedHTTP2(true)
 	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
@@ -147,7 +147,7 @@ func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
 		request, err := http.NewRequestWithContext(
 			httptrace.WithClientTrace(t.Context(), trace),
 			method,
-			"http://"+addr+path,
+			"http://"+address+path,
 			http.NoBody,
 		)
 		if err != nil {
@@ -179,48 +179,48 @@ type gatedPut struct {
 	release chan struct{}
 }
 
-func (b *gatedPut) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
+func (b *gatedPut) Put(ctx context.Context, ref string, body io.Reader, size int64) error {
 	close(b.entered)
 	<-b.release
-	return b.Blobs.Put(ctx, ref, r, size)
+	return b.Blobs.Put(ctx, ref, body, size)
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
-	dir := t.TempDir()
-	database, err := sqlite.Open(t.Context(), filepath.Join(dir, "nylzo.db"))
+	directory := t.TempDir()
+	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { database.Close() })
-	blobs, err := disk.New(dir)
+	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	gated := &gatedPut{Blobs: blobs, entered: make(chan struct{}), release: make(chan struct{})}
 	settings := config.Defaults()
-	settings.DataDir = dir
+	settings.DataDir = directory
 	settings.Pepper = bytes.Repeat([]byte{1}, 32)
-	s, err := New(&settings, database, gated, WithLogger(slog.New(slog.DiscardHandler)))
+	server, err := New(&settings, database, gated, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	hs := s.HTTPServer()
-	go hs.Serve(ln)
-	t.Cleanup(func() { hs.Close() })
+	httpServer := server.HTTPServer()
+	go httpServer.Serve(listener)
+	t.Cleanup(func() { httpServer.Close() })
 	var protocols http.Protocols
 	protocols.SetUnencryptedHTTP2(true)
 	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}}
-	base := "http://" + ln.Addr().String()
+	base := "http://" + listener.Addr().String()
 
 	id := core.NewID()
-	token, _ := s.idTokens.Issue(id, s.clock())
+	token, _ := server.idTokens.Issue(id, server.clock())
 	readKey, manageKey := core.PublicKey(core.NewSecret()), core.PublicKey(core.NewSecret())
 	size := int64(256 << 10)
-	hdr, _ := json.Marshal(
+	header, _ := json.Marshal(
 		map[string]any{
 			"id":         id.String(),
 			"id_token":   token,
@@ -235,12 +235,12 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	done := make(chan struct{})
 	stalled := make(chan struct{})
 	object := append(core.NewHeader(core.KDFNone).Bytes(), make([]byte, size-core.HeaderLen)...)
-	body := &signalReader{r: bytes.NewReader(object), after: h2cStreamBuffer, signal: stalled}
+	body := &signalReader{reader: bytes.NewReader(object), after: h2cStreamBuffer, signal: stalled}
 	go func() {
 		defer close(done)
 		request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/api/v1/messages", body)
 		request.ContentLength = size
-		request.Header.Set("X-Nylzo-Create", core.Encode(hdr))
+		request.Header.Set("X-Nylzo-Create", core.Encode(header))
 		if response, doErr := client.Do(request); doErr == nil {
 			io.Copy(io.Discard, response.Body)
 			response.Body.Close()
@@ -265,19 +265,19 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 }
 
 type signalReader struct {
-	r      io.Reader
+	reader io.Reader
 	read   int
 	after  int
 	signal chan struct{}
 }
 
-func (s *signalReader) Read(p []byte) (int, error) {
-	n, err := s.r.Read(p)
-	if s.read <= s.after && s.read+n > s.after {
+func (s *signalReader) Read(data []byte) (int, error) {
+	count, err := s.reader.Read(data)
+	if s.read <= s.after && s.read+count > s.after {
 		close(s.signal)
 	}
-	s.read += n
-	return n, err
+	s.read += count
+	return count, err
 }
 
 type deadlineWriter struct {
@@ -286,13 +286,13 @@ type deadlineWriter struct {
 	read, write time.Time
 }
 
-func (w *deadlineWriter) SetReadDeadline(t time.Time) error {
-	w.read = t
+func (w *deadlineWriter) SetReadDeadline(deadline time.Time) error {
+	w.read = deadline
 	return nil
 }
 
-func (w *deadlineWriter) SetWriteDeadline(t time.Time) error {
-	w.write = t
+func (w *deadlineWriter) SetWriteDeadline(deadline time.Time) error {
+	w.write = deadline
 	return nil
 }
 
@@ -303,12 +303,12 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if want <= writeTimeout || store.LeaseFor(size) != want || store.LeaseFor(1000) != store.LeaseDuration {
 		t.Fatalf("lease for %d bytes %v, small %v", size, store.LeaseFor(size), store.LeaseFor(1000))
 	}
-	s, _ := testServer(t, openStore(t), nil)
-	w := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
+	blobServer, _ := testServer(t, openStore(t), nil)
+	blobWriter := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	start := time.Now()
-	s.serveBlob(w, r, &store.Message{ID: "x"}, "", strings.NewReader("x"), size)
-	if got := w.write.Sub(start); got < want || got > want+time.Second {
+	blobServer.serveBlob(blobWriter, r, &store.Message{ID: "x"}, "", strings.NewReader("x"), size)
+	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
 
@@ -324,16 +324,16 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := New(&settings, database, blobs, WithLogger(slog.New(slog.DiscardHandler)))
+	server, err := New(&settings, database, blobs, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := core.NewID()
 	readKey, manageKey := core.PublicKey(core.NewSecret()), core.PublicKey(core.NewSecret())
-	hdr, _ := json.Marshal(
+	header, _ := json.Marshal(
 		map[string]any{
 			"id":         id.String(),
-			"id_token":   issueIDToken(cs, id),
+			"id_token":   issueIDToken(server, id),
 			"read_key":   core.Encode(readKey[:]),
 			"manage_key": core.Encode(manageKey[:]),
 			"kdf_id":     0,
@@ -345,14 +345,14 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(""))
 	request.ContentLength = size
 	request.Header.Set("Content-Length", strconv.Itoa(size))
-	request.Header.Set("X-Nylzo-Create", core.Encode(hdr))
-	cw := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
+	request.Header.Set("X-Nylzo-Create", core.Encode(header))
+	writer := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	start = time.Now()
-	cs.handleCreate(cw, request)
-	if got := cw.read.Sub(start); got < want || got > want+time.Second {
+	server.handleCreate(writer, request)
+	if got := writer.read.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte upload may take %v, got a read deadline %v ahead", size, want, got)
 	}
-	if got := cw.write.Sub(start); got < want+writeTimeout || got > want+writeTimeout+time.Second {
+	if got := writer.write.Sub(start); got < want+writeTimeout || got > want+writeTimeout+time.Second {
 		t.Fatalf(
 			"the response to a %d byte upload got a write deadline %v ahead, want %v after the body",
 			size,
@@ -363,10 +363,10 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 
 	body := append(core.NewHeader(core.KDFNone).Bytes(), make([]byte, 1000)...)
 	id = core.NewID()
-	hdr, _ = json.Marshal(
+	header, _ = json.Marshal(
 		map[string]any{
 			"id":         id.String(),
-			"id_token":   issueIDToken(cs, id),
+			"id_token":   issueIDToken(server, id),
 			"read_key":   core.Encode(readKey[:]),
 			"manage_key": core.Encode(manageKey[:]),
 			"kdf_id":     0,
@@ -377,39 +377,39 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	)
 	request = httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(body))
 	request.Header.Set("Content-Length", strconv.Itoa(len(body)))
-	request.Header.Set("X-Nylzo-Create", core.Encode(hdr))
+	request.Header.Set("X-Nylzo-Create", core.Encode(header))
 	record := httptest.NewRecorder()
-	cw = &deadlineWriter{ResponseWriter: record}
-	cs.handleCreate(cw, request)
+	writer = &deadlineWriter{ResponseWriter: record}
+	server.handleCreate(writer, request)
 	stored := time.Now()
 	if record.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", record.Code, record.Body)
 	}
-	if got := cw.write.Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
+	if got := writer.write.Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
 	}
 }
 
-func issueIDToken(s *Server, id core.ID) string {
-	token, _ := s.idTokens.Issue(id, s.clock())
+func issueIDToken(server *Server, id core.ID) string {
+	token, _ := server.idTokens.Issue(id, server.clock())
 	return token
 }
 
 type lockedBuffer struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+	mutex  sync.Mutex
+	buffer bytes.Buffer
 }
 
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.Write(p)
+func (b *lockedBuffer) Write(data []byte) (int, error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.buffer.Write(data)
 }
 
 func (b *lockedBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.buf.String()
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.buffer.String()
 }
 
 func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
@@ -440,10 +440,10 @@ func openStore(tb testing.TB) *sqlite.Store {
 
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	t.Parallel()
-	s, _ := testServer(t, openStore(t), func(c *config.Server) { c.MaxStreams = 1 })
+	server, _ := testServer(t, openStore(t), func(settings *config.Server) { settings.MaxStreams = 1 })
 	other := netip.MustParseAddr("198.51.100.7")
-	source, ranges := s.addressKey.Source(other), s.addressKey.Range(other)
-	if !s.streams.Take(source, ranges) {
+	source, ranges := server.addressKey.Source(other), server.addressKey.Range(other)
+	if !server.streams.Take(source, ranges) {
 		t.Fatal("the only slot was not free")
 	}
 	id := core.NewID().String()
@@ -451,34 +451,40 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 		httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody),
 		httptest.NewRequest(http.MethodGet, "/api/v1/messages/"+id+"/blob", http.NoBody),
 	} {
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, request)
-		if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") != "5" {
-			t.Fatalf("%s with every stream slot busy: %d %q", request.URL.Path, w.Code, w.Header().Get("Retry-After"))
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusServiceUnavailable || recorder.Header().Get("Retry-After") != "5" {
+			t.Fatalf(
+				"%s with every stream slot busy: %d %q",
+				request.URL.Path,
+				recorder.Code,
+				recorder.Header().Get("Retry-After"),
+			)
 		}
 	}
-	s.streams.Release(source, ranges)
-	w := httptest.NewRecorder()
-	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody))
-	if w.Code != http.StatusNotFound || !s.streams.Take(source, ranges) {
-		t.Fatalf("a claim with a free slot: %d, or it kept its slot", w.Code)
+	server.streams.Release(source, ranges)
+	recorder := httptest.NewRecorder()
+	server.Handler().
+		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody))
+	if recorder.Code != http.StatusNotFound || !server.streams.Take(source, ranges) {
+		t.Fatalf("a claim with a free slot: %d, or it kept its slot", recorder.Code)
 	}
 }
 
 func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	t.Parallel()
-	s, _ := testServer(t, openStore(t), func(c *config.Server) { c.MaxStreams = 64 })
-	claim := func(addr string) int {
+	server, _ := testServer(t, openStore(t), func(settings *config.Server) { settings.MaxStreams = 64 })
+	claim := func(address string) int {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+core.NewID().String()+"/claim", http.NoBody)
-		request.RemoteAddr = addr + ":1234"
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, request)
-		return w.Code
+		request.RemoteAddr = address + ":1234"
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, request)
+		return recorder.Code
 	}
-	hold := func(addr string) {
-		a := netip.MustParseAddr(addr)
-		if !s.streams.Take(s.addressKey.Source(a), s.addressKey.Range(a)) {
-			t.Fatalf("no slot for %s", addr)
+	hold := func(address string) {
+		parsed := netip.MustParseAddr(address)
+		if !server.streams.Take(server.addressKey.Source(parsed), server.addressKey.Range(parsed)) {
+			t.Fatalf("no slot for %s", address)
 		}
 	}
 	hold("203.0.113.1")
@@ -502,19 +508,19 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 
 func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	t.Parallel()
-	s, _ := testServer(t, openStore(t), nil)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	server, _ := testServer(t, openStore(t), nil)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	hs := s.HTTPServer()
-	go hs.Serve(ln)
-	t.Cleanup(func() { hs.Close() })
-	conn, err := net.Dial("tcp", ln.Addr().String())
+	httpServer := server.HTTPServer()
+	go httpServer.Serve(listener)
+	t.Cleanup(func() { httpServer.Close() })
+	connection, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer connection.Close()
 	frame := func(kind byte, payload []byte) []byte {
 		size := len(payload)
 		return append([]byte{byte(size >> 16), byte(size >> 8), byte(size), kind, 0, 0, 0, 0, 0}, payload...)
@@ -523,19 +529,19 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	out = append(out, "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"...)
 	out = append(out, frame(0x4, nil)...)
 	out = append(out, frame(0xfa, make([]byte, h2cMaxFrame+1))...)
-	if _, writeErr := conn.Write(out); writeErr != nil {
+	if _, writeErr := connection.Write(out); writeErr != nil {
 		t.Fatal(writeErr)
 	}
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	r := bufio.NewReader(conn)
+	connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	reader := bufio.NewReader(connection)
 	head := make([]byte, 9)
 	for {
-		if _, readFullErr := io.ReadFull(r, head); readFullErr != nil {
+		if _, readFullErr := io.ReadFull(reader, head); readFullErr != nil {
 			t.Fatalf("the server kept a connection that sent an oversized frame: %v", readFullErr)
 		}
 		size := int(head[0])<<16 | int(head[1])<<8 | int(head[2])
 		payload := make([]byte, size)
-		if _, readFullErr := io.ReadFull(r, payload); readFullErr != nil {
+		if _, readFullErr := io.ReadFull(reader, payload); readFullErr != nil {
 			t.Fatal(readFullErr)
 		}
 		if head[3] == 0x7 {
@@ -550,26 +556,30 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		s, logs := testServer(t, openStore(t), func(c *config.Server) { c.SweepInterval = time.Minute })
-		blobs, err := disk.New(s.settings.DataDir)
+		server, logs := testServer(
+			t,
+			openStore(t),
+			func(settings *config.Server) { settings.SweepInterval = time.Minute },
+		)
+		blobs, err := disk.New(server.settings.DataDir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		s.blobs = blobs
+		server.blobs = blobs
 		ctx, cancel := context.WithCancel(t.Context())
 		stopped := make(chan struct{})
 		go func() {
-			s.RunSweeper(ctx)
+			server.RunSweeper(ctx)
 			close(stopped)
 		}()
 		synctest.Wait()
-		if n := strings.Count(logs.String(), `"msg":"sweep"`); n != 1 {
-			t.Fatalf("sweeps at startup: %d", n)
+		if sweeps := strings.Count(logs.String(), `"msg":"sweep"`); sweeps != 1 {
+			t.Fatalf("sweeps at startup: %d", sweeps)
 		}
 		time.Sleep(time.Minute)
 		synctest.Wait()
-		if n := strings.Count(logs.String(), `"msg":"sweep"`); n != 2 {
-			t.Fatalf("sweeps after one interval: %d", n)
+		if sweeps := strings.Count(logs.String(), `"msg":"sweep"`); sweeps != 2 {
+			t.Fatalf("sweeps after one interval: %d", sweeps)
 		}
 		cancel()
 		synctest.Wait()
@@ -583,7 +593,7 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 		}
 		stoppedEarly, stop := context.WithCancel(t.Context())
 		stop()
-		s.RunSweeper(stoppedEarly)
+		server.RunSweeper(stoppedEarly)
 		if strings.Contains(logs.String(), `"level":"ERROR"`) {
 			t.Fatalf("a sweep cut short by shutdown logged an error: %s", logs.String())
 		}
@@ -594,7 +604,7 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 	t.Parallel()
 	database := openStore(t)
 	for name, change := range map[string]func(*config.Server){
-		"no PoW slot": func(c *config.Server) { c.PoWConcurrency = 0 },
+		"no PoW slot": func(settings *config.Server) { settings.PoWConcurrency = 0 },
 	} {
 		settings := config.Defaults()
 		settings.Pepper = bytes.Repeat([]byte{1}, 32)
@@ -643,16 +653,16 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	srv := harness.server.HTTPServer()
-	if srv.ErrorLog == nil {
+	httpServer := harness.server.HTTPServer()
+	if httpServer.ErrorLog == nil {
 		t.Fatal("ErrorLog is nil: net/http would log peer addresses to stderr")
 	}
-	srv.ErrorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
-	s := core.NewSecret()
+	httpServer.ErrorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
+	secret := core.NewSecret()
 	id := core.NewID()
-	harness.do(&testRequest{method: http.MethodGet, path: "/m/" + id.String() + "%231.0." + core.Encode(s[:])})
+	harness.do(&testRequest{method: http.MethodGet, path: "/m/" + id.String() + "%231.0." + core.Encode(secret[:])})
 	logs := harness.logs.String()
-	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, core.Encode(s[:])) {
+	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, core.Encode(secret[:])) {
 		t.Fatal("log contains a peer address or a link secret")
 	}
 	if !strings.Contains(logs, "net/http error") {
@@ -672,11 +682,11 @@ func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T
 	for range 3 {
 		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
 	}
-	if n := strings.Count(
+	if count := strings.Count(
 		harness.logs.String(),
 		`"msg":"forwarded-header-ignored","header":"X-Forwarded-For"`,
-	); n != 1 {
-		t.Fatalf("want one warning in the hour, got %d: %s", n, harness.logs.String())
+	); count != 1 {
+		t.Fatalf("want one warning in the hour, got %d: %s", count, harness.logs.String())
 	}
 	harness.clock.Advance(time.Hour)
 	harness.statusFrom(
@@ -716,7 +726,7 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 	t.Parallel()
 	scaleway := baseSettings(pepperA, nil)
 	scaleway.ProxyMode = config.ProxyModeScaleway
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		name     string
 		settings config.Server
 		headers  map[string]string
@@ -728,11 +738,16 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 		{"trusted proxy with only Forwarded", *baseSettings(pepperA, nil), map[string]string{"Forwarded": "for=203.0.113.1"}, "Forwarded"},
 		{"trusted proxy with an unreadable X-Forwarded-For", *baseSettings(pepperA, nil), map[string]string{"X-Forwarded-For": "not an address"}, "X-Forwarded-For"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			harness := newHarness(t, &tc.settings)
-			harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: tc.headers})
-			if !strings.Contains(harness.logs.String(), `"msg":"forwarded-header-ignored","header":"`+tc.header+`"`) {
+			harness := newHarness(t, &testCase.settings)
+			harness.statusFrom(
+				&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: testCase.headers},
+			)
+			if !strings.Contains(
+				harness.logs.String(),
+				`"msg":"forwarded-header-ignored","header":"`+testCase.header+`"`,
+			) {
 				t.Fatalf("no warning: %s", harness.logs.String())
 			}
 		})
@@ -752,8 +767,8 @@ func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
 	harness.statusFrom(
 		&testRequest{method: http.MethodGet, path: "/", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}},
 	)
-	if n := strings.Count(harness.logs.String(), "forwarded-header-ignored"); n != 2 {
-		t.Fatalf("want a warning after the clock stepped back, got %d", n)
+	if count := strings.Count(harness.logs.String(), "forwarded-header-ignored"); count != 2 {
+		t.Fatalf("want a warning after the clock stepped back, got %d", count)
 	}
 }
 
@@ -763,8 +778,11 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
 	harness.mustCreate(message)
 	response, _ := harness.claim(message, "", "")
-	if r, _ := harness.blob(message, response.Header.Get("X-Nylzo-Lease")); r.StatusCode != http.StatusOK {
-		t.Fatalf("blob: %d", r.StatusCode)
+	if blobResponse, _ := harness.blob(
+		message,
+		response.Header.Get("X-Nylzo-Lease"),
+	); blobResponse.StatusCode != http.StatusOK {
+		t.Fatalf("blob: %d", blobResponse.StatusCode)
 	}
 	harness.metadata(message)
 	harness.status(message)
@@ -790,9 +808,9 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 		}
 		seen[route] = true
 	}
-	for _, r := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
-		if !seen[r] {
-			t.Fatalf("no request line for %s", r)
+	for _, requestLine := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
+		if !seen[requestLine] {
+			t.Fatalf("no request line for %s", requestLine)
 		}
 	}
 }

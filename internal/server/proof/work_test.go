@@ -31,12 +31,12 @@ func testRing(t *testing.T) *pepper.Ring {
 
 func openStore(t *testing.T) *sqlite.Store {
 	t.Helper()
-	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
+	storage, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
-	return st
+	t.Cleanup(func() { storage.Close() })
+	return storage
 }
 
 func solve(t *testing.T, challenge string, id core.ID) string {

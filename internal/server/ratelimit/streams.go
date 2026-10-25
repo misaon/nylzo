@@ -8,7 +8,7 @@ const (
 )
 
 type Streams struct {
-	mu        sync.Mutex
+	mutex     sync.Mutex
 	total     int
 	maxTotal  int
 	perSource map[Bucket]int
@@ -20,8 +20,8 @@ func NewStreams(maxTotal int) *Streams {
 }
 
 func (s *Streams) Take(source, addressRange Bucket) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	full := s.total >= s.maxTotal || s.perSource[source] >= maxStreamsPerSource ||
 		s.perRange[addressRange] >= maxStreamsPerRange
 	if full {
@@ -34,8 +34,8 @@ func (s *Streams) Take(source, addressRange Bucket) bool {
 }
 
 func (s *Streams) Release(source, addressRange Bucket) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.total--
 	decrement(s.perSource, source)
 	decrement(s.perRange, addressRange)

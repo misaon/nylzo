@@ -44,16 +44,26 @@ var (
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
 )
 
-func runServe(ctx context.Context, env *Env, args []string) int {
-	return runServer(env, args, "serve", func(logger *slog.Logger) error { return serve(ctx, env, logger) })
+func runServe(ctx context.Context, environment *Environment, arguments []string) int {
+	return runServer(
+		environment,
+		arguments,
+		"serve",
+		func(logger *slog.Logger) error { return serve(ctx, environment, logger) },
+	)
 }
 
-func runSweepOnce(_ context.Context, env *Env, args []string) int {
-	return runServer(env, args, "sweep-once", func(logger *slog.Logger) error { return sweepOnce(env.Getenv, logger) })
+func runSweepOnce(_ context.Context, environment *Environment, arguments []string) int {
+	return runServer(
+		environment,
+		arguments,
+		"sweep-once",
+		func(logger *slog.Logger) error { return sweepOnce(environment.Getenv, logger) },
+	)
 }
 
-func runServer(env *Env, args []string, name string, run func(*slog.Logger) error) int {
-	flags := newFlags(env, name)
+func runServer(environment *Environment, arguments []string, name string, run func(*slog.Logger) error) int {
+	flags := newFlags(environment, name)
 	flags.Usage = func() {
 		fmt.Fprintf(
 			flags.Output(),
@@ -62,10 +72,10 @@ func runServer(env *Env, args []string, name string, run func(*slog.Logger) erro
 			name,
 		)
 	}
-	if code, done := flagsDone(parseFlags(flags, env, args)); done {
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	logger := logging.New(env.Stderr)
+	logger := logging.New(environment.Stderr)
 	err := run(logger)
 	switch {
 	case err == nil:
@@ -100,35 +110,35 @@ func openStore(
 
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
 func requireStore(dataDir string) error {
-	dir, err := filepath.Abs(dataDir)
+	directory, err := filepath.Abs(dataDir)
 	if err != nil {
 		return err
 	}
 	for _, name := range []string{databaseFile, disk.Dir} {
-		if _, statErr := os.Stat(filepath.Join(dir, name)); statErr != nil {
+		if _, statErr := os.Stat(filepath.Join(directory, name)); statErr != nil {
 			return fmt.Errorf("%w: %s", errNoStore, name)
 		}
 	}
 	return nil
 }
 
-func serveSettings(env *Env) (config.Server, error) {
-	settings, err := config.FromEnv(env.Getenv, true)
+func serveSettings(environment *Environment) (config.Server, error) {
+	settings, err := config.FromEnv(environment.Getenv, true)
 	if err != nil {
 		return settings, err
 	}
-	if env.Getenv("GOMEMLIMIT") == "" {
+	if environment.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(defaultMemoryLimit)
 	}
-	settings.Version = buildVersion(env.Version)
+	settings.Version = buildVersion(environment.Version)
 	return settings, nil
 }
 
-func serve(ctx context.Context, env *Env, logger *slog.Logger) error {
+func serve(ctx context.Context, environment *Environment, logger *slog.Logger) error {
 	if !serverSupported {
 		return errServerUnsupported
 	}
-	settings, err := serveSettings(env)
+	settings, err := serveSettings(environment)
 	if err != nil {
 		return err
 	}
@@ -218,8 +228,8 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	return nil
 }
 
-func runTakedown(ctx context.Context, env *Env, args []string) int {
-	flags := newFlags(env, "takedown")
+func runTakedown(ctx context.Context, environment *Environment, arguments []string) int {
+	flags := newFlags(environment, "takedown")
 	flags.Usage = func() {
 		fmt.Fprintf(
 			flags.Output(),
@@ -227,59 +237,65 @@ func runTakedown(ctx context.Context, env *Env, args []string) int {
 			program,
 		)
 	}
-	if code, done := flagsDone(parseFlags(flags, env, args)); done {
+	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if !serverSupported {
-		return failf(env, "%s", errServerUnsupported)
+		return failf(environment, "%s", errServerUnsupported)
 	}
-	if env.Terminal.StdinIsTerminal() {
-		fmt.Fprintln(env.Stderr, program+" takedown reads the ids from a pipe or a file on stdin, one per line")
+	if environment.Terminal.StdinIsTerminal() {
+		fmt.Fprintln(environment.Stderr, program+" takedown reads the ids from a pipe or a file on stdin, one per line")
 		return exitUsage
 	}
-	ids, err := readIDs(env.Stdin)
+	ids, err := readIDs(environment.Stdin)
 	if err != nil {
-		fmt.Fprintln(env.Stderr, program+" takedown: "+err.Error())
+		fmt.Fprintln(environment.Stderr, program+" takedown: "+err.Error())
 		return exitUsage
 	}
-	settings, err := config.FromEnv(env.Getenv, false)
+	settings, err := config.FromEnv(environment.Getenv, false)
 	if err != nil {
-		return failf(env, "%s", err)
+		return failf(environment, "%s", err)
 	}
 	if err = requireStore(settings.DataDir); err != nil {
-		return failf(env, "%s", err)
+		return failf(environment, "%s", err)
 	}
 	database, blobs, err := openStore(settings.DataDir, sqlite.OpenCurrent)
 	if err != nil {
-		return failf(env, "%s", logging.ErrorText(err))
+		return failf(environment, "%s", logging.ErrorText(err))
 	}
 	defer database.Close()
-	return takeDown(ctx, env, database, blobs, ids)
+	return takeDown(ctx, environment, database, blobs, ids)
 }
 
 // takeDown ends each message like a burn, as deleted (D63).
-func takeDown(ctx context.Context, env *Env, database store.Store, blobs store.Blobs, ids []string) int {
+func takeDown(
+	ctx context.Context,
+	environment *Environment,
+	database store.Store,
+	blobs store.Blobs,
+	ids []string,
+) int {
 	failed := 0
 	for _, id := range ids {
 		if ctx.Err() != nil {
-			fmt.Fprintln(env.Stderr, program+": takedown stopped before every id was handled")
+			fmt.Fprintln(environment.Stderr, program+": takedown stopped before every id was handled")
 			return exitInterrupted
 		}
 		final, err := store.EndMessage(ctx, database, blobs, id, store.StateDeleted, time.Now())
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			fmt.Fprintf(env.Stdout, "%s no live message\n", id)
+			fmt.Fprintf(environment.Stdout, "%s no live message\n", id)
 		case err != nil:
 			failed++
-			fmt.Fprintf(env.Stdout, "%s failed: %s\n", id, logging.ErrorText(err))
+			fmt.Fprintf(environment.Stdout, "%s failed: %s\n", id, logging.ErrorText(err))
 		case final != store.StateDeleted:
-			fmt.Fprintf(env.Stdout, "%s already ended as %s\n", id, final)
+			fmt.Fprintf(environment.Stdout, "%s already ended as %s\n", id, final)
 		default:
-			fmt.Fprintf(env.Stdout, "%s deleted\n", id)
+			fmt.Fprintf(environment.Stdout, "%s deleted\n", id)
 		}
 	}
 	if failed > 0 {
-		return failf(env, "%d of %d messages could not be ended; run takedown again for them", failed, len(ids))
+		return failf(environment, "%d of %d messages could not be ended; run takedown again for them", failed, len(ids))
 	}
 	return exitOK
 }

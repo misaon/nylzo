@@ -58,9 +58,9 @@ func (w *statusRecorder) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-func (w *statusRecorder) ReadFrom(r io.Reader) (int64, error) {
+func (w *statusRecorder) ReadFrom(source io.Reader) (int64, error) {
 	w.markOK()
-	return io.Copy(w.ResponseWriter, r)
+	return io.Copy(w.ResponseWriter, source)
 }
 
 func (w *statusRecorder) Write(body []byte) (int, error) {

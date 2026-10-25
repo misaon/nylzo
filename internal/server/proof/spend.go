@@ -18,7 +18,7 @@ const (
 var errSpendAborted = errors.New("server: the challenge spend write stopped before it finished")
 
 type seenNonces struct {
-	mu         sync.Mutex
+	mutex      sync.Mutex
 	maxEntries int
 	expires    map[nonce]int64
 }
@@ -28,8 +28,8 @@ func newSeenNonces() *seenNonces {
 }
 
 func (s *seenNonces) remember(spent nonce, expires, now int64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if _, seen := s.expires[spent]; seen {
 		return true
 	}
@@ -54,7 +54,7 @@ type spendBatch struct {
 type spendBatcher struct {
 	counters store.Counters
 	maxSize  int
-	mu       sync.Mutex
+	mutex    sync.Mutex
 	writing  bool
 	queue    []*spendBatch
 }
@@ -81,9 +81,9 @@ func (b *spendBatcher) reserve(ctx context.Context, hit *store.RateHit) (bool, e
 }
 
 func (b *spendBatcher) join(hit *store.RateHit) (*spendBatch, int, bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if n := len(b.queue); n == 0 || len(b.queue[n-1].hits) == b.maxSize {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	if queued := len(b.queue); queued == 0 || len(b.queue[queued-1].hits) == b.maxSize {
 		b.queue = append(b.queue, &spendBatch{turn: make(chan struct{}), done: make(chan struct{})})
 	}
 	batch := b.queue[len(b.queue)-1]
@@ -97,10 +97,10 @@ func (b *spendBatcher) join(hit *store.RateHit) (*spendBatch, int, bool) {
 }
 
 func (b *spendBatcher) write(ctx context.Context, batch *spendBatch) {
-	b.mu.Lock()
+	b.mutex.Lock()
 	b.queue[0] = nil
 	b.queue = b.queue[1:]
-	b.mu.Unlock()
+	b.mutex.Unlock()
 	defer b.passTurn()
 	defer close(batch.done)
 	defer func() {
@@ -112,8 +112,8 @@ func (b *spendBatcher) write(ctx context.Context, batch *spendBatch) {
 }
 
 func (b *spendBatcher) passTurn() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
 	if len(b.queue) > 0 {
 		close(b.queue[0].turn)
 		return

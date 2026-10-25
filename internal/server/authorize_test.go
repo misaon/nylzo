@@ -29,26 +29,26 @@ import (
 
 func headersWithoutDate(harness http.Header) map[string][]string {
 	out := map[string][]string{}
-	for k, v := range harness {
-		if k == "Date" {
+	for name, values := range harness {
+		if name == "Date" {
 			continue
 		}
-		out[k] = v
+		out[name] = values
 	}
 	return out
 }
 
-func sameHeaders(a, b map[string][]string) bool {
-	if len(a) != len(b) {
+func sameHeaders(left, right map[string][]string) bool {
+	if len(left) != len(right) {
 		return false
 	}
-	for k, va := range a {
-		vb, ok := b[k]
-		if !ok || len(va) != len(vb) {
+	for name, leftValues := range left {
+		rightValues, ok := right[name]
+		if !ok || len(leftValues) != len(rightValues) {
 			return false
 		}
-		for i := range va {
-			if va[i] != vb[i] {
+		for i := range leftValues {
+			if leftValues[i] != rightValues[i] {
 				return false
 			}
 		}
@@ -144,18 +144,18 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	}
 	var refBody []byte
 	var refHeaders map[string][]string
-	for _, c := range classes {
-		response, body := harness.do(c.request())
+	for _, class := range classes {
+		response, body := harness.do(class.request())
 		if response.StatusCode != http.StatusNotFound {
-			t.Fatalf("%s: %d", c.name, response.StatusCode)
+			t.Fatalf("%s: %d", class.name, response.StatusCode)
 		}
-		hdr := headersWithoutDate(response.Header)
+		header := headersWithoutDate(response.Header)
 		if refBody == nil {
-			refBody, refHeaders = body, hdr
+			refBody, refHeaders = body, header
 			continue
 		}
-		if string(body) != string(refBody) || !sameHeaders(hdr, refHeaders) {
-			t.Fatalf("%s differs: %s %v vs %s %v", c.name, body, hdr, refBody, refHeaders)
+		if string(body) != string(refBody) || !sameHeaders(header, refHeaders) {
+			t.Fatalf("%s differs: %s %v vs %s %v", class.name, body, header, refBody, refHeaders)
 		}
 	}
 	for _, message := range []*testMessage{live, ended} {
@@ -185,61 +185,67 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 	const samples = 1000
 	durations := make([][]time.Duration, len(classes))
 	for i := range samples {
-		for ci, c := range classes {
-			request := c.request()
+		for classIndex, class := range classes {
+			request := class.request()
 			start := time.Now()
 			response, _ := harness.do(request)
-			durations[ci] = append(durations[ci], time.Since(start))
+			durations[classIndex] = append(durations[classIndex], time.Since(start))
 			if response.StatusCode != http.StatusNotFound {
-				t.Fatalf("%s sample %d: %d", c.name, i, response.StatusCode)
+				t.Fatalf("%s sample %d: %d", class.name, i, response.StatusCode)
 			}
 		}
 	}
 	medians := make([]time.Duration, len(classes))
 	p95s := make([]time.Duration, len(classes))
-	for ci := range classes {
-		d := durations[ci]
-		slices.Sort(d)
-		medians[ci] = d[len(d)/2]
-		p95s[ci] = d[len(d)*95/100]
-		t.Logf("AK21 %-8s %-10s median %s p95 %s", classes[ci].endpoint, classes[ci].name, medians[ci], p95s[ci])
+	for classIndex := range classes {
+		classDurations := durations[classIndex]
+		slices.Sort(classDurations)
+		medians[classIndex] = classDurations[len(classDurations)/2]
+		p95s[classIndex] = classDurations[len(classDurations)*95/100]
+		t.Logf(
+			"AK21 %-8s %-10s median %s p95 %s",
+			classes[classIndex].endpoint,
+			classes[classIndex].name,
+			medians[classIndex],
+			p95s[classIndex],
+		)
 	}
 	spendsNoChallenge := map[string]bool{"stale": true, "malformed": true}
 	minMedian, minP95 := map[string]time.Duration{}, map[string]time.Duration{}
-	for ci, c := range classes {
-		if spendsNoChallenge[c.name] {
+	for classIndex, class := range classes {
+		if spendsNoChallenge[class.name] {
 			continue
 		}
-		if message, ok := minMedian[c.endpoint]; !ok || medians[ci] < message {
-			minMedian[c.endpoint] = medians[ci]
+		if message, ok := minMedian[class.endpoint]; !ok || medians[classIndex] < message {
+			minMedian[class.endpoint] = medians[classIndex]
 		}
-		if p, ok := minP95[c.endpoint]; !ok || p95s[ci] < p {
-			minP95[c.endpoint] = p95s[ci]
+		if minimum, ok := minP95[class.endpoint]; !ok || p95s[classIndex] < minimum {
+			minP95[class.endpoint] = p95s[classIndex]
 		}
 	}
-	for ci, c := range classes {
-		if spendsNoChallenge[c.name] {
+	for classIndex, class := range classes {
+		if spendsNoChallenge[class.name] {
 			continue
 		}
 		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2, D23)
-		if medians[ci]*100 > minMedian[c.endpoint]*medianSlackPercent {
+		if medians[classIndex]*100 > minMedian[class.endpoint]*medianSlackPercent {
 			return fmt.Sprintf(
 				"%s %s median %s exceeds %d%% of the fastest equal-work class %s on the same endpoint",
-				c.endpoint,
-				c.name,
-				medians[ci],
+				class.endpoint,
+				class.name,
+				medians[classIndex],
 				medianSlackPercent,
-				minMedian[c.endpoint],
+				minMedian[class.endpoint],
 			)
 		}
 		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2, D23)
-		if p95s[ci] > 5*minP95[c.endpoint] {
+		if p95s[classIndex] > 5*minP95[class.endpoint] {
 			return fmt.Sprintf(
 				"%s %s p95 %s exceeds 5x the fastest equal-work class %s on the same endpoint",
-				c.endpoint,
-				c.name,
-				p95s[ci],
-				minP95[c.endpoint],
+				class.endpoint,
+				class.name,
+				p95s[classIndex],
+				minP95[class.endpoint],
 			)
 		}
 	}
@@ -254,12 +260,12 @@ func badSignature(seed *[core.TokenLen]byte, purpose, method, path string, chall
 
 func openDB(t *testing.T, harness *testHarness) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db"))
+	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
-	return db
+	t.Cleanup(func() { database.Close() })
+	return database
 }
 
 func abuseLines(t *testing.T, harness *testHarness, id core.ID) int {
@@ -350,8 +356,8 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 			t.Fatalf("abuse report: %d", response.StatusCode)
 		}
 	}
-	if n := abuseLines(t, harness, reported.id); n != 1 {
-		t.Fatalf("a replayed abuse report was stored %d times", n)
+	if lines := abuseLines(t, harness, reported.id); lines != 1 {
+		t.Fatalf("a replayed abuse report was stored %d times", lines)
 	}
 }
 
@@ -402,7 +408,7 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 	if response, _ := harness.do(tampered); response.StatusCode != http.StatusAccepted {
 		t.Fatalf("tampered abuse report: %d", response.StatusCode)
 	}
-	if n := abuseLines(t, harness, message.id); n != 0 {
+	if lines := abuseLines(t, harness, message.id); lines != 0 {
 		t.Fatal("an abuse report with a changed body was stored")
 	}
 }
@@ -410,8 +416,8 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
-	const pass = "correct horse battery staple"
-	message := newMessage(t, core.KDFScrypt, pass, 1, 3600, "behind a passphrase")
+	const passphrase = "correct horse battery staple"
+	message := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "behind a passphrase")
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String() + "/claim"
 	stranger := core.NewSecret()
@@ -424,29 +430,30 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 			return core.SignRequest(&message.content.V, core.PurposeVerifier, "POST", path, harness.challenge(), nil).
 				VerifierHeader()
 		}},
-		{"read purpose", func(c [core.ChallengeLen]byte) string {
-			return core.SignRequest(&message.content.V, core.PurposeRead, "POST", path, c, nil).VerifierHeader()
+		{"read purpose", func(challenge [core.ChallengeLen]byte) string {
+			return core.SignRequest(&message.content.V, core.PurposeRead, "POST", path, challenge, nil).VerifierHeader()
 		}},
-		{"other path", func(c [core.ChallengeLen]byte) string {
-			return core.SignRequest(&message.content.V, core.PurposeVerifier, "POST", path+"x", c, nil).VerifierHeader()
+		{"other path", func(challenge [core.ChallengeLen]byte) string {
+			return core.SignRequest(&message.content.V, core.PurposeVerifier, "POST", path+"x", challenge, nil).
+				VerifierHeader()
 		}},
-		{"right key, foreign signature", func(c [core.ChallengeLen]byte) string {
-			signature := core.SignRequest(stranger, core.PurposeVerifier, "POST", path, c, nil)
+		{"right key, foreign signature", func(challenge [core.ChallengeLen]byte) string {
+			signature := core.SignRequest(stranger, core.PurposeVerifier, "POST", path, challenge, nil)
 			signature.PublicKey = pkV
 			return signature.VerifierHeader()
 		}},
 	}
-	for i, c := range cases {
+	for i, testCase := range cases {
 		challenge := harness.challenge()
 		request := signedRequest(&message.link.R, core.PurposeRead, "POST", path, challenge, nil)
-		request.headers["X-Nylzo-Verifier"] = c.header(challenge)
+		request.headers["X-Nylzo-Verifier"] = testCase.header(challenge)
 		response, body := harness.do(request)
 		var got passphraseResponse
 		if err := json.Unmarshal(body, &got); err != nil {
-			t.Fatalf("%s: %d %s: %v", c.name, response.StatusCode, body, err)
+			t.Fatalf("%s: %d %s: %v", testCase.name, response.StatusCode, body, err)
 		}
 		if response.StatusCode != http.StatusForbidden || got.AttemptsLeft != 4-i {
-			t.Fatalf("%s: %d %+v", c.name, response.StatusCode, got)
+			t.Fatalf("%s: %d %+v", testCase.name, response.StatusCode, got)
 		}
 	}
 	challenge := harness.challenge()
@@ -493,7 +500,7 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 	now := harness.clock.Now()
 	forged := harness.challenge()
 	forged[core.ChallengeLen-1] ^= 1
-	for name, c := range map[string]struct {
+	for name, testCase := range map[string]struct {
 		challenge [core.ChallengeLen]byte
 		status    int
 	}{
@@ -505,12 +512,12 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 		"all zero challenge": {[core.ChallengeLen]byte{}, http.StatusNotFound},
 	} {
 		if got, refused := harness.do(
-			signedRequest(&message.link.R, core.PurposeRead, http.MethodGet, path, c.challenge, nil),
-		); got.StatusCode != c.status {
+			signedRequest(&message.link.R, core.PurposeRead, http.MethodGet, path, testCase.challenge, nil),
+		); got.StatusCode != testCase.status {
 			t.Fatalf("%s: %d %s", name, got.StatusCode, refused)
 		}
 	}
-	for name, auth := range map[string]string{
+	for name, authorization := range map[string]string{
 		"bearer R":        "Bearer " + message.readToken,
 		"lowercase":       strings.ToLower(core.AuthScheme) + " x",
 		"two parts":       core.AuthScheme + " " + publicKey(&message.link.R) + "." + core.Encode(raw),
@@ -520,7 +527,7 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 		"trailing period": signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil).headers["Authorization"] + ".",
 	} {
 		if got, _ := harness.do(
-			rawAuth(&testRequest{method: http.MethodGet, path: path}, auth),
+			rawAuth(&testRequest{method: http.MethodGet, path: path}, authorization),
 		); got.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", name, got.StatusCode)
 		}
@@ -546,7 +553,7 @@ func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "no bodies")
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String()
-	for _, e := range []struct {
+	for _, endpoint := range []struct {
 		method, suffix, purpose string
 		seed                    *[core.TokenLen]byte
 	}{
@@ -558,9 +565,16 @@ func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 		{"GET", "/status", core.PurposeManage, message.manage},
 		{"POST", "/cancel", core.PurposeManage, message.manage},
 	} {
-		request := signedRequest(e.seed, e.purpose, e.method, path+e.suffix, harness.challenge(), []byte("x"))
+		request := signedRequest(
+			endpoint.seed,
+			endpoint.purpose,
+			endpoint.method,
+			path+endpoint.suffix,
+			harness.challenge(),
+			[]byte("x"),
+		)
 		if response, _ := harness.do(request); response.StatusCode != http.StatusBadRequest {
-			t.Fatalf("%s %s with a body: %d", e.method, e.suffix, response.StatusCode)
+			t.Fatalf("%s %s with a body: %d", endpoint.method, endpoint.suffix, response.StatusCode)
 		}
 	}
 	if _, status := harness.status(message); status["state"] != "available" || status["opens_used"] != 0.0 {
@@ -582,12 +596,13 @@ func TestSpentChallengesExpire(t *testing.T) {
 	}
 	spentRows := func() int {
 		t.Helper()
-		db := openDB(t, harness)
-		var n int
-		if err := db.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%'`).Scan(&n); err != nil {
+		database := openDB(t, harness)
+		var rows int
+		if err := database.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%'`).
+			Scan(&rows); err != nil {
 			t.Fatal(err)
 		}
-		return n
+		return rows
 	}
 	if spentRows() != 1 {
 		t.Fatal("a passed request must record its challenge")
@@ -647,19 +662,19 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 		},
 		{"prefetch 503", nil, nil, map[string]string{"Sec-Purpose": "prefetch"}, http.StatusServiceUnavailable},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			settings := baseSettings(pepperA, nil)
-			if c.config != nil {
-				c.config(settings)
+			if testCase.config != nil {
+				testCase.config(settings)
 			}
 			harness := newHarness(t, settings)
 			message := newMessage(t, core.KDFNone, "", 1, 3600, "recorded")
 			message.address = "192.0.2.30"
 			harness.mustCreate(message)
-			if c.before != nil {
-				c.before(harness, message)
+			if testCase.before != nil {
+				testCase.before(harness, message)
 			}
 			claim := signedRequestFrom(
 				victim,
@@ -669,11 +684,11 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 				"/api/v1/messages/"+message.id.String()+"/claim",
 				harness.challenge(),
 			)
-			maps.Copy(claim.headers, c.header)
-			if response, _ := harness.do(claim); response.StatusCode != c.status {
-				t.Fatalf("the victim's claim: %d, want %d", response.StatusCode, c.status)
+			maps.Copy(claim.headers, testCase.header)
+			if response, _ := harness.do(claim); response.StatusCode != testCase.status {
+				t.Fatalf("the victim's claim: %d, want %d", response.StatusCode, testCase.status)
 			}
-			for name := range c.header {
+			for name := range testCase.header {
 				delete(claim.headers, name)
 			}
 			claim.address = observer
@@ -710,21 +725,24 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		t.Fatal(err)
 	}
 	identity := [core.PublicKeyLen]byte{1}
-	forge := func(purpose, method, path string, c [core.ChallengeLen]byte) core.Signature {
-		signature := core.Signature{PublicKey: identity, Challenge: c, Sig: [core.SignatureLen]byte{1}}
+	forge := func(purpose, method, path string, challenge [core.ChallengeLen]byte) core.Signature {
+		signature := core.Signature{PublicKey: identity, Challenge: challenge, Sig: [core.SignatureLen]byte{1}}
 		if !signature.Verify(purpose, method, path, nil) {
 			t.Fatal("the forged signature does not verify, so the test proves nothing")
 		}
 		return signature
 	}
-	db, err := sql.Open("sqlite", "file:"+filepath.Join(harness.dir, "nylzo.db")+"?_pragma=busy_timeout(5000)")
+	database, err := sql.Open(
+		"sqlite",
+		"file:"+filepath.Join(harness.directory, "nylzo.db")+"?_pragma=busy_timeout(5000)",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	setMAC := func(message *testMessage, column string, p pepper.Purpose) {
-		mac, _ := ring.MAC(p, identity[:])
-		if _, execErr := db.Exec(
+	defer database.Close()
+	setMAC := func(message *testMessage, column string, purpose pepper.Purpose) {
+		mac, _ := ring.MAC(purpose, identity[:])
+		if _, execErr := database.Exec(
 			`UPDATE messages SET `+column+` = ? WHERE id = ?`,
 			mac[:],
 			message.id.String(),
@@ -748,19 +766,19 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		}
 	}
 
-	const pass = "correct horse battery staple"
-	pw := newMessage(t, core.KDFScrypt, pass, 1, 3600, "verifier stored before keys were checked")
-	harness.mustCreate(pw)
-	setMAC(pw, "verifier_mac", pepper.Verifier)
-	claimPath := "/api/v1/messages/" + pw.id.String() + "/claim"
+	const passphrase = "correct horse battery staple"
+	withPassphrase := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "verifier stored before keys were checked")
+	harness.mustCreate(withPassphrase)
+	setMAC(withPassphrase, "verifier_mac", pepper.Verifier)
+	claimPath := "/api/v1/messages/" + withPassphrase.id.String() + "/claim"
 	challenge := harness.challenge()
-	request := signedRequest(&pw.link.R, core.PurposeRead, "POST", claimPath, challenge, nil)
+	request := signedRequest(&withPassphrase.link.R, core.PurposeRead, "POST", claimPath, challenge, nil)
 	request.headers["X-Nylzo-Verifier"] = forge(core.PurposeVerifier, "POST", claimPath, challenge).VerifierHeader()
 	response, body := harness.do(request)
 	if response.StatusCode != http.StatusForbidden || !strings.Contains(string(body), `"attempts_left":4`) {
 		t.Fatalf("claim with the identity verifier key: %d %s", response.StatusCode, body)
 	}
-	if _, metadata := harness.metadata(pw); metadata["opens_remaining"] != float64(1) {
+	if _, metadata := harness.metadata(withPassphrase); metadata["opens_remaining"] != float64(1) {
 		t.Fatalf("the refused verifier consumed an open: %v", metadata)
 	}
 }
@@ -771,22 +789,22 @@ func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "head")
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String()
-	for _, p := range []string{path, path + "/status"} {
+	for _, route := range []string{path, path + "/status"} {
 		purpose, seed := core.PurposeRead, &message.link.R
-		if strings.HasSuffix(p, "/status") {
+		if strings.HasSuffix(route, "/status") {
 			purpose, seed = core.PurposeManage, message.manage
 		}
-		request := signedRequest(seed, purpose, "HEAD", p, harness.challenge(), nil)
+		request := signedRequest(seed, purpose, "HEAD", route, harness.challenge(), nil)
 		if response, body := harness.do(request); response.StatusCode != http.StatusNotFound || len(body) != 0 {
-			t.Fatalf("HEAD %s: %d %q", p, response.StatusCode, body)
+			t.Fatalf("HEAD %s: %d %q", route, response.StatusCode, body)
 		}
 	}
-	for _, p := range []string{"/api/v1/instance", "/api/v1/challenge", "/api/v1/messages", "/api/v1/abuse", path + "/claim", path + "/ack"} {
+	for _, route := range []string{"/api/v1/instance", "/api/v1/challenge", "/api/v1/messages", "/api/v1/abuse", path + "/claim", path + "/ack"} {
 		if response, body := harness.do(
-			&testRequest{method: http.MethodHead, path: p, address: message.address},
+			&testRequest{method: http.MethodHead, path: route, address: message.address},
 		); response.StatusCode != http.StatusNotFound ||
 			len(body) != 0 {
-			t.Fatalf("HEAD %s: %d %q", p, response.StatusCode, body)
+			t.Fatalf("HEAD %s: %d %q", route, response.StatusCode, body)
 		}
 	}
 }
@@ -906,7 +924,7 @@ func TestReplayAfterRestartIsRefused(t *testing.T) {
 }
 
 func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
-	s, _ := testServer(t, openStore(t), nil)
+	server, _ := testServer(t, openStore(t), nil)
 	path := "/api/v1/messages/" + core.NewID().String()
 	var offCurve [core.PublicKeyLen]byte
 	for i := byte(2); ; i++ {
@@ -915,11 +933,11 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 			break
 		}
 	}
-	testRequest := func(pk *[core.PublicKeyLen]byte) *http.Request {
-		c, _ := s.challenges.Issue(s.clock())
-		signature := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, c, nil)
-		if pk != nil {
-			signature.PublicKey = *pk
+	testRequest := func(publicKey *[core.PublicKeyLen]byte) *http.Request {
+		challenge, _ := server.challenges.Issue(server.clock())
+		signature := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil)
+		if publicKey != nil {
+			signature.PublicKey = *publicKey
 		}
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
 		r.Header.Set("Authorization", signature.Authorization())
@@ -928,10 +946,10 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	const samples = 300
 	var wrong, off []time.Duration
 	for range samples {
-		for _, pk := range []*[core.PublicKeyLen]byte{nil, &offCurve} {
-			r := testRequest(pk)
+		for _, publicKey := range []*[core.PublicKeyLen]byte{nil, &offCurve} {
+			r := testRequest(publicKey)
 			start := time.Now()
-			if _, ok, err := s.authorize(
+			if _, ok, err := server.authorize(
 				r.Context(),
 				r,
 				path[len("/api/v1/messages/"):],
@@ -941,20 +959,20 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 				err != nil {
 				t.Fatalf("authorize: %v %v", ok, err)
 			}
-			if pk == nil {
+			if publicKey == nil {
 				wrong = append(wrong, time.Since(start))
 			} else {
 				off = append(off, time.Since(start))
 			}
 		}
 	}
-	median := func(d []time.Duration) time.Duration {
-		slices.Sort(d)
-		return d[len(d)/2]
+	median := func(samples []time.Duration) time.Duration {
+		slices.Sort(samples)
+		return samples[len(samples)/2]
 	}
 	// gstack-timing-ok: uniform work for every failed key is the contract under test (spec §5.5)
-	if mw, mo := median(wrong), median(off); mo*130 < mw*100 {
-		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", mo, mw)
+	if wrongMedian, offCurveMedian := median(wrong), median(off); offCurveMedian*130 < wrongMedian*100 {
+		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", offCurveMedian, wrongMedian)
 	}
 }
 
@@ -982,19 +1000,19 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	}
 	t.Cleanup(func() { database.Close() })
 	failing := &failingSpends{Store: database, fail: true}
-	s, err := New(&settings, failing, nil, WithLogger(slog.New(slog.DiscardHandler)))
+	server, err := New(&settings, failing, nil, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := "/api/v1/messages/" + core.NewID().String()
-	c, _ := s.challenges.Issue(s.clock())
-	auth := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, c, nil).Authorization()
+	challenge, _ := server.challenges.Issue(server.clock())
+	authorization := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil).Authorization()
 	send := func() int {
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
-		r.Header.Set("Authorization", auth)
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, r)
-		return w.Code
+		r.Header.Set("Authorization", authorization)
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, r)
+		return recorder.Code
 	}
 	if code := send(); code != http.StatusInternalServerError {
 		t.Fatalf("a spend the store could not record: %d", code)
@@ -1019,7 +1037,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	faulty.set(func(b *faultyBlobs) { b.failDelete[message.id.String()] = true })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[message.id.String()] = true })
 	unknown, unknownBody := harness.do(
 		&testRequest{
 			method: http.MethodGet,
@@ -1052,21 +1070,21 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 }
 
 func BenchmarkSignedMetadataWithASpentChallenge(b *testing.B) {
-	s, _ := testServer(b, openStore(b), func(c *config.Server) {
-		c.Rates.SourcePerSecond, c.Rates.SourceBurst = 1e9, 1e9
-		c.Rates.BucketPerSecond, c.Rates.BucketBurst = 1e9, 1e9
-		c.Rates.ReadPerHour = 0
+	server, _ := testServer(b, openStore(b), func(settings *config.Server) {
+		settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1e9, 1e9
+		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1e9, 1e9
+		settings.Rates.ReadPerHour = 0
 	})
 	path := "/api/v1/messages/" + core.NewID().String()
-	c, _ := s.challenges.Issue(s.clock().Add(-2 * time.Minute))
-	auth := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, c, nil).Authorization()
+	challenge, _ := server.challenges.Issue(server.clock().Add(-2 * time.Minute))
+	authorization := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil).Authorization()
 	for b.Loop() {
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
-		r.Header.Set("Authorization", auth)
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, r)
-		if w.Code != http.StatusNotFound {
-			b.Fatalf("status %d", w.Code)
+		r.Header.Set("Authorization", authorization)
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, r)
+		if recorder.Code != http.StatusNotFound {
+			b.Fatalf("status %d", recorder.Code)
 		}
 	}
 }

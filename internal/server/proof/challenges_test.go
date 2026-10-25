@@ -54,15 +54,15 @@ type gatedSpends struct {
 	store.Store
 
 	gate    chan struct{}
-	mu      sync.Mutex
+	mutex   sync.Mutex
 	batches []int
 }
 
 func (s *gatedSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	s.mu.Lock()
+	s.mutex.Lock()
 	first := len(s.batches) == 0
 	s.batches = append(s.batches, len(hits))
-	s.mu.Unlock()
+	s.mutex.Unlock()
 	if first {
 		<-s.gate
 	}
@@ -70,8 +70,8 @@ func (s *gatedSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit
 }
 
 func (s *gatedSpends) calls() []int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return slices.Clone(s.batches)
 }
 
@@ -79,7 +79,7 @@ func TestChallengesAreSpentOnceWithinTheirWindow(t *testing.T) {
 	t.Parallel()
 	challenges := NewChallenges(testRing(t), openStore(t))
 	now := time.Now()
-	for _, c := range []struct {
+	for _, testCase := range []struct {
 		issued time.Time
 		spent  bool
 	}{
@@ -88,9 +88,9 @@ func TestChallengesAreSpentOnceWithinTheirWindow(t *testing.T) {
 		{now.Add(6 * time.Second), false},
 		{now.Add(-challengeTTL - time.Second), false},
 	} {
-		challenge, _ := challenges.Issue(c.issued)
-		if spent, err := challenges.Spend(t.Context(), challenge, now); err != nil || spent != c.spent {
-			t.Fatalf("a challenge issued %v from now: spent %v %v", c.issued.Sub(now), spent, err)
+		challenge, _ := challenges.Issue(testCase.issued)
+		if spent, err := challenges.Spend(t.Context(), challenge, now); err != nil || spent != testCase.spent {
+			t.Fatalf("a challenge issued %v from now: spent %v %v", testCase.issued.Sub(now), spent, err)
 		}
 	}
 	challenge, _ := challenges.Issue(now)
@@ -110,8 +110,8 @@ func TestChallengesAreSpentOnceWithinTheirWindow(t *testing.T) {
 
 func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	t.Parallel()
-	st := openStore(t)
-	failing := &failingSpends{Store: st}
+	storage := openStore(t)
+	failing := &failingSpends{Store: storage}
 	failing.fail.Store(true)
 	challenges := NewChallenges(testRing(t), failing)
 	now := time.Now()
@@ -124,7 +124,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 		t.Fatalf("the same process accepted the challenge after a failed spend: %v %v", spent, err)
 	}
 	key := challengeSpentKey + hex.EncodeToString(challenge[4:challengeSignedEnd])
-	if counter, err := st.RateGet(t.Context(), key, time.Unix(0, 0)); err != nil || counter.Count != 0 {
+	if counter, err := storage.RateGet(t.Context(), key, time.Unix(0, 0)); err != nil || counter.Count != 0 {
 		t.Fatal("the repeat reached the store although the process had seen the nonce")
 	}
 }

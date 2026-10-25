@@ -13,8 +13,8 @@ import (
 
 var idLike = regexp.MustCompile(`[0-9a-fA-F]{32,}|[A-Za-z0-9_-]{22,}`)
 
-func New(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{ReplaceAttr: minuteTime}))
+func New(output io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{ReplaceAttr: minuteTime}))
 }
 
 func minuteTime(groups []string, attribute slog.Attr) slog.Attr {

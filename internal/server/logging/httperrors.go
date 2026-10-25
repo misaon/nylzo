@@ -37,7 +37,7 @@ type levelLimit struct {
 type httpErrorLog struct {
 	logger   *slog.Logger
 	clock    func() time.Time
-	mu       sync.Mutex
+	mutex    sync.Mutex
 	warnings levelLimit
 	errors   levelLimit
 }
@@ -73,8 +73,8 @@ func (e *httpErrorLog) Write(line []byte) (int, error) {
 }
 
 func (e *httpErrorLog) take(limit *levelLimit) (int, bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
 	if !limit.limiter.Allow(ratelimit.Bucket{}, e.clock()) {
 		limit.dropped++
 		return 0, false

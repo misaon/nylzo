@@ -72,8 +72,8 @@ func (c *Challenges) valid(challenge [core.ChallengeLen]byte, now time.Time) boo
 }
 
 // unixSeconds fills the u32be time fields of the protocol, which hold every second until 2106.
-func unixSeconds(t time.Time) uint32 {
-	seconds := t.Unix()
+func unixSeconds(moment time.Time) uint32 {
+	seconds := moment.Unix()
 	if seconds < 0 || seconds > math.MaxUint32 {
 		return 0
 	}

@@ -39,25 +39,25 @@ func TestMain(tests *testing.M) {
 	tests.Run()
 }
 
-func sweepProcess(dir, at string) int {
+func sweepProcess(directory, at string) int {
 	now, err := time.Parse(time.RFC3339Nano, at)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "time:", err)
 		return 1
 	}
 	ctx := context.Background()
-	database, err := sqlite.OpenCurrent(ctx, filepath.Join(dir, "nylzo.db"))
+	database, err := sqlite.OpenCurrent(ctx, filepath.Join(directory, "nylzo.db"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "open:", err)
 		return 1
 	}
 	defer database.Close()
-	blobs, err := disk.New(dir)
+	blobs, err := disk.New(directory)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "blobs:", err)
 		return 1
 	}
-	if _, runErr := sweep.Run(ctx, database, blobs, dir, now); !onlyCheckpointBusy(runErr) {
+	if _, runErr := sweep.Run(ctx, database, blobs, directory, now); !onlyCheckpointBusy(runErr) {
 		fmt.Fprintln(os.Stderr, "sweep:", logging.ErrorText(runErr))
 		return 1
 	}
@@ -136,13 +136,13 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			default:
 			}
 			during := !requestsDone.Load()
-			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
-			cmd.Env = append(
+			process := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
+			process.Env = append(
 				os.Environ(),
-				sweepDirEnv+"="+harness.dir,
+				sweepDirEnv+"="+harness.directory,
 				sweepNowEnv+"="+harness.clock.Now().Format(time.RFC3339Nano),
 			)
-			out, err := cmd.CombinedOutput()
+			out, err := process.CombinedOutput()
 			if err != nil || !strings.Contains(string(out), sweptMarker) {
 				t.Errorf("sweep-once in a second process: %v %s", err, out)
 				return
@@ -317,16 +317,16 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 	if unknown.StatusCode != http.StatusNotFound {
 		t.Fatalf("unknown id: %d", unknown.StatusCode)
 	}
-	for _, c := range []struct {
+	for _, testCase := range []struct {
 		message       *testMessage
 		action, token string
 	}{{burn, "burn", burn.manageToken}, {cancel, "cancel", cancel.readToken}} {
-		response, body := harness.post(c.message, c.action, c.token)
+		response, body := harness.post(testCase.message, testCase.action, testCase.token)
 		if response.StatusCode != http.StatusNotFound || string(body) != string(unknownBody) {
-			t.Fatalf("%s with the token of the other purpose: %d %s", c.action, response.StatusCode, body)
+			t.Fatalf("%s with the token of the other purpose: %d %s", testCase.action, response.StatusCode, body)
 		}
-		if !harness.blobExists(c.message.id) {
-			t.Fatalf("%s with a wrong token removed the blob", c.action)
+		if !harness.blobExists(testCase.message.id) {
+			t.Fatalf("%s with a wrong token removed the blob", testCase.action)
 		}
 	}
 	if response, _ := harness.post(
@@ -586,7 +586,7 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	faulty.set(func(b *faultyBlobs) { b.failDelete[ending.id.String()] = true })
+	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[ending.id.String()] = true })
 	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
@@ -694,7 +694,7 @@ func TestAbuseReportHardening(t *testing.T) {
 	link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
 	_, fragment, _ := strings.Cut(link, "#")
 	body := fmt.Sprintf(`{"id":%q,"reason":%q}`, message.id.String(), "malware at "+link+" and again "+fragment)
-	for _, ct := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
+	for _, contentType := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
 		response, _ := harness.do(
 			&testRequest{
 				method:  http.MethodPost,
@@ -702,11 +702,11 @@ func TestAbuseReportHardening(t *testing.T) {
 				address: "203.0.113.80",
 				body:    []byte(body),
 				token:   message.readToken,
-				headers: map[string]string{"Content-Type": ct},
+				headers: map[string]string{"Content-Type": contentType},
 			},
 		)
 		if response.StatusCode != http.StatusBadRequest {
-			t.Fatalf("content type %q: %d", ct, response.StatusCode)
+			t.Fatalf("content type %q: %d", contentType, response.StatusCode)
 		}
 	}
 	response, _ := harness.do(
