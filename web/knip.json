@@ -1,7 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
+    ".": {
+      "ignoreDependencies": ["@sveltejs/mcp"]
+    },
     "app": {
+      "entry": ["src/app/prerender.ts"],
       "ignoreDependencies": [
         "@fontsource-variable/geist",
         "@fontsource-variable/geist-mono",
