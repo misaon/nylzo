@@ -1,76 +1,107 @@
-import { KDF_SCRYPT } from '@nylzo/core';
-import type { Page } from '@playwright/test';
+import { KDF_NONE } from '@nylzo/core';
 
-import { createViaApi, expect, expectRevealed, leave, live, openViaUi, test } from './helpers.ts';
+import { expect, test } from './support/fixtures.ts';
+import { createMessageThroughApi } from './support/messages.ts';
+import {
+  expectMessageShown,
+  leavePage,
+  nextFrames,
+  notInert,
+  openApp,
+  returnFromBackForwardCache,
+  showMessage,
+} from './support/pages.ts';
+import { BASE_URL } from './support/servers.ts';
 
-const LEFT = 'You left the page, so it no longer shows the message.';
-
-function confirmation(page: Page) {
-  return live(page, page.getByRole('alertdialog'));
+declare global {
+  var nylzoShown: boolean | undefined;
 }
 
-test('leaving the page during the delete confirmation closes it and deletes nothing', async ({ page }) => {
-  const message = await createViaApi({ text: 'still here' });
+const PASSPHRASE = 'four random words here';
+const LEFT = 'You left the page, so it no longer shows the message.';
+
+test('loading, reloading and a return from the back/forward cache spend no open (AK3)', async ({ page }) => {
+  const message = await createMessageThroughApi({ text: 'still unread' });
+  const show = page.getByRole('button', { name: 'Show message' });
   await page.goto(message.link);
-  await page.getByRole('button', { name: 'Delete without showing' }).click();
-  await expect(confirmation(page)).toBeVisible();
-  await leave(page);
+  await expect(show).toBeVisible();
+  await page.reload();
+  await expect(show).toBeVisible();
+  await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();
-  await expect(confirmation(page)).toHaveCount(0);
-  expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ state: 'available', opensUsed: 0 });
+  await returnFromBackForwardCache(page);
+  await expect(show).toBeVisible();
+  expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0 });
+  await show.click();
+  await expectMessageShown(page);
+  await expect(page.locator('pre')).toHaveText('still unread');
 });
 
-test('the reader acknowledges the open only once the message is on the screen', async ({ page }) => {
-  const message = await createViaApi({ text: 'on screen' });
-  let shownAtAck: boolean | undefined;
-  let fragmentAtAck: string | undefined;
+test(
+  'back and forward after reading bring back neither the fragment nor the message and spend no open',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createMessageThroughApi({ text: 'only once in this tab', opensMax: 2 });
+    const readPage = `${BASE_URL}/m/${message.id}`;
+    const damaged = page.getByText(/^The link is incomplete or damaged$/);
+    await openApp(page, '/');
+    await showMessage(page, message.link);
+    await expectMessageShown(page);
+    await expect(page).toHaveURL(readPage);
+    await page.goto('/transparency');
+    await page.goBack();
+    await expect(page).toHaveURL(readPage);
+    await expect(damaged).toBeVisible();
+    await expect(page.locator('pre')).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL(`${BASE_URL}/`);
+    await page.goForward();
+    await expect(page).toHaveURL(readPage);
+    await expect(damaged).toBeVisible();
+    await expect(page.locator('pre')).toHaveCount(0);
+    expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
+  },
+);
+
+test('the reader acknowledges the open only once the message is on the screen, and leaving before that keeps the lease (D79)', async ({
+  newPage,
+}) => {
+  const message = await createMessageThroughApi({ text: 'on screen' });
+  const page = await newPage({ reducedMotion: 'no-preference' });
+  const acknowledgements: { readonly shown: boolean; readonly fragment: string }[] = [];
   await page.route('**/api/v1/messages/*/ack', async (route) => {
-    [shownAtAck, fragmentAtAck] = await page.evaluate(() => {
-      const text = document.querySelector('pre');
-      return [text !== null && text.closest('[inert]') === null, location.hash] as const;
-    });
+    acknowledgements.push(
+      await page.evaluate(() => ({
+        shown: document.querySelector('pre')?.closest('[inert]') === null,
+        fragment: location.hash,
+      })),
+    );
     await route.continue();
   });
-  const acked = page.waitForResponse((response) => response.url().endsWith('/ack'));
-  await openViaUi(page, message.link);
-  expect((await acked).status()).toBe(204);
-  expect(shownAtAck).toBe(true);
-  expect(fragmentAtAck).toBe('');
+  const claimed = page.waitForResponse((response) => response.url().endsWith('/claim'));
+  await showMessage(page, message.link);
+  const claim = await claimed;
+  expect(claim.status()).toBe(200);
+  await leavePage(page);
+  await expect(page.getByText(LEFT)).toBeVisible();
+  await expect(page.locator('pre')).toHaveCount(0);
+  expect(new URL(page.url()).hash).not.toBe('');
+  expect(acknowledgements).toEqual([]);
+
+  await page.reload();
+  await expect(page.getByText('You already opened the message on this page')).toBeVisible();
+  const acknowledged = page.waitForResponse((response) => response.url().endsWith('/ack'));
+  await page.getByRole('button', { name: 'Show message' }).click();
+  await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('on screen');
+  const acknowledgement = await acknowledged;
+  expect(acknowledgement.status()).toBe(204);
+  expect(acknowledgements).toEqual([{ shown: true, fragment: '' }]);
+  expect(await message.status()).toMatchObject({ state: 'opened' });
 });
 
-test.describe('with full motion', () => {
-  test.use({ reducedMotion: 'no-preference' });
-
-  test('leaving while the message opens neither acknowledges nor loses it', async ({ page }) => {
-    const message = await createViaApi({ text: 'resume me' });
-    const acks: string[] = [];
-    page.on('request', (request) => {
-      if (request.url().endsWith('/ack')) {
-        acks.push(request.url());
-      }
-    });
-    const claimed = page.waitForResponse((response) => response.url().endsWith('/claim'));
-    await openViaUi(page, message.link);
-    expect((await claimed).status()).toBe(200);
-    await leave(page);
-    await expect(page.getByText(LEFT)).toBeVisible();
-    await expect(page.locator('pre')).toHaveCount(0);
-    expect(acks).toEqual([]);
-    expect(new URL(page.url()).hash).not.toBe('');
-
-    await page.reload();
-    await expect(page.getByText('You already opened the message on this page')).toBeVisible();
-    await page.getByRole('button', { name: 'Show message' }).click();
-    await expectRevealed(page);
-    await expect(page.locator('pre')).toHaveText('resume me');
-    expect(acks).toHaveLength(1);
-  });
-});
-
-test('a second submit while the message opens starts nothing new', async ({ page }) => {
-  const passphrase = 'four random words here';
-  const message = await createViaApi({ text: 'once', passphrase, kdfId: KDF_SCRYPT, opensMax: 2 });
+test('a second submit while the message opens claims only once', async ({ page }) => {
+  const message = await createMessageThroughApi({ text: 'once', passphrase: PASSPHRASE, opensMax: 2 });
   const claims: string[] = [];
   page.on('request', (request) => {
     if (request.url().endsWith('/claim')) {
@@ -79,14 +110,124 @@ test('a second submit while the message opens starts nothing new', async ({ page
   });
   await page.goto(message.link);
   const field = page.getByLabel('Passphrase', { exact: true });
-  await field.fill(passphrase);
+  await field.fill(PASSPHRASE);
   await field.evaluate((input: HTMLInputElement) => {
     input.form?.requestSubmit();
     input.form?.requestSubmit();
   });
-  await expectRevealed(page);
+  await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('once');
   await expect(page.getByText('Enter the passphrase from the sender.')).toHaveCount(0);
   expect(claims).toHaveLength(1);
-  expect(await message.api.status(message.id, message.manageKey)).toMatchObject({ opensUsed: 1 });
+});
+
+test('leaving the page wipes the shown message and closes its dialogs without deleting anything', async ({ page }) => {
+  const message = await createMessageThroughApi({ text: 'gone after leaving', opensMax: 2 });
+  await showMessage(page, message.link);
+  await expectMessageShown(page);
+  await expect(page.locator('pre')).toHaveText('gone after leaving');
+  await page.getByRole('button', { name: 'Report', exact: true }).click();
+  await expect(notInert(page, page.getByRole('dialog'))).toBeVisible();
+  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await expect(notInert(page, page.getByRole('alertdialog'))).toBeVisible();
+  await leavePage(page);
+  await expect(page.getByText(LEFT)).toBeVisible();
+  await expect(page.locator('pre')).toHaveCount(0);
+  const dialogs = page.getByRole('dialog').or(page.getByRole('alertdialog'));
+  await expect(notInert(page, dialogs)).toHaveCount(0);
+  await expect(notInert(page, page.getByRole('button', { name: 'Delete the remaining opens' }))).toHaveCount(0);
+  await expect(notInert(page, page.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
+  expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
+});
+
+test('a prefetch or prerender reaches the read page and the API only as a refused Sec-Purpose request and spends no open (AK16)', async ({
+  page,
+  request,
+}) => {
+  const message = await createMessageThroughApi();
+  const readPath = `/m/${message.id}`;
+  for (const path of [readPath, '/api/v1/instance']) {
+    for (const purpose of ['prefetch', 'prefetch;prerender']) {
+      const response = await request.get(path, { headers: { 'Sec-Purpose': purpose } });
+      expect(response.status(), `${path} ${purpose}`).toBe(503);
+    }
+  }
+
+  const speculative = page
+    .context()
+    .waitForEvent('response', (response) => new URL(response.url()).pathname === readPath);
+  await page.route(`${BASE_URL}/prerender-host`, (route) =>
+    route.fulfill({ contentType: 'text/html', body: `<!doctype html><a href="${message.link}">link</a>` }),
+  );
+  await page.goto(`${BASE_URL}/prerender-host`);
+  await page.unrouteAll();
+  await page.evaluate((url) => {
+    const rules = document.createElement('script');
+    rules.type = 'speculationrules';
+    rules.textContent = JSON.stringify({ prerender: [{ source: 'list', urls: [url] }] });
+    document.head.append(rules);
+  }, message.link);
+  const response = await speculative;
+  const headers = await response.request().allHeaders();
+  expect(headers['sec-purpose']).toMatch(/^prefetch/);
+  expect(response.status()).toBe(503);
+  expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0 });
+});
+
+const HIDDEN_STATES = {
+  hidden: () => {
+    Object.defineProperty(Document.prototype, 'visibilityState', {
+      configurable: true,
+      get: () => (globalThis.nylzoShown === true ? 'visible' : 'hidden'),
+    });
+  },
+  prerendering: () => {
+    Object.defineProperty(Document.prototype, 'prerendering', {
+      configurable: true,
+      get: () => globalThis.nylzoShown !== true,
+    });
+  },
+};
+
+for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
+  test(`a ${state} page does not start reading until it is shown (AK16)`, async ({ page }) => {
+    const message = await createMessageThroughApi({ passphrase: PASSPHRASE, text: 'shown' });
+    const field = page.getByLabel('Passphrase', { exact: true });
+    const show = page.getByRole('button', { name: 'Show message' });
+    await page.addInitScript(hide);
+    await showMessage(page, message.link, PASSPHRASE);
+    await nextFrames(page);
+    await expect(show).toBeEnabled();
+    await expect(notInert(page, field)).toBeEditable();
+    await expect(page.getByRole('status')).toHaveText('');
+    expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
+
+    await page.evaluate(() => Object.assign(globalThis, { nylzoShown: true }));
+    await field.fill(PASSPHRASE);
+    await show.click();
+    await expectMessageShown(page);
+    await expect(page.locator('pre')).toHaveText('shown');
+  });
+}
+
+test('the reader stops without a verifier when the server reports another passphrase profile (AK24)', async ({
+  page,
+}) => {
+  const message = await createMessageThroughApi({ passphrase: PASSPHRASE });
+  const sensitive: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/claim') || request.headers()['x-nylzo-verifier'] !== undefined) {
+      sensitive.push(request.url());
+    }
+  });
+  await page.route(`${BASE_URL}/api/v1/messages/${message.id}`, async (route) => {
+    const response = await route.fetch();
+    const json = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...json, kdf_id: KDF_NONE } });
+  });
+  await page.goto(message.link);
+  await expect(page.getByText(/cannot be opened safely/)).toBeVisible();
+  await expect(notInert(page, page.getByRole('button', { name: 'Show message' }))).toHaveCount(0);
+  expect(sensitive).toEqual([]);
+  expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
 });
