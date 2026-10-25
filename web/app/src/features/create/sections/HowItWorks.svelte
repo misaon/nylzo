@@ -179,10 +179,10 @@
               class={[
                 'pointer-events-none absolute inset-x-0 bottom-0 h-0.5 w-full progress-cycle',
                 part.bar,
-                cycle.running && lit ? 'opacity-100' : 'opacity-0',
+                lit && cycle.running ? 'opacity-100' : 'opacity-0',
               ]}
               max="1"
-              value={cycle.running && lit ? cycle.progress : 0}
+              value={lit && cycle.running ? cycle.progress : 0}
               aria-hidden="true"
             ></progress>
             <span class={['block h-[3px] w-7 rounded-full', part.dot]}></span>

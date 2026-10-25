@@ -17,11 +17,19 @@
     readonly start: { readonly path: string; readonly language: Language };
   }
 
+  const HEADER_VARIANTS = {
+    create: 'home',
+    read: 'read',
+    report: 'page',
+    sent: 'page',
+    transparency: 'page',
+  } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
+
   const { start }: Props = $props();
   const screen: Screen = $derived(screenOf(start.path));
   const translator = setTranslator(new Translator(untrack(() => start.language)));
   const { translate } = translator;
-  const variant = $derived(screen === 'create' ? 'home' : screen === 'read' ? 'read' : 'page');
+  const variant = $derived(HEADER_VARIANTS[screen]);
 
   function switchLanguage(language: Language) {
     if (translator.language === language) {

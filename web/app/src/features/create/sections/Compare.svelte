@@ -167,7 +167,7 @@
                         >
                         <span class="sr-only">{translate('compare.part')}</span>{cell.note ? translate(cell.note) : ''}
                       </span>
-                    {:else if cell.kind === 'text'}
+                    {:else}
                       <span class={['font-mono text-xs', cell.tone]}>{translate(cell.note)}</span>
                     {/if}
                   </td>
