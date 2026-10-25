@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"encoding/hex"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/misaon/nylzo/internal/server/config"
@@ -26,36 +24,24 @@ func ParseCreateHeaderForTest(cfg config.Server, value string) bool {
 	return ok
 }
 
-func PoWSatisfiesForTest(token string, id core.ID, difficulty int) bool {
-	chalStr, counterStr, _ := strings.Cut(token, ".")
-	chal, err := core.DecodeExact(chalStr, core.PoWChallengeLen)
-	if err != nil {
-		return false
-	}
-	counter, err := hex.DecodeString(counterStr)
-	if err != nil {
-		return false
-	}
-	return powSatisfies(chal, counter, id, difficulty)
-}
-
 func SolvePoW(challenge string, id core.ID, difficulty int) (string, error) {
 	token, _, err := core.SolvePoW(context.Background(), challenge, id, difficulty)
 	return token, err
 }
 
 func (s *Server) IDTokenForTest(id core.ID) string {
-	return s.idToken(id, s.clock())
+	token, _ := s.idTokens.Issue(id, s.clock())
+	return token
 }
 
 func (s *Server) ChallengeForTest() [core.ChallengeLen]byte {
-	c, _ := s.issueChallenge(s.clock())
-	return c
+	challenge, _ := s.challenges.Issue(s.clock())
+	return challenge
 }
 
 func (s *Server) ChallengeAtForTest(now time.Time) [core.ChallengeLen]byte {
-	c, _ := s.issueChallenge(now)
-	return c
+	challenge, _ := s.challenges.Issue(now)
+	return challenge
 }
 
 func (s *Server) SetFreeSpaceForTest(free diskspace.FreeFunc) {

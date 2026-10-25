@@ -18,7 +18,7 @@ func BenchmarkSignedMetadataWithASpentChallenge(b *testing.B) {
 		c.Rates.ReadPerHour = 0
 	})
 	path := "/api/v1/messages/" + core.NewID().String()
-	c, _ := s.issueChallenge(s.clock().Add(-2 * time.Minute))
+	c, _ := s.challenges.Issue(s.clock().Add(-2 * time.Minute))
 	auth := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, c, nil).Authorization()
 	for b.Loop() {
 		r := httptest.NewRequest("GET", path, nil)

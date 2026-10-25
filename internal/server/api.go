@@ -17,6 +17,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -298,7 +299,9 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	now := s.clock()
-	resp.Create = s.issueID(now)
+	id := core.NewID()
+	token, expires := s.idTokens.Issue(id, now)
+	resp.Create = instanceCreate{ID: id.String(), IDToken: token, ExpiresAt: formatTime(expires)}
 	gate, err := s.globalGate(r.Context(), now)
 	if err != nil {
 		s.writeInternal(w, r, err)
@@ -306,7 +309,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	if gate.powNeeded {
 		resp.PoW.Required = true
-		resp.PoW.Challenge = s.powChallenge(now)
+		resp.PoW.Challenge = s.work.Challenge(now)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -403,7 +406,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		s.rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 		return
 	}
-	if !s.validIDToken(id, h.IDToken, s.clock()) {
+	if !s.idTokens.Valid(id, h.IDToken, s.clock()) {
 		s.rejectCreate(w, r, http.StatusForbidden, errIDToken)
 		return
 	}
@@ -448,13 +451,13 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if gate.powNeeded {
-		err := s.powVerify(ctx, r.Header.Get(headerPoW), id, now)
+		err := s.work.Verify(ctx, r.Header.Get(headerPoW), id, now)
 		switch {
-		case errors.Is(err, errPoWBusy):
+		case errors.Is(err, proof.ErrWorkBusy):
 			setRetryAfter(w, powBusyRetry)
 			s.rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 			return
-		case errors.Is(err, ErrPoW):
+		case errors.Is(err, proof.ErrWork):
 			s.rejectCreate(w, r, http.StatusForbidden, errPoWRequired)
 			return
 		case err != nil:
@@ -1049,3 +1052,13 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 var errBlobSize = errors.New("server: blob size differs from the stored message size")
+
+type challengeResponse struct {
+	Challenge string `json:"challenge"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
+	challenge, expires := s.challenges.Issue(s.clock())
+	writeJSON(w, http.StatusOK, challengeResponse{Challenge: core.Encode(challenge[:]), ExpiresAt: formatTime(expires)})
+}

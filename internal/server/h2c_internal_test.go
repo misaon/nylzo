@@ -18,11 +18,23 @@ import (
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
+
+type gatedPut struct {
+	store.Blobs
+
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b *gatedPut) Put(ctx context.Context, ref string, r io.Reader, size int64) error {
+	close(b.entered)
+	<-b.release
+	return b.Blobs.Put(ctx, ref, r, size)
+}
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	dir := t.TempDir()
@@ -35,26 +47,14 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gated := &gatedPut{Blobs: blobs, entered: make(chan struct{}), release: make(chan struct{})}
 	cfg := config.Defaults()
 	cfg.DataDir = dir
 	cfg.Pepper = bytes.Repeat([]byte{1}, 32)
-	cfg.PoWConcurrency = 1
-	cfg.PoWDifficulty = 1
-	cfg.Rates.GlobalDailyCreates = 2
-	s, err := New(cfg, st, blobs, WithLogger(slog.New(slog.DiscardHandler)))
+	s, err := New(cfg, st, gated, WithLogger(slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.powSlotWait = 3 * time.Second
-	d := ratelimit.Day(time.Now())
-	if _, err := st.RateHit(
-		t.Context(),
-		[]store.RateHit{{Key: globalCreatesKey, WindowStart: d.Start, PurgeAt: d.PurgeAt()}},
-	); err != nil {
-		t.Fatal(err)
-	}
-	s.powSlots <- struct{}{}
-
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -68,12 +68,13 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	base := "http://" + ln.Addr().String()
 
 	id := core.NewID()
+	token, _ := s.idTokens.Issue(id, s.clock())
 	readKey, manageKey := core.PublicKey(core.NewSecret()), core.PublicKey(core.NewSecret())
 	size := int64(256 << 10)
 	hdr, _ := json.Marshal(
 		map[string]any{
 			"id":         id.String(),
-			"id_token":   s.idToken(id, s.clock()),
+			"id_token":   token,
 			"read_key":   core.Encode(readKey[:]),
 			"manage_key": core.Encode(manageKey[:]),
 			"kdf_id":     0,
@@ -84,18 +85,19 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	)
 	done := make(chan struct{})
 	stalled := make(chan struct{})
-	body := &signalReader{r: bytes.NewReader(make([]byte, size)), after: h2cStreamBuffer, signal: stalled}
+	object := append(core.NewHeader(core.KDFNone).Bytes(), make([]byte, size-core.HeaderLen)...)
+	body := &signalReader{r: bytes.NewReader(object), after: h2cStreamBuffer, signal: stalled}
 	go func() {
 		defer close(done)
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, base+"/api/v1/messages", body)
 		req.ContentLength = size
 		req.Header.Set("X-Nylzo-Create", core.Encode(hdr))
-		req.Header.Set("X-Nylzo-Pow", s.powChallenge(time.Now())+".0000000000000001")
 		if resp, err := client.Do(req); err == nil {
 			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 		}
 	}()
+	<-gated.entered
 	<-stalled
 
 	start := time.Now()
@@ -109,7 +111,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	if elapsed := time.Since(start); resp.ProtoMajor != 2 || elapsed > time.Second {
 		t.Fatalf("a small request waited %v (%s) behind an upload that has not been read yet", elapsed, resp.Proto)
 	}
-	<-s.powSlots
+	close(gated.release)
 	<-done
 }
 
@@ -151,7 +153,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if want <= writeTimeout || store.LeaseFor(size) != want || store.LeaseFor(1000) != store.LeaseDuration {
 		t.Fatalf("lease for %d bytes %v, small %v", size, store.LeaseFor(size), store.LeaseFor(1000))
 	}
-	s := powServer(t, 1)
+	s, _ := testServer(t, openStore(t), nil)
 	w := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	start := time.Now()
@@ -181,7 +183,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	hdr, _ := json.Marshal(
 		map[string]any{
 			"id":         id.String(),
-			"id_token":   cs.idToken(id, cs.clock()),
+			"id_token":   issueIDToken(cs, id),
 			"read_key":   core.Encode(readKey[:]),
 			"manage_key": core.Encode(manageKey[:]),
 			"kdf_id":     0,
@@ -214,7 +216,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	hdr, _ = json.Marshal(
 		map[string]any{
 			"id":         id.String(),
-			"id_token":   cs.idToken(id, cs.clock()),
+			"id_token":   issueIDToken(cs, id),
 			"read_key":   core.Encode(readKey[:]),
 			"manage_key": core.Encode(manageKey[:]),
 			"kdf_id":     0,
@@ -236,4 +238,9 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := cw.write.Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
 	}
+}
+
+func issueIDToken(s *Server, id core.ID) string {
+	token, _ := s.idTokens.Issue(id, s.clock())
+	return token
 }

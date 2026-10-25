@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -73,92 +74,6 @@ func openStore(t testing.TB) *sqlite.Store {
 	}
 	t.Cleanup(func() { st.Close() })
 	return st
-}
-
-type panicOnce struct {
-	store.Store
-	mu       sync.Mutex
-	panicked bool
-}
-
-func (p *panicOnce) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	p.mu.Lock()
-	first := !p.panicked
-	p.panicked = true
-	p.mu.Unlock()
-	if first {
-		panic("test: the store driver panicked")
-	}
-	return p.Store.RateReserveBatch(ctx, hits)
-}
-
-func spendHit(key string) store.RateHit {
-	return store.RateHit{
-		Key:         challengeSpentKey + key,
-		WindowStart: time.Unix(0, 0),
-		PurgeAt:     time.Unix(4102444800, 0),
-		Limit:       1,
-	}
-}
-
-func TestASpendPanicFailsOnlyItsBatch(t *testing.T) {
-	t.Parallel()
-	b := newSpendBatcher(&panicOnce{Store: openStore(t)})
-	if _, err := b.reserve(t.Context(), spendHit("a")); !errors.Is(err, errSpendAborted) {
-		t.Fatalf("a batch whose write panicked: %v", err)
-	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := b.reserve(t.Context(), spendHit("b"))
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("the next batch failed: %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("a panic in one batch blocked every later spend")
-	}
-}
-
-func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		gated := &gatedSpends{Store: openStore(t), gate: make(chan struct{})}
-		b := newSpendBatcher(gated)
-		go b.reserve(t.Context(), spendHit("writing"))
-		synctest.Wait()
-		go b.reserve(t.Context(), spendHit("next"))
-		synctest.Wait()
-		ctx, cancel := context.WithCancel(t.Context())
-		result := make(chan error, 1)
-		go func() {
-			_, err := b.reserve(ctx, spendHit("follower"))
-			result <- err
-		}()
-		synctest.Wait()
-		cancel()
-		synctest.Wait()
-		select {
-		case err := <-result:
-			if !errors.Is(err, context.Canceled) {
-				t.Fatalf("a waiter whose client left: %v", err)
-			}
-		default:
-			t.Fatal("a waiter whose client left kept waiting for a stalled write")
-		}
-		close(gated.gate)
-		synctest.Wait()
-		if c, err := gated.RateGet(
-			context.Background(),
-			challengeSpentKey+"follower",
-			time.Unix(0, 0),
-		); err != nil ||
-			c.Count != 1 {
-			t.Fatalf("the spend of a client that left was not written: %+v %v", c, err)
-		}
-	})
 }
 
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
@@ -349,7 +264,7 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 		}
 	}
 	request := func(pk *[core.PublicKeyLen]byte) *http.Request {
-		c, _ := s.issueChallenge(s.clock())
+		c, _ := s.challenges.Issue(s.clock())
 		sig := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, c, nil)
 		if pk != nil {
 			sig.PublicKey = *pk
@@ -388,5 +303,17 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	// gstack-timing-ok: uniform work for every failed key is the contract under test (spec §5.5)
 	if mw, mo := median(wrong), median(off); mo*130 < mw*100 {
 		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", mo, mw)
+	}
+}
+
+func TestCreateHeaderKeysMatchStruct(t *testing.T) {
+	t.Parallel()
+	tags := map[string]bool{}
+	for field := range reflect.TypeFor[createHeader]().Fields() {
+		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		tags[tag] = true
+	}
+	if !reflect.DeepEqual(tags, createHeaderKeys) {
+		t.Fatalf("createHeaderKeys %v differ from the createHeader tags %v", createHeaderKeys, tags)
 	}
 }

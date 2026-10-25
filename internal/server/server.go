@@ -16,6 +16,7 @@ import (
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/logging"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
@@ -77,10 +78,9 @@ type Server struct {
 	proxies       ratelimit.Proxies
 	counters      *ratelimit.Counters
 	forwardNotice atomic.Int64
-	spent         *spentChallenges
-	spends        *spendBatcher
-	powSlots      chan struct{}
-	powSlotWait   time.Duration
+	challenges    *proof.Challenges
+	work          *proof.Work
+	idTokens      proof.IDTokens
 	streams       *ratelimit.Streams
 	disk          *diskspace.Reserver
 	handler       http.Handler
@@ -138,10 +138,9 @@ func New(cfg config.Server, st store.Store, blobs store.Blobs, opts ...Option) (
 	s.addressKey = ratelimit.NewAddressKey()
 	s.proxies = ratelimit.Proxies{Trusted: cfg.TrustedProxies, ReadRealIP: cfg.ProxyMode == config.ProxyModeScaleway}
 	s.counters = ratelimit.NewCounters()
-	s.spent = newSpentChallenges()
-	s.spends = newSpendBatcher(st)
-	s.powSlots = make(chan struct{}, cfg.PoWConcurrency)
-	s.powSlotWait = powSlotWait
+	s.challenges = proof.NewChallenges(ring, st)
+	s.work = proof.NewWork(ring, st, cfg.PoWConcurrency, cfg.PoWDifficulty)
+	s.idTokens = proof.NewIDTokens(ring)
 	s.streams = ratelimit.NewStreams(cfg.MaxStreams)
 	s.disk = diskspace.NewReserver(cfg.DataDir, cfg.MinFreeBytes, diskspace.Free, s.log)
 	s.handler = s.routes()

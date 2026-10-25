@@ -4,17 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
-	"sync"
-	"sync/atomic"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/server/config"
@@ -99,7 +94,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := "/api/v1/messages/" + core.NewID().String()
-	c, _ := s.issueChallenge(s.clock())
+	c, _ := s.challenges.Issue(s.clock())
 	auth := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, c, nil).Authorization()
 	send := func() int {
 		r := httptest.NewRequest("GET", path, nil)
@@ -114,103 +109,5 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	failing.fail = false
 	if code := send(); code != http.StatusNotFound {
 		t.Fatalf("the same process accepted the challenge after a failed spend: %d", code)
-	}
-	if c, _ := st.RateGet(
-		t.Context(),
-		challengeSpentKey+fmt.Sprintf("%x", c[4:challengeSigned]),
-		time.Unix(0, 0),
-	); c.Count != 0 {
-		t.Fatal("the repeat reached the store although the process had seen the nonce")
-	}
-}
-
-type gatedSpends struct {
-	store.Store
-	gate    chan struct{}
-	mu      sync.Mutex
-	batches []int
-}
-
-func (s *gatedSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	s.mu.Lock()
-	first := len(s.batches) == 0
-	s.batches = append(s.batches, len(hits))
-	s.mu.Unlock()
-	if first {
-		<-s.gate
-	}
-	return s.Store.RateReserveBatch(ctx, hits)
-}
-
-func (s *gatedSpends) calls() []int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.batches)
-}
-
-func TestConcurrentSpendsShareATransaction(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, testConcurrentSpendsShareATransaction)
-}
-
-func testConcurrentSpendsShareATransaction(t *testing.T) {
-	st, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	gated := &gatedSpends{Store: st, gate: make(chan struct{})}
-	b := newSpendBatcher(gated)
-	spend := func(key string) store.RateHit {
-		return store.RateHit{
-			Key:         challengeSpentKey + key,
-			WindowStart: time.Unix(0, 0),
-			PurgeAt:     time.Unix(4102444800, 0),
-			Limit:       1,
-		}
-	}
-	var wg sync.WaitGroup
-	var granted atomic.Int64
-	reserve := func(key string) {
-		wg.Go(func() {
-			ok, err := b.reserve(t.Context(), spend(key))
-			if err != nil {
-				t.Error(err)
-			}
-			if ok {
-				granted.Add(1)
-			}
-		})
-	}
-	reserve("first")
-	synctest.Wait()
-	if calls := gated.calls(); len(calls) != 1 {
-		t.Fatalf("the first spend did not start writing: %v", calls)
-	}
-	const pairs = 300
-	for i := range 2 * pairs {
-		reserve(fmt.Sprint(i % pairs))
-	}
-	synctest.Wait()
-	close(gated.gate)
-	wg.Wait()
-	if granted.Load() != pairs+1 {
-		t.Fatalf("%d spends succeeded, want one per distinct nonce (%d)", granted.Load(), pairs+1)
-	}
-	if calls := gated.calls(); !slices.Equal(calls, []int{1, spendBatchMax, spendBatchMax, 2*pairs - 2*spendBatchMax}) {
-		t.Fatalf("spends written as transactions of %v", calls)
-	}
-}
-
-func TestIDTokenFromTheFutureIsRefused(t *testing.T) {
-	t.Parallel()
-	s, _ := testServer(t, openStore(t), nil)
-	now := time.Now()
-	id := core.NewID()
-	if !s.validIDToken(id, s.idToken(id, now.Add(5*time.Second)), now) {
-		t.Fatal("a token from an instance 5 s ahead must pass")
-	}
-	if s.validIDToken(id, s.idToken(id, now.Add(time.Minute)), now) {
-		t.Fatal("a token that expires more than 605 s from now was accepted")
 	}
 }
