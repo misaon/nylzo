@@ -2,6 +2,8 @@
 
 Oficiální sada loga od vlastníka projektu (24. 10. 2026, D72). Varianty v `light/` patří na světlé pozadí, varianty v `dark/` na tmavé.
 
+Logo je značka projektu. Licence MIT repozitáře nedává právo užívat ho jako značku jiné služby nebo upravené verze.
+
 | Soubor | Formát |
 |---|---|
 | `nylzo-landscape-*.svg` | značka a nápis vedle sebe, 430 × 150 |

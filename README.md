@@ -275,4 +275,4 @@ Self-host přes Docker Compose popisuje `deploy/compose/README.md`.
 
 ## Licence
 
-MIT, viz `LICENSE`.
+MIT, viz `LICENSE`. Licence se týká kódu a souborů v repozitáři a nedává právo užívat název Nylzo ani logo jako značku. Název můžete použít, když o projektu mluvíte. Nepoužívejte ho ani logo pro jinou službu nebo upravenou verzi, ani tak, aby to vypadalo jako spojení s nylzo.com.
