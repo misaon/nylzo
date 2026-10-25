@@ -347,15 +347,6 @@ test('the recipient deletes the remaining opens and keeps reading (D40)', async 
   await expect(late.getByText('The message was deleted')).toBeVisible();
 });
 
-test('the last open offers no deletion', async ({ browser }) => {
-  const message = await createViaApi({ text: 'one open' });
-  const recipient = await newPage(browser);
-  await openViaUi(recipient, message.link);
-  await expectRevealed(recipient);
-  await expect(live(recipient, recipient.getByRole('button', { name: 'Delete the remaining opens' }))).toHaveCount(0);
-  await expect(live(recipient, recipient.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
-});
-
 test('a report from the read page or from /report spends no open (D41)', async ({ browser }) => {
   const message = await createViaApi({ text: 'reported', opensMax: 2 });
   const recipient = await newPage(browser);

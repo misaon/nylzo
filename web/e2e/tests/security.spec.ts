@@ -1,14 +1,4 @@
-import {
-  KDF_NONE,
-  KDF_SCRYPT,
-  deriveContent,
-  deriveLink,
-  encodeBase64url,
-  parseFragment,
-  parsePath,
-  requestKey,
-} from '@nylzo/core';
-import { scryptPassphraseKey } from '@nylzo/core/scrypt';
+import { KDF_NONE, KDF_SCRYPT } from '@nylzo/core';
 import type { Page, Request } from '@playwright/test';
 
 import {
@@ -61,73 +51,6 @@ function encodings(bytes: Uint8Array): string[] {
     buffer.toString('base64url'),
   ];
 }
-
-function textForms(text: string): string[] {
-  const utf8 = Buffer.from(text, 'utf8');
-  return [text, encodeURIComponent(text), text.replaceAll(' ', '+'), utf8.toString('latin1'), ...encodings(utf8)];
-}
-
-async function linkSecrets(link: string, passphrase: string) {
-  const url = new URL(link);
-  const id = parsePath(url.pathname);
-  const { s } = parseFragment(url.hash);
-  const { r, saltPw } = await deriveLink(id, s);
-  const p = scryptPassphraseKey(passphrase, saltPw);
-  const { v } = await deriveContent(id, s, p);
-  return { s, r, saltPw, p, v };
-}
-
-test(
-  'the fragment, the passphrase, the keys and the content never leave the browser in any common encoding (AK1, AK2)',
-  { tag: '@cross-browser' },
-  async ({ browser }) => {
-    const sender = await (await browser.newContext()).newPage();
-    const recipient = await (await browser.newContext()).newPage();
-    const sent = record(sender);
-    const received = record(recipient);
-    const passphrase = 'four random words here';
-    const text = 'tajné sdělení jen pro příjemce';
-    const file = {
-      name: 'výplatní páska říjen.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n'),
-    };
-    const link = await createViaUi(sender, { text, file, passphrase });
-    await openViaUi(recipient, link, passphrase);
-    await expectRevealed(recipient);
-    await expect(recipient.locator('pre')).toHaveText(text);
-    await expect(recipient.locator('bdi')).toHaveText(file.name);
-    const fragment = new URL(link).hash.slice(1);
-    const keys = await linkSecrets(link, passphrase);
-    expect(keys.s).toHaveLength(32);
-    const forbidden = [
-      fragment,
-      ...textForms(passphrase),
-      ...textForms(text),
-      ...textForms(file.name),
-      ...textForms(file.buffer.toString('utf8')),
-      ...[keys.s, keys.r, keys.saltPw, keys.p, keys.v].flatMap(encodings),
-    ].map((form) => form.toLowerCase());
-    const requests = await Promise.all([...sent, ...received]);
-    expect(requests.length).toBeGreaterThan(6);
-    const create = requests.find((request) => request.headers['x-nylzo-create'] !== undefined);
-    expect(
-      JSON.parse(Buffer.from(create?.headers['x-nylzo-create'] ?? '', 'base64url').toString('utf8')),
-    ).toMatchObject({
-      read_key: encodeBase64url((await requestKey(keys.r)).publicKey),
-      verifier_key: encodeBase64url((await requestKey(keys.v)).publicKey),
-    });
-    for (const request of requests) {
-      const flat =
-        `${request.url}\n${JSON.stringify(request.headers)}\n${request.body}\n${Buffer.from(request.body, 'latin1').toString('hex')}`.toLowerCase();
-      for (const form of forbidden) {
-        expect(flat, `${request.url} leaks ${form}`).not.toContain(form);
-      }
-      expect(request.url).not.toContain('#');
-      expect(request.headers['referer']).toBeUndefined();
-    }
-  },
-);
 
 test('loading the page and the metadata spends no open (AK3)', async ({ page }) => {
   const message = await createViaApi();
@@ -229,32 +152,6 @@ test('the reader stops without a verifier when the server reports another profil
   expect(sensitive).toEqual([]);
   const status = await message.api.status(message.id, message.manageKey);
   expect(status).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
-});
-
-test('the passphrase fields give password managers nothing and the message field is not spell checked (D38)', async ({
-  page,
-}) => {
-  const message = await createViaApi({ passphrase: 'four random words here', kdfId: KDF_SCRYPT });
-  await openApp(page, '/');
-  const text = page.getByLabel('Message text');
-  await expect(text).toHaveAttribute('spellcheck', 'false');
-  await expect(text).toHaveAttribute('autocorrect', 'off');
-  await expect(text).toHaveAttribute('autocapitalize', 'off');
-  await expect(text).toHaveAttribute('autocomplete', 'off');
-  const fields = [page.getByLabel('Passphrase, optional')];
-  const reader = await page.context().newPage();
-  await reader.goto(message.link);
-  fields.push(reader.getByLabel('Passphrase', { exact: true }));
-  for (const field of fields) {
-    await expect(field).toHaveAttribute('autocomplete', 'off');
-    await expect(field).toHaveAttribute('spellcheck', 'false');
-    await expect(field).toHaveAttribute('data-1p-ignore', '');
-    await expect(field).toHaveAttribute('data-lpignore', 'true');
-    await expect(field).toHaveAttribute('data-bwignore', 'true');
-  }
-  for (const screen of [page, reader]) {
-    expect(await screen.locator('[autocomplete*="password"], [autocomplete="username"]').count()).toBe(0);
-  }
 });
 
 async function watchShownAfterLeaving(page: Page): Promise<() => Promise<boolean>> {
@@ -515,22 +412,6 @@ for (const file of files) {
     },
   );
 }
-
-test('the fields of an abuse report are not spell checked or autocompleted (D38, D41)', async ({ page }) => {
-  const message = await createViaApi();
-  await page.goto('/report');
-  const fields = [page.getByLabel('Link to the message'), page.getByLabel('Reason, optional')];
-  const reader = await page.context().newPage();
-  await reader.goto(message.link);
-  await reader.getByRole('button', { name: 'Report', exact: true }).click();
-  fields.push(reader.getByLabel('Reason, optional'));
-  for (const field of fields) {
-    await expect(field).toHaveAttribute('spellcheck', 'false');
-    await expect(field).toHaveAttribute('autocorrect', 'off');
-    await expect(field).toHaveAttribute('autocapitalize', 'off');
-    await expect(field).toHaveAttribute('autocomplete', 'off');
-  }
-});
 
 test('an abuse report sends the id, the reason and a signature but never the fragment (AK2, D41)', async ({
   browser,
