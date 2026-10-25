@@ -22,7 +22,10 @@ const (
 	maxHeaderBytes    = 8 << 10
 )
 
-var startedAt = time.Now()
+var (
+	startedAt = time.Now()
+	logger    = log.New(os.Stderr, "", log.LstdFlags)
+)
 
 type echoResponse struct {
 	ReceivedBytes         int64               `json:"received_bytes"`
@@ -82,7 +85,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.ListenAndServe() }()
-	log.Printf(
+	logger.Printf(
 		"r13-echo listening on :%s (started %s, instance %s)",
 		port,
 		startedAt.Format(time.RFC3339Nano),
@@ -91,12 +94,12 @@ func main() {
 
 	select {
 	case err := <-errCh:
-		log.Fatalf("server: %v", err)
+		logger.Fatalf("server: %v", err)
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("shutdown: %v", err)
+			logger.Printf("shutdown: %v", err)
 		}
 	}
 }
@@ -129,8 +132,7 @@ func handleEcho(w http.ResponseWriter, r *http.Request) {
 	if readErr != nil {
 		resp.ReadError = readErr.Error()
 		status = http.StatusBadRequest
-		var tooLarge *http.MaxBytesError
-		if errors.As(readErr, &tooLarge) {
+		if _, tooLarge := errors.AsType[*http.MaxBytesError](readErr); tooLarge {
 			status = http.StatusRequestEntityTooLarge
 		}
 	}
@@ -165,7 +167,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(v); err != nil {
-		log.Printf("encode: %v", err)
+		logger.Printf("encode: %v", err)
 	}
 }
 
@@ -179,6 +181,7 @@ func instanceName() string {
 
 type statusRecorder struct {
 	http.ResponseWriter
+
 	status int
 }
 
@@ -192,7 +195,7 @@ func logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Printf("%s %s %s status=%d content_length=%d remote=%s xff=%q xrip=%q dur=%s",
+		logger.Printf("%q %q %q status=%d content_length=%d remote=%q xff=%q xrip=%q dur=%s",
 			r.Proto, r.Method, r.URL.Path, rec.status, r.ContentLength, r.RemoteAddr,
 			r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Real-IP"), time.Since(start).Round(time.Millisecond))
 	})

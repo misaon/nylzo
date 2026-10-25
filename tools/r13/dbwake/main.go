@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5" //nolint:depguard // R13 measures a Postgres wake-up; this module goes with the harness.
 )
 
 const defaultTimeout = 90 * time.Second

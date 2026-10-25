@@ -45,7 +45,7 @@ func TestEchoRejectsOversizedBody(t *testing.T) {
 }
 
 func TestStartReportsUptime(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/start", nil)
+	req := httptest.NewRequest(http.MethodGet, "/start", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	handleStart(rec, req)

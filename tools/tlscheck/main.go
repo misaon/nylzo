@@ -13,18 +13,18 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:443", "host:port of the TLS server")
-	ca := flag.String("ca", "", "PEM file with the root certificate to trust")
+	address := flag.String("addr", "localhost:443", "host:port of the TLS server")
+	rootFile := flag.String("ca", "", "PEM file with the root certificate to trust")
 	flag.Parse()
-	if err := check(*addr, *ca); err != nil {
+	if err := check(*address, *rootFile); err != nil {
 		fmt.Fprintln(os.Stderr, "tlscheck:", err)
 		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stdout, "tlscheck: TLS 1.3 with X25519MLKEM768")
 }
 
-func check(addr, ca string) error {
-	pem, err := os.ReadFile(ca)
+func check(address, rootFile string) error {
+	pem, err := os.ReadFile(rootFile)
 	if err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func check(addr, ca string) error {
 	if !roots.AppendCertsFromPEM(pem) {
 		return errors.New("no certificate in the root file")
 	}
-	host, _, err := net.SplitHostPort(addr)
+	host, _, err := net.SplitHostPort(address)
 	if err != nil {
 		return err
 	}
@@ -44,13 +44,17 @@ func check(addr, ca string) error {
 		MinVersion:       tls.VersionTLS13,
 		CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.X25519},
 	}}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return fmt.Errorf("handshake offering X25519MLKEM768 and X25519: %w", err)
 	}
 	defer conn.Close()
-	if state := conn.(*tls.Conn).ConnectionState(); state.CurveID != tls.X25519MLKEM768 {
-		return fmt.Errorf("negotiated %s instead of X25519MLKEM768", state.CurveID)
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return errors.New("the dialer returned a connection without TLS")
+	}
+	if curve := tlsConn.ConnectionState().CurveID; curve != tls.X25519MLKEM768 {
+		return fmt.Errorf("negotiated %s instead of X25519MLKEM768", curve)
 	}
 	return nil
 }
