@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 
-import { concat, hash, type FileMeta, type Meta } from '../src/index.ts';
+import { concat, hash } from '../src/index.ts';
 
-export interface ScryptVector {
+interface ScryptVector {
   readonly name: string;
   readonly password: string;
   readonly salt: string;
@@ -14,7 +14,7 @@ export interface ScryptVector {
   readonly heavy: boolean;
 }
 
-export interface DeriveVector {
+interface DeriveVector {
   readonly name: string;
   readonly id: string;
   readonly s: string;
@@ -33,7 +33,7 @@ export interface DeriveVector {
   readonly manage_key: string;
 }
 
-export interface RequestVector {
+interface RequestVector {
   readonly name: string;
   readonly seed_hex: string;
   readonly public_key: string;
@@ -48,14 +48,14 @@ export interface RequestVector {
   readonly verifier_header?: string;
 }
 
-export interface FileVector {
+interface FileVector {
   readonly name: string;
   readonly mime: string;
   readonly size: number;
   readonly content: string;
 }
 
-export interface EnvelopeVector {
+interface EnvelopeVector {
   readonly name: string;
   readonly id: string;
   readonly s: string;
@@ -75,7 +75,7 @@ export interface EnvelopeVector {
   readonly object_b64?: string;
 }
 
-export interface LinkVector {
+interface LinkVector {
   readonly name: string;
   readonly input: string;
   readonly valid: boolean;
@@ -87,7 +87,7 @@ export interface LinkVector {
   readonly retired_kdf?: boolean;
 }
 
-export interface MetaVector {
+interface MetaVector {
   readonly name: string;
   readonly input: string;
   readonly valid: boolean;
@@ -98,7 +98,7 @@ export interface MetaVector {
   readonly file_size?: number;
 }
 
-export interface VectorFile {
+interface VectorFile {
   readonly spec: string;
   readonly generator: string;
   readonly scrypt_rfc7914: readonly ScryptVector[];
@@ -111,7 +111,7 @@ export interface VectorFile {
   readonly pow: readonly PowVector[];
 }
 
-export interface PowVector {
+interface PowVector {
   readonly name: string;
   readonly challenge: string;
   readonly id: string;
@@ -122,7 +122,7 @@ export interface PowVector {
   readonly difficulty?: number;
 }
 
-export interface StrengthVector {
+interface StrengthVector {
   readonly name: string;
   readonly passphrase: string;
   readonly accepted: boolean;
@@ -134,12 +134,12 @@ export function loadVectors(): VectorFile {
 }
 
 export function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
-  if (hex.length % 2 !== 0 || !/^[0-9a-f]*$/.test(hex)) {
+  if (hex.length % 2 !== 0 || !/^[\da-f]*$/.test(hex)) {
     throw new Error(`not lowercase hex: ${hex}`);
   }
   const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(hex.slice(2 * i, 2 * i + 2), 16);
+  for (let index = 0; index < out.length; index++) {
+    out[index] = Number.parseInt(hex.slice(2 * index, 2 * index + 2), 16);
   }
   return out;
 }
@@ -156,10 +156,10 @@ export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return bytesToHex(await hash(bytes));
 }
 
-export function counterBytes(size: number): Uint8Array<ArrayBuffer> {
+function counterBytes(size: number): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(size);
-  for (let i = 0; i < size; i++) {
-    out[i] = i % 256;
+  for (let index = 0; index < size; index++) {
+    out[index] = index % 256;
   }
   return out;
 }
@@ -172,11 +172,7 @@ export function fileBytes(file: FileVector): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export function metaOf(text: string | undefined, file: FileMeta | undefined): Meta {
-  return { text, file };
-}
-
-export function withByteFlipped(bytes: Uint8Array, index: number, mask = 0x01): Uint8Array<ArrayBuffer> {
+export function withByteFlipped(bytes: Uint8Array, index: number, mask = 1): Uint8Array<ArrayBuffer> {
   const copy = concat(bytes);
   copy[index] = (copy[index] ?? 0) ^ mask;
   return copy;

@@ -16,7 +16,7 @@ export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_META_BYTES = 102 * 1024;
 export const META_LEN_PREFIX = 4;
 export const PAD_TEXT = 4096;
-export const PAD_FILE = 65536;
+export const PAD_FILE = 65_536;
 export const OBJECT_SLACK = 64;
 export const MAX_OBJECT_BYTES = MAX_FILE_BYTES + MAX_TEXT_BYTES + PAD_FILE + OBJECT_SLACK;
 export const MAX_FILE_NAME = 255;
@@ -26,7 +26,11 @@ export const MAX_JSON_DEPTH = 32;
 export const MIN_TTL_SECONDS = 60;
 
 export const MIN_TRANSFER_SECONDS = 120;
-export const MIN_TRANSFER_BYTES_PER_SECOND = 16000;
+export const MIN_TRANSFER_BYTES_PER_SECOND = 16_000;
+
+export function isUnsignedInteger(value: number, maximum: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
 
 export function transferSeconds(size: number): number {
   return Math.max(MIN_TRANSFER_SECONDS, Math.ceil(size / MIN_TRANSFER_BYTES_PER_SECOND));

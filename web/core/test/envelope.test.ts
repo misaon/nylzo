@@ -1,40 +1,40 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { newId } from '../src/ids.ts';
 import {
+  aad,
   AAD_LEN,
   FlagsError,
+  type Header,
   HEADER_LEN,
+  headerBytes,
   HeaderError,
-  IV_LEN,
   IntegrityError,
+  IV_LEN,
   KDF_NONE,
   KDF_RETIRED,
   KDF_SCRYPT,
   KdfError,
+  type KdfId,
   KdfMismatchError,
   MAX_FILE_BYTES,
   MAX_OBJECT_BYTES,
   MAX_TEXT_BYTES,
+  type Meta,
   MetaError,
-  PAD_FILE,
-  PolicyError,
-  TAG_LEN,
-  VERSION,
-  VersionError,
-  aad,
-  headerBytes,
   newHeader,
   newSecret,
   open,
-  paddedLen,
+  PAD_FILE,
+  paddedLength as paddedLengthgth,
   parseHeader,
-  seal,
-  type Header,
-  type KdfId,
-  type Meta,
   type Policy,
+  PolicyError,
+  seal,
+  TAG_LEN,
+  VERSION,
+  VersionError,
 } from '../src/index.ts';
-import { newId } from '../src/ids.ts';
 import { deriveAll } from '../src/scrypt.ts';
 import { bytesToHex, withByteFlipped } from './helpers.ts';
 
@@ -47,13 +47,12 @@ interface Sample {
   readonly object: Uint8Array;
 }
 
-const policy: Policy = { opensMax: 1, ttlSeconds: 86400 };
+const policy: Policy = { opensMax: 1, ttlSeconds: 86_400 };
 
 function textMeta(text: string, file?: Uint8Array): Meta {
-  if (file === undefined) {
-    return { text };
-  }
-  return { text, file: { name: 'f.bin', mime: 'application/octet-stream', size: file.length } };
+  return file === undefined
+    ? { text }
+    : { text, file: { name: 'f.bin', mime: 'application/octet-stream', size: file.length } };
 }
 
 async function sample(kdfId: KdfId, passphrase: string, file?: Uint8Array): Promise<Sample> {
@@ -126,7 +125,9 @@ describe('every message gets a fresh random iv', () => {
       const hex = bytesToHex(iv);
       expect(seen.has(hex), `iv ${hex} repeated`).toBe(false);
       seen.add(hex);
-      iv.forEach((byte, index) => distinct[index]?.add(byte));
+      for (const [index, byte] of iv.entries()) {
+        distinct[index]?.add(byte);
+      }
     }
     expect(Math.min(...distinct.map((values) => values.size))).toBeGreaterThanOrEqual(200);
   });
@@ -174,19 +175,19 @@ describe('open rejects malformed headers before decrypting', () => {
 });
 
 describe('padding', () => {
-  it('paddedLen rounds up to the unit', () => {
+  it('paddedLength rounds up to the unit', () => {
     const cases: [number, boolean, number][] = [
       [0, false, 0],
       [1, false, 4096],
       [4095, false, 4096],
       [4096, false, 4096],
       [4097, false, 8192],
-      [1, true, 65536],
-      [65536, true, 65536],
-      [65537, true, 131072],
+      [1, true, 65_536],
+      [65_536, true, 65_536],
+      [65_537, true, 131_072],
     ];
     for (const [n, hasFile, want] of cases) {
-      expect(paddedLen(n, hasFile)).toBe(want);
+      expect(paddedLengthgth(n, hasFile)).toBe(want);
     }
   });
 
@@ -198,13 +199,13 @@ describe('padding', () => {
 
   it('file plaintext pads to multiples of 64 KiB', async () => {
     const expected: [number, number][] = [
-      [0, 65536],
-      [1, 65536],
-      [4095, 65536],
-      [4096, 65536],
-      [4097, 65536],
-      [65536, 131072],
-      [65537, 131072],
+      [0, 65_536],
+      [1, 65_536],
+      [4095, 65_536],
+      [4096, 65_536],
+      [4097, 65_536],
+      [65_536, 131_072],
+      [65_537, 131_072],
     ];
     for (const [size, want] of expected) {
       const file = new Uint8Array(size);
@@ -251,7 +252,7 @@ describe('seal validates its inputs', () => {
     await expect(seal(content.k, header, id, { opensMax: 1, ttlSeconds: 59 }, payload)).rejects.toBeInstanceOf(
       PolicyError,
     );
-    await expect(seal(content.k, header, id, { opensMax: 65536, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
+    await expect(seal(content.k, header, id, { opensMax: 65_536, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
       PolicyError,
     );
     await expect(seal(content.k, header, id, { opensMax: 1.5, ttlSeconds: 60 }, payload)).rejects.toBeInstanceOf(
@@ -298,7 +299,7 @@ describe('header and aad', () => {
     expect(bytes.length).toBe(AAD_LEN);
     expect(bytes.subarray(0, HEADER_LEN)).toEqual(headerBytes(header));
     expect(bytes.subarray(HEADER_LEN, HEADER_LEN + 16)).toEqual(id);
-    expect(Array.from(bytes.subarray(HEADER_LEN + 16))).toEqual([0, 1, 0, 0, 0, 60]);
+    expect([...bytes.subarray(HEADER_LEN + 16)]).toEqual([0, 1, 0, 0, 0, 60]);
   });
 
   it('starts every sealed object with the header', async () => {
@@ -312,7 +313,7 @@ describe('header and aad', () => {
 
 describe('plaintext buffers', () => {
   it('are wiped after seal and open, and the opened file is its own copy', async () => {
-    const file = new Uint8Array(5000).fill(0x5a);
+    const file = new Uint8Array(5000).fill(7);
     const m = await sample(KDF_NONE, '', file);
     const plaintexts: Uint8Array[] = [];
     const encrypt = crypto.subtle.encrypt.bind(crypto.subtle);
@@ -335,7 +336,9 @@ describe('plaintext buffers', () => {
       await seal(m.k, newHeader(KDF_NONE), m.id, policy, { meta: textMeta('wipe me', file), file });
       opened = await open(m.k, m.id, policy, KDF_NONE, m.object);
     } finally {
-      spies.forEach((spy) => spy.mockRestore());
+      for (const spy of spies) {
+        spy.mockRestore();
+      }
     }
     expect(plaintexts).toHaveLength(2);
     expect(

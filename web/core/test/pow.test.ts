@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  MAX_POW_DIFFICULTY,
-  POW_CHALLENGE_LEN,
-  PowError,
-  PowTimeoutError,
   encodeBase64url,
   leadingZeroBits,
+  MAX_POW_DIFFICULTY,
   parseId,
   parsePowChallenge,
+  POW_CHALLENGE_LEN,
   powDigest,
+  PowError,
+  PowTimeoutError,
   powToken,
   solvePow,
 } from '../src/index.ts';
@@ -18,19 +18,25 @@ import { bytesToHex, loadVectors } from './helpers.ts';
 const vectors = loadVectors().pow;
 
 describe('proof of work', () => {
-  it.each(vectors.map((v) => [v.name, v] as const))('matches the vector %s', { timeout: 60_000 }, (_, v) => {
-    const digest = powDigest(parsePowChallenge(v.challenge), parseId(v.id), v.counter);
-    expect(bytesToHex(digest)).toBe(v.digest_hex);
-    expect(leadingZeroBits(digest)).toBe(v.zero_bits);
-    expect(powToken(v.challenge, v.counter)).toBe(v.token);
-    if (v.difficulty !== undefined) {
-      const attempts: number[] = [];
-      expect(
-        solvePow(v.challenge, parseId(v.id), v.difficulty, { onAttempt: (counter) => attempts.push(counter) }),
-      ).toBe(v.token);
-      expect(attempts.at(-1)).toBe(v.counter);
-    }
+  it.each(vectors)('matches the vector $name', (vector) => {
+    const digest = powDigest(parsePowChallenge(vector.challenge), parseId(vector.id), vector.counter);
+    expect(bytesToHex(digest)).toBe(vector.digest_hex);
+    expect(leadingZeroBits(digest)).toBe(vector.zero_bits);
+    expect(powToken(vector.challenge, vector.counter)).toBe(vector.token);
   });
+
+  it.each(vectors.filter((vector) => vector.difficulty !== undefined))(
+    'solves the vector $name',
+    { timeout: 60_000 },
+    (vector) => {
+      const attempts: number[] = [];
+      const onAttempt = (counter: number): void => {
+        attempts.push(counter);
+      };
+      expect(solvePow(vector.challenge, parseId(vector.id), vector.difficulty ?? 0, { onAttempt })).toBe(vector.token);
+      expect(attempts.at(-1)).toBe(vector.counter);
+    },
+  );
 
   it('counts leading zero bits', () => {
     expect(leadingZeroBits(new Uint8Array([]))).toBe(0);
@@ -43,7 +49,7 @@ describe('proof of work', () => {
   it('refuses a difficulty a server must not ask for', () => {
     const challenge = encodeBase64url(new Uint8Array(POW_CHALLENGE_LEN));
     const id = new Uint8Array(16);
-    for (const difficulty of [-1, MAX_POW_DIFFICULTY + 1, 1.5, Number.NaN]) {
+    for (const difficulty of [-1, MAX_POW_DIFFICULTY + 1, 1.5, NaN]) {
       expect(() => solvePow(challenge, id, difficulty)).toThrow(PowError);
     }
     expect(() => solvePow(challenge.slice(1), id, 0)).toThrow();
@@ -59,7 +65,9 @@ describe('proof of work', () => {
       solvePow(challenge, new Uint8Array(16), MAX_POW_DIFFICULTY, {
         deadline: 3,
         now: () => clock++,
-        onAttempt: (counter) => attempts.push(counter),
+        onAttempt: (counter) => {
+          attempts.push(counter);
+        },
       }),
     ).toThrow(PowTimeoutError);
     expect(attempts).toEqual([0, 1, 2]);

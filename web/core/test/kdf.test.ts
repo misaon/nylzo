@@ -10,9 +10,9 @@ describe('passphrase key derivation', () => {
       throw new Error('vector scrypt-ascii is missing');
     }
     const fractions: number[] = [];
-    const key = scryptPassphraseKey(vector.passphrase, hexToBytes(vector.salt_pw_hex), (fraction) =>
-      fractions.push(fraction),
-    );
+    const key = scryptPassphraseKey(vector.passphrase, hexToBytes(vector.salt_pw_hex), (fraction) => {
+      fractions.push(fraction);
+    });
     expect(bytesToHex(key)).toBe(vector.p_hex);
     expect(fractions.length).toBeGreaterThan(1);
     expect(fractions.at(-1)).toBe(1);

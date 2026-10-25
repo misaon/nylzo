@@ -1,28 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { newId } from '../src/ids.ts';
 import {
-  KDF_NONE,
-  KDF_RETIRED,
-  KDF_SCRYPT,
-  KEY_LEN,
-  KdfError,
-  MalformedPassphraseError,
-  TOKEN_LEN,
   deriveContent,
   deriveLink,
   hsalt,
   isKdfId,
+  KDF_NONE,
+  KDF_RETIRED,
+  KDF_SCRYPT,
+  KdfError,
+  type KdfId,
   kdfRequiresPassphrase,
+  KEY_LEN,
+  MalformedPassphraseError,
   newHeader,
   newSecret,
   normalizePassphrase,
   open,
   parseKdfId,
   seal,
+  TOKEN_LEN,
   utf8,
-  type KdfId,
 } from '../src/index.ts';
-import { newId } from '../src/ids.ts';
 import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from '../src/scrypt.ts';
 import { bytesToHex } from './helpers.ts';
 
@@ -36,7 +36,7 @@ describe('content key K', () => {
     expect(content.k.type).toBe('secret');
     expect(content.k.extractable).toBe(false);
     expect(content.k.algorithm).toEqual({ name: 'AES-GCM', length: KEY_LEN * 8 });
-    expect([...content.k.usages].sort()).toEqual(['decrypt', 'encrypt']);
+    expect(content.k.usages.toSorted((left, right) => left.localeCompare(right))).toEqual(['decrypt', 'encrypt']);
     await expect(crypto.subtle.exportKey('raw', content.k)).rejects.toThrow();
     await expect(crypto.subtle.exportKey('jwk', content.k)).rejects.toThrow();
   });
@@ -75,12 +75,12 @@ describe('tokens', () => {
 describe('passphrase normalisation', () => {
   it('rejects a passphrase that is not well-formed Unicode', async () => {
     const salt = new Uint8Array(32);
-    expect(() => scryptPassphraseKey('caf\ud800', salt)).toThrow(MalformedPassphraseError);
-    await expect(anyPassphraseKey(KDF_SCRYPT, 'caf\ud800', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
-    await expect(deriveAll(newId(), newSecret(), KDF_SCRYPT, 'caf\ud800')).rejects.toBeInstanceOf(
+    expect(() => scryptPassphraseKey('caf\u{D800}', salt)).toThrow(MalformedPassphraseError);
+    await expect(anyPassphraseKey(KDF_SCRYPT, 'caf\u{D800}', salt)).rejects.toBeInstanceOf(MalformedPassphraseError);
+    await expect(deriveAll(newId(), newSecret(), KDF_SCRYPT, 'caf\u{D800}')).rejects.toBeInstanceOf(
       MalformedPassphraseError,
     );
-    await expect(anyPassphraseKey(KDF_NONE, 'caf\ud800', salt)).resolves.toHaveLength(0);
+    await expect(anyPassphraseKey(KDF_NONE, 'caf\u{D800}', salt)).resolves.toHaveLength(0);
   });
 
   it('encodes the NFC form as UTF-8', () => {
@@ -95,7 +95,8 @@ describe('passphrase normalisation', () => {
     const a = await deriveAll(id, s, KDF_SCRYPT, composed);
     const b = await deriveAll(id, s, KDF_SCRYPT, decomposed);
     expect(a.content.v).toEqual(b.content.v);
-    expect(bytesToHex(a.content.v)).not.toBe(bytesToHex((await deriveAll(id, s, KDF_SCRYPT, 'other')).content.v));
+    const other = await deriveAll(id, s, KDF_SCRYPT, 'other');
+    expect(bytesToHex(a.content.v)).not.toBe(bytesToHex(other.content.v));
     expect(scryptPassphraseKey(composed, a.link.saltPw)).toHaveLength(KEY_LEN);
     const header = newHeader(KDF_SCRYPT);
     const policy = { opensMax: 1, ttlSeconds: 3600 };
@@ -149,7 +150,6 @@ describe('kdf profiles', () => {
     } finally {
       spy.mockRestore();
     }
-    expect(imported).toHaveLength(1);
-    expect([...imported[0]!].every((byte) => byte === 0)).toBe(true);
+    expect(imported).toEqual([new Uint8Array(64)]);
   });
 });

@@ -1,11 +1,8 @@
 import { EncodingError } from './errors.ts';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-
-const VALUES = new Int8Array(128).fill(-1);
-for (let i = 0; i < ALPHABET.length; i++) {
-  VALUES[ALPHABET.charCodeAt(i)] = i;
-}
+const SIX_BITS = 0b11_1111;
+const EIGHT_BITS = 0b1111_1111;
 
 export function encodedLength(byteLength: number): number {
   return Math.ceil((byteLength * 4) / 3);
@@ -13,18 +10,18 @@ export function encodedLength(byteLength: number): number {
 
 export function encodeBase64url(bytes: Uint8Array): string {
   let out = '';
-  let acc = 0;
+  let accumulator = 0;
   let bits = 0;
   for (const byte of bytes) {
-    acc = ((acc & 0x3f) << 8) | byte;
+    accumulator = ((accumulator & SIX_BITS) << 8) | byte;
     bits += 8;
     while (bits >= 6) {
       bits -= 6;
-      out += ALPHABET.charAt((acc >> bits) & 0x3f);
+      out += ALPHABET.charAt((accumulator >> bits) & SIX_BITS);
     }
   }
   if (bits > 0) {
-    out += ALPHABET.charAt((acc << (6 - bits)) & 0x3f);
+    out += ALPHABET.charAt((accumulator << (6 - bits)) & SIX_BITS);
   }
   return out;
 }
@@ -34,22 +31,23 @@ export function decodeBase64urlExact(text: string, byteLength: number): Uint8Arr
     throw new EncodingError();
   }
   const out = new Uint8Array(byteLength);
-  let acc = 0;
+  let accumulator = 0;
   let bits = 0;
   let written = 0;
-  for (let i = 0; i < text.length; i++) {
-    const value = valueOf(text.charCodeAt(i));
-    if (value < 0) {
+  for (const character of text) {
+    const value = ALPHABET.indexOf(character);
+    if (value === -1) {
       throw new EncodingError();
     }
-    acc = ((acc & 0xff) << 6) | value;
+    accumulator = ((accumulator & EIGHT_BITS) << 6) | value;
     bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      out[written++] = (acc >> bits) & 0xff;
+    if (bits < 8) {
+      continue;
     }
+    bits -= 8;
+    out[written++] = (accumulator >> bits) & EIGHT_BITS;
   }
-  if (written !== byteLength || (acc & ((1 << bits) - 1)) !== 0) {
+  if (written !== byteLength || (accumulator & ((1 << bits) - 1)) !== 0) {
     throw new EncodingError();
   }
   return out;
@@ -57,11 +55,4 @@ export function decodeBase64urlExact(text: string, byteLength: number): Uint8Arr
 
 export function decode32(text: string): Uint8Array<ArrayBuffer> {
   return decodeBase64urlExact(text, 32);
-}
-
-function valueOf(code: number): number {
-  if (code >= VALUES.length) {
-    return -1;
-  }
-  return VALUES[code] ?? -1;
 }

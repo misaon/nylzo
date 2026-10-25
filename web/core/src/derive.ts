@@ -45,7 +45,7 @@ export async function deriveContent(id: Uint8Array, s: Uint8Array, p: Uint8Array
   const prk = await importIkm(ikm);
   ikm.fill(0);
   const k = await crypto.subtle.deriveKey(
-    hkdfParams(salt, INFO_CONTENT),
+    hkdfParameters(salt, INFO_CONTENT),
     prk,
     { name: 'AES-GCM', length: KEY_LEN * 8 },
     false,
@@ -58,7 +58,7 @@ function importIkm(ikm: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits', 'deriveKey']);
 }
 
-function hkdfParams(salt: Uint8Array<ArrayBuffer>, info: string): HkdfParams {
+function hkdfParameters(salt: Uint8Array<ArrayBuffer>, info: string): HkdfParams {
   return { name: 'HKDF', hash: 'SHA-256', salt, info: utf8(info) };
 }
 
@@ -68,5 +68,5 @@ async function expandBits(
   info: string,
   length: number,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  return new Uint8Array(await crypto.subtle.deriveBits(hkdfParams(salt, info), prk, length * 8));
+  return new Uint8Array(await crypto.subtle.deriveBits(hkdfParameters(salt, info), prk, length * 8));
 }

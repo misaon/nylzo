@@ -16,9 +16,7 @@ export const PURPOSE_MANAGE = 'manage';
 export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_VERIFIER | typeof PURPOSE_MANAGE;
 
 const REQUEST_LABEL = 'nylzo/v1/request';
-const PKCS8_ED25519_PREFIX = Uint8Array.from([
-  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
-]);
+const PKCS8_ED25519_PREFIX = decodeBase64urlExact('MC4CAQAwBQYDK2VwBCIEIA', 16);
 
 const GENERATE_ATTEMPTS = 8;
 
@@ -76,7 +74,7 @@ export function wipeRequestKey(key: RequestKey | undefined): void {
 export async function newRequestKey(): Promise<CryptoRequestKey> {
   for (let attempt = 1; ; attempt++) {
     try {
-      const pair = (await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify'])) as CryptoKeyPair;
+      const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']);
       return {
         privateKey: pair.privateKey,
         publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),

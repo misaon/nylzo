@@ -3,7 +3,7 @@ import { scrypt } from '@noble/hashes/scrypt.js';
 import { decodeBase64urlExact } from './base64url.ts';
 import { arrayBufferBacked, assertLength, concat } from './bytes.ts';
 import { PowError, PowTimeoutError } from './errors.ts';
-import { ID_LEN, KEY_LEN } from './limits.ts';
+import { ID_LEN, isUnsignedInteger, KEY_LEN } from './limits.ts';
 
 export const POW_N = 1 << 14;
 export const POW_R = 8;
@@ -52,7 +52,7 @@ export interface SolveOptions {
 }
 
 export function solvePow(challenge: string, id: Uint8Array, difficulty: number, options: SolveOptions = {}): string {
-  if (!Number.isInteger(difficulty) || difficulty < 0 || difficulty > MAX_POW_DIFFICULTY) {
+  if (!isUnsignedInteger(difficulty, MAX_POW_DIFFICULTY)) {
     throw new PowError();
   }
   const raw = parsePowChallenge(challenge);
@@ -69,7 +69,7 @@ export function solvePow(challenge: string, id: Uint8Array, difficulty: number, 
 }
 
 function assertCounter(counter: number): void {
-  if (!Number.isSafeInteger(counter) || counter < 0) {
+  if (!isUnsignedInteger(counter, Number.MAX_SAFE_INTEGER)) {
     throw new PowError('proof-of-work counter out of range');
   }
 }

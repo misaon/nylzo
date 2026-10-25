@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { newId } from '../src/ids.ts';
 import {
+  assertProfile,
+  decode32,
+  decodeBase64urlExact,
+  encodeBase64url,
   EncodingError,
+  formatLink,
+  fragment,
+  idToString,
   KDF_NONE,
   KDF_RETIRED,
   KDF_SCRYPT,
@@ -10,13 +18,6 @@ import {
   LinkError,
   LinkRetiredKdfError,
   LinkVersionError,
-  assertProfile,
-  decode32,
-  decodeBase64urlExact,
-  encodeBase64url,
-  formatLink,
-  fragment,
-  idToString,
   newSecret,
   parseFragment,
   parseId,
@@ -24,7 +25,6 @@ import {
   parseLink,
   parsePath,
 } from '../src/index.ts';
-import { newId } from '../src/ids.ts';
 import { thrownBy } from './helpers.ts';
 
 const base = 'https://nylzo.example';
@@ -43,7 +43,7 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
     const s = newSecret();
     const link = parseLink(formatLink(base, id, KDF_SCRYPT, s));
     expect(link.kdfId).toBe(KDF_SCRYPT);
-    expect(Object.keys(link).sort()).toEqual(['id', 'kdfId', 's']);
+    expect(Object.keys(link).toSorted((left, right) => left.localeCompare(right))).toEqual(['id', 'kdfId', 's']);
     expect(link.id).toEqual(id);
     expect(link.s).toEqual(s);
     expect(() => assertProfile(link.kdfId, KDF_NONE)).toThrow(KdfMismatchError);
@@ -67,29 +67,28 @@ describe('fragment', () => {
     }
   });
 
-  it('rejects unknown versions, profiles and non-canonical secrets', () => {
-    const nonCanonicalLast = encoded.slice(0, -1) + (encoded.endsWith('B') ? 'C' : 'B');
-    const bad = [
-      '',
-      '1',
-      '1.1',
-      `1.1.${encoded}.x`,
-      `2.1.${encoded}`,
-      `0.1.${encoded}`,
-      `1.3.${encoded}`,
-      `1.01.${encoded}`,
-      `1..${encoded}`,
-      `1.1.${encoded.slice(0, 42)}`,
-      `1.1.${encoded}A`,
-      `1.1.${encoded}=`,
-      `1.1.${nonCanonicalLast}`,
-      `1.1.${encoded.slice(0, 42)}+`,
-      `1.1.${encoded.slice(0, 42)}/`,
-      `##1.1.${encoded}`,
-    ];
-    for (const text of bad) {
-      expect(() => parseFragment(text), text).toThrow(LinkError);
-    }
+  const nonCanonicalLast = encoded.slice(0, -1) + (encoded.endsWith('B') ? 'C' : 'B');
+  const badFragments = [
+    '',
+    '1',
+    '1.1',
+    `1.1.${encoded}.x`,
+    `2.1.${encoded}`,
+    `0.1.${encoded}`,
+    `1.3.${encoded}`,
+    `1.01.${encoded}`,
+    `1..${encoded}`,
+    `1.1.${encoded.slice(0, 42)}`,
+    `1.1.${encoded}A`,
+    `1.1.${encoded}=`,
+    `1.1.${nonCanonicalLast}`,
+    `1.1.${encoded.slice(0, 42)}+`,
+    `1.1.${encoded.slice(0, 42)}/`,
+    `##1.1.${encoded}`,
+  ];
+
+  it.each(badFragments)('rejects %j', (text) => {
+    expect(() => parseFragment(text)).toThrow(LinkError);
   });
 });
 
@@ -102,22 +101,24 @@ describe('links', () => {
     expect(formatLink(`${base}/`, id, KDF_NONE, s)).toBe(expected);
   });
 
-  it('rejects links that are not /m/{id}#fragment', () => {
-    const id = idToString(newId());
-    const frag = fragment(KDF_NONE, newSecret());
-    const bad = [
-      'not a url',
-      `${base}/m/${id}`,
-      `${base}/m/${id}#`,
-      `${base}/x/${id}#${frag}`,
-      `${base}/m/${id}/#${frag}`,
-      `${base}/m/#${frag}`,
-      `${base}/${id}#${frag}`,
-      `${base}/m/${id.slice(0, 21)}#${frag}`,
-    ];
-    for (const raw of bad) {
-      expect(() => parseLink(raw), raw).toThrow(LinkError);
-    }
+  const id = idToString(newId());
+  const frag = fragment(KDF_NONE, newSecret());
+  const badLinks = [
+    'not a url',
+    `${base}/m/${id}`,
+    `${base}/m/${id}#`,
+    `${base}/x/${id}#${frag}`,
+    `${base}/m/${id}/#${frag}`,
+    `${base}/m/#${frag}`,
+    `${base}/${id}#${frag}`,
+    `${base}/m/${id.slice(0, 21)}#${frag}`,
+  ];
+
+  it.each(badLinks)('rejects %j', (raw) => {
+    expect(() => parseLink(raw)).toThrow(LinkError);
+  });
+
+  it('rejects paths that are not /m/{id}', () => {
     expect(() => parsePath(`/x/${id}`)).toThrow(LinkError);
     expect(() => parsePath(`/m/${id}x`)).toThrow(LinkError);
   });
@@ -125,7 +126,7 @@ describe('links', () => {
 
 describe('canonical base64url', () => {
   it('ids are 22 characters ending in A, Q, g or w', () => {
-    for (let i = 0; i < 200; i++) {
+    for (let index = 0; index < 200; index++) {
       const text = idToString(newId());
       expect(text).toHaveLength(22);
       expect('AQgw').toContain(text.slice(-1));
@@ -134,7 +135,7 @@ describe('canonical base64url', () => {
   });
 
   it('secrets are 43 characters never ending in - or _', () => {
-    for (let i = 0; i < 200; i++) {
+    for (let index = 0; index < 200; index++) {
       const text = encodeBase64url(newSecret());
       expect(text).toHaveLength(43);
       expect('AEIMQUYcgkosw048').toContain(text.slice(-1));
@@ -142,22 +143,21 @@ describe('canonical base64url', () => {
     }
   });
 
-  it('rejects non-canonical ids', () => {
-    const text = idToString(newId());
-    const bad = [
-      text.slice(0, 21) + 'B',
-      `${text}=`,
-      text.slice(0, 21),
-      `${text}A`,
-      `+${text.slice(1)}`,
-      `/${text.slice(1)}`,
-      `${text.slice(0, 21)}\n`,
-      `${text.slice(0, 10)} ${text.slice(11)}`,
-      '',
-    ];
-    for (const candidate of bad) {
-      expect(() => parseId(candidate), JSON.stringify(candidate)).toThrow(EncodingError);
-    }
+  const text = idToString(newId());
+  const badIds = [
+    `${text.slice(0, 21)}B`,
+    `${text}=`,
+    text.slice(0, 21),
+    `${text}A`,
+    `+${text.slice(1)}`,
+    `/${text.slice(1)}`,
+    `${text.slice(0, 21)}\n`,
+    `${text.slice(0, 10)} ${text.slice(11)}`,
+    '',
+  ];
+
+  it.each(badIds)('rejects the non-canonical id %j', (candidate) => {
+    expect(() => parseId(candidate)).toThrow(EncodingError);
   });
 
   it('round trips every length and rejects stray low bits', () => {
@@ -166,20 +166,21 @@ describe('canonical base64url', () => {
       const text = encodeBase64url(bytes);
       expect(decodeBase64urlExact(text, length)).toEqual(bytes);
     }
-    expect(encodeBase64url(new Uint8Array([0xfb, 0xff]))).toBe('-_8');
-    expect(Array.from(decodeBase64urlExact('-_8', 2))).toEqual([0xfb, 0xff]);
+    expect(encodeBase64url(new Uint8Array([251, 255]))).toBe('-_8');
+    expect([...decodeBase64urlExact('-_8', 2)]).toEqual([251, 255]);
     expect(() => decodeBase64urlExact('-_9', 2)).toThrow(EncodingError);
     expect(() => decodeBase64urlExact('AB', 1)).toThrow(EncodingError);
   });
 });
 
 describe('kdf identifiers', () => {
-  it('parses only 0 and 1', () => {
+  it('parses 0 and 1', () => {
     expect(parseKdfId('0')).toBe(KDF_NONE);
     expect(parseKdfId('1')).toBe(KDF_SCRYPT);
-    for (const text of ['2', '3', '01', '', ' 1', '1 ', '-1', '1.0']) {
-      expect(() => parseKdfId(text), text).toThrow(KdfError);
-    }
+  });
+
+  it.each(['2', '3', '01', '', ' 1', '1 ', '-1', '1.0'])('rejects %j', (text) => {
+    expect(() => parseKdfId(text)).toThrow(KdfError);
   });
 });
 

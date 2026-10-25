@@ -17,12 +17,15 @@ export function isKdfId(value: number): value is KdfId {
 
 export function parseKdfId(text: string): KdfId {
   switch (text) {
-    case '0':
+    case '0': {
       return KDF_NONE;
-    case '1':
+    }
+    case '1': {
       return KDF_SCRYPT;
-    default:
+    }
+    default: {
       throw new KdfError();
+    }
   }
 }
 
@@ -40,6 +43,7 @@ export function assertStrongPassphrase(passphrase: string): void {
   if (!passphrase.isWellFormed()) {
     throw new MalformedPassphraseError();
   }
+  // eslint-disable-next-line @typescript-eslint/no-misused-spread -- spec 2 counts code points, not graphemes
   if ([...passphrase.normalize('NFC')].length < MIN_PASSPHRASE_CHARS) {
     throw new WeakPassphraseError();
   }

@@ -1,7 +1,14 @@
 import { utf8 } from './bytes.ts';
 import { MetaError } from './errors.ts';
-import { isIntegerLiteral, parseJson, type JsonValue } from './json.ts';
-import { MAX_FILE_BYTES, MAX_FILE_NAME, MAX_META_BYTES, MAX_MIME, MAX_TEXT_BYTES } from './limits.ts';
+import { isIntegerLiteral, type JsonValue, parseJson } from './json.ts';
+import {
+  isUnsignedInteger,
+  MAX_FILE_BYTES,
+  MAX_FILE_NAME,
+  MAX_META_BYTES,
+  MAX_MIME,
+  MAX_TEXT_BYTES,
+} from './limits.ts';
 
 export interface FileMeta {
   readonly name: string;
@@ -14,7 +21,8 @@ export interface Meta {
   readonly file?: FileMeta | undefined;
 }
 
-const FORBIDDEN_IN_FILE_NAME = /[\u0000-\u001f\u007f/\\]/;
+// eslint-disable-next-line no-control-regex -- spec 3.1 forbids C0 controls and DEL in file names
+const FORBIDDEN_IN_FILE_NAME = /[\u{0}-\u{1F}\u{7F}/\\]/u;
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 
 export function validateMeta(meta: Meta): void {
@@ -58,7 +66,7 @@ function validateFile(file: FileMeta): void {
   if (!file.mime.isWellFormed() || utf8(file.mime).length > MAX_MIME) {
     throw new MetaError('file.mime is not valid UTF-8 within the limit');
   }
-  if (!Number.isInteger(file.size) || file.size < 0 || file.size > MAX_FILE_BYTES) {
+  if (!isUnsignedInteger(file.size, MAX_FILE_BYTES)) {
     throw new MetaError('file.size is out of range');
   }
 }
@@ -140,7 +148,7 @@ function optionalString(value: JsonValue | undefined): string | undefined {
 }
 
 function requireInteger(value: JsonValue | undefined): number {
-  if (value === undefined || value.kind !== 'number' || !isIntegerLiteral(value.literal)) {
+  if (value?.kind !== 'number' || !isIntegerLiteral(value.literal)) {
     throw new MetaError('expected a JSON integer');
   }
   const n = Number(value.literal);

@@ -2,12 +2,12 @@ import { decode32, encodeBase64url } from './base64url.ts';
 import { assertLength } from './bytes.ts';
 import { KdfMismatchError, LinkError, LinkRetiredKdfError, LinkVersionError } from './errors.ts';
 import { idToString, parseId } from './ids.ts';
-import { KDF_RETIRED, parseKdfId, type KdfId } from './kdf.ts';
+import { KDF_RETIRED, type KdfId, parseKdfId } from './kdf.ts';
 import { FRAGMENT_VERSION, SECRET_LEN } from './limits.ts';
 
 export const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
 const LINK_PATH_PREFIX = '/m/';
-const VERSION_LABEL = /^[1-9][0-9]{0,8}$/;
+const VERSION_LABEL = /^[1-9]\d{0,8}$/;
 
 export interface Fragment {
   readonly kdfId: KdfId;
@@ -38,7 +38,7 @@ function parseFragmentBody(text: string): Fragment {
   }
   const parts = text.split('.');
   const [label, kdfText = '', secretText = ''] = parts;
-  if (parts.length !== 3 || label !== FRAGMENT_LABEL) {
+  if (label !== FRAGMENT_LABEL || parts.length !== 3) {
     throw new LinkError();
   }
   let s: Uint8Array<ArrayBuffer>;
@@ -75,11 +75,11 @@ export function parsePath(path: string): Uint8Array<ArrayBuffer> {
   }
 }
 
-const LINK_HEAD = /^[Hh][Tt][Tt][Pp][Ss]?:\/\/[A-Za-z0-9.:[\]-]+(\/[^?#]*)(\?[^#]*)?$/;
+const LINK_HEAD = /^https?:\/\/[\d.:[\]a-z-]+(\/[^?#]*)(?:\?[^#]*)?$/i;
 
 export function parseLink(raw: string): Link {
   const hash = raw.indexOf('#');
-  const path = hash < 0 ? undefined : LINK_HEAD.exec(raw.slice(0, hash))?.[1];
+  const path = hash === -1 ? undefined : LINK_HEAD.exec(raw.slice(0, hash))?.[1];
   if (path === undefined) {
     throw new LinkError();
   }

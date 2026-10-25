@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  concat,
+  decodeMeta,
+  encodeMeta,
   MAX_FILE_BYTES,
   MAX_FILE_NAME,
   MAX_META_BYTES,
   MAX_MIME,
   MAX_TEXT_BYTES,
+  type Meta,
   MetaError,
-  decodeMeta,
-  encodeMeta,
   utf8,
   validateMeta,
-  type Meta,
 } from '../src/index.ts';
 
 const decoder = new TextDecoder();
@@ -24,24 +25,39 @@ function decodeText(json: string): Meta {
   return decodeMeta(utf8(json));
 }
 
+function fileMeta(name: string, mime: string): Meta {
+  return { file: { name, mime, size: 1 } };
+}
+
+function sizedMeta(size: number): Meta {
+  return { file: { name: 'a', mime: '', size } };
+}
+
+function padded(length: number): string {
+  return `{"v":1,"text":"x","pad":"${'p'.repeat(length)}"}`;
+}
+
+const NAMED_ESCAPES = new Map([
+  ['\b', String.raw`\b`],
+  ['\t', String.raw`\t`],
+  ['\n', String.raw`\n`],
+  ['\f', String.raw`\f`],
+  ['\r', String.raw`\r`],
+]);
+
 describe('canonical encoding', () => {
   it('applies the escaping table of the spec', () => {
-    const text = 'q"b\\s\b\t\n\f\r\u0001\u001f/é\u2028\u2029\u007f😀';
-    expect(canonical({ text })).toBe('{"v":1,"text":"q\\"b\\\\s\\b\\t\\n\\f\\r\\u0001\\u001f/é\u2028\u2029\u007f😀"}');
+    const text = 'q"b\\s\b\t\n\f\r\u{1}\u{1F}/é\u{2028}\u{2029}\u{7F}😀';
+    expect(canonical({ text })).toBe(
+      '{"v":1,"text":"q\\"b\\\\s\\b\\t\\n\\f\\r\\u0001\\u001f/é\u{2028}\u{2029}\u{7F}😀"}',
+    );
   });
 
   it('escapes every other C0 control as lowercase \\u00xx', () => {
-    for (let code = 0; code < 0x20; code++) {
-      const char = String.fromCharCode(code);
-      const named = new Map([
-        [0x08, '\\b'],
-        [0x09, '\\t'],
-        [0x0a, '\\n'],
-        [0x0c, '\\f'],
-        [0x0d, '\\r'],
-      ]).get(code);
-      const expected = named ?? `\\u00${code.toString(16).padStart(2, '0')}`;
-      expect(canonical({ text: char })).toBe(`{"v":1,"text":"${expected}"}`);
+    for (let code = 0; code < 32; code++) {
+      const character = String.fromCodePoint(code);
+      const expected = NAMED_ESCAPES.get(character) ?? String.raw`\u00${code.toString(16).padStart(2, '0')}`;
+      expect(canonical({ text: character })).toBe(`{"v":1,"text":"${expected}"}`);
     }
   });
 
@@ -59,7 +75,7 @@ describe('canonical encoding', () => {
     const metas: Meta[] = [
       { text: 'příloha "v" příloze\n' },
       { file: { name: 'příloha č.1.pdf', mime: 'application/pdf', size: 1000 } },
-      { text: '\u0000\u001f\u007f', file: { name: ' ', mime: 'x/y; q="1"', size: MAX_FILE_BYTES } },
+      { text: '\0\u{1F}\u{7F}', file: { name: ' ', mime: 'x/y; q="1"', size: MAX_FILE_BYTES } },
     ];
     for (const meta of metas) {
       const once = encodeMeta(meta);
@@ -79,30 +95,31 @@ describe('limits', () => {
   });
 
   it('bounds file name and mime by UTF-8 bytes', () => {
-    const file = (name: string, mime: string): Meta => ({ file: { name, mime, size: 1 } });
-    expect(() => validateMeta(file('n'.repeat(MAX_FILE_NAME), ''))).not.toThrow();
-    expect(() => validateMeta(file('n'.repeat(MAX_FILE_NAME + 1), ''))).toThrow(MetaError);
-    expect(() => validateMeta(file('é'.repeat(127), ''))).not.toThrow();
-    expect(() => validateMeta(file('é'.repeat(128), ''))).toThrow(MetaError);
-    expect(() => validateMeta(file('a', 'm'.repeat(MAX_MIME)))).not.toThrow();
-    expect(() => validateMeta(file('a', 'm'.repeat(MAX_MIME + 1)))).toThrow(MetaError);
-    expect(() => validateMeta(file('', ''))).toThrow(MetaError);
+    expect(() => validateMeta(fileMeta('n'.repeat(MAX_FILE_NAME), ''))).not.toThrow();
+    expect(() => validateMeta(fileMeta('n'.repeat(MAX_FILE_NAME + 1), ''))).toThrow(MetaError);
+    expect(() => validateMeta(fileMeta('é'.repeat(127), ''))).not.toThrow();
+    expect(() => validateMeta(fileMeta('é'.repeat(128), ''))).toThrow(MetaError);
+    expect(() => validateMeta(fileMeta('a', 'm'.repeat(MAX_MIME)))).not.toThrow();
+    expect(() => validateMeta(fileMeta('a', 'm'.repeat(MAX_MIME + 1)))).toThrow(MetaError);
+    expect(() => validateMeta(fileMeta('', ''))).toThrow(MetaError);
   });
 
   it('bounds file size to a non-negative integer up to the limit', () => {
-    const size = (value: number): Meta => ({ file: { name: 'a', mime: '', size: value } });
-    expect(() => validateMeta(size(0))).not.toThrow();
-    expect(() => validateMeta(size(MAX_FILE_BYTES))).not.toThrow();
-    expect(() => validateMeta(size(MAX_FILE_BYTES + 1))).toThrow(MetaError);
-    expect(() => validateMeta(size(-1))).toThrow(MetaError);
-    expect(() => validateMeta(size(1.5))).toThrow(MetaError);
-    expect(() => validateMeta(size(Number.NaN))).toThrow(MetaError);
+    expect(() => validateMeta(sizedMeta(0))).not.toThrow();
+    expect(() => validateMeta(sizedMeta(MAX_FILE_BYTES))).not.toThrow();
+    expect(() => validateMeta(sizedMeta(MAX_FILE_BYTES + 1))).toThrow(MetaError);
+    expect(() => validateMeta(sizedMeta(-1))).toThrow(MetaError);
+    expect(() => validateMeta(sizedMeta(1.5))).toThrow(MetaError);
+    expect(() => validateMeta(sizedMeta(NaN))).toThrow(MetaError);
   });
 
-  it('forbids path separators and control characters in file names', () => {
-    for (const name of ['a/b', 'a\\b', 'a\u0000b', 'a\u001fb', 'a\u007fb', '/', '\\']) {
-      expect(() => validateMeta({ file: { name, mime: '', size: 1 } }), JSON.stringify(name)).toThrow(MetaError);
-    }
+  it.each(['a/b', 'a\\b', 'a\0b', 'a\u{1F}b', 'a\u{7F}b', '/', '\\'])('forbids the file name %j', (name) => {
+    expect(() => {
+      validateMeta(fileMeta(name, ''));
+    }).toThrow(MetaError);
+  });
+
+  it('allows spaces, dots, brackets and accents in file names', () => {
     expect(() => validateMeta({ file: { name: 'a b.čé (1).txt', mime: '', size: 1 } })).not.toThrow();
   });
 
@@ -112,21 +129,20 @@ describe('limits', () => {
   });
 
   it('rejects strings with lone surrogates', () => {
-    expect(() => encodeMeta({ text: 'a\ud800' })).toThrow(MetaError);
-    expect(() => encodeMeta({ file: { name: '\udc00', mime: '', size: 1 } })).toThrow(MetaError);
-    expect(() => encodeMeta({ file: { name: 'a', mime: '\ud800', size: 1 } })).toThrow(MetaError);
+    expect(() => encodeMeta({ text: 'a\u{D800}' })).toThrow(MetaError);
+    expect(() => encodeMeta({ file: { name: '\u{DC00}', mime: '', size: 1 } })).toThrow(MetaError);
+    expect(() => encodeMeta({ file: { name: 'a', mime: '\u{D800}', size: 1 } })).toThrow(MetaError);
   });
 
   it('bounds the encoded meta even when the text fits', () => {
-    expect(() => encodeMeta({ text: '"'.repeat(60000) })).toThrow(MetaError);
+    expect(() => encodeMeta({ text: '"'.repeat(60_000) })).toThrow(MetaError);
     expect(encodeMeta({ text: 'x'.repeat(MAX_TEXT_BYTES) })).toHaveLength(MAX_TEXT_BYTES + 17);
   });
 
   it('bounds the decoded input', () => {
-    const pad = (n: number): string => `{"v":1,"text":"x","pad":"${'p'.repeat(n)}"}`;
-    const overhead = pad(0).length;
-    expect(() => decodeText(pad(MAX_META_BYTES - overhead))).not.toThrow();
-    expect(() => decodeText(pad(MAX_META_BYTES - overhead + 1))).toThrow(MetaError);
+    const overhead = padded(0).length;
+    expect(() => decodeText(padded(MAX_META_BYTES - overhead))).not.toThrow();
+    expect(() => decodeText(padded(MAX_META_BYTES - overhead + 1))).toThrow(MetaError);
   });
 });
 
@@ -167,75 +183,63 @@ describe('decoding', () => {
     expect(decodeText('{"v":1,"text":"\\ud800\\u0041"}')).toEqual({ text: '�A' });
   });
 
-  it('rejects malformed documents', () => {
-    const bad = [
-      '',
-      ' ',
-      '[1]',
-      '"x"',
-      '1',
-      'null',
-      '{"v":1,"text":"x"} {}',
-      '{"v":1,"text":"x"}x',
-      '\ufeff{"v":1,"text":"x"}',
-      '{"v":1,"text":"x",}',
-      '{"v":1,"text":"x"',
-      '{"v":1,"text":"x\n"}',
-      '{"v":1,"text":"x\\x"}',
-      '{"v":1,"text":"\\u12"}',
-      '{"v":1,"text":"\\u12G4"}',
-      '{"v":1,"text":\'x\'}',
-      '{v:1,"text":"x"}',
-      '{"v":01,"text":"x"}',
-      '{"v":1.,"text":"x"}',
-      '{"v":+1,"text":"x"}',
-      '{"v":1,"text":"x","extra":[1,]}',
-      '{"v":1,"text":"x","extra":undefined}',
-      '{"v":1,"text":"x","extra":NaN}',
-    ];
-    for (const json of bad) {
-      expect(() => decodeText(json), JSON.stringify(json)).toThrow(MetaError);
-    }
+  it.each([
+    '',
+    ' ',
+    '[1]',
+    '"x"',
+    '1',
+    'null',
+    '{"v":1,"text":"x"} {}',
+    '{"v":1,"text":"x"}x',
+    '\u{FEFF}{"v":1,"text":"x"}',
+    '{"v":1,"text":"x",}',
+    '{"v":1,"text":"x"',
+    '{"v":1,"text":"x\n"}',
+    '{"v":1,"text":"x\\x"}',
+    '{"v":1,"text":"\\u12"}',
+    '{"v":1,"text":"\\u12G4"}',
+    '{"v":1,"text":\'x\'}',
+    '{v:1,"text":"x"}',
+    '{"v":01,"text":"x"}',
+    '{"v":1.,"text":"x"}',
+    '{"v":+1,"text":"x"}',
+    '{"v":1,"text":"x","extra":[1,]}',
+    '{"v":1,"text":"x","extra":undefined}',
+    '{"v":1,"text":"x","extra":NaN}',
+  ])('rejects the malformed document %j', (json) => {
+    expect(() => decodeText(json)).toThrow(MetaError);
   });
 
   it('rejects invalid UTF-8', () => {
-    expect(() =>
-      decodeMeta(
-        new Uint8Array([
-          0x7b, 0x22, 0x76, 0x22, 0x3a, 0x31, 0x2c, 0x22, 0x74, 0x65, 0x78, 0x74, 0x22, 0x3a, 0x22, 0xff, 0x22, 0x7d,
-        ]),
-      ),
-    ).toThrow(MetaError);
-    expect(() => decodeMeta(new Uint8Array([0xc3]))).toThrow(MetaError);
+    expect(() => decodeMeta(concat(utf8('{"v":1,"text":"'), Uint8Array.of(255), utf8('"}')))).toThrow(MetaError);
+    expect(() => decodeMeta(Uint8Array.of(195))).toThrow(MetaError);
   });
 
-  it('rejects wrong types and non-integer numbers', () => {
-    const bad = [
-      '{"text":"x"}',
-      '{"v":"1","text":"x"}',
-      '{"v":1.0,"text":"x"}',
-      '{"v":1e0,"text":"x"}',
-      '{"v":-1,"text":"x"}',
-      '{"v":true,"text":"x"}',
-      '{"v":[1],"text":"x"}',
-      '{"v":1,"text":1}',
-      '{"v":1,"text":["x"]}',
-      '{"v":1,"file":"x"}',
-      '{"v":1,"file":[]}',
-      '{"v":1,"file":{}}',
-      '{"v":1,"file":{"name":"a"}}',
-      '{"v":1,"file":{"size":1}}',
-      '{"v":1,"file":{"name":1,"size":1}}',
-      '{"v":1,"file":{"name":"a","mime":1,"size":1}}',
-      '{"v":1,"file":{"name":"a","size":1.0}}',
-      '{"v":1,"file":{"name":"a","size":1e0}}',
-      '{"v":1,"file":{"name":"a","size":"1"}}',
-      '{"v":1,"file":{"name":"a","size":true}}',
-      '{"v":1,"file":{"name":"a","size":99999999999999999999}}',
-    ];
-    for (const json of bad) {
-      expect(() => decodeText(json), json).toThrow(MetaError);
-    }
+  it.each([
+    '{"text":"x"}',
+    '{"v":"1","text":"x"}',
+    '{"v":1.0,"text":"x"}',
+    '{"v":1e0,"text":"x"}',
+    '{"v":-1,"text":"x"}',
+    '{"v":true,"text":"x"}',
+    '{"v":[1],"text":"x"}',
+    '{"v":1,"text":1}',
+    '{"v":1,"text":["x"]}',
+    '{"v":1,"file":"x"}',
+    '{"v":1,"file":[]}',
+    '{"v":1,"file":{}}',
+    '{"v":1,"file":{"name":"a"}}',
+    '{"v":1,"file":{"size":1}}',
+    '{"v":1,"file":{"name":1,"size":1}}',
+    '{"v":1,"file":{"name":"a","mime":1,"size":1}}',
+    '{"v":1,"file":{"name":"a","size":1.0}}',
+    '{"v":1,"file":{"name":"a","size":1e0}}',
+    '{"v":1,"file":{"name":"a","size":"1"}}',
+    '{"v":1,"file":{"name":"a","size":true}}',
+    '{"v":1,"file":{"name":"a","size":99999999999999999999}}',
+  ])('rejects the wrong type or non-integer in %s', (json) => {
+    expect(() => decodeText(json)).toThrow(MetaError);
   });
 
   it('accepts -0 as size 0', () => {

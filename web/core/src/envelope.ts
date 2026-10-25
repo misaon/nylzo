@@ -15,6 +15,7 @@ import { isKdfId, type KdfId } from './kdf.ts';
 import {
   HEADER_LEN,
   ID_LEN,
+  isUnsignedInteger,
   IV_LEN,
   MAX_META_BYTES,
   MAX_OBJECT_BYTES,
@@ -54,8 +55,8 @@ export interface Opened {
   readonly payload: OpenedPayload;
 }
 
-const MAX_OPENS = 0xffff;
-const MAX_TTL_SECONDS = 0xffffffff;
+const MAX_OPENS = 2 ** 16 - 1;
+const MAX_TTL_SECONDS = 2 ** 32 - 1;
 const GCM_TAG_BITS = TAG_LEN * 8;
 
 export function newIv(): Uint8Array<ArrayBuffer> {
@@ -115,7 +116,7 @@ export function aad(header: Header, id: Uint8Array, policy: Policy): Uint8Array<
   return concat(headerBytes(header), id, policyBytes(policy));
 }
 
-export function paddedLen(n: number, hasFile: boolean): number {
+export function paddedLength(n: number, hasFile: boolean): number {
   const unit = hasFile ? PAD_FILE : PAD_TEXT;
   const remainder = n % unit;
   return remainder === 0 ? n : n + unit - remainder;
@@ -136,13 +137,13 @@ export async function seal(
       throw new TooLargeError();
     }
     const head = headerBytes(header);
-    const params: AesGcmParams = {
+    const parameters: AesGcmParams = {
       name: 'AES-GCM',
       iv: head.subarray(3, HEADER_LEN),
       additionalData: aad(header, id, policy),
       tagLength: GCM_TAG_BITS,
     };
-    const ciphertext = await crypto.subtle.encrypt(params, k, plaintext);
+    const ciphertext = await crypto.subtle.encrypt(parameters, k, plaintext);
     return concat(head, new Uint8Array(ciphertext));
   } finally {
     plaintext.fill(0);
@@ -185,13 +186,9 @@ function checkHeaderFields(version: number, kdfId: number, flags: number): KdfId
 }
 
 function assertPolicyRange(policy: Policy): void {
-  if (!isUint(policy.opensMax, MAX_OPENS) || !isUint(policy.ttlSeconds, MAX_TTL_SECONDS)) {
+  if (!isUnsignedInteger(policy.opensMax, MAX_OPENS) || !isUnsignedInteger(policy.ttlSeconds, MAX_TTL_SECONDS)) {
     throw new PolicyError('policy value out of range');
   }
-}
-
-function isUint(value: number, max: number): boolean {
-  return Number.isInteger(value) && value >= 0 && value <= max;
 }
 
 function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
@@ -202,7 +199,7 @@ function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
   if (file.length !== expectedSize) {
     throw new MetaError('file length differs from meta.file.size');
   }
-  const plaintext = new Uint8Array(paddedLen(META_LEN_PREFIX + meta.length + file.length, fileMeta !== undefined));
+  const plaintext = new Uint8Array(paddedLength(META_LEN_PREFIX + meta.length + file.length, fileMeta !== undefined));
   new DataView(plaintext.buffer).setUint32(0, meta.length);
   plaintext.set(meta, META_LEN_PREFIX);
   plaintext.set(file, META_LEN_PREFIX + meta.length);
@@ -216,14 +213,14 @@ async function decrypt(
   policy: Policy,
   ciphertext: Uint8Array,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const params: AesGcmParams = {
+  const parameters: AesGcmParams = {
     name: 'AES-GCM',
     iv: arrayBufferBacked(header.iv),
     additionalData: aad(header, id, policy),
     tagLength: GCM_TAG_BITS,
   };
   try {
-    return new Uint8Array(await crypto.subtle.decrypt(params, k, arrayBufferBacked(ciphertext)));
+    return new Uint8Array(await crypto.subtle.decrypt(parameters, k, arrayBufferBacked(ciphertext)));
   } catch {
     throw new IntegrityError();
   }
@@ -233,15 +230,15 @@ function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): OpenedPayload {
   if (plaintext.length < META_LEN_PREFIX) {
     throw new PlaintextError();
   }
-  const lenMeta = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).getUint32(0);
-  if (lenMeta > MAX_META_BYTES || lenMeta > plaintext.length - META_LEN_PREFIX) {
+  const lengthMeta = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).getUint32(0);
+  if (lengthMeta > MAX_META_BYTES || lengthMeta > plaintext.length - META_LEN_PREFIX) {
     throw new PlaintextError();
   }
-  const meta = decodeMeta(plaintext.subarray(META_LEN_PREFIX, META_LEN_PREFIX + lenMeta));
+  const meta = decodeMeta(plaintext.subarray(META_LEN_PREFIX, META_LEN_PREFIX + lengthMeta));
   if (meta.file === undefined) {
     return { meta };
   }
-  const start = META_LEN_PREFIX + lenMeta;
+  const start = META_LEN_PREFIX + lengthMeta;
   if (meta.file.size > plaintext.length - start) {
     throw new PlaintextError();
   }

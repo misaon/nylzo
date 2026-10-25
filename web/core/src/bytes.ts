@@ -18,10 +18,9 @@ export function concat(...parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer>
 
 export function arrayBufferBacked(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const { buffer } = bytes;
-  if (buffer instanceof ArrayBuffer) {
-    return new Uint8Array(buffer, bytes.byteOffset, bytes.byteLength);
-  }
-  return bytes.slice();
+  return buffer instanceof ArrayBuffer
+    ? new Uint8Array(buffer, bytes.byteOffset, bytes.byteLength)
+    : new Uint8Array(bytes);
 }
 
 export function assertLength(bytes: Uint8Array, length: number, what: string): void {
