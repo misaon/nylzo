@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { newId } from '../src/ids.ts';
+import { bytesToHex } from '../../test/vectors.ts';
 import {
   deriveContent,
   deriveLink,
@@ -22,9 +22,9 @@ import {
   seal,
   TOKEN_LEN,
   utf8,
-} from '../src/index.ts';
-import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from '../src/scrypt.ts';
-import { bytesToHex } from './helpers.ts';
+} from '../index.ts';
+import { newId } from '../primitives/identifiers.ts';
+import { anyPassphraseKey, deriveAll, scryptPassphraseKey } from '../scrypt.ts';
 
 const composed = 'héslo s češtinou';
 const decomposed = 'héslo s češtinou';

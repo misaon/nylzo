@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { newId } from '../src/ids.ts';
+import { thrownBy } from '../../test/vectors.ts';
 import {
   assertProfile,
   decode32,
@@ -24,8 +24,8 @@ import {
   parseKdfId,
   parseLink,
   parsePath,
-} from '../src/index.ts';
-import { thrownBy } from './helpers.ts';
+} from '../index.ts';
+import { newId } from '../primitives/identifiers.ts';
 
 const base = 'https://nylzo.example';
 
@@ -186,7 +186,7 @@ describe('kdf identifiers', () => {
 
 describe('message ids', () => {
   it('the public API offers no way to mint a message id, the server issues them', async () => {
-    const api: Record<string, unknown> = await import('../src/index.ts');
+    const api: Record<string, unknown> = await import('../index.ts');
     expect(api['newId']).toBeUndefined();
     expect(typeof api['parseId']).toBe('function');
   });

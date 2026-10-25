@@ -1,9 +1,9 @@
-import { decode32, encodeBase64url } from './base64url.ts';
-import { assertLength } from './bytes.ts';
-import { KdfMismatchError, LinkError, LinkRetiredKdfError, LinkVersionError } from './errors.ts';
-import { idToString, parseId } from './ids.ts';
-import { KDF_RETIRED, type KdfId, parseKdfId } from './kdf.ts';
-import { FRAGMENT_VERSION, SECRET_LEN } from './limits.ts';
+import { KdfMismatchError, LinkError, LinkRetiredKdfError, LinkVersionError } from '../errors.ts';
+import { KDF_RETIRED, type KdfId, parseKdfId } from '../keys/kdf.ts';
+import { FRAGMENT_VERSION, SECRET_LEN } from '../limits.ts';
+import { decode32, encodeBase64url } from '../primitives/base64url.ts';
+import { assertLength } from '../primitives/bytes.ts';
+import { idToString, parseId } from '../primitives/identifiers.ts';
 
 export const FRAGMENT_LABEL = String(FRAGMENT_VERSION);
 const LINK_PATH_PREFIX = '/m/';

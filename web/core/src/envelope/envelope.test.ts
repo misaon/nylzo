@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { newId } from '../src/ids.ts';
+import { bytesToHex, withByteFlipped } from '../../test/vectors.ts';
 import {
   aad,
   AAD_LEN,
@@ -34,9 +34,9 @@ import {
   TAG_LEN,
   VERSION,
   VersionError,
-} from '../src/index.ts';
-import { deriveAll } from '../src/scrypt.ts';
-import { bytesToHex, withByteFlipped } from './helpers.ts';
+} from '../index.ts';
+import { newId } from '../primitives/identifiers.ts';
+import { deriveAll } from '../scrypt.ts';
 
 interface Sample {
   readonly id: Uint8Array;

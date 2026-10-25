@@ -1,6 +1,4 @@
-import { utf8 } from './bytes.ts';
-import { MetaError } from './errors.ts';
-import { isIntegerLiteral, type JsonValue, parseJson } from './json.ts';
+import { MetaError } from '../errors.ts';
 import {
   isUnsignedInteger,
   MAX_FILE_BYTES,
@@ -8,7 +6,9 @@ import {
   MAX_META_BYTES,
   MAX_MIME,
   MAX_TEXT_BYTES,
-} from './limits.ts';
+} from '../limits.ts';
+import { utf8 } from '../primitives/bytes.ts';
+import { isIntegerLiteral, type JsonValue, parseJson } from './json.ts';
 
 export interface FileMeta {
   readonly name: string;

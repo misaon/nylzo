@@ -14,7 +14,7 @@ import {
   utf8,
   verifierHeader,
   wipeRequestKey,
-} from '../src/index.ts';
+} from '../index.ts';
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
 

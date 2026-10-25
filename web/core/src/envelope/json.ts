@@ -1,4 +1,4 @@
-import { MAX_JSON_DEPTH } from './limits.ts';
+import { MAX_JSON_DEPTH } from '../limits.ts';
 
 export type JsonValue =
   | { readonly kind: 'null' }

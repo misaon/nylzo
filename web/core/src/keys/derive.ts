@@ -1,6 +1,6 @@
-import { arrayBufferBacked, assertLength, concat, utf8 } from './bytes.ts';
-import { hash } from './ids.ts';
-import { ID_LEN, KEY_LEN, SECRET_LEN, TOKEN_LEN } from './limits.ts';
+import { ID_LEN, KEY_LEN, SECRET_LEN, TOKEN_LEN } from '../limits.ts';
+import { arrayBufferBacked, assertLength, concat, utf8 } from '../primitives/bytes.ts';
+import { hash } from '../primitives/identifiers.ts';
 
 const HSALT_LABEL = 'nylzo/v1/hkdf-salt';
 const INFO_READ = 'nylzo/v1/read';

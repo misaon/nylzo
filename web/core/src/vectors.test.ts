@@ -1,6 +1,7 @@
 import { scryptAsync } from '@noble/hashes/scrypt.js';
 import { describe, expect, it } from 'vitest';
 
+import { bytesToHex, fileBytes, hexToBytes, loadVectors, sha256Hex, thrownBy } from '../test/vectors.ts';
 import {
   aad,
   assertStrongPassphrase,
@@ -41,9 +42,8 @@ import {
   verifierHeader,
   VERSION,
   WeakPassphraseError,
-} from '../src/index.ts';
-import { anyPassphraseKey, deriveAll } from '../src/scrypt.ts';
-import { bytesToHex, fileBytes, hexToBytes, loadVectors, sha256Hex, thrownBy } from './helpers.ts';
+} from './index.ts';
+import { anyPassphraseKey, deriveAll } from './scrypt.ts';
 
 const vectors = loadVectors();
 const slow = { timeout: 120_000 };

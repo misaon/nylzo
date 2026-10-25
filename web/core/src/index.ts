@@ -1,6 +1,3 @@
-export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './base64url.ts';
-export { concat, utf8 } from './bytes.ts';
-export { type ContentKeys, deriveContent, type DerivedKeys, deriveLink, hsalt, type LinkKeys } from './derive.ts';
 export {
   aad,
   type Header,
@@ -18,7 +15,8 @@ export {
   seal,
   validateHeader,
   validatePolicy,
-} from './envelope.ts';
+} from './envelope/envelope.ts';
+export { decodeMeta, encodeMeta, type FileMeta, type Meta, validateMeta } from './envelope/meta.ts';
 export {
   EncodingError,
   FlagsError,
@@ -39,7 +37,7 @@ export {
   VersionError,
   WeakPassphraseError,
 } from './errors.ts';
-export { hash, idToString, newSecret, parseId } from './ids.ts';
+export { type ContentKeys, deriveContent, type DerivedKeys, deriveLink, hsalt, type LinkKeys } from './keys/derive.ts';
 export {
   assertStrongPassphrase,
   assertWellFormedPassphrase,
@@ -55,7 +53,7 @@ export {
   SCRYPT_N,
   SCRYPT_P,
   SCRYPT_R,
-} from './kdf.ts';
+} from './keys/kdf.ts';
 export * from './limits.ts';
 export {
   assertProfile,
@@ -67,8 +65,10 @@ export {
   parseFragment,
   parseLink,
   parsePath,
-} from './link.ts';
-export { decodeMeta, encodeMeta, type FileMeta, type Meta, validateMeta } from './meta.ts';
+} from './link/link.ts';
+export { decode32, decodeBase64urlExact, encodeBase64url, encodedLength } from './primitives/base64url.ts';
+export { concat, utf8 } from './primitives/bytes.ts';
+export { hash, idToString, newSecret, parseId } from './primitives/identifiers.ts';
 export {
   leadingZeroBits,
   MAX_POW_DIFFICULTY,
@@ -81,7 +81,7 @@ export {
   powToken,
   type SolveOptions,
   solvePow,
-} from './pow.ts';
+} from './request/proof-of-work.ts';
 export {
   AUTH_SCHEME,
   authorizationHeader,
@@ -104,4 +104,4 @@ export {
   signRequest,
   verifierHeader,
   wipeRequestKey,
-} from './sign.ts';
+} from './request/signature.ts';

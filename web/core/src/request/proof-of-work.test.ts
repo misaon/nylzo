@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { bytesToHex, loadVectors } from '../../test/vectors.ts';
 import {
   encodeBase64url,
   leadingZeroBits,
@@ -12,8 +13,7 @@ import {
   PowTimeoutError,
   powToken,
   solvePow,
-} from '../src/index.ts';
-import { bytesToHex, loadVectors } from './helpers.ts';
+} from '../index.ts';
 
 const vectors = loadVectors().pow;
 

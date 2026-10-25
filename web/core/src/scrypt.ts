@@ -1,8 +1,7 @@
 import { scrypt } from '@noble/hashes/scrypt.js';
 
-import { arrayBufferBacked } from './bytes.ts';
-import { deriveContent, type DerivedKeys, deriveLink } from './derive.ts';
 import { KdfError } from './errors.ts';
+import { deriveContent, type DerivedKeys, deriveLink } from './keys/derive.ts';
 import {
   assertWellFormedPassphrase,
   KDF_NONE,
@@ -12,8 +11,9 @@ import {
   SCRYPT_N,
   SCRYPT_P,
   SCRYPT_R,
-} from './kdf.ts';
+} from './keys/kdf.ts';
 import { KEY_LEN } from './limits.ts';
+import { arrayBufferBacked } from './primitives/bytes.ts';
 
 export function scryptPassphraseKey(
   passphrase: string,

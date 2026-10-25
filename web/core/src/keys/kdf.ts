@@ -1,5 +1,5 @@
-import { utf8 } from './bytes.ts';
-import { KdfError, MalformedPassphraseError, WeakPassphraseError } from './errors.ts';
+import { KdfError, MalformedPassphraseError, WeakPassphraseError } from '../errors.ts';
+import { utf8 } from '../primitives/bytes.ts';
 
 export const KDF_NONE = 0;
 export const KDF_SCRYPT = 1;

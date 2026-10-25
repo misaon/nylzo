@@ -1,9 +1,9 @@
 import { scrypt } from '@noble/hashes/scrypt.js';
 
-import { decodeBase64urlExact } from './base64url.ts';
-import { arrayBufferBacked, assertLength, concat } from './bytes.ts';
-import { PowError, PowTimeoutError } from './errors.ts';
-import { ID_LEN, isUnsignedInteger, KEY_LEN } from './limits.ts';
+import { PowError, PowTimeoutError } from '../errors.ts';
+import { ID_LEN, isUnsignedInteger, KEY_LEN } from '../limits.ts';
+import { decodeBase64urlExact } from '../primitives/base64url.ts';
+import { arrayBufferBacked, assertLength, concat } from '../primitives/bytes.ts';
 
 export const POW_N = 1 << 14;
 export const POW_R = 8;

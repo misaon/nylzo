@@ -13,7 +13,7 @@ import {
   MetaError,
   utf8,
   validateMeta,
-} from '../src/index.ts';
+} from '../index.ts';
 
 const decoder = new TextDecoder();
 

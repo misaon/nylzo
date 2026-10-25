@@ -1,4 +1,4 @@
-import { EncodingError } from './errors.ts';
+import { EncodingError } from '../errors.ts';
 
 const encoder = new TextEncoder();
 

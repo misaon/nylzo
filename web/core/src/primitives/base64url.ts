@@ -1,4 +1,4 @@
-import { EncodingError } from './errors.ts';
+import { EncodingError } from '../errors.ts';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const SIX_BITS = 0b11_1111;

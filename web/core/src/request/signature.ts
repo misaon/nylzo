@@ -1,9 +1,9 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 
-import { decodeBase64urlExact, encodeBase64url } from './base64url.ts';
-import { arrayBufferBacked, assertLength, concat, utf8 } from './bytes.ts';
-import { hash } from './ids.ts';
-import { TOKEN_LEN } from './limits.ts';
+import { TOKEN_LEN } from '../limits.ts';
+import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
+import { arrayBufferBacked, assertLength, concat, utf8 } from '../primitives/bytes.ts';
+import { hash } from '../primitives/identifiers.ts';
 
 export const PUBLIC_KEY_LEN = 32;
 export const SIGNATURE_LEN = 64;

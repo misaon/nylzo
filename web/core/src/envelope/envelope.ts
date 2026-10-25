@@ -1,4 +1,3 @@
-import { arrayBufferBacked, assertLength, concat } from './bytes.ts';
 import {
   FlagsError,
   HeaderError,
@@ -10,8 +9,8 @@ import {
   PolicyError,
   TooLargeError,
   VersionError,
-} from './errors.ts';
-import { isKdfId, type KdfId } from './kdf.ts';
+} from '../errors.ts';
+import { isKdfId, type KdfId } from '../keys/kdf.ts';
 import {
   HEADER_LEN,
   ID_LEN,
@@ -26,7 +25,8 @@ import {
   POLICY_LEN,
   TAG_LEN,
   VERSION,
-} from './limits.ts';
+} from '../limits.ts';
+import { arrayBufferBacked, assertLength, concat } from '../primitives/bytes.ts';
 import { decodeMeta, encodeMeta, type Meta } from './meta.ts';
 
 export interface Header {

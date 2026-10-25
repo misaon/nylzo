@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { scryptPassphraseKey } from '../src/scrypt.ts';
-import { bytesToHex, hexToBytes, loadVectors } from './helpers.ts';
+import { bytesToHex, hexToBytes, loadVectors } from '../test/vectors.ts';
+import { scryptPassphraseKey } from './scrypt.ts';
 
 describe('passphrase key derivation', () => {
   it('reports scrypt progress and matches the vector', () => {
