@@ -16,12 +16,27 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
+import { newGate } from '../../shared/testing/gate.ts';
 import { type CreateDependencies, type CreateInput, createMessage } from '../create/create-message.ts';
 import { createReader, type ReaderDependencies, type ReadView, type SessionStore } from './reader.ts';
 
 type Scrypt = ReaderDependencies['scrypt'];
 
-const scrypt: Scrypt = async (passphrase, saltPw, onProgress) => scryptPassphraseKey(passphrase, saltPw, onProgress);
+const scrypt: Scrypt = scryptPassphraseKey;
+
+class ImpostorError extends Error {
+  override readonly name = 'KdfWorkerError';
+}
+
+function refuseSigningKeyImport() {
+  const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+  return vi
+    .spyOn(crypto.subtle, 'importKey')
+    .mockImplementation(((...parameters: Parameters<typeof importKey>) =>
+      parameters[0] === 'pkcs8'
+        ? Promise.reject(new DOMException('refused', 'DataError'))
+        : importKey(...parameters)) as typeof crypto.subtle.importKey);
+}
 
 function workerScrypt(calls: string[] = []): Scrypt {
   return async (passphrase, saltPw, onProgress) => {
@@ -35,7 +50,7 @@ function workerScrypt(calls: string[] = []): Scrypt {
 }
 
 function createDependencies(api: FakeApi): CreateDependencies {
-  return { api, origin: 'https://nylzo.test', scrypt, solvePow: async () => '' };
+  return { api, origin: 'https://nylzo.test', scrypt, solvePow: () => Promise.resolve('') };
 }
 
 function input(overrides: Partial<CreateInput> = {}): CreateInput {
@@ -69,7 +84,7 @@ interface ReaderOverrides {
   readonly shown?: () => Promise<void>;
 }
 
-function reader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
+function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
   const url = new URL(link);
   const views: ReadView[] = [];
   let dropped = 0;
@@ -80,7 +95,9 @@ function reader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
       location: { pathname: url.pathname, hash: url.hash },
       session,
       page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
-      dropFragment: () => void dropped++,
+      dropFragment: () => {
+        dropped++;
+      },
       ...(overrides.shown && { shown: overrides.shown }),
       scrypt: overrides.scrypt ?? scrypt,
       now: () => Date.now(),
@@ -103,9 +120,9 @@ async function storeRaw(
   file?: Uint8Array,
 ): Promise<string> {
   const { create } = await api.instance();
-  const s = newSecret();
-  const keys = await deriveLink(create.id, s);
-  const content = await deriveContent(create.id, s, new Uint8Array(0));
+  const secret = newSecret();
+  const keys = await deriveLink(create.id, secret);
+  const content = await deriveContent(create.id, secret, new Uint8Array(0));
   const object = await seal(
     content.k,
     newHeader(KDF_NONE),
@@ -125,41 +142,41 @@ async function storeRaw(
     ttlSeconds: 3600,
     object,
   });
-  return formatLink('https://nylzo.test', create.id, KDF_NONE, s);
+  return formatLink('https://nylzo.test', create.id, KDF_NONE, secret);
 }
 
 describe('reading a message', () => {
   it('acknowledges and drops the fragment only once the page shows the message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const display = Promise.withResolvers<void>();
-    const r = reader(api, created.link, { shown: () => display.promise });
-    await r.load();
-    const revealing = r.reveal();
-    await vi.waitFor(() => expect(r.last()?.view).toBe('revealed'));
+    const display = newGate();
+    const reader = openReader(api, created.link, { shown: () => display.opened });
+    await reader.load();
+    const revealing = reader.reveal();
+    await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
     expect(api.calls).not.toContain('ack');
-    expect(r.dropped()).toBe(0);
-    display.resolve();
+    expect(reader.dropped()).toBe(0);
+    display.open();
     await revealing;
     expect(api.calls.at(-1)).toBe('ack');
-    expect(r.dropped()).toBe(1);
+    expect(reader.dropped()).toBe(1);
   });
 
   it('keeps the lease and the fragment when the page is left before it shows the message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const display = Promise.withResolvers<void>();
-    const r = reader(api, created.link, { shown: () => display.promise });
-    await r.load();
-    const revealing = r.reveal();
-    await vi.waitFor(() => expect(r.last()?.view).toBe('revealed'));
-    r.clear();
-    display.resolve();
+    const display = newGate();
+    const reader = openReader(api, created.link, { shown: () => display.opened });
+    await reader.load();
+    const revealing = reader.reveal();
+    await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
+    reader.clear();
+    display.open();
     await revealing;
     expect(api.calls).not.toContain('ack');
-    expect(r.dropped()).toBe(0);
-    expect(r.last()).toEqual({ view: 'cleared' });
-    const again = reader(api, created.link, { session: r.session });
+    expect(reader.dropped()).toBe(0);
+    expect(reader.last()).toEqual({ view: 'cleared' });
+    const again = openReader(api, created.link, { session: reader.session });
     await again.load();
     expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
   });
@@ -168,11 +185,11 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     expect(created.link).toMatch(/^https:\/\/nylzo\.test\/m\/[\w-]{22}#1\.0\.[\w-]{43}$/);
-    const r = reader(api, created.link);
-    await r.load();
-    expect(r.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
     expect(api.calls.slice(api.calls.indexOf('claim'))).toEqual([
       'claim',
       'view:busy',
@@ -180,14 +197,14 @@ describe('reading a message', () => {
       'view:revealed',
       'ack',
     ]);
-    expect(r.dropped()).toBe(1);
+    expect(reader.dropped()).toBe(1);
     const lease = `nylzo:lease:${idTextOf(created.link)}`;
-    expect(r.session.log).toEqual([`set ${lease}`, `remove ${lease}`]);
+    expect(reader.session.log).toEqual([`set ${lease}`, `remove ${lease}`]);
   });
 
   it('rejects a wrong passphrase without spending an open, then opens the file', async () => {
     const api = fakeApi();
-    const bytes = new Uint8Array(70_000).map((_, i) => i % 251);
+    const bytes = new Uint8Array(70_000).map((_, index) => index % 251);
     const created = await createMessage(
       input({
         text: '',
@@ -197,41 +214,44 @@ describe('reading a message', () => {
       createDependencies(api),
     );
     expect(created.link).toContain('#1.1.');
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal('špatná passphrase tady');
-    expect(r.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4, locked: false } });
-    expect(r.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal('špatná passphrase tady');
+    expect(reader.last()).toMatchObject({
+      view: 'ready',
+      rejected: { reason: 'wrong', attemptsLeft: 4, locked: false },
+    });
+    expect(reader.views.find((v) => v.view === 'busy' && v.step === 'deriving')).toEqual({
       view: 'busy',
       step: 'deriving',
       fraction: 0,
     });
     expect(api.stored.get(idTextOf(created.link))?.opensRemaining).toBe(1);
-    await r.reveal('tři slova a ještě čtvrté');
-    const last = r.last();
+    await reader.reveal('tři slova a ještě čtvrté');
+    const last = reader.last();
     expect(last?.view === 'revealed' && last.file).toMatchObject({
       name: 'report.pdf',
       mime: 'application/pdf',
       bytes,
     });
-    expect(api.calls.filter((c) => c.startsWith('claim'))).toEqual(['claim+verifier', 'claim+verifier']);
+    expect(api.calls.filter((call) => call.startsWith('claim'))).toEqual(['claim+verifier', 'claim+verifier']);
   });
 
   it('marks the scrypt derivation in the session and removes the mark afterwards', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal('correct horse battery staple');
-    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal('correct horse battery staple');
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
     const id = idTextOf(created.link);
-    expect(r.session.log).toEqual([
+    expect(reader.session.log).toEqual([
       `set nylzo:kdf:${id}`,
       `remove nylzo:kdf:${id}`,
       `set nylzo:lease:${id}`,
       `remove nylzo:lease:${id}`,
     ]);
-    expect(r.views.filter((v) => v.view === 'busy' && v.step === 'deriving').length).toBeGreaterThan(2);
+    expect(reader.views.filter((v) => v.view === 'busy' && v.step === 'deriving').length).toBeGreaterThan(2);
   });
 
   it('shows only the sanitised file name (SEC-1)', async () => {
@@ -242,10 +262,10 @@ describe('reading a message', () => {
       { file: { name: 'invoice‮fdp.exe', mime: 'application/pdf', size: bytes.length } },
       bytes,
     );
-    const r = reader(api, link);
-    await r.load();
-    await r.reveal();
-    const last = r.last();
+    const reader = openReader(api, link);
+    await reader.load();
+    await reader.reveal();
+    const last = reader.last();
     expect(last?.view === 'revealed' && last.file?.name).toBe('invoicefdp.exe');
   });
 
@@ -253,11 +273,11 @@ describe('reading a message', () => {
     const options: FakeOptions = {};
     const api = fakeApi(options);
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const first = reader(api, created.link);
+    const first = openReader(api, created.link);
     await first.load();
     await first.reveal('correct horse battery staple');
     options.tombstone = true;
-    const later = reader(api, created.link);
+    const later = openReader(api, created.link);
     await later.load();
     expect(later.last()).toEqual({
       view: 'ended',
@@ -270,11 +290,11 @@ describe('reading a message', () => {
   it('stops before any verifier when the server reports another profile (AK24)', async () => {
     const api = fakeApi({ metadataKdfId: KDF_NONE });
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    expect(r.last()).toEqual({ view: 'tampered' });
-    await r.reveal('correct horse battery staple');
-    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'tampered' });
+    await reader.reveal('correct horse battery staple');
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
   });
 
   it.each<[string, FakeOptions]>([
@@ -288,11 +308,11 @@ describe('reading a message', () => {
   ])('treats %s as tampered and keeps the fragment', async (_, options) => {
     const api = fakeApi(options);
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'tampered' });
-    expect(r.dropped()).toBe(0);
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'tampered' });
+    expect(reader.dropped()).toBe(0);
     expect(api.calls).not.toContain('ack');
   });
 
@@ -300,12 +320,12 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     for (const overrides of [{ visible: false }, { prerendering: true }]) {
-      const r = reader(api, created.link, overrides);
-      await r.load();
-      await r.reveal();
-      expect(r.last()?.view).toBe('ready');
+      const reader = openReader(api, created.link, overrides);
+      await reader.load();
+      await reader.reveal();
+      expect(reader.last()?.view).toBe('ready');
     }
-    expect(api.calls.filter((c) => c === 'claim')).toEqual([]);
+    expect(api.calls.filter((call) => call === 'claim')).toEqual([]);
   });
 
   it('resumes from the stored lease after a reload instead of spending another open', async () => {
@@ -321,17 +341,17 @@ describe('reading a message', () => {
         onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
       },
     );
-    const second = reader(api, created.link, { session });
+    const second = openReader(api, created.link, { session });
     await second.load();
     expect(second.last()).toMatchObject({ view: 'ready', resumable: true });
     await second.reveal();
     expect(second.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
-    expect(api.calls.filter((c) => c === 'blob' || c === 'ack' || c.startsWith('claim'))).toEqual([
+    expect(api.calls.filter((call) => call === 'blob' || call === 'ack' || call.startsWith('claim'))).toEqual([
       'claim',
       'blob',
       'ack',
     ]);
-    const third = reader(api, created.link);
+    const third = openReader(api, created.link);
     await third.load();
     expect(third.last()).toMatchObject({ view: 'ended', state: 'opened' });
   });
@@ -341,7 +361,7 @@ describe('reading a message', () => {
     const passphrase = 'correct horse battery staple';
     const created = await createMessage(input({ passphrase, opensMax: 2 }), createDependencies(api));
     const session = memorySession();
-    const first = reader(api, created.link, { session });
+    const first = openReader(api, created.link, { session });
     await first.load();
     await first.reveal(passphrase);
     const id = idTextOf(created.link);
@@ -354,7 +374,7 @@ describe('reading a message', () => {
         onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
       },
     );
-    const again = reader(api, created.link, { session });
+    const again = openReader(api, created.link, { session });
     await again.load();
     await again.reveal('mistyped passphrase here');
     expect(again.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong_or_changed' } });
@@ -365,10 +385,10 @@ describe('reading a message', () => {
   it('tells the reader when wrong attempts locked the message for its lifetime', async () => {
     const api = fakeApi({ lockAfter: 1, expiresInSeconds: 600 });
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal('nesprávná passphrase');
-    expect(r.last()).toMatchObject({
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal('nesprávná passphrase');
+    expect(reader.last()).toMatchObject({
       view: 'ready',
       rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true },
     });
@@ -379,9 +399,9 @@ describe('reading a message', () => {
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const session = memorySession();
     session.setItem(`nylzo:kdf:${idTextOf(created.link)}`, '1');
-    const r = reader(api, created.link, { session });
-    await r.load();
-    expect(r.last()).toMatchObject({ view: 'ready', deviceFailed: true });
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true });
     expect(session.map.size).toBe(0);
   });
 
@@ -389,29 +409,32 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const before = api.calls.length;
-    const broken = reader(api, created.link.replace('#1.', '#0.'));
+    const broken = openReader(api, created.link.replace('#1.', '#0.'));
     await broken.load();
     expect(broken.last()).toEqual({ view: 'invalid' });
-    const brokenPath = reader(api, created.link.replace('/m/', '/m/x'));
+    const brokenPath = openReader(api, created.link.replace('/m/', '/m/x'));
     await brokenPath.load();
     expect(brokenPath.last()).toEqual({ view: 'invalid' });
     for (const newerLink of [
       created.link.replace('#1.', '#2.'),
       created.link.replace('/m/', '/m/x').replace(/#.*$/, '#10.a.b.c'),
     ]) {
-      const newer = reader(api, newerLink);
+      const newer = openReader(api, newerLink);
       await newer.load();
       expect(newer.last()).toEqual({ view: 'newer' });
     }
-    const retired = reader(api, created.link.replace('#1.0.', '#1.2.'));
+    const retired = openReader(api, created.link.replace('#1.0.', '#1.2.'));
     await retired.load();
     expect(retired.last()).toEqual({ view: 'retired' });
-    const retiredBadPath = reader(api, created.link.replace('/m/', '/m/x').replace('#1.0.', '#1.2.'));
+    const retiredBadPath = openReader(api, created.link.replace('/m/', '/m/x').replace('#1.0.', '#1.2.'));
     await retiredBadPath.load();
     expect(retiredBadPath.last()).toEqual({ view: 'invalid' });
     expect(api.calls.slice(before).filter((call) => !call.startsWith('view:'))).toEqual([]);
     const other = encodeBase64url(new Uint8Array(32).fill(5));
-    const unknown = reader(api, created.link.replace(/#1\.0\..*$/, `#1.0.${other}`));
+    const unknown = openReader(
+      api,
+      created.link.replace(/#1\.0\..*$/, () => `#1.0.${other}`),
+    );
     await unknown.load();
     expect(unknown.last()).toEqual({ view: 'unknown' });
   });
@@ -435,18 +458,18 @@ describe('reading through the lease and claim edge cases', () => {
     const created = await createMessage(input({ opensMax: 3 }), createDependencies(api));
     const session = memorySession();
     session.setItem(leaseKeyOf(created.link), 'stale');
-    const r = reader(api, created.link, { session });
-    await r.load();
-    expect(r.last()).toMatchObject({ view: 'ready', resumable: true });
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: true });
     api.calls.length = 0;
-    await r.reveal();
-    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['blob']);
-    expect(r.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
+    await reader.reveal();
+    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob']);
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
     expect(session.map.has(leaseKeyOf(created.link))).toBe(false);
     expect(storedOf(api, created.link).opensRemaining).toBe(3);
-    await r.reveal();
-    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['blob', 'claim']);
-    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
+    await reader.reveal();
+    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob', 'claim']);
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
     expect(storedOf(api, created.link).opensRemaining).toBe(2);
   });
 
@@ -455,16 +478,16 @@ describe('reading through the lease and claim edge cases', () => {
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const session = memorySession();
     session.setItem(leaseKeyOf(created.link), 'lease-1');
-    api.blob = async () => {
+    api.blob = () => {
       api.calls.push('blob');
-      throw new ApiError(429, 'rate_limited', { retryAfter: 90 });
+      return Promise.reject(new ApiError(429, 'rate_limited', { retryAfter: 90 }));
     };
-    const r = reader(api, created.link, { session });
-    await r.load();
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'retry_later', retryAfter: 90 });
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'retry_later', retryAfter: 90 });
     expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
-    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['blob']);
+    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob']);
   });
 
   it('keeps the lease when the claim stream breaks, so a reload resumes without another open', async () => {
@@ -476,18 +499,18 @@ describe('reading through the lease and claim edge cases', () => {
       await claim(id, readKey, options);
       throw new TypeError('network error');
     };
-    const first = reader(api, created.link, { session });
+    const first = openReader(api, created.link, { session });
     await first.load();
     await first.reveal();
     expect(first.last()).toEqual({ view: 'failed' });
     expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
     api.claim = claim;
-    const again = reader(api, created.link, { session });
+    const again = openReader(api, created.link, { session });
     await again.load();
     expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
     await again.reveal();
     expect(again.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
-    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['claim', 'blob']);
+    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['claim', 'blob']);
   });
 
   it.each<MessageState>(['cancelled', 'deleted', 'expired', 'opened'])(
@@ -495,14 +518,14 @@ describe('reading through the lease and claim edge cases', () => {
     async (state) => {
       const api = fakeApi();
       const created = await createMessage(input(), createDependencies(api));
-      const r = reader(api, created.link);
-      await r.load();
-      r.session.setItem(leaseKeyOf(created.link), 'stale');
+      const reader = openReader(api, created.link);
+      await reader.load();
+      reader.session.setItem(leaseKeyOf(created.link), 'stale');
       storedOf(api, created.link).state = state;
-      await r.reveal();
-      expect(r.last()).toMatchObject({ view: 'ended', state });
-      expect(r.session.map.has(leaseKeyOf(created.link))).toBe(false);
-      expect(await r.report('late')).toEqual({ outcome: 'ignored' });
+      await reader.reveal();
+      expect(reader.last()).toMatchObject({ view: 'ended', state });
+      expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(false);
+      expect(await reader.report('late')).toEqual({ outcome: 'ignored' });
     },
   );
 
@@ -512,43 +535,41 @@ describe('reading through the lease and claim edge cases', () => {
   ] as const)('waits after a %i claim without spending an open', async (status, kind, wait) => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    api.claim = async () => {
+    api.claim = () => {
       api.calls.push('claim');
-      throw new ApiError(status, kind, { retryAfter: wait });
+      return Promise.reject(new ApiError(status, kind, { retryAfter: wait }));
     };
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'retry_later', retryAfter: wait });
-    expect(r.session.map.has(leaseKeyOf(created.link))).toBe(false);
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'retry_later', retryAfter: wait });
+    expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(false);
     expect(storedOf(api, created.link).opensRemaining).toBe(1);
   });
 
   it('reports a link that became unknown at the claim', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    api.claim = async () => {
-      throw new ApiError(404, 'not_found');
-    };
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'unknown' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    api.claim = () => Promise.reject(new ApiError(404, 'not_found'));
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'unknown' });
   });
 
   it('sends one claim when the reader submits twice before the first reveal ends', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
+    const reader = openReader(api, created.link);
+    await reader.load();
     const claim = api.claim.bind(api);
-    api.claim = async (...args: Parameters<typeof claim>) => {
+    api.claim = async (...parameters: Parameters<typeof claim>) => {
       await new Promise((resolve) => setTimeout(resolve, 50));
-      return claim(...args);
+      return claim(...parameters);
     };
-    await Promise.all([r.reveal(), r.reveal()]);
-    expect(api.calls.filter((c) => c.startsWith('claim'))).toEqual(['claim']);
-    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+    await Promise.all([reader.reveal(), reader.reveal()]);
+    expect(api.calls.filter((call) => call.startsWith('claim'))).toEqual(['claim']);
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
   });
 });
 
@@ -557,36 +578,32 @@ describe('passphrase handling on the read page', () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const derivations: string[] = [];
-    const r = reader(api, created.link, { scrypt: workerScrypt(derivations) });
-    await r.load();
-    await r.reveal('caf\u{D800} correct horse');
-    expect(r.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason: 'malformed' } });
-    expect(r.views.some((v) => v.view === 'busy')).toBe(false);
+    const reader = openReader(api, created.link, { scrypt: workerScrypt(derivations) });
+    await reader.load();
+    await reader.reveal('caf\u{D800} correct horse');
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason: 'malformed' } });
+    expect(reader.views.some((v) => v.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);
-    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
-    expect(r.session.map.size).toBe(0);
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
+    expect(reader.session.map.size).toBe(0);
   });
 
   it('suggests another device when the key derivation worker fails', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const r = reader(api, created.link, {
-      scrypt: async () => {
-        throw new KdfWorkerError();
-      },
+    const reader = openReader(api, created.link, {
+      scrypt: () => Promise.reject(new KdfWorkerError()),
     });
-    await r.load();
-    await r.reveal('correct horse battery staple');
-    expect(r.last()).toMatchObject({ view: 'ready', deviceFailed: true, rejected: undefined });
-    const other = reader(api, created.link, {
-      scrypt: async () => {
-        throw Object.assign(new Error('not the worker'), { name: 'KdfWorkerError' });
-      },
+    await reader.load();
+    await reader.reveal('correct horse battery staple');
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true, rejected: undefined });
+    const other = openReader(api, created.link, {
+      scrypt: () => Promise.reject(new ImpostorError('not the worker')),
     });
     await other.load();
     await other.reveal('correct horse battery staple');
     expect(other.last()).toEqual({ view: 'failed' });
-    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
   });
 });
 
@@ -598,17 +615,17 @@ describe('leaving the page', () => {
       input({ text: '', file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 3 }),
       createDependencies(api),
     );
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    const shown = r.last();
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    const shown = reader.last();
     const file = shown?.view === 'revealed' ? shown.file : undefined;
     expect(file?.bytes).toEqual(bytes);
-    r.clear();
-    expect(r.last()).toEqual({ view: 'cleared' });
+    reader.clear();
+    expect(reader.last()).toEqual({ view: 'cleared' });
     expect(file?.bytes.every((byte) => byte === 0)).toBe(true);
-    expect(await r.burn()).toEqual({ outcome: 'ignored' });
-    expect(await r.report('after leaving')).toEqual({ outcome: 'ignored' });
+    expect(await reader.burn()).toEqual({ outcome: 'ignored' });
+    expect(await reader.report('after leaving')).toEqual({ outcome: 'ignored' });
     expect(api.calls).not.toContain('burn');
     expect(api.calls).not.toContain('report');
   });
@@ -616,28 +633,28 @@ describe('leaving the page', () => {
   it('sends no claim when the page was left while the request was being signed', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
+    const reader = openReader(api, created.link);
+    await reader.load();
     const claim = api.claim.bind(api);
-    api.claim = async (...args: Parameters<typeof claim>) => {
-      r.clear();
-      return claim(...args);
+    api.claim = (...parameters: Parameters<typeof claim>) => {
+      reader.clear();
+      return claim(...parameters);
     };
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'cleared' });
-    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'cleared' });
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
   });
 
   it('reveals nothing once the page was left before the reveal', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    r.clear();
-    expect(r.last()).toEqual({ view: 'cleared' });
-    await r.reveal();
-    expect(r.last()).toEqual({ view: 'cleared' });
-    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    const reader = openReader(api, created.link);
+    await reader.load();
+    reader.clear();
+    expect(reader.last()).toEqual({ view: 'cleared' });
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'cleared' });
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
   });
 
   it('keeps the message off the page when a deletion answers after the page was left', async () => {
@@ -647,23 +664,23 @@ describe('leaving the page', () => {
       input({ file: { name: 'a.pdf', mime: 'application/pdf', bytes }, opensMax: 2 }),
       createDependencies(api),
     );
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    const shown = r.last();
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    const shown = reader.last();
     expect(shown).toMatchObject({ view: 'revealed', burnable: true });
-    const gate = Promise.withResolvers<void>();
+    const gate = newGate();
     const burn = api.burn.bind(api);
-    api.burn = async (...args: Parameters<typeof burn>) => {
-      await gate.promise;
-      return burn(...args);
+    api.burn = async (...parameters: Parameters<typeof burn>) => {
+      await gate.opened;
+      return burn(...parameters);
     };
-    const burning = r.burn();
-    r.clear();
-    const after = r.views.length;
-    gate.resolve();
+    const burning = reader.burn();
+    reader.clear();
+    const after = reader.views.length;
+    gate.open();
     expect(await burning).toEqual({ outcome: 'deleted' });
-    expect(r.views.slice(after - 1)).toEqual([{ view: 'cleared' }]);
+    expect(reader.views.slice(after - 1)).toEqual([{ view: 'cleared' }]);
     expect(shown?.view === 'revealed' && shown.file?.bytes.every((byte) => byte === 0)).toBe(true);
   });
 
@@ -675,59 +692,59 @@ describe('leaving the page', () => {
       createDependencies(api),
     );
     const session = memorySession();
-    const r = reader(api, created.link, { session });
-    await r.load();
-    const gate = Promise.withResolvers<void>();
-    const asked = Promise.withResolvers<void>();
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    const gate = newGate();
+    const asked = newGate();
     const claim = api.claim.bind(api);
     let claimed: Uint8Array | undefined;
-    api.claim = async (id, readKey, { proceed: _alreadySent, ...sent } = {}) => {
-      asked.resolve();
-      await gate.promise;
-      const envelope = await claim(id, readKey, sent);
+    api.claim = async (id, readKey, options = {}) => {
+      asked.open();
+      await gate.opened;
+      const envelope = await claim(id, readKey, { ...options, proceed: () => true });
       claimed = envelope.object;
       return envelope;
     };
-    const revealing = r.reveal();
-    await asked.promise;
-    r.clear();
-    const after = r.views.length;
-    gate.resolve();
+    const revealing = reader.reveal();
+    await asked.opened;
+    reader.clear();
+    const after = reader.views.length;
+    gate.open();
     await revealing;
-    expect(r.views.slice(after - 1).every((view) => view.view === 'cleared')).toBe(true);
+    expect(reader.views.slice(after - 1).every((view) => view.view === 'cleared')).toBe(true);
     expect(claimed).toBeDefined();
     expect(api.calls).not.toContain('ack');
-    expect(r.dropped()).toBe(0);
+    expect(reader.dropped()).toBe(0);
     expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
     api.claim = claim;
-    const reloaded = reader(api, created.link, { session });
+    const reloaded = openReader(api, created.link, { session });
     await reloaded.load();
     expect(reloaded.last()).toMatchObject({ view: 'ready', resumable: true });
     await reloaded.reveal();
     expect(reloaded.last()).toMatchObject({ view: 'revealed', text: 'later' });
-    expect(api.calls.filter((c) => c === 'blob' || c.startsWith('claim'))).toEqual(['claim', 'blob']);
+    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['claim', 'blob']);
   });
 
   it('sends no claim when the page was left during the key derivation', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const gate = Promise.withResolvers<void>();
-    const asked = Promise.withResolvers<void>();
-    const r = reader(api, created.link, {
-      scrypt: async (...args) => {
-        asked.resolve();
-        await gate.promise;
-        return scrypt(...args);
+    const gate = newGate();
+    const asked = newGate();
+    const reader = openReader(api, created.link, {
+      scrypt: async (...parameters) => {
+        asked.open();
+        await gate.opened;
+        return scrypt(...parameters);
       },
     });
-    await r.load();
-    const revealing = r.reveal('correct horse battery staple');
-    await asked.promise;
-    r.clear();
-    gate.resolve();
+    await reader.load();
+    const revealing = reader.reveal('correct horse battery staple');
+    await asked.opened;
+    reader.clear();
+    gate.open();
     await revealing;
-    expect(r.last()).toEqual({ view: 'cleared' });
-    expect(api.calls.some((c) => c.startsWith('claim'))).toBe(false);
+    expect(reader.last()).toEqual({ view: 'cleared' });
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
     expect(storedOf(api, created.link).failures).toBe(0);
   });
 });
@@ -736,37 +753,37 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('deletes a message before showing it and then refuses to reveal it', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    expect(await r.burn()).toEqual({ outcome: 'deleted' });
-    expect(r.last()).toEqual({ view: 'ended', state: 'deleted', firstOpenedAt: undefined, endedAt: undefined });
-    await r.reveal();
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.burn()).toEqual({ outcome: 'deleted' });
+    expect(reader.last()).toEqual({ view: 'ended', state: 'deleted', firstOpenedAt: undefined, endedAt: undefined });
+    await reader.reveal();
     expect(api.calls).not.toContain('claim');
-    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    expect(await reader.burn()).toEqual({ outcome: 'ignored' });
     expect(api.calls.filter((call) => call === 'burn')).toHaveLength(1);
   });
 
   it('deletes the remaining opens after showing the message and keeps the content on screen', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 3 }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
-    expect(await r.burn()).toEqual({ outcome: 'deleted' });
-    expect(r.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
-    expect([...api.stored.values()][0]?.state).toBe('deleted');
-    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
+    expect(await reader.burn()).toEqual({ outcome: 'deleted' });
+    expect(reader.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
+    expect(storedOf(api, created.link).state).toBe('deleted');
+    expect(await reader.burn()).toEqual({ outcome: 'ignored' });
   });
 
   it('offers no deletion after the last open was shown', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
-    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: false });
+    expect(await reader.burn()).toEqual({ outcome: 'ignored' });
     expect(api.calls).not.toContain('burn');
   });
 
@@ -774,12 +791,12 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const session = memorySession();
-    const first = reader(api, created.link, { session });
+    const first = openReader(api, created.link, { session });
     await first.load();
     session.setItem(`nylzo:lease:${idTextOf(created.link)}`, 'lease-1');
-    [...api.stored.values()][0]!.leases.add('lease-1');
-    [...api.stored.values()][0]!.opensRemaining = 1;
-    const resumed = reader(api, created.link, { session });
+    storedOf(api, created.link).leases.add('lease-1');
+    storedOf(api, created.link).opensRemaining = 1;
+    const resumed = openReader(api, created.link, { session });
     await resumed.load();
     await resumed.reveal();
     expect(resumed.last()).toMatchObject({ view: 'revealed', burnable: true });
@@ -788,36 +805,36 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('deletes the rest right after the reveal, after the ack, instead of ignoring the click', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    const gate = Promise.withResolvers<void>();
+    const reader = openReader(api, created.link);
+    await reader.load();
+    const gate = newGate();
     const ack = api.ack.bind(api);
-    api.ack = async (...args: Parameters<typeof ack>) => {
-      await gate.promise;
-      return ack(...args);
+    api.ack = async (...parameters: Parameters<typeof ack>) => {
+      await gate.opened;
+      return ack(...parameters);
     };
-    await r.reveal();
-    expect(r.last()).toMatchObject({ view: 'revealed', burnable: true });
-    const burning = r.burn();
+    await reader.reveal();
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: true });
+    const burning = reader.burn();
     await Promise.resolve();
     expect(api.calls).not.toContain('burn');
-    gate.resolve();
+    gate.open();
     expect(await burning).toEqual({ outcome: 'deleted' });
     const order = api.calls.filter((call) => call === 'ack' || call === 'burn');
     expect(order).toEqual(['ack', 'burn']);
-    expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: false });
   });
 
   it('ignores a deletion while the message is being revealed or already being deleted', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    const revealing = r.reveal();
-    expect(await r.burn()).toEqual({ outcome: 'ignored' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    const revealing = reader.reveal();
+    expect(await reader.burn()).toEqual({ outcome: 'ignored' });
     await revealing;
-    expect(r.last()).toMatchObject({ view: 'revealed', burnable: true });
-    const [first, second] = await Promise.all([r.burn(), r.burn()]);
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: true });
+    const [first, second] = await Promise.all([reader.burn(), reader.burn()]);
     expect([first, second]).toEqual([{ outcome: 'deleted' }, { outcome: 'ignored' }]);
     expect(api.calls.filter((call) => call === 'burn')).toHaveLength(1);
   });
@@ -826,10 +843,10 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     for (const overrides of [{ visible: false }, { prerendering: true }]) {
       const api = fakeApi();
       const created = await createMessage(input(), createDependencies(api));
-      const r = reader(api, created.link, overrides);
-      await r.load();
-      expect(await r.burn()).toEqual({ outcome: 'ignored' });
-      expect(await r.report('spam')).toEqual({ outcome: 'ignored' });
+      const reader = openReader(api, created.link, overrides);
+      await reader.load();
+      expect(await reader.burn()).toEqual({ outcome: 'ignored' });
+      expect(await reader.report('spam')).toEqual({ outcome: 'ignored' });
       expect(api.calls).not.toContain('burn');
       expect(api.calls).not.toContain('report');
     }
@@ -838,30 +855,30 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('shows the end state when the message ended before the deletion', async () => {
     const api = fakeApi({ failBurn: [new ApiError(410, 'gone', { state: 'cancelled' })] });
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    expect(await r.burn()).toEqual({ outcome: 'ended', state: 'cancelled' });
-    expect(r.last()).toMatchObject({ view: 'ended', state: 'cancelled' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.burn()).toEqual({ outcome: 'ended', state: 'cancelled' });
+    expect(reader.last()).toMatchObject({ view: 'ended', state: 'cancelled' });
   });
 
   it('keeps the page when the deletion is rate limited and allows another attempt', async () => {
     const api = fakeApi({ failBurn: [new ApiError(429, 'rate_limited', { retryAfter: 30 })] });
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    expect(await r.burn()).toEqual({ outcome: 'retry_later', retryAfter: 30 });
-    expect(r.last()).toMatchObject({ view: 'ready' });
-    expect(await r.burn()).toEqual({ outcome: 'deleted' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.burn()).toEqual({ outcome: 'retry_later', retryAfter: 30 });
+    expect(reader.last()).toMatchObject({ view: 'ready' });
+    expect(await reader.burn()).toEqual({ outcome: 'deleted' });
   });
 
   it('reports a message with the read key before and after it is shown', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    expect(await r.report('phishing')).toEqual({ outcome: 'accepted' });
-    await r.reveal();
-    expect(await r.report('')).toEqual({ outcome: 'accepted' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.report('phishing')).toEqual({ outcome: 'accepted' });
+    await reader.reveal();
+    expect(await reader.report('')).toEqual({ outcome: 'accepted' });
     expect(api.reports).toEqual([
       { id: idTextOf(created.link), signedByReader: true, reason: 'phishing' },
       { id: idTextOf(created.link), signedByReader: true, reason: '' },
@@ -871,9 +888,9 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('sends one report at a time', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    const [first, second] = await Promise.all([r.report('one'), r.report('two')]);
+    const reader = openReader(api, created.link);
+    await reader.load();
+    const [first, second] = await Promise.all([reader.report('one'), reader.report('two')]);
     expect([first, second]).toEqual([{ outcome: 'accepted' }, { outcome: 'ignored' }]);
     expect(api.reports.map((report) => report.reason)).toEqual(['one']);
   });
@@ -881,13 +898,13 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('sends no report once the last open was shown, because the server keeps reports only for live messages (D46)', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.reveal();
-    expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
-    expect(await r.report('after the last open')).toEqual({ outcome: 'ignored' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: false });
+    expect(await reader.report('after the last open')).toEqual({ outcome: 'ignored' });
     const rest = await createMessage(input({ opensMax: 2 }), createDependencies(api));
-    const other = reader(api, rest.link);
+    const other = openReader(api, rest.link);
     await other.load();
     await other.reveal();
     expect(await other.burn()).toEqual({ outcome: 'deleted' });
@@ -898,43 +915,37 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   it('drops the read key once the page shows an end state', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const r = reader(api, created.link);
-    await r.load();
-    await r.burn();
-    expect(await r.report('late')).toEqual({ outcome: 'ignored' });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.burn();
+    expect(await reader.report('late')).toEqual({ outcome: 'ignored' });
     expect(api.reports).toEqual([]);
   });
 });
 
 describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
   it('reads, deletes and wipes the fallback seed only once no request needs it', async () => {
-    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const refuse = vi
-      .spyOn(crypto.subtle, 'importKey')
-      .mockImplementation(((...args: Parameters<typeof importKey>) =>
-        args[0] === 'pkcs8'
-          ? Promise.reject(new DOMException('refused', 'DataError'))
-          : importKey(...args)) as typeof crypto.subtle.importKey);
+    const refuse = refuseSigningKeyImport();
     try {
       const api = fakeApi();
       const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
-      const r = reader(api, created.link);
-      await r.load();
-      await r.reveal();
-      expect(r.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
-      const gate = Promise.withResolvers<void>();
+      const reader = openReader(api, created.link);
+      await reader.load();
+      await reader.reveal();
+      expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
+      const gate = newGate();
       let usedKey: { seed?: Uint8Array } | undefined;
       let intactWhenSent = false;
       const burn = api.burn.bind(api);
-      api.burn = async (...args: Parameters<typeof burn>) => {
-        await gate.promise;
-        usedKey = args[1] as { seed?: Uint8Array };
+      api.burn = async (...parameters: Parameters<typeof burn>) => {
+        await gate.opened;
+        usedKey = parameters[1] as { seed?: Uint8Array };
         intactWhenSent = usedKey.seed?.some((byte) => byte !== 0) ?? false;
-        return burn(...args);
+        return burn(...parameters);
       };
-      const burning = r.burn();
-      r.clear();
-      gate.resolve();
+      const burning = reader.burn();
+      reader.clear();
+      gate.open();
       expect(await burning).toEqual({ outcome: 'deleted' });
       expect(usedKey?.seed).toBeDefined();
       expect(intactWhenSent).toBe(true);
@@ -945,26 +956,20 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
   });
 
   it('wipes the fallback seed once the shown message can be neither deleted nor reported', async () => {
-    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const refuse = vi
-      .spyOn(crypto.subtle, 'importKey')
-      .mockImplementation(((...args: Parameters<typeof importKey>) =>
-        args[0] === 'pkcs8'
-          ? Promise.reject(new DOMException('refused', 'DataError'))
-          : importKey(...args)) as typeof crypto.subtle.importKey);
+    const refuse = refuseSigningKeyImport();
     try {
       const api = fakeApi();
       const created = await createMessage(input(), createDependencies(api));
-      const r = reader(api, created.link);
-      await r.load();
+      const reader = openReader(api, created.link);
+      await reader.load();
       let usedKey: { seed?: Uint8Array } | undefined;
       const ack = api.ack.bind(api);
-      api.ack = async (...args: Parameters<typeof ack>) => {
-        usedKey = args[1] as { seed?: Uint8Array };
-        return ack(...args);
+      api.ack = (...parameters: Parameters<typeof ack>) => {
+        usedKey = parameters[1] as { seed?: Uint8Array };
+        return ack(...parameters);
       };
-      await r.reveal();
-      expect(r.last()).toMatchObject({ view: 'revealed', burnable: false });
+      await reader.reveal();
+      expect(reader.last()).toMatchObject({ view: 'revealed', burnable: false });
       await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
     } finally {
       refuse.mockRestore();
@@ -972,31 +977,25 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
   });
 
   it('keeps the fallback seed for an ack that is still on its way when the page is left', async () => {
-    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const refuse = vi
-      .spyOn(crypto.subtle, 'importKey')
-      .mockImplementation(((...args: Parameters<typeof importKey>) =>
-        args[0] === 'pkcs8'
-          ? Promise.reject(new DOMException('refused', 'DataError'))
-          : importKey(...args)) as typeof crypto.subtle.importKey);
+    const refuse = refuseSigningKeyImport();
     try {
       const api = fakeApi();
       const created = await createMessage(input(), createDependencies(api));
-      const r = reader(api, created.link);
-      await r.load();
-      const gate = Promise.withResolvers<void>();
+      const reader = openReader(api, created.link);
+      await reader.load();
+      const gate = newGate();
       let usedKey: { seed?: Uint8Array } | undefined;
       let intactWhenSent = false;
       const ack = api.ack.bind(api);
-      api.ack = async (...args: Parameters<typeof ack>) => {
-        await gate.promise;
-        usedKey = args[1] as { seed?: Uint8Array };
+      api.ack = async (...parameters: Parameters<typeof ack>) => {
+        await gate.opened;
+        usedKey = parameters[1] as { seed?: Uint8Array };
         intactWhenSent = usedKey.seed?.some((byte) => byte !== 0) ?? false;
-        return ack(...args);
+        return ack(...parameters);
       };
-      await r.reveal();
-      r.clear();
-      gate.resolve();
+      await reader.reveal();
+      reader.clear();
+      gate.open();
       await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
       expect(intactWhenSent).toBe(true);
     } finally {
