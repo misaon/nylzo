@@ -99,7 +99,7 @@ func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
-	for _, header := range []string{"", "!!", core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":9,"flags":0}`)), core.Encode([]byte(`{"opens_max":0,"ttl_s":60,"kdf_id":0,"flags":0}`)), core.Encode([]byte(`{"ttl_s":60,"kdf_id":0,"flags":0}`))} {
+	for _, header := range []string{"", "!!", core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":9,"flags":0}`)), core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":257,"flags":0}`)), core.Encode([]byte(`{"opens_max":0,"ttl_s":60,"kdf_id":0,"flags":0}`)), core.Encode([]byte(`{"ttl_s":60,"kdf_id":0,"flags":0}`))} {
 		if _, err := decodePolicy(header); !errors.Is(err, ErrResponse) {
 			t.Fatalf("policy %q accepted", header)
 		}

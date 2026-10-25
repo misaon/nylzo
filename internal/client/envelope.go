@@ -130,13 +130,14 @@ func decodePolicy(header string) (Envelope, error) {
 	if err != nil || policy.OpensMax == nil || policy.TTL == nil || policy.KDF == nil || policy.Flags == nil {
 		return Envelope{}, ErrResponse
 	}
-	opensMax, ttl, kdf := *policy.OpensMax, *policy.TTL, core.KDF(*policy.KDF)
-	if opensMax < 1 || opensMax > math.MaxUint16 || ttl < 1 || ttl > math.MaxUint32 || !kdf.Valid() {
+	opensMax, ttl, kdf := *policy.OpensMax, *policy.TTL, *policy.KDF
+	if opensMax < 1 || opensMax > math.MaxUint16 || ttl < 1 || ttl > math.MaxUint32 || kdf < 0 ||
+		kdf > math.MaxUint8 || !core.KDF(kdf).Valid() {
 		return Envelope{}, ErrResponse
 	}
 	return Envelope{
 		Policy: core.Policy{OpensMax: uint16(opensMax), TTLSeconds: uint32(ttl)},
-		KDF:    kdf,
+		KDF:    core.KDF(kdf),
 		Flags:  *policy.Flags,
 	}, nil
 }
