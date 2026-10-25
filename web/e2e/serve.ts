@@ -2,20 +2,25 @@ import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import path from 'node:path';
 
 const [port = '8090', profile = 'default'] = process.argv.slice(2);
-const root = new URL('../../', import.meta.url).pathname;
-const dir = mkdtempSync(join(tmpdir(), 'nylzo-e2e-'));
-const binary = new URL(`./.bin/${port}/nylzo`, import.meta.url).pathname;
-mkdirSync(new URL(`./.bin/${port}/`, import.meta.url), { recursive: true });
+const repository = new URL('../../', import.meta.url).pathname;
+const binaryDirectory = new URL(`.bin/${port}/`, import.meta.url);
+const binary = new URL('nylzo', binaryDirectory).pathname;
 
 const profiles: Record<string, Record<string, string>> = {
   default: {},
   pow: { NYLZO_GLOBAL_DAILY_CREATES: '8', NYLZO_POW_DIFFICULTY: '4' },
 };
 
-execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nylzo'], { cwd: root, stdio: 'inherit' });
+mkdirSync(binaryDirectory, { recursive: true });
+execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nylzo'], {
+  cwd: repository,
+  stdio: 'inherit',
+});
+
+const dataDirectory = mkdtempSync(path.join(tmpdir(), 'nylzo-e2e-'));
 
 const server = spawn(binary, ['serve'], {
   stdio: 'inherit',
@@ -23,7 +28,7 @@ const server = spawn(binary, ['serve'], {
     ...process.env,
     NYLZO_LISTEN: `127.0.0.1:${port}`,
     NYLZO_PUBLIC_URL: `http://127.0.0.1:${port}`,
-    NYLZO_DATA_DIR: dir,
+    NYLZO_DATA_DIR: dataDirectory,
     NYLZO_PEPPER: randomBytes(32).toString('hex'),
     NYLZO_RATE_CREATE_HOUR: '0',
     NYLZO_RATE_CREATE_DAY: '0',
@@ -44,4 +49,6 @@ const server = spawn(binary, ['serve'], {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => server.kill(signal));
 }
-server.on('exit', (code) => process.exit(code ?? 1));
+server.on('exit', (code) => {
+  process.exitCode = code ?? 1;
+});
