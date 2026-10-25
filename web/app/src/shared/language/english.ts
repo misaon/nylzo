@@ -168,17 +168,17 @@ export const english: Record<MessageKey, string> = {
   'transparency.operator.missing': 'The operator has not provided these details.',
   'transparency.stores.title': 'What the server stores',
   'transparency.stores.content':
-    'The encrypted message. The key is only in the part of the link after #, which the browser never sends to the server, so the server cannot read the content or the name of an attachment.',
+    'The encrypted message, encrypted once more with a key of its own and padded, so its stored length shows only a rough size. The content key is only in the part of the link after #, which the browser never sends to the server, so the server cannot read the content or the name of an attachment.',
   'transparency.stores.metadata':
-    'For each message, the id from the link, whether a passphrase protects it, the number of opens and of wrong passphrases, the expiry, the padded size and times rounded to the minute. While a message is being opened, also a record of the download in progress until it ends.',
+    'For each message a sealed record with its settings, counters and times rounded to the minute. The server can open it only while a request brings the link or the manage key, so a copy of the server shows none of it. In the clear it keeps a hash of the message id and when its cleanup is due, rounded up to the quarter hour or the hour.',
   'transparency.stores.keys':
-    'Instead of keys, only their fingerprints (HMAC with a server secret), which help no one without the link.',
+    'No keys and no public keys. Only a request with the link or the manage key gives the server what it needs to open the record.',
   'transparency.stores.ended':
-    'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. After that it keeps only a short record of the ended message for at most {days}: how and when it ended, when it was first opened, and the fingerprints of its keys.',
+    'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. It drops the key of the stored message first, so not even a leftover copy on the disk can be read. The sealed record of the ended message stays for at most {days}: how and when it ended and when it was first opened.',
   'transparency.stores.abuse':
-    'Abuse reports: the date, the message id, the reason without link keys or long codes, the good-faith statement and an email address if the reporter chose to give one, for at most {days}.',
+    "Abuse reports, sealed with the operator's public key so the server cannot read them back: the date, the message id, the reason without link keys or long codes, the good-faith statement and an email address if the reporter chose to give one, for at most {days}.",
   'transparency.stores.counters':
-    'Counters without addresses: it keeps daily totals of created messages and of reports per message for {days} after the day ends, and used one-time challenges for a few minutes.',
+    'Counters without addresses: daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes. Reports per message are counted in the sealed record.',
   'transparency.stores.addresses':
     'It does not store IP addresses. Per-address limits live only in memory and are forgotten on restart.',
   'transparency.stores.enforced':
@@ -192,7 +192,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.others.hosting':
     'The hosting provider and the proxy that terminates HTTPS see IP addresses, request times and sizes, and log by their own rules. They do not see the content of a message.',
   'transparency.others.client':
-    'Whoever controls the server or the hosting can send a modified web client and read the messages you create or open in it. The CLI from a signed release protects against this. The check below finds such a swap only when the server does not avoid it.',
+    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. The CLI from a signed release protects against this. The check below finds such a swap only when the server does not avoid it.',
   'transparency.limits.title': 'Limits of this instance',
   'transparency.limits.file': 'Largest attachment',
   'transparency.limits.ttl': 'Longest expiry',

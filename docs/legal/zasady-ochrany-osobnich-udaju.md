@@ -10,10 +10,10 @@ Platné od [DOPLNIT: datum].
 ## Co zpracováváme
 
 - Obsah zprávy: šifruje ho váš prohlížeč a my ho nepřečteme. Protože nevíme, co obsahuje, bereme ho jako osobní údaj a jen ho uložíme, vydáme a smažeme. O obsahu a příjemcích rozhoduje odesílatel.
-- Údaje o zprávě: náhodný identifikátor, nastavení odesílatele, stav, počet otevření a chybných passphrase, zaokrouhlenou velikost, časy na minutu a otisky klíčů. Neobsahují jméno ani IP adresu.
+- Údaje o zprávě: nastavení odesílatele, stav, počet otevření a chybných passphrase, velikost a časy na minutu. Ukládáme je zapečetěné a přečíst je umíme jen během požadavku toho, kdo má odkaz nebo správcovský klíč. Čitelně zůstává jen otisk identifikátoru a čas, kdy údaje smažeme. Neobsahují jméno ani IP adresu.
 - IP adresa: jen v paměti serveru pro limity proti zahlcení, převedená na otisk s náhodným klíčem. Na disk ani do logu se nezapisuje a po restartu zmizí. Hlavičku User-Agent server čte v paměti, aby poznal náhledy odkazů.
 - Logy: čas na minutu, druh požadavku a výsledek. Bez IP adresy, identifikátoru zprávy a obsahu.
-- Hlášení zneužití: datum, identifikátor zprávy, důvod bez kódů z odkazu, potvrzení dobré víry a e-mail, pokud ho uvedete.
+- Hlášení zneužití: datum, identifikátor zprávy, důvod bez kódů z odkazu, potvrzení dobré víry a e-mail, pokud ho uvedete. Server hlášení zapečetí klíčem provozovatele a sám ho nepřečte.
 
 Úplný a aktuální výčet ukazuje stránka Transparentnost.
 
@@ -32,7 +32,7 @@ Proti zpracování podle písm. f) můžete vznést námitku.
 ## Jak dlouho
 
 - Obsah: do posledního otevření, zrušení nebo smazání, nejpozději krátce po konci platnosti (nejvýše 7 dní).
-- Záznam o skončené zprávě: 7 dní.
+- Údaje o skončené zprávě: 7 dní, zaokrouhleno nahoru na celou hodinu.
 - Otisky IP adres: v paměti, nejdéle do restartu serveru.
 - Hlášení včetně e-mailu: 7 dní od dne hlášení.
 - Logy: [DOPLNIT, nejvýše 7 dní].
@@ -47,14 +47,14 @@ Proti zpracování podle písm. f) můžete vznést námitku.
 ## Komu údaje předáváme
 
 - Poskytovateli hostingu [DOPLNIT] jako zpracovateli. HTTPS ukončuje [DOPLNIT].
-- Úřadům jen tehdy, když to ukládá zákon. Obsah zpráv vydat nemůžeme, protože k němu nemáme klíč.
+- Úřadům jen tehdy, když to ukládá zákon. Obsah zpráv vydat nemůžeme, protože k němu nemáme klíč, a údaje o zprávách bez odkazu nepřečteme.
 - Údaje zůstávají v EU [DOPLNIT podle hostingu].
 
 ## Vaše práva
 
 - Máte právo na přístup, opravu, výmaz, omezení zpracování, přenositelnost a námitku.
 - Stížnost můžete podat u Úřadu pro ochranu osobních údajů (Pplk. Sochora 27, 170 00 Praha 7, uoou.gov.cz, posta@uoou.gov.cz) nebo u úřadu ve státě, kde žijete.
-- Účty ani IP adresy neukládáme, takže vás obvykle nepoznáme (čl. 11 GDPR). Pomůže identifikátor zprávy a doklad, že je vaše, například stav zprávy na stránce Odeslané zprávy nebo token pro správu z programu nylzo. Celý odkaz nikdy neposílejte, obsahuje klíč.
+- Účty ani IP adresy neukládáme a údaje o zprávě bez odkazu nebo správcovského klíče nepřečteme, takže vás obvykle nepoznáme (čl. 11 GDPR). Údaje o své zprávě vidíte sami na stránce Odeslané zprávy nebo příkazem `nylzo status`. Celý odkaz nikdy neposílejte, obsahuje klíč.
 - Odpovíme do jednoho měsíce, v odůvodněných případech nejvýše o dva měsíce později.
 
 ## Ostatní
