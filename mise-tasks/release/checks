@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-#MISE description="Require successful CI and CodeQL checks for a release commit"
+#MISE description="Require full CI and CodeQL verification for a release commit"
 set -euo pipefail
 
 commit="${1:-$(git rev-parse HEAD)}"
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
 gh api "repos/misaon/nylzo/commits/${commit}/check-runs?per_page=100" | jq -e '
   .check_runs as $checks |
-  all(["CI required", "Analyze (go)", "Analyze (javascript-typescript)", "Analyze (actions)"][];
-    . as $name | any($checks[]; .name == $name and .app.slug == "github-actions" and .conclusion == "success"))' > /dev/null
-printf '%s passed CI and every CodeQL analysis.\n' "$commit"
+  any($checks[];
+    select(.name == "Release verification" and .app.slug == "github-actions" and .conclusion == "success") |
+    .check_suite.id as $suite |
+    all(["CI required", "Analyze (go)", "Analyze (javascript-typescript)", "Analyze (actions)"][];
+      . as $name | any($checks[];
+        .name == $name and .check_suite.id == $suite and .app.slug == "github-actions" and .conclusion == "success")))' > /dev/null || {
+  echo 'Full source verification is required. Run gh workflow run ci.yml --ref main, wait for Release verification to pass, then retry.' >&2
+  exit 1
+}
+printf '%s passed full CI and every CodeQL analysis in the same run.\n' "$commit"
