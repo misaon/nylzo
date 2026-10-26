@@ -42,7 +42,7 @@ var requiredHeaders = map[string]string{
 
 func htmlCSPFromSpec(t *testing.T) string {
 	t.Helper()
-	spec, err := os.ReadFile("../../spec/protocol.md")
+	spec, err := os.ReadFile("../../docs/wiki/reference/Protocol.md")
 	if err != nil {
 		t.Fatal(err)
 	}

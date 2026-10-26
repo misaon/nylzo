@@ -499,7 +499,7 @@ func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	wait := func(signal chan struct{}, what string) {
 		select {
 		case <-signal:
-		// gstack-timing-ok: an upper bound on waiting for the event, not a measurement
+		// an upper bound on waiting for the event, not a measurement
 		case <-time.After(5 * time.Second):
 			t.Fatalf("the create never %s its cap slot", what)
 		}

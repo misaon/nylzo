@@ -23,3 +23,20 @@
 
 # GoReleaser output
 /dist/
+
+# Local development instructions and research
+/.agents/
+/.claude/
+/.codex/
+/.gstack/
+/AGENTS.md
+/CLAUDE.md
+/skills-lock.json
+/docs/*
+!/docs/wiki/
+/tools/r13/
+/spec/protocol.md
+/assets/brand/README.md
+/assets/readme/README.md
+/deploy/compose/README.md
+/web/app/fonts/README.md

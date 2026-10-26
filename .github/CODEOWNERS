@@ -6,6 +6,7 @@
 /mise.lock @misaon
 /mise-tasks/ @misaon
 /spec/ @misaon
+/docs/wiki/reference/Protocol.md @misaon
 /internal/core/ @misaon
 /web/core/ @misaon
 /SECURITY.md @misaon
