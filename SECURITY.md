@@ -45,4 +45,4 @@ The canonical source is [misaon/nylzo](https://github.com/misaon/nylzo). Downloa
 
 ## Fixes and releases
 
-Fixes go into the next release. There are no maintained older branches, so update to the latest release. How to verify a release image and its provenance is in `deploy/compose/README.md`; how to check the web client a server sends is in the README (`nylzo verify-client`).
+Fixes go into the next release. There are no maintained older branches, so update to the latest release. See [Verify a release](docs/wiki/Verify-a-release.md) for image signatures and provenance, and the [CLI guide](docs/cli.md#verify-an-instances-web-client) for checking the client a server sends with `nylzo verify-client`.

@@ -1,6 +1,6 @@
 # Nylzo CLI
 
-The same `nylzo` binary creates and reads messages, checks an instance's web client, and runs the server. Build it with `mise run build`, or use a [verified release](../README.md#verify-a-release). Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
+The same `nylzo` binary creates and reads messages, checks an instance's web client, and runs the server. Build it with `mise run build`, or use a [verified release](wiki/Verify-a-release.md). Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
 
 ## Keep secrets out of arguments
 

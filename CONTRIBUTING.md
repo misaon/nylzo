@@ -1,6 +1,6 @@
 # Contributing to Nylzo
 
-Contributions are welcome: bug reports, documentation, tests, accessibility improvements, and code. The project is preparing for its first release. Discuss substantial changes before implementing them, especially changes to cryptography, the protocol, storage, or the release pipeline.
+Contributions are welcome: bug reports, documentation, tests, accessibility improvements, and code. Discuss substantial changes before implementing them, especially changes to cryptography, the protocol, storage, or the release pipeline.
 
 ## Choose the right channel
 
@@ -49,6 +49,8 @@ On Linux, Playwright may also need system libraries (`pnpm --dir web/e2e exec pl
 Do not hand-edit generated protocol vectors or dependency lockfiles. Regenerate vectors with `go run ./cmd/nylzo-vectors -out spec/vectors.json`; change dependencies deliberately with the pinned package manager and review the resulting lockfile diff. Do not relax dependency build-script restrictions or security checks to make a change pass.
 
 ## Open a pull request
+
+The [Wiki](https://github.com/misaon/nylzo/wiki) is the documentation entry point. Edit its reviewed source files here, following [Publishing the GitHub Wiki](docs/wiki/README.md); the maintainer republishes them after merge.
 
 Use an English Conventional Commit title, such as `feat(cli): add JSON version output`, and a short body explaining the problem, resulting behavior, and validation. Allowed types are `feat`, `fix`, `perf`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `revert`, `style`, and `security`. Add `!` before the colon for a breaking change and explain its migration in the body. The title becomes the squash commit and determines its section in the generated release notes. Link the relevant issue and acceptance criterion when applicable. Documentation-only changes do not need invented test coverage; describe how you checked them.
 

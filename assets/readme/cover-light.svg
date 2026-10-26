@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">Nylzo</title>
+  <desc id="description">Encrypted sharing. A sealed message travels through a link with an expiry.</desc>
+  <defs>
+    <linearGradient id="edge" x1="720" y1="40" x2="1090" y2="330" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#194A80"/>
+      <stop offset="1" stop-color="#6556AC"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="1198" height="378" rx="24" fill="#F7F9FE" stroke="#D6DFEE" stroke-width="2"/>
+  <path d="M618 1V379" stroke="#D6DFEE"/>
+  <g transform="translate(52 77) scale(1.2)"><defs><linearGradient id="nylzo-light-landscape" x1="0%" y1="0%" x2="100%" y2="100%"><stop stop-color="#194A80"/><stop offset=".52" stop-color="#315EAA"/><stop offset="1" stop-color="#6556AC"/></linearGradient></defs><g fill="url(#nylzo-light-landscape)" transform="translate(18 16) scale(1.22)"><path d="M16 82V21q0-7 7-7h8l23 30-10 10-14-18v46q0 2-2 2H18q-2 0-2-2Z"/><path d="M66 14h12q2 0 2 2v61q0 7-7 7h-8L48 61l10-10 8 11Z"/></g><g stroke="#142B52" transform="translate(153 34) scale(.95)"><g fill="none" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"><path d="M0 72V22m0 20c0-26 38-26 38 0v30"/><path d="m55 22 19 48m21-48L73 79q-6 17-20 12"/><path d="M115 1v59q0 12 11 12"/><path d="M144 22h40l-40 50h40"/><ellipse cx="226" cy="47" rx="24" ry="26"/></g></g></g>
+  <g fill="#516789" font-family="Arial, Helvetica, sans-serif" font-size="14" letter-spacing="3">
+    <text x="76" y="63">OPEN SOURCE / SELF-HOSTED</text>
+    <text x="76" y="304">ENCRYPTED SHARING. EXPIRING LINKS.</text>
+  </g>
+  <g stroke="#D6DFEE">
+    <ellipse cx="908" cy="190" rx="220" ry="130" transform="rotate(-22 908 190)"/>
+    <ellipse cx="908" cy="190" rx="175" ry="175"/>
+    <path d="M651 190H1166M908 20V360" stroke-dasharray="3 9"/>
+  </g>
+  <g transform="translate(817 82) rotate(9 100 112)">
+    <rect width="190" height="226" rx="16" fill="#F7F9FE" stroke="#D6DFEE"/>
+  </g>
+  <g transform="translate(792 76)">
+    <rect width="212" height="228" rx="16" fill="#FFFFFF" stroke="url(#edge)" stroke-width="1.5"/>
+    <path d="M0 51H212" stroke="#D6DFEE"/>
+    <circle cx="23" cy="26" r="4" fill="#194A80"/>
+    <text x="38" y="31" fill="#516789" font-family="Arial, Helvetica, sans-serif" font-size="13" letter-spacing="2">ENCRYPTED</text>
+    <g stroke="#D6DFEE" stroke-width="4" stroke-linecap="round">
+      <path d="M25 78H87M101 78H137M151 78H185M25 94H56M71 94H115M129 94H185M25 110H71M85 110H149M163 110H185"/>
+    </g>
+    <rect x="77" y="150" width="58" height="45" rx="10" stroke="#194A80" stroke-width="2"/>
+    <path d="M91 150V140a15 15 0 0 1 30 0v10" stroke="#194A80" stroke-width="2"/>
+    <circle cx="106" cy="171" r="4" fill="#194A80"/>
+    <path d="M106 175V182" stroke="#194A80" stroke-width="2"/>
+  </g>
+  <g transform="translate(1038 240)">
+    <circle cx="24" cy="24" r="26" fill="#F7F9FE" stroke="#6556AC" stroke-width="1.5"/>
+    <circle cx="24" cy="24" r="12" stroke="#6556AC" stroke-width="1.5"/>
+    <path d="M24 17V24L29 27" stroke="#6556AC" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <circle cx="731" cy="136" r="5" fill="#194A80"/>
+  <circle cx="1056" cy="69" r="3" fill="#6556AC"/>
+  <path d="M1103 144h14m-7-7v14M741 284h10m-5-5v10" stroke="#516789" stroke-width="1.5"/>
+</svg>
