@@ -36,7 +36,7 @@ mise run e2e
 
 ## Which CI checks run?
 
-CI selects jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
+CI selects test and build jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
 
 | Change                                                                                                   | Checks                                                                          |
 | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -46,7 +46,11 @@ CI selects jobs from changed paths on pull requests and pushes to `main`. [dorny
 | Deployment configuration                                                                                 | Workflow/script checks, integration and builds                                  |
 | Protocol, vectors, either cryptographic core, dependencies, CI, toolchain, build tools, or unknown paths | Full verification                                                               |
 
+Every pull request also runs all three CodeQL analyses. The repository requires CodeQL results before merge; skipping them leaves even a documentation-only PR blocked. On pushes to `main`, CodeQL runs only for the affected languages.
+
 Integration includes Chromium, Firefox, WebKit, Compose, developer setup, and reproducible release archives. Mixed changes combine their checks. `Protocol.md` remains a full-verification input because Go and browser tests read its CSP contract.
+
+Selection happens at the job level. The workflow itself always starts: GitHub can leave required checks pending when a workflow is skipped by a path filter. See [GitHub's required-check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
 
 `CI required` runs even when other jobs are skipped. It rejects failed classification and failed, cancelled, missing, or unexpectedly skipped jobs. The weekly schedule and a manual run always select the full suite, including all three CodeQL languages. To request one on `main`:
 

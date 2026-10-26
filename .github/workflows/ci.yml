@@ -563,7 +563,7 @@ jobs:
   codeql-go:
     name: Analyze (go)
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    if: github.event_name == 'pull_request' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -593,7 +593,7 @@ jobs:
   codeql-web:
     name: Analyze (javascript-typescript)
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: github.event_name == 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -618,7 +618,7 @@ jobs:
   codeql-actions:
     name: Analyze (actions)
     needs: changes
-    if: needs.changes.outputs.actions == 'true'
+    if: github.event_name == 'pull_request' || needs.changes.outputs.actions == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -679,7 +679,7 @@ jobs:
   release-verification:
     name: Release verification
     needs: [changes, required]
-    if: github.ref == 'refs/heads/main' && needs.changes.outputs.full == 'true' && needs.required.result == 'success'
+    if: always() && github.ref == 'refs/heads/main' && needs.changes.outputs.full == 'true' && needs.required.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
