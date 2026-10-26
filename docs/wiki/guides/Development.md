@@ -47,3 +47,7 @@ go run ./cmd/nylzo-vectors -out spec/vectors.json
 The Go generator and TypeScript implementation must agree with the committed vectors. The largest RFC 7914 scrypt vector needs 1 GiB of memory. TypeScript runs it with `NYLZO_HEAVY_TESTS=1`, enabled in CI. `go test -short` skips its recalculation in the core; the vector generator still computes it.
 
 The web app and ESLint use the TypeScript version in [web/package.json](../../../web/package.json) for tool compatibility; the core and browser tests pin theirs separately. Use the checked-in package manager and lockfile rather than updating tools implicitly.
+
+## Section links
+
+Home-page section links use English fragments in both languages, such as `#create`, `#how-it-works`, and `#security`. Earlier Czech fragments remain as invisible anchors so shared links keep working, including before JavaScript loads. Message-link fragments keep their protocol-defined format.

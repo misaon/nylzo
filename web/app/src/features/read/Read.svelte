@@ -23,7 +23,7 @@
   onclick={page.onWindowClick}
 />
 
-<section id="otevrit" class="px-4 pt-20 pb-20 sm:px-6 md:pt-28 md:pb-28" aria-labelledby="read-title">
+<section id="open" class="px-4 pt-20 pb-20 sm:px-6 md:pt-28 md:pb-28" aria-labelledby="read-title">
   <p class="sr-only" role="status" aria-live="polite">{page.status}</p>
   <div class="mx-auto max-w-[860px] text-center">
     <p class="animate-rise text-sm font-medium text-aegis-300" aria-hidden="true">{translate('read.title')}</p>

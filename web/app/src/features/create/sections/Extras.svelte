@@ -8,7 +8,9 @@
   const standards = ['AES-256-GCM', 'HKDF-SHA-256', 'scrypt', 'Ed25519', 'HMAC-SHA-256', 'HPKE'] as const;
 </script>
 
-<section id="algoritmy" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="extra-title">
+<span id="algoritmy" class="block" aria-hidden="true"></span>
+
+<section id="algorithms" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="extra-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="max-w-[640px] reveal-up">
       <p class="text-sm font-medium text-aegis-300">{translate('extra.eyebrow')}</p>

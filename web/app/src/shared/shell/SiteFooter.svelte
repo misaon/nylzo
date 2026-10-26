@@ -36,7 +36,7 @@
     {
       key: 'footer.security',
       links: [
-        { href: '/#jak', key: 'footer.how' },
+        { href: '/#how-it-works', key: 'footer.how' },
         { href: '/report', key: 'footer.report', page: 'report' },
         { href: `${REPOSITORY_URL}/blob/main/SECURITY.md`, key: 'footer.vulnerabilities' },
       ],
@@ -103,7 +103,7 @@
         <p class="text-sm text-ink-mute">{translate('footer.tagline')}</p>
       </div>
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
-        <a href="/#jak" class="text-ink-soft hover:text-ink">{translate('footer.how')}</a>
+        <a href="/#how-it-works" class="text-ink-soft hover:text-ink">{translate('footer.how')}</a>
         <a href={REPOSITORY_URL} class="text-ink-soft hover:text-ink">{translate('footer.github')}</a>
         {@render version()}
         {@render languageSwitch()}

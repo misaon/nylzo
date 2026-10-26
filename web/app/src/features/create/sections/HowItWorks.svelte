@@ -59,12 +59,14 @@
   const serverView = $derived(cycle.index === SERVER);
 </script>
 
-<section id="jak" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="jak-title">
+<span id="jak" class="block" aria-hidden="true"></span>
+
+<section id="how-it-works" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="how-it-works-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="mx-auto max-w-[640px] reveal-up text-center">
       <p class="text-sm font-medium text-aegis-300">{translate('how.eyebrow')}</p>
       <h2
-        id="jak-title"
+        id="how-it-works-title"
         class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
       >
         {translate('how.title')}

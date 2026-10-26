@@ -56,7 +56,9 @@
   }
 </script>
 
-<section id="bezpecnost" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="who-title">
+<span id="bezpecnost" class="block" aria-hidden="true"></span>
+
+<section id="security" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="who-title">
   <div
     class="mx-auto grid max-w-[1160px] items-start gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16"
   >
@@ -322,7 +324,7 @@
           </div>
           <div class={['transition-[opacity,translate]', item(2, 2)]}>
             <a
-              href="#odolnost"
+              href="#resilience"
               class="group flex items-center justify-between gap-3 rounded-pane bg-linear-to-r from-aegis-500/20 via-aegis-500/10 to-nebula-400/10 p-4 ring-1 ring-aegis-400/30 hover:ring-aegis-300/60"
             >
               <span>

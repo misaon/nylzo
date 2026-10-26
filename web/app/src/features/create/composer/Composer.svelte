@@ -15,8 +15,10 @@
 
 <svelte:window onclick={composer.onWindowClick} onpagehide={composer.leave} onpageshow={composer.returned} />
 
+<span id="napsat" class="block" aria-hidden="true"></span>
+
 <section
-  id="napsat"
+  id="create"
   class="px-4 pt-20 pb-32 sm:px-6 md:pt-28 md:pb-40"
   aria-labelledby="{id}-title"
   {@attach composer.start}

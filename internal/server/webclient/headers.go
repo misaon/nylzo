@@ -15,7 +15,7 @@ const pageCSPFormat = "default-src 'none'; script-src 'nonce-%s'; style-src 'non
 
 const robotsTag = "noindex, nofollow"
 
-const PreviewHTML = `<!doctype html><html lang="cs"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Nylzo</title></head><body><p>Odkaz vede na jednorázovou zprávu. Otevřete ho v prohlížeči zařízení, ne v náhledu aplikace.</p></body></html>`
+const PreviewHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Nylzo</title></head><body><p>Open this link in your browser to read the message.</p></body></html>`
 
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",

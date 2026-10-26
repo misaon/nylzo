@@ -15,7 +15,7 @@
     </h2>
     <p class="mt-5 text-[17px] leading-relaxed text-ink-soft">{translate('cta.text')}</p>
     <a
-      href="#napsat"
+      href="#create"
       class="btn-primary mt-9 flex h-12 hover-lift items-center gap-2.5 rounded-control px-7 text-[15px] font-medium"
     >
       <span class="sheen" aria-hidden="true"></span>
