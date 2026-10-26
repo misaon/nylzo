@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
@@ -451,6 +452,7 @@ type instanceResponse struct {
 	Work     instanceWork     `json:"pow"`
 	Create   instanceCreate   `json:"create"`
 	Versions instanceVersions `json:"versions"`
+	Build    buildinfo.Info   `json:"build"`
 }
 
 type instanceLimits struct {
@@ -487,6 +489,7 @@ type challengeResponse struct {
 }
 
 type transparencyResponse struct {
+	Build     buildinfo.Info        `json:"build"`
 	Server    string                `json:"server"`
 	Operator  *config.Operator      `json:"operator,omitempty"`
 	Limits    instanceLimits        `json:"limits"`
@@ -517,6 +520,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	token, expires := s.idTokens.Issue(id, now)
 	response := instanceResponse{
 		Limits: s.instanceLimits(),
+		Build:  s.buildInformation(),
 		Work:   instanceWork{Difficulty: s.settings.PoWDifficulty},
 		Create: instanceCreate{ID: id.String(), IDToken: token, ExpiresAt: formatTime(expires)},
 		Versions: instanceVersions{
@@ -549,6 +553,7 @@ func (s *Server) handleTransparency(w http.ResponseWriter, _ *http.Request) {
 	response := transparencyResponse{
 		Server: s.settings.Version,
 		Limits: s.instanceLimits(),
+		Build:  s.buildInformation(),
 		Rates: transparencyRates{
 			CreatePerHour:      rates.CreatePerHour,
 			CreatePerDay:       rates.CreatePerDay,
@@ -581,4 +586,10 @@ func (s *Server) instanceLimits() instanceLimits {
 		DefaultTTL:     int64(limits.DefaultTTL / time.Second),
 		MaxOpens:       limits.MaxOpens,
 	}
+}
+
+func (s *Server) buildInformation() buildinfo.Info {
+	information := s.settings.Build
+	information.Version = s.settings.Version
+	return information
 }

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -66,6 +67,7 @@ type Server struct {
 	Operator       Operator
 	PublicURL      string
 	Version        string
+	Build          buildinfo.Info
 }
 
 func Defaults() Server {

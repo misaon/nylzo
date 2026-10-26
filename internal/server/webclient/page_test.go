@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -153,6 +154,7 @@ func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 	t.Parallel()
 	got := load(t, builtClient(t)).Manifest("v1.2.3", "https://nylzo.example")
 	want := webclient.Manifest{
+		Build:            buildinfo.Info{Version: "v1.2.3"},
 		Server:           "v1.2.3",
 		Built:            true,
 		NoncePlaceholder: "__NYLZO_CSP_NONCE__",

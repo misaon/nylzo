@@ -357,6 +357,8 @@ GET  /api/v1/challenge              → 200 {"challenge":"…","expires_at":"…
 POST /api/v1/abuse                  signed with R, {"id":"…","reason":"…"?,"contact":"…"?,"good_faith":bool?} → 202 {"status":"accepted"} for known, unknown, ended and malformed ids alike, 202 {"status":"limit"} for a report the daily cap drops (below); a malformed id is answered before any rate counter
 ```
 
+Application builds additionally expose a `build` object with `version`, `commit`, `date` (the source commit time in UTC), and `dirty` on the instance response and the well-known client/transparency JSON. `versions.server` and the well-known `server` fields identify the running server; protocol/API version fields remain independent. The web client embeds its own build identity in `/assets/build-info.json`, included in the client file hashes. These identifiers are not a signature: authenticity requires verification of release checksums, Sigstore signatures, and provenance for the exact release tag.
+
 - `failed_passphrase_attempts` is cumulative over the message lifetime (`fail_count_total`), not per day.
 - Once an ended message's blob is gone, status answers the ended shape: only `state`, `first_opened_at` and `ended_at` are meaningful; `created_at` and `expires_at` are absent and the counters are 0 (§6.3).
 - `first_opened_at` and `ended_at` are rounded down to the minute.

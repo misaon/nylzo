@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-#MISE description="Rebuild the checked-out release tag and compare checksums.txt with the published release"
+#MISE description="Verify release signatures, rebuild the checked-out tag, and compare its published checksums"
 #MISE depends=["install"]
 set -euo pipefail
 
 tag="$(git describe --exact-match --tags HEAD)"
+[[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+[[ -z "$(git status --porcelain)" ]]
+verification="$(mktemp -d)"
+trap 'rm -rf "$verification"' EXIT
+gh release download "$tag" --repo misaon/nylzo --dir "$verification" \
+  --pattern checksums.txt --pattern checksums.txt.sigstore.json
+cosign verify-blob "$verification/checksums.txt" --bundle "$verification/checksums.txt.sigstore.json" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
 GORELEASER_CURRENT_TAG="$tag" goreleaser release --clean --skip=publish,sign,sbom,ko,validate
-curl -fsSL "https://github.com/misaon/nylzo/releases/download/$tag/checksums.txt" -o dist/published-checksums.txt
-grep -v sbom dist/published-checksums.txt > dist/published-without-sbom.txt
-grep -v sbom dist/checksums.txt | diff dist/published-without-sbom.txt -
-echo "$tag: the local build matches the published checksums.txt"
-shasum -a 256 dist/published-checksums.txt
+grep -v sbom "$verification/checksums.txt" > "$verification/published-without-sbom.txt"
+grep -v sbom dist/checksums.txt | diff "$verification/published-without-sbom.txt" -
+printf '%s: the local build matches the signature-verified checksums.txt\n' "$tag"
+shasum -a 256 "$verification/checksums.txt"

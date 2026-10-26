@@ -1,0 +1,27 @@
+name: Pull request title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  title:
+    name: Conventional PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The squash commit can be categorized in the release notes
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|docs|refactor|test|build|ci|chore|revert|style|security)(\([[:alnum:]_./-]+\))?!?: .+$'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo 'Use an English Conventional Commit title, such as feat(cli): add JSON version output. Add ! before : for a breaking change.' >&2
+            exit 1
+          fi

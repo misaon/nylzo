@@ -200,8 +200,11 @@ export const czech = {
   'transparency.limits.global': 'Nové zprávy celkem za den',
   'transparency.limits.global.value': '{max}, od poloviny s výpočtem proti zahlcení služby',
   'transparency.limits.none': 'bez limitu',
-  'transparency.client.title': 'Verze a otisk webového klienta',
-  'transparency.client.version': 'Verze serveru',
+  'transparency.client.title': 'Webový klient v prohlížeči',
+  'transparency.client.version': 'Verze webového klienta',
+  'transparency.client.commit': 'Commit webového klienta',
+  'transparency.server.title': 'Údaje hlášené serverem',
+  'transparency.server.version': 'Hlášená verze serveru',
   'transparency.client.files':
     'SHA-256 souborů webového klienta. U stránky jde o šablonu, do které server vkládá nonce.',
   'transparency.client.verify':
@@ -237,6 +240,7 @@ export const czech = {
   'footer.selfhost': 'Vlastní server',
   'footer.skill': 'Skill pro agenty',
   'footer.note': 'Bez cookies a\u{A0}analytiky.',
+  'footer.version': 'Verze webového klienta {version}',
 
   'hero.title.lead': 'Tajemství na',
   'hero.title.accent': 'jedno otevření',

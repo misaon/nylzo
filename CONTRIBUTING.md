@@ -50,7 +50,7 @@ Do not hand-edit generated protocol vectors or dependency lockfiles. Regenerate 
 
 ## Open a pull request
 
-Use an English title and a short body explaining the problem, resulting behavior, and validation. Link the relevant issue and acceptance criterion when applicable. Documentation-only changes do not need invented test coverage; describe how you checked them.
+Use an English Conventional Commit title, such as `feat(cli): add JSON version output`, and a short body explaining the problem, resulting behavior, and validation. Allowed types are `feat`, `fix`, `perf`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `revert`, `style`, and `security`. Add `!` before the colon for a breaking change and explain its migration in the body. The title becomes the squash commit and determines its section in the generated release notes. Link the relevant issue and acceptance criterion when applicable. Documentation-only changes do not need invented test coverage; describe how you checked them.
 
 `main` requires a pull request, successful checks, resolved review conversations, and verified signatures on the resulting commits. Code-owner review is required for community changes; new commits dismiss previous approvals. The maintainer uses squash merges, so contributors do not need to configure commit signing to submit a pull request. The sole repository administrator can bypass the review requirement through a pull request for their own maintenance work; the separate integrity and CI rules still apply. This exception is documented in [repository governance](docs/github-governance.md).
 

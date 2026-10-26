@@ -170,7 +170,7 @@
             aria-pressed={active}
             onclick={() => cycle.select(index)}
             class={[
-              'relative overflow-hidden rounded-pane p-4 text-left ring-1 transition-opacity duration-500',
+              'relative min-h-[90px] overflow-hidden rounded-pane p-4 text-left ring-1 transition-opacity duration-500',
               highlighted ? 'bg-white/6 ring-white/20' : 'ring-white/8 hover:bg-white/4',
               serverView && !part.server ? 'opacity-60' : 'opacity-100',
             ]}

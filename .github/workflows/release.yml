@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      checks: read # require successful CI and CodeQL before building a release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,6 +32,7 @@ jobs:
           RELEASE_TAGGER_EMAIL: ${{ vars.RELEASE_TAGGER_EMAIL }}
         run: |
           test -n "${RELEASE_TAGGER_EMAIL}"
+          [[ "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           git fetch --force --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" "+refs/heads/main:refs/remotes/origin/main"
           test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = tag
           test "$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"
@@ -39,6 +41,11 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" > "${RUNNER_TEMP}/tag.json"
           test "$(jq -r .verification.verified "${RUNNER_TEMP}/tag.json")" = true
           test "$(jq -r .tagger.email "${RUNNER_TEMP}/tag.json")" = "${RELEASE_TAGGER_EMAIL}"
+      - name: The source commit passed CI and every CodeQL analysis on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash mise-tasks/release/checks "${GITHUB_SHA}"
       - name: The release environment requires a reviewer
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,8 +73,14 @@ jobs:
         with:
           node-version-file: web/.node-version
           package-manager-cache: false
-      - name: The GoReleaser before hooks build the client
-        run: yq -e -r '.before.hooks[]' .goreleaser.yaml | while IFS= read -r hook; do sh -c "${hook}" < /dev/null; done
+      - name: Build the web client for the exact release tag
+        env:
+          NYLZO_VERSION: ${{ github.ref_name }}
+        run: |
+          pnpm --dir web install --frozen-lockfile --config.confirmModulesPurge=false
+          pnpm --dir web --filter @nylzo/web build
+          jq -e --arg version "${GITHUB_REF_NAME#v}" --arg commit "${GITHUB_SHA}" \
+            '.version == $version and .commit == $commit and .dirty == false' internal/server/web/dist/assets/build-info.json
       - name: SHA-256 manifest of the build
         id: manifest
         run: |
@@ -168,6 +181,20 @@ jobs:
           subject-name: ghcr.io/misaon/nylzo
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
+      - name: Every supported platform has an archive, SBOM, and signed checksum
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for platform in linux darwin windows; do
+            extension=tar.gz
+            if [ "$platform" = windows ]; then extension=zip; fi
+            for architecture in amd64 arm64; do
+              archive="nylzo_${version}_${platform}_${architecture}.${extension}"
+              test -s "dist/${archive}"
+              grep -F "${archive}" dist/checksums.txt
+              test -s "dist/${archive}.sbom.json"
+            done
+          done
+          test -s dist/checksums.txt.sigstore.json
       - name: Publish the complete release and lock its assets
         env:
           GH_TOKEN: ${{ github.token }}

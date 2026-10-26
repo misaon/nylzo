@@ -3,19 +3,20 @@ package cli
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os/signal"
 	"regexp"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"syscall"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
@@ -38,6 +39,9 @@ type Environment struct {
 	Getenv    func(string) string
 	Terminal  console.Terminal
 	Version   string
+	Commit    string
+	Date      string
+	Dirty     string
 	WebClient func() (webclient.Build, error)
 }
 
@@ -90,6 +94,9 @@ func Run(arguments []string, environment *Environment) int {
 			program+": a link with its key must not be on the command line; pass it on stdin, with --link-file or in NYLZO_LINK",
 		)
 		return exitUsage
+	}
+	if len(arguments) > 0 && arguments[0] == "--version" {
+		arguments = append([]string{"version"}, arguments[1:]...)
 	}
 	if len(arguments) == 0 {
 		fmt.Fprint(environment.Stderr, usage())
@@ -213,19 +220,25 @@ func printable(text string) string {
 
 func runVersion(_ context.Context, environment *Environment, arguments []string) int {
 	flags := newFlags(environment, "version")
+	asJSON := flags.Bool("json", false, "print version and source build metadata as JSON")
 	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	fmt.Fprintln(environment.Stdout, buildVersion(environment.Version))
+	information := environment.buildInformation()
+	if *asJSON {
+		if err := json.NewEncoder(environment.Stdout).Encode(information); err != nil {
+			return failf(environment, "could not write build metadata")
+		}
+	} else {
+		fmt.Fprintln(environment.Stdout, information.Version)
+	}
 	return exitOK
 }
 
+func (e *Environment) buildInformation() buildinfo.Info {
+	return buildinfo.Read(e.Version, e.Commit, e.Date, e.Dirty)
+}
+
 func buildVersion(version string) string {
-	if version != "" && version != "dev" {
-		return version
-	}
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
-	}
-	return "dev"
+	return buildinfo.Read(version, "", "", "").Version
 }

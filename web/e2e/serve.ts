@@ -15,7 +15,7 @@ const profiles: Record<string, Record<string, string>> = {
 };
 
 mkdirSync(binaryDirectory, { recursive: true });
-execFileSync(process.env['NYLZO_GO'] ?? 'go', ['build', '-o', binary, './cmd/nylzo'], {
+execFileSync(process.execPath, [new URL('../../tools/build.mts', import.meta.url).pathname, binary], {
   cwd: repository,
   stdio: 'inherit',
 });

@@ -72,6 +72,10 @@ The report is signed with the message's read key, like the instance's `/report` 
 
 Reports about ended messages are accepted but not stored. When the per-message daily report allowance is exhausted, the CLI reports that no further report was stored and exits with status 1. Report vulnerabilities in Nylzo through [SECURITY.md](../SECURITY.md), rather than the content-reporting channel.
 
+## Version and build identity
+
+`nylzo version` and `nylzo --version` print the application version. `nylzo version --json` additionally prints the source commit, source commit date, and modified-source flag. Release builds derive their version from the signed tag; local builds identify development source explicitly. Version output identifies a build but does not authenticate it: verify the release signatures and provenance as described in [versioning and releases](releasing.md).
+
 ## Agent use and exit codes
 
 The [Nylzo agent skill](../skills/nylzo/SKILL.md) describes using private files outside the repository, keeping secrets and links out of conversations, and delivering decrypted content directly to a program rather than a language model. It is guidance; CLI behavior, filesystem permissions, and sandboxing provide enforcement.

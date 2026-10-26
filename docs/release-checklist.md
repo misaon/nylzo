@@ -10,19 +10,20 @@ For the maintainer publishing Nylzo. Release mechanics are defined in [.github/w
 - Confirm the branch and tag rulesets and immutable releases setting are active. There must be no bypass for tag updates or deletion.
 - After the first image is published, make `ghcr.io/misaon/nylzo` public and confirm anonymous pull access.
 
-No signing key was registered on the account during the repository setup on 2026-10-26. Registering and securing that key is an account-owner task; the release workflow must remain blocked until this prerequisite is met.
+The maintainer registered a dedicated Ed25519 SSH signing key during release setup on 2026-10-26. Configure Git to use it and unlock it locally before creating a release tag. The workflow continues to require a GitHub-verified signature and the expected tagger email.
 
 ## Publish
 
 1. Check that the intended `main` commit passed `CI required` and CodeQL. Resolve security alerts and verify the commit you are about to tag. Never tag an unreviewed branch commit.
-2. Create and push a signed, annotated version tag (replace the example version):
+2. Use the checked release command (replace the example version):
 
    ```sh
    git switch main
    git pull --ff-only
-   git tag -s v0.1.0 -m "nylzo 0.1.0"
-   git push origin v0.1.0
+   mise run release:prepare -- 0.1.0
    ```
+
+   The command checks the clean current `main`, source checks, and tagger email before signing and pushing the annotated tag. See [versioning and releases](releasing.md) for SemVer, Conventional Commit titles, build metadata, and all supported platforms.
 
 3. Review the tag, source commit, and workflow run in Actions. Approve the `Release` job in the `release` environment. The guard requires GitHub's verified tag signature, the configured tagger email, a commit reachable from `main`, and a protected release environment.
 4. The web client builds in a job with read-only access. The release job checks its manifest, builds archives and the container, signs them, creates SBOMs, and adds provenance. GoReleaser uploads to a **draft** release; the workflow publishes it only after the provenance steps succeed. Publication locks the assets and release tag through GitHub immutable releases.
