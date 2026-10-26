@@ -24,7 +24,9 @@
 <p align="center">
   <a href="https://github.com/misaon/nylzo/releases/latest"><img src="https://img.shields.io/github/v/release/misaon/nylzo?style=flat&amp;label=release&amp;color=6556AC" alt="Latest release"></a>
   <a href="https://github.com/misaon/nylzo/actions/workflows/ci.yml"><img src="https://github.com/misaon/nylzo/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI on main"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-194A80?style=flat" alt="MIT license"></a>
+  <a href="https://app.codecov.io/gh/misaon/nylzo"><img src="https://codecov.io/gh/misaon/nylzo/branch/main/graph/badge.svg" alt="Test coverage on main"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo"><img src="https://api.scorecard.dev/projects/github.com/misaon/nylzo/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://www.bestpractices.dev/projects/15969"><img src="https://www.bestpractices.dev/projects/15969/baseline" alt="OpenSSF Baseline Level 1 self-assessment"></a>
 </p>
 
 ## Share on your terms
