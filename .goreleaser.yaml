@@ -92,6 +92,7 @@ changelog:
   sort: asc
 
 release:
+  draft: true
   footer: |
     Verify a download or the image before you run it:
 

@@ -38,7 +38,7 @@ jobs:
           if [ "$EVENT" != pull_request ]; then echo code=true >> "$GITHUB_OUTPUT"; exit 0; fi
           files=$(git diff --name-only HEAD^1 HEAD)
           printf '%s\n' "$files"
-          if printf '%s\n' "$files" | grep -Ev '^(docs/|\.claude/|README\.md$|SECURITY\.md$)' | grep -q .; then
+          if printf '%s\n' "$files" | grep -Ev '^(docs/.*\.md$|README\.md$|SECURITY\.md$|CONTRIBUTING\.md$|CODE_OF_CONDUCT\.md$)' | grep -q .; then
             echo code=true >> "$GITHUB_OUTPUT"
           else
             echo code=false >> "$GITHUB_OUTPUT"
@@ -247,6 +247,17 @@ jobs:
       - run: pnpm -r test
         env:
           NYLZO_HEAVY_TESTS: "1"
+
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: never
 
   e2e:
     name: Web client end to end (${{ matrix.browser }})
@@ -499,3 +510,38 @@ jobs:
         run: |
           cat hashes-ubuntu-24.04/hashes.txt
           diff hashes-ubuntu-24.04/hashes.txt hashes-ubuntu-24.04-arm/hashes.txt
+
+  required:
+    name: CI required
+    if: always()
+    needs:
+      [
+        changes,
+        go-lint,
+        repository,
+        go-test,
+        go-timing,
+        fuzz,
+        web,
+        dependency-review,
+        e2e,
+        dev-setup,
+        compose,
+        build,
+        reproducible,
+      ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every required job completed successfully
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$RESULTS" | jq -e '
+            .changes.result == "success" and
+            .["dependency-review"].result == "success" and
+            (if .changes.outputs.code == "true" then
+              all(.[]; .result == "success")
+            elif .changes.outputs.code == "false" then
+              all(.[]; .result == "success" or .result == "skipped")
+            else false end)'

@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible, non-security bug.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, use [private reporting](https://github.com/misaon/nylzo/security/advisories/new).
+        Use synthetic data only. Never include real message links, passphrases, keys, credentials, or personal data.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Include the Nylzo version or full commit SHA.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, architecture, browser/version, and deployment method where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal reproduction with synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized error output if useful.
+    validations:
+      required: true

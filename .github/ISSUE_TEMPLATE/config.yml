@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability privately
+    url: https://github.com/misaon/nylzo/security/advisories/new
+    about: Do not disclose vulnerabilities, real message links, credentials, or personal data in public issues.
+  - name: Questions and discussions
+    url: https://github.com/misaon/nylzo/discussions
+    about: Ask for help, discuss an idea, or share feedback.
