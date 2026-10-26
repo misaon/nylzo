@@ -48,6 +48,8 @@ CI selects jobs from changed paths on pull requests and pushes to `main`. [dorny
 
 Integration includes Chromium, Firefox, WebKit, Compose, developer setup, and reproducible release archives. Mixed changes combine their checks. `Protocol.md` remains a full-verification input because Go and browser tests read its CSP contract.
 
+Selection happens at the job level. The workflow itself always starts: GitHub can leave required checks pending when a workflow is skipped by a path filter. See [GitHub's required-check guidance](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks).
+
 `CI required` runs even when other jobs are skipped. It rejects failed classification and failed, cancelled, missing, or unexpectedly skipped jobs. The weekly schedule and a manual run always select the full suite, including all three CodeQL languages. To request one on `main`:
 
 ```sh
