@@ -397,7 +397,7 @@ export const english: Record<MessageKey, string> = {
     'The browser creates a random 256-bit key and encrypts the message with it before it sends anything.',
   'how.step2.title': 'The server stores it encrypted',
   'how.step2.text':
-    'It gets the encrypted data, a random id and a few timestamps. It does not know the key, so it cannot read the message.',
+    'It stores the encrypted data. It keeps the settings and times of the message encrypted and opens them only during a request from you or the recipient. It does not know the key, so it cannot read the message.',
   'how.step3.title': 'The recipient opens it once',
   'how.step3.text':
     'The message opens only with a click; loading the link alone uses nothing up. After the last open the server deletes the encrypted data.',
@@ -555,7 +555,7 @@ export const english: Record<MessageKey, string> = {
   'extra.sub': 'We encrypt with proven standards. On top of that, we watch the traces a message leaves on the server.',
   'extra.stolen.title': 'A stolen server gives away no content',
   'extra.stolen.text':
-    'A test that runs with every code change copies the server’s database, files and logs and searches them for keys, content, file names and IP addresses. It must find nothing.',
+    'A test that runs with every code change copies the server’s database, files and logs and searches them for keys, content, file names, message ids and IP addresses. It must find nothing.',
   'extra.stolen.copy': 'Server copy',
   'extra.stolen.found': 'Found: 0',
   'extra.scan.keys': 'Message keys',
@@ -566,10 +566,10 @@ export const english: Record<MessageKey, string> = {
   'extra.scan.passphrase.where': 'nowhere',
   'extra.scan.ip': 'IP addresses',
   'extra.scan.ip.where': 'not in the database or the log',
-  'extra.scan.ids': 'Message ids in the log',
-  'extra.scan.ids.where': 'none',
+  'extra.scan.ids': 'Message ids',
+  'extra.scan.ids.where': 'not in the database or the log',
   'extra.scan.times': 'Exact times',
-  'extra.scan.times.where': 'in the database, to the minute only',
+  'extra.scan.times.where': 'readable in the database to the quarter hour only',
   'extra.signed.title': 'Every download needs the key',
   'extra.signed.text':
     'Opening and downloading the ciphertext both need a signature made with the key from the link. Knowing only the message id gets you nothing.',
@@ -583,7 +583,7 @@ export const english: Record<MessageKey, string> = {
   'extra.padding.server': 'the server sees',
   'extra.forget.title': 'The server forgets',
   'extra.forget.text':
-    'It stores no IP addresses, rounds the times it records to the minute and overwrites deleted database records with zeros.',
+    'It stores no IP addresses, keeps the times of a message encrypted and rounded to the minute, and overwrites deleted database records with zeros.',
   'extra.forget.ip': 'not stored',
   'extra.twin.title': 'Two independent implementations',
   'extra.twin.text': 'The web client and the command line each have their own code, and both must pass the same tests.',
@@ -607,9 +607,9 @@ export const english: Record<MessageKey, string> = {
   'host.copied': 'Copied',
   'host.copy.label': 'Copy the commands',
   'host.compose.note':
-    'In .env, set your domain and the image digest you verified as described in deploy/compose. Caddy then gets a certificate and terminates TLS on your machine.',
+    'On your own computer, not the server, run nylzo report-key --key-file ~/nylzo-report-key and keep the private key there. In .env, set your domain, the image digest you verified as described in deploy/compose and the printed NYLZO_REPORT_KEY line.',
   'host.binary.note':
-    'The server listens on port 8080 and stores data in ./data. Keep the pepper safe: without it, every existing link stops working. Runs on Linux and on macOS with Apple silicon.',
+    'Create report-key.env on your own computer with nylzo report-key --key-file ~/nylzo-report-key > report-key.env and copy only that file to the server. The server listens on port 8080 and stores data in ./data. Keep the pepper safe: without it, every existing link stops working. Runs on Linux and on macOS with Apple silicon.',
   'host.verify.note':
     'Compares the web client the server sends with the copy inside the binary. Worth running regularly, and from another network.',
 

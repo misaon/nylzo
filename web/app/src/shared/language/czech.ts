@@ -391,7 +391,8 @@ export const czech = {
   'how.step1.title': 'Zašifrujete u\u{A0}sebe',
   'how.step1.text': 'Prohlížeč vytvoří náhodný 256bitový klíč a\u{A0}zprávu jím zašifruje dřív, než cokoli odešle.',
   'how.step2.title': 'Server ji uloží zašifrovanou',
-  'how.step2.text': 'Dostane šifrovaná data, náhodné id a\u{A0}několik časů. Klíč nezná, takže zprávu přečíst neumí.',
+  'how.step2.text':
+    'Uloží šifrovaná data. Nastavení a\u{A0}časy zprávy drží zašifrované a\u{A0}otevře je jen během požadavku od vás nebo příjemce. Klíč nezná, takže zprávu přečíst neumí.',
   'how.step3.title': 'Příjemce otevře jednou',
   'how.step3.text':
     'Zpráva se otevře až kliknutím, samotné načtení odkazu nic nespotřebuje. Po posledním otevření server šifru smaže.',
@@ -547,7 +548,7 @@ export const czech = {
   'extra.sub': 'Šifrujeme prověřenými standardy. Navíc hlídáme i\u{A0}stopy, které po zprávě zůstávají na serveru.',
   'extra.stolen.title': 'Ukradený server obsah neprozradí',
   'extra.stolen.text':
-    'Test, který běží s\u{A0}každou změnou kódu, zkopíruje databázi, soubory i\u{A0}logy serveru a\u{A0}hledá v\u{A0}nich klíče, obsah, názvy souborů i\u{A0}IP adresy. Nesmí najít nic.',
+    'Test, který běží s\u{A0}každou změnou kódu, zkopíruje databázi, soubory i\u{A0}logy serveru a\u{A0}hledá v\u{A0}nich klíče, obsah, názvy souborů, id zpráv i\u{A0}IP adresy. Nesmí najít nic.',
   'extra.stolen.copy': 'Kopie serveru',
   'extra.stolen.found': 'Nalezeno: 0',
   'extra.scan.keys': 'Klíče zpráv',
@@ -558,10 +559,10 @@ export const czech = {
   'extra.scan.passphrase.where': 'nikde',
   'extra.scan.ip': 'IP adresy',
   'extra.scan.ip.where': 'v\u{A0}databázi ani v\u{A0}logu',
-  'extra.scan.ids': 'Id zpráv v\u{A0}logu',
-  'extra.scan.ids.where': 'žádné',
+  'extra.scan.ids': 'Id zpráv',
+  'extra.scan.ids.where': 'v\u{A0}databázi ani v\u{A0}logu',
   'extra.scan.times': 'Přesné časy',
-  'extra.scan.times.where': 'v\u{A0}databázi jen na minutu',
+  'extra.scan.times.where': 'v\u{A0}databázi čitelné jen na čtvrthodinu',
   'extra.signed.title': 'Každé stažení chce klíč',
   'extra.signed.text':
     'Otevření i\u{A0}stažení šifry chtějí podpis klíčem z\u{A0}odkazu. Kdo zná jen id zprávy, nestáhne nic.',
@@ -575,7 +576,7 @@ export const czech = {
   'extra.padding.server': 'server vidí',
   'extra.forget.title': 'Server zapomíná',
   'extra.forget.text':
-    'Neukládá IP adresy, časy, které zapisuje, zaokrouhlí na minutu a\u{A0}smazané záznamy v\u{A0}databázi přepíše nulami.',
+    'Neukládá IP adresy, časy zprávy drží zašifrované a\u{A0}zaokrouhlené na minutu a\u{A0}smazané záznamy v\u{A0}databázi přepíše nulami.',
   'extra.forget.ip': 'neukládá se',
   'extra.twin.title': 'Dvě nezávislé implementace',
   'extra.twin.text': 'Web a\u{A0}příkazová řádka mají každý vlastní kód a\u{A0}oba musí projít stejnými testy.',
@@ -599,9 +600,9 @@ export const czech = {
   'host.copied': 'Zkopírováno',
   'host.copy.label': 'Zkopírovat příkazy',
   'host.compose.note':
-    'V\u{A0}.env nastavte doménu a\u{A0}digest image, který jste ověřili podle návodu v\u{A0}deploy/compose. Caddy pak získá certifikát a\u{A0}ukončí TLS na vašem stroji.',
+    'Na svém počítači, ne na serveru, spusťte nylzo report-key --key-file ~/nylzo-report-key a\u{A0}soukromý klíč si nechte u\u{A0}sebe. V\u{A0}.env nastavte doménu, digest image ověřený podle návodu v\u{A0}deploy/compose a\u{A0}vypsaný řádek NYLZO_REPORT_KEY.',
   'host.binary.note':
-    'Server naslouchá na portu 8080 a\u{A0}data ukládá do ./data. Pepper si uložte, bez něj přestanou fungovat všechny existující odkazy. Běží na Linuxu a\u{A0}na macOS s\u{A0}čipem Apple.',
+    'Soubor report-key.env vytvořte na svém počítači příkazem nylzo report-key --key-file ~/nylzo-report-key > report-key.env a\u{A0}na server zkopírujte jen ten. Server naslouchá na portu 8080 a\u{A0}data ukládá do ./data. Pepper si uložte, bez něj přestanou fungovat všechny existující odkazy. Běží na Linuxu a\u{A0}na macOS s\u{A0}čipem Apple.',
   'host.verify.note':
     'Porovná webového klienta, kterého server posílá, s\u{A0}kopií v\u{A0}binárce. Má smysl ho pouštět pravidelně a\u{A0}z\u{A0}jiné sítě.',
 
