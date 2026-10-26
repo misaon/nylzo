@@ -20,6 +20,7 @@
 - [Versioning and releases](maintainers/Releasing.md)
 - [Release checklist](maintainers/Release-checklist.md)
 - [Repository governance](maintainers/Repository-governance.md)
+- [Security checks and public reports](maintainers/Security-checks.md)
 - [Name and logo](guides/Name-and-logo.md)
 - [Protocol](reference/Protocol.md)
 

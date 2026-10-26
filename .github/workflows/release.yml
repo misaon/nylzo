@@ -12,6 +12,7 @@ concurrency:
 
 env:
   GOTOOLCHAIN: local
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
 
 jobs:
   guard:
@@ -22,6 +23,9 @@ jobs:
       contents: read
       checks: read # require successful CI and CodeQL before building a release
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -63,6 +67,9 @@ jobs:
     outputs:
       manifest: ${{ steps.manifest.outputs.sha256 }}
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -109,6 +116,9 @@ jobs:
       id-token: write # keyless cosign signatures and provenance
       attestations: write # build provenance attestations
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -142,6 +152,11 @@ jobs:
       - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           syft-version: v1.54.1
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          version: 2026.10.9
+          install_args: grype
+          cache: false
       - name: The base image is the one the distroless project signed
         run: |
           test "$(yq '.kos | length' .goreleaser.yaml)" = 1
@@ -195,7 +210,35 @@ jobs:
             done
           done
           test -s dist/checksums.txt.sigstore.json
+      - name: The exact candidate passes vulnerability checks before promotion
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: bash tools/security/scan-release "ghcr.io/${GITHUB_REPOSITORY}@${IMAGE_DIGEST}" dist vulnerability-reports
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && hashFiles('vulnerability-reports/*.json') != ''
+        with:
+          name: release-vulnerability-reports
+          path: vulnerability-reports
+          if-no-files-found: error
+          retention-days: 30
+      - name: Promote the verified candidate to its stable image tag
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          image="ghcr.io/${GITHUB_REPOSITORY}"
+          docker buildx imagetools create --tag "${image}:${GITHUB_REF_NAME#v}" "${image}@${IMAGE_DIGEST}"
+          test "$(docker buildx imagetools inspect "${image}:${GITHUB_REF_NAME#v}" --format '{{.Manifest.Digest}}')" = "$IMAGE_DIGEST"
       - name: Publish the complete release and lock its assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
+      - name: Update latest only after the release is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          test "$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)" = "$GITHUB_REF_NAME"
+          image="ghcr.io/${GITHUB_REPOSITORY}"
+          docker buildx imagetools create --tag "${image}:latest" "${image}@${IMAGE_DIGEST}"
+          test "$(docker buildx imagetools inspect "${image}:latest" --format '{{.Manifest.Digest}}')" = "$IMAGE_DIGEST"

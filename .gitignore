@@ -24,6 +24,17 @@
 # GoReleaser output
 /dist/
 
+# Local configuration and deployment secrets
+.env
+.env.*
+!.env.example
+/deploy/compose/secrets/
+/.coverage/
+/web/core/coverage/
+/web/app/coverage/
+/vulnerability-reports/
+/grype-compose.json
+
 # Local development instructions and research
 /.agents/
 /.claude/

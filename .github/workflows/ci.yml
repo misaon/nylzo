@@ -34,6 +34,9 @@ jobs:
       full: ${{ steps.plan.outputs.full }}
       jobs: ${{ steps.plan.outputs.jobs }}
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -69,6 +72,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -121,6 +127,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -128,10 +137,10 @@ jobs:
         with:
           version: 2026.10.9
           install_args: actionlint zizmor shellcheck node
-      - run: node --test tools/build-info.test.mts
+      - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck mise-tasks/dev mise-tasks/release/*
+      - run: shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release
 
   go-test:
     name: Go tests (${{ matrix.shard }})
@@ -144,6 +153,9 @@ jobs:
       matrix:
         shard: [core, vectors, rest]
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -170,7 +182,16 @@ jobs:
             vectors) packages=(./internal/core/vectors) ;;
             rest) mapfile -t packages < <(go list ./... | grep -v -e '/internal/core$' -e '/internal/core/vectors$') ;;
           esac
-          go test -race -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' "${packages[@]}"
+          mkdir -p .coverage
+          go test -race -covermode=atomic -coverpkg=./... -coverprofile=".coverage/go-${SHARD}.out" -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' "${packages[@]}"
+          go tool cover -func ".coverage/go-${SHARD}.out" | tail -1 >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -html ".coverage/go-${SHARD}.out" -o ".coverage/go-${SHARD}.html"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-go-${{ matrix.shard }}
+          path: .coverage/go-${{ matrix.shard }}.*
+          if-no-files-found: error
+          retention-days: 14
       - if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -186,6 +207,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -215,6 +239,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -239,6 +266,9 @@ jobs:
       run:
         working-directory: web
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -263,9 +293,92 @@ jobs:
       - run: pnpm -r typecheck
       - name: Clean svelte-autofixer
         run: pnpm --filter @nylzo/web check
-      - run: pnpm -r test
+      - run: pnpm --filter @nylzo/core --filter @nylzo/web test --coverage
         env:
           NYLZO_HEAVY_TESTS: "1"
+      - name: Preserve repository-relative source paths
+        working-directory: .
+        run: |
+          mkdir -p .coverage
+          node tools/coverage/normalize.mts web/core web/core/coverage/lcov.info .coverage/typescript-core.info
+          node tools/coverage/normalize.mts web/app web/app/coverage/lcov.info .coverage/web-client.info
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-typescript
+          path: |
+            .coverage/*.info
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: typescript-coverage-html
+          path: |
+            web/core/coverage/
+            web/app/coverage/
+          if-no-files-found: error
+          retention-days: 14
+
+  coverage:
+    name: Coverage reports
+    needs: [changes, go-test, web]
+    if: >-
+      always() && !cancelled() && needs.changes.result == 'success' &&
+      (needs.changes.outputs.go == 'true' || needs.changes.outputs.web == 'true') &&
+      (needs.changes.outputs.go != 'true' || needs.go-test.result == 'success') &&
+      (needs.changes.outputs.web != 'true' || needs.web.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # authenticate coverage uploads without a persistent Codecov token
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: coverage-*
+          path: reports
+          merge-multiple: true
+          digest-mismatch: error
+      - name: Upload Go coverage
+        if: >-
+          needs.changes.outputs.go == 'true' && github.repository == 'misaon/nylzo' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          version: v11.3.1
+          url: https://codecov.io
+          slug: ${{ github.repository }}
+          override_commit: ${{ github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_pr: ${{ github.event.pull_request.number || '' }}
+          files: reports/go-core.out,reports/go-vectors.out,reports/go-rest.out
+          flags: go
+          disable_search: true
+          fail_ci_if_error: false
+      - name: Upload TypeScript coverage
+        if: >-
+          needs.changes.outputs.web == 'true' && github.repository == 'misaon/nylzo' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          version: v11.3.1
+          url: https://codecov.io
+          slug: ${{ github.repository }}
+          override_commit: ${{ github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_pr: ${{ github.event.pull_request.number || '' }}
+          files: reports/typescript-core.info,reports/web-client.info
+          flags: typescript
+          disable_search: true
+          fail_ci_if_error: false
 
   dependency-review:
     name: Dependency review
@@ -274,6 +387,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
@@ -300,6 +416,9 @@ jobs:
             runner: macos-latest
             install: webkit
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -361,6 +480,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -400,6 +522,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -426,6 +551,23 @@ jobs:
           go build -o dist/tlscheck ./tools/tlscheck
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          version: 2026.10.9
+          install_args: grype
+      - name: The production image has no high or critical known vulnerabilities
+        env:
+          GRYPE_CHECK_FOR_APP_UPDATE: "false"
+          GRYPE_DB_VALIDATE_AGE: "true"
+          GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 48h
+        run: grype docker:nylzo:ci --fail-on high --output json --file grype-compose.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always() && hashFiles('grype-compose.json') != ''
+        with:
+          name: compose-vulnerability-report
+          path: grype-compose.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Start the Compose example for localhost
         working-directory: deploy/compose
         run: |
@@ -497,6 +639,9 @@ jobs:
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -552,6 +697,9 @@ jobs:
     needs: [changes, build]
     if: needs.changes.outputs.integration == 'true'
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: hashes-*
@@ -571,6 +719,9 @@ jobs:
       actions: read # let CodeQL inspect the current workflow run
       security-events: write # upload CodeQL findings, including fork PR results
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -601,6 +752,9 @@ jobs:
       actions: read # let CodeQL inspect the current workflow run
       security-events: write # upload CodeQL findings, including fork PR results
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -626,6 +780,9 @@ jobs:
       actions: read # let CodeQL inspect the current workflow run
       security-events: write # upload CodeQL findings, including fork PR results
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -652,6 +809,7 @@ jobs:
         go-timing,
         fuzz,
         web,
+        coverage,
         dependency-review,
         e2e,
         dev-setup,
@@ -665,6 +823,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

@@ -20,6 +20,7 @@ const sources = new Map([
   ["docs/wiki/maintainers/Releasing.md", "Releasing"],
   ["docs/wiki/maintainers/Release-checklist.md", "Release-checklist"],
   ["docs/wiki/maintainers/Repository-governance.md", "Repository-governance"],
+  ["docs/wiki/maintainers/Security-checks.md", "Security-checks"],
   ["docs/wiki/community/Contributing.md", "Contributing"],
   ["docs/wiki/community/Security-policy.md", "Security-policy"],
   ["docs/wiki/reference/Protocol.md", "Protocol"],

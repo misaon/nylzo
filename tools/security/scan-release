@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# != 3 ]]; then
+  echo 'Usage: scan-release IMAGE@SHA256 SBOM_DIRECTORY REPORT_DIRECTORY' >&2
+  exit 2
+fi
+image="$1"
+sbom_directory="$2"
+report_directory="$3"
+[[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || { echo 'Expected the canonical image by SHA-256 digest.' >&2; exit 1; }
+mkdir -p "$report_directory"
+export GRYPE_CHECK_FOR_APP_UPDATE=false
+export GRYPE_DB_VALIDATE_AGE=true
+export GRYPE_DB_MAX_ALLOWED_BUILT_AGE=48h
+shopt -s nullglob
+sboms=("$sbom_directory"/nylzo_*.sbom.json)
+[[ "${#sboms[@]}" = 6 ]] || { echo 'Expected six release archive SBOMs.' >&2; exit 1; }
+status=0
+for sbom in "${sboms[@]}"; do
+  name="$(basename "$sbom")"
+  [[ -s "$sbom" ]] || { echo 'An archive SBOM is empty or missing.' >&2; exit 1; }
+  grype "sbom:${sbom}" --fail-on high --output json --file "$report_directory/${name}.grype.json" || status=1
+done
+for architecture in amd64 arm64; do
+  grype "registry:${image}" --platform "linux/${architecture}" --fail-on high --output json \
+    --file "$report_directory/image-linux-${architecture}.grype.json" || status=1
+done
+reports=("$report_directory"/*.grype.json)
+[[ "${#reports[@]}" = 8 ]] || status=1
+for report in "${reports[@]}"; do
+  jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$report" > /dev/null || status=1
+done
+exit "$status"

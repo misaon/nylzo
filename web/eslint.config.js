@@ -19,7 +19,14 @@ const markupSinks = ['innerHTML', 'outerHTML', 'insertAdjacentHTML'].map((proper
 
 export default defineConfig(
   {
-    ignores: ['**/node_modules/', 'app/.prerender/', 'e2e/test-results/', 'e2e/playwright-report/', 'e2e/.bin/'],
+    ignores: [
+      '**/node_modules/',
+      '**/coverage/',
+      'app/.prerender/',
+      'e2e/test-results/',
+      'e2e/playwright-report/',
+      'e2e/.bin/',
+    ],
   },
   javascript.configs.recommended,
   typescript.configs.strictTypeChecked,

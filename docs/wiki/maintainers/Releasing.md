@@ -68,6 +68,8 @@ The command requires `gh`, Git with signing configured, and an unlocked signing 
 
 Review the workflow's source commit, version, and protected-environment request before approving `Release` in GitHub Actions. The privileged job receives only the separately built and hash-checked web client. It uploads into a draft, verifies that every platform archive and SBOM exists, adds signatures and provenance, and then publishes the immutable release.
 
+Before publication, Grype checks every archive SBOM and both container platforms. High or critical findings, scanner errors, or missing inputs stop the release. The container is built under a staging tag; the stable version tag and `latest` are promoted only after the gate passes, preserving the scanned digest. See [security checks](Security-checks.md#release-vulnerability-gate).
+
 For now this process accepts stable tags only. Do not use it for prereleases or nightly builds; they require a separately reviewed publication policy so they cannot replace stable downloads or the container's `latest` tag. Never move or reuse a release tag, including after a failed attempt. Investigate the failed run and any unpublished draft before retrying.
 
 See the [release checklist](Release-checklist.md) for the approval and post-publication verification steps.

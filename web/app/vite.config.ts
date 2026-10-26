@@ -99,6 +99,12 @@ export default defineConfig(({ isSsrBuild }) => ({
   ssr: { noExternal: ['@nylzo/core'] },
   worker: { format: 'es' },
   test: {
+    coverage: {
+      provider: 'istanbul',
+      reporter: ['text', 'lcov', 'html'],
+      include: ['src/**/*.ts', 'src/**/*.svelte'],
+      exclude: ['src/**/*.test.ts', 'src/**/*.d.ts'],
+    },
     projects: [
       { test: { name: 'node', include: ['src/**/*.test.ts'], exclude: ['src/**/*.svelte.test.ts'] } },
       {
