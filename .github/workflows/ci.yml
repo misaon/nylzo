@@ -679,7 +679,7 @@ jobs:
   release-verification:
     name: Release verification
     needs: [changes, required]
-    if: github.ref == 'refs/heads/main' && needs.changes.outputs.full == 'true' && needs.required.result == 'success'
+    if: always() && github.ref == 'refs/heads/main' && needs.changes.outputs.full == 'true' && needs.required.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
