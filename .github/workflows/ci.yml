@@ -300,6 +300,13 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @nylzo/web build
+      - name: Use the upstream Ubuntu mirror for browser dependencies
+        if: runner.os == 'Linux'
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+          fi
+          printf 'Acquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Retries "2";\n' | sudo tee /etc/apt/apt.conf.d/80nylzo-ci > /dev/null
       - name: Install the Playwright browser
         working-directory: web/e2e
         timeout-minutes: 15
@@ -307,7 +314,7 @@ jobs:
           INSTALL: ${{ matrix.install }}
         run: |
           limit=()
-          if command -v timeout > /dev/null; then limit=(timeout 120); fi
+          if command -v timeout > /dev/null; then limit=(timeout --kill-after=15s 120); fi
           read -ra install <<< "$INSTALL"
           for attempt in 1 2 3; do
             "${limit[@]}" pnpm exec playwright install "${install[@]}" && exit 0
