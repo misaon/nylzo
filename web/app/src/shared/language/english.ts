@@ -204,8 +204,11 @@ export const english: Record<MessageKey, string> = {
   'transparency.limits.global': 'New messages in total per day',
   'transparency.limits.global.value': '{max}, from half of that with an anti-flooding check in the browser',
   'transparency.limits.none': 'no limit',
-  'transparency.client.title': 'Version and fingerprint of the web client',
-  'transparency.client.version': 'Server version',
+  'transparency.client.title': 'Web client in this browser',
+  'transparency.client.version': 'Web client version',
+  'transparency.client.commit': 'Web client commit',
+  'transparency.server.title': 'Information reported by the server',
+  'transparency.server.version': 'Reported server version',
   'transparency.client.files':
     'SHA-256 of the web client files. For the page it is the template into which the server inserts a nonce.',
   'transparency.client.verify':
@@ -241,6 +244,7 @@ export const english: Record<MessageKey, string> = {
   'footer.selfhost': 'Self-hosting',
   'footer.skill': 'Agent skill',
   'footer.note': 'No cookies or analytics.',
+  'footer.version': 'Web client version {version}',
 
   'hero.title.lead': 'A secret that',
   'hero.title.accent': 'opens once',

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createApi, type Transparency } from '../../shared/api/api.ts';
+  import { BUILD_INFO } from '../../shared/build-info.ts';
   import { formatBytes, formatDays, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../shared/shell/repository.ts';
@@ -45,6 +46,14 @@
 <section aria-labelledby="transparency-title">
   <h2 id="transparency-title">{translate('transparency.title')}</h2>
   <p>{translate('transparency.intro')}</p>
+
+  <h3>{translate('transparency.client.title')}</h3>
+  <dl>
+    <dt>{translate('transparency.client.version')}</dt>
+    <dd data-testid="client-version"><code class="wrap-anywhere">{BUILD_INFO.version}</code></dd>
+    <dt>{translate('transparency.client.commit')}</dt>
+    <dd data-testid="client-commit"><code class="wrap-anywhere">{BUILD_INFO.commit}</code></dd>
+  </dl>
 
   {#if view.view === 'loading'}
     <p role="status">{translate('transparency.loading')}</p>
@@ -127,10 +136,10 @@
       </dd>
     </dl>
 
-    <h3>{translate('transparency.client.title')}</h3>
+    <h3>{translate('transparency.server.title')}</h3>
     <dl>
-      <dt>{translate('transparency.client.version')}</dt>
-      <dd><code class="wrap-anywhere">{data.server}</code></dd>
+      <dt>{translate('transparency.server.version')}</dt>
+      <dd data-testid="server-version"><code class="wrap-anywhere">{data.server}</code></dd>
     </dl>
     <p>{translate('transparency.client.files')}</p>
     <ul>

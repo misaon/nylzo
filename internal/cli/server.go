@@ -149,7 +149,8 @@ func serveSettings(environment *Environment) (config.Server, error) {
 	if environment.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(defaultMemoryLimit)
 	}
-	settings.Version = buildVersion(environment.Version)
+	settings.Build = environment.buildInformation()
+	settings.Version = settings.Build.Version
 	return settings, nil
 }
 
@@ -184,7 +185,20 @@ func serve(ctx context.Context, environment *Environment, logger *slog.Logger) e
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
 	go func() { served <- httpServer.Serve(listener) }()
-	logger.InfoContext(ctx, "listening", "addr", listener.Addr().String(), "version", settings.Version)
+	logger.InfoContext(
+		ctx,
+		"listening",
+		"addr",
+		listener.Addr().String(),
+		"version",
+		settings.Version,
+		"commit",
+		settings.Build.Commit,
+		"build_date",
+		settings.Build.Date,
+		"dirty",
+		settings.Build.Dirty,
+	)
 	select {
 	case err = <-served:
 		stop()

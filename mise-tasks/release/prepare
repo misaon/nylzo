@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#MISE description="Check main, sign a stable version tag, and start the protected release workflow"
+set -euo pipefail
+
+if [[ $# != 1 ]]; then
+  echo 'Usage: mise run release:prepare -- 0.1.0' >&2
+  exit 2
+fi
+fail() {
+  printf 'Release refused: %s\n' "$1" >&2
+  exit 1
+}
+release_version="${1#v}"
+if [[ ! "$release_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  echo 'Use a stable semantic version, such as 0.1.0.' >&2
+  exit 2
+fi
+[[ "$(git branch --show-current)" = main ]] || fail "switch to main first"
+[[ -z "$(git status --porcelain)" ]] || fail "the checkout must be clean"
+case "$(git remote get-url origin)" in
+  https://github.com/misaon/nylzo.git|git@github.com:misaon/nylzo.git|ssh://git@github.com/misaon/nylzo.git) ;;
+  *) fail "origin must be the canonical misaon/nylzo repository" ;;
+esac
+git fetch origin main --tags
+commit="$(git rev-parse HEAD)"
+[[ "$commit" = "$(git rev-parse origin/main)" ]] || fail "update main to origin/main first"
+expected_email="$(gh api repos/misaon/nylzo/actions/variables/RELEASE_TAGGER_EMAIL --jq .value)"
+committer="$(git var GIT_COMMITTER_IDENT)"
+committer_email="${committer#*<}"
+committer_email="${committer_email%%>*}"
+[[ -n "$expected_email" && "$committer_email" = "$expected_email" ]] || fail "the committer email must match RELEASE_TAGGER_EMAIL"
+bash mise-tasks/release/checks "$commit"
+tag="v${release_version}"
+if git show-ref --verify --quiet "refs/tags/${tag}"; then
+  echo 'The release tag already exists; it must never be moved or overwritten.' >&2
+  exit 1
+fi
+git tag -s "$tag" -m "Nylzo ${release_version}"
+git push origin "refs/tags/${tag}"
+printf 'Release %s started. Review and approve its release environment at https://github.com/misaon/nylzo/actions/workflows/release.yml\n' "$tag"

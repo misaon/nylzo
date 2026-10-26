@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"maps"
 	"slices"
+
+	"github.com/misaon/nylzo/internal/buildinfo"
 )
 
 const ManifestPath = "/.well-known/nylzo/client.json"
@@ -19,6 +21,7 @@ type ManifestFile struct {
 }
 
 type Manifest struct {
+	Build            buildinfo.Info `json:"build"`
 	Server           string         `json:"server"`
 	Built            bool           `json:"built"`
 	NoncePlaceholder string         `json:"nonce_placeholder"`
@@ -27,8 +30,14 @@ type Manifest struct {
 	Files            []ManifestFile `json:"files"`
 }
 
-func (b Build) Manifest(version, publicURL string) Manifest {
+func (b Build) Manifest(version, publicURL string, information ...buildinfo.Info) Manifest {
+	build := buildinfo.Info{Version: version}
+	if len(information) > 0 {
+		build = information[0]
+		build.Version = version
+	}
 	manifest := Manifest{
+		Build:            build,
 		Server:           version,
 		Built:            b.Built,
 		NoncePlaceholder: NoncePlaceholder,

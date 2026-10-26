@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -47,12 +48,13 @@ type verified struct {
 }
 
 type verifier struct {
-	api       *client.Client
-	local     webclient.Build
-	version   string
-	publicURL string
-	allowed   map[string]bool
-	nonces    map[string]bool
+	information buildinfo.Info
+	api         *client.Client
+	local       webclient.Build
+	version     string
+	publicURL   string
+	allowed     map[string]bool
+	nonces      map[string]bool
 }
 
 type verifyOptions struct {
@@ -100,11 +102,12 @@ func runVerifyClient(ctx context.Context, environment *Environment, arguments []
 		return failf(environment, "%s", errNoLocalClient)
 	}
 	check := &verifier{
-		api:     api,
-		local:   local,
-		version: buildVersion(environment.Version),
-		allowed: options.allowed,
-		nonces:  map[string]bool{},
+		api:         api,
+		information: environment.buildInformation(),
+		local:       local,
+		version:     buildVersion(environment.Version),
+		allowed:     options.allowed,
+		nonces:      map[string]bool{},
 	}
 	result, err := check.run(ctx)
 	if err != nil {
@@ -174,7 +177,7 @@ func (v *verifier) manifest(ctx context.Context) error {
 	}
 	v.publicURL = served.PublicURL
 	servedJSON, _ := json.Marshal(served)
-	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, v.publicURL))
+	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, v.publicURL, v.information))
 	if !bytes.Equal(servedJSON, expectedJSON) {
 		return errors.New("the server's client manifest differs from the web client of this nylzo")
 	}

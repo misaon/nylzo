@@ -12,6 +12,7 @@ golangci-lint = "2.15.0"
 actionlint = "1.7.12"
 zizmor = "1.31.1"
 shellcheck = "0.11.0"
+cosign = "3.1.4"
 
 [env]
 GOTOOLCHAIN = "local"
@@ -28,7 +29,7 @@ run = "pnpm --dir web --filter @nylzo/web build"
 [tasks.build]
 description = "Build bin/nylzo with the web client inside"
 depends = ["build:web"]
-run = "go build -trimpath -o bin/nylzo ./cmd/nylzo"
+run = "node tools/build.mts"
 
 [tasks."dev:web"]
 description = "Vite with hot reload on http://localhost:5173, API from mise run dev"
@@ -59,6 +60,7 @@ run = [
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
+  "node --test tools/build-info.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
   "shellcheck mise-tasks/dev mise-tasks/release/*",

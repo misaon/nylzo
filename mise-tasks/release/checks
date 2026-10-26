@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Require successful CI and CodeQL checks for a release commit"
+set -euo pipefail
+
+commit="${1:-$(git rev-parse HEAD)}"
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+gh api "repos/misaon/nylzo/commits/${commit}/check-runs?per_page=100" | jq -e '
+  .check_runs as $checks |
+  all(["CI required", "Analyze (go)", "Analyze (javascript-typescript)", "Analyze (actions)"][];
+    . as $name | any($checks[]; .name == $name and .app.slug == "github-actions" and .conclusion == "success"))' > /dev/null
+printf '%s passed CI and every CodeQL analysis.\n' "$commit"

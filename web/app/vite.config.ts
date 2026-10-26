@@ -7,12 +7,27 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { defineConfig } from 'vitest/config';
 
+import { buildInfo } from '../../tools/build-info.mts';
+
+const information = buildInfo();
+
 const outputDirectory = path.resolve(import.meta.dirname, '../../internal/server/web/dist');
 const developmentApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
 const GZIP_OS_UNKNOWN = 255;
 const PRELOADED_FONTS =
   /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/;
 const PRECOMPRESSED = /\.(?:js|css)$/;
+
+function buildMetadata(): Plugin {
+  return {
+    name: 'nylzo-build-metadata',
+    apply: 'build',
+    generateBundle() {
+      // eslint-disable-next-line unicorn/no-this-outside-of-class -- Rollup exposes asset emission through the plugin hook context.
+      this.emitFile({ type: 'asset', fileName: 'assets/build-info.json', source: `${JSON.stringify(information)}\n` });
+    },
+  };
+}
 
 function withoutNonceMeta(): Plugin {
   return {
@@ -66,7 +81,12 @@ function precompress(): Plugin {
 }
 
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [tailwindcss(), svelte(), ...(isSsrBuild ? [] : [withoutNonceMeta(), preloadFonts(), precompress()])],
+  plugins: [
+    tailwindcss(),
+    svelte(),
+    ...(isSsrBuild ? [] : [buildMetadata(), withoutNonceMeta(), preloadFonts(), precompress()]),
+  ],
+  define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
   html: { cspNonce: '__NYLZO_CSP_NONCE__' },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {

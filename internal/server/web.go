@@ -47,7 +47,7 @@ func (s *Server) loadWebClient() error {
 	s.logger.Info("web-client", "built", s.webBuild.Built, "assets", len(s.webBuild.Assets), "public_url", publicURL)
 	s.robots = webclient.Robots(publicURL)
 	s.sitemap = webclient.Sitemap(publicURL)
-	s.manifest = s.webBuild.Manifest(s.settings.Version, publicURL)
+	s.manifest = s.webBuild.Manifest(s.settings.Version, publicURL, s.buildInformation())
 	return nil
 }
 

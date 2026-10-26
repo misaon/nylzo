@@ -10,9 +10,9 @@
 
 **Share a sensitive message or file through an expiring link, with encryption in the client.** Nylzo is open source and self-hosted. It includes a web client and a single Go binary that works as both a CLI and a server.
 
-[Website](https://nylzo.com) · [Contributing](CONTRIBUTING.md) · [Discussions](https://github.com/misaon/nylzo/discussions) · [Security policy](SECURITY.md) · [Protocol](spec/protocol.md)
+[Website](https://nylzo.com) · [Contributing](CONTRIBUTING.md) · [Discussions](https://github.com/misaon/nylzo/discussions) · [Releases and changelog](https://github.com/misaon/nylzo/releases) · [Security policy](SECURITY.md) · [Protocol](spec/protocol.md)
 
-Nylzo is preparing for its first release. Passing automated checks does not constitute an independent security audit or certification. Read the [security boundaries](#security-boundaries) before using it for sensitive data.
+Nylzo is in early development. Passing automated checks does not constitute an independent security audit or certification. Read the [security boundaries](#security-boundaries) before using it for sensitive data.
 
 ## What it does
 
@@ -60,6 +60,12 @@ The [protocol](spec/protocol.md), [security policy](SECURITY.md), and [design re
 - The server observes padded message sizes and some timing metadata. Encryption does not protect a compromised sender or recipient device.
 
 Report vulnerabilities through [private reporting](https://github.com/misaon/nylzo/security/advisories/new), following [SECURITY.md](SECURITY.md). Use an instance's `/report` page for abusive content on that instance.
+
+## Versions and releases
+
+Download the latest binaries for Windows, Linux, and macOS from [GitHub Releases](https://github.com/misaon/nylzo/releases/latest), with amd64 and arm64 archives for every platform. Release notes are generated from Conventional Commits and grouped into features, fixes, performance, documentation, and other changes, with breaking changes first.
+
+`nylzo version --json` shows the version, source commit, source date, and whether the source was modified. The web footer shows its embedded client version; `/transparency` distinguishes it from the reported server version. The server exposes the same build metadata in its instance and well-known JSON endpoints. See [versioning and releases](docs/releasing.md) for the full process.
 
 ## Verify a release
 

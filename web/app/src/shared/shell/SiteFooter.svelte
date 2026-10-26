@@ -2,6 +2,7 @@
   import type { MessageKey } from '../language/czech.ts';
   import type { Language } from '../language/language.ts';
 
+  import { BUILD_INFO, buildSourceHref } from '../build-info.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
   import Logo from './Logo.svelte';
   import { REPOSITORY_URL } from './repository.ts';
@@ -15,6 +16,7 @@
   const { compact = false, current, onlanguage }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
+  const versionHref = buildSourceHref(BUILD_INFO);
 
   interface FooterLink {
     readonly href: string;
@@ -55,6 +57,18 @@
   ] as const;
 </script>
 
+{#snippet version()}
+  {#if versionHref}
+    <a
+      href={versionHref}
+      aria-label={translate('footer.version', { version: BUILD_INFO.version })}
+      class="font-mono text-xs text-ink-mute hover:text-ink">{BUILD_INFO.version}</a
+    >
+  {:else}
+    <span class="font-mono text-xs text-ink-mute">{BUILD_INFO.version}</span>
+  {/if}
+{/snippet}
+
 {#snippet languageSwitch()}
   <div
     class="relative grid w-fit grid-cols-2 rounded-control p-0.5 well"
@@ -91,6 +105,7 @@
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
         <a href="/#jak" class="text-ink-soft hover:text-ink">{translate('footer.how')}</a>
         <a href={REPOSITORY_URL} class="text-ink-soft hover:text-ink">{translate('footer.github')}</a>
+        {@render version()}
         {@render languageSwitch()}
       </div>
     </div>
@@ -119,7 +134,10 @@
       <div
         class="mt-10 flex flex-col gap-4 border-t border-white/8 pt-6 text-xs text-ink-mute sm:flex-row sm:items-center sm:justify-between"
       >
-        <p>{translate('footer.note')}</p>
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <p>{translate('footer.note')}</p>
+          {@render version()}
+        </div>
         {@render languageSwitch()}
       </div>
     </div>
