@@ -18,10 +18,10 @@
   const delays = ['delay-[160ms]', 'delay-[220ms]', 'delay-[280ms]', 'delay-[340ms]'] as const;
 
   const facts = [
-    { key: 'who.server.id', value: 'Q3tN0xvR8kLp2WcY5aHf1g' },
+    { key: 'who.server.id', value: '14887c2dafc401c9925e4dc33993d763c01fcc8cd2b739cf02519c6d273efa28' },
     { key: 'who.server.size' },
-    { key: 'who.server.expires' },
-    { key: 'who.server.opens' },
+    { key: 'who.server.cleanup' },
+    { key: 'who.server.record' },
   ] as const;
   const lacks = [
     'who.server.lacks.text',
@@ -29,12 +29,7 @@
     'who.server.lacks.key',
     'who.server.lacks.ip',
   ] as const;
-  const finds = [
-    { key: 'who.thief.key', safe: true },
-    { key: 'who.thief.text', safe: true },
-    { key: 'who.thief.ip', safe: true },
-    { key: 'who.thief.meta', safe: false },
-  ] as const;
+  const finds = ['who.thief.key', 'who.thief.text', 'who.thief.ip', 'who.thief.meta'] as const;
   const cipherText =
     'AQEAPtYgjmUhBel31iEl2hpChYgCfrL1spNxnyVmihA_2O76UMFxFkM_R5Kjp1vRt-1fjORS_6ilI8ihN5KXSc7Tvo_hBKqFYY_kv5ZJr3J1TWDtkwtDDb-xHKas1VOqg6YYZYn9ZhyiA4uoRgnatmUdjAWtGSU8po-799NksnRH9ucAUsdMlHUvTCQCyEZDz_TddJ8HyS5SUkCnD8zRA9a9SkpXz9w3QlY7Zkuvqdt7s8Stqcbnr3yBdGBLEPH1qhT61qtc4xatws8phP9nhFyJfm5di4PzJ59FHz5r1pY4OjE2jBMptUsGr7CmY-uCu3ZR1zTOlUcR64cXQLioDnkHIfxIq2HZt_PlJhx2jIclHkCiHp6bR1IqfEouHgxzNNAL5wIScGebcy8F5n3_YNBDRzrZSgqbjG3uhkWKFLf6xuI5aHUQPFeNBTxaQWk8JzFalHlsZfYcMMDktXP_tKsf2rcDkdfrUnW5gcF';
 
@@ -310,21 +305,16 @@
               {translate('who.thief.finds')}
             </p>
             <ul class="mt-1 grid grow divide-y divide-white/6">
-              {#each finds as find (find.key)}
+              {#each finds as find (find)}
                 <li class="flex items-center gap-3 py-3 last:pb-0">
                   <div class="min-w-0 flex-1">
-                    <p class="text-[15px] text-ink">{translate(find.key)}</p>
-                    <p class="text-[13px] text-ink-mute">{translate(`${find.key}.note`)}</p>
+                    <p class="text-[15px] text-ink">{translate(find)}</p>
+                    <p class="text-[13px] text-ink-mute">{translate(`${find}.note`)}</p>
                   </div>
                   <span
-                    class={[
-                      'shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] uppercase ring-1',
-                      find.safe
-                        ? 'bg-aegis-500/10 text-aegis-200 ring-aegis-400/25'
-                        : 'bg-white/5 text-ink-soft ring-white/10',
-                    ]}
+                    class="shrink-0 rounded-full bg-aegis-500/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] text-aegis-200 uppercase ring-1 ring-aegis-400/25"
                   >
-                    {translate(`${find.key}.result`)}
+                    {translate(`${find}.result`)}
                   </span>
                 </li>
               {/each}
