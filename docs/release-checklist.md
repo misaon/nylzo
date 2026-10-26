@@ -31,7 +31,7 @@ The maintainer registered a dedicated Ed25519 SSH signing key during release set
 
 ## Verify after publication
 
-1. Verify the checksum signature and archive provenance using the commands in the [README](../README.md#verify-a-release). Verify image provenance and signatures as described in [deploy/compose/README.md](../deploy/compose/README.md). Use the exact repository, workflow identity, and tag.
+1. Verify the checksum signature, archive provenance, and image using [Verify a release](wiki/Verify-a-release.md). Use the exact repository, workflow identity, and tag.
 2. Independently rebuild the same tag with the pinned tools:
 
    ```sh

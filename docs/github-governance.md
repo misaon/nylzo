@@ -32,6 +32,10 @@ GitHub returned `disabled` for generic/non-provider secret patterns and secret v
 
 At setup, `misaon` was the only collaborator, with no deploy keys, webhooks, Actions secrets, or self-hosted runners. Recheck these inventories when integrations or maintainers change. Keep production secrets out of pull-request jobs and avoid persistent runners for untrusted community code.
 
+## Wiki documentation
+
+The public [Wiki](https://github.com/misaon/nylzo/wiki) presents the user and operations guides. Its sources stay in the main repository for review; [Publishing the GitHub Wiki](wiki/README.md) describes rendering and publication. Keep editing restricted to collaborators, GitHub's default for a newly enabled Wiki. Wiki commits are outside the main branch's pull-request rules, so maintainers review source PRs and publish the merged source rather than accepting direct public edits. No privileged publication workflow or extra publishing credential is configured.
+
 ## Account-owner prerequisites
 
 Before the first release, register and secure a signing key on GitHub. An Ed25519 SSH signing key was registered on the maintainer account on 2026-10-26. `RELEASE_TAGGER_EMAIL` is set to `email@ondrejmisak.cz`; verify that email on the account and use it for release tag signatures. The workflow intentionally fails until GitHub verifies the tag signature. No private signing key should be uploaded to Actions.
