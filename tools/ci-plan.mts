@@ -53,9 +53,9 @@ export function planChecks(files: string[], event: string) {
     compose: groups.integration,
     build: groups.integration,
     reproducible: groups.integration,
-    "codeql-go": groups.go,
-    "codeql-web": groups.web,
-    "codeql-actions": groups.actions,
+    "codeql-go": event === "pull_request" || groups.go,
+    "codeql-web": event === "pull_request" || groups.web,
+    "codeql-actions": event === "pull_request" || groups.actions,
   };
   return { ...groups, full, jobs };
 }

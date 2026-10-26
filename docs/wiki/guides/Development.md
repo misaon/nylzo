@@ -36,7 +36,7 @@ mise run e2e
 
 ## Which CI checks run?
 
-CI selects jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
+CI selects test and build jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
 
 | Change                                                                                                   | Checks                                                                          |
 | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -45,6 +45,8 @@ CI selects jobs from changed paths on pull requests and pushes to `main`. [dorny
 | Web app, browser tests, or embedded web assets                                                           | Web checks, JavaScript/TypeScript CodeQL, integration and builds                |
 | Deployment configuration                                                                                 | Workflow/script checks, integration and builds                                  |
 | Protocol, vectors, either cryptographic core, dependencies, CI, toolchain, build tools, or unknown paths | Full verification                                                               |
+
+Every pull request also runs all three CodeQL analyses. The repository requires CodeQL results before merge; skipping them leaves even a documentation-only PR blocked. On pushes to `main`, CodeQL runs only for the affected languages.
 
 Integration includes Chromium, Firefox, WebKit, Compose, developer setup, and reproducible release archives. Mixed changes combine their checks. `Protocol.md` remains a full-verification input because Go and browser tests read its CSP contract.
 

@@ -7,7 +7,8 @@ test("documentation skips compilers while consumed protocol and unknown files re
     ["README.md", "docs/wiki/guides/CLI.md", "assets/readme/cover-dark.svg"],
     "pull_request",
   );
-  assert.ok(Object.values(documentation.jobs).every((required) => !required));
+  assert.ok(Object.entries(documentation.jobs).every(([job, required]) => required === job.startsWith("codeql-")));
+  assert.ok(Object.values(planChecks(["README.md"], "push").jobs).every((required) => !required));
   for (const file of [
     "docs/wiki/reference/Protocol.md",
     "spec/vectors.json",
