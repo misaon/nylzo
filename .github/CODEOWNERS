@@ -1,0 +1,12 @@
+* @misaon
+
+/.github/ @misaon
+/.goreleaser.yaml @misaon
+/mise.toml @misaon
+/mise.lock @misaon
+/mise-tasks/ @misaon
+/spec/ @misaon
+/internal/core/ @misaon
+/web/core/ @misaon
+/SECURITY.md @misaon
+/CODE_OF_CONDUCT.md @misaon

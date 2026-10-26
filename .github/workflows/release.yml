@@ -168,3 +168,7 @@ jobs:
           subject-name: ghcr.io/misaon/nylzo
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
+      - name: Publish the complete release and lock its assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft=false
