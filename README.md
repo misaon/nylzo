@@ -2,7 +2,7 @@
   <a href="https://nylzo.com">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/readme/cover-dark.svg">
-      <img src="assets/readme/cover-light.svg" alt="Nylzo. Encrypted sharing. Expiring links." width="1200" height="380">
+      <img src="assets/readme/cover-light.svg" alt="Nylzo. Encrypted sharing. Expiring links." width="1200">
     </picture>
   </a>
 </p>
