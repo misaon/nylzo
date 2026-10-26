@@ -1,0 +1,62 @@
+name: Release vulnerabilities
+
+on:
+  schedule:
+    - cron: "29 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-vulnerabilities
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    if: github.repository == 'misaon/nylzo'
+    name: Published binaries and container
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          version: 2026.10.9
+          install_args: grype cosign
+      - name: Find and verify the latest published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          mkdir -p release-assets
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir release-assets \
+            --pattern '*.sbom.json' --pattern checksums.txt --pattern checksums.txt.sigstore.json
+          cosign verify-blob release-assets/checksums.txt --bundle release-assets/checksums.txt.sigstore.json \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${tag}"
+          (cd release-assets && sha256sum --ignore-missing --strict -c checksums.txt)
+          image="ghcr.io/${GITHUB_REPOSITORY}:${tag#v}"
+          cosign verify "$image" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${tag}" > image-signatures.json
+          digest=$(jq -er '.[0].critical.image["docker-manifest-digest"]' image-signatures.json)
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'NYLZO_SCAN_IMAGE=ghcr.io/%s@%s\n' "$GITHUB_REPOSITORY" "$digest" >> "$GITHUB_ENV"
+          printf '## Release vulnerability scan\n\nRelease: %s\n\nImage: %s@%s\n' "$tag" "ghcr.io/$GITHUB_REPOSITORY" "$digest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Scan both image platforms and all six archive SBOMs
+        run: bash tools/security/scan-release "$NYLZO_SCAN_IMAGE" release-assets vulnerability-reports
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: release-vulnerability-reports
+          path: vulnerability-reports
+          if-no-files-found: error
+          retention-days: 30

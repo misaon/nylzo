@@ -46,6 +46,7 @@ export function planChecks(files: string[], event: string) {
     "go-timing": groups.go,
     fuzz: groups.go,
     web: groups.web,
+    coverage: groups.go || groups.web,
     repository: groups.repository,
     "dependency-review": event === "pull_request" && groups.dependencies,
     e2e: groups.integration,

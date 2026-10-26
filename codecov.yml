@@ -1,0 +1,51 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+flag_management:
+  default_rules:
+    carryforward: true
+  individual_flags:
+    - name: go
+      paths:
+        - cmd/
+        - internal/
+        - tools/tlscheck/
+    - name: typescript
+      paths:
+        - web/core/src/
+        - web/app/src/
+
+component_management:
+  individual_components:
+    - component_id: go-crypto
+      name: Go cryptography
+      paths: [internal/core/**, internal/pepper/**]
+    - component_id: go-server
+      name: Go server and storage
+      paths: [internal/server/**, internal/store/**]
+    - component_id: go-cli
+      name: Go CLI
+      paths: [cmd/nylzo/**, internal/cli/**, internal/client/**]
+    - component_id: typescript-crypto
+      name: TypeScript cryptography
+      paths: [web/core/src/**]
+    - component_id: web-client
+      name: Web client
+      paths: [web/app/src/**]
+
+fixes:
+  - "github.com/misaon/nylzo/::"
+
+comment:
+  layout: reach,diff,flags,components,files
+  require_changes: true
+  show_carryforward_flags: true

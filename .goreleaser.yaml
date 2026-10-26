@@ -61,7 +61,7 @@ kos:
     base_image: gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
     repositories: [ghcr.io/misaon/nylzo]
     platforms: [linux/amd64, linux/arm64]
-    tags: ["{{ .Version }}", latest]
+    tags: ["staging-{{ .Version }}"]
     bare: true
     sbom: spdx
     creation_time: "{{ .CommitTimestamp }}"
