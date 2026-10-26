@@ -497,14 +497,28 @@ jobs:
         with:
           distribution: goreleaser
           version: v2.18.3
-          args: build --snapshot --clean
+          args: release --snapshot --skip=publish,sign,sbom,ko --clean
+      - name: Archive ownership is independent of the build host
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import tarfile
+
+          archives = list(pathlib.Path("dist").glob("*.tar.gz"))
+          assert len(archives) == 4, archives
+          for archive in archives:
+              with tarfile.open(archive) as contents:
+                  for member in contents:
+                      ownership = (member.uid, member.gid, member.uname, member.gname)
+                      assert ownership == (0, 0, "root", "root"), (archive, member.name, ownership)
+          PY
       - name: The binary and embedded client carry the same build identity
         run: |
           architecture=amd64
           if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
           binary=(dist/nylzo_linux_"${architecture}"_*/nylzo)
           "${binary[0]}" version --json | cmp - internal/server/web/dist/assets/build-info.json
-      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
+      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*.tar.gz dist/*.zip internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.runner }}

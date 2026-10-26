@@ -29,13 +29,19 @@ archives:
         formats: [zip]
     name_template: "nylzo_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     builds_info:
+      owner: root
+      group: root
       mtime: "{{ .CommitDate }}"
     files:
       - src: LICENSE
         info:
+          owner: root
+          group: root
           mtime: "{{ .CommitDate }}"
       - src: README.md
         info:
+          owner: root
+          group: root
           mtime: "{{ .CommitDate }}"
 
 checksum:
