@@ -190,6 +190,7 @@ jobs:
         with:
           name: coverage-go-${{ matrix.shard }}
           path: .coverage/go-${{ matrix.shard }}.*
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
       - if: github.event_name == 'push'
@@ -307,6 +308,7 @@ jobs:
           name: coverage-typescript
           path: |
             .coverage/*.info
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

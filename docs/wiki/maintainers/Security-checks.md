@@ -21,7 +21,7 @@ The [OpenSSF Baseline profile](https://www.bestpractices.dev/en/projects/15969) 
 
 ## Test coverage
 
-[Codecov](https://app.codecov.io/gh/misaon/nylzo) receives the existing Go race-test shard profiles and the core and web-client Vitest reports. Go profiles use atomic counters and instrument first-party packages. TypeScript core uses V8 coverage; the web client uses Istanbul to avoid profiling hot cryptographic dependencies during UI tests.
+[Codecov](https://app.codecov.io/gh/misaon/nylzo) receives the existing Go race-test shard profiles and the core and web-client Vitest reports. Go profiles use atomic counters and instrument first-party packages. The TypeScript core and web client use Istanbul to avoid profiling third-party cryptographic dependencies in hot loops.
 
 TypeScript reports include unexecuted source files. Go reports cover the packages compiled for the Linux test jobs. Test files and TypeScript declaration files are excluded. Go timing acceptance tests, fuzzing, and Playwright tests still run separately; they are not represented in these unit-coverage percentages. The component breakdown separates cryptographic code from the browser UI and server.
 
