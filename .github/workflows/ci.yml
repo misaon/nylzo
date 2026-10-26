@@ -432,7 +432,7 @@ jobs:
           cmp "$RUNNER_TEMP/file.bin" "$out"/nylzo-*/file.bin
       - name: Caddy negotiates X25519MLKEM768 (AK26)
         run: dist/tlscheck -addr localhost:443 -ca "$RUNNER_TEMP/root.crt"
-      - name: The web client arrives through Caddy unchanged (D61)
+      - name: The web client arrives through Caddy unchanged
         env:
           SSL_CERT_FILE: ${{ runner.temp }}/root.crt
         run: dist/nylzo verify-client --server https://localhost

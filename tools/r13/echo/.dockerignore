@@ -1,5 +1,0 @@
-*
-!go.mod
-!go.sum
-!*.go
-main_test.go

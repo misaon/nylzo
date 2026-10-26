@@ -228,7 +228,7 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 		if spendsNoChallenge[class.name] {
 			continue
 		}
-		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2, D23)
+		// AK21 timing uniformity is the contract under test
 		if medians[classIndex]*100 > minMedian[class.endpoint]*medianSlackPercent {
 			return fmt.Sprintf(
 				"%s %s median %s exceeds %d%% of the fastest equal-work class %s on the same endpoint",
@@ -239,7 +239,7 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 				minMedian[class.endpoint],
 			)
 		}
-		// gstack-timing-ok: AK21 timing uniformity is the contract under test (eng review D2, D23)
+		// AK21 timing uniformity is the contract under test
 		if p95s[classIndex] > 5*minP95[class.endpoint] {
 			return fmt.Sprintf(
 				"%s %s p95 %s exceeds 5x the fastest equal-work class %s on the same endpoint",
@@ -967,7 +967,7 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 		slices.Sort(samples)
 		return samples[len(samples)/2]
 	}
-	// gstack-timing-ok: uniform work for every failed key is the contract under test (spec §5.5)
+	// uniform work for every failed key is the contract under test (spec §5.5)
 	if wrongMedian, offCurveMedian := median(wrong), median(off); offCurveMedian*130 < wrongMedian*100 {
 		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", offCurveMedian, wrongMedian)
 	}

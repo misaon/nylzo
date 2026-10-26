@@ -187,7 +187,7 @@ func TestOpenGivesUpBehindAHeldWriteLock(t *testing.T) {
 		opened.Close()
 		t.Fatal("Open succeeded behind a held write lock")
 	}
-	// gstack-timing-ok: bounds a retry loop that used to wait ten busy timeouts
+	// bounds a retry loop that used to wait ten busy timeouts
 	if waited := time.Since(start); waited > 15*time.Second {
 		t.Fatalf("Open retried for %v behind a held write lock", waited)
 	}
