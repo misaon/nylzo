@@ -20,4 +20,6 @@ Nylzo shares text and files through links with an expiry and an open limit. The 
 - [Repository governance](../github-governance.md), [security policy](../../SECURITY.md), and [name and logo](Name-and-logo.md).
 - [Release notes and downloads](https://github.com/misaon/nylzo/releases).
 
-These guides describe the current source on `main`. For a deployed version, use the documentation bundled with its [source tag](https://github.com/misaon/nylzo/tags). Report bugs through [Issues](https://github.com/misaon/nylzo/issues), ask questions in [Discussions](https://github.com/misaon/nylzo/discussions), and report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new).
+These guides describe the current source on `main`. For a deployed version, use the documentation bundled with its [source tag](https://github.com/misaon/nylzo/tags).
+
+Use [Issues](https://github.com/misaon/nylzo/issues) for bugs and [Discussions](https://github.com/misaon/nylzo/discussions) for questions. Report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new).

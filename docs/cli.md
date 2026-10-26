@@ -4,13 +4,13 @@ The same `nylzo` binary creates and reads messages, checks an instance's web cli
 
 ## Keep secrets out of arguments
 
-Message links, passphrases, and management tokens are accepted through stdin, files, supported `NYLZO_*` variables, or hidden terminal prompts. They do not belong in command arguments, which can appear in process listings and shell history. Arguments resembling a secret-bearing link are rejected before any network request. Prefer private files over environment variables when other processes can inspect your environment.
+Pass message links, passphrases, and management tokens through stdin, files, supported `NYLZO_*` variables, or hidden terminal prompts. Keep them out of command arguments, which can appear in process listings and shell history. Arguments resembling a secret-bearing link are rejected before any network request. Prefer private files over environment variables when other processes can inspect your environment.
 
 The CLI requires HTTPS, except for exact localhost and loopback addresses, which bypass proxies and are checked to resolve to loopback. It does not follow redirects. Error messages do not repeat flag values, file paths, server text, or certificate text that could contain secrets. Control characters in errors are escaped.
 
 ## Create a message
 
-Use a private directory and synthetic data while experimenting. For a real secret, provision the input file through an appropriate secret-management tool, rather than typing it into a recorded command.
+Use a private directory and synthetic data while experimenting. Read real secrets from a private input file; avoid typing them into a recorded terminal.
 
 ```sh
 nylzo create --server https://nylzo.example --ttl 1h \
@@ -59,7 +59,7 @@ This compares the served web client with the client embedded in the binary. It f
 
 Unexpected headers are mismatches. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
 
-Verification establishes only what the server sent to this invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network, while retaining this limitation. The repository's `monitor` workflow runs hourly after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
+The result applies only to that invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network; a successful check does not prove what other visitors receive. The repository's `monitor` workflow runs hourly after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
 
 ## Report abusive content
 
@@ -78,6 +78,6 @@ Reports about ended messages are accepted but not stored. When the per-message d
 
 ## Agent use and exit codes
 
-The [Nylzo agent skill](../skills/nylzo/SKILL.md) describes using private files outside the repository, keeping secrets and links out of conversations, and delivering decrypted content directly to a program rather than a language model. It is guidance; CLI behavior, filesystem permissions, and sandboxing provide enforcement.
+The [Nylzo agent skill](../skills/nylzo/SKILL.md) describes using private files outside the repository, keeping secrets and links out of conversations, and delivering decrypted content directly to a program rather than a language model. The skill gives instructions. The CLI, filesystem permissions, and sandbox enforce access rules.
 
 Exit codes: `0` for success, `1` for an operational error, and `2` for invalid usage, including a secret in an argument. For `serve`, `sweep-once`, `takedown`, `report-key`, and `reports`, see the [operations guide](operations.md).

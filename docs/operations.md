@@ -1,6 +1,6 @@
 # Operating Nylzo
 
-For a TLS deployment, start with [deploy/compose/README.md](../deploy/compose/README.md). The settings below describe the single-binary server with SQLite and file storage.
+For a deployment with TLS, start with [Self-hosting](wiki/Self-hosting.md). This reference covers the server configuration, SQLite database, and file storage.
 
 ## Start a local server
 
@@ -69,7 +69,7 @@ The daily cap reserves space atomically after proof of work and releases it on f
 
 Use a local filesystem with hard links and directory fsync. FAT, exFAT, and object-storage FUSE mounts do not satisfy the storage requirements. The server and cleanup command check these properties. Keep the data directory private and outside shared locations.
 
-Database files, including WAL and SHM files, are created with mode 0600. On startup, the server checks ownership and permissions of data, database, blobs, and reports: it narrows its own files/directories to 0600/0700 and logs `permissions-narrowed`; it rejects foreign ownership or symbolic links. Pepper files readable by the group or others are rejected. SQLite uses `secure_delete` and checkpoints each transaction to reduce retained history in the WAL; this adds disk synchronizations.
+Database files, including WAL and SHM files, are created with mode 0600. At startup, the server checks ownership and permissions of the data directory, database, blobs, and reports. It narrows its own files/directories to 0600/0700 and logs `permissions-narrowed`. It rejects foreign ownership or symbolic links. Pepper files readable by the group or others are rejected. SQLite uses `secure_delete` and checkpoints each transaction to reduce retained history in the WAL; this adds disk synchronizations.
 
 Without an explicit `GOMEMLIMIT`, `serve` sets a soft Go memory limit of 192 MiB for a 256 MB container. SQLite's cache is outside that limit and is limited to 512 KiB per connection. Cleartext HTTP/2 buffers at most 64 KiB of unread request data per stream and 1 MiB per connection. On Linux, `serve`, `sweep-once`, and `takedown` disable core dumps and restrict memory inspection by other processes of the same user.
 
@@ -101,6 +101,6 @@ Decrypt on the operator's workstation, using the private key kept off the server
 nylzo reports --key-file "$HOME/nylzo-report-key" < abuse/2026-10-24.sealed
 ```
 
-After review, place approved message IDs in a private file, one per line, and run `nylzo takedown < approved-ids.txt` on the server with the intended `NYLZO_DATA_DIR`. This removes the blob key and blob, leaving the row for cleanup after seven days; it cannot read the message. The whole input is rejected if any line is not an ID, such as a link carrying a secret. It returns a result per ID without logging it to the server log. The recipient sees a deleted message; the sender sees that a recipient or the operator removed it, without an end time.
+After review, place approved message IDs in a private file, one per line, and run `nylzo takedown < approved-ids.txt` on the server with the intended `NYLZO_DATA_DIR`. This removes the blob key and blob, leaving the row for cleanup after seven days; it cannot read the message. If any line is not a message ID, the command rejects the whole input. This includes links carrying a secret. It returns a result per ID without logging it to the server log. The recipient sees a deleted message; the sender sees that a recipient or the operator removed it, without an end time.
 
 Use a reporter's optional contact email only for acknowledgement and the moderation decision. Follow the instance's published [terms and privacy policy](legal/README.md).
