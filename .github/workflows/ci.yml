@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: "17 5 * * 1"
 
@@ -24,32 +25,47 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      code: ${{ steps.diff.outputs.code }}
+      go: ${{ steps.plan.outputs.go }}
+      web: ${{ steps.plan.outputs.web }}
+      integration: ${{ steps.plan.outputs.integration }}
+      repository: ${{ steps.plan.outputs.repository }}
+      dependencies: ${{ steps.plan.outputs.dependencies }}
+      actions: ${{ steps.plan.outputs.actions }}
+      full: ${{ steps.plan.outputs.full }}
+      jobs: ${{ steps.plan.outputs.jobs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
       - id: diff
-        name: Anything besides documentation?
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          token: ""
+          base: ${{ github.event.pull_request.base.sha || github.event.before || github.ref }}
+          list-files: json
+          filters: |
+            changed:
+              - '**'
+      - id: plan
+        name: Select checks from the complete changed-file list
         env:
           EVENT: ${{ github.event_name }}
+          CHANGED_FILES: ${{ steps.diff.outputs.changed_files }}
+        run: node tools/ci-plan.mts
+      - name: Validate CI routing and Wiki links
         run: |
-          if [ "$EVENT" != pull_request ]; then echo code=true >> "$GITHUB_OUTPUT"; exit 0; fi
-          files=$(git diff --name-only HEAD^1 HEAD)
-          printf '%s\n' "$files"
-          if printf '%s\n' "$files" | grep -Fx 'docs/wiki/reference/Protocol.md' > /dev/null; then
-            echo code=true >> "$GITHUB_OUTPUT"
-          elif printf '%s\n' "$files" | grep -Ev '^(docs/.*\.md$|README\.md$|SECURITY\.md$|CONTRIBUTING\.md$|CODE_OF_CONDUCT\.md$)' | grep -q .; then
-            echo code=true >> "$GITHUB_OUTPUT"
-          else
-            echo code=false >> "$GITHUB_OUTPUT"
-          fi
+          node --test tools/ci-plan.test.mts tools/release-checks.test.mts
+          node tools/wiki.mts
 
   go-lint:
     name: Go static checks and vectors (AK9)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -101,7 +117,7 @@ jobs:
   repository:
     name: Workflows and scripts
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.repository == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -120,7 +136,7 @@ jobs:
   go-test:
     name: Go tests (${{ matrix.shard }})
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -166,7 +182,7 @@ jobs:
   go-timing:
     name: Go timing tests (AK21, AK22)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -195,7 +211,7 @@ jobs:
   fuzz:
     name: Fuzz smoke
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -216,7 +232,7 @@ jobs:
   web:
     name: TypeScript core and web client
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -253,6 +269,8 @@ jobs:
 
   dependency-review:
     name: Dependency review
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.dependencies == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -265,7 +283,7 @@ jobs:
   e2e:
     name: Web client end to end (${{ matrix.browser }})
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -339,7 +357,7 @@ jobs:
   dev-setup:
     name: Developer setup (mise)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -378,7 +396,7 @@ jobs:
   compose:
     name: Compose with Caddy (AK12, AK17, AK26)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -471,7 +489,7 @@ jobs:
   build:
     name: Release build on ${{ matrix.runner }}
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -531,7 +549,8 @@ jobs:
     name: Reproducible build (AK15)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [build]
+    needs: [changes, build]
+    if: needs.changes.outputs.integration == 'true'
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -540,6 +559,86 @@ jobs:
         run: |
           cat hashes-ubuntu-24.04/hashes.txt
           diff hashes-ubuntu-24.04/hashes.txt hashes-ubuntu-24.04-arm/hashes.txt
+
+  codeql-go:
+    name: Analyze (go)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read # let CodeQL inspect the current workflow run
+      security-events: write # upload CodeQL findings, including fork PR results
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: go
+          build-mode: autobuild
+          queries: security-extended
+          config: |
+            threat-models: remote
+      - uses: github/codeql-action/autobuild@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:go
+
+  codeql-web:
+    name: Analyze (javascript-typescript)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read # let CodeQL inspect the current workflow run
+      security-events: write # upload CodeQL findings, including fork PR results
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+          config: |
+            threat-models: remote
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:javascript-typescript
+
+  codeql-actions:
+    name: Analyze (actions)
+    needs: changes
+    if: needs.changes.outputs.actions == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read # let CodeQL inspect the current workflow run
+      security-events: write # upload CodeQL findings, including fork PR results
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: actions
+          build-mode: none
+          queries: security-extended
+          config: |
+            threat-models: remote
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:actions
 
   required:
     name: CI required
@@ -559,19 +658,29 @@ jobs:
         compose,
         build,
         reproducible,
+        codeql-go,
+        codeql-web,
+        codeql-actions,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Every required job completed successfully
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+      - name: Every planned job completed successfully
         env:
           RESULTS: ${{ toJSON(needs) }}
-        run: |
-          printf '%s\n' "$RESULTS" | jq -e '
-            .changes.result == "success" and
-            .["dependency-review"].result == "success" and
-            (if .changes.outputs.code == "true" then
-              all(.[]; .result == "success")
-            elif .changes.outputs.code == "false" then
-              all(.[]; .result == "success" or .result == "skipped")
-            else false end)'
+        run: node tools/ci-plan.mts check
+
+  release-verification:
+    name: Release verification
+    needs: [changes, required]
+    if: github.ref == 'refs/heads/main' && needs.changes.outputs.full == 'true' && needs.required.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: echo 'Every source, security, integration, and reproducibility check passed.'

@@ -54,7 +54,9 @@ The main-branch review rules remain in force for these changes. Security fixes m
 
 ## Publish a stable version
 
-Merge the intended change and wait for CI and every CodeQL analysis on `main` to pass. Choose an unused stable version; replace `0.1.2` below with that version:
+Merge the intended change and wait for `Release verification` on that exact `main` commit. CI runs only the relevant checks for ordinary changes; a release requires the full suite. If the commit has no successful full run, start one with `gh workflow run ci.yml --ref main` and wait for it to finish. Weekly runs also perform full verification.
+
+Choose an unused stable version; replace `0.1.2` below with that version:
 
 ```sh
 git switch main
@@ -62,7 +64,7 @@ git pull --ff-only
 mise run release:prepare -- 0.1.2
 ```
 
-The command requires `gh`, Git with signing configured, and an unlocked signing key registered on GitHub. It checks that the checkout is clean and matches `origin/main`, the tagger email is correct, source checks passed, and the tag does not exist. It then creates and pushes a signed annotated tag. The workflow repeats the source/signature checks independently before building.
+The command requires `gh`, Git with signing configured, and an unlocked signing key registered on GitHub. It checks that the checkout is clean and matches `origin/main`, the tagger email is correct, source checks passed, and the tag does not exist. `Release verification`, `CI required`, and all three CodeQL analyses must have succeeded in the same workflow run. It then creates and pushes a signed annotated tag. The workflow repeats the source/signature checks independently before building.
 
 Review the workflow's source commit, version, and protected-environment request before approving `Release` in GitHub Actions. The privileged job receives only the separately built and hash-checked web client. It uploads into a draft, verifies that every platform archive and SBOM exists, adds signatures and provenance, and then publishes the immutable release.
 
