@@ -12,11 +12,11 @@
   const { translate } = getTranslator();
 
   const sections = [
-    { href: '#jak', key: 'nav.how' },
-    { href: '#bezpecnost', key: 'nav.security' },
-    { href: '#odolnost', key: 'nav.resilience' },
+    { href: '#how-it-works', key: 'nav.how' },
+    { href: '#security', key: 'nav.security' },
+    { href: '#resilience', key: 'nav.resilience' },
     { href: '#self-host', key: 'nav.selfhost' },
-    { href: '#srovnani', key: 'nav.compare' },
+    { href: '#comparison', key: 'nav.compare' },
   ] as const;
 </script>
 
@@ -33,7 +33,7 @@
       </h1>
     {:else}
       <a
-        href={variant === 'home' ? '#napsat' : '/'}
+        href={variant === 'home' ? '#create' : '/'}
         class="flex items-center rounded-control py-1"
         aria-label={translate(variant === 'home' ? 'nav.top' : 'nav.home')}
       >

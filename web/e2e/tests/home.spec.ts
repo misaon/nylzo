@@ -92,3 +92,33 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await openApp(page, '/cs/');
   await expect(page).toHaveURL(`${BASE_URL}/`);
 });
+
+test(
+  'English section links and legacy fragments navigate without JavaScript',
+  { tag: '@cross-browser' },
+  async ({ newPage }) => {
+    const page = await newPage({ javaScriptEnabled: false });
+    const sections = [
+      ['create', 'napsat'],
+      ['how-it-works', 'jak'],
+      ['security', 'bezpecnost'],
+      ['resilience', 'odolnost'],
+      ['comparison', 'srovnani'],
+      ['promises', 'sliby'],
+      ['algorithms', 'algoritmy'],
+      ['limits', 'hranice'],
+    ] as const;
+
+    for (const [current, previous] of sections) {
+      for (const fragment of [current, previous]) {
+        await page.goto(`/#${fragment}`);
+        await expect(page.locator(`section#${current}`)).toBeInViewport();
+      }
+    }
+
+    const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true });
+    for (const fragment of ['how-it-works', 'security', 'resilience', 'comparison']) {
+      await expect(navigation.locator(`a[href="#${fragment}"]`)).toBeAttached();
+    }
+  },
+);

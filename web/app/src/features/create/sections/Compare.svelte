@@ -86,7 +86,9 @@
   }
 </script>
 
-<section id="srovnani" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="compare-title">
+<span id="srovnani" class="block" aria-hidden="true"></span>
+
+<section id="comparison" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="compare-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="flex reveal-up flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="max-w-[600px]">

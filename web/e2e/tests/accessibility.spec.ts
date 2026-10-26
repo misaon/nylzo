@@ -86,13 +86,13 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     await expectAccessible(page, `tab ${index}`, `#${section}`);
   }
 
-  const popoverTriggers = page.locator('#napsat button[aria-haspopup="dialog"]');
+  const popoverTriggers = page.locator('#create button[aria-haspopup="dialog"]');
   await expect(popoverTriggers).toHaveCount(3);
   for (let index = 0; index < 3; index++) {
     const trigger = popoverTriggers.nth(index);
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await expectAccessible(page, `popover ${index}`, '#napsat');
+    await expectAccessible(page, `popover ${index}`, '#create');
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   }
@@ -101,13 +101,13 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     .getByLabel(/Attachment, up to/)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
-  await expectAccessible(page, 'attachment', '#napsat');
+  await expectAccessible(page, 'attachment', '#create');
 
   await page.getByLabel('Message text').fill('axe');
   await choosePassphrase(page, 'short');
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.getByLabel('Passphrase, optional')).toBeFocused();
-  await expectAccessible(page, 'refused passphrase', '#napsat');
+  await expectAccessible(page, 'refused passphrase', '#create');
 });
 
 test('the read page in every state, with its report form and its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({

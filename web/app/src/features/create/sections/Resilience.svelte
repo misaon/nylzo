@@ -69,7 +69,9 @@
   };
 </script>
 
-<section id="odolnost" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="brute-title">
+<span id="odolnost" class="block" aria-hidden="true"></span>
+
+<section id="resilience" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="brute-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="mx-auto max-w-[640px] reveal-up text-center">
       <p class="text-sm font-medium text-aegis-300">{translate('brute.eyebrow')}</p>

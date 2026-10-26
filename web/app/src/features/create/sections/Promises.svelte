@@ -21,7 +21,9 @@
   ] as const;
 </script>
 
-<section id="sliby" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="promise-title">
+<span id="sliby" class="block" aria-hidden="true"></span>
+
+<section id="promises" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="promise-title">
   <div class="mx-auto max-w-[1160px]">
     <div class="max-w-[640px] reveal-up">
       <p class="text-sm font-medium text-aegis-300">{translate('promise.eyebrow')}</p>

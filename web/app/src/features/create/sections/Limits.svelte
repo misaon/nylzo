@@ -43,7 +43,9 @@
   </div>
 {/snippet}
 
-<section id="hranice" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="limits-title">
+<span id="hranice" class="block" aria-hidden="true"></span>
+
+<section id="limits" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="limits-title">
   <div class="glass relative mx-auto max-w-[1160px] reveal-up overflow-hidden rounded-card p-6 md:p-10">
     <div
       class="pointer-events-none absolute -top-24 -left-24 size-80 rounded-full bg-[radial-gradient(closest-side,oklch(0.5_0.17_305/0.3),transparent)]"
