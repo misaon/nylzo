@@ -15,12 +15,12 @@ The maintainer registered a dedicated Ed25519 SSH signing key during release set
 ## Publish
 
 1. Check that the intended `main` commit passed `CI required` and CodeQL. Resolve security alerts and verify the commit you are about to tag. Never tag an unreviewed branch commit.
-2. Use the checked release command (replace the example version):
+2. Choose an unused stable version and run the release command. Replace `0.1.2` with your chosen version:
 
    ```sh
    git switch main
    git pull --ff-only
-   mise run release:prepare -- 0.1.0
+   mise run release:prepare -- 0.1.2
    ```
 
    The command checks the clean current `main`, source checks, and tagger email before signing and pushing the annotated tag. See [versioning and releases](releasing.md) for SemVer, Conventional Commit titles, build metadata, and all supported platforms.
@@ -36,12 +36,12 @@ The maintainer registered a dedicated Ed25519 SSH signing key during release set
 
    ```sh
    git fetch --tags
-   git checkout v0.1.0
+   git checkout v0.1.1
    mise install
    mise run release:verify
    ```
 
-   This compares the published archives and embedded client files with the rebuild and prints the SHA-256 of the published checksum manifest. It supplements, rather than replaces, signature verification.
+   This compares the published archives and embedded client files with the rebuild and prints the SHA-256 of the published checksum manifest. Verify the signature before comparing the rebuilt files.
 
 3. With Docker available, compare the image binaries with the local build:
 

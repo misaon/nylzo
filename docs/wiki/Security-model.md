@@ -12,7 +12,7 @@ Someone who controls an instance or its hosting can serve modified JavaScript th
 
 ## A link grants capabilities
 
-Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data can guess a weak passphrase offline. Choose a strong generated passphrase and share it separately when the extra protection matters.
+Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data can guess a weak passphrase offline. If you add a passphrase, use a generated one and send it through a different channel.
 
 Expiry and open limits control access to the server's copy. They cannot erase a recipient's screenshot, saved file, clipboard, backup, or memory. Encryption also cannot protect a compromised sender or recipient device.
 
@@ -20,7 +20,7 @@ Expiry and open limits control access to the server's copy. They cannot erase a 
 
 The server observes padded content sizes and request timing. Some retained times are rounded to minutes. Logs and a low-traffic instance can still reveal timing correlations; encryption is not anonymity.
 
-Inspect an instance's `/transparency` page for its operator, limits, storage and logging policy, web-client hashes, and client/server build identities. These declarations help inspection; a hostile operator can lie about its running service.
+Inspect an instance's `/transparency` page for its operator, limits, storage and logging policy, web-client hashes, and client/server build identities. These are the operator's declarations. A hostile operator can falsify them.
 
 ## Verify the software you run
 

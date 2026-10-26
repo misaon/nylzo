@@ -1,6 +1,6 @@
 # GitHub repository governance
 
-The canonical repository is [misaon/nylzo](https://github.com/misaon/nylzo). This document records the repository settings applied on 2026-10-26, the trust boundaries they enforce, and account-level prerequisites. The reviewed ruleset payloads are stored in [.github/rulesets](../.github/rulesets); those files document the policy but do not apply it automatically.
+The canonical repository is [misaon/nylzo](https://github.com/misaon/nylzo). This document records the settings applied on 2026-10-26, their limits, and the account settings the owner must configure. [.github/rulesets](../.github/rulesets) contains the reviewed ruleset JSON. Editing those files does not apply the settings to GitHub.
 
 ## Branch and release protection
 
@@ -34,11 +34,11 @@ At setup, `misaon` was the only collaborator, with no deploy keys, webhooks, Act
 
 ## Wiki documentation
 
-The public [Wiki](https://github.com/misaon/nylzo/wiki) presents the user and operations guides. Its sources stay in the main repository for review; [Publishing the GitHub Wiki](wiki/README.md) describes rendering and publication. Keep editing restricted to collaborators, GitHub's default for a newly enabled Wiki. Wiki commits are outside the main branch's pull-request rules, so maintainers review source PRs and publish the merged source rather than accepting direct public edits. No privileged publication workflow or extra publishing credential is configured.
+The public [Wiki](https://github.com/misaon/nylzo/wiki) presents the user and operations guides. Its sources stay in the main repository for review; [Publishing the GitHub Wiki](wiki/README.md) describes rendering and publication. Keep editing restricted to collaborators, GitHub's default for a newly enabled Wiki. Wiki commits are outside the main branch's pull-request rules. Maintainers review source PRs, then publish the merged source. No privileged publication workflow or extra publishing credential is configured.
 
 ## Account-owner prerequisites
 
-Before the first release, register and secure a signing key on GitHub. An Ed25519 SSH signing key was registered on the maintainer account on 2026-10-26. `RELEASE_TAGGER_EMAIL` is set to `email@ondrejmisak.cz`; verify that email on the account and use it for release tag signatures. The workflow intentionally fails until GitHub verifies the tag signature. No private signing key should be uploaded to Actions.
+The maintainer registered an Ed25519 SSH signing key on GitHub on 2026-10-26. Keep it secure and configure Git to use it. `RELEASE_TAGGER_EMAIL` is set to `email@ondrejmisak.cz`; verify that email on the account and use it for release tag signatures. The workflow intentionally fails until GitHub verifies the tag signature. No private signing key should be uploaded to Actions.
 
 Protect the owner account with a passkey or hardware-backed two-factor authentication, securely stored recovery codes, and narrowly scoped credentials. These are account settings; the repository API did not establish the account's current 2FA state. Review authorized apps, tokens, and active sessions in account settings. Add independent release approval when another trusted maintainer joins.
 

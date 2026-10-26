@@ -1,6 +1,6 @@
 # Versioning and releases
 
-Nylzo uses stable [Semantic Versioning](https://semver.org/) tags (`vMAJOR.MINOR.PATCH`) and the pinned [GoReleaser](https://goreleaser.com/) to build archives, generate grouped release notes, create SBOMs, and upload signed artifacts. The maintainer chooses the version deliberately; publishing is gated by a signed tag and approval of the `release` environment.
+Nylzo uses stable [Semantic Versioning](https://semver.org/) tags (`vMAJOR.MINOR.PATCH`) and the pinned [GoReleaser](https://goreleaser.com/) to build archives, generate grouped release notes, create SBOMs, and upload signed artifacts. The maintainer chooses each version. Publishing requires a signed tag and approval in the `release` environment.
 
 ## One source of version identity
 
@@ -54,15 +54,15 @@ The main-branch review rules remain in force for these changes. Security fixes m
 
 ## Publish a stable version
 
-After the intended change is merged and CI and all CodeQL analyses on `main` are successful:
+Merge the intended change and wait for CI and every CodeQL analysis on `main` to pass. Choose an unused stable version; replace `0.1.2` below with that version:
 
 ```sh
 git switch main
 git pull --ff-only
-mise run release:prepare -- 0.1.0
+mise run release:prepare -- 0.1.2
 ```
 
-This requires `gh`, Git with signing configured, and an unlocked signing key registered on GitHub. It checks a clean checkout, exact agreement with `origin/main`, the expected tagger email, successful source checks, and absence of the tag. It creates a signed annotated tag and pushes that tag only. The workflow repeats the source/signature checks independently before building.
+The command requires `gh`, Git with signing configured, and an unlocked signing key registered on GitHub. It checks that the checkout is clean and matches `origin/main`, the tagger email is correct, source checks passed, and the tag does not exist. It then creates and pushes a signed annotated tag. The workflow repeats the source/signature checks independently before building.
 
 Review the workflow's source commit, version, and protected-environment request before approving `Release` in GitHub Actions. The privileged job receives only the separately built and hash-checked web client. It uploads into a draft, verifies that every platform archive and SBOM exists, adds signatures and provenance, and then publishes the immutable release.
 
@@ -80,6 +80,6 @@ Every published release contains six archives:
 
 The binary provides the CLI and the embedded web client. The server runs on Linux and macOS; Windows users run the server through WSL or Docker. Archives contain the license and README. Releases also include `checksums.txt`, its Sigstore bundle, per-archive SPDX SBOMs, and GitHub build-provenance attestations. The workflow publishes a signed multi-architecture Linux image at `ghcr.io/misaon/nylzo`.
 
-Version strings, commit IDs, and server JSON are identification data, not cryptographic proof. Authenticity comes from verifying the checksum signature and artifact provenance against the canonical repository, release workflow, and exact tag. The checked files then bind the version metadata to the artifact. These Sigstore signatures do not imply Apple notarization or a Windows Authenticode publisher certificate.
+Version strings, commit IDs, and server JSON are identification data, not cryptographic proof. Authenticity comes from verifying the checksum signature and artifact provenance against the canonical repository, release workflow, and exact tag. Those checks link the embedded version metadata to the downloaded artifact. These Sigstore signatures do not imply Apple notarization or a Windows Authenticode publisher certificate.
 
 Use the commands in [Verify a release](wiki/Verify-a-release.md). For an independent rebuild, check out the clean release tag and run `mise run release:verify`; it verifies the published manifest's signature before comparing rebuilt bytes. Archive timestamps use the source commit date and TAR ownership is normalized to `root` (UID/GID 0), so the build host's account does not affect the archive checksum. CI compares both binaries and complete archives across runner architectures and checks normalized TAR ownership. `mise run release:verify-image` additionally verifies image signatures and provenance, resolves the signed digest, and pulls by that immutable digest before comparing binaries.

@@ -20,7 +20,7 @@ In scope: `spec/protocol.md`, both cores and their shared vectors, the server, t
 
 Some limits are known and documented in `spec/protocol.md` §13, so a report of them alone is not a vulnerability:
 
-- Whoever controls the running server or its hosting can send a modified web client and read the messages created or opened in it. The CLI from a signed release protects against this. `nylzo verify-client` finds a swap that does not avoid it, but a server can recognise the command and send browsers something else.
+- Whoever controls the running server or its hosting can send a modified web client and read the messages created or opened in it. The CLI from a signed release protects against this. `nylzo verify-client` detects modified files served to that check. A hostile server can recognize the command and send browsers different JavaScript.
 - Anyone who has the link can delete the message, also when a passphrase protects it, and can lock readers out with wrong passphrases.
 - Someone with both the link and a copy of the server can guess a weak passphrase offline.
 - The server sees the padded size of a message and times to the minute.
@@ -29,7 +29,7 @@ A report that shows one of these is worse than documented is welcome.
 
 ## Supported versions
 
-Before the first release, report against the current `main` commit. After releases begin, only the latest stable release receives security fixes; older versions and pre-release builds are not maintained. Upgrade to the latest stable release before relying on a fix.
+Only the latest stable release receives security fixes. Older versions and pre-release builds are not maintained. Upgrade to the latest stable release before relying on a fix. For reports about a development build, include its source commit.
 
 ## Coordinated disclosure
 
