@@ -14,7 +14,7 @@ The maintainer registered a dedicated Ed25519 SSH signing key during release set
 
 ## Publish
 
-1. Check that the intended `main` commit passed `CI required` and CodeQL. Resolve security alerts and verify the commit you are about to tag. Never tag an unreviewed branch commit.
+1. Check that the intended `main` commit passed `Release verification`. This requires full CI and all three CodeQL analyses in the same run; a documentation-only or partial run does not qualify. If needed, run `gh workflow run ci.yml --ref main` and wait for it to pass. Resolve security alerts and verify the commit you are about to tag. Never tag an unreviewed branch commit.
 2. Choose an unused stable version and run the release command. Replace `0.1.2` with your chosen version:
 
    ```sh

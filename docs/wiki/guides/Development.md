@@ -34,6 +34,8 @@ mise run e2e
 
 `test` runs Go with the race detector and the TypeScript suites. `lint` runs Go, TypeScript, workflow, and shell checks. `mise tasks` lists all tasks.
 
+`mise run build` embeds the production web client in `bin/nylzo` and injects the same build identity into Go and Vite. Untagged and modified checkouts identify themselves as development builds. See [versioning](../maintainers/Releasing.md#one-source-of-version-identity).
+
 ## Which CI checks run?
 
 CI selects test and build jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
@@ -59,8 +61,6 @@ gh workflow run ci.yml --ref main
 ```
 
 A successful full run on `main` produces `Release verification`. A documentation-only run cannot qualify a commit for release; see [Releasing](../maintainers/Releasing.md).
-
-`mise run build` embeds the production web client in `bin/nylzo` and injects the same build identity into Go and Vite. Untagged and modified checkouts identify themselves as development builds. See [versioning](../maintainers/Releasing.md#one-source-of-version-identity).
 
 ## Protocol vectors and memory
 
