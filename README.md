@@ -41,7 +41,7 @@ The pinned toolchain is Go 1.27.3, Node.js 24.22.1, and pnpm 12.14.0. `mise.lock
 
 ## Use the CLI
 
-Build the binary with `mise run build`. Run `bin/nylzo` for command help. Client commands include `create`, `read`, `status`, `cancel`, `burn`, and `report`; `verify-client` checks the web-client bytes served by an instance. The [Nylzo agent skill](skills/nylzo) explains using the CLI without placing secrets in an agent conversation.
+Build the binary with `mise run build`. Run `bin/nylzo` for command help or follow the [CLI guide](docs/cli.md) for examples and safe input/output handling. Client commands include `create`, `read`, `status`, `cancel`, `burn`, and `report`; `verify-client` checks the web-client bytes served by an instance. The [Nylzo agent skill](skills/nylzo) explains using the CLI without placing secrets in an agent conversation.
 
 Never paste a real message link, passphrase, or private key into a public issue, terminal recording, or support transcript. The link is a bearer secret even when a passphrase protects the message content.
 
