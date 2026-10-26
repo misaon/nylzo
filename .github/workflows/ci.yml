@@ -38,7 +38,7 @@ jobs:
           if [ "$EVENT" != pull_request ]; then echo code=true >> "$GITHUB_OUTPUT"; exit 0; fi
           files=$(git diff --name-only HEAD^1 HEAD)
           printf '%s\n' "$files"
-          if printf '%s\n' "$files" | grep -Ev '^(docs/|\.claude/|README\.md$|SECURITY\.md$)' | grep -q .; then
+          if printf '%s\n' "$files" | grep -Ev '^(docs/.*\.md$|README\.md$|SECURITY\.md$|CONTRIBUTING\.md$|CODE_OF_CONDUCT\.md$)' | grep -q .; then
             echo code=true >> "$GITHUB_OUTPUT"
           else
             echo code=false >> "$GITHUB_OUTPUT"
