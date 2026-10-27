@@ -9,7 +9,7 @@ aa703590f84ebab589e6680baaf8666f4461de5c4d0083c0204e4288c453193f  tools/security
 963b80f59010c83e8e82b1a737d8170fe5f78195f266392eb09385e0e21aff16  tools/security/automation.mts
 ada1af852c1cf6acc31490d0ea7f45be9062d59d35d961c071153b5b8110fbf0  tools/security/verify-tag
 a9ff9fd782bb9cf4664569fc32eb013eab82039ad18500575d67485060eb82b7  mise-tasks/release/checks
-b7fd631a7e7d53f3bb58f73a75852c7a8e6bd1e25080c98416892433b875a0fe  tools/security/verify-keyless-tag
+2471214c4daf0c62aad9297d373214c50ca4664ea62e0d6d0681ac8758de22b7  tools/security/verify-keyless-tag
 HASHES
 
 destination="${RUNNER_TEMP}/nylzo-security-policy"

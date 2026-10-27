@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   signing-probe:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
     name: Verify keyless tag signing without publishing
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b6a975e27befa6bc29ee8675458835ee6dd61e31182fe6dd7496c3092f622278  tools/security/bootstrap-policy' | sha256sum --check
+          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -46,6 +46,7 @@ jobs:
         env:
           GITSIGN_TOKEN_PROVIDER: github-actions
         run: |
+          gitsign version
           tag="automation-probe-${GITHUB_RUN_ID}"
           git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$tag" -m 'Local automation signing check'
           git cat-file tag "refs/tags/$tag" > "$RUNNER_TEMP/tag-probe.raw"
@@ -106,7 +107,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b6a975e27befa6bc29ee8675458835ee6dd61e31182fe6dd7496c3092f622278  tools/security/bootstrap-policy' | sha256sum --check
+          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -151,7 +152,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b6a975e27befa6bc29ee8675458835ee6dd61e31182fe6dd7496c3092f622278  tools/security/bootstrap-policy' | sha256sum --check
+          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
