@@ -53,3 +53,12 @@
 /web/app/fonts/README.md
 
 .sca-reports/
+
+# Deployment state, plans, generated configuration and operator keys
+/.deploy/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars.json
+crash.log

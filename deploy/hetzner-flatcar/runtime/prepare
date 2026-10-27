@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+mkdir -p /var/lib/nylzo/data /var/lib/nylzo-secrets /var/lib/nylzo-deploy
+chown 165532:165532 /var/lib/nylzo/data
+chmod 0700 /var/lib/nylzo/data
+if [[ ! -e /var/lib/nylzo-secrets/pepper ]]; then
+  openssl rand -hex 32 > /var/lib/nylzo-secrets/pepper.new
+  chown 165532:165532 /var/lib/nylzo-secrets/pepper.new
+  chmod 0400 /var/lib/nylzo-secrets/pepper.new
+  mv /var/lib/nylzo-secrets/pepper.new /var/lib/nylzo-secrets/pepper
+fi
+if ! docker network inspect nylzo >/dev/null 2>&1; then
+  docker network create --driver bridge --internal --opt com.docker.network.bridge.name=nylzo0 --subnet 172.30.81.0/24 --gateway 172.30.81.1 nylzo >/dev/null
+fi
+docker network inspect nylzo | /opt/nylzo/bin/jq -e '.[0].Driver == "bridge" and .[0].Internal == true and .[0].Options["com.docker.network.bridge.name"] == "nylzo0" and .[0].IPAM.Config[0].Subnet == "172.30.81.0/24" and .[0].IPAM.Config[0].Gateway == "172.30.81.1"' >/dev/null
+iptables --check INPUT --in-interface nylzo0 --match conntrack --ctstate NEW,INVALID --jump REJECT 2>/dev/null || \
+  iptables --insert INPUT 1 --in-interface nylzo0 --match conntrack --ctstate NEW,INVALID --jump REJECT
+test "$(docker info --format '{{json .SecurityOptions}}' | /opt/nylzo/bin/jq 'any(.[]; contains("userns"))')" = true

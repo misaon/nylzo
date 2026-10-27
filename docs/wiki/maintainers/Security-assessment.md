@@ -50,6 +50,8 @@ Filesystem interfaces are the configured data directory, SQLite and WAL files, e
 
 ## Assessment result and maintenance
 
+The experimental [Hetzner/Flatcar profile](../guides/Hetzner-Flatcar.md) introduces local infrastructure state, provider tokens, an image factory, OS updates, and a privileged host updater. Tokens and reporting private keys stay off the VPS; plans/state are encrypted, image downloads are signature-verified, and application updates require signed release identity and provenance. A failed persistent-state migration stops deployment rather than restoring consumed message state. The cloud provider and administrator remain trusted; there is no hardware-attested boot or protection from a hostile host. Real cloud provisioning, TLS, and A/B OS recovery require acceptance before production approval. External failure monitoring and operator response remain necessary.
+
 The highest-impact accepted limitation is browser-client delivery: TLS and client-side encryption do not protect a browser from the operator who serves its code. The signed CLI is the alternative for users who need to choose independently verified client code. The next priority is preserving lifecycle atomicity and confidentiality under faults; the protocol tests, race runs, timing tests, fuzz smoke tests, and cross-language vectors exercise those guarantees.
 
 Supply-chain controls establish artifact identity and gate known findings. They do not establish an independent cryptographic review. The project has one human maintainer and a documented review exception. It therefore does not meet the Baseline Level 3 requirement for non-author human approval on every primary-branch change. A bot approval does not satisfy that requirement.

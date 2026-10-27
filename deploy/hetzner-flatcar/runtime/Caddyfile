@@ -1,0 +1,36 @@
+{
+    admin off
+    acme_ca https://acme-v02.api.letsencrypt.org/directory
+    log default {
+        exclude http.log http.handlers http.stdlib
+    }
+}
+
+{$NYLZO_DOMAIN} {
+    header {
+        -Server
+        -Via
+    }
+    reverse_proxy 127.0.0.1:8080 {
+        transport http {
+            keepalive 25s
+        }
+    }
+    handle_errors {
+        header -Server
+        respond {err.status_code}
+    }
+}
+
+http://{$NYLZO_DOMAIN} {
+    header -Server
+    redir https://{host}{uri} 308
+}
+
+http:// {
+    abort
+}
+
+https:// {
+    abort
+}

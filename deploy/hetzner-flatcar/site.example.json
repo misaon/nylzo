@@ -1,0 +1,18 @@
+{
+  "name": "nylzo",
+  "domain": "nylzo.example.org",
+  "location": "nbg1",
+  "serverType": "cx23",
+  "architecture": "amd64",
+  "administratorNetworks": ["192.0.2.1/32"],
+  "administratorPublicKey": "",
+  "reportPublicKey": "",
+  "operator": "",
+  "contact": "",
+  "hosting": "Hetzner Cloud",
+  "dailyCreates": 250,
+  "initialRelease": "v0.1.2",
+  "automaticUpdates": true,
+  "dnsZone": "nylzo.example.org",
+  "cloudflareAccountId": ""
+}

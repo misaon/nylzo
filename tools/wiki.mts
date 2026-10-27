@@ -10,6 +10,7 @@ const sources = new Map([
   ["docs/wiki/Home.md", "Home"],
   ["docs/wiki/guides/Getting-started.md", "Getting-started"],
   ["docs/wiki/guides/Self-hosting.md", "Self-hosting"],
+  ["docs/wiki/guides/Hetzner-Flatcar.md", "Hetzner-Flatcar"],
   ["docs/wiki/guides/Security-model.md", "Security-model"],
   ["docs/wiki/guides/Verify-a-release.md", "Verify-a-release"],
   ["docs/wiki/guides/Development.md", "Development"],

@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+directory=$(mktemp -d)
+trap 'rm -rf "$directory"' EXIT
+node --test tools/deploy/*.test.mts
+node tools/deploy/check.mts "$directory"
+architecture=$(uname -m)
+case "$architecture" in
+  x86_64) checksum=06d9d80280803137a4bfbeb1eb82a9dbf04aaf84e6b9c760323f5156724ea448 ;;
+  aarch64) checksum=a933969407e245646476ca06c610350f21a10704045ab375cdc99ae86975e0b3 ;;
+  *) echo 'Validation requires Linux x86_64 or aarch64.' >&2; exit 1 ;;
+esac
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 180 \
+  "https://github.com/coreos/ignition/releases/download/v2.28.0/ignition-validate-${architecture}-linux" --output "$directory/ignition-validate"
+printf '%s  %s\n' "$checksum" "$directory/ignition-validate" | sha256sum --check --strict
+chmod 0755 "$directory/ignition-validate"
+for config in "$directory/"*.ign; do "$directory/ignition-validate" "$config"; done
+for stack in image server dns; do
+  tofu -chdir="deploy/hetzner-flatcar/infrastructure/$stack" fmt -check
+  tofu -chdir="deploy/hetzner-flatcar/infrastructure/$stack" init -backend=false -input=false -lockfile=readonly
+  tofu -chdir="deploy/hetzner-flatcar/infrastructure/$stack" validate
+ done

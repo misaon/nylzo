@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+[[ "${EXPECTED_BUILDER_NAME:-}" =~ ^[a-z][a-z0-9-]{0,30}-image-builder$ ]] || exit 1
+[[ "$(curl --fail --silent --max-time 3 http://169.254.169.254/hetzner/v1/metadata/hostname)" = "$EXPECTED_BUILDER_NAME" ]] || exit 1
+mapfile -t disks < <(lsblk --nodeps --noheadings --paths --output NAME,TYPE | awk '$2 == "disk" { print $1 }')
+[[ ${#disks[@]} = 1 ]] || { echo 'Installation requires exactly one disk.' >&2; exit 1; }
+while read -r device; do
+  if findmnt --noheadings --source "$device" >/dev/null; then
+    echo 'Refusing installation on a mounted disk.' >&2
+    exit 1
+  fi
+done < <(lsblk --noheadings --paths --output NAME "${disks[0]}")
+mkdir -p /run/nylzo-image/gnupg
+chmod 0700 /run/nylzo-image/gnupg
+gpg --batch --homedir /run/nylzo-image/gnupg --import /run/nylzo-image/flatcar.asc
+cd /run/nylzo-image
+base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
+image=flatcar_production_hetzner_image.bin.bz2
+curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$image" --output "$image"
+curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$image.sig" --output "$image.sig"
+gpg --batch --homedir /run/nylzo-image/gnupg --verify "$image.sig" "$image"
+bzip2 --decompress --stdout "$image" | dd of="${disks[0]}" bs=4M conv=fsync status=progress
+sync
+echo 'NYLZO_IMAGE_VERIFIED_AND_INSTALLED'
+systemctl poweroff
