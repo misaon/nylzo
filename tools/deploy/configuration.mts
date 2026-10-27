@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { isIP } from "node:net";
 
 export function configuration(input: any) {
-  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId"];
+  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess"];
   assert(input && typeof input === "object" && !Array.isArray(input));
   assert(Object.keys(input).every(key => allowed.includes(key)), "Unknown deployment option");
   assert.match(input.name, /^[a-z][a-z0-9-]{0,30}$/u);
@@ -31,6 +31,7 @@ export function configuration(input: any) {
   assert(Number.isSafeInteger(input.dailyCreates) && input.dailyCreates > 0 && input.dailyCreates <= 500, "This small-server profile permits at most 500 daily creations");
   assert.match(input.initialRelease, /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u);
   assert.equal(typeof input.automaticUpdates, "boolean");
+  if (input.publicAccess !== undefined) assert.equal(typeof input.publicAccess, "boolean");
   if (input.dnsZone !== undefined) assert(input.domain === input.dnsZone || input.domain.endsWith(`.${input.dnsZone}`), "DNS zone does not contain the instance domain");
   if (input.cloudflareAccountId) assert.match(input.cloudflareAccountId, /^[a-f0-9]{32}$/u);
   return input;

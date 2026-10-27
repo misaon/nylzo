@@ -18,7 +18,7 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
     { domain: "example.org\nExecStart=/bin/false" }, { name: "../other" },
     { administratorNetworks: ["0.0.0.0/0"] }, { administratorNetworks: ["::/0"] },
     { administratorNetworks: ["192.0.2.1/32/anything"] }, { architecture: "arm64" },
-    { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" },
+    { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" }, { publicAccess: "true" },
     { operator: "name\nNYLZO_TRUSTED_PROXIES=0.0.0.0/0" }, { unexpectedRootCommand: "/bin/false" },
     { administratorPublicKey: "ssh-ed25519 " + Buffer.alloc(51).toString("base64") },
   ]) assert.throws(() => configuration({ ...site, ...changed }));

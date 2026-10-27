@@ -46,6 +46,8 @@ The image factory starts a disposable Ubuntu server behind a firewall with no in
 
 The production stack starts a separate server from that snapshot with the final Ignition configuration. OpenTofu prevents routine server deletion/rebuild. There are no messages, pepper, reporting private key, or cloud credentials in the snapshot. Changes to Ignition are first-boot changes; an existing server cannot be reconfigured by merely editing `user_data`. Review and apply later host-configuration changes explicitly over the administrator connection, or provision a replacement with a deliberate state-migration procedure.
 
+Keep `publicAccess: false` during acceptance. HTTPS is then reachable only from the administrator networks. Port 80 remains public for ACME HTTP challenges and redirects; it does not expose the application API. After completing the checks below, set `publicAccess: true` and review/apply a new server plan to open HTTPS to visitors. This changes the firewall without replacing the server.
+
 ## Cloudflare DNS without proxying
 
 Create a Cloudflare account and a zone for the domain. Copy all required existing DNS records, including mail and verification records, before changing nameservers. Keep the registrar at Forpsi or your current registrar.

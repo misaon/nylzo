@@ -22,26 +22,33 @@ variable "flatcar_version" { type = string }
 variable "architecture" { type = string }
 variable "user_data_path" { type = string }
 variable "administrator_networks" { type = list(string) }
+variable "public_access" {
+  type    = bool
+  default = false
+}
 
 data "hcloud_image" "flatcar" { id = var.image_id }
 
 resource "hcloud_firewall" "server" {
   name   = var.name
   labels = { application = "nylzo" }
-  dynamic "rule" {
-    for_each = ["80", "443"]
-    content {
-      direction  = "in"
-      protocol   = "tcp"
-      port       = rule.value
-      source_ips = ["0.0.0.0/0", "::/0"]
-    }
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "80"
+    source_ips = ["0.0.0.0/0", "::/0"]
+  }
+  rule {
+    direction  = "in"
+    protocol   = "tcp"
+    port       = "443"
+    source_ips = var.public_access ? ["0.0.0.0/0", "::/0"] : var.administrator_networks
   }
   rule {
     direction  = "in"
     protocol   = "udp"
     port       = "443"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = var.public_access ? ["0.0.0.0/0", "::/0"] : var.administrator_networks
   }
   rule {
     direction  = "in"
