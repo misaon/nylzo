@@ -116,6 +116,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           cp "$RUNNER_TEMP/release-evidence/source.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.dependency-report.json"
           cp "$RUNNER_TEMP/release-evidence/go-imports.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.go-imports.json"
+          cp deploy/hetzner-flatcar/toolchain.json "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.host-tools.json"
           cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.source.spdx.json" "$RUNNER_TEMP/web-client/evidence/"
           if [ -f "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" ]; then
             cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" "$RUNNER_TEMP/web-client/evidence/"

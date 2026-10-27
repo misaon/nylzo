@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+export PATH="/opt/nylzo/bin:$PATH"
+version="${1:-}"
+[[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+temporary=$(mktemp -d /var/tmp/nylzo-host-tools.XXXXXXXX)
+trap 'rm -rf "$temporary"' EXIT
+cd "$temporary"
+manifest="nylzo_${version#v}.evidence.sha256"
+filename="nylzo_${version#v}.host-tools.json"
+base="https://github.com/misaon/nylzo/releases/download/$version"
+for artifact in "$manifest" "$manifest.sigstore.json" "$filename"; do
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --max-filesize 1048576 --retry 3 --max-time 90 "$base/$artifact" --output "$artifact"
+done
+cosign verify-blob "$manifest" --bundle "$manifest.sigstore.json" \
+  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$version" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+awk -v name="./$filename" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' "$manifest" | sha256sum --check --strict
+jq -e '
+  . as $manifest | ["gh", "cosign", "jq"] | all(.[];
+    . as $tool | $manifest[$tool] |
+    (.version | type == "string" and test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
+    (.amd64 | type == "string" and test("^[0-9a-f]{64}$")) and
+    (.arm64 | type == "string" and test("^[0-9a-f]{64}$")))' "$filename" >/dev/null
+architecture=$(jq -er .architecture /etc/nylzo/site.json)
+[[ "$architecture" = amd64 || "$architecture" = arm64 ]] || exit 1
+printf 'ARCHITECTURE=%s\n' "$architecture" > tools.env
+for tool in gh cosign jq; do
+  current=$(sed -n "s/^${tool^^}_VERSION=//p" /etc/nylzo/tools.env)
+  next=$(jq -er --arg tool "$tool" '.[$tool].version' "$filename")
+  [[ "$(printf '%s\n%s\n' "$current" "$next" | sort --version-sort | tail -n 1)" = "$next" ]] || { echo 'Host tool downgrade refused.' >&2; exit 1; }
+  printf '%s_VERSION=%s\n' "${tool^^}" "$next" >> tools.env
+  printf '%s_SHA256=%s\n' "${tool^^}" "$(jq -er --arg tool "$tool" --arg architecture "$architecture" '.[$tool][$architecture]' "$filename")" >> tools.env
+done
+install --mode=0644 tools.env /etc/nylzo/tools.env.next
+mv /etc/nylzo/tools.env.next /etc/nylzo/tools.env
+/opt/nylzo/runtime/install-tools
+expected="/opt/nylzo/tools/$(sha256sum < /etc/nylzo/tools.env | cut -d ' ' -f 1)"
+[[ "$(readlink -f /opt/nylzo/tools/current)" = "$expected" ]]

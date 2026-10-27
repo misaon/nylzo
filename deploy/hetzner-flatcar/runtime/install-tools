@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+# The root-owned configuration is generated on the host, outside this checkout.
+# shellcheck source=/dev/null
+source /etc/nylzo/tools.env
+mkdir -p /opt/nylzo/bin /opt/nylzo/tools /var/cache/nylzo-tools
+chmod 0755 /opt/nylzo /opt/nylzo/bin /opt/nylzo/tools
+fallback() {
+  if [[ -s /opt/nylzo/tools/current/checksums.txt ]] && sha256sum --check --status /opt/nylzo/tools/current/checksums.txt; then
+    echo 'Tool refresh failed; retaining the previous verified generation.' >&2
+    exit 0
+  fi
+  exit 1
+}
+trap fallback ERR
+generation="/opt/nylzo/tools/$(sha256sum < /etc/nylzo/tools.env | cut -d ' ' -f 1)"
+cd /var/cache/nylzo-tools
+fetch() {
+  local url="$1" file="$2" checksum="$3"
+  if ! echo "$checksum  $file" | sha256sum --check --status; then
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 90 --max-filesize 268435456 "$url" --output "$file.part"
+    echo "$checksum  $file.part" | sha256sum --check --status
+    mv "$file.part" "$file"
+  fi
+}
+fetch "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-${ARCHITECTURE}" jq "$JQ_SHA256"
+fetch "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-${ARCHITECTURE}" cosign "$COSIGN_SHA256"
+fetch "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCHITECTURE}.tar.gz" gh.tar.gz "$GH_SHA256"
+tar --extract --gzip --file gh.tar.gz --to-stdout "gh_${GH_VERSION}_linux_${ARCHITECTURE}/bin/gh" > gh
+mkdir -p "$generation"
+chmod 0755 "$generation"
+for tool in jq cosign gh; do install --mode=0755 "$tool" "$generation/$tool"; done
+sha256sum "$generation/gh" "$generation/jq" "$generation/cosign" > "$generation/checksums.txt"
+previous=$(readlink -f /opt/nylzo/tools/current 2>/dev/null || true)
+if [[ -n "$previous" && "$previous" != "$generation" && -d "$previous" ]]; then
+  ln --symbolic --force --no-dereference --no-target-directory "$previous" /opt/nylzo/tools/previous
+fi
+ln --symbolic --force --no-dereference --no-target-directory "$generation" /opt/nylzo/tools/current.next
+mv --no-target-directory /opt/nylzo/tools/current.next /opt/nylzo/tools/current
+for tool in jq cosign gh; do ln --symbolic --force --no-dereference --no-target-directory "../tools/current/$tool" "/opt/nylzo/bin/$tool"; done

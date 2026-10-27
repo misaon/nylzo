@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+#MISE description="Plan and apply a verified Hetzner Flatcar deployment with encrypted local state"
+set -euo pipefail
+exec mise exec opentofu@1.13.2 -- node tools/deploy/hetzner.mts "$@"

@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+export PATH="/opt/nylzo/bin:$PATH"
+export GH_CONFIG_DIR=/run/nylzo-deploy-gh
+unset GH_TOKEN GITHUB_TOKEN
+if [[ "${1:-}" = check ]]; then
+  status=0
+  /opt/nylzo/runtime/update caddy || status=1
+  /opt/nylzo/runtime/update nylzo || status=1
+  exit "$status"
+fi
+exec 9>/run/nylzo-deploy.lock
+flock --nonblock 9 || exit 0
+site=/etc/nylzo/site.json
+state=/var/lib/nylzo-deploy
+mkdir -p "$state" "$GH_CONFIG_DIR"
+[[ ! -e "$state/failed.json" ]] || { echo 'A failed deployment requires inspection; database rollback is refused.' >&2; exit 1; }
+temporary=$(mktemp -d /var/tmp/nylzo-update.XXXXXXXX)
+cleanup() {
+  docker rm --force nylzo-probe >/dev/null 2>&1 || true
+  rm -rf "$temporary"
+}
+trap cleanup EXIT
+download() {
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 180 --max-filesize 134217728 "$1" --output "$2"
+}
+patch() {
+  local previous="$1" next="$2"
+  [[ "$previous" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  [[ "$next" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  local component
+  for component in ${previous//[v.]/ } ${next//[v.]/ }; do
+    [[ ${#component} -le 9 ]] || return 1
+  done
+  [[ "${previous%.*}" = "${next%.*}" && "${next##*.}" -gt "${previous##*.}" ]]
+}
+latest() {
+  download "https://api.github.com/repos/$1/releases/latest" "$temporary/release.json" || return
+  jq -er 'select(.draft == false and .prerelease == false) | .tag_name' "$temporary/release.json"
+}
+caddy() {
+  local version previous directory
+  version="v$(jq -r .caddy "$site")"
+  if [[ -s "$state/caddy.tag" ]]; then
+    previous=$(cat "$state/caddy.tag")
+    version=$(latest caddyserver/caddy)
+    [[ "$previous" != "$version" ]] || return 0
+    patch "$previous" "$version" || { echo 'Caddy needs a reviewed minor or major upgrade.' >&2; return 1; }
+  fi
+  [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+  directory="/opt/nylzo/caddy/$version"
+  mkdir -p /opt/nylzo/caddy "$directory"
+  chmod 0755 /opt/nylzo/caddy "$directory"
+  local base="https://github.com/caddyserver/caddy/releases/download/$version/caddy_${version#v}"
+  for suffix in checksums.txt checksums.txt.pem checksums.txt.sig; do download "${base}_${suffix}" "$temporary/$suffix"; done
+  cosign verify-blob "$temporary/checksums.txt" --certificate "$temporary/checksums.txt.pem" --signature "$temporary/checksums.txt.sig" \
+    --certificate-identity "https://github.com/caddyserver/caddy/.github/workflows/release.yml@refs/tags/$version" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+  local architecture archive
+  architecture=$(jq -r .architecture "$site")
+  archive="caddy_${version#v}_linux_${architecture}.tar.gz"
+  download "${base}_linux_${architecture}.tar.gz" "$temporary/$archive"
+  (cd "$temporary" && awk -v name="$archive" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' checksums.txt | sha512sum --check --strict)
+  tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$directory/caddy"
+  chmod 0755 "$directory/caddy"
+  export NYLZO_DOMAIN
+  NYLZO_DOMAIN=$(jq -r .domain "$site")
+  systemd-run --wait --pipe --collect --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$NYLZO_DOMAIN" "$directory/caddy" validate --config /etc/caddy/Caddyfile >/dev/null
+  ln --symbolic --force --no-dereference --no-target-directory "$directory/caddy" /opt/nylzo/bin/caddy.next
+  mv -T /opt/nylzo/bin/caddy.next /opt/nylzo/bin/caddy
+  if ! systemctl restart caddy.service || ! sleep 2 || ! systemctl is-active --quiet caddy.service; then
+    if [[ -n "${previous:-}" ]]; then
+      ln --symbolic --force --no-dereference --no-target-directory "/opt/nylzo/caddy/$previous/caddy" /opt/nylzo/bin/caddy.previous
+      mv -T /opt/nylzo/bin/caddy.previous /opt/nylzo/bin/caddy
+      systemctl restart caddy.service
+    fi
+    return 1
+  fi
+  if [[ -n "${previous:-}" ]]; then printf '%s\n' "$previous" > "$state/caddy.previous.tag"; fi
+  printf '%s\n' "$version" > "$state/caddy.tag"
+}
+nylzo() {
+  local version previous digest image
+  version=$(jq -r .initialRelease "$site")
+  if [[ -s "$state/current.json" ]]; then
+    previous=$(jq -r .tag "$state/current.json")
+    version=$(latest misaon/nylzo)
+    [[ "$previous" != "$version" ]] || return 0
+    patch "$previous" "$version" || { echo 'Nylzo needs a reviewed minor or major upgrade.' >&2; return 1; }
+  else
+    download "https://api.github.com/repos/misaon/nylzo/releases/tags/$version" "$temporary/release.json"
+  fi
+  [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  jq -e --arg version "$version" '.tag_name == $version and .immutable == true and .draft == false and .prerelease == false' "$temporary/release.json" >/dev/null
+  image=ghcr.io/misaon/nylzo
+  cosign verify "$image:${version#v}" --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$version" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com --output json > "$temporary/signature.json"
+  digest=$(jq -er 'map(.critical.image["docker-manifest-digest"]) | unique | if length == 1 then .[0] else error("ambiguous image digest") end' "$temporary/signature.json")
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || return 1
+  download "https://api.github.com/repos/misaon/nylzo/attestations/$digest" "$temporary/provenance.json"
+  jq -ce '.attestations[].bundle' "$temporary/provenance.json" > "$temporary/provenance.jsonl"
+  gh attestation verify "oci://$image@$digest" --bundle "$temporary/provenance.jsonl" --repo misaon/nylzo \
+    --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$version" --deny-self-hosted-runners >/dev/null
+  if [[ -n "${previous:-}" ]]; then /opt/nylzo/runtime/refresh-tools "$version"; fi
+  docker pull "$image@$digest" >/dev/null
+  mkdir "$temporary/data"
+  chown 165532:165532 "$temporary/data"
+  openssl rand -hex 32 > "$temporary/pepper"
+  chown 165532:165532 "$temporary/pepper"
+  chmod 0400 "$temporary/pepper"
+  docker run --detach --name nylzo-probe --user 65532:65532 --network none \
+    --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+    --memory 1g --cpus 1.5 --pids-limit 128 --env-file /etc/nylzo/service.env \
+    --mount "type=bind,source=$temporary/data,target=/home/nonroot" \
+    --mount "type=bind,source=$temporary/pepper,target=/run/nylzo-pepper,readonly" "$image@$digest" serve >/dev/null
+  local ready=false
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    if docker exec nylzo-probe /ko-app/nylzo verify-client --server http://127.0.0.1:8080 >/dev/null 2>&1; then ready=true; break; fi
+    sleep 2
+  done
+  [[ "$ready" = true ]] || return 1
+  docker rm --force nylzo-probe >/dev/null
+  systemctl stop nylzo.service
+  [[ ! -s "$state/current.json" ]] || cp "$state/current.json" "$state/previous.json"
+  jq -n --arg tag "$version" --arg digest "$digest" '{tag:$tag,digest:$digest}' > "$state/current.json.new"
+  sync "$state/current.json.new"
+  mv "$state/current.json.new" "$state/current.json"
+  sync "$state"
+  if ! systemctl start nylzo.service || ! /opt/nylzo/runtime/health; then
+    systemctl stop nylzo.service
+    cp "$state/current.json" "$state/failed.json"
+    echo 'Candidate failed on persistent state; automatic database or binary rollback is refused.' >&2
+    return 1
+  fi
+  echo "Installed verified Nylzo $version at $digest"
+  /opt/nylzo/runtime/clean
+}
+case "${1:-}" in
+  initialize)
+    if [[ -s "$state/current.json" ]]; then
+      systemctl start nylzo.service caddy.service
+    else
+      caddy
+      nylzo
+    fi
+    ;;
+  caddy) caddy ;;
+  nylzo) nylzo ;;
+  *) echo 'Usage: update initialize|check|caddy|nylzo' >&2; exit 2 ;;
+esac

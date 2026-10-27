@@ -5,6 +5,8 @@
 /mise.toml @misaon
 /mise.lock @misaon
 /mise-tasks/ @misaon
+/deploy/ @misaon
+/tools/deploy/ @misaon
 /spec/ @misaon
 /docs/wiki/reference/Protocol.md @misaon
 /internal/core/ @misaon

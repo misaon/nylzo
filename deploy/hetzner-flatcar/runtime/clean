@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH="/opt/nylzo/bin:$PATH"
+state=/var/lib/nylzo-deploy
+[[ -s "$state/current.json" && ! -e "$state/failed.json" ]] || exit 0
+current=$(jq -er .digest "$state/current.json")
+previous=$(jq -er .digest "$state/previous.json" 2>/dev/null || true)
+while read -r digest; do
+  if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ && "$digest" != "$current" && "$digest" != "$previous" ]]; then
+    docker image rm "ghcr.io/misaon/nylzo@$digest" >/dev/null 2>&1 || true
+  fi
+done < <(docker image ls --digests --format '{{.Digest}}' ghcr.io/misaon/nylzo | sort --unique)
+current_caddy=$(cat "$state/caddy.tag")
+previous_caddy=$(cat "$state/caddy.previous.tag" 2>/dev/null || true)
+for directory in /opt/nylzo/caddy/*; do
+  name=${directory##*/}
+  if [[ "$name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$name" != "$current_caddy" && "$name" != "$previous_caddy" ]]; then
+    rm -rf -- "$directory"
+  fi
+done
+current_tools=$(readlink -f /opt/nylzo/tools/current)
+previous_tools=$(readlink -f /opt/nylzo/tools/previous 2>/dev/null || true)
+for directory in /opt/nylzo/tools/*; do
+  if [[ "${directory##*/}" =~ ^[0-9a-f]{64}$ && "$directory" != "$current_tools" && "$directory" != "$previous_tools" ]]; then
+    rm -rf -- "$directory"
+  fi
+done

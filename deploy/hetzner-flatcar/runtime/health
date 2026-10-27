@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PATH="/opt/nylzo/bin:$PATH"
+expected=$(jq -er .tag /var/lib/nylzo-deploy/current.json)
+for ((attempt = 0; attempt < 60; attempt++)); do
+  if systemctl is-active --quiet caddy.service && \
+    curl --fail --silent --max-time 3 http://172.30.81.2:8080/healthz >/dev/null && \
+    curl --fail --silent --max-time 3 http://172.30.81.2:8080/api/v1/instance | jq -e --arg version "${expected#v}" '.build.version == $version and .build.dirty == false' >/dev/null; then
+    os_version=$(sed -n 's/^VERSION_ID=//p' /etc/os-release)
+    printf '%s\n' "${os_version//\"/}" > /var/lib/nylzo-deploy/last-good-os
+    exit 0
+  fi
+  sleep 2
+done
+echo 'Nylzo health verification failed; no database snapshot has been restored.' >&2
+exit 1

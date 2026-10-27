@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+digest=$(/opt/nylzo/bin/jq -er .digest /var/lib/nylzo-deploy/current.json)
+[[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+exec docker run --rm --name nylzo --pull=never --user 65532:65532 \
+  --network nylzo --ip 172.30.81.2 \
+  --read-only --cap-drop ALL --security-opt no-new-privileges:true \
+  --memory 1g --cpus 1.5 --pids-limit 128 \
+  --env-file /etc/nylzo/service.env \
+  --mount type=bind,source=/var/lib/nylzo/data,target=/home/nonroot \
+  --mount type=bind,source=/var/lib/nylzo-secrets/pepper,target=/run/nylzo-pepper,readonly \
+  "ghcr.io/misaon/nylzo@$digest" serve

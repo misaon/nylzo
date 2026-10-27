@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+os_version=$(sed -n 's/^VERSION_ID=//p' /etc/os-release)
+os_version=${os_version//\"/}
+previous=$(cat /var/lib/nylzo-deploy/last-good-os 2>/dev/null || true)
+if [[ -n "$previous" && "$previous" != "$os_version" ]]; then
+  echo 'New OS failed the application health gate; rebooting before confirming the boot slot.' >&2
+  systemctl --no-block reboot
+fi

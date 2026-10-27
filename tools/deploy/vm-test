@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+directory="${1:-.deploy/vm}"
+mkdir -p "$directory"
+directory=$(realpath "$directory")
+node tools/deploy/check.mts "$directory"
+node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign"
+version=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
+base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
+image=flatcar_production_qemu_image.img.bz2
+mkdir -p "$directory/gnupg"
+chmod 0700 "$directory/gnupg"
+gpg --batch --homedir "$directory/gnupg" --import deploy/hetzner-flatcar/bootstrap/flatcar.asc
+for name in "$image" "$image.sig"; do
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 600 "$base/$name" --output "$directory/$name"
+done
+gpg --batch --homedir "$directory/gnupg" --verify "$directory/$image.sig" "$directory/$image"
+bzip2 --decompress --stdout "$directory/$image" > "$directory/base.qcow2"
+qemu-img create -f qcow2 -F qcow2 -b "$directory/base.qcow2" "$directory/runtime.qcow2" 40G
+accelerator=tcg
+if [[ -r /dev/kvm && -w /dev/kvm ]]; then accelerator=kvm; fi
+for boot in first second; do
+  timeout 1200 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
+    -nographic -monitor none -no-reboot -drive "file=$directory/runtime.qcow2,format=qcow2,if=virtio" \
+    -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+    -fw_cfg "name=opt/org.flatcar-linux/config,file=$directory/vm.ign" > "$directory/$boot.log" 2>&1 || { tail -200 "$directory/$boot.log"; exit 1; }
+  if [[ "$boot" = first ]]; then marker=NYLZO_VM_REBOOT_READY; else marker=NYLZO_VM_ACCEPTANCE_PASSED; fi
+  grep --fixed-strings "$marker" "$directory/$boot.log" || { tail -200 "$directory/$boot.log"; exit 1; }
+done

@@ -5,6 +5,7 @@
 - [Verify a release](guides/Verify-a-release.md)
 - [CLI guide](guides/CLI.md)
 - [Self-hosting](guides/Self-hosting.md)
+- [Hetzner and Flatcar](guides/Hetzner-Flatcar.md)
 - [Operations](guides/Operations.md)
 
 **Understand and contribute**

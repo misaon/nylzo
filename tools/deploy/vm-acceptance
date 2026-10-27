@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+directory=/var/lib/nylzo-vm-test
+mkdir -p "$directory"
+docker cp nylzo:/ko-app/nylzo "$directory/nylzo"
+chmod 0755 "$directory/nylzo"
+"$directory/nylzo" verify-client --server http://127.0.0.1
+if [[ ! -e "$directory/rebooted" ]]; then
+  printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/burned-link"
+  "$directory/nylzo" burn < "$directory/burned-link"
+  sha256sum /var/lib/nylzo-secrets/pepper > "$directory/pepper.sha256"
+  touch "$directory/rebooted"
+  sync
+  echo 'NYLZO_VM_REBOOT_READY'
+  systemctl reboot
+else
+  sha256sum --check "$directory/pepper.sha256"
+  "$directory/nylzo" read --stdout < "$directory/live-link" > "$directory/received"
+  cmp "$directory/message" "$directory/received"
+  if "$directory/nylzo" read --stdout < "$directory/burned-link" > /dev/null 2>&1; then
+    echo 'Burned message was resurrected.' >&2
+    exit 1
+  fi
+  echo 'NYLZO_VM_ACCEPTANCE_PASSED'
+  systemctl poweroff
+fi

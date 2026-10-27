@@ -7,7 +7,7 @@ export function planChecks(files: string[], event: string) {
   if (!["pull_request", "push", "schedule", "workflow_dispatch"].includes(event)) {
     throw new Error(`Unsupported CI event: ${event}`);
   }
-  const groups = { go: false, web: false, integration: false, repository: false, dependencies: false, actions: false };
+  const groups = { go: false, web: false, integration: false, repository: false, deployment: false, dependencies: false, actions: false };
   let full = event === "schedule" || event === "workflow_dispatch" || files.length === 0;
   for (const file of files) {
     if (
@@ -15,6 +15,9 @@ export function planChecks(files: string[], event: string) {
       /^(internal\/(core|pepper)\/|cmd\/nylzo-vectors\/|spec\/|web\/core\/)/u.test(file)
     ) {
       full = true;
+    } else if (/^(deploy\/hetzner-flatcar\/|tools\/deploy\/|mise-tasks\/deploy$)/u.test(file)) {
+      groups.deployment = true;
+      groups.repository = true;
     } else if (
       /^(docs\/wiki\/.*\.md|README\.md|SECURITY\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|LICENSE)$/u.test(file) ||
       /^(assets\/readme\/|skills\/.*\.md$|\.github\/(ISSUE_TEMPLATE\/|PULL_REQUEST_TEMPLATE\.md$))/u.test(file)
@@ -50,6 +53,7 @@ export function planChecks(files: string[], event: string) {
     web: groups.web,
     coverage: groups.go || groups.web,
     repository: groups.repository,
+    deployment: groups.deployment,
     "dependency-review": event === "pull_request" && groups.dependencies,
     e2e: groups.integration,
     "dev-setup": groups.integration,
