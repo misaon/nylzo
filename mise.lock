@@ -60,6 +60,35 @@ url = "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-darwin
 url_api = "https://api.github.com/repos/sigstore/cosign/releases/assets/660069002"
 provenance = "cosign"
 
+[[tools.gitsign]]
+version = "0.18.0"
+backend = "aqua:sigstore/gitsign"
+specifiers = ["0.18.0"]
+
+[tools.gitsign."platforms.linux-arm64"]
+checksum = "sha256:dec27cbc6602c62542f738312082d481254c743ff91055ecc394cf3a60be1c01"
+url = "https://github.com/sigstore/gitsign/releases/download/v0.18.0/gitsign_0.18.0_linux_arm64"
+url_api = "https://api.github.com/repos/sigstore/gitsign/releases/assets/660302682"
+provenance = "cosign"
+
+[tools.gitsign."platforms.linux-x64"]
+checksum = "sha256:2bc625472a08fea3bb6a57982c7d8b4978d1032251d305ceef3bf2ded0ca4483"
+url = "https://github.com/sigstore/gitsign/releases/download/v0.18.0/gitsign_0.18.0_linux_amd64"
+url_api = "https://api.github.com/repos/sigstore/gitsign/releases/assets/660302601"
+provenance = "cosign"
+
+[tools.gitsign."platforms.macos-arm64"]
+checksum = "sha256:32db71436dcfcba055517165ac6dfaa8aacbc73c405405259149df4a188ff7b1"
+url = "https://github.com/sigstore/gitsign/releases/download/v0.18.0/gitsign_0.18.0_darwin_arm64"
+url_api = "https://api.github.com/repos/sigstore/gitsign/releases/assets/660314816"
+provenance = "cosign"
+
+[tools.gitsign."platforms.macos-x64"]
+checksum = "sha256:224253f24e98cd024741c80d8ba7a42a9ce11710ba94b6e88084e7a987406540"
+url = "https://github.com/sigstore/gitsign/releases/download/v0.18.0/gitsign_0.18.0_darwin_amd64"
+url_api = "https://api.github.com/repos/sigstore/gitsign/releases/assets/660314820"
+provenance = "cosign"
+
 [[tools.go]]
 version = "1.27.3"
 backend = "core:go"

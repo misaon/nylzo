@@ -19,6 +19,8 @@ jobs:
     name: Signed tag on main and protected environment
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      environment: ${{ steps.tag.outputs.environment }}
     permissions:
       contents: read
       checks: read # require successful CI and CodeQL before building a release
@@ -30,27 +32,34 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: The release tagger signed the tag, which names the built commit on main
+      - name: Verify and isolate the approved automation policy
+        run: |
+          echo 'd9ca412031153da1eeb2ebeb38ed8c2d21e0a9a85bf2e3632c6c55b23f8d9e74  tools/security/bootstrap-policy' | sha256sum --check
+          bash tools/security/bootstrap-policy
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        env:
+          MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
+        with:
+          version: 2026.10.9
+          install_args: gitsign
+          working_directory: ${{ runner.temp }}/nylzo-security-policy
+          add_shims_to_path: false
+          cache: false
+      - name: Verify the tag name, source, and authorized signing identity
+        id: tag
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAGGER_EMAIL: ${{ vars.RELEASE_TAGGER_EMAIL }}
-        run: |
-          test -n "${RELEASE_TAGGER_EMAIL}"
-          [[ "${GITHUB_REF_NAME}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          git fetch --force --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}" "+refs/heads/main:refs/remotes/origin/main"
-          test "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" = tag
-          test "$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"
-          git merge-base --is-ancestor "${GITHUB_SHA}" refs/remotes/origin/main
-          tag_sha=$(git rev-parse "refs/tags/${GITHUB_REF_NAME}")
-          gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_sha}" > "${RUNNER_TEMP}/tag.json"
-          test "$(jq -r .verification.verified "${RUNNER_TEMP}/tag.json")" = true
-          test "$(jq -r .tagger.email "${RUNNER_TEMP}/tag.json")" = "${RELEASE_TAGGER_EMAIL}"
+          SECURITY_AUTOMATION_ENABLED: ${{ vars.SECURITY_AUTOMATION_ENABLED }}
+          SECURITY_APP_SLUG: ${{ vars.SECURITY_APP_SLUG }}
+        run: bash "$RUNNER_TEMP/nylzo-security-policy/tools/security/verify-tag"
       - name: The source commit passed CI and every CodeQL analysis on main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bash mise-tasks/release/checks "${GITHUB_SHA}"
-      - name: The release environment requires a reviewer
+          bash "$RUNNER_TEMP/nylzo-security-policy/mise-tasks/release/checks" "${GITHUB_SHA}"
+      - name: The manual release environment requires a reviewer
+        if: steps.tag.outputs.environment == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -64,6 +73,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      pull-requests: read # inspect the merged security PR for an exact release-age exception
     outputs:
       manifest: ${{ steps.manifest.outputs.sha256 }}
     steps:
@@ -83,8 +93,9 @@ jobs:
       - name: Build the web client for the exact release tag
         env:
           NYLZO_VERSION: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          pnpm --dir web install --frozen-lockfile --config.confirmModulesPurge=false
+          node tools/security/install-web.mts
           pnpm --dir web --filter @nylzo/web build
           jq -e --arg version "${GITHUB_REF_NAME#v}" --arg commit "${GITHUB_SHA}" \
             '.version == $version and .commit == $commit and .dirty == false' internal/server/web/dist/assets/build-info.json
@@ -109,7 +120,7 @@ jobs:
     needs: [guard, web]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: release
+    environment: ${{ needs.guard.outputs.environment }}
     permissions:
       contents: write # create the GitHub release and upload its files
       packages: write # push the image to ghcr.io
