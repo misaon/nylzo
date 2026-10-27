@@ -17,6 +17,7 @@ case "$1" in
  merge-base) exit "${"${ANCESTOR_STATUS:-0}"}" ;;
 esac
 `,
+      sleep: '#!/bin/sh\nexit 0\n',
       gh: '#!/bin/sh\nprintf "%s" "$TAG_JSON"\n',
       gitsign: '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/claims"\nexit "${SIGNATURE_STATUS:-0}"\n',
     };

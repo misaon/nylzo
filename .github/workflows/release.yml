@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'b6a975e27befa6bc29ee8675458835ee6dd61e31182fe6dd7496c3092f622278  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -76,6 +76,7 @@ jobs:
       pull-requests: read # inspect the merged security PR for an exact release-age exception
     outputs:
       manifest: ${{ steps.manifest.outputs.sha256 }}
+      evidence_manifest: ${{ steps.manifest.outputs.evidence_sha256 }}
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -90,6 +91,11 @@ jobs:
         with:
           node-version-file: web/.node-version
           package-manager-cache: false
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          version: 2026.10.9
+          install_args: go osv-scanner
+          cache: false
       - name: Build the web client for the exact release tag
         env:
           NYLZO_VERSION: ${{ github.ref_name }}
@@ -99,10 +105,23 @@ jobs:
           pnpm --dir web --filter @nylzo/web build
           jq -e --arg version "${GITHUB_REF_NAME#v}" --arg commit "${GITHUB_SHA}" \
             '.version == $version and .commit == $commit and .dirty == false' internal/server/web/dist/assets/build-info.json
+      - name: Check source dependencies and generate the release SBOM and VEX
+        env:
+          NYLZO_VERSION: ${{ github.ref_name }}
+        run: node tools/sca/scan.mts "$RUNNER_TEMP/release-evidence" --sbom
       - name: SHA-256 manifest of the build
         id: manifest
         run: |
-          mkdir "${RUNNER_TEMP}/web-client"
+          mkdir -p "${RUNNER_TEMP}/web-client/evidence"
+          version="${GITHUB_REF_NAME#v}"
+          cp "$RUNNER_TEMP/release-evidence/source.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.dependency-report.json"
+          cp "$RUNNER_TEMP/release-evidence/go-imports.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.go-imports.json"
+          cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.source.spdx.json" "$RUNNER_TEMP/web-client/evidence/"
+          if [ -f "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" ]; then
+            cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" "$RUNNER_TEMP/web-client/evidence/"
+          fi
+          (cd "$RUNNER_TEMP/web-client/evidence" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "$RUNNER_TEMP/web-client/evidence.sha256"
+          echo "evidence_sha256=$(sha256sum < "$RUNNER_TEMP/web-client/evidence.sha256" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
           cp -R internal/server/web/dist "${RUNNER_TEMP}/web-client/dist"
           cd "${RUNNER_TEMP}/web-client/dist"
           find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > ../dist.sha256
@@ -153,6 +172,13 @@ jobs:
           cat dist.sha256
           test ! -e "${GITHUB_WORKSPACE}/internal/server/web/dist"
           cp -R dist "${GITHUB_WORKSPACE}/internal/server/web/dist"
+      - name: The dependency evidence matches the readonly web job
+        env:
+          EXPECTED_EVIDENCE_SHA256: ${{ needs.web.outputs.evidence_manifest }}
+        run: |
+          cd "$RUNNER_TEMP/web-client"
+          test "$(sha256sum < evidence.sha256 | cut -d ' ' -f 1)" = "$EXPECTED_EVIDENCE_SHA256"
+          (cd evidence && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | cmp - evidence.sha256
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -232,6 +258,18 @@ jobs:
           path: vulnerability-reports
           if-no-files-found: error
           retention-days: 30
+      - name: Sign and upload the dependency report, source SBOM, and VEX
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          manifest="$RUNNER_TEMP/web-client/nylzo_${GITHUB_REF_NAME#v}.evidence.sha256"
+          cp "$RUNNER_TEMP/web-client/evidence.sha256" "$manifest"
+          cosign sign-blob "$manifest" --bundle "${manifest}.sigstore.json" --yes
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$RUNNER_TEMP/web-client/evidence/"*.json "$manifest" "${manifest}.sigstore.json"
+      - name: Provenance of the source SBOM and vulnerability evidence
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/web-client/evidence.sha256
       - name: Promote the verified candidate to its stable image tag
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}

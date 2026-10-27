@@ -48,6 +48,8 @@ CI selects test and build jobs from changed paths on pull requests and pushes to
 | Deployment configuration                                                                                 | Workflow/script checks, integration and builds                                  |
 | Protocol, vectors, either cryptographic core, dependencies, CI, toolchain, build tools, or unknown paths | Full verification                                                               |
 
+Code, build, configuration, and dependency changes also run the required SCA job against both lockfiles, including known-malware and license checks. It retains raw findings and import evidence; exact non-affected findings have a bounded VEX assessment. See [security control policies](../maintainers/Security-controls.md).
+
 Every pull request also runs all three CodeQL analyses. The repository requires CodeQL results before merge; skipping them leaves even a documentation-only PR blocked. On pushes to `main`, CodeQL runs only for the affected languages.
 
 Integration includes Chromium, Firefox, WebKit, Compose, developer setup, and reproducible release archives. Mixed changes combine their checks. `Protocol.md` remains a full-verification input because Go and browser tests read its CSP contract.

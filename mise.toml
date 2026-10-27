@@ -6,7 +6,7 @@ lockfile = true
 [tools]
 go = "1.27.3"
 node = "24.22.1"
-pnpm = "12.14.0"
+pnpm = "12.15.0"
 goreleaser = "2.18.3"
 golangci-lint = "2.15.0"
 actionlint = "1.7.12"
@@ -15,6 +15,7 @@ shellcheck = "0.11.0"
 cosign = "3.1.4"
 grype = "0.121.0"
 gitsign = "0.18.0"
+osv-scanner = "2.7.0"
 
 [env]
 GOTOOLCHAIN = "local"
@@ -56,16 +57,17 @@ run = [
 description = "Every static check of CI: Go, TypeScript, workflows and scripts"
 depends = ["install"]
 run = [
+  "node tools/sca/scan.mts .sca-reports",
   "go mod verify",
   "go mod tidy -diff",
   "golangci-lint run ./...",
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
-  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts",
+  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/sca/*.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy",
+  "shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag",
   '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',

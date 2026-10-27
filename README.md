@@ -26,7 +26,7 @@
   <a href="https://github.com/misaon/nylzo/actions/workflows/ci.yml"><img src="https://github.com/misaon/nylzo/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI on main"></a>
   <a href="https://app.codecov.io/gh/misaon/nylzo"><img src="https://codecov.io/gh/misaon/nylzo/branch/main/graph/badge.svg" alt="Test coverage on main"></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo"><img src="https://api.scorecard.dev/projects/github.com/misaon/nylzo/badge" alt="OpenSSF Scorecard"></a>
-  <a href="https://www.bestpractices.dev/projects/15969"><img src="https://www.bestpractices.dev/projects/15969/baseline" alt="OpenSSF Baseline Level 1 self-assessment"></a>
+  <a href="https://www.bestpractices.dev/projects/15969"><img src="https://www.bestpractices.dev/projects/15969/baseline" alt="OpenSSF Baseline self-assessment"></a>
 </p>
 
 ## Share on your terms

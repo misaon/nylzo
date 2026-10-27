@@ -19,6 +19,8 @@ Review findings individually. A young project with one maintainer can score lowe
 
 The [OpenSSF Baseline profile](https://www.bestpractices.dev/en/projects/15969) links assertions to supporting evidence. Its badge is a self-assessment, separate from the automated Scorecard report. Keep assertions current and display only earned badge levels.
 
+The [control policies](Security-controls.md) define source-analysis, license, VEX, and credential requirements. The [security assessment](Security-assessment.md) maps actors, interfaces, and threats to implementation controls and tests.
+
 ## Test coverage
 
 [Codecov](https://app.codecov.io/gh/misaon/nylzo) receives the existing Go race-test shard profiles and the core and web-client Vitest reports. Go profiles use atomic counters and instrument first-party packages. The TypeScript core and web client use Istanbul to avoid profiling third-party cryptographic dependencies in hot loops.

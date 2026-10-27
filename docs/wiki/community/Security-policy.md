@@ -29,7 +29,7 @@ A report that shows one of these is worse than documented is welcome.
 
 ## Supported versions
 
-Only the latest stable release receives security fixes. Older versions and pre-release builds are not maintained. Upgrade to the latest stable release before relying on a fix. For reports about a development build, include its source commit.
+Only the latest stable release receives security fixes and ordinary bug fixes. Support begins when that release is published and ends when the next stable release is published, including a patch release. There are no LTS branches or fixed-duration support commitments. Older versions and pre-release builds are not maintained. If maintenance ends without a successor release, announce that end of support in the repository and release notes. Upgrade to the latest stable release before relying on a fix. For reports about a development build, include its source commit.
 
 ## Coordinated disclosure
 

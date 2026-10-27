@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ $# = 3 && "$GITHUB_REPOSITORY" = misaon/nylzo ]] || exit 1
+tag="$1"
+commit="$2"
+trigger="$3"
+[[ "$tag" =~ ^(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|automation-probe-[0-9]+)$ ]] || exit 1
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
+[[ "$trigger" = workflow_run || "$trigger" = workflow_dispatch ]] || exit 1
+[[ "$(git rev-parse "refs/tags/${tag}^{commit}")" = "$commit" ]] || exit 1
+for attempt in 1 2 3 4; do
+  if gitsign verify-tag \
+    --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-github-workflow-sha "$commit" \
+    --certificate-github-workflow-trigger "$trigger" "$tag"; then
+    exit 0
+  fi
+  if [[ "$attempt" != 4 ]]; then sleep 5; fi
+done
+exit 1
