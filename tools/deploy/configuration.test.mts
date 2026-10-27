@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { configuration, patchCandidate } from "./configuration.mts";
 import { render } from "./render.mts";
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 
 const site = {
   name: "nylzo-test", domain: "nylzo.example.org", location: "nbg1", serverType: "cx23", architecture: "amd64",
@@ -46,4 +47,25 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   const updateEngine = ignition.systemd.units.find(unit => unit.name === "update-engine.service")!;
   assert("dropins" in updateEngine && updateEngine.dropins[0]!.contents.includes("Requires=nylzo-ready.service"));
   assert.match(files.get("/opt/nylzo/runtime/update")!, /--network none/u);
+});
+
+test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {
+  const { ignition } = await render(site);
+  const bandwidth = ignition.systemd.units.find(unit => unit.name === "nylzo-bandwidth.service");
+  assert(bandwidth && "enabled" in bandwidth && bandwidth.enabled);
+  for (const name of ["nylzo-initialize.service", "nylzo.service", "caddy.service"]) {
+    const unit = ignition.systemd.units.find(unit => unit.name === name)!;
+    assert("contents" in unit && /Requires=.*nylzo-bandwidth.service/u.test(unit.contents));
+    assert("contents" in unit && /After=.*nylzo-bandwidth.service/u.test(unit.contents));
+  }
+  // Both address families share one NIC. Even continuous use leaves a margin
+  // below the included allowance, including a maximum-length calendar month.
+  const file = ignition.storage.files.find(file => file.path === "/opt/nylzo/runtime/bandwidth")!;
+  const script = gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString();
+  const rate = /tbf rate ([0-9]+)mbit/u.exec(script);
+  assert(rate);
+  assert(Number(rate[1]) * 1_000_000 / 8 * 31 * 86400 < 20_000_000_000_000);
+  const dns = await readFile(new URL("../../deploy/hetzner-flatcar/infrastructure/dns/main.tf", import.meta.url), "utf8");
+  assert.match(dns, /proxied\s*=\s*false/u);
+  assert(!dns.includes("zone_mode"), "Cloudflare Free can refuse account-wide custom DNS modes");
 });

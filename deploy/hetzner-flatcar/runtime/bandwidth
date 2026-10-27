@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+export PATH="/opt/nylzo/bin:$PATH"
+# One public NIC shares this ceiling across IPv4, IPv6, HTTPS, SSH and updates.
+# 40 Mbit/s for 31 days is 13.4 TB, below this profile's 20 TB allowance.
+routes=$(ip -json -4 route show default && ip -json -6 route show default)
+mapfile -t interfaces < <(jq --slurp --raw-output '[.[][] | .dev] | unique[]' <<< "$routes")
+[[ ${#interfaces[@]} = 1 && "${interfaces[0]}" =~ ^[a-zA-Z0-9_-]{1,15}$ ]] || {
+  echo 'Traffic protection requires exactly one public default-route interface.' >&2
+  exit 1
+}
+interface=${interfaces[0]}
+network=$(networkctl --json=short status "$interface" | jq --exit-status --raw-output '.NetworkFile')
+[[ "$network" =~ ^/(usr/lib|run|etc)/systemd/network/([a-zA-Z0-9_.-]+\.network)$ ]] || {
+  echo 'Traffic protection requires a managed systemd network configuration.' >&2
+  exit 1
+}
+directory="/etc/systemd/network/${BASH_REMATCH[2]}.d"
+mkdir -p "$directory"
+configuration='[TokenBucketFilter]
+Parent=root
+Handle=1
+Rate=40M
+BurstBytes=64K
+LatencySec=100ms
+MPUBytes=128'
+if [[ ! -f "$directory/90-nylzo-bandwidth.conf" ]] || [[ "$(cat "$directory/90-nylzo-bandwidth.conf")" != "$configuration" ]]; then
+  printf '%s\n' "$configuration" > "$directory/90-nylzo-bandwidth.conf"
+  networkctl reload
+fi
+tc qdisc replace dev "$interface" root handle 1: tbf rate 40mbit burst 65536 latency 100ms mpu 128
+tc -json qdisc show dev "$interface" | jq --exit-status \
+  'any(.[]; .root == true and .kind == "tbf" and .options.rate == 5000000)' > /dev/null

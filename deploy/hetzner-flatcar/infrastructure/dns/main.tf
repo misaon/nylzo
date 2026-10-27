@@ -33,11 +33,6 @@ resource "cloudflare_zone_dnssec" "zone" {
   lifecycle { prevent_destroy = true }
 }
 
-resource "cloudflare_zone_dns_settings" "zone" {
-  zone_id   = cloudflare_zone.zone.id
-  zone_mode = "dns_only"
-}
-
 resource "cloudflare_dns_record" "addresses" {
   for_each = { A = var.ipv4_address, AAAA = var.ipv6_address }
   zone_id  = cloudflare_zone.zone.id
