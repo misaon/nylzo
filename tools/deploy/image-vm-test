@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+directory="${1:-.deploy/image-vm}"
+mkdir -p "$directory"
+directory=$(realpath "$directory")
+node tools/deploy/check.mts "$directory"
+node tools/deploy/image-vm-fixture.mts "$directory/site.json" "$directory/oem"
+version=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
+base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
+mkdir -p "$directory/gnupg"
+chmod 0700 "$directory/gnupg"
+gpg --batch --homedir "$directory/gnupg" --import deploy/hetzner-flatcar/bootstrap/flatcar.asc
+for artifact in flatcar_production_pxe.vmlinuz flatcar_production_pxe_image.cpio.gz flatcar_production_hetzner_image.bin.bz2; do
+  for name in "$artifact" "$artifact.sig"; do
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 600 "$base/$name" --output "$directory/$name"
+  done
+  gpg --batch --homedir "$directory/gnupg" --verify "$directory/$artifact.sig" "$directory/$artifact"
+done
+(cd "$directory/oem" && find usr -print0 | cpio --null --create --format=newc --quiet) | gzip > "$directory/oem.cpio.gz"
+cat "$directory/flatcar_production_pxe_image.cpio.gz" "$directory/oem.cpio.gz" > "$directory/initrd"
+qemu-img create -f raw "$directory/installed.raw" 40G
+accelerator=tcg
+if [[ -r /dev/kvm && -w /dev/kvm ]]; then accelerator=kvm; fi
+timeout 1500 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
+  -nographic -monitor none -no-reboot -drive "file=$directory/installed.raw,format=raw,if=virtio" \
+  -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
+  -kernel "$directory/flatcar_production_pxe.vmlinuz" -initrd "$directory/initrd" \
+  -append 'flatcar.first_boot=1 console=tty0 console=ttyS0,115200n8' > "$directory/install.log" 2>&1 || { tail -200 "$directory/install.log"; exit 1; }
+grep --fixed-strings NYLZO_IMAGE_VERIFIED_AND_INSTALLED "$directory/install.log" || { tail -200 "$directory/install.log"; exit 1; }
+bzip2 --decompress --stdout "$directory/flatcar_production_hetzner_image.bin.bz2" > "$directory/expected.raw"
+cmp --bytes="$(stat --format=%s "$directory/expected.raw")" "$directory/expected.raw" "$directory/installed.raw"
+echo 'NYLZO_IMAGE_VM_ACCEPTANCE_PASSED'

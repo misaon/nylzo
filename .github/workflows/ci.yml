@@ -169,14 +169,14 @@ jobs:
       - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,recover-os,install-tools,update,refresh-tools} tools/deploy/{validate,vm-test,vm-acceptance}
+      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,recover-os,install-tools,update,refresh-tools} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
 
   deployment:
     name: Flatcar provisioning and reboot acceptance
     needs: changes
     if: needs.changes.outputs.deployment == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -192,14 +192,15 @@ jobs:
       - name: Install the virtual-machine test runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg
+          sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
+      - run: tools/deploy/image-vm-test
       - run: tools/deploy/vm-test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: flatcar-acceptance-logs
-          path: .deploy/vm/*.log
+          path: .deploy/**/*.log
           include-hidden-files: true
           retention-days: 7
 
