@@ -68,7 +68,7 @@ Caddy obtains its certificate directly from Let's Encrypt. The DNS token is neve
 
 ## Runtime and updates
 
-Only ports 80/tcp, 443/tcp, 443/udp, ICMP, and allowlisted SSH are accepted by the cloud firewall. Caddy is an unprivileged host service with only the capability needed to bind public ports. Nylzo listens behind a loopback-only port, with a read-only container filesystem, no Linux capabilities, no new privileges, explicit CPU/memory/process limits, and a separate user namespace. Its internal bridge has no Internet route; host firewall rules reject new connections from that bridge. Caddy preserves client addresses and Nylzo trusts only the bridge gateway.
+Only ports 80/tcp, 443/tcp, 443/udp, ICMP, and allowlisted SSH are accepted by the cloud firewall. Caddy is an unprivileged host service with only the capability needed to bind public ports. Nylzo listens on a private internal bridge address with no published backend port, with a read-only container filesystem, no Linux capabilities, no new privileges, explicit CPU/memory/process limits, and a separate user namespace. Its internal bridge has no Internet route; host firewall rules reject new connections from that bridge. Caddy preserves client addresses and Nylzo trusts only the bridge gateway.
 
 The pepper is generated on first boot and retained across restarts. The reporting private key stays on the operator workstation. Application/proxy access logs are disabled or bounded as described in [Self-hosting](Self-hosting.md). At 250 daily creations, seven-day retention needs up to roughly 11 GB of maximum-size messages; reserve additional space for the OS, images, reports, and logs. This profile caps configuration at 500 daily creations and stops new creation below 4 GiB free space.
 

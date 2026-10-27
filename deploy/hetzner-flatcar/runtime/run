@@ -3,7 +3,7 @@ set -euo pipefail
 digest=$(/opt/nylzo/bin/jq -er .digest /var/lib/nylzo-deploy/current.json)
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
 exec docker run --rm --name nylzo --pull=never --user 65532:65532 \
-  --network nylzo --ip 172.30.81.2 --publish 127.0.0.1:8080:8080 \
+  --network nylzo --ip 172.30.81.2 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --memory 1g --cpus 1.5 --pids-limit 128 \
   --env-file /etc/nylzo/service.env \

@@ -38,7 +38,8 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
   assert.match(files.get("/etc/ssh/sshd_config.d/20-nylzo.conf")!, /PermitRootLogin no/u);
   assert.match(files.get("/etc/docker/daemon.json")!, /"userns-remap":"dockremap"/u);
-  assert.match(files.get("/opt/nylzo/runtime/run")!, /--publish 127\.0\.0\.1:8080:8080/u);
+  assert(!files.get("/opt/nylzo/runtime/run")!.includes("--publish"));
+  assert.match(files.get("/etc/caddy/Caddyfile")!, /reverse_proxy 172\.30\.81\.2:8080/u);
   assert.match(files.get("/etc/nylzo/service.env")!, /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);
   assert(!files.get("/opt/nylzo/runtime/update")!.includes("gh api"));
   assert(!ignition.passwd.users.some(user => "sshAuthorizedKeys" in user && user.name !== "core"));

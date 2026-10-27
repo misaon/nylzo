@@ -8,7 +8,7 @@ const replace = (filename: string, contents: string) => {
   const file = ignition.storage.files.find(file => file.path === filename)!;
   file.contents.source = "data:;base64," + gzipSync(contents).toString("base64");
 };
-replace("/etc/caddy/Caddyfile", "{\nadmin off\nlog default {\nexclude http.log http.handlers http.stdlib\n}\n}\nhttp://:80 {\nheader -Server\nheader -Via\nreverse_proxy 127.0.0.1:8080 {\ntransport http {\nkeepalive 25s\n}\n}\n}\n");
+replace("/etc/caddy/Caddyfile", "{\nadmin off\nlog default {\nexclude http.log http.handlers http.stdlib\n}\n}\nhttp://:80 {\nheader -Server\nheader -Via\nreverse_proxy 172.30.81.2:8080 {\ntransport http {\nkeepalive 25s\n}\n}\n}\n");
 const environment = ignition.storage.files.find(file => file.path === "/etc/nylzo/service.env")!;
 replace(environment.path, decode(environment).replace(/^NYLZO_PUBLIC_URL=.*$/mu, "NYLZO_PUBLIC_URL=http://127.0.0.1"));
 ignition.storage.files.push({ path: "/opt/nylzo-vm-test", mode: 0o700, overwrite: true, contents: { compression: "gzip", source: "data:;base64," + gzipSync(await readFile(new URL("vm-acceptance", import.meta.url))).toString("base64") } });
