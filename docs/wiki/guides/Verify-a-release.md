@@ -28,6 +28,27 @@ Verify the signature **before** trusting the checksums, and require all checks t
 
 Each release includes per-archive SPDX SBOMs. The signed manifest also lists the embedded web files. [Versioning and releases](../maintainers/Releasing.md) explains the version, source commit, source date, and modified-source flag embedded in the CLI, server, and web client.
 
+## Verify dependency evidence
+
+Starting with `v0.1.2`, releases also provide a source SPDX inventory for Go and npm, the raw dependency scan, import-graph evidence, and an OpenVEX assessment when applicable. These files use a separate signed manifest. For example:
+
+```sh
+tag=v0.1.2
+evidence="nylzo_${tag#v}.evidence.sha256"
+gh release download "$tag" --repo misaon/nylzo --pattern "nylzo_${tag#v}.*.json" \
+  --pattern "$evidence"
+
+cosign verify-blob "$evidence" --bundle "${evidence}.sigstore.json" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
+sha256sum -c "$evidence"
+gh attestation verify "$evidence" --repo misaon/nylzo \
+  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
+```
+
+Verify every listed file. An OpenVEX statement applies only to its named product, component, and vulnerability; read its justification and the [review policy](../maintainers/Security-controls.md#vex-and-review-expiry). It does not waive findings for a different build or a later dependency version.
+
 ## Verify a container image
 
 Resolve the selected version to a digest, verify that digest, then deploy that same digest:
