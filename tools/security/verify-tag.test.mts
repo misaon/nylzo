@@ -36,6 +36,8 @@ esac
     const unsigned = JSON.stringify({ verification: { verified: false }, tagger: { email: "automation@nylzo.com" } });
     assert.equal(run({ TAG_JSON: unsigned }).output, "environment=release-automatic\n");
     const claims = readFileSync(join(directory, "claims"), "utf8");
+    assert(claims.startsWith("verify-tag\n"));
+    assert(claims.endsWith("v0.1.2\n"));
     assert(claims.includes("https://github.com/misaon/nylzo/.github/workflows/security-updates.yml@refs/heads/main"));
     assert(claims.includes("--certificate-github-workflow-sha\n" + "a".repeat(40)));
     assert(claims.includes("--certificate-github-workflow-trigger\nworkflow_run"));
