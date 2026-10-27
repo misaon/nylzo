@@ -158,7 +158,7 @@ export async function createImage(prepared: Awaited<ReturnType<typeof prepare>>)
       type: "snapshot", description: `Nylzo verified Flatcar ${toolchain.flatcar} ${site.architecture}`,
       labels: { "nylzo-verified-image": "true", "nylzo-flatcar-version": toolchain.flatcar, "nylzo-architecture": site.architecture },
     });
-    assert(Number.isSafeInteger(created.image.id));
+    assert(Number.isSafeInteger(created.image.id) && created.image.id > 0);
     await waitUntil(async () => {
       const { image } = await api(`/images/${created.image.id}`);
       if (image.status === "creating") return false;

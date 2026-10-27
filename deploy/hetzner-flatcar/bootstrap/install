@@ -11,15 +11,15 @@ while read -r device; do
     exit 1
   fi
 done < <(lsblk --noheadings --paths --output NAME "${disks[0]}")
-mkdir -p /run/nylzo-image/gnupg
-chmod 0700 /run/nylzo-image/gnupg
-gpg --batch --homedir /run/nylzo-image/gnupg --import /run/nylzo-image/flatcar.asc
-cd /run/nylzo-image
+mkdir -p /opt/nylzo-image/gnupg
+chmod 0700 /opt/nylzo-image/gnupg
+gpg --batch --homedir /opt/nylzo-image/gnupg --import /opt/nylzo-image/flatcar.asc
+cd /opt/nylzo-image
 base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
 image=flatcar_production_hetzner_image.bin.bz2
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$image" --output "$image"
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$image.sig" --output "$image.sig"
-gpg --batch --homedir /run/nylzo-image/gnupg --verify "$image.sig" "$image"
+gpg --batch --homedir /opt/nylzo-image/gnupg --verify "$image.sig" "$image"
 bzip2 --decompress --stdout "$image" | dd of="${disks[0]}" bs=4M conv=fsync status=progress
 sync
 echo 'NYLZO_IMAGE_VERIFIED_AND_INSTALLED'

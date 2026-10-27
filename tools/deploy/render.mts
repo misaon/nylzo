@@ -66,9 +66,10 @@ export async function render(input: unknown) {
   const board = site.architecture === "amd64" ? "amd64-usr" : "arm64-usr";
   const installer = {
     ignition: { version: "3.4.0" },
-    storage: { files: [embedded("/run/nylzo-image/flatcar.asc", key), embedded("/run/nylzo-image/install", await read("bootstrap/install"), 0o700)] },
-    systemd: { units: [service("nylzo-image-install.service", `[Unit]\nWants=network-online.target\nAfter=network-online.target\n[Service]\nType=oneshot\nEnvironment=FLATCAR_BOARD=${board}\nEnvironment=FLATCAR_VERSION=${toolchain.flatcar}\nEnvironment=EXPECTED_BUILDER_NAME=${site.name}-image-builder\nExecStart=/run/nylzo-image/install\nTimeoutStartSec=20min\n[Install]\nWantedBy=multi-user.target\n`, true)] },
+    storage: { files: [embedded("/opt/nylzo-image/flatcar.asc", key), embedded("/opt/nylzo-image/install", await read("bootstrap/install"), 0o700)] },
+    systemd: { units: [service("nylzo-image-install.service", `[Unit]\nWants=network-online.target\nAfter=network-online.target\n[Service]\nType=oneshot\nEnvironment=FLATCAR_BOARD=${board}\nEnvironment=FLATCAR_VERSION=${toolchain.flatcar}\nEnvironment=EXPECTED_BUILDER_NAME=${site.name}-image-builder\nExecStart=/opt/nylzo-image/install\nTimeoutStartSec=20min\n[Install]\nWantedBy=multi-user.target\n`, true)] },
   };
+  installer.systemd.units.push({ name: "update-engine.service", mask: true } as any, { name: "locksmithd.service", mask: true } as any, { name: "sshd.service", mask: true } as any, { name: "sshd.socket", mask: true } as any);
   const cloudInstaller = structuredClone(installer);
   cloudInstaller.storage.files[0]!.contents.source = "@@FLATCAR_IMAGE_KEY@@";
   const cloud = "#cloud-config\n" + JSON.stringify({

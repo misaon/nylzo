@@ -99,7 +99,7 @@ sudo journalctl -u nylzo-initialize -u nylzo-update -u nylzo-ready
 sudo cat /var/lib/nylzo-deploy/current.json
 ```
 
-The profile deliberately disables Hetzner disk backups. Rolling back a whole-server snapshot can restore already-consumed message state. Follow the retention and recovery policy in [Operations](Operations.md); keep configuration/pepper recovery material separate from message data. Periodically inspect disk usage and remove unused deployment images only after confirming the active digest. Do not run a global Docker prune as part of a security update.
+The profile deliberately disables Hetzner disk backups. Rolling back a whole-server snapshot can restore already-consumed message state. Follow the retention and recovery policy in [Operations](Operations.md); keep configuration/pepper recovery material separate from message data. After a successful Nylzo update, cleanup retains the current and previous Nylzo image, Caddy binary, and verification-tool generation. It touches only this deployment's image repository and directories. Periodically inspect disk usage; failed candidate evidence is retained for investigation. Do not run a global Docker prune as part of a security update.
 
 Hetzner and administrator accounts remain trusted. This profile does not provide Secure Boot, a vTPM-backed disk key, confidential computing, DDoS immunity, or protection from a malicious host operator serving altered browser code. It reduces routine maintenance; account recovery, alerts, incident response, and reviewed breaking upgrades still need an operator.
 

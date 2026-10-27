@@ -1,7 +1,6 @@
 {
   "flatcar": "4757.2.2",
   "opentofu": "1.13.2",
-  "provider": "1.70.2",
   "gh": {
     "version": "2.103.3",
     "amd64": "4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d",

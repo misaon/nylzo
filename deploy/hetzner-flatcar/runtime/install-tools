@@ -32,6 +32,10 @@ mkdir -p "$generation"
 chmod 0755 "$generation"
 for tool in jq cosign gh; do install --mode=0755 "$tool" "$generation/$tool"; done
 sha256sum "$generation/gh" "$generation/jq" "$generation/cosign" > "$generation/checksums.txt"
+previous=$(readlink -f /opt/nylzo/tools/current 2>/dev/null || true)
+if [[ -n "$previous" && "$previous" != "$generation" && -d "$previous" ]]; then
+  ln --symbolic --force --no-dereference --no-target-directory "$previous" /opt/nylzo/tools/previous
+fi
 ln --symbolic --force --no-dereference --no-target-directory "$generation" /opt/nylzo/tools/current.next
 mv --no-target-directory /opt/nylzo/tools/current.next /opt/nylzo/tools/current
 for tool in jq cosign gh; do ln --symbolic --force --no-dereference --no-target-directory "../tools/current/$tool" "/opt/nylzo/bin/$tool"; done

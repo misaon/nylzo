@@ -169,7 +169,7 @@ jobs:
       - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,recover-os,install-tools,update,refresh-tools} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
+      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,recover-os,install-tools,update,refresh-tools,clean} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
 
   deployment:
     name: Flatcar provisioning and reboot acceptance

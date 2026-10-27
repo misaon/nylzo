@@ -79,6 +79,7 @@ caddy() {
     fi
     return 1
   fi
+  if [[ -n "${previous:-}" ]]; then printf '%s\n' "$previous" > "$state/caddy.previous.tag"; fi
   printf '%s\n' "$version" > "$state/caddy.tag"
 }
 nylzo() {
@@ -135,6 +136,7 @@ nylzo() {
     return 1
   fi
   echo "Installed verified Nylzo $version at $digest"
+  /opt/nylzo/runtime/clean
 }
 case "${1:-}" in
   initialize)
