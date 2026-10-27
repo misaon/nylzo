@@ -1,6 +1,6 @@
 # Automatic security updates
 
-Nylzo can merge a qualifying Dependabot fix and publish a patch release after full verification. Automatic merge and tagging remain disabled until the dedicated GitHub App, environment restrictions, and ruleset entries have been configured and checked.
+Nylzo can merge a qualifying Dependabot fix and publish a patch release after full verification. The repository variable `SECURITY_AUTOMATION_ENABLED` controls automatic merging and tagging. Activation requires verified App credentials, environment restrictions, signing, and a reviewed maintenance release.
 
 ## What qualifies
 
