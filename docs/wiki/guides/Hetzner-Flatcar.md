@@ -50,7 +50,7 @@ The production stack starts a separate server from that snapshot with the final 
 
 Create a Cloudflare account and a zone for the domain. Copy all required existing DNS records, including mail and verification records, before changing nameservers. Keep the registrar at Forpsi or your current registrar.
 
-Use an account token with zone read/create permission when creating the zone, plus DNS edit, DNS settings edit, and DNSSEC edit for the intended zone. Prefer a zone-scoped token after initial setup. Set `cloudflareAccountId` and `dnsZone` in `site.json`, then save the token in a separate private file:
+Use zone read/write and DNS write permissions, restricted to the intended zone. DNS write also covers DNSSEC and zone DNS settings. Creating a zone through OpenTofu needs a token allowed to create it in the intended account; narrow it to the zone after setup. Set `cloudflareAccountId` and `dnsZone` in `site.json`, then save the token in a separate private file:
 
 ```sh
 export CLOUDFLARE_API_TOKEN_FILE="$HOME/.config/nylzo/cloudflare-token"
@@ -62,7 +62,7 @@ mise run deploy outputs dns .deploy/production/site.json
 
 The operator imports a matching existing zone and its instance A, AAAA, and certificate-authority records. Ambiguous records stop the operation. Other records are not managed by this stack. Review the plan carefully: DNS-only mode applies to the entire zone. The stack sets unproxied A/AAAA records, permits Let's Encrypt certificates, forbids wildcard certificate issuance, and enables zone signing.
 
-At the registrar, delegate to the printed Cloudflare nameservers. After delegation is active, publish the printed DS record at the registrar and verify the complete DNSSEC chain. An existing DS for another DNS provider must be migrated correctly; leaving a stale DS breaks resolution. OpenTofu cannot automate registrar changes without a supported, separately authorized registrar API. Enabling signing at Cloudflare alone does not complete DNSSEC.
+If the domain already has a DS record, complete the signed-zone migration procedure before changing its delegation; an incompatible DS breaks resolution. For a previously unsigned domain, delegate to the printed Cloudflare nameservers, wait for activation, then publish the printed DS record at the registrar and verify the complete DNSSEC chain. OpenTofu cannot automate registrar changes without a supported, separately authorized registrar API. Enabling signing at Cloudflare alone does not complete DNSSEC.
 
 Caddy obtains its certificate directly from Let's Encrypt. The DNS token is never installed on the server. Cloudflare handles DNS queries; HTTPS connections go directly to Hetzner.
 
@@ -110,5 +110,5 @@ Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/t
 - [OpenTofu: state and plan encryption](https://opentofu.org/docs/v1.13/language/state/encryption/)
 - [Flatcar: supply-chain verification](https://www.flatcar.org/docs/latest/security/supply-chain/), [PXE provisioning](https://www.flatcar.org/docs/latest/deploy/bare-metal/booting-with-pxe/), and [update strategies](https://www.flatcar.org/docs/latest/updates-releases/releases/update-strategies/)
 - [Caddy: signature verification](https://caddyserver.com/docs/signature-verification)
-- [Cloudflare: DNS-only mode](https://developers.cloudflare.com/dns/proxy-status/), [DNSSEC](https://developers.cloudflare.com/dns/dnssec/), and [migration](https://developers.cloudflare.com/dns/dnssec/zone-migration/)
+- [Cloudflare: DNS-only mode](https://developers.cloudflare.com/dns/proxy-status/), [DNSSEC](https://developers.cloudflare.com/dns/dnssec/), and [migration](https://developers.cloudflare.com/dns/dnssec/dnssec-active-migration/)
 - [Hetzner: server security limitations](https://docs.hetzner.com/cloud/servers/faq/)
