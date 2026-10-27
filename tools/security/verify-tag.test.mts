@@ -17,6 +17,7 @@ case "$1" in
  merge-base) exit "${"${ANCESTOR_STATUS:-0}"}" ;;
 esac
 `,
+      sleep: '#!/bin/sh\nexit 0\n',
       gh: '#!/bin/sh\nprintf "%s" "$TAG_JSON"\n',
       gitsign: '#!/bin/sh\nprintf "%s\\n" "$@" > "$RUNNER_TEMP/claims"\nexit "${SIGNATURE_STATUS:-0}"\n',
     };
@@ -49,5 +50,10 @@ esac
       { TAG_JSON: unsigned, GITHUB_ACTOR: "attacker" },
       { TAG_JSON: unsigned, SIGNATURE_STATUS: "1" },
     ]) assert.notEqual(run(overrides).status, 0);
+    const probe = (tag: string, trigger: string, workflow = "misaon/nylzo/.github/workflows/security-updates.yml@refs/heads/codex/test") => spawnSync("bash", ["tools/security/verify-keyless-tag", tag, "a".repeat(40), trigger], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_SHA: "a".repeat(40), GITHUB_WORKFLOW_REF: workflow } });
+    assert.equal(probe("automation-probe-1", "workflow_dispatch").status, 0);
+    assert.notEqual(probe("v0.1.2", "workflow_dispatch").status, 0);
+    assert.notEqual(probe("automation-probe-1", "workflow_run").status, 0);
+    assert.notEqual(probe("automation-probe-1", "workflow_dispatch", "attacker/nylzo/.github/workflows/security-updates.yml@refs/heads/main").status, 0);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

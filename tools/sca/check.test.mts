@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { assess, platforms } from "./check.mts";
+
+function fixture() {
+  const entry = { package: { name: "golang.org/x/crypto", version: "0.58.0", ecosystem: "Go" }, licenses: ["BSD-3-Clause"], vulnerabilities: [{ id: "GO-2026-5932" }] };
+  const report = { results: [{ source: { path: "/project/go.mod" }, packages: [entry] }, { source: { path: "/project/web/pnpm-lock.yaml" }, packages: [{ package: { name: "svelte", version: "5.57.2", ecosystem: "npm" }, licenses: ["MIT"] }] }] };
+  const policy = { allowedLicenses: ["BSD-3-Clause", "MIT"], notAffected: [{ id: "GO-2026-5932", ecosystem: "Go", package: "golang.org/x/crypto", version: "0.58.0", reviewUntil: "2027-01-25T00:00:00Z", forbiddenImport: "golang.org/x/crypto/openpgp", justification: "vulnerable_code_not_present", impact: "OpenPGP is absent." }] };
+  const imports = Object.fromEntries(platforms.map(platform => [platform, ["fmt", "github.com/misaon/nylzo/cmd/nylzo"]]));
+  return { report, policy, imports };
+}
+
+test("VEX cannot hide new versions, advisories, reachable code, missing platforms, or expired assessments", () => {
+  const source = fixture(), date = new Date("2026-10-27T00:00:00Z");
+  assert.equal(assess(source.report, source.policy, source.imports, date).length, 1);
+  const mutations = [
+    (data: any) => data.report.results[0].packages[0].package.version = "0.58.1",
+    (data: any) => data.report.results[0].packages[0].vulnerabilities[0].id = "GO-another",
+    (data: any) => data.report.results[0].packages[0].vulnerabilities[0].id = "MAL-2026-123",
+    (data: any) => data.imports["linux/amd64"].push("golang.org/x/crypto/openpgp/packet"),
+    (data: any) => delete data.imports["windows/arm64"],
+    (data: any) => data.policy.notAffected[0].reviewUntil = "2026-10-26T00:00:00Z",
+    (data: any) => data.report.results.pop(),
+    (data: any) => data.report.results[1].packages[0].licenses = [],
+    (data: any) => data.report.results[1].packages[0].licenses = ["LicenseRef-Unknown"],
+  ];
+  for (const mutate of mutations) { const data = structuredClone(source); mutate(data); assert.throws(() => assess(data.report, data.policy, data.imports, date)); }
+});

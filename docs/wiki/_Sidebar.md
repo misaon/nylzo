@@ -22,6 +22,8 @@
 - [Repository governance](maintainers/Repository-governance.md)
 - [Security checks and public reports](maintainers/Security-checks.md)
 - [Automatic security updates](maintainers/Security-updates.md)
+- [Security assessment and threat model](maintainers/Security-assessment.md)
+- [Security control policies](maintainers/Security-controls.md)
 - [Name and logo](guides/Name-and-logo.md)
 - [Protocol](reference/Protocol.md)
 

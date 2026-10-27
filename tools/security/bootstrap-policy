@@ -3,20 +3,22 @@ set -euo pipefail
 
 sha256sum -c - <<'HASHES'
 2861b3bceaecf562f3f40e8d1fe34708b11e42a308c294379193d3ab43b6e4e2  tools/security/runtime.toml
-e445e3b563007606656a68b56112237071873de3870ba3cce85aca21b68604c8  mise.lock
+aa703590f84ebab589e6680baaf8666f4461de5c4d0083c0204e4288c453193f  tools/security/runtime.lock
 85e46e83e352adb62ff18c371b190dc3c1f7c6678168f6d9d40a5d5fbb8d7636  tools/security/dependency-api.mts
 6db39ab620af86a20f9230fe818b63e6631f8799dd6f54534f7fb3b213c904ff  tools/security/dependency-policy.mts
 963b80f59010c83e8e82b1a737d8170fe5f78195f266392eb09385e0e21aff16  tools/security/automation.mts
-c2120f0213f83fd49f78c43e386c9e65739bc4227466636a27588961e3e232d8  tools/security/verify-tag
+ada1af852c1cf6acc31490d0ea7f45be9062d59d35d961c071153b5b8110fbf0  tools/security/verify-tag
 a9ff9fd782bb9cf4664569fc32eb013eab82039ad18500575d67485060eb82b7  mise-tasks/release/checks
+2471214c4daf0c62aad9297d373214c50ca4664ea62e0d6d0681ac8758de22b7  tools/security/verify-keyless-tag
 HASHES
 
 destination="${RUNNER_TEMP}/nylzo-security-policy"
 mkdir -p "$destination/tools/security" "$destination/mise-tasks/release"
 cp -- "tools/security/runtime.toml" "${destination}/mise.toml"
-cp -- "mise.lock" "${destination}/mise.lock"
+cp -- "tools/security/runtime.lock" "${destination}/mise.lock"
 cp -- "tools/security/dependency-api.mts" "${destination}/tools/security/dependency-api.mts"
 cp -- "tools/security/dependency-policy.mts" "${destination}/tools/security/dependency-policy.mts"
 cp -- "tools/security/automation.mts" "${destination}/tools/security/automation.mts"
 cp -- "tools/security/verify-tag" "${destination}/tools/security/verify-tag"
 cp -- "mise-tasks/release/checks" "${destination}/mise-tasks/release/checks"
+cp -- "tools/security/verify-keyless-tag" "${destination}/tools/security/verify-keyless-tag"

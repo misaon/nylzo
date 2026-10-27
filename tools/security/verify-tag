@@ -18,10 +18,6 @@ if [[ "$(jq -r .verification.verified "${RUNNER_TEMP}/release-tag.json")" = true
 else
   [[ "${SECURITY_AUTOMATION_ENABLED:-}" = true ]] || exit 1
   [[ -n "${SECURITY_APP_SLUG:-}" && "$GITHUB_ACTOR" = "${SECURITY_APP_SLUG}[bot]" ]] || exit 1
-  gitsign verify-tag \
-    --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" \
-    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-    --certificate-github-workflow-sha "$GITHUB_SHA" \
-    --certificate-github-workflow-trigger workflow_run "$GITHUB_REF_NAME"
+  bash "$(dirname "$0")/verify-keyless-tag" "$GITHUB_REF_NAME" "$GITHUB_SHA" workflow_run
   echo 'environment=release-automatic' >> "$GITHUB_OUTPUT"
 fi

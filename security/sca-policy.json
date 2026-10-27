@@ -1,0 +1,15 @@
+{
+  "allowedLicenses": ["0BSD", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "BlueOak-1.0.0", "CC-BY-4.0", "CC0-1.0", "ISC", "MIT", "MPL-2.0", "OFL-1.1", "Python-2.0", "Unlicense", "Zlib"],
+  "notAffected": [
+    {
+      "id": "GO-2026-5932",
+      "ecosystem": "Go",
+      "package": "golang.org/x/crypto",
+      "version": "0.58.0",
+      "reviewUntil": "2027-01-25T00:00:00Z",
+      "forbiddenImport": "golang.org/x/crypto/openpgp",
+      "justification": "vulnerable_code_not_present",
+      "impact": "The advisory concerns the deprecated OpenPGP packages. None of Nylzo's six supported build targets imports or links those packages. Other packages from golang.org/x/crypto remain in use. This assessment does not apply to a build that adds OpenPGP."
+    }
+  ]
+}

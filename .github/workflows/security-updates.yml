@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   signing-probe:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
     name: Verify keyless tag signing without publishing
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
+          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -46,9 +46,47 @@ jobs:
         env:
           GITSIGN_TOKEN_PROVIDER: github-actions
         run: |
+          gitsign version
           tag="automation-probe-${GITHUB_RUN_ID}"
           git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$tag" -m 'Local automation signing check'
-          gitsign verify-tag --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha "$GITHUB_SHA" --certificate-github-workflow-trigger workflow_dispatch "$tag"
+          git cat-file tag "refs/tags/$tag" > "$RUNNER_TEMP/tag-probe.raw"
+          bash "$RUNNER_TEMP/nylzo-security-policy/tools/security/verify-keyless-tag" "$tag" "$GITHUB_SHA" workflow_dispatch
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: public-signing-probe
+          path: ${{ runner.temp }}/tag-probe.raw
+          if-no-files-found: warn
+          retention-days: 7
+
+  app-probe:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    name: Verify repository-scoped App credentials without writing
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: security-automation
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ vars.SECURITY_APP_ID }}
+          private-key: ${{ secrets.SECURITY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+      - name: Only this repository is accessible and CI metadata can be read
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh api /installation/repositories | jq -e '.total_count == 1 and .repositories[0].full_name == "misaon/nylzo"' > /dev/null
+          gh api repos/misaon/nylzo/actions/workflows/ci.yml --jq .id > /dev/null
+          echo 'Repository-scoped App credentials verified; token revoked at job completion.'
 
   merge:
     if: >-
@@ -69,7 +107,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
+          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -114,7 +152,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
+          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -153,7 +191,7 @@ jobs:
           [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "$SOURCE_COMMIT"
           git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Nylzo ${RELEASE_TAG#v} security update"
-          gitsign verify-tag --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha "$SOURCE_COMMIT" --certificate-github-workflow-trigger workflow_run "$RELEASE_TAG"
+          bash "$RUNNER_TEMP/nylzo-security-policy/tools/security/verify-keyless-tag" "$RELEASE_TAG" "$SOURCE_COMMIT" workflow_run
           authorization=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
           echo "::add-mask::$authorization"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $authorization" push origin "refs/tags/${RELEASE_TAG}"

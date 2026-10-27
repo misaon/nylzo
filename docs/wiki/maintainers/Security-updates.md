@@ -43,7 +43,7 @@ When changing the policy, update its embedded checksums and the bootstrap checks
 
 ## Activation and recovery
 
-Run `gh workflow run security-updates.yml --ref main` to test keyless signing. This probe signs and verifies a local non-release tag without pushing it. Establish a reviewed maintenance release after installing the mechanism; otherwise the unreleased infrastructure changes correctly block the first automated release.
+Run `gh workflow run security-updates.yml --ref main` to test the App credentials with a read-only installation token and test keyless signing. The signing probe verifies a local non-release tag without pushing it and retains its public signature object for diagnosis. Verification can retry briefly for transparency-log indexing; it still fails unless every identity and log check passes. Establish a reviewed maintenance release after installing the mechanism; otherwise the unreleased infrastructure changes correctly block the first automated release.
 
 To stop the bot, set `SECURITY_AUTOMATION_ENABLED=false`. Revoke an exposed App key and remove the installation or its ruleset exceptions if necessary. Failed publication leaves the stable download pointers unchanged. Never move a release tag or replace immutable assets; investigate and issue a new version.
 

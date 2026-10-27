@@ -40,7 +40,9 @@ export function planChecks(files: string[], event: string) {
     }
   }
   if (full) for (const group of Object.keys(groups) as (keyof typeof groups)[]) groups[group] = true;
+  const sca = Object.values(groups).some(Boolean);
   const jobs = {
+    sca,
     "go-lint": groups.go,
     "go-test": groups.go,
     "go-timing": groups.go,
@@ -58,7 +60,7 @@ export function planChecks(files: string[], event: string) {
     "codeql-web": event === "pull_request" || groups.web,
     "codeql-actions": event === "pull_request" || groups.actions,
   };
-  return { ...groups, full, jobs };
+  return { ...groups, sca, full, jobs };
 }
 
 export function checksPassed(results: Record<string, { result: string; outputs?: Record<string, string> }>) {

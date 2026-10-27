@@ -22,6 +22,8 @@ const sources = new Map([
   ["docs/wiki/maintainers/Repository-governance.md", "Repository-governance"],
   ["docs/wiki/maintainers/Security-checks.md", "Security-checks"],
   ["docs/wiki/maintainers/Security-updates.md", "Security-updates"],
+  ["docs/wiki/maintainers/Security-assessment.md", "Security-assessment"],
+  ["docs/wiki/maintainers/Security-controls.md", "Security-controls"],
   ["docs/wiki/community/Contributing.md", "Contributing"],
   ["docs/wiki/community/Security-policy.md", "Security-policy"],
   ["docs/wiki/reference/Protocol.md", "Protocol"],
