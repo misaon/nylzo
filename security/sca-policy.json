@@ -1,5 +1,16 @@
 {
   "allowedLicenses": ["0BSD", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "BlueOak-1.0.0", "CC-BY-4.0", "CC0-1.0", "ISC", "MIT", "MPL-2.0", "OFL-1.1", "Python-2.0", "Unlicense", "Zlib"],
+  "fixed": [
+    {
+      "id": "GHSA-gcqx-w48m-w2h4",
+      "ecosystem": "npm",
+      "package": "deepmerge",
+      "version": "4.3.1",
+      "patchSha256": "c2cb33d5ff7ad8e752bdd9ec3a8e8e7520ad9b4da374307a6633372158ece14e",
+      "reviewUntil": "2026-11-27T00:00:00Z",
+      "impact": "Nylzo applies web/patches/deepmerge@4.3.1.patch to its build dependency. It excludes __proto__ from both source and target keys, including recursive clones. Installation and SCA verify the exact patch, every lockfile reference, all three patched source hashes, prototype-poisoning regressions and Svelte option semantics. The unpatched npm package remains affected; this statement applies only to this Nylzo source revision. Replace the patch with an upstream fix when available."
+    }
+  ],
   "notAffected": [
     {
       "id": "GO-2026-5932",

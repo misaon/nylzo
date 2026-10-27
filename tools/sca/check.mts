@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { deepmergePatch } from "./deepmerge.mts";
 
 export const platforms = ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"];
 
-export function assess(report: any, policy: any, imports: Record<string, string[]>, now = new Date()) {
+export function assess(report: any, policy: any, imports: Record<string, string[]>, now = new Date(), verifiedPatches: any[] = []) {
   assert(Array.isArray(report.results) && report.results.length === 2, "Both dependency lockfiles must be scanned");
   const paths = report.results.map((result: any) => result.source?.path?.replaceAll("\\", "/"));
   assert(paths.some((path: string) => path.endsWith("/go.mod")) && paths.some((path: string) => path.endsWith("/web/pnpm-lock.yaml")));
@@ -21,6 +22,14 @@ export function assess(report: any, policy: any, imports: Record<string, string[
         assert(typeof vulnerability.id === "string");
         const identifiers = [vulnerability.id, ...(vulnerability.aliases ?? [])];
         if (identifiers.some(id => id.startsWith("MAL-"))) { findings.push(`Known malware: ${component.name} ${vulnerability.id}`); continue; }
+        const fixed = policy.fixed?.find((candidate: any) => candidate.id === vulnerability.id && candidate.package === component.name && candidate.version === component.version && candidate.ecosystem === component.ecosystem);
+        if (fixed) {
+          for (const [key, value] of Object.entries(deepmergePatch)) assert.equal(fixed[key === "sha256" ? "patchSha256" : key], value, "Only the reviewed deepmerge remediation is supported");
+          assert(Number.isFinite(Date.parse(fixed.reviewUntil)) && now.getTime() < Date.parse(fixed.reviewUntil), "Patch assessment expired");
+          assert(verifiedPatches.some(patch => Object.entries(deepmergePatch).every(([key, value]) => patch[key] === value)), "Missing installed patch and regression evidence");
+          statements.push({ vulnerability: { name: vulnerability.id }, status: "fixed", impact_statement: fixed.impact, component: `pkg:npm/${component.name}@${component.version}` });
+          continue;
+        }
         const exception = policy.notAffected.find((candidate: any) => candidate.id === vulnerability.id && candidate.package === component.name && candidate.version === component.version && candidate.ecosystem === component.ecosystem);
         if (!exception) { findings.push(`Vulnerability: ${component.name}@${component.version} ${vulnerability.id}`); continue; }
         assert.equal(exception.justification, "vulnerable_code_not_present");

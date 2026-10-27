@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { assess, platforms } from "./check.mts";
+import { deepmergePatch } from "./deepmerge.mts";
 
 function fixture() {
   const entry = { package: { name: "golang.org/x/crypto", version: "0.58.0", ecosystem: "Go" }, licenses: ["BSD-3-Clause"], vulnerabilities: [{ id: "GO-2026-5932" }] };
@@ -25,4 +27,23 @@ test("VEX cannot hide new versions, advisories, reachable code, missing platform
     (data: any) => data.report.results[1].packages[0].licenses = ["LicenseRef-Unknown"],
   ];
   for (const mutate of mutations) { const data = structuredClone(source); mutate(data); assert.throws(() => assess(data.report, data.policy, data.imports, date)); }
+});
+
+test("a patched dependency is fixed only with exact, current installation evidence", () => {
+  const policy = JSON.parse(readFileSync("security/sca-policy.json", "utf8"));
+  const source = fixture(), date = new Date("2026-10-28T00:00:00Z");
+  source.report.results[1]!.packages[0] = { package: { name: "deepmerge", version: "4.3.1", ecosystem: "npm" }, licenses: ["MIT"], vulnerabilities: [{ id: deepmergePatch.id }] } as any;
+  const fixed = assess(source.report, policy, source.imports, date, [deepmergePatch]);
+  assert.equal(fixed.find(statement => statement.vulnerability.name === deepmergePatch.id)?.status, "fixed");
+  assert.throws(() => assess(source.report, policy, source.imports, date));
+  assert.throws(() => assess(source.report, policy, source.imports, date, [{ ...deepmergePatch, sha256: "changed" }]));
+  assert.throws(() => assess(source.report, policy, source.imports, new Date("2026-11-28T00:00:00Z"), [deepmergePatch]));
+  for (const id of ["GHSA-another", "MAL-2026-123"]) {
+    const changed = structuredClone(source.report);
+    (changed.results[1]!.packages[0] as any).vulnerabilities[0].id = id;
+    assert.throws(() => assess(changed, policy, source.imports, date, [deepmergePatch]));
+  }
+  const changedPolicy = structuredClone(policy);
+  changedPolicy.fixed[0].patchSha256 = "changed";
+  assert.throws(() => assess(source.report, changedPolicy, source.imports, date, [deepmergePatch]));
 });

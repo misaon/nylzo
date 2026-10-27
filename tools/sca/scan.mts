@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { assess, platforms } from "./check.mts";
+import { verifyDeepmergePatch } from "./deepmerge.mts";
 
 const directory = resolve(process.argv[2] ?? ".sca-reports");
 mkdirSync(directory, { recursive: true });
@@ -14,6 +15,7 @@ if (version) {
   if (process.env.GITHUB_ACTIONS === "true") assert.equal(process.env.GITHUB_REF_NAME, `v${version.replace(/^v/u, "")}`);
 }
 const policy = JSON.parse(readFileSync("security/sca-policy.json", "utf8"));
+const patches = [verifyDeepmergePatch()];
 const reportPath = `${directory}/source.json`;
 const arguments_ = ["scan", "source", "--config=security/osv-scanner.toml", "--lockfile=go.mod", "--lockfile=web/pnpm-lock.yaml", "--all-packages", "--all-vulns", `--licenses=${policy.allowedLicenses.join(",")}`];
 const scan = spawnSync("osv-scanner", [...arguments_, "--format=json", `--output-file=${reportPath}`], { stdio: "inherit" });
@@ -28,7 +30,8 @@ if (report.results.some((result: any) => result.packages.some((entry: any) => en
 }
 writeFileSync(`${directory}/go-imports.json`, JSON.stringify(imports, null, 2) + "\n");
 const now = new Date();
-const statements = assess(report, policy, imports, now);
+const statements = assess(report, policy, imports, now, patches);
+writeFileSync(`${directory}/patch-evidence.json`, JSON.stringify(patches, null, 2) + "\n");
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 assert.match(commit, /^[0-9a-f]{40}$/u);
 const product = version ? `pkg:golang/github.com/misaon/nylzo@v${version.replace(/^v/u, "")}` : `https://github.com/misaon/nylzo/tree/${commit}`;
@@ -49,4 +52,4 @@ if (process.argv.includes("--sbom")) {
   assert.equal(document.spdxVersion, "SPDX-2.3");
   assert(document.packages.length >= report.results.reduce((total: number, result: any) => total + result.packages.length, 0));
 }
-console.log(`Checked ${report.results.reduce((total: number, result: any) => total + result.packages.length, 0)} locked packages; ${statements.length} exact non-affected assessment(s).`);
+console.log(`Checked ${report.results.reduce((total: number, result: any) => total + result.packages.length, 0)} locked packages; ${statements.length} exact VEX assessment(s).`);
