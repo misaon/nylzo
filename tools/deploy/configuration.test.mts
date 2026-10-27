@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { configuration, patchCandidate } from "./configuration.mts";
 import { render } from "./render.mts";
 import { gunzipSync } from "node:zlib";
+import { readFile } from "node:fs/promises";
 
 const site = {
   name: "nylzo-test", domain: "nylzo.example.org", location: "nbg1", serverType: "cx23", architecture: "amd64",
@@ -17,7 +18,7 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
     { domain: "example.org\nExecStart=/bin/false" }, { name: "../other" },
     { administratorNetworks: ["0.0.0.0/0"] }, { administratorNetworks: ["::/0"] },
     { administratorNetworks: ["192.0.2.1/32/anything"] }, { architecture: "arm64" },
-    { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" },
+    { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" }, { publicAccess: "true" },
     { operator: "name\nNYLZO_TRUSTED_PROXIES=0.0.0.0/0" }, { unexpectedRootCommand: "/bin/false" },
     { administratorPublicKey: "ssh-ed25519 " + Buffer.alloc(51).toString("base64") },
   ]) assert.throws(() => configuration({ ...site, ...changed }));
@@ -33,6 +34,10 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   const { ignition, cloud } = await render(site);
   assert(Buffer.byteLength(JSON.stringify(ignition)) <= 32768);
   assert(Buffer.byteLength(cloud) <= 32768);
+  const factory = JSON.parse(cloud.slice("#cloud-config\n".length));
+  assert(factory.write_files.every((file: { path: string }) => file.path.startsWith("/var/tmp/nylzo-image/")), "Large boot artifacts must not fill Ubuntu's small /run tmpfs");
+  const bootstrap = factory.write_files.find((file: { path: string }) => file.path.endsWith("/boot"));
+  assert.match(gunzipSync(Buffer.from(bootstrap.content, "base64")).toString(), /cd \/var\/tmp\/nylzo-image/u);
   const files = new Map(ignition.storage.files.map(file => [file.path, gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString()]));
   assert(!JSON.stringify(ignition).includes("HCLOUD_TOKEN"));
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
@@ -46,4 +51,29 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   const updateEngine = ignition.systemd.units.find(unit => unit.name === "update-engine.service")!;
   assert("dropins" in updateEngine && updateEngine.dropins[0]!.contents.includes("Requires=nylzo-ready.service"));
   assert.match(files.get("/opt/nylzo/runtime/update")!, /--network none/u);
+  const identity = ignition.systemd.units.find(unit => unit.name === "nylzo-ssh-identity.service")!;
+  assert("contents" in identity && identity.contents.includes("Requires=sshd-keygen.service"));
+  assert("contents" in identity && identity.contents.includes("-f /etc/ssh/ssh_host_ed25519_key.pub"));
+  assert("contents" in identity && identity.contents.includes("TTYPath=/dev/tty1"));
+});
+
+test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {
+  const { ignition } = await render(site);
+  const bandwidth = ignition.systemd.units.find(unit => unit.name === "nylzo-bandwidth.service");
+  assert(bandwidth && "enabled" in bandwidth && bandwidth.enabled);
+  for (const name of ["nylzo-initialize.service", "nylzo.service", "caddy.service"]) {
+    const unit = ignition.systemd.units.find(unit => unit.name === name)!;
+    assert("contents" in unit && /Requires=.*nylzo-bandwidth.service/u.test(unit.contents));
+    assert("contents" in unit && /After=.*nylzo-bandwidth.service/u.test(unit.contents));
+  }
+  // Both address families share one NIC. Even continuous use leaves a margin
+  // below the included allowance, including a maximum-length calendar month.
+  const file = ignition.storage.files.find(file => file.path === "/opt/nylzo/runtime/bandwidth")!;
+  const script = gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString();
+  const rate = /tbf rate ([0-9]+)mbit/u.exec(script);
+  assert(rate);
+  assert(Number(rate[1]) * 1_000_000 / 8 * 31 * 86400 < 20_000_000_000_000);
+  const dns = await readFile(new URL("../../deploy/hetzner-flatcar/infrastructure/dns/main.tf", import.meta.url), "utf8");
+  assert.match(dns, /proxied\s*=\s*false/u);
+  assert(!dns.includes("zone_mode"), "Cloudflare Free can refuse account-wide custom DNS modes");
 });

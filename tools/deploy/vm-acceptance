@@ -3,6 +3,13 @@ set -euo pipefail
 umask 077
 directory=/var/lib/nylzo-vm-test
 mkdir -p "$directory"
+systemctl is-active --quiet nylzo-bandwidth.service
+interface=$(ip -json -4 route show default | /opt/nylzo/bin/jq --exit-status --raw-output '.[0].dev')
+networkctl reload
+sleep 2
+tc -json qdisc show dev "$interface" | /opt/nylzo/bin/jq --exit-status \
+  'any(.[]; .root == true and .kind == "tbf" and .options.rate == 5000000)' > /dev/null
+echo 'NYLZO_VM_TRAFFIC_CEILING_VERIFIED'
 docker cp nylzo:/ko-app/nylzo "$directory/nylzo"
 chmod 0755 "$directory/nylzo"
 "$directory/nylzo" verify-client --server http://127.0.0.1

@@ -42,9 +42,11 @@ mise run deploy apply server .deploy/production/site.json
 
 Read each plan before applying it. Applying accepts only the saved plan, unchanged infrastructure and inputs, and a plan less than one hour old. OpenTofu state and plan encryption are enforced. Provider versions and checksums are committed for Linux and macOS on both architectures. Private working files stay under the ignored operator directory.
 
-The image factory starts a disposable Ubuntu server behind a firewall with no inbound rules. It verifies Flatcar's signed PXE kernel and RAM filesystem, boots them with `kexec`, and verifies the signed Hetzner disk image before writing it to the only unmounted disk. It powers off without booting the installed disk. The operator snapshots this clean image and destroys the builder in a `finally` block. A failed local process can interrupt that cleanup: inspect the project and remove any leftover builder after checking its identity. Snapshots incur storage charges until removed.
+The image factory starts a disposable Ubuntu server behind a firewall with no inbound rules. Boot downloads use its disk rather than the small `/run` memory filesystem. It verifies Flatcar's signed PXE kernel and RAM filesystem, boots them with `kexec`, and verifies the signed Hetzner disk image before writing it to the only unmounted disk. It powers off without booting the installed disk. The operator snapshots this clean image and destroys the builder in a `finally` block. A failed local process can interrupt that cleanup: inspect the project and remove any leftover builder after checking its identity. Snapshots incur storage charges until removed.
 
 The production stack starts a separate server from that snapshot with the final Ignition configuration. OpenTofu prevents routine server deletion/rebuild. There are no messages, pepper, reporting private key, or cloud credentials in the snapshot. Changes to Ignition are first-boot changes; an existing server cannot be reconfigured by merely editing `user_data`. Review and apply later host-configuration changes explicitly over the administrator connection, or provision a replacement with a deliberate state-migration procedure.
+
+Keep `publicAccess: false` during acceptance. HTTPS is then reachable only from the administrator networks. Port 80 remains public for ACME HTTP challenges and redirects; it does not expose the application API. After completing the checks below, set `publicAccess: true` and review/apply a new server plan to open HTTPS to visitors. This changes the firewall without replacing the server.
 
 ## Cloudflare DNS without proxying
 
@@ -60,7 +62,7 @@ mise run deploy apply dns .deploy/production/site.json
 mise run deploy outputs dns .deploy/production/site.json
 ```
 
-The operator imports a matching existing zone and its instance A, AAAA, and certificate-authority records. Ambiguous records stop the operation. Other records are not managed by this stack. Review the plan carefully: DNS-only mode applies to the entire zone. The stack sets unproxied A/AAAA records, permits Let's Encrypt certificates, forbids wildcard certificate issuance, and enables zone signing.
+The operator imports a matching existing zone and its instance A, AAAA, and certificate-authority records. Ambiguous records stop the operation. Other records are not managed by this stack. The stack sets unproxied A/AAAA records, permits Let's Encrypt certificates, forbids wildcard certificate issuance, and enables zone signing. Set any existing CNAME records that point to the instance to DNS only as well. The Free plan supports this record-level setting; the account-wide custom DNS-only mode is unavailable on some accounts and is not required.
 
 If the domain already has a DS record, complete the signed-zone migration procedure before changing its delegation; an incompatible DS breaks resolution. For a previously unsigned domain, delegate to the printed Cloudflare nameservers, wait for activation, then publish the printed DS record at the registrar and verify the complete DNSSEC chain. OpenTofu cannot automate registrar changes without a supported, separately authorized registrar API. Enabling signing at Cloudflare alone does not complete DNSSEC.
 
@@ -71,6 +73,8 @@ Caddy obtains its certificate directly from Let's Encrypt. The DNS token is neve
 Only ports 80/tcp, 443/tcp, 443/udp, ICMP, and allowlisted SSH are accepted by the cloud firewall. Caddy is an unprivileged host service with only the capability needed to bind public ports. Nylzo listens on a private internal bridge address with no published backend port, with a read-only container filesystem, no Linux capabilities, no new privileges, explicit CPU/memory/process limits, and a separate user namespace. Its internal bridge has no Internet route; host firewall rules reject new connections from that bridge. Caddy preserves client addresses and Nylzo trusts only the bridge gateway.
 
 The pepper is generated on first boot and retained across restarts. The reporting private key stays on the operator workstation. Application/proxy access logs are disabled or bounded as described in [Self-hosting](Self-hosting.md). At 250 daily creations, seven-day retention needs up to roughly 11 GB of maximum-size messages; reserve additional space for the OS, images, reports, and logs. This profile caps configuration at 500 daily creations and stops new creation below 4 GiB free space.
+
+The public network interface has a shared 40 Mbit/s outbound ceiling for IPv4 and IPv6, including HTTPS, SSH, and host updates. Continuous use for 31 days transfers about 13.4 TB, below the 20 TB allowance of the reviewed EU plans. Public services require successful installation of the ceiling. A systemd-networkd configuration retains it across network reloads and reboots. Verify the allowance for your chosen plan and monitor provider usage: this host policy is not a provider-enforced billing cap and cannot protect against a compromised host.
 
 With `automaticUpdates: true`, a timer checks every ten minutes, with up to one minute of jitter:
 
@@ -87,11 +91,13 @@ If a candidate fails after opening persistent state, the updater stops Nylzo and
 Before accepting real traffic:
 
 1. Confirm public DNSSEC validation, certificate issuance, HTTP redirects, IPv4 and IPv6 client address handling, and refusal of public backend/SSH access.
-2. Run a matching verified `nylzo verify-client --server https://your-domain`, create/read/burn synthetic messages, reboot, and confirm a burned message stays gone and the pepper stays unchanged.
+2. Run a matching verified `nylzo verify-client --server https://your-domain`, create/read/burn synthetic messages, reboot, and confirm a burned message stays gone and the pepper stays unchanged. Check that `nylzo-bandwidth.service` is active and the public interface retains its 40 Mbit/s TBF queue after a network reload and reboot.
 3. Exercise one signed Nylzo patch update, rejected signature/provenance, a failed candidate, an actual Flatcar A/B OS update, and OS health-gate failure. Record the observed recovery behavior.
 4. Connect external HTTPS/disk/update-failure monitoring and test alert delivery. The repository's `monitor` workflow can verify the public web client after setting `NYLZO_MONITOR_URL`; it does not monitor local disk, Caddy's version, or Flatcar update failures. Do not treat a running service as proof that updates succeeded.
 
 Inspect the host through allowlisted SSH:
+
+Before the first SSH login, open the server's console from the authenticated Hetzner account. After initialization, `nylzo-ssh-identity.service` prints the Ed25519 host-key fingerprint there. Compare it with the key offered by SSH, then pin the matching key in your local known-hosts file. A fingerprint obtained only with `ssh-keyscan` over the same network is not an independent identity check. Keep strict host-key checking enabled.
 
 ```sh
 sudo systemctl status nylzo caddy nylzo-update.timer update-engine
@@ -112,3 +118,4 @@ Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/t
 - [Caddy: signature verification](https://caddyserver.com/docs/signature-verification)
 - [Cloudflare: DNS-only mode](https://developers.cloudflare.com/dns/proxy-status/), [DNSSEC](https://developers.cloudflare.com/dns/dnssec/), and [migration](https://developers.cloudflare.com/dns/dnssec/dnssec-active-migration/)
 - [Hetzner: server security limitations](https://docs.hetzner.com/cloud/servers/faq/)
+- [systemd-networkd: token bucket traffic shaping](https://www.freedesktop.org/software/systemd/man/254/systemd.network.html#%5BTokenBucketFilter%5D%20Section%20Options)

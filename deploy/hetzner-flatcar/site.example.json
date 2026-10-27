@@ -13,6 +13,7 @@
   "dailyCreates": 250,
   "initialRelease": "v0.1.2",
   "automaticUpdates": true,
+  "publicAccess": false,
   "dnsZone": "nylzo.example.org",
   "cloudflareAccountId": ""
 }

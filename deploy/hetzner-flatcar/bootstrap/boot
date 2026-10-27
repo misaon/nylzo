@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-cd /run/nylzo-image
+cd /var/tmp/nylzo-image
 [[ "${EXPECTED_BUILDER_NAME:-}" =~ ^[a-z][a-z0-9-]{0,30}-image-builder$ ]] || exit 1
 [[ "$(curl --fail --silent --max-time 3 http://169.254.169.254/hetzner/v1/metadata/hostname)" = "$EXPECTED_BUILDER_NAME" ]] || exit 1
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install --yes --no-install-recommends ca-certificates curl gnupg cpio kexec-tools
-mkdir -p /run/nylzo-image/gnupg
-chmod 0700 /run/nylzo-image/gnupg
-gpg --batch --homedir /run/nylzo-image/gnupg --import flatcar.asc
+mkdir -p /var/tmp/nylzo-image/gnupg
+chmod 0700 /var/tmp/nylzo-image/gnupg
+gpg --batch --homedir /var/tmp/nylzo-image/gnupg --import flatcar.asc
 base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
 for artifact in flatcar_production_pxe.vmlinuz flatcar_production_pxe_image.cpio.gz; do
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 600 --max-filesize 1073741824 "$base/$artifact" --output "$artifact"
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 60 --max-filesize 1048576 "$base/$artifact.sig" --output "$artifact.sig"
-  gpg --batch --homedir /run/nylzo-image/gnupg --verify "$artifact.sig" "$artifact"
+  gpg --batch --homedir /var/tmp/nylzo-image/gnupg --verify "$artifact.sig" "$artifact"
 done
 mkdir -p oem/usr/share/oem
 key=$(gzip --no-name --stdout flatcar.asc | base64 --wrap=0)
