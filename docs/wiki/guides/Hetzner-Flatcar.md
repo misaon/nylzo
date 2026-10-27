@@ -110,5 +110,5 @@ Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/t
 - [OpenTofu: state and plan encryption](https://opentofu.org/docs/v1.13/language/state/encryption/)
 - [Flatcar: supply-chain verification](https://www.flatcar.org/docs/latest/security/supply-chain/), [PXE provisioning](https://www.flatcar.org/docs/latest/deploy/bare-metal/booting-with-pxe/), and [update strategies](https://www.flatcar.org/docs/latest/updates-releases/releases/update-strategies/)
 - [Caddy: signature verification](https://caddyserver.com/docs/signature-verification)
-- [Cloudflare: DNS-only mode](https://developers.cloudflare.com/dns/proxy-status/), [DNSSEC](https://developers.cloudflare.com/dns/dnssec/), and [migration](https://developers.cloudflare.com/dns/dnssec/zone-migration/)
+- [Cloudflare: DNS-only mode](https://developers.cloudflare.com/dns/proxy-status/), [DNSSEC](https://developers.cloudflare.com/dns/dnssec/), and [migration](https://developers.cloudflare.com/dns/dnssec/dnssec-active-migration/)
 - [Hetzner: server security limitations](https://docs.hetzner.com/cloud/servers/faq/)
