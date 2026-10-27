@@ -480,10 +480,10 @@ jobs:
         include:
           - browser: chromium
             runner: ubuntu-latest
-            install: --with-deps --only-shell chromium
+            install: --only-shell chromium
           - browser: firefox
             runner: ubuntu-latest
-            install: --with-deps firefox
+            install: firefox
           - browser: webkit
             runner: macos-latest
             install: webkit
@@ -520,6 +520,13 @@ jobs:
             sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
           fi
           printf 'Acquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Retries "2";\n' | sudo tee /etc/apt/apt.conf.d/80nylzo-ci > /dev/null
+      - name: Install Linux browser libraries
+        if: runner.os == 'Linux'
+        working-directory: web/e2e
+        timeout-minutes: 10
+        env:
+          BROWSER: ${{ matrix.browser }}
+        run: pnpm exec playwright install-deps "$BROWSER"
       - name: Install the Playwright browser
         working-directory: web/e2e
         timeout-minutes: 15
