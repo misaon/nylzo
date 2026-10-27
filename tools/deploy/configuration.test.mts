@@ -51,6 +51,10 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   const updateEngine = ignition.systemd.units.find(unit => unit.name === "update-engine.service")!;
   assert("dropins" in updateEngine && updateEngine.dropins[0]!.contents.includes("Requires=nylzo-ready.service"));
   assert.match(files.get("/opt/nylzo/runtime/update")!, /--network none/u);
+  const identity = ignition.systemd.units.find(unit => unit.name === "nylzo-ssh-identity.service")!;
+  assert("contents" in identity && identity.contents.includes("Requires=sshd-keygen.service"));
+  assert("contents" in identity && identity.contents.includes("-f /etc/ssh/ssh_host_ed25519_key.pub"));
+  assert("contents" in identity && identity.contents.includes("TTYPath=/dev/tty1"));
 });
 
 test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {

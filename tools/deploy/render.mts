@@ -45,6 +45,7 @@ export async function render(input: unknown) {
   const units = [
     { name: "serial-getty@ttyS0.service", mask: true },
     { name: "getty@tty1.service", mask: true },
+    service("nylzo-ssh-identity.service", "[Unit]\nRequires=sshd-keygen.service\nAfter=sshd-keygen.service nylzo-ready.service\n[Service]\nType=oneshot\nExecStart=/usr/bin/ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub\nStandardOutput=tty\nTTYPath=/dev/tty1\n[Install]\nWantedBy=multi-user.target\n", true),
     service("nylzo-tools.service", "[Unit]\nWants=network-online.target\nAfter=network-online.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=10min\nExecStart=/opt/nylzo/runtime/install-tools\n"),
     service("nylzo-bandwidth.service", "[Unit]\nRequires=nylzo-tools.service\nWants=network-online.target\nAfter=nylzo-tools.service network-online.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/opt/nylzo/runtime/bandwidth\n[Install]\nWantedBy=multi-user.target\n", true),
     service("nylzo-initialize.service", "[Unit]\nRequires=nylzo-tools.service nylzo-bandwidth.service docker.service\nAfter=nylzo-tools.service nylzo-bandwidth.service docker.service network-online.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=15min\nExecStart=/opt/nylzo/runtime/prepare\nExecStart=/opt/nylzo/runtime/update initialize\n[Install]\nWantedBy=multi-user.target\n", true),

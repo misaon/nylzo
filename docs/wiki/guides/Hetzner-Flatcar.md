@@ -95,6 +95,8 @@ Before accepting real traffic:
 
 Inspect the host through allowlisted SSH:
 
+Before the first SSH login, open the server's console from the authenticated Hetzner account. After initialization, `nylzo-ssh-identity.service` prints the Ed25519 host-key fingerprint there. Compare it with the key offered by SSH, then pin the matching key in your local known-hosts file. A fingerprint obtained only with `ssh-keyscan` over the same network is not an independent identity check. Keep strict host-key checking enabled.
+
 ```sh
 sudo systemctl status nylzo caddy nylzo-update.timer update-engine
 sudo journalctl -u nylzo-initialize -u nylzo-update -u nylzo-ready
