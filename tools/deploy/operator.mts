@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { copyFile, lstat, mkdir, open, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { configuration } from "./configuration.mts";
 import { profile, render, toolchain } from "./render.mts";
 
 export async function privateFile(filename: string) {
-  const information = await lstat(filename);
-  assert(information.isFile() && !information.isSymbolicLink() && information.size <= 8192, "Expected a small private file");
-  assert.equal(information.mode & 0o077, 0, "Credential files must have mode 0600 or stricter");
-  if (process.getuid) assert.equal(information.uid, process.getuid(), "Credential file belongs to another account");
-  return (await readFile(filename, "utf8")).trim();
+  const handle = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const information = await handle.stat();
+    assert(information.isFile() && information.size <= 8192, "Expected a small private file");
+    assert.equal(information.mode & 0o077, 0, "Credential files must have mode 0600 or stricter");
+    if (process.getuid) assert.equal(information.uid, process.getuid(), "Credential file belongs to another account");
+    return (await handle.readFile("utf8")).trim();
+  } finally { await handle.close(); }
 }
 
 export async function credential(name: string) {
@@ -30,8 +34,15 @@ export async function encryption(root: string) {
 export function client(token: string, service: "hetzner" | "cloudflare" = "hetzner") {
   const origin = service === "hetzner" ? "https://api.hetzner.cloud/v1" : "https://api.cloudflare.com/client/v4";
   return async (pathname: string, body?: object) => {
-    assert.match(pathname, /^\/[a-z0-9_/?=&.-]+$/iu);
-    const response = await fetch(origin + pathname, {
+    const allowed = service === "hetzner"
+      ? /^\/(?:servers\/[1-9][0-9]*(?:\/actions\/create_image)?|images\/[1-9][0-9]*)$/u
+      : /^\/zones(?:\/[a-f0-9]{32}\/dns_records)?\?name=[a-z0-9.-]+(?:&type=(?:A|AAAA|CAA))?$/u;
+    if (!allowed.test(pathname) || pathname.includes("..")) throw new Error("Cloud API endpoint is not allowed");
+    const endpoint = new URL(origin);
+    const [resource, query = ""] = pathname.split("?");
+    endpoint.pathname += resource;
+    endpoint.search = query;
+    const response = await fetch(endpoint, {
       method: body ? "POST" : "GET", redirect: "error", signal: AbortSignal.timeout(30000),
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),

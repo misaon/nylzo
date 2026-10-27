@@ -1,21 +1,43 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { privateFile, inputs } from "./operator.mts";
+import { privateFile, inputs, client } from "./operator.mts";
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));
   try {
     const filename = path.join(directory, "credential");
     await writeFile(filename, "synthetic-test-credential-not-a-live-token", { mode: 0o644 });
+    await chmod(filename, 0o644);
     await assert.rejects(privateFile(filename));
     await chmod(filename, 0o600);
     assert.equal(await privateFile(filename), "synthetic-test-credential-not-a-live-token");
     await symlink(filename, path.join(directory, "redirect"));
     await assert.rejects(privateFile(path.join(directory, "redirect")));
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("cloud API calls cannot redirect credentials or reach endpoints supplied by remote data", async () => {
+  const seen: { url: string; redirect: string | undefined }[] = [];
+  const fetch = mock.method(globalThis, "fetch", async (url: URL, options: RequestInit) => {
+    seen.push({ url: url.href, redirect: options.redirect });
+    return new Response("{}", { status: 200 });
+  });
+  try {
+    const hetzner = client("synthetic-test-token-not-a-live-token");
+    const cloudflare = client("synthetic-test-token-not-a-live-token", "cloudflare");
+    for (const endpoint of ["//attacker.example", "/servers/1/../../organizations", "/servers/1?token=anything", "/images/NaN", "/images/1#fragment"]) await assert.rejects(hetzner(endpoint));
+    for (const endpoint of ["/zones?name=domain.example&token=anything", "/zones/../accounts", "/zones?name=domain.example\n"]) await assert.rejects(cloudflare(endpoint));
+    assert.equal(seen.length, 0);
+    await hetzner("/images/123");
+    await cloudflare("/zones?name=domain.example");
+    assert.deepEqual(seen, [
+      { url: "https://api.hetzner.cloud/v1/images/123", redirect: "error" },
+      { url: "https://api.cloudflare.com/client/v4/zones?name=domain.example", redirect: "error" },
+    ]);
+  } finally { fetch.mock.restore(); }
 });
 
 test("reviewed plans are bound to provider locks, infrastructure, variables and generated host configuration", async () => {
