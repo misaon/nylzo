@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'd9ca412031153da1eeb2ebeb38ed8c2d21e0a9a85bf2e3632c6c55b23f8d9e74  tools/security/bootstrap-policy' | sha256sum --check
+          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -48,7 +48,7 @@ jobs:
         run: |
           tag="automation-probe-${GITHUB_RUN_ID}"
           git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$tag" -m 'Local automation signing check'
-          gitsign verify --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$tag"
+          gitsign verify-tag --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha "$GITHUB_SHA" --certificate-github-workflow-trigger workflow_dispatch "$tag"
 
   merge:
     if: >-
@@ -69,7 +69,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'd9ca412031153da1eeb2ebeb38ed8c2d21e0a9a85bf2e3632c6c55b23f8d9e74  tools/security/bootstrap-policy' | sha256sum --check
+          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -114,7 +114,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'd9ca412031153da1eeb2ebeb38ed8c2d21e0a9a85bf2e3632c6c55b23f8d9e74  tools/security/bootstrap-policy' | sha256sum --check
+          echo '20fa307d2e9fa9b8fdf3f3fe09f485aa43551bd9c0c72c1dfe30f9921962269a  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -153,7 +153,7 @@ jobs:
           [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
           test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "$SOURCE_COMMIT"
           git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Nylzo ${RELEASE_TAG#v} security update"
-          gitsign verify --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$RELEASE_TAG"
+          gitsign verify-tag --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-sha "$SOURCE_COMMIT" --certificate-github-workflow-trigger workflow_run "$RELEASE_TAG"
           authorization=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
           echo "::add-mask::$authorization"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $authorization" push origin "refs/tags/${RELEASE_TAG}"
