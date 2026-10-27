@@ -23,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 download() {
-  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 180 "$1" --output "$2"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 180 --max-filesize 134217728 "$1" --output "$2"
 }
 patch() {
   local previous="$1" next="$2"

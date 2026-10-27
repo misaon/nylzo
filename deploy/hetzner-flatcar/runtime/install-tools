@@ -19,7 +19,7 @@ cd /var/cache/nylzo-tools
 fetch() {
   local url="$1" file="$2" checksum="$3"
   if ! echo "$checksum  $file" | sha256sum --check --status; then
-    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 "$url" --output "$file.part"
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 90 --max-filesize 268435456 "$url" --output "$file.part"
     echo "$checksum  $file.part" | sha256sum --check --status
     mv "$file.part" "$file"
   fi

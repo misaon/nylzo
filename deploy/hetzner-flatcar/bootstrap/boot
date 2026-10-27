@@ -12,8 +12,8 @@ chmod 0700 /run/nylzo-image/gnupg
 gpg --batch --homedir /run/nylzo-image/gnupg --import flatcar.asc
 base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
 for artifact in flatcar_production_pxe.vmlinuz flatcar_production_pxe_image.cpio.gz; do
-  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$artifact" --output "$artifact"
-  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$artifact.sig" --output "$artifact.sig"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 600 --max-filesize 1073741824 "$base/$artifact" --output "$artifact"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 60 --max-filesize 1048576 "$base/$artifact.sig" --output "$artifact.sig"
   gpg --batch --homedir /run/nylzo-image/gnupg --verify "$artifact.sig" "$artifact"
 done
 mkdir -p oem/usr/share/oem

@@ -17,8 +17,8 @@ gpg --batch --homedir /opt/nylzo-image/gnupg --import /opt/nylzo-image/flatcar.a
 cd /opt/nylzo-image
 base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
 image=flatcar_production_hetzner_image.bin.bz2
-curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$image" --output "$image"
-curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 "$base/$image.sig" --output "$image.sig"
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 600 --max-filesize 1073741824 "$base/$image" --output "$image"
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 60 --max-filesize 1048576 "$base/$image.sig" --output "$image.sig"
 gpg --batch --homedir /opt/nylzo-image/gnupg --verify "$image.sig" "$image"
 bzip2 --decompress --stdout "$image" | dd of="${disks[0]}" bs=4M conv=fsync status=progress
 sync
