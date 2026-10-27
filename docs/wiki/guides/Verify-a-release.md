@@ -42,9 +42,12 @@ cosign verify-blob "$evidence" --bundle "${evidence}.sigstore.json" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
 sha256sum -c "$evidence"
-gh attestation verify "$evidence" --repo misaon/nylzo \
-  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
-  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
+for artifact in nylzo_"${tag#v}".*.json; do
+  case "$artifact" in *.sigstore.json) continue ;; esac
+  gh attestation verify "$artifact" --repo misaon/nylzo \
+    --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+    --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
+done
 ```
 
 Verify every listed file. An OpenVEX statement applies only to its named product, component, and vulnerability; read its justification and the [review policy](../maintainers/Security-controls.md#vex-and-review-expiry). It does not waive findings for a different build or a later dependency version.
