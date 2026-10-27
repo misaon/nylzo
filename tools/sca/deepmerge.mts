@@ -18,6 +18,8 @@ const hashes = {
 
 export function checkPatchBinding(patch: Buffer, workspace: string, lockfile: string) {
   assert.equal(createHash("sha256").update(patch).digest("hex"), deepmergePatch.sha256, "Unreviewed deepmerge patch");
+  workspace = workspace.replaceAll("\r\n", "\n");
+  lockfile = lockfile.replaceAll("\r\n", "\n");
   assert.match(workspace, /^patchedDependencies:\n  deepmerge@4\.3\.1: patches\/deepmerge@4\.3\.1\.patch$/mu);
   assert.match(lockfile, new RegExp(`^patchedDependencies:\\n  deepmerge@4\\.3\\.1: ${deepmergePatch.sha256}$`, "mu"));
   const references = [...lockfile.matchAll(/^\s+deepmerge: (.+)$/gmu)].map(match => match[1]);
