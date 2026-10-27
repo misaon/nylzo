@@ -67,13 +67,11 @@ caddy() {
   export NYLZO_DOMAIN
   NYLZO_DOMAIN=$(jq -r .domain "$site")
   systemd-run --wait --pipe --collect --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$NYLZO_DOMAIN" "$directory/caddy" validate --config /etc/caddy/Caddyfile >/dev/null
-  ln -s "$directory/caddy" /opt/nylzo/bin/caddy.next
+  ln --symbolic --force --no-dereference --no-target-directory "$directory/caddy" /opt/nylzo/bin/caddy.next
   mv -T /opt/nylzo/bin/caddy.next /opt/nylzo/bin/caddy
-  systemctl restart caddy.service
-  sleep 2
-  if ! systemctl is-active --quiet caddy.service; then
+  if ! systemctl restart caddy.service || ! sleep 2 || ! systemctl is-active --quiet caddy.service; then
     if [[ -n "${previous:-}" ]]; then
-      ln -s "/opt/nylzo/caddy/$previous/caddy" /opt/nylzo/bin/caddy.previous
+      ln --symbolic --force --no-dereference --no-target-directory "/opt/nylzo/caddy/$previous/caddy" /opt/nylzo/bin/caddy.previous
       mv -T /opt/nylzo/bin/caddy.previous /opt/nylzo/bin/caddy
       systemctl restart caddy.service
     fi

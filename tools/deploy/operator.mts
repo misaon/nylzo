@@ -93,7 +93,9 @@ export async function prepare(siteFile: string, kind: string) {
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
   const environment: NodeJS.ProcessEnv = { ...process.env, TF_IN_AUTOMATION: "true", TF_ENCRYPTION: await encryption(root) };
-  for (const name of ["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN", "TF_LOG", "TF_LOG_PATH", "TF_LOG_PROVIDER", "TF_LOG_SDK"]) delete environment[name];
+  for (const name of Object.keys(environment)) {
+    if (["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"].includes(name) || name.startsWith("TF_LOG")) delete environment[name];
+  }
   if (kind === "dns") environment.CLOUDFLARE_API_TOKEN = await credential("CLOUDFLARE_API_TOKEN");
   else environment.HCLOUD_TOKEN = await credential("HCLOUD_TOKEN");
   const version = JSON.parse(execute(directory, environment, ["version", "-json"], true));
@@ -175,6 +177,12 @@ export async function createImage(prepared: Awaited<ReturnType<typeof prepare>>)
 
 export async function initialize(sshPublicKey: string, destination: string) {
   const root = path.resolve(destination);
+  const checkout = path.resolve(profile, "../..");
+  const relative = path.relative(checkout, root);
+  if (!relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) {
+    try { execFileSync("git", ["check-ignore", "--quiet", "--", root + path.sep], { cwd: checkout, stdio: "ignore" }); }
+    catch { throw new Error("Keep operator keys outside the checkout or in an ignored directory such as .deploy"); }
+  }
   await mkdir(root, { mode: 0o700 });
   const site = JSON.parse(await readFile(path.join(profile, "site.example.json"), "utf8"));
   site.administratorPublicKey = (await readFile(sshPublicKey, "utf8")).trim();

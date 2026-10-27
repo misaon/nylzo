@@ -3,7 +3,7 @@ import { test, mock } from "node:test";
 import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { privateFile, inputs, client } from "./operator.mts";
+import { privateFile, inputs, client, initialize } from "./operator.mts";
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));
@@ -52,4 +52,8 @@ test("reviewed plans are bound to provider locks, infrastructure, variables and 
       previous = next;
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("initialization refuses to create private keys in a directory that Git can track", async () => {
+  await assert.rejects(initialize("unused-public-key", "tools/deploy/operator-private-keys"), /Keep operator keys outside/u);
 });
