@@ -14,13 +14,14 @@ zizmor = "1.31.1"
 shellcheck = "0.11.0"
 cosign = "3.1.4"
 grype = "0.121.0"
+gitsign = "0.18.0"
 
 [env]
 GOTOOLCHAIN = "local"
 
 [tasks.install]
 description = "Install the web dependencies exactly as locked"
-run = "pnpm --dir web install --frozen-lockfile"
+run = "node tools/security/install-web.mts"
 
 [tasks."build:web"]
 description = "Build the web client into internal/server/web/dist, where nylzo embeds it"
@@ -64,8 +65,8 @@ run = [
   "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release",
-  '''awk '/^minimumReleaseAge:/ { found = 1; if ($2 + 0 < 1440) exit 1 } END { exit !found }' web/pnpm-workspace.yaml''',
+  "shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy",
+  '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
   "pnpm --dir web audit --audit-level=moderate",

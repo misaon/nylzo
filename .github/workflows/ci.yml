@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # inspect signed security updates for exact release-age exceptions
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -140,7 +141,7 @@ jobs:
       - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release
+      - run: shellcheck mise-tasks/dev mise-tasks/release/* tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy
 
   go-test:
     name: Go tests (${{ matrix.shard }})
@@ -283,11 +284,13 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Supply-chain policy
         run: |
-          awk '/^minimumReleaseAge:/ { found = 1; if ($2 + 0 < 1440) exit 1 } END { exit !found }' pnpm-workspace.yaml
+          awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' pnpm-workspace.yaml
           grep -Eq '^strictDepBuilds: *true$' pnpm-workspace.yaml
           grep -Eq '^allowBuilds: *\{\}$' pnpm-workspace.yaml
           test -f pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - run: node ../tools/security/install-web.mts
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: pnpm audit --audit-level=moderate
       - name: Prettier, ESLint and knip
         run: pnpm lint
@@ -437,9 +440,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Build the client that nylzo embeds
+        env:
+          GH_TOKEN: ${{ github.token }}
         working-directory: web
         run: |
-          pnpm install --frozen-lockfile
+          node ../tools/security/install-web.mts
           pnpm --filter @nylzo/web build
       - name: Use the upstream Ubuntu mirror for browser dependencies
         if: runner.os == 'Linux'
@@ -508,7 +513,11 @@ jobs:
             grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; }
           done
       - run: mise run build
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: mise run dev serves the built client
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mise run dev > dev.log 2>&1 &
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:8080/healthz > /dev/null && break; sleep 1; done
@@ -543,9 +552,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Build the web client that nylzo embeds
+        env:
+          GH_TOKEN: ${{ github.token }}
         working-directory: web
         run: |
-          pnpm install --frozen-lockfile
+          node ../tools/security/install-web.mts
           pnpm --filter @nylzo/web build
       - name: Build nylzo and an image laid out like the release image
         run: |
@@ -660,6 +671,8 @@ jobs:
           node-version-file: web/.node-version
           package-manager-cache: false
       - name: Release configuration and a snapshot build
+        env:
+          GH_TOKEN: ${{ github.token }}
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser

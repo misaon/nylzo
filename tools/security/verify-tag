@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+[[ "$GITHUB_REPOSITORY" = misaon/nylzo ]] || exit 1
+[[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
+reference="refs/tags/${GITHUB_REF_NAME}"
+git fetch --force --no-tags origin "${reference}:${reference}" "+refs/heads/main:refs/remotes/origin/main"
+[[ "$(git cat-file -t "$reference")" = tag ]] || exit 1
+[[ "$(git rev-parse "${reference}^{commit}")" = "$GITHUB_SHA" ]] || exit 1
+[[ "$(git cat-file tag "$reference" | sed -n '/^$/q;s/^tag //p')" = "$GITHUB_REF_NAME" ]] || exit 1
+git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main
+object=$(git rev-parse "$reference")
+gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object}" > "${RUNNER_TEMP}/release-tag.json"
+if [[ "$(jq -r .verification.verified "${RUNNER_TEMP}/release-tag.json")" = true ]]; then
+  [[ -n "$RELEASE_TAGGER_EMAIL" ]] || exit 1
+  [[ "$(jq -r .tagger.email "${RUNNER_TEMP}/release-tag.json")" = "$RELEASE_TAGGER_EMAIL" ]] || exit 1
+  echo 'environment=release' >> "$GITHUB_OUTPUT"
+else
+  [[ "${SECURITY_AUTOMATION_ENABLED:-}" = true ]] || exit 1
+  [[ -n "${SECURITY_APP_SLUG:-}" && "$GITHUB_ACTOR" = "${SECURITY_APP_SLUG}[bot]" ]] || exit 1
+  gitsign verify \
+    --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-github-workflow-sha "$GITHUB_SHA" \
+    --certificate-github-workflow-trigger workflow_run "$reference"
+  echo 'environment=release-automatic' >> "$GITHUB_OUTPUT"
+fi

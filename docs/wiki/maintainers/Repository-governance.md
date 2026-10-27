@@ -39,7 +39,7 @@ The public [Wiki](https://github.com/misaon/nylzo/wiki) presents the user and op
 
 ## Account-owner prerequisites
 
-The maintainer registered an Ed25519 SSH signing key on GitHub on 2026-10-26. Keep it secure and configure Git to use it. `RELEASE_TAGGER_EMAIL` is set to `email@ondrejmisak.cz`; verify that email on the account and use it for release tag signatures. The workflow intentionally fails until GitHub verifies the tag signature. No private signing key should be uploaded to Actions.
+The maintainer registered an Ed25519 SSH signing key on GitHub on 2026-10-26. Keep it secure and configure Git to use it. `RELEASE_TAGGER_EMAIL` is set to `email@ondrejmisak.cz`; verify that email on the account and use it for release tag signatures. The workflow intentionally fails until GitHub verifies the tag signature. No personal signing key should be uploaded to Actions. The [security-update App](Security-updates.md), when activated, uses a separate environment-scoped App key and ephemeral OIDC tag signatures.
 
 Protect the owner account with a passkey or hardware-backed two-factor authentication, securely stored recovery codes, and narrowly scoped credentials. These are account settings; the repository API did not establish the account's current 2FA state. Review authorized apps, tokens, and active sessions in account settings. Add independent release approval when another trusted maintainer joins.
 

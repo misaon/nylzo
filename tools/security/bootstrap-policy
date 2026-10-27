@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sha256sum -c - <<'HASHES'
+2861b3bceaecf562f3f40e8d1fe34708b11e42a308c294379193d3ab43b6e4e2  tools/security/runtime.toml
+e445e3b563007606656a68b56112237071873de3870ba3cce85aca21b68604c8  mise.lock
+85e46e83e352adb62ff18c371b190dc3c1f7c6678168f6d9d40a5d5fbb8d7636  tools/security/dependency-api.mts
+6db39ab620af86a20f9230fe818b63e6631f8799dd6f54534f7fb3b213c904ff  tools/security/dependency-policy.mts
+963b80f59010c83e8e82b1a737d8170fe5f78195f266392eb09385e0e21aff16  tools/security/automation.mts
+454ed1bef23ed50cec9a2621f320dab96f19a43e93a263c365ce3b6b4f99d42d  tools/security/verify-tag
+a9ff9fd782bb9cf4664569fc32eb013eab82039ad18500575d67485060eb82b7  mise-tasks/release/checks
+HASHES
+
+destination="${RUNNER_TEMP}/nylzo-security-policy"
+mkdir -p "$destination/tools/security" "$destination/mise-tasks/release"
+cp -- "tools/security/runtime.toml" "${destination}/mise.toml"
+cp -- "mise.lock" "${destination}/mise.lock"
+cp -- "tools/security/dependency-api.mts" "${destination}/tools/security/dependency-api.mts"
+cp -- "tools/security/dependency-policy.mts" "${destination}/tools/security/dependency-policy.mts"
+cp -- "tools/security/automation.mts" "${destination}/tools/security/automation.mts"
+cp -- "tools/security/verify-tag" "${destination}/tools/security/verify-tag"
+cp -- "mise-tasks/release/checks" "${destination}/mise-tasks/release/checks"

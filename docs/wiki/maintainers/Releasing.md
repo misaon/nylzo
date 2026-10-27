@@ -1,6 +1,6 @@
 # Versioning and releases
 
-Nylzo uses stable [Semantic Versioning](https://semver.org/) tags (`vMAJOR.MINOR.PATCH`) and the pinned [GoReleaser](https://goreleaser.com/) to build archives, generate grouped release notes, create SBOMs, and upload signed artifacts. The maintainer chooses each version. Publishing requires a signed tag and approval in the `release` environment.
+Nylzo uses stable [Semantic Versioning](https://semver.org/) tags (`vMAJOR.MINOR.PATCH`) and the pinned [GoReleaser](https://goreleaser.com/) to build archives, generate grouped release notes, create SBOMs, and upload signed artifacts. The maintainer chooses ordinary release versions and approves publication in the `release` environment. The [security-update mechanism](Security-updates.md) can select and sign a patch version through a separate guarded path once activated.
 
 ## One source of version identity
 
