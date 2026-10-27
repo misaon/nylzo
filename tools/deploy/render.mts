@@ -78,8 +78,8 @@ export async function render(input: unknown) {
     write_files: [
       ["flatcar.asc", key], ["installer.ign", JSON.stringify(cloudInstaller)], ["boot", await read("bootstrap/boot")],
       ["env", `FLATCAR_BOARD=${board}\nFLATCAR_VERSION=${toolchain.flatcar}\nEXPECTED_BUILDER_NAME=${site.name}-image-builder\n`],
-    ].map(([name, contents]) => ({ path: `/run/nylzo-image/${name}`, encoding: "gz+b64", content: gzipSync(contents!).toString("base64"), permissions: "0600" })),
-    runcmd: [["/bin/bash", "-c", "set -a; . /run/nylzo-image/env; exec /bin/bash /run/nylzo-image/boot"]],
+    ].map(([name, contents]) => ({ path: `/var/tmp/nylzo-image/${name}`, encoding: "gz+b64", content: gzipSync(contents!).toString("base64"), permissions: "0600" })),
+    runcmd: [["/bin/bash", "-c", "set -a; . /var/tmp/nylzo-image/env; exec /bin/bash /var/tmp/nylzo-image/boot"]],
   });
   assert(Buffer.byteLength(cloud) <= 32768, "Image factory user_data exceeds 32 KiB");
   assert(Buffer.byteLength(JSON.stringify(ignition)) <= 32768, "Server user_data exceeds 32 KiB");

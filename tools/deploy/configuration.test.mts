@@ -34,6 +34,10 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   const { ignition, cloud } = await render(site);
   assert(Buffer.byteLength(JSON.stringify(ignition)) <= 32768);
   assert(Buffer.byteLength(cloud) <= 32768);
+  const factory = JSON.parse(cloud.slice("#cloud-config\n".length));
+  assert(factory.write_files.every((file: { path: string }) => file.path.startsWith("/var/tmp/nylzo-image/")), "Large boot artifacts must not fill Ubuntu's small /run tmpfs");
+  const bootstrap = factory.write_files.find((file: { path: string }) => file.path.endsWith("/boot"));
+  assert.match(gunzipSync(Buffer.from(bootstrap.content, "base64")).toString(), /cd \/var\/tmp\/nylzo-image/u);
   const files = new Map(ignition.storage.files.map(file => [file.path, gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString()]));
   assert(!JSON.stringify(ignition).includes("HCLOUD_TOKEN"));
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
