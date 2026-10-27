@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { api, inspectUpdate } from "./dependency-api.mts";
 import { repository } from "./dependency-policy.mts";
+import { verifyDeepmergePatch } from "../sca/deepmerge.mts";
 
 const directory = fileURLToPath(new URL("../../web/", import.meta.url));
 const workspace = `${directory}/pnpm-workspace.yaml`;
@@ -26,6 +27,7 @@ try {
   }
   const result = spawnSync("pnpm", ["--dir", directory, "install", "--frozen-lockfile", "--config.confirmModulesPurge=false"], { stdio: "inherit" });
   process.exitCode = result.status ?? 1;
+  if (result.status === 0) verifyDeepmergePatch();
 } finally {
   writeFileSync(workspace, original);
 }
