@@ -4,8 +4,23 @@ umask 077
 directory=/var/lib/nylzo-vm-test
 mkdir -p "$directory"
 [[ "$(getenforce)" = Enforcing ]]
+[[ "$(sysctl -n kernel.dmesg_restrict)" = 1 ]]
+[[ "$(sysctl -n kernel.kptr_restrict)" = 2 ]]
+[[ "$(sysctl -n net.ipv4.conf.all.rp_filter)" = 2 ]]
+sshd -t
+ssh_policy=$(sshd -T | tr '[:upper:]' '[:lower:]')
+for setting in pubkeyacceptedalgorithms hostkeyalgorithms casignaturealgorithms; do
+  algorithms=$(awk -v setting="$setting" '$1 == setting { print $2 }' <<< "$ssh_policy")
+  [[ -n "$algorithms" ]]
+  if grep --extended-regexp --quiet '(^|,)ssh-rsa(,|$)|(^|,)ssh-rsa-cert-v01@openssh.com(,|$)' <<< "$algorithms"; then
+    echo 'Legacy RSA/SHA-1 authentication is still enabled.' >&2
+    exit 1
+  fi
+done
 systemctl is-active --quiet nylzo-bandwidth.service
 interface=$(ip -json -4 route show default | /opt/nylzo/bin/jq --exit-status --raw-output '.[0].dev')
+[[ "$(sysctl -n "net.ipv4.conf.$interface.rp_filter")" = 2 ]]
+[[ "$(sysctl -n "net.ipv6.conf.$interface.accept_redirects")" = 0 ]]
 networkctl reload
 sleep 2
 tc -json qdisc show dev "$interface" | /opt/nylzo/bin/jq --exit-status \

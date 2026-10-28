@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-[[ "$(getenforce)" = Enforcing ]] || { echo 'SELinux enforcement is required.' >&2; exit 1; }
+/usr/lib/systemd/systemd-sysctl /etc/sysctl.d/90-nylzo.conf
+/opt/nylzo/runtime/host-policy
 mkdir -p /var/lib/nylzo/data /var/lib/nylzo-secrets /var/lib/nylzo-deploy
 chown 165532:165532 /var/lib/nylzo/data
 chmod 0700 /var/lib/nylzo/data

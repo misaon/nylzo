@@ -43,9 +43,14 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
   assert.match(files.get("/etc/ssh/sshd_config.d/20-nylzo.conf")!, /PermitRootLogin no/u);
   assert.match(files.get("/etc/docker/daemon.json")!, /"userns-remap":"dockremap"/u);
+  assert.match(files.get("/etc/containerd/nylzo.toml")!, /disabled_plugins = \["io\.containerd\.grpc\.v1\.cri"/u);
   assert.match(files.get("/etc/selinux/config")!, /^SELINUX=enforcing$/mu);
+  assert.match(files.get("/etc/sysctl.d/90-nylzo.conf")!, /^kernel.kptr_restrict=2$/mu);
+  assert(!files.has("/etc/sysctl.d/60-nylzo.conf"), "Flatcar's 65-baselayout defaults would override this priority");
   assert.match(files.get("/opt/nylzo/runtime/run")!, /\/run\/nylzo-pepper:ro,Z/u);
-  assert.match(files.get("/opt/nylzo/runtime/prepare")!, /SELinux enforcement is required/u);
+  assert.match(files.get("/opt/nylzo/runtime/host-policy")!, /SELinux enforcement is required/u);
+  assert.match(files.get("/opt/nylzo/runtime/prepare")!, /systemd-sysctl \/etc\/sysctl\.d\/90-nylzo\.conf/u);
+  assert.match(files.get("/opt/nylzo/runtime/health")!, /\/opt\/nylzo\/runtime\/host-policy/u);
   assert(!files.get("/opt/nylzo/runtime/run")!.includes("--publish"));
   assert.match(files.get("/etc/caddy/Caddyfile")!, /reverse_proxy 172\.30\.81\.2:8080/u);
   assert.match(files.get("/etc/nylzo/service.env")!, /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);

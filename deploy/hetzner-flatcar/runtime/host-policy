@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+[[ "$(getenforce)" = Enforcing ]] || { echo 'SELinux enforcement is required.' >&2; exit 1; }
+for check in kernel.dmesg_restrict=1 kernel.kptr_restrict=2 net.ipv4.conf.all.rp_filter=2; do
+  [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Host policy failed: ${check%%=*}" >&2; exit 1; }
+done
+interface=$(ip -o -4 route show default | awk '{ for (i=1; i<NF; i++) if ($i == "dev") print $(i+1) }' | sort -u)
+[[ "$interface" =~ ^[a-zA-Z0-9_-]{1,15}$ ]]
+for check in "net.ipv4.conf.$interface.rp_filter=2" "net.ipv4.conf.$interface.accept_redirects=0" "net.ipv4.conf.$interface.send_redirects=0" "net.ipv6.conf.$interface.accept_redirects=0"; do
+  [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Host policy failed: ${check%%=*}" >&2; exit 1; }
+done
+tc qdisc show dev "$interface" | grep --extended-regexp --quiet '^qdisc tbf 1: root .*rate 40Mbit '
+options=$(docker info --format '{{range .SecurityOptions}}{{println .}}{{end}}')
+for required in name=selinux name=userns name=no-new-privileges; do
+  grep --fixed-strings --line-regexp --quiet "$required" <<< "$options"
+done
+grep --extended-regexp --quiet '^name=seccomp,profile=' <<< "$options"
+plugins=$(ctr plugins ls)
+awk '$1 == "io.containerd.runtime.v2" && $2 == "task" && $NF == "ok" { found=1 } END { exit !found }' <<< "$plugins"
+if awk '$NF == "ok" && ($1 ~ /\.cri\./ || ($1 == "io.containerd.grpc.v1" && ($2 == "cri" || $2 == "transfer")) || $1 == "io.containerd.transfer.v1") { found=1 } END { exit !found }' <<< "$plugins"; then
+  echo 'Unused containerd CRI or transfer interfaces are active.' >&2
+  exit 1
+fi

@@ -76,6 +76,9 @@ resource "hcloud_server" "server" {
   labels             = { application = "nylzo", profile = "flatcar" }
   lifecycle {
     prevent_destroy = true
+    # Ignition is consumed on first boot. Host changes need an explicit rollout;
+    # editing a template must never schedule replacement of a live message store.
+    ignore_changes = [user_data]
     precondition {
       condition     = lookup(data.hcloud_image.flatcar.labels, "nylzo-verified-image", "") == "true" && lookup(data.hcloud_image.flatcar.labels, "nylzo-flatcar-version", "") == var.flatcar_version && lookup(data.hcloud_image.flatcar.labels, "nylzo-architecture", "") == var.architecture
       error_message = "Use an image produced by the verified image factory in this account."
