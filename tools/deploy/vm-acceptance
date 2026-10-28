@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 directory=/var/lib/nylzo-vm-test
 mkdir -p "$directory"
+[[ "$(getenforce)" = Enforcing ]]
 systemctl is-active --quiet nylzo-bandwidth.service
 interface=$(ip -json -4 route show default | /opt/nylzo/bin/jq --exit-status --raw-output '.[0].dev')
 networkctl reload
@@ -13,6 +14,24 @@ echo 'NYLZO_VM_TRAFFIC_CEILING_VERIFIED'
 docker cp nylzo:/ko-app/nylzo "$directory/nylzo"
 chmod 0755 "$directory/nylzo"
 "$directory/nylzo" verify-client --server http://127.0.0.1
+probe=$(mktemp -d /var/tmp/nylzo-selinux.XXXXXXXX)
+trap 'docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true; rm -rf "$probe"' EXIT
+mkdir "$probe/data"
+chown 165532:165532 "$probe/data"
+image=$(docker inspect nylzo --format '{{.Config.Image}}')
+level=s0:c0,c1
+if [[ "$(docker inspect nylzo --format '{{.ProcessLabel}}')" = *":$level" ]]; then level=s0:c2,c3; fi
+set +e
+timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
+  --read-only --cap-drop ALL --security-opt no-new-privileges:true --security-opt "label=level:$level" \
+  --memory 1g --cpus 1 --pids-limit 128 --env-file /etc/nylzo/service.env \
+  --volume "$probe/data:/home/nonroot:Z" \
+  --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro "$image" serve > "$probe/result" 2>&1
+status=$?
+set -e
+docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true
+[[ "$status" != 0 && "$status" != 124 ]] && grep --fixed-strings --quiet 'permission denied' "$probe/result"
+echo 'NYLZO_VM_SELINUX_ISOLATION_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
   printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"

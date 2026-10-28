@@ -10,6 +10,9 @@ apt-get install --yes --no-install-recommends ca-certificates curl gnupg cpio ke
 mkdir -p /var/tmp/nylzo-image/gnupg
 chmod 0700 /var/tmp/nylzo-image/gnupg
 gpg --batch --homedir /var/tmp/nylzo-image/gnupg --import flatcar.asc
+# A signature is useful only with the independently reviewed Flatcar identity.
+fingerprint=$(gpg --batch --homedir /var/tmp/nylzo-image/gnupg --with-colons --fingerprint --list-keys | awk -F: '$1 == "pub" { primary=1; next } primary && $1 == "fpr" { print $10; primary=0 }')
+[[ "$fingerprint" = "F88CFEDEFF29A5B4D9523864E25D9AED0593B34A" ]] || { echo 'Unexpected Flatcar image signing key.' >&2; exit 1; }
 base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
 for artifact in flatcar_production_pxe.vmlinuz flatcar_production_pxe_image.cpio.gz; do
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 600 --max-filesize 1073741824 "$base/$artifact" --output "$artifact"

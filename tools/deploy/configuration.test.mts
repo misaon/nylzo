@@ -43,6 +43,9 @@ test("generated hosts isolate deployment credentials, peppers, reporting keys an
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
   assert.match(files.get("/etc/ssh/sshd_config.d/20-nylzo.conf")!, /PermitRootLogin no/u);
   assert.match(files.get("/etc/docker/daemon.json")!, /"userns-remap":"dockremap"/u);
+  assert.match(files.get("/etc/selinux/config")!, /^SELINUX=enforcing$/mu);
+  assert.match(files.get("/opt/nylzo/runtime/run")!, /\/run\/nylzo-pepper:ro,Z/u);
+  assert.match(files.get("/opt/nylzo/runtime/prepare")!, /SELinux enforcement is required/u);
   assert(!files.get("/opt/nylzo/runtime/run")!.includes("--publish"));
   assert.match(files.get("/etc/caddy/Caddyfile")!, /reverse_proxy 172\.30\.81\.2:8080/u);
   assert.match(files.get("/etc/nylzo/service.env")!, /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);
@@ -61,7 +64,8 @@ test("public services require the shared traffic ceiling and DNS provisioning wo
   const { ignition } = await render(site);
   const bandwidth = ignition.systemd.units.find(unit => unit.name === "nylzo-bandwidth.service");
   assert(bandwidth && "enabled" in bandwidth && bandwidth.enabled);
-  for (const name of ["nylzo-initialize.service", "nylzo.service", "caddy.service"]) {
+  assert(bandwidth && "contents" in bandwidth && !bandwidth.contents.includes("Requires=nylzo-tools.service"));
+  for (const name of ["nylzo-tools.service", "nylzo-initialize.service", "nylzo.service", "caddy.service"]) {
     const unit = ignition.systemd.units.find(unit => unit.name === name)!;
     assert("contents" in unit && /Requires=.*nylzo-bandwidth.service/u.test(unit.contents));
     assert("contents" in unit && /After=.*nylzo-bandwidth.service/u.test(unit.contents));
@@ -70,6 +74,7 @@ test("public services require the shared traffic ceiling and DNS provisioning wo
   // below the included allowance, including a maximum-length calendar month.
   const file = ignition.storage.files.find(file => file.path === "/opt/nylzo/runtime/bandwidth")!;
   const script = gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString();
+  assert(!script.includes("jq"), "The first-boot ceiling must not depend on downloaded tools");
   const rate = /tbf rate ([0-9]+)mbit/u.exec(script);
   assert(rate);
   assert(Number(rate[1]) * 1_000_000 / 8 * 31 * 86400 < 20_000_000_000_000);
