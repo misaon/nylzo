@@ -1,0 +1,29 @@
+https://{$NYLZO_DOMAIN}:8443 {
+    tls {
+        protocols tls1.3
+        client_auth {
+            mode require_and_verify
+            trust_pool file /etc/nylzo/monitor-client.pem
+            verifier leaf file /etc/nylzo/monitor-client.pem
+        }
+    }
+    header {
+        -Server
+        -Via
+        Cache-Control no-store
+        X-Content-Type-Options nosniff
+        Content-Type application/json
+    }
+    @status {
+        method GET HEAD
+        path /healthz
+    }
+    handle @status {
+        root * /var/lib/nylzo-monitor
+        rewrite * /status.json
+        file_server
+    }
+    handle {
+        respond 404
+    }
+}

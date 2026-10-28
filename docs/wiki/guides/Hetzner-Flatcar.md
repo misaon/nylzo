@@ -92,6 +92,12 @@ Minor/major upgrades require review. Host scripts and infrastructure are not aut
 
 If a candidate fails after opening persistent state, the updater stops Nylzo and writes `failed.json`. It refuses automatic retries and does not restore an old database or blindly run an older binary. Restoring old message state could resurrect consumed capabilities. Investigate the failed version and database compatibility before recovery. Caddy can restore its previous binary because its update does not migrate message state.
 
+## Authenticated host monitoring
+
+The optional [host monitor](Host-monitoring.md) adds a TLS 1.3 listener on TCP 8443, accessible only with the pinned client certificate. It serves a coarse, read-only report of host policy, services, free-space reserve, and update-check state. Only the public client certificate is installed on the VPS; the private identity stays with the operator and in a separate, main-only GitHub environment.
+
+This listener can be enabled while `publicAccess` remains false. GitHub checks it about every 15 minutes without opening application HTTPS or SSH to its runners. The separate client and synthetic-message checks remain hourly. Follow the monitor guide for certificate rotation, stale-report rejection, and an observed failure/recovery test before relying on notifications.
+
 ## Acceptance and operation
 
 Before accepting real traffic:
@@ -99,7 +105,7 @@ Before accepting real traffic:
 1. Confirm public DNSSEC validation, certificate issuance, HTTP redirects, IPv4 and IPv6 client address handling, and refusal of public backend/SSH access.
 2. Run a matching verified `nylzo verify-client --server https://your-domain`, create/read/burn synthetic messages, reboot, and confirm a burned message stays gone and the pepper stays unchanged. Check that `nylzo-bandwidth.service` is active and the public interface retains its 40 Mbit/s TBF queue after a network reload and reboot.
 3. Exercise one signed Nylzo patch update, rejected signature/provenance, a failed candidate, an actual Flatcar A/B OS update, and OS health-gate failure. Record the observed recovery behavior.
-4. Connect external HTTPS/disk/update-failure monitoring and test alert delivery. After setting `NYLZO_MONITOR_URL`, the repository's hourly `monitor` workflow verifies the public web client and creates, decrypts, and consumes a synthetic five-minute message. This uses about 24 creations per day; account for it in the daily quota. Capability links stay in private temporary files and are removed without artifact upload. This workflow does not monitor local disk, Caddy's version, or Flatcar update failures. Do not treat a running service as proof that updates succeeded.
+4. Connect [host monitoring](Host-monitoring.md) and test alert delivery. After setting `NYLZO_MONITOR_URL`, the repository's hourly `monitor` workflow also verifies the public web client and creates, decrypts, and consumes a synthetic five-minute message. This uses about 24 creations per day; account for it in the daily quota. Capability links stay in private temporary files and are removed without artifact upload. Check the host report and upstream release state together: an active updater alone does not prove that every patch is installed.
 
 Inspect the host through allowlisted SSH:
 

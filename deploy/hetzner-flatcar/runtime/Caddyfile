@@ -1,6 +1,9 @@
 {
     admin off
     acme_ca https://acme-v02.api.letsencrypt.org/directory
+    servers {
+        strict_sni_host on
+    }
     log default {
         exclude http.log http.handlers http.stdlib
     }

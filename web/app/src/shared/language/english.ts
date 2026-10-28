@@ -602,7 +602,7 @@ export const english: Record<MessageKey, string> = {
   'host.point.compose': 'Docker Compose with Caddy, which handles the certificate and TLS on your machine',
   'host.point.signed': 'Signed images and binaries with verifiable provenance',
   'host.point.mit': 'MIT license, so companies can use it too',
-  'host.guide': 'Deployment guide on GitHub, in Czech',
+  'host.guide': 'Self-hosting guide on GitHub Wiki',
   'host.tabs': 'Installation method',
   'host.compose': 'Compose',
   'host.binary': 'Binary',

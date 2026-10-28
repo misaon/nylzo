@@ -6,6 +6,7 @@
 - [CLI guide](guides/CLI.md)
 - [Self-hosting](guides/Self-hosting.md)
 - [Hetzner and Flatcar](guides/Hetzner-Flatcar.md)
+- [Host monitoring](guides/Host-monitoring.md)
 - [Operations](guides/Operations.md)
 
 **Understand and contribute**
