@@ -350,7 +350,7 @@
     }
   }
   html:not([data-fonts]) body {
-    visibility: hidden;
+    content-visibility: hidden;
   }
   body {
     background: var(--color-void-950);

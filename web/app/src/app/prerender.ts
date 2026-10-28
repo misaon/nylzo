@@ -27,7 +27,7 @@ const PUBLIC_URL_PLACEHOLDER = '__NYLZO_PUBLIC_URL__';
 const PUBLIC_START = '<!--nylzo:public-->';
 const PUBLIC_END = '<!--/nylzo:public-->';
 const OG_LOCALES: Readonly<Record<Language, string>> = { en: 'en_US', cs: 'cs_CZ' };
-const REVEAL_WITHOUT_SCRIPT = `<noscript><style nonce="${NONCE_PLACEHOLDER}">html:not([data-fonts]) body{visibility:visible}</style></noscript>`;
+const REVEAL_WITHOUT_SCRIPT = `<noscript><style nonce="${NONCE_PLACEHOLDER}">html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
 const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/g;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/g;
