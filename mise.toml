@@ -68,7 +68,7 @@ run = [
   "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,recover-os,install-tools,update,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
+  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,recover-os,install-tools,update,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
   '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',

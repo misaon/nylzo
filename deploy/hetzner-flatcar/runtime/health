@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH="/opt/nylzo/bin:$PATH"
+/opt/nylzo/runtime/host-policy
 expected=$(jq -er .tag /var/lib/nylzo-deploy/current.json)
 for ((attempt = 0; attempt < 60; attempt++)); do
   if systemctl is-active --quiet caddy.service && \
