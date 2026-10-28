@@ -495,7 +495,7 @@ jobs:
             runner: ubuntu-latest
             install: firefox
           - browser: webkit
-            runner: macos-latest
+            runner: macos-26-intel
             install: webkit
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
