@@ -3,6 +3,7 @@ name: monitor
 on:
   schedule:
     - cron: "23 * * * *"
+    - cron: "8,38,53 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -13,9 +14,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  host:
+    name: Authenticated host readiness
+    if: vars.NYLZO_HOST_MONITOR_URL != '' && github.ref == 'refs/heads/main'
+    environment: host-monitoring
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+      - name: Read coarse host status over mutual TLS
+        env:
+          URL: ${{ vars.NYLZO_HOST_MONITOR_URL }}
+          MONITOR_ADDRESS: ${{ vars.NYLZO_HOST_MONITOR_ADDRESS }}
+          MONITOR_CERT: ${{ secrets.NYLZO_MONITOR_CERT }}
+          MONITOR_KEY: ${{ secrets.NYLZO_MONITOR_KEY }}
+        run: |
+          for attempt in 1 2 3; do
+            if node tools/security/monitor-host.mts; then exit 0; fi
+            if [[ "$attempt" != 3 ]]; then sleep 75; fi
+          done
+          exit 1
+
   web-client:
     name: Released web client and message lifecycle (AK25)
-    if: vars.NYLZO_MONITOR_URL != ''
+    if: vars.NYLZO_MONITOR_URL != '' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

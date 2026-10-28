@@ -4,6 +4,40 @@ import path from "node:path";
 import { test } from "node:test";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
+test("a failed OS health-marker flush preserves the previous recovery target", { skip: !available }, () => {
+  for (const fail of [false, true]) {
+    const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
+      "--tmpfs", "/opt:exec", "--tmpfs", "/var/lib",
+      "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/runtime/health")},target=/test-health,readonly`,
+      "ubuntu@sha256:a853f94d226358a79c740cfc7bce0c289748f3fe3488d921d038ccd752c61b60", "bash", "-s"], {
+      encoding: "utf8", timeout: 60000, input: `set -euo pipefail
+umask 077
+mkdir -p /opt/nylzo/bin /opt/nylzo/runtime /var/lib/nylzo-deploy
+printf '4000.1.0\\n' > /var/lib/nylzo-deploy/last-good-os
+for name in systemctl; do printf '#!/bin/bash\\nexit 0\\n' > /opt/nylzo/bin/$name; done
+printf '#!/bin/bash\\nexit 0\\n' > /opt/nylzo/runtime/host-policy
+printf '#!/bin/bash\\necho "{\\"build\\":{\\"version\\":\\"0.1.5\\",\\"dirty\\":false}}"\\n' > /opt/nylzo/bin/curl
+cat > /opt/nylzo/bin/jq <<'JQ'
+#!/bin/bash
+if [[ "$*" = *current.json* ]]; then echo v0.1.5; else cat >/dev/null; fi
+JQ
+${fail ? "printf '#!/bin/bash\\nexit 1\\n' > /opt/nylzo/bin/sync" : ""}
+chmod 0755 /opt/nylzo/bin/* /opt/nylzo/runtime/host-policy
+set +e
+bash /test-health
+status=$?
+set -e
+${fail ? '[[ "$status" = 1 && "$(cat /var/lib/nylzo-deploy/last-good-os)" = 4000.1.0 ]]' : '[[ "$status" = 0 && "$(cat /var/lib/nylzo-deploy/last-good-os)" = "$(sed -n \'s/^VERSION_ID=//p\' /etc/os-release | tr -d \'"\')" ]]'}
+[[ "$(stat -c %a /var/lib/nylzo-deploy/last-good-os)" = 600 ]]
+[[ -z "$(find /var/lib/nylzo-deploy -name '.last-good-os.*' -print -quit)" ]]
+echo OS_RECOVERY_MARKER_VERIFIED
+`,
+    });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /OS_RECOVERY_MARKER_VERIFIED/u);
+  }
+});
+
 test("host-tool tampering fails closed and preserves a previously verified generation", { skip: !available }, () => {
   for (const previous of [false, true]) {
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",

@@ -173,11 +173,11 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           version: 2026.10.9
-          install_args: actionlint zizmor shellcheck node
+          install_args: actionlint zizmor shellcheck node go
       - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,recover-os,install-tools,update,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
+      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
 
   deployment:
     name: Flatcar provisioning and reboot acceptance
@@ -195,7 +195,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           version: 2026.10.9
-          install_args: node opentofu
+          install_args: go node opentofu
       - run: tools/deploy/validate
       - name: Install the virtual-machine test runtime
         run: |
@@ -495,7 +495,7 @@ jobs:
             runner: ubuntu-latest
             install: firefox
           - browser: webkit
-            runner: macos-latest
+            runner: macos-26-intel
             install: webkit
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2

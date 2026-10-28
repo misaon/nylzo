@@ -26,12 +26,25 @@ variable "public_access" {
   type    = bool
   default = false
 }
+variable "monitoring_enabled" {
+  type    = bool
+  default = false
+}
 
 data "hcloud_image" "flatcar" { id = var.image_id }
 
 resource "hcloud_firewall" "server" {
   name   = var.name
   labels = { application = "nylzo" }
+  dynamic "rule" {
+    for_each = var.monitoring_enabled ? [true] : []
+    content {
+      direction  = "in"
+      protocol   = "tcp"
+      port       = "8443"
+      source_ips = ["0.0.0.0/0", "::/0"]
+    }
+  }
   rule {
     direction  = "in"
     protocol   = "tcp"

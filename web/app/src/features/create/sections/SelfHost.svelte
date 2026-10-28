@@ -13,7 +13,7 @@
   const tabs: readonly Tab[] = ['compose', 'binary', 'verify'];
   const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]'] as const;
   const points = ['host.point.compose', 'host.point.signed', 'host.point.mit'] as const;
-  const deployGuide = `${REPOSITORY_URL}/tree/main/deploy/compose`;
+  const deployGuide = `${REPOSITORY_URL}/wiki/Self-hosting`;
 
   let tab = $state<Tab>('compose');
   const copied = new Flash(2000);

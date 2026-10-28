@@ -13,7 +13,7 @@ mkdir -p "$directory/gnupg"
 chmod 0700 "$directory/gnupg"
 gpg --batch --homedir "$directory/gnupg" --import deploy/hetzner-flatcar/bootstrap/flatcar.asc
 for name in "$image" "$image.sig"; do
-  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 600 "$base/$name" --output "$directory/$name"
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --retry-all-errors --retry-max-time 180 --max-time 600 "$base/$name" --output "$directory/$name"
 done
 gpg --batch --homedir "$directory/gnupg" --verify "$directory/$image.sig" "$directory/$image"
 bzip2 --decompress --stdout "$directory/$image" > "$directory/base.qcow2"

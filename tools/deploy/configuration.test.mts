@@ -4,6 +4,10 @@ import { configuration, patchCandidate } from "./configuration.mts";
 import { render } from "./render.mts";
 import { gunzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 
 const site = {
   name: "nylzo-test", domain: "nylzo.example.org", location: "nbg1", serverType: "cx23", architecture: "amd64",
@@ -86,4 +90,27 @@ test("public services require the shared traffic ceiling and DNS provisioning wo
   const dns = await readFile(new URL("../../deploy/hetzner-flatcar/infrastructure/dns/main.tf", import.meta.url), "utf8");
   assert.match(dns, /proxied\s*=\s*false/u);
   assert(!dns.includes("zone_mode"), "Cloudflare Free can refuse account-wide custom DNS modes");
+});
+
+test("host monitoring is opt-in and embeds only its pinned public client identity", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "nylzo-monitor-config-"));
+  try {
+    execFileSync("go", ["run", "./tools/deploy/monitor-identity", join(directory, "identity")], { stdio: "pipe" });
+    const certificate = readFileSync(join(directory, "identity/client.pem"), "utf8");
+    const key = readFileSync(join(directory, "identity/client-key.pem"), "utf8");
+    for (const invalid of [key, certificate + key, certificate + certificate]) await assert.rejects(render({ ...site, monitorClientCertificate: invalid }));
+    assert.throws(() => configuration({ ...site, automaticUpdates: false, monitorClientCertificate: certificate }));
+    const { ignition } = await render({ ...site, monitorClientCertificate: certificate });
+    const files = new Map(ignition.storage.files.map(file => [file.path, gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString()]));
+    assert.equal(files.get("/etc/nylzo/monitor-client.pem"), certificate);
+    assert(!JSON.stringify(ignition).includes("PRIVATE KEY"));
+    assert(![...files.values()].some(value => value.includes(key)));
+    const caddy = files.get("/etc/caddy/Caddyfile")!;
+    assert.match(caddy, /:8443/u);
+    assert.match(caddy, /mode require_and_verify/u);
+    assert.match(caddy, /verifier leaf file/u);
+    assert(ignition.systemd.units.some(unit => unit.name === "nylzo-host-status.timer" && "enabled" in unit && unit.enabled));
+    const disabled = await render(site);
+    assert(!disabled.ignition.systemd.units.some(unit => unit.name === "nylzo-host-status.timer"));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

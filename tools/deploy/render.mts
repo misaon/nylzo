@@ -16,7 +16,7 @@ export async function render(input: unknown) {
   const site = configuration(input);
   const files: any[] = [];
   for (const filename of await readdir(path.join(profile, "runtime"))) {
-    if (filename !== "Caddyfile") files.push(embedded(`/opt/nylzo/runtime/${filename}`, await read(`runtime/${filename}`), 0o755));
+    if (!filename.endsWith("Caddyfile")) files.push(embedded(`/opt/nylzo/runtime/${filename}`, await read(`runtime/${filename}`), 0o755));
   }
   const tools = [
     `ARCHITECTURE=${site.architecture}`,
@@ -34,7 +34,7 @@ export async function render(input: unknown) {
     embedded("/etc/nylzo/site.json", JSON.stringify({ architecture: site.architecture, domain: site.domain, initialRelease: site.initialRelease, caddy: toolchain.caddy })),
     embedded("/etc/nylzo/service.env", environment),
     embedded("/etc/nylzo/caddy.env", `NYLZO_DOMAIN=${site.domain}\n`),
-    embedded("/etc/caddy/Caddyfile", await read("runtime/Caddyfile")),
+    embedded("/etc/caddy/Caddyfile", await read("runtime/Caddyfile") + (site.monitorClientCertificate ? "\n" + await read("runtime/monitor.Caddyfile") : "")),
     embedded("/etc/subuid", "dockremap:100000:65536\n"),
     embedded("/etc/subgid", "dockremap:100000:65536\n"),
     embedded("/etc/docker/daemon.json", JSON.stringify({ "userns-remap": "dockremap", "no-new-privileges": true, "log-driver": "local", "log-opts": { "max-size": "10m", "max-file": "3" } })),
@@ -45,6 +45,7 @@ export async function render(input: unknown) {
     embedded("/etc/sysctl.d/90-nylzo.conf", "kernel.dmesg_restrict=1\nkernel.kptr_restrict=2\nfs.protected_hardlinks=1\nfs.protected_symlinks=1\nfs.protected_fifos=2\nfs.protected_regular=2\nnet.ipv4.conf.all.rp_filter=2\nnet.ipv4.conf.default.rp_filter=2\nnet.ipv4.conf.*.rp_filter=2\nnet.ipv4.conf.*.accept_redirects=0\nnet.ipv4.conf.*.send_redirects=0\nnet.ipv4.conf.*.accept_source_route=0\nnet.ipv6.conf.*.accept_redirects=0\nnet.ipv6.conf.*.accept_source_route=-1\n"),
     embedded("/etc/systemd/journald.conf.d/20-nylzo.conf", "[Journal]\nSystemMaxUse=128M\nRuntimeMaxUse=32M\nMaxRetentionSec=7day\n"),
   );
+  if (site.monitorClientCertificate) files.push(embedded("/etc/nylzo/monitor-client.pem", site.monitorClientCertificate));
   const units = [
     { name: "serial-getty@ttyS0.service", mask: true },
     { name: "getty@tty1.service", mask: true },
@@ -61,6 +62,10 @@ export async function render(input: unknown) {
     service("nylzo-update.service", "[Unit]\nRequires=nylzo-initialize.service\nAfter=nylzo-initialize.service network-online.target\n[Service]\nType=oneshot\nTimeoutStartSec=15min\nExecStart=/opt/nylzo/runtime/update check\n"),
     service("nylzo-update.timer", "[Unit]\nDescription=Check verified patch releases of Nylzo and Caddy\n[Timer]\nOnBootSec=5min\nOnUnitInactiveSec=10min\nRandomizedDelaySec=1min\nPersistent=true\n[Install]\nWantedBy=timers.target\n", site.automaticUpdates),
   ];
+  if (site.monitorClientCertificate) units.push(
+    service("nylzo-host-status.service", "[Unit]\nRequires=nylzo-ready.service\nAfter=nylzo-ready.service\n[Service]\nType=oneshot\nExecStart=/opt/nylzo/runtime/host-status\nTimeoutStartSec=45\nGroup=caddy\nStateDirectory=nylzo-monitor\nStateDirectoryMode=2750\nUMask=0027\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nPrivateDevices=true\nProtectKernelTunables=true\nProtectKernelModules=true\nProtectControlGroups=true\nRestrictSUIDSGID=true\nLockPersonality=true\nCapabilityBoundingSet=\nRestrictAddressFamilies=AF_UNIX AF_NETLINK\nMemoryMax=128M\nTasksMax=64\n"),
+    service("nylzo-host-status.timer", "[Unit]\nDescription=Refresh read-only host readiness\n[Timer]\nOnBootSec=2min\nOnUnitInactiveSec=2min\nAccuracySec=10s\n[Install]\nWantedBy=timers.target\n", true),
+  );
   const ignition = {
     ignition: { version: "3.4.0" },
     passwd: { groups: [{ name: "dockremap", gid: 2000 }, { name: "caddy", gid: 2001 }], users: [

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+export PATH="/opt/nylzo/bin:/opt/nylzo/runtime:$PATH"
+umask 027
+directory=${NYLZO_HOST_STATUS_DIR:-/var/lib/nylzo-monitor}
+state=${NYLZO_DEPLOY_STATE:-/var/lib/nylzo-deploy}
+[[ -d "$directory" && ! -L "$directory" ]]
+now=$(date +%s)
+host_policy=false
+services=false
+disk_reserve=false
+application_updates=false
+os_updates=false
+if timeout 20 host-policy >/dev/null 2>&1; then host_policy=true; fi
+if systemctl is-active --quiet nylzo.service caddy.service nylzo-ready.service update-engine.service nylzo-update.timer; then services=true; fi
+available=$(df -Pk /var/lib/nylzo | awk 'NR == 2 { print $4 }')
+if [[ "$available" =~ ^[0-9]{1,14}$ ]] && (( 10#$available >= 8 * 1024 * 1024 )); then disk_reserve=true; fi
+limit=1800
+property=ExecMainExitTimestamp
+if systemctl is-active --quiet nylzo-update.service; then property=ExecMainStartTimestamp; limit=900; fi
+last_exit=$(systemctl show nylzo-update.service -p "$property" --value)
+last_check=$(date -d "$last_exit" +%s 2>/dev/null || echo 0)
+if [[ ! -e "$state/failed.json" ]] && [[ "$(systemctl show nylzo-update.service -p Result --value)" = success ]] && [[ "$last_check" =~ ^[0-9]{1,12}$ ]] && (( now >= 10#$last_check && now - 10#$last_check <= limit )); then application_updates=true; fi
+if status=$(timeout 10 update_engine_client --status 2>/dev/null); then
+  checked=$(awk -F= '$1 == "LAST_CHECKED_TIME" { n++; value=$2 } END { if (n != 1) exit 1; print value }' <<< "$status") || checked=0
+  operation=$(awk -F= '$1 == "CURRENT_OP" { n++; value=$2 } END { if (n != 1) exit 1; print value }' <<< "$status") || operation=unknown
+  case "$operation" in
+    UPDATE_STATUS_IDLE|UPDATE_STATUS_CHECKING_FOR_UPDATE|UPDATE_STATUS_UPDATE_AVAILABLE|UPDATE_STATUS_DOWNLOADING|UPDATE_STATUS_VERIFYING|UPDATE_STATUS_FINALIZING|UPDATE_STATUS_UPDATED_NEED_REBOOT)
+      if [[ "$checked" =~ ^[0-9]{1,12}$ ]] && (( now >= 10#$checked && now - 10#$checked <= 86400 )); then os_updates=true; fi ;;
+  esac
+fi
+temporary=$(mktemp "$directory/.status.XXXXXXXX")
+trap 'rm -f "$temporary"' EXIT
+jq --null-input --compact-output --argjson observed "$now" \
+  --argjson policy "$host_policy" --argjson services "$services" --argjson disk "$disk_reserve" \
+  --argjson application "$application_updates" --argjson os "$os_updates" \
+  '{version:1,observedAt:$observed,checks:{hostPolicy:$policy,services:$services,diskReserve:$disk,applicationUpdates:$application,osUpdates:$os}}' > "$temporary"
+chmod 0640 "$temporary"
+mv -f "$temporary" "$directory/status.json"

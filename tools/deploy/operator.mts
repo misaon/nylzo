@@ -1,22 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { constants } from "node:fs";
-import { copyFile, lstat, mkdir, open, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { configuration } from "./configuration.mts";
 import { profile, render, toolchain } from "./render.mts";
+import { privateFile } from "../security/private-file.mts";
 
-export async function privateFile(filename: string) {
-  const handle = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const information = await handle.stat();
-    assert(information.isFile() && information.size <= 8192, "Expected a small private file");
-    assert.equal(information.mode & 0o077, 0, "Credential files must have mode 0600 or stricter");
-    if (process.getuid) assert.equal(information.uid, process.getuid(), "Credential file belongs to another account");
-    return (await handle.readFile("utf8")).trim();
-  } finally { await handle.close(); }
-}
+export { privateFile };
 
 export async function credential(name: string) {
   const value = process.env[name] ?? (process.env[`${name}_FILE`] ? await privateFile(process.env[`${name}_FILE`]!) : "");
@@ -84,7 +75,7 @@ export async function prepare(siteFile: string, kind: string) {
     assert.equal(image.version, toolchain.flatcar);
     assert.equal(image.architecture, site.architecture);
     assert(Number.isSafeInteger(image.id) && image.id > 0);
-    variables = { ...variables, image_id: image.id, flatcar_version: toolchain.flatcar, architecture: site.architecture, administrator_networks: site.administratorNetworks, public_access: site.publicAccess ?? false };
+    variables = { ...variables, image_id: image.id, flatcar_version: toolchain.flatcar, architecture: site.architecture, administrator_networks: site.administratorNetworks, public_access: site.publicAccess ?? false, monitoring_enabled: Boolean(site.monitorClientCertificate) };
   }
   if (kind === "dns") {
     assert.match(site.cloudflareAccountId, /^[a-f0-9]{32}$/u, "Set the Cloudflare account ID in site.json");

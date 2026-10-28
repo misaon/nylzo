@@ -26,7 +26,7 @@ export default defineConfig({
   projects: [
     { name: 'chromium', use: devices['Desktop Chrome'] },
     { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
-    { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
+    { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser, ...(ci && { workers: 1 }) },
   ],
   webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow')],
 });
