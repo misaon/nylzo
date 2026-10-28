@@ -91,3 +91,12 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
     assert.equal(plan.jobs.e2e, false);
   }
 });
+
+test("fork PRs keep tests and reports while the OIDC publishing job stays skipped", () => {
+  const plan = planChecks(["web/app/src/App.svelte", "internal/server/router.go"], "pull_request", false);
+  assert.equal(plan.jobs.web, true);
+  assert.equal(plan.jobs["go-test"], true);
+  assert.equal(plan.jobs.coverage, false);
+  assert.equal(plan.coverage, false);
+  assert.equal(planChecks(["web/app/src/App.svelte"], "pull_request", true).jobs.coverage, true);
+});

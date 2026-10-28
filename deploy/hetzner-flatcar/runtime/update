@@ -112,8 +112,8 @@ nylzo() {
   docker run --detach --name nylzo-probe --user 65532:65532 --network none \
     --read-only --cap-drop ALL --security-opt no-new-privileges:true \
     --memory 1g --cpus 1.5 --pids-limit 128 --env-file /etc/nylzo/service.env \
-    --mount "type=bind,source=$temporary/data,target=/home/nonroot" \
-    --mount "type=bind,source=$temporary/pepper,target=/run/nylzo-pepper,readonly" "$image@$digest" serve >/dev/null
+    --volume "$temporary/data:/home/nonroot:Z" \
+    --volume "$temporary/pepper:/run/nylzo-pepper:ro,Z" "$image@$digest" serve >/dev/null
   local ready=false
   for ((attempt = 0; attempt < 30; attempt++)); do
     if docker exec nylzo-probe /ko-app/nylzo verify-client --server http://127.0.0.1:8080 >/dev/null 2>&1; then ready=true; break; fi

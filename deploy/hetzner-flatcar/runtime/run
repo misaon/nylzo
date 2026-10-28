@@ -7,6 +7,6 @@ exec docker run --rm --name nylzo --pull=never --user 65532:65532 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
   --memory 1g --cpus 1.5 --pids-limit 128 \
   --env-file /etc/nylzo/service.env \
-  --mount type=bind,source=/var/lib/nylzo/data,target=/home/nonroot \
-  --mount type=bind,source=/var/lib/nylzo-secrets/pepper,target=/run/nylzo-pepper,readonly \
+  --volume /var/lib/nylzo/data:/home/nonroot:Z \
+  --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro,Z \
   "ghcr.io/misaon/nylzo@$digest" serve

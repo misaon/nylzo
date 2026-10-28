@@ -14,6 +14,9 @@ done < <(lsblk --noheadings --paths --output NAME "${disks[0]}")
 mkdir -p /opt/nylzo-image/gnupg
 chmod 0700 /opt/nylzo-image/gnupg
 gpg --batch --homedir /opt/nylzo-image/gnupg --import /opt/nylzo-image/flatcar.asc
+# A signature is useful only with the independently reviewed Flatcar identity.
+fingerprint=$(gpg --batch --homedir /opt/nylzo-image/gnupg --with-colons --fingerprint --list-keys | awk -F: '$1 == "pub" { primary=1; next } primary && $1 == "fpr" { print $10; primary=0 }')
+[[ "$fingerprint" = "F88CFEDEFF29A5B4D9523864E25D9AED0593B34A" ]] || { echo 'Unexpected Flatcar image signing key.' >&2; exit 1; }
 cd /opt/nylzo-image
 base="https://stable.release.flatcar-linux.net/${FLATCAR_BOARD}/${FLATCAR_VERSION}"
 image=flatcar_production_hetzner_image.bin.bz2

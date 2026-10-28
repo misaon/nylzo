@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 
-export function planChecks(files: string[], event: string) {
+export function planChecks(files: string[], event: string, trustedCoverage = true) {
+  if (typeof trustedCoverage !== "boolean") throw new Error("Coverage trust must be explicit");
   if (!Array.isArray(files) || !files.every((file) => typeof file === "string" && file.length > 0)) {
     throw new Error("Changed files must be a JSON array of paths");
   }
@@ -51,7 +52,7 @@ export function planChecks(files: string[], event: string) {
     "go-timing": groups.go,
     fuzz: groups.go,
     web: groups.web,
-    coverage: groups.go || groups.web,
+    coverage: (groups.go || groups.web) && trustedCoverage,
     repository: groups.repository,
     deployment: groups.deployment,
     "dependency-review": event === "pull_request" && groups.dependencies,
@@ -64,7 +65,7 @@ export function planChecks(files: string[], event: string) {
     "codeql-web": event === "pull_request" || groups.web,
     "codeql-actions": event === "pull_request" || groups.actions,
   };
-  return { ...groups, sca, full, jobs };
+  return { ...groups, coverage: jobs.coverage, sca, full, jobs };
 }
 
 export function checksPassed(results: Record<string, { result: string; outputs?: Record<string, string> }>) {
@@ -92,7 +93,7 @@ if (import.meta.main) {
     const event = process.env.EVENT ?? "";
     const files =
       event === "schedule" || event === "workflow_dispatch" ? [] : JSON.parse(process.env.CHANGED_FILES ?? "");
-    const plan = planChecks(files, event);
+    const plan = planChecks(files, event, process.env.TRUSTED_COVERAGE === "true");
     const output = Object.entries(plan)
       .map(([key, value]) => `${key}=${JSON.stringify(value)}\n`)
       .join("");
