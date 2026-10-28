@@ -17,14 +17,16 @@ ignition.systemd.units.push({ name: "nylzo-vm-debug.service", enabled: false, co
 ignition.systemd.units.push({ name: "nylzo-vm-debug.timer", enabled: true, contents: "[Timer]\nOnBootSec=2min\nOnUnitActiveSec=2min\nUnit=nylzo-vm-debug.service\n[Install]\nWantedBy=timers.target\n" });
 ignition.systemd.units.push({ name: "nylzo-vm-failure.service", enabled: false, contents: "[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -n 150 -u nylzo* -u caddy -u docker\nExecStart=/usr/bin/systemctl poweroff\n" });
 for (const unit of ignition.systemd.units) {
-  if (["nylzo-tools.service", "nylzo-bandwidth.service", "nylzo-initialize.service", "nylzo-ready.service", "nylzo-vm-test.service"].includes(unit.name) && "contents" in unit) {
+  if (["nylzo-tools.service", "nylzo-bandwidth.service", "nylzo-initialize.service", "nylzo.service", "nylzo-vm-test.service"].includes(unit.name) && "contents" in unit) {
     // A failed provisioning assertion must return its logs instead of idling
     // until the twenty-minute boot timeout. This drop-in exists only in CI.
     unit.contents += "\n[Unit]\nOnFailure=\nOnFailure=nylzo-vm-failure.service\n";
   }
 }
 for (const unit of ignition.systemd.units) {
-  if (unit.name === "caddy.service") continue;
+  // Keep the production journal output for sandboxed services. Giving the
+  // capability-free Docker client a serial TTY would fail before ExecStart.
+  if (["caddy.service", "nylzo.service"].includes(unit.name)) continue;
   if ("contents" in unit && typeof unit.contents === "string") unit.contents = unit.contents.replace(/^Standard(?:Output|Error)=.*\n/gmu, "").replace("[Service]\n", "[Service]\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n");
 }
 await writeFile(process.argv[3]!, JSON.stringify(ignition));

@@ -24,3 +24,17 @@ test("both image stages reject a different or additional primary signing key", (
     }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+test("SELinux acceptance rejects a successful probe, timeout, or unrelated error", () => {
+  const directory = mkdtempSync(join(tmpdir(), "nylzo-selinux-assertion-"));
+  try {
+    const source = readFileSync("tools/deploy/vm-acceptance", "utf8");
+    const assertion = source.match(/^if \[\[ "\$status" != 1 \]\][\s\S]*?^fi$/mu)?.[0];
+    assert(assertion);
+    for (const [status, message, accepted] of [[1, "open /run/nylzo-pepper: permission denied", true], [0, "permission denied", false], [124, "permission denied", false], [125, "permission denied", false], [1, "an unrelated error", false]] as const) {
+      writeFileSync(join(directory, "result"), message);
+      const result = spawnSync("bash", ["-euo", "pipefail", "-c", assertion], { encoding: "utf8", env: { ...process.env, status: String(status), probe: directory } });
+      assert.equal(result.status === 0, accepted, `${status}: ${message}`);
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});

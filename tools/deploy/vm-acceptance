@@ -30,7 +30,10 @@ timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532
 status=$?
 set -e
 docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true
-[[ "$status" != 0 && "$status" != 124 ]] && grep --fixed-strings --quiet 'permission denied' "$probe/result"
+if [[ "$status" != 1 ]] || ! grep --fixed-strings --quiet 'permission denied' "$probe/result"; then
+  echo 'The isolated container did not fail with the expected access denial.' >&2
+  exit 1
+fi
 echo 'NYLZO_VM_SELINUX_ISOLATION_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
   printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
