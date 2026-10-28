@@ -21,6 +21,22 @@ const PASSPHRASE = 'four random words here';
 const LEFT = 'You left the page, so it no longer shows the message.';
 const REMOVED = /^The key is no longer in the address bar$/;
 
+test(
+  'pagehide removes decrypted text before the browser can freeze the document (D95)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createMessageThroughApi({ text: 'clear this before freezing', opensMax: 2 });
+    await showMessage(page, message.link);
+    await expectMessageShown(page);
+    const state = await page.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+      return { plaintextPresent: document.querySelector('pre') !== null, fragmentPresent: location.hash !== '' };
+    });
+    expect(state).toEqual({ plaintextPresent: false, fragmentPresent: false });
+    expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
+  },
+);
+
 test('loading drops the key from the address, and reloading or a return from the back/forward cache spend no open (AK3, D95)', async ({
   page,
 }) => {

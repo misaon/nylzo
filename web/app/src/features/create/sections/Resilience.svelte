@@ -121,10 +121,10 @@
                     <Icon name={item.id} stroke={1.6} class="size-5" />
                   </span>
                   <span class="min-w-0 flex-1">
-                    <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-ink">
+                    <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-5 text-ink">
                       {translate(`brute.${item.id}`)}
                       {#if item.hypothetical}
-                        <span class="rounded-full bg-white/6 px-2 py-0.5 text-[11px] text-ink-mute"
+                        <span class="rounded-full bg-white/6 px-2 py-0.5 text-[11px] leading-4 text-ink-mute"
                           >{translate('brute.hypothetical')}</span
                         >
                       {/if}

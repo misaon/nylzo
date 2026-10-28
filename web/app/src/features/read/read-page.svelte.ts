@@ -1,4 +1,4 @@
-import { onDestroy, tick } from 'svelte';
+import { flushSync, onDestroy, tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
 import type { Metadata, ReportStatus } from '../../shared/api/api.ts';
@@ -81,6 +81,7 @@ function charactersOf(text: string): readonly string[] {
 }
 
 export class ReadPage {
+  #left = false;
   #pending: ReadView | undefined;
   #revealing = false;
   #markShown: (() => void) | undefined;
@@ -274,6 +275,7 @@ export class ReadPage {
   };
 
   readonly leave = (): void => {
+    this.#left = true;
     this.burned = undefined;
     this.confirmingDownload = false;
     this.askingDelete = false;
@@ -286,6 +288,8 @@ export class ReadPage {
     this.#stopTimeline();
     this.#reader.clear();
     this.#settleShown();
+    // Commit removal before pagehide returns and the browser freezes this document.
+    flushSync();
   };
 
   readonly onConfirmKeydown = (event: KeyboardEvent): void => {
@@ -319,7 +323,7 @@ export class ReadPage {
   };
 
   readonly returned = (event: PageTransitionEvent): void => {
-    if (event.persisted) {
+    if (event.persisted || this.#left) {
       location.reload();
     }
   };
