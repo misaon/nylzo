@@ -1,6 +1,6 @@
 # Hetzner Cloud with Flatcar
 
-**Experimental deployment profile.** The repository provides the configuration and acceptance tests. Provisioning on a real Hetzner account, public TLS, and an actual Flatcar A/B OS update still require cloud acceptance before this profile is approved for production. No cloud resources are created by CI.
+**Experimental deployment profile.** Real Hetzner provisioning, TLS, a signed application update, isolation checks, and reboot persistence passed private acceptance on 28 October 2026. Public DNSSEC, external alert delivery, operator recovery, and an actual Flatcar A/B OS update remain outstanding. See the [deployment security review](../maintainers/Deployment-security-review.md). No cloud resources are created by CI.
 
 The [profile](../../../deploy/hetzner-flatcar) uses OpenTofu for infrastructure, Flatcar Stable for automatic OS updates, Docker with user namespace remapping for Nylzo, and Caddy for HTTPS. An optional Cloudflare stack manages DNS without proxying traffic and enables DNSSEC. Other DNS providers can be used independently.
 
@@ -99,7 +99,7 @@ Before accepting real traffic:
 1. Confirm public DNSSEC validation, certificate issuance, HTTP redirects, IPv4 and IPv6 client address handling, and refusal of public backend/SSH access.
 2. Run a matching verified `nylzo verify-client --server https://your-domain`, create/read/burn synthetic messages, reboot, and confirm a burned message stays gone and the pepper stays unchanged. Check that `nylzo-bandwidth.service` is active and the public interface retains its 40 Mbit/s TBF queue after a network reload and reboot.
 3. Exercise one signed Nylzo patch update, rejected signature/provenance, a failed candidate, an actual Flatcar A/B OS update, and OS health-gate failure. Record the observed recovery behavior.
-4. Connect external HTTPS/disk/update-failure monitoring and test alert delivery. The repository's `monitor` workflow can verify the public web client after setting `NYLZO_MONITOR_URL`; it does not monitor local disk, Caddy's version, or Flatcar update failures. Do not treat a running service as proof that updates succeeded.
+4. Connect external HTTPS/disk/update-failure monitoring and test alert delivery. After setting `NYLZO_MONITOR_URL`, the repository's hourly `monitor` workflow verifies the public web client and creates, decrypts, and consumes a synthetic five-minute message. This uses about 24 creations per day; account for it in the daily quota. Capability links stay in private temporary files and are removed without artifact upload. This workflow does not monitor local disk, Caddy's version, or Flatcar update failures. Do not treat a running service as proof that updates succeeded.
 
 Inspect the host through allowlisted SSH:
 
