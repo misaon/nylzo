@@ -13,7 +13,7 @@ chmod 0700 "$directory/gnupg"
 gpg --batch --homedir "$directory/gnupg" --import deploy/hetzner-flatcar/bootstrap/flatcar.asc
 for artifact in flatcar_production_pxe.vmlinuz flatcar_production_pxe_image.cpio.gz flatcar_production_hetzner_image.bin.bz2; do
   for name in "$artifact" "$artifact.sig"; do
-    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 600 "$base/$name" --output "$directory/$name"
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --retry-all-errors --retry-max-time 180 --max-time 600 "$base/$name" --output "$directory/$name"
   done
   gpg --batch --homedir "$directory/gnupg" --verify "$directory/$artifact.sig" "$directory/$artifact"
 done
