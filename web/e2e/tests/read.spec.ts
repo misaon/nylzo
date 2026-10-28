@@ -65,25 +65,61 @@ test(
   'back and forward after reading bring back neither the fragment nor the message and spend no open',
   { tag: '@cross-browser' },
   async ({ page }) => {
-    const message = await createMessageThroughApi({ text: 'only once in this tab', opensMax: 2 });
-    const readPage = `${BASE_URL}/m/${message.id}`;
-    const removed = page.getByText(REMOVED);
-    await openApp(page, '/');
-    await showMessage(page, message.link);
-    await expectMessageShown(page);
-    await expect(page).toHaveURL(readPage);
-    await page.goto('/transparency');
-    await page.goBack();
-    await expect(page).toHaveURL(readPage);
-    await expect(removed).toBeVisible();
-    await expect(page.locator('pre')).toHaveCount(0);
-    await page.goBack();
-    await expect(page).toHaveURL(`${BASE_URL}/`);
-    await page.goForward();
-    await expect(page).toHaveURL(readPage);
-    await expect(removed).toBeVisible();
-    await expect(page.locator('pre')).toHaveCount(0);
-    expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
+    try {
+      const message = await createMessageThroughApi({ text: 'only once in this tab', opensMax: 2 });
+      const readPage = `${BASE_URL}/m/${message.id}`;
+      const removed = page.getByText(REMOVED);
+      await openApp(page, '/');
+      await showMessage(page, message.link);
+      await expectMessageShown(page);
+      await expect(page).toHaveURL(readPage);
+      await page.goto('/transparency');
+      await page.goBack();
+      await expect(page).toHaveURL(readPage);
+      await expect(removed).toBeVisible();
+      await expect(page.locator('pre')).toHaveCount(0);
+      await page.goBack();
+      await expect(page).toHaveURL(`${BASE_URL}/`);
+      await page.goForward();
+      await expect(page).toHaveURL(readPage);
+      await expect(removed).toBeVisible();
+      await expect(page.locator('pre')).toHaveCount(0);
+      expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
+    } catch (error) {
+      const diagnostic = await page.evaluate(() => {
+        const heading = [...document.querySelectorAll('h3')].find(
+          (element) => element.textContent === 'The key is no longer in the address bar',
+        );
+        const ancestors = [];
+        for (let element: Element | null = heading ?? null; element; element = element.parentElement) {
+          const style = getComputedStyle(element),
+            box = element.getBoundingClientRect();
+          ancestors.push({
+            tag: element.tagName,
+            classes: element.className,
+            visibility: style.visibility,
+            display: style.display,
+            opacity: style.opacity,
+            x: box.x,
+            y: box.y,
+            width: box.width,
+            height: box.height,
+          });
+        }
+        return {
+          fontGateReleased: document.documentElement.dataset['fonts'] !== undefined,
+          ready: document.documentElement.dataset['ready'] !== undefined,
+          visibility: document.visibilityState,
+          fontStatus: document.fonts.status,
+          navigation: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type,
+          ancestors,
+        };
+      });
+      await test
+        .info()
+        .attach('history-layout.json', { body: JSON.stringify(diagnostic), contentType: 'application/json' });
+      throw error;
+    }
   },
 );
 
