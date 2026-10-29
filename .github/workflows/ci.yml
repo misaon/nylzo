@@ -184,6 +184,8 @@ jobs:
         run: |
           npm ci --prefix tools/release --ignore-scripts --no-audit --no-fund
           npm audit --prefix tools/release --audit-level=moderate
+      - name: Check every repository tool's syntax before executing it
+        run: git ls-files -z 'tools/*.mts' 'tools/**/*.mts' | xargs -0 -n 1 node --check
       - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/release/*.test.mts tools/dependencies/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows

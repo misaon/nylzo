@@ -13,7 +13,7 @@ const baseline = (path: string): string => {
   assert.equal(result.status, 0, `Cannot read the reviewed baseline for ${path}`);
   return result.stdout;
 };
-const toolVersions = (text: string) => new Map([...text.split("[tools]\n")[1]!.split("\n[")[0]!.matchAll(/^([a-z0-9-]+) = "([^\"]+)"$/gmu)].map(match => [match[1]!, match[2]!]));
+const toolVersions = (text: string) => new Map([...text.split("[tools]\n")[1]!.split("\n[")[0]!.matchAll(/^([a-z0-9-]+) = "([^"]+)"$/gmu)].map(match => [match[1]!, match[2]!]));
 const previous = candidate ? toolVersions(baseline("mise.toml")) : new Map<string,string>();
 mkdirSync(reports, { recursive: true });
 const pins = readFileSync(`${root}/mise.toml`, "utf8").split("[tools]\n")[1]!.split("\n[")[0]!;
