@@ -24,7 +24,7 @@ export function assess(report: any, policy: any, imports: Record<string, string[
         assert(typeof vulnerability.id === "string");
         const identifiers = [vulnerability.id, ...(vulnerability.aliases ?? [])];
         if (identifiers.some(id => id.startsWith("MAL-"))) { findings.push(`Known malware: ${component.name} ${vulnerability.id}`); continue; }
-        const fixed = policy.fixed?.find((candidate: any) => candidate.id === vulnerability.id && candidate.package === component.name && candidate.version === component.version && candidate.ecosystem === component.ecosystem);
+        const fixed = result.source.path.replaceAll("\\", "/").endsWith("/web/pnpm-lock.yaml") && policy.fixed?.find((candidate: any) => candidate.id === vulnerability.id && candidate.package === component.name && candidate.version === component.version && candidate.ecosystem === component.ecosystem);
         if (fixed) {
           for (const [key, value] of Object.entries(deepmergePatch)) assert.equal(fixed[key === "sha256" ? "patchSha256" : key], value, "Only the reviewed deepmerge remediation is supported");
           assert(Number.isFinite(Date.parse(fixed.reviewUntil)) && now.getTime() < Date.parse(fixed.reviewUntil), "Patch assessment expired");

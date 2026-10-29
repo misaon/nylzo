@@ -156,3 +156,20 @@ test("publication drains the remaining weekly updates and failed publication ass
     assert.deepEqual(failed.writes.trim().split("\n").map(line => JSON.parse(line).body), [{ labels: ["requires-attention"] }, { assignees: ["misaon"] }]);
   } finally { f.cleanup(); }
 });
+
+
+test("changing an Action version comment cannot disguise an older pinned commit", () => {
+  const f = fixture();
+  try {
+    const path = ".github/workflows/ci.yml", digest = "a".repeat(40);
+    const before = `uses: actions/checkout@${digest} # v7.0.1\n`;
+    const after = before.replace("v7.0.1", "v7.0.2");
+    f.routes[f.prefix + "pulls/7/files?per_page=100"] = [{ filename: path, status: "modified" }];
+    for (const [sha, text] of [[f.baseline, before], [f.source, after]]) f.routes[f.prefix + `contents/${path}?ref=${sha}`] = { type: "file", encoding: "base64", content: Buffer.from(text!).toString("base64") };
+    f.routes["repos/actions/checkout/git/ref/tags/v7.0.2"] = { object: { type: "commit", sha: "b".repeat(40) } };
+    const forged = f.execute(); assert.notEqual(forged.status, 0); assert.equal(forged.output, "");
+    f.routes["repos/actions/checkout/git/ref/tags/v7.0.2"].object.sha = digest;
+    const genuineAlias = f.execute(); assert.equal(genuineAlias.status, 0, genuineAlias.stderr);
+    assert(genuineAlias.output.includes("tag=v0.1.7\n"));
+  } finally { f.cleanup(); }
+});

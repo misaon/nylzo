@@ -72,7 +72,7 @@ jobs:
     outputs:
       affected: ${{ steps.scout.outputs.affected }}
     env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/published-source
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -114,6 +114,24 @@ jobs:
           [[ "$status" = 0 || "$status" = 1 ]] || exit "$status"
       - name: Scan the pinned tools installed from verified lockfiles
         run: node tools/dependencies/scan-tools.mts published-source "$RUNNER_TEMP/dependency-reports" --inventory
+      - id: main-tools
+        name: Reuse the published tool inventory when inputs match
+        run: |
+          if cmp -s mise.lock published-source/mise.lock &&
+             cmp -s deploy/compose/compose.yaml published-source/deploy/compose/compose.yaml &&
+             diff <(grep 'renovate-image:' .github/workflows/dependencies.yml) <(grep 'renovate-image:' published-source/.github/workflows/dependencies.yml) >/dev/null; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        if: steps.main-tools.outputs.changed == 'true'
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+      - name: Inventory changed main tools without mixing them into the production base
+        if: steps.main-tools.outputs.changed == 'true'
+        run: node tools/dependencies/scan-tools.mts . "$RUNNER_TEMP/dependency-reports/main-tools" --inventory
       - id: scout
         name: Map actual advisories to update candidates
         env:

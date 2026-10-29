@@ -52,6 +52,9 @@ test("a patched dependency is fixed only with exact, current installation eviden
     (changed.results[1]!.packages[0] as any).vulnerabilities[0].id = id;
     assert.throws(() => assess(changed, policy, source.imports, date, [deepmergePatch]));
   }
+  const unpatchedTool = structuredClone(source.report);
+  unpatchedTool.results[2]!.packages.push(structuredClone(source.report.results[1]!.packages[0]));
+  assert.throws(() => assess(unpatchedTool, policy, source.imports, date, [deepmergePatch]), "A web patch cannot exempt an unpatched copy in release tooling");
   const changedPolicy = structuredClone(policy);
   changedPolicy.fixed[0].patchSha256 = "changed";
   assert.throws(() => assess(source.report, changedPolicy, source.imports, date, [deepmergePatch]));

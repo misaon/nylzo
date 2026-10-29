@@ -52,9 +52,9 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
       }
     }
     if (/^\.github\/workflows\//u.test(file.filename)) {
-      const oldPins = new Set([...before.matchAll(/uses: ([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:\/[^@\s]+)?@([a-f0-9]{40}) # (v?\d+\.\d+\.\d+)/gu)].map(match => `${match[1]}@${match[2]}`));
+      const oldPins = new Set([...before.matchAll(/uses: ([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:\/[^@\s]+)?@([a-f0-9]{40}) # (v?\d+\.\d+\.\d+)/gu)].map(match => `${match[1]}@${match[2]}@${match[3]}`));
       for (const pin of after.matchAll(/uses: ([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)(?:\/[^@\s]+)?@([a-f0-9]{40}) # (v?\d+\.\d+\.\d+)/gu)) {
-        if (oldPins.has(`${pin[1]}@${pin[2]}`)) continue;
+        if (oldPins.has(`${pin[1]}@${pin[2]}@${pin[3]}`)) continue;
         let object = request(`repos/${pin[1]}/git/ref/tags/${pin[3]}`).object;
         for (let depth = 0; object.type === "tag" && depth < 3; depth++) object = request(`repos/${pin[1]}/git/tags/${object.sha}`).object;
         assert.equal(object.type, "commit"); assert.equal(object.sha, pin[2], "Action SHA must match the actual version tag in its upstream repository");
