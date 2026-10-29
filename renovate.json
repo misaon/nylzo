@@ -381,5 +381,6 @@
       "matchMessage": "/^Error updating branch:/",
       "newLogLevel": "error"
     }
-  ]
+  ],
+  "stopUpdatingLabel": "requires-attention"
 }

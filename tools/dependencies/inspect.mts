@@ -10,6 +10,8 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
   const pull = request(`repos/${repository}/pulls/${number}`);
   assert(trustedDependencyBot(pull.user), "Only the repository App can propose automatic updates");
   assert.equal(pull.head.repo.full_name, repository); assert.equal(pull.base.repo.full_name, repository);
+  const comments = pages(`repos/${repository}/issues/${number}/comments?per_page=100`);
+  assert(!comments.some(comment => trustedDependencyBot(comment.user) && /^### ⚠️ Artifact update problem(?:\r?\n|$)/u.test(comment.body)), "Renovate reports an unresolved artifact generation failure");
   assert.equal(pull.merged, merged); assert.equal(pull.draft, false);
   assert.match(pull.head.ref, /^renovate\/[a-zA-Z0-9_./-]+$/u);
   if (pull.base.ref !== "main" && pull.base.ref !== releaseBranch((latest ?? request(`repos/${repository}/releases/latest`)).tag_name)) throw new UpdateDeferred("This proposal targets a superseded release");

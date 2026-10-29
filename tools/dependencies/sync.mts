@@ -20,11 +20,14 @@ writeFileSync("deploy/hetzner-flatcar/toolchain.json", JSON.stringify(toolchain,
 writeFileSync("mise-tasks/deploy", readFileSync("mise-tasks/deploy", "utf8").replace(/opentofu@[0-9]+\.[0-9]+\.[0-9]+/u, `opentofu@${toolchain.opentofu}`));
 // Refresh the isolated runtime from the reviewed primary tool pins, without
 // enabling package scripts, custom mise plugins, or repository-defined commands.
-let runtime = readFileSync("tools/security/runtime.toml", "utf8");
+const previousRuntime = readFileSync("tools/security/runtime.toml", "utf8");
+let runtime = previousRuntime;
 for (const name of ["node", "gitsign"]) runtime = runtime.replace(new RegExp(`^${name} = "[^"]+"$`, "mu"), `${name} = "${new RegExp(`^${name} = "([^"]+)"$`, "mu").exec(mise)![1]}"`);
 runtime = runtime.replace(/^min_version = "[^"]+"/mu, /^min_version = "[^"]+"/mu.exec(mise)![0]);
 writeFileSync("tools/security/runtime.toml", runtime);
-if (process.argv.includes("--locks")) {
+// Raising the mise minimum alone does not change any locked executable.
+const lockInputs = (source: string) => source.replace(/^min_version = "[^"]+"\n?/mu, "");
+if (process.argv.includes("--locks") && lockInputs(runtime) !== lockInputs(previousRuntime)) {
   const environment = { ...process.env, MISE_SAFE: "1", MISE_EXPERIMENTAL: "0" };
   const directory = mkdtempSync(join(tmpdir(), "nylzo-runtime-lock-"));
   try {
