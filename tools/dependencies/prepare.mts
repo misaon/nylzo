@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync } from "node:fs";
-import { pages, repository, request } from "../release/github.mts";
-import { releaseBranch, trustedDependencyBot, versionParts } from "../release/policy.mts";
+import { contents, pages, repository, request } from "../release/github.mts";
+import { releaseBranch, supportsToolInventory, trustedDependencyBot, versionParts } from "../release/policy.mts";
 
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.equal(process.env.GITHUB_REF, "refs/heads/main");
@@ -14,6 +14,11 @@ const tag = request(`repos/${repository}/git/tags/${reference.object.sha}`);
 assert.equal(tag.object.type, "commit");
 const sha = tag.object.sha;
 assert.match(sha, /^[a-f0-9]{40}$/u);
+if (!supportsToolInventory(JSON.parse(contents("tools/dependencies/assets.json", sha)))) {
+  appendFileSync(process.env.GITHUB_OUTPUT!, "ready=false\n");
+  console.log("Publish the approved scanner bootstrap release before automatic maintenance updates.");
+  process.exit(0);
+}
 const branch = releaseBranch(latest.tag_name);
 const branches = request(`repos/${repository}/git/matching-refs/heads/${branch}`);
 const existing = branches.find((item: any) => item.ref === `refs/heads/${branch}`);

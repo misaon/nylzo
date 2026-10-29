@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { trustedDependencyBot, releaseBranch } from "../release/policy.mts";
+import { trustedDependencyBot, releaseBranch, supportsToolInventory } from "../release/policy.mts";
 import { contents, pages, repository, request } from "../release/github.mts";
 import { validateDependencyFile } from "./policy.mts";
 
@@ -18,6 +18,7 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
   const commit = commits[0];
   assert(trustedDependencyBot(commit.author)); assert.equal(commit.commit.verification.verified, true); assert.equal(commit.parents.length, 1);
   const base = commit.parents[0].sha;
+  if (pull.base.ref !== "main" && !supportsToolInventory(JSON.parse(contents("tools/dependencies/assets.json", base)))) throw new UpdateDeferred("Wait for the approved scanner bootstrap release; the old baseline cannot attest every tool platform");
   if (!merged) {
     if (pull.base.sha !== request(`repos/${repository}/git/ref/heads/${pull.base.ref}`).object.sha || base !== pull.base.sha) throw new UpdateDeferred("Rebase and retest on the current base");
   }
@@ -37,6 +38,9 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
         const name = key.startsWith("gh-") ? `gh_${version}_linux_${architecture}.tar.gz` :
           key.startsWith("cosign-") ? `cosign-linux-${architecture}` :
           key.startsWith("jq-") ? `jq-linux-${architecture}` :
+          key.startsWith("syft-") ? `syft_${version}_linux_${architecture}.tar.gz` :
+          key.startsWith("mise-") ? `mise-v${version}-linux-${architecture === "amd64" ? "x64" : "arm64"}.tar.gz` :
+          key.startsWith("codecov-") ? `codecovcli_linux${architecture === "arm64" ? "_arm64" : ""}` :
           `ignition-validate-${architecture === "amd64" ? "x86_64" : "aarch64"}-linux`;
         const release = request(`repos/${value.package}/releases/tags/${encodeURIComponent(value.version)}`);
         const asset = release.assets.find((item: any) => item.name === name);

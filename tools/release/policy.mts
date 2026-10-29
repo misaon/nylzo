@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 export const automationIdentity = { login: "nylzo-security-automation[bot]", id: 348682855 };
 export const semantic = /^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
 
+export function supportsToolInventory(assets: Record<string,unknown>): boolean {
+  return ["gh", "cosign", "jq", "ignition", "syft", "mise", "codecov"].every(name => ["amd64", "arm64"].every(architecture => Object.hasOwn(assets, `${name}-${architecture}`)));
+}
+
 export function versionParts(version: string): number[] {
   assert.match(version, semantic);
   const parts = version.replace(/^v/u, "").split(".").map(Number);

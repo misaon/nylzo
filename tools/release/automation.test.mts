@@ -36,6 +36,7 @@ function fixture() {
     [prefix + "pulls/7/commits?per_page=100"]: [{ sha: source, author: bot, parents: [{ sha: baseline }], commit: { verification: { verified: true } } }],
     [prefix + "pulls/7/files?per_page=100"]: [{ filename: "web/app/package.json", status: "modified" }],
     [prefix + `contents/web/app/package.json?ref=${baseline}`]: { type: "file", encoding: "base64", content: Buffer.from(before).toString("base64") },
+    [prefix + `contents/tools/dependencies/assets.json?ref=${baseline}`]: { type: "file", encoding: "base64", content: readFileSync("tools/dependencies/assets.json").toString("base64") },
     [prefix + `contents/web/app/package.json?ref=${source}`]: { type: "file", encoding: "base64", content: Buffer.from(after).toString("base64") },
   };
   mkdirSync(join(root, "bin"));
@@ -81,6 +82,22 @@ test("an ordinary main PR merge cannot create a release candidate", () => {
     f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: f.main } };
     f.routes[f.prefix + `commits/${f.main}/pulls`] = [{ ...f.pull, merge_commit_sha: f.main, base: { ref: "main" }, user: { login: "misaon", id: 15806356 } }];
     const result = f.execute(); assert.equal(result.status, 0, result.stderr); assert.equal(result.output, ""); assert.equal(result.writes, "");
+  } finally { f.cleanup(); }
+});
+
+test("an older published scanner contract is deferred even when every dependency CI check passed", () => {
+  const f = fixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
+    f.routes[f.prefix + `contents/tools/dependencies/assets.json?ref=${f.baseline}`].content = Buffer.from("{}").toString("base64");
+    const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.writes, ""); assert.equal(result.output, ""); assert(result.stdout.includes("scanner bootstrap"));
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    const discovery = f.execute("", resolve("tools/dependencies/prepare.mts"));
+    assert.equal(discovery.status, 0, discovery.stderr); assert.equal(discovery.output, "ready=false\n"); assert.equal(discovery.writes, "");
   } finally { f.cleanup(); }
 });
 

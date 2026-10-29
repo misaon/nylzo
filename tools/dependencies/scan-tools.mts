@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { externalArtifacts, prepareExternal } from "./external.mts";
 
 const root = resolve(process.argv[2] ?? "."), reports = resolve(process.argv[3] ?? ".dependency-reports");
 const inventory = process.argv.includes("--inventory");
@@ -40,9 +42,18 @@ for (const architecture of ["amd64", "arm64"]) scan(`caddy-${architecture}`, `re
 const workflow = readFileSync(`${root}/.github/workflows/dependencies.yml`, "utf8");
 const renovate = /renovate-image: (ghcr\.io\/renovatebot\/renovate:\d+\.\d+\.\d+@sha256:[a-f0-9]{64})/u.exec(workflow)![1]!;
 scan("renovate", `registry:${renovate}`, "linux/amd64", !candidate || !baseline(".github/workflows/dependencies.yml").includes(renovate));
-writeFileSync(`${reports}/tool-scan-status.json`, JSON.stringify({ format: 1, inventory, candidate, scans: statuses }, null, 2) + "\n");
-assert.equal(statuses.length, tools.length + 3);
-console.log(`Scanned ${tools.length} pinned tool installations, both Caddy platforms and the Renovate image.`);
+const external = externalArtifacts(path => readFileSync(`${root}/${path}`, "utf8"));
+const oldExternal = candidate ? externalArtifacts(baseline) : [];
+for (const artifact of external) {
+  const directory = mkdtempSync(`${tmpdir()}/nylzo-external-`);
+  try {
+    await prepareExternal(artifact, directory);
+    scan(artifact.name, `dir:${directory}`, undefined, !candidate || JSON.stringify(oldExternal.find(item => item.name === artifact.name)) !== JSON.stringify(artifact));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}
+writeFileSync(`${reports}/tool-scan-status.json`, JSON.stringify({ format: 1, inventory, candidate, scans: statuses, external: external.map(({ name, dependencies }) => ({ name, dependencies })) }, null, 2) + "\n");
+assert.equal(statuses.length, tools.length + 3 + external.length);
+console.log(`Scanned ${tools.length} pinned tool installations, ${external.length} verified host/provider artifacts, both Caddy platforms and the Renovate image.`);
 const outstanding = statuses.filter(status => status.high > 0);
 if (process.env.GITHUB_STEP_SUMMARY) {
   const { appendFileSync } = await import("node:fs");
