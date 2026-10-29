@@ -93,10 +93,20 @@ jobs:
           ref: ${{ needs.prepare.outputs.source }}
           path: published-source
           persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - name: Select a verified Mise that supports both reviewed sources
+        id: tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NYLZO_BASE_SOURCE: ${{ needs.prepare.outputs.source }}
+        run: node tools/dependencies/renovate-tools.mts
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: ${{ steps.tools.outputs.version }}
+          sha256: ${{ steps.tools.outputs.sha256 }}
           working_directory: published-source
       - name: Verify signed release evidence and scan every shipped platform
         env:
@@ -138,8 +148,8 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         if: steps.main-tools.outputs.changed == 'true'
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: ${{ steps.tools.outputs.version }}
+          sha256: ${{ steps.tools.outputs.sha256 }}
       - name: Inventory changed main tools without mixing them into the production base
         if: steps.main-tools.outputs.changed == 'true'
         run: node tools/dependencies/scan-tools.mts . "$RUNNER_TEMP/dependency-reports/main-tools" --inventory

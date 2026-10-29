@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, chmodSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,5 +36,6 @@ if (import.meta.main) {
   // A private mount leaves Containerbase's native tool installation writable.
   chmodSync(directory, 0o755);
   chmodSync(binary, 0o555);
-  appendFileSync(process.env.GITHUB_OUTPUT!, `mise=${binary}\nversion=${artifact.version.replace(/^v/u, "")}\n`);
+  const sha256 = createHash("sha256").update(readFileSync(binary)).digest("hex");
+  appendFileSync(process.env.GITHUB_OUTPUT!, `mise=${binary}\nversion=${artifact.version.replace(/^v/u, "")}\nsha256=${sha256}\n`);
 }
