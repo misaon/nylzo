@@ -59,7 +59,12 @@ export function validateDependencyFile(path: string, before: string, after: stri
   if (path === "web/pnpm-lock.yaml") {
     assert.equal(before.split(/\n(?:importers|packages):\n/u)[0], after.split(/\n(?:importers|packages):\n/u)[0]);
     assert(!/^\s*(?:tarball|repo|commit):/mu.test(after), "Custom package sources require review");
-    assert(!/(?:https?:\/\/|git\+|file:|link:)(?!\.\.\/core)/u.test(after.replaceAll("link:../core", "")), "Custom lockfile sources require review");
+    // Registry deprecation messages can contain documentation links. Preserve
+    // only warnings already reviewed in the base; do not exempt source fields.
+    const oldLines = new Set(before.split("\n"));
+    const sources = after.split("\n").filter(line => !(/^ +deprecated: /u.test(line) && oldLines.has(line))).join("\n");
+    const externalSources = sources.replace(/\blink:\.\.\/core(?=$|[\s'",}])/gmu, "");
+    assert(!/\b(?:https?:\/\/|git\+|file:|link:)/u.test(externalSources), "Custom lockfile sources require review");
     assert(/integrity: sha(?:256|384|512)-/u.test(after));
     return [];
   }
