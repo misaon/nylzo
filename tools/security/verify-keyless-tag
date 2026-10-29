@@ -27,7 +27,9 @@ if [[ "$trigger" = workflow_run ]]; then
     git merge-base --is-ancestor "$policy_commit" refs/remotes/origin/main
   fi
 fi
-for attempt in 1 2 3 4; do
+# Fresh entries can take time to appear in Rekor search. Keep every identity
+# and transparency check, with a bounded backoff only on failed verification.
+for attempt in 1 2 3 4 5 6 7 8; do
   if gitsign verify-tag \
     --certificate-identity "$identity" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
@@ -35,6 +37,10 @@ for attempt in 1 2 3 4; do
     --certificate-github-workflow-trigger "$trigger" "$tag"; then
     exit 0
   fi
-  if [[ "$attempt" != 4 ]]; then sleep 5; fi
+  if [[ "$attempt" != 8 ]]; then
+    delay=$((2 ** attempt))
+    if [[ "$delay" -gt 32 ]]; then delay=32; fi
+    sleep "$delay"
+  fi
 done
 exit 1
