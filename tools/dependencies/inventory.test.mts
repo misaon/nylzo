@@ -38,9 +38,11 @@ test("canonical tool pins and generated deployment/signing metadata cannot drift
 test("security discovery does not re-enable duplicate CLI inputs or disable Action SHA updates", () => {
   const saved = { ...process.env };
   try {
-    Object.assign(process.env, { NYLZO_UPDATE_MODE: "security", NYLZO_BASE_TAG: "v0.1.8", NYLZO_AFFECTED_DEPENDENCIES: JSON.stringify(["sigstore/cosign", "jdx/mise", "ghcr.io/renovatebot/renovate", "goreleaser/goreleaser"]) });
+    Object.assign(process.env, { NYLZO_MISE_VERSION: "2026.10.9", NYLZO_UPDATE_MODE: "security", NYLZO_BASE_TAG: "v0.1.8", NYLZO_AFFECTED_DEPENDENCIES: JSON.stringify(["sigstore/cosign", "jdx/mise", "ghcr.io/renovatebot/renovate", "goreleaser/goreleaser"]) });
     const require = createRequire(import.meta.url);
     const config = require("../../.github/renovate.cjs");
+    assert.equal(config.force.constraints.mise, "2026.10.9");
+    assert.deepEqual(config.allowedUnsafeExecutions, []);
     const rules = config.force.packageRules;
     const reenable = rules.findIndex((rule: any) => rule.enabled === true && rule.matchPackageNames?.includes("sigstore/cosign"));
     const exclusion = rules.findLastIndex((rule: any) => rule.enabled === false && rule.matchManagers?.includes("github-actions") && rule.matchDepTypes?.includes("uses-with"));
