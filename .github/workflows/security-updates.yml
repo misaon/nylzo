@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '088961116d9ef913cb4ef1aa3ff2e23f6146d23747ef6818113d5d1a5f9996d8  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'dac24d07d229df19496e7994f879095c5c47f3c786a7e81bd7247335101f89ab  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -95,6 +95,8 @@ jobs:
       github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
       github.event.workflow_run.name == 'ci' &&
       github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      startsWith(github.event.workflow_run.head_branch, 'renovate/') &&
       github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
     name: Merge a verified dependency update after CI
     runs-on: ubuntu-latest
@@ -113,7 +115,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '088961116d9ef913cb4ef1aa3ff2e23f6146d23747ef6818113d5d1a5f9996d8  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'dac24d07d229df19496e7994f879095c5c47f3c786a7e81bd7247335101f89ab  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -166,7 +168,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '088961116d9ef913cb4ef1aa3ff2e23f6146d23747ef6818113d5d1a5f9996d8  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'dac24d07d229df19496e7994f879095c5c47f3c786a7e81bd7247335101f89ab  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:

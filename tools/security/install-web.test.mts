@@ -23,6 +23,7 @@ for (const updater of ["dependabot", "renovate"]) test(`${updater}: fresh securi
     const commit = { sha: head, author: bot, parents: [{ sha: base }], commit: { verification: { verified: true }, message: "Bumps example from 1.2.3 to 1.2.4.\n---\nupdated-dependencies:\n- dependency-name: example\n...\n" } };
     const routes = {
       "repos/misaon/nylzo/pulls/1": pull,
+      "repos/misaon/nylzo/issues/1/comments?per_page=100": [[]],
       "repos/misaon/nylzo/pulls/1/commits?per_page=100": [[commit]],
       "repos/misaon/nylzo/pulls/1/files?per_page=100": [[{ filename: "web/app/package.json", status: "modified" }]],
       "repos/misaon/nylzo/git/ref/heads/main": { object: { sha: base } },

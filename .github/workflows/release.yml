@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '088961116d9ef913cb4ef1aa3ff2e23f6146d23747ef6818113d5d1a5f9996d8  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'dac24d07d229df19496e7994f879095c5c47f3c786a7e81bd7247335101f89ab  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:

@@ -119,13 +119,6 @@
       ]
     },
     {
-      "matchPackageNames": [
-        "go",
-        "golang/go"
-      ],
-      "groupName": "Go toolchain"
-    },
-    {
       "matchManagers": [
         "gomod"
       ],
@@ -234,7 +227,8 @@
         "goreleaser/goreleaser",
         "ghcr.io/renovatebot/renovate",
         "sigstore/cosign",
-        "jdx/mise"
+        "jdx/mise",
+        "actions/node-versions"
       ],
       "enabled": false,
       "description": "Custom managers update these CLI inputs together with their verified binary checksums.",
@@ -253,6 +247,29 @@
         "pin"
       ],
       "enabled": false
+    },
+    {
+      "description": "Follow even-year Ubuntu LTS tags; test OS upgrades still require review.",
+      "matchPackageNames": [
+        "ubuntu"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "allowedVersions": "/^\\d*[02468]\\.04$/"
+    },
+    {
+      "matchPackageNames": [
+        "go",
+        "golang/go"
+      ],
+      "groupName": "Go toolchain"
+    },
+    {
+      "matchPackageNames": [
+        "pnpm"
+      ],
+      "groupName": "pnpm"
     }
   ],
   "customManagers": [
@@ -378,8 +395,9 @@
   },
   "logLevelRemap": [
     {
-      "matchMessage": "/^Error updating branch:/",
+      "matchMessage": "/^(?:Error updating branch:|artifactErrors$)/",
       "newLogLevel": "error"
     }
-  ]
+  ],
+  "stopUpdatingLabel": "requires-attention"
 }
