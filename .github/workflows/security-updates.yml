@@ -217,7 +217,12 @@ jobs:
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/$SOURCE_BRANCH" --jq .object.sha)" = "$SOURCE_COMMIT"
+          # Main can advance after approval; the isolated policy already checked
+          # that this exact approved source remains its protected ancestor.
+          # Maintenance branches must still contain exactly one pending patch.
+          if [[ "$SOURCE_BRANCH" != main ]]; then
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/$SOURCE_BRANCH" --jq .object.sha)" = "$SOURCE_COMMIT"
+          fi
           git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Nylzo ${RELEASE_TAG#v}
 
           Release-Kind: $RELEASE_KIND
