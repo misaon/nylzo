@@ -14,6 +14,9 @@ const blocked = Number(process.env.NYLZO_BLOCKED_PROPOSALS || "0");
 assert(Number.isSafeInteger(blocked) && blocked >= 0 && blocked <= 1000);
 const batchName = `${mode} dependency batch`;
 const batchSlug = `${mode}-dependency-batch`;
+// Advisory defaults also group major fixes. Keep those and pre-1.0 minor
+// fixes on migration branches so they cannot block the nonbreaking batch.
+const breakingAlert = '(or isMajor (and isMinor (or (equals newMajor 0) (equals newMajor "0"))))';
 // One signed commit carries compatible updates across all enabled managers.
 // Breaking upgrades retain their separate migration rules and production ban.
 const batchRules = [
@@ -45,7 +48,7 @@ module.exports = {
   vulnerabilityAlerts: {
     ...config.vulnerabilityAlerts,
     groupName: batchName,
-    groupSlug: batchSlug,
+    groupSlug: `{{#if ${breakingAlert}}}migration-{{depNameSanitized}}-{{newMajor}}.{{newMinor}}{{else}}${batchSlug}{{/if}}`,
     branchTopic: batchSlug,
     groupSingleUpdates: true,
     labels: [...new Set(["dependencies", `automation:${mode}`, "automation:security"])],
