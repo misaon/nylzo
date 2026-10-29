@@ -95,6 +95,8 @@ jobs:
       github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
       github.event.workflow_run.name == 'ci' &&
       github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
+      startsWith(github.event.workflow_run.head_branch, 'renovate/') &&
       github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
     name: Merge a verified dependency update after CI
     runs-on: ubuntu-latest
