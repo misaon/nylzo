@@ -52,6 +52,7 @@ jobs:
           repositories: nylzo
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write # creating a ref at a commit containing workflows
       - id: source
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

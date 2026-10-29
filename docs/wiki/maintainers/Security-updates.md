@@ -4,6 +4,8 @@ Nylzo uses self-hosted [Renovate](https://docs.renovatebot.com/) to propose upda
 
 ## Schedules and coverage
 
+Renovate is the only update-PR producer. Dependabot alerts and GitHub's dependency graph stay enabled; duplicate Dependabot version and security PR generation are disabled.
+
 Security discovery runs every six hours (`17 */6 * * *`, UTC). It checks the published source and protected `main`, reusing identical inventories. Coverage includes all Go, web and release-tooling lockfiles, reviewed GitHub Actions advisories, verified release SBOMs, both container architectures, pinned development tools, Caddy images, and the Renovate image. Scanner or integrity failures stop discovery. The weekly run is Monday at 02:47 UTC and also considers ordinary stable updates. GitHub schedules are best effort and can be delayed; they are not a six-hour delivery guarantee.
 
 Renovate's native managers cover Go modules, npm/pnpm, GitHub Actions, mise and its lockfiles, Docker Compose, Node version files, and OpenTofu providers and provider locks. Custom managers cover inline govulncheck, annotated workflow tool versions, the release base-image digest, the Renovate image, the Ubuntu test image, Flatcar stable versions, and architecture-specific host/validator binary checksums. A deterministic generator synchronizes derived host metadata, the OpenTofu launcher, isolated signing-runtime locks, and policy checksums. Protocol versions, test fixtures and golden fingerprints are not software updates.
