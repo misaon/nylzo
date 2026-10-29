@@ -231,9 +231,16 @@
         "github-actions"
       ],
       "matchPackageNames": [
-        "goreleaser/goreleaser"
+        "goreleaser/goreleaser",
+        "ghcr.io/renovatebot/renovate",
+        "sigstore/cosign",
+        "jdx/mise"
       ],
-      "enabled": false
+      "enabled": false,
+      "description": "Custom managers update these CLI inputs together with their verified binary checksums.",
+      "matchDepTypes": [
+        "uses-with"
+      ]
     },
     {
       "matchManagers": [

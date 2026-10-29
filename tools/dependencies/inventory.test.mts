@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 test("canonical tool pins and generated deployment/signing metadata cannot drift", () => {
@@ -31,4 +32,20 @@ test("canonical tool pins and generated deployment/signing metadata cannot drift
   assert.equal(host.caddy, caddy);
   const config = JSON.parse(readFileSync("renovate.json", "utf8"));
   assert(config.postUpgradeTasks.fileFilters.includes("mise-tasks/deploy"));
+});
+
+test("security discovery does not re-enable duplicate CLI inputs or disable Action SHA updates", () => {
+  const saved = { ...process.env };
+  try {
+    Object.assign(process.env, { NYLZO_UPDATE_MODE: "security", NYLZO_BASE_TAG: "v0.1.8", NYLZO_AFFECTED_DEPENDENCIES: JSON.stringify(["sigstore/cosign", "jdx/mise", "ghcr.io/renovatebot/renovate", "goreleaser/goreleaser"]) });
+    const require = createRequire(import.meta.url);
+    const config = require("../../.github/renovate.cjs");
+    const rules = config.force.packageRules;
+    const reenable = rules.findIndex((rule: any) => rule.enabled === true && rule.matchPackageNames?.includes("sigstore/cosign"));
+    const exclusion = rules.findLastIndex((rule: any) => rule.enabled === false && rule.matchManagers?.includes("github-actions") && rule.matchDepTypes?.includes("uses-with"));
+    assert(exclusion > reenable);
+    assert.deepEqual(rules[exclusion].matchPackageNames, ["goreleaser/goreleaser", "ghcr.io/renovatebot/renovate", "sigstore/cosign", "jdx/mise"]);
+    assert(!rules[exclusion].matchPackageNames.includes("jdx/mise-action"));
+    assert(!rules[exclusion].matchPackageNames.includes("sigstore/cosign-installer"));
+  } finally { process.env = saved; }
 });
