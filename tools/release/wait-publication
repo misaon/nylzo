@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# = 2 && "$GITHUB_REPOSITORY" = misaon/nylzo ]] || exit 1
+tag="$1"
+source="$2"
+[[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$source" =~ ^[a-f0-9]{40}$ ]] || exit 1
+temporary=$(mktemp -d)
+trap 'rm -rf "$temporary"' EXIT
+duration="${PUBLICATION_TIMEOUT_SECONDS:-1800}"
+[[ "$duration" =~ ^[1-9][0-9]{0,3}$ && "$duration" -le 1800 ]] || exit 1
+deadline=$((SECONDS + duration))
+while (( SECONDS < deadline )); do
+  if ! timeout --kill-after=5s 30s gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?event=push&branch=$tag&per_page=10" > "$temporary/runs.json"; then
+    echo 'Publication status is temporarily unavailable; retain the release lock.' >&2
+    sleep 10
+    continue
+  fi
+  jq -e '.workflow_runs | type == "array"' "$temporary/runs.json" >/dev/null
+  candidate=$(jq -c --arg tag "$tag" --arg source "$source" '.workflow_runs | map(select(.head_sha == $source and .head_branch == $tag and .event == "push")) | sort_by(.id) | last // empty' "$temporary/runs.json")
+  if [[ -n "$candidate" && "$(jq -r .status <<< "$candidate")" = completed ]]; then
+    [[ "$(jq -r .conclusion <<< "$candidate")" = success ]] || { echo 'Publication failed; do not allocate another release version before inspection.' >&2; exit 1; }
+    gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" > "$temporary/release.json"
+    jq -e --arg tag "$tag" '.tag_name == $tag and .immutable == true and .draft == false and .prerelease == false' "$temporary/release.json" >/dev/null
+    echo "Verified publication of $tag; release coordination can continue."
+    exit 0
+  fi
+  sleep 10
+done
+echo 'Publication did not finish within the bounded wait; inspect the release run.' >&2
+exit 1

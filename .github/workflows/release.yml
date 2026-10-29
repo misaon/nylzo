@@ -9,6 +9,7 @@ permissions: {}
 concurrency:
   group: release
   cancel-in-progress: false
+  queue: max
 
 env:
   GOTOOLCHAIN: local
@@ -36,7 +37,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
+          echo '97138e6197f0e3ac7db5c399029052c001ab3a790875a34b73a4ce3921b858a7  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:

@@ -173,3 +173,28 @@ test("changing an Action version comment cannot disguise an older pinned commit"
     assert(genuineAlias.output.includes("tag=v0.1.7\n"));
   } finally { f.cleanup(); }
 });
+
+
+test("an intervening patch regenerates stale planned metadata without publishing or bypassing approval", () => {
+  const f = fixture();
+  try {
+    f.git("tag", "v0.1.7");
+    f.routes[f.prefix + "releases/latest"].tag_name = "v0.1.7";
+    f.routes[f.prefix + "releases?per_page=100"] = ["v0.1.7", "v0.1.6"].map(tag_name => ({ tag_name, immutable: true, draft: false, prerelease: false }));
+    f.git("switch", "main"); f.git("commit", "--amend", "-m", "fix: pending repair");
+    writeFileSync(join(f.root, ".release-please-manifest.json"), '{".":"0.1.7"}');
+    f.git("add", ".release-please-manifest.json"); f.git("commit", "-m", "chore(main): release 0.1.7");
+    const merged = f.git("rev-parse", "HEAD");
+    f.run.head_branch = "main"; f.run.head_sha = merged;
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: merged } };
+    const pull = { ...f.pull, title: "chore(main): release 0.1.7", labels: [{ name: "autorelease: pending" }], merge_commit_sha: merged, base: { ...f.pull.base, ref: "main" }, head: { ...f.pull.head, ref: "release-please--branches--main" } };
+    f.routes[f.prefix + `commits/${merged}/pulls`] = [pull]; f.routes[f.prefix + "pulls/7"] = pull;
+    f.routes[f.prefix + "pulls/7/files?per_page=100"] = [{ filename: ".release-please-manifest.json", status: "modified" }];
+    f.routes[f.prefix + `contents/.release-please-manifest.json?ref=${merged}`] = { type: "file", encoding: "base64", content: Buffer.from('{".":"0.1.7"}').toString("base64") };
+    const result = f.execute(); assert.equal(result.status, 0, result.stderr); assert.equal(result.output, "");
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => write.method), ["POST", "POST", "DELETE", "POST"]);
+    assert(writes.at(-1).path.endsWith("/release-please.yml/dispatches"));
+    assert(writes.every(write => !write.path.endsWith("/merge") && !write.path.endsWith("/git/refs")));
+  } finally { f.cleanup(); }
+});

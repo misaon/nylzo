@@ -1,0 +1,14 @@
+# GitHub added concurrency.queue in May 2026; actionlint 1.7.12 does not
+# recognize it yet: https://github.com/rhysd/actionlint/issues/657
+# Queue values and placement are checked by tools/release/queue.test.mts.
+# Keep every other syntax/security diagnostic enabled.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
+  .github/workflows/security-updates.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
+  .github/workflows/dependencies.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
