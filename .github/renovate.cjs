@@ -38,6 +38,7 @@ module.exports = {
     ignoreScripts: true,
     ignorePlugins: true,
     automerge: false,
+    separateMinorPatch: mode === "security",
     platformCommit: "enabled",
     schedule: [],
     labels: ["dependencies", `automation:${mode}`],

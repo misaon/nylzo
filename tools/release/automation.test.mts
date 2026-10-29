@@ -257,7 +257,7 @@ test("a maintenance merge cancels only unchanged signed App PR CI from the super
     const sha = "e".repeat(40), humanSha = "f".repeat(40);
     const candidate = { ...f.pull, number: 8, head: { ...f.pull.head, sha, ref: "renovate/stale" } };
     const human = { ...candidate, number: 9, head: { ...candidate.head, sha: humanSha } };
-    f.routes[f.prefix + "pulls?state=open&per_page=100"] = [candidate, human, { ...candidate, base: { ref: "main" } }];
+    f.routes[f.prefix + "pulls?state=open&per_page=100"] = [candidate, human, { ...candidate, base: { ref: "main" } }, { ...candidate, draft: true }, { ...candidate, labels: [{ name: "manual-hold" }] }];
     f.routes[f.prefix + `commits/${sha}`] = { author: f.pull.user, commit: { verification: { verified: true } }, parents: [{ sha: f.baseline }] };
     f.routes[f.prefix + `commits/${humanSha}`] = { author: { login: "misaon", id: 999 }, commit: { verification: { verified: true } }, parents: [{ sha: f.baseline }] };
     const stale = { id: 456, workflow_id: f.run.workflow_id, event: "pull_request", head_repository: f.pull.head.repo, head_sha: sha, head_branch: candidate.head.ref, status: "in_progress" };
@@ -267,8 +267,9 @@ test("a maintenance merge cancels only unchanged signed App PR CI from the super
     ] };
     const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
     const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
-    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/runs/456/cancel"]);
+    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/runs/456/cancel", f.prefix + "pulls/8"]);
     assert.equal(writes[0].dispatchToken, false); assert.equal(writes[1].dispatchToken, true);
+    assert.deepEqual(writes[2].body, { state: "closed" });
   } finally { f.cleanup(); }
 });
 
@@ -291,6 +292,20 @@ test("discovery prunes superseded signed proposals before budgeting and preserve
     const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
     assert.deepEqual(writes.map(write => ({ path: write.path, method: write.method, body: write.body })), [{ path: f.prefix + "pulls/8", method: "PATCH", body: { state: "closed" } }]);
     assert(result.output.includes("blocked=2\n"), "Only retained human work and the main hold need budget compensation");
+  } finally { f.cleanup(); }
+});
+
+test("a verified main dependency merge refills discovery without authorizing a release", () => {
+  const f = fixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.pull.base.ref = "main"; f.pull.labels = [{ name: "automation:weekly" }];
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: f.baseline } };
+    const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/workflows/dependencies.yml/dispatches"]);
+    assert.deepEqual(writes[1].body, { ref: "main", inputs: { mode: "weekly" } });
+    assert.equal(writes[1].dispatchToken, true); assert.equal(result.output, "");
   } finally { f.cleanup(); }
 });
 

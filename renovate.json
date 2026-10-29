@@ -34,7 +34,7 @@
   "prHourlyLimit": 0,
   "minimumReleaseAge": "3 days",
   "rebaseWhen": "behind-base-branch",
-  "separateMinorPatch": true,
+  "separateMinorPatch": false,
   "rangeStrategy": "pin",
   "vulnerabilityAlerts": {
     "enabled": true,
