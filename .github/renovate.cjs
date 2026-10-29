@@ -12,6 +12,14 @@ const affected = JSON.parse(process.env.NYLZO_AFFECTED_DEPENDENCIES || "[]");
 assert(Array.isArray(affected) && affected.every(name => typeof name === "string" && /^[A-Za-z0-9@_./+-]+$/.test(name)));
 const blocked = Number(process.env.NYLZO_BLOCKED_PROPOSALS || "0");
 assert(Number.isSafeInteger(blocked) && blocked >= 0 && blocked <= 1000);
+const batchName = `${mode} dependency batch`;
+const batchSlug = `${mode}-dependency-batch`;
+// One signed commit carries compatible updates across all enabled managers.
+// Breaking upgrades retain their separate migration rules and production ban.
+const batchRules = [
+  { matchUpdateTypes: ["patch", "digest", "pin", "pinDigest"], groupName: batchName, groupSlug: batchSlug, groupSingleUpdates: true },
+  { matchUpdateTypes: ["minor"], matchCurrentVersion: "!/^0\\./", groupName: batchName, groupSlug: batchSlug, groupSingleUpdates: true },
+];
 module.exports = {
   ...config,
   // Current manual holds do not consume the two ordinary update slots.
@@ -33,22 +41,31 @@ module.exports = {
   cacheDir: "/tmp/renovate-cache",
   baseDir: "/tmp/renovate-work",
   persistRepoData: false,
+  // Native advisory remediations otherwise reset grouping and branchTopic.
+  vulnerabilityAlerts: {
+    ...config.vulnerabilityAlerts,
+    groupName: batchName,
+    groupSlug: batchSlug,
+    branchTopic: batchSlug,
+    groupSingleUpdates: true,
+    labels: [...new Set(["dependencies", `automation:${mode}`, "automation:security"])],
+  },
   force: {
     constraints: { mise: miseVersion },
     ignoreScripts: true,
     ignorePlugins: true,
     automerge: false,
-    separateMinorPatch: mode === "security",
+    separateMinorPatch: false,
     platformCommit: "enabled",
     schedule: [],
     labels: ["dependencies", `automation:${mode}`],
-    packageRules: mode === "security" ? [
+    packageRules: [...(mode === "security" ? [
       ...config.packageRules,
       { matchPackageNames: ["*"], enabled: false },
       ...(affected.length ? [{ matchPackageNames: affected, enabled: true, minimumReleaseAge: null }] : []),
       // A security lookup must not re-enable duplicate managers or format-only pins.
       ...config.packageRules.filter(rule => rule.enabled === false),
       { matchPackageNames: ["github.com/misaon/nylzo", "ghcr.io/misaon/nylzo"], enabled: false },
-    ] : config.packageRules,
+    ] : config.packageRules), ...batchRules],
   },
 };

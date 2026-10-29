@@ -6,22 +6,26 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 const automation = resolve("tools/security/automation.mts");
-function fixture() {
+function fixture(extraFiles: Record<string, [string, string]> = {}) {
   const root = mkdtempSync(join(tmpdir(), "nylzo-flow-"));
   const git = (...args: string[]) => execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   git("init", "--initial-branch=main"); git("config", "user.email", "fixture@example.invalid"); git("config", "user.name", "Fixture");
   mkdirSync(join(root, "web/app"), { recursive: true });
   const before = '{"dependencies":{"example":"1.2.3"}}', after = before.replace("1.2.3", "1.2.4");
-  writeFileSync(join(root, "web/app/package.json"), before); git("add", "."); git("commit", "-m", "fix: released baseline");
+  writeFileSync(join(root, "web/app/package.json"), before);
+  for (const [path, [content]] of Object.entries(extraFiles)) writeFileSync(join(root, path), content);
+  git("add", "."); git("commit", "-m", "fix: released baseline");
   const baseline = git("rev-parse", "HEAD"); git("tag", "v0.1.6");
   writeFileSync(join(root, "unreleased-feature"), "must remain outside production"); git("add", "."); git("commit", "-m", "feat: unreleased feature");
   const main = git("rev-parse", "HEAD");
   git("switch", "--create", "release/v0.1.6", baseline);
-  writeFileSync(join(root, "web/app/package.json"), after); git("add", "."); git("commit", "-m", "fix(deps): update example");
+  writeFileSync(join(root, "web/app/package.json"), after);
+  for (const [path, [, content]] of Object.entries(extraFiles)) writeFileSync(join(root, path), content);
+  git("add", "."); git("commit", "-m", "fix(deps): update dependency batch");
   const source = git("rev-parse", "HEAD"), bot = { login: "nylzo-dependency-updates[bot]", id: 123456 };
   const repo = { full_name: "misaon/nylzo" };
   const pull = { number: 7, merged: true, merged_at: "2026-10-29T00:00:00Z", merge_commit_sha: source,
-    state: "closed", draft: false, title: "fix(deps): update example", user: bot, labels: [], changed_files: 1,
+    state: "closed", draft: false, title: "fix(deps): update dependency batch", user: bot, labels: [], changed_files: 1 + Object.keys(extraFiles).length,
     head: { sha: source, ref: "renovate/example", repo }, base: { ref: "release/v0.1.6", sha: baseline, repo } };
   const run = { id: 123, workflow_id: 12, event: "push", head_branch: "release/v0.1.6", head_sha: source, head_repository: repo, conclusion: "success" };
   const prefix = "repos/misaon/nylzo/";
@@ -41,6 +45,12 @@ function fixture() {
     [prefix + `contents/tools/dependencies/assets.json?ref=${baseline}`]: { type: "file", encoding: "base64", content: readFileSync("tools/dependencies/assets.json").toString("base64") },
     [prefix + `contents/web/app/package.json?ref=${source}`]: { type: "file", encoding: "base64", content: Buffer.from(after).toString("base64") },
   };
+  for (const [path, [previous, next]] of Object.entries(extraFiles)) {
+    routes[prefix + "pulls/7/files?per_page=100"].push({ filename: path, status: "modified" });
+    for (const [ref, content] of [[baseline, previous], [source, next]]) {
+      routes[prefix + `contents/${path}?ref=${ref}`] = { type: "file", encoding: "base64", content: Buffer.from(content!).toString("base64") };
+    }
+  }
   mkdirSync(join(root, "bin"));
   writeFileSync(join(root, "bin/gh"), `#!/usr/bin/env node
 const fs=require('node:fs'),routes=JSON.parse(fs.readFileSync(process.env.ROUTES,'utf8'));
@@ -74,6 +84,27 @@ test("automatic patch publication excludes a feature already merged into main", 
     f.routes[f.prefix + "pulls/7/files?per_page=100"].push({ filename: "internal/server/server.go", status: "modified" });
     f.pull.changed_files = 2;
     const unsafe = f.execute(); assert.notEqual(unsafe.status, 0); assert.equal(unsafe.output, "");
+  } finally { f.cleanup(); }
+});
+
+test("one signed batch across npm, Go and tooling produces one patch candidate and fails closed as a whole", () => {
+  const f = fixture({
+    "go.mod": ["module example.invalid/batch\n\nrequire example.invalid/module v1.2.3\n", "module example.invalid/batch\n\nrequire example.invalid/module v1.2.4\n"],
+    "mise.toml": ['[tools]\nactionlint = "1.7.11"\n', '[tools]\nactionlint = "1.7.12"\n'],
+  });
+  try {
+    const candidate = f.execute(); assert.equal(candidate.status, 0, candidate.stderr);
+    assert.equal(candidate.output.match(/^tag=/gmu)?.length, 1);
+    assert(candidate.output.includes("tag=v0.1.7\n")); assert(candidate.output.includes(`commit=${f.source}\n`));
+    assert.equal(f.git("rev-list", "--count", `${f.baseline}..${f.source}`), "1");
+    assert.equal(f.git("diff", "--name-only", `${f.baseline}..${f.source}`), "go.mod\nmise.toml\nweb/app/package.json");
+    assert.equal(candidate.writes, "");
+    f.routes[f.prefix + "actions/runs/123/jobs?per_page=100"].jobs[0].conclusion = "failure";
+    const failedCI = f.execute(); assert.notEqual(failedCI.status, 0); assert.equal(failedCI.output, ""); assert.equal(failedCI.writes, "");
+    f.routes[f.prefix + "actions/runs/123/jobs?per_page=100"].jobs[0].conclusion = "success";
+    const path = f.prefix + `contents/go.mod?ref=${f.source}`;
+    f.routes[path].content = Buffer.from("module example.invalid/batch\n\nrequire example.invalid/module v2.0.0\n").toString("base64");
+    const breakingMember = f.execute(); assert.notEqual(breakingMember.status, 0); assert.equal(breakingMember.output, ""); assert.equal(breakingMember.writes, "");
   } finally { f.cleanup(); }
 });
 
