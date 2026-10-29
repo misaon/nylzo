@@ -102,7 +102,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.19
           install_args: golangci-lint
       - run: go mod verify
       - run: go mod tidy -diff
@@ -147,7 +147,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.19
           install_args: go node pnpm osv-scanner
       - run: node tools/security/install-web.mts
         env:
@@ -178,7 +178,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.19
           install_args: actionlint zizmor shellcheck node go
       - name: Verify the release tooling installation and audit its locked dependencies
         run: |
@@ -207,7 +207,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.19
           install_args: go node opentofu
       - run: tools/deploy/validate
       - name: Install the virtual-machine test runtime
@@ -599,7 +599,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.19
           cache: true
       - name: Inventory tools and block vulnerable tool upgrades
         env:
@@ -689,7 +689,7 @@ jobs:
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.19
           install_args: grype
       - name: The production image has no high or critical known vulnerabilities
         env:
