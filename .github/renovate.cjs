@@ -2,6 +2,8 @@
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
 const config = JSON.parse(fs.readFileSync(process.env.NYLZO_RENOVATE_CONFIG || "renovate.json", "utf8"));
+const miseVersion = process.env.NYLZO_MISE_VERSION;
+assert(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(miseVersion));
 const mode = process.env.NYLZO_UPDATE_MODE;
 assert(["security", "weekly"].includes(mode));
 const tag = process.env.NYLZO_BASE_TAG;
@@ -25,13 +27,14 @@ module.exports = {
   allowScripts: false,
   allowPlugins: false,
   exposeAllEnv: false,
-  allowedUnsafeExecutions: ["mise"],
+  allowedUnsafeExecutions: [],
   allowedCommands: ["^node /opt/nylzo-dependency-sync\\.mts --locks$"],
   allowShellExecutorForPostUpgradeCommands: false,
   cacheDir: "/tmp/renovate-cache",
   baseDir: "/tmp/renovate-work",
   persistRepoData: false,
   force: {
+    constraints: { mise: miseVersion },
     ignoreScripts: true,
     ignorePlugins: true,
     automerge: false,

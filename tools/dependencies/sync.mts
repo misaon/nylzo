@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -33,7 +33,7 @@ if (process.argv.includes("--locks") && lockInputs(runtime) !== lockInputs(previ
   try {
     writeFileSync(join(directory, "mise.toml"), runtime);
     writeFileSync(join(directory, "mise.lock"), readFileSync("tools/security/runtime.lock"));
-    execFileSync("mise", ["--cd", directory, "lock", "--platform", "linux-x64,linux-arm64,macos-x64,macos-arm64"], { env: environment, stdio: "inherit" });
+    execFileSync(existsSync("/opt/nylzo-dependency-tools/mise") ? "/opt/nylzo-dependency-tools/mise" : "mise", ["--cd", directory, "lock", "--platform", "linux-x64,linux-arm64,macos-x64,macos-arm64"], { env: environment, stdio: "inherit" });
     writeFileSync("tools/security/runtime.lock", readFileSync(join(directory, "mise.lock")));
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }

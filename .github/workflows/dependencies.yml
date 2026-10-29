@@ -188,6 +188,9 @@ jobs:
           package-manager-cache: false
       - name: Prepare checksum-verified mise for lock synchronization
         id: tools
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NYLZO_BASE_SOURCE: ${{ needs.prepare.outputs.source }}
         run: node tools/dependencies/renovate-tools.mts
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
@@ -205,6 +208,7 @@ jobs:
         env:
           LOG_LEVEL: ${{ inputs.debug && 'debug' || 'info' }}
           NYLZO_UPDATE_MODE: ${{ needs.prepare.outputs.mode }}
+          NYLZO_MISE_VERSION: ${{ steps.tools.outputs.version }}
           NYLZO_BASE_TAG: ${{ needs.prepare.outputs.tag }}
           NYLZO_AFFECTED_DEPENDENCIES: ${{ needs.scout.outputs.affected }}
           NYLZO_RENOVATE_CONFIG: /opt/nylzo-renovate.json
@@ -214,9 +218,10 @@ jobs:
           configurationFile: .github/renovate.cjs
           renovate-image: ghcr.io/renovatebot/renovate:44.192.2@sha256:37960a62ba1faa9079a7c4eead9b3f4470748a64ecd207e06c09fd8858673e17
           mount-docker-socket: false
-          docker-volumes: /tmp:/tmp;${{ github.workspace }}/tools/dependencies/sync.mts:/opt/nylzo-dependency-sync.mts:ro;${{ github.workspace }}/renovate.json:/opt/nylzo-renovate.json:ro;${{ steps.tools.outputs.mise }}:/usr/local/bin/mise:ro
+          docker-volumes: /tmp:/tmp;${{ github.workspace }}/tools/dependencies/sync.mts:/opt/nylzo-dependency-sync.mts:ro;${{ github.workspace }}/renovate.json:/opt/nylzo-renovate.json:ro;${{ steps.tools.outputs.mise }}:/opt/nylzo-dependency-tools/mise:ro
           additional-env-list: |
             NYLZO_UPDATE_MODE
+            NYLZO_MISE_VERSION
             NYLZO_BASE_TAG
             NYLZO_AFFECTED_DEPENDENCIES
             NYLZO_RENOVATE_CONFIG
