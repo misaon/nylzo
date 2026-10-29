@@ -99,7 +99,7 @@ jobs:
           restore-keys: |
             go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-lint-${{ runner.os }}-
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
@@ -144,7 +144,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
@@ -175,7 +175,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
@@ -204,7 +204,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
@@ -596,7 +596,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
@@ -686,7 +686,7 @@ jobs:
           go build -o dist/tlscheck ./tools/tlscheck
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
