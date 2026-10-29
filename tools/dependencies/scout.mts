@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { externalArtifacts } from "./external.mts";
 
 // Runs without write credentials, from reviewed main, against the published tree.
 const root = resolve(process.argv[2] ?? ".");
@@ -51,16 +52,35 @@ assert(grypeFiles.length >= 8, "Both container platforms and all archive SBOMs a
 const toolStatus = JSON.parse(readFileSync(`${reports}/tool-scan-status.json`, "utf8"));
 assert(toolStatus.format === 1 && toolStatus.inventory === true && toolStatus.scans.length >= 18);
 assert(toolStatus.scans.every((scan: any) => scan.code === 0 && grypeFiles.includes(`${scan.name}.grype.json`)), "Tool scanner errors must stop update discovery");
+const external = externalArtifacts(path => readFileSync(`${root}/${path}`, "utf8"));
+assert.deepEqual(toolStatus.external, external.map(({ name, dependencies }) => ({ name, dependencies })));
+assert(external.every(artifact => toolStatus.scans.some((scan: any) => scan.name === artifact.name)), "Every pinned host/provider platform must have a complete scan");
+const externalNames = new Map(external.map(artifact => [artifact.name, artifact.dependencies]));
+const advisoryLookups = new Map<string, typeof external[number]>();
+for (const sourceRoot of roots) for (const artifact of externalArtifacts(path => readFileSync(`${sourceRoot}/${path}`, "utf8"))) {
+  if (artifact.advisory) advisoryLookups.set(`${artifact.advisory.ecosystem}/${artifact.advisory.name}@${artifact.version}`, artifact);
+}
+for (const artifact of advisoryLookups.values()) {
+  const { ecosystem, name } = artifact.advisory!;
+  const version = artifact.version.replace(/^v/u, "");
+  const findings = JSON.parse(execFileSync("gh", ["api", `advisories?type=reviewed&ecosystem=${ecosystem}&affects=${encodeURIComponent(`${name}@${version}`)}&per_page=100`], { encoding: "utf8" }));
+  assert(Array.isArray(findings) && findings.length < 100);
+  if (findings.some(item => !item.withdrawn_at)) for (const dependency of artifact.dependencies) affected.add(dependency);
+}
 if (grypeFiles.some(name => name.startsWith("main-tools/"))) {
   const status = JSON.parse(readFileSync(`${reports}/main-tools/tool-scan-status.json`, "utf8"));
   assert(status.format === 1 && status.inventory === true && status.scans.length >= 18);
   assert(status.scans.every((scan: any) => scan.code === 0 && grypeFiles.includes(`main-tools/${scan.name}.grype.json`)));
+  const mainExternal = externalArtifacts(path => readFileSync(path, "utf8"));
+  assert.deepEqual(status.external, mainExternal.map(({ name, dependencies }) => ({ name, dependencies })));
+  assert(mainExternal.every(artifact => status.scans.some((scan: any) => scan.name === artifact.name)));
 }
 for (const file of grypeFiles) {
   const name = file.split("/").at(-1)!;
   const report = JSON.parse(readFileSync(`${reports}/${file}`, "utf8"));
   assert.equal(report.descriptor.name, "grype"); assert(Array.isArray(report.matches));
   for (const match of report.matches) {
+    for (const dependency of externalNames.get(name.replace(/\.grype\.json$/u, "")) ?? []) affected.add(dependency);
     if (/^caddy-/u.test(name)) affected.add("caddy");
     if (name === "renovate.grype.json") affected.add("ghcr.io/renovatebot/renovate");
     if (/^image-/u.test(name)) affected.add("gcr.io/distroless/static-debian13");

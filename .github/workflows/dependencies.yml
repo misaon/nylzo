@@ -10,6 +10,9 @@ on:
         type: choice
         options: [security, weekly]
         default: security
+      debug:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -122,9 +125,12 @@ jobs:
       - id: main-tools
         name: Reuse the published tool inventory when inputs match
         run: |
-          if cmp -s mise.lock published-source/mise.lock &&
-             cmp -s deploy/compose/compose.yaml published-source/deploy/compose/compose.yaml &&
-             diff <(grep 'renovate-image:' .github/workflows/dependencies.yml) <(grep 'renovate-image:' published-source/.github/workflows/dependencies.yml) >/dev/null; then
+          same=true
+          for path in mise.lock deploy/compose/compose.yaml tools/dependencies/assets.json \
+            deploy/hetzner-flatcar/infrastructure/{image,server,dns}/.terraform.lock.hcl; do
+            if ! cmp -s "$path" "published-source/$path"; then same=false; fi
+          done
+          if "$same" && diff <(grep 'renovate-image:' .github/workflows/dependencies.yml) <(grep 'renovate-image:' published-source/.github/workflows/dependencies.yml) >/dev/null; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
@@ -183,6 +189,7 @@ jobs:
           permission-vulnerability-alerts: read
       - uses: renovatebot/github-action@2804199d260ad00c1fae0e9e842888369391c776 # v46.3.10
         env:
+          LOG_LEVEL: ${{ inputs.debug && 'debug' || 'info' }}
           NYLZO_UPDATE_MODE: ${{ needs.prepare.outputs.mode }}
           NYLZO_BASE_TAG: ${{ needs.prepare.outputs.tag }}
           NYLZO_AFFECTED_DEPENDENCIES: ${{ needs.scout.outputs.affected }}

@@ -213,6 +213,39 @@
         "goreleaser/goreleaser"
       ],
       "groupName": "GoReleaser"
+    },
+    {
+      "matchPackageNames": [
+        "anchore/syft"
+      ],
+      "groupName": "Syft"
+    },
+    {
+      "matchPackageNames": [
+        "codecov/codecov-cli"
+      ],
+      "groupName": "Codecov CLI"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchPackageNames": [
+        "goreleaser/goreleaser"
+      ],
+      "enabled": false
+    },
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ],
+      "matchUpdateTypes": [
+        "pin"
+      ],
+      "enabled": false
     }
   ],
   "customManagers": [
@@ -329,5 +362,17 @@
       "mise-tasks/deploy"
     ],
     "executionMode": "branch"
-  }
+  },
+  "statusCheckNames": {
+    "artifactError": null,
+    "configValidation": null,
+    "mergeConfidence": null,
+    "minimumReleaseAge": null
+  },
+  "logLevelRemap": [
+    {
+      "matchMessage": "/^Error updating branch:/",
+      "newLogLevel": "error"
+    }
+  ]
 }

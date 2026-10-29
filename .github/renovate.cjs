@@ -42,6 +42,8 @@ module.exports = {
       ...config.packageRules,
       { matchPackageNames: ["*"], enabled: false },
       ...(affected.length ? [{ matchPackageNames: affected, enabled: true, minimumReleaseAge: null }] : []),
+      // A security lookup must not re-enable duplicate managers or format-only pins.
+      ...config.packageRules.filter(rule => rule.enabled === false),
       { matchPackageNames: ["github.com/misaon/nylzo", "ghcr.io/misaon/nylzo"], enabled: false },
     ] : config.packageRules,
   },
