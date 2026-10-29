@@ -6,7 +6,6 @@ export GH_CONFIG_DIR=/run/nylzo-deploy-gh
 unset GH_TOKEN GITHUB_TOKEN
 if [[ "${1:-}" = check ]]; then
   status=0
-  /opt/nylzo/runtime/update caddy || status=1
   /opt/nylzo/runtime/update nylzo || status=1
   exit "$status"
 fi
@@ -44,9 +43,10 @@ caddy() {
   version="v$(jq -r .caddy "$site")"
   if [[ -s "$state/caddy.tag" ]]; then
     previous=$(cat "$state/caddy.tag")
-    version=$(latest caddyserver/caddy)
+    if [[ -s "$state/caddy.approved.tag" ]]; then version=$(cat "$state/caddy.approved.tag"); else version="$previous"; fi
     [[ "$previous" != "$version" ]] || return 0
-    patch "$previous" "$version" || { echo 'Caddy needs a reviewed minor or major upgrade.' >&2; return 1; }
+    [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+    [[ "$(printf '%s\n%s\n' "$previous" "$version" | sort --version-sort | tail -n 1)" = "$version" ]] || { echo 'Caddy downgrade refused.' >&2; return 1; }
   fi
   [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
   directory="/opt/nylzo/caddy/$version"
@@ -87,7 +87,11 @@ nylzo() {
     previous=$(jq -r .tag "$state/current.json")
     version=$(latest misaon/nylzo)
     [[ "$previous" != "$version" ]] || return 0
-    patch "$previous" "$version" || { echo 'Nylzo needs a reviewed minor or major upgrade.' >&2; return 1; }
+    if ! patch "$previous" "$version"; then
+      [[ "$previous" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+      [[ "$(printf '%s\n%s\n' "$previous" "$version" | sort --version-sort | tail -n 1)" = "$version" ]] || { echo 'Nylzo downgrade refused.' >&2; return 1; }
+      /opt/nylzo/runtime/release-policy "$version" || { echo 'A signed, explicitly approved planned release is required for a minor or major upgrade.' >&2; return 1; }
+    fi
   else
     download "https://api.github.com/repos/misaon/nylzo/releases/tags/$version" "$temporary/release.json"
   fi
@@ -102,7 +106,10 @@ nylzo() {
   jq -ce '.attestations[].bundle' "$temporary/provenance.json" > "$temporary/provenance.jsonl"
   gh attestation verify "oci://$image@$digest" --bundle "$temporary/provenance.jsonl" --repo misaon/nylzo \
     --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$version" --deny-self-hosted-runners >/dev/null
-  if [[ -n "${previous:-}" ]]; then /opt/nylzo/runtime/refresh-tools "$version"; fi
+  if [[ -n "${previous:-}" ]]; then
+    /opt/nylzo/runtime/refresh-tools "$version"
+    caddy
+  fi
   docker pull "$image@$digest" >/dev/null
   mkdir "$temporary/data"
   chown 165532:165532 "$temporary/data"

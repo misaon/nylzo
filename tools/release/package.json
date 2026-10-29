@@ -1,0 +1,8 @@
+{
+  "name": "@nylzo/release-tooling",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "release-please": "17.11.2"
+  }
+}

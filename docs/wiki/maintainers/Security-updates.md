@@ -1,58 +1,56 @@
-# Automatic security updates
+# Dependency updates and automatic patches
 
-Nylzo can merge a qualifying Dependabot fix and publish a patch release after full verification. The repository variable `SECURITY_AUTOMATION_ENABLED` controls automatic merging and tagging. Activation requires verified App credentials, environment restrictions, signing, and a reviewed maintenance release.
+Nylzo uses self-hosted [Renovate](https://docs.renovatebot.com/) to propose updates and an independently credentialed coordinator to merge and release them. `SECURITY_AUTOMATION_ENABLED=false` stops automatic merging and tagging.
 
-## What qualifies
+## Schedules and coverage
 
-The policy accepts one signed Dependabot commit from the canonical repository, targeting current `main`. It checks the bot's numeric account ID, commit signature, complete changed-file list, and actual manifest contents. A branch name, label, or PR description alone cannot authorize a release.
+Security discovery runs every six hours (`17 */6 * * *`, UTC). It checks the published source and protected `main`, reusing identical inventories. Coverage includes all Go, web and release-tooling lockfiles, reviewed GitHub Actions advisories, verified release SBOMs, both container architectures, pinned development tools, Caddy images, and the Renovate image. Scanner or integrity failures stop discovery. The weekly run is Monday at 02:47 UTC and also considers ordinary stable updates. GitHub schedules are best effort and can be delayed; they are not a six-hour delivery guarantee.
 
-Only stable Go and npm dependency updates qualify. Major upgrades, pre-1.0 minor upgrades, prereleases, grouped updates, edited bot branches, workflow changes, toolchain changes, and custom package sources require maintainer review. npm manifest changes may update only the named package version; scripts and other settings must remain identical. Go module directives and replacement rules must remain identical.
+Renovate's native managers cover Go modules, npm/pnpm, GitHub Actions, mise and its lockfiles, Docker Compose, Node version files, and OpenTofu providers and provider locks. Custom managers cover inline govulncheck, annotated workflow tool versions, the release base-image digest, the Renovate image, the Ubuntu test image, Flatcar stable versions, and architecture-specific host/validator binary checksums. A deterministic generator synchronizes derived host metadata, the OpenTofu launcher, isolated signing-runtime locks, and policy checksums. Protocol versions, test fixtures and golden fingerprints are not software updates.
 
-The previous version must match a reviewed public GitHub advisory. The proposed version must no longer match that advisory and must meet its published patched-version boundary. Advisories without a known fix, private advisories, and ambiguous version metadata take the manual path. This is deliberately narrower than merging every PR with a security label.
+A vulnerability inventory is a detection layer, not proof that every dependency has a public advisory. Some upstream tools can contain known vulnerabilities even in their latest release. Reports retain these findings. CI blocks automatic upgrades to tools with high/critical findings; unchanged build-tool findings remain visible without preventing unrelated application fixes. Every shipped Nylzo archive and container still passes the strict high/critical release gate.
 
-## Merge and release sequence
+## Isolation from pending features
 
-1. Dependabot opens a fix. Its security-update service operates independently of the weekly version-update schedule and cooldown.
-2. PR CI runs the required tests, integration checks, reproducibility checks, dependency review, and all three CodeQL analyses. The automation rechecks the completed run, current base, signed commit, manifests, and advisory before merging the exact head SHA.
-3. The App merges through a PR. The main integrity ruleset still enforces required checks, signed commits, linear history, and resolved conversations. Only the separate human-review requirement has a PR-only App exception.
-4. The merge starts a new full CI run on `main`. Release eligibility requires the successful `Release verification` marker and every required analysis from that run.
-5. Every commit since the latest published stable release must be an eligible merged security PR. Unreleased features, documentation, or infrastructure changes stop automatic publication and require a maintainer release. The next version increments the latest stable patch number.
-6. Gitsign signs the annotated tag using an ephemeral GitHub OIDC identity. The ordinary release workflow verifies that identity, issuer, source SHA, event type, and embedded tag name. It then builds, signs, attests, and scans the release through the existing pipeline. High/critical findings or scanner failures stop promotion.
+The updater creates `release/vX.Y.Z` at the exact commit of the latest immutable release. Production patch PRs target that branch. Separate forward-update PRs target `main`; those wait in the ordinary aggregate release flow.
 
-Manual releases retain the owner's verified signing key and approval in the `release` environment. Automated tags use `release-automatic`, selected only after the keyless signature passes the guard. Personal signing keys remain outside Actions. GitHub does not currently display Gitsign signatures as Verified; the guard verifies them cryptographically through Sigstore, including transparency-log evidence.
+After a qualifying maintenance PR merges, full push CI runs again. The coordinator requires exactly one reviewed dependency update since the published source and issues the next patch version. It does not copy unreleased `main` changes into the maintenance release or stack another patch onto an unpublished one. Once publication succeeds, discovery runs again on the new release baseline with the same security/weekly mode, so remaining safe updates can finish without waiting for the next cron.
 
-## Fresh npm fixes
+## Automatic merge conditions
 
-The ordinary minimum package age remains 24 hours. For a verified security fix, the shared installer temporarily adds only the exact `package@version` to `minimumReleaseAgeExclude`. It verifies the signed PR and public advisory before doing so, preserves the other install policies, and restores the workspace configuration even when installation fails.
+The coordinator checks the proposal App's exact login and numeric identity, the canonical repository, one verified signed commit, current base and head, the complete changed-file list, and dependency-only contents. It rechecks full CI, reproducibility and release verification, plus all three CodeQL analyses, from the same run before merging the exact tested SHA. Required branch checks and signed commits remain enforced.
 
-An API failure or an update that does not qualify receives no exception. Newly published transitive packages outside the validated fix can still be held by the normal age policy. Do not set the global delay to zero to make a security PR pass.
+Stable, forward patch/minor updates may qualify. Major upgrades, pre-1.0 minor upgrades, prereleases, downgrades, source migrations, custom sources, command changes and ambiguous integrity data require review. A checksum update must match GitHub's upstream release asset digest; an Action SHA must resolve to its upstream version tag. A passing test suite cannot prove that an update has no behavioral migration.
 
-## App and workflow trust
+Failed tests or a rejected dependency diff add `requires-attention` and assign the PR to `misaon`. That label prevents automatic merge. Blocked PRs do not consume the four active proposal slots; discovery continues after a proposal first needs attention, so a queue of manual migrations cannot starve unrelated safe updates. A stale base is rebased and retested instead of being treated as a migration. No process can automatically manufacture an upstream fix that does not exist; inspect retained findings and maintainers' advisories in that case.
 
-Install a private **Nylzo Security Automation** GitHub App on **misaon/nylzo only**. Grant Contents and Pull requests read/write, Actions read, and the mandatory Metadata read permission. Do not grant Workflows, Administration, Secrets, or organization/account permissions.
+## Credentials and publication
 
-Store its private key as `SECURITY_APP_PRIVATE_KEY` only in the `security-automation` environment. Restrict that environment to the `main` branch. Set repository variables `SECURITY_APP_ID`, `SECURITY_APP_SLUG`, and, after validation, `SECURITY_AUTOMATION_ENABLED=true`. Installation tokens are scoped to this repository, reduced to each job's needs, and revoked when the token action finishes. GitHub App private keys do not expire automatically; rotate them periodically and immediately after suspected exposure.
+Two private Apps are installed on `misaon/nylzo` only:
 
-Add the App only to the PR-only bypass list of the separate maintainer-review ruleset and the release-tag creation ruleset. Keep the main integrity and tag immutability rulesets without bypass actors. Restrict `release-automatic` to stable version tags; it contains no App private key. Keep manual release approval intact.
+| App | Purpose | Repository permissions |
+| --- | --- | --- |
+| Nylzo Dependency Updates | Propose signed updates and maintain the release PR | Contents, Pull requests, Workflows write; Actions and Dependabot alerts read |
+| Nylzo Security Automation | Independently validate, merge and tag | Contents, Pull requests, Workflows write; Actions read |
 
-Privileged jobs never execute PR code or download PR artifacts. Before using App credentials or OIDC signing, workflow-pinned SHA-256 checks verify the policy tools and runtime configuration, then copy them to an isolated directory outside the checkout. The workflow permission is deliberately absent from the App, so its key cannot authorize a new policy. These pins use file contents, not historical commit references, and survive a repository history reset.
+The proposal App has no review bypass or release-tag permission. Its private key lives only in the main-only `dependency-updates` environment. The coordinator key lives only in main-only `security-automation`. Job tokens request reduced permissions and are revoked at job completion. Renovate cannot read the coordinator key. Workflows write is required for Action-pin updates; neither App has Administration or Secrets access.
 
-The App is still a trusted writer: a compromised key could attempt to merge other PRs through the review exception, subject to the remaining integrity rules. The immutable automation policy prevents those changes from qualifying for an automatic release. This does not remove the need to protect and rotate the App key.
+Only the coordinator has a PR-only exception from human review and permission to create release tags. The integrity ruleset and tag immutability rules have no bypass. Privileged coordinator jobs verify hash-pinned policy files and execute an isolated copy from protected `main`; they never execute PR code or consume PR artifacts. Treat policy and bootstrap-pin changes as changes to publishing authority. Protect and rotate App keys: the coordinator remains a trusted writer with consequences if compromised.
 
-When changing the policy, update its embedded checksums and the bootstrap checksum in both workflows. The bootstrap regression test rejects stale pins and modified policy files. Treat changes to those workflow pins as changes to publishing authority.
+Gitsign creates an ephemeral OIDC signature over the annotated tag, including its source, release kind, previous release and protected policy commit. The publication guard verifies that identity and evidence. Every archive and container is rebuilt without promoting CI caches, scanned, signed and attested before immutable publication. The production updater verifies the signed image digest and provenance. Minor/major upgrades additionally require signed evidence identifying an approved planned release. Health checks gate activation; automatic database rollback is refused.
 
-## Activation and recovery
+## Fresh npm security fixes
 
-Run `gh workflow run security-updates.yml --ref main` to test the App credentials with a read-only installation token and test keyless signing. The signing probe verifies a local non-release tag without pushing it and retains its public signature object for diagnosis. Verification can retry briefly for transparency-log indexing; it still fails unless every identity and log check passes. Establish a reviewed maintenance release after installing the mechanism; otherwise the unreleased infrastructure changes correctly block the first automated release.
+The ordinary install policy keeps a 24-hour minimum age. Only an independently verified advisory fix in an exact signed update PR can temporarily exempt its precise `package@version`. Other packages retain the delay; configuration is restored even after installation failure. The weekly updater also observes a three-day publication age for normal updates.
 
-To stop the bot, set `SECURITY_AUTOMATION_ENABLED=false`. Revoke an exposed App key and remove the installation or its ruleset exceptions if necessary. Failed publication leaves the stable download pointers unchanged. Never move a release tag or replace immutable assets; investigate and issue a new version.
+## Recovery
 
-No production VPS is connected by this mechanism. Publishing a verified release and deploying it are separate operations. A production updater must verify the candidate digest and release identity before installation, run health checks, and have a tested recovery procedure. Do not use an unchecked `latest` pull as a security boundary.
+Run `gh workflow run security-updates.yml --ref main` to test repository-scoped App access and local keyless tag signing without publishing. Investigate a failed release; never move a tag, replace immutable assets, or manually publish an incomplete draft. Revoke exposed keys and disable automation before repair. GitHub Actions failure notifications and the host monitor provide operational alerts; verify delivery after changing notification settings.
 
 ## References
 
-- [GitHub: automating Dependabot](https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions)
-- [GitHub: triggering workflows with App tokens](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
-- [GitHub: global advisory API](https://docs.github.com/en/rest/security-advisories/global-advisories)
-- [GitHub: managing App private keys](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps)
-- [Gitsign signing and verification](https://github.com/sigstore/gitsign)
+- [Renovate managers](https://docs.renovatebot.com/modules/manager/)
+- [Renovate self-hosting](https://docs.renovatebot.com/examples/self-hosting/)
+- [GitHub workflow triggers and App tokens](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+- [GitHub App private keys](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps)
+- [Gitsign](https://github.com/sigstore/gitsign)

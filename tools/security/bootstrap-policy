@@ -2,18 +2,23 @@
 set -euo pipefail
 
 sha256sum -c - <<'HASHES'
-2861b3bceaecf562f3f40e8d1fe34708b11e42a308c294379193d3ab43b6e4e2  tools/security/runtime.toml
-aa703590f84ebab589e6680baaf8666f4461de5c4d0083c0204e4288c453193f  tools/security/runtime.lock
+4c4b479b140f30919e60552aeed50c0477673db3a33ef179a9607b4297010eab  tools/security/runtime.toml
+b6d843a0d6e74ff3d8acaa32e0cb032294b3027d18e9d70876fb8ff839fc70b4  tools/security/runtime.lock
 85e46e83e352adb62ff18c371b190dc3c1f7c6678168f6d9d40a5d5fbb8d7636  tools/security/dependency-api.mts
 6db39ab620af86a20f9230fe818b63e6631f8799dd6f54534f7fb3b213c904ff  tools/security/dependency-policy.mts
-963b80f59010c83e8e82b1a737d8170fe5f78195f266392eb09385e0e21aff16  tools/security/automation.mts
-ada1af852c1cf6acc31490d0ea7f45be9062d59d35d961c071153b5b8110fbf0  tools/security/verify-tag
+2fa85375e9fd65e8c44b8b66bf084109f216f5b3d662c9c32f0193168df0917a  tools/security/automation.mts
+a750b66f9eebcd9eb4864f716dae749df818d6cc92af5b677f4146b0725e28d9  tools/security/verify-tag
 a9ff9fd782bb9cf4664569fc32eb013eab82039ad18500575d67485060eb82b7  mise-tasks/release/checks
-2471214c4daf0c62aad9297d373214c50ca4664ea62e0d6d0681ac8758de22b7  tools/security/verify-keyless-tag
+647d9a16bfe877d429ed4cc6fd5c74454188b7f850a780feb25b39e6a87247b1  tools/security/verify-keyless-tag
+2cb1854b3c94ee4a2ecc9581de7bff881795a5ba84bff6965582def039408a42  tools/release/policy.mts
+dbb52a135615b986def3f41979919f9744f26a6647b78006347f33487379b97b  tools/release/github.mts
+724e942bcda72c9e4f06053749f71e4f5c630ea509e74d6b2823a68deb2b6186  tools/dependencies/policy.mts
+5f0088ed085188f3642463dfdc5d339ab583f2e0a7683f58d42393a0ecee77ad  tools/dependencies/inspect.mts
+d0b70b637af97baabc6b0347474702dc32cb641f996b3536996184ea03c435d5  tools/release/baseline.mts
 HASHES
 
 destination="${RUNNER_TEMP}/nylzo-security-policy"
-mkdir -p "$destination/tools/security" "$destination/mise-tasks/release"
+mkdir -p "$destination/tools/security" "$destination/mise-tasks/release" "$destination/tools/release" "$destination/tools/dependencies"
 cp -- "tools/security/runtime.toml" "${destination}/mise.toml"
 cp -- "tools/security/runtime.lock" "${destination}/mise.lock"
 cp -- "tools/security/dependency-api.mts" "${destination}/tools/security/dependency-api.mts"
@@ -22,3 +27,8 @@ cp -- "tools/security/automation.mts" "${destination}/tools/security/automation.
 cp -- "tools/security/verify-tag" "${destination}/tools/security/verify-tag"
 cp -- "mise-tasks/release/checks" "${destination}/mise-tasks/release/checks"
 cp -- "tools/security/verify-keyless-tag" "${destination}/tools/security/verify-keyless-tag"
+cp -- "tools/release/policy.mts" "${destination}/tools/release/policy.mts"
+cp -- "tools/release/github.mts" "${destination}/tools/release/github.mts"
+cp -- "tools/dependencies/policy.mts" "${destination}/tools/dependencies/policy.mts"
+cp -- "tools/dependencies/inspect.mts" "${destination}/tools/dependencies/inspect.mts"
+cp -- "tools/release/baseline.mts" "${destination}/tools/release/baseline.mts"

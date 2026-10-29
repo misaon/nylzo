@@ -16,11 +16,22 @@ else
   identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/security-updates.yml@refs/heads/main"
 fi
 [[ "$(git rev-parse "refs/tags/${tag}^{commit}")" = "$commit" ]] || exit 1
+policy_commit="$commit"
+if [[ "$trigger" = workflow_run ]]; then
+  claims=$(git cat-file tag "refs/tags/$tag" | sed -n '/^$/,$p')
+  if grep -q '^Policy-Commit:' <<< "$claims"; then
+    [[ $(grep -c '^Policy-Commit:' <<< "$claims") = 1 ]] || exit 1
+    policy_commit=$(sed -n 's/^Policy-Commit: //p' <<< "$claims")
+    [[ "$policy_commit" =~ ^[a-f0-9]{40}$ ]] || exit 1
+    git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+    git merge-base --is-ancestor "$policy_commit" refs/remotes/origin/main
+  fi
+fi
 for attempt in 1 2 3 4; do
   if gitsign verify-tag \
     --certificate-identity "$identity" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-    --certificate-github-workflow-sha "$commit" \
+    --certificate-github-workflow-sha "$policy_commit" \
     --certificate-github-workflow-trigger "$trigger" "$tag"; then
     exit 0
   fi

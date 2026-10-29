@@ -123,7 +123,7 @@ Hetzner and administrator accounts remain trusted. This profile does not provide
 
 ## Sources and maintenance
 
-Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/toolchain.json), `mise.lock`, and the provider locks. Dependabot proposes provider upgrades; maintainers must also review upstream verifier/Caddy pins and publish the signed host-tool manifest when updating them. The profile emits native Ignition JSON and validates it with the official validator; it does not depend on Butane.
+Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/toolchain.json), `mise.lock`, and the provider locks. Renovate tracks providers, tool versions and binary checksums. Qualifying changes follow the [dependency update policy](../maintainers/Security-updates.md); signed Nylzo release evidence authorizes the host-tool and Caddy versions. The profile emits native Ignition JSON and validates it with the official validator; it does not depend on Butane.
 
 - [OpenTofu: state and plan encryption](https://opentofu.org/docs/v1.13/language/state/encryption/)
 - [Flatcar: supply-chain verification](https://www.flatcar.org/docs/latest/security/supply-chain/), [PXE provisioning](https://www.flatcar.org/docs/latest/deploy/bare-metal/booting-with-pxe/), and [update strategies](https://www.flatcar.org/docs/latest/updates-releases/releases/update-strategies/)

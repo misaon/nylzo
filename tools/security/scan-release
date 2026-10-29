@@ -8,27 +8,44 @@ fi
 image="$1"
 sbom_directory="$2"
 report_directory="$3"
-[[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || { echo 'Expected the canonical image by SHA-256 digest.' >&2; exit 1; }
+[[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || { echo 'Expected the canonical image by SHA-256 digest.' >&2; exit 2; }
 mkdir -p "$report_directory"
 export GRYPE_CHECK_FOR_APP_UPDATE=false
 export GRYPE_DB_VALIDATE_AGE=true
 export GRYPE_DB_MAX_ALLOWED_BUILT_AGE=48h
 shopt -s nullglob
 sboms=("$sbom_directory"/nylzo_*.sbom.json)
-[[ "${#sboms[@]}" = 6 ]] || { echo 'Expected six release archive SBOMs.' >&2; exit 1; }
+[[ "${#sboms[@]}" = 6 ]] || { echo 'Expected six release archive SBOMs.' >&2; exit 2; }
 status=0
+statuses=$(mktemp)
+trap 'rm -f "$statuses"' EXIT
+scan() {
+  local filename="$1" code=0
+  shift
+  grype "$@" --fail-on high --output json --file "$report_directory/$filename" || code=$?
+  if [[ "$code" != 0 && "$code" != 2 ]]; then
+    status=2
+  elif ! jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$report_directory/$filename" >/dev/null; then
+    status=2
+  elif [[ "$code" = 2 ]]; then
+    if ! jq -e 'any(.matches[]; (.vulnerability.severity | ascii_downcase) as $severity | $severity == "high" or $severity == "critical")' "$report_directory/$filename" >/dev/null; then status=2
+    elif [[ "$status" = 0 ]]; then status=1
+    fi
+  fi
+  jq -n --arg report "$filename" --argjson exitCode "$code" '{report:$report,exitCode:$exitCode}' >> "$statuses"
+}
 for sbom in "${sboms[@]}"; do
   name="$(basename "$sbom")"
-  [[ -s "$sbom" ]] || { echo 'An archive SBOM is empty or missing.' >&2; exit 1; }
-  grype "sbom:${sbom}" --fail-on high --output json --file "$report_directory/${name}.grype.json" || status=1
+  [[ -s "$sbom" ]] || { echo 'An archive SBOM is empty or missing.' >&2; exit 2; }
+  scan "${name}.grype.json" "sbom:${sbom}"
 done
 for architecture in amd64 arm64; do
-  grype "registry:${image}" --platform "linux/${architecture}" --fail-on high --output json \
-    --file "$report_directory/image-linux-${architecture}.grype.json" || status=1
+  scan "image-linux-${architecture}.grype.json" "registry:${image}" --platform "linux/${architecture}"
 done
 reports=("$report_directory"/*.grype.json)
-[[ "${#reports[@]}" = 8 ]] || status=1
+[[ "${#reports[@]}" = 8 ]] || status=2
 for report in "${reports[@]}"; do
-  jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$report" > /dev/null || status=1
+  jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$report" > /dev/null || status=2
 done
+jq -s '{format:1,complete:(length == 8),scans:.}' "$statuses" > "$report_directory/scan-status.json"
 exit "$status"

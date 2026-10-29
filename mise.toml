@@ -1,3 +1,4 @@
+# renovate: datasource=github-releases depName=jdx/mise
 min_version = "2026.10.9"
 
 [settings]
@@ -15,6 +16,8 @@ shellcheck = "0.11.0"
 cosign = "3.1.4"
 grype = "0.121.0"
 gitsign = "0.18.0"
+gh = "2.103.3"
+jq = "1.8.2"
 osv-scanner = "2.7.0"
 opentofu = "1.13.2"
 
@@ -65,10 +68,10 @@ run = [
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
-  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts",
+  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/release/*.test.mts tools/dependencies/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
+  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
   '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',

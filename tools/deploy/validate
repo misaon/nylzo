@@ -7,12 +7,15 @@ node --test tools/deploy/*.test.mts
 node tools/deploy/check.mts "$directory"
 architecture=$(uname -m)
 case "$architecture" in
-  x86_64) checksum=06d9d80280803137a4bfbeb1eb82a9dbf04aaf84e6b9c760323f5156724ea448 ;;
-  aarch64) checksum=a933969407e245646476ca06c610350f21a10704045ab375cdc99ae86975e0b3 ;;
+  x86_64) asset_architecture=amd64 ;;
+  aarch64) asset_architecture=arm64 ;;
   *) echo 'Validation requires Linux x86_64 or aarch64.' >&2; exit 1 ;;
 esac
+mapfile -t asset < <(node tools/dependencies/asset.mts ignition "$asset_architecture")
+[[ ${#asset[@]} = 2 && "${asset[0]}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "${asset[1]}" =~ ^[a-f0-9]{64}$ ]]
+checksum="${asset[1]}"
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 180 \
-  "https://github.com/coreos/ignition/releases/download/v2.28.0/ignition-validate-${architecture}-linux" --output "$directory/ignition-validate"
+  "https://github.com/coreos/ignition/releases/download/${asset[0]}/ignition-validate-${architecture}-linux" --output "$directory/ignition-validate"
 printf '%s  %s\n' "$checksum" "$directory/ignition-validate" | sha256sum --check --strict
 chmod 0755 "$directory/ignition-validate"
 for config in "$directory/"*.ign; do "$directory/ignition-validate" "$config"; done

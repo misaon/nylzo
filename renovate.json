@@ -1,0 +1,333 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "dependencyDashboard": false,
+  "enabledManagers": [
+    "npm",
+    "gomod",
+    "github-actions",
+    "docker-compose",
+    "mise",
+    "terraform",
+    "nodenv",
+    "custom.regex"
+  ],
+  "platformCommit": "enabled",
+  "automerge": false,
+  "pinDigests": true,
+  "ignoreScripts": true,
+  "ignorePlugins": true,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "fix",
+  "semanticCommitScope": "deps",
+  "labels": [
+    "dependencies",
+    "automation:candidate"
+  ],
+  "assignees": [
+    "misaon"
+  ],
+  "branchPrefix": "renovate/",
+  "prConcurrentLimit": 4,
+  "prHourlyLimit": 0,
+  "minimumReleaseAge": "3 days",
+  "rebaseWhen": "behind-base-branch",
+  "separateMinorPatch": true,
+  "rangeStrategy": "pin",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "dependencies",
+      "automation:security"
+    ],
+    "minimumReleaseAge": null,
+    "schedule": []
+  },
+  "osvVulnerabilityAlerts": true,
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "addLabels": [
+        "requires-attention"
+      ],
+      "dependencyDashboardApproval": false
+    },
+    {
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "addLabels": [
+        "requires-attention"
+      ]
+    },
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "indirect"
+      ],
+      "enabled": true
+    },
+    {
+      "matchPackageNames": [
+        "github.com/misaon/nylzo",
+        "ghcr.io/misaon/nylzo"
+      ],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "opentofu/opentofu"
+      ],
+      "groupName": "OpenTofu"
+    },
+    {
+      "matchPackageNames": [
+        "jdx/mise"
+      ],
+      "groupName": "mise"
+    },
+    {
+      "matchPackageNames": [
+        "caddy",
+        "caddyserver/caddy"
+      ],
+      "groupName": "Caddy"
+    },
+    {
+      "matchManagers": [
+        "terraform"
+      ],
+      "matchDepTypes": [
+        "required_version"
+      ],
+      "enabled": false
+    },
+    {
+      "matchDatasources": [
+        "terraform-provider",
+        "terraform-module"
+      ],
+      "registryUrls": [
+        "https://registry.opentofu.org"
+      ]
+    },
+    {
+      "matchPackageNames": [
+        "go",
+        "golang/go"
+      ],
+      "groupName": "Go toolchain"
+    },
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "Go dependencies"
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "web dependencies"
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "groupName": null,
+      "addLabels": [
+        "requires-attention"
+      ]
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null,
+      "addLabels": [
+        "requires-attention"
+      ]
+    },
+    {
+      "matchPackageNames": [
+        "cli/cli"
+      ],
+      "groupName": "GitHub CLI"
+    },
+    {
+      "matchPackageNames": [
+        "sigstore/cosign"
+      ],
+      "groupName": "Cosign"
+    },
+    {
+      "matchPackageNames": [
+        "jqlang/jq"
+      ],
+      "groupName": "jq"
+    },
+    {
+      "matchPackageNames": [
+        "coreos/ignition"
+      ],
+      "groupName": "Ignition validator"
+    },
+    {
+      "matchPackageNames": [
+        "node",
+        "nodejs/node"
+      ],
+      "groupName": "Node.js"
+    },
+    {
+      "matchPackageNames": [
+        "goreleaser/goreleaser"
+      ],
+      "groupName": "GoReleaser"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^tools/dependencies/assets\\.json$/"
+      ],
+      "matchStrings": [
+        "\"package\": \"(?<depName>[^\\\"]+)\", \"version\": \"(?<currentValue>[^\\\"]+)\", \"sha256\": \"(?<currentDigest>[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "github-release-attachments",
+      "versioningTemplate": "semver-coerced"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.goreleaser\\.yaml$/"
+      ],
+      "matchStrings": [
+        "base_image: (?<depName>gcr\\.io/distroless/static-debian13):(?<currentValue>nonroot)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^mise\\.toml$/",
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "go run (?<depName>golang\\.org/x/vuln)/cmd/govulncheck@(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^mise\\.toml$/",
+        "/^tools/security/runtime\\.toml$/",
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[A-Za-z0-9_./-]+)\\n[ \\t]*[a-z_-]+[ \\t]*[:=][ \\t]*[\"']?(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^deploy/hetzner-flatcar/infrastructure/(image|server|dns)/main\\.tf$/"
+      ],
+      "matchStrings": [
+        "required_version = \"= (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "depNameTemplate": "opentofu/opentofu",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^deploy/hetzner-flatcar/toolchain\\.json$/"
+      ],
+      "matchStrings": [
+        "\"flatcar\": \"(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "depNameTemplate": "flatcar-stable",
+      "datasourceTemplate": "custom.flatcar",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/dependencies\\.yml$/"
+      ],
+      "matchStrings": [
+        "renovate-image: (?<depName>ghcr\\.io/renovatebot/renovate):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^tools/deploy/runtime\\.test\\.mts$/"
+      ],
+      "matchStrings": [
+        "\"(?<depName>ubuntu):(?<currentValue>[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    }
+  ],
+  "customDatasources": {
+    "flatcar": {
+      "defaultRegistryUrlTemplate": "https://www.flatcar.org/releases-json/releases-stable.json",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": $map($keys($), function($v) { { \"version\": $v } }) }"
+      ]
+    }
+  },
+  "postUpgradeTasks": {
+    "commands": [
+      "node /opt/nylzo-dependency-sync.mts --locks"
+    ],
+    "fileFilters": [
+      "deploy/hetzner-flatcar/toolchain.json",
+      "tools/security/runtime.toml",
+      "tools/security/runtime.lock",
+      "tools/security/bootstrap-policy",
+      ".github/workflows/security-updates.yml",
+      ".github/workflows/release.yml",
+      "mise-tasks/deploy"
+    ],
+    "executionMode": "branch"
+  }
+}
