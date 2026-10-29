@@ -22,13 +22,14 @@ jobs:
       github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci' &&
       github.event.workflow_run.event == 'push' &&
       startsWith(github.event.workflow_run.head_branch, 'release/v') &&
-      contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) &&
+      contains(fromJSON('["failure", "timed_out", "cancelled"]'), github.event.workflow_run.conclusion) &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       actions: write # rerun the complete, unchanged CI run after validating its source
+      checks: read # distinguish GitHub job timeouts from manual cancellations
       pull-requests: write # assign attention after the bounded retry budget is exhausted
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { inspectDependencyPull, requireAttention } from "./inspect.mts";
 import { releaseBranch, trustedDependencyBot } from "../release/policy.mts";
-import { repository, request } from "../release/github.mts";
+import { pages, repository, request } from "../release/github.mts";
 
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.equal(process.env.GITHUB_REF, "refs/heads/main");
@@ -10,7 +10,21 @@ const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8"));
 const run = request(`repos/${repository}/actions/runs/${event.workflow_run.id}`);
 assert.equal(run.workflow_id, request(`repos/${repository}/actions/workflows/ci.yml`).id);
 assert.equal(run.head_repository.full_name, repository);
-if (run.event !== "push" || run.status !== "completed" || !["failure", "timed_out"].includes(run.conclusion)) process.exit(0);
+if (run.event !== "push" || run.status !== "completed" || !["failure", "timed_out", "cancelled"].includes(run.conclusion)) process.exit(0);
+assert(Number.isSafeInteger(run.run_attempt) && run.run_attempt >= 1);
+if (run.conclusion === "cancelled") {
+  // Job timeouts can cancel the whole run. A manual cancellation alone must
+  // never restart CI; require GitHub's timeout annotation from this attempt.
+  const jobs = pages(`repos/${repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`).flatMap(page => page.jobs);
+  const timeout = jobs.some((job: any) => {
+    if (job.conclusion !== "cancelled" && job.conclusion !== "timed_out") return false;
+    const match = String(job.check_run_url).match(/^https:\/\/api\.github\.com\/repos\/misaon\/nylzo\/check-runs\/(\d+)$/u);
+    assert(match, "Expected a check from the canonical repository");
+    return pages(`repos/${repository}/check-runs/${match[1]}/annotations?per_page=100`).some(annotation =>
+      annotation.annotation_level === "failure" && /^The job has exceeded the maximum execution time of \d+m\d+s$/u.test(annotation.message));
+  });
+  if (!timeout) process.exit(0);
+}
 const latest = request(`repos/${repository}/releases/latest`);
 assert.equal(latest.immutable, true);
 if (run.head_branch !== releaseBranch(latest.tag_name)) process.exit(0);
@@ -31,7 +45,6 @@ catch {
   requireAttention(pull, "The merged maintenance update needs review. No release or automatic CI retry attempted.");
   process.exit(0);
 }
-assert(Number.isSafeInteger(run.run_attempt) && run.run_attempt >= 1);
 if (run.run_attempt < 3) {
   // Rerun every job, so the publication guard still sees one complete attempt.
   request(`repos/${repository}/actions/runs/${run.id}/rerun`, "POST");
