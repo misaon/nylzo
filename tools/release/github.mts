@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 
 export const repository = "misaon/nylzo";
 export function request(path: string, method = "GET", body?: object): any {
-  assert(!path.startsWith("/") && !path.includes(".."));
+  assert(!path.startsWith("/") && (!path.includes("..") || /^repos\/misaon\/nylzo\/compare\/[a-f0-9]{40}\.\.\.[a-f0-9]{40}$/u.test(path)));
   const args = ["api", "--hostname", "github.com", path, "--method", method];
   if (body) args.push("--input", "-");
   const result = execFileSync("gh", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024, ...(body ? { input: JSON.stringify(body) } : {}) });

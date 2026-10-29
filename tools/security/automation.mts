@@ -53,7 +53,11 @@ if (process.argv[2] === "merge") {
   assert(allJobs.some(job => job.name === "Release verification" && job.conclusion === "success"));
   const source = run.head_sha;
   assert.match(source, /^[a-f0-9]{40}$/u);
-  assert.equal(request(`repos/${repository}/git/ref/heads/${run.head_branch}`).object.sha, source, "Ref changed after CI");
+  const current = request(`repos/${repository}/git/ref/heads/${run.head_branch}`).object.sha;
+  if (run.head_branch === "main" && current !== source) {
+    const comparison = request(`repos/${repository}/compare/${source}...${current}`);
+    assert.equal(comparison.status, "ahead", "Approved release source must remain an ancestor of protected main");
+  } else assert.equal(current, source, "Maintenance ref changed after CI");
   assert.equal(git("rev-parse", "HEAD"), source);
   const commits = request(`repos/${repository}/commits/${source}/pulls`);
   const pull = commits.find((candidate: any) => candidate.merged_at && candidate.merge_commit_sha === source && candidate.base.ref === run.head_branch);

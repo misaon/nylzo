@@ -124,6 +124,13 @@ test("a planned feature release numbers above isolated patches and requires exac
     f.routes[f.prefix + `contents/.release-please-manifest.json?ref=${merged}`] = { type: "file", encoding: "base64", content: Buffer.from('{".":"0.2.0"}').toString("base64") };
     const candidate = f.execute(); assert.equal(candidate.status, 0, candidate.stderr);
     assert(candidate.output.includes("tag=v0.2.0\n")); assert(candidate.output.includes("kind=planned\n"));
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: "e".repeat(40) } };
+    f.routes[f.prefix + `compare/${merged}...${"e".repeat(40)}`] = { status: "ahead" };
+    const laterMain = f.execute(); assert.equal(laterMain.status, 0, laterMain.stderr);
+    assert(laterMain.output.includes(`commit=${merged}\n`), "Changes merged during release CI must stay outside this release");
+    f.routes[f.prefix + `compare/${merged}...${"e".repeat(40)}`].status = "diverged";
+    assert.notEqual(f.execute().status, 0, "A rewritten main ancestry cannot authorize the old release");
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: merged } };
     pull.title = "chore(main): release 0.1.8";
     assert.notEqual(f.execute().status, 0, "Stale release numbering cannot authorize publication");
   } finally { f.cleanup(); }
