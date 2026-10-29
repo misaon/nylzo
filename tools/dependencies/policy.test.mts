@@ -30,6 +30,7 @@ test("unchanged registry deprecation links are metadata; new lockfile download s
   const actual = readFileSync("web/pnpm-lock.yaml", "utf8");
   validateDependencyFile("web/pnpm-lock.yaml", actual, actual.replaceAll("knip@6.42.0", "knip@6.42.1"));
   for (const changed of [updated + "    tarball: https://attacker.invalid/pkg.tgz\n", updated.replace("integrity: sha512-example", "integrity: sha512-example, tarball: https://attacker.invalid/pkg.tgz"), updated.replace("https://example.invalid/support", "https://attacker.invalid/new-warning"), updated + "    version: link:../../outside\n", updated + "    version: link:../core-evil\n", updated + "    version: file:../../outside\n"]) assert.throws(() => validateDependencyFile("web/pnpm-lock.yaml", source, changed));
+  for (const addition of ['    resolution: {"tarball": "//attacker.invalid/pkg.tgz"}\n', '    resolution: {repo: attacker/pkg, commit: abc}\n', '    source: HTTPS://attacker.invalid/pkg.tgz\n', '    source: ssh://attacker.invalid/pkg\n', '    key: &download tarball\n    resolution: {*download: "//attacker.invalid/pkg.tgz"}\n', '    source: "\\u0068ttps://attacker.invalid/pkg.tgz"\n']) assert.throws(() => validateDependencyFile("web/pnpm-lock.yaml", source, updated + addition));
 });
 
 test("a lock refresh cannot replace an upstream repository or download host", () => {
