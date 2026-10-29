@@ -22,7 +22,7 @@ The coordinator checks the proposal App's exact login and numeric identity, the 
 
 Stable, forward patch/minor updates may qualify. Major upgrades, pre-1.0 minor upgrades, prereleases, downgrades, source migrations, custom sources, command changes and ambiguous integrity data require review. A checksum update must match GitHub's upstream release asset digest; an Action SHA must resolve to its upstream version tag. A passing test suite cannot prove that an update has no behavioral migration.
 
-Failed tests or a rejected dependency diff add `requires-attention` and assign the PR to `misaon`. That label prevents automatic merge. A stale base is rebased and retested instead of being treated as a migration. No process can automatically manufacture an upstream fix that does not exist; inspect retained findings and maintainers' advisories in that case.
+Failed tests or a rejected dependency diff add `requires-attention` and assign the PR to `misaon`. That label prevents automatic merge. Blocked PRs do not consume the four active proposal slots; discovery continues after a proposal first needs attention, so a queue of manual migrations cannot starve unrelated safe updates. A stale base is rebased and retested instead of being treated as a migration. No process can automatically manufacture an upstream fix that does not exist; inspect retained findings and maintainers' advisories in that case.
 
 ## Credentials and publication
 

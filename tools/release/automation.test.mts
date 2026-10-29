@@ -54,7 +54,7 @@ console.log(JSON.stringify(args.includes('--slurp')?[routes[path]]:routes[path])
     const result = spawnSync(process.execPath, [executable, command], { cwd: root, encoding: "utf8", timeout: 30000,
       env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, ROUTES: join(root, "routes.json"), WRITES: join(root, "writes"),
         GITHUB_EVENT_PATH: join(root, "event.json"), GITHUB_OUTPUT: join(root, "output"), GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF: "refs/heads/main",
-        GITHUB_SHA: main, SECURITY_AUTOMATION_ENABLED: "true", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", DEPENDENCY_BOT_ID: "123456" } });
+        WORKFLOW_DISPATCH_TOKEN: "test-only", GITHUB_SHA: main, SECURITY_AUTOMATION_ENABLED: "true", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", DEPENDENCY_BOT_ID: "123456" } });
     return { ...result, output: readFileSync(join(root, "output"), "utf8"), writes: readFileSync(join(root, "writes"), "utf8") };
   };
   return { root, git, main, baseline, source, pull, run, routes, prefix, execute, cleanup: () => rmSync(root, { recursive: true, force: true }) };
@@ -92,7 +92,7 @@ test("failed dependency CI assigns maintainer attention, while stale heads are d
     f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
     const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
     const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
-    assert.deepEqual(writes.map(write => write.body), [{ labels: ["requires-attention"] }, { assignees: ["misaon"] }]);
+    assert.deepEqual(writes.map(write => write.body), [{ labels: ["requires-attention"] }, { assignees: ["misaon"] }, { ref: "main", inputs: { mode: "security" } }]);
     assert(writes.every(write => !write.path.endsWith("/merge")));
     f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: "f".repeat(40) } };
     const stale = f.execute("merge"); assert.equal(stale.status, 0, stale.stderr); assert.equal(stale.writes, ""); assert.equal(stale.output, "");

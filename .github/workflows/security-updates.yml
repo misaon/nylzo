@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '3710199d4d8025e1cfa87815612490f3745eae8297378d6be789a943ff295129  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -99,6 +99,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: security-automation
+    permissions:
+      contents: read
+      actions: write # continue discovery after a proposal needs manual attention
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -109,7 +112,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '3710199d4d8025e1cfa87815612490f3745eae8297378d6be789a943ff295129  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -129,6 +132,7 @@ jobs:
       - name: Validate the complete update and merge its exact head
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          WORKFLOW_DISPATCH_TOKEN: ${{ github.token }}
           SECURITY_AUTOMATION_ENABLED: ${{ vars.SECURITY_AUTOMATION_ENABLED }}
           DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
           DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
@@ -160,7 +164,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '3710199d4d8025e1cfa87815612490f3745eae8297378d6be789a943ff295129  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:

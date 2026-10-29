@@ -29,6 +29,7 @@ jobs:
       tag: ${{ steps.source.outputs.tag }}
       source: ${{ steps.source.outputs.source }}
       mode: ${{ steps.mode.outputs.mode }}
+      blocked: ${{ steps.source.outputs.blocked }}
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -182,6 +183,7 @@ jobs:
           NYLZO_BASE_TAG: ${{ needs.prepare.outputs.tag }}
           NYLZO_AFFECTED_DEPENDENCIES: ${{ needs.scout.outputs.affected }}
           NYLZO_RENOVATE_CONFIG: /opt/nylzo-renovate.json
+          NYLZO_BLOCKED_PROPOSALS: ${{ needs.prepare.outputs.blocked }}
         with:
           token: ${{ steps.app.outputs.token }}
           configurationFile: .github/renovate.cjs
@@ -193,6 +195,7 @@ jobs:
             NYLZO_BASE_TAG
             NYLZO_AFFECTED_DEPENDENCIES
             NYLZO_RENOVATE_CONFIG
+            NYLZO_BLOCKED_PROPOSALS
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: success()
         with:

@@ -21,12 +21,15 @@ if (!existing) request(`repos/${repository}/git/refs`, "POST", { ref: `refs/head
 else assert.equal(existing.object.sha, sha, "A production update is already awaiting publication; do not stack updates onto unshipped code");
 // Discard only superseded machine proposals, keeping migration/failed-test PRs
 // assigned to the maintainer. Reopening a PR remains possible on GitHub.
-for (const pull of pages(`repos/${repository}/pulls?state=open&per_page=100`)) {
+const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
+const blocked = pulls.filter(pull => trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository && pull.labels.some((label: any) => label.name === "requires-attention")).length;
+assert(blocked <= 1000);
+for (const pull of pulls) {
   if (trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository &&
       pull.head.ref.startsWith("renovate/") && pull.base.ref.startsWith("release/v") &&
       pull.base.ref !== branch && !pull.labels.some((label: any) => label.name === "requires-attention")) {
     request(`repos/${repository}/pulls/${pull.number}`, "PATCH", { state: "closed" });
   }
 }
-appendFileSync(process.env.GITHUB_OUTPUT!, `tag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\n`);
+appendFileSync(process.env.GITHUB_OUTPUT!, `tag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\nblocked=${blocked}\n`);
 console.log(`Isolated update base ${branch} points to the last immutable published source.`);

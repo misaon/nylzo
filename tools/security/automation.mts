@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { appendFileSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { inspectDependencyPull, requireAttention, UpdateDeferred } from "../dependencies/inspect.mts";
 import { contents, git, pages, repository, request } from "../release/github.mts";
 import { nextVersion, releaseBranch, releaseMetadata, versionParts, trustedDependencyBot } from "../release/policy.mts";
@@ -18,6 +19,21 @@ const latest = request(`repos/${repository}/releases/latest`);
 assert.equal(latest.immutable, true); assert.equal(latest.draft, false); assert.equal(latest.prerelease, false);
 versionParts(latest.tag_name);
 
+function attention(pull: any, reason: string) {
+  const alreadyBlocked = pull.labels.some((label: any) => label.name === "requires-attention");
+  requireAttention(pull, reason);
+  if (alreadyBlocked) return;
+  // A failed proposal must free an active discovery slot, even when no release
+  // succeeds to trigger the ordinary continuation. Use a separate job token;
+  // the merger installation token remains Actions read-only.
+  assert(process.env.WORKFLOW_DISPATCH_TOKEN, "A trusted dispatch token is required to continue the update queue");
+  const mode = pull.labels.some((label: any) => label.name === "automation:weekly") ? "weekly" : "security";
+  execFileSync("gh", ["api", `repos/${repository}/actions/workflows/dependencies.yml/dispatches`, "--method", "POST", "--input", "-"], {
+    input: JSON.stringify({ ref: "main", inputs: { mode } }), stdio: ["pipe", "inherit", "inherit"],
+    env: { ...process.env, GH_TOKEN: process.env.WORKFLOW_DISPATCH_TOKEN },
+  });
+}
+
 if (process.argv[2] === "merge") {
   assert.equal(run.event, "pull_request");
   const pulls = request(`repos/${repository}/commits/${run.head_sha}/pulls`);
@@ -27,11 +43,11 @@ if (process.argv[2] === "merge") {
   try { update = inspectDependencyPull(pull.number, false, latest); }
   catch (error) {
     if (error instanceof UpdateDeferred) console.log(error.message);
-    else requireAttention(pull, "The update changes code, requires a migration, or has unsafe versions or integrity metadata. Review the diff and CI.");
+    else attention(pull, "The update changes code, requires a migration, or has unsafe versions or integrity metadata. Review the diff and CI.");
     process.exit(0);
   }
   if (run.conclusion !== "success" || !verified) {
-    if (["failure", "timed_out", "action_required"].includes(run.conclusion)) requireAttention(pull, "CI or a security check failed. No merge or release attempted.");
+    if (["failure", "timed_out", "action_required"].includes(run.conclusion)) attention(pull, "CI or a security check failed. No merge or release attempted.");
     process.exit(0);
   }
   assert.equal(update.pull.head.sha, run.head_sha);

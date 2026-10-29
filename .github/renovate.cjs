@@ -8,8 +8,12 @@ const tag = process.env.NYLZO_BASE_TAG;
 assert(/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(tag));
 const affected = JSON.parse(process.env.NYLZO_AFFECTED_DEPENDENCIES || "[]");
 assert(Array.isArray(affected) && affected.every(name => typeof name === "string" && /^[A-Za-z0-9@_./+-]+$/.test(name)));
+const blocked = Number(process.env.NYLZO_BLOCKED_PROPOSALS || "0");
+assert(Number.isSafeInteger(blocked) && blocked >= 0 && blocked <= 1000);
 module.exports = {
   ...config,
+  // Reviewed/manual PRs must not consume the four active update slots forever.
+  prConcurrentLimit: config.prConcurrentLimit + blocked,
   platform: "github",
   repositories: ["misaon/nylzo"],
   autodiscover: false,
