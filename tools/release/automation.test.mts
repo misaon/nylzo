@@ -102,6 +102,37 @@ test("failed post-merge CI retries all jobs within a fixed budget and never retr
   } finally { f.cleanup(); }
 });
 
+test("cancelled maintenance CI retries only a GitHub-confirmed timeout from the current attempt", () => {
+  const f = fixture();
+  try {
+    Object.assign(f.run, { status: "completed", conclusion: "cancelled", run_attempt: 2 });
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    const job = { conclusion: "cancelled", check_run_url: "https://api.github.com/repos/misaon/nylzo/check-runs/456" };
+    f.routes[f.prefix + "actions/runs/123/attempts/2/jobs?per_page=100"] = { jobs: [job] };
+    const annotation = { annotation_level: "failure", message: "The job has exceeded the maximum execution time of 20m0s" };
+    f.routes[f.prefix + "check-runs/456/annotations?per_page=100"] = [];
+    const run = () => f.execute("", resolve("tools/dependencies/retry-ci.mts"));
+    const manual = run(); assert.equal(manual.status, 0, manual.stderr); assert.equal(manual.writes, "");
+    f.routes[f.prefix + "check-runs/456/annotations?per_page=100"] = [annotation];
+    const timeout = run(); assert.equal(timeout.status, 0, timeout.stderr);
+    assert.deepEqual(timeout.writes.trim().split("\n").map(line => JSON.parse(line).path), [f.prefix + "actions/runs/123/rerun"]);
+    annotation.annotation_level = "warning";
+    assert.equal(run().writes, "");
+    annotation.annotation_level = "failure"; annotation.message = "The operation was canceled.";
+    assert.equal(run().writes, "");
+    annotation.message = "The job has exceeded the maximum execution time of 20m0s";
+    f.run.run_attempt = 3;
+    f.routes[f.prefix + "actions/runs/123/attempts/3/jobs?per_page=100"] = { jobs: [job] };
+    const exhausted = run(); assert.equal(exhausted.status, 0, exhausted.stderr);
+    assert.deepEqual(exhausted.writes.trim().split("\n").map(line => JSON.parse(line).body), [{ labels: ["requires-attention"] }, { assignees: ["misaon"] }]);
+    f.run.run_attempt = 2;
+    job.check_run_url = "https://example.invalid/repos/misaon/nylzo/check-runs/456";
+    const foreign = run(); assert.notEqual(foreign.status, 0); assert.equal(foreign.writes, "");
+  } finally { f.cleanup(); }
+});
+
 test("the maintenance watchdog detects an unpublished stalled source without exposing host credentials", () => {
   const f = fixture();
   try {
