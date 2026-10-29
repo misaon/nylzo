@@ -9,7 +9,7 @@ test("a failed OS health-marker flush preserves the previous recovery target", {
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt:exec", "--tmpfs", "/var/lib",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/runtime/health")},target=/test-health,readonly`,
-      "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852", "bash", "-s"], {
+      "ubuntu:24.10@sha256:cdf755952ed117f6126ff4e65810bf93767d4c38f5c7185b50ec1f1078b464cc", "bash", "-s"], {
       encoding: "utf8", timeout: 60000, input: `set -euo pipefail
 umask 077
 mkdir -p /opt/nylzo/bin /opt/nylzo/runtime /var/lib/nylzo-deploy
@@ -43,7 +43,7 @@ test("host-tool tampering fails closed and preserves a previously verified gener
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt", "--tmpfs", "/var/cache", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/runtime/install-tools")},target=/test-install,readonly`,
-      "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852", "bash", "-s"], {
+      "ubuntu:24.10@sha256:cdf755952ed117f6126ff4e65810bf93767d4c38f5c7185b50ec1f1078b464cc", "bash", "-s"], {
       encoding: "utf8", timeout: 60000,
       input: `set -euo pipefail
 mkdir -p /tmp/bin /opt/nylzo/tools
@@ -83,7 +83,7 @@ test("a Caddy candidate that cannot restart restores the previously verified exe
   const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
     "--tmpfs", "/opt", "--tmpfs", "/var/lib", "--tmpfs", "/var/tmp", "--tmpfs", "/run", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
     "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/runtime/update")},target=/test-update,readonly`,
-    "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852", "bash", "-s"], {
+    "ubuntu:24.10@sha256:cdf755952ed117f6126ff4e65810bf93767d4c38f5c7185b50ec1f1078b464cc", "bash", "-s"], {
     encoding: "utf8", timeout: 60000, input: `set -euo pipefail
 mkdir -p /opt/nylzo/bin /opt/nylzo/caddy/v2.11.6 /var/lib/nylzo-deploy /tmp/bin /tmp/fixture
 printf 'v2.11.6\\n' > /var/lib/nylzo-deploy/caddy.tag
