@@ -9,6 +9,7 @@
 /.dev/
 /bin/
 /web/node_modules/
+/tools/release/node_modules/
 /web/core/node_modules/
 /web/core/dist/
 

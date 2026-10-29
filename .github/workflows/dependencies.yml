@@ -1,0 +1,182 @@
+name: Dependency updates
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+    - cron: "47 2 * * 1"
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [security, weekly]
+        default: security
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-discovery
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' && vars.SECURITY_AUTOMATION_ENABLED == 'true'
+    name: Isolate updates from unreleased main changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: security-automation
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+      source: ${{ steps.source.outputs.source }}
+      mode: ${{ steps.mode.outputs.mode }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ vars.SECURITY_APP_ID }}
+          private-key: ${{ secrets.SECURITY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: write
+          permission-pull-requests: write
+      - id: source
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
+        run: node tools/dependencies/prepare.mts
+      - id: mode
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          mode=security
+          if [[ "$SCHEDULE" = '47 2 * * 1' || "$INPUT_MODE" = weekly ]]; then mode=weekly; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+  scout:
+    name: Source, actions, release and tool vulnerability inventory
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      affected: ${{ steps.scout.outputs.affected }}
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}/published-source
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source }}
+          path: published-source
+          persist-credentials: false
+      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          working_directory: published-source
+      - name: Verify signed release evidence and scan every shipped platform
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-assets" "$RUNNER_TEMP/dependency-reports"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/release-assets" \
+            --pattern '*.sbom.json' --pattern checksums.txt --pattern checksums.txt.sigstore.json
+          cosign verify-blob "$RUNNER_TEMP/release-assets/checksums.txt" --bundle "$RUNNER_TEMP/release-assets/checksums.txt.sigstore.json" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
+          (cd "$RUNNER_TEMP/release-assets" && sha256sum --ignore-missing --strict -c checksums.txt)
+          cosign verify "ghcr.io/${GITHUB_REPOSITORY}:${TAG#v}" --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}" > "$RUNNER_TEMP/image-signatures.json"
+          digest=$(jq -er 'map(.critical.image["docker-manifest-digest"]) | unique | if length == 1 then .[0] else error("ambiguous image") end' "$RUNNER_TEMP/image-signatures.json")
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          # A vulnerability exit is expected here. Missing or invalid reports fail
+          # the subsequent inventory; scanner/network errors are never clean results.
+          status=0
+          bash tools/security/scan-release "ghcr.io/${GITHUB_REPOSITORY}@$digest" "$RUNNER_TEMP/release-assets" "$RUNNER_TEMP/dependency-reports" || status=$?
+          [[ "$status" = 0 || "$status" = 1 ]] || exit "$status"
+      - name: Scan the pinned tools installed from verified lockfiles
+        run: node tools/dependencies/scan-tools.mts published-source "$RUNNER_TEMP/dependency-reports" --inventory
+      - id: scout
+        name: Map actual advisories to update candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NYLZO_BASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: node tools/dependencies/scout.mts published-source "$RUNNER_TEMP/dependency-reports"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: dependency-inventory-${{ github.run_id }}
+          path: ${{ runner.temp }}/dependency-reports
+          if-no-files-found: error
+          retention-days: 14
+
+  renovate:
+    name: Propose verified dependency updates
+    needs: [prepare, scout]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: dependency-updates
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /tmp/renovate-cache
+          key: renovate-public-metadata-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: renovate-public-metadata-${{ runner.os }}-
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+          permission-actions: read
+          permission-vulnerability-alerts: read
+      - uses: renovatebot/github-action@2804199d260ad00c1fae0e9e842888369391c776 # v46.3.10
+        env:
+          NYLZO_UPDATE_MODE: ${{ needs.prepare.outputs.mode }}
+          NYLZO_BASE_TAG: ${{ needs.prepare.outputs.tag }}
+          NYLZO_AFFECTED_DEPENDENCIES: ${{ needs.scout.outputs.affected }}
+          NYLZO_RENOVATE_CONFIG: /opt/nylzo-renovate.json
+        with:
+          token: ${{ steps.app.outputs.token }}
+          configurationFile: .github/renovate.cjs
+          renovate-image: ghcr.io/renovatebot/renovate:44.192.2@sha256:37960a62ba1faa9079a7c4eead9b3f4470748a64ecd207e06c09fd8858673e17
+          mount-docker-socket: false
+          docker-volumes: /tmp:/tmp;${{ github.workspace }}/tools/dependencies/sync.mts:/opt/nylzo-dependency-sync.mts:ro;${{ github.workspace }}/renovate.json:/opt/nylzo-renovate.json:ro
+          additional-env-list: |
+            NYLZO_UPDATE_MODE
+            NYLZO_BASE_TAG
+            NYLZO_AFFECTED_DEPENDENCIES
+            NYLZO_RENOVATE_CONFIG
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: success()
+        with:
+          path: /tmp/renovate-cache
+          key: renovate-public-metadata-${{ runner.os }}-${{ github.run_id }}

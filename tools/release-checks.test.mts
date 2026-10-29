@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
+test("publication rebuilds source without promoting cached CI artifacts", () => {
+  const release = readFileSync(".github/workflows/release.yml", "utf8");
+  assert(!release.includes("actions/cache/"));
+  assert(!release.includes("pattern: hashes-"));
+  assert(!release.includes("name: web-dist"));
+  assert(release.includes("pnpm --dir web --filter @nylzo/web build"));
+  assert(!/cache: (?:pnpm|true)/u.test(release));
+  assert(release.includes("package-manager-cache: false"));
+});
 
 test("a release requires full verification and successful security checks from the same run", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-release-checks-"));

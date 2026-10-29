@@ -92,7 +92,7 @@ if (import.meta.main) {
   } else {
     const event = process.env.EVENT ?? "";
     const files =
-      event === "schedule" || event === "workflow_dispatch" ? [] : JSON.parse(process.env.CHANGED_FILES ?? "");
+      event === "schedule" || event === "workflow_dispatch" || process.env.FORCE_FULL_VERIFICATION === "true" ? [] : JSON.parse(process.env.CHANGED_FILES ?? "");
     const plan = planChecks(files, event, process.env.TRUSTED_COVERAGE === "true");
     const output = Object.entries(plan)
       .map(([key, value]) => `${key}=${JSON.stringify(value)}\n`)

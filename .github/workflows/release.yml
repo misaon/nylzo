@@ -13,6 +13,8 @@ concurrency:
 env:
   GOTOOLCHAIN: local
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+  DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
 
 jobs:
   guard:
@@ -34,12 +36,13 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
+          echo '106cd9985f4f32aa37ded70061312c2e2bb16cc75d6a809d9117574e50c0bfa6  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
+          # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
@@ -93,6 +96,7 @@ jobs:
           package-manager-cache: false
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
+          # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: go osv-scanner
           cache: false
@@ -117,6 +121,7 @@ jobs:
           cp "$RUNNER_TEMP/release-evidence/source.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.dependency-report.json"
           cp "$RUNNER_TEMP/release-evidence/go-imports.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.go-imports.json"
           cp deploy/hetzner-flatcar/toolchain.json "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.host-tools.json"
+          node tools/release/metadata.mts "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.release-policy.json"
           cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.source.spdx.json" "$RUNNER_TEMP/web-client/evidence/"
           if [ -f "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" ]; then
             cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" "$RUNNER_TEMP/web-client/evidence/"
@@ -189,9 +194,11 @@ jobs:
           cosign-release: v3.1.4
       - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
+          # renovate: datasource=github-releases depName=anchore/syft
           syft-version: v1.54.1
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         with:
+          # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: grype
           cache: false
@@ -212,6 +219,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
+          # renovate: datasource=github-releases depName=goreleaser/goreleaser
           version: v2.18.3
           args: release --clean --skip=before
         env:

@@ -2,7 +2,7 @@ name: Security updates
 
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] -- Executes trusted main tools only; validates API metadata and never downloads or executes PR artifacts.
-    workflows: [ci]
+    workflows: [ci, release]
     types: [completed]
   workflow_dispatch:
 
@@ -31,12 +31,13 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
+          echo '106cd9985f4f32aa37ded70061312c2e2bb16cc75d6a809d9117574e50c0bfa6  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
+          # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
@@ -91,9 +92,10 @@ jobs:
   merge:
     if: >-
       github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
-      github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.name == 'ci' &&
+      github.event_name == 'workflow_run' &&
       github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
-    name: Merge a verified security fix after CI
+    name: Merge a verified dependency update after CI
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: security-automation
@@ -107,10 +109,11 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
+          echo '106cd9985f4f32aa37ded70061312c2e2bb16cc75d6a809d9117574e50c0bfa6  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
+          # renovate: datasource=github-releases depName=nodejs/node
           node-version: 24.22.1
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
@@ -122,19 +125,24 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-actions: read
+          permission-workflows: write
       - name: Validate the complete update and merge its exact head
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           SECURITY_AUTOMATION_ENABLED: ${{ vars.SECURITY_AUTOMATION_ENABLED }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
         run: node "$RUNNER_TEMP/nylzo-security-policy/tools/security/automation.mts" merge
 
   release:
     if: >-
       github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      github.event.workflow_run.name == 'ci' &&
       github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push' &&
+      (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v')) &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    name: Tag a verified security-only patch release
+    name: Tag an approved planned release or isolated dependency patch
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: security-automation
@@ -152,12 +160,13 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '87ac8e0159b374b91c9c036c33cc97885566d17f4ca84170b1cc7d12a5c8208d  tools/security/bootstrap-policy' | sha256sum --check
+          echo '106cd9985f4f32aa37ded70061312c2e2bb16cc75d6a809d9117574e50c0bfa6  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
+          # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: node gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
@@ -173,11 +182,20 @@ jobs:
           permission-contents: write
           permission-pull-requests: read
           permission-actions: read
-      - name: Check full main CI and every commit since the published release
+      - name: Check out only the source commit whose CI completed
+        env:
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$SOURCE_COMMIT"
+          git checkout --detach "$SOURCE_COMMIT"
+      - name: Check full CI and the exact merged release or dependency PR
         id: candidate
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           SECURITY_AUTOMATION_ENABLED: ${{ vars.SECURITY_AUTOMATION_ENABLED }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
         run: node "$RUNNER_TEMP/nylzo-security-policy/tools/security/automation.mts" release
       - name: Sign the patch tag and start the release workflow
         if: steps.candidate.outputs.tag != ''
@@ -185,13 +203,51 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
           SOURCE_COMMIT: ${{ steps.candidate.outputs.commit }}
+          RELEASE_KIND: ${{ steps.candidate.outputs.kind }}
+          BASE_RELEASE: ${{ steps.candidate.outputs.base }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
           GITSIGN_TOKEN_PROVIDER: github-actions
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)" = "$SOURCE_COMMIT"
-          git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Nylzo ${RELEASE_TAG#v} security update"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/$SOURCE_BRANCH" --jq .object.sha)" = "$SOURCE_COMMIT"
+          git -c user.name='Nylzo security automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Nylzo ${RELEASE_TAG#v}
+
+          Release-Kind: $RELEASE_KIND
+          Base-Release: $BASE_RELEASE
+          Policy-Commit: $GITHUB_SHA"
           bash "$RUNNER_TEMP/nylzo-security-policy/tools/security/verify-keyless-tag" "$RELEASE_TAG" "$SOURCE_COMMIT" workflow_run
           authorization=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
           echo "::add-mask::$authorization"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $authorization" push origin "refs/tags/${RELEASE_TAG}"
+
+  published:
+    if: >-
+      github.repository == 'misaon/nylzo' && github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'release' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    name: Record publication and refresh the planned release PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write # record the lifecycle of the already merged release PR
+      actions: write # explicit workflow_dispatch is allowed with GITHUB_TOKEN
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - name: Verify the publishing workflow and immutable release before recording it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
+        run: node tools/release/published.mts

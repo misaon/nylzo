@@ -18,11 +18,12 @@ cosign verify-blob "$manifest" --bundle "$manifest.sigstore.json" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
 awk -v name="./$filename" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' "$manifest" | sha256sum --check --strict
 jq -e '
-  . as $manifest | ["gh", "cosign", "jq"] | all(.[];
+  (.caddy | type == "string" and test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
+  (. as $manifest | ["gh", "cosign", "jq"] | all(.[];
     . as $tool | $manifest[$tool] |
     (.version | type == "string" and test("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) and
     (.amd64 | type == "string" and test("^[0-9a-f]{64}$")) and
-    (.arm64 | type == "string" and test("^[0-9a-f]{64}$")))' "$filename" >/dev/null
+    (.arm64 | type == "string" and test("^[0-9a-f]{64}$"))))' "$filename" >/dev/null
 architecture=$(jq -er .architecture /etc/nylzo/site.json)
 [[ "$architecture" = amd64 || "$architecture" = arm64 ]] || exit 1
 printf 'ARCHITECTURE=%s\n' "$architecture" > tools.env
@@ -38,3 +39,7 @@ mv /etc/nylzo/tools.env.next /etc/nylzo/tools.env
 /opt/nylzo/runtime/install-tools
 expected="/opt/nylzo/tools/$(sha256sum < /etc/nylzo/tools.env | cut -d ' ' -f 1)"
 [[ "$(readlink -f /opt/nylzo/tools/current)" = "$expected" ]]
+approved=$(jq -er .caddy "$filename")
+printf 'v%s\n' "$approved" > /var/lib/nylzo-deploy/caddy.approved.tag.next
+sync /var/lib/nylzo-deploy/caddy.approved.tag.next
+mv /var/lib/nylzo-deploy/caddy.approved.tag.next /var/lib/nylzo-deploy/caddy.approved.tag

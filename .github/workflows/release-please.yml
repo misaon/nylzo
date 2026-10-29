@@ -1,0 +1,59 @@
+name: Plan release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plan-release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    name: Update the planned release PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dependency-updates
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - name: Determine the next Conventional Commit version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/release/plan.mts
+      - name: Install the locked release planner without lifecycle scripts
+        if: steps.version.outputs.version != ''
+        run: npm ci --prefix tools/release --ignore-scripts --no-audit --no-fund
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        if: steps.version.outputs.version != ''
+        id: app
+        with:
+          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Update the release PR; do not create tags or releases
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_BASELINE: ${{ steps.version.outputs.baseline }}
+          RELEASE_BASELINE_VERSION: ${{ steps.version.outputs.baseline_version }}
+        run: node tools/release/update.mts

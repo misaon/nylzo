@@ -1,0 +1,9 @@
+rules:
+  cache-poisoning:
+    ignore:
+      # The release/v* push trigger makes zizmor classify CI as publication.
+      # CI only validates source. PR caches are scoped to their merge refs;
+      # publication rebuilds from source in release.yml with caches disabled
+      # and never promotes a CI build artifact. Keep caching validation tools
+      # and package downloads; release-checks.test.mts guards this separation.
+      - ci.yml

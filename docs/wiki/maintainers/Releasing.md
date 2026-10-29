@@ -1,6 +1,6 @@
 # Versioning and releases
 
-Nylzo uses stable [Semantic Versioning](https://semver.org/) tags (`vMAJOR.MINOR.PATCH`) and the pinned [GoReleaser](https://goreleaser.com/) to build archives, generate grouped release notes, create SBOMs, and upload signed artifacts. The maintainer chooses ordinary release versions and approves publication in the `release` environment. The [security-update mechanism](Security-updates.md) can select and sign a patch version through a separate guarded path once activated.
+Nylzo uses [Semantic Versioning](https://semver.org/), Conventional Commit PR titles, an aggregate release PR maintained by [release-please](https://github.com/googleapis/release-please), and pinned [GoReleaser](https://goreleaser.com/) builds. Merging an ordinary PR does not publish or deploy a release. Merging the aggregate release PR authorizes publication after full verification. [Automatic dependency updates](Security-updates.md) use a separate release branch so they cannot ship pending features.
 
 ## One source of version identity
 
@@ -29,8 +29,7 @@ The server logs it at startup and exposes `build` in `/api/v1/instance`, `/.well
 
 ## Changelog policy
 
-GitHub release notes are the canonical changelog. GoReleaser generates them from commits since the previous tag, with links to commits and pull requests. The first release includes the repository history.
-
+The aggregate release PR updates `.github/CHANGELOG.md` and `.release-please-manifest.json`. Release-please groups changes and links their PRs. GitHub Releases also contain grouped GoReleaser notes and signed downloads.
 Pull requests use English Conventional Commit titles. The title becomes the squash commit; a required check validates the format, including title edits. Types determine the sections:
 
 | Type       | Section       |
@@ -48,26 +47,19 @@ Pull requests use English Conventional Commit titles. The title becomes the squa
 | `revert`   | Reverts       |
 | `security` | Security      |
 
-Scopes are optional, such as `fix(cli): handle an interrupted download`. For a breaking change, add `!` before the colon, such as `feat(server)!: change the storage format`, and explain migration in the PR body. Breaking subjects appear in a dedicated first section. The grouping operates on commit subjects; a breaking-change footer alone does not put an entry in that section. Historical nonconforming subjects remain visible under Other changes.
+Scopes are optional, such as `fix(cli): handle an interrupted download`. For a breaking change, add `!` before the colon, such as `feat(server)!: change the storage format`, and explain migration in the PR body. Breaking subjects appear in a dedicated first section. The version planner recognizes both `!` and a `BREAKING CHANGE:` footer. `feat` increments the minor version; breaking changes increment the major version, including before 1.0. Other recognized types produce a patch. GoReleaser groups release-note subjects; explain breaking changes in the PR title as well as its body. Historical nonconforming subjects remain visible under Other changes.
 
 The main-branch review rules remain in force for these changes. Security fixes must still follow the private disclosure process before public release notes disclose them.
 
 ## Publish a stable version
 
-Merge the intended change and wait for `Release verification` on that exact `main` commit. CI runs only the relevant checks for ordinary changes; a release requires the full suite. If the commit has no successful full run, start one with `gh workflow run ci.yml --ref main` and wait for it to finish. Weekly runs also perform full verification.
+1. Merge ordinary changes through reviewed PRs with English Conventional Commit titles.
+2. Review the open `chore(main): release X.Y.Z` PR. It aggregates changes since the last published release on `main`. Its version also accounts for intervening isolated dependency patches. The PR remains open until a maintainer chooses to release.
+3. Merge that PR when its changelog, version, and included changes are ready. Full CI on the resulting commit must pass, including release verification and all three CodeQL analyses.
+4. The merger App signs an annotated tag with an ephemeral GitHub OIDC identity. The release guard checks the exact source, workflow identity, protected policy revision, and tag metadata. This approved path uses `release-automatic` without a second manual environment approval.
+5. GoReleaser uploads a draft, adds signatures, SBOMs and provenance, and publishes only after all release gates pass. The production updater accepts the signed release; merging unrelated PRs into `main` does not change production.
 
-Choose an unused stable version; replace `0.1.2` below with that version:
-
-```sh
-git switch main
-git pull --ff-only
-mise run release:prepare -- 0.1.2
-```
-
-The command requires `gh`, Git with signing configured, and an unlocked signing key registered on GitHub. It checks that the checkout is clean and matches `origin/main`, the tagger email is correct, source checks passed, and the tag does not exist. `Release verification`, `CI required`, and all three CodeQL analyses must have succeeded in the same workflow run. It then creates and pushes a signed annotated tag. The workflow repeats the source/signature checks independently before building.
-
-Review the workflow's source commit, version, and protected-environment request before approving `Release` in GitHub Actions. The privileged job receives only the separately built and hash-checked web client. It uploads into a draft, verifies that every platform archive and SBOM exists, adds signatures and provenance, and then publishes the immutable release.
-
+The aggregate PR's merge is the release approval. Never merge it merely to clear a queue. If an automatic patch overtakes its version, regenerate the aggregate PR instead of reusing a tag. Emergency maintainer-signed tags remain available through `mise run release:prepare -- X.Y.Z` and the separately approved `release` environment; they require a clean, fully verified `main` source.
 Before publication, Grype checks every archive SBOM and both container platforms. High or critical findings, scanner errors, or missing inputs stop the release. The container is built under a staging tag; the stable version tag and `latest` are promoted only after the gate passes, preserving the scanned digest. See [security checks](Security-checks.md#release-vulnerability-gate).
 
 For now this process accepts stable tags only. Do not use it for prereleases or nightly builds; they require a separately reviewed publication policy so they cannot replace stable downloads or the container's `latest` tag. Never move or reuse a release tag, including after a failed attempt. Investigate the failed run and any unpublished draft before retrying.

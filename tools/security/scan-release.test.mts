@@ -38,7 +38,7 @@ test("release scanning covers every archive and image architecture and fails clo
       assert.ok(calls.some((call) => call.includes(`--platform linux/${architecture}`)));
     assert.ok(calls.every((call) => call.includes("--fail-on high")));
     assert.notEqual(scan(image, "2").status, 0);
-    assert.notEqual(scan(image, "1").status, 0);
+    assert.equal(scan(image, "1").status, 2, "Operational failures cannot be mistaken for detected vulnerabilities, even with valid JSON reports");
     const invalid = scan("ghcr.io/other/project:latest");
     assert.notEqual(invalid.status, 0, invalid.stderr);
     assert.notEqual(scan("ghcr.io/misaon/nylzo:latest").status, 0);

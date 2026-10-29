@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": false,
+  "bump-patch-for-minor-pre-major": false,
+  "pull-request-header": "This PR collects the changes for the next Nylzo release. Merge it when the release is ready.",
+  "pull-request-footer": "The signed release is published after full CI passes on the merged commit. Ordinary PR merges do not deploy the application.",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "changelog-path": ".github/CHANGELOG.md",
+      "changelog-sections": [
+        {"type": "feat", "section": "Features"},
+        {"type": "fix", "section": "Fixes"},
+        {"type": "security", "section": "Security"},
+        {"type": "perf", "section": "Performance"},
+        {"type": "docs", "section": "Documentation"},
+        {"type": "refactor", "section": "Refactoring"},
+        {"type": "build", "section": "Build"},
+        {"type": "ci", "section": "CI"},
+        {"type": "test", "section": "Tests"},
+        {"type": "chore", "section": "Maintenance"},
+        {"type": "style", "section": "Style"},
+        {"type": "revert", "section": "Reverts"}
+      ]
+    }
+  }
+}
