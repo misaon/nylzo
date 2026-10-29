@@ -171,11 +171,17 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: metadata-cache
         with:
           path: /tmp/renovate-cache
           key: renovate-public-metadata-${{ runner.os }}-${{ github.run_id }}
 
           restore-keys: renovate-public-metadata-${{ runner.os }}-
+      - name: Restore cache ownership for the unprivileged Renovate user
+        if: steps.metadata-cache.outputs.cache-matched-key != ''
+        run: |
+          test -d /tmp/renovate-cache && test ! -L /tmp/renovate-cache
+          sudo chown --recursive --no-dereference 12021:0 /tmp/renovate-cache
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
         with:
