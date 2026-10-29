@@ -19,19 +19,20 @@ const latest = request(`repos/${repository}/releases/latest`);
 assert.equal(latest.immutable, true); assert.equal(latest.draft, false); assert.equal(latest.prerelease, false);
 versionParts(latest.tag_name);
 
-function attention(pull: any, reason: string) {
-  const alreadyBlocked = pull.labels.some((label: any) => label.name === "requires-attention");
-  requireAttention(pull, reason);
-  if (alreadyBlocked) return;
-  // A failed proposal must free an active discovery slot, even when no release
-  // succeeds to trigger the ordinary continuation. Use a separate job token;
-  // the merger installation token remains Actions read-only.
+function continueUpdates(pull: any) {
+  // The merger installation token remains Actions read-only.
   assert(process.env.WORKFLOW_DISPATCH_TOKEN, "A trusted dispatch token is required to continue the update queue");
   const mode = pull.labels.some((label: any) => label.name === "automation:weekly") ? "weekly" : "security";
   execFileSync("gh", ["api", `repos/${repository}/actions/workflows/dependencies.yml/dispatches`, "--method", "POST", "--input", "-"], {
     input: JSON.stringify({ ref: "main", inputs: { mode } }), stdio: ["pipe", "inherit", "inherit"],
     env: { ...process.env, GH_TOKEN: process.env.WORKFLOW_DISPATCH_TOKEN },
   });
+}
+
+function attention(pull: any, reason: string, kind: "ci" | "manual" = "manual") {
+  const alreadyBlocked = pull.labels.some((label: any) => label.name === "requires-attention");
+  requireAttention(pull, reason, kind);
+  if (!alreadyBlocked) continueUpdates(pull);
 }
 
 if (process.argv[2] === "merge") {
@@ -43,11 +44,12 @@ if (process.argv[2] === "merge") {
   try { update = inspectDependencyPull(pull.number, false, latest); }
   catch (error) {
     if (error instanceof UpdateDeferred) console.log(error.message);
+    else if (error instanceof Error && error.message === "Renovate reports an unresolved artifact generation failure") attention(pull, "Lockfile generation failed. A later valid update must pass complete CI before this hold can clear.", "ci");
     else attention(pull, "The update changes code, requires a migration, or has unsafe versions or integrity metadata. Review the diff and CI.");
     process.exit(0);
   }
   if (run.conclusion !== "success" || !verified) {
-    if (["failure", "timed_out", "action_required"].includes(run.conclusion)) attention(pull, "CI or a security check failed. No merge or release attempted.");
+    if (["failure", "timed_out", "action_required"].includes(run.conclusion)) attention(pull, "CI or a security check failed. No merge or release attempted.", "ci");
     process.exit(0);
   }
   assert.equal(update.pull.head.sha, run.head_sha);
@@ -56,12 +58,50 @@ if (process.argv[2] === "merge") {
     const baseline = request(`repos/${repository}/git/tags/${reference.object.sha}`).object.sha;
     if (update.base !== baseline) { console.log("A verified patch is awaiting publication; do not stack another change onto it."); process.exit(0); }
   }
-  if (pull.labels.some((label: any) => label.name === "requires-attention")) { console.log("Maintainer attention label prevents automatic merge."); process.exit(0); }
+  // Re-read human holds after source and CI validation. A CI-only hold can
+  // recover; a manual hold or an unclassified attention label stays blocked.
+  const currentPull = request(`repos/${repository}/pulls/${pull.number}`);
+  assert.equal(currentPull.head.sha, run.head_sha);
+  if (currentPull.draft) process.exit(0);
+  const labels = new Set(currentPull.labels.map((label: any) => label.name));
+  if (labels.has("manual-hold") || (labels.has("requires-attention") && !labels.has("automation:ci-failed"))) {
+    console.log("Maintainer attention label prevents automatic merge."); process.exit(0);
+  }
+  if (labels.has("automation:ci-failed")) {
+    if (labels.has("requires-attention")) request(`repos/${repository}/issues/${pull.number}/labels/requires-attention`, "DELETE");
+    request(`repos/${repository}/issues/${pull.number}/labels/automation%3Aci-failed`, "DELETE");
+  }
   const result = request(`repos/${repository}/pulls/${pull.number}/merge`, "PUT", {
     sha: run.head_sha, merge_method: "squash", commit_title: pull.title,
     commit_message: `Verified dependency-only update from PR #${pull.number}. Full CI and CodeQL passed on ${run.head_sha}.`,
   });
   assert.equal(result.merged, true);
+  if (pull.base.ref !== "main") {
+    // Other proposals from the old published source can no longer merge.
+    // Stop only their unchanged, signed App PR CI, never push/release runs.
+    try {
+      assert(process.env.WORKFLOW_DISPATCH_TOKEN);
+      for (const candidate of pages(`repos/${repository}/pulls?state=open&per_page=100`)) {
+        if (!trustedDependencyBot(candidate.user) || candidate.head.repo.full_name !== repository || candidate.base.ref !== pull.base.ref || !candidate.head.ref.startsWith("renovate/") || candidate.draft || candidate.labels.some((label: any) => label.name === "requires-attention" || label.name === "manual-hold")) continue;
+        assert.match(candidate.head.sha, /^[a-f0-9]{40}$/u);
+        const commit = request(`repos/${repository}/commits/${candidate.head.sha}`);
+        if (!trustedDependencyBot(commit.author) || !commit.commit.verification.verified || commit.parents.length !== 1 || commit.parents[0].sha !== update.base) continue;
+        const runs = pages(`repos/${repository}/actions/workflows/ci.yml/runs?head_sha=${candidate.head.sha}&event=pull_request&per_page=100`).flatMap(page => page.workflow_runs);
+        for (const stale of runs) {
+          if (stale.workflow_id !== run.workflow_id || stale.event !== "pull_request" || stale.head_repository.full_name !== repository || stale.head_sha !== candidate.head.sha || stale.head_branch !== candidate.head.ref || stale.status === "completed") continue;
+          assert(Number.isSafeInteger(stale.id));
+          try {
+            execFileSync("gh", ["api", `repos/${repository}/actions/runs/${stale.id}/cancel`, "--method", "POST"], {
+              stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, GH_TOKEN: process.env.WORKFLOW_DISPATCH_TOKEN },
+            });
+            console.log(`Cancelled obsolete proposal CI ${stale.id}; PR #${candidate.number} needs a fresh base and full CI.`);
+          } catch (error) { console.warn(`Could not cancel obsolete CI ${stale.id}:`, error); }
+        }
+        request(`repos/${repository}/pulls/${candidate.number}`, "PATCH", { state: "closed" });
+        console.log(`Closed superseded machine proposal #${candidate.number}; discovery recreates it on the next published baseline.`);
+      }
+    } catch (error) { console.warn("Merge succeeded; obsolete proposal CI cleanup needs checking:", error); }
+  } else continueUpdates(pull);
   console.log(`Merged verified dependency PR #${pull.number}. Ordinary main commits do not trigger deployment.`);
 } else {
   assert.equal(process.argv[2], "release");

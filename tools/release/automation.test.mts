@@ -34,6 +34,7 @@ function fixture() {
     [prefix + `commits/${source}/pulls`]: [pull],
     [prefix + "pulls/7"]: pull,
     [prefix + "issues/7/comments?per_page=100"]: [],
+    [prefix + "pulls?state=open&per_page=100"]: [],
     [prefix + "pulls/7/commits?per_page=100"]: [{ sha: source, author: bot, parents: [{ sha: baseline }], commit: { verification: { verified: true } } }],
     [prefix + "pulls/7/files?per_page=100"]: [{ filename: "web/app/package.json", status: "modified" }],
     [prefix + `contents/web/app/package.json?ref=${baseline}`]: { type: "file", encoding: "base64", content: Buffer.from(before).toString("base64") },
@@ -45,7 +46,7 @@ function fixture() {
 const fs=require('node:fs'),routes=JSON.parse(fs.readFileSync(process.env.ROUTES,'utf8'));
 const args=process.argv.slice(2),path=args.find(value=>value.startsWith('repos/'));
 const method=args.includes('--method')?args[args.indexOf('--method')+1]:'GET';
-if(method!=='GET'){const body=args.includes('--input')?JSON.parse(fs.readFileSync(0,'utf8')):{};fs.appendFileSync(process.env.WRITES,JSON.stringify({path,method,body})+'\\n');console.log(JSON.stringify(path.endsWith('/merge')?{merged:true}:{}));process.exit(0);}
+if(method!=='GET'){const body=args.includes('--input')?JSON.parse(fs.readFileSync(0,'utf8')):{};fs.appendFileSync(process.env.WRITES,JSON.stringify({path,method,body,dispatchToken:process.env.GH_TOKEN==='test-only'})+'\\n');console.log(JSON.stringify(path.endsWith('/merge')?{merged:true}:{}));process.exit(0);}
 if(!(path in routes)){console.error('Unexpected fixture route');process.exit(1);}
 console.log(JSON.stringify(args.includes('--slurp')?[routes[path]]:routes[path]));
 `); chmodSync(join(root, "bin/gh"), 0o700);
@@ -56,7 +57,7 @@ console.log(JSON.stringify(args.includes('--slurp')?[routes[path]]:routes[path])
     const result = spawnSync(process.execPath, [executable, command], { cwd: root, encoding: "utf8", timeout: 30000,
       env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, ROUTES: join(root, "routes.json"), WRITES: join(root, "writes"),
         GITHUB_EVENT_PATH: join(root, "event.json"), GITHUB_OUTPUT: join(root, "output"), GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF: "refs/heads/main",
-        WORKFLOW_DISPATCH_TOKEN: "test-only", GITHUB_SHA: main, SECURITY_AUTOMATION_ENABLED: "true", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", DEPENDENCY_BOT_ID: "123456" } });
+        GH_TOKEN: "fixture-merger-token", WORKFLOW_DISPATCH_TOKEN: "test-only", GITHUB_SHA: main, SECURITY_AUTOMATION_ENABLED: "true", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", DEPENDENCY_BOT_ID: "123456" } });
     return { ...result, output: readFileSync(join(root, "output"), "utf8"), writes: readFileSync(join(root, "writes"), "utf8") };
   };
   return { root, git, main, baseline, source, pull, run, routes, prefix, execute, cleanup: () => rmSync(root, { recursive: true, force: true }) };
@@ -209,13 +210,104 @@ test("failed dependency CI assigns maintainer attention, while stale heads are d
     f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
     const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
     const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
-    assert.deepEqual(writes.map(write => write.body), [{ labels: ["requires-attention"] }, { assignees: ["misaon"] }, { ref: "main", inputs: { mode: "security" } }]);
+    assert.deepEqual(writes.map(write => write.body), [{ labels: ["requires-attention", "automation:ci-failed"] }, { assignees: ["misaon"] }, { ref: "main", inputs: { mode: "security" } }]);
     assert(writes.every(write => !write.path.endsWith("/merge")));
     f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: "f".repeat(40) } };
     const stale = f.execute("merge"); assert.equal(stale.status, 0, stale.stderr); assert.equal(stale.writes, ""); assert.equal(stale.output, "");
   } finally { f.cleanup(); }
 });
 
+
+test("only a CI-specific hold can clear after full verification; human holds and unsafe changes remain blocked", () => {
+  const f = fixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    f.pull.labels = [{ name: "requires-attention" }, { name: "automation:ci-failed" }];
+    const recovered = f.execute("merge"); assert.equal(recovered.status, 0, recovered.stderr);
+    const writes = recovered.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => write.method), ["DELETE", "DELETE", "PUT"]);
+    assert.equal(writes[2].body.sha, f.source);
+    f.pull.labels.push({ name: "manual-hold" });
+    const manual = f.execute("merge"); assert.equal(manual.status, 0, manual.stderr); assert.equal(manual.writes, "");
+    f.pull.labels = [{ name: "requires-attention" }];
+    assert.equal(f.execute("merge").writes, "");
+    f.pull.labels.push({ name: "automation:ci-failed" });
+    f.routes[f.prefix + "actions/runs/123/jobs?per_page=100"].jobs[2].conclusion = "failure";
+    assert.equal(f.execute("merge").writes, "");
+    f.routes[f.prefix + "actions/runs/123/jobs?per_page=100"].jobs[2].conclusion = "success";
+    f.routes[f.prefix + "pulls/7/files?per_page=100"].push({ filename: "internal/server/server.go", status: "modified" });
+    f.pull.changed_files = 2;
+    const unsafe = f.execute("merge"); assert.equal(unsafe.status, 0, unsafe.stderr);
+    assert(unsafe.writes.includes("manual-hold")); assert(!unsafe.writes.includes('"DELETE"')); assert(!unsafe.writes.includes('"PUT"'));
+  } finally { f.cleanup(); }
+});
+
+test("a maintenance merge cancels only unchanged signed App PR CI from the superseded base", () => {
+  const f = fixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    const sha = "e".repeat(40), humanSha = "f".repeat(40);
+    const candidate = { ...f.pull, number: 8, head: { ...f.pull.head, sha, ref: "renovate/stale" } };
+    const human = { ...candidate, number: 9, head: { ...candidate.head, sha: humanSha } };
+    f.routes[f.prefix + "pulls?state=open&per_page=100"] = [candidate, human, { ...candidate, base: { ref: "main" } }, { ...candidate, draft: true }, { ...candidate, labels: [{ name: "manual-hold" }] }];
+    f.routes[f.prefix + `commits/${sha}`] = { author: f.pull.user, commit: { verification: { verified: true } }, parents: [{ sha: f.baseline }] };
+    f.routes[f.prefix + `commits/${humanSha}`] = { author: { login: "misaon", id: 999 }, commit: { verification: { verified: true } }, parents: [{ sha: f.baseline }] };
+    const stale = { id: 456, workflow_id: f.run.workflow_id, event: "pull_request", head_repository: f.pull.head.repo, head_sha: sha, head_branch: candidate.head.ref, status: "in_progress" };
+    f.routes[f.prefix + `actions/workflows/ci.yml/runs?head_sha=${sha}&event=pull_request&per_page=100`] = { workflow_runs: [
+      stale, { ...stale, id: 457, event: "push" }, { ...stale, id: 458, workflow_id: 999 },
+      { ...stale, id: 459, head_repository: { full_name: "other/fork" } }, { ...stale, id: 460, status: "completed" },
+    ] };
+    const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/runs/456/cancel", f.prefix + "pulls/8"]);
+    assert.equal(writes[0].dispatchToken, false); assert.equal(writes[1].dispatchToken, true);
+    assert.deepEqual(writes[2].body, { state: "closed" });
+  } finally { f.cleanup(); }
+});
+
+test("discovery prunes superseded signed proposals before budgeting and preserves human migration work", () => {
+  const f = fixture();
+  try {
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    f.routes[f.prefix + "git/matching-refs/heads/release/v0.1.6"] = [{ ref: "refs/heads/release/v0.1.6", object: { sha: f.baseline } }];
+    const old = { ...f.pull, number: 8, state: "open", labels: [{ name: "requires-attention" }], base: { ref: "release/v0.1.5" } };
+    const human = { ...old, number: 9 };
+    const main = { ...old, number: 10, base: { ref: "main" } };
+    f.routes[f.prefix + "pulls?state=open&per_page=100"] = [old, human, main];
+    const signed = { sha: f.pull.head.sha, author: f.pull.user, commit: { verification: { verified: true } }, parents: [{ sha: f.baseline }] };
+    f.routes[f.prefix + "pulls/8/commits?per_page=100"] = [signed];
+    f.routes[f.prefix + "pulls/9/commits?per_page=100"] = [signed, { ...signed, author: { login: "misaon", id: 999 } }];
+    const result = f.execute("", resolve("tools/dependencies/prepare.mts"));
+    assert.equal(result.status, 0, result.stderr);
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => ({ path: write.path, method: write.method, body: write.body })), [{ path: f.prefix + "pulls/8", method: "PATCH", body: { state: "closed" } }]);
+    assert(result.output.includes("blocked=2\n"), "Only retained human work and the main hold need budget compensation");
+  } finally { f.cleanup(); }
+});
+
+test("a verified main dependency merge refills discovery without authorizing a release", () => {
+  const f = fixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.pull.base.ref = "main"; f.pull.labels = [{ name: "automation:weekly" }];
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: f.baseline } };
+    const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/workflows/dependencies.yml/dispatches"]);
+    assert.deepEqual(writes[1].body, { ref: "main", inputs: { mode: "weekly" } });
+    assert.equal(writes[1].dispatchToken, true); assert.equal(result.output, "");
+  } finally { f.cleanup(); }
+});
 
 test("a planned feature release numbers above isolated patches and requires exact release metadata", () => {
   const f = fixture();

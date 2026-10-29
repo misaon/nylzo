@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { pages, repository, request } from "../release/github.mts";
-import { trustedDependencyBot } from "../release/policy.mts";
+import { blockedProposals } from "./queue.mts";
 
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.equal(process.env.GITHUB_REF, "refs/heads/main");
@@ -10,7 +10,7 @@ assert(previous <= 1000);
 const mode = process.env.NYLZO_UPDATE_MODE;
 assert(mode === "security" || mode === "weekly");
 const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
-const blocked = pulls.filter(pull => trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository && pull.labels.some((label: any) => label.name === "requires-attention")).length;
+const blocked = blockedProposals(pulls);
 assert(blocked <= 1000);
 if (blocked > previous) {
   // New major/migration proposals can arrive already labelled for attention.
