@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
+import { validateDependencyFile } from "./policy.mts";
 
 test("canonical tool pins and generated deployment/signing metadata cannot drift", () => {
   const mise = readFileSync("mise.toml", "utf8");
@@ -48,4 +49,17 @@ test("security discovery does not re-enable duplicate CLI inputs or disable Acti
     assert(!rules[exclusion].matchPackageNames.includes("jdx/mise-action"));
     assert(!rules[exclusion].matchPackageNames.includes("sigstore/cosign-installer"));
   } finally { process.env = saved; }
+});
+
+test("the Ubuntu test image follows LTS lines instead of short-lived interim releases", () => {
+  const config = JSON.parse(readFileSync("renovate.json", "utf8"));
+  const rule = config.packageRules.find((rule: any) => rule.matchPackageNames?.includes("ubuntu"));
+  const allowed = new RegExp(rule.allowedVersions.slice(1, -1));
+  for (const tag of ["24.04", "26.04", "28.04"]) assert(allowed.test(tag));
+  for (const tag of ["24.10", "25.04", "26.10", "latest"]) assert(!allowed.test(tag));
+  const old = `const image = "ubuntu:24.04@sha256:${"a".repeat(64)}";`;
+  // The proposal filter and the independent merge policy both keep OS changes manual.
+  assert.equal(rule.matchDatasources[0], "docker");
+  validateDependencyFile("tools/deploy/runtime.test.mts", old, old.replace("a".repeat(64), "b".repeat(64)));
+  assert.throws(() => validateDependencyFile("tools/deploy/runtime.test.mts", old, old.replace("24.04", "26.04")));
 });

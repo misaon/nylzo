@@ -253,6 +253,16 @@
         "pin"
       ],
       "enabled": false
+    },
+    {
+      "description": "Follow even-year Ubuntu LTS tags; test OS upgrades still require review.",
+      "matchPackageNames": [
+        "ubuntu"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "allowedVersions": "/^\\d*[02468]\\.04$/"
     }
   ],
   "customManagers": [
