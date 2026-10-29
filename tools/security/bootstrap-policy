@@ -6,7 +6,7 @@ sha256sum -c - <<'HASHES'
 b6d843a0d6e74ff3d8acaa32e0cb032294b3027d18e9d70876fb8ff839fc70b4  tools/security/runtime.lock
 85e46e83e352adb62ff18c371b190dc3c1f7c6678168f6d9d40a5d5fbb8d7636  tools/security/dependency-api.mts
 6db39ab620af86a20f9230fe818b63e6631f8799dd6f54534f7fb3b213c904ff  tools/security/dependency-policy.mts
-2fa85375e9fd65e8c44b8b66bf084109f216f5b3d662c9c32f0193168df0917a  tools/security/automation.mts
+12a2cdc1308d1ee5978df290bc5f534147ac9b2d45ac0b3f882aaeec1e84a289  tools/security/automation.mts
 a750b66f9eebcd9eb4864f716dae749df818d6cc92af5b677f4146b0725e28d9  tools/security/verify-tag
 a9ff9fd782bb9cf4664569fc32eb013eab82039ad18500575d67485060eb82b7  mise-tasks/release/checks
 647d9a16bfe877d429ed4cc6fd5c74454188b7f850a780feb25b39e6a87247b1  tools/security/verify-keyless-tag
@@ -15,6 +15,7 @@ dbb52a135615b986def3f41979919f9744f26a6647b78006347f33487379b97b  tools/release/
 724e942bcda72c9e4f06053749f71e4f5c630ea509e74d6b2823a68deb2b6186  tools/dependencies/policy.mts
 5f0088ed085188f3642463dfdc5d339ab583f2e0a7683f58d42393a0ecee77ad  tools/dependencies/inspect.mts
 d0b70b637af97baabc6b0347474702dc32cb641f996b3536996184ea03c435d5  tools/release/baseline.mts
+b19d51e3b2e404c3e299be8c99fb748129f09da46a14bcc2fdc5a6f3eedd151f  tools/release/wait-publication
 HASHES
 
 destination="${RUNNER_TEMP}/nylzo-security-policy"
@@ -32,3 +33,4 @@ cp -- "tools/release/github.mts" "${destination}/tools/release/github.mts"
 cp -- "tools/dependencies/policy.mts" "${destination}/tools/dependencies/policy.mts"
 cp -- "tools/dependencies/inspect.mts" "${destination}/tools/dependencies/inspect.mts"
 cp -- "tools/release/baseline.mts" "${destination}/tools/release/baseline.mts"
+cp -- "tools/release/wait-publication" "${destination}/tools/release/wait-publication"

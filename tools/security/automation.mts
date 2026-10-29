@@ -85,7 +85,17 @@ if (process.argv[2] === "merge") {
     tag = releaseMetadata(detail, pages(`repos/${repository}/pulls/${pull.number}/files?per_page=100`), contents(".release-please-manifest.json", source));
     const baseline = lastMainRelease();
     const messages = changesAfter(baseline.sha);
-    assert.equal(tag, `v${nextVersion(latest.tag_name, messages)}`, "Release PR is stale; regenerate instead of publishing a colliding version");
+    const expected = `v${nextVersion(latest.tag_name, messages)}`;
+    if (tag !== expected) {
+      requireAttention(detail, "An intervening published patch changed the next version. Review the regenerated release PR before publication.");
+      if (detail.labels.some((label: any) => label.name === "autorelease: pending")) request(`repos/${repository}/issues/${pull.number}/labels/${encodeURIComponent("autorelease: pending")}`, "DELETE");
+      assert(process.env.WORKFLOW_DISPATCH_TOKEN);
+      execFileSync("gh", ["api", `repos/${repository}/actions/workflows/release-please.yml/dispatches`, "--method", "POST", "--input", "-"], {
+        input: JSON.stringify({ ref: "main" }), env: { ...process.env, GH_TOKEN: process.env.WORKFLOW_DISPATCH_TOKEN },
+      });
+      console.log(`Approved metadata is stale; a new release PR must authorize ${expected}. No tag created.`);
+      process.exit(0);
+    }
     kind = "planned";
   } else {
     assert.equal(run.head_branch, releaseBranch(latest.tag_name));

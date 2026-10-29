@@ -17,6 +17,7 @@ permissions:
 concurrency:
   group: dependency-discovery
   cancel-in-progress: false
+  queue: max
 
 jobs:
   prepare:
@@ -26,6 +27,7 @@ jobs:
     timeout-minutes: 5
     environment: security-automation
     outputs:
+      ready: ${{ steps.source.outputs.ready }}
       tag: ${{ steps.source.outputs.tag }}
       source: ${{ steps.source.outputs.source }}
       mode: ${{ steps.mode.outputs.mode }}
@@ -68,6 +70,7 @@ jobs:
   scout:
     name: Source, actions, release and tool vulnerability inventory
     needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     outputs:

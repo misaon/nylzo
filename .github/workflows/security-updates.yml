@@ -12,6 +12,7 @@ permissions:
 concurrency:
   group: security-updates
   cancel-in-progress: false
+  queue: max
 
 jobs:
   signing-probe:
@@ -31,7 +32,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
+          echo '97138e6197f0e3ac7db5c399029052c001ab3a790875a34b73a4ce3921b858a7  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -112,7 +113,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
+          echo '97138e6197f0e3ac7db5c399029052c001ab3a790875a34b73a4ce3921b858a7  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -148,10 +149,11 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository
     name: Tag an approved planned release or isolated dependency patch
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     environment: security-automation
     permissions:
       contents: read
+      actions: write # regenerate a stale planned-release PR without changing its source
       id-token: write # keyless tag signature bound to this workflow on main
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -164,7 +166,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'b1e0ebb1c8284aac0f9719c4b18611e243e138d5991805d1ea06de856f23d8bb  tools/security/bootstrap-policy' | sha256sum --check
+          echo '97138e6197f0e3ac7db5c399029052c001ab3a790875a34b73a4ce3921b858a7  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
         env:
@@ -184,7 +186,7 @@ jobs:
           owner: misaon
           repositories: nylzo
           permission-contents: write
-          permission-pull-requests: read
+          permission-pull-requests: write
           permission-actions: read
       - name: Check out only the source commit whose CI completed
         env:
@@ -197,6 +199,7 @@ jobs:
         id: candidate
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          WORKFLOW_DISPATCH_TOKEN: ${{ github.token }}
           SECURITY_AUTOMATION_ENABLED: ${{ vars.SECURITY_AUTOMATION_ENABLED }}
           DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
           DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
@@ -224,6 +227,14 @@ jobs:
           authorization=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
           echo "::add-mask::$authorization"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $authorization" push origin "refs/tags/${RELEASE_TAG}"
+      - name: Hold release coordination until immutable publication completes
+        if: steps.candidate.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.tag }}
+          SOURCE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: bash "$RUNNER_TEMP/nylzo-security-policy/tools/release/wait-publication" "$RELEASE_TAG" "$SOURCE_COMMIT"
+
 
   published:
     if: >-

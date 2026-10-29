@@ -18,7 +18,11 @@ const branch = releaseBranch(latest.tag_name);
 const branches = request(`repos/${repository}/git/matching-refs/heads/${branch}`);
 const existing = branches.find((item: any) => item.ref === `refs/heads/${branch}`);
 if (!existing) request(`repos/${repository}/git/refs`, "POST", { ref: `refs/heads/${branch}`, sha });
-else assert.equal(existing.object.sha, sha, "A production update is already awaiting publication; do not stack updates onto unshipped code");
+else if (existing.object.sha !== sha) {
+  appendFileSync(process.env.GITHUB_OUTPUT!, "ready=false\n");
+  console.log("A verified update is awaiting publication; discovery resumes on the next published baseline.");
+  process.exit(0);
+}
 // Discard only superseded machine proposals, keeping migration/failed-test PRs
 // assigned to the maintainer. Reopening a PR remains possible on GitHub.
 const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
@@ -31,5 +35,5 @@ for (const pull of pulls) {
     request(`repos/${repository}/pulls/${pull.number}`, "PATCH", { state: "closed" });
   }
 }
-appendFileSync(process.env.GITHUB_OUTPUT!, `tag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\nblocked=${blocked}\n`);
+appendFileSync(process.env.GITHUB_OUTPUT!, `ready=true\ntag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\nblocked=${blocked}\n`);
 console.log(`Isolated update base ${branch} points to the last immutable published source.`);
