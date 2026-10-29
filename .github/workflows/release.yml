@@ -37,14 +37,14 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'bbf750591abb5e9635835bcf7aa9c4034b0e7033d38ba2a83a27827a5d3444f4  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'f833efe3c8fbf62ea00f6b5d72739212ed3da8249562d1c8fdd87c3c39a9dd56  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.20
           install_args: gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
           add_shims_to_path: false
@@ -98,7 +98,7 @@ jobs:
       - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.20
           install_args: go osv-scanner
           cache: false
       - name: Build the web client for the exact release tag
@@ -200,7 +200,7 @@ jobs:
       - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.20
           install_args: grype
           cache: false
       - name: The base image is the one the distroless project signed
