@@ -271,7 +271,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_BLOCKED: ${{ needs.prepare.outputs.blocked }}
-          NYLZO_BASE_TAG: ${{ needs.prepare.outputs.tag }}
           NYLZO_UPDATE_MODE: ${{ needs.prepare.outputs.mode }}
           DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
           DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}

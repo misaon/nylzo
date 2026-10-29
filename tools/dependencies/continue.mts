@@ -10,8 +10,7 @@ assert(previous <= 1000);
 const mode = process.env.NYLZO_UPDATE_MODE;
 assert(mode === "security" || mode === "weekly");
 const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
-const tag = process.env.NYLZO_BASE_TAG ?? request(`repos/${repository}/releases/latest`).tag_name;
-const blocked = blockedProposals(pulls, tag);
+const blocked = blockedProposals(pulls);
 assert(blocked <= 1000);
 if (blocked > previous) {
   // New major/migration proposals can arrive already labelled for attention.

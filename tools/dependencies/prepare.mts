@@ -29,17 +29,20 @@ else if (existing.object.sha !== sha) {
   console.log("A verified update is awaiting publication; discovery resumes on the next published baseline.");
   process.exit(0);
 }
-// Discard only superseded machine proposals, keeping migration/failed-test PRs
-// assigned to the maintainer. Reopening a PR remains possible on GitHub.
+// Close superseded machine proposals before budgeting. Preserve human edits;
+// a closed PR retains its diff and history and can be reopened for review.
 const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
-const blocked = blockedProposals(pulls, latest.tag_name);
-assert(blocked <= 1000);
 for (const pull of pulls) {
   if (trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository &&
       pull.head.ref.startsWith("renovate/") && pull.base.ref.startsWith("release/v") &&
-      pull.base.ref !== branch && !pull.labels.some((label: any) => label.name === "requires-attention")) {
+      pull.base.ref !== branch) {
+    const commits = pages(`repos/${repository}/pulls/${pull.number}/commits?per_page=100`);
+    if (commits.length !== 1 || commits[0].sha !== pull.head.sha || !trustedDependencyBot(commits[0].author) || !commits[0].commit.verification.verified || commits[0].parents.length !== 1) continue;
     request(`repos/${repository}/pulls/${pull.number}`, "PATCH", { state: "closed" });
+    pull.state = "closed";
   }
 }
+const blocked = blockedProposals(pulls);
+assert(blocked <= 1000);
 appendFileSync(process.env.GITHUB_OUTPUT!, `ready=true\ntag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\nblocked=${blocked}\n`);
 console.log(`Isolated update base ${branch} points to the last immutable published source.`);

@@ -89,7 +89,7 @@ if (process.argv[2] === "merge") {
         for (const stale of runs) {
           if (stale.workflow_id !== run.workflow_id || stale.event !== "pull_request" || stale.head_repository.full_name !== repository || stale.head_sha !== candidate.head.sha || stale.head_branch !== candidate.head.ref || stale.status === "completed") continue;
           assert(Number.isSafeInteger(stale.id));
-          execFileSync("gh", ["api", `repos/${repository}/actions/runs/${stale.id}/force-cancel`, "--method", "POST"], {
+          execFileSync("gh", ["api", `repos/${repository}/actions/runs/${stale.id}/cancel`, "--method", "POST"], {
             stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, GH_TOKEN: process.env.WORKFLOW_DISPATCH_TOKEN },
           });
           console.log(`Cancelled obsolete proposal CI ${stale.id}; PR #${candidate.number} needs a fresh base and full CI.`);

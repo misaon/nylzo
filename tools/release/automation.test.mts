@@ -267,8 +267,30 @@ test("a maintenance merge cancels only unchanged signed App PR CI from the super
     ] };
     const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
     const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
-    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/runs/456/force-cancel"]);
+    assert.deepEqual(writes.map(write => write.path), [f.prefix + "pulls/7/merge", f.prefix + "actions/runs/456/cancel"]);
     assert.equal(writes[0].dispatchToken, false); assert.equal(writes[1].dispatchToken, true);
+  } finally { f.cleanup(); }
+});
+
+test("discovery prunes superseded signed proposals before budgeting and preserves human migration work", () => {
+  const f = fixture();
+  try {
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    f.routes[f.prefix + "git/matching-refs/heads/release/v0.1.6"] = [{ ref: "refs/heads/release/v0.1.6", object: { sha: f.baseline } }];
+    const old = { ...f.pull, number: 8, state: "open", labels: [{ name: "requires-attention" }], base: { ref: "release/v0.1.5" } };
+    const human = { ...old, number: 9 };
+    const main = { ...old, number: 10, base: { ref: "main" } };
+    f.routes[f.prefix + "pulls?state=open&per_page=100"] = [old, human, main];
+    const signed = { sha: f.pull.head.sha, author: f.pull.user, commit: { verification: { verified: true } }, parents: [{ sha: f.baseline }] };
+    f.routes[f.prefix + "pulls/8/commits?per_page=100"] = [signed];
+    f.routes[f.prefix + "pulls/9/commits?per_page=100"] = [signed, { ...signed, author: { login: "misaon", id: 999 } }];
+    const result = f.execute("", resolve("tools/dependencies/prepare.mts"));
+    assert.equal(result.status, 0, result.stderr);
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => ({ path: write.path, method: write.method, body: write.body })), [{ path: f.prefix + "pulls/8", method: "PATCH", body: { state: "closed" } }]);
+    assert(result.output.includes("blocked=2\n"), "Only retained human work and the main hold need budget compensation");
   } finally { f.cleanup(); }
 });
 

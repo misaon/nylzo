@@ -7,12 +7,14 @@ test("obsolete release holds cannot inflate the active proposal budget", () => {
   try {
     process.env.DEPENDENCY_APP_SLUG = "nylzo-dependency-updates";
     process.env.DEPENDENCY_BOT_ID = "123456";
-    const pull = (base: string, id = 123456) => ({ user: { login: "nylzo-dependency-updates[bot]", id },
+    const pull = (base: string, id = 123456) => ({ state: "open", user: { login: "nylzo-dependency-updates[bot]", id },
       head: { repo: { full_name: "misaon/nylzo" } }, base: { ref: base }, labels: [{ name: "requires-attention" }] });
-    const pulls = [pull("main"), pull("release/v0.1.10"), ...Array.from({ length: 20 }, () => pull("release/v0.1.9")), pull("main", 999)];
-    assert.equal(blockedProposals(pulls, "v0.1.10"), 2);
-    assert.equal(blockedProposals(pulls, "v0.1.11"), 1);
+    const pulls = [pull("main"), pull("release/v0.1.10"), ...Array.from({ length: 20 }, () => ({ ...pull("release/v0.1.9"), state: "closed" })), pull("main", 999)];
+    assert.equal(blockedProposals(pulls), 2);
+    pulls.push(pull("release/v0.1.9"));
+    assert.equal(blockedProposals(pulls), 3);
+    pulls.pop();
     pulls[0]!.labels = [];
-    assert.equal(blockedProposals(pulls, "v0.1.10"), 1);
+    assert.equal(blockedProposals(pulls), 1);
   } finally { process.env = saved; }
 });
