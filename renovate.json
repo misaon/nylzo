@@ -378,7 +378,7 @@
   },
   "logLevelRemap": [
     {
-      "matchMessage": "/^Error updating branch:/",
+      "matchMessage": "/^(?:Error updating branch:|artifactErrors$)/",
       "newLogLevel": "error"
     }
   ],
