@@ -34,7 +34,7 @@ jobs:
         run: |
           echo 'd4558c46e673d3084b525134c8f85d45b9bfa6ebb8cc54569490b3b1d4ace18f  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
@@ -168,7 +168,7 @@ jobs:
         run: |
           echo 'd4558c46e673d3084b525134c8f85d45b9bfa6ebb8cc54569490b3b1d4ace18f  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
-      - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
+      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
