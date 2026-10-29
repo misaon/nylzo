@@ -315,6 +315,15 @@
         "minor"
       ],
       "enabled": false
+    },
+    {
+      "description": "Keep Go checksum metadata consistent after dependency updates.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "postUpdateOptions": [
+        "gomodTidy"
+      ]
     }
   ],
   "customManagers": [
