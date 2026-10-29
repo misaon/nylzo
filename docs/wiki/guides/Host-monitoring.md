@@ -44,6 +44,10 @@ gh secret set NYLZO_MONITOR_KEY --repo YOUR_OWNER/YOUR_REPOSITORY --env host-mon
 
 Set repository variable `NYLZO_HOST_MONITOR_URL` to `https://your-domain:8443/healthz`. Optionally set `NYLZO_HOST_MONITOR_ADDRESS` to the verified server address. The workflow checks host readiness about every 15 minutes and retries twice across brief restart windows. The separate released-client and synthetic-message checks remain hourly and use about 24 message creations per day.
 
+## Maintenance publication
+
+The same schedule checks public GitHub metadata for a merged maintenance update that remains unpublished for more than one hour. This catches a stalled CI or release queue while the existing production instance is still healthy. The check uses a read-only token and no host credentials; failures use the existing Actions notification settings.
+
 ## Checks and acceptance
 
 - Host policy: SELinux enforcement, effective kernel settings, Docker isolation, disabled CRI/transfer plugins, and the traffic ceiling.

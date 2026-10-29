@@ -15,6 +15,40 @@ concurrency:
   queue: max
 
 jobs:
+  retry-maintenance:
+    name: Retry failed post-merge maintenance CI without publishing
+    if: >-
+      github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'release/v') &&
+      contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write # rerun the complete, unchanged CI run after validating its source
+      pull-requests: write # assign attention after the bounded retry budget is exhausted
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - name: Retry all checks or leave the update for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
+        run: node tools/dependencies/retry-ci.mts
+
   signing-probe:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
     name: Verify keyless tag signing without publishing

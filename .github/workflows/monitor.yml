@@ -14,6 +14,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  maintenance:
+    name: Maintenance publication watchdog
+    if: github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - name: Detect an unpublished maintenance commit older than one hour
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/security/monitor-maintenance.mts
+
   host:
     name: Authenticated host readiness
     if: vars.NYLZO_HOST_MONITOR_URL != '' && github.ref == 'refs/heads/main'

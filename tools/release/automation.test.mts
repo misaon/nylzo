@@ -76,6 +76,55 @@ test("automatic patch publication excludes a feature already merged into main", 
   } finally { f.cleanup(); }
 });
 
+test("failed post-merge CI retries all jobs within a fixed budget and never retries a stale source", () => {
+  const f = fixture();
+  try {
+    Object.assign(f.run, { status: "completed", conclusion: "failure", run_attempt: 1 });
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    const run = () => f.execute("", resolve("tools/dependencies/retry-ci.mts"));
+    for (const attempt of [1, 2]) {
+      f.run.run_attempt = attempt;
+      const retry = run(); assert.equal(retry.status, 0, retry.stderr);
+      const writes = retry.writes.trim().split("\n").map(line => JSON.parse(line));
+      assert.equal(writes.length, 1); assert.equal(writes[0].path, f.prefix + "actions/runs/123/rerun");
+      assert(!writes[0].path.includes("rerun-failed-jobs"));
+    }
+    f.run.run_attempt = 3;
+    const exhausted = run(); assert.equal(exhausted.status, 0, exhausted.stderr);
+    assert.deepEqual(exhausted.writes.trim().split("\n").map(line => JSON.parse(line).body), [{ labels: ["requires-attention"] }, { assignees: ["misaon"] }]);
+    f.run.run_attempt = 1; f.run.status = "in_progress";
+    assert.equal(run().writes, "");
+    f.run.status = "completed";
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: "f".repeat(40) } };
+    assert.equal(run().writes, "");
+  } finally { f.cleanup(); }
+});
+
+test("the maintenance watchdog detects an unpublished stalled source without exposing host credentials", () => {
+  const f = fixture();
+  try {
+    const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    const branch = { ref: "refs/heads/release/v0.1.6", object: { sha: f.source } };
+    f.routes[f.prefix + "git/matching-refs/heads/release/v0.1.6"] = [branch];
+    const commit = { commit: { committer: { date: new Date(Date.now() - 30 * 60 * 1000).toISOString() } } };
+    f.routes[f.prefix + `commits/${f.source}`] = commit;
+    const run = () => f.execute("", resolve("tools/security/monitor-maintenance.mts"));
+    const healthy = run(); assert.equal(healthy.status, 0, healthy.stderr); assert.equal(healthy.writes, "");
+    commit.commit.committer.date = new Date(Date.now() - 61 * 60 * 1000).toISOString();
+    const stalled = run(); assert.notEqual(stalled.status, 0); assert(stalled.stderr.includes("has not published within one hour")); assert.equal(stalled.writes, "");
+    commit.commit.committer.date = new Date(Date.now() + 120000).toISOString();
+    assert.notEqual(run().status, 0);
+    branch.object.sha = f.baseline;
+    assert.equal(run().status, 0);
+    f.routes[f.prefix + "git/matching-refs/heads/release/v0.1.6"] = [];
+    assert.equal(run().status, 0);
+  } finally { f.cleanup(); }
+});
+
 test("an ordinary main PR merge cannot create a release candidate", () => {
   const f = fixture();
   try {
