@@ -198,7 +198,7 @@ jobs:
         with:
           token: ${{ steps.app.outputs.token }}
           configurationFile: .github/renovate.cjs
-          renovate-image: ghcr.io/renovatebot/renovate:44.192.2@sha256:37960a62ba1faa9079a7c4eead9b3f4470748a64ecd207e06c09fd8858673e17
+          renovate-image: ghcr.io/renovatebot/renovate:44.196.0@sha256:8b150e4be3bfef61edeecf08e2602a6179075d5572fd977e0d347539b50aaf7c
           mount-docker-socket: false
           docker-volumes: /tmp:/tmp;${{ github.workspace }}/tools/dependencies/sync.mts:/opt/nylzo-dependency-sync.mts:ro;${{ github.workspace }}/renovate.json:/opt/nylzo-renovate.json:ro
           additional-env-list: |
