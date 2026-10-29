@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { appendFileSync } from "node:fs";
 import { contents, pages, repository, request } from "../release/github.mts";
 import { releaseBranch, supportsToolInventory, trustedDependencyBot, versionParts } from "../release/policy.mts";
+import { blockedProposals } from "./queue.mts";
 
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.equal(process.env.GITHUB_REF, "refs/heads/main");
@@ -31,7 +32,7 @@ else if (existing.object.sha !== sha) {
 // Discard only superseded machine proposals, keeping migration/failed-test PRs
 // assigned to the maintainer. Reopening a PR remains possible on GitHub.
 const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
-const blocked = pulls.filter(pull => trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository && pull.labels.some((label: any) => label.name === "requires-attention")).length;
+const blocked = blockedProposals(pulls, latest.tag_name);
 assert(blocked <= 1000);
 for (const pull of pulls) {
   if (trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository &&

@@ -71,9 +71,9 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
   return { pull, base, changes, files };
 }
 
-export function requireAttention(pull: any, reason: string): void {
+export function requireAttention(pull: any, reason: string, kind?: "ci" | "manual"): void {
   assert(trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository);
-  request(`repos/${repository}/issues/${pull.number}/labels`, "POST", { labels: ["requires-attention"] });
+  request(`repos/${repository}/issues/${pull.number}/labels`, "POST", { labels: ["requires-attention", ...(kind === "ci" ? ["automation:ci-failed"] : kind === "manual" ? ["manual-hold"] : [])] });
   request(`repos/${repository}/issues/${pull.number}/assignees`, "POST", { assignees: ["misaon"] });
   console.log(`PR #${pull.number} requires maintainer attention: ${reason}`);
 }

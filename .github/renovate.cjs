@@ -14,7 +14,7 @@ const blocked = Number(process.env.NYLZO_BLOCKED_PROPOSALS || "0");
 assert(Number.isSafeInteger(blocked) && blocked >= 0 && blocked <= 1000);
 module.exports = {
   ...config,
-  // Reviewed/manual PRs must not consume the four active update slots forever.
+  // Current manual holds do not consume the two ordinary update slots.
   prConcurrentLimit: config.prConcurrentLimit + blocked,
   platform: "github",
   repositories: ["misaon/nylzo"],

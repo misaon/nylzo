@@ -30,7 +30,7 @@
     "misaon"
   ],
   "branchPrefix": "renovate/",
-  "prConcurrentLimit": 4,
+  "prConcurrentLimit": 2,
   "prHourlyLimit": 0,
   "minimumReleaseAge": "3 days",
   "rebaseWhen": "behind-base-branch",
@@ -43,7 +43,8 @@
       "automation:security"
     ],
     "minimumReleaseAge": null,
-    "schedule": []
+    "schedule": [],
+    "prConcurrentLimit": 1
   },
   "osvVulnerabilityAlerts": true,
   "packageRules": [
@@ -52,9 +53,11 @@
         "major"
       ],
       "addLabels": [
-        "requires-attention"
+        "requires-attention",
+        "manual-hold"
       ],
-      "dependencyDashboardApproval": false
+      "dependencyDashboardApproval": false,
+      "draftPR": true
     },
     {
       "matchCurrentVersion": "/^0\\./",
@@ -62,8 +65,10 @@
         "minor"
       ],
       "addLabels": [
-        "requires-attention"
-      ]
+        "requires-attention",
+        "manual-hold"
+      ],
+      "draftPR": true
     },
     {
       "matchManagers": [
@@ -158,8 +163,10 @@
       ],
       "groupName": null,
       "addLabels": [
-        "requires-attention"
-      ]
+        "requires-attention",
+        "manual-hold"
+      ],
+      "draftPR": true
     },
     {
       "matchUpdateTypes": [
@@ -167,8 +174,10 @@
       ],
       "groupName": null,
       "addLabels": [
-        "requires-attention"
-      ]
+        "requires-attention",
+        "manual-hold"
+      ],
+      "draftPR": true
     },
     {
       "matchPackageNames": [
@@ -270,6 +279,42 @@
         "pnpm"
       ],
       "groupName": "pnpm"
+    },
+    {
+      "description": "Review Node and its TypeScript declarations as one planned migration.",
+      "matchBaseBranches": [
+        "main"
+      ],
+      "matchPackageNames": [
+        "node",
+        "nodejs/node",
+        "@types/node"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "Node.js migration"
+    },
+    {
+      "description": "Breaking upgrades belong to planned main releases, not automatic production patches.",
+      "matchBaseBranches": [
+        "/^release\\/v/"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Pre-1.0 minor upgrades require a planned main release.",
+      "matchBaseBranches": [
+        "/^release\\/v/"
+      ],
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "enabled": false
     }
   ],
   "customManagers": [
@@ -399,5 +444,8 @@
       "newLogLevel": "error"
     }
   ],
-  "stopUpdatingLabel": "requires-attention"
+  "stopUpdatingLabel": "manual-hold",
+  "baseBranchPatterns": [
+    "main"
+  ]
 }
