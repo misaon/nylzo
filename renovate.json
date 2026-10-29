@@ -119,13 +119,6 @@
       ]
     },
     {
-      "matchPackageNames": [
-        "go",
-        "golang/go"
-      ],
-      "groupName": "Go toolchain"
-    },
-    {
       "matchManagers": [
         "gomod"
       ],
@@ -234,7 +227,8 @@
         "goreleaser/goreleaser",
         "ghcr.io/renovatebot/renovate",
         "sigstore/cosign",
-        "jdx/mise"
+        "jdx/mise",
+        "actions/node-versions"
       ],
       "enabled": false,
       "description": "Custom managers update these CLI inputs together with their verified binary checksums.",
@@ -263,6 +257,19 @@
         "docker"
       ],
       "allowedVersions": "/^\\d*[02468]\\.04$/"
+    },
+    {
+      "matchPackageNames": [
+        "go",
+        "golang/go"
+      ],
+      "groupName": "Go toolchain"
+    },
+    {
+      "matchPackageNames": [
+        "pnpm"
+      ],
+      "groupName": "pnpm"
     }
   ],
   "customManagers": [

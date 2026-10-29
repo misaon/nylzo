@@ -45,7 +45,7 @@ test("security discovery does not re-enable duplicate CLI inputs or disable Acti
     const reenable = rules.findIndex((rule: any) => rule.enabled === true && rule.matchPackageNames?.includes("sigstore/cosign"));
     const exclusion = rules.findLastIndex((rule: any) => rule.enabled === false && rule.matchManagers?.includes("github-actions") && rule.matchDepTypes?.includes("uses-with"));
     assert(exclusion > reenable);
-    assert.deepEqual(rules[exclusion].matchPackageNames, ["goreleaser/goreleaser", "ghcr.io/renovatebot/renovate", "sigstore/cosign", "jdx/mise"]);
+    assert.deepEqual(rules[exclusion].matchPackageNames, ["goreleaser/goreleaser", "ghcr.io/renovatebot/renovate", "sigstore/cosign", "jdx/mise", "actions/node-versions"]);
     assert(!rules[exclusion].matchPackageNames.includes("jdx/mise-action"));
     assert(!rules[exclusion].matchPackageNames.includes("sigstore/cosign-installer"));
   } finally { process.env = saved; }
