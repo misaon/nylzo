@@ -12,7 +12,7 @@
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/js": "10.0.1",
-    "@sveltejs/mcp": "0.1.27",
+    "@sveltejs/mcp": "0.1.28",
     "@vitest/eslint-plugin": "1.6.28",
     "eslint": "10.13.0",
     "eslint-plugin-perfectionist": "5.13.0",
@@ -26,6 +26,6 @@
     "prettier-plugin-svelte": "4.1.1",
     "prettier-plugin-tailwindcss": "0.8.1",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.0"
+    "typescript-eslint": "8.72.1"
   }
 }
