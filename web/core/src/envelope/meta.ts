@@ -38,8 +38,12 @@ function validateMeta(meta: Meta): void {
 }
 
 export function encodeMeta(meta: Meta): Uint8Array<ArrayBuffer> {
+  return encodeStoredMeta(meta);
+}
+
+export function encodeStoredMeta(meta: Meta, compressedSize?: number): Uint8Array<ArrayBuffer> {
   validateMeta(meta);
-  const bytes = utf8(canonicalJson(meta));
+  const bytes = utf8(canonicalJson(meta, compressedSize));
   if (bytes.length > MAX_META_BYTES) {
     throw new MetaError('meta exceeds the size limit');
   }
@@ -47,12 +51,46 @@ export function encodeMeta(meta: Meta): Uint8Array<ArrayBuffer> {
 }
 
 export function decodeMeta(bytes: Uint8Array): Meta {
+  const stored = decodeStoredMeta(bytes);
+  if (stored.compressedSize !== undefined) {
+    throw new MetaError('compressed metadata needs an attachment decoder');
+  }
+  return stored.meta;
+}
+
+export interface StoredMeta {
+  readonly meta: Meta;
+  readonly compressedSize?: number | undefined;
+}
+
+export function decodeStoredMeta(bytes: Uint8Array): StoredMeta {
   if (bytes.length > MAX_META_BYTES) {
     throw new MetaError('meta exceeds the size limit');
   }
-  const meta = metaFromJson(parseMetaJson(bytes));
+  const members = objectMembers(parseMetaJson(bytes));
+  const version = requireInteger(member(members, 'v'));
+  if (version !== 1 && version !== 2) {
+    throw new MetaError('unsupported metadata version');
+  }
+  const meta = metaFromJson(members);
   validateMeta(meta);
-  return meta;
+  if (version === 1) {
+    return { meta };
+  }
+  const file = member(members, 'file');
+  if (file === undefined || meta.file === undefined) {
+    throw new MetaError('compressed metadata needs a file');
+  }
+  const fileMembers = objectMembers(file);
+  const compressedSize = requireInteger(member(fileMembers, 'encoded_size'));
+  if (
+    optionalString(member(fileMembers, 'encoding')) !== 'gzip' ||
+    compressedSize <= 0 ||
+    compressedSize >= meta.file.size
+  ) {
+    throw new MetaError('invalid file encoding');
+  }
+  return { meta, compressedSize };
 }
 
 function validateText(text: string): void {
@@ -80,14 +118,18 @@ function validateFileName(name: string): void {
   }
 }
 
-function canonicalJson(meta: Meta): string {
-  let json = '{"v":1';
+function canonicalJson(meta: Meta, compressedSize?: number): string {
+  let json = compressedSize === undefined ? '{"v":1' : '{"v":2';
   if (meta.text !== undefined) {
     json += `,"text":${JSON.stringify(meta.text)}`;
   }
   if (meta.file !== undefined) {
     const { name, mime, size } = meta.file;
-    json += `,"file":{"name":${JSON.stringify(name)},"mime":${JSON.stringify(mime)},"size":${String(size)}}`;
+    json += `,"file":{"name":${JSON.stringify(name)},"mime":${JSON.stringify(mime)},"size":${String(size)}`;
+    if (compressedSize !== undefined) {
+      json += `,"encoding":"gzip","encoded_size":${String(compressedSize)}`;
+    }
+    json += '}';
   }
   return `${json}}`;
 }
@@ -100,11 +142,7 @@ function parseMetaJson(bytes: Uint8Array): JsonValue {
   }
 }
 
-function metaFromJson(value: JsonValue): Meta {
-  const members = objectMembers(value);
-  if (requireInteger(member(members, 'v')) !== 1) {
-    throw new MetaError('meta.v must be 1');
-  }
+function metaFromJson(members: ReadonlyMap<string, JsonValue>): Meta {
   const file = member(members, 'file');
   return {
     text: optionalString(member(members, 'text')),

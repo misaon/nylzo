@@ -56,11 +56,19 @@ func validFileName(name string) bool {
 }
 
 func EncodeMeta(meta Meta) ([]byte, error) {
+	return encodeStoredMeta(meta, 0)
+}
+
+func encodeStoredMeta(meta Meta, compressedSize int64) ([]byte, error) {
 	if err := meta.Validate(); err != nil {
 		return nil, err
 	}
 	var buffer bytes.Buffer
-	buffer.WriteString(`{"v":1`)
+	if compressedSize > 0 {
+		buffer.WriteString(`{"v":2`)
+	} else {
+		buffer.WriteString(`{"v":1`)
+	}
 	if meta.Text != nil {
 		buffer.WriteString(`,"text":`)
 		writeJSONString(&buffer, *meta.Text)
@@ -72,6 +80,10 @@ func EncodeMeta(meta Meta) ([]byte, error) {
 		writeJSONString(&buffer, meta.File.Mime)
 		buffer.WriteString(`,"size":`)
 		buffer.WriteString(strconv.FormatInt(meta.File.Size, 10))
+		if compressedSize > 0 {
+			buffer.WriteString(`,"encoding":"gzip","encoded_size":`)
+			buffer.WriteString(strconv.FormatInt(compressedSize, 10))
+		}
 		buffer.WriteByte('}')
 	}
 	buffer.WriteByte('}')
@@ -82,34 +94,67 @@ func EncodeMeta(meta Meta) ([]byte, error) {
 }
 
 func DecodeMeta(data []byte) (Meta, error) {
-	if len(data) > MaxMetaBytes || !utf8.Valid(data) || jsonDepth(data) > MaxJSONDepth {
+	stored, err := decodeStoredMeta(data)
+	if err != nil || stored.compressedSize != 0 {
 		return Meta{}, ErrMeta
+	}
+	return stored.meta, nil
+}
+
+type storedMeta struct {
+	meta           Meta
+	compressedSize int64
+}
+
+func decodeStoredMeta(data []byte) (storedMeta, error) {
+	if len(data) > MaxMetaBytes || !utf8.Valid(data) || jsonDepth(data) > MaxJSONDepth {
+		return storedMeta{}, ErrMeta
 	}
 	object, err := decodeObject(data)
 	if err != nil {
-		return Meta{}, err
+		return storedMeta{}, err
 	}
 	var version int
-	if err = decodeRequired(object, "v", &version); err != nil || version != 1 {
-		return Meta{}, ErrMeta
+	if err = decodeRequired(object, "v", &version); err != nil || (version != 1 && version != 2) {
+		return storedMeta{}, ErrMeta
 	}
 	var meta Meta
 	if raw := lookup(object, "text"); raw != nil {
 		meta.Text = new(string)
 		if json.Unmarshal(raw, meta.Text) != nil {
-			return Meta{}, ErrMeta
+			return storedMeta{}, ErrMeta
 		}
 	}
 	if raw := lookup(object, "file"); raw != nil {
 		if meta.File, err = decodeFileMeta(raw); err != nil {
-			return Meta{}, err
+			return storedMeta{}, err
 		}
 	}
-	err = meta.Validate()
-	if err != nil {
-		return Meta{}, err
+	if validationErr := meta.Validate(); validationErr != nil {
+		return storedMeta{}, validationErr
 	}
-	return meta, nil
+	compressedSize, err := decodeCompression(object, meta, version)
+	return storedMeta{meta: meta, compressedSize: compressedSize}, err
+}
+
+func decodeCompression(object map[string]json.RawMessage, meta Meta, version int) (int64, error) {
+	if version == 1 {
+		return 0, nil
+	}
+	if meta.File == nil {
+		return 0, ErrMeta
+	}
+	file, err := decodeObject(lookup(object, "file"))
+	if err != nil {
+		return 0, err
+	}
+	var encoding string
+	var size int64
+	if decodeRequired(file, "encoding", &encoding) != nil || encoding != "gzip" ||
+		decodeRequired(file, "encoded_size", &size) != nil || size <= 0 || size >= meta.File.Size {
+		return 0, ErrMeta
+	}
+	return size, nil
 }
 
 const hexDigits = "0123456789abcdef"

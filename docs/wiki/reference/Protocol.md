@@ -93,9 +93,9 @@ object     = header || ciphertext
 - `iv`: 12 bytes from the CSPRNG, fresh per message. One `K` encrypts exactly one envelope.
 - `opens_max` and `ttl_s` are the sender's policy. The recipient obtains them from `X-Nylzo-Policy` (§6.4) and the metadata response and decrypts with them; any change by the server or an intermediary fails authentication.
 - `len_meta` is the byte length of `meta`.
-- `file_bytes` are present exactly when `meta.file` is present and have length `meta.file.size`.
+- `file_bytes` are present exactly when `meta.file` is present. Their length is `meta.file.size` for metadata v1, or `meta.file.encoded_size` for compressed attachments (§3.2).
 - `padding` is zero bytes. The padded length is visible to the server, so the size of a file is known to 64 KiB and the size of a text to 4 KiB.
-- The object length (`15 + 4 + len_meta + len(file_bytes) + len(padding) + 16`) MUST be a multiple of 4096 bytes; when `meta.file` is present it MUST be a multiple of 65536 bytes. The padding covers the header and the tag too, so a stored object fills whole file system blocks and its Padmé length (§5.2) adds nothing below 4 MiB. The decoder MUST derive the content length from `len_meta` and `meta.file.size`, MUST NOT depend on the padding content, and MAY ignore it.
+- The object length (`15 + 4 + len_meta + len(file_bytes) + len(padding) + 16`) MUST be a multiple of 4096 bytes; when `meta.file` is present it MUST be a multiple of 65536 bytes. The padding covers the header and the tag too, so a stored object fills whole file system blocks and its Padmé length (§5.2) adds nothing below 4 MiB. The decoder MUST derive the content length from `len_meta` and the stored file length (§3.2), MUST NOT depend on the padding content, and MAY ignore it.
 - Limits: `meta.text` at most 102400 bytes of UTF-8; `meta.file.size` at most 5242880; `len_meta` at most 104448; `object` at most 5410880 bytes (5 MiB + 100 KiB + 64 KiB + 64 B). These are protocol maxima that both reference cores enforce. An instance MAY report lower limits in `/api/v1/instance` and MUST NOT report higher ones. An instance derives `max_object_bytes` from its file limit as the largest object a valid meta and file can produce: `min(5410880, pad65536(15 + 4 + 104448 + max_file_bytes + 16))`, where `pad65536` rounds up to a multiple of 65536. With the default file limit that is 5373952.
 
 ### 3.1 meta **[detail]**
@@ -106,11 +106,33 @@ object     = header || ciphertext
 {"v":1,"text":"…","file":{"name":"…","mime":"…","size":N}}
 ```
 
-- `v` MUST be 1. `text` and `file` are each optional; at least one MUST be present.
+- `v` MUST be 1 for uncompressed content or 2 for compressed attachments (§3.2). `text` and `file` are each optional in v1; at least one MUST be present.
 - `file.name`: 1 to 255 bytes of UTF-8, no `/`, `\`, C0 control characters (U+0000 to U+001F) or DEL (U+007F). Clients MUST additionally sanitise the name before display and download, and display only the sanitised name, isolated from the direction of the surrounding text.
-- `file.mime`: 0 to 255 bytes. `file.size`: non-negative integer equal to the length of `file_bytes`.
+- `file.mime`: 0 to 255 bytes. `file.size`: non-negative integer equal to the original file length, including when its stored bytes are compressed.
 - Encoders MUST produce the canonical form so both cores emit identical bytes: UTF-8, no whitespace, keys in the order `v`, `text`, `file` (and `name`, `mime`, `size` inside `file`), absent keys omitted, integers in decimal without sign, exponent or fraction. String escaping: `"` → `\"`, `\` → `\\`, U+0008 → `\b`, U+0009 → `\t`, U+000A → `\n`, U+000C → `\f`, U+000D → `\r`, every other code point below U+0020 → `\u00XX` with lowercase hex, every other code point literal UTF-8 (including `/`, U+2028 and U+2029).
 - Decoders MUST accept any RFC 8259 JSON object that satisfies the constraints above, MUST ignore unknown keys, and take the last occurrence of a duplicated key. They MUST reject meta nested deeper than 32 levels; the top-level object is level 1 and brackets inside strings do not count.
+
+### 3.2 Compressed attachments
+
+A sender MAY compress an attachment on its own device before padding and encryption. Compression MUST use a fresh gzip context for that file alone. Message text, names, MIME types, passphrases, keys, and other messages MUST NOT enter that context. The server continues to store opaque ciphertext and MUST NOT decompress it.
+
+Compressed attachments use the unchanged v1 envelope header and metadata v2:
+
+```json
+{"v":2,"text":"…","file":{"name":"rows.csv","mime":"text/csv","size":220000,"encoding":"gzip","encoded_size":489}}
+```
+
+`file.size` is the original byte length and remains bounded by 5242880. `file.encoding` MUST be `gzip`. `file.encoded_size` MUST be a positive integer smaller than `file.size` and within the decrypted plaintext. The gzip frame occupies exactly that many bytes; padding follows it. Encoders append `encoding`, then `encoded_size`, after `size` in the canonical file object. All fields, including both lengths and the encoding, are protected by the envelope's AEAD.
+
+A decoder MUST authenticate the entire envelope before decompression. It MUST enforce the original-size limit before allocating output, stop if output exceeds the declared original size, and reject a shorter result, invalid gzip checksums, truncation, additional gzip members, or trailing bytes inside `encoded_size`. It MUST NOT use gzip filenames or timestamps. The decoded application payload contains the original file and metadata. Shared Go and Node gzip frames in `spec/compression-vectors.json` check interoperability; compressors need not produce identical gzip bytes.
+
+The web client and CLI attempt compression for files of at least 128 KiB. They keep it only when the complete object, including metadata, authentication overhead and 64 KiB padding, saves at least one 64 KiB block and at least 10%. Otherwise they retain metadata v1 and the original bytes. Text-only messages remain uncompressed. Limits on the original content still apply, so compression does not raise the upload limit.
+
+New readers accept both metadata versions. Older readers reject metadata v2; recipients using an older CLI must update before opening a compressed attachment. Uncompressed objects, link formats, server APIs, and database schemas are unchanged.
+
+Compression changes the relationship between content and observable padded length. Separate contexts prevent cross-message dictionary reuse, but padding does not eliminate length-based inference. A sender should not combine attacker-chosen bytes and secrets into one file when an attacker can observe repeated compressed lengths. See [RFC 8878 §8](https://www.rfc-editor.org/rfc/rfc8878.html#section-8).
+
+Gzip was selected for native support across the supported browsers and Go, without an added codec dependency. Zstandard has a better speed profile in its [reference benchmarks](https://facebook.github.io/zstd/), but native Compression Streams support remains incomplete; Brotli support also differs between browsers. Current [browser compatibility data](https://github.com/mdn/browser-compat-data/blob/main/api/CompressionStream.json) and the [Compression Streams specification](https://compression.spec.whatwg.org/) describe these differences. A local Node 24.22.1 comparison of gzip level 6, deflate level 6, Brotli quality 4, and Zstandard level 3 used generated CSV/JSON, protocol source, random bytes, and already compressed data. Gzip reduced the padded CSV fixture from 640 KiB to 192 KiB, and JSON from 448 KiB to 64 KiB. These fixtures demonstrate potential savings, not an estimate of real-user storage or mobile performance.
 
 ## 4. Link
 

@@ -1,4 +1,4 @@
-export { open, type Opened, type OpenedPayload, type Payload, seal } from './envelope/envelope.ts';
+export { open, type Opened, type OpenedPayload, type Payload, seal, sealWithCompression } from './envelope/envelope.ts';
 export { type Header, newHeader, type Policy } from './envelope/header.ts';
 export type { FileMeta, Meta } from './envelope/meta.ts';
 export {

@@ -11,8 +11,9 @@ import {
   TAG_LENGTH,
 } from '../limits.ts';
 import { arrayBufferBacked, concatenate } from '../primitives/bytes.ts';
+import { compressAttachment, decompressAttachment } from './compression.ts';
 import { aad, type Header, headerBytes, parseHeader, type Policy, validateHeader, validatePolicy } from './header.ts';
-import { decodeMeta, encodeMeta, type Meta } from './meta.ts';
+import { decodeStoredMeta, encodeMeta, encodeStoredMeta, type Meta } from './meta.ts';
 
 export interface Payload {
   readonly meta: Meta;
@@ -40,9 +41,30 @@ export async function seal(
   policy: Policy,
   payload: Payload,
 ): Promise<Uint8Array<ArrayBuffer>> {
+  return sealEnvelope(contentKey, header, id, policy, payload, false);
+}
+
+export async function sealWithCompression(
+  contentKey: CryptoKey,
+  header: Header,
+  id: Uint8Array,
+  policy: Policy,
+  payload: Payload,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return sealEnvelope(contentKey, header, id, policy, payload, true);
+}
+
+async function sealEnvelope(
+  contentKey: CryptoKey,
+  header: Header,
+  id: Uint8Array,
+  policy: Policy,
+  payload: Payload,
+  compress: boolean,
+): Promise<Uint8Array<ArrayBuffer>> {
   validateHeader(header);
   validatePolicy(policy);
-  const plaintext = buildPlaintext(payload);
+  const plaintext = await buildPlaintext(payload, compress);
   try {
     const ciphertext = await crypto.subtle.encrypt(aesGcmParameters(header, id, policy), contentKey, plaintext);
     return concatenate(headerBytes(header), new Uint8Array(ciphertext));
@@ -68,7 +90,7 @@ export async function open(
   const parameters = aesGcmParameters(header, id, policy);
   const plaintext = await decrypt(contentKey, parameters, object.subarray(HEADER_LENGTH));
   try {
-    return { header, payload: parsePlaintext(plaintext) };
+    return { header, payload: await parsePlaintext(plaintext) };
   } finally {
     plaintext.fill(0);
   }
@@ -95,15 +117,59 @@ async function decrypt(
   }
 }
 
-function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
+async function buildPlaintext(payload: Payload, compress: boolean): Promise<Uint8Array<ArrayBuffer>> {
   const meta = encodeMeta(payload.meta);
-  const file = payload.file ?? new Uint8Array(0);
-  if (file.length !== (payload.meta.file?.size ?? 0)) {
-    throw new MetaError('file length differs from meta.file.size');
+  try {
+    const file = payload.file ?? new Uint8Array(0);
+    if (file.length !== (payload.meta.file?.size ?? 0)) {
+      throw new MetaError('file length differs from meta.file.size');
+    }
+    if (compress && payload.meta.file !== undefined) {
+      const compressed = await compressAttachment(file);
+      if (compressed !== undefined) {
+        try {
+          return compressedPlaintext(payload.meta, meta, file, compressed);
+        } finally {
+          compressed.fill(0);
+        }
+      }
+    }
+    return padContent(meta, file, payload.meta.file !== undefined);
+  } finally {
+    meta.fill(0);
   }
+}
+
+function compressedPlaintext(
+  meta: Meta,
+  metadata: Uint8Array,
+  file: Uint8Array,
+  compressed: Uint8Array,
+): Uint8Array<ArrayBuffer> {
+  let encoded: Uint8Array<ArrayBuffer>;
+  try {
+    encoded = encodeStoredMeta(meta, compressed.length);
+  } catch {
+    return padContent(metadata, file, true);
+  }
+  try {
+    const overhead = HEADER_LENGTH + TAG_LENGTH + META_LEN_PREFIX;
+    const originalSize = paddedLength(overhead + metadata.length + file.length, true);
+    const compressedSize = paddedLength(overhead + encoded.length + compressed.length, true);
+    return compressed.length >= file.length ||
+      originalSize - compressedSize < PAD_FILE ||
+      compressedSize * 10 > originalSize * 9
+      ? padContent(metadata, file, true)
+      : padContent(encoded, compressed, true);
+  } finally {
+    encoded.fill(0);
+  }
+}
+
+function padContent(meta: Uint8Array, file: Uint8Array, hasFile: boolean): Uint8Array<ArrayBuffer> {
   const overhead = HEADER_LENGTH + TAG_LENGTH;
   const content = META_LEN_PREFIX + meta.length + file.length;
-  const length = paddedLength(overhead + content, payload.meta.file !== undefined) - overhead;
+  const length = paddedLength(overhead + content, hasFile) - overhead;
   if (overhead + length > MAX_OBJECT_BYTES) {
     throw new TooLargeError();
   }
@@ -114,7 +180,7 @@ function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
   return plaintext;
 }
 
-function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): OpenedPayload {
+async function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): Promise<OpenedPayload> {
   if (plaintext.length < META_LEN_PREFIX) {
     throw new PlaintextError();
   }
@@ -123,12 +189,17 @@ function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): OpenedPayload {
   if (metaLength > MAX_META_BYTES || fileStart > plaintext.length) {
     throw new PlaintextError();
   }
-  const meta = decodeMeta(plaintext.subarray(META_LEN_PREFIX, fileStart));
+  const { meta, compressedSize } = decodeStoredMeta(plaintext.subarray(META_LEN_PREFIX, fileStart));
   if (meta.file === undefined) {
     return { meta };
   }
-  if (meta.file.size > plaintext.length - fileStart) {
+  const size = compressedSize ?? meta.file.size;
+  if (size > plaintext.length - fileStart) {
     throw new PlaintextError();
   }
-  return { meta, file: plaintext.slice(fileStart, fileStart + meta.file.size) };
+  const file =
+    compressedSize === undefined
+      ? plaintext.slice(fileStart, fileStart + size)
+      : await decompressAttachment(plaintext.subarray(fileStart, fileStart + size), meta.file.size);
+  return { meta, file };
 }

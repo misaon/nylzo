@@ -387,7 +387,7 @@ func sealMessage(
 	defer clear(keys.K[:])
 	defer clear(keys.V[:])
 	payload := core.Payload{Meta: message.meta, File: message.file}
-	object, err := core.Seal(&keys.K, core.NewHeader(kdf), id, policy, payload)
+	object, err := core.SealWithCompression(&keys.K, core.NewHeader(kdf), id, policy, payload)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
