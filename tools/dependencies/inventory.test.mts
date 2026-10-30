@@ -33,6 +33,11 @@ test("canonical tool pins and generated deployment/signing metadata cannot drift
   assert.equal(host.caddy, caddy);
   const config = JSON.parse(readFileSync("renovate.json", "utf8"));
   assert(config.postUpgradeTasks.fileFilters.includes("mise-tasks/deploy"));
+  assert(config.postUpgradeTasks.fileFilters.includes("mise.toml"));
+  const annotated = config.customManagers.find((manager: any) => manager.matchStrings[0].startsWith("# renovate: datasource="));
+  assert(!annotated.managerFilePatterns.includes("/^mise\\.toml$/"));
+  assert(!annotated.managerFilePatterns.includes("/^tools/security/runtime\\.toml$/"));
+  assert(!mise.startsWith("# renovate: datasource=github-releases depName=jdx/mise\n"));
 });
 
 test("security discovery does not re-enable duplicate CLI inputs or disable Action SHA updates", () => {

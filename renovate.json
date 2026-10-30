@@ -363,8 +363,6 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^mise\\.toml$/",
-        "/^tools/security/runtime\\.toml$/",
         "/^\\.github/workflows/[^/]+\\.ya?ml$/"
       ],
       "matchStrings": [
@@ -437,7 +435,8 @@
       "tools/security/bootstrap-policy",
       ".github/workflows/security-updates.yml",
       ".github/workflows/release.yml",
-      "mise-tasks/deploy"
+      "mise-tasks/deploy",
+      "mise.toml"
     ],
     "executionMode": "branch"
   },

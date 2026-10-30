@@ -79,11 +79,13 @@ test("an unavailable immutable target does not stall already verified updates", 
 
 test("completed diagnostic evidence never inflates the two unfinished-proposal slots", () => {
   const require = createRequire(import.meta.url), path = require.resolve("../../.github/renovate.cjs");
-  const values = { NYLZO_UPDATE_MODE: "weekly", NYLZO_MISE_VERSION: "2026.10.19", NYLZO_BASE_TAG: "v0.1.6", NYLZO_BLOCKED_PROPOSALS: "40", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { "release/v0.1.6": { phase: "diagnostic", root: 10, head, candidates: [items[0]] } }, excluded: [] }) };
+  const regexTarget = { name: "jdx/mise", manager: "regex", datasource: "github-release-attachments", value: "v2026.10.20", version: "v2026.10.20" };
+  const values = { NYLZO_UPDATE_MODE: "weekly", NYLZO_MISE_VERSION: "2026.10.19", NYLZO_BASE_TAG: "v0.1.6", NYLZO_BLOCKED_PROPOSALS: "40", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { "release/v0.1.6": { phase: "diagnostic", root: 10, head, candidates: [items[0], regexTarget] } }, excluded: [] }) };
   const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]));
   try {
     Object.assign(process.env, values); delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 2);
+    assert.deepEqual(require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchPackageNames?.includes("jdx/mise")).matchManagers, ["custom.regex"], "Signed metadata uses the internal regex name; selectors require custom.regex");
     process.env.NYLZO_BATCH_PLAN = '{"plans":{},"excluded":[]}'; delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 42, "Ordinary migration holds retain their existing budget policy");
   } finally {

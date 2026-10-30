@@ -14,10 +14,18 @@ test("raising the mise minimum preserves unchanged runtime locks; executable cha
     for (const path of paths) { mkdirSync(dirname(join(root, path)), { recursive: true }); copyFileSync(path, join(root, path)); }
     mkdirSync(join(root, "bin"));
     writeFileSync(join(root, "bin/mise"), "#!/bin/sh\ntouch \"$SYNC_CALLS\"\nexit 87\n"); chmodSync(join(root, "bin/mise"), 0o700);
-    const pins = readFileSync(join(root, "mise.toml"), "utf8").replace(/^min_version = "[^"]+"/mu, 'min_version = "2099.1.1"');
-    writeFileSync(join(root, "mise.toml"), pins);
+    const originalPins = readFileSync(join(root, "mise.toml"), "utf8");
+    const annotation = "# renovate: datasource=github-releases depName=jdx/mise\n";
+    writeFileSync(join(root, "mise.toml"), annotation + originalPins);
+    writeFileSync(join(root, "tools/security/runtime.toml"), annotation + readFileSync(join(root, "tools/security/runtime.toml"), "utf8"));
     const lock = readFileSync(join(root, "tools/security/runtime.lock"), "utf8");
     const run = () => spawnSync(process.execPath, [resolve("tools/dependencies/sync.mts"), "--locks"], { cwd: root, encoding: "utf8", env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, SYNC_CALLS: join(root, "calls") } });
+    const migrated = run(); assert.equal(migrated.status, 0, migrated.stderr);
+    assert.equal(readFileSync(join(root, "mise.toml"), "utf8"), originalPins);
+    assert(!readFileSync(join(root, "tools/security/runtime.toml"), "utf8").includes(annotation));
+    assert(!existsSync(join(root, "calls")), "Annotation migration must not require a newer bootstrap or regenerate unchanged locks");
+    const pins = originalPins.replace(/^min_version = "[^"]+"/mu, 'min_version = "2099.1.1"');
+    writeFileSync(join(root, "mise.toml"), pins);
     const unchanged = run(); assert.equal(unchanged.status, 0, unchanged.stderr);
     assert(!existsSync(join(root, "calls")));
     assert.equal(readFileSync(join(root, "tools/security/runtime.lock"), "utf8"), lock);
@@ -26,5 +34,6 @@ test("raising the mise minimum preserves unchanged runtime locks; executable cha
     writeFileSync(join(root, "mise.toml"), pins.replace(/^node = "[^"]+"/mu, 'node = "99.0.0"'));
     assert.notEqual(run().status, 0);
     assert(existsSync(join(root, "calls")));
+    assert.notEqual(run().status, 0, "Retry must regenerate a stale lock even when the previous failed attempt already wrote the manifest");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

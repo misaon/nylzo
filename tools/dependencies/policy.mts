@@ -23,6 +23,10 @@ function masked(source: string, pattern: RegExp, changes: Change[], valueGroup =
 
 export function validateDependencyFile(path: string, before: string, after: string): Change[] {
   assert.notEqual(before, after);
+  // One-way migration of the obsolete dependency annotation. Keep the actual
+  // compatibility minimum subject to the same version/downgrade validation.
+  const annotation = "# renovate: datasource=github-releases depName=jdx/mise\n";
+  if (["mise.toml", "tools/security/runtime.toml"].includes(path) && !after.startsWith(annotation)) before = before.replace(/^# renovate: datasource=github-releases depName=jdx\/mise\n(?=min_version = ")/u, "");
   const changes: Change[] = [];
   if (/^web\/(?:[^/]+\/)?package\.json$/u.test(path) || path === "tools/release/package.json") {
     const old = JSON.parse(before), next = JSON.parse(after);

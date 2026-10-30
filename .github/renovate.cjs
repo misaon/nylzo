@@ -48,7 +48,7 @@ for (const [base, plan] of Object.entries(isolation.plans)) {
     const slug = plan.phase === "diagnostic" ? `diagnose-${plan.root}-${batches.unitId(item.name)}` : `regroup-${plan.root}-${batches.setId(snapshot.candidates)}`;
     const versions = [...new Set(candidates.map(candidate => candidate.version).filter(Boolean))];
     isolationRules.push({
-      matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager], matchDatasources: [item.datasource], enabled: true,
+      matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager === "regex" ? "custom.regex" : item.manager], matchDatasources: [item.datasource], enabled: true,
       ...(versions.length ? { allowedVersions: `/^(?:${versions.map(version => version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$/` } : {}),
       groupName: slug, groupSlug: slug, groupSingleUpdates: true,
       minimumReleaseAge: null,
