@@ -16,9 +16,11 @@ export function batchRecords(pulls: any[]) {
     if (!batch || batch.base !== pull.base.ref) continue;
     const labels = pull.labels.map((label: any) => label.name);
     if (pull.draft) labels.push("manual-hold");
-    const record = { number: pull.number, head: pull.head.sha, base: commits[0].parents[0].sha, labels, batch, terminal: undefined as undefined | "pass" | "fail", unavailable: [] as string[] };
+    const comments = pages(`repos/${repository}/issues/${pull.number}/comments?per_page=100`);
+    const artifactFailed = comments.some(comment => trustedDependencyBot(comment.user) && /^### ⚠️ Artifact update problem(?:\r?\n|$)/u.test(comment.body ?? ""));
+    const record = { number: pull.number, head: pull.head.sha, ref: pull.head.ref, base: commits[0].parents[0].sha, labels, batch, artifactFailed, terminal: undefined as undefined | "pass" | "fail", unavailable: [] as string[] };
     if (batch.phase === "batch" && labels.includes("automation:batch-failed")) {
-      for (const comment of pages(`repos/${repository}/issues/${pull.number}/comments?per_page=100`)) {
+      for (const comment of comments) {
         if (comment.user?.login !== "github-actions[bot]" || comment.user?.id !== 41898282) continue;
         const match = /^<!-- nylzo-batch-unavailable-v1 (.{1,8192}) -->\n/u.exec(comment.body ?? "");
         if (!match) continue;
@@ -28,7 +30,7 @@ export function batchRecords(pulls: any[]) {
         } catch { /* An unrelated or malformed comment is not evidence. */ }
       }
     }
-    if (labels.includes("manual-hold")) record.terminal = "fail";
+    if (labels.includes("manual-hold") || artifactFailed) record.terminal = "fail";
     else if (labels.includes("automation:ci-failed") || (batch.phase === "diagnostic" && labels.includes("automation:diagnostic-passed"))) {
       // Labels alone are not evidence: recheck the exact signed head and every
       // required analysis before including a diagnostic result in a regroup.

@@ -32,7 +32,7 @@ Ordinary discovery allows two active proposals, with one additional slot for nat
 
 ## Batch recovery
 
-The normal path tests and releases one combined PR. If it fails, the coordinator keeps its signed dependency snapshot and opens individual diagnostic PRs from the same source. Related pins for one tool stay together. At most two ordinary PRs run at once; completed diagnostics free their proposal slots. Diagnostics never merge or authorize a tag, even if someone merges one manually.
+The normal path tests and releases one combined PR. If it fails, the coordinator keeps its signed dependency snapshot and opens individual diagnostic PRs from the same source. Related pins for one tool stay together. At most two ordinary PRs run at once; completed diagnostics free their proposal slots. Diagnostics never merge or authorize a tag, even if someone merges one manually. An unresolved lockfile/artifact-generation warning from the exact proposal App starts isolation immediately. The trusted continuation job assigns attention and cancels CI only for that unchanged signed PR head, so known-broken artifacts do not consume a full test cycle. Push/release runs, other heads, foreign repositories and human holds are excluded.
 
 A passing diagnostic requires the current signed head, complete CI, release verification and all three CodeQL analyses. Once every member has a result, Renovate combines the passing exact targets into a new PR. That PR must pass the complete combined suite and independent dependency validation again. Only its single squash commit can proceed through post-merge CI to one patch release. Failed targets remain assigned to the maintainer with `requires-attention`.
 

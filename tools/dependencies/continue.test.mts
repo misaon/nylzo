@@ -61,5 +61,18 @@ const fs=require('node:fs'),p=process.argv.find(v=>v.startsWith('repos/'));if(pr
     routes[prefix + "issues/10/comments?per_page=100"] = [];
     for (const number of [11, 12]) routes[prefix + "pulls?state=open&per_page=100"].push({ ...root, number, labels: [], head: { ...root.head, ref: `renovate/other-${number}` } });
     assert.deepEqual(run("success").writes, [], "A full proposal budget means deferred, not unavailable");
+    routes[prefix + "pulls?state=open&per_page=100"] = [root]; root.labels = [];
+    const warning = { user: bot, body: "### ⚠️ Artifact update problem\n\nLock generation failed." };
+    routes[prefix + "issues/10/comments?per_page=100"] = [warning];
+    const active = { id: 100, head_sha: head, head_branch: root.head.ref, head_repository: repo, event: "pull_request", status: "queued", conclusion: null };
+    const runPath = prefix + `actions/workflows/ci.yml/runs?head_sha=${head}&event=pull_request&per_page=100`;
+    routes[runPath].workflow_runs = [active, { ...active, id: 101, event: "push" }, { ...active, id: 102, head_repository: { full_name: "attacker/nylzo" } }, { ...active, id: 103, head_sha: "f".repeat(40) }];
+    const artifact = run("failure"); assert.equal(artifact.status, 0, artifact.stderr);
+    assert.deepEqual(artifact.writes.map(write => write.path), [prefix + "issues/10/labels", prefix + "issues/10/assignees", prefix + "actions/runs/100/cancel", prefix + "actions/workflows/dependencies.yml/dispatches"]);
+    assert(artifact.writes[0].body.labels.includes("automation:batch-failed"));
+    warning.user = { ...bot, id: 999 };
+    assert.deepEqual(run("failure").writes, [], "Another account cannot trigger artifact-failure cancellation or isolation");
+    warning.user = bot; root.labels = [{ name: "manual-hold" }];
+    assert.deepEqual(run("failure").writes, [], "A human hold prevents automatic artifact recovery");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
