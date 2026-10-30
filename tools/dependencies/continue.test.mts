@@ -47,9 +47,9 @@ test("only successful protected discovery with a free slot can record unavailabl
     };
     writeFileSync(join(directory, "gh"), `#!/usr/bin/env node
 const fs=require('node:fs'),p=process.argv.find(v=>v.startsWith('repos/'));if(process.argv.includes('POST')){fs.appendFileSync(process.env.WRITES,JSON.stringify({path:p,body:JSON.parse(fs.readFileSync(0,'utf8'))})+'\\n');console.log('{}');}else{const r=JSON.parse(process.env.ROUTES);if(!(p in r))process.exit(1);console.log(JSON.stringify([r[p]]));}\n`); chmodSync(join(directory, "gh"), 0o700);
-    const run = (result: string) => {
+    const run = (result: string, mode = "security") => {
       writeFileSync(join(directory, "writes"), "");
-      const output = spawnSync(process.execPath, [resolve("tools/dependencies/continue.mts")], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, ROUTES: JSON.stringify(routes), WRITES: join(directory, "writes"), PREVIOUS_BLOCKED: "1", NYLZO_UPDATE_MODE: "security", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { [batch.base]: { phase: "diagnostic", root: 10, head, candidates } } }), RENOVATE_RESULT: result, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF: "refs/heads/main", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", DEPENDENCY_BOT_ID: "123456" } });
+      const output = spawnSync(process.execPath, [resolve("tools/dependencies/continue.mts")], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, ROUTES: JSON.stringify(routes), WRITES: join(directory, "writes"), PREVIOUS_BLOCKED: "1", NYLZO_UPDATE_MODE: mode, NYLZO_BATCH_PLAN: JSON.stringify({ plans: { [batch.base]: { phase: "diagnostic", root: 10, head, candidates } } }), RENOVATE_RESULT: result, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF: "refs/heads/main", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", DEPENDENCY_BOT_ID: "123456" } });
       return { ...output, writes: readFileSync(join(directory, "writes"), "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line)) };
     };
     assert.deepEqual(run("failure").writes, [], "A failed lookup cannot skip candidates");
@@ -70,6 +70,7 @@ const fs=require('node:fs'),p=process.argv.find(v=>v.startsWith('repos/'));if(pr
     const artifact = run("failure"); assert.equal(artifact.status, 0, artifact.stderr);
     assert.deepEqual(artifact.writes.map(write => write.path), [prefix + "issues/10/labels", prefix + "issues/10/assignees", prefix + "actions/runs/100/cancel", prefix + "actions/workflows/dependencies.yml/dispatches"]);
     assert(artifact.writes[0].body.labels.includes("automation:batch-failed"));
+    assert.equal(run("failure", "weekly").writes.at(-1).body.inputs.mode, "security", "A weekly discovery must resume the failed batch's signed security mode");
     warning.user = { ...bot, id: 999 };
     assert.deepEqual(run("failure").writes, [], "Another account cannot trigger artifact-failure cancellation or isolation");
     warning.user = bot; root.labels = [{ name: "manual-hold" }];
