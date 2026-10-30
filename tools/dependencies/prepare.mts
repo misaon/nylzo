@@ -3,6 +3,8 @@ import { appendFileSync } from "node:fs";
 import { contents, pages, repository, request } from "../release/github.mts";
 import { releaseBranch, supportsToolInventory, trustedDependencyBot, versionParts } from "../release/policy.mts";
 import { blockedProposals } from "./queue.mts";
+import { batchRecords, discoveryPlan } from "./batch-state.mts";
+import batches from "./batches.cjs";
 
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.equal(process.env.GITHUB_REF, "refs/heads/main");
@@ -36,13 +38,30 @@ for (const pull of pulls) {
   if (trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository &&
       pull.head.ref.startsWith("renovate/") && pull.base.ref.startsWith("release/v") &&
       pull.base.ref !== branch) {
+    // Failed diagnostic snapshots retain exact-version quarantine evidence.
+    const held = pull.labels.some((label: any) => label.name === "requires-attention" || label.name === "manual-hold");
+    if (/-(?:diagnose|regroup)-\d+-[a-f0-9]{12}$/u.test(pull.head.ref) && held) continue;
     const commits = pages(`repos/${repository}/pulls/${pull.number}/commits?per_page=100`);
     if (commits.length !== 1 || commits[0].sha !== pull.head.sha || !trustedDependencyBot(commits[0].author) || !commits[0].commit.verification.verified || commits[0].parents.length !== 1) continue;
+    if (held && /-dependency-batch$/u.test(pull.head.ref)) {
+      try {
+        const batch = batches.readBatch(commits[0].commit.message ?? "");
+        if (batch && batches.units(batch.candidates).size === 1) continue;
+        if (batch && batchRecords([pull])[0]?.unavailable.length) continue;
+      } catch { continue; }
+    }
     request(`repos/${repository}/pulls/${pull.number}`, "PATCH", { state: "closed" });
     pull.state = "closed";
   }
 }
 const blocked = blockedProposals(pulls);
 assert(blocked <= 1000);
+const mode = process.env.NYLZO_UPDATE_MODE;
+let isolation: any = { plans: {}, excluded: [] };
+if (mode === "security" || mode === "weekly") {
+  const main = request(`repos/${repository}/git/ref/heads/main`).object.sha;
+  isolation = discoveryPlan(pulls.filter(pull => pull.state === "open"), branch, sha, main, mode);
+}
+appendFileSync(process.env.GITHUB_OUTPUT!, `batch_plan=${JSON.stringify(isolation)}\n`);
 appendFileSync(process.env.GITHUB_OUTPUT!, `ready=true\ntag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\nblocked=${blocked}\n`);
 console.log(`Isolated update base ${branch} points to the last immutable published source.`);

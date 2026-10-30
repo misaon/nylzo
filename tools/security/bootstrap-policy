@@ -6,16 +6,18 @@ sha256sum -c - <<'HASHES'
 b6d843a0d6e74ff3d8acaa32e0cb032294b3027d18e9d70876fb8ff839fc70b4  tools/security/runtime.lock
 85e46e83e352adb62ff18c371b190dc3c1f7c6678168f6d9d40a5d5fbb8d7636  tools/security/dependency-api.mts
 6db39ab620af86a20f9230fe818b63e6631f8799dd6f54534f7fb3b213c904ff  tools/security/dependency-policy.mts
-3c41eb133371fb7af133b4bbe8bf04247a34a5566d6bf9bbed719ce487f1b9d8  tools/security/automation.mts
+f9d19750fee7a638efc28712b041af125e571d2a61ec8bf7e4dc93d719990f56  tools/security/automation.mts
 a750b66f9eebcd9eb4864f716dae749df818d6cc92af5b677f4146b0725e28d9  tools/security/verify-tag
 a9ff9fd782bb9cf4664569fc32eb013eab82039ad18500575d67485060eb82b7  mise-tasks/release/checks
 3a3ae8f66f1f263ae452c7d23eccdb8c476257b94299b5333941d5922d397c2d  tools/security/verify-keyless-tag
 5177dad4128e5a84f4185a8e5a68dcd72c4d91075d36466d841b94dfb786ea67  tools/release/policy.mts
 dbb52a135615b986def3f41979919f9744f26a6647b78006347f33487379b97b  tools/release/github.mts
 7ddd71b884dff3ac5db0d1fbaf8c1d34ff70be2ad8cc9959f09667d6a13845ca  tools/dependencies/policy.mts
-7eb6890b4159d54da4ad450fb9b956aa45fe158dd479016d4da8e7d6201744dc  tools/dependencies/inspect.mts
+e43403dd10c86125bdaee2cadcda630b51400e2de6d5679c8e9518d5b6ca4dbf  tools/dependencies/inspect.mts
 d0b70b637af97baabc6b0347474702dc32cb641f996b3536996184ea03c435d5  tools/release/baseline.mts
 b19d51e3b2e404c3e299be8c99fb748129f09da46a14bcc2fdc5a6f3eedd151f  tools/release/wait-publication
+ffc603e0eeb71d8407bc71f739269124f1ef87c6f60117acd38bb0e517627865  tools/dependencies/batches.cjs
+65bbc493d6e3503fdb1c360ef80a39b27027c585a7939219fa0adf6e982c8c55  tools/dependencies/batch-state.mts
 HASHES
 
 destination="${RUNNER_TEMP}/nylzo-security-policy"
@@ -32,5 +34,7 @@ cp -- "tools/release/policy.mts" "${destination}/tools/release/policy.mts"
 cp -- "tools/release/github.mts" "${destination}/tools/release/github.mts"
 cp -- "tools/dependencies/policy.mts" "${destination}/tools/dependencies/policy.mts"
 cp -- "tools/dependencies/inspect.mts" "${destination}/tools/dependencies/inspect.mts"
+cp -- "tools/dependencies/batches.cjs" "${destination}/tools/dependencies/batches.cjs"
+cp -- "tools/dependencies/batch-state.mts" "${destination}/tools/dependencies/batch-state.mts"
 cp -- "tools/release/baseline.mts" "${destination}/tools/release/baseline.mts"
 cp -- "tools/release/wait-publication" "${destination}/tools/release/wait-publication"

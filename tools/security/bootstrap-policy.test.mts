@@ -28,6 +28,8 @@ test("privileged workflows pin the policy and reject tampered policy files befor
     const copied = join(temporary, "nylzo-security-policy");
     assert(existsSync(join(copied, "mise.toml")));
     assert(existsSync(join(copied, "tools/security/automation.mts")));
+    assert(existsSync(join(copied, "tools/dependencies/batches.cjs")));
+    assert(existsSync(join(copied, "tools/dependencies/batch-state.mts")));
     rmSync(copied, { recursive: true });
     appendFileSync(join(root, "tools/security/dependency-policy.mts"), "\nthrow new Error('tampered');\n");
     assert.notEqual(run().status, 0);

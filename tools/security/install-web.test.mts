@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-for (const updater of ["dependabot", "renovate"]) test(`${updater}: fresh security fixes get only an exact version exception, restored even when installation fails`, () => {
+for (const updater of ["dependabot", "renovate", "renovate-batch"]) test(`${updater}: fresh security fixes get only an exact version exception, restored even when installation fails`, () => {
   const root = mkdtempSync(join(tmpdir(), "nylzo-age-policy-"));
   try {
     for (const directory of ["web", "tools/security", "tools/sca", "tools/release", "tools/dependencies", "bin"]) mkdirSync(join(root, directory), { recursive: true });
@@ -13,7 +13,7 @@ for (const updater of ["dependabot", "renovate"]) test(`${updater}: fresh securi
     writeFileSync(join(root, "tools/sca/deepmerge.mts"), 'export function verifyDeepmergePatch() { if (process.env.PATCH_STATUS === "fail") throw new Error("Invalid patch"); }\n');
     for (const name of ["install-web.mts", "dependency-api.mts", "dependency-policy.mts"]) cpSync(`tools/security/${name}`, join(root, "tools/security", name));
     for (const name of ["policy.mts", "github.mts"]) cpSync(`tools/release/${name}`, join(root, "tools/release", name));
-    for (const name of ["age.mts", "inspect.mts", "policy.mts"]) cpSync(`tools/dependencies/${name}`, join(root, "tools/dependencies", name));
+    for (const name of ["age.mts", "inspect.mts", "policy.mts", "batches.cjs"]) cpSync(`tools/dependencies/${name}`, join(root, "tools/dependencies", name));
     const original = "packages: [app]\nminimumReleaseAge: 1440\nstrictDepBuilds: true\nallowBuilds: {}\n";
     writeFileSync(join(root, "web/pnpm-workspace.yaml"), original);
     const bot = updater === "dependabot" ? { login: "dependabot[bot]", id: 49699333 } : { login: "nylzo-dependency-updates[bot]", id: 349732443 };
@@ -21,7 +21,7 @@ for (const updater of ["dependabot", "renovate"]) test(`${updater}: fresh securi
     const base = "b".repeat(40), head = "a".repeat(40);
     const pull = { number: 1, draft: false, user: bot, head: { sha: head, ref: updater === "dependabot" ? "dependabot/npm_and_yarn/web/example-1.2.4" : "renovate/example-1.x", repo: source }, base: { ref: "main", sha: base, repo: source }, changed_files: 1, merged: false, state: "open" };
     const commit = { sha: head, author: bot, parents: [{ sha: base }], commit: { verification: { verified: true }, message: "Bumps example from 1.2.3 to 1.2.4.\n---\nupdated-dependencies:\n- dependency-name: example\n...\n" } };
-    const routes = {
+    const routes: Record<string, any> = {
       "repos/misaon/nylzo/pulls/1": pull,
       "repos/misaon/nylzo/issues/1/comments?per_page=100": [[]],
       "repos/misaon/nylzo/pulls/1/commits?per_page=100": [[commit]],
@@ -32,6 +32,14 @@ for (const updater of ["dependabot", "renovate"]) test(`${updater}: fresh securi
       "advisories?type=reviewed&ecosystem=npm&affects=example%401.2.3&per_page=100": [[{ ghsa_id: "GHSA-test-test-test", vulnerabilities: [{ package: { name: "example", ecosystem: "npm" }, first_patched_version: "1.2.4" }] }]],
       "advisories?type=reviewed&ecosystem=npm&affects=example%401.2.4&per_page=100": [[]],
     };
+    if (updater === "renovate-batch") {
+      for (const [ref, version] of [[base, "1.2.3"], [head, "1.2.4"]]) {
+        routes[`repos/misaon/nylzo/contents/web/app/package.json?ref=${ref}`].content = Buffer.from(JSON.stringify({ dependencies: { example: version, "second-fix": version, ordinary: version } })).toString("base64");
+      }
+      routes["advisories?type=reviewed&ecosystem=npm&affects=second-fix%401.2.3&per_page=100"] = [[{ ghsa_id: "GHSA-test-test-next", vulnerabilities: [{ package: { name: "second-fix", ecosystem: "npm" }, first_patched_version: "1.2.4" }] }]];
+      routes["advisories?type=reviewed&ecosystem=npm&affects=second-fix%401.2.4&per_page=100"] = [[]];
+      for (const version of ["1.2.3", "1.2.4"]) routes[`advisories?type=reviewed&ecosystem=npm&affects=ordinary%40${version}&per_page=100`] = [[]];
+    }
     writeFileSync(join(root, "event.json"), JSON.stringify({ pull_request: pull }));
     writeFileSync(join(root, "bin/gh"), '#!/usr/bin/env node\nconst routes = JSON.parse(process.env.API_ROUTES); const path = process.argv.find(value => value.startsWith("repos/") || value.startsWith("advisories?")); if (!(path in routes)) process.exit(1); console.log(JSON.stringify(routes[path]));\n');
     writeFileSync(join(root, "bin/pnpm"), '#!/usr/bin/env node\nconst fs = require("node:fs"); fs.copyFileSync(process.env.WORKSPACE,process.env.CAPTURE); process.exit(Number(process.env.INSTALL_STATUS || 0));\n');
@@ -44,6 +52,10 @@ for (const updater of ["dependabot", "renovate"]) test(`${updater}: fresh securi
     const observed = readFileSync(join(root, "observed.yaml"), "utf8");
     assert(observed.includes('minimumReleaseAgeExclude:\n  - "example@1.2.4"'));
     assert(observed.includes("minimumReleaseAge: 1440"));
+    if (updater === "renovate-batch") {
+      assert(observed.includes('  - "second-fix@1.2.4"'));
+      assert(!observed.includes('  - "ordinary@1.2.4"'), "An ordinary update in the batch keeps its release-age delay");
+    }
     const forged = structuredClone(routes); forged["repos/misaon/nylzo/pulls/1"].user.id = 42;
     assert.equal(run("0", forged).status, 0);
     assert.equal(readFileSync(join(root, "observed.yaml"), "utf8"), original);

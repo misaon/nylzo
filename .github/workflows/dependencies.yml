@@ -35,6 +35,7 @@ jobs:
       source: ${{ steps.source.outputs.source }}
       mode: ${{ steps.mode.outputs.mode }}
       blocked: ${{ steps.source.outputs.blocked }}
+      batch_plan: ${{ steps.source.outputs.batch_plan }}
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -56,12 +57,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-workflows: write # creating a ref at a commit containing workflows
-      - id: source
-        env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
-          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
-          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
-        run: node tools/dependencies/prepare.mts
+          permission-actions: read # independently verify completed diagnostic CI
       - id: mode
         env:
           INPUT_MODE: ${{ inputs.mode }}
@@ -70,6 +66,13 @@ jobs:
           mode=security
           if [[ "$SCHEDULE" = '47 2 * * 1' || "$INPUT_MODE" = weekly ]]; then mode=weekly; fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+      - id: source
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
+          NYLZO_UPDATE_MODE: ${{ steps.mode.outputs.mode }}
+        run: node tools/dependencies/prepare.mts
 
   scout:
     name: Source, actions, release and tool vulnerability inventory
@@ -223,12 +226,14 @@ jobs:
           NYLZO_AFFECTED_DEPENDENCIES: ${{ needs.scout.outputs.affected }}
           NYLZO_RENOVATE_CONFIG: /opt/nylzo-renovate.json
           NYLZO_BLOCKED_PROPOSALS: ${{ needs.prepare.outputs.blocked }}
+          NYLZO_BATCH_PLAN: ${{ needs.prepare.outputs.batch_plan }}
+          NYLZO_BATCH_HELPERS: /opt/nylzo-dependency-batches.cjs
         with:
           token: ${{ steps.app.outputs.token }}
           configurationFile: .github/renovate.cjs
           renovate-image: ghcr.io/renovatebot/renovate:44.192.2@sha256:37960a62ba1faa9079a7c4eead9b3f4470748a64ecd207e06c09fd8858673e17
           mount-docker-socket: false
-          docker-volumes: /tmp:/tmp;${{ github.workspace }}/tools/dependencies/sync.mts:/opt/nylzo-dependency-sync.mts:ro;${{ github.workspace }}/renovate.json:/opt/nylzo-renovate.json:ro;${{ steps.tools.outputs.mise }}:/opt/nylzo-dependency-tools/mise:ro
+          docker-volumes: /tmp:/tmp;${{ github.workspace }}/tools/dependencies/sync.mts:/opt/nylzo-dependency-sync.mts:ro;${{ github.workspace }}/tools/dependencies/batches.cjs:/opt/nylzo-dependency-batches.cjs:ro;${{ github.workspace }}/renovate.json:/opt/nylzo-renovate.json:ro;${{ steps.tools.outputs.mise }}:/opt/nylzo-dependency-tools/mise:ro
           additional-env-list: |
             NYLZO_UPDATE_MODE
             NYLZO_MISE_VERSION
@@ -236,6 +241,8 @@ jobs:
             NYLZO_AFFECTED_DEPENDENCIES
             NYLZO_RENOVATE_CONFIG
             NYLZO_BLOCKED_PROPOSALS
+            NYLZO_BATCH_PLAN
+            NYLZO_BATCH_HELPERS
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: success()
         with:
@@ -253,7 +260,7 @@ jobs:
     timeout-minutes: 3
     permissions:
       contents: read
-      pull-requests: read # count new manual proposals without reading PR contents
+      pull-requests: write # record unavailable signed diagnostic targets; no source writes
       actions: write # dispatch only from this separate trusted job, not Renovate
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -272,6 +279,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_BLOCKED: ${{ needs.prepare.outputs.blocked }}
           NYLZO_UPDATE_MODE: ${{ needs.prepare.outputs.mode }}
+          NYLZO_BATCH_PLAN: ${{ needs.prepare.outputs.batch_plan }}
+          RENOVATE_RESULT: ${{ needs.renovate.result }}
           DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
           DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
         run: node tools/dependencies/continue.mts
