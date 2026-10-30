@@ -53,6 +53,17 @@ describe('stored records of sent messages (D39)', () => {
     expect(new Set(Object.keys(stored))).toEqual(new Set(['createdAt', 'expiresAt', 'id', 'privateKey', 'publicKey']));
   });
 
+  it('rejects a non-extractable key with the wrong algorithm or malformed public key before writing', async () => {
+    const record = await newRecord();
+    const wrong = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
+    expect(() => storedForm({ ...record, manageKey: { ...record.manageKey, privateKey: wrong.privateKey } })).toThrow(
+      InvalidRecordError,
+    );
+    expect(() => storedForm({ ...record, manageKey: { ...record.manageKey, publicKey: new Uint8Array(31) } })).toThrow(
+      InvalidRecordError,
+    );
+  });
+
   it.each([
     { id: ID, createdAt: NOW, expiresAt: NOW - 1 },
     { id: ID, createdAt: -1, expiresAt: NOW },

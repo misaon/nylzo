@@ -13,6 +13,8 @@ import {
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { ResumeStore } from '../../shared/sent-records/resume-store.ts';
+
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
@@ -78,12 +80,39 @@ function memorySession(): SessionStore & { map: Map<string, string>; log: string
 }
 
 interface ReaderOverrides {
+  readonly resume?: ResumeStore;
   readonly session?: ReturnType<typeof memorySession>;
   readonly visible?: boolean;
   readonly prerendering?: boolean;
   readonly scrypt?: Scrypt;
   readonly shown?: () => Promise<void>;
   readonly reloaded?: boolean;
+}
+
+const resumeStores = new WeakMap<SessionStore, ResumeStore>();
+
+function resumeFor(session: SessionStore): ResumeStore {
+  let resume = resumeStores.get(session);
+  if (!resume) {
+    const records = new Map<string, { id: string; fragment: string }>();
+    resume = {
+      put: (id, fragment) => {
+        const token = encodeBase64url(crypto.getRandomValues(new Uint8Array(32)));
+        records.set(token, { id, fragment });
+        return Promise.resolve(token);
+      },
+      get: (id, token) => {
+        const record = records.get(token);
+        return Promise.resolve(record?.id === id ? record.fragment : undefined);
+      },
+      remove: (token) => {
+        records.delete(token);
+        return Promise.resolve();
+      },
+    };
+    resumeStores.set(session, resume);
+  }
+  return resume;
 }
 
 function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
@@ -96,6 +125,7 @@ function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {})
       api,
       location: { pathname: url.pathname, hash: overrides.reloaded ? '' : url.hash },
       session,
+      resume: overrides.resume ?? resumeFor(session),
       page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
       dropFragment: () => {
         dropped++;
@@ -149,6 +179,33 @@ async function storeRaw(
 }
 
 describe('reading a message', () => {
+  it('keeps reading when recovery storage is unavailable, without storing a plaintext fallback', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const session = memorySession();
+    const resume = { ...resumeFor(session), put: () => Promise.reject(new Error('storage refused')) };
+    const reader = openReader(api, created.link, { session, resume });
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+    expect(session.log).not.toContain(`set nylzo:link:${idTextOf(created.link)}`);
+  });
+
+  it('rejects and removes an old plaintext session fragment before making a request', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const session = memorySession();
+    const id = idTextOf(created.link);
+    session.setItem(`nylzo:link:${id}`, new URL(created.link).hash);
+    session.setItem(`nylzo:lease:${id}`, 'old-lease');
+    const before = api.calls.length;
+    const reader = openReader(api, created.link, { session, reloaded: true });
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'removed' });
+    expect(session.map.size).toBe(0);
+    expect(api.calls.slice(before)).toEqual(['view:loading', 'view:removed']);
+  });
+
   it('drops the fragment before its first request and acknowledges only once the page shows the message (D95)', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
@@ -196,7 +253,7 @@ describe('reading a message', () => {
     await revealing;
     expect(api.calls).not.toContain('ack');
     expect(reader.last()).toEqual({ view: 'cleared' });
-    expect(reader.session.map.get(`nylzo:link:${idTextOf(created.link)}`)).toBe(new URL(created.link).hash);
+    expect(reader.session.map.get(`nylzo:link:${idTextOf(created.link)}`)).toMatch(/^[\w-]{43}$/);
     const again = openReader(api, created.link, { session: reader.session, reloaded: true });
     await again.load();
     expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
@@ -953,8 +1010,8 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
   });
 });
 
-describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
-  it('reads, deletes and wipes the fallback seed only once no request needs it', async () => {
+describe('native signing after a PKCS#8 import failure (WebKit on Linux, D66)', () => {
+  it('reads and deletes with a non-extractable native key after PKCS#8 refusal', async () => {
     const refuse = refuseSigningKeyImport();
     try {
       const api = fakeApi();
@@ -964,49 +1021,49 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
       await reader.reveal();
       expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
       const gate = newGate();
-      let usedKey: { seed?: Uint8Array } | undefined;
+      let usedKey: { privateKey: CryptoKey } | undefined;
       let intactWhenSent = false;
       const burn = api.burn.bind(api);
       api.burn = async (...parameters: Parameters<typeof burn>) => {
         await gate.opened;
-        usedKey = parameters[1] as { seed?: Uint8Array };
-        intactWhenSent = usedKey.seed?.some((byte) => byte !== 0) ?? false;
+        usedKey = parameters[1];
+        intactWhenSent = !usedKey.privateKey.extractable;
         return burn(...parameters);
       };
       const burning = reader.burn();
       reader.clear();
       gate.open();
       expect(await burning).toEqual({ outcome: 'deleted' });
-      expect(usedKey?.seed).toBeDefined();
+      expect(usedKey?.privateKey).toBeInstanceOf(CryptoKey);
       expect(intactWhenSent).toBe(true);
-      expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true);
+      expect(usedKey?.privateKey.extractable).toBe(false);
     } finally {
       refuse.mockRestore();
     }
   });
 
-  it('wipes the fallback seed once the shown message can be neither deleted nor reported', async () => {
+  it('uses a native key to acknowledge the last open after PKCS#8 refusal', async () => {
     const refuse = refuseSigningKeyImport();
     try {
       const api = fakeApi();
       const created = await createMessage(input(), createDependencies(api));
       const reader = openReader(api, created.link);
       await reader.load();
-      let usedKey: { seed?: Uint8Array } | undefined;
+      let usedKey: { privateKey: CryptoKey } | undefined;
       const ack = api.ack.bind(api);
       api.ack = (...parameters: Parameters<typeof ack>) => {
-        usedKey = parameters[1] as { seed?: Uint8Array };
+        usedKey = parameters[1];
         return ack(...parameters);
       };
       await reader.reveal();
       expect(reader.last()).toMatchObject({ view: 'revealed', burnable: false });
-      await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
+      await vi.waitFor(() => expect(usedKey?.privateKey.extractable).toBe(false));
     } finally {
       refuse.mockRestore();
     }
   });
 
-  it('keeps the fallback seed for an ack that is still on its way when the page is left', async () => {
+  it('keeps a native key usable for an ack that is still on its way when the page is left', async () => {
     const refuse = refuseSigningKeyImport();
     try {
       const api = fakeApi();
@@ -1014,19 +1071,19 @@ describe('a read key that Web Crypto refuses (WebKit on Linux, D66)', () => {
       const reader = openReader(api, created.link);
       await reader.load();
       const gate = newGate();
-      let usedKey: { seed?: Uint8Array } | undefined;
+      let usedKey: { privateKey: CryptoKey } | undefined;
       let intactWhenSent = false;
       const ack = api.ack.bind(api);
       api.ack = async (...parameters: Parameters<typeof ack>) => {
         await gate.opened;
-        usedKey = parameters[1] as { seed?: Uint8Array };
-        intactWhenSent = usedKey.seed?.some((byte) => byte !== 0) ?? false;
+        usedKey = parameters[1];
+        intactWhenSent = !usedKey.privateKey.extractable;
         return ack(...parameters);
       };
       await reader.reveal();
       reader.clear();
       gate.open();
-      await vi.waitFor(() => expect(usedKey?.seed?.every((byte) => byte === 0)).toBe(true));
+      await vi.waitFor(() => expect(usedKey?.privateKey.extractable).toBe(false));
       expect(intactWhenSent).toBe(true);
     } finally {
       refuse.mockRestore();

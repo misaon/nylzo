@@ -63,7 +63,6 @@ export {
   requestKey,
   requestMessage,
   type RequestSignature,
-  type SeedRequestKey,
   signRequest,
   verifierHeader,
   wipeRequestKey,

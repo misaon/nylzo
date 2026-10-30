@@ -21,6 +21,12 @@ Frontend builds and tests, release-tooling tests, Compose and provisioning check
 
 The repository configuration does not ignore bot authors or disable alert categories. The Socket PR Alerts check is required on both main and maintenance branches, bound to the Socket App identity. New-source PR CI also waits for that exact-head result before completing, so the dependency coordinator cannot race a still-running scan. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
 
+## Browser key handling
+
+Core tests retain the published encryption and signature vectors, reject private-key export and cover secret-buffer cleanup on native import failure. Chromium, Firefox and WebKit tests exercise native signing, a simulated PKCS#8 failure, and a real leading-zero signing seed. They read management and recovery keys back from IndexedDB and confirm that export fails. An interrupted-open test checks that session storage contains no link secret, that recovery still works after reload, and that acknowledgement deletes the recovery record.
+
+These checks establish API behavior and application cleanup. They cannot certify browser memory erasure or protect against malicious JavaScript already running in the same origin. See the [security model](../guides/Security-model.md#browser-keys-and-memory).
+
 ## Repository posture
 
 The [Scorecard report](https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo) publishes the individual checks as well as a combined score. The workflow uses the ordinary GitHub token to inspect repository rulesets and OIDC to authenticate publication. It does not use a personal access token.

@@ -70,7 +70,8 @@ function isSigningKey(key: unknown): key is CryptoKey {
     key instanceof CryptoKey &&
     key.type === 'private' &&
     key.algorithm.name === 'Ed25519' &&
-    key.usages.includes('sign')
+    key.usages.length === 1 &&
+    key.usages[0] === 'sign'
   );
 }
 
@@ -78,7 +79,13 @@ export function storedForm(record: SentRecord): StoredRecord {
   if (record.manageKey.privateKey.extractable) {
     throw new ExtractableKeyError();
   }
-  if (!isMessageId(record.id) || !areTimes(record.createdAt, record.expiresAt, record.endedAt)) {
+  if (
+    !isMessageId(record.id) ||
+    !areTimes(record.createdAt, record.expiresAt, record.endedAt) ||
+    !isSigningKey(record.manageKey.privateKey) ||
+    !(record.manageKey.publicKey instanceof Uint8Array) ||
+    record.manageKey.publicKey.length !== PUBLIC_KEY_LENGTH
+  ) {
     throw new InvalidRecordError();
   }
   return {

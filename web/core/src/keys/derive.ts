@@ -33,10 +33,16 @@ export async function deriveLink(id: Uint8Array, secret: Uint8Array): Promise<Li
   assertLength(secret, SECRET_LENGTH, 'secret');
   const salt = await hsalt(id);
   const keyMaterial = await importKeyMaterial(arrayBufferBacked(secret));
-  return {
-    readSeed: await deriveBytes(keyMaterial, salt, INFO_READ, SEED_LENGTH),
-    passphraseSalt: await deriveBytes(keyMaterial, salt, INFO_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH),
-  };
+  const readSeed = await deriveBytes(keyMaterial, salt, INFO_READ, SEED_LENGTH);
+  try {
+    return {
+      readSeed,
+      passphraseSalt: await deriveBytes(keyMaterial, salt, INFO_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH),
+    };
+  } catch (error) {
+    readSeed.fill(0);
+    throw error;
+  }
 }
 
 export async function deriveContent(
@@ -47,8 +53,12 @@ export async function deriveContent(
   assertLength(secret, SECRET_LENGTH, 'secret');
   const salt = await hsalt(id);
   const secretAndPassphraseKey = concatenate(secret, passphraseKey);
-  const keyMaterial = await importKeyMaterial(secretAndPassphraseKey);
-  secretAndPassphraseKey.fill(0);
+  let keyMaterial: CryptoKey;
+  try {
+    keyMaterial = await importKeyMaterial(secretAndPassphraseKey);
+  } finally {
+    secretAndPassphraseKey.fill(0);
+  }
   const contentKey = await crypto.subtle.deriveKey(
     hkdfParameters(salt, INFO_CONTENT),
     keyMaterial,

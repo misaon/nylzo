@@ -24,12 +24,9 @@ export interface CryptoRequestKey {
   readonly publicKey: Uint8Array<ArrayBuffer>;
 }
 
-export interface SeedRequestKey {
-  readonly seed: Uint8Array<ArrayBuffer>;
-  readonly publicKey: Uint8Array<ArrayBuffer>;
-}
+export type RequestKey = CryptoRequestKey;
 
-export type RequestKey = CryptoRequestKey | SeedRequestKey;
+const revokedKeys = new WeakSet<CryptoKey>();
 
 export interface RequestSignature {
   readonly publicKey: Uint8Array<ArrayBuffer>;
@@ -41,30 +38,43 @@ export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
   assertLength(seed, SEED_LENGTH, 'seed');
   const pkcs8 = concatenate(PKCS8_ED25519_PREFIX, seed);
   try {
-    const exportableKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, true, ['sign']);
-    const jwk = await crypto.subtle.exportKey('jwk', exportableKey);
-    const publicKey = decodeBase64urlExact(jwk.x ?? '', PUBLIC_KEY_LENGTH);
-    const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
+    // Web Crypto has no interoperable public-key derivation from an imported private key.
+    const publicKey = arrayBufferBacked(ed25519.getPublicKey(pkcs8.subarray(PKCS8_ED25519_PREFIX.length)));
+    const privateKey = await importSigningKey(pkcs8, publicKey);
     return { privateKey, publicKey };
-  } catch (error) {
-    if (!isDomException(error, 'DataError')) {
-      throw error;
-    }
-    return seedRequestKey(seed);
   } finally {
     pkcs8.fill(0);
   }
 }
 
-export function seedRequestKey(seed: Uint8Array): SeedRequestKey {
-  assertLength(seed, SEED_LENGTH, 'seed');
-  const seedCopy = Uint8Array.from(seed);
-  return { seed: seedCopy, publicKey: arrayBufferBacked(ed25519.getPublicKey(seedCopy)) };
+async function importSigningKey(pkcs8: Uint8Array<ArrayBuffer>, publicKey: Uint8Array): Promise<CryptoKey> {
+  try {
+    return await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
+  } catch (error) {
+    if (!isDomException(error, 'DataError')) {
+      throw error;
+    }
+  }
+  // Some WebKit builds reject PKCS#8 seeds with leading zeroes. Keep signing native.
+  const jwk: JsonWebKey = {
+    kty: 'OKP',
+    crv: 'Ed25519',
+    d: encodeBase64url(pkcs8.subarray(PKCS8_ED25519_PREFIX.length)),
+    x: encodeBase64url(publicKey),
+    ext: false,
+    key_ops: ['sign'],
+  };
+  try {
+    return await crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, false, ['sign']);
+  } finally {
+    delete jwk.d;
+  }
 }
 
 export function wipeRequestKey(key: RequestKey | undefined): void {
-  if (key && 'seed' in key) {
-    key.seed.fill(0);
+  // Revoke future application signatures; only the browser controls CryptoKey memory.
+  if (key) {
+    revokedKeys.add(key.privateKey);
   }
 }
 
@@ -104,11 +114,11 @@ export async function signRequest(
   challenge: Uint8Array,
   body: Uint8Array = new Uint8Array(0),
 ): Promise<RequestSignature> {
+  if (revokedKeys.has(key.privateKey)) {
+    throw new Error('the request key was released');
+  }
   const message = await requestMessage(purpose, method, path, challenge, body);
-  const signature =
-    'seed' in key
-      ? signWithSeed(key.seed, message)
-      : new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
+  const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
   return { publicKey: key.publicKey, challenge: arrayBufferBacked(challenge), signature };
 }
 
@@ -123,13 +133,6 @@ export function verifierHeader({ publicKey, signature }: RequestSignature): stri
 
 export function parseChallenge(text: string): Uint8Array<ArrayBuffer> {
   return decodeBase64urlExact(text, CHALLENGE_LENGTH);
-}
-
-function signWithSeed(seed: Uint8Array, message: Uint8Array): Uint8Array<ArrayBuffer> {
-  if (seed.every((byte) => byte === 0)) {
-    throw new Error('the request key was wiped');
-  }
-  return arrayBufferBacked(ed25519.sign(message, seed));
 }
 
 function isDomException(error: unknown, name: string): boolean {

@@ -22,6 +22,20 @@ SRI protects a resource relative to its expected hash. An attacker who can repla
 
 References: [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Subresource_Integrity), [import-map integrity](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap#integrity_metadata_map), [multiple CSP policies](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#multiple_content_security_policies).
 
+## Browser keys and memory
+
+AES-256-GCM encryption and decryption, HKDF, hashing and Ed25519 signing use the browser's `crypto.subtle` API. Content keys are derived with `extractable: false` and kept in memory. Read and verifier signing keys are imported as non-extractable keys; no private key is exported to obtain its public half. A PKCS#8 import failure can retry a non-extractable JWK import. If native signing is unavailable, reading fails rather than retaining a raw signing seed.
+
+Two operations still use the bundled Noble libraries: the protocol's scrypt password derivation, which Web Crypto does not provide, and public-key derivation from a seed, which has no interoperable browser API. Scrypt runs in a dedicated worker that terminates after each operation. This does not change the protocol, password cost or encrypted format.
+
+When a sender chooses to remember a message, IndexedDB stores its non-extractable Ed25519 management key through structured cloning. That key can check status or cancel a message; it cannot decrypt its content. Both reads and writes validate the key type, algorithm, permitted usage and non-extractability.
+
+An interrupted read can resume without spending another open. The tab's session storage holds a random pointer and a server lease, never a plaintext fragment. IndexedDB holds the fragment encrypted with AES-256-GCM and a fresh, non-extractable 256-bit key. Authentication binds the ciphertext to the message, pointer and expiry. Recovery expires after the maximum supported transfer time plus 60 seconds; expired records are rejected and purged on subsequent store access. Acknowledgement or a terminal message state removes the pointer and requests deletion of the record. If storage fails, reading can continue without recovery; the client does not fall back to plaintext storage. Old plaintext recovery entries are rejected, so an interrupted read from an older client may require reopening the original link.
+
+Mutable secret buffers are overwritten after use, including error paths, and references to content keys and fragments are released when no longer needed. JavaScript strings, browser-managed keys, garbage collection, disk remnants and device backups cannot be reliably zeroized by a page. Non-extractability blocks `exportKey` and `wrapKey`; hostile same-origin JavaScript can still ask the browser to use a key. It does not promise hardware-backed storage, encryption of the browser profile or protection from a compromised device.
+
+References: [CryptoKey extraction rules](https://developer.mozilla.org/en-US/docs/Web/API/CryptoKey/extractable), [Web Crypto algorithms](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto#supported_algorithms), [structured cloning](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), [Web Crypto security considerations](https://www.w3.org/TR/webcrypto-2/#security-developers) (working draft).
+
 ## A link grants capabilities
 
 Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data can guess a weak passphrase offline. If you add a passphrase, use a generated one and send it through a different channel.
