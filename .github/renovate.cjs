@@ -28,10 +28,12 @@ const isolation = JSON.parse(process.env.NYLZO_BATCH_PLAN || '{"plans":{},"exclu
 assert(isolation && typeof isolation.plans === "object" && Array.isArray(isolation.excluded));
 const bases = [`release/${tag}`, "main"];
 const isolationRules = [];
-for (const item of isolation.excluded) {
+for (const exclusion of isolation.excluded) {
+  const { base, ...item } = exclusion;
+  assert(base === undefined || bases.includes(base));
   batches.readBatch(`Nylzo-Batch-V1: ${JSON.stringify({ base: "main", phase: "batch", mode, root: 0, head: "", candidates: [item] })}`);
   const expression = batches.targetExpression(item);
-  isolationRules.push({ matchJsonata: [`$exists(newValue) and (${expression.identity}) and (${expression.target})`], enabled: false });
+  isolationRules.push({ ...(base ? { matchBaseBranches: [base] } : {}), matchJsonata: [`$exists(newValue) and (${expression.identity}) and (${expression.target})`], enabled: false });
 }
 for (const [base, plan] of Object.entries(isolation.plans)) {
   assert(bases.includes(base));

@@ -34,13 +34,23 @@ else if (existing.object.sha !== sha) {
 // Close superseded machine proposals before budgeting. Preserve human edits;
 // a closed PR retains its diff and history and can be reopened for review.
 const pulls = pages(`repos/${repository}/pulls?state=open&per_page=100`);
+const main = request(`repos/${repository}/git/ref/heads/main`).object.sha;
+const records = batchRecords(pulls);
+for (const record of batches.staleEvidence(records, { main, [branch]: sha })) {
+  const current = request(`repos/${repository}/pulls/${record.number}`);
+  const labels = current.labels.map((label: any) => label.name);
+  if (current.state !== "open" || current.head.sha !== record.head || current.draft || labels.includes("manual-hold") || (labels.includes("requires-attention") && !labels.includes("automation:ci-failed"))) continue;
+  request(`repos/${repository}/pulls/${record.number}`, "PATCH", { state: "closed" });
+  pulls.find(pull => pull.number === record.number).state = "closed";
+  console.log(`Closed consumed or superseded batch evidence PR #${record.number}; individual failures and human holds remain reviewable.`);
+}
 for (const pull of pulls) {
-  if (trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository &&
+  if (pull.state === "open" && trustedDependencyBot(pull.user) && pull.head.repo.full_name === repository &&
       pull.head.ref.startsWith("renovate/") && pull.base.ref.startsWith("release/v") &&
       pull.base.ref !== branch) {
     // Failed diagnostic snapshots retain exact-version quarantine evidence.
     const held = pull.labels.some((label: any) => label.name === "requires-attention" || label.name === "manual-hold");
-    if (/-(?:diagnose|regroup)-\d+-[a-f0-9]{12}$/u.test(pull.head.ref) && held) continue;
+    if (["diagnostic", "regroup"].includes(batches.branchPhase(pull.head.ref)) && held) continue;
     const commits = pages(`repos/${repository}/pulls/${pull.number}/commits?per_page=100`);
     if (commits.length !== 1 || commits[0].sha !== pull.head.sha || !trustedDependencyBot(commits[0].author) || !commits[0].commit.verification.verified || commits[0].parents.length !== 1) continue;
     if (held && /-dependency-batch$/u.test(pull.head.ref)) {
@@ -59,8 +69,8 @@ assert(blocked <= 1000);
 const mode = process.env.NYLZO_UPDATE_MODE;
 let isolation: any = { plans: {}, excluded: [] };
 if (mode === "security" || mode === "weekly") {
-  const main = request(`repos/${repository}/git/ref/heads/main`).object.sha;
-  isolation = discoveryPlan(pulls.filter(pull => pull.state === "open"), branch, sha, main, mode);
+  const open = pulls.filter(pull => pull.state === "open"), numbers = new Set(open.map(pull => pull.number));
+  isolation = discoveryPlan(open, branch, sha, main, mode, records.filter(record => numbers.has(record.number)));
 }
 appendFileSync(process.env.GITHUB_OUTPUT!, `batch_plan=${JSON.stringify(isolation)}\n`);
 appendFileSync(process.env.GITHUB_OUTPUT!, `ready=true\ntag=${latest.tag_name}\nsource=${sha}\nbranch=${branch}\nblocked=${blocked}\n`);

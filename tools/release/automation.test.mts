@@ -342,6 +342,7 @@ test("discovery prunes superseded signed proposals before budgeting and preserve
   const f = fixture();
   try {
     const tagSha = "d".repeat(40);
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: f.main } };
     f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
     f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
     f.routes[f.prefix + "git/matching-refs/heads/release/v0.1.6"] = [{ ref: "refs/heads/release/v0.1.6", object: { sha: f.baseline } }];
@@ -357,6 +358,45 @@ test("discovery prunes superseded signed proposals before budgeting and preserve
     const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
     assert.deepEqual(writes.map(write => ({ path: write.path, method: write.method, body: write.body })), [{ path: f.prefix + "pulls/8", method: "PATCH", body: { state: "closed" } }]);
     assert(result.output.includes("blocked=2\n"), "Only retained human work and the main hold need budget compensation");
+  } finally { f.cleanup(); }
+});
+
+test("discovery retires only stale verified evidence and rechecks human edits immediately before closing", () => {
+  const f = fixture();
+  try {
+    const tagSha = "d".repeat(40), passedHead = "e".repeat(40), failedHead = "f".repeat(40);
+    f.routes[f.prefix + "git/ref/heads/main"] = { object: { sha: f.main } };
+    f.routes[f.prefix + "git/ref/tags/v0.1.6"] = { object: { type: "tag", sha: tagSha } };
+    f.routes[f.prefix + `git/tags/${tagSha}`] = { object: { type: "commit", sha: f.baseline } };
+    f.routes[f.prefix + "git/matching-refs/heads/release/v0.1.6"] = [{ ref: "refs/heads/release/v0.1.6", object: { sha: f.baseline } }];
+    const candidates = ["first", "second"].map(name => ({ name, manager: "npm", datasource: "npm", value: "1.2.4", version: "1.2.4" }));
+    const batch = { base: "main", mode: "weekly", phase: "batch", root: 0, head: "", candidates };
+    const root = { ...f.pull, number: 10, state: "open", base: { ...f.pull.base, ref: "main" }, head: { ...f.pull.head, ref: "renovate/main-weekly-dependency-batch" }, labels: [{ name: "automation:batch-failed" }, { name: "automation:ci-failed" }, { name: "requires-attention" }] };
+    const passed = { ...root, number: 11, head: { ...root.head, sha: passedHead, ref: `renovate/diagnose-10-${batches.unitId("first")}` }, labels: [{ name: "automation:diagnostic-passed" }] };
+    const failed = { ...root, number: 12, head: { ...root.head, sha: failedHead, ref: `renovate/diagnose-10-${batches.unitId("second")}` }, labels: [{ name: "automation:diagnostic-failed" }, { name: "automation:ci-failed" }, { name: "requires-attention" }] };
+    f.routes[f.prefix + "pulls?state=open&per_page=100"] = [root, passed, failed];
+    for (const [pull, metadata, id, conclusion] of [
+      [root, batch, 200, "failure"],
+      [passed, { ...batch, phase: "diagnostic", root: 10, head: root.head.sha, candidates: [candidates[0]] }, 201, "success"],
+      [failed, { ...batch, phase: "diagnostic", root: 10, head: root.head.sha, candidates: [candidates[1]] }, 202, "failure"],
+    ] as const) {
+      f.routes[f.prefix + `pulls/${pull.number}`] = pull;
+      f.routes[f.prefix + `pulls/${pull.number}/commits?per_page=100`] = [{ sha: pull.head.sha, author: pull.user, parents: [{ sha: f.baseline }], commit: { verification: { verified: true }, message: `fix(deps): test\n\nNylzo-Batch-V1: ${JSON.stringify(metadata)}` } }];
+      f.routes[f.prefix + `issues/${pull.number}/comments?per_page=100`] = [];
+      f.routes[f.prefix + `actions/workflows/ci.yml/runs?head_sha=${pull.head.sha}&event=pull_request&per_page=100`] = { workflow_runs: [{ id, event: "pull_request", status: "completed", conclusion, head_sha: pull.head.sha, head_repository: pull.head.repo }] };
+      f.routes[f.prefix + `actions/runs/${id}/jobs?per_page=100`] = f.routes[f.prefix + "actions/runs/123/jobs?per_page=100"];
+    }
+    let result = f.execute("", resolve("tools/dependencies/prepare.mts"));
+    assert.equal(result.status, 0, result.stderr);
+    const closed = () => result.writes.trim().split("\n").filter(Boolean).map(line => JSON.parse(line).path);
+    assert.deepEqual(closed(), [f.prefix + "pulls/10", f.prefix + "pulls/11"]);
+    assert(result.output.includes("blocked=1\n"), "The individual failure remains open and quarantined");
+    f.routes[f.prefix + "pulls/11"] = { ...passed, labels: [{ name: "manual-hold" }] };
+    result = f.execute("", resolve("tools/dependencies/prepare.mts"));
+    assert.equal(result.status, 0, result.stderr); assert.deepEqual(closed(), [f.prefix + "pulls/10"]);
+    f.routes[f.prefix + "pulls/11"] = { ...passed, head: { ...passed.head, sha: "1".repeat(40) } };
+    result = f.execute("", resolve("tools/dependencies/prepare.mts"));
+    assert.equal(result.status, 0, result.stderr); assert.deepEqual(closed(), [f.prefix + "pulls/10"]);
   } finally { f.cleanup(); }
 });
 

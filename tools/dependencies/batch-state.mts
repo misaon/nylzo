@@ -8,12 +8,13 @@ const required = ["Release verification", "CI required", "Analyze (go)", "Analyz
 export function batchRecords(pulls: any[]) {
   const records: any[] = [];
   for (const pull of pulls) {
-    if (!trustedDependencyBot(pull.user) || pull.head.repo.full_name !== repository || !/^renovate\//u.test(pull.head.ref) || !/-(?:dependency-batch|diagnose-\d+-[a-f0-9]{12}|regroup-\d+-[a-f0-9]{12})$/u.test(pull.head.ref)) continue;
+    const phase = batches.branchPhase(pull.head.ref);
+    if (!trustedDependencyBot(pull.user) || pull.head.repo.full_name !== repository || !phase) continue;
     const commits = pages(`repos/${repository}/pulls/${pull.number}/commits?per_page=100`);
     if (commits.length !== 1 || commits[0].sha !== pull.head.sha || !trustedDependencyBot(commits[0].author) || !commits[0].commit.verification.verified || commits[0].parents.length !== 1) continue;
     let batch;
     try { batch = batches.readBatch(commits[0].commit.message ?? ""); } catch { continue; }
-    if (!batch || batch.base !== pull.base.ref) continue;
+    if (!batch || batch.base !== pull.base.ref || batch.phase !== phase) continue;
     const labels = pull.labels.map((label: any) => label.name);
     if (pull.draft) labels.push("manual-hold");
     const comments = pages(`repos/${repository}/issues/${pull.number}/comments?per_page=100`);
@@ -48,14 +49,14 @@ export function batchRecords(pulls: any[]) {
   return records;
 }
 
-export function discoveryPlan(pulls: any[], releaseBranch: string, source: string, main: string, mode: string) {
-  const records = batchRecords(pulls), plans: Record<string, any> = {}, excluded: any[] = [];
+export function discoveryPlan(pulls: any[], releaseBranch: string, source: string, main: string, mode: string, records = batchRecords(pulls)) {
+  const plans: Record<string, any> = {}, excluded: any[] = [];
   for (const [branch, sha] of [[releaseBranch, source], ["main", main]]) {
     const result = batches.planIsolation(records, branch, sha, mode);
     excluded.push(...result.excluded);
     if (result.plan) plans[branch] = result.plan;
   }
-  return { plans, excluded: [...new Map(excluded.map(item => [batches.key(item), item])).values()] };
+  return { plans, excluded: [...new Map(excluded.map(item => [JSON.stringify([item.base || "", batches.key(item)]), item])).values()] };
 }
 
 export function verifyRegroup(batch: any, base: string) {
