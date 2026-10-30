@@ -142,6 +142,26 @@ test("even a manually merged diagnostic cannot authorize a production release", 
   } finally { f.cleanup(); }
 });
 
+test("a refreshed diagnostic failure advances recovery despite a previous CI-only hold", () => {
+  const f = diagnosticFixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.pull.labels = [{ name: "requires-attention" }, { name: "automation:ci-failed" }, { name: "automation:diagnostic-failed" }];
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
+    for (const conclusion of ["failure", "timed_out", "action_required"]) {
+      f.run.conclusion = conclusion;
+      const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
+      const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+      assert.equal(writes.filter(write => write.path.endsWith("/dispatches")).length, 1, "Each new completed CI result must advance the exact batch mode");
+      assert(!writes.some(write => write.path.endsWith("/merge"))); assert.equal(result.output, "");
+    }
+    f.run.conclusion = "cancelled";
+    f.routes[f.prefix + "issues/7/comments?per_page=100"] = [{ user: f.pull.user, body: "### ⚠️ Artifact update problem\n\nGeneration failed." }];
+    const cancelled = f.execute("merge"); assert.equal(cancelled.status, 0, cancelled.stderr);
+    assert(!cancelled.writes.includes("/dispatches"), "An already recorded artifact failure does not dispatch again on cancellation");
+  } finally { f.cleanup(); }
+});
+
 test("failed post-merge CI retries all jobs within a fixed budget and never retries a stale source", () => {
   const f = fixture();
   try {

@@ -45,6 +45,7 @@ for (const [base, plan] of Object.entries(isolation.plans)) {
     const identity = JSON.stringify([candidate.name, candidate.manager, candidate.datasource]);
     identities.set(identity, [...(identities.get(identity) || []), candidate]);
   }
+  // Snapshot names are Renovate depName values; Mise packageName can be an upstream repository.
   for (const candidates of identities.values()) {
     const item = candidates[0];
     const slug = plan.phase === "diagnostic" ? `diagnose-${plan.root}-${batches.unitId(item.name)}` : `regroup-${plan.root}-${batches.setId(snapshot.candidates)}`;
@@ -58,7 +59,7 @@ for (const [base, plan] of Object.entries(isolation.plans)) {
       return `${semver.test(version) ? "v?" : ""}${normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
     };
     isolationRules.push({
-      matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager === "regex" ? "custom.regex" : item.manager], matchDatasources: [item.datasource], enabled: true,
+      matchBaseBranches: [base], matchDepNames: [item.name], matchManagers: [item.manager === "regex" ? "custom.regex" : item.manager], matchDatasources: [item.datasource], enabled: true,
       ...(versions.length ? { allowedVersions: `/^(?:${versions.map(versionPattern).join("|")})$/` } : {}),
       groupName: slug, groupSlug: slug, groupSingleUpdates: true,
       minimumReleaseAge: null,
