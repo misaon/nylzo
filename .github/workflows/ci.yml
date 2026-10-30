@@ -103,7 +103,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: golangci-lint
       - run: go mod verify
       - run: go mod tidy -diff
@@ -148,7 +148,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: go node pnpm osv-scanner
       - run: node tools/security/install-web.mts
         env:
@@ -179,7 +179,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: actionlint zizmor shellcheck node go
       - name: Verify the release tooling installation and audit its locked dependencies
         run: |
@@ -208,7 +208,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: go node opentofu
       - run: tools/deploy/validate
       - name: Install the virtual-machine test runtime
@@ -600,7 +600,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           cache: true
       - name: Inventory tools and block vulnerable tool upgrades
         env:
@@ -690,7 +690,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: grype
       - name: The production image has no high or critical known vulnerabilities
         env:
@@ -804,7 +804,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.18.3
+          version: v2.19.0
           args: release --snapshot --skip=publish,sign,sbom,ko --clean
       - name: Archive ownership is independent of the build host
         run: |

@@ -67,14 +67,14 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '92c082f0b9b1f61db83a6aa001ffd87131382eb1b7dd28514ba5856371936b9f  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'beec3eecb0e101b650659923832363fb85d65b758d781c9a5b13d617aaf75019  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
           add_shims_to_path: false
@@ -150,7 +150,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '92c082f0b9b1f61db83a6aa001ffd87131382eb1b7dd28514ba5856371936b9f  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'beec3eecb0e101b650659923832363fb85d65b758d781c9a5b13d617aaf75019  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -203,14 +203,14 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo '92c082f0b9b1f61db83a6aa001ffd87131382eb1b7dd28514ba5856371936b9f  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'beec3eecb0e101b650659923832363fb85d65b758d781c9a5b13d617aaf75019  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.21
           install_args: node gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
           add_shims_to_path: false

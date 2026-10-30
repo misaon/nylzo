@@ -4,5 +4,5 @@ min_version = "2026.10.9"
 lockfile = true
 
 [tools]
-node = "24.22.1"
+node = "24.22.2"
 gitsign = "0.18.0"
