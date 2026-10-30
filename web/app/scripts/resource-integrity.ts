@@ -102,7 +102,7 @@ function visitHtml(node: HtmlNode, visit: (element: DefaultTreeAdapterMap['eleme
 }
 
 export function secureHtml(html: string, assets: Assets): string {
-  const document = parse(html);
+  const document = parse(html, { scriptingEnabled: false });
   visitHtml(document, (element) => {
     const attributes = new Map(element.attrs.map(({ name, value }) => [name, value]));
     const script = element.tagName === 'script';
@@ -172,5 +172,5 @@ export function secureHtml(html: string, assets: Assets): string {
     },
     importMap,
   );
-  return serialize(document);
+  return serialize(document, { scriptingEnabled: false });
 }

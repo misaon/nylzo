@@ -63,6 +63,17 @@ describe('final frontend resource policy', () => {
     ).toContain('application/ld+json');
   });
 
+  it('also seals and validates fallback styles when JavaScript is disabled', () => {
+    const page = html.replace(
+      '</head>',
+      () => `<noscript><link rel="stylesheet" nonce="${nonce}" href="/assets/style.css"></noscript></head>`,
+    );
+    expect(secureHtml(page, assets).match(/integrity="sha384-/g)).toHaveLength(3);
+    expect(() => secureHtml(page.replaceAll('/assets/style.css', 'https://evil.invalid/style.css'), assets)).toThrow(
+      /resource integrity/,
+    );
+  });
+
   it('requires a completely local literal module graph, including static template literals', () => {
     for (const code of [
       'import "./start.js";',
