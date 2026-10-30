@@ -196,7 +196,7 @@ jobs:
       - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           # renovate: datasource=github-releases depName=anchore/syft
-          syft-version: v1.54.1
+          syft-version: v1.55.0
       - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         with:
           # renovate: datasource=github-releases depName=jdx/mise
