@@ -48,7 +48,7 @@ for (const [base, plan] of Object.entries(isolation.plans)) {
     const slug = plan.phase === "diagnostic" ? `diagnose-${plan.root}-${batches.unitId(item.name)}` : `regroup-${plan.root}-${batches.setId(snapshot.candidates)}`;
     const versions = [...new Set(candidates.map(candidate => candidate.version).filter(Boolean))];
     isolationRules.push({
-      matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager], matchDatasources: [item.datasource], enabled: true,
+      matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager === "regex" ? "custom.regex" : item.manager], matchDatasources: [item.datasource], enabled: true,
       ...(versions.length ? { allowedVersions: `/^(?:${versions.map(version => version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$/` } : {}),
       groupName: slug, groupSlug: slug, groupSingleUpdates: true,
       minimumReleaseAge: null,
@@ -63,7 +63,9 @@ const isolating = Object.keys(isolation.plans).length > 0;
 module.exports = {
   ...config,
   // Current manual holds do not consume the two ordinary update slots.
-  prConcurrentLimit: config.prConcurrentLimit + blocked,
+  // Isolation generates only unfinished probes, so completed/held branches
+  // are already outside Renovate's counter and need no slot compensation.
+  prConcurrentLimit: isolating ? config.prConcurrentLimit : config.prConcurrentLimit + blocked,
   // Isolation has a bounded signed target list; prepare its branches without
   // letting an unavailable branch consume one of the two actual PR/CI slots.
   branchConcurrentLimit: isolating ? 0 : null,

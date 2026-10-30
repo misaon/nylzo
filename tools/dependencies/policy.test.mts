@@ -46,3 +46,15 @@ test("a binary checksum refresh preserves the upstream package and both architec
   validateDependencyFile("tools/dependencies/assets.json", source, updated);
   assert.throws(() => validateDependencyFile("tools/dependencies/assets.json", source, updated.replace("cli/cli", "attacker/cli")));
 });
+
+test("the obsolete Mise floor annotation can be removed without allowing source edits or a lower minimum", () => {
+  const annotation = "# renovate: datasource=github-releases depName=jdx/mise\n";
+  const source = annotation + 'min_version = "2026.10.19"\n[tools]\nnode = "24.22.1"\n';
+  const next = source.slice(annotation.length).replace("24.22.1", "24.22.2");
+  for (const path of ["mise.toml", "tools/security/runtime.toml"]) {
+    validateDependencyFile(path, source, next);
+    assert.throws(() => validateDependencyFile(path, source, next.replace("2026.10.19", "2026.10.18")));
+    assert.throws(() => validateDependencyFile(path, source, next + "[tasks.inject]\nrun = 'curl attacker.invalid'\n"));
+    assert.throws(() => validateDependencyFile(path, next, annotation + next));
+  }
+});

@@ -25,6 +25,7 @@ test("diagnostic labels require the exact signed head, current CI and all analys
       [prefix + "pulls/10/commits?per_page=100"]: [commit(rootHead, rootBatch)],
       [prefix + "pulls/11/commits?per_page=100"]: [commit(diagHead, diagBatch)],
       [prefix + "issues/10/comments?per_page=100"]: [],
+      [prefix + "issues/11/comments?per_page=100"]: [],
       [prefix + `actions/workflows/ci.yml/runs?head_sha=${rootHead}&event=pull_request&per_page=100`]: { workflow_runs: [{ id: 100, status: "completed", conclusion: "failure", head_sha: rootHead, event: "pull_request", head_repository: repo }] },
       [prefix + `actions/workflows/ci.yml/runs?head_sha=${diagHead}&event=pull_request&per_page=100`]: { workflow_runs: [{ id: 101, status: "completed", conclusion: "success", head_sha: diagHead, event: "pull_request", head_repository: repo }] },
       [prefix + "actions/runs/101/jobs?per_page=100"]: { jobs: required.map(name => ({ name, conclusion: "success" })) },
@@ -51,6 +52,7 @@ const r=JSON.parse(process.env.ROUTES),p=process.argv.find(v=>v.startsWith('repo
     const failedHead = "d".repeat(40), failed = { ...diagnostic, number: 12, labels: [{ name: "manual-hold" }], head: { repo, sha: failedHead, ref: `renovate/release/v0.1.6-diagnose-10-${batches.unitId("second")}` } };
     routes[prefix + "pulls?state=open&per_page=100"].push(failed);
     routes[prefix + "pulls/12/commits?per_page=100"] = [commit(failedHead, { ...diagBatch, candidates: [second] })];
+    routes[prefix + "issues/12/comments?per_page=100"] = [];
     const regroup = { ...diagBatch, phase: "regroup" };
     result = run(regroup); assert.equal(result.status, 0, result.stderr);
     assert.notEqual(run({ ...regroup, candidates: [second] }).status, 0, "A failed unit cannot be smuggled into a recombination");
