@@ -63,7 +63,9 @@ const isolating = Object.keys(isolation.plans).length > 0;
 module.exports = {
   ...config,
   // Current manual holds do not consume the two ordinary update slots.
-  prConcurrentLimit: config.prConcurrentLimit + blocked,
+  // Isolation generates only unfinished probes, so completed/held branches
+  // are already outside Renovate's counter and need no slot compensation.
+  prConcurrentLimit: isolating ? config.prConcurrentLimit : config.prConcurrentLimit + blocked,
   // Isolation has a bounded signed target list; prepare its branches without
   // letting an unavailable branch consume one of the two actual PR/CI slots.
   branchConcurrentLimit: isolating ? 0 : null,
