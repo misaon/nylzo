@@ -44,7 +44,7 @@ jobs:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
           install_args: gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
           add_shims_to_path: false
@@ -98,7 +98,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
           install_args: go osv-scanner
           cache: false
       - name: Build the web client for the exact release tag
@@ -200,7 +200,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
           install_args: grype
           cache: false
       - name: The base image is the one the distroless project signed

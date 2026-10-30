@@ -39,7 +39,7 @@ jobs:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
           install_args: gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
           add_shims_to_path: false
@@ -173,7 +173,7 @@ jobs:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
           install_args: node gitsign
           working_directory: ${{ runner.temp }}/nylzo-security-policy
           add_shims_to_path: false
