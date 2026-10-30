@@ -150,8 +150,10 @@ test("completed diagnostic evidence never inflates the two unfinished-proposal s
     Object.assign(process.env, values); delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 2);
     assert.deepEqual(require(path).force.packageRules.find((rule: any) => rule.enabled === false && rule.matchJsonata)?.matchBaseBranches, ["main"], "Unavailable main targets cannot disable a production target");
-    assert.deepEqual(require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchPackageNames?.includes("jdx/mise")).matchManagers, ["custom.regex"], "Signed metadata uses the internal regex name; selectors require custom.regex");
-    const allowed = require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchPackageNames?.includes("goreleaser")).allowedVersions;
+    assert.deepEqual(require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchDepNames?.includes("jdx/mise")).matchManagers, ["custom.regex"], "Signed metadata uses the internal regex name; selectors require custom.regex");
+    const nativeRule = require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchDepNames?.includes("goreleaser"));
+    assert.equal(nativeRule.matchPackageNames, undefined, "Mise depName goreleaser differs from packageName goreleaser/goreleaser");
+    const allowed = nativeRule.allowedVersions;
     const pattern = new RegExp(allowed.slice(1, -1));
     assert(pattern.test("v2.19.0") && pattern.test("2.19.0"), "Raw GitHub tags and normalized Mise versions describe the same snapshot");
     assert(!pattern.test("v2.19.1") && !pattern.test("2.19.1"));
