@@ -34,7 +34,9 @@ function continueUpdates(pull: any) {
 function attention(pull: any, reason: string, kind: "ci" | "manual" = "manual") {
   const alreadyBlocked = pull.labels.some((label: any) => label.name === "requires-attention");
   requireAttention(pull, reason, kind);
-  if (!alreadyBlocked) continueUpdates(pull);
+  // A refreshed diagnostic can finish with the labels from its previous head.
+  // Its new CI result must still advance isolation; a repeated cancellation must not.
+  if (!alreadyBlocked || (kind === "ci" && ["failure", "timed_out", "action_required"].includes(run.conclusion))) continueUpdates(pull);
 }
 
 function failedBatch(pull: any, batch: any, reason: string) {
