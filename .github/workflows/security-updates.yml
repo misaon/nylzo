@@ -32,9 +32,9 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'bbf750591abb5e9635835bcf7aa9c4034b0e7033d38ba2a83a27827a5d3444f4  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'ddbc2fcd9f29e484d54f8df871e0f8ec80b023046f28b62f1922ccba2d2c46e2  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
-      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
@@ -113,7 +113,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'bbf750591abb5e9635835bcf7aa9c4034b0e7033d38ba2a83a27827a5d3444f4  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'ddbc2fcd9f29e484d54f8df871e0f8ec80b023046f28b62f1922ccba2d2c46e2  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -166,9 +166,9 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'bbf750591abb5e9635835bcf7aa9c4034b0e7033d38ba2a83a27827a5d3444f4  tools/security/bootstrap-policy' | sha256sum --check
+          echo 'ddbc2fcd9f29e484d54f8df871e0f8ec80b023046f28b62f1922ccba2d2c46e2  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
-      - uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}/nylzo-security-policy
         with:
