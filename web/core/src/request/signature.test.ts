@@ -15,7 +15,6 @@ import {
   type RequestKey,
   requestKey,
   requestMessage,
-  seedRequestKey,
   signRequest,
   verifierHeader,
   wipeRequestKey,
@@ -27,10 +26,8 @@ describe('AK9: request vectors', () => {
   it.each(vectors.request)('$name', async (vector) => {
     const seed = hexToBytes(vector.seed_hex);
     const key = await requestKey(seed);
-    const fallback = seedRequestKey(seed);
     expect('privateKey' in key && key.privateKey.extractable).toBe(false);
     expect(encodeBase64url(key.publicKey)).toBe(vector.public_key);
-    expect(encodeBase64url(fallback.publicKey)).toBe(vector.public_key);
 
     const challenge = parseChallenge(vector.challenge);
     const body = hexToBytes(vector.body_hex);
@@ -40,9 +37,7 @@ describe('AK9: request vectors', () => {
     const sign = (signingKey: RequestKey) =>
       signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body);
     const signature = await sign(key);
-    const fallbackSignature = await sign(fallback);
     expect(encodeBase64url(signature.signature)).toBe(vector.signature);
-    expect(encodeBase64url(fallbackSignature.signature)).toBe(vector.signature);
     expect({ authorization: vector.authorization, verifier_header: vector.verifier_header }).toEqual(
       vector.purpose === PURPOSE_VERIFIER
         ? { verifier_header: verifierHeader(signature) }
@@ -71,7 +66,7 @@ describe('request signatures (spec 5.5)', () => {
     expect(await crypto.subtle.verify('Ed25519', verifier, signature.signature, message)).toBe(true);
   });
 
-  it.each([0, 1, 2])('wipes the PKCS#8 copy of the seed when import %i fails', async (failAt) => {
+  it.each([0, 1])('wipes the PKCS#8 copy of the seed when import %i fails', async (failAt) => {
     const imported: Uint8Array[] = [];
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
     const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
@@ -100,27 +95,51 @@ describe('request signatures (spec 5.5)', () => {
     expect(imported.every((pkcs8) => pkcs8.every((byte) => byte === 0))).toBe(true);
   });
 
-  it('falls back to a seed key when Web Crypto refuses the seed, as WebKit on Linux does for a leading zero byte', async () => {
-    const seed = crypto.getRandomValues(new Uint8Array(SEED_LENGTH));
+  it('uses a non-extractable JWK import when WebKit refuses a PKCS#8 seed, without exporting or signing in JavaScript', async () => {
+    const seed = new Uint8Array(SEED_LENGTH).fill(7);
     seed[0] = 0;
     const native = await requestKey(seed);
-    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockRejectedValue(new DOMException('refused', 'DataError'));
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const imports: { format: KeyFormat; extractable: boolean }[] = [];
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
+      ...parameters: Parameters<typeof importKey>
+    ) => {
+      imports.push({ format: parameters[0], extractable: parameters[3] });
+      return parameters[0] === 'pkcs8'
+        ? Promise.reject(new DOMException('refused', 'DataError'))
+        : importKey(...parameters);
+    }) as typeof crypto.subtle.importKey);
+    const exported = vi.spyOn(crypto.subtle, 'exportKey');
     try {
-      const fallback = await requestKey(seed);
-      expect('seed' in fallback).toBe(true);
-      expect(fallback.publicKey).toEqual(native.publicKey);
+      const compatible = await requestKey(seed);
+      expect(compatible.privateKey.extractable).toBe(false);
+      expect('seed' in compatible).toBe(false);
+      expect(compatible.publicKey).toEqual(native.publicKey);
+      expect(imports).toEqual([
+        { format: 'pkcs8', extractable: false },
+        { format: 'jwk', extractable: false },
+      ]);
+      expect(exported).not.toHaveBeenCalled();
       const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(5);
       const body = utf8('{"reason":"spam"}');
       const nativeSignature = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
-      const fallbackSignature = await signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
-      expect(fallbackSignature.signature).toEqual(nativeSignature.signature);
+      const compatibleSignature = await signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
+      expect(compatibleSignature.signature).toEqual(nativeSignature.signature);
       seed.fill(9);
-      expect('seed' in fallback && fallback.seed[0]).toBe(0);
-      wipeRequestKey(fallback);
-      expect('seed' in fallback && fallback.seed.every((byte) => byte === 0)).toBe(true);
-      await expect(signRequest(fallback, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body)).rejects.toThrow(
-        'wiped',
+      wipeRequestKey(compatible);
+      await expect(signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body)).rejects.toThrow(
+        'released',
       );
+    } finally {
+      refuse.mockRestore();
+      exported.mockRestore();
+    }
+  });
+
+  it('fails closed if neither native private-key import succeeds', async () => {
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockRejectedValue(new DOMException('refused', 'DataError'));
+    try {
+      await expect(requestKey(new Uint8Array(SEED_LENGTH).fill(7))).rejects.toMatchObject({ name: 'DataError' });
     } finally {
       refuse.mockRestore();
     }

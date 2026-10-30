@@ -38,6 +38,7 @@ import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { type ReportOutcome, sendReport } from '../../shared/report/report.ts';
+import { browserResumeStore, type ResumeStore } from '../../shared/sent-records/resume-store.ts';
 
 export type BusyStep = 'claiming' | 'decrypting' | 'deriving' | 'downloading';
 
@@ -103,6 +104,7 @@ export interface ReaderDependencies {
   readonly api: Api;
   readonly location: { readonly pathname: string; readonly hash: string };
   readonly session: SessionStore;
+  readonly resume?: ResumeStore;
   readonly page: { readonly visible: () => boolean; readonly prerendering: () => boolean };
   readonly dropFragment: () => void;
   readonly shown?: () => Promise<void>;
@@ -222,6 +224,7 @@ function policyMatches(envelope: Envelope, secrets: Secrets, metadata: Metadata 
 export function createReader(dependencies: ReaderDependencies, onView: (view: ReadView) => void): Reader {
   type RevealedView = Extract<ReadView, { view: 'revealed' }>;
   const { api, session, page } = dependencies;
+  const resume = dependencies.resume ?? browserResumeStore();
   let secrets: Secrets | undefined;
   let heldKey: HeldKey | undefined;
   let revealedView: RevealedView | undefined;
@@ -238,6 +241,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let left = false;
 
   let fragmentText = '';
+  let resumeToken: string | undefined;
   const leaseKey = () => `nylzo:lease:${messageId}`;
   const linkKey = () => `nylzo:link:${messageId}`;
   const kdfKey = () => `nylzo:kdf:${messageId}`;
@@ -245,20 +249,33 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   const allowed = () => page.visible() && !page.prerendering();
   const pageLeft = (): boolean => left;
 
-  // The fragment waits in the tab's session only while a lease lives, so a reload can finish an open it already spent.
+  function forgetResume(token: string | undefined): void {
+    if (token !== undefined) {
+      void resume.remove(token).catch(() => {
+        // Expired records are purged on the next store access.
+      });
+    }
+  }
+
+  // Session storage holds only an opaque pointer to the encrypted, expiring resume record.
   function keepLease(value: string): void {
     lease = value;
     safely(() => session.setItem(leaseKey(), value), undefined);
-    safely(() => session.setItem(linkKey(), fragmentText), undefined);
+    const token = resumeToken;
+    if (token !== undefined) {
+      safely(() => session.setItem(linkKey(), token), undefined);
+    }
   }
 
   function forgetLease(): void {
+    forgetResume(resumeToken ?? safely(() => session.getItem(linkKey()), null) ?? undefined);
+    resumeToken = undefined;
     lease = undefined;
     safely(() => session.removeItem(leaseKey()), undefined);
     safely(() => session.removeItem(linkKey()), undefined);
   }
 
-  function takeFragment(): string | ReadView {
+  async function takeFragment(): Promise<string | ReadView> {
     const { hash, pathname } = dependencies.location;
     const pathId = safely(() => idToString(parsePath(pathname)), undefined);
     if (hash !== '') {
@@ -269,14 +286,27 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return hash;
     }
     const stored = pathId === undefined ? null : safely(() => session.getItem(`nylzo:link:${pathId}`), null);
-    if (stored !== null) {
-      return stored;
+    if (stored !== null && pathId !== undefined) {
+      try {
+        const fragment = await resume.get(pathId, stored, dependencies.now());
+        if (fragment !== undefined) {
+          resumeToken = stored;
+          return fragment;
+        }
+      } catch {
+        // An unavailable or damaged store must never fall back to a plaintext fragment.
+      }
+      forgetResume(stored);
+      safely(() => session.removeItem(`nylzo:link:${pathId}`), undefined);
+      safely(() => session.removeItem(`nylzo:lease:${pathId}`), undefined);
+      return { view: 'removed' };
     }
     const dropped = pathId !== undefined && safely(() => session.getItem(`nylzo:dropped:${pathId}`), null) !== null;
     return dropped ? { view: 'removed' } : hash;
   }
 
   function forgetSecrets(): void {
+    fragmentText = '';
     secrets?.secret.fill(0);
     secrets?.passphraseSalt.fill(0);
     secrets = undefined;
@@ -312,6 +342,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   function failureView(error: unknown): ReadView {
     if (isApiError(error, 'not_found')) {
+      forgetLease();
       return { view: 'unknown' };
     }
     if (isApiError(error, 'gone')) {
@@ -353,7 +384,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   async function load(): Promise<void> {
     show({ view: 'loading' });
-    const taken = takeFragment();
+    const taken = await takeFragment();
     if (typeof taken !== 'string') {
       show(taken);
       return;
@@ -447,6 +478,12 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     onProgress: DownloadProgress,
   ): Promise<Fetched | ReadView> {
     show({ view: 'busy', step: 'claiming' });
+    forgetResume(resumeToken);
+    try {
+      resumeToken = await resume.put(messageId, fragmentText, dependencies.now());
+    } catch {
+      resumeToken = undefined;
+    }
     try {
       const claimed = await api.claim(current.id, current.readKey, {
         verifierKey,
@@ -463,6 +500,11 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
         return readyView(rejection(error));
       }
       return failureView(error);
+    } finally {
+      if (lease === undefined) {
+        forgetResume(resumeToken);
+        resumeToken = undefined;
+      }
     }
   }
 

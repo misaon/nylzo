@@ -22,7 +22,12 @@ export function scryptPassphraseKey(
 ): Uint8Array<ArrayBuffer> {
   assertWellFormedPassphrase(KDF_SCRYPT, passphrase);
   const parameters = { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, dkLen: KEY_LENGTH, ...(onProgress && { onProgress }) };
-  return arrayBufferBacked(scrypt(normalizePassphrase(passphrase), passphraseSalt, parameters));
+  const password = normalizePassphrase(passphrase);
+  try {
+    return arrayBufferBacked(scrypt(password, passphraseSalt, parameters));
+  } finally {
+    password.fill(0);
+  }
 }
 
 export function derivePassphraseKey(
@@ -51,7 +56,16 @@ export async function deriveAll(
 ): Promise<DerivedKeys> {
   assertWellFormedPassphrase(kdfId, passphrase);
   const link = await deriveLink(id, secret);
-  const passphraseKey = derivePassphraseKey(kdfId, passphrase, link.passphraseSalt);
-  const content = await deriveContent(id, secret, passphraseKey);
-  return { link, content };
+  let passphraseKey: Uint8Array | undefined;
+  try {
+    passphraseKey = derivePassphraseKey(kdfId, passphrase, link.passphraseSalt);
+    const content = await deriveContent(id, secret, passphraseKey);
+    return { link, content };
+  } catch (error) {
+    link.readSeed.fill(0);
+    link.passphraseSalt.fill(0);
+    throw error;
+  } finally {
+    passphraseKey?.fill(0);
+  }
 }

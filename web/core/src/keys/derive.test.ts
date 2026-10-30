@@ -56,6 +56,8 @@ describe('key derivation (spec 2)', () => {
     expect(contentKey.usages.toSorted((left, right) => left.localeCompare(right))).toEqual(['decrypt', 'encrypt']);
     await expect(crypto.subtle.exportKey('raw', contentKey)).rejects.toThrow();
     await expect(crypto.subtle.exportKey('jwk', contentKey)).rejects.toThrow();
+    const wrappingKey = await crypto.subtle.generateKey({ name: 'AES-KW', length: 256 }, false, ['wrapKey']);
+    await expect(crypto.subtle.wrapKey('raw', contentKey, wrappingKey, 'AES-KW')).rejects.toThrow();
   });
 
   it('rejects an id or a secret of the wrong length', async () => {
@@ -83,5 +85,24 @@ describe('key derivation (spec 2)', () => {
       spy.mockRestore();
     }
     expect(imported).toEqual([new Uint8Array(64)]);
+  });
+
+  it('wipes S and P even when their native import rejects', async () => {
+    let imported: Uint8Array | undefined;
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
+      _format: KeyFormat,
+      data: BufferSource,
+    ) => {
+      imported = data as Uint8Array;
+      return Promise.reject(new DOMException('refused', 'OperationError'));
+    }) as typeof crypto.subtle.importKey);
+    try {
+      await expect(deriveContent(randomId(), newSecret(), new Uint8Array(32).fill(9))).rejects.toMatchObject({
+        name: 'OperationError',
+      });
+      expect(imported).toEqual(new Uint8Array(64));
+    } finally {
+      refuse.mockRestore();
+    }
   });
 });
