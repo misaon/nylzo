@@ -28,7 +28,7 @@ function readBatch(message) {
   assert(/^(?:main|release\/v\d+\.\d+\.\d+)$/u.test(value.base));
   assert(Number.isSafeInteger(value.root) && value.root >= 0);
   assert(value.phase === "batch" ? value.root === 0 && value.head === "" : value.root > 0 && /^[a-f0-9]{40}$/u.test(value.head));
-  assert(Array.isArray(value.candidates) && value.candidates.length > 0 && value.candidates.length <= 128);
+  assert(Array.isArray(value.candidates) && value.candidates.length > 0 && value.candidates.length <= 1024);
   for (const item of value.candidates) {
     assert(Object.keys(item).every(name => ["name", "manager", "datasource", "value", "version", "digest"].includes(name)));
     for (const name of ["name", "manager", "datasource"]) assert(typeof item[name] === "string" && item[name].length > 0 && item[name].length <= 512 && !/[\x00-\x20\x7f]/u.test(item[name]));
@@ -37,6 +37,7 @@ function readBatch(message) {
     assert(/^[A-Za-z0-9@_./:+-]+$/u.test(item.name));
   }
   value.candidates = [...new Map(value.candidates.map(item => [key(item), item])).values()].sort((a, b) => key(a).localeCompare(key(b)));
+  assert(value.candidates.length <= 128, "A batch is limited to 128 distinct update targets");
   return value;
 }
 
