@@ -19,7 +19,7 @@ Frontend builds and tests, release-tooling tests, Compose and provisioning check
 
 [Socket Security](https://socket.dev/dashboard/org/nylzo) adds package-behavior analysis through a GitHub App installed only on `misaon/nylzo`. It receives dependency manifests and lockfiles. The comprehensive policy blocks known and suspected malware, critical CVEs and non-registry dependency sources; custom rules also block possible typosquats, obfuscated code and protestware. It has no review or tag-protection bypass. Renovate remains the update producer. Do not treat a Socket warning, an SBOM or a clean vulnerability report as proof that a package is safe.
 
-The repository configuration does not ignore bot authors or disable alert categories. Keep the Socket check required on both main and maintenance branches, bound to the Socket App identity. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
+The repository configuration does not ignore bot authors or disable alert categories. The Socket PR Alerts check is required on both main and maintenance branches, bound to the Socket App identity. New-source PR CI also waits for that exact-head result before completing, so the dependency coordinator cannot race a still-running scan. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
 
 ## Repository posture
 

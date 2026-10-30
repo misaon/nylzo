@@ -967,6 +967,9 @@ jobs:
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read # authenticate the independent Socket App result on this PR head
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -981,6 +984,13 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: node tools/ci-plan.mts check
+
+      - name: Required Socket scan of the exact PR head
+        if: github.event_name == 'pull_request' && github.repository == 'misaon/nylzo'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOCKET_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/security/socket-check.mts
 
   release-verification:
     name: Release verification
