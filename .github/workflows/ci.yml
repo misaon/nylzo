@@ -336,7 +336,7 @@ jobs:
           check-latest: true
       - name: Fuzz each target for 15 s
         run: |
-          for target in FuzzOpenPlaintext FuzzOpen FuzzDecodeMeta FuzzParseLink FuzzParseFragment; do
+          for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta FuzzParseLink FuzzParseFragment; do
             go test -run='^$' -fuzz="^${target}\$" -fuzztime=15s ./internal/core
           done
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server

@@ -448,11 +448,12 @@ func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 const TransparencyPath = "/.well-known/nylzo/transparency.json"
 
 type instanceResponse struct {
-	Limits   instanceLimits   `json:"limits"`
-	Work     instanceWork     `json:"pow"`
-	Create   instanceCreate   `json:"create"`
-	Versions instanceVersions `json:"versions"`
-	Build    buildinfo.Info   `json:"build"`
+	Limits          instanceLimits   `json:"limits"`
+	Work            instanceWork     `json:"pow"`
+	Create          instanceCreate   `json:"create"`
+	Versions        instanceVersions `json:"versions"`
+	Build           buildinfo.Info   `json:"build"`
+	FileCompression string           `json:"file_compression"`
 }
 
 type instanceLimits struct {
@@ -519,10 +520,11 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	id := core.NewID()
 	token, expires := s.idTokens.Issue(id, now)
 	response := instanceResponse{
-		Limits: s.instanceLimits(),
-		Build:  s.buildInformation(),
-		Work:   instanceWork{Difficulty: s.settings.PoWDifficulty},
-		Create: instanceCreate{ID: id.String(), IDToken: token, ExpiresAt: formatTime(expires)},
+		FileCompression: "gzip",
+		Limits:          s.instanceLimits(),
+		Build:           s.buildInformation(),
+		Work:            instanceWork{Difficulty: s.settings.PoWDifficulty},
+		Create:          instanceCreate{ID: id.String(), IDToken: token, ExpiresAt: formatTime(expires)},
 		Versions: instanceVersions{
 			API:      1,
 			Envelope: core.Version,

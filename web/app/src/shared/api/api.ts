@@ -63,6 +63,7 @@ export interface Transparency {
 }
 
 export interface Instance {
+  readonly fileCompression?: 'gzip';
   readonly limits: InstanceLimits;
   readonly pow: { readonly required: boolean; readonly difficulty: number; readonly challenge?: string };
   readonly create: { readonly id: Uint8Array<ArrayBuffer>; readonly idToken: string };
@@ -244,11 +245,12 @@ export function createApi(options: ApiOptions = {}): Api {
 
   return {
     async instance() {
-      const { limits, pow, create } = await fetchJson('/api/v1/instance');
+      const { limits, pow, create, file_compression: fileCompression } = await fetchJson('/api/v1/instance');
       if (!isObject(limits) || !isObject(pow) || !isObject(create) || typeof pow['required'] !== 'boolean') {
         throw new ResponseError();
       }
       return {
+        ...(fileCompression === 'gzip' && { fileCompression }),
         limits: instanceLimits(limits),
         pow: {
           required: pow['required'],

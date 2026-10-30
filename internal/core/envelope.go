@@ -127,13 +127,29 @@ func PaddedLen(length int, hasFile bool) int {
 }
 
 func Seal(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payload) ([]byte, error) {
+	return sealEnvelope(key, header, id, policy, payload, false)
+}
+
+// SealWithCompression compresses a large attachment only when it reduces the padded object size.
+func SealWithCompression(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payload) ([]byte, error) {
+	return sealEnvelope(key, header, id, policy, payload, true)
+}
+
+func sealEnvelope(
+	key *[KeyLen]byte,
+	header Header,
+	id ID,
+	policy Policy,
+	payload Payload,
+	compress bool,
+) ([]byte, error) {
 	if err := header.Validate(); err != nil {
 		return nil, err
 	}
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
-	plaintext, err := padPlaintext(payload)
+	plaintext, err := padPlaintext(payload, compress)
 	if err != nil {
 		return nil, err
 	}
@@ -176,16 +192,12 @@ func Open(key *[KeyLen]byte, id ID, policy Policy, kdf KDF, object []byte) (Head
 	return header, payload, err
 }
 
-func padPlaintext(payload Payload) ([]byte, error) {
+func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 	meta, err := EncodeMeta(payload.Meta)
 	if err != nil {
 		return nil, err
 	}
 	defer clear(meta)
-	metaLength := uint(len(meta))
-	if metaLength > MaxMetaBytes {
-		return nil, ErrMeta
-	}
 	hasFile := payload.Meta.File != nil
 	if hasFile && int64(len(payload.File)) != payload.Meta.File.Size {
 		return nil, ErrMeta
@@ -193,14 +205,27 @@ func padPlaintext(payload Payload) ([]byte, error) {
 	if !hasFile && len(payload.File) != 0 {
 		return nil, ErrMeta
 	}
-	total := PaddedLen(HeaderLen+MetaLenPrefix+len(meta)+len(payload.File)+TagLen, hasFile) - HeaderLen - TagLen
+	file := payload.File
+	if compress && hasFile {
+		encoded := compressAttachment(payload.Meta, meta, file)
+		meta, file = encoded.meta, encoded.file
+		if len(file) != len(payload.File) {
+			defer clear(file)
+			defer clear(meta)
+		}
+	}
+	metaLength := uint(len(meta))
+	if metaLength > MaxMetaBytes {
+		return nil, ErrMeta
+	}
+	total := PaddedLen(HeaderLen+MetaLenPrefix+len(meta)+len(file)+TagLen, hasFile) - HeaderLen - TagLen
 	if HeaderLen+total+TagLen > MaxObjectBytes {
 		return nil, ErrTooLarge
 	}
 	plaintext := make([]byte, total)
 	binary.BigEndian.PutUint32(plaintext, uint32(metaLength))
 	copy(plaintext[MetaLenPrefix:], meta)
-	copy(plaintext[MetaLenPrefix+len(meta):], payload.File)
+	copy(plaintext[MetaLenPrefix+len(meta):], file)
 	return plaintext, nil
 }
 
@@ -213,17 +238,30 @@ func parsePlaintext(plaintext []byte) (Payload, error) {
 	if metaLength > MaxMetaBytes || contentStart > int64(len(plaintext)) {
 		return Payload{}, ErrPlaintext
 	}
-	meta, err := DecodeMeta(plaintext[MetaLenPrefix:contentStart])
+	stored, err := decodeStoredMeta(plaintext[MetaLenPrefix:contentStart])
 	if err != nil {
 		return Payload{}, err
 	}
+	meta := stored.meta
 	if meta.File == nil {
 		return Payload{Meta: meta}, nil
 	}
-	if meta.File.Size > int64(len(plaintext))-contentStart {
+	size := meta.File.Size
+	if stored.compressedSize > 0 {
+		size = stored.compressedSize
+	}
+	if size > int64(len(plaintext))-contentStart {
 		return Payload{}, ErrPlaintext
 	}
-	file := append([]byte(nil), plaintext[contentStart:contentStart+meta.File.Size]...)
+	file := plaintext[contentStart : contentStart+size]
+	if stored.compressedSize > 0 {
+		file, err = decompressAttachment(file, meta.File.Size)
+		if err != nil {
+			return Payload{}, err
+		}
+	} else {
+		file = append([]byte(nil), file...)
+	}
 	return Payload{Meta: meta, File: file}, nil
 }
 

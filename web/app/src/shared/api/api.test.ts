@@ -99,6 +99,15 @@ function chunkedStream(object: Uint8Array): ReadableStream<Uint8Array> {
 }
 
 describe('api client', () => {
+  it.each([undefined, 'gzip', 'future'])(
+    'negotiates the optional file compression capability: %s',
+    async (encoding) => {
+      const server = fakeServer(() => json(200, { ...instanceBody, file_compression: encoding }));
+      const instance = await server.api.instance();
+      expect(instance.fileCompression).toBe(encoding === 'gzip' ? 'gzip' : undefined);
+    },
+  );
+
   it('reads the instance and takes no passphrase profile from it', async () => {
     const good = fakeServer(() => json(200, instanceBody));
     const instance = await good.api.instance();

@@ -277,6 +277,9 @@ func TestInstanceOffersNoPassphraseProfile(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+	if decodeJSON(t, body)["file_compression"] != "gzip" {
+		t.Fatal("the instance does not advertise its supported file compression")
+	}
 	if _, ok := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; ok {
 		t.Fatal("the instance still reports default_kdf_id, but D71 leaves one profile")
 	}

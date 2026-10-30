@@ -2,6 +2,7 @@ import {
   deriveLink,
   encodeBase64url,
   formatLink,
+  type Header,
   idToString,
   KDF_NONE,
   KDF_SCRYPT,
@@ -9,12 +10,15 @@ import {
   newHeader,
   newRequestKey,
   newSecret,
+  type Policy,
   requestKey,
   seal,
 } from '@nylzo/core';
 import { deriveAll } from '@nylzo/core/scrypt';
 
 import { createApi, type Status } from '../../../app/src/shared/api/api.ts';
+import { aad, headerBytes } from '../../../core/src/envelope/header.ts';
+import { arrayBufferBacked, concatenate } from '../../../core/src/primitives/bytes.ts';
 import { BASE_URL } from './servers.ts';
 
 export interface MessageFile {
@@ -30,6 +34,7 @@ export interface MessageOptions {
   readonly passphrase?: string;
   readonly opensMax?: number;
   readonly readKeyStartsWithZero?: boolean;
+  readonly plaintext?: Uint8Array<ArrayBuffer>;
 }
 
 export interface CreatedMessage {
@@ -51,10 +56,11 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   }
   const { link, content } = await deriveAll(create.id, secret, kdfId, passphrase);
   const policy = { opensMax: options.opensMax ?? 1, ttlSeconds: 3600 };
-  const object = await seal(content.contentKey, newHeader(kdfId), create.id, policy, {
-    meta: metaOf(options),
-    file: options.file?.buffer,
-  });
+  const header = newHeader(kdfId);
+  const object =
+    options.plaintext === undefined
+      ? await seal(content.contentKey, header, create.id, policy, { meta: metaOf(options), file: options.file?.buffer })
+      : await sealPlaintext(content.contentKey, header, create.id, policy, options.plaintext);
   const readKey = await requestKey(link.readSeed);
   const verifier = kdfId === KDF_NONE ? undefined : await requestKey(content.verifierSeed);
   const manageKey = await newRequestKey();
@@ -74,6 +80,21 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
     secret: encodeBase64url(secret),
     status: () => api.status(create.id, manageKey),
   };
+}
+
+async function sealPlaintext(
+  key: CryptoKey,
+  header: Header,
+  id: Uint8Array,
+  policy: Policy,
+  plaintext: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: arrayBufferBacked(header.iv), additionalData: aad(header, id, policy) },
+    key,
+    plaintext,
+  );
+  return concatenate(headerBytes(header), new Uint8Array(ciphertext));
 }
 
 async function readKeyStartsWithZero(id: Uint8Array, secret: Uint8Array): Promise<boolean> {

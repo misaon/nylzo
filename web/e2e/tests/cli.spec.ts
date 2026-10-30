@@ -39,7 +39,7 @@ test('the CLI reads messages and files created in the browser', async ({ page })
   expect(runCli(['read', '--stdout'], plain)).toBe('z prohlížeče\n');
   const guarded = await createMessageInPage(page, { text: 's heslem', passphrase: PASSPHRASE });
   expect(runCli(['read', '--stdout', '--passphrase-file', passphraseFile()], guarded)).toBe('s heslem\n');
-  const bytes = Buffer.from(Array.from({ length: 70_000 }, (_, index) => index % 251));
+  const bytes = Buffer.from(Array.from({ length: 256 * 1024 }, (_, index) => index % 251));
   const withFile = await createMessageInPage(page, {
     file: { name: 'data.bin', mimeType: 'application/octet-stream', buffer: bytes },
   });
@@ -51,3 +51,72 @@ test('the CLI reads messages and files created in the browser', async ({ page })
   expect(path.basename(file)).toBe('data.bin');
   expect(readFileSync(file).equals(bytes)).toBe(true);
 });
+
+test(
+  'a compressed CLI attachment opens and downloads unchanged in every browser',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-compressed-'));
+    const file = path.join(directory, 'rows.csv');
+    const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
+    writeFileSync(file, bytes, { mode: 0o600 });
+    const link = runCli(['create', '--server', BASE_URL, '--from-file', file], '').trim();
+    await showMessage(page, link);
+    await expectMessageShown(page);
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download attachment' }).click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toBe('rows.csv');
+    const saved = await download.path();
+    expect(saved).not.toBeNull();
+    expect(readFileSync(saved).equals(bytes)).toBe(true);
+  },
+);
+
+test(
+  'the browser compresses an attachment before upload and the CLI restores its bytes',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
+    const upload = page.waitForRequest(
+      (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/messages',
+    );
+    const link = await createMessageInPage(page, {
+      text: 'separate uncompressed message',
+      file: { name: 'rows.csv', mimeType: 'text/csv', buffer: bytes },
+    });
+    const request = await upload;
+    expect(request.postDataBuffer()?.length).toBe(65_536);
+    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-compressed-out-'));
+    const lines = runCli(['read', '--out', directory], link).trim().split('\n');
+    const text = lines.find((file) => path.basename(file) === 'message.txt') ?? '';
+    expect(readFileSync(text, 'utf8')).toBe('separate uncompressed message');
+    const saved = lines.find((file) => path.basename(file) === 'rows.csv') ?? '';
+    expect(path.basename(saved)).toBe('rows.csv');
+    expect(readFileSync(saved).equals(bytes)).toBe(true);
+  },
+);
+
+test(
+  'an older instance without compression support receives the original attachment format',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    await page.route('**/api/v1/instance', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      delete body['file_compression'];
+      await route.fulfill({ response, json: body });
+    });
+    const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
+    const upload = page.waitForRequest(
+      (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/messages',
+    );
+    const link = await createMessageInPage(page, { file: { name: 'rows.csv', mimeType: 'text/csv', buffer: bytes } });
+    const request = await upload;
+    expect(request.postDataBuffer()?.length).toBe(262_144);
+    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-legacy-out-'));
+    const saved = runCli(['read', '--out', directory], link).trim();
+    expect(path.basename(saved)).toBe('rows.csv');
+    expect(readFileSync(saved).equals(bytes)).toBe(true);
+  },
+);
