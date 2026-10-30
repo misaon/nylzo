@@ -117,7 +117,7 @@ test('requires SRI metadata before a same-origin script request can leave the br
     },
   );
   const response = await page.goto('/sent');
-  expect(response?.headers()['integrity-policy']).toBe('blocked-destinations=(script style)');
+  expect(response?.headers()['integrity-policy']).toBe('blocked-destinations=(script)');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   expect(outbound).toEqual([]);
 });

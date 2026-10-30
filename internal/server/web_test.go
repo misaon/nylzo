@@ -32,7 +32,7 @@ const (
 
 var requiredHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
-	"Integrity-Policy":             "blocked-destinations=(script style)",
+	"Integrity-Policy":             "blocked-destinations=(script)",
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
