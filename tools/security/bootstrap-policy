@@ -2,8 +2,8 @@
 set -euo pipefail
 
 sha256sum -c - <<'HASHES'
-5bdbe29a92fcf11d9770dd4bdcc559c0e95d32fa6d3a2a0729f39b9217c508eb  tools/security/runtime.toml
-b6d843a0d6e74ff3d8acaa32e0cb032294b3027d18e9d70876fb8ff839fc70b4  tools/security/runtime.lock
+223faf516c68d81523b74221a01a6077936f1b6f2e0a875af3ead75ca18aa255  tools/security/runtime.toml
+33ddfd9d154373900993a175ecb0fbe9e702a708658c99a307377a2617e3a67a  tools/security/runtime.lock
 85e46e83e352adb62ff18c371b190dc3c1f7c6678168f6d9d40a5d5fbb8d7636  tools/security/dependency-api.mts
 6db39ab620af86a20f9230fe818b63e6631f8799dd6f54534f7fb3b213c904ff  tools/security/dependency-policy.mts
 12a2cdc1308d1ee5978df290bc5f534147ac9b2d45ac0b3f882aaeec1e84a289  tools/security/automation.mts

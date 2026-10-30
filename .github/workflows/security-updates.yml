@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'ddbc2fcd9f29e484d54f8df871e0f8ec80b023046f28b62f1922ccba2d2c46e2  tools/security/bootstrap-policy' | sha256sum --check
+          echo '21dfdec970c7d79cceba1ee411bc1d9e39c2404b110c4b0aba795ce7e33f0407  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         env:
@@ -113,7 +113,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'ddbc2fcd9f29e484d54f8df871e0f8ec80b023046f28b62f1922ccba2d2c46e2  tools/security/bootstrap-policy' | sha256sum --check
+          echo '21dfdec970c7d79cceba1ee411bc1d9e39c2404b110c4b0aba795ce7e33f0407  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -166,7 +166,7 @@ jobs:
           persist-credentials: false
       - name: Verify and isolate the approved automation policy
         run: |
-          echo 'ddbc2fcd9f29e484d54f8df871e0f8ec80b023046f28b62f1922ccba2d2c46e2  tools/security/bootstrap-policy' | sha256sum --check
+          echo '21dfdec970c7d79cceba1ee411bc1d9e39c2404b110c4b0aba795ce7e33f0407  tools/security/bootstrap-policy' | sha256sum --check
           bash tools/security/bootstrap-policy
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         env:
