@@ -19,6 +19,7 @@ const PreviewHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
+	"Integrity-Policy":             "blocked-destinations=(script)",
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",

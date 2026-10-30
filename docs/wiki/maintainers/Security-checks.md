@@ -11,6 +11,16 @@ Nylzo publishes evidence about its development process and releases. These check
 | Harden-Runner     | Network, process, and file activity on CI runners                                              | Jobs that execute source code or automation tools                                                  |
 | OpenSSF Baseline  | Maintainer assertions against the published baseline requirements                              | Maintainer review when the project or its controls change                                          |
 
+## Dependency checks before execution
+
+The required SCA job checks the application, frontend workspace and release-tooling lockfiles with pinned OSV-Scanner. It rejects known malware, vulnerabilities and unapproved licenses, subject only to the existing exact, reviewed patch/VEX assessments. It generates an SPDX 2.3 SBOM for every checked source commit and retains it with the dependency report. Release SBOMs keep their versioned names, signatures and attestations.
+
+Frontend builds and tests, release-tooling tests, Compose and provisioning checks wait for SCA to pass. The release workflow also scans before executing the frontend build. Installation uses frozen lockfiles, a release-age policy and disabled dependency lifecycle builds. The only package executed by the installer for patch verification must first match the reviewed content hashes.
+
+[Socket Security](https://socket.dev/dashboard/org/nylzo) adds package-behavior analysis through a GitHub App installed only on `misaon/nylzo`. It receives dependency manifests and lockfiles. The comprehensive policy blocks known and suspected malware, critical CVEs and non-registry dependency sources; custom rules also block possible typosquats, obfuscated code and protestware. It has no review or tag-protection bypass. Renovate remains the update producer. Do not treat a Socket warning, an SBOM or a clean vulnerability report as proof that a package is safe.
+
+The repository configuration does not ignore bot authors or disable alert categories. The Socket PR Alerts check is required on both main and maintenance branches, bound to the Socket App identity. New-source PR CI also waits for that exact-head result before completing, so the dependency coordinator cannot race a still-running scan. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
+
 ## Repository posture
 
 The [Scorecard report](https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo) publishes the individual checks as well as a combined score. The workflow uses the ordinary GitHub token to inspect repository rulesets and OIDC to authenticate publication. It does not use a personal access token.

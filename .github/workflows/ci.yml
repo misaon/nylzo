@@ -153,7 +153,7 @@ jobs:
       - run: node tools/security/install-web.mts
         env:
           GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
-      - run: node tools/sca/scan.mts .sca-reports
+      - run: node tools/sca/scan.mts .sca-reports --sbom
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && hashFiles('.sca-reports/source.json') != ''
         with:
@@ -165,7 +165,7 @@ jobs:
 
   repository:
     name: Workflows and scripts
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.repository == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -194,7 +194,7 @@ jobs:
 
   deployment:
     name: Flatcar provisioning and reboot acceptance
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.deployment == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -343,7 +343,7 @@ jobs:
 
   web:
     name: TypeScript core and web client
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -493,7 +493,7 @@ jobs:
 
   e2e:
     name: Web client end to end (${{ matrix.browser }})
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -582,7 +582,7 @@ jobs:
 
   dev-setup:
     name: Developer setup (mise)
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -648,7 +648,7 @@ jobs:
 
   compose:
     name: Compose with Caddy (AK12, AK17, AK26)
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -767,7 +767,7 @@ jobs:
 
   build:
     name: Release build on ${{ matrix.runner }}
-    needs: changes
+    needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -967,6 +967,9 @@ jobs:
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      checks: read # authenticate the independent Socket App result on this PR head
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -981,6 +984,13 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: node tools/ci-plan.mts check
+
+      - name: Required Socket scan of the exact PR head
+        if: github.event_name == 'pull_request' && github.repository == 'misaon/nylzo'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOCKET_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node tools/security/socket-check.mts
 
   release-verification:
     name: Release verification

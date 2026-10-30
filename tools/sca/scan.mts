@@ -8,7 +8,6 @@ import { verifyDeepmergePatch } from "./deepmerge.mts";
 const directory = resolve(process.argv[2] ?? ".sca-reports");
 mkdirSync(directory, { recursive: true });
 const version = process.env.NYLZO_VERSION;
-if (process.argv.includes("--sbom")) assert(version, "A release source SBOM needs its version");
 if (version) {
   assert.match(version, /^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u);
   assert.equal(execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim(), "", "Release evidence requires a clean checkout");
@@ -45,10 +44,10 @@ if (statements.length && clean) {
   }, null, 2) + "\n");
 }
 if (process.argv.includes("--sbom")) {
-  assert(version, "A release source SBOM needs its version");
-  const inventory = spawnSync("osv-scanner", [...arguments_, "--format=spdx-2-3", `--output-file=${directory}/nylzo_${version.replace(/^v/u, "")}.source.spdx.json`], { stdio: "inherit" });
+  const identity = version ? version.replace(/^v/u, "") : commit;
+  const inventory = spawnSync("osv-scanner", [...arguments_, "--format=spdx-2-3", `--output-file=${directory}/nylzo_${identity}.source.spdx.json`], { stdio: "inherit" });
   assert(inventory.status === 0 || inventory.status === 1, "Source SBOM generation failed");
-  const document = JSON.parse(readFileSync(`${directory}/nylzo_${version.replace(/^v/u, "")}.source.spdx.json`, "utf8"));
+  const document = JSON.parse(readFileSync(`${directory}/nylzo_${identity}.source.spdx.json`, "utf8"));
   assert.equal(document.spdxVersion, "SPDX-2.3");
   assert(document.packages.length >= report.results.reduce((total: number, result: any) => total + result.packages.length, 0));
 }
