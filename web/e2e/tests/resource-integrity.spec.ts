@@ -98,3 +98,26 @@ test(
     expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--nylzo-foreign'))).toBe('');
   },
 );
+
+test('requires SRI metadata before a same-origin script request can leave the browser', async ({ newPage }) => {
+  const page = await newPage();
+  const outbound: string[] = [];
+  await page.route('**/assets/integrity-probe.*', async (route) => {
+    outbound.push(route.request().url());
+    await route.fulfill({ body: '', contentType: 'text/javascript' });
+  });
+  await page.route(
+    (url) => url.pathname === '/sent',
+    async (route) => {
+      const response = await route.fetch({ headers: { ...route.request().headers(), 'accept-encoding': 'identity' } });
+      const original = await response.text();
+      const nonce = /nonce="([^"]+)"/.exec(original)?.[1] ?? '';
+      const injected = `<script nonce="${nonce}" crossorigin="anonymous" src="/assets/integrity-probe.js"></script>`;
+      await route.fulfill({ response, body: original.replace('</head>', () => `${injected}</head>`) });
+    },
+  );
+  const response = await page.goto('/sent');
+  expect(response?.headers()['integrity-policy']).toBe('blocked-destinations=(script style)');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(outbound).toEqual([]);
+});
