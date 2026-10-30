@@ -48,10 +48,18 @@ for (const [base, plan] of Object.entries(isolation.plans)) {
   for (const candidates of identities.values()) {
     const item = candidates[0];
     const slug = plan.phase === "diagnostic" ? `diagnose-${plan.root}-${batches.unitId(item.name)}` : `regroup-${plan.root}-${batches.setId(snapshot.candidates)}`;
-    const versions = [...new Set(candidates.map(candidate => candidate.version).filter(Boolean))];
+    const semver = /^v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.+-]+)?$/u;
+    const versions = [...new Set(candidates.map(candidate => candidate.version || (semver.test(candidate.value) ? candidate.value : undefined)).filter(Boolean))];
+    // allowedVersions filters raw upstream tags before normalization. Mise
+    // records 2.19.0 while GitHub returns v2.19.0. The late target rule below
+    // still binds the exact normalized value, version and digest.
+    const versionPattern = version => {
+      const normalized = semver.test(version) ? version.replace(/^v/u, "") : version;
+      return `${semver.test(version) ? "v?" : ""}${normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+    };
     isolationRules.push({
       matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager === "regex" ? "custom.regex" : item.manager], matchDatasources: [item.datasource], enabled: true,
-      ...(versions.length ? { allowedVersions: `/^(?:${versions.map(version => version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$/` } : {}),
+      ...(versions.length ? { allowedVersions: `/^(?:${versions.map(versionPattern).join("|")})$/` } : {}),
       groupName: slug, groupSlug: slug, groupSingleUpdates: true,
       minimumReleaseAge: null,
       commitBody: batches.template(mode, snapshot.phase, snapshot.root, snapshot.head),

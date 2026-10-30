@@ -95,6 +95,24 @@ test("actual signed diagnostic evidence supersedes an obsolete unavailable marke
   assert.deepEqual(result.excluded, [], "An old lookup marker cannot veto a subsequently verified update");
 });
 
+test("a partial tool diagnostic cannot quarantine or approve an atomic multi-pin update", () => {
+  const native = { name: "goreleaser", manager: "mise", datasource: "github-tags", value: "2.19.0", version: "2.19.0" };
+  const action = { name: "goreleaser/goreleaser", manager: "regex", datasource: "github-releases", value: "v2.19.0", version: "v2.19.0" };
+  const failed = { ...root(), batch: metadata([native, action, items[2]]), unavailable: [batches.unitId("goreleaser")] };
+  const partial = { ...diagnostic(action, "fail"), batch: metadata([action], "diagnostic", 10) };
+  const records = [failed, partial, diagnostic(items[2], "pass")];
+  const result = plan(records);
+  assert.equal(result.plan.phase, "diagnostic");
+  assert(batches.same(result.plan.candidates, [native, action]));
+  assert.deepEqual(result.excluded, [], "A broken one-sided pin update is not evidence of an upstream regression");
+  partial.terminal = "pass";
+  assert.equal(plan(records).plan.phase, "diagnostic", "A partial success cannot approve the complete tool either");
+  partial.terminal = "fail";
+  partial.batch.candidates = [native, action];
+  assert.equal(plan(records).plan.phase, "regroup");
+  assert(batches.same(plan(records).excluded, [native, action]), "A complete failed diagnostic retains quarantine");
+});
+
 test("lookup absence cannot leak across main, production, modes or changed source commits", () => {
   const failed = { ...root(), unavailable: [batches.unitId(items[1]!.name)] };
   const records = [failed, diagnostic(items[0], "pass"), diagnostic(items[2], "pass")];
@@ -125,13 +143,18 @@ test("exhausted roots and stale duplicate failures retire without losing exact-t
 test("completed diagnostic evidence never inflates the two unfinished-proposal slots", () => {
   const require = createRequire(import.meta.url), path = require.resolve("../../.github/renovate.cjs");
   const regexTarget = { name: "jdx/mise", manager: "regex", datasource: "github-release-attachments", value: "v2026.10.20", version: "v2026.10.20" };
-  const values = { NYLZO_UPDATE_MODE: "weekly", NYLZO_MISE_VERSION: "2026.10.19", NYLZO_BASE_TAG: "v0.1.6", NYLZO_BLOCKED_PROPOSALS: "40", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { "release/v0.1.6": { phase: "diagnostic", root: 10, head, candidates: [items[0], regexTarget] } }, excluded: [{ ...items[1], base: "main" }] }) };
+  const native = { name: "goreleaser", manager: "mise", datasource: "github-tags", value: "2.19.0", version: "2.19.0" };
+  const values = { NYLZO_UPDATE_MODE: "weekly", NYLZO_MISE_VERSION: "2026.10.19", NYLZO_BASE_TAG: "v0.1.6", NYLZO_BLOCKED_PROPOSALS: "40", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { "release/v0.1.6": { phase: "diagnostic", root: 10, head, candidates: [items[0], regexTarget, native] } }, excluded: [{ ...items[1], base: "main" }] }) };
   const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]));
   try {
     Object.assign(process.env, values); delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 2);
     assert.deepEqual(require(path).force.packageRules.find((rule: any) => rule.enabled === false && rule.matchJsonata)?.matchBaseBranches, ["main"], "Unavailable main targets cannot disable a production target");
     assert.deepEqual(require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchPackageNames?.includes("jdx/mise")).matchManagers, ["custom.regex"], "Signed metadata uses the internal regex name; selectors require custom.regex");
+    const allowed = require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchPackageNames?.includes("goreleaser")).allowedVersions;
+    const pattern = new RegExp(allowed.slice(1, -1));
+    assert(pattern.test("v2.19.0") && pattern.test("2.19.0"), "Raw GitHub tags and normalized Mise versions describe the same snapshot");
+    assert(!pattern.test("v2.19.1") && !pattern.test("2.19.1"));
     process.env.NYLZO_BATCH_PLAN = '{"plans":{},"excluded":[]}'; delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 42, "Ordinary migration holds retain their existing budget policy");
   } finally {

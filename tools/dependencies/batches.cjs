@@ -70,7 +70,7 @@ function planIsolation(records, base, sha, mode) {
     if (record.base === sha && record.batch.base === base && record.batch.mode === mode) {
       for (const id of unavailableUnits(record, records)) excluded.push(...record.batch.candidates.filter(item => unitId(item.name) === id).map(item => ({ ...item, base })));
     }
-    if (record.terminal === "fail" && (record.batch.phase === "diagnostic" || (record.batch.phase === "batch" && units(record.batch.candidates).size === 1) || record.labels.includes("manual-hold"))) excluded.push(...record.batch.candidates);
+    if (record.terminal === "fail" && (record.labels.includes("manual-hold") || (!incompleteDiagnostic(record, records) && (record.batch.phase === "diagnostic" || (record.batch.phase === "batch" && units(record.batch.candidates).size === 1))))) excluded.push(...record.batch.candidates);
   }
   const roots = records.filter(record => record.base === sha && record.batch.base === base && record.batch.mode === mode && record.batch.phase === "batch" && record.terminal === "fail" && record.labels.includes("automation:batch-failed") && !record.labels.includes("manual-hold") && units(record.batch.candidates).size > 1).sort((a, b) => b.number - a.number);
   const root = roots[0];
@@ -102,8 +102,15 @@ function planIsolation(records, base, sha, mode) {
 function unavailableUnits(root, records) {
   return (root.unavailable || []).filter(id => {
     const candidates = root.batch.candidates.filter(item => unitId(item.name) === id);
-    return !records.some(record => record.base === root.base && record.batch.base === root.batch.base && record.batch.mode === root.batch.mode && record.batch.phase === "diagnostic" && record.batch.root === root.number && record.batch.head === root.head && same(record.batch.candidates, candidates));
+    const targets = new Set(keys(candidates));
+    return !records.some(record => record.base === root.base && record.batch.base === root.batch.base && record.batch.mode === root.batch.mode && record.batch.phase === "diagnostic" && record.batch.root === root.number && record.batch.head === root.head && record.batch.candidates.some(item => targets.has(key(item))));
   });
+}
+
+function incompleteDiagnostic(record, records) {
+  if (record.batch.phase !== "diagnostic") return false;
+  const root = records.find(parent => parent.number === record.batch.root && parent.head === record.batch.head && parent.base === record.base && parent.batch.base === record.batch.base && parent.batch.mode === record.batch.mode && parent.batch.phase === "batch");
+  return Boolean(root && ![...units(root.batch.candidates).values()].some(candidates => same(candidates, record.batch.candidates)));
 }
 
 // Only terminal machine evidence is retired. Failed individual targets stay
