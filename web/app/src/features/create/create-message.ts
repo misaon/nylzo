@@ -20,6 +20,7 @@ import {
   newSecret,
   PowTimeoutError,
   requestKey,
+  seal,
   sealWithCompression,
   TooLargeError,
   utf8,
@@ -252,7 +253,8 @@ async function sealMessage(
     passphraseKey.fill(0);
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
     onProgress({ step: 'encrypting' });
-    const object = await sealWithCompression(contentKeys.contentKey, newHeader(kdfId), id, policy, {
+    const encode = instance.fileCompression === 'gzip' ? sealWithCompression : seal;
+    const object = await encode(contentKeys.contentKey, newHeader(kdfId), id, policy, {
       meta: metaOf(input),
       file: input.file?.bytes,
     });

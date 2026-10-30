@@ -21,6 +21,7 @@ interface Report extends AbuseReport {
 const REPORTS_PER_MESSAGE = 3;
 
 export interface FakeOptions {
+  fileCompression?: boolean;
   pow?: { required: boolean; difficulty: number };
   failCreate?: ApiError[];
   servedKdfId?: number;
@@ -121,6 +122,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       const challenge = encodeBase64url(new Uint8Array(36).fill(challenges.length + 1));
       challenges.push(challenge);
       return {
+        ...(options.fileCompression === true && { fileCompression: 'gzip' as const }),
         limits: {
           maxFileBytes: 5_242_880,
           maxTextBytes: 102_400,

@@ -31,9 +31,10 @@ type Issued struct {
 }
 
 type Instance struct {
-	Limits Limits
-	PoW    PoW
-	Create Issued
+	Limits          Limits
+	PoW             PoW
+	Create          Issued
+	FileCompression string
 }
 
 type CreateRequest struct {
@@ -96,9 +97,10 @@ func (c *Client) Instance(ctx context.Context) (Instance, error) {
 		return Instance{}, err
 	}
 	var body struct {
-		Limits *Limits `json:"limits"`
-		PoW    *PoW    `json:"pow"`
-		Create *struct {
+		FileCompression string  `json:"file_compression"`
+		Limits          *Limits `json:"limits"`
+		PoW             *PoW    `json:"pow"`
+		Create          *struct {
 			ID      string `json:"id"`
 			IDToken string `json:"id_token"`
 		} `json:"create"`
@@ -115,7 +117,12 @@ func (c *Client) Instance(ctx context.Context) (Instance, error) {
 		body.PoW.Difficulty > core.MaxPoWDifficulty {
 		return Instance{}, ErrResponse
 	}
-	return Instance{Limits: *body.Limits, PoW: *body.PoW, Create: Issued{ID: id, IDToken: body.Create.IDToken}}, nil
+	return Instance{
+		Limits:          *body.Limits,
+		PoW:             *body.PoW,
+		Create:          Issued{ID: id, IDToken: body.Create.IDToken},
+		FileCompression: body.FileCompression,
+	}, nil
 }
 
 func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time, error) {

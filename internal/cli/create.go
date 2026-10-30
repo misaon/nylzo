@@ -336,7 +336,16 @@ func createOnce(
 	secret, manage := core.NewSecret(), core.NewSecret()
 	defer clear(secret[:])
 	defer clear(manage[:])
-	request, err := sealMessage(id, secret, manage, kdf, passphrase, policy, message)
+	request, err := sealMessage(
+		id,
+		secret,
+		manage,
+		kdf,
+		passphrase,
+		policy,
+		message,
+		instance.FileCompression == "gzip",
+	)
 	if err != nil {
 		return createdMessage{}, err
 	}
@@ -368,6 +377,7 @@ func sealMessage(
 	passphrase string,
 	policy core.Policy,
 	message *content,
+	compress bool,
 ) (client.CreateRequest, error) {
 	link, err := core.DeriveLink(id, secret)
 	if err != nil {
@@ -387,7 +397,11 @@ func sealMessage(
 	defer clear(keys.K[:])
 	defer clear(keys.V[:])
 	payload := core.Payload{Meta: message.meta, File: message.file}
-	object, err := core.SealWithCompression(&keys.K, core.NewHeader(kdf), id, policy, payload)
+	encode := core.Seal
+	if compress {
+		encode = core.SealWithCompression
+	}
+	object, err := encode(&keys.K, core.NewHeader(kdf), id, policy, payload)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}

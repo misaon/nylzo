@@ -52,6 +52,14 @@ function input(overrides: Partial<CreateInput> = {}): CreateInput {
 }
 
 describe('creating a message', () => {
+  it.each([false, true])('compresses attachments only when the instance advertises support: %s', async (supported) => {
+    const api = fakeApi({ fileCompression: supported });
+    const bytes = new Uint8Array(256 * 1024).fill(65);
+    await createMessage(input({ file: { name: 'rows.csv', mime: 'text/csv', bytes } }), createDependencies(api));
+    const [message] = api.stored.values();
+    expect(message?.request.object.length).toBe(supported ? 65_536 : 327_680);
+  });
+
   it('fetches a new id when the token expired or the id is taken', async () => {
     const api = fakeApi({ failCreate: [new ApiError(403, 'id_token'), new ApiError(409, 'conflict')] });
     const created = await createMessage(input(), createDependencies(api));

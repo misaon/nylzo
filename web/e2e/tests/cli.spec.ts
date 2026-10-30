@@ -96,3 +96,27 @@ test(
     expect(readFileSync(saved).equals(bytes)).toBe(true);
   },
 );
+
+test(
+  'an older instance without compression support receives the original attachment format',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    await page.route('**/api/v1/instance', async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      delete body['file_compression'];
+      await route.fulfill({ response, json: body });
+    });
+    const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
+    const upload = page.waitForRequest(
+      (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/messages',
+    );
+    const link = await createMessageInPage(page, { file: { name: 'rows.csv', mimeType: 'text/csv', buffer: bytes } });
+    const request = await upload;
+    expect(request.postDataBuffer()?.length).toBe(262_144);
+    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-legacy-out-'));
+    const saved = runCli(['read', '--out', directory], link).trim();
+    expect(path.basename(saved)).toBe('rows.csv');
+    expect(readFileSync(saved).equals(bytes)).toBe(true);
+  },
+);

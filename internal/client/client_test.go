@@ -86,6 +86,25 @@ func TestRedirectIsAnError(t *testing.T) {
 	}
 }
 
+func TestOptionalFileCompressionCapability(t *testing.T) {
+	t.Parallel()
+	for _, encoding := range []string{"", "gzip", "future"} {
+		t.Run(encoding, func(t *testing.T) {
+			t.Parallel()
+			body := `{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t"}`
+			if encoding != "" {
+				body += `,"file_compression":"` + encoding + `"`
+			}
+			body += `}`
+			api := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(body)) })
+			instance, err := api.Instance(t.Context())
+			if err != nil || instance.FileCompression != encoding {
+				t.Fatalf("capability %q: %+v %v", encoding, instance, err)
+			}
+		})
+	}
+}
+
 func TestErrorsCarryTheServerReason(t *testing.T) {
 	t.Parallel()
 	client := serve(t, func(w http.ResponseWriter, _ *http.Request) {
