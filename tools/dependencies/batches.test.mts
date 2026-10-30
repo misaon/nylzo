@@ -61,6 +61,7 @@ test("interaction failures shrink recombinations deterministically and never rep
   const attempted = new Set();
   for (let count = items.length; count > 0; count--) {
     const result = plan(records).plan;
+    assert.deepEqual(plan(records).excluded, [], "A failed combination cannot quarantine individually passing members globally");
     assert.equal(result.phase, "regroup");
     assert.equal(batches.units(result.candidates).size, count);
     const id = batches.setId(result.candidates); assert(!attempted.has(id)); attempted.add(id);
@@ -74,17 +75,62 @@ test("an unavailable immutable target does not stall already verified updates", 
   const result = plan([failed, diagnostic(items[0], "pass"), diagnostic(items[2], "pass")]);
   assert.equal(result.plan.phase, "regroup");
   assert(batches.same(result.plan.candidates, [items[0], items[2]]));
-  assert(batches.same(result.excluded, [items[1]]));
+  assert.deepEqual(result.excluded, [{ ...items[1], base: "release/v0.1.6" }]);
+});
+
+test("Renovate default and prefixed recovery branches have the same phase", () => {
+  for (const prefix of ["renovate/", "renovate/main-", "renovate/release/v0.1.6-"]) {
+    assert.equal(batches.branchPhase(`${prefix}diagnose-10-012345abcdef`), "diagnostic");
+    assert.equal(batches.diagnosticBranch(`${prefix}diagnose-10-012345abcdef`), true);
+    assert.equal(batches.branchPhase(`${prefix}regroup-10-012345abcdef`), "regroup");
+  }
+  for (const ref of ["feature/diagnose-10-012345abcdef", "renovate/diagnose-10-short", "renovate/main-typescript-7.x"]) assert.equal(batches.branchPhase(ref), null);
+});
+
+test("actual signed diagnostic evidence supersedes an obsolete unavailable marker", () => {
+  const failed = { ...root(), unavailable: items.map(item => batches.unitId(item.name)) };
+  const result = plan([failed, ...items.map(item => diagnostic(item, "pass"))]);
+  assert.equal(result.plan.phase, "regroup");
+  assert(batches.same(result.plan.candidates, items));
+  assert.deepEqual(result.excluded, [], "An old lookup marker cannot veto a subsequently verified update");
+});
+
+test("lookup absence cannot leak across main, production, modes or changed source commits", () => {
+  const failed = { ...root(), unavailable: [batches.unitId(items[1]!.name)] };
+  const records = [failed, diagnostic(items[0], "pass"), diagnostic(items[2], "pass")];
+  for (const [base, sha, mode] of [["main", source, "security"], ["release/v0.1.6", "f".repeat(40), "security"], ["release/v0.1.6", source, "weekly"]]) {
+    assert.deepEqual(batches.planIsolation(records, base, sha, mode).excluded, []);
+  }
+});
+
+test("retirement preserves current regroup proof, failed targets, changed human holds and unavailable roots", () => {
+  const first = diagnostic(items[0], "pass"), second = diagnostic(items[1], "fail"), third = diagnostic(items[2], "pass");
+  assert.deepEqual(batches.staleEvidence([root(), first, second, third], { "release/v0.1.6": source }), [], "Current diagnostics are needed by verifyRegroup");
+  const stale = batches.staleEvidence([root(), first, second, third], { main: "f".repeat(40) });
+  assert.deepEqual(stale.map(item => item.number), [10, first.number, third.number]);
+  const held = { ...first, labels: ["manual-hold"] }, human = { ...third, labels: ["requires-attention"] };
+  assert.deepEqual(batches.staleEvidence([held, human, second], {}), []);
+  const unavailable = { ...root(), unavailable: [batches.unitId(items[2]!.name)] };
+  assert.deepEqual(batches.staleEvidence([unavailable, diagnostic(items[0], "fail"), second], { "release/v0.1.6": source }), [], "An unavailable target still requires its root evidence");
+});
+
+test("exhausted roots and stale duplicate failures retire without losing exact-target quarantine", () => {
+  const failed = items.map(item => diagnostic(item, "fail"));
+  assert.deepEqual(batches.staleEvidence([root(), ...failed], { "release/v0.1.6": source }).map(item => item.number), [10]);
+  const duplicate = { ...failed[0], number: 30, base: "f".repeat(40) };
+  assert.deepEqual(batches.staleEvidence([failed[0], duplicate], { "release/v0.1.6": "f".repeat(40) }).map(item => item.number), [failed[0]!.number]);
+  assert(batches.same(plan([duplicate]).excluded, [items[0]]));
 });
 
 test("completed diagnostic evidence never inflates the two unfinished-proposal slots", () => {
   const require = createRequire(import.meta.url), path = require.resolve("../../.github/renovate.cjs");
   const regexTarget = { name: "jdx/mise", manager: "regex", datasource: "github-release-attachments", value: "v2026.10.20", version: "v2026.10.20" };
-  const values = { NYLZO_UPDATE_MODE: "weekly", NYLZO_MISE_VERSION: "2026.10.19", NYLZO_BASE_TAG: "v0.1.6", NYLZO_BLOCKED_PROPOSALS: "40", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { "release/v0.1.6": { phase: "diagnostic", root: 10, head, candidates: [items[0], regexTarget] } }, excluded: [] }) };
+  const values = { NYLZO_UPDATE_MODE: "weekly", NYLZO_MISE_VERSION: "2026.10.19", NYLZO_BASE_TAG: "v0.1.6", NYLZO_BLOCKED_PROPOSALS: "40", NYLZO_BATCH_PLAN: JSON.stringify({ plans: { "release/v0.1.6": { phase: "diagnostic", root: 10, head, candidates: [items[0], regexTarget] } }, excluded: [{ ...items[1], base: "main" }] }) };
   const previous = Object.fromEntries(Object.keys(values).map(name => [name, process.env[name]]));
   try {
     Object.assign(process.env, values); delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 2);
+    assert.deepEqual(require(path).force.packageRules.find((rule: any) => rule.enabled === false && rule.matchJsonata)?.matchBaseBranches, ["main"], "Unavailable main targets cannot disable a production target");
     assert.deepEqual(require(path).force.packageRules.findLast((rule: any) => rule.enabled && rule.matchPackageNames?.includes("jdx/mise")).matchManagers, ["custom.regex"], "Signed metadata uses the internal regex name; selectors require custom.regex");
     process.env.NYLZO_BATCH_PLAN = '{"plans":{},"excluded":[]}'; delete require.cache[path];
     assert.equal(require(path).prConcurrentLimit, 42, "Ordinary migration holds retain their existing budget policy");

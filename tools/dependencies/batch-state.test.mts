@@ -16,7 +16,7 @@ test("diagnostic labels require the exact signed head, current CI and all analys
     const rootBatch = { base: "release/v0.1.6", phase: "batch", mode: "security", root: 0, head: "", candidates: [first, second] };
     const diagBatch = { ...rootBatch, phase: "diagnostic", root: 10, head: rootHead, candidates: [first] };
     const root = { number: 10, user: bot, labels: [{ name: "automation:batch-failed" }, { name: "automation:ci-failed" }], head: { repo, sha: rootHead, ref: "renovate/release/v0.1.6-security-dependency-batch" }, base: { repo, ref: "release/v0.1.6" } };
-    const diagnostic = { ...root, number: 11, labels: [{ name: "automation:diagnostic-passed" }], head: { repo, sha: diagHead, ref: `renovate/release/v0.1.6-diagnose-10-${batches.unitId("first")}` } };
+    const diagnostic = { ...root, number: 11, labels: [{ name: "automation:diagnostic-passed" }], head: { repo, sha: diagHead, ref: `renovate/diagnose-10-${batches.unitId("first")}` } };
     const commit = (sha: string, batch: any) => ({ sha, author: bot, parents: [{ sha: source }], commit: { verification: { verified: true }, message: `fix(deps): test\n\nNylzo-Batch-V1: ${JSON.stringify(batch)}` } });
     const required = ["Release verification", "CI required", "Analyze (go)", "Analyze (javascript-typescript)", "Analyze (actions)"];
     const prefix = "repos/misaon/nylzo/";
@@ -47,9 +47,13 @@ const r=JSON.parse(process.env.ROUTES),p=process.argv.find(v=>v.startsWith('repo
     routes[prefix + "pulls/11/commits?per_page=100"][0].commit.verification.verified = false;
     result = run(); assert.equal(JSON.parse(result.stdout).length, 1, "A label cannot replace the App signature");
     routes[prefix + "pulls/11/commits?per_page=100"][0].commit.verification.verified = true;
+    const signed = routes[prefix + "pulls/11/commits?per_page=100"][0].commit, message = signed.message;
+    signed.message = `fix(deps): test\n\nNylzo-Batch-V1: ${JSON.stringify({ ...diagBatch, phase: "regroup" })}`;
+    result = run(); assert.equal(JSON.parse(result.stdout).length, 1, "The signed phase must match the branch purpose");
+    signed.message = message;
     routes[prefix + "actions/runs/101/jobs?per_page=100"].jobs.push({ name: required.at(-1), conclusion: "success" });
     routes[prefix + `actions/workflows/ci.yml/runs?head_sha=${diagHead}&event=pull_request&per_page=100`].workflow_runs[0].head_sha = diagHead;
-    const failedHead = "d".repeat(40), failed = { ...diagnostic, number: 12, labels: [{ name: "manual-hold" }], head: { repo, sha: failedHead, ref: `renovate/release/v0.1.6-diagnose-10-${batches.unitId("second")}` } };
+    const failedHead = "d".repeat(40), failed = { ...diagnostic, number: 12, labels: [{ name: "manual-hold" }], head: { repo, sha: failedHead, ref: `renovate/diagnose-10-${batches.unitId("second")}` } };
     routes[prefix + "pulls?state=open&per_page=100"].push(failed);
     routes[prefix + "pulls/12/commits?per_page=100"] = [commit(failedHead, { ...diagBatch, candidates: [second] })];
     routes[prefix + "issues/12/comments?per_page=100"] = [];

@@ -15,7 +15,13 @@ const key = item => JSON.stringify([item.name, item.manager, item.datasource, it
 const keys = items => items.map(key).sort();
 const same = (left, right) => JSON.stringify(keys(left)) === JSON.stringify(keys(right));
 const setId = items => createHash("sha256").update(JSON.stringify(keys(items))).digest("hex").slice(0, 12);
-const diagnosticBranch = ref => /-diagnose-\d+-[a-f0-9]{12}$/u.test(ref);
+function branchPhase(ref) {
+  if (!ref.startsWith("renovate/")) return null;
+  if (/(?:\/|-)diagnose-\d+-[a-f0-9]{12}$/u.test(ref)) return "diagnostic";
+  if (/(?:\/|-)regroup-\d+-[a-f0-9]{12}$/u.test(ref)) return "regroup";
+  return /-dependency-batch$/u.test(ref) ? "batch" : null;
+}
+const diagnosticBranch = ref => branchPhase(ref) === "diagnostic";
 
 function readBatch(message) {
   const lines = message.split("\n").filter(line => line.startsWith(marker));
@@ -58,8 +64,13 @@ function units(candidates) {
 function planIsolation(records, base, sha, mode) {
   const excluded = [];
   for (const record of records) {
-    for (const id of record.unavailable || []) excluded.push(...record.batch.candidates.filter(item => unitId(item.name) === id));
-    if (record.terminal === "fail" && (record.batch.phase !== "batch" || units(record.batch.candidates).size === 1 || record.labels.includes("manual-hold"))) excluded.push(...record.batch.candidates);
+    // Lookup absence is specific to a base and mode. A main-only lookup must
+    // not quarantine a valid production update; an actual probe supersedes
+    // an earlier unavailable marker for its exact signed snapshot.
+    if (record.base === sha && record.batch.base === base && record.batch.mode === mode) {
+      for (const id of unavailableUnits(record, records)) excluded.push(...record.batch.candidates.filter(item => unitId(item.name) === id).map(item => ({ ...item, base })));
+    }
+    if (record.terminal === "fail" && (record.batch.phase === "diagnostic" || (record.batch.phase === "batch" && units(record.batch.candidates).size === 1) || record.labels.includes("manual-hold"))) excluded.push(...record.batch.candidates);
   }
   const roots = records.filter(record => record.base === sha && record.batch.base === base && record.batch.mode === mode && record.batch.phase === "batch" && record.terminal === "fail" && record.labels.includes("automation:batch-failed") && !record.labels.includes("manual-hold") && units(record.batch.candidates).size > 1).sort((a, b) => b.number - a.number);
   const root = roots[0];
@@ -68,9 +79,10 @@ function planIsolation(records, base, sha, mode) {
   let passing = [];
   const pendingCandidates = [];
   let pending = false;
+  const unavailable = new Set(unavailableUnits(root, records));
   for (const [id, candidates] of units(root.batch.candidates)) {
     const record = related.filter(record => record.batch.phase === "diagnostic" && same(record.batch.candidates, candidates)).sort((a, b) => b.number - a.number)[0];
-    if (!record && root.unavailable?.includes(id)) continue;
+    if (!record && unavailable.has(id)) continue;
     else if (!record?.terminal) { pending = true; pendingCandidates.push(...candidates); }
     else if (record.terminal === "pass") passing.push(...candidates);
   }
@@ -83,8 +95,32 @@ function planIsolation(records, base, sha, mode) {
       passing = passing.filter(item => unitId(item.name) !== last);
     }
   }
-  if (!pending && !passing.length) return { excluded };
+  if (!pending && !passing.length) return { excluded: [...excluded, ...root.batch.candidates.map(item => ({ ...item, base }))] };
   return { excluded, plan: { phase: pending ? "diagnostic" : "regroup", root: root.number, head: root.head, candidates: pending ? pendingCandidates : passing } };
+}
+
+function unavailableUnits(root, records) {
+  return (root.unavailable || []).filter(id => {
+    const candidates = root.batch.candidates.filter(item => unitId(item.name) === id);
+    return !records.some(record => record.base === root.base && record.batch.base === root.batch.base && record.batch.mode === root.batch.mode && record.batch.phase === "diagnostic" && record.batch.root === root.number && record.batch.head === root.head && same(record.batch.candidates, candidates));
+  });
+}
+
+// Only terminal machine evidence is retired. Failed individual targets stay
+// open as exact-version quarantine evidence; a newer identical failure can
+// replace a stale duplicate. Human holds always remain untouched.
+function staleEvidence(records, sources) {
+  return records.filter(record => {
+    const labels = record.labels;
+    if (labels.includes("manual-hold") || (labels.includes("requires-attention") && !labels.includes("automation:ci-failed"))) return false;
+    const stale = sources[record.batch.base] !== record.base;
+    if (stale && record.batch.phase === "diagnostic" && record.terminal === "pass") return true;
+    if (record.batch.phase === "batch" && record.terminal === "fail" && units(record.batch.candidates).size > 1) {
+      if (stale) return true;
+      return [...units(record.batch.candidates).values()].every(candidates => records.some(probe => probe.base === record.base && probe.batch.base === record.batch.base && probe.batch.mode === record.batch.mode && probe.batch.root === record.number && probe.batch.head === record.head && probe.batch.phase === "diagnostic" && probe.terminal === "fail" && same(probe.batch.candidates, candidates)));
+    }
+    return stale && record.batch.phase === "diagnostic" && record.terminal === "fail" && records.some(other => other.number > record.number && other.batch.phase === "diagnostic" && other.terminal === "fail" && same(other.batch.candidates, record.batch.candidates));
+  });
 }
 
 // Select exact snapshot targets after lookup as well as by package identity.
@@ -98,4 +134,4 @@ function targetExpression(item) {
   return { identity, target: target.join(" and ") };
 }
 
-module.exports = { diagnosticBranch, key, keys, same, setId, readBatch, template, units, unitId, planIsolation, targetExpression };
+module.exports = { branchPhase, diagnosticBranch, key, keys, same, setId, readBatch, template, units, unitId, unavailableUnits, staleEvidence, planIsolation, targetExpression };

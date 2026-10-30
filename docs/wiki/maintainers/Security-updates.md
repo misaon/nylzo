@@ -38,7 +38,7 @@ A passing diagnostic requires the current signed head, complete CI, release veri
 
 If individually passing updates conflict when combined, recovery removes one deterministic tool/dependency unit and tests the smaller combination. It never retries the same failed combination. A batch of N units permits at most N individual diagnostics and N recombinations. No passing remainder means no release. This finds a verified subset; it does not claim to identify every cause of an interaction failure or the largest possible subset.
 
-Targets are bound to version and digest. A completed protected-main lookup that cannot prepare an exact target despite free proposal capacity records it for attention, so a moved image tag cannot stall the verified remainder indefinitely. This data-only record is accepted only from the GitHub Actions bot and is bound to the signed root head. A failed discovery job cannot declare a target unavailable. Failed diagnostic evidence survives baseline changes; newer versions or digests are eligible for fresh tests. Human holds remain enforced.
+Targets are bound to version and digest. A completed protected-main lookup that cannot prepare an exact target despite free proposal capacity records it for attention, so a moved image tag cannot stall the verified remainder indefinitely. This data-only record is accepted only from the GitHub Actions bot and is bound to the signed root head. Its effect is limited to the same source commit, target branch and discovery mode; a main-only lookup cannot block a production target. A matching signed diagnostic takes precedence over an earlier unavailable marker. A failed discovery job cannot declare a target unavailable. Failed diagnostic evidence survives baseline changes; newer versions or digests are eligible for fresh tests. Human holds remain enforced.
 
 The recovery state lives in signed commit metadata and repository PRs. Neither a label nor a comment can authorize publication; the final PR still needs independent content validation, current full CI, signed release evidence and production provenance checks.
 
@@ -56,6 +56,15 @@ The proposal App has no review bypass or release-tag permission. Its private key
 Only the coordinator has a PR-only exception from human review and permission to create release tags. The integrity ruleset and tag immutability rules have no bypass. Privileged coordinator jobs verify hash-pinned policy files and execute an isolated copy from protected `main`; they never execute PR code or consume PR artifacts. Treat policy and bootstrap-pin changes as changes to publishing authority. Protect and rotate App keys: the coordinator remains a trusted writer with consequences if compromised.
 
 Gitsign creates an ephemeral OIDC signature over the annotated tag, including its source, release kind, previous release and protected policy commit. The publication guard verifies that identity and evidence. Every archive and container is rebuilt without promoting CI caches, scanned, signed and attested before immutable publication. The production updater verifies the signed image digest and provenance. Minor/major upgrades additionally require signed evidence identifying an approved planned release. Health checks gate activation; automatic database rollback is refused.
+
+
+## Diagnostic PR lifecycle
+
+Both `renovate/diagnose-…` and `renovate/<base>-diagnose-…` identify diagnostic proposals; regroup branches have the corresponding two forms. Renovate can omit the extra base prefix when processing one base. Branch spelling never substitutes for the verified App identity, single signed commit, exact source and current CI checks.
+
+Passing diagnostics remain open while their current root needs them for independent regroup verification. Once a source is superseded, discovery closes consumed passing diagnostics and failed aggregate roots. An aggregate whose individual diagnostics all failed can close after those failures have been recorded. Failed individual targets remain open for maintainer attention and exact-version quarantine. A newer identical failed diagnostic can replace a stale duplicate. Human holds, draft PRs and human-edited heads are preserved; discovery rechecks the head and holds immediately before closing anything. Closed PRs retain their diffs and CI history.
+
+A failed recombination proves that a combination failed, not that every member is unsafe. Recovery tests smaller combinations without globally quarantining each member. If every bounded recombination fails, the exhausted root is held on its own base instead of retrying forever. The planned release PR is separate and remains under maintainer control.
 
 ## Fresh npm security fixes
 
