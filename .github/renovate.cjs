@@ -1,6 +1,7 @@
 // This global configuration is loaded only from protected main, never a PR.
 const fs = require("node:fs");
 const assert = require("node:assert/strict");
+const batches = require(process.env.NYLZO_BATCH_HELPERS || "../tools/dependencies/batches.cjs");
 const config = JSON.parse(fs.readFileSync(process.env.NYLZO_RENOVATE_CONFIG || "renovate.json", "utf8"));
 const miseVersion = process.env.NYLZO_MISE_VERSION;
 assert(/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(miseVersion));
@@ -23,16 +24,55 @@ const batchRules = [
   { matchUpdateTypes: ["patch", "digest", "pin", "pinDigest"], groupName: batchName, groupSlug: batchSlug, groupSingleUpdates: true },
   { matchUpdateTypes: ["minor"], matchCurrentVersion: "!/^0\\./", groupName: batchName, groupSlug: batchSlug, groupSingleUpdates: true },
 ];
+const isolation = JSON.parse(process.env.NYLZO_BATCH_PLAN || '{"plans":{},"excluded":[]}');
+assert(isolation && typeof isolation.plans === "object" && Array.isArray(isolation.excluded));
+const bases = [`release/${tag}`, "main"];
+const isolationRules = [];
+for (const item of isolation.excluded) {
+  batches.readBatch(`Nylzo-Batch-V1: ${JSON.stringify({ base: "main", phase: "batch", mode, root: 0, head: "", candidates: [item] })}`);
+  const expression = batches.targetExpression(item);
+  isolationRules.push({ matchJsonata: [`$exists(newValue) and (${expression.identity}) and (${expression.target})`], enabled: false });
+}
+for (const [base, plan] of Object.entries(isolation.plans)) {
+  assert(bases.includes(base));
+  const snapshot = batches.readBatch(`Nylzo-Batch-V1: ${JSON.stringify({ ...plan, base, mode })}`);
+  assert(["diagnostic", "regroup"].includes(snapshot.phase));
+  isolationRules.push({ matchBaseBranches: [base], matchPackageNames: ["*"], enabled: false });
+  const identities = new Map();
+  for (const candidate of snapshot.candidates) {
+    const identity = JSON.stringify([candidate.name, candidate.manager, candidate.datasource]);
+    identities.set(identity, [...(identities.get(identity) || []), candidate]);
+  }
+  for (const candidates of identities.values()) {
+    const item = candidates[0];
+    const slug = plan.phase === "diagnostic" ? `diagnose-${plan.root}-${batches.unitId(item.name)}` : `regroup-${plan.root}-${batches.setId(snapshot.candidates)}`;
+    const versions = [...new Set(candidates.map(candidate => candidate.version).filter(Boolean))];
+    isolationRules.push({
+      matchBaseBranches: [base], matchPackageNames: [item.name], matchManagers: [item.manager], matchDatasources: [item.datasource], enabled: true,
+      ...(versions.length ? { allowedVersions: `/^(?:${versions.map(version => version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})$/` } : {}),
+      groupName: slug, groupSlug: slug, groupSingleUpdates: true,
+      minimumReleaseAge: null,
+      commitBody: batches.template(mode, snapshot.phase, snapshot.root, snapshot.head),
+    });
+    const identity = batches.targetExpression(item).identity;
+    const targets = candidates.map(candidate => `(${batches.targetExpression(candidate).target})`).join(" or ");
+    isolationRules.push({ matchBaseBranches: [base], matchJsonata: [`$exists(newValue) and (${identity}) and $not(${targets})`], enabled: false });
+  }
+}
+const isolating = Object.keys(isolation.plans).length > 0;
 module.exports = {
   ...config,
   // Current manual holds do not consume the two ordinary update slots.
   prConcurrentLimit: config.prConcurrentLimit + blocked,
+  // Isolation has a bounded signed target list; prepare its branches without
+  // letting an unavailable branch consume one of the two actual PR/CI slots.
+  branchConcurrentLimit: isolating ? 0 : null,
   platform: "github",
   repositories: ["misaon/nylzo"],
   autodiscover: false,
   onboarding: false,
   requireConfig: "ignored",
-  baseBranchPatterns: [`release/${tag}`, "main"],
+  baseBranchPatterns: isolating ? Object.keys(isolation.plans) : bases,
   useBaseBranchConfig: "none",
   forkProcessing: "disabled",
   allowScripts: false,
@@ -44,9 +84,14 @@ module.exports = {
   cacheDir: "/tmp/renovate-cache",
   baseDir: "/tmp/renovate-work",
   persistRepoData: false,
+  // Preserve signed failed snapshots and diagnostic evidence across runs.
+  pruneStaleBranches: false,
+  commitBody: batches.template(mode),
+  ...(isolating ? { osvVulnerabilityAlerts: false } : {}),
   // Native advisory remediations otherwise reset grouping and branchTopic.
   vulnerabilityAlerts: {
     ...config.vulnerabilityAlerts,
+    enabled: !isolating,
     groupName: batchName,
     groupSlug: `{{#if ${breakingAlert}}}migration-{{depNameSanitized}}-{{newMajor}}.{{newMinor}}{{else}}${batchSlug}{{/if}}`,
     branchTopic: batchSlug,
@@ -69,6 +114,6 @@ module.exports = {
       // A security lookup must not re-enable duplicate managers or format-only pins.
       ...config.packageRules.filter(rule => rule.enabled === false),
       { matchPackageNames: ["github.com/misaon/nylzo", "ghcr.io/misaon/nylzo"], enabled: false },
-    ] : config.packageRules), ...batchRules],
+    ] : config.packageRules), ...batchRules, ...isolationRules],
   },
 };

@@ -5,6 +5,8 @@ import { inspectDependencyPull, requireAttention, UpdateDeferred } from "../depe
 import { contents, git, pages, repository, request } from "../release/github.mts";
 import { nextVersion, releaseBranch, releaseMetadata, versionParts, trustedDependencyBot } from "../release/policy.mts";
 import { changesAfter, lastMainRelease } from "../release/baseline.mts";
+import batches from "../dependencies/batches.cjs";
+import { batchRecords, verifyRegroup } from "../dependencies/batch-state.mts";
 
 assert.equal(process.env.GITHUB_REPOSITORY, repository);
 assert.equal(process.env.GITHUB_REF, "refs/heads/main");
@@ -35,6 +37,11 @@ function attention(pull: any, reason: string, kind: "ci" | "manual" = "manual") 
   if (!alreadyBlocked) continueUpdates(pull);
 }
 
+function failedBatch(pull: any, batch: any, reason: string) {
+  if (batch) request(`repos/${repository}/issues/${pull.number}/labels`, "POST", { labels: [batch.phase === "diagnostic" ? "automation:diagnostic-failed" : "automation:batch-failed"] });
+  attention(pull, reason, "ci");
+}
+
 if (process.argv[2] === "merge") {
   assert.equal(run.event, "pull_request");
   const pulls = request(`repos/${repository}/commits/${run.head_sha}/pulls`);
@@ -44,15 +51,33 @@ if (process.argv[2] === "merge") {
   try { update = inspectDependencyPull(pull.number, false, latest); }
   catch (error) {
     if (error instanceof UpdateDeferred) console.log(error.message);
-    else if (error instanceof Error && error.message === "Renovate reports an unresolved artifact generation failure") attention(pull, "Lockfile generation failed. A later valid update must pass complete CI before this hold can clear.", "ci");
+    else if (error instanceof Error && error.message === "Renovate reports an unresolved artifact generation failure") failedBatch(pull, batchRecords([pull])[0]?.batch, "Lockfile generation failed. Diagnose the signed batch without publishing individual probes.");
     else attention(pull, "The update changes code, requires a migration, or has unsafe versions or integrity metadata. Review the diff and CI.");
     process.exit(0);
   }
+  if (update.batch?.phase === "diagnostic" || batches.diagnosticBranch(pull.head.ref)) {
+    // A green diagnostic is evidence for a future combined PR, never a merge
+    // authorization. Human holds remain terminal failures for isolation.
+    const labels = new Set(pull.labels.map((label: any) => label.name));
+    if (labels.has("manual-hold") || (labels.has("requires-attention") && !labels.has("automation:ci-failed"))) { continueUpdates(pull); process.exit(0); }
+    if (run.conclusion === "success" && verified) {
+      if (labels.has("automation:ci-failed")) request(`repos/${repository}/issues/${pull.number}/labels/automation%3Aci-failed`, "DELETE");
+      if (labels.has("requires-attention")) request(`repos/${repository}/issues/${pull.number}/labels/requires-attention`, "DELETE");
+      if (labels.has("automation:diagnostic-failed")) request(`repos/${repository}/issues/${pull.number}/labels/automation%3Adiagnostic-failed`, "DELETE");
+      if (!labels.has("automation:diagnostic-passed") || labels.has("automation:ci-failed")) {
+        request(`repos/${repository}/issues/${pull.number}/labels`, "POST", { labels: ["automation:diagnostic-passed"] });
+        continueUpdates(pull);
+      }
+      console.log("Diagnostic passed; regroup the verified updates before any merge.");
+    } else if (["failure", "timed_out", "action_required"].includes(run.conclusion)) failedBatch(pull, update.batch, "An isolated dependency failed verification. Keep it for maintainer review and regroup the verified remainder.");
+    process.exit(0);
+  }
   if (run.conclusion !== "success" || !verified) {
-    if (["failure", "timed_out", "action_required"].includes(run.conclusion)) attention(pull, "CI or a security check failed. No merge or release attempted.", "ci");
+    if (["failure", "timed_out", "action_required"].includes(run.conclusion)) failedBatch(pull, update.batch, "CI or a security check failed. Diagnose the signed batch before regrouping; no merge or release attempted.");
     process.exit(0);
   }
   assert.equal(update.pull.head.sha, run.head_sha);
+  if (update.batch?.phase === "regroup") verifyRegroup(update.batch, update.base);
   if (pull.base.ref !== "main") {
     const reference = request(`repos/${repository}/git/ref/tags/${latest.tag_name}`);
     const baseline = request(`repos/${repository}/git/tags/${reference.object.sha}`).object.sha;
@@ -140,6 +165,7 @@ if (process.argv[2] === "merge") {
   } else {
     assert.equal(run.head_branch, releaseBranch(latest.tag_name));
     const update = inspectDependencyPull(pull.number, true, latest);
+    assert(update.batch?.phase !== "diagnostic" && !batches.diagnosticBranch(pull.head.ref), "Diagnostic commits can never authorize publication");
     const baseline = git("rev-parse", `${latest.tag_name}^{commit}`);
     assert.equal(update.base, baseline, "Automatic patch must contain exactly one verified update from the last published source");
     assert.deepEqual(git("rev-list", `${baseline}..HEAD`).split("\n").filter(Boolean), [source]);

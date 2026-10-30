@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { trustedDependencyBot, releaseBranch, supportsToolInventory } from "../release/policy.mts";
 import { contents, pages, repository, request } from "../release/github.mts";
 import { validateDependencyFile } from "./policy.mts";
+import batches from "./batches.cjs";
 
 export class UpdateDeferred extends Error {}
 
@@ -19,6 +20,12 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
   assert(commits.length === 1 && commits[0].sha === pull.head.sha, "Edited histories require attention");
   const commit = commits[0];
   assert(trustedDependencyBot(commit.author)); assert.equal(commit.commit.verification.verified, true); assert.equal(commit.parents.length, 1);
+  const batch = batches.readBatch(commit.commit.message ?? "");
+  if (batch) assert.equal(batch.base, pull.base.ref);
+  if (batches.diagnosticBranch(pull.head.ref) || /-(?:dependency-batch|regroup-\d+-[a-f0-9]{12})$/u.test(pull.head.ref)) assert(batch, "Batch proposals require signed snapshot metadata");
+  if (batches.diagnosticBranch(pull.head.ref)) assert.equal(batch?.phase, "diagnostic");
+  if (/-regroup-\d+-[a-f0-9]{12}$/u.test(pull.head.ref)) assert.equal(batch?.phase, "regroup");
+  if (/-dependency-batch$/u.test(pull.head.ref)) assert.equal(batch?.phase, "batch");
   const base = commit.parents[0].sha;
   if (pull.base.ref !== "main" && !supportsToolInventory(JSON.parse(contents("tools/dependencies/assets.json", base)))) throw new UpdateDeferred("Wait for the approved scanner bootstrap release; the old baseline cannot attest every tool platform");
   if (!merged) {
@@ -68,7 +75,7 @@ export function inspectDependencyPull(number: number, merged = false, latest?: a
     }
   }
   assert(changes.length > 0 || files.every(file => /(?:lock|go\.sum)/u.test(file.filename)), "No dependency change found");
-  return { pull, base, changes, files };
+  return { pull, base, changes, files, batch };
 }
 
 export function requireAttention(pull: any, reason: string, kind?: "ci" | "manual"): void {

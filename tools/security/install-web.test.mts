@@ -13,7 +13,7 @@ for (const updater of ["dependabot", "renovate", "renovate-batch"]) test(`${upda
     writeFileSync(join(root, "tools/sca/deepmerge.mts"), 'export function verifyDeepmergePatch() { if (process.env.PATCH_STATUS === "fail") throw new Error("Invalid patch"); }\n');
     for (const name of ["install-web.mts", "dependency-api.mts", "dependency-policy.mts"]) cpSync(`tools/security/${name}`, join(root, "tools/security", name));
     for (const name of ["policy.mts", "github.mts"]) cpSync(`tools/release/${name}`, join(root, "tools/release", name));
-    for (const name of ["age.mts", "inspect.mts", "policy.mts"]) cpSync(`tools/dependencies/${name}`, join(root, "tools/dependencies", name));
+    for (const name of ["age.mts", "inspect.mts", "policy.mts", "batches.cjs"]) cpSync(`tools/dependencies/${name}`, join(root, "tools/dependencies", name));
     const original = "packages: [app]\nminimumReleaseAge: 1440\nstrictDepBuilds: true\nallowBuilds: {}\n";
     writeFileSync(join(root, "web/pnpm-workspace.yaml"), original);
     const bot = updater === "dependabot" ? { login: "dependabot[bot]", id: 49699333 } : { login: "nylzo-dependency-updates[bot]", id: 349732443 };

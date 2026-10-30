@@ -4,6 +4,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import batches from "../dependencies/batches.cjs";
 
 const automation = resolve("tools/security/automation.mts");
 function fixture(extraFiles: Record<string, [string, string]> = {}) {
@@ -105,6 +106,39 @@ test("one signed batch across npm, Go and tooling produces one patch candidate a
     const path = f.prefix + `contents/go.mod?ref=${f.source}`;
     f.routes[path].content = Buffer.from("module example.invalid/batch\n\nrequire example.invalid/module v2.0.0\n").toString("base64");
     const breakingMember = f.execute(); assert.notEqual(breakingMember.status, 0); assert.equal(breakingMember.output, ""); assert.equal(breakingMember.writes, "");
+  } finally { f.cleanup(); }
+});
+
+function diagnosticFixture() {
+  const f = fixture();
+  const batch = { base: "release/v0.1.6", phase: "diagnostic", mode: "security", root: 10, head: "c".repeat(40), candidates: [{ name: "example", manager: "npm", datasource: "npm", value: "1.2.4", version: "1.2.4" }] };
+  f.pull.head.ref = `renovate/release/v0.1.6-diagnose-10-${batches.unitId("example")}`;
+  f.routes[f.prefix + "pulls/7/commits?per_page=100"][0].commit.message = `fix(deps): diagnose example\n\nNylzo-Batch-V1: ${JSON.stringify(batch)}`;
+  return f;
+}
+
+test("a fully green diagnostic records evidence and continues discovery without merging or tagging", () => {
+  const f = diagnosticFixture();
+  try {
+    f.run.event = "pull_request"; f.pull.merged = false; f.pull.state = "open";
+    f.routes[f.prefix + "git/ref/heads/release/v0.1.6"] = { object: { sha: f.baseline } };
+    const result = f.execute("merge"); assert.equal(result.status, 0, result.stderr);
+    const writes = result.writes.trim().split("\n").map(line => JSON.parse(line));
+    assert.deepEqual(writes.map(write => write.body), [{ labels: ["automation:diagnostic-passed"] }, { ref: "main", inputs: { mode: "security" } }]);
+    assert(!writes.some(write => write.method === "PUT")); assert.equal(result.output, "");
+    f.run.conclusion = "failure";
+    const failed = f.execute("merge"); assert.equal(failed.status, 0, failed.stderr);
+    assert(failed.writes.includes("automation:diagnostic-failed")); assert(failed.writes.includes("requires-attention"));
+    assert(!failed.writes.includes('"merge_method"'));
+  } finally { f.cleanup(); }
+});
+
+test("even a manually merged diagnostic cannot authorize a production release", () => {
+  const f = diagnosticFixture();
+  try {
+    const result = f.execute(); assert.notEqual(result.status, 0);
+    assert(result.stderr.includes("Diagnostic commits can never authorize publication"));
+    assert.equal(result.output, ""); assert.equal(result.writes, "");
   } finally { f.cleanup(); }
 });
 
