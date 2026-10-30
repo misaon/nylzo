@@ -251,6 +251,15 @@ importers:
       '@vitest/coverage-istanbul':
         specifier: 5.0.5
         version: 5.0.5(vitest@5.0.5)
+      acorn:
+        specifier: 8.19.0
+        version: 8.19.0
+      lightningcss:
+        specifier: 1.33.0
+        version: 1.33.0
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
       svelte-check:
         specifier: 4.7.7
         version: 4.7.7(picomatch@4.0.7)(svelte@5.57.2(@typescript-eslint/types@8.72.0))(typescript@6.0.3)

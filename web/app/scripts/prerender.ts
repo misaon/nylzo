@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import { checkScript, checkStyles, secureHtml } from './resource-integrity.ts';
 
 interface HomeAssets {
   readonly image: { readonly path: string; readonly width: number; readonly height: number };
@@ -40,4 +42,23 @@ const styles = { stylesheet, fontStylesheet: `/assets/${fontStylesheet}`, inline
 const pages = prerender.homeTemplates(index, { image, styles });
 for (const [language, page] of pages) {
   writeFileSync(path.join(distribution, `home.${language}.html`), page);
+}
+
+// Seal every final template, including the font stylesheet created above.
+const bundled = new Map(
+  readdirSync(assets)
+    .filter((name) => !name.endsWith('.gz'))
+    .map((name) => [`/assets/${name}`, readFileSync(path.join(assets, name))]),
+);
+for (const [name, data] of bundled) {
+  if (name.endsWith('.js')) {
+    checkScript(data.toString(), name, bundled);
+  }
+  if (name.endsWith('.css')) {
+    checkStyles(data.toString(), name, bundled);
+  }
+}
+for (const name of ['index.html', 'home.en.html', 'home.cs.html']) {
+  const file = path.join(distribution, name);
+  writeFileSync(file, secureHtml(readFileSync(file, 'utf8'), bundled));
 }

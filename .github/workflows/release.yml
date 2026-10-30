@@ -101,19 +101,21 @@ jobs:
           version: 2026.10.9
           install_args: go osv-scanner
           cache: false
-      - name: Build the web client for the exact release tag
+      - name: Install locked dependencies without lifecycle scripts
         env:
-          NYLZO_VERSION: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          node tools/security/install-web.mts
-          pnpm --dir web --filter @nylzo/web build
-          jq -e --arg version "${GITHUB_REF_NAME#v}" --arg commit "${GITHUB_SHA}" \
-            '.version == $version and .commit == $commit and .dirty == false' internal/server/web/dist/assets/build-info.json
+        run: node tools/security/install-web.mts
       - name: Check source dependencies and generate the release SBOM and VEX
         env:
           NYLZO_VERSION: ${{ github.ref_name }}
         run: node tools/sca/scan.mts "$RUNNER_TEMP/release-evidence" --sbom
+      - name: Build the web client for the exact release tag
+        env:
+          NYLZO_VERSION: ${{ github.ref_name }}
+        run: |
+          pnpm --dir web --filter @nylzo/web build
+          jq -e --arg version "${GITHUB_REF_NAME#v}" --arg commit "${GITHUB_SHA}" \
+            '.version == $version and .commit == $commit and .dirty == false' internal/server/web/dist/assets/build-info.json
       - name: SHA-256 manifest of the build
         id: manifest
         run: |

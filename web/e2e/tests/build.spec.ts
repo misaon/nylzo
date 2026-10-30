@@ -111,7 +111,7 @@ test('the built client stays within its budget, animates only transform and opac
   expect(scripts).not.toMatch(/\bnew Function\b|\beval\(|svelte\/compiler/);
   const index = readAsset('../index.html');
   const preloadedFonts = Array.from(
-    index.matchAll(/<link rel="preload" href="\/assets\/([^"]+)" as="font" type="font\/woff2" crossorigin>/g),
+    index.matchAll(/<link rel="preload" href="\/assets\/([^"]+)" as="font" type="font\/woff2" crossorigin(?:="")?>/g),
     (match) => match[1],
   );
   const fonts = builtAssets('.woff2');

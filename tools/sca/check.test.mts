@@ -59,3 +59,23 @@ test("a patched dependency is fixed only with exact, current installation eviden
   changedPolicy.fixed[0].patchSha256 = "changed";
   assert.throws(() => assess(source.report, changedPolicy, source.imports, date, [deepmergePatch]));
 });
+
+test("a malware alias cannot be excused as a patched vulnerability or a VEX exception", () => {
+  const source = fixture();
+  (source.report.results[0]!.packages[0]!.vulnerabilities[0] as any).aliases = ["MAL-2026-123"];
+  assert.throws(() => assess(source.report, source.policy, source.imports, new Date("2026-10-28T00:00:00Z")), /Known malware/u);
+  const policy = JSON.parse(readFileSync("security/sca-policy.json", "utf8"));
+  source.report.results[1]!.packages[0] = { package: { name: "deepmerge", version: "4.3.1", ecosystem: "npm" }, licenses: ["MIT"], vulnerabilities: [{ id: deepmergePatch.id, aliases: ["MAL-2026-456"] }] } as any;
+  assert.throws(() => assess(source.report, policy, source.imports, new Date("2026-10-28T00:00:00Z"), [deepmergePatch]), /Known malware/u);
+});
+
+test("CI cannot execute frontend builds or tooling before the source dependency gate", () => {
+  const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+  for (const job of ["web", "e2e", "build", "repository", "deployment", "dev-setup", "compose"]) {
+    const block = new RegExp(`^  ${job}:\\n([\\s\\S]*?)(?=^  [a-z]|$(?![\\s\\S]))`, "mu").exec(ci)?.[1] ?? "";
+    assert.match(block, /^    needs: \[changes, sca\]$/mu, `${job} must wait for SCA`);
+  }
+  assert.match(ci, /node tools\/sca\/scan\.mts \.sca-reports --sbom/u);
+  const release = readFileSync(".github/workflows/release.yml", "utf8");
+  assert(release.indexOf('run: node tools/sca/scan.mts "$RUNNER_TEMP/release-evidence" --sbom') < release.indexOf("pnpm --dir web --filter @nylzo/web build"), "The release must scan locked packages before building");
+});
