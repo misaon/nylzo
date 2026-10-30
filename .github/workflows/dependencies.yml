@@ -96,7 +96,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
           working_directory: published-source
       - name: Verify signed release evidence and scan every shipped platform
         env:
@@ -139,7 +139,7 @@ jobs:
         if: steps.main-tools.outputs.changed == 'true'
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.19
+          version: 2026.10.21
       - name: Inventory changed main tools without mixing them into the production base
         if: steps.main-tools.outputs.changed == 'true'
         run: node tools/dependencies/scan-tools.mts . "$RUNNER_TEMP/dependency-reports/main-tools" --inventory
