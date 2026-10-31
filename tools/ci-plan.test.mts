@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
-import { checksPassed, planChecks } from "./ci-plan.mts";
+import { changedFiles, checksPassed, planChecks } from "./ci-plan.mts";
 
 test("documentation skips application tests and builds while consumed protocol and unknown files require full coverage", () => {
   const documentation = planChecks(
@@ -99,4 +103,41 @@ test("fork PRs keep tests and reports while the OIDC publishing job stays skippe
   assert.equal(plan.jobs.coverage, false);
   assert.equal(plan.coverage, false);
   assert.equal(planChecks(["web/app/src/App.svelte"], "pull_request", true).jobs.coverage, true);
+});
+
+test("the release PR runs only the documentation checks, while its merge to main runs full verification", () => {
+  const release = [".github/CHANGELOG.md", ".release-please-manifest.json"];
+  const pullRequest = planChecks(release, "pull_request");
+  assert.ok(Object.entries(pullRequest.jobs).every(([job, required]) => required === job.startsWith("codeql-")));
+  assert.equal(planChecks([".release-please-manifest.json"], "pull_request").full, false);
+  assert.equal(planChecks(release, "push").full, true);
+  assert.equal(planChecks([...release, "internal/server/router.go"], "pull_request").full, true);
+});
+
+test("changed files include deleted paths and both sides of a rename; an unknown base selects everything", () => {
+  const repository = mkdtempSync(join(tmpdir(), "nylzo-ci-plan-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=CI", "-c", "user.email=ci@example.org", "-c", "commit.gpgsign=false", ...args], {
+      cwd: repository,
+      encoding: "utf8",
+    }).trim();
+  try {
+    git("init", "--quiet");
+    mkdirSync(join(repository, "docs"));
+    writeFileSync(join(repository, "router.go"), "package server\n");
+    writeFileSync(join(repository, "docs/old name.md"), "# Old\n");
+    git("add", ".");
+    git("commit", "--quiet", "-m", "base");
+    const base = git("rev-parse", "HEAD");
+    git("mv", "router.go", "moved.go");
+    git("rm", "--quiet", "docs/old name.md");
+    git("commit", "--quiet", "-m", "head");
+    const head = git("rev-parse", "HEAD");
+    assert.deepEqual(changedFiles(base, head, repository).toSorted(), ["docs/old name.md", "moved.go", "router.go"]);
+    assert.deepEqual(changedFiles("0".repeat(40), head, repository), []);
+    assert.deepEqual(changedFiles("f".repeat(40), head, repository), []);
+    assert.throws(() => changedFiles("main", head, repository));
+  } finally {
+    rmSync(repository, { recursive: true, force: true });
+  }
 });

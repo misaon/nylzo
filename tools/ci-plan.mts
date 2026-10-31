@@ -1,4 +1,20 @@
+import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
+
+const releasePullRequestFiles = new Set([".github/CHANGELOG.md", ".release-please-manifest.json"]);
+const commitHash = /^([0-9a-f]{40}|[0-9a-f]{64})$/u;
+
+function git(repository: string, ...args: string[]) {
+  return spawnSync("git", args, { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+}
+
+export function changedFiles(base: string, head: string, repository = ".") {
+  if (!commitHash.test(base) || !commitHash.test(head)) throw new Error("Base and head must be full commit hashes");
+  if (/^0+$/u.test(base) || git(repository, "cat-file", "-e", `${base}^{commit}`).status !== 0) return [];
+  const diff = git(repository, "diff", "--no-renames", "--name-only", "-z", base, head);
+  if (diff.status !== 0) throw new Error(`git diff failed: ${diff.stderr}`);
+  return diff.stdout.split("\0").filter((file) => file.length > 0);
+}
 
 export function planChecks(files: string[], event: string, trustedCoverage = true) {
   if (typeof trustedCoverage !== "boolean") throw new Error("Coverage trust must be explicit");
@@ -10,7 +26,8 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
   }
   const groups = { go: false, web: false, integration: false, repository: false, deployment: false, dependencies: false, actions: false };
   let full = event === "schedule" || event === "workflow_dispatch" || files.length === 0;
-  for (const file of files) {
+  const releasePullRequest = event === "pull_request" && files.every((file) => releasePullRequestFiles.has(file));
+  for (const file of releasePullRequest ? [] : files) {
     if (
       file === "docs/wiki/reference/Protocol.md" ||
       /^(internal\/(core|pepper)\/|cmd\/nylzo-vectors\/|spec\/|web\/core\/)/u.test(file)
@@ -90,7 +107,9 @@ if (import.meta.main) {
   } else {
     const event = process.env.EVENT ?? "";
     const files =
-      event === "schedule" || event === "workflow_dispatch" || process.env.FORCE_FULL_VERIFICATION === "true" ? [] : JSON.parse(process.env.CHANGED_FILES ?? "");
+      event === "schedule" || event === "workflow_dispatch" || process.env.FORCE_FULL_VERIFICATION === "true"
+        ? []
+        : changedFiles(process.env.BASE_SHA ?? "", process.env.HEAD_SHA ?? "");
     const plan = planChecks(files, event, process.env.TRUSTED_COVERAGE === "true");
     const output = Object.entries(plan)
       .map(([key, value]) => `${key}=${JSON.stringify(value)}\n`)

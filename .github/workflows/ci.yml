@@ -49,21 +49,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.node-version
-      - id: diff
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          token: ""
-          base: ${{ github.event.pull_request.base.sha || github.event.before || github.ref }}
-          list-files: json
-          filters: |
-            changed:
-              - '**'
       - id: plan
         name: Select checks from the complete changed-file list
         env:
           EVENT: ${{ github.event_name }}
-          CHANGED_FILES: ${{ steps.diff.outputs.changed_files }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
           TRUSTED_COVERAGE: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           FORCE_FULL_VERIFICATION: ${{ startsWith(github.ref, 'refs/heads/release/v') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID && startsWith(github.event.pull_request.head.ref, 'renovate/')) }}
         run: node tools/ci-plan.mts

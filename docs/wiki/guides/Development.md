@@ -40,7 +40,7 @@ mise run e2e
 
 ## Which CI checks run?
 
-CI selects test and build jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
+CI selects test and build jobs from changed paths on pull requests and pushes to `main`. `tools/ci-plan.mts` reads the Git diff against the base commit, including deleted paths and both sides of renames; an unknown base selects full verification. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
 
 | Change                                                                                                   | Checks                                                                          |
 | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -51,6 +51,8 @@ CI selects test and build jobs from changed paths on pull requests and pushes to
 | Protocol, vectors, either cryptographic core, dependencies, CI, toolchain, build tools, or unknown paths | Full verification                                                               |
 
 Code, build, configuration, and dependency changes also run the required SCA job against both lockfiles, including known-malware and license checks. It retains raw findings and import evidence; exact non-affected findings have a bounded VEX assessment. See [security control policies](../maintainers/Security-controls.md).
+
+A pull request that changes only `.github/CHANGELOG.md` and `.release-please-manifest.json`, which is what the release PR does, gets the documentation checks. Merging it pushes to `main`, and that push runs full verification, which the release tag requires.
 
 Every pull request also runs all three CodeQL analyses. The repository requires CodeQL results before merge; skipping them leaves even a documentation-only PR blocked. On pushes to `main`, CodeQL runs only for the affected languages.
 
