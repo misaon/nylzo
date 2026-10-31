@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/server/crossorigin"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -56,8 +57,16 @@ func (s *Server) routes() http.Handler {
 	routed := logging.Route(mux)
 	return logging.Requests(
 		s.logger,
-		s.noticeForwarded(securityHeaders(s.crossOriginGuard(s.spendChallenges(prefetchGuard(s.throttle(routed)))))),
+		s.noticeForwarded(securityHeaders(crossorigin.Guard(
+			s.settings.PublicURL,
+			http.HandlerFunc(refuseCrossOrigin),
+			s.spendChallenges(prefetchGuard(s.throttle(routed))),
+		))),
 	)
+}
+
+func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusForbidden, errCrossOrigin)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -171,6 +180,7 @@ var (
 	errUnavailable    = apiError{Error: "unavailable"}
 	errWorkRequired   = apiError{Error: "pow"}
 	errIDToken        = apiError{Error: "id_token"}
+	errCrossOrigin    = apiError{Error: "cross_origin"}
 	errInternal       = apiError{Error: "internal"}
 )
 

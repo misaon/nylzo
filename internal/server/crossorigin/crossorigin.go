@@ -1,4 +1,4 @@
-package server
+package crossorigin
 
 import (
 	"net/http"
@@ -15,22 +15,20 @@ const (
 	schemeHTTPS   = "https"
 )
 
-var errCrossOrigin = apiError{Error: "cross_origin"}
-
 type browserMetadata struct {
 	present bool
 	valid   bool
 }
 
-func (s *Server) crossOriginGuard(next http.Handler) http.Handler {
+func Guard(publicURL string, refuse, next http.Handler) http.Handler {
 	protection := http.NewCrossOriginProtection()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/") || safeMethod(r.Method) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if !validBrowserMutation(r, s.settings.PublicURL, protection) {
-			writeError(w, http.StatusForbidden, errCrossOrigin)
+		if !validBrowserMutation(r, publicURL, protection) {
+			refuse.ServeHTTP(w, r)
 			return
 		}
 		next.ServeHTTP(w, r)

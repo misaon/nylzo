@@ -896,3 +896,32 @@ func TestTokenBucketsThrottleTheAPIInOrder(t *testing.T) {
 		}
 	})
 }
+
+func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", &unreadableBody{t: t})
+	challenge, _ := harness.server.challenges.Issue(harness.clock.Now())
+	seed := [core.SeedLen]byte{1}
+	signature := signing.SignRequest(&seed, signing.PurposeRead, request.Method, request.URL.Path, challenge, nil)
+	request.Header.Set("Authorization", signature.Authorization())
+	request.Header.Set("Origin", "https://attacker.example")
+	request.Header.Set("X-Requested-With", "XMLHttpRequest")
+	response := httptest.NewRecorder()
+	harness.server.handler.ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden ||
+		strings.TrimSpace(response.Body.String()) != `{"error":"cross_origin"}` {
+		t.Fatalf("unexpected denial: %d %s", response.Code, response.Body.String())
+	}
+	spent, err := harness.server.challenges.Spend(t.Context(), challenge, harness.clock.Now())
+	if err != nil || !spent {
+		t.Fatalf("cross-origin request consumed a challenge: first spend=%v, err=%v", spent, err)
+	}
+}
+
+type unreadableBody struct{ t *testing.T }
+
+func (body *unreadableBody) Read([]byte) (int, error) {
+	body.t.Error("the rejected cross-origin request body was read")
+	return 0, io.EOF
+}
