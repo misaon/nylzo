@@ -44,16 +44,14 @@
   oncancel={() => report(false)}
   onclose={() => report(false)}
 >
-  <p {id} class="m-0 text-[15px] leading-relaxed text-ink-soft">{message}</p>
+  <p {id} class="text-[15px] leading-relaxed text-ink-soft">{message}</p>
   <div class="mt-5 grid grid-cols-2 gap-2">
-    <button
-      type="button"
-      class="btn-ghost m-0 h-11 rounded-[9px] px-4 text-[13px] md:h-10"
-      onclick={() => report(false)}>{dismiss}</button
+    <button type="button" class="btn-ghost h-11 rounded-[9px] px-4 text-[13px]" onclick={() => report(false)}
+      >{dismiss}</button
     >
     <button
       type="button"
-      class="btn-primary m-0 h-11 rounded-[9px] px-4 text-[13px] font-medium md:h-10"
+      class="btn-primary h-11 rounded-[9px] px-4 text-[13px] font-medium"
       onclick={() => report(true)}>{confirm}</button
     >
   </div>

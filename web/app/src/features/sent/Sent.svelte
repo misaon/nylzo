@@ -11,6 +11,19 @@
   import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
   import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
+  import {
+    PAGE_ALERT,
+    PAGE_BUTTON,
+    PAGE_FACT_DETAIL,
+    PAGE_FACT_TERM,
+    PAGE_FACTS,
+    PAGE_HEADING,
+    PAGE_LIST,
+    PAGE_LIST_ITEM,
+    PAGE_STATUS,
+    PAGE_TEXT,
+    PAGE_TITLE,
+  } from '../../shared/ui/page-classes.ts';
   import { type CancelOutcome, createSentPage, type ItemState, type SentItem, type SentView } from './sent-page.ts';
 
   type Confirming = { readonly kind: 'cancel' | 'forget'; readonly id: string } | { readonly kind: 'forget_all' };
@@ -150,51 +163,58 @@
   }
 </script>
 
-<p role="status" aria-live="polite">{status}</p>
+<p role="status" aria-live="polite" class={PAGE_STATUS}>{status}</p>
 
 <section aria-labelledby="sent-title">
-  <h2 id="sent-title" tabindex="-1" {@attach focus.attach('title')}>{translate('sent.title')}</h2>
-  <p>{translate('sent.note', { days: formatDays(RETENTION_DAYS, translator.language) })}</p>
+  <h2 id="sent-title" tabindex="-1" class={PAGE_TITLE} {@attach focus.attach('title')}>{translate('sent.title')}</h2>
+  <p class={PAGE_TEXT}>{translate('sent.note', { days: formatDays(RETENTION_DAYS, translator.language) })}</p>
 
   {#if view.view === 'unavailable'}
-    <p role="alert">{translate('sent.unavailable')}</p>
+    <p role="alert" class={PAGE_ALERT}>{translate('sent.unavailable')}</p>
   {:else if view.view === 'list' && view.items.length === 0}
-    <p>{translate('sent.empty')}</p>
+    <p class={PAGE_TEXT}>{translate('sent.empty')}</p>
   {:else if view.view === 'list'}
-    <ul>
+    <ul class={PAGE_LIST}>
       {#each view.items as item (item.id)}
-        <li>
-          <h3 id={headingId(item.id)} tabindex="-1" {@attach focus.attach(headingId(item.id))}>
+        <li class={[PAGE_LIST_ITEM, 'mt-4 rounded-pane bg-white/3 p-5 inset-ring inset-ring-white/8']}>
+          <h3 id={headingId(item.id)} tabindex="-1" class={PAGE_HEADING} {@attach focus.attach(headingId(item.id))}>
             {translate('sent.item', { time: time(item.createdAt) })}
           </h3>
-          <dl>
-            <dt>{translate('sent.label.state')}</dt>
-            <dd>{stateText(item.state)}</dd>
-            <dt>{translate('sent.label.time')}</dt>
-            <dd>{timeText(item)}</dd>
-            <dt>{translate('sent.label.first_opened')}</dt>
-            <dd>{firstOpenedText(item.state)}</dd>
-            <dt>{translate('sent.label.opens')}</dt>
-            <dd>
+          <dl class={PAGE_FACTS}>
+            <dt class={PAGE_FACT_TERM}>{translate('sent.label.state')}</dt>
+            <dd class={PAGE_FACT_DETAIL}>{stateText(item.state)}</dd>
+            <dt class={PAGE_FACT_TERM}>{translate('sent.label.time')}</dt>
+            <dd class={PAGE_FACT_DETAIL}>{timeText(item)}</dd>
+            <dt class={PAGE_FACT_TERM}>{translate('sent.label.first_opened')}</dt>
+            <dd class={PAGE_FACT_DETAIL}>{firstOpenedText(item.state)}</dd>
+            <dt class={PAGE_FACT_TERM}>{translate('sent.label.opens')}</dt>
+            <dd class={PAGE_FACT_DETAIL}>
               {counterText(item.state, (status) =>
                 translate('sent.opens', { used: status.opensUsed, max: status.opensMax }),
               )}
             </dd>
-            <dt>{translate('sent.label.attempts')}</dt>
-            <dd>{counterText(item.state, (status) => String(status.failedPassphraseAttempts))}</dd>
+            <dt class={PAGE_FACT_TERM}>{translate('sent.label.attempts')}</dt>
+            <dd class={PAGE_FACT_DETAIL}>
+              {counterText(item.state, (status) => String(status.failedPassphraseAttempts))}
+            </dd>
           </dl>
           <button
             type="button"
+            class={PAGE_BUTTON}
             aria-describedby={headingId(item.id)}
             disabled={!item.cancellable}
             onclick={() => (confirming = { kind: 'cancel', id: item.id })}>{translate('sent.cancel')}</button
           >
-          <button type="button" aria-describedby={headingId(item.id)} onclick={() => askForget(item)}
-            >{translate('sent.forget')}</button
+          <button
+            type="button"
+            class={PAGE_BUTTON}
+            aria-describedby={headingId(item.id)}
+            onclick={() => askForget(item)}>{translate('sent.forget')}</button
           >
           {#if item.state.kind === 'retry_later' || item.state.kind === 'failed'}
             <button
               type="button"
+              class={PAGE_BUTTON}
               aria-describedby={headingId(item.id)}
               onclick={() => run(() => sent.refresh(item.id), item.id)}>{translate('action.retry')}</button
             >
@@ -202,7 +222,9 @@
         </li>
       {/each}
     </ul>
-    <button type="button" onclick={() => (confirming = { kind: 'forget_all' })}>{translate('sent.forget_all')}</button>
+    <button type="button" class={PAGE_BUTTON} onclick={() => (confirming = { kind: 'forget_all' })}
+      >{translate('sent.forget_all')}</button
+    >
   {/if}
 </section>
 

@@ -7,6 +7,7 @@
 
   import { formatWait } from '../language/format.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
+  import { PAGE_FIELD, PAGE_LABEL, PAGE_PROBLEM, PAGE_STATUS, PAGE_SUBMIT, PAGE_TEXT } from '../ui/page-classes.ts';
   import { MAX_REASON_BYTES, type ReportOutcome, type ReportSubmission } from './report.ts';
 
   interface Props {
@@ -191,7 +192,7 @@
     </button>
   {:else}
     {#if withLink}
-      <label for={`${name}-link`}>{translate('report.link')}</label>
+      <label for={`${name}-link`} class={PAGE_LABEL}>{translate('report.link')}</label>
       <input
         id={`${name}-link`}
         type="text"
@@ -200,26 +201,30 @@
         autocapitalize="off"
         autocorrect="off"
         spellcheck="false"
+        class={PAGE_FIELD}
         bind:value={link}
         aria-invalid={linkProblem !== ''}
         aria-describedby={`${name}-link-hint ${name}-link-problem`}
       />
-      <p id={`${name}-link-hint`}>{translate('report.link.hint')}</p>
-      <p id={`${name}-link-problem`} data-problem>{linkProblem}</p>
+      <p id={`${name}-link-hint`} class={PAGE_TEXT}>{translate('report.link.hint')}</p>
+      <p id={`${name}-link-problem`} data-problem class={PAGE_PROBLEM}>{linkProblem}</p>
     {/if}
-    <label for={`${name}-reason`}>{translate('report.reason')}</label>
+    <label for={`${name}-reason`} class={PAGE_LABEL}>{translate('report.reason')}</label>
     <textarea
       id={`${name}-reason`}
       autocomplete="off"
       autocapitalize="off"
       autocorrect="off"
       spellcheck="false"
+      class={[PAGE_FIELD, 'min-h-28']}
       bind:value={reason}
       aria-invalid={reasonProblem !== ''}
       aria-describedby={`${name}-reason-hint ${name}-reason-problem`}></textarea>
-    <p id={`${name}-reason-hint`}>{translate('report.reason.hint', { bytes: MAX_REASON_BYTES })}</p>
-    <p id={`${name}-reason-problem`} data-problem>{reasonProblem}</p>
-    <label for={`${name}-contact`}>{translate('report.contact')}</label>
+    <p id={`${name}-reason-hint`} class={PAGE_TEXT}>
+      {translate('report.reason.hint', { bytes: MAX_REASON_BYTES })}
+    </p>
+    <p id={`${name}-reason-problem`} data-problem class={PAGE_PROBLEM}>{reasonProblem}</p>
+    <label for={`${name}-contact`} class={PAGE_LABEL}>{translate('report.contact')}</label>
     <input
       id={`${name}-contact`}
       type="email"
@@ -227,30 +232,31 @@
       autocapitalize="off"
       autocorrect="off"
       spellcheck="false"
+      class={PAGE_FIELD}
       bind:value={contact}
       aria-invalid={contactProblem !== ''}
       aria-describedby={`${name}-contact-hint ${name}-contact-problem`}
     />
-    <p id={`${name}-contact-hint`}>{translate('report.contact.hint')}</p>
-    <p id={`${name}-contact-problem`} data-problem>{contactProblem}</p>
-    <label class="flex min-h-11 cursor-pointer items-start gap-3">
+    <p id={`${name}-contact-hint`} class={PAGE_TEXT}>{translate('report.contact.hint')}</p>
+    <p id={`${name}-contact-problem`} data-problem class={PAGE_PROBLEM}>{contactProblem}</p>
+    <label class="mt-5 flex min-h-11 cursor-pointer items-start gap-3 text-[0.8125rem] text-ink-soft">
       <input
         type="checkbox"
         required
-        class="mt-0.5 size-4 min-h-0 min-w-0 shrink-0 p-0 accent-aegis-400 shadow-none"
+        class="mt-0.5 size-4 min-h-0 min-w-0 shrink-0 accent-aegis-400"
         bind:checked={goodFaith}
         aria-invalid={goodFaithProblem !== ''}
         aria-describedby={`${name}-good-faith-problem`}
       />
       <span>{translate('report.good_faith')}</span>
     </label>
-    <p id={`${name}-good-faith-problem`} data-problem>{goodFaithProblem}</p>
-    <button type="submit" disabled={sending}>{translate('report.submit')}</button>
+    <p id={`${name}-good-faith-problem`} data-problem class={PAGE_PROBLEM}>{goodFaithProblem}</p>
+    <button type="submit" disabled={sending} class={PAGE_SUBMIT}>{translate('report.submit')}</button>
   {/if}
 </form>
 {#if !compact}
   <div class="stack">
-    <p role="status" aria-live="polite">{result}</p>
-    <p class="invisible" aria-hidden="true">{translate('report.limit')}</p>
+    <p role="status" aria-live="polite" class={PAGE_STATUS}>{result}</p>
+    <p class={[PAGE_TEXT, 'invisible']} aria-hidden="true">{translate('report.limit')}</p>
   </div>
 {/if}
