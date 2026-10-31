@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const [port = '8090', profile = 'default'] = process.argv.slice(2);
-const repository = new URL('../../', import.meta.url).pathname;
-const binaryDirectory = new URL(`.bin/${port}/`, import.meta.url);
-const binary = new URL('nylzo', binaryDirectory).pathname;
+const repository = path.resolve(import.meta.dirname, '../..');
+const binaryDirectory = path.join(import.meta.dirname, '.bin', port);
+const binary = path.join(binaryDirectory, 'nylzo');
 
 const profiles: Record<string, Record<string, string>> = {
   default: {},
@@ -15,7 +15,7 @@ const profiles: Record<string, Record<string, string>> = {
 };
 
 mkdirSync(binaryDirectory, { recursive: true });
-execFileSync(process.execPath, [new URL('../../tools/build.mts', import.meta.url).pathname, binary], {
+execFileSync(process.execPath, [path.join(repository, 'tools/build.mts'), binary], {
   cwd: repository,
   stdio: 'inherit',
 });

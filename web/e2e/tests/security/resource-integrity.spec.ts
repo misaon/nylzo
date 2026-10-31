@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { expect, test } from './support/fixtures.ts';
+import { expect, test } from '../support/fixtures.ts';
 
 function digest(body: string): string {
   return `sha384-${createHash('sha384').update(body).digest('base64')}`;

@@ -10,9 +10,6 @@ const SILENCE_LIMIT_MS = 30_000;
 let kdfPolicy: TrustedTypePolicy | undefined;
 
 function workerScriptUrl(): string {
-  if (typeof trustedTypes === 'undefined') {
-    return kdfWorkerUrl;
-  }
   // eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Trusted Types refuses a second policy named nylzo-kdf, so later workers reuse the first.
   kdfPolicy ??= trustedTypes.createPolicy('nylzo-kdf', {
     createScriptURL(input) {

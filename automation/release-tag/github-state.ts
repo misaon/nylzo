@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { type GitHubClient, repository } from '../github/client.ts';
+import { peelTag } from '../github/tags.ts';
 
 const latestRelease = z.object({ draft: z.literal(false), immutable: z.literal(true), tag_name: z.string() });
 
@@ -24,11 +25,11 @@ export async function taggedCommit(client: GitHubClient, tag: string): Promise<s
   if (reference.data.object.type !== 'tag') {
     throw new Error(`${tag} must be an annotated tag`);
   }
-  const annotated = await client.rest.git.getTag({ ...repository, tag_sha: reference.data.object.sha });
-  if (annotated.data.object.type !== 'commit') {
+  const target = await peelTag(client, repository, reference.data.object, 1);
+  if (target.type !== 'commit') {
     throw new Error(`${tag} must point at a commit`);
   }
-  return annotated.data.object.sha;
+  return target.sha;
 }
 
 export async function tagExists(client: GitHubClient, tag: string): Promise<boolean> {

@@ -17,9 +17,6 @@ async function loadFonts(sample: string): Promise<void> {
 }
 
 async function fontsLoaded(sample: string): Promise<void> {
-  if (!('fonts' in document)) {
-    return;
-  }
   const timeout = new Promise<void>((resolve) => setTimeout(resolve, FONT_WAIT_MS));
   await Promise.race([loadFonts(sample), timeout]);
 }
@@ -30,16 +27,13 @@ async function nextTask(): Promise<void> {
 
 async function contentPainted(): Promise<void> {
   return new Promise((resolve) => {
-    const observer = PerformanceObserver.supportedEntryTypes.includes('paint')
-      ? new PerformanceObserver((entries) => {
-          if (entries.getEntriesByName('first-contentful-paint').length === 0) {
-            return;
-          }
-          observer?.disconnect();
-          resolve();
-        })
-      : undefined;
-    observer?.observe({ type: 'paint', buffered: true });
+    new PerformanceObserver((entries, observer) => {
+      if (entries.getEntriesByName('first-contentful-paint').length === 0) {
+        return;
+      }
+      observer.disconnect();
+      resolve();
+    }).observe({ type: 'paint', buffered: true });
     setTimeout(resolve, PAINT_WAIT_MS);
   });
 }

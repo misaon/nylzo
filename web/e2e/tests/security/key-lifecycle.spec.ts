@@ -1,9 +1,9 @@
 import type { Page } from '@playwright/test';
 
-import { expect, test } from './support/fixtures.ts';
-import { sentRecords } from './support/indexed-database.ts';
-import { createMessageThroughApi } from './support/messages.ts';
-import { createMessageInPage, expectMessageShown, showMessage } from './support/pages.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { sentRecords } from '../support/indexed-database.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { createMessageInPage, expectMessageShown, showMessage } from '../support/pages.ts';
 
 interface KeyAudit {
   privateExports: number;

@@ -20,7 +20,7 @@ export interface Payload {
   readonly file?: Uint8Array | undefined;
 }
 
-export interface OpenedPayload extends Payload {
+interface OpenedPayload extends Payload {
   readonly file?: Uint8Array<ArrayBuffer> | undefined;
 }
 

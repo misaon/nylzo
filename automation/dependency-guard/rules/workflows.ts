@@ -1,10 +1,8 @@
+import { actionPinPattern, actionPins } from '../../github/action-pins.ts';
 import { compareSnapshots, type Extraction, type FileRule, snapshot, type UpstreamClaim } from './file-review.ts';
 
-const actionPin =
-  /^ *(?:- )?uses: (?<action>[\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@(?<commit>[a-f\d]{40}) # (?<version>v?\d+\.\d+\.\d+)$/dgm;
-
 const workflowValues: readonly Extraction[] = [
-  { name: 'action', pattern: actionPin, values: { commit: 'opaque', version: 'version' } },
+  { name: 'action', pattern: actionPinPattern, values: { commit: 'opaque', version: 'version' } },
   {
     name: 'dependency',
     pattern:
@@ -24,19 +22,19 @@ const workflowValues: readonly Extraction[] = [
   },
 ];
 
-function actionPins(workflow: string): Map<string, UpstreamClaim> {
-  const pins = new Map<string, UpstreamClaim>();
-  for (const match of workflow.matchAll(actionPin)) {
-    const { action = '', commit = '', version = '' } = match.groups ?? {};
-    pins.set(`${action}@${commit} ${version}`, { commit, kind: 'action-tag', repository: action, tag: version });
-  }
-  return pins;
+function actionTagClaims(workflow: string): Map<string, UpstreamClaim> {
+  return new Map(
+    actionPins(workflow).map(({ action, commit, version }): [string, UpstreamClaim] => [
+      `${action}@${commit} ${version}`,
+      { commit, kind: 'action-tag', repository: action, tag: version },
+    ]),
+  );
 }
 
 export const workflow: FileRule = (path, before, after) => {
   const review = compareSnapshots(path, snapshot(before, workflowValues), snapshot(after, workflowValues));
-  const existing = actionPins(before);
-  for (const [key, claim] of actionPins(after)) {
+  const existing = actionTagClaims(before);
+  for (const [key, claim] of actionTagClaims(after)) {
     if (!existing.has(key)) {
       review.claims.push(claim);
     }

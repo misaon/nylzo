@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Commit, GuardSource, PullRequest, Review, Tree, TreeEntry } from './source.ts';
 
 import { type GitHubClient, repository } from '../github/client.ts';
+import { peelTag } from '../github/tags.ts';
 
 const account = z.object({ id: z.number(), login: z.string(), type: z.string() });
 const sha = z.string().regex(/^[a-f\d]{40}$/);
@@ -36,7 +37,6 @@ const releaseAsset = z.object({ digest: z.string().nullable(), name: z.string() 
 const releaseSchema = z.object({ assets: z.array(releaseAsset) });
 
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-const maximumTagDepth = 3;
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'status' in error && error.status === 404;
@@ -147,11 +147,7 @@ export function createGitHubSource(client: GitHubClient): GuardSource {
       if (reference === undefined) {
         return;
       }
-      let target = referenceSchema.parse(reference.data).object;
-      for (let depth = 0; target.type === 'tag' && depth < maximumTagDepth; depth++) {
-        const annotated = await client.rest.git.getTag({ ...owner, tag_sha: target.sha });
-        target = referenceSchema.parse(annotated.data).object;
-      }
+      const target = await peelTag(client, owner, referenceSchema.parse(reference.data).object);
       return target.type === 'commit' ? target.sha : undefined;
     },
 

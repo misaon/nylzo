@@ -17,11 +17,15 @@ const SEQUENCES = [
 const common = new Set(COMMON_PASSPHRASES);
 
 // Applies spec section 2 in its order, so both cores name the same problem.
+export function passphraseProblem(passphrase: string): PassphraseProblem | 'malformed' | undefined {
+  return passphrase.isWellFormed() ? strengthProblem(passphrase.normalize('NFC')) : 'malformed';
+}
+
 export function assertStrongPassphrase(passphrase: string): void {
-  if (!passphrase.isWellFormed()) {
+  const problem = passphraseProblem(passphrase);
+  if (problem === 'malformed') {
     throw new MalformedPassphraseError();
   }
-  const problem = passphraseProblem(passphrase.normalize('NFC'));
   if (problem) {
     throw new WeakPassphraseError(problem);
   }
@@ -36,13 +40,13 @@ export function generatePassphrase(): string {
       characters.slice(group * GENERATED_GROUP_LENGTH, (group + 1) * GENERATED_GROUP_LENGTH).join(''),
     );
     const candidate = groups.join('-');
-    if (passphraseProblem(candidate) === undefined) {
+    if (strengthProblem(candidate) === undefined) {
       return candidate;
     }
   }
 }
 
-function passphraseProblem(normalized: string): PassphraseProblem | undefined {
+function strengthProblem(normalized: string): PassphraseProblem | undefined {
   if (codePoints(normalized).length < MIN_PASSPHRASE_CHARACTERS) {
     return 'short';
   }

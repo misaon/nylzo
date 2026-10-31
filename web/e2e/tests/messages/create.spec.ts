@@ -1,9 +1,9 @@
 import type { Page, Request } from '@playwright/test';
 
-import { ApiError } from '../../app/src/shared/api/api-errors.ts';
-import { createApi } from '../../app/src/shared/api/api.ts';
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
+import { ApiError } from '../../../app/src/shared/api/api-errors.ts';
+import { createApi } from '../../../app/src/shared/api/api.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
 import {
   choosePassphrase,
   createdLink,
@@ -14,10 +14,10 @@ import {
   openApp,
   returnFromBackForwardCache,
   showMessage,
-} from './support/pages.ts';
-import { holdRoute } from './support/routes.ts';
-import { POW_BASE_URL } from './support/servers.ts';
-import { watchViolations } from './support/watchers.ts';
+} from '../support/pages.ts';
+import { holdRoute } from '../support/routes.ts';
+import { POW_BASE_URL } from '../support/servers.ts';
+import { watchViolations } from '../support/watchers.ts';
 
 interface CreateAnswer {
   readonly handled: boolean;

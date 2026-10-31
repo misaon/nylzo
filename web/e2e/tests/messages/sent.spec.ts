@@ -1,12 +1,12 @@
-import { expect, test } from './support/fixtures.ts';
+import { expect, test } from '../support/fixtures.ts';
 import {
   countCompletedWrites,
   databaseNames,
   EXPIRED_RECORD_ID,
   sentRecords,
   storeExpiredRecord,
-} from './support/indexed-database.ts';
-import { createMessageThroughApi } from './support/messages.ts';
+} from '../support/indexed-database.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
 import {
   chooseRemember,
   createdLink,
@@ -15,9 +15,9 @@ import {
   notInert,
   openApp,
   showMessage,
-} from './support/pages.ts';
-import { holdRoute } from './support/routes.ts';
-import { watchViolations } from './support/watchers.ts';
+} from '../support/pages.ts';
+import { holdRoute } from '../support/routes.ts';
+import { watchViolations } from '../support/watchers.ts';
 
 const REMEMBERED = 'This device remembered the message.';
 const NOTHING_REMEMBERED = 'This device remembers no messages.';

@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from './support/fixtures.ts';
-import { createMessageInPage, expectMessageShown, showMessage } from './support/pages.ts';
-import { BASE_URL, NYLZO_BINARY } from './support/servers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageInPage, expectMessageShown, showMessage } from '../support/pages.ts';
+import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 const PASSPHRASE = 'correct horse battery staple';
 

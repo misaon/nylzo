@@ -7,7 +7,6 @@ import { ApiError } from '../../shared/api/api-errors.ts';
 import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
 import { isRetained, RETENTION_MS, type SentRecord } from '../../shared/sent-records/sent-record.ts';
-import { newGate } from '../../shared/testing/gate.ts';
 import { assess, createSentPage, type SentPage, type SentView } from './sent-page.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
@@ -200,19 +199,19 @@ describe('the sent page', () => {
     const { api, record, store, sent } = await setup({}, 1);
     const { id, manageKey } = record(0);
     await api.cancel(parseId(id), manageKey);
-    const gate = newGate();
-    const asked = newGate();
+    const gate = Promise.withResolvers<undefined>();
+    const asked = Promise.withResolvers<undefined>();
     const status = api.status.bind(api);
     api.status = async (messageId, key) => {
       const answer = await status(messageId, key);
-      asked.open();
-      await gate.opened;
+      asked.resolve(undefined);
+      await gate.promise;
       return answer;
     };
     const loading = sent.load();
-    await asked.opened;
+    await asked.promise;
     await forget(sent, id);
-    gate.open();
+    gate.resolve(undefined);
     await loading;
     expect(store.records.has(id)).toBe(false);
     expect(sent.items()).toEqual([]);

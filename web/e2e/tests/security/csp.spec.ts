@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 
-import { expect, test } from './support/fixtures.ts';
-import { openApp } from './support/pages.ts';
-import { watchViolations } from './support/watchers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { openApp } from '../support/pages.ts';
+import { watchViolations } from '../support/watchers.ts';
 
-const spec = readFileSync(new URL('../../../docs/wiki/reference/Protocol.md', import.meta.url), 'utf8');
+const spec = readFileSync(new URL('../../../../docs/wiki/reference/Protocol.md', import.meta.url), 'utf8');
 const htmlPolicy = /^- HTML responses carry `Content-Security-Policy: ([^`]+)`/m.exec(spec)?.[1] ?? '';
 const PAGES = ['/', '/cs/', '/sent', '/report', '/transparency', '/m/AAAAAAAAAAAAAAAAAAAAAA'];
 

@@ -1,10 +1,10 @@
 import type { Page } from '@playwright/test';
 
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
-import { expectMessageShown, leavePage, notInert, showMessage } from './support/pages.ts';
-import { holdRoute } from './support/routes.ts';
-import { watchViolations } from './support/watchers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { expectMessageShown, leavePage, notInert, showMessage } from '../support/pages.ts';
+import { holdRoute } from '../support/routes.ts';
+import { watchViolations } from '../support/watchers.ts';
 
 declare global {
   var nylzoShownAfterLeaving: boolean | undefined;

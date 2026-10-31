@@ -1,7 +1,6 @@
-import { type CryptoRequestKey, newSecret, requestKey } from '@nylzo/core';
+import { newSecret, type RequestKey, requestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
-import { newGate } from '../testing/gate.ts';
 import { memoryStore } from './memory-sent-store.ts';
 import {
   ExtractableKeyError,
@@ -16,7 +15,7 @@ import { purgeSentRecords, rememberSent, retainedRecords } from './sent-store.ts
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 const ID = 'AAAAAAAAAAAAAAAAAAAAAA';
 
-async function manageKeyOf(seed: Uint8Array): Promise<CryptoRequestKey> {
+async function manageKeyOf(seed: Uint8Array): Promise<RequestKey> {
   const key = await requestKey(seed);
   if (!('privateKey' in key)) {
     throw new Error('Web Crypto refused the test seed');
@@ -32,7 +31,7 @@ function openNothing(name: string): never {
   throw new Error(`must not open ${name}`);
 }
 
-async function extractableKey(): Promise<CryptoRequestKey> {
+async function extractableKey(): Promise<RequestKey> {
   const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   return {
     privateKey: pair.privateKey,
@@ -125,7 +124,6 @@ describe('cleaning up on page load', () => {
     const open = vi.fn(openNothing);
     const factory = { databases: () => Promise.resolve([{ name: 'other', version: 1 }]), open };
     await purgeSentRecords(factory as unknown as IDBFactory, NOW);
-    await purgeSentRecords({ open } as unknown as IDBFactory, NOW);
     await purgeSentRecords(undefined, NOW);
     expect(open).not.toHaveBeenCalled();
   });
@@ -144,18 +142,18 @@ describe('remembering a new message', () => {
 
   it('removes a record that lands after the page said it was not saved', async () => {
     const store = memoryStore();
-    const gate = newGate();
-    const landed = newGate();
+    const gate = Promise.withResolvers<undefined>();
+    const landed = Promise.withResolvers<undefined>();
     const put = store.put.bind(store);
     store.put = async (record) => {
-      await gate.opened;
+      await gate.promise;
       await put(record);
-      landed.open();
+      landed.resolve(undefined);
     };
     expect(await rememberSent(store, await newRecord(), 10)).toBe(false);
     expect(store.records.has(ID)).toBe(false);
-    gate.open();
-    await landed.opened;
+    gate.resolve(undefined);
+    await landed.promise;
     await vi.waitFor(() => expect(store.records.has(ID)).toBe(false));
   });
 });

@@ -1,7 +1,7 @@
+import { browserDatabases, committed, databaseExists, openDatabase, requestResult } from './indexed-database.ts';
 import { isRetained, recordFrom, type SentRecord, storedForm } from './sent-record.ts';
 
 const DATABASE = 'nylzo';
-const DATABASE_VERSION = 1;
 const RECORDS = 'sent';
 
 export interface SentStore {
@@ -12,53 +12,8 @@ export interface SentStore {
   clear: () => Promise<void>;
 }
 
-class SentStoreUnavailableError extends Error {
-  override readonly name = 'SentStoreUnavailableError';
-
-  constructor() {
-    super('this browser does not let the page store sent messages');
-  }
-}
-
-export function browserDatabases(): IDBFactory | undefined {
-  return typeof indexedDB === 'undefined' ? undefined : indexedDB;
-}
-
-async function requestResult<Result>(request: IDBRequest<Result>): Promise<Result> {
-  return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result));
-    request.addEventListener('error', () => reject(request.error ?? new SentStoreUnavailableError()));
-  });
-}
-
-async function committed(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const fail = () => reject(transaction.error ?? new SentStoreUnavailableError());
-    transaction.addEventListener('complete', () => resolve());
-    transaction.addEventListener('error', fail);
-    transaction.addEventListener('abort', fail);
-  });
-}
-
-async function openDatabase(factory: IDBFactory | undefined): Promise<IDBDatabase> {
-  if (!factory) {
-    throw new SentStoreUnavailableError();
-  }
-  let request: IDBOpenDBRequest;
-  try {
-    request = factory.open(DATABASE, DATABASE_VERSION);
-  } catch {
-    throw new SentStoreUnavailableError();
-  }
-  return new Promise((resolve, reject) => {
-    const fail = () => reject(new SentStoreUnavailableError());
-    request.addEventListener('upgradeneeded', () => {
-      request.result.createObjectStore(RECORDS, { keyPath: 'id' });
-    });
-    request.addEventListener('success', () => resolve(request.result));
-    request.addEventListener('error', fail);
-    request.addEventListener('blocked', fail);
-  });
+function createRecords(database: IDBDatabase): void {
+  database.createObjectStore(RECORDS, { keyPath: 'id' });
 }
 
 function storedId(value: unknown): string | undefined {
@@ -75,7 +30,7 @@ export function browserSentStore(factory = browserDatabases()): SentStore {
     mode: IDBTransactionMode,
     action: (records: IDBObjectStore) => Promise<Result>,
   ): Promise<Result> {
-    database ??= openDatabase(factory);
+    database ??= openDatabase(factory, DATABASE, createRecords);
     const opened = await database;
     const transaction = opened.transaction(RECORDS, mode);
     const done = committed(transaction);
@@ -173,12 +128,8 @@ export async function rememberSent(store: SentStore, record: SentRecord, timeout
 }
 
 export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<void> {
-  if (!factory || typeof factory.databases !== 'function') {
-    return;
-  }
   try {
-    const databases = await factory.databases();
-    if (databases.some((database) => database.name === DATABASE)) {
+    if (await databaseExists(factory, DATABASE)) {
       await retainedRecords(browserSentStore(factory), now);
     }
   } catch {

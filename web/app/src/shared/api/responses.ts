@@ -1,4 +1,4 @@
-import { encodeBase64url, utf8 } from '@nylzo/core';
+import { decodeBase64url, utf8 } from '@nylzo/core';
 
 import { ApiError, ERROR_KINDS, MESSAGE_STATES, type MessageState, ResponseError } from './api-errors.ts';
 
@@ -41,7 +41,6 @@ export interface ServedPolicy {
 const MAX_OPERATOR_FIELD_BYTES = 200;
 const SHA256_HEX = /^[\da-f]{64}$/;
 const RFC_3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-const BASE64URL = /^[\w-]+$/;
 const TIMES = [
   ['created_at', 'createdAt'],
   ['expires_at', 'expiresAt'],
@@ -190,13 +189,13 @@ export async function apiError(response: Response): Promise<ApiError> {
 }
 
 export function servedPolicy(header: string | null): ServedPolicy {
-  if (header === null || !BASE64URL.test(header)) {
-    throw new ResponseError('missing or malformed X-Nylzo-Policy');
+  if (header === null || header === '') {
+    throw new ResponseError('missing X-Nylzo-Policy');
   }
-  const standard = header.replaceAll('-', '+').replaceAll('_', '/');
-  const padded = standard.padEnd(Math.ceil(standard.length / 4) * 4, '=');
-  const bytes = Uint8Array.from(atob(padded), (character) => character.codePointAt(0) ?? 0);
-  if (encodeBase64url(bytes) !== header) {
+  let bytes: Uint8Array;
+  try {
+    bytes = decodeBase64url(header);
+  } catch {
     throw new ResponseError('X-Nylzo-Policy is not canonical base64url');
   }
   let json: unknown;

@@ -1,7 +1,7 @@
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
-import { expectMessageShown, openApp, showMessage } from './support/pages.ts';
-import { BASE_URL, POW_BASE_URL } from './support/servers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { expectMessageShown, openApp, showMessage } from '../support/pages.ts';
+import { BASE_URL, POW_BASE_URL } from '../support/servers.ts';
 
 test(
   'the browser is cross-origin isolated and receives the required security policies',

@@ -106,7 +106,7 @@ export function compareSnapshots(path: string, before: Snapshot, after: Snapshot
   return review;
 }
 
-export function describeDifference(before: string, after: string): string {
+function describeDifference(before: string, after: string): string {
   const oldLines = before.split('\n');
   const newLines = after.split('\n');
   const index = newLines.findIndex((line, position) => line !== oldLines[position]);
