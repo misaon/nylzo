@@ -1,0 +1,23 @@
+{
+  "pullRequest": 149,
+  "title": "fix(deps): update diagnose-145-8a3edd54b596 (release/v0.1.12)",
+  "base": "fb932bcee7fa43baee52049d945b9d385240f0d7",
+  "head": "e79425c3d939d58188497e08e54037a260fa4860",
+  "omitted": [],
+  "files": [
+    {
+      "path": "go.mod",
+      "after": "module github.com/misaon/nylzo\n\ngo 1.27\n\ntoolchain go1.27.3\n\nrequire (\n\tfilippo.io/edwards25519 v1.2.0\n\tgolang.org/x/crypto v0.58.0\n\tgolang.org/x/term v0.47.0\n\tgolang.org/x/text v0.43.0\n\tmodernc.org/sqlite v1.61.0\n)\n\nrequire (\n\tgithub.com/dustin/go-humanize v1.1.0 // indirect\n\tgithub.com/google/uuid v1.6.0 // indirect\n\tgithub.com/mattn/go-isatty v0.0.24 // indirect\n\tgithub.com/ncruces/go-strftime v1.1.0 // indirect\n\tgithub.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect\n\tgolang.org/x/sys v0.49.0 // indirect\n\tmodernc.org/libc v1.79.1 // indirect\n\tmodernc.org/mathutil v1.7.1 // indirect\n\tmodernc.org/memory v1.12.1 // indirect\n)\n",
+      "before": "module github.com/misaon/nylzo\n\ngo 1.27\n\ntoolchain go1.27.3\n\nrequire (\n\tfilippo.io/edwards25519 v1.2.0\n\tgolang.org/x/crypto v0.58.0\n\tgolang.org/x/term v0.47.0\n\tgolang.org/x/text v0.43.0\n\tmodernc.org/sqlite v1.61.0\n)\n\nrequire (\n\tgithub.com/dustin/go-humanize v1.1.0 // indirect\n\tgithub.com/google/uuid v1.6.0 // indirect\n\tgithub.com/mattn/go-isatty v0.0.24 // indirect\n\tgithub.com/ncruces/go-strftime v1.1.0 // indirect\n\tgithub.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect\n\tgolang.org/x/sys v0.49.0 // indirect\n\tmodernc.org/libc v1.79.0 // indirect\n\tmodernc.org/mathutil v1.7.1 // indirect\n\tmodernc.org/memory v1.12.1 // indirect\n)\n"
+    },
+    {
+      "path": "go.sum",
+      "after": "modernc.org/gc/v3 v3.2.0/go.mod h1:HFK/6AGESC7Ex+EZJhJ2Gni6cTaYpSMmU/cT9RmlfYY=\nmodernc.org/goabi0 v0.2.0 h1:HvEowk7LxcPd0eq6mVOAEMai46V+i7Jrj13t4AzuNks=\nmodernc.org/goabi0 v0.2.0/go.mod h1:CEFRnnJhKvWT1c1JTI3Avm+tgOWbkOu5oPA8eH8LnMI=\nmodernc.org/libc v1.79.1 h1:GgKnSYDT0WctfCKddw03DPUiSAiL2LZIF/fGxqqLkN0=\nmodernc.org/libc v1.79.1/go.mod h1:uT3kR61NsbeKJSLqq83GJwSnZMVLlSjyAz4DfTaBy1M=\nmodernc.org/mathutil v1.7.1 h1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=\nmodernc.org/mathutil v1.7.1/go.mod h1:4p5IwJITfppl0G4sUEDtCr4DthTaT47/N3aT6MhfgJg=\nmodernc.org/memory v1.12.1 h1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=\n",
+      "before": "modernc.org/gc/v3 v3.2.0/go.mod h1:HFK/6AGESC7Ex+EZJhJ2Gni6cTaYpSMmU/cT9RmlfYY=\nmodernc.org/goabi0 v0.2.0 h1:HvEowk7LxcPd0eq6mVOAEMai46V+i7Jrj13t4AzuNks=\nmodernc.org/goabi0 v0.2.0/go.mod h1:CEFRnnJhKvWT1c1JTI3Avm+tgOWbkOu5oPA8eH8LnMI=\nmodernc.org/libc v1.79.0 h1:9Dvvv++bAMSkSuBzuOFAatbTV5OIoq6Y6FohmD3e7q8=\nmodernc.org/libc v1.79.0/go.mod h1:uT3kR61NsbeKJSLqq83GJwSnZMVLlSjyAz4DfTaBy1M=\nmodernc.org/mathutil v1.7.1 h1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=\nmodernc.org/mathutil v1.7.1/go.mod h1:4p5IwJITfppl0G4sUEDtCr4DthTaT47/N3aT6MhfgJg=\nmodernc.org/memory v1.12.1 h1:nFMiWrpStgZczNl6XI9GnIk/rWhYIyHGUaR04pGbp9g=\n"
+    }
+  ],
+  "upstream": {
+    "releaseAssets": {},
+    "tags": {}
+  }
+}

@@ -19,18 +19,19 @@ if [[ "$(jq -r .verification.verified "${RUNNER_TEMP}/release-tag.json")" = true
   echo 'environment=release' >> "$GITHUB_OUTPUT"
 else
   [[ "${SECURITY_AUTOMATION_ENABLED:-}" = true ]] || exit 1
-  [[ -n "${SECURITY_APP_SLUG:-}" && "$GITHUB_ACTOR" = "${SECURITY_APP_SLUG}[bot]" ]] || exit 1
+  [[ -n "${DEPENDENCY_APP_SLUG:-}" && "$GITHUB_ACTOR" = "${DEPENDENCY_APP_SLUG}[bot]" ]] || exit 1
   bash "$(dirname "$0")/verify-keyless-tag" "$GITHUB_REF_NAME" "$GITHUB_SHA" workflow_run
   if [[ "$on_main" != true ]]; then
     claims=$(git cat-file tag "$reference" | sed -n '/^$/,$p')
     [[ $(grep -c '^Base-Release:' <<< "$claims") = 1 && $(grep -c '^Release-Kind:' <<< "$claims") = 1 ]] || exit 1
     base=$(sed -n 's/^Base-Release: //p' <<< "$claims")
     kind=$(sed -n 's/^Release-Kind: //p' <<< "$claims")
-    [[ "$base" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && ( "$kind" = security || "$kind" = weekly ) ]] || exit 1
+    [[ "$base" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$kind" = security ]] || exit 1
     [[ "${base%.*}" = "${GITHUB_REF_NAME%.*}" && "${GITHUB_REF_NAME##*.}" = "$(( ${base##*.} + 1 ))" ]] || exit 1
     [[ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)" = "$base" ]] || exit 1
-    git fetch --no-tags origin "+refs/heads/release/$base:refs/remotes/origin/release/$base"
-    [[ "$(git rev-parse "refs/remotes/origin/release/$base")" = "$GITHUB_SHA" ]] || exit 1
+    branch="release/${base%.*}"
+    git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+    [[ "$(git rev-parse "refs/remotes/origin/$branch")" = "$GITHUB_SHA" ]] || exit 1
     git merge-base --is-ancestor "$base" "$GITHUB_SHA"
   fi
   echo 'environment=release-automatic' >> "$GITHUB_OUTPUT"

@@ -1,0 +1,159 @@
+name: Renovate
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- Runs main's definition to wake Renovate after CI; never downloads or executes PR artifacts.
+    workflows: [ci]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      debug:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    if: >-
+      github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
+      vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    name: Vulnerability inventory of the published release and main
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    concurrency:
+      group: vulnerability-inventory
+      cancel-in-progress: false
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find the latest immutable release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq 'select(.immutable and (.draft | not)) | .tag_name')
+          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          path: published-source
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: node pnpm cosign grype osv-scanner
+          cache: false
+      - run: pnpm --dir automation install --frozen-lockfile
+      - name: Scan the published release, both source trees and every pinned tool
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: >-
+          node automation/vulnerability-scan/inventory.ts --published published-source --main .
+          --release-tag "$RELEASE_TAG" --reports "$RUNNER_TEMP/vulnerability-inventory"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: vulnerability-inventory
+          path: ${{ runner.temp }}/vulnerability-inventory
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vulnerability-inventory/affected.json
+          key: vulnerability-inventory-${{ github.run_id }}
+
+  renovate:
+    needs: inventory
+    if: >-
+      always() && github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      needs.inventory.result != 'cancelled' &&
+      (github.event_name != 'workflow_run' || (
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        (github.event.workflow_run.event == 'push' || startsWith(github.event.workflow_run.head_branch, 'renovate/'))))
+    name: Propose, rebase and merge dependency updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: dependency-updates
+    concurrency:
+      group: renovate
+      cancel-in-progress: false
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: node pnpm
+          cache: false
+      - run: pnpm --dir automation install --frozen-lockfile
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/vulnerability-inventory/affected.json
+          key: vulnerability-inventory-${{ github.run_id }}
+          restore-keys: vulnerability-inventory-
+      - name: Select the maintenance branch and the vulnerability fast path
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          node automation/renovate/main.ts --affected "$RUNNER_TEMP/vulnerability-inventory/affected.json"
+          --output "$RUNNER_TEMP/renovate-global.json"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: metadata-cache
+        with:
+          path: /tmp/renovate-cache
+          key: renovate-public-metadata-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: renovate-public-metadata-${{ runner.os }}-
+      - name: Restore cache ownership for the unprivileged Renovate user
+        if: steps.metadata-cache.outputs.cache-matched-key != ''
+        run: |
+          test -d /tmp/renovate-cache && test ! -L /tmp/renovate-cache
+          sudo chown --recursive --no-dereference 12021:0 /tmp/renovate-cache
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write # update pinned actions and annotated tool versions
+          permission-actions: read
+          permission-checks: read # merge only when every check is green
+          permission-statuses: read
+          permission-vulnerability-alerts: read
+      - uses: renovatebot/github-action@2804199d260ad00c1fae0e9e842888369391c776 # v46.3.10
+        env:
+          LOG_LEVEL: ${{ inputs.debug && 'debug' || 'info' }}
+        with:
+          token: ${{ steps.app.outputs.token }}
+          configurationFile: ${{ runner.temp }}/renovate-global.json
+          renovate-image: ghcr.io/renovatebot/renovate:44.192.2@sha256:37960a62ba1faa9079a7c4eead9b3f4470748a64ecd207e06c09fd8858673e17
+          mount-docker-socket: false
+          docker-volumes: /tmp:/tmp;${{ github.workspace }}/automation/dependency-sync/sync.ts:/opt/nylzo-dependency-sync.ts:ro
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: success()
+        with:
+          path: /tmp/renovate-cache
+          key: renovate-public-metadata-${{ runner.os }}-${{ github.run_id }}

@@ -1,0 +1,171 @@
+name: Release tag
+
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- Runs main's definition, reads only API metadata and never checks out or executes the tagged commit.
+    workflows: [ci, release]
+    types: [completed]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tag:
+    if: >-
+      github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci' &&
+      github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v'))
+    name: Tag a merged release PR or maintenance fix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dependency-updates
+    concurrency:
+      group: release-tag
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      checks: read # the release commit passed full CI and every CodeQL analysis
+      id-token: write # keyless tag signature bound to this workflow on main
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: node pnpm gitsign
+          cache: false
+      - run: pnpm --dir automation install --frozen-lockfile
+      - name: Decide the release for the commit whose CI completed
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
+        run: node automation/release-tag/main.ts
+      - name: The release commit passed full CI and every CodeQL analysis
+        if: steps.plan.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ steps.plan.outputs.commit }}
+        run: bash mise-tasks/release/checks "$SOURCE_COMMIT"
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        if: steps.plan.outputs.tag != ''
+        id: app
+        with:
+          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: write
+          permission-workflows: write # tag a commit whose tree contains workflows
+      - name: Sign, verify and push the release tag
+        if: steps.plan.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_KIND: ${{ steps.plan.outputs.kind }}
+          BASE_RELEASE: ${{ steps.plan.outputs.base }}
+          SOURCE_COMMIT: ${{ steps.plan.outputs.commit }}
+          GITSIGN_TOKEN_PROVIDER: github-actions
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$SOURCE_COMMIT"
+          git -c user.name='Nylzo release automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$RELEASE_TAG" "$SOURCE_COMMIT" -m "Nylzo ${RELEASE_TAG#v}
+
+          Release-Kind: $RELEASE_KIND
+          Base-Release: $BASE_RELEASE
+          Policy-Commit: $GITHUB_SHA"
+          bash tools/security/verify-keyless-tag "$RELEASE_TAG" "$SOURCE_COMMIT" workflow_run
+          authorization=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)
+          echo "::add-mask::$authorization"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $authorization" push origin "refs/tags/${RELEASE_TAG}"
+
+  published:
+    if: >-
+      github.repository == 'misaon/nylzo' && github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'release' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    name: Open the maintenance branch and record the published release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: release-published
+      cancel-in-progress: false
+    environment: dependency-updates
+    permissions:
+      contents: read
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: node pnpm
+          cache: false
+      - run: pnpm --dir automation install --frozen-lockfile
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-contents: write # create the maintenance branch of a planned release
+          permission-pull-requests: write # label the merged release PR as tagged
+          permission-workflows: write # create a ref at a commit containing workflows
+      - env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token }}
+        run: node automation/release-tag/published.ts
+
+  signing-probe:
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
+    name: Verify keyless tag signing without publishing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: signing-probe
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      id-token: write # test the exact release signing identity without a persistent signing key
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: gitsign
+          cache: false
+      - name: Sign and verify a local tag; do not push it
+        env:
+          GITSIGN_TOKEN_PROVIDER: github-actions
+        run: |
+          tag="automation-probe-${GITHUB_RUN_ID}"
+          git -c user.name='Nylzo release automation' -c user.email='automation@nylzo.com' -c gpg.format=x509 -c gpg.x509.program=gitsign tag -s "$tag" -m 'Local automation signing check'
+          bash tools/security/verify-keyless-tag "$tag" "$GITHUB_SHA" workflow_dispatch

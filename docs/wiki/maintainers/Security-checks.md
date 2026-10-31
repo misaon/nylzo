@@ -21,7 +21,7 @@ Frontend builds and tests, release-tooling tests, Compose and provisioning check
 
 [Socket Security](https://socket.dev/dashboard/org/nylzo) adds package-behavior analysis through a GitHub App installed only on `misaon/nylzo`. It receives dependency manifests and lockfiles. The comprehensive policy blocks known and suspected malware, critical CVEs and non-registry dependency sources; custom rules also block possible typosquats, obfuscated code and protestware. It has no review or tag-protection bypass. Renovate remains the update producer. Do not treat a Socket warning, an SBOM or a clean vulnerability report as proof that a package is safe.
 
-The repository configuration does not ignore bot authors or disable alert categories. The Socket PR Alerts check is required on both main and maintenance branches, bound to the Socket App identity. New-source PR CI also waits for that exact-head result before completing, so the dependency coordinator cannot race a still-running scan. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
+The repository configuration does not ignore bot authors or disable alert categories. The Socket PR Alerts check is required on both main and maintenance branches, bound to the Socket App identity. New-source PR CI also waits for that exact-head result before completing, so Renovate cannot merge while the scan is still running. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
 
 ## Browser boundary tests
 
@@ -63,7 +63,7 @@ The pinned Grype binary checks all six archive SBOMs and the container by digest
 
 GoReleaser first uploads a draft release and a `staging-VERSION` container tag. The release workflow signs and attests the candidate, then scans it. Only a passing candidate is promoted to the stable version tag. Its digest must remain identical during promotion. The GitHub release is published next; `latest` is updated last. A failed candidate cannot replace `latest`.
 
-The [scheduled scan](https://github.com/misaon/nylzo/actions/workflows/vulnerabilities.yml) verifies the published checksum signature and image signature before scanning. This catches vulnerabilities disclosed after publication. Reports are retained as workflow artifacts. SBOM and vulnerability reports are inventories and findings, not proof of safety.
+The [six-hour vulnerability inventory](https://github.com/misaon/nylzo/actions/workflows/renovate.yml) verifies the published checksum signature and image signature before scanning. This catches vulnerabilities disclosed after publication. Reports are retained as workflow artifacts. SBOM and vulnerability reports are inventories and findings, not proof of safety.
 
 Module-level matches need review. For example, [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) concerns the deprecated `golang.org/x/crypto/openpgp` packages. Nylzo uses other packages from that module and does not link OpenPGP. A module inventory can still report the advisory; the report retains that finding. The required `govulncheck` analysis checks package and symbol reachability.
 

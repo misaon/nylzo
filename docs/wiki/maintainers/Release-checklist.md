@@ -4,13 +4,13 @@
 
 1. Merge changes through PRs with Conventional Commit titles. Review the aggregate `chore(main): release X.Y.Z` PR, its changelog, version and included changes.
 2. Merge the aggregate PR when ready to publish. The merge authorizes the release; ordinary PR merges do not deploy.
-3. Wait for full CI and all three CodeQL analyses on the merged source. The coordinator signs a tag only after those checks pass. Investigate failures without bypassing checks.
+3. Wait for full CI and all three CodeQL analyses on the merged source. `release-tag.yml` signs a tag only after those checks pass. Investigate failures without bypassing checks.
 4. Confirm the immutable GitHub Release has all six platform archives, checksums and their Sigstore bundle, SBOMs, signed evidence including release-policy metadata, and build provenance. Verify the image was promoted only after the vulnerability gate passed.
 5. Follow [Verify a release](../guides/Verify-a-release.md), then confirm the host reports the expected version and the monitor passes. An emergency maintainer-signed release uses the separate manual approval path described in [Releasing](Releasing.md).
 
 ## Automatic dependency patches
 
-The [dependency coordinator](Security-updates.md) performs the checks and approval for qualifying isolated patches. Review PRs assigned to `misaon` with `requires-attention`; they do not merge automatically. Confirm that the dependency Apps remain restricted to this repository and their separate main-only environments. Keep required checks, signatures and immutable tag rules active.
+Renovate and the [dependency guard](Security-updates.md#the-dependency-guard) merge qualifying updates. Review PRs assigned to `misaon` or labelled `requires-attention`; they do not merge automatically. Confirm that the Dependency Updates App remains restricted to this repository and its main-only environment. Keep required checks, signatures and immutable tag rules active.
 
 ## Independent verification
 

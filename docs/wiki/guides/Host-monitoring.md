@@ -31,7 +31,7 @@ node tools/security/monitor-host.mts
 
 ## Connect GitHub Actions
 
-In the repository hosting `monitor.yml`, create an environment named **host-monitoring**. Restrict its deployment branches to the exact `main` branch. Keep monitoring credentials separate from release and security-automation credentials. The scheduled workflow requires no approval or write token.
+In the repository hosting `monitor.yml`, create an environment named **host-monitoring**. Restrict its deployment branches to the exact `main` branch. Keep monitoring credentials separate from release and dependency-automation credentials. The scheduled workflow requires no approval or write token.
 
 Set the client identity as environment secrets through standard input. Replace `YOUR_OWNER/YOUR_REPOSITORY` with the repository hosting the monitor:
 

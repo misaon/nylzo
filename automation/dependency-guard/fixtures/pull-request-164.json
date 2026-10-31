@@ -1,0 +1,18 @@
+{
+  "pullRequest": 164,
+  "title": "fix(deps): update diagnose-160-d6e0ff2b7a53 (release/v0.1.12)",
+  "base": "fb932bcee7fa43baee52049d945b9d385240f0d7",
+  "head": "9b8a8b062f316d77d8a158dac951a6abce1b63b7",
+  "omitted": [],
+  "files": [
+    {
+      "path": "deploy/compose/compose.yaml",
+      "after": "        max-file: \"3\"\n\n  caddy:\n    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e\n    restart: unless-stopped\n    read_only: true\n    cap_drop: [ALL]\n",
+      "before": "        max-file: \"3\"\n\n  caddy:\n    image: caddy:2.11.7@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489\n    restart: unless-stopped\n    read_only: true\n    cap_drop: [ALL]\n"
+    }
+  ],
+  "upstream": {
+    "releaseAssets": {},
+    "tags": {}
+  }
+}

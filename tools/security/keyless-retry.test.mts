@@ -15,7 +15,7 @@ if(process.argv[2]==='cat-file')console.log('tag v0.1.8\\n\\nPolicy-Commit: '+'b
 `);
     writeFileSync(join(root, "bin/gitsign"), `#!/usr/bin/env node
 const fs=require('node:fs'),args=process.argv;
-const expected={'--certificate-identity':'https://github.com/misaon/nylzo/.github/workflows/security-updates.yml@refs/heads/main','--certificate-oidc-issuer':'https://token.actions.githubusercontent.com','--certificate-github-workflow-sha':'b'.repeat(40),'--certificate-github-workflow-trigger':'workflow_run'};
+const expected={'--certificate-identity':'https://github.com/misaon/nylzo/.github/workflows/release-tag.yml@refs/heads/main','--certificate-oidc-issuer':'https://token.actions.githubusercontent.com','--certificate-github-workflow-sha':'b'.repeat(40),'--certificate-github-workflow-trigger':'workflow_run'};
 for(const [key,value]of Object.entries(expected))if(args[args.indexOf(key)+1]!==value)process.exit(3);
 if(args.some(arg=>/insecure|ignore-tlog|skip-tlog/.test(arg)))process.exit(4);
 const count=fs.existsSync(process.env.COUNTER)?Number(fs.readFileSync(process.env.COUNTER,'utf8')):0;

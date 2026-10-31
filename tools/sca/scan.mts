@@ -16,7 +16,7 @@ if (version) {
 const policy = JSON.parse(readFileSync("security/sca-policy.json", "utf8"));
 const patches = [verifyDeepmergePatch()];
 const reportPath = `${directory}/source.json`;
-const arguments_ = ["scan", "source", "--config=security/osv-scanner.toml", "--lockfile=go.mod", "--lockfile=web/pnpm-lock.yaml", "--lockfile=tools/release/package-lock.json", "--all-packages", "--all-vulns", `--licenses=${[...policy.allowedLicenses, ...policy.toolingAllowedLicenses].filter(license => !license.includes(" OR ")).join(",")}`];
+const arguments_ = ["scan", "source", "--config=security/osv-scanner.toml", "--lockfile=go.mod", "--lockfile=web/pnpm-lock.yaml", "--lockfile=automation/pnpm-lock.yaml", "--all-packages", "--all-vulns", `--licenses=${[...policy.allowedLicenses, ...policy.toolingAllowedLicenses].filter(license => !license.includes(" OR ")).join(",")}`];
 const scan = spawnSync("osv-scanner", [...arguments_, "--format=json", `--output-file=${reportPath}`], { stdio: "inherit" });
 assert(scan.status === 0 || scan.status === 1, "Dependency scanner failed");
 const report = JSON.parse(readFileSync(reportPath, "utf8"));

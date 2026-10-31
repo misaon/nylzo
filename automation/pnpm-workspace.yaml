@@ -1,0 +1,5 @@
+minimumReleaseAge: 1440
+strictDepBuilds: true
+allowBuilds: {}
+overrides:
+  'minimatch@^10': 11.0.1
