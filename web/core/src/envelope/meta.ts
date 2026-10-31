@@ -10,7 +10,7 @@ import {
 import { utf8 } from '../primitives/bytes.ts';
 import { isIntegerLiteral, type JsonValue, parseJson } from './json.ts';
 
-export interface FileMeta {
+interface FileMeta {
   readonly name: string;
   readonly mime: string;
   readonly size: number;

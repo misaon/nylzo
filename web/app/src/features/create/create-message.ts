@@ -1,7 +1,6 @@
 import {
   assertStrongPassphrase,
   type ContentKeys,
-  type CryptoRequestKey,
   deriveContent,
   deriveLink,
   formatLink,
@@ -19,6 +18,7 @@ import {
   newRequestKey,
   newSecret,
   PowTimeoutError,
+  type RequestKey,
   requestKey,
   seal,
   sealWithCompression,
@@ -87,7 +87,7 @@ export interface Created {
   readonly link: string;
   readonly expiresAt: string;
   readonly id: string;
-  readonly manageKey: CryptoRequestKey;
+  readonly manageKey: RequestKey;
 }
 
 export interface CreateDependencies {
@@ -113,7 +113,7 @@ type ReportProgress = (progress: CreateProgress) => void;
 interface SealedMessage {
   readonly object: Uint8Array<ArrayBuffer>;
   readonly readPublicKey: Uint8Array<ArrayBuffer>;
-  readonly manageKey: CryptoRequestKey;
+  readonly manageKey: RequestKey;
   readonly verifierKey: Uint8Array<ArrayBuffer> | undefined;
 }
 

@@ -19,12 +19,10 @@ const FIELD_SEPARATOR = new Uint8Array(1);
 const PKCS8_ED25519_PREFIX = decodeBase64urlExact('MC4CAQAwBQYDK2VwBCIEIA', 16);
 const GENERATE_ATTEMPTS = 8;
 
-export interface CryptoRequestKey {
+export interface RequestKey {
   readonly privateKey: CryptoKey;
   readonly publicKey: Uint8Array<ArrayBuffer>;
 }
-
-export type RequestKey = CryptoRequestKey;
 
 const revokedKeys = new WeakSet<CryptoKey>();
 
@@ -78,7 +76,7 @@ export function wipeRequestKey(key: RequestKey | undefined): void {
   }
 }
 
-export async function newRequestKey(): Promise<CryptoRequestKey> {
+export async function newRequestKey(): Promise<RequestKey> {
   for (let attempt = 1; ; attempt++) {
     try {
       const pair = await crypto.subtle.generateKey({ name: 'Ed25519' }, false, ['sign', 'verify']);
