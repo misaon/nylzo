@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"io/fs"
 	"maps"
 	"net/http"
@@ -237,25 +236,14 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 
 		link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
 		contact := "notifier.contact@example.cz"
-		body, _ := json.Marshal(
-			map[string]any{
-				"id":         leased.id.String(),
-				"reason":     "spam, see " + link,
-				"contact":    contact,
-				"good_faith": true,
-			},
-		)
-		if response, _ := harness.do(
-			&testRequest{
-				method:  http.MethodPost,
-				path:    "/api/v1/abuse",
-				address: ip4,
-				body:    body,
-				token:   leased.readToken,
-				headers: map[string]string{"Content-Type": "application/json"},
-			},
-		); response.StatusCode != http.StatusAccepted {
-			t.Fatalf("abuse report: %d", response.StatusCode)
+		report := map[string]any{
+			"id":         leased.id.String(),
+			"reason":     "spam, see " + link,
+			"contact":    contact,
+			"good_faith": true,
+		}
+		if got := reportAbuse(t, harness, leased.readToken, ip4, report); got != "202 accepted" {
+			t.Fatalf("abuse report: %s", got)
 		}
 
 		everyone := []*testMessage{expired, opened, leased, file, burned, cancelled, stuck, filler, pow, removed}

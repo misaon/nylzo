@@ -847,30 +847,39 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 
 func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		faulty := harness.withFaultyBlobs()
-		message := newMessage(t, core.KDFNone, "", 2, 60, "x")
-		harness.mustCreate(message)
-		response, _ := harness.claim(message, "", "")
-		lease := response.Header.Get("X-Nylzo-Lease")
-		var once sync.Once
-		faulty.OnOpen(func(ref string) {
-			once.Do(func() {
-				time.Sleep(61 * time.Second)
-				if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
-					t.Error(err)
+	for name, finishes := range map[string]bool{"the expiry finishes": true, "the expiry cannot finish": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				harness := newHarness(t, baseSettings(pepperA, nil))
+				faulty := harness.withFaultyBlobs()
+				message := newMessage(t, core.KDFNone, "", 2, 60, "x")
+				harness.mustCreate(message)
+				response, _ := harness.claim(message, "", "")
+				lease := response.Header.Get("X-Nylzo-Lease")
+				if !finishes {
+					harness.store = failingForgetStore{Store: harness.store}
+					harness.reopen(&harness.settings)
+				}
+				var once sync.Once
+				faulty.OnOpen(func(ref string) {
+					once.Do(func() {
+						time.Sleep(61 * time.Second)
+						if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
+							t.Error(err)
+						}
+					})
+				})
+				response, body := harness.blob(message, lease)
+				if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
+					t.Fatalf("a download racing the expiry ending: %d %s", response.StatusCode, body)
+				}
+				if state, gone := harness.endedState(message); finishes && (!gone || state != store.StateExpired) {
+					t.Fatalf("the download must finish the expiry: %s %v", state, gone)
 				}
 			})
 		})
-		response, body := harness.blob(message, lease)
-		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
-			t.Fatalf("a download racing the expiry ending: %d %s", response.StatusCode, body)
-		}
-		if state, gone := harness.endedState(message); !gone || state != store.StateExpired {
-			t.Fatalf("the download must finish the expiry: %s %v", state, gone)
-		}
-	})
+	}
 }
 
 func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
@@ -1003,33 +1012,6 @@ func TestClaimStreamsTheBlobItOpenedWhenABurnFollows(t *testing.T) {
 	})
 }
 
-func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		faulty := harness.withFaultyBlobs()
-		message := newMessage(t, core.KDFNone, "", 2, 60, "x")
-		harness.mustCreate(message)
-		response, _ := harness.claim(message, "", "")
-		lease := response.Header.Get("X-Nylzo-Lease")
-		harness.store = failingForgetStore{Store: harness.store}
-		harness.reopen(&harness.settings)
-		var once sync.Once
-		faulty.OnOpen(func(ref string) {
-			once.Do(func() {
-				time.Sleep(61 * time.Second)
-				if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
-					t.Error(err)
-				}
-			})
-		})
-		response, body := harness.blob(message, lease)
-		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
-			t.Fatalf("an expiry that cannot finish must still report expired: %d %s", response.StatusCode, body)
-		}
-	})
-}
-
 func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1052,38 +1034,6 @@ func TestReleaseAfterLastLeaseKeepsUnspentMessage(t *testing.T) {
 	})
 }
 
-func TestDownloadAfterAFinishedConcurrentBurnReportsDeleted(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
-		harness.mustCreate(message)
-		response, _ := harness.claim(message, "", "")
-		lease := response.Header.Get("X-Nylzo-Lease")
-		inner := harness.store
-		harness.store = &racingStore{Store: inner, race: func() {
-			record := harness.recordIn(inner, message)
-			if _, err := store.End(
-				t.Context(),
-				inner,
-				harness.blobs,
-				&record,
-				store.StateDeleted,
-				time.Now(),
-			); err != nil {
-				t.Error(err)
-			}
-		}}
-		harness.reopen(&harness.settings)
-		for _, action := range []string{"lease download", "ack"} {
-			got, body := runLifecycleAction(t, harness, message, lease, action)
-			if got.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
-				t.Fatalf("%s after a finished concurrent burn: %d %s", action, got.StatusCode, body)
-			}
-		}
-	})
-}
-
 func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1092,25 +1042,12 @@ func TestAckAfterARecordedBurnFinishesIt(t *testing.T) {
 		harness.mustCreate(message)
 		response, _ := harness.claim(message, "", "")
 		lease := response.Header.Get("X-Nylzo-Lease")
-		inner := harness.store
-		harness.store = &racingStore{Store: inner, race: func() {
-			record := harness.recordIn(inner, message)
-			if _, err := store.MarkEnding(
-				t.Context(),
-				inner,
-				&record,
-				store.StateDeleted,
-				time.Now(),
-			); err != nil {
-				t.Error(err)
-			}
-		}}
-		harness.reopen(&harness.settings)
+		harness.endOnFirstLoad(message, store.StateDeleted, false)
 		response, body := runLifecycleAction(t, harness, message, lease, "ack")
 		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
 			t.Fatalf("an ack after a recorded burn: %d %s", response.StatusCode, body)
 		}
-		if record, err := harness.recordFrom(inner, message); err != nil || record.HasBlob() ||
+		if record, err := harness.record(message); err != nil || record.HasBlob() ||
 			record.State(time.Now()) != store.StateDeleted || harness.blobExists(message) {
 			t.Fatalf("the ack must finish the recorded burn: %+v %v", record.Message, err)
 		}

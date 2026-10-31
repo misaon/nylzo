@@ -564,6 +564,24 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 	return all, nil
 }
 
+func (h *testHarness) endOnFirstLoad(message *testMessage, state store.State, finished bool) {
+	h.t.Helper()
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func() {
+		record := h.recordIn(inner, message)
+		var err error
+		if finished {
+			_, err = store.End(h.t.Context(), inner, h.blobs, &record, state, time.Now())
+		} else {
+			_, err = store.MarkEnding(h.t.Context(), inner, &record, state, time.Now())
+		}
+		if err != nil {
+			h.t.Error(err)
+		}
+	}}
+	h.reopen(&h.settings)
+}
+
 func (h *testHarness) withFaultyBlobs() *storetest.FaultyBlobs {
 	faulty := storetest.NewFaultyBlobs(h.blobs)
 	h.blobs = faulty

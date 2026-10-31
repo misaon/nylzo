@@ -196,35 +196,31 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 				}
 			}))
 		}
-		if i%2 == 0 {
+		for _, ending := range []struct {
+			action  string
+			every   int
+			token   string
+			octet   int
+			counter *atomic.Int32
+		}{
+			{"burn", 2, message.readToken, 10, &got[i].burns},
+			{"cancel", 3, message.manageToken, 11, &got[i].cancels},
+		} {
+			if i%ending.every != 0 {
+				continue
+			}
 			requests.Go(limit(func() {
 				code := harness.statusFrom(
 					&testRequest{
 						method:  http.MethodPost,
-						path:    "/api/v1/messages/" + message.id.String() + "/burn",
-						address: fmt.Sprintf("10.%d.10.1", i),
-						token:   message.readToken,
+						path:    "/api/v1/messages/" + message.id.String() + "/" + ending.action,
+						address: fmt.Sprintf("10.%d.%d.1", i, ending.octet),
+						token:   ending.token,
 					},
 				)
-				expect("burn", code, http.StatusNoContent, http.StatusGone)
+				expect(ending.action, code, http.StatusNoContent, http.StatusGone)
 				if code == http.StatusNoContent {
-					got[i].burns.Add(1)
-				}
-			}))
-		}
-		if i%3 == 0 {
-			requests.Go(limit(func() {
-				code := harness.statusFrom(
-					&testRequest{
-						method:  http.MethodPost,
-						path:    "/api/v1/messages/" + message.id.String() + "/cancel",
-						address: fmt.Sprintf("10.%d.11.1", i),
-						token:   message.manageToken,
-					},
-				)
-				expect("cancel", code, http.StatusNoContent, http.StatusGone)
-				if code == http.StatusNoContent {
-					got[i].cancels.Add(1)
+					ending.counter.Add(1)
 				}
 			}))
 		}
@@ -382,62 +378,26 @@ func (s *racingStore) Load(ctx context.Context, locator seal.Locator) (store.Row
 	return row, err
 }
 
-func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
+func TestBurnRacingACancelReportsTheCancel(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-		harness.mustCreate(message)
-		inner := harness.store
-		harness.store = &racingStore{Store: inner, race: func() {
-			record := harness.recordIn(inner, message)
-			if _, err := store.End(
-				t.Context(),
-				inner,
-				harness.blobs,
-				&record,
-				store.StateCancelled,
-				time.Now(),
-			); err != nil {
-				t.Error(err)
-			}
-		}}
-		harness.reopen(&harness.settings)
-		response, body := harness.post(message, "burn", message.readToken)
-		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-			t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
-		}
-	})
-}
-
-func TestBurnFinishesRecordedCancel(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-		harness.mustCreate(message)
-		inner := harness.store
-		harness.store = &racingStore{Store: inner, race: func() {
-			record := harness.recordIn(inner, message)
-			if _, err := store.MarkEnding(
-				t.Context(),
-				inner,
-				&record,
-				store.StateCancelled,
-				time.Now(),
-			); err != nil {
-				t.Error(err)
-			}
-		}}
-		harness.reopen(&harness.settings)
-		response, body := harness.post(message, "burn", message.readToken)
-		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-			t.Fatalf("burn after a recorded cancel: %d %s", response.StatusCode, body)
-		}
-		if _, status := harness.status(message); status["state"] != "cancelled" {
-			t.Fatalf("status: %v", status)
-		}
-	})
+	for name, finished := range map[string]bool{"recorded cancel": false, "finished cancel": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			synctest.Test(t, func(t *testing.T) {
+				harness := newHarness(t, baseSettings(pepperA, nil))
+				message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+				harness.mustCreate(message)
+				harness.endOnFirstLoad(message, store.StateCancelled, finished)
+				response, body := harness.post(message, "burn", message.readToken)
+				if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+					t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
+				}
+				if _, status := harness.status(message); status["state"] != "cancelled" {
+					t.Fatalf("status: %v", status)
+				}
+			})
+		})
+	}
 }
 
 type failingForgetStore struct {
@@ -565,20 +525,11 @@ func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 	})
 }
 
-func abuseReport(t *testing.T, harness *testHarness, message *testMessage, ip string) {
+func abuseReport(t *testing.T, harness *testHarness, message *testMessage, address string) {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"id": message.id.String(), "reason": "spam"})
-	if response, _ := harness.do(
-		&testRequest{
-			method:  http.MethodPost,
-			path:    "/api/v1/abuse",
-			address: ip,
-			body:    body,
-			token:   message.readToken,
-			headers: map[string]string{"Content-Type": "application/json"},
-		},
-	); response.StatusCode != http.StatusAccepted {
-		t.Fatalf("report: %d", response.StatusCode)
+	report := map[string]any{"id": message.id.String(), "reason": "spam"}
+	if got := reportAbuse(t, harness, message.readToken, address, report); !strings.HasPrefix(got, "202 ") {
+		t.Fatalf("report: %s", got)
 	}
 }
 
@@ -807,7 +758,7 @@ func TestAbuseReports(t *testing.T) {
 	})
 }
 
-func reportAbuse(t *testing.T, harness *testHarness, token string, report map[string]any) string {
+func reportAbuse(t *testing.T, harness *testHarness, token, address string, report map[string]any) string {
 	t.Helper()
 	body, err := json.Marshal(report)
 	if err != nil {
@@ -817,7 +768,7 @@ func reportAbuse(t *testing.T, harness *testHarness, token string, report map[st
 		&testRequest{
 			method:  http.MethodPost,
 			path:    "/api/v1/abuse",
-			address: "203.0.113.90",
+			address: address,
 			body:    body,
 			token:   token,
 			headers: map[string]string{"Content-Type": "application/json"},
@@ -845,7 +796,7 @@ func TestAbuseReportsRefuseAnImplausibleContactAndStoreAValidOneAsGiven(t *testi
 		for _, id := range []string{message.id.String(), core.NewID().String(), "not-an-id"} {
 			for _, contact := range []string{"jana", "jana@example", "ja na@example.cz", link + "@example.cz"} {
 				report := map[string]any{"id": id, "reason": "spam", "contact": contact, "good_faith": true}
-				if got := reportAbuse(t, harness, message.readToken, report); got != "400 contact" {
+				if got := reportAbuse(t, harness, message.readToken, "203.0.113.90", report); got != "400 contact" {
 					t.Fatalf("contact %q about %s: %s", contact, id, got)
 				}
 			}
@@ -857,7 +808,7 @@ func TestAbuseReportsRefuseAnImplausibleContactAndStoreAValidOneAsGiven(t *testi
 			"contact":    " " + contact + "\n",
 			"good_faith": true,
 		}
-		if got := reportAbuse(t, harness, message.readToken, report); got != "202 accepted" {
+		if got := reportAbuse(t, harness, message.readToken, "203.0.113.90", report); got != "202 accepted" {
 			t.Fatalf("a refused contact spent the rate limit or the valid report failed: %s", got)
 		}
 		data, err := harness.abuseReports()
@@ -885,13 +836,20 @@ func TestAbuseReportsAnswerTheLimitOnlyForALiveMessage(t *testing.T) {
 					t,
 					harness,
 					message.readToken,
+					"203.0.113.90",
 					map[string]any{"id": message.id.String()},
 				); got != "202 accepted" {
 					t.Fatalf("a report within the daily budget: %s", got)
 				}
 			}
 		}
-		if got := reportAbuse(t, harness, live.readToken, map[string]any{"id": live.id.String()}); got != "202 limit" {
+		if got := reportAbuse(
+			t,
+			harness,
+			live.readToken,
+			"203.0.113.90",
+			map[string]any{"id": live.id.String()},
+		); got != "202 limit" {
 			t.Fatalf("a fourth report about a live message must not read as received: %s", got)
 		}
 		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
@@ -907,7 +865,13 @@ func TestAbuseReportsAnswerTheLimitOnlyForALiveMessage(t *testing.T) {
 			"an unknown id":  {live.readToken, core.NewID().String()},
 			"a malformed id": {live.readToken, "not-an-id"},
 		} {
-			if got := reportAbuse(t, harness, request.token, map[string]any{"id": request.id}); got != "202 accepted" {
+			if got := reportAbuse(
+				t,
+				harness,
+				request.token,
+				"203.0.113.90",
+				map[string]any{"id": request.id},
+			); got != "202 accepted" {
 				t.Errorf("%s must keep the uniform answer: %s", name, got)
 			}
 		}
