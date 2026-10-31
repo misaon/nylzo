@@ -67,6 +67,10 @@ The [six-hour vulnerability inventory](https://github.com/misaon/nylzo/actions/w
 
 Module-level matches need review. For example, [GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932) concerns the deprecated `golang.org/x/crypto/openpgp` packages. Nylzo uses other packages from that module and does not link OpenPGP. A module inventory can still report the advisory; the report retains that finding. The required `govulncheck` analysis checks package and symbol reachability.
 
+## Toolchain
+
+CI and release jobs install Go with mise from the version and checksum in `mise.lock`. Each job that uses Go runs `tools/verify-go-toolchain` and stops when `go` reports another version. Release jobs install tools without a cache.
+
 ## Runner monitoring
 
 Harden-Runner starts before source checkout or other tools. The initial policy records outbound traffic for review. Audit mode does not enforce a project-specific domain allowlist. Review the observed destinations before adopting a blocking policy; do not disable monitoring or widen a policy merely to hide a finding.

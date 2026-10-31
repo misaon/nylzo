@@ -72,7 +72,7 @@ run = [
   "node tools/wiki.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
+  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test} tools/verify-go-toolchain",
   '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
