@@ -145,8 +145,7 @@
         "goreleaser/goreleaser",
         "ghcr.io/renovatebot/renovate",
         "sigstore/cosign",
-        "jdx/mise",
-        "actions/node-versions"
+        "jdx/mise"
       ],
       "enabled": false
     },
