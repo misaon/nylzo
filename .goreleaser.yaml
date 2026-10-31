@@ -3,7 +3,7 @@ project_name: nylzo
 
 before:
   hooks:
-    - node tools/security/install-web.mts
+    - node automation/web-install/main.ts
     - env NYLZO_VERSION={{ .Version }} pnpm --dir web --filter @nylzo/web build
 
 builds:

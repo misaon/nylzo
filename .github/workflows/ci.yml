@@ -147,8 +147,8 @@ jobs:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: go node pnpm osv-scanner
-      - run: node tools/security/install-web.mts
-      - run: node tools/sca/scan.mts .sca-reports --sbom
+      - run: node automation/web-install/main.ts
+      - run: node automation/source-dependency-gate/main.ts .sca-reports --sbom
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && hashFiles('.sca-reports/source.json') != ''
         with:
@@ -187,7 +187,7 @@ jobs:
           pnpm --dir automation test
       - name: Check every repository tool's syntax before executing it
         run: git ls-files -z 'tools/*.mts' 'tools/**/*.mts' | xargs -0 -n 1 node --check
-      - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
+      - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/deploy/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
       - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
@@ -373,7 +373,7 @@ jobs:
           grep -Eq '^strictDepBuilds: *true$' pnpm-workspace.yaml
           grep -Eq '^allowBuilds: *\{\}$' pnpm-workspace.yaml
           test -f pnpm-lock.yaml
-      - run: node ../tools/security/install-web.mts
+      - run: node ../automation/web-install/main.ts
       - run: pnpm audit --audit-level=moderate
       - name: Prettier, ESLint and knip
         run: pnpm lint
@@ -531,7 +531,7 @@ jobs:
       - name: Build the client that nylzo embeds
         working-directory: web
         run: |
-          node ../tools/security/install-web.mts
+          node ../automation/web-install/main.ts
           pnpm --filter @nylzo/web build
       - name: Use the upstream Ubuntu mirror for browser dependencies
         if: runner.os == 'Linux'
@@ -663,7 +663,7 @@ jobs:
       - name: Build the web client that nylzo embeds
         working-directory: web
         run: |
-          node ../tools/security/install-web.mts
+          node ../automation/web-install/main.ts
           pnpm --filter @nylzo/web build
       - name: Build nylzo and an image laid out like the release image
         run: |

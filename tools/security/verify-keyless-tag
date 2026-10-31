@@ -1,46 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-[[ $# = 3 && "$GITHUB_REPOSITORY" = misaon/nylzo ]] || exit 1
-tag="$1"
-commit="$2"
-trigger="$3"
-[[ "$tag" =~ ^(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)|automation-probe-[0-9]+)$ ]] || exit 1
-[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || exit 1
-if [[ "$trigger" = workflow_dispatch ]]; then
-  [[ "$tag" =~ ^automation-probe-[0-9]+$ ]] || exit 1
-  [[ "${GITHUB_WORKFLOW_REF:-}" =~ ^misaon/nylzo/\.github/workflows/release-tag\.yml@refs/heads/[A-Za-z0-9_./-]+$ ]] || exit 1
-  identity="https://github.com/${GITHUB_WORKFLOW_REF}"
-else
-  [[ "$trigger" = workflow_run && "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
-  identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release-tag.yml@refs/heads/main"
-fi
-[[ "$(git rev-parse "refs/tags/${tag}^{commit}")" = "$commit" ]] || exit 1
-policy_commit="$commit"
-if [[ "$trigger" = workflow_run ]]; then
+readonly semantic_version='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+readonly probe_tag='^automation-probe-[0-9]+$'
+readonly branch_workflow='^misaon/nylzo/\.github/workflows/release-tag\.yml@refs/heads/[A-Za-z0-9_./-]+$'
+readonly attempts=8
+readonly longest_delay_in_seconds=32
+
+fail() {
+  echo "verify-keyless-tag: $1" >&2
+  exit 1
+}
+
+use_policy_commit_claim() {
+  local claims
   claims=$(git cat-file tag "refs/tags/$tag" | sed -n '/^$/,$p')
-  if grep -q '^Policy-Commit:' <<< "$claims"; then
-    [[ $(grep -c '^Policy-Commit:' <<< "$claims") = 1 ]] || exit 1
-    policy_commit=$(sed -n 's/^Policy-Commit: //p' <<< "$claims")
-    [[ "$policy_commit" =~ ^[a-f0-9]{40}$ ]] || exit 1
-    git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
-    git merge-base --is-ancestor "$policy_commit" refs/remotes/origin/main
+  if ! grep -q '^Policy-Commit:' <<< "$claims"; then
+    return
   fi
-fi
-# Fresh entries can take time to appear in Rekor search. Keep every identity
-# and transparency check, with a bounded backoff only on failed verification.
-for attempt in 1 2 3 4 5 6 7 8; do
-  if gitsign verify-tag \
+  [[ $(grep -c '^Policy-Commit:' <<< "$claims") = 1 ]] || fail 'the tag must carry one Policy-Commit claim'
+  policy_commit=$(sed -n 's/^Policy-Commit: //p' <<< "$claims")
+  [[ "$policy_commit" =~ ^[a-f0-9]{40}$ ]] || fail 'Policy-Commit must be a full commit hash'
+  git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+  git merge-base --is-ancestor "$policy_commit" refs/remotes/origin/main || fail 'Policy-Commit must be on main'
+}
+
+signature_verifies() {
+  gitsign verify-tag \
     --certificate-identity "$identity" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     --certificate-github-workflow-sha "$policy_commit" \
-    --certificate-github-workflow-trigger "$trigger" "$tag"; then
+    --certificate-github-workflow-trigger "$trigger" "$tag"
+}
+
+[[ $# = 3 && "$GITHUB_REPOSITORY" = misaon/nylzo ]] || fail 'usage: verify-keyless-tag TAG COMMIT TRIGGER in misaon/nylzo'
+tag="$1"
+commit="$2"
+trigger="$3"
+[[ "$tag" =~ $semantic_version || "$tag" =~ $probe_tag ]] || fail "$tag is neither a release tag nor a probe tag"
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || fail 'COMMIT must be a full commit hash'
+if [[ "$trigger" = workflow_dispatch ]]; then
+  [[ "$tag" =~ $probe_tag ]] || fail 'a manual run may only verify a probe tag'
+  [[ "${GITHUB_WORKFLOW_REF:-}" =~ $branch_workflow ]] || fail 'the probe must run release-tag.yml from this repository'
+  identity="https://github.com/${GITHUB_WORKFLOW_REF}"
+else
+  [[ "$trigger" = workflow_run && "$tag" =~ $semantic_version ]] || fail 'a release tag must come from a workflow_run'
+  identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release-tag.yml@refs/heads/main"
+fi
+[[ "$(git rev-parse "refs/tags/${tag}^{commit}")" = "$commit" ]] || fail "$tag does not point at $commit"
+policy_commit="$commit"
+if [[ "$trigger" = workflow_run ]]; then
+  use_policy_commit_claim
+fi
+
+# Rekor search can lag a fresh entry: retry with a bounded backoff, never with a weaker check.
+for (( attempt = 1; attempt <= attempts; attempt++ )); do
+  if signature_verifies; then
     exit 0
   fi
-  if [[ "$attempt" != 8 ]]; then
-    delay=$((2 ** attempt))
-    if [[ "$delay" -gt 32 ]]; then delay=32; fi
-    sleep "$delay"
+  if (( attempt < attempts )); then
+    sleep "$(( 2 ** attempt < longest_delay_in_seconds ? 2 ** attempt : longest_delay_in_seconds ))"
   fi
 done
-exit 1
+fail "the keyless signature of $tag did not verify after $attempts attempts"
