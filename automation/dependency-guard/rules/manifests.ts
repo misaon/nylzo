@@ -139,7 +139,7 @@ function plainVersion(version: string): string {
   return version.replace(/^(?:jq-|v)/, '');
 }
 
-export function releaseAssetName(key: string, asset: BinaryAsset): string | undefined {
+function releaseAssetName(key: string, asset: BinaryAsset): string | undefined {
   const { architecture = '', tool = '' } = /^(?<tool>[a-z]+)-(?<architecture>amd64|arm64)$/.exec(key)?.groups ?? {};
   const version = plainVersion(asset.version);
   const amd64 = architecture === 'amd64';

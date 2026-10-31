@@ -6,7 +6,7 @@ import {
   type SemanticVersion,
 } from '../versions/semantic-version.ts';
 
-export type ReleaseKind = 'planned' | 'security';
+type ReleaseKind = 'planned' | 'security';
 
 export interface ReleasePlan {
   readonly baseRelease: string;

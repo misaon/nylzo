@@ -6,12 +6,12 @@ import type { Account, Commit, GuardSource, PullRequest, Review, TreeEntry } fro
 import { repositoryName } from '../github/client.ts';
 import { webFlow } from './source.ts';
 
-export interface FileVersion {
+interface FileVersion {
   readonly content: string;
   readonly mode?: string;
 }
 
-export type FileTree = Readonly<Record<string, FileVersion | string>>;
+type FileTree = Readonly<Record<string, FileVersion | string>>;
 
 export interface FakeRepository {
   readonly branches: Readonly<Record<string, string>>;
