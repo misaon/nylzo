@@ -28,7 +28,7 @@ esac
         ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_OUTPUT: output,
         GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF_NAME: "v0.1.2", EMBEDDED_TAG: "v0.1.2",
         GITHUB_SHA: "a".repeat(40), GITHUB_ACTOR: "nylzo-security[bot]", RELEASE_TAGGER_EMAIL: "owner@example.com",
-        SECURITY_AUTOMATION_ENABLED: "true", SECURITY_APP_SLUG: "nylzo-security",
+        SECURITY_AUTOMATION_ENABLED: "true", DEPENDENCY_APP_SLUG: "nylzo-security",
         TAG_JSON: JSON.stringify({ verification: { verified: true }, tagger: { email: "owner@example.com" } }), ...overrides,
       }});
       return { ...result, output: readFileSync(output, "utf8") };
@@ -39,7 +39,7 @@ esac
     const claims = readFileSync(join(directory, "claims"), "utf8");
     assert(claims.startsWith("verify-tag\n"));
     assert(claims.endsWith("v0.1.2\n"));
-    assert(claims.includes("https://github.com/misaon/nylzo/.github/workflows/security-updates.yml@refs/heads/main"));
+    assert(claims.includes("https://github.com/misaon/nylzo/.github/workflows/release-tag.yml@refs/heads/main"));
     assert(claims.includes("--certificate-github-workflow-sha\n" + "a".repeat(40)));
     assert(claims.includes("--certificate-github-workflow-trigger\nworkflow_run"));
     for (const overrides of [
@@ -50,10 +50,10 @@ esac
       { TAG_JSON: unsigned, GITHUB_ACTOR: "attacker" },
       { TAG_JSON: unsigned, SIGNATURE_STATUS: "1" },
     ]) assert.notEqual(run(overrides).status, 0);
-    const probe = (tag: string, trigger: string, workflow = "misaon/nylzo/.github/workflows/security-updates.yml@refs/heads/codex/test") => spawnSync("bash", ["tools/security/verify-keyless-tag", tag, "a".repeat(40), trigger], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_SHA: "a".repeat(40), GITHUB_WORKFLOW_REF: workflow } });
+    const probe = (tag: string, trigger: string, workflow = "misaon/nylzo/.github/workflows/release-tag.yml@refs/heads/codex/test") => spawnSync("bash", ["tools/security/verify-keyless-tag", tag, "a".repeat(40), trigger], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_SHA: "a".repeat(40), GITHUB_WORKFLOW_REF: workflow } });
     assert.equal(probe("automation-probe-1", "workflow_dispatch").status, 0);
     assert.notEqual(probe("v0.1.2", "workflow_dispatch").status, 0);
     assert.notEqual(probe("automation-probe-1", "workflow_run").status, 0);
-    assert.notEqual(probe("automation-probe-1", "workflow_dispatch", "attacker/nylzo/.github/workflows/security-updates.yml@refs/heads/main").status, 0);
+    assert.notEqual(probe("automation-probe-1", "workflow_dispatch", "attacker/nylzo/.github/workflows/release-tag.yml@refs/heads/main").status, 0);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

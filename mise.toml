@@ -24,8 +24,8 @@ opentofu = "1.13.2"
 GOTOOLCHAIN = "local"
 
 [tasks.install]
-description = "Install the web dependencies exactly as locked"
-run = "node tools/security/install-web.mts"
+description = "Install the web and automation dependencies exactly as locked"
+run = ["node tools/security/install-web.mts", "pnpm --dir automation install --frozen-lockfile"]
 
 [tasks."build:web"]
 description = "Build the web client into internal/server/web/dist, where nylzo embeds it"
@@ -54,6 +54,7 @@ run = [
   "go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/",
   "go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/",
   "NYLZO_HEAVY_TESTS=1 pnpm --dir web -r test",
+  "pnpm --dir automation test",
 ]
 
 [tasks.lint]
@@ -67,16 +68,19 @@ run = [
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
-  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/release/*.test.mts tools/dependencies/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts",
+  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck tools/release/wait-publication mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
+  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
   '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
   "pnpm --dir web audit --audit-level=moderate",
   "pnpm --dir web -r typecheck",
   "pnpm --dir web --filter @nylzo/web check",
+  "pnpm --dir automation audit --audit-level=moderate",
+  "pnpm --dir automation lint",
+  "pnpm --dir automation typecheck",
 ]
 
 [tasks."e2e:browsers"]

@@ -19,8 +19,6 @@ concurrency:
 env:
   GOTOOLCHAIN: local
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
-  DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
-  DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
 
 jobs:
   changes:
@@ -137,7 +135,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      pull-requests: read # verify exact security-fix package-age exceptions
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -151,8 +148,6 @@ jobs:
           version: 2026.10.9
           install_args: go node pnpm osv-scanner
       - run: node tools/security/install-web.mts
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
       - run: node tools/sca/scan.mts .sca-reports --sbom
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && hashFiles('.sca-reports/source.json') != ''
@@ -180,17 +175,22 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
-          install_args: actionlint zizmor shellcheck node go
-      - name: Verify the release tooling installation and audit its locked dependencies
+          install_args: actionlint zizmor shellcheck node go pnpm
+      - name: Install the automation workspace and audit its locked dependencies
         run: |
-          npm ci --prefix tools/release --ignore-scripts --no-audit --no-fund
-          npm audit --prefix tools/release --audit-level=moderate
+          pnpm --dir automation install --frozen-lockfile
+          pnpm --dir automation audit --audit-level=moderate
+      - name: Lint, type-check and test the repository automation
+        run: |
+          pnpm --dir automation lint
+          pnpm --dir automation typecheck
+          pnpm --dir automation test
       - name: Check every repository tool's syntax before executing it
         run: git ls-files -z 'tools/*.mts' 'tools/**/*.mts' | xargs -0 -n 1 node --check
-      - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/release/*.test.mts tools/dependencies/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
+      - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts
       - run: actionlint
       - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck tools/release/wait-publication mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/bootstrap-policy tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
+      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
 
   deployment:
     name: Flatcar provisioning and reboot acceptance
@@ -349,7 +349,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: read # verify exact security-fix package-age exceptions
     defaults:
       run:
         working-directory: web
@@ -375,8 +374,6 @@ jobs:
           grep -Eq '^allowBuilds: *\{\}$' pnpm-workspace.yaml
           test -f pnpm-lock.yaml
       - run: node ../tools/security/install-web.mts
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
       - run: pnpm audit --audit-level=moderate
       - name: Prettier, ESLint and knip
         run: pnpm lint
@@ -499,7 +496,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: read # verify exact security-fix package-age exceptions
     strategy:
       fail-fast: false
       matrix:
@@ -533,8 +529,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Build the client that nylzo embeds
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
         working-directory: web
         run: |
           node ../tools/security/install-web.mts
@@ -588,7 +582,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: read # verify exact security-fix package-age exceptions
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -633,11 +626,7 @@ jobs:
             grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; }
           done
       - run: mise run build
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
       - name: mise run dev serves the built client
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
         run: |
           mise run dev > dev.log 2>&1 &
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:8080/healthz > /dev/null && break; sleep 1; done
@@ -654,7 +643,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      pull-requests: read # verify exact security-fix package-age exceptions
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -675,8 +663,6 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - name: Build the web client that nylzo embeds
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
         working-directory: web
         run: |
           node ../tools/security/install-web.mts
@@ -773,7 +759,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: read # verify exact security-fix package-age exceptions
     strategy:
       fail-fast: false
       matrix:
@@ -798,8 +783,6 @@ jobs:
           node-version-file: web/.node-version
           package-manager-cache: false
       - name: Release configuration and a snapshot build
-        env:
-          GH_TOKEN: ${{ (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && ((github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.id == 49699333) || (github.event.pull_request.user.login == 'nylzo-dependency-updates[bot]' && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID)))) && github.token || '' }}
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser

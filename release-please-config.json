@@ -9,6 +9,7 @@
   "packages": {
     ".": {
       "release-type": "go",
+      "versioning": "always-bump-minor",
       "changelog-path": ".github/CHANGELOG.md",
       "changelog-sections": [
         {"type": "feat", "section": "Features"},

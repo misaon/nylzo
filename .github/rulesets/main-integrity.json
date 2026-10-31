@@ -48,6 +48,10 @@
           {
             "context": "Conventional PR title",
             "integration_id": 15368
+          },
+          {
+            "context": "Dependency guard",
+            "integration_id": 15368
           }
         ]
       }

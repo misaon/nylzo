@@ -7,12 +7,12 @@ export function assess(report: any, policy: any, imports: Record<string, string[
   assert(Array.isArray(report.results) && report.results.length === 3, "Application and release-tooling lockfiles must all be scanned");
   const paths = report.results.map((result: any) => result.source?.path?.replaceAll("\\", "/"));
   assert(paths.some((path: string) => path.endsWith("/go.mod")) && paths.some((path: string) => path.endsWith("/web/pnpm-lock.yaml")));
-  assert(paths.some((path: string) => path.endsWith("/tools/release/package-lock.json")));
+  assert(paths.some((path: string) => path.endsWith("/automation/pnpm-lock.yaml")));
   const allowed = new Set(policy.allowedLicenses);
   assert(allowed.size > 0);
   const findings: string[] = [], statements: any[] = [];
   for (const result of report.results) {
-    const licenses = result.source.path.replaceAll("\\", "/").endsWith("/tools/release/package-lock.json") ? new Set([...allowed, ...(policy.toolingAllowedLicenses ?? [])]) : allowed;
+    const licenses = result.source.path.replaceAll("\\", "/").endsWith("/automation/pnpm-lock.yaml") ? new Set([...allowed, ...(policy.toolingAllowedLicenses ?? [])]) : allowed;
     assert(Array.isArray(result.packages) && result.packages.length > 0, "Empty dependency inventory");
     for (const entry of result.packages) {
       const component = entry.package;
