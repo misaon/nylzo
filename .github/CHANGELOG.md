@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/misaon/nylzo/compare/v0.2.0...v0.3.0) (2026-10-31)
+
+
+### Fixes
+
+* **ci:** request only the App permissions Renovate is granted ([#184](https://github.com/misaon/nylzo/issues/184)) ([a744685](https://github.com/misaon/nylzo/commit/a744685eed5bbd13a433ac86886ea7ba9f62a32b))
+
+
+### Refactoring
+
+* **automation:** move the SCA gate and web install into the automation workspace ([#185](https://github.com/misaon/nylzo/issues/185)) ([bae0503](https://github.com/misaon/nylzo/commit/bae05033752d0dc9660f19e4148326dae36c65de))
+
+
+### Maintenance
+
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.198.3 (main) ([#188](https://github.com/misaon/nylzo/issues/188)) ([4025fd1](https://github.com/misaon/nylzo/commit/4025fd127a6b02727d4b8c3d4ea7ee1da301705d))
+
 ## [0.2.0](https://github.com/misaon/nylzo/compare/v0.1.8...v0.2.0) (2026-10-31)
 
 
