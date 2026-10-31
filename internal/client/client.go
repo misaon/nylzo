@@ -156,6 +156,9 @@ func (c *Client) do(
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
+	if method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions {
+		request.Header.Set("X-Requested-With", "XMLHttpRequest")
+	}
 	response, err := c.http.Do(request)
 	if err != nil {
 		cancel()

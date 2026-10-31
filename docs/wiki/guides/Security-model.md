@@ -22,6 +22,20 @@ SRI protects a resource relative to its expected hash. An attacker who can repla
 
 References: [Subresource Integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Subresource_Integrity), [import-map integrity](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/script/type/importmap#integrity_metadata_map), [multiple CSP policies](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#multiple_content_security_policies).
 
+## Browser boundaries and active content
+
+COOP `same-origin` and COEP `require-corp` enable cross-origin isolation in supported secure browser contexts. CORP `same-origin` restricts resource embedding, and CSP `frame-ancestors 'none'` blocks framing. Isolation reduces exposure to other origins; it does not guarantee a particular operating-system process layout or eliminate all side channels. Permissions Policy disables the camera, microphone, geolocation, screen capture, payment and the other unused interfaces listed in the [protocol](../reference/Protocol.md#9-transport-and-headers).
+
+The HTTP script policy requires a fresh nonce and uses `strict-dynamic`, with `object-src 'none'` and `base-uri 'none'`. It includes no script fallback for `unsafe-inline`, `http:` or `https:`. The additional document policy still restricts the loader to local resources. Trusted Types is enforced where the browser implements it, allowing only Svelte's compiled-template policy and the exact-URL KDF worker policy. There is no default policy that silently blesses strings. Tests exercise rejected HTML sinks, forbidden policy creation and `eval` from a real user-event callback, outside the browser automation debugger's CSP exemption.
+
+Messages and attachment names are rendered as text nodes. They are never parsed as HTML, so applying a sanitizer would change the message instead of adding a needed boundary. Lint rules reject raw Svelte HTML and unsafe markup sinks. If a future feature deliberately accepts HTML, it needs its own review and a safe Sanitizer API path or a narrowly scoped, audited sanitizer policy; the existing template policy must not be reused for user HTML.
+
+Browser mutations require `X-Requested-With: XMLHttpRequest`, exact Origin/Referer checks and Go's native Fetch Metadata protection before any request body is read. The target comes from `NYLZO_PUBLIC_URL`, not forwarded headers. Signed native CLI requests retain their existing authentication rules and compatibility. No wildcard or sibling-subdomain CORS allowlist is enabled. The marker is an additional browser boundary, not a substitute for signatures or a defense against XSS.
+
+The HSTS header sets two years with `includeSubDomains; preload`. HTTPS must work for every subdomain covered by that commitment. The `preload` token alone does not enroll a domain in browser preload lists; submission is a separate operator decision. It is not submitted automatically by this software.
+
+References: [Go CrossOriginProtection](https://pkg.go.dev/net/http#CrossOriginProtection), [OWASP CSRF prevention](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html), [strict CSP](https://web.dev/articles/strict-csp), [cross-origin isolation](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated), [safe Sanitizer API methods](https://developer.mozilla.org/en-US/docs/Web/API/HTML_Sanitizer_API), [HSTS deployment and preload](https://hstspreload.org/).
+
 ## Browser keys and memory
 
 AES-256-GCM encryption and decryption, HKDF, hashing and Ed25519 signing use the browser's `crypto.subtle` API. Content keys are derived with `extractable: false` and kept in memory. Read and verifier signing keys are imported as non-extractable keys; no private key is exported to obtain its public half. A PKCS#8 import failure can retry a non-extractable JWK import. If native signing is unavailable, reading fails rather than retaining a raw signing seed.

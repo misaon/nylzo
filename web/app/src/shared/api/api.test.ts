@@ -30,6 +30,7 @@ function fakeServer(handler: Handler) {
   const fetch = async (input: RequestInfo | URL, requestInit?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input, 'http://nylzo.test');
     const request = new Request(url, requestInit);
+    expect(request.headers.get('X-Requested-With')).toBe(request.method === 'POST' ? 'XMLHttpRequest' : null);
     seen.push(request);
     if (new URL(request.url).pathname === '/api/v1/challenge') {
       issued++;

@@ -15,11 +15,21 @@ Nylzo publishes evidence about its development process and releases. These check
 
 The required SCA job checks the application, frontend workspace and release-tooling lockfiles with pinned OSV-Scanner. It rejects known malware, vulnerabilities and unapproved licenses, subject only to the existing exact, reviewed patch/VEX assessments. It generates an SPDX 2.3 SBOM for every checked source commit and retains it with the dependency report. Release SBOMs keep their versioned names, signatures and attestations.
 
+The web and release-tooling locks use minimatch 11.0.1 to address [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249). A parent-specific override makes the Svelte MCP checker use the current ESLint, removing its legacy minimatch chain. Its full source check remains required and passes on the new version. No vulnerability exception is used for this advisory; remove these temporary overrides when the upstream dependency requirements include the fix.
+
 Frontend builds and tests, release-tooling tests, Compose and provisioning checks wait for SCA to pass. The release workflow also scans before executing the frontend build. Installation uses frozen lockfiles, a release-age policy and disabled dependency lifecycle builds. The only package executed by the installer for patch verification must first match the reviewed content hashes.
 
 [Socket Security](https://socket.dev/dashboard/org/nylzo) adds package-behavior analysis through a GitHub App installed only on `misaon/nylzo`. It receives dependency manifests and lockfiles. The comprehensive policy blocks known and suspected malware, critical CVEs and non-registry dependency sources; custom rules also block possible typosquats, obfuscated code and protestware. It has no review or tag-protection bypass. Renovate remains the update producer. Do not treat a Socket warning, an SBOM or a clean vulnerability report as proof that a package is safe.
 
 The repository configuration does not ignore bot authors or disable alert categories. The Socket PR Alerts check is required on both main and maintenance branches, bound to the Socket App identity. New-source PR CI also waits for that exact-head result before completing, so the dependency coordinator cannot race a still-running scan. Review new findings individually; do not silence a category to unblock an update. See [Socket permissions](https://docs.socket.dev/docs/permissions) and [repository configuration](https://docs.socket.dev/docs/socket-yml).
+
+## Browser boundary tests
+
+Server tests cover canonical origin matching, scheme and port mismatches, sibling domains, opaque and duplicate headers, Fetch Metadata, required browser request markers, native-client compatibility and rejection before body reads. Public targets are pinned to configuration; an unconfigured browser instance permits only loopback targets.
+
+Browser tests verify `crossOriginIsolated`, the security headers, blocked cross-origin forms and frames, severed opener references, and literal rendering of hostile HTML. Chromium additionally tests native Trusted Types sinks and policy restrictions. The eval probe runs from a clicked DOM event because Playwright's debugger evaluation can bypass the page's eval CSP; a successful debugger eval is not evidence of an application bypass. Existing SRI, external-resource blocking, secret-transfer and all-browser workflows remain required.
+
+The frame test does not read the blocked frame, because Playwright waits indefinitely for a frame that Firefox blocked. It records which instance responses reach the foreign page instead: the framed document must arrive, and none of the module scripts a rendered application would load before the outer load event may follow. The Chromium project grants Local Network Access, which would otherwise block the loopback frame before `frame-ancestors` applies; without that grant the test fails instead of passing vacuously.
 
 ## Browser key handling
 

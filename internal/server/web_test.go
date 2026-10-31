@@ -36,9 +36,10 @@ var requiredHeaders = map[string]string{
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
+	"Cross-Origin-Embedder-Policy": "require-corp",
 	"Cross-Origin-Resource-Policy": "same-origin",
-	"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
-	"Permissions-Policy":           "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+	"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
+	"Permissions-Policy":           "accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
 }
 
 func htmlCSPFromSpec(t *testing.T) string {

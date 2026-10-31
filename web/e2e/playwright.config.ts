@@ -24,7 +24,8 @@ export default defineConfig({
   reporter: ci ? 'github' : 'list',
   use: { baseURL: BASE_URL, locale: 'en-US', reducedMotion: 'reduce', trace: 'retain-on-failure' },
   projects: [
-    { name: 'chromium', use: devices['Desktop Chrome'] },
+    // The loopback servers stand in for public instances, which Local Network Access does not restrict.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], permissions: ['local-network-access'] } },
     { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
     { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser, ...(ci && { workers: 1 }) },
   ],

@@ -12,10 +12,12 @@ import typescript from 'typescript-eslint';
 
 import svelteConfig from './app/svelte.config.js';
 
-const markupSinks = ['innerHTML', 'outerHTML', 'insertAdjacentHTML'].map((property) => ({
-  property,
-  message: 'Markup sinks parse HTML; build the DOM with Svelte instead.',
-}));
+const markupSinks = ['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'setHTMLUnsafe', 'parseHTMLUnsafe'].map(
+  (property) => ({
+    property,
+    message: 'Markup sinks parse HTML; build the DOM with Svelte instead.',
+  }),
+);
 
 export default defineConfig(
   {
@@ -87,6 +89,7 @@ export default defineConfig(
       'svelte/button-has-type': 'error',
       'svelte/consistent-selector-style': 'error',
       'svelte/no-add-event-listener': 'error',
+      'svelte/no-at-html-tags': 'error',
       'svelte/no-at-const-tags': 'error',
       'svelte/no-inline-styles': ['error', { allowTransitions: false }],
       'svelte/no-target-blank': 'error',
