@@ -503,12 +503,15 @@ jobs:
           version: 2026.10.9
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
-      - name: Inventory tools and block updates that add high or critical vulnerabilities
+      - name: Block updates that add high or critical vulnerabilities; pushes also inventory unchanged tools
         env:
           DEPENDENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          SCAN_SCOPE: ${{ github.event_name == 'pull_request' && 'changed' || 'all' }}
         run: |
+          scope=()
+          if [ "$SCAN_SCOPE" = changed ]; then scope=(--changed-only); fi
           pnpm --dir automation install --frozen-lockfile --prod --ignore-scripts
-          node automation/vulnerability-scan/gate.ts --base "$DEPENDENCY_BASE_SHA" --reports "$RUNNER_TEMP/tool-vulnerability-reports"
+          node automation/vulnerability-scan/gate.ts --base "$DEPENDENCY_BASE_SHA" --reports "$RUNNER_TEMP/tool-vulnerability-reports" "${scope[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
