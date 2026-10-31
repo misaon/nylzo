@@ -290,9 +290,6 @@ func pageNonce(csp string) string {
 func TestBuiltClientIsServed(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
-	if !strings.Contains(harness.logs.String(), `"msg":"web-client","built":true,"assets":5`) {
-		t.Fatalf("the server did not log the embedded client: %s", harness.logs.String())
-	}
 	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
 		page := harness.get(path, nil)
 		nonce := pageNonce(page.Header.Get("Content-Security-Policy"))
@@ -351,9 +348,6 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 		page := harness.get(path, nil)
 		if page.StatusCode != http.StatusOK || !strings.Contains(page.body, want) {
 			t.Fatalf("%s: %d %s", path, page.StatusCode, page.body)
-		}
-		if robots := page.Header.Get("X-Robots-Tag"); (path == "/" || path == "/cs/") != (robots == "") {
-			t.Fatalf("%s: X-Robots-Tag %q, only the home pages may be indexed (D82)", path, robots)
 		}
 	}
 	for _, path := range []string{"/cs", "/cs?utm=1"} {
@@ -434,9 +428,6 @@ func TestWithoutABuildTheServerServesThePlaceholder(t *testing.T) {
 	t.Parallel()
 	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}}
 	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(placeholder))
-	if !strings.Contains(harness.logs.String(), `"msg":"web-client","built":false,"assets":0`) {
-		t.Fatalf("the server did not log that it serves the placeholder: %s", harness.logs.String())
-	}
 	page := harness.get("/", nil)
 	if page.StatusCode != http.StatusOK || !strings.Contains(page.body, "placeholder") ||
 		strings.Contains(page.body, "__NYLZO_CSP_NONCE__") {

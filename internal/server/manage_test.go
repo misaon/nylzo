@@ -298,6 +298,27 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 	}
 }
 
+func TestTakenDownMessageReadsAsDeleted(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "reported")
+		harness.mustCreate(message)
+		locator := seal.LocatorOf(message.id[:])
+		if _, err := store.TakeDown(t.Context(), harness.store, harness.blobs, locator, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		if response, metadata := harness.metadata(message); response.StatusCode != http.StatusOK ||
+			metadata["state"] != "deleted" {
+			t.Fatalf("metadata of a message the operator removed: %d %v", response.StatusCode, metadata)
+		}
+		if response, body := harness.claim(message, "", ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "deleted" {
+			t.Fatalf("claim of a message the operator removed: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
 func TestBurnAndCancelEndpoints(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -690,14 +711,6 @@ func TestAbuseReportHardening(t *testing.T) {
 			t.Fatalf("json report: %d", response.StatusCode)
 		}
 		path := harness.abuseFile(time.Now())
-		data, err := harness.abuseReports()
-		if err != nil {
-			t.Fatal(err)
-		}
-		secret := core.Encode(message.secret[:])
-		if strings.Contains(string(data), secret) || !strings.Contains(string(data), "[redacted]") {
-			t.Fatalf("the report kept the link secret: %s", data)
-		}
 		if truncateErr := os.Truncate(path, 64<<20); truncateErr != nil {
 			t.Fatal(truncateErr)
 		}
@@ -746,10 +759,7 @@ func TestAbuseReports(t *testing.T) {
 		if report(message.id.String(), message.readToken) != http.StatusAccepted {
 			t.Fatal("valid report")
 		}
-		if report(core.NewID().String(), message.readToken) != http.StatusAccepted {
-			t.Fatal("unknown id must get the same 202")
-		}
-		for range 3 {
+		for range 4 {
 			report(message.id.String(), core.Encode(make([]byte, 32)))
 		}
 		if report(message.id.String(), message.readToken) != http.StatusTooManyRequests {

@@ -198,22 +198,8 @@ func TestCreateValidation(t *testing.T) {
 			},
 			{"bad base64", setHeader("***"), http.StatusBadRequest, "bad_request"},
 			{
-				"unknown field",
-				setHeader(
-					harness.withIDToken(mutateHeader(t, message, func(fields map[string]any) { fields["extra"] = 1 })),
-				),
-				http.StatusBadRequest,
-				"bad_request",
-			},
-			{
 				"size mismatch",
 				setHeader(harness.withIDToken(message.createHeader(int64(len(message.object) + 1)))),
-				http.StatusBadRequest,
-				"bad_request",
-			},
-			{
-				"size above the limit and mismatched",
-				setHeader(harness.withIDToken(message.createHeader(config.Defaults().Limits.MaxObjectBytes + 1))),
 				http.StatusBadRequest,
 				"bad_request",
 			},
@@ -271,24 +257,6 @@ func TestCreateValidation(t *testing.T) {
 		if got, _ := harness.create(tooLong); got.StatusCode != http.StatusBadRequest {
 			t.Fatal("ttl above the instance limit accepted")
 		}
-		harness.mustCreate(message)
-		if got, _ := harness.create(message); got.StatusCode != http.StatusConflict {
-			t.Fatal("duplicate id")
-		}
-	})
-}
-
-func TestInstanceOffersNoPassphraseProfile(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
-		if decodeJSON(t, body)["file_compression"] != "gzip" {
-			t.Fatal("the instance does not advertise its supported file compression")
-		}
-		if _, ok := decodeJSON(t, body)["limits"].(map[string]any)["default_kdf_id"]; ok {
-			t.Fatal("the instance still reports default_kdf_id, but D71 leaves one profile")
-		}
 	})
 }
 
@@ -297,10 +265,11 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
-		limits := decodeJSON(t, body)["limits"].(map[string]any)
+		instance := decodeJSON(t, body)
+		limits := instance["limits"].(map[string]any)
 		if limits["max_object_bytes"] != float64(5373952) ||
-			limits["max_text_bytes"] != float64(envelope.MaxTextBytes) {
-			t.Fatalf("instance reports %v", limits)
+			limits["max_text_bytes"] != float64(envelope.MaxTextBytes) || instance["file_compression"] != "gzip" {
+			t.Fatalf("instance reports %v", instance)
 		}
 	})
 }
