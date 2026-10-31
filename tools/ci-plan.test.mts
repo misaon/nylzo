@@ -37,7 +37,7 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(web.jobs["codeql-web"], true);
   assert.equal(web.jobs.build, true);
   assert.equal(web.jobs.go, false);
-  assert.equal(planChecks(["web/package.json"], "pull_request").jobs["dependency-review"], true);
+  assert.equal(planChecks(["web/package.json"], "pull_request").dependencies, true);
 });
 
 test("pushes, mixed changes, renames, and full scans cannot hide executable changes behind Markdown", () => {
@@ -52,9 +52,7 @@ test("pushes, mixed changes, renames, and full scans cannot hide executable chan
   for (const event of ["schedule", "workflow_dispatch"]) {
     const plan = planChecks([], event);
     assert.equal(plan.full, true);
-    assert.ok(
-      Object.entries(plan.jobs).every(([job, required]) => (job === "dependency-review" ? !required : required)),
-    );
+    assert.ok(Object.values(plan.jobs).every(Boolean));
   }
   assert.throws(() => planChecks([null] as unknown as string[], "pull_request"));
   assert.throws(() => planChecks([], "unexpected"));
