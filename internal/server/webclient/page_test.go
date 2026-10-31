@@ -152,7 +152,7 @@ func TestCheckPublicURL(t *testing.T) {
 
 func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 	t.Parallel()
-	got := load(t, builtClient(t)).Manifest("v1.2.3", "https://nylzo.example")
+	got := load(t, builtClient(t)).Manifest("v1.2.3", "https://nylzo.example", buildinfo.Info{})
 	want := webclient.Manifest{
 		Build:            buildinfo.Info{Version: "v1.2.3"},
 		Server:           "v1.2.3",
@@ -174,7 +174,10 @@ func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 	if gotJSON, wantJSON := encode(t, got), encode(t, want); gotJSON != wantJSON {
 		t.Fatalf("manifest\n got %s\nwant %s", gotJSON, wantJSON)
 	}
-	placeholder := load(t, fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}}).Manifest("v1", "")
+	placeholder := load(
+		t,
+		fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}},
+	).Manifest("v1", "", buildinfo.Info{})
 	if encoded := encode(t, placeholder); !strings.Contains(encoded, `"built":false`) ||
 		!strings.Contains(encoded, `"public_url":""`) || !strings.Contains(encoded, `"files":[]`) {
 		t.Fatalf("manifest without a build: %s", encoded)

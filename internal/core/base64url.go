@@ -17,11 +17,6 @@ func DecodeExact(text string, length int) ([]byte, error) {
 	if len(text) != canonicalBase64URL.EncodedLen(length) {
 		return nil, ErrEncoding
 	}
-	for _, character := range []byte(text) {
-		if !isBase64URLCharacter(character) {
-			return nil, ErrEncoding
-		}
-	}
 	decoded, err := canonicalBase64URL.DecodeString(text)
 	if err != nil || len(decoded) != length {
 		return nil, ErrEncoding
@@ -35,9 +30,4 @@ func Decode32(text string) (*[32]byte, error) {
 		return nil, err
 	}
 	return (*[32]byte)(decoded), nil
-}
-
-func isBase64URLCharacter(character byte) bool {
-	return (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z') ||
-		(character >= '0' && character <= '9') || character == '-' || character == '_'
 }

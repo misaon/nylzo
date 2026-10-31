@@ -72,11 +72,6 @@ func TestAK27RotationKeepsOldMacsValid(t *testing.T) {
 	if dropped.Verify(pepper.Read, input, mac[:], id) || !dropped.Verify(pepper.Read, input, newMAC[:], newID) {
 		t.Fatal("after dropping the old pepper only the current macs verify")
 	}
-	for _, pepperID := range []byte{newID, id} {
-		if dropped.Verify(pepper.Read, input, dropped.Dummy(), pepperID) {
-			t.Fatalf("the dummy mac verified for pepper id %d", pepperID)
-		}
-	}
 }
 
 func TestSecretsAreCheckedBeforeUse(t *testing.T) {

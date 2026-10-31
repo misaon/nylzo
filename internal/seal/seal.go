@@ -106,11 +106,7 @@ func PaddedSize(length int64) int64 {
 		return length
 	}
 	exponent := bits.Len64(uint64(length)) - 1
-	significant := 0
-	for rest := exponent; rest > 0; rest >>= 1 {
-		significant++
-	}
-	zeros := exponent - significant
+	zeros := exponent - bits.Len(uint(exponent))
 	if zeros <= 0 {
 		return length
 	}

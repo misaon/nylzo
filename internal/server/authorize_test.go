@@ -609,14 +609,14 @@ func TestSpentChallengesExpire(t *testing.T) {
 		t.Fatal("a passed request must record its challenge")
 	}
 	harness.clock.Advance(time.Minute)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if spentRows() != 1 {
 		t.Fatal("a sweep dropped a challenge that could still be replayed by a slower instance")
 	}
 	harness.clock.Advance(2 * time.Minute)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if spentRows() != 0 {
@@ -874,7 +874,7 @@ func TestAK27PreviousPepperHorizon(t *testing.T) {
 	harness.mustCreate(old)
 	harness.reopen(baseSettings(pepperB, pepperA))
 	harness.clock.Advance(7*24*time.Hour + time.Minute)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if response, metadata := harness.metadata(
@@ -887,7 +887,7 @@ func TestAK27PreviousPepperHorizon(t *testing.T) {
 		t.Fatal("no live message may remain after the maximum TTL")
 	}
 	harness.clock.Advance(store.TombstoneTTL)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	harness.reopen(baseSettings(pepperB, nil))
@@ -1009,7 +1009,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
 		r.Header.Set("Authorization", authorization)
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, r)
+		server.handler.ServeHTTP(recorder, r)
 		return recorder.Code
 	}
 	if code := send(); code != http.StatusInternalServerError {
@@ -1057,25 +1057,5 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 	}
 	if _, metadata := harness.metadata(message); metadata["state"] != "cancelled" {
 		t.Fatalf("metadata: %v", metadata)
-	}
-}
-
-func BenchmarkSignedMetadataWithASpentChallenge(b *testing.B) {
-	server, _ := testServer(b, openStore(b), func(settings *config.Server) {
-		settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1e9, 1e9
-		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1e9, 1e9
-		settings.Rates.ReadPerHour = 0
-	})
-	path := "/api/v1/messages/" + core.NewID().String()
-	challenge, _ := server.challenges.Issue(server.clock().Add(-2 * time.Minute))
-	authorization := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil).Authorization()
-	for b.Loop() {
-		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
-		r.Header.Set("Authorization", authorization)
-		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, r)
-		if recorder.Code != http.StatusNotFound {
-			b.Fatalf("status %d", recorder.Code)
-		}
 	}
 }

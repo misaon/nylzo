@@ -111,7 +111,7 @@ func newPublicWebTestServer(
 		t.Fatal(err)
 	}
 	t.Cleanup(apiServer.Close)
-	handler := apiServer.Handler()
+	handler := apiServer.HTTPServer().Handler
 	if wrap != nil {
 		handler = wrap(handler)
 	}

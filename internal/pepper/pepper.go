@@ -145,10 +145,6 @@ func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {
 	return hmac.Equal(computed[:], expected) && known
 }
 
-func (r *Ring) Dummy() []byte {
-	return append([]byte(nil), r.dummy[:]...)
-}
-
 func (r *Ring) keyFor(id byte) *key {
 	if r.current.id == id {
 		return r.current

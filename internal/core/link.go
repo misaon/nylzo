@@ -75,10 +75,6 @@ func ParsePath(path string) (ID, error) {
 	return id, nil
 }
 
-func ParseFragment(fragment string) (KDF, *[SecretLen]byte, error) {
-	return parseFragmentFields(strings.TrimPrefix(fragment, "#"))
-}
-
 func AssertProfile(fragmentKDF KDF, serverKDF int) error {
 	if int(fragmentKDF) != serverKDF {
 		return ErrKDFMismatch

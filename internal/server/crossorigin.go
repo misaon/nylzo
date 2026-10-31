@@ -1,10 +1,11 @@
 package server
 
 import (
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/misaon/nylzo/internal/loopback"
 )
 
 const (
@@ -108,9 +109,7 @@ func mutationTarget(r *http.Request, publicURL string) (string, bool) {
 		return "", false
 	}
 	// Unconfigured local development remains usable without admitting DNS rebinding.
-	host := parsed.Hostname()
-	address := net.ParseIP(host)
-	return target, host == "localhost" || address != nil && address.IsLoopback()
+	return target, loopback.Host(parsed.Hostname())
 }
 
 func sourceOrigin(value string, referer bool) (string, bool) {

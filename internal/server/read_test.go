@@ -335,7 +335,7 @@ func TestAK6SweepAfterRestart(t *testing.T) {
 		t.Fatal("blob gone before sweep")
 	}
 	harness.clock.Set(store.CeilMinute(harness.clock.Now()).Truncate(store.BlobPurgeStep).Add(store.BlobPurgeStep))
-	report, err := harness.server.SweepOnce(t.Context())
+	report, err := harness.server.sweepOnce(t.Context())
 	if err != nil || report.Blobs != 1 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
@@ -363,12 +363,12 @@ func TestAK7ExpiryLazyAndSweep(t *testing.T) {
 	secondMessage := newMessage(t, core.KDFNone, "", 1, 60, "swept")
 	harness.mustCreate(secondMessage)
 	harness.clock.Advance(store.BlobPurgeStep)
-	report, err := harness.server.SweepOnce(t.Context())
+	report, err := harness.server.sweepOnce(t.Context())
 	if err != nil || report.Blobs != 1 || harness.blobExists(secondMessage) {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
 	harness.clock.Advance(store.TombstoneTTL + store.RowPurgeStep)
-	if _, sweepOnceErr := harness.server.SweepOnce(t.Context()); sweepOnceErr != nil {
+	if _, sweepOnceErr := harness.server.sweepOnce(t.Context()); sweepOnceErr != nil {
 		t.Fatal(sweepOnceErr)
 	}
 	if got, _ := harness.metadata(message); got.StatusCode != http.StatusNotFound {
@@ -703,7 +703,7 @@ func runLifecycleAction(
 		)
 	case "expiry by sweep":
 		harness.clock.Advance(2 * time.Hour)
-		if _, err := harness.server.SweepOnce(ctx); err != nil {
+		if _, err := harness.server.sweepOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
 	case "release":
@@ -720,7 +720,7 @@ func runLifecycleAction(
 			},
 		)
 	case "resume by sweep":
-		if _, err := harness.server.SweepOnce(ctx); err != nil {
+		if _, err := harness.server.sweepOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
 	case "claim":
@@ -1119,7 +1119,7 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 			t.Fatalf("opens %d: a lost blob must answer 500 before any open is spent: %d", opens, response.StatusCode)
 		}
 		harness.clock.Advance(store.LeaseDuration + time.Minute)
-		if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+		if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		if got, metadata := harness.metadata(

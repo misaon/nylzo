@@ -15,17 +15,18 @@ import (
 	"net/http/httptest"
 	"net/http/httptrace"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -397,24 +398,7 @@ func issueIDToken(server *Server, id core.ID) string {
 	return token
 }
 
-type lockedBuffer struct {
-	mutex  sync.Mutex
-	buffer bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(data []byte) (int, error) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	return b.buffer.Write(data)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	return b.buffer.String()
-}
-
-func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
+func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *syncBuffer) {
 	tb.Helper()
 	settings := config.Defaults()
 	settings.ReportKey = testReportKey.PublicKey()
@@ -423,7 +407,7 @@ func testServer(tb testing.TB, database store.Store, change func(*config.Server)
 	if change != nil {
 		change(&settings)
 	}
-	logs := &lockedBuffer{}
+	logs := &syncBuffer{}
 	server, err := New(&settings, database, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
 	if err != nil {
 		tb.Fatal(err)
@@ -455,7 +439,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/api/v1/messages/"+id+"/blob", http.NoBody),
 	} {
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, request)
+		server.handler.ServeHTTP(recorder, request)
 		if recorder.Code != http.StatusServiceUnavailable || recorder.Header().Get("Retry-After") != "5" {
 			t.Fatalf(
 				"%s with every stream slot busy: %d %q",
@@ -467,7 +451,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	}
 	server.streams.Release(source, ranges)
 	recorder := httptest.NewRecorder()
-	server.Handler().
+	server.handler.
 		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody))
 	if recorder.Code != http.StatusNotFound || !server.streams.Take(source, ranges) {
 		t.Fatalf("a claim with a free slot: %d, or it kept its slot", recorder.Code)
@@ -481,7 +465,7 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+core.NewID().String()+"/claim", http.NoBody)
 		request.RemoteAddr = address + ":1234"
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, request)
+		server.handler.ServeHTTP(recorder, request)
 		return recorder.Code
 	}
 	hold := func(address string) {
@@ -615,6 +599,29 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 		change(&settings)
 		if _, err := New(&settings, database, nil); !errors.Is(err, config.ErrInvalid) {
 			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
+	t.Parallel()
+	database := openStore(t)
+	for _, name := range []string{"abuse-reports.jsonl", filepath.Join("abuse", "2026-10-20.jsonl")} {
+		settings := baseSettings(pepperA, nil)
+		settings.DataDir = t.TempDir()
+		path := filepath.Join(settings.DataDir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		report := []byte(`{"date":"2026-10-20","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"spam"}` + "\n")
+		if err := os.WriteFile(path, report, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(settings, database, nil); !errors.Is(err, abuse.ErrLegacyReports) {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if kept, err := os.ReadFile(path); err != nil || !bytes.Equal(kept, report) {
+			t.Fatalf("the refused start changed %s: %v", name, err)
 		}
 	}
 }

@@ -35,22 +35,6 @@ const (
 
 type Option func(*Server)
 
-func WithClock(clock func() time.Time) Option {
-	return func(server *Server) {
-		if clock != nil {
-			server.clock = clock
-		}
-	}
-}
-
-func WithAfterFunc(after func(delay time.Duration, run func())) Option {
-	return func(server *Server) {
-		if after != nil {
-			server.after = after
-		}
-	}
-}
-
 func WithLogger(logger *slog.Logger) Option {
 	return func(server *Server) {
 		if logger != nil {
@@ -95,6 +79,9 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
+	if err := abuse.RefuseLegacyReports(settings.DataDir); err != nil {
+		return nil, err
+	}
 	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
 	if err != nil {
 		return nil, err
@@ -127,9 +114,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(settings.DataDir, settings.ReportKey, server.logger)
-	if legacyErr := server.reports.SealLegacy(); legacyErr != nil {
-		server.logger.Error("abuse-legacy", "err", logging.ErrorText(legacyErr))
-	}
 	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
 	server.handler = server.routes()
 	return server, nil
@@ -137,10 +121,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 
 func (s *Server) Close() {
 	s.leaseTimers.stop()
-}
-
-func (s *Server) Handler() http.Handler {
-	return s.handler
 }
 
 func (s *Server) HTTPServer() *http.Server {
@@ -165,10 +145,6 @@ func (s *Server) HTTPServer() *http.Server {
 	}
 }
 
-func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
-}
-
 func (s *Server) RunSweeper(ctx context.Context) {
 	if s.settings.SweepInterval <= 0 {
 		return
@@ -176,7 +152,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
-		report, err := s.SweepOnce(ctx)
+		report, err := s.sweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
 			s.logger.InfoContext(ctx, "sweep-stopped", report.LogAttrs()...)
@@ -192,6 +168,10 @@ func (s *Server) RunSweeper(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
+	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
 }
 
 func (s *Server) setUpLimits() {

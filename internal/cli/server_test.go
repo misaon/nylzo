@@ -181,8 +181,8 @@ func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	if err = os.Mkdir(reports, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	old := filepath.Join(reports, "2020-01-01.jsonl")
-	if err = os.WriteFile(old, []byte(`{"date":"2020-01-01","id":"x","reason":""}`+"\n"), 0o600); err != nil {
+	old := filepath.Join(reports, "2020-01-01"+abuse.FileExtension)
+	if err = os.WriteFile(old, make([]byte, abuse.SealedLen), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	result := runWith(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, "sweep-once")
@@ -260,7 +260,7 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 	}
 }
 
-func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
+func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	directory := t.TempDir()
 	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -286,7 +286,7 @@ func TestSweepOnceLeavesAnOlderSchemaToServe(t *testing.T) {
 	defer database.Close()
 	var version int
 	if err = database.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
-		t.Fatalf("sweep-once migrated the database under a running older server: version %d %v", version, err)
+		t.Fatalf("sweep-once changed the version of a database it refused: version %d %v", version, err)
 	}
 	if _, err = database.Exec(`PRAGMA user_version = 6`); err != nil {
 		t.Fatal(err)
