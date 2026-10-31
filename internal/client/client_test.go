@@ -22,6 +22,35 @@ func serve(t *testing.T, handler http.HandlerFunc) *Client {
 	return client
 }
 
+func TestMutationRequestMarkers(t *testing.T) {
+	t.Parallel()
+	for _, method := range []string{
+		http.MethodGet, http.MethodHead, http.MethodOptions,
+		http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
+	} {
+		t.Run(method, func(t *testing.T) {
+			t.Parallel()
+			client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+				want := "XMLHttpRequest"
+				if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
+					want = ""
+				}
+				if got := r.Header.Get("X-Requested-With"); got != want {
+					t.Errorf("%s request marker = %q, want %q", method, got, want)
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})
+			response, err := client.do(t.Context(), method, "/", nil, nil, shortTimeout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if closeErr := response.Body.Close(); closeErr != nil {
+				t.Fatal(closeErr)
+			}
+		})
+	}
+}
+
 func TestOriginAllowsHTTPSAndLoopbackOnly(t *testing.T) {
 	t.Parallel()
 	for server, want := range map[string]string{

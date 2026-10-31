@@ -196,6 +196,11 @@ export function createApi(options: ApiOptions = {}): Api {
   const fetchResource = options.fetch ?? fetch.bind(globalThis);
 
   async function call(path: string, requestInit: RequestInit, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
+    const headers = new Headers(requestInit.headers);
+    const method = requestInit.method?.toUpperCase() ?? 'GET';
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      headers.set('X-Requested-With', 'XMLHttpRequest');
+    }
     return fetchResource(`${base}${path}`, {
       credentials: 'omit',
       cache: 'no-store',
@@ -203,6 +208,7 @@ export function createApi(options: ApiOptions = {}): Api {
       referrerPolicy: 'no-referrer',
       signal: AbortSignal.timeout(timeoutMs),
       ...requestInit,
+      headers,
     });
   }
 

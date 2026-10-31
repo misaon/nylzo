@@ -56,7 +56,7 @@ func (s *Server) routes() http.Handler {
 	routed := logging.Route(mux)
 	return logging.Requests(
 		s.logger,
-		s.noticeForwarded(securityHeaders(s.spendChallenges(prefetchGuard(s.throttle(routed))))),
+		s.noticeForwarded(securityHeaders(s.crossOriginGuard(s.spendChallenges(prefetchGuard(s.throttle(routed)))))),
 	)
 }
 

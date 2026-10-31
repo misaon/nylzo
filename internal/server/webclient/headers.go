@@ -11,7 +11,7 @@ import (
 
 const NonHTMLCSP = "default-src 'none'; frame-ancestors 'none'"
 
-const pageCSPFormat = "default-src 'none'; script-src 'nonce-%s'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
+const pageCSPFormat = "default-src 'none'; script-src 'nonce-%s' 'strict-dynamic'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
 
 const robotsTag = "noindex, nofollow"
 
@@ -23,9 +23,10 @@ var securityHeaders = map[string]string{
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
+	"Cross-Origin-Embedder-Policy": "require-corp",
 	"Cross-Origin-Resource-Policy": "same-origin",
-	"Strict-Transport-Security":    "max-age=31536000; includeSubDomains",
-	"Permissions-Policy":           "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+	"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
+	"Permissions-Policy":           "accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
 }
 
 var previewAgents = []string{
