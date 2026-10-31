@@ -19,6 +19,19 @@ builds:
     ldflags: &ldflags
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }} -X main.date={{ .CommitDate }} -X main.dirty={{ .IsGitDirty }}
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: caddy
+    dir: deploy/caddy
+    main: &caddy_main .
+    binary: caddy
+    env: *env
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: &caddy_flags
+      - -trimpath
+      - -buildvcs=false
+    ldflags: &caddy_ldflags
+      - -s -w
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - id: nylzo
@@ -39,6 +52,21 @@ archives:
           group: root
           mtime: "{{ .CommitDate }}"
       - src: README.md
+        info:
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+  - id: caddy
+    ids: [caddy]
+    formats: [tar.gz]
+    name_template: "nylzo-caddy_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: deploy/caddy/kodata/LICENSE
+        strip_parent: true
         info:
           owner: root
           group: root
@@ -75,6 +103,27 @@ kos:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.created: "{{ .CommitDate }}"
       org.opencontainers.image.licenses: MIT
+  - id: caddy
+    build: caddy
+    main: *caddy_main
+    working_dir: deploy/caddy
+    base_image: gcr.io/distroless/static-debian13:nonroot@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+    repositories: [ghcr.io/misaon/nylzo-caddy]
+    platforms: [linux/amd64, linux/arm64]
+    tags: ["staging-{{ .Version }}"]
+    bare: true
+    sbom: spdx
+    creation_time: "{{ .CommitTimestamp }}"
+    ko_data_creation_time: "{{ .CommitTimestamp }}"
+    env: *env
+    flags: *caddy_flags
+    ldflags: *caddy_ldflags
+    labels:
+      org.opencontainers.image.source: https://github.com/misaon/nylzo
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.licenses: Apache-2.0
 
 signs:
   - id: checksums
@@ -166,9 +215,10 @@ release:
     gh attestation verify nylzo_{{ .Version }}_linux_amd64.tar.gz --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref refs/tags/{{ .Tag }} --deny-self-hosted-runners
     gh attestation verify oci://ghcr.io/misaon/nylzo:{{ .Version }} --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref refs/tags/{{ .Tag }} --deny-self-hosted-runners
     cosign verify ghcr.io/misaon/nylzo:{{ .Version }} --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
+    cosign verify ghcr.io/misaon/nylzo-caddy:{{ .Version }} --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
     ```
 
-    `checksums.txt` also lists the files of the embedded web client.
+    `checksums.txt` also lists the files of the embedded web client and the `nylzo-caddy` archives, the Caddy build for self-hosting.
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"

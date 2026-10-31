@@ -5,7 +5,8 @@ directory="${1:-.deploy/vm}"
 mkdir -p "$directory"
 directory=$(realpath "$directory")
 node tools/deploy/check.mts "$directory"
-node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C deploy/caddy build -trimpath -buildvcs=false -ldflags='-s -w' -o "$directory/caddy" .
+node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign" "$directory/caddy"
 version=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
 base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
 image=flatcar_production_qemu_image.img.bz2

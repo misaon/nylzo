@@ -193,7 +193,8 @@ jobs:
           cache: false
       - name: The base image is the one the distroless project signed
         run: |
-          test "$(yq '.kos | length' .goreleaser.yaml)" = 1
+          test "$(yq '.kos | length' .goreleaser.yaml)" = 2
+          test "$(yq '[.kos[].base_image] | unique | length' .goreleaser.yaml)" = 1
           base_image=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf '%s\n' "${base_image}" | grep -Eqx 'gcr\.io/distroless/static-debian13:nonroot@sha256:[0-9a-f]{64}'
           cosign verify "${base_image}" \
@@ -214,13 +215,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-      - name: Digest of the published image
+      - name: Digests of the published images
         id: image
         run: |
           test "$(jq -r .tag dist/metadata.json)" = "${GITHUB_REF_NAME}"
-          digest=$(jq -r 'first(.[] | select(.type == "Docker Manifest") | .extra.Digest)' dist/artifacts.json)
-          test -n "${digest}" && test "${digest}" != null
-          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+          for id in nylzo caddy; do
+            digest=$(jq -er --arg id "$id" '[.[] | select(.type == "Docker Manifest" and .extra.ID == $id) | .extra.Digest] | unique | if length == 1 then .[0] else error("expected one image digest for \($id)") end' dist/artifacts.json)
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            if [ "$id" = nylzo ]; then echo "digest=${digest}"; else echo "caddy_digest=${digest}"; fi >> "${GITHUB_OUTPUT}"
+          done
       - name: Provenance of the archives, checksums and web client files
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -230,6 +233,12 @@ jobs:
         with:
           subject-name: ghcr.io/misaon/nylzo
           subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+      - name: Provenance of the Caddy image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/misaon/nylzo-caddy
+          subject-digest: ${{ steps.image.outputs.caddy_digest }}
           push-to-registry: true
       - name: Every supported platform has an archive, SBOM, and signed checksum
         run: |
@@ -244,11 +253,18 @@ jobs:
               test -s "dist/${archive}.sbom.json"
             done
           done
+          for architecture in amd64 arm64; do
+            archive="nylzo-caddy_${version}_linux_${architecture}.tar.gz"
+            test -s "dist/${archive}"
+            grep -F "${archive}" dist/checksums.txt
+            test -s "dist/${archive}.sbom.json"
+          done
           test -s dist/checksums.txt.sigstore.json
       - name: The exact candidate passes vulnerability checks before promotion
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-        run: bash tools/security/scan-release "ghcr.io/${GITHUB_REPOSITORY}@${IMAGE_DIGEST}" dist vulnerability-reports
+          CADDY_DIGEST: ${{ steps.image.outputs.caddy_digest }}
+        run: bash tools/security/scan-release "ghcr.io/${GITHUB_REPOSITORY}@${IMAGE_DIGEST}" "ghcr.io/${GITHUB_REPOSITORY}-caddy@${CADDY_DIGEST}" dist vulnerability-reports
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && hashFiles('vulnerability-reports/*.json') != ''
         with:
@@ -268,14 +284,17 @@ jobs:
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ${{ runner.temp }}/web-client/evidence.sha256
-      - name: Promote the verified candidate to its stable image tag
+      - name: Promote the verified candidates to their stable image tags
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          CADDY_DIGEST: ${{ steps.image.outputs.caddy_digest }}
         run: |
-          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          image="ghcr.io/${GITHUB_REPOSITORY}"
-          docker buildx imagetools create --tag "${image}:${GITHUB_REF_NAME#v}" "${image}@${IMAGE_DIGEST}"
-          test "$(docker buildx imagetools inspect "${image}:${GITHUB_REF_NAME#v}" --format '{{.Manifest.Digest}}')" = "$IMAGE_DIGEST"
+          for candidate in "ghcr.io/${GITHUB_REPOSITORY}@${IMAGE_DIGEST}" "ghcr.io/${GITHUB_REPOSITORY}-caddy@${CADDY_DIGEST}"; do
+            [[ "$candidate" =~ @sha256:[0-9a-f]{64}$ ]]
+            image="${candidate%@*}"
+            docker buildx imagetools create --tag "${image}:${GITHUB_REF_NAME#v}" "$candidate"
+            test "$(docker buildx imagetools inspect "${image}:${GITHUB_REF_NAME#v}" --format '{{.Manifest.Digest}}')" = "${candidate#*@}"
+          done
       - name: Publish the complete release and lock its assets
         env:
           GH_TOKEN: ${{ github.token }}

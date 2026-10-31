@@ -165,10 +165,17 @@ const toolchain = `{
 }
 `;
 
-const compose = `services:
-  caddy:
-    image: caddy:2.11.7@sha256:${'a'.repeat(64)}
-    cap_drop: [ALL]
+const caddyModule = `module github.com/misaon/nylzo/deploy/caddy
+
+go 1.27
+
+toolchain go1.27.3
+
+require github.com/caddyserver/caddy/v2 v2.11.7
+
+require (
+\tgithub.com/go-jose/go-jose/v3 v3.0.6-0.20261030183946-0e502b87c7aa // indirect
+)
 `;
 
 const runtimeTest = `spawn("docker", ["run", "ubuntu:24.04@sha256:${'a'.repeat(64)}", "bash", "-s"]);\n`;
@@ -593,18 +600,25 @@ const cases: readonly Case[] = [
     path: 'deploy/hetzner-flatcar/toolchain.json',
   },
   {
-    after: compose.replace('2.11.7', '2.11.8').replace('a'.repeat(64), 'b'.repeat(64)),
-    before: compose,
+    after: caddyModule.replace('caddy/v2 v2.11.7', 'caddy/v2 v2.11.8'),
+    before: caddyModule,
     expected: 'safe',
-    name: 'Caddy image update',
-    path: 'deploy/compose/compose.yaml',
+    name: 'Caddy module update',
+    path: 'deploy/caddy/go.mod',
   },
   {
-    after: compose.replace('cap_drop: [ALL]', 'privileged: true'),
-    before: compose,
+    after: caddyModule.replace('v3.0.6-0.20261030183946-0e502b87c7aa', 'v3.0.6'),
+    before: caddyModule,
+    expected: 'unsafe',
+    name: 'Caddy module leaving a pinned backport commit for its release',
+    path: 'deploy/caddy/go.mod',
+  },
+  {
+    after: `${caddyModule}\nreplace github.com/caddyserver/caddy/v2 => github.com/attacker/caddy/v2 v2.11.8\n`,
+    before: caddyModule,
     expected: 'rejected',
-    name: 'compose setting',
-    path: 'deploy/compose/compose.yaml',
+    name: 'Caddy module replace directive',
+    path: 'deploy/caddy/go.mod',
   },
   {
     after: runtimeTest.replace('a'.repeat(64), 'b'.repeat(64)),
@@ -693,7 +707,13 @@ for (const { after, before, expected, name, path } of cases) {
 }
 
 void test('files outside the dependency rules have no rule', () => {
-  for (const path of ['internal/server/server.go', 'tools/security/bootstrap-policy', 'web/pnpm-workspace.yaml']) {
+  for (const path of [
+    'deploy/caddy/main.go',
+    'deploy/compose/compose.yaml',
+    'internal/server/server.go',
+    'tools/security/bootstrap-policy',
+    'web/pnpm-workspace.yaml',
+  ]) {
     assert.equal(ruleFor(path), undefined, path);
   }
 });

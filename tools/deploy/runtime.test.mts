@@ -79,25 +79,41 @@ echo VERIFIED_FAILURE_BEHAVIOR
   }
 });
 
-test("a Caddy candidate that cannot restart restores the previously verified executable", { skip: !available }, () => {
-  const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
-    "--tmpfs", "/opt", "--tmpfs", "/var/lib", "--tmpfs", "/var/tmp", "--tmpfs", "/run", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
-    "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/runtime/update")},target=/test-update,readonly`,
-    "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852", "bash", "-s"], {
-    encoding: "utf8", timeout: 60000, input: `set -euo pipefail
-mkdir -p /opt/nylzo/bin /opt/nylzo/caddy/v2.11.6 /var/lib/nylzo-deploy /tmp/bin /tmp/fixture
-printf 'v2.11.6\\n' > /var/lib/nylzo-deploy/caddy.tag
-printf 'v2.11.7\\n' > /var/lib/nylzo-deploy/caddy.approved.tag
-printf 'previous verified executable\\n' > /opt/nylzo/caddy/v2.11.6/caddy
-ln -s /opt/nylzo/caddy/v2.11.6/caddy /opt/nylzo/bin/caddy
-printf 'verified candidate executable\\n' > /tmp/fixture/caddy
-(cd /tmp/fixture && tar -czf caddy_2.11.7_linux_amd64.tar.gz caddy && sha512sum caddy_2.11.7_linux_amd64.tar.gz > checksums.txt)
+test("a Caddy candidate from the verified release restarts only when it changed and restores the previous executable on failure", { skip: !available }, () => {
+  const verified = `grep -qx 'https://github.com/misaon/nylzo/releases/download/v0.2.1/nylzo-caddy_0.2.1_linux_amd64.tar.gz' /tmp/downloads
+grep -q '^attestation verify .*nylzo-caddy_0.2.1_linux_amd64.tar.gz .*--source-ref refs/tags/v0.2.1 ' /tmp/verified`;
+  const expectations = {
+    changed: `${verified}
+[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v0.2.0/caddy ]]
+[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = v0.2.0 && "$(wc -l < /tmp/restarts)" = 2 ]]`,
+    identical: `${verified}
+[[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v0.2.1/caddy && ! -s /tmp/restarts ]]
+[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = v0.2.1 && "$(cat /var/lib/nylzo-deploy/caddy.previous.tag)" = v0.2.0 ]]`,
+    absent: `if grep -q 'tar.gz$' /tmp/downloads; then exit 1; fi
+[[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v0.2.0/caddy && ! -s /tmp/restarts ]]
+[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = v0.2.0 ]]
+rm /var/lib/nylzo-deploy/caddy.tag
+if PATH="/tmp/bin:$PATH" bash /test-update caddy v0.2.1; then exit 1; fi`,
+  };
+  for (const [scenario, expectation] of Object.entries(expectations)) {
+    const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
+      "--tmpfs", "/opt", "--tmpfs", "/var/lib", "--tmpfs", "/var/tmp", "--tmpfs", "/run", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
+      "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/runtime/update")},target=/test-update,readonly`,
+      "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852", "bash", "-s"], {
+      encoding: "utf8", timeout: 60000, input: `set -euo pipefail
+mkdir -p /opt/nylzo/bin /opt/nylzo/caddy/v0.2.0 /var/lib/nylzo-deploy /tmp/bin /tmp/fixture
+printf 'v0.2.0\\n' > /var/lib/nylzo-deploy/caddy.tag
+printf 'previous verified executable\\n' > /opt/nylzo/caddy/v0.2.0/caddy
+ln -s /opt/nylzo/caddy/v0.2.0/caddy /opt/nylzo/bin/caddy
+printf '${scenario === "identical" ? "previous" : "candidate"} verified executable\\n' > /tmp/fixture/caddy
+(cd /tmp/fixture && tar -czf nylzo-caddy_0.2.1_linux_amd64.tar.gz caddy && sha256sum ${scenario === "absent" ? "caddy" : "nylzo-caddy_0.2.1_linux_amd64.tar.gz"} > checksums.txt)
 cat > /tmp/bin/curl <<'CURL'
 #!/bin/bash
 file="\${@: -1}"
+printf '%s\\n' "\${@: -3:1}" >> /tmp/downloads
 case "\${file##*/}" in
   checksums.txt) cp /tmp/fixture/checksums.txt "$file" ;;
-  *.tar.gz) cp /tmp/fixture/caddy_2.11.7_linux_amd64.tar.gz "$file" ;;
+  *.tar.gz) cp /tmp/fixture/nylzo-caddy_0.2.1_linux_amd64.tar.gz "$file" ;;
   *) printf '{}\\n' > "$file" ;;
 esac
 CURL
@@ -105,29 +121,30 @@ cat > /tmp/bin/jq <<'JQ'
 #!/bin/bash
 case "$*" in
   *architecture*) echo amd64 ;;
-  *tag_name*) echo v2.11.7 ;;
-  *) echo 2.11.7 ;;
+  *) echo '{}' ;;
 esac
 JQ
-for name in cosign systemd-run; do printf '#!/bin/bash\\nexit 0\\n' > /tmp/bin/$name; done
+for name in cosign gh systemd-run; do printf '#!/bin/bash\\nprintf "%%s\\\\n" "$*" >> /tmp/verified\\nexit 0\\n' > /tmp/bin/$name; done
 cat > /tmp/bin/systemctl <<'SYSTEMCTL'
 #!/bin/bash
 if [[ "$*" = 'restart caddy.service' ]]; then
   readlink /opt/nylzo/bin/caddy >> /tmp/restarts
-  [[ "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v2.11.6/caddy ]]
+  [[ "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v0.2.0/caddy ]]
 else exit 1
 fi
 SYSTEMCTL
 chmod 0755 /tmp/bin/*
+touch /tmp/restarts
 set +e
-PATH="/tmp/bin:$PATH" bash /test-update caddy
+PATH="/tmp/bin:$PATH" bash /test-update caddy v0.2.1
 status=$?
 set -e
-[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v2.11.6/caddy ]]
-[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = v2.11.6 && "$(wc -l < /tmp/restarts)" = 2 ]]
-echo VERIFIED_CADDY_RECOVERY
+grep -q '^verify-blob .*--certificate-identity https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/v0.2.1 ' /tmp/verified
+${expectation}
+echo VERIFIED_CADDY_UPDATE
 `,
-  });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /VERIFIED_CADDY_RECOVERY/u);
+    });
+    assert.equal(result.status, 0, `${scenario}\n${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /VERIFIED_CADDY_UPDATE/u);
+  }
 });

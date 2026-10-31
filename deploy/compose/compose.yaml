@@ -30,12 +30,14 @@ services:
         max-file: "3"
 
   caddy:
-    image: caddy:2.11.7@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489
+    image: ${NYLZO_CADDY_IMAGE:?set NYLZO_CADDY_IMAGE to the verified Caddy image of the same release with its digest}
+    command: [run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
     security_opt: ["no-new-privileges:true"]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 80
     environment:
       NYLZO_DOMAIN: ${NYLZO_DOMAIN:?set NYLZO_DOMAIN to the public host name}
     ports:
@@ -45,8 +47,7 @@ services:
     logging: *logging
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
+      - caddy-state:/home/nonroot
     depends_on: [nylzo]
     networks:
       nylzo:
@@ -59,8 +60,7 @@ secrets:
 
 volumes:
   nylzo-data:
-  caddy-data:
-  caddy-config:
+  caddy-state:
 
 networks:
   nylzo:

@@ -31,7 +31,7 @@ export async function render(input: unknown) {
   }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
   files.push(
     embedded("/etc/nylzo/tools.env", tools),
-    embedded("/etc/nylzo/site.json", JSON.stringify({ architecture: site.architecture, domain: site.domain, initialRelease: site.initialRelease, caddy: toolchain.caddy })),
+    embedded("/etc/nylzo/site.json", JSON.stringify({ architecture: site.architecture, domain: site.domain, initialRelease: site.initialRelease })),
     embedded("/etc/nylzo/service.env", environment),
     embedded("/etc/nylzo/caddy.env", `NYLZO_DOMAIN=${site.domain}\n`),
     embedded("/etc/caddy/Caddyfile", await read("runtime/Caddyfile") + (site.monitorClientCertificate ? "\n" + await read("runtime/monitor.Caddyfile") : "")),

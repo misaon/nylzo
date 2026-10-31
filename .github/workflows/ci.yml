@@ -163,7 +163,7 @@ jobs:
     needs: [changes, sca]
     if: needs.changes.outputs.repository == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -611,6 +611,7 @@ jobs:
       - name: mise pins match go.mod, web/.node-version, packageManager, GoReleaser and the tools CI runs
         run: |
           test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' go.mod)"
+          test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' deploy/caddy/go.mod)"
           test "$(mise current node)" = "$(cat web/.node-version)"
           test "pnpm@$(mise current pnpm)" = "$(jq -r .packageManager web/package.json)"
           for workflow in .github/workflows/ci.yml .github/workflows/release.yml; do
@@ -665,28 +666,40 @@ jobs:
         run: |
           node ../automation/web-install/main.ts
           pnpm --filter @nylzo/web build
-      - name: Build nylzo and an image laid out like the release image
+      - name: The Caddy module is tidy, verified and has no reachable vulnerability
+        working-directory: deploy/caddy
+        run: |
+          go mod verify
+          go mod tidy -diff
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Build nylzo, Caddy and images laid out like the release images
         run: |
           CGO_ENABLED=0 go build -trimpath -o dist/nylzo ./cmd/nylzo
+          CGO_ENABLED=0 go -C deploy/caddy build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../dist/caddy .
           go build -o dist/tlscheck ./tools/tlscheck
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
+          printf 'FROM %s\nCOPY caddy /ko-app/caddy\nENTRYPOINT ["/ko-app/caddy"]\n' "$base" | docker build -q -t caddy:ci -f - dist
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: grype
-      - name: The production image has no high or critical known vulnerabilities
+      - name: The production images have no high or critical known vulnerabilities
         env:
           GRYPE_CHECK_FOR_APP_UPDATE: "false"
           GRYPE_DB_VALIDATE_AGE: "true"
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 48h
-        run: grype docker:nylzo:ci --fail-on high --output json --file grype-compose.json
+        run: |
+          status=0
+          grype docker:nylzo:ci --fail-on high --output json --file grype-compose.json || status=$?
+          grype docker:caddy:ci --fail-on high --output json --file grype-compose-caddy.json || status=$?
+          exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && hashFiles('grype-compose.json') != ''
+        if: always() && hashFiles('grype-compose*.json') != ''
         with:
           name: compose-vulnerability-report
-          path: grype-compose.json
+          path: grype-compose*.json
           if-no-files-found: error
           retention-days: 14
       - name: Start the Compose example for localhost
@@ -697,10 +710,10 @@ jobs:
           sudo chown 65532:65532 secrets/pepper
           sudo chmod 0400 secrets/pepper
           report_key=$(../../dist/nylzo report-key --key-file "$RUNNER_TEMP/report-key" | cut -d= -f2-)
-          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
+          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
           docker compose up -d
           for _ in $(seq 1 60); do
-            docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break
+            docker compose cp caddy:/home/nonroot/.local/share/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break
             sleep 1
           done
           curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz || { docker compose logs; exit 1; }
@@ -794,7 +807,7 @@ jobs:
           import tarfile
 
           archives = list(pathlib.Path("dist").glob("*.tar.gz"))
-          assert len(archives) == 4, archives
+          assert len(archives) == 6, archives
           for archive in archives:
               with tarfile.open(archive) as contents:
                   for member in contents:
@@ -807,7 +820,7 @@ jobs:
           if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
           binary=(dist/nylzo_linux_"${architecture}"_*/nylzo)
           "${binary[0]}" version --json | cmp - internal/server/web/dist/assets/build-info.json
-      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*.tar.gz dist/*.zip internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
+      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.runner }}

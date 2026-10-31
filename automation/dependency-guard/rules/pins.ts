@@ -41,14 +41,6 @@ export const releaseBaseImage = pinRule([
   },
 ]);
 
-export const composeFile = pinRule([
-  {
-    name: 'caddy',
-    pattern: /^ {4}image: caddy:(?<version>\d+\.\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})$/dgm,
-    values: { digest: 'opaque', version: 'version' },
-  },
-]);
-
 export const runtimeTest = pinRule([
   {
     name: 'ubuntu',
