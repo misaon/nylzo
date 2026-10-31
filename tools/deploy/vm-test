@@ -6,12 +6,32 @@ mkdir -p "$directory"
 directory=$(realpath "$directory")
 node tools/deploy/check.mts "$directory"
 mkdir -p "$directory/serve"
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C deploy/caddy build -trimpath -buildvcs=false -tags=nobadger,nomysql,nopgx -ldflags='-s -w' -o "$directory/serve/caddy" .
+release=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).initialRelease' "$directory/site.json")
+github() {
+  mkdir -p "$(dirname "$directory/serve/api/$1")"
+  printf 'header = "Authorization: Bearer %s"\n' "${GITHUB_TOKEN:?set GITHUB_TOKEN to a read-only token for the GitHub API}" |
+    curl --config - --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 60 \
+      --header 'Accept: application/vnd.github+json' "https://api.github.com/$1" --output "$directory/serve/api/$1"
+}
+github "repos/misaon/nylzo/releases/tags/$release"
+digest=$(docker buildx imagetools inspect "ghcr.io/misaon/nylzo:${release#v}" --format '{{json .Manifest.Digest}}' | tr -d '"')
+[[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+github "repos/misaon/nylzo/attestations/$digest"
+curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 60 \
+  "https://github.com/misaon/nylzo/releases/download/$release/checksums.txt" --output "$directory/checksums.txt"
+caddy=$(awk -v name="nylzo-caddy_${release#v}_linux_amd64.tar.gz" '$2 == name { print $1 }' "$directory/checksums.txt")
+build=()
+if [[ -n "$caddy" ]]; then
+  github "repos/misaon/nylzo/attestations/sha256:$caddy"
+else
+  CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C deploy/caddy build -trimpath -buildvcs=false -tags="$(cat deploy/caddy/build-tags)" -ldflags='-s -w' -o "$directory/serve/caddy" .
+  build=("$directory/serve/caddy")
+fi
 port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
 python3 -m http.server --bind 127.0.0.1 --directory "$directory/serve" "$port" > "$directory/serve.log" 2>&1 &
 server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
-node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign" "$directory/serve/caddy" "http://10.0.2.2:$port/caddy"
+node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign" "http://10.0.2.2:$port" "${build[@]}"
 version=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
 base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
 image=flatcar_production_qemu_image.img.bz2
@@ -27,7 +47,7 @@ qemu-img create -f qcow2 -F qcow2 -b "$directory/base.qcow2" "$directory/runtime
 accelerator=tcg
 if [[ -r /dev/kvm && -w /dev/kvm ]]; then accelerator=kvm; fi
 for boot in first second; do
-  timeout 1200 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
+  timeout 600 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
     -nographic -monitor none -no-reboot -drive "file=$directory/runtime.qcow2,format=qcow2,if=virtio" \
     -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
     -fw_cfg "name=opt/org.flatcar-linux/config,file=$directory/vm.ign" > "$directory/$boot.log" 2>&1 || { tail -200 "$directory/$boot.log"; exit 1; }

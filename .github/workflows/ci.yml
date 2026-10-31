@@ -188,6 +188,9 @@ jobs:
     if: needs.changes.outputs.deployment == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 25
+    permissions:
+      contents: read
+      attestations: read # the runner reads the initial release's provenance for the VM
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -209,6 +212,8 @@ jobs:
           sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
       - name: Install from the Hetzner image and boot the runtime twice, in two VMs at once
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -o pipefail
           (tools/deploy/image-vm-test 2>&1 | sed -u 's/^/image-vm-test | /') &
