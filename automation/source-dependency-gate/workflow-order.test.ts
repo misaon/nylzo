@@ -19,8 +19,20 @@ test('CI cannot execute frontend builds or tooling before the source dependency 
     assert.match(jobBlock(ci, job), /^ {4}needs: \[changes, sca\]$/m, `${job} must wait for SCA`);
   }
   const gate = jobBlock(ci, 'sca');
-  assert.match(gate, /node automation\/source-dependency-gate\/main\.ts \.sca-reports --sbom/);
+  assert.match(gate, /run: mise run lint:dependencies$/m);
   assert.doesNotMatch(gate, /pnpm (--dir automation|-C automation) install/, 'The gate must not run unvetted tooling');
+  const mise = await readFile(new URL('../../mise.toml', import.meta.url), 'utf8');
+  const task = (name: string) => {
+    const start = mise.indexOf(`[tasks."${name}"]\n`);
+    assert.notEqual(start, -1, `mise.toml has no ${name} task`);
+    return mise.slice(start).split('\n\n', 1)[0] ?? '';
+  };
+  assert.match(task('lint:dependencies'), /^depends = \["install:web"\]$/m, 'The gate must not run unvetted tooling');
+  assert.match(
+    task('lint:dependencies'),
+    /^run = "node automation\/source-dependency-gate\/main\.ts \.sca-reports --sbom"$/m,
+  );
+  assert.match(task('install:web'), /^run = "node automation\/web-install\/main\.ts"$/m);
   const release = await readFile(new URL('release.yml', workflows), 'utf8');
   const scan = release.indexOf(
     'run: node automation/source-dependency-gate/main.ts "$RUNNER_TEMP/release-evidence" --sbom',
