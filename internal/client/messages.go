@@ -115,7 +115,7 @@ func (c *Client) Instance(ctx context.Context) (Instance, error) {
 	}
 	id, err := core.ParseID(body.Create.ID)
 	if err != nil || body.Create.IDToken == "" || body.PoW.Difficulty < 0 ||
-		body.PoW.Difficulty > proofofwork.MaxPoWDifficulty {
+		body.PoW.Difficulty > proofofwork.MaxDifficulty {
 		return Instance{}, ErrResponse
 	}
 	return Instance{

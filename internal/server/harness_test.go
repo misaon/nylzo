@@ -927,7 +927,7 @@ func rawAuth(request *testRequest, authorization string) *testRequest {
 
 func solveWork(t *testing.T, challenge string, id core.ID, difficulty int) string {
 	t.Helper()
-	token, err := proofofwork.SolvePoW(t.Context(), challenge, id, difficulty)
+	token, err := proofofwork.Solve(t.Context(), challenge, id, difficulty)
 	if err != nil {
 		t.Fatal(err)
 	}

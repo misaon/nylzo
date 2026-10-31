@@ -42,7 +42,7 @@ func openStore(t *testing.T) *sqlite.Store {
 
 func solve(t *testing.T, challenge string, id core.ID) string {
 	t.Helper()
-	token, err := proofofwork.SolvePoW(t.Context(), challenge, id, 1)
+	token, err := proofofwork.Solve(t.Context(), challenge, id, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestWorkTokensFollowTheSpec(t *testing.T) {
 			t.Fatalf("counter %s: %v, want %v", step.counter, err, step.want)
 		}
 	}
-	forged := make([]byte, proofofwork.PoWChallengeLen)
+	forged := make([]byte, proofofwork.ChallengeLen)
 	binary.BigEndian.PutUint32(forged, unixSeconds(now))
 	if err := verify(solve(t, core.Encode(forged), id), id); !errors.Is(err, ErrWork) {
 		t.Fatalf("a challenge with a forged tag: %v", err)
@@ -144,12 +144,12 @@ func TestWorkMatchesTheVectors(t *testing.T) {
 		t.Fatal(decodeErr)
 	}
 	for _, vector := range file.PoW {
-		decoded, decodeErr := core.DecodeExact(vector.Challenge, proofofwork.PoWChallengeLen)
+		decoded, decodeErr := core.DecodeExact(vector.Challenge, proofofwork.ChallengeLen)
 		id, idErr := core.ParseID(vector.ID)
 		if decodeErr != nil || idErr != nil {
 			t.Fatalf("%s: %v %v", vector.Name, decodeErr, idErr)
 		}
-		token := workToken{challenge: (*[proofofwork.PoWChallengeLen]byte)(decoded), counter: vector.Counter}
+		token := workToken{challenge: (*[proofofwork.ChallengeLen]byte)(decoded), counter: vector.Counter}
 		if !token.satisfies(id, vector.ZeroBits) || token.satisfies(id, vector.ZeroBits+1) {
 			t.Fatalf("%s: the verifier does not count exactly %d zero bits", vector.Name, vector.ZeroBits)
 		}

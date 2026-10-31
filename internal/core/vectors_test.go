@@ -347,7 +347,7 @@ func TestRequestVectors(t *testing.T) {
 func TestPoWVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).PoW {
-		challenge, err := core.DecodeExact(vector.Challenge, proofofwork.PoWChallengeLen)
+		challenge, err := core.DecodeExact(vector.Challenge, proofofwork.ChallengeLen)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -355,26 +355,26 @@ func TestPoWVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		digest, err := proofofwork.PoWDigest((*[proofofwork.PoWChallengeLen]byte)(challenge), id, vector.Counter)
+		digest, err := proofofwork.Digest((*[proofofwork.ChallengeLen]byte)(challenge), id, vector.Counter)
 		zeroBits := proofofwork.LeadingZeroBits(digest[:])
 		if err != nil || hex.EncodeToString(digest[:]) != vector.Digest || zeroBits != vector.ZeroBits ||
-			proofofwork.PoWToken(vector.Challenge, vector.Counter) != vector.Token {
+			proofofwork.Token(vector.Challenge, vector.Counter) != vector.Token {
 			t.Fatalf("%s: digest, zero bits or token differ: %v", vector.Name, err)
 		}
 	}
-	challenge := core.Encode(make([]byte, proofofwork.PoWChallengeLen))
-	for _, difficulty := range []int{-1, proofofwork.MaxPoWDifficulty + 1} {
-		_, err := proofofwork.SolvePoW(t.Context(), challenge, core.NewID(), difficulty)
-		if !errors.Is(err, proofofwork.ErrPoWDifficulty) {
+	challenge := core.Encode(make([]byte, proofofwork.ChallengeLen))
+	for _, difficulty := range []int{-1, proofofwork.MaxDifficulty + 1} {
+		_, err := proofofwork.Solve(t.Context(), challenge, core.NewID(), difficulty)
+		if !errors.Is(err, proofofwork.ErrDifficulty) {
 			t.Fatalf("difficulty %d: %v", difficulty, err)
 		}
 	}
-	if _, err := proofofwork.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
+	if _, err := proofofwork.Solve(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
 		t.Fatal("a malformed challenge was accepted")
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := proofofwork.SolvePoW(cancelled, challenge, core.NewID(), proofofwork.MaxPoWDifficulty)
+	_, err := proofofwork.Solve(cancelled, challenge, core.NewID(), proofofwork.MaxDifficulty)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled solve went on: %v", err)
 	}

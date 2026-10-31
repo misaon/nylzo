@@ -467,7 +467,7 @@ func prove(ctx context.Context, environment *command.Environment, api *client.Cl
 			instance.PoW.Difficulty,
 		)
 		solving, cancel := context.WithTimeout(ctx, workBudget)
-		token, err := proofofwork.SolvePoW(solving, instance.PoW.Challenge, id, instance.PoW.Difficulty)
+		token, err := proofofwork.Solve(solving, instance.PoW.Challenge, id, instance.PoW.Difficulty)
 		cancel()
 		if err == nil {
 			return token, nil

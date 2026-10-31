@@ -52,14 +52,14 @@ func (f *File) pow() error {
 }
 
 func powVector(vector powCase) (PoW, error) {
-	rawChallenge := deterministic("pow-challenge/"+vector.name, proofofwork.PoWChallengeLen)
+	rawChallenge := deterministic("pow-challenge/"+vector.name, proofofwork.ChallengeLen)
 	challenge := core.Encode(rawChallenge)
 	id := deterministicID("pow/" + vector.name)
 	counter := vector.counter
 	if vector.solveTo != nil {
 		solved, err := proofofwork.FirstSolution(
 			context.Background(),
-			(*[proofofwork.PoWChallengeLen]byte)(rawChallenge),
+			(*[proofofwork.ChallengeLen]byte)(rawChallenge),
 			id,
 			*vector.solveTo,
 		)
@@ -68,7 +68,7 @@ func powVector(vector powCase) (PoW, error) {
 		}
 		counter = solved
 	}
-	digest, err := proofofwork.PoWDigest((*[proofofwork.PoWChallengeLen]byte)(rawChallenge), id, counter)
+	digest, err := proofofwork.Digest((*[proofofwork.ChallengeLen]byte)(rawChallenge), id, counter)
 	if err != nil {
 		return PoW{}, err
 	}
@@ -83,7 +83,7 @@ func powVector(vector powCase) (PoW, error) {
 		Counter:    counter,
 		Digest:     hex.EncodeToString(digest[:]),
 		ZeroBits:   zeroBits,
-		Token:      proofofwork.PoWToken(challenge, counter),
+		Token:      proofofwork.Token(challenge, counter),
 		Difficulty: vector.solveTo,
 	}, nil
 }
