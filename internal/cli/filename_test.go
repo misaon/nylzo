@@ -54,9 +54,13 @@ func TestAttachmentNamesMatchTheWebClient(t *testing.T) {
 
 func TestLongNamesKeepTheirExtension(t *testing.T) {
 	t.Parallel()
-	name := attachmentName(strings.Repeat("č", 200) + ".tar.gz")
-	if len(name) > maxNameBytes || name[len(name)-3:] != ".gz" {
-		t.Fatalf("%d bytes, %q", len(name), name[len(name)-10:])
+	for in, want := range map[string]string{
+		strings.Repeat("č", 200) + ".tar.gz": strings.Repeat("č", 126) + ".gz",
+		strings.Repeat("€", 100) + ".txt":    strings.Repeat("€", 83) + ".txt",
+	} {
+		if got := attachmentName(in); got != want {
+			t.Fatalf("%d bytes: %q, want %q", len(got), got, want)
+		}
 	}
 }
 
