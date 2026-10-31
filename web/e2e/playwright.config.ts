@@ -27,12 +27,7 @@ export default defineConfig({
     // The loopback servers stand in for public instances, which Local Network Access does not restrict.
     { name: 'chromium', use: { ...devices['Desktop Chrome'], permissions: ['local-network-access'] } },
     { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
-    {
-      name: 'webkit',
-      use: devices['Desktop Safari'],
-      grep: crossBrowser,
-      ...(ci && { workers: Number(process.env['E2E_WEBKIT_WORKERS'] ?? '1') }),
-    },
+    { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
   ],
   webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow')],
 });
