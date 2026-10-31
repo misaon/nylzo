@@ -29,6 +29,8 @@ Server tests cover canonical origin matching, scheme and port mismatches, siblin
 
 Browser tests verify `crossOriginIsolated`, the security headers, blocked cross-origin forms and frames, severed opener references, and literal rendering of hostile HTML. Chromium additionally tests native Trusted Types sinks and policy restrictions. The eval probe runs from a clicked DOM event because Playwright's debugger evaluation can bypass the page's eval CSP; a successful debugger eval is not evidence of an application bypass. Existing SRI, external-resource blocking, secret-transfer and all-browser workflows remain required.
 
+The frame test does not read the blocked frame, because Playwright waits indefinitely for a frame that Firefox blocked. It records which instance responses reach the foreign page instead: the framed document must arrive, and none of the module scripts a rendered application would load before the outer load event may follow. The Chromium project grants Local Network Access, which would otherwise block the loopback frame before `frame-ancestors` applies; without that grant the test fails instead of passing vacuously.
+
 ## Browser key handling
 
 Core tests retain the published encryption and signature vectors, reject private-key export and cover secret-buffer cleanup on native import failure. Chromium, Firefox and WebKit tests exercise native signing, a simulated PKCS#8 failure, and a real leading-zero signing seed. They read management and recovery keys back from IndexedDB and confirm that export fails. An interrupted-open test checks that session storage contains no link secret, that recovery still works after reload, and that acknowledgement deletes the recovery record.

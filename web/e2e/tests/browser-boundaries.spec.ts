@@ -37,13 +37,22 @@ test(
   'a foreign form cannot submit a mutation or expose the application in a frame',
   { tag: '@cross-browser' },
   async ({ page }) => {
+    const instancePaths: string[] = [];
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (url.origin === BASE_URL) {
+        instancePaths.push(url.pathname);
+      }
+    });
     await page.route(`${POW_BASE_URL}/browser-attack`, (route) =>
       route.fulfill({
         contentType: 'text/html',
-        body: `<form method="post" action="${BASE_URL}/api/v1/messages" target="result"><input name="X-Requested-With" value="XMLHttpRequest"><button>Submit form</button></form><iframe name="result"></iframe><iframe title="embedded app" src="${BASE_URL}/"></iframe>`,
+        body: `<!doctype html><meta charset="utf-8"><form method="post" action="${BASE_URL}/api/v1/messages" target="result"><input name="X-Requested-With" value="XMLHttpRequest"><button>Submit form</button></form><iframe name="result"></iframe><iframe title="embedded app" src="${BASE_URL}/"></iframe>`,
       }),
     );
     await page.goto(`${POW_BASE_URL}/browser-attack`);
+    // The framed page arrives, and a rendered one would load its module scripts before the outer load event.
+    expect(instancePaths).toEqual(['/']);
     const statuses: number[] = [];
     await page.route(`${BASE_URL}/api/v1/messages`, async (route) => {
       const response = await route.fetch();
@@ -52,7 +61,6 @@ test(
     });
     await page.getByRole('button', { name: 'Submit form' }).click();
     await expect.poll(() => statuses).toEqual([403]);
-    await expect(page.frameLocator('iframe[title="embedded app"]').getByLabel('Message text')).toHaveCount(0);
   },
 );
 
