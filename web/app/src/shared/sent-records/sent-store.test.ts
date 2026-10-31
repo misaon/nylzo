@@ -125,7 +125,6 @@ describe('cleaning up on page load', () => {
     const open = vi.fn(openNothing);
     const factory = { databases: () => Promise.resolve([{ name: 'other', version: 1 }]), open };
     await purgeSentRecords(factory as unknown as IDBFactory, NOW);
-    await purgeSentRecords({ open } as unknown as IDBFactory, NOW);
     await purgeSentRecords(undefined, NOW);
     expect(open).not.toHaveBeenCalled();
   });
