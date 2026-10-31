@@ -21,6 +21,7 @@ import (
 	"filippo.io/edwards25519"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -83,7 +84,7 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	}
 	wrongSeed := core.NewSecret()
 	livePath := "/api/v1/messages/" + live.id.String()
-	var offCurve [core.PublicKeyLen]byte
+	var offCurve [signing.PublicKeyLen]byte
 	for i := byte(2); ; i++ {
 		offCurve[0] = i
 		if _, err := new(edwards25519.Point).SetBytes(offCurve[:]); err != nil {
@@ -93,19 +94,19 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	classes := []timingClass{
 		{"unknown-id", "metadata", func() *testRequest {
 			path := "/api/v1/messages/" + core.NewID().String()
-			return signedRequest(wrongSeed, core.PurposeRead, "GET", path, harness.challenge(), nil)
+			return signedRequest(wrongSeed, signing.PurposeRead, "GET", path, harness.challenge(), nil)
 		}},
 		{"wrong-R", "metadata", func() *testRequest {
-			return signedRequest(wrongSeed, core.PurposeRead, "GET", livePath, harness.challenge(), nil)
+			return signedRequest(wrongSeed, signing.PurposeRead, "GET", livePath, harness.challenge(), nil)
 		}},
 		{"unknown-id", "status", func() *testRequest {
 			path := "/api/v1/messages/" + core.NewID().String() + "/status"
-			return signedRequest(wrongSeed, core.PurposeManage, "GET", path, harness.challenge(), nil)
+			return signedRequest(wrongSeed, signing.PurposeManage, "GET", path, harness.challenge(), nil)
 		}},
 		{"wrong-M", "status", func() *testRequest {
 			return signedRequest(
 				wrongSeed,
-				core.PurposeManage,
+				signing.PurposeManage,
 				"GET",
 				livePath+"/status",
 				harness.challenge(),
@@ -115,18 +116,18 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 		{"bad-sig", "metadata", func() *testRequest {
 			return rawAuth(
 				&testRequest{method: http.MethodGet, path: livePath},
-				badSignature(&live.link.R, core.PurposeRead, "GET", livePath, harness.challenge()),
+				badSignature(&live.link.R, signing.PurposeRead, "GET", livePath, harness.challenge()),
 			)
 		}},
 		{"off-curve", "metadata", func() *testRequest {
-			signature := core.SignRequest(wrongSeed, core.PurposeRead, "GET", livePath, harness.challenge(), nil)
+			signature := signing.SignRequest(wrongSeed, signing.PurposeRead, "GET", livePath, harness.challenge(), nil)
 			signature.PublicKey = offCurve
 			return rawAuth(&testRequest{method: http.MethodGet, path: livePath}, signature.Authorization())
 		}},
 		{"stale", "metadata", func() *testRequest {
 			return signedRequest(
 				&live.link.R,
-				core.PurposeRead,
+				signing.PurposeRead,
 				"GET",
 				livePath,
 				harness.challengeAt(harness.clock.Now().Add(-2*time.Minute)),
@@ -134,12 +135,12 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 			)
 		}},
 		{"malformed", "metadata", func() *testRequest {
-			return rawAuth(&testRequest{method: http.MethodGet, path: livePath}, core.AuthScheme+" x.y.z")
+			return rawAuth(&testRequest{method: http.MethodGet, path: livePath}, signing.AuthScheme+" x.y.z")
 		}},
 		{"bad-sig", "status", func() *testRequest {
 			return rawAuth(
 				&testRequest{method: http.MethodGet, path: livePath + "/status"},
-				badSignature(live.manage, core.PurposeManage, "GET", livePath+"/status", harness.challenge()),
+				badSignature(live.manage, signing.PurposeManage, "GET", livePath+"/status", harness.challenge()),
 			)
 		}},
 	}
@@ -253,8 +254,8 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 	return ""
 }
 
-func badSignature(seed *[core.SeedLen]byte, purpose, method, path string, challenge [core.ChallengeLen]byte) string {
-	signature := core.SignRequest(seed, purpose, method, path, challenge, nil)
+func badSignature(seed *[core.SeedLen]byte, purpose, method, path string, challenge [signing.ChallengeLen]byte) string {
+	signature := signing.SignRequest(seed, purpose, method, path, challenge, nil)
 	signature.Value[0] ^= 1
 	return signature.Authorization()
 }
@@ -287,7 +288,7 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 	unknown, notFound := harness.do(
 		signedRequest(
 			&message.link.R,
-			core.PurposeRead,
+			signing.PurposeRead,
 			"GET",
 			"/api/v1/messages/"+core.NewID().String(),
 			harness.challenge(),
@@ -310,17 +311,17 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 	}
 	replayed(
 		"metadata",
-		signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil),
 		http.StatusOK,
 	)
 	replayed(
 		"status",
-		signedRequest(message.manage, core.PurposeManage, "GET", path+"/status", harness.challenge(), nil),
+		signedRequest(message.manage, signing.PurposeManage, "GET", path+"/status", harness.challenge(), nil),
 		http.StatusOK,
 	)
 	replayed(
 		"claim",
-		signedRequest(&message.link.R, core.PurposeRead, "POST", path+"/claim", harness.challenge(), nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "POST", path+"/claim", harness.challenge(), nil),
 		http.StatusOK,
 	)
 	if _, status := harness.status(message); status["opens_used"] != 1.0 {
@@ -328,7 +329,7 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 	}
 	replayed(
 		"burn",
-		signedRequest(&message.link.R, core.PurposeRead, "POST", path+"/burn", harness.challenge(), nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "POST", path+"/burn", harness.challenge(), nil),
 		http.StatusNoContent,
 	)
 
@@ -338,7 +339,7 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 		"cancel",
 		signedRequest(
 			other.manage,
-			core.PurposeManage,
+			signing.PurposeManage,
 			"POST",
 			"/api/v1/messages/"+other.id.String()+"/cancel",
 			harness.challenge(),
@@ -350,7 +351,7 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 	reported := newMessage(t, core.KDFNone, "", 1, 3600, "reported once")
 	harness.mustCreate(reported)
 	body := []byte(`{"id":"` + reported.id.String() + `","reason":"spam"}`)
-	report := signedRequest(&reported.link.R, core.PurposeRead, "POST", "/api/v1/abuse", harness.challenge(), body)
+	report := signedRequest(&reported.link.R, signing.PurposeRead, "POST", "/api/v1/abuse", harness.challenge(), body)
 	report.headers["Content-Type"] = "application/json"
 	for range 2 {
 		if response, _ := harness.do(report); response.StatusCode != http.StatusAccepted {
@@ -369,7 +370,7 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String()
 	moved := func(method, to string) *testRequest {
-		request := signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil)
+		request := signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil)
 		request.method, request.path = method, to
 		return request
 	}
@@ -378,9 +379,9 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 		"claim":      moved("POST", path+"/claim"),
 		"burn":       moved("POST", path+"/burn"),
 		"status":     moved("GET", path+"/status"),
-		"manage key": signedRequest(&message.link.R, core.PurposeManage, "GET", path+"/status", harness.challenge(), nil),
-		"read as M":  signedRequest(message.manage, core.PurposeRead, "GET", path, harness.challenge(), nil),
-		"bad sig":    rawAuth(&testRequest{method: http.MethodGet, path: path}, badSignature(&message.link.R, core.PurposeRead, "GET", path, harness.challenge())),
+		"manage key": signedRequest(&message.link.R, signing.PurposeManage, "GET", path+"/status", harness.challenge(), nil),
+		"read as M":  signedRequest(message.manage, signing.PurposeRead, "GET", path, harness.challenge(), nil),
+		"bad sig":    rawAuth(&testRequest{method: http.MethodGet, path: path}, badSignature(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge())),
 	} {
 		if response, body := harness.do(request); response.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d %s", name, response.StatusCode, body)
@@ -396,14 +397,14 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 		t.Fatalf("a failed attempt must spend its challenge: %d", response.StatusCode)
 	}
 	if response, body := harness.do(
-		signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil),
 	); response.StatusCode != http.StatusOK ||
 		!strings.Contains(string(body), `"state":"available"`) {
 		t.Fatalf("a fresh signature: %d %s", response.StatusCode, body)
 	}
 
 	body := []byte(`{"id":"` + message.id.String() + `","reason":"first"}`)
-	tampered := signedRequest(&message.link.R, core.PurposeRead, "POST", "/api/v1/abuse", harness.challenge(), body)
+	tampered := signedRequest(&message.link.R, signing.PurposeRead, "POST", "/api/v1/abuse", harness.challenge(), body)
 	tampered.body = []byte(`{"id":"` + message.id.String() + `","reason":"other"}`)
 	tampered.headers["Content-Type"] = "application/json"
 	if response, _ := harness.do(tampered); response.StatusCode != http.StatusAccepted {
@@ -422,31 +423,32 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String() + "/claim"
 	stranger := core.NewSecret()
-	pkV := core.PublicKey(&message.content.V)
+	pkV := signing.PublicKey(&message.content.V)
 	cases := []struct {
 		name   string
-		header func(challenge [core.ChallengeLen]byte) string
+		header func(challenge [signing.ChallengeLen]byte) string
 	}{
-		{"other challenge", func([core.ChallengeLen]byte) string {
-			return core.SignRequest(&message.content.V, core.PurposeVerifier, "POST", path, harness.challenge(), nil).
+		{"other challenge", func([signing.ChallengeLen]byte) string {
+			return signing.SignRequest(&message.content.V, signing.PurposeVerifier, "POST", path, harness.challenge(), nil).
 				VerifierHeader()
 		}},
-		{"read purpose", func(challenge [core.ChallengeLen]byte) string {
-			return core.SignRequest(&message.content.V, core.PurposeRead, "POST", path, challenge, nil).VerifierHeader()
-		}},
-		{"other path", func(challenge [core.ChallengeLen]byte) string {
-			return core.SignRequest(&message.content.V, core.PurposeVerifier, "POST", path+"x", challenge, nil).
+		{"read purpose", func(challenge [signing.ChallengeLen]byte) string {
+			return signing.SignRequest(&message.content.V, signing.PurposeRead, "POST", path, challenge, nil).
 				VerifierHeader()
 		}},
-		{"right key, foreign signature", func(challenge [core.ChallengeLen]byte) string {
-			signature := core.SignRequest(stranger, core.PurposeVerifier, "POST", path, challenge, nil)
+		{"other path", func(challenge [signing.ChallengeLen]byte) string {
+			return signing.SignRequest(&message.content.V, signing.PurposeVerifier, "POST", path+"x", challenge, nil).
+				VerifierHeader()
+		}},
+		{"right key, foreign signature", func(challenge [signing.ChallengeLen]byte) string {
+			signature := signing.SignRequest(stranger, signing.PurposeVerifier, "POST", path, challenge, nil)
 			signature.PublicKey = pkV
 			return signature.VerifierHeader()
 		}},
 	}
 	for i, testCase := range cases {
 		challenge := harness.challenge()
-		request := signedRequest(&message.link.R, core.PurposeRead, "POST", path, challenge, nil)
+		request := signedRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil)
 		request.headers["X-Nylzo-Verifier"] = testCase.header(challenge)
 		response, body := harness.do(request)
 		var got passphraseResponse
@@ -458,8 +460,8 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 		}
 	}
 	challenge := harness.challenge()
-	request := signedRequest(&message.link.R, core.PurposeRead, "POST", path, challenge, nil)
-	request.headers["X-Nylzo-Verifier"] = core.SignRequest(&message.content.V, core.PurposeVerifier, "POST", path, challenge, nil).
+	request := signedRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil)
+	request.headers["X-Nylzo-Verifier"] = signing.SignRequest(&message.content.V, signing.PurposeVerifier, "POST", path, challenge, nil).
 		VerifierHeader()
 	if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
 		t.Fatalf("correct verifier: %d", response.StatusCode)
@@ -487,22 +489,22 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 	if err := json.Unmarshal(body, &issued); err != nil || response.StatusCode != http.StatusOK {
 		t.Fatalf("challenge: %d %s", response.StatusCode, body)
 	}
-	raw, err := core.DecodeExact(issued.Challenge, core.ChallengeLen)
+	raw, err := core.DecodeExact(issued.Challenge, signing.ChallengeLen)
 	if err != nil || len(issued.Challenge) != 48 ||
 		issued.ExpiresAt != harness.clock.Now().Add(time.Minute).UTC().Format(time.RFC3339) {
 		t.Fatalf("challenge shape: %+v", issued)
 	}
 	if got, _ := harness.do(
-		signedRequest(&message.link.R, core.PurposeRead, "GET", path, [core.ChallengeLen]byte(raw), nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "GET", path, [signing.ChallengeLen]byte(raw), nil),
 	); got.StatusCode != http.StatusOK {
 		t.Fatalf("issued challenge: %d", got.StatusCode)
 	}
 
 	now := harness.clock.Now()
 	forged := harness.challenge()
-	forged[core.ChallengeLen-1] ^= 1
+	forged[signing.ChallengeLen-1] ^= 1
 	for name, testCase := range map[string]struct {
-		challenge [core.ChallengeLen]byte
+		challenge [signing.ChallengeLen]byte
 		status    int
 	}{
 		"issued 60 s ago":    {harness.challengeAt(now.Add(-60 * time.Second)), http.StatusOK},
@@ -510,22 +512,22 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 		"issued 5 s ahead":   {harness.challengeAt(now.Add(5 * time.Second)), http.StatusOK},
 		"issued 6 s ahead":   {harness.challengeAt(now.Add(6 * time.Second)), http.StatusNotFound},
 		"forged tag":         {forged, http.StatusNotFound},
-		"all zero challenge": {[core.ChallengeLen]byte{}, http.StatusNotFound},
+		"all zero challenge": {[signing.ChallengeLen]byte{}, http.StatusNotFound},
 	} {
 		if got, refused := harness.do(
-			signedRequest(&message.link.R, core.PurposeRead, http.MethodGet, path, testCase.challenge, nil),
+			signedRequest(&message.link.R, signing.PurposeRead, http.MethodGet, path, testCase.challenge, nil),
 		); got.StatusCode != testCase.status {
 			t.Fatalf("%s: %d %s", name, got.StatusCode, refused)
 		}
 	}
 	for name, authorization := range map[string]string{
 		"bearer R":        "Bearer " + message.readToken,
-		"lowercase":       strings.ToLower(core.AuthScheme) + " x",
-		"two parts":       core.AuthScheme + " " + publicKey(&message.link.R) + "." + core.Encode(raw),
-		"padded":          core.AuthScheme + " " + publicKey(&message.link.R) + "=.x.y",
+		"lowercase":       strings.ToLower(signing.AuthScheme) + " x",
+		"two parts":       signing.AuthScheme + " " + publicKey(&message.link.R) + "." + core.Encode(raw),
+		"padded":          signing.AuthScheme + " " + publicKey(&message.link.R) + "=.x.y",
 		"missing":         "",
-		"double space":    strings.Replace(signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil).headers["Authorization"], " ", "  ", 1),
-		"trailing period": signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil).headers["Authorization"] + ".",
+		"double space":    strings.Replace(signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil).headers["Authorization"], " ", "  ", 1),
+		"trailing period": signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil).headers["Authorization"] + ".",
 	} {
 		if got, _ := harness.do(
 			rawAuth(&testRequest{method: http.MethodGet, path: path}, authorization),
@@ -537,12 +539,12 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 	before := harness.challenge()
 	harness.reopen(baseSettings(pepperB, pepperA))
 	if got, _ := harness.do(
-		signedRequest(&message.link.R, core.PurposeRead, "GET", path, before, nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "GET", path, before, nil),
 	); got.StatusCode != http.StatusNotFound {
 		t.Fatalf("a challenge from before the rotation: %d", got.StatusCode)
 	}
 	if got, _ := harness.do(
-		signedRequest(&message.link.R, core.PurposeRead, "GET", path, harness.challenge(), nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil),
 	); got.StatusCode != http.StatusOK {
 		t.Fatalf("a fresh challenge after the rotation: %d", got.StatusCode)
 	}
@@ -558,13 +560,13 @@ func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 		method, suffix, purpose string
 		seed                    *[core.SeedLen]byte
 	}{
-		{"GET", "", core.PurposeRead, &message.link.R},
-		{"POST", "/claim", core.PurposeRead, &message.link.R},
-		{"GET", "/blob", core.PurposeRead, &message.link.R},
-		{"POST", "/ack", core.PurposeRead, &message.link.R},
-		{"POST", "/burn", core.PurposeRead, &message.link.R},
-		{"GET", "/status", core.PurposeManage, message.manage},
-		{"POST", "/cancel", core.PurposeManage, message.manage},
+		{"GET", "", signing.PurposeRead, &message.link.R},
+		{"POST", "/claim", signing.PurposeRead, &message.link.R},
+		{"GET", "/blob", signing.PurposeRead, &message.link.R},
+		{"POST", "/ack", signing.PurposeRead, &message.link.R},
+		{"POST", "/burn", signing.PurposeRead, &message.link.R},
+		{"GET", "/status", signing.PurposeManage, message.manage},
+		{"POST", "/cancel", signing.PurposeManage, message.manage},
 	} {
 		request := signedRequest(
 			endpoint.seed,
@@ -591,7 +593,7 @@ func TestSpentChallengesExpire(t *testing.T) {
 	path := "/api/v1/messages/" + message.id.String()
 	challenge := harness.challenge()
 	if response, _ := harness.do(
-		signedRequest(&message.link.R, core.PurposeRead, "GET", path, challenge, nil),
+		signedRequest(&message.link.R, signing.PurposeRead, "GET", path, challenge, nil),
 	); response.StatusCode != http.StatusOK {
 		t.Fatalf("metadata: %d", response.StatusCode)
 	}
@@ -651,7 +653,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 					signedRequestFrom(
 						victim,
 						&message.link.R,
-						core.PurposeRead,
+						signing.PurposeRead,
 						"GET",
 						"/api/v1/messages/"+message.id.String(),
 						harness.challenge(),
@@ -680,7 +682,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 			claim := signedRequestFrom(
 				victim,
 				&message.link.R,
-				core.PurposeRead,
+				signing.PurposeRead,
 				"POST",
 				"/api/v1/messages/"+message.id.String()+"/claim",
 				harness.challenge(),
@@ -707,7 +709,7 @@ func signedRequestFrom(
 	address string,
 	seed *[core.SeedLen]byte,
 	purpose, method, path string,
-	challenge [core.ChallengeLen]byte,
+	challenge [signing.ChallengeLen]byte,
 ) *testRequest {
 	request := signedRequest(seed, purpose, method, path, challenge, nil)
 	request.address = address
@@ -721,9 +723,9 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := [core.PublicKeyLen]byte{1}
-	forge := func(purpose, method, path string, challenge [core.ChallengeLen]byte) *core.Signature {
-		signature := &core.Signature{PublicKey: identity, Challenge: challenge, Value: [core.SignatureLen]byte{1}}
+	identity := [signing.PublicKeyLen]byte{1}
+	forge := func(purpose, method, path string, challenge [signing.ChallengeLen]byte) *signing.Signature {
+		signature := &signing.Signature{PublicKey: identity, Challenge: challenge, Value: [signing.SignatureLen]byte{1}}
 		if !signature.Verify(purpose, method, path, nil) {
 			t.Fatal("the forged signature does not verify, so the test proves nothing")
 		}
@@ -756,9 +758,9 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	rewrap(&record, "manage_wrap", seal.Manage)
 	path := "/api/v1/messages/" + message.id.String()
 	for name, request := range map[string]*testRequest{
-		"metadata": rawAuth(&testRequest{method: http.MethodGet, path: path}, forge(core.PurposeRead, "GET", path, harness.challenge()).Authorization()),
-		"status":   rawAuth(&testRequest{method: http.MethodGet, path: path + "/status"}, forge(core.PurposeManage, "GET", path+"/status", harness.challenge()).Authorization()),
-		"burn":     rawAuth(&testRequest{method: http.MethodPost, path: path + "/burn"}, forge(core.PurposeRead, "POST", path+"/burn", harness.challenge()).Authorization()),
+		"metadata": rawAuth(&testRequest{method: http.MethodGet, path: path}, forge(signing.PurposeRead, "GET", path, harness.challenge()).Authorization()),
+		"status":   rawAuth(&testRequest{method: http.MethodGet, path: path + "/status"}, forge(signing.PurposeManage, "GET", path+"/status", harness.challenge()).Authorization()),
+		"burn":     rawAuth(&testRequest{method: http.MethodPost, path: path + "/burn"}, forge(signing.PurposeRead, "POST", path+"/burn", harness.challenge()).Authorization()),
 	} {
 		if response, body := harness.do(request); response.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s signed with the identity key: %d %s", name, response.StatusCode, body)
@@ -774,8 +776,8 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	})
 	claimPath := "/api/v1/messages/" + withPassphrase.id.String() + "/claim"
 	challenge := harness.challenge()
-	request := signedRequest(&withPassphrase.link.R, core.PurposeRead, "POST", claimPath, challenge, nil)
-	request.headers["X-Nylzo-Verifier"] = forge(core.PurposeVerifier, "POST", claimPath, challenge).VerifierHeader()
+	request := signedRequest(&withPassphrase.link.R, signing.PurposeRead, "POST", claimPath, challenge, nil)
+	request.headers["X-Nylzo-Verifier"] = forge(signing.PurposeVerifier, "POST", claimPath, challenge).VerifierHeader()
 	response, body := harness.do(request)
 	if response.StatusCode != http.StatusForbidden || !strings.Contains(string(body), `"attempts_left":4`) {
 		t.Fatalf("claim with the identity verifier key: %d %s", response.StatusCode, body)
@@ -792,9 +794,9 @@ func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String()
 	for _, route := range []string{path, path + "/status"} {
-		purpose, seed := core.PurposeRead, &message.link.R
+		purpose, seed := signing.PurposeRead, &message.link.R
 		if strings.HasSuffix(route, "/status") {
-			purpose, seed = core.PurposeManage, message.manage
+			purpose, seed = signing.PurposeManage, message.manage
 		}
 		request := signedRequest(seed, purpose, "HEAD", route, harness.challenge(), nil)
 		if response, body := harness.do(request); response.StatusCode != http.StatusNotFound || len(body) != 0 {
@@ -819,7 +821,7 @@ func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
 	harness.clock.Advance(3 * time.Minute)
 	path := "/api/v1/messages/" + message.id.String()
 	if response, _ := harness.do(
-		signedRequest(core.NewSecret(), core.PurposeRead, "GET", path, harness.challenge(), nil),
+		signedRequest(core.NewSecret(), signing.PurposeRead, "GET", path, harness.challenge(), nil),
 	); response.StatusCode != http.StatusNotFound {
 		t.Fatalf("wrong key: %d", response.StatusCode)
 	}
@@ -902,8 +904,8 @@ func TestReplayAfterRestartIsRefused(t *testing.T) {
 	message := newMessage(t, core.KDFNone, "", 2, 3600, "replay after restart")
 	harness.mustCreate(message)
 	path := "/api/v1/messages/" + message.id.String()
-	claim := signedRequest(&message.link.R, core.PurposeRead, "POST", path+"/claim", harness.challenge(), nil)
-	status := signedRequest(message.manage, core.PurposeManage, "GET", path+"/status", harness.challenge(), nil)
+	claim := signedRequest(&message.link.R, signing.PurposeRead, "POST", path+"/claim", harness.challenge(), nil)
+	status := signedRequest(message.manage, signing.PurposeManage, "GET", path+"/status", harness.challenge(), nil)
 	for _, request := range []*testRequest{claim, status} {
 		if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
 			t.Fatalf("%s: %d", request.path, response.StatusCode)
@@ -923,16 +925,16 @@ func TestReplayAfterRestartIsRefused(t *testing.T) {
 func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	server, _ := testServer(t, openStore(t), nil)
 	path := "/api/v1/messages/" + core.NewID().String()
-	var offCurve [core.PublicKeyLen]byte
+	var offCurve [signing.PublicKeyLen]byte
 	for i := byte(2); ; i++ {
 		offCurve[0] = i
 		if _, err := new(edwards25519.Point).SetBytes(offCurve[:]); err != nil {
 			break
 		}
 	}
-	testRequest := func(publicKey *[core.PublicKeyLen]byte) *http.Request {
+	testRequest := func(publicKey *[signing.PublicKeyLen]byte) *http.Request {
 		challenge, _ := server.challenges.Issue(server.clock())
-		signature := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil)
+		signature := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil)
 		if publicKey != nil {
 			signature.PublicKey = *publicKey
 		}
@@ -943,7 +945,7 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	const samples = 300
 	var wrong, off []time.Duration
 	for range samples {
-		for _, publicKey := range []*[core.PublicKeyLen]byte{nil, &offCurve} {
+		for _, publicKey := range []*[signing.PublicKeyLen]byte{nil, &offCurve} {
 			r := testRequest(publicKey)
 			start := time.Now()
 			if _, ok, err := server.authorize(
@@ -1004,7 +1006,8 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	}
 	path := "/api/v1/messages/" + core.NewID().String()
 	challenge, _ := server.challenges.Issue(server.clock())
-	authorization := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil).Authorization()
+	authorization := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil).
+		Authorization()
 	send := func() int {
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
 		r.Header.Set("Authorization", authorization)

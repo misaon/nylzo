@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -78,7 +79,8 @@ func FuzzCreateHeader(f *testing.F) {
 		if (harness.KDFID != 0) != (harness.VerifierKey != nil) {
 			t.Fatal("verifier_key does not match kdf_id")
 		}
-		if harness.OpensMax < 1 || harness.OpensMax > settings.Limits.MaxOpens || harness.TTL < core.MinTTLSeconds ||
+		if harness.OpensMax < 1 || harness.OpensMax > settings.Limits.MaxOpens ||
+			harness.TTL < envelope.MinTTLSeconds ||
 			harness.TTL > int64(settings.Limits.MaxTTL.Seconds()) {
 			t.Fatal("accepted a policy outside the limits")
 		}
@@ -290,7 +292,7 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
 	limits := decodeJSON(t, body)["limits"].(map[string]any)
-	if limits["max_object_bytes"] != float64(5373952) || limits["max_text_bytes"] != float64(core.MaxTextBytes) {
+	if limits["max_object_bytes"] != float64(5373952) || limits["max_text_bytes"] != float64(envelope.MaxTextBytes) {
 		t.Fatalf("instance reports %v", limits)
 	}
 }

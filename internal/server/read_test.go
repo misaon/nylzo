@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -61,11 +63,11 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []core.Policy{
+	for _, bad := range []envelope.Policy{
 		{OpensMax: decoded.OpensMax + 1, TTLSeconds: decoded.TTLSeconds},
 		{OpensMax: decoded.OpensMax, TTLSeconds: decoded.TTLSeconds - 1},
 	} {
-		if _, _, openErr := core.Open(
+		if _, _, openErr := envelope.Open(
 			&message.content.K,
 			message.id,
 			bad,
@@ -73,7 +75,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 			object,
 		); !errors.Is(
 			openErr,
-			core.ErrIntegrity,
+			envelope.ErrIntegrity,
 		) {
 			t.Fatalf("changed policy %+v: want ErrIntegrity, got %v", bad, openErr)
 		}
@@ -448,7 +450,8 @@ func TestClaimBodyVariants(t *testing.T) {
 	)
 	r.Header.Set(
 		"Authorization",
-		core.SignRequest(&message.link.R, core.PurposeRead, "POST", path, harness.challenge(), nil).Authorization(),
+		signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, harness.challenge(), nil).
+			Authorization(),
 	)
 	r.Header.Set("X-Forwarded-For", "203.0.113.4")
 	response, err := harness.client.Do(r)

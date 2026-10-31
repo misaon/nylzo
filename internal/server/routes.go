@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -95,7 +95,7 @@ type spentKey struct{}
 // spendChallenges spends a signed request's challenge before any other check, whatever the answer will be.
 func (s *Server) spendChallenges(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		signature, err := core.ParseAuthorization(r.Header.Get("Authorization"))
+		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
 		if !strings.HasPrefix(r.URL.Path, "/api/") || err != nil {
 			next.ServeHTTP(w, r)
 			return
@@ -112,8 +112,8 @@ func (s *Server) spendChallenges(next http.Handler) http.Handler {
 	})
 }
 
-func spentBy(r *http.Request, challenge [core.ChallengeLen]byte) bool {
-	spent, ok := r.Context().Value(spentKey{}).(*[core.ChallengeLen]byte)
+func spentBy(r *http.Request, challenge [signing.ChallengeLen]byte) bool {
+	spent, ok := r.Context().Value(spentKey{}).(*[signing.ChallengeLen]byte)
 	return ok && *spent == challenge
 }
 

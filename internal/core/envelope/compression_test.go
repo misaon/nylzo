@@ -1,43 +1,57 @@
-package core_test
+package envelope_test
 
 import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
 )
 
 func TestAttachmentCompression(t *testing.T) {
 	t.Parallel()
-	for _, size := range []int{128 * 1024, core.MaxFileBytes} {
+	for _, size := range []int{128 * 1024, envelope.MaxFileBytes} {
 		file := bytes.Repeat([]byte{'A'}, size)
 		sample := seal(t, "this text never enters the compressor", file)
-		object, err := core.SealWithCompression(&sample.key, sample.header, sample.id, sample.policy, sample.payload)
+		object, err := envelope.SealWithCompression(
+			&sample.key,
+			sample.header,
+			sample.id,
+			sample.policy,
+			sample.payload,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(object) != core.PadFile || !core.MayHoldFile(int64(len(object))) {
+		if len(object) != envelope.PadFile || !envelope.MayHoldFile(int64(len(object))) {
 			t.Fatalf("want one padded attachment block, got %d", len(object))
 		}
-		_, payload, err := core.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
+		_, payload, err := envelope.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
 		if err != nil || !bytes.Equal(payload.File, file) || *payload.Meta.Text != *sample.payload.Meta.Text ||
 			*payload.Meta.File != *sample.payload.Meta.File {
 			t.Fatalf("compressed round trip: %v", err)
 		}
-		plaintext, err := sample.aead(t).Open(nil, sample.header.IV[:], object[core.HeaderLen:],
-			core.AAD(sample.header, sample.id, sample.policy))
+		plaintext, err := sample.aead(t).Open(nil, sample.header.IV[:], object[envelope.HeaderLen:],
+			envelope.AAD(sample.header, sample.id, sample.policy))
 		if err != nil || !bytes.Contains(plaintext, []byte(`"encoding":"gzip"`)) ||
 			!bytes.Contains(plaintext, []byte(*sample.payload.Meta.Text)) {
 			t.Fatalf("compression must leave metadata separate: %v", err)
 		}
-		_, _, err = core.Open(&sample.key, sample.id, sample.policy, core.KDFNone, flipped(object, core.HeaderLen+100))
-		if !errors.Is(err, core.ErrIntegrity) {
+		_, _, err = envelope.Open(
+			&sample.key,
+			sample.id,
+			sample.policy,
+			core.KDFNone,
+			flipped(object, envelope.HeaderLen+100),
+		)
+		if !errors.Is(err, envelope.ErrIntegrity) {
 			t.Fatalf("authenticate before decompressing: %v", err)
 		}
 	}
@@ -49,7 +63,13 @@ func TestCompressionKeepsLegacyEncodingWhenItCannotSaveSpace(t *testing.T) {
 	rand.Read(random)
 	for _, file := range [][]byte{nil, {}, bytes.Repeat([]byte{'A'}, 100*1024), random} {
 		sample := seal(t, "text", file)
-		object, err := core.SealWithCompression(&sample.key, sample.header, sample.id, sample.policy, sample.payload)
+		object, err := envelope.SealWithCompression(
+			&sample.key,
+			sample.header,
+			sample.id,
+			sample.policy,
+			sample.payload,
+		)
 		if err != nil || !bytes.Equal(object, sample.object) {
 			t.Fatalf("unchanged legacy encoding for %d bytes: %v", len(file), err)
 		}
@@ -61,7 +81,7 @@ func TestCompressionRequiresTenPercentPaddedSavings(t *testing.T) {
 	file := make([]byte, 1024*1024)
 	rand.Read(file[32*1024:])
 	sample := seal(t, "text", file)
-	object, err := core.SealWithCompression(&sample.key, sample.header, sample.id, sample.policy, sample.payload)
+	object, err := envelope.SealWithCompression(&sample.key, sample.header, sample.id, sample.policy, sample.payload)
 	if err != nil || !bytes.Equal(object, sample.object) {
 		t.Fatalf("a single block saved on a large file is insufficient: %v", err)
 	}
@@ -94,15 +114,15 @@ func FuzzCompressedAttachment(f *testing.F) {
 	f.Add(gzipFile(f, file), uint32(len(file)))
 	f.Add([]byte{0x1f, 0x8b}, uint32(1024))
 	f.Fuzz(func(t *testing.T, compressed []byte, size uint32) {
-		if len(compressed) > core.MaxFileBytes {
+		if len(compressed) > envelope.MaxFileBytes {
 			t.Skip()
 		}
 		meta, _ := json.Marshal(map[string]any{"v": 2, "file": map[string]any{
 			"name": "f", "size": size, "encoding": "gzip", "encoded_size": len(compressed),
 		}})
 		object := compressedObject(t, &sample, string(meta), compressed)
-		_, payload, err := core.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
-		if err == nil && (len(payload.File) > core.MaxFileBytes || uint64(len(payload.File)) != uint64(size)) {
+		_, payload, err := envelope.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
+		if err == nil && (len(payload.File) > envelope.MaxFileBytes || uint64(len(payload.File)) != uint64(size)) {
 			t.Fatal("accepted decompression beyond the declared or protocol limit")
 		}
 	})
@@ -110,7 +130,7 @@ func FuzzCompressedAttachment(f *testing.F) {
 
 func TestCompressionInteroperabilityVectors(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../spec/compression-vectors.json")
+	data, err := os.ReadFile("../../../spec/compression-vectors.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,12 +150,15 @@ func TestCompressionInteroperabilityVectors(t *testing.T) {
 	for _, frame := range vectors.Frames {
 		t.Run(frame.Name, func(t *testing.T) {
 			t.Parallel()
-			compressed := decodeHex(t, frame.Hex)
+			compressed, decodeErr := hex.DecodeString(frame.Hex)
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
 			meta, _ := json.Marshal(map[string]any{"v": 2, "file": map[string]any{
 				"name": "rows.csv", "size": len(file), "encoding": "gzip", "encoded_size": len(compressed),
 			}})
 			object := compressedObject(t, &sample, string(meta), compressed)
-			_, opened, openErr := core.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
+			_, opened, openErr := envelope.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
 			if openErr != nil || !bytes.Equal(opened.File, file) {
 				t.Fatalf("cross-encoder frame: %v", openErr)
 			}
@@ -162,7 +185,7 @@ func TestMalformedCompressedAttachments(t *testing.T) {
 		"expansion bomb":  {compressed, 1024, "gzip"},
 		"short output":    {compressed, len(file) + 1, "gzip"},
 		"unknown codec":   {compressed, len(file), "zstd"},
-		"over limit":      {compressed, core.MaxFileBytes + 1, "gzip"},
+		"over limit":      {compressed, envelope.MaxFileBytes + 1, "gzip"},
 		"negative size":   {compressed, -1, "gzip"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -171,7 +194,7 @@ func TestMalformedCompressedAttachments(t *testing.T) {
 				"name": "f", "size": test.size, "encoding": test.encoding, "encoded_size": len(test.file),
 			}})
 			object := compressedObject(t, &sample, string(meta), test.file)
-			_, _, err := core.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
+			_, _, err := envelope.Open(&sample.key, sample.id, sample.policy, core.KDFNone, object)
 			if err == nil {
 				t.Fatal("accepted a malformed compressed attachment")
 			}

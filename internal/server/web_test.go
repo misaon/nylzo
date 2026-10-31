@@ -18,6 +18,7 @@ import (
 	"testing/fstest"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -113,7 +114,7 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 	response, body := harness.do(&testRequest{
 		method:  http.MethodGet,
 		path:    "/api/v1/messages/not-an-id",
-		headers: map[string]string{"Authorization": core.AuthScheme + " short"},
+		headers: map[string]string{"Authorization": signing.AuthScheme + " short"},
 	})
 	if response.StatusCode != http.StatusNotFound || string(body) != `{"error":"not_found"}` {
 		t.Fatalf("malformed API id: %d %s", response.StatusCode, body)

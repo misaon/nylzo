@@ -1,4 +1,4 @@
-package core
+package envelope
 
 import (
 	"crypto/aes"
@@ -6,6 +6,8 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+
+	"github.com/misaon/nylzo/internal/core"
 )
 
 const (
@@ -15,7 +17,7 @@ const (
 	TagLen        = 16
 	HeaderLen     = 15
 	PolicyLen     = 6
-	AADLen        = HeaderLen + IDLen + PolicyLen
+	AADLen        = HeaderLen + core.IDLen + PolicyLen
 	MetaLenPrefix = 4
 	ObjectSlack   = 64
 
@@ -31,19 +33,18 @@ const (
 )
 
 var (
-	ErrHeader      = errors.New("core: invalid envelope header")
-	ErrFlags       = errors.New("core: unsupported envelope flags")
-	ErrVersion     = errors.New("core: unsupported envelope version")
-	ErrKDFMismatch = errors.New("core: kdf profile does not match the link fragment")
-	ErrIntegrity   = errors.New("core: envelope integrity check failed")
-	ErrPlaintext   = errors.New("core: malformed plaintext")
-	ErrTooLarge    = errors.New("core: content exceeds limits")
-	ErrPolicy      = errors.New("core: invalid policy")
+	ErrHeader    = errors.New("core: invalid envelope header")
+	ErrFlags     = errors.New("core: unsupported envelope flags")
+	ErrVersion   = errors.New("core: unsupported envelope version")
+	ErrIntegrity = errors.New("core: envelope integrity check failed")
+	ErrPlaintext = errors.New("core: malformed plaintext")
+	ErrTooLarge  = errors.New("core: content exceeds limits")
+	ErrPolicy    = errors.New("core: invalid policy")
 )
 
 type Header struct {
 	Version uint8
-	KDF     KDF
+	KDF     core.KDF
 	Flags   uint8
 	IV      [IVLen]byte
 }
@@ -58,7 +59,7 @@ type Payload struct {
 	File []byte
 }
 
-func NewHeader(kdf KDF) Header {
+func NewHeader(kdf core.KDF) Header {
 	header := Header{Version: Version, KDF: kdf}
 	rand.Read(header.IV[:])
 	return header
@@ -70,7 +71,7 @@ func ParseHeader(data []byte) (Header, error) {
 		return header, ErrHeader
 	}
 	header.Version = data[0]
-	header.KDF = KDF(data[1])
+	header.KDF = core.KDF(data[1])
 	header.Flags = data[2]
 	copy(header.IV[:], data[3:HeaderLen])
 	return header, header.Validate()
@@ -88,7 +89,7 @@ func (h Header) Validate() error {
 		return ErrFlags
 	}
 	if !h.KDF.Valid() {
-		return ErrKDF
+		return core.ErrKDF
 	}
 	return nil
 }
@@ -104,7 +105,7 @@ func (p Policy) Bytes() []byte {
 	return binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
 }
 
-func AAD(header Header, id ID, policy Policy) []byte {
+func AAD(header Header, id core.ID, policy Policy) []byte {
 	aad := make([]byte, 0, AADLen)
 	aad = append(aad, header.Bytes()...)
 	aad = append(aad, id[:]...)
@@ -126,19 +127,25 @@ func PaddedLen(length int, hasFile bool) int {
 	return length + unit - length%unit
 }
 
-func Seal(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payload) ([]byte, error) {
+func Seal(key *[core.KeyLen]byte, header Header, id core.ID, policy Policy, payload Payload) ([]byte, error) {
 	return sealEnvelope(key, header, id, policy, payload, false)
 }
 
 // SealWithCompression compresses a large attachment only when it reduces the padded object size.
-func SealWithCompression(key *[KeyLen]byte, header Header, id ID, policy Policy, payload Payload) ([]byte, error) {
+func SealWithCompression(
+	key *[core.KeyLen]byte,
+	header Header,
+	id core.ID,
+	policy Policy,
+	payload Payload,
+) ([]byte, error) {
 	return sealEnvelope(key, header, id, policy, payload, true)
 }
 
 func sealEnvelope(
-	key *[KeyLen]byte,
+	key *[core.KeyLen]byte,
 	header Header,
-	id ID,
+	id core.ID,
 	policy Policy,
 	payload Payload,
 	compress bool,
@@ -168,13 +175,13 @@ func MayHoldFile(objectBytes int64) bool {
 	return objectBytes > 0 && objectBytes%PadFile == 0
 }
 
-func Open(key *[KeyLen]byte, id ID, policy Policy, kdf KDF, object []byte) (Header, Payload, error) {
+func Open(key *[core.KeyLen]byte, id core.ID, policy Policy, kdf core.KDF, object []byte) (Header, Payload, error) {
 	header, err := ParseHeader(object)
 	if err != nil {
 		return header, Payload{}, err
 	}
 	if header.KDF != kdf {
-		return header, Payload{}, ErrKDFMismatch
+		return header, Payload{}, core.ErrKDFMismatch
 	}
 	if len(object) > MaxObjectBytes || len(object) < HeaderLen+TagLen {
 		return header, Payload{}, ErrIntegrity
@@ -265,7 +272,7 @@ func parsePlaintext(plaintext []byte) (Payload, error) {
 	return Payload{Meta: meta, File: file}, nil
 }
 
-func newAEAD(key *[KeyLen]byte) (cipher.AEAD, error) {
+func newAEAD(key *[core.KeyLen]byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return nil, err

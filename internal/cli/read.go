@@ -15,6 +15,8 @@ import (
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
 )
 
 const (
@@ -56,7 +58,7 @@ type openLink struct {
 	id     core.ID
 	kdf    core.KDF
 	secret [core.SecretLen]byte
-	keys   core.LinkKeys
+	keys   keys.LinkKeys
 }
 
 func (l *openLink) wipe() {
@@ -85,7 +87,7 @@ func parseOpenLink(raw string) (openLink, error) {
 	}
 	link := openLink{origin: origin, id: parsed.ID, kdf: parsed.KDF, secret: parsed.Secret}
 	clear(parsed.Secret[:])
-	if link.keys, err = core.DeriveLink(link.id, &link.secret); err != nil {
+	if link.keys, err = keys.DeriveLink(link.id, &link.secret); err != nil {
 		link.wipe()
 		return openLink{}, err
 	}
@@ -182,7 +184,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 }
 
 type openedMessage struct {
-	payload core.Payload
+	payload envelope.Payload
 	lease   string
 }
 
@@ -201,7 +203,7 @@ func readMessage(
 	if metadata.State != "available" {
 		return openedMessage{}, &client.APIError{Status: 410, Kind: "gone", State: metadata.State}
 	}
-	if !attachmentsAllowed && core.MayHoldFile(metadata.Size) {
+	if !attachmentsAllowed && envelope.MayHoldFile(metadata.Size) {
 		return openedMessage{}, errAttachmentNeedsOut
 	}
 	if err = core.AssertProfile(link.kdf, metadata.KDF); err != nil {
@@ -211,27 +213,27 @@ func readMessage(
 	if err != nil {
 		return openedMessage{}, err
 	}
-	keys, err := core.DeriveContent(link.id, &link.secret, passphraseKey)
+	contentKeys, err := keys.DeriveContent(link.id, &link.secret, passphraseKey)
 	clear(passphraseKey)
 	if err != nil {
 		return openedMessage{}, err
 	}
-	defer clear(keys.K[:])
-	defer clear(keys.V[:])
+	defer clear(contentKeys.K[:])
+	defer clear(contentKeys.V[:])
 	var verifier *[core.SeedLen]byte
 	if link.kdf != core.KDFNone {
-		verifier = &keys.V
+		verifier = &contentKeys.V
 	}
-	envelope, lease, err := fetchEnvelope(ctx, api, link, verifier, metadata.Size)
+	fetched, lease, err := fetchEnvelope(ctx, api, link, verifier, metadata.Size)
 	if err != nil {
 		return openedMessage{}, err
 	}
-	if envelope.Flags != 0 || envelope.KDF != link.kdf || int(envelope.Policy.OpensMax) != metadata.OpensMax ||
-		int64(envelope.Policy.TTLSeconds) != metadata.TTLSeconds {
+	if fetched.Flags != 0 || fetched.KDF != link.kdf || int(fetched.Policy.OpensMax) != metadata.OpensMax ||
+		int64(fetched.Policy.TTLSeconds) != metadata.TTLSeconds {
 		return openedMessage{}, errPolicyChanged
 	}
-	_, payload, err := core.Open(&keys.K, link.id, envelope.Policy, link.kdf, envelope.Object)
-	clear(envelope.Object)
+	_, payload, err := envelope.Open(&contentKeys.K, link.id, fetched.Policy, link.kdf, fetched.Object)
+	clear(fetched.Object)
 	if err != nil {
 		return openedMessage{}, errTampered
 	}
@@ -254,7 +256,7 @@ func passphraseKey(environment *command.Environment, link *openLink, source pass
 	if err != nil {
 		return nil, err
 	}
-	return core.DerivePassphraseKey(link.kdf, passphrase, &link.keys.PassphraseSalt)
+	return keys.DerivePassphraseKey(link.kdf, passphrase, &link.keys.PassphraseSalt)
 }
 
 // fetchEnvelope resumes a broken claim through the lease it already received, so it never spends a second open.
@@ -273,9 +275,9 @@ func fetchEnvelope(
 		return client.Envelope{}, "", err
 	}
 	for range blobRetries {
-		envelope, blobErr := api.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
+		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
 		if blobErr == nil {
-			return envelope, claimed.Lease, nil
+			return fetched, claimed.Lease, nil
 		}
 		err = blobErr
 		if client.IsKind(blobErr, "gone") || client.IsKind(blobErr, "rate_limited") || ctx.Err() != nil {
@@ -298,7 +300,7 @@ func saveMessage(
 	environment *command.Environment,
 	directory, base string,
 	toStdout bool,
-	payload core.Payload,
+	payload envelope.Payload,
 ) ([]string, error) {
 	var files []outputFile
 	if text := payload.Meta.Text; text != nil {

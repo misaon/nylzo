@@ -1,8 +1,10 @@
-package core
+package keys
 
 import (
 	"crypto/hkdf"
 	"crypto/sha256"
+
+	"github.com/misaon/nylzo/internal/core"
 )
 
 const (
@@ -14,20 +16,20 @@ const (
 )
 
 type LinkKeys struct {
-	R              [SeedLen]byte
+	R              [core.SeedLen]byte
 	PassphraseSalt [32]byte
 }
 
 type ContentKeys struct {
-	K [KeyLen]byte
-	V [SeedLen]byte
+	K [core.KeyLen]byte
+	V [core.SeedLen]byte
 }
 
-func HSalt(id ID) [32]byte {
+func HSalt(id core.ID) [32]byte {
 	return sha256.Sum256(append([]byte(labelHSalt), id[:]...))
 }
 
-func DeriveLink(id ID, secret *[SecretLen]byte) (LinkKeys, error) {
+func DeriveLink(id core.ID, secret *[core.SecretLen]byte) (LinkKeys, error) {
 	var keys LinkKeys
 	err := expandAll(id, secret[:], []expansion{{infoRead, keys.R[:]}, {infoKDFSalt, keys.PassphraseSalt[:]}})
 	if err != nil {
@@ -36,8 +38,8 @@ func DeriveLink(id ID, secret *[SecretLen]byte) (LinkKeys, error) {
 	return keys, nil
 }
 
-func DeriveContent(id ID, secret *[SecretLen]byte, passphraseKey []byte) (ContentKeys, error) {
-	keyMaterial := make([]byte, 0, SecretLen+len(passphraseKey))
+func DeriveContent(id core.ID, secret *[core.SecretLen]byte, passphraseKey []byte) (ContentKeys, error) {
+	keyMaterial := make([]byte, 0, core.SecretLen+len(passphraseKey))
 	keyMaterial = append(keyMaterial, secret[:]...)
 	keyMaterial = append(keyMaterial, passphraseKey...)
 	defer clear(keyMaterial)
@@ -49,7 +51,12 @@ func DeriveContent(id ID, secret *[SecretLen]byte, passphraseKey []byte) (Conten
 	return keys, nil
 }
 
-func DeriveAll(id ID, secret *[SecretLen]byte, kdf KDF, passphrase string) (LinkKeys, ContentKeys, error) {
+func DeriveAll(
+	id core.ID,
+	secret *[core.SecretLen]byte,
+	kdf core.KDF,
+	passphrase string,
+) (LinkKeys, ContentKeys, error) {
 	if err := checkPassphrase(kdf, passphrase); err != nil {
 		return LinkKeys{}, ContentKeys{}, err
 	}
@@ -70,7 +77,7 @@ type expansion struct {
 	output []byte
 }
 
-func expandAll(id ID, keyMaterial []byte, expansions []expansion) error {
+func expandAll(id core.ID, keyMaterial []byte, expansions []expansion) error {
 	hsalt := HSalt(id)
 	prk, err := hkdf.Extract(sha256.New, keyMaterial, hsalt[:])
 	if err != nil {

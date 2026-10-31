@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 type Derive struct {
@@ -60,20 +62,20 @@ func deriveVector(vector deriveCase) (Derive, error) {
 	id := deterministicID(label)
 	secret := deterministic32("s/" + label)
 	manageSeed := deterministic32("m/" + label)
-	link, err := core.DeriveLink(id, secret)
+	link, err := keys.DeriveLink(id, secret)
 	if err != nil {
 		return Derive{}, err
 	}
-	passphraseKey, err := core.DerivePassphraseKey(vector.kdf, valueOr(vector.passphrase), &link.PassphraseSalt)
+	passphraseKey, err := keys.DerivePassphraseKey(vector.kdf, valueOr(vector.passphrase), &link.PassphraseSalt)
 	if err != nil {
 		return Derive{}, err
 	}
-	content, err := core.DeriveContent(id, secret, passphraseKey)
+	content, err := keys.DeriveContent(id, secret, passphraseKey)
 	if err != nil {
 		return Derive{}, err
 	}
-	hsalt := core.HSalt(id)
-	readKey, manageKey := core.PublicKey(&link.R), core.PublicKey(manageSeed)
+	hsalt := keys.HSalt(id)
+	readKey, manageKey := signing.PublicKey(&link.R), signing.PublicKey(manageSeed)
 	derived := Derive{
 		Name:           vector.name,
 		ID:             id.String(),
@@ -92,7 +94,7 @@ func deriveVector(vector deriveCase) (Derive, error) {
 		ManageKey:      core.Encode(manageKey[:]),
 	}
 	if vector.kdf != core.KDFNone {
-		verifierKey := core.PublicKey(&content.V)
+		verifierKey := signing.PublicKey(&content.V)
 		derived.VerifierKey = new(core.Encode(verifierKey[:]))
 	}
 	return derived, nil

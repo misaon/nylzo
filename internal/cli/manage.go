@@ -9,7 +9,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/report"
 )
 
 const manageTokenFileUsage = "read the manage token from this file (or " + envManageToken + ", or stdin)"
@@ -144,7 +144,7 @@ func runReport(ctx context.Context, environment *command.Environment, arguments 
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	contact, err := core.ParseContact(*contactFlag)
+	contact, err := report.ParseContact(*contactFlag)
 	if err != nil {
 		fmt.Fprintln(
 			environment.Stderr,
@@ -160,12 +160,12 @@ func runReport(ctx context.Context, environment *command.Environment, arguments 
 		}
 		reason = strings.TrimSpace(string(raw))
 	}
-	if core.ReasonTooLong(reason) {
+	if report.ReasonTooLong(reason) {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s report: the reason is longer than %d bytes after links and long codes are removed\n",
 			command.Program,
-			core.MaxReasonBytes,
+			report.MaxReasonBytes,
 		)
 		return command.ExitUsage
 	}

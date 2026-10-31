@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -19,7 +20,7 @@ const (
 	ProxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 4
-	MaxPoWDifficulty  = core.MaxPoWDifficulty
+	MaxPoWDifficulty  = proofofwork.MaxPoWDifficulty
 	MaxOpens          = 100
 	MaxTTL            = 7 * 24 * time.Hour
 	MaxStreams        = 1024
@@ -76,8 +77,8 @@ func Defaults() Server {
 		DataDir:       "data",
 		SweepInterval: 5 * time.Minute,
 		Limits: Limits{
-			MaxFileBytes:   core.MaxFileBytes,
-			MaxObjectBytes: core.ObjectLimit(core.MaxFileBytes),
+			MaxFileBytes:   envelope.MaxFileBytes,
+			MaxObjectBytes: envelope.ObjectLimit(envelope.MaxFileBytes),
 			MaxTTL:         MaxTTL,
 			DefaultTTL:     24 * time.Hour,
 			MaxOpens:       10,
@@ -137,15 +138,15 @@ func (s *Server) validateWithoutReports() error {
 }
 
 func (s *Server) rules() []rule {
-	minTTL := core.MinTTLSeconds * time.Second
+	minTTL := envelope.MinTTLSeconds * time.Second
 	limits, rates := &s.Limits, &s.Rates
 	return []rule{
 		{
-			limits.MaxFileBytes >= 1 && limits.MaxFileBytes <= core.MaxFileBytes,
-			fmt.Sprintf("NYLZO_MAX_FILE_BYTES must be between 1 and %d", core.MaxFileBytes),
+			limits.MaxFileBytes >= 1 && limits.MaxFileBytes <= envelope.MaxFileBytes,
+			fmt.Sprintf("NYLZO_MAX_FILE_BYTES must be between 1 and %d", envelope.MaxFileBytes),
 		},
 		{
-			limits.MaxObjectBytes == core.ObjectLimit(limits.MaxFileBytes),
+			limits.MaxObjectBytes == envelope.ObjectLimit(limits.MaxFileBytes),
 			"the object limit must follow NYLZO_MAX_FILE_BYTES",
 		},
 		{

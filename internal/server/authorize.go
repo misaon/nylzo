@@ -8,17 +8,18 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-var dummyPublicKey = core.PublicKey(new([core.SeedLen]byte))
+var dummyPublicKey = signing.PublicKey(new([core.SeedLen]byte))
 
 type access struct {
 	id        core.ID
 	record    store.Record
 	known     bool
-	signature core.Signature
+	signature signing.Signature
 }
 
 // authorize does the same work for an unknown id, a wrong key and a failed signature (spec §5.5, AK21).
@@ -51,10 +52,10 @@ func (s *Server) authorize(
 	return granted, true, nil
 }
 
-func parseSignature(r *http.Request) (core.Signature, bool) {
-	signature, err := core.ParseAuthorization(r.Header.Get("Authorization"))
+func parseSignature(r *http.Request) (signing.Signature, bool) {
+	signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
 	if err != nil {
-		return core.Signature{PublicKey: dummyPublicKey}, false
+		return signing.Signature{PublicKey: dummyPublicKey}, false
 	}
 	return signature, true
 }
@@ -78,7 +79,7 @@ func openWithSignature(
 	body []byte,
 ) bool {
 	signature := granted.signature
-	keyOK := core.ValidPublicKey(signature.PublicKey[:])
+	keyOK := signing.ValidPublicKey(signature.PublicKey[:])
 	if !keyOK {
 		signature.PublicKey = dummyPublicKey
 	}
@@ -101,9 +102,9 @@ func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Reco
 
 func signedPurpose(purpose seal.Purpose) string {
 	if purpose == seal.Manage {
-		return core.PurposeManage
+		return signing.PurposeManage
 	}
-	return core.PurposeRead
+	return signing.PurposeRead
 }
 
 // settle finishes what only an authorized request may finish: an ending, or the release after the last lease.

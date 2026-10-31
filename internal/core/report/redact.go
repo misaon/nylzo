@@ -1,4 +1,4 @@
-package core
+package report
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/misaon/nylzo/internal/core"
 )
 
 const (
@@ -22,7 +24,7 @@ const (
 var (
 	percentEscape = regexp.MustCompile(`%[0-9A-Fa-f]{2}`)
 	linkFragment  = regexp.MustCompile(`#\S*`)
-	tokenRun      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(IDLen)))
+	tokenRun      = regexp.MustCompile(fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(core.IDLen)))
 )
 
 func redactUnbounded(reason string) string {
@@ -37,7 +39,7 @@ func ReasonTooLong(reason string) bool {
 	encoder := json.NewEncoder(&body)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(
-		map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(IDLen)), "reason": redacted},
+		map[string]string{"id": strings.Repeat("A", base64.RawURLEncoding.EncodedLen(core.IDLen)), "reason": redacted},
 	); err != nil {
 		return true
 	}

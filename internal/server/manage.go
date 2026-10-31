@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -102,17 +103,17 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAbuseBody))
-	var report abuseRequest
-	if err != nil || json.Unmarshal(raw, &report) != nil {
+	var submitted abuseRequest
+	if err != nil || json.Unmarshal(raw, &submitted) != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
-	contact, err := core.ParseContact(report.Contact)
+	contact, err := report.ParseContact(submitted.Contact)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errContact)
 		return
 	}
-	if _, idErr := core.ParseID(report.ID); idErr != nil {
+	if _, idErr := core.ParseID(submitted.ID); idErr != nil {
 		writeAbuseStatus(w, abuseAccepted)
 		return
 	}
@@ -120,7 +121,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.clock()
-	granted, ok, err := s.authorize(r.Context(), r, report.ID, seal.Read, raw)
+	granted, ok, err := s.authorize(r.Context(), r, submitted.ID, seal.Read, raw)
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return
@@ -131,9 +132,9 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordAbuse(w, r, now, &granted.record, &abuse.Report{
 		ID:        granted.id.String(),
-		Reason:    report.Reason,
+		Reason:    submitted.Reason,
 		Contact:   contact,
-		GoodFaith: report.GoodFaith,
+		GoodFaith: submitted.GoodFaith,
 	})
 }
 
@@ -143,7 +144,7 @@ func (s *Server) recordAbuse(
 	r *http.Request,
 	now time.Time,
 	record *store.Record,
-	report *abuse.Report,
+	submitted *abuse.Report,
 ) {
 	counted, err := store.CountReport(r.Context(), s.store, record, now)
 	if _, gone := errors.AsType[*store.GoneError](err); gone || errors.Is(err, store.ErrNotFound) {
@@ -158,7 +159,7 @@ func (s *Server) recordAbuse(
 		writeAbuseStatus(w, abuseLimit)
 		return
 	}
-	err = s.reports.Record(now, report)
+	err = s.reports.Record(now, submitted)
 	if err == nil {
 		writeAbuseStatus(w, abuseAccepted)
 		return

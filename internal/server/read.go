@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -110,11 +111,11 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verifier.Challenge = granted.signature.Challenge
-	verifierKeyOK := core.ValidPublicKey(verifier.PublicKey[:])
+	verifierKeyOK := signing.ValidPublicKey(verifier.PublicKey[:])
 	if !verifierKeyOK {
 		verifier.PublicKey = dummyPublicKey
 	}
-	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
+	verifierSigned := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
 	blob, ok := s.openBlob(w, r, &granted.record)
 	if !ok {
 		return
@@ -142,12 +143,12 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob)
 }
 
-func parseVerifier(w http.ResponseWriter, r *http.Request) (core.Signature, bool, bool) {
+func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
 	header := r.Header.Get(verifierHeaderName)
 	if header == "" {
-		return core.Signature{PublicKey: dummyPublicKey}, false, true
+		return signing.Signature{PublicKey: dummyPublicKey}, false, true
 	}
-	verifier, err := core.ParseVerifierHeader(header, [core.ChallengeLen]byte{})
+	verifier, err := signing.ParseVerifierHeader(header, [signing.ChallengeLen]byte{})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return verifier, true, false

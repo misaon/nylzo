@@ -1,4 +1,4 @@
-package core
+package signing
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"filippo.io/edwards25519"
+
+	"github.com/misaon/nylzo/internal/core"
 )
 
 const (
@@ -31,7 +33,7 @@ type Signature struct {
 	Value     [SignatureLen]byte
 }
 
-func PublicKey(seed *[SeedLen]byte) [PublicKeyLen]byte {
+func PublicKey(seed *[core.SeedLen]byte) [PublicKeyLen]byte {
 	privateKey := ed25519.NewKeyFromSeed(seed[:])
 	defer clear(privateKey)
 	return [PublicKeyLen]byte(privateKey[ed25519.SeedSize:])
@@ -57,7 +59,7 @@ func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte,
 }
 
 func SignRequest(
-	seed *[SeedLen]byte,
+	seed *[core.SeedLen]byte,
 	purpose, method, path string,
 	challenge [ChallengeLen]byte,
 	body []byte,
@@ -105,15 +107,21 @@ func (s *Signature) Verify(purpose, method, path string, body []byte) bool {
 }
 
 func (s *Signature) Authorization() string {
-	return AuthScheme + " " + Encode(s.PublicKey[:]) + "." + Encode(s.Challenge[:]) + "." + Encode(s.Value[:])
+	return AuthScheme + " " + core.Encode(
+		s.PublicKey[:],
+	) + "." + core.Encode(
+		s.Challenge[:],
+	) + "." + core.Encode(
+		s.Value[:],
+	)
 }
 
 func (s *Signature) VerifierHeader() string {
-	return Encode(s.PublicKey[:]) + "." + Encode(s.Value[:])
+	return core.Encode(s.PublicKey[:]) + "." + core.Encode(s.Value[:])
 }
 
 func decodeInto(target []byte, text string) bool {
-	decoded, err := DecodeExact(text, len(target))
+	decoded, err := core.DecodeExact(text, len(target))
 	if err != nil {
 		return false
 	}

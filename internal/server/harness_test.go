@@ -25,6 +25,10 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -236,11 +240,11 @@ func (h *testHarness) listen() string {
 	return listener.Addr().String()
 }
 
-func (h *testHarness) challenge() [core.ChallengeLen]byte {
+func (h *testHarness) challenge() [signing.ChallengeLen]byte {
 	return h.challengeAt(h.clock.Now())
 }
 
-func (h *testHarness) challengeAt(now time.Time) [core.ChallengeLen]byte {
+func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 	challenge, _ := h.server.challenges.Issue(now)
 	return challenge
 }
@@ -471,7 +475,7 @@ func (h *testHarness) recordFrom(storage store.Store, message *testMessage) (sto
 	if err != nil {
 		return store.Record{}, err
 	}
-	readKey := core.PublicKey(&message.link.R)
+	readKey := signing.PublicKey(&message.link.R)
 	return openRow(&row, seal.Read, readKey[:])
 }
 
@@ -493,7 +497,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 		h.t.Fatal(err)
 	}
 	change(record.Message)
-	readKey, manageKey := core.PublicKey(&message.link.R), core.PublicKey(message.manage)
+	readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
 	rebuilt := store.NewRecord(
 		record.Row.Locator,
 		record.Message,
@@ -537,21 +541,21 @@ func (h *testHarness) finish(message *testMessage, now time.Time) (bool, error) 
 	return store.Finish(h.t.Context(), h.store, h.blobs, &record, now)
 }
 
-func (h *testHarness) openObject(message *testMessage, object []byte, policy string) (core.Payload, error) {
+func (h *testHarness) openObject(message *testMessage, object []byte, policy string) (envelope.Payload, error) {
 	h.t.Helper()
 	decoded, err := decodePolicy(policy)
 	if err != nil {
-		return core.Payload{}, err
+		return envelope.Payload{}, err
 	}
-	_, payload, err := core.Open(&message.content.K, message.id, decoded, message.kdf, object)
+	_, payload, err := envelope.Open(&message.content.K, message.id, decoded, message.kdf, object)
 	return payload, err
 }
 
 func (h *testHarness) sign(r *http.Request, token, verifier string, body []byte) {
 	path := r.URL.EscapedPath()
-	purpose := core.PurposeRead
+	purpose := signing.PurposeRead
 	if strings.HasSuffix(path, "/status") || strings.HasSuffix(path, "/cancel") {
-		purpose = core.PurposeManage
+		purpose = signing.PurposeManage
 	}
 	challenge := h.challenge()
 	if verifier != "" {
@@ -720,9 +724,9 @@ type testMessage struct {
 	secret      *[core.SecretLen]byte
 	manage      *[core.SeedLen]byte
 	kdf         core.KDF
-	link        core.LinkKeys
-	content     core.ContentKeys
-	policy      core.Policy
+	link        keys.LinkKeys
+	content     keys.ContentKeys
+	policy      envelope.Policy
 	object      []byte
 	text        string
 	readToken   string
@@ -759,18 +763,24 @@ func buildMessageWithID(
 	text string,
 ) (*testMessage, error) {
 	message := &testMessage{id: id, secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
-	link, err := core.DeriveLink(id, message.secret)
+	link, err := keys.DeriveLink(id, message.secret)
 	if err != nil {
 		return nil, err
 	}
-	content, err := core.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.PassphraseSalt))
+	content, err := keys.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.PassphraseSalt))
 	if err != nil {
 		return nil, err
 	}
 	message.link, message.content = link, content
-	message.policy = core.Policy{OpensMax: opens, TTLSeconds: ttl}
-	payload := core.Payload{Meta: core.Meta{Text: &text}}
-	if message.object, err = core.Seal(&content.K, core.NewHeader(kdf), id, message.policy, payload); err != nil {
+	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl}
+	payload := envelope.Payload{Meta: envelope.Meta{Text: &text}}
+	if message.object, err = envelope.Seal(
+		&content.K,
+		envelope.NewHeader(kdf),
+		id,
+		message.policy,
+		payload,
+	); err != nil {
 		return nil, err
 	}
 	message.readToken = core.Encode(link.R[:])
@@ -780,7 +790,7 @@ func buildMessageWithID(
 }
 
 func publicKey(seed *[core.SeedLen]byte) string {
-	key := core.PublicKey(seed)
+	key := signing.PublicKey(seed)
 	return core.Encode(key[:])
 }
 
@@ -857,48 +867,48 @@ func decodeJSON(t *testing.T, body []byte) jsonFields {
 	return decoded
 }
 
-func decodePolicy(header string) (core.Policy, error) {
+func decodePolicy(header string) (envelope.Policy, error) {
 	var policy struct {
 		OpensMax   int `json:"opens_max"`
 		TTLSeconds int `json:"ttl_s"`
 	}
 	data, err := base64.RawURLEncoding.Strict().DecodeString(header)
 	if err != nil {
-		return core.Policy{}, err
+		return envelope.Policy{}, err
 	}
 	if decodeErr := json.Unmarshal(data, &policy); decodeErr != nil {
-		return core.Policy{}, decodeErr
+		return envelope.Policy{}, decodeErr
 	}
 	if policy.OpensMax == 0 {
-		return core.Policy{}, errors.New("policy header without opens_max")
+		return envelope.Policy{}, errors.New("policy header without opens_max")
 	}
-	return core.Policy{OpensMax: uint16(policy.OpensMax), TTLSeconds: uint32(policy.TTLSeconds)}, nil
+	return envelope.Policy{OpensMax: uint16(policy.OpensMax), TTLSeconds: uint32(policy.TTLSeconds)}, nil
 }
 
-func signedHeader(token, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) string {
+func signedHeader(token, purpose, method, path string, challenge [signing.ChallengeLen]byte, body []byte) string {
 	seed, err := core.DecodeExact(token, core.SeedLen)
 	if err != nil {
-		return core.AuthScheme + " " + token
+		return signing.AuthScheme + " " + token
 	}
-	return core.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
+	return signing.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
 }
 
-func verifierHeader(verifier, method, path string, challenge [core.ChallengeLen]byte) string {
+func verifierHeader(verifier, method, path string, challenge [signing.ChallengeLen]byte) string {
 	seed, err := core.DecodeExact(verifier, core.SeedLen)
 	if err != nil {
 		return verifier
 	}
-	signature := core.SignRequest((*[core.SeedLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil)
+	signature := signing.SignRequest((*[core.SeedLen]byte)(seed), signing.PurposeVerifier, method, path, challenge, nil)
 	return signature.VerifierHeader()
 }
 
 func signedRequest(
 	seed *[core.SeedLen]byte,
 	purpose, method, path string,
-	challenge [core.ChallengeLen]byte,
+	challenge [signing.ChallengeLen]byte,
 	body []byte,
 ) *testRequest {
-	signature := core.SignRequest(seed, purpose, method, path, challenge, body)
+	signature := signing.SignRequest(seed, purpose, method, path, challenge, body)
 	return &testRequest{
 		method:  method,
 		path:    path,
@@ -917,7 +927,7 @@ func rawAuth(request *testRequest, authorization string) *testRequest {
 
 func solveWork(t *testing.T, challenge string, id core.ID, difficulty int) string {
 	t.Helper()
-	token, err := core.SolvePoW(t.Context(), challenge, id, difficulty)
+	token, err := proofofwork.SolvePoW(t.Context(), challenge, id, difficulty)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/report"
 )
 
 const (
@@ -44,13 +45,13 @@ type Stored struct {
 func kem() hpke.KEM { return hpke.MLKEM768X25519() }
 
 // Seal pads the report to one length, so a sealed report shows nothing about its reason or contact.
-func Seal(key hpke.PublicKey, now time.Time, report *Report) ([]byte, error) {
+func Seal(key hpke.PublicKey, now time.Time, submitted *Report) ([]byte, error) {
 	return sealStored(key, &Stored{
 		Date:      reportDate(now),
-		ID:        report.ID,
-		Reason:    core.RedactReason(report.Reason),
-		GoodFaith: report.GoodFaith,
-		Contact:   report.Contact,
+		ID:        submitted.ID,
+		Reason:    report.RedactReason(submitted.Reason),
+		GoodFaith: submitted.GoodFaith,
+		Contact:   submitted.Contact,
 	})
 }
 

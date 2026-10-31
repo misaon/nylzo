@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
+	"github.com/misaon/nylzo/internal/core/report"
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 type Limits struct {
@@ -40,9 +43,9 @@ type Instance struct {
 type CreateRequest struct {
 	ID         core.ID
 	IDToken    string
-	ReadKey    [core.PublicKeyLen]byte
-	Verifier   *[core.PublicKeyLen]byte
-	ManageKey  [core.PublicKeyLen]byte
+	ReadKey    [signing.PublicKeyLen]byte
+	Verifier   *[signing.PublicKeyLen]byte
+	ManageKey  [signing.PublicKeyLen]byte
 	KDF        core.KDF
 	OpensMax   uint16
 	TTLSeconds uint32
@@ -112,7 +115,7 @@ func (c *Client) Instance(ctx context.Context) (Instance, error) {
 	}
 	id, err := core.ParseID(body.Create.ID)
 	if err != nil || body.Create.IDToken == "" || body.PoW.Difficulty < 0 ||
-		body.PoW.Difficulty > core.MaxPoWDifficulty {
+		body.PoW.Difficulty > proofofwork.MaxPoWDifficulty {
 		return Instance{}, ErrResponse
 	}
 	return Instance{
@@ -166,7 +169,7 @@ func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time,
 }
 
 func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.SeedLen]byte) (Metadata, error) {
-	request := signedRequest{method: http.MethodGet, path: messagePath(id), purpose: core.PurposeRead, seed: read}
+	request := signedRequest{method: http.MethodGet, path: messagePath(id), purpose: signing.PurposeRead, seed: read}
 	response, err := c.signed(ctx, &request, shortTimeout)
 	if err != nil {
 		return Metadata{}, err
@@ -187,7 +190,7 @@ func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.SeedLen]b
 	request := signedRequest{
 		method:  http.MethodGet,
 		path:    messagePath(id) + "/status",
-		purpose: core.PurposeManage,
+		purpose: signing.PurposeManage,
 		seed:    manage,
 	}
 	response, err := c.signed(ctx, &request, shortTimeout)
@@ -207,26 +210,26 @@ func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.SeedLen]b
 }
 
 func (c *Client) Cancel(ctx context.Context, id core.ID, manage *[core.SeedLen]byte) error {
-	return c.end(ctx, messagePath(id)+"/cancel", core.PurposeManage, manage)
+	return c.end(ctx, messagePath(id)+"/cancel", signing.PurposeManage, manage)
 }
 
 func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.SeedLen]byte) error {
-	return c.end(ctx, messagePath(id)+"/burn", core.PurposeRead, read)
+	return c.end(ctx, messagePath(id)+"/burn", signing.PurposeRead, read)
 }
 
-func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, report *Report) error {
-	contact, err := core.ParseContact(report.Contact)
+func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, submitted *Report) error {
+	contact, err := report.ParseContact(submitted.Contact)
 	if err != nil {
 		return err
 	}
 	payload := map[string]any{"id": id.String()}
-	if reason := core.RedactReason(report.Reason); reason != "" {
+	if reason := report.RedactReason(submitted.Reason); reason != "" {
 		payload["reason"] = reason
 	}
 	if contact != "" {
 		payload["contact"] = contact
 	}
-	if report.GoodFaith {
+	if submitted.GoodFaith {
 		payload["good_faith"] = true
 	}
 	body, err := json.Marshal(payload)
@@ -236,7 +239,7 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byt
 	request := signedRequest{
 		method:  http.MethodPost,
 		path:    "/api/v1/abuse",
-		purpose: core.PurposeRead,
+		purpose: signing.PurposeRead,
 		seed:    read,
 		headers: map[string]string{"Content-Type": "application/json"},
 		body:    body,
@@ -287,12 +290,19 @@ func (c *Client) signedOnce(
 	if err != nil {
 		return nil, err
 	}
-	signature := core.SignRequest(request.seed, request.purpose, request.method, request.path, challenge, request.body)
+	signature := signing.SignRequest(
+		request.seed,
+		request.purpose,
+		request.method,
+		request.path,
+		challenge,
+		request.body,
+	)
 	headers := map[string]string{"Authorization": signature.Authorization()}
 	if request.verifier != nil {
-		verifier := core.SignRequest(
+		verifier := signing.SignRequest(
 			request.verifier,
-			core.PurposeVerifier,
+			signing.PurposeVerifier,
 			request.method,
 			request.path,
 			challenge,
@@ -304,23 +314,23 @@ func (c *Client) signedOnce(
 	return c.do(ctx, request.method, request.path, headers, request.body, timeout)
 }
 
-func (c *Client) challenge(ctx context.Context) ([core.ChallengeLen]byte, error) {
+func (c *Client) challenge(ctx context.Context) ([signing.ChallengeLen]byte, error) {
 	response, err := c.do(ctx, http.MethodGet, "/api/v1/challenge", nil, nil, shortTimeout)
 	if err != nil {
-		return [core.ChallengeLen]byte{}, err
+		return [signing.ChallengeLen]byte{}, err
 	}
 	var body struct {
 		Challenge string `json:"challenge"`
 	}
 	err = readJSON(response, &body)
 	if err != nil {
-		return [core.ChallengeLen]byte{}, err
+		return [signing.ChallengeLen]byte{}, err
 	}
-	decoded, err := core.DecodeExact(body.Challenge, core.ChallengeLen)
+	decoded, err := core.DecodeExact(body.Challenge, signing.ChallengeLen)
 	if err != nil {
-		return [core.ChallengeLen]byte{}, ErrResponse
+		return [signing.ChallengeLen]byte{}, ErrResponse
 	}
-	return [core.ChallengeLen]byte(decoded), nil
+	return [signing.ChallengeLen]byte(decoded), nil
 }
 
 func messagePath(id core.ID) string {

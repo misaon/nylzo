@@ -1,5 +1,5 @@
 // The common passwords of spec section 2, from the UK NCSC list of the 100,000 most used passwords
-// (Open Government Licence v3.0), kept equal to internal/core/common-passphrases.txt by its SHA-256 in the vectors.
+// (Open Government Licence v3.0), kept equal to internal/core/keys/common-passphrases.txt by its SHA-256 in the vectors.
 export const COMMON_PASSPHRASES: readonly string[] = [
   'q1w2e3r4t5y6',
   'pe#5gz29ptzmse',

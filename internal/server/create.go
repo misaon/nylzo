@@ -14,6 +14,8 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
@@ -149,11 +151,11 @@ func (c *createRequest) checkPolicy(limits config.Limits) bool {
 	if opens < 1 || opens > limits.MaxOpens || opens > math.MaxUint16 {
 		return false
 	}
-	if ttl < core.MinTTLSeconds || ttl > int64(limits.MaxTTL/time.Second) || ttl > math.MaxUint32 {
+	if ttl < envelope.MinTTLSeconds || ttl > int64(limits.MaxTTL/time.Second) || ttl > math.MaxUint32 {
 		return false
 	}
 	c.opensMax, c.ttlSeconds = uint16(opens), uint32(ttl)
-	return c.header.Size >= core.HeaderLen+core.TagLen+core.MetaLenPrefix
+	return c.header.Size >= envelope.HeaderLen+envelope.TagLen+envelope.MetaLenPrefix
 }
 
 func onlyCreateHeaderKeys(data []byte) bool {
@@ -172,17 +174,17 @@ func onlyCreateHeaderKeys(data []byte) bool {
 // decodeKeys refuses a key that is not a canonical point of full order and two equal keys (D18).
 func (c *createRequest) decodeKeys() bool {
 	var err error
-	if c.readKey, err = core.DecodeExact(c.header.ReadKey, core.PublicKeyLen); err != nil {
+	if c.readKey, err = core.DecodeExact(c.header.ReadKey, signing.PublicKeyLen); err != nil {
 		return false
 	}
-	if c.manageKey, err = core.DecodeExact(c.header.ManageKey, core.PublicKeyLen); err != nil {
+	if c.manageKey, err = core.DecodeExact(c.header.ManageKey, signing.PublicKeyLen); err != nil {
 		return false
 	}
 	if c.header.KDFID < 0 || c.header.KDFID > math.MaxUint8 {
 		return false
 	}
 	kdf := core.KDF(c.header.KDFID)
-	keysOK := core.ValidPublicKey(c.readKey) && core.ValidPublicKey(c.manageKey) &&
+	keysOK := signing.ValidPublicKey(c.readKey) && signing.ValidPublicKey(c.manageKey) &&
 		!bytes.Equal(c.readKey, c.manageKey)
 	if !kdf.Valid() || !keysOK || kdf.RequiresPassphrase() != (c.header.VerifierKey != nil) {
 		return false
@@ -190,10 +192,10 @@ func (c *createRequest) decodeKeys() bool {
 	if c.header.VerifierKey == nil {
 		return true
 	}
-	if c.verifierKey, err = core.DecodeExact(*c.header.VerifierKey, core.PublicKeyLen); err != nil {
+	if c.verifierKey, err = core.DecodeExact(*c.header.VerifierKey, signing.PublicKeyLen); err != nil {
 		return false
 	}
-	return core.ValidPublicKey(c.verifierKey) && !bytes.Equal(c.verifierKey, c.readKey) &&
+	return signing.ValidPublicKey(c.verifierKey) && !bytes.Equal(c.verifierKey, c.readKey) &&
 		!bytes.Equal(c.verifierKey, c.manageKey)
 }
 
@@ -331,18 +333,18 @@ func (s *Server) receiveBlob(
 	r *http.Request,
 	request *createRequest,
 	blob *storedBlob,
-) (core.Header, bool) {
+) (envelope.Header, bool) {
 	size := request.header.Size
 	body := &trackingReader{reader: http.MaxBytesReader(w, r.Body, size)}
-	var raw [core.HeaderLen]byte
+	var raw [envelope.HeaderLen]byte
 	if _, err := io.ReadFull(body, raw[:]); err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
-		return core.Header{}, false
+		return envelope.Header{}, false
 	}
-	envelopeHeader, err := core.ParseHeader(raw[:])
+	envelopeHeader, err := envelope.ParseHeader(raw[:])
 	if err != nil || int(envelopeHeader.KDF) != request.header.KDFID {
 		writeError(w, http.StatusBadRequest, errBadRequest)
-		return core.Header{}, false
+		return envelope.Header{}, false
 	}
 	padded := seal.PaddedSize(size)
 	err = s.blobs.Put(
@@ -365,7 +367,7 @@ func (s *Server) receiveBlob(
 	default:
 		s.writeInternal(w, r, err)
 	}
-	return core.Header{}, false
+	return envelope.Header{}, false
 }
 
 func isMaxBytesError(err error) bool {
@@ -377,7 +379,7 @@ func (s *Server) storeMessage(
 	w http.ResponseWriter,
 	r *http.Request,
 	request *createRequest,
-	envelopeHeader core.Header,
+	envelopeHeader envelope.Header,
 	blob *storedBlob,
 	now time.Time,
 ) bool {
@@ -405,7 +407,7 @@ func (s *Server) storeMessage(
 }
 
 // newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
-func (s *Server) newMessage(request *createRequest, envelopeHeader core.Header, uploaded time.Time) *store.Message {
+func (s *Server) newMessage(request *createRequest, envelopeHeader envelope.Header, uploaded time.Time) *store.Message {
 	message := &store.Message{
 		Version:        envelopeHeader.Version,
 		KDF:            uint8(envelopeHeader.KDF),
@@ -527,7 +529,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 		Create:          instanceCreate{ID: id.String(), IDToken: token, ExpiresAt: formatTime(expires)},
 		Versions: instanceVersions{
 			API:      1,
-			Envelope: core.Version,
+			Envelope: envelope.Version,
 			Fragment: core.FragmentVersion,
 			Server:   s.settings.Version,
 		},
@@ -582,7 +584,7 @@ func (s *Server) instanceLimits() instanceLimits {
 	limits := s.settings.Limits
 	return instanceLimits{
 		MaxFileBytes:   limits.MaxFileBytes,
-		MaxTextBytes:   core.MaxTextBytes,
+		MaxTextBytes:   envelope.MaxTextBytes,
 		MaxObjectBytes: limits.MaxObjectBytes,
 		MaxTTL:         int64(limits.MaxTTL / time.Second),
 		DefaultTTL:     int64(limits.DefaultTTL / time.Second),

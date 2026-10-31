@@ -258,9 +258,9 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           case "$SHARD" in
-            core) packages=(./internal/core) ;;
+            core) mapfile -t packages < <(go list ./internal/core/... | grep -v -e '/internal/core/vectors$') ;;
             vectors) packages=(./internal/core/vectors) ;;
-            rest) mapfile -t packages < <(go list ./... | grep -v -e '/internal/core$' -e '/internal/core/vectors$') ;;
+            rest) mapfile -t packages < <(go list ./... | grep -v -e '/internal/core$' -e '/internal/core/') ;;
           esac
           mkdir -p .coverage
           go test -race -covermode=atomic -coverpkg=./... -coverprofile=".coverage/go-${SHARD}.out" -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' "${packages[@]}"
@@ -332,9 +332,10 @@ jobs:
           check-latest: true
       - name: Fuzz each target for 15 s
         run: |
-          for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta FuzzParseLink; do
-            go test -run='^$' -fuzz="^${target}\$" -fuzztime=15s ./internal/core
+          for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta; do
+            go test -run='^$' -fuzz="^${target}\$" -fuzztime=15s ./internal/core/envelope
           done
+          go test -run='^$' -fuzz='^FuzzParseLink$' -fuzztime=15s ./internal/core
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
 
   web:

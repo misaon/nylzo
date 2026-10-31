@@ -28,6 +28,9 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/signing"
 
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -301,7 +304,7 @@ func TestCreateSealsEveryMessageWithItsOwnIV(t *testing.T) {
 	second, _ := createText(t, instance, "the same text")
 	var ivs [][]byte
 	for _, link := range []string{first, second} {
-		header, err := core.ParseHeader(storedEnvelope(t, instance, link))
+		header, err := envelope.ParseHeader(storedEnvelope(t, instance, link))
 		if err != nil {
 			t.Fatalf("a stored blob is not an envelope: %v", err)
 		}
@@ -319,7 +322,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keys, err := core.DeriveLink(parsed.ID, &parsed.Secret)
+	linkKeys, err := keys.DeriveLink(parsed.ID, &parsed.Secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +336,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readKey := core.PublicKey(&keys.R)
+	readKey := signing.PublicKey(&linkKeys.R)
 	recordKey, err := seal.Unwrap(seal.KeyFor(readKey[:], locator, seal.Read), row.ReadWrap, locator, seal.Read)
 	if err != nil {
 		t.Fatal(err)
@@ -352,9 +355,9 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	envelope := make([]byte, record.Message.Size)
-	seal.BlobStream(blobKey).XORKeyStream(envelope, stored[:record.Message.Size])
-	return envelope
+	object := make([]byte, record.Message.Size)
+	seal.BlobStream(blobKey).XORKeyStream(object, stored[:record.Message.Size])
+	return object
 }
 
 func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
@@ -912,7 +915,7 @@ func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
 	}
 	text := "beside a clashing attachment"
 	message := content{
-		meta: core.Meta{Text: &text, File: &core.FileMeta{Name: "MESSAGE.TXT", Mime: "text/plain", Size: 4}},
+		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: "MESSAGE.TXT", Mime: "text/plain", Size: 4}},
 		file: []byte("file"),
 	}
 	created, err := createOnce(
@@ -1171,7 +1174,7 @@ func TestGeneratedPassphraseFile(t *testing.T) {
 		t.Fatalf("a generated passphrase drew a warning: %q", result.stderr)
 	}
 	passphrase := strings.TrimSpace(mustRead(t, path))
-	if err := core.CheckPassphraseStrength(passphrase); err != nil || strings.Contains(result.stdout, passphrase) {
+	if err := keys.CheckPassphraseStrength(passphrase); err != nil || strings.Contains(result.stdout, passphrase) {
 		t.Fatalf("generated passphrase %q: %v, stdout %q", passphrase, err, result.stdout)
 	}
 	assertPrivateFile(t, path, passphrase+"\n")
@@ -1240,7 +1243,7 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 	text := "beside a folded clash"
 	for _, name := range []string{"Meßage.txt", "meſſage.txt", "MESSAGE.TXT"} {
 		message := content{
-			meta: core.Meta{Text: &text, File: &core.FileMeta{Name: name, Mime: "text/plain", Size: 4}},
+			meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, Mime: "text/plain", Size: 4}},
 			file: []byte("file"),
 		}
 		created, createErr := createOnce(
@@ -1287,7 +1290,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 		locked,
 		base,
 		false,
-		core.Payload{Meta: core.Meta{Text: &text}},
+		envelope.Payload{Meta: envelope.Meta{Text: &text}},
 	)
 	if err != nil || len(paths) != 1 || filepath.Dir(filepath.Dir(paths[0])) != base ||
 		filepath.Dir(paths[0]) == locked {
@@ -1303,7 +1306,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 		full,
 		full,
 		false,
-		core.Payload{Meta: core.Meta{Text: &text}},
+		envelope.Payload{Meta: envelope.Meta{Text: &text}},
 	); err == nil {
 		t.Fatal("a write with nowhere to go succeeded")
 	}

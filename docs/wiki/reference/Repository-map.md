@@ -4,7 +4,7 @@
 | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | [spec/vectors.json](../../../spec/vectors.json)                                                                     | Shared protocol test vectors                                                             |
 | [cmd/nylzo-vectors](../../../cmd/nylzo-vectors)                                                                     | Generator of the shared protocol test vectors                                            |
-| [internal/core](../../../internal/core), [web/core](../../../web/core)                                              | Go and TypeScript protocol implementations                                               |
+| [internal/core](../../../internal/core), [web/core](../../../web/core)                                              | Go and TypeScript protocol cores: link, envelope, keys, request signing, proof of work   |
 | [internal/pepper](../../../internal/pepper)                                                                         | Purpose-separated server keys and pepper rotation                                        |
 | [internal/seal](../../../internal/seal)                                                                             | Sealing of stored records: per-purpose keys, locators and padding                        |
 | [internal/store](../../../internal/store)                                                                           | SQLite and file-storage adapters and shared storage tests                                |

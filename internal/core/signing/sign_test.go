@@ -1,4 +1,4 @@
-package core_test
+package signing_test
 
 import (
 	"bytes"
@@ -11,33 +11,34 @@ import (
 	"filippo.io/edwards25519"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 func TestRequestSignatureBindsEveryField(t *testing.T) {
 	t.Parallel()
-	var challenge [core.ChallengeLen]byte
-	copy(challenge[:], bytes.Repeat([]byte{7}, core.ChallengeLen))
+	var challenge [signing.ChallengeLen]byte
+	copy(challenge[:], bytes.Repeat([]byte{7}, signing.ChallengeLen))
 	body := []byte(`{"id":"x"}`)
-	signature := core.SignRequest(core.NewSecret(), core.PurposeRead, "POST", "/api/v1/abuse", challenge, body)
-	if !signature.Verify(core.PurposeRead, "POST", "/api/v1/abuse", body) {
+	signature := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "POST", "/api/v1/abuse", challenge, body)
+	if !signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body) {
 		t.Fatal("the signature does not verify")
 	}
 	otherChallenge := signature
 	otherChallenge.Challenge[0] ^= 1
 	for field, verified := range map[string]bool{
-		"purpose":   signature.Verify(core.PurposeManage, "POST", "/api/v1/abuse", body),
-		"method":    signature.Verify(core.PurposeRead, "GET", "/api/v1/abuse", body),
-		"path":      signature.Verify(core.PurposeRead, "POST", "/api/v1/abuses", body),
-		"body":      signature.Verify(core.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"y"}`)),
-		"challenge": otherChallenge.Verify(core.PurposeRead, "POST", "/api/v1/abuse", body),
+		"purpose":   signature.Verify(signing.PurposeManage, "POST", "/api/v1/abuse", body),
+		"method":    signature.Verify(signing.PurposeRead, "GET", "/api/v1/abuse", body),
+		"path":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuses", body),
+		"body":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"y"}`)),
+		"challenge": otherChallenge.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body),
 	} {
 		if verified {
 			t.Fatalf("a signature verified with another %s", field)
 		}
 	}
 	nonCanonical := strings.Repeat("A", 43) + "." + strings.Repeat("A", 48) + "." + strings.Repeat("A", 85) + "B"
-	for _, header := range []string{"", "Bearer x", core.AuthScheme + " a.b", core.AuthScheme + " " + nonCanonical} {
-		if _, err := core.ParseAuthorization(header); !errors.Is(err, core.ErrAuthorization) {
+	for _, header := range []string{"", "Bearer x", signing.AuthScheme + " a.b", signing.AuthScheme + " " + nonCanonical} {
+		if _, err := signing.ParseAuthorization(header); !errors.Is(err, signing.ErrAuthorization) {
 			t.Fatalf("%q was accepted", header)
 		}
 	}
@@ -69,7 +70,7 @@ func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
 		if !isSmallOrder(key) {
 			t.Fatalf("%s is not a small-order point, the test data is wrong", name)
 		}
-		if core.ValidPublicKey(key) {
+		if signing.ValidPublicKey(key) {
 			t.Fatalf("accepted the small-order key %s", name)
 		}
 	}
@@ -88,23 +89,23 @@ func TestValidPublicKeyRejectsDegenerateKeys(t *testing.T) {
 		t.Fatal("no non-canonical encoding of a point outside the small-order group, the test data is wrong")
 	}
 	for name, key := range nonCanonical {
-		if core.ValidPublicKey(key) {
+		if signing.ValidPublicKey(key) {
 			t.Fatalf("accepted the non-canonical key %s", name)
 		}
 	}
 	notOnCurve := make([]byte, 32)
 	for notOnCurve[0] = 2; isPoint(notOnCurve); notOnCurve[0]++ {
 	}
-	if core.ValidPublicKey(notOnCurve) || core.ValidPublicKey(identity[:31]) {
+	if signing.ValidPublicKey(notOnCurve) || signing.ValidPublicKey(identity[:31]) {
 		t.Fatal("accepted a value that is not a point or not 32 bytes")
 	}
-	derived := core.PublicKey(core.NewSecret())
-	if !core.ValidPublicKey(derived[:]) {
+	derived := signing.PublicKey(core.NewSecret())
+	if !signing.ValidPublicKey(derived[:]) {
 		t.Fatalf("rejected a derived key %x", derived)
 	}
 	mixed, _ := new(edwards25519.Point).SetBytes(derived[:])
 	torsion, _ := new(edwards25519.Point).SetBytes(order8a)
-	if !core.ValidPublicKey(new(edwards25519.Point).Add(mixed, torsion).Bytes()) {
+	if !signing.ValidPublicKey(new(edwards25519.Point).Add(mixed, torsion).Bytes()) {
 		t.Fatal("rejected a key of mixed order, which no third party can forge for")
 	}
 }

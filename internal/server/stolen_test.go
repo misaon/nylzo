@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/store"
@@ -45,8 +47,8 @@ func (n *stolenNeedles) addMessage(label string, message *testMessage, passphras
 	n.secret(label+" K", message.content.K[:])
 	n.secret(label+" V", message.content.V[:])
 	n.secret(label+" M", message.manage[:])
-	readKey, verifierKey := core.PublicKey(&message.link.R), core.PublicKey(&message.content.V)
-	manageKey := core.PublicKey(message.manage)
+	readKey, verifierKey := signing.PublicKey(&message.link.R), signing.PublicKey(&message.content.V)
+	manageKey := signing.PublicKey(message.manage)
 	n.secret(label+" pk_R", readKey[:])
 	n.secret(label+" pk_V", verifierKey[:])
 	n.secret(label+" pk_M", manageKey[:])
@@ -63,16 +65,22 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 	t.Helper()
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
 	message.text = ""
-	object, err := core.Seal(&message.content.K, core.NewHeader(core.KDFNone), message.id, message.policy, core.Payload{
-		Meta: core.Meta{
-			File: &core.FileMeta{
-				Name: "quarterly-plan-sentinel.pdf",
-				Mime: "application/pdf",
-				Size: int64(len(content)),
+	object, err := envelope.Seal(
+		&message.content.K,
+		envelope.NewHeader(core.KDFNone),
+		message.id,
+		message.policy,
+		envelope.Payload{
+			Meta: envelope.Meta{
+				File: &envelope.FileMeta{
+					Name: "quarterly-plan-sentinel.pdf",
+					Mime: "application/pdf",
+					Size: int64(len(content)),
+				},
 			},
+			File: content,
 		},
-		File: content,
-	})
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +258,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		needles.secret("id of "+message.id.String(), message.id[:])
 		needles.text("id text of "+message.id.String(), message.id.String())
 		needles.text("hex id text of "+message.id.String(), hex.EncodeToString([]byte(message.id.String())))
-		needles.secret("envelope header of "+message.id.String(), message.object[:core.HeaderLen])
+		needles.secret("envelope header of "+message.id.String(), message.object[:envelope.HeaderLen])
 		if record, err := harness.record(message); err == nil {
 			needles.secret("record key of "+message.id.String(), record.Key[:])
 		}

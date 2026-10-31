@@ -13,6 +13,11 @@ import (
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
+	"github.com/misaon/nylzo/internal/core/report"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/core/vectors"
 )
 
@@ -85,8 +90,8 @@ func TestDeriveVectors(t *testing.T) {
 				t.Fatal(err)
 			}
 			secret := decode32(t, vector.S)
-			hsalt := core.HSalt(id)
-			link, err := core.DeriveLink(id, secret)
+			hsalt := keys.HSalt(id)
+			link, err := keys.DeriveLink(id, secret)
 			if err != nil || hex.EncodeToString(hsalt[:]) != vector.HSalt ||
 				hex.EncodeToString(
 					link.R[:],
@@ -97,20 +102,20 @@ func TestDeriveVectors(t *testing.T) {
 			if vector.Passphrase != nil {
 				passphrase = *vector.Passphrase
 			}
-			passphraseKey, err := core.DerivePassphraseKey(core.KDF(vector.KDFID), passphrase, &link.PassphraseSalt)
+			passphraseKey, err := keys.DerivePassphraseKey(core.KDF(vector.KDFID), passphrase, &link.PassphraseSalt)
 			if err != nil || hex.EncodeToString(passphraseKey) != vector.P {
 				t.Fatalf("passphrase key: %v", err)
 			}
-			content, err := core.DeriveContent(id, secret, passphraseKey)
+			content, err := keys.DeriveContent(id, secret, passphraseKey)
 			if err != nil || hex.EncodeToString(content.K[:]) != vector.K ||
 				hex.EncodeToString(content.V[:]) != vector.V {
 				t.Fatalf("content keys: %v", err)
 			}
-			readKey, manageKey := core.PublicKey(&link.R), core.PublicKey(decode32(t, vector.M))
+			readKey, manageKey := signing.PublicKey(&link.R), signing.PublicKey(decode32(t, vector.M))
 			if core.Encode(readKey[:]) != vector.ReadKey || core.Encode(manageKey[:]) != vector.ManageKey {
 				t.Fatal("public keys")
 			}
-			verifierKey := core.PublicKey(&content.V)
+			verifierKey := signing.PublicKey(&content.V)
 			if (vector.KDFID != 0) != (vector.VerifierKey != nil) ||
 				(vector.VerifierKey != nil && core.Encode(verifierKey[:]) != *vector.VerifierKey) {
 				t.Fatal("verifier key")
@@ -159,35 +164,36 @@ func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
 		passphrase = *vector.Passphrase
 	}
 	kdf := core.KDF(vector.KDFID)
-	_, content, err := core.DeriveAll(id, decode32(t, vector.S), kdf, passphrase)
+	_, content, err := keys.DeriveAll(id, decode32(t, vector.S), kdf, passphrase)
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := core.Header{Version: core.Version, KDF: kdf, IV: [core.IVLen]byte(decodeHex(t, vector.IV))}
-	policy := core.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
-	payload := core.Payload{Meta: core.Meta{Text: vector.Text}, File: fileBytes(t, vector.File)}
+	header := envelope.Header{Version: envelope.Version, KDF: kdf, IV: [envelope.IVLen]byte(decodeHex(t, vector.IV))}
+	policy := envelope.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
+	payload := envelope.Payload{Meta: envelope.Meta{Text: vector.Text}, File: fileBytes(t, vector.File)}
 	if vector.File != nil {
-		payload.Meta.File = &core.FileMeta{
+		payload.Meta.File = &envelope.FileMeta{
 			Name: vector.File.Name,
 			Mime: vector.File.Mime,
 			Size: int64(vector.File.Size),
 		}
 	}
-	meta, err := core.EncodeMeta(payload.Meta)
-	if err != nil || string(meta) != vector.MetaJSON || hex.EncodeToString(core.AAD(header, id, policy)) != vector.AAD {
+	meta, err := envelope.EncodeMeta(payload.Meta)
+	if err != nil || string(meta) != vector.MetaJSON ||
+		hex.EncodeToString(envelope.AAD(header, id, policy)) != vector.AAD {
 		t.Fatalf("meta %s or aad differ: %v", meta, err)
 	}
-	object, err := core.Seal(&content.K, header, id, policy, payload)
+	object, err := envelope.Seal(&content.K, header, id, policy, payload)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(object)
 	inline := vector.Object == nil || core.Encode(object) == *vector.Object
-	if len(object) != vector.ObjectLen || len(object)-core.HeaderLen-core.TagLen != vector.PlaintextLen ||
+	if len(object) != vector.ObjectLen || len(object)-envelope.HeaderLen-envelope.TagLen != vector.PlaintextLen ||
 		hex.EncodeToString(sum[:]) != vector.ObjectSHA256 || !inline {
 		t.Fatalf("object of %d bytes differs", len(object))
 	}
-	openedHeader, opened, err := core.Open(&content.K, id, policy, kdf, object)
+	openedHeader, opened, err := envelope.Open(&content.K, id, policy, kdf, object)
 	if err != nil || openedHeader != header {
 		t.Fatalf("open: %v", err)
 	}
@@ -256,7 +262,7 @@ func TestLinkVectors(t *testing.T) {
 func TestMetaVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).Meta {
-		meta, err := core.DecodeMeta([]byte(vector.Input))
+		meta, err := envelope.DecodeMeta([]byte(vector.Input))
 		if !vector.Valid {
 			if err == nil {
 				t.Errorf("%s: accepted %q", vector.Name, vector.Input)
@@ -267,11 +273,11 @@ func TestMetaVectors(t *testing.T) {
 			t.Errorf("%s: %v", vector.Name, err)
 			continue
 		}
-		canonical, err := core.EncodeMeta(meta)
+		canonical, err := envelope.EncodeMeta(meta)
 		if err != nil || string(canonical) != *vector.Canonical {
 			t.Errorf("%s: canonical %s, want %s (%v)", vector.Name, canonical, *vector.Canonical, err)
 		}
-		if again, decodeErr := core.DecodeMeta(canonical); decodeErr != nil || again.Validate() != nil {
+		if again, decodeErr := envelope.DecodeMeta(canonical); decodeErr != nil || again.Validate() != nil {
 			t.Errorf("%s: the canonical form does not decode: %v", vector.Name, decodeErr)
 		}
 		if (meta.Text == nil) != (vector.Text == nil) || (vector.Text != nil && *meta.Text != *vector.Text) ||
@@ -288,8 +294,8 @@ func TestMetaVectors(t *testing.T) {
 func TestPassphraseStrengthVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).Strength {
-		err := core.CheckPassphraseStrength(vector.Passphrase)
-		if (err == nil) != vector.Accepted || (err != nil && !errors.Is(err, core.ErrWeakPassphrase)) {
+		err := keys.CheckPassphraseStrength(vector.Passphrase)
+		if (err == nil) != vector.Accepted || (err != nil && !errors.Is(err, keys.ErrWeakPassphrase)) {
 			t.Errorf("%s: %v", vector.Name, err)
 		}
 	}
@@ -298,35 +304,35 @@ func TestPassphraseStrengthVectors(t *testing.T) {
 func TestRequestVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).Request {
-		challenge, err := core.DecodeExact(vector.Challenge, core.ChallengeLen)
+		challenge, err := core.DecodeExact(vector.Challenge, signing.ChallengeLen)
 		if err != nil {
 			t.Fatal(err)
 		}
 		body := decodeHex(t, vector.Body)
-		message := core.RequestMessage(
+		message := signing.RequestMessage(
 			vector.Purpose,
 			vector.Method,
 			vector.Path,
-			(*[core.ChallengeLen]byte)(challenge),
+			(*[signing.ChallengeLen]byte)(challenge),
 			body,
 		)
-		signature := core.SignRequest(decode32(t, vector.Seed), vector.Purpose, vector.Method, vector.Path,
-			[core.ChallengeLen]byte(challenge), body)
+		signature := signing.SignRequest(decode32(t, vector.Seed), vector.Purpose, vector.Method, vector.Path,
+			[signing.ChallengeLen]byte(challenge), body)
 		if hex.EncodeToString(message) != vector.Message || core.Encode(signature.PublicKey[:]) != vector.PublicKey ||
 			core.Encode(signature.Value[:]) != vector.Signature {
 			t.Fatalf("%s: message or signature differs", vector.Name)
 		}
-		var parsed core.Signature
-		if vector.Purpose == core.PurposeVerifier {
+		var parsed signing.Signature
+		if vector.Purpose == signing.PurposeVerifier {
 			if vector.Authorization != "" || signature.VerifierHeader() != vector.Verifier {
 				t.Fatalf("%s: verifier header differs", vector.Name)
 			}
-			parsed, err = core.ParseVerifierHeader(vector.Verifier, [core.ChallengeLen]byte(challenge))
+			parsed, err = signing.ParseVerifierHeader(vector.Verifier, [signing.ChallengeLen]byte(challenge))
 		} else {
 			if vector.Verifier != "" || signature.Authorization() != vector.Authorization {
 				t.Fatalf("%s: authorization header differs", vector.Name)
 			}
-			parsed, err = core.ParseAuthorization(vector.Authorization)
+			parsed, err = signing.ParseAuthorization(vector.Authorization)
 		}
 		if err != nil || parsed != *signature || !parsed.Verify(vector.Purpose, vector.Method, vector.Path, body) {
 			t.Fatalf("%s: the header does not parse back and verify: %v", vector.Name, err)
@@ -341,7 +347,7 @@ func TestRequestVectors(t *testing.T) {
 func TestPoWVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).PoW {
-		challenge, err := core.DecodeExact(vector.Challenge, core.PoWChallengeLen)
+		challenge, err := core.DecodeExact(vector.Challenge, proofofwork.PoWChallengeLen)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -349,26 +355,26 @@ func TestPoWVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(challenge), id, vector.Counter)
-		zeroBits := core.LeadingZeroBits(digest[:])
+		digest, err := proofofwork.PoWDigest((*[proofofwork.PoWChallengeLen]byte)(challenge), id, vector.Counter)
+		zeroBits := proofofwork.LeadingZeroBits(digest[:])
 		if err != nil || hex.EncodeToString(digest[:]) != vector.Digest || zeroBits != vector.ZeroBits ||
-			core.PoWToken(vector.Challenge, vector.Counter) != vector.Token {
+			proofofwork.PoWToken(vector.Challenge, vector.Counter) != vector.Token {
 			t.Fatalf("%s: digest, zero bits or token differ: %v", vector.Name, err)
 		}
 	}
-	challenge := core.Encode(make([]byte, core.PoWChallengeLen))
-	for _, difficulty := range []int{-1, core.MaxPoWDifficulty + 1} {
-		_, err := core.SolvePoW(t.Context(), challenge, core.NewID(), difficulty)
-		if !errors.Is(err, core.ErrPoWDifficulty) {
+	challenge := core.Encode(make([]byte, proofofwork.PoWChallengeLen))
+	for _, difficulty := range []int{-1, proofofwork.MaxPoWDifficulty + 1} {
+		_, err := proofofwork.SolvePoW(t.Context(), challenge, core.NewID(), difficulty)
+		if !errors.Is(err, proofofwork.ErrPoWDifficulty) {
 			t.Fatalf("difficulty %d: %v", difficulty, err)
 		}
 	}
-	if _, err := core.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
+	if _, err := proofofwork.SolvePoW(t.Context(), challenge[1:], core.NewID(), 0); err == nil {
 		t.Fatal("a malformed challenge was accepted")
 	}
 	cancelled, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := core.SolvePoW(cancelled, challenge, core.NewID(), core.MaxPoWDifficulty)
+	_, err := proofofwork.SolvePoW(cancelled, challenge, core.NewID(), proofofwork.MaxPoWDifficulty)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled solve went on: %v", err)
 	}
@@ -381,7 +387,7 @@ func TestRedactionVectors(t *testing.T) {
 		t.Fatal("no redaction vectors")
 	}
 	for _, vector := range file.Redact {
-		if redacted := core.RedactReason(vector.Reason); redacted != vector.Redacted {
+		if redacted := report.RedactReason(vector.Reason); redacted != vector.Redacted {
 			t.Errorf("%s: %q, want %q", vector.Name, redacted, vector.Redacted)
 		}
 	}
@@ -393,7 +399,7 @@ func TestRedactionVectors(t *testing.T) {
 		strings.Repeat("<", 1000):         false,
 		strings.Repeat("ab ", 333) + "ab": true,
 	} {
-		if core.ReasonTooLong(reason) != long {
+		if report.ReasonTooLong(reason) != long {
 			t.Errorf("ReasonTooLong(%.20q) must be %v after redaction, like the web client", reason, long)
 		}
 	}

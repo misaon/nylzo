@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -220,7 +222,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 
 	id := core.NewID()
 	token, _ := server.idTokens.Issue(id, server.clock())
-	readKey, manageKey := core.PublicKey(core.NewSecret()), core.PublicKey(core.NewSecret())
+	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
 	size := int64(256 << 10)
 	header, _ := json.Marshal(
 		map[string]any{
@@ -236,7 +238,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	)
 	done := make(chan struct{})
 	stalled := make(chan struct{})
-	object := append(core.NewHeader(core.KDFNone).Bytes(), make([]byte, size-core.HeaderLen)...)
+	object := append(envelope.NewHeader(core.KDFNone).Bytes(), make([]byte, size-envelope.HeaderLen)...)
 	body := &signalReader{reader: bytes.NewReader(object), after: h2cStreamBuffer, signal: stalled}
 	go func() {
 		defer close(done)
@@ -332,7 +334,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := core.NewID()
-	readKey, manageKey := core.PublicKey(core.NewSecret()), core.PublicKey(core.NewSecret())
+	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
 	header, _ := json.Marshal(
 		map[string]any{
 			"id":         id.String(),
@@ -364,7 +366,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 		)
 	}
 
-	body := append(core.NewHeader(core.KDFNone).Bytes(), make([]byte, 1000)...)
+	body := append(envelope.NewHeader(core.KDFNone).Bytes(), make([]byte, 1000)...)
 	id = core.NewID()
 	header, _ = json.Marshal(
 		map[string]any{

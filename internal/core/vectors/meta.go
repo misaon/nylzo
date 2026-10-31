@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
 )
 
 type MetaCase struct {
@@ -89,16 +89,16 @@ var metaCases = []MetaCase{
 	{Name: "size-string", Input: `{"v":1,"file":{"name":"a","mime":"","size":"1"}}`},
 	{
 		Name:  "size-over-limit",
-		Input: `{"v":1,"file":{"name":"a","mime":"","size":` + strconv.Itoa(core.MaxFileBytes+1) + `}}`,
+		Input: `{"v":1,"file":{"name":"a","mime":"","size":` + strconv.Itoa(envelope.MaxFileBytes+1) + `}}`,
 	},
-	{Name: "text-over-limit", Input: `{"v":1,"text":"` + strings.Repeat("x", core.MaxTextBytes+1) + `"}`},
-	{Name: "text-at-limit", Input: `{"v":1,"text":"` + strings.Repeat("x", core.MaxTextBytes) + `"}`, Valid: true},
+	{Name: "text-over-limit", Input: `{"v":1,"text":"` + strings.Repeat("x", envelope.MaxTextBytes+1) + `"}`},
+	{Name: "text-at-limit", Input: `{"v":1,"text":"` + strings.Repeat("x", envelope.MaxTextBytes) + `"}`, Valid: true},
 	{Name: "mime-256-bytes", Input: `{"v":1,"file":{"name":"a","mime":"` + strings.Repeat("m", 256) + `","size":1}}`},
 }
 
 func (f *File) meta() error {
 	for _, vector := range metaCases {
-		meta, err := core.DecodeMeta([]byte(vector.Input))
+		meta, err := envelope.DecodeMeta([]byte(vector.Input))
 		if !vector.Valid {
 			if err == nil {
 				return fmt.Errorf("vectors: meta %q must be rejected", vector.Name)
@@ -109,7 +109,7 @@ func (f *File) meta() error {
 		if err != nil {
 			return fmt.Errorf("vectors: meta %q must decode: %w", vector.Name, err)
 		}
-		canonical, err := core.EncodeMeta(meta)
+		canonical, err := envelope.EncodeMeta(meta)
 		if err != nil {
 			return fmt.Errorf("vectors: meta %q must encode: %w", vector.Name, err)
 		}

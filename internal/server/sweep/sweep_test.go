@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/sweep"
 	"github.com/misaon/nylzo/internal/store"
@@ -100,7 +101,7 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 	id, ref := core.NewID(), core.NewID().String()
 	f.putBlob(t, ref)
 	message := &store.Message{
-		Version:        core.Version,
+		Version:        envelope.Version,
 		CreatedAt:      now.Truncate(time.Minute),
 		ExpiresAt:      store.CeilMinute(now.Add(time.Minute)),
 		TTLSeconds:     60,
