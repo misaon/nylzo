@@ -25,7 +25,7 @@ GOTOOLCHAIN = "local"
 
 [tasks.install]
 description = "Install the web and automation dependencies exactly as locked"
-run = ["node tools/security/install-web.mts", "pnpm --dir automation install --frozen-lockfile"]
+run = ["node automation/web-install/main.ts", "pnpm --dir automation install --frozen-lockfile"]
 
 [tasks."build:web"]
 description = "Build the web client into internal/server/web/dist, where nylzo embeds it"
@@ -61,14 +61,14 @@ run = [
 description = "Every static check of CI: Go, TypeScript, workflows and scripts"
 depends = ["install"]
 run = [
-  "node tools/sca/scan.mts .sca-reports",
+  "node automation/source-dependency-gate/main.ts .sca-reports",
   "go mod verify",
   "go mod tidy -diff",
   "golangci-lint run ./...",
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
-  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/sca/*.test.mts tools/deploy/*.test.mts",
+  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/deploy/*.test.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
   "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}",
