@@ -2,7 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "module": "nodenext",
-    "lib": ["es2024", "dom"],
+    "lib": ["es2025", "dom"],
     "types": ["node"]
   },
   "include": ["serve.ts", "playwright.config.ts", "tests"]
