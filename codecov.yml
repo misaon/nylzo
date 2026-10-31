@@ -19,6 +19,7 @@ flag_management:
         - cmd/
         - internal/
         - tools/tlscheck/
+        - tools/deploy/monitor-identity/
     - name: typescript
       paths:
         - web/core/src/
@@ -28,13 +29,13 @@ component_management:
   individual_components:
     - component_id: go-crypto
       name: Go cryptography
-      paths: [internal/core/**, internal/pepper/**]
+      paths: [internal/core/**, internal/pepper/**, internal/seal/**]
     - component_id: go-server
       name: Go server and storage
       paths: [internal/server/**, internal/store/**]
     - component_id: go-cli
       name: Go CLI
-      paths: [cmd/nylzo/**, internal/cli/**, internal/client/**]
+      paths: [cmd/nylzo/**, internal/buildinfo/**, internal/cli/**, internal/client/**]
     - component_id: typescript-crypto
       name: TypeScript cryptography
       paths: [web/core/src/**]
