@@ -86,7 +86,7 @@ func RunReports(_ context.Context, environment *command.Environment, arguments [
 	}
 	raw, err := command.ReadFileLimited(*keyFile, maxReportKeyFile)
 	if err != nil {
-		return command.Failf(environment, "--key-file: %s", command.Unreadable(err))
+		return command.Failf(environment, "--key-file: %s", err)
 	}
 	key, err := abuse.ParsePrivateKey(strings.TrimSpace(string(raw)))
 	if err != nil {

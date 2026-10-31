@@ -54,3 +54,21 @@ func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 		t.Fatalf("another private key opened a report: %+v", wrong)
 	}
 }
+
+func TestReportsNameWhyTheKeyFileCannotBeUsed(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	oversized := filepath.Join(directory, "oversized")
+	if err := os.WriteFile(oversized, make([]byte, maxReportKeyFile+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{
+		filepath.Join(directory, "missing"): "nylzo: --key-file: the file does not exist\n",
+		oversized:                           "nylzo: --key-file: the input is longer than nylzo accepts\n",
+	} {
+		result := run(t, "", nil, nil, RunReports, "--key-file", path)
+		if result.code != command.ExitError || result.stderr != want {
+			t.Errorf("%s: exit %d, stderr %q, want %q", filepath.Base(path), result.code, result.stderr, want)
+		}
+	}
+}
