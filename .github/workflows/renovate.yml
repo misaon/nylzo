@@ -140,8 +140,6 @@ jobs:
           permission-pull-requests: write
           permission-workflows: write # update pinned actions and annotated tool versions
           permission-actions: read
-          permission-checks: read # merge only when every check is green
-          permission-statuses: read
           permission-vulnerability-alerts: read
       - uses: renovatebot/github-action@2804199d260ad00c1fae0e9e842888369391c776 # v46.3.10
         env:
