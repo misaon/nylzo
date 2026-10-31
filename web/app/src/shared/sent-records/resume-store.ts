@@ -1,6 +1,6 @@
 import { encodeBase64url, MAX_OBJECT_BYTES, parseId, transferSeconds, utf8 } from '@nylzo/core';
 
-import { browserDatabases } from './sent-store.ts';
+import { browserDatabases, committed, databaseExists, openDatabase } from './indexed-database.ts';
 
 const DATABASE = 'nylzo-resume';
 const RECORDS = 'keys';
@@ -60,33 +60,21 @@ function isRecord(value: unknown, id: string, token: string, now: number): value
   );
 }
 
-async function opened(factory: IDBFactory | undefined): Promise<IDBDatabase> {
-  if (!factory) {
-    throw new Error('this browser cannot keep an encrypted reading session');
-  }
-  return new Promise((resolve, reject) => {
-    const request = factory.open(DATABASE, 1);
-    let abandoned = false;
-    const timeout = setTimeout(() => {
-      abandoned = true;
-      reject(new Error('the reading session store did not open'));
-    }, 2000);
-    request.addEventListener('upgradeneeded', () => {
-      const records = request.result.createObjectStore(RECORDS, { keyPath: 'token' });
-      records.createIndex('expiresAt', 'expiresAt');
-    });
-    request.addEventListener('success', () => {
-      clearTimeout(timeout);
-      if (abandoned) {
-        request.result.close();
-      } else {
-        resolve(request.result);
-      }
-    });
-    request.addEventListener('error', () => {
-      clearTimeout(timeout);
-      reject(request.error ?? new Error('the reading session store did not open'));
-    });
+function createRecords(database: IDBDatabase): void {
+  const records = database.createObjectStore(RECORDS, { keyPath: 'token' });
+  records.createIndex('expiresAt', 'expiresAt');
+}
+
+function deleteExpired(records: IDBObjectStore, now: number): void {
+  const expired = records.index('expiresAt').openKeyCursor(IDBKeyRange.upperBound(now));
+  expired.addEventListener('success', () => {
+    const cursor = expired.result;
+    if (!cursor) {
+      return;
+    }
+
+    records.delete(cursor.primaryKey);
+    cursor.continue();
   });
 }
 
@@ -95,28 +83,16 @@ async function withRecords<Result>(
   action: (records: IDBObjectStore) => IDBRequest<Result>,
   now?: number,
 ): Promise<Result> {
-  const database = await opened(factory);
+  const database = await openDatabase(factory, DATABASE, createRecords);
   try {
-    return await new Promise<Result>((resolve, reject) => {
-      const transaction = database.transaction(RECORDS, 'readwrite');
-      const records = transaction.objectStore(RECORDS);
-      if (now !== undefined) {
-        const expired = records.index('expiresAt').openKeyCursor(IDBKeyRange.upperBound(now));
-        expired.addEventListener('success', () => {
-          const cursor = expired.result;
-          if (!cursor) {
-            return;
-          }
-
-          records.delete(cursor.primaryKey);
-          cursor.continue();
-        });
-      }
-      const request = action(records);
-      transaction.addEventListener('complete', () => resolve(request.result));
-      transaction.addEventListener('abort', () => reject(transaction.error ?? new Error('session write aborted')));
-      transaction.addEventListener('error', () => reject(transaction.error ?? new Error('session write failed')));
-    });
+    const transaction = database.transaction(RECORDS, 'readwrite');
+    const records = transaction.objectStore(RECORDS);
+    if (now !== undefined) {
+      deleteExpired(records, now);
+    }
+    const request = action(records);
+    await committed(transaction);
+    return request.result;
   } finally {
     database.close();
   }
@@ -184,12 +160,8 @@ export function discardPlaintextRecovery(storage?: Storage): void {
 }
 
 export async function purgeResumeRecords(factory: IDBFactory | undefined, now: number): Promise<void> {
-  if (!factory || typeof factory.databases !== 'function') {
-    return;
-  }
   try {
-    const databases = await factory.databases();
-    if (databases.some((database) => database.name === DATABASE)) {
+    if (await databaseExists(factory, DATABASE)) {
       await withRecords(factory, (records) => records.count(), now);
     }
   } catch {

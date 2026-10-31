@@ -1,10 +1,9 @@
 package core
 
 import (
-	"bytes"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -26,6 +25,21 @@ type FileMeta struct {
 type Meta struct {
 	Text *string
 	File *FileMeta
+}
+
+// The field order and the minimal escaping of json/v2 are the encoding that spec/vectors.json pins.
+type metaObject struct {
+	Version int         `json:"v"`
+	Text    *string     `json:"text,omitzero"`
+	File    *fileObject `json:"file,omitzero"`
+}
+
+type fileObject struct {
+	Name        string `json:"name"`
+	Mime        string `json:"mime"`
+	Size        int64  `json:"size"`
+	Encoding    string `json:"encoding,omitzero"`
+	EncodedSize int64  `json:"encoded_size,omitzero"`
 }
 
 func (m Meta) Validate() error {
@@ -63,34 +77,24 @@ func encodeStoredMeta(meta Meta, compressedSize int64) ([]byte, error) {
 	if err := meta.Validate(); err != nil {
 		return nil, err
 	}
-	var buffer bytes.Buffer
+	object := metaObject{Version: 1, Text: meta.Text}
 	if compressedSize > 0 {
-		buffer.WriteString(`{"v":2`)
-	} else {
-		buffer.WriteString(`{"v":1`)
-	}
-	if meta.Text != nil {
-		buffer.WriteString(`,"text":`)
-		writeJSONString(&buffer, *meta.Text)
+		object.Version = 2
 	}
 	if meta.File != nil {
-		buffer.WriteString(`,"file":{"name":`)
-		writeJSONString(&buffer, meta.File.Name)
-		buffer.WriteString(`,"mime":`)
-		writeJSONString(&buffer, meta.File.Mime)
-		buffer.WriteString(`,"size":`)
-		buffer.WriteString(strconv.FormatInt(meta.File.Size, 10))
+		object.File = &fileObject{Name: meta.File.Name, Mime: meta.File.Mime, Size: meta.File.Size}
 		if compressedSize > 0 {
-			buffer.WriteString(`,"encoding":"gzip","encoded_size":`)
-			buffer.WriteString(strconv.FormatInt(compressedSize, 10))
+			object.File.Encoding, object.File.EncodedSize = "gzip", compressedSize
 		}
-		buffer.WriteByte('}')
 	}
-	buffer.WriteByte('}')
-	if buffer.Len() > MaxMetaBytes {
+	encoded, err := jsonv2.Marshal(object)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) > MaxMetaBytes {
 		return nil, ErrMeta
 	}
-	return buffer.Bytes(), nil
+	return encoded, nil
 }
 
 func DecodeMeta(data []byte) (Meta, error) {
@@ -155,37 +159,6 @@ func decodeCompression(object map[string]json.RawMessage, meta Meta, version int
 		return 0, ErrMeta
 	}
 	return size, nil
-}
-
-const hexDigits = "0123456789abcdef"
-
-func writeJSONString(buffer *bytes.Buffer, text string) {
-	buffer.WriteByte('"')
-	for _, character := range []byte(text) {
-		switch {
-		case character == '"':
-			buffer.WriteString(`\"`)
-		case character == '\\':
-			buffer.WriteString(`\\`)
-		case character == '\b':
-			buffer.WriteString(`\b`)
-		case character == '\t':
-			buffer.WriteString(`\t`)
-		case character == '\n':
-			buffer.WriteString(`\n`)
-		case character == '\f':
-			buffer.WriteString(`\f`)
-		case character == '\r':
-			buffer.WriteString(`\r`)
-		case character < 0x20:
-			buffer.WriteString(`\u00`)
-			buffer.WriteByte(hexDigits[character>>4])
-			buffer.WriteByte(hexDigits[character&0xf])
-		default:
-			buffer.WriteByte(character)
-		}
-	}
-	buffer.WriteByte('"')
 }
 
 func jsonDepth(data []byte) int {

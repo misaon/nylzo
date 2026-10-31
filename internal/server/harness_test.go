@@ -71,6 +71,14 @@ func (c *fakeClock) Set(now time.Time) {
 	c.now = now
 }
 
+func withClock(clock func() time.Time) Option {
+	return func(server *Server) { server.clock = clock }
+}
+
+func withAfterFunc(after func(delay time.Duration, run func())) Option {
+	return func(server *Server) { server.after = after }
+}
+
 type syncBuffer struct {
 	mutex  sync.Mutex
 	buffer bytes.Buffer
@@ -174,9 +182,9 @@ func newHarness(t *testing.T, settings *config.Server) *testHarness {
 func (h *testHarness) open() {
 	h.t.Helper()
 	server, err := New(&h.settings, h.store, h.blobs,
-		WithClock(h.clock.Now),
+		withClock(h.clock.Now),
 		WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil))),
-		WithAfterFunc(func(delay time.Duration, run func()) {
+		withAfterFunc(func(delay time.Duration, run func()) {
 			h.timersMu.Lock()
 			defer h.timersMu.Unlock()
 			h.timers = append(h.timers, pendingTimer{due: h.clock.Now().Add(delay), run: run})
@@ -186,7 +194,7 @@ func (h *testHarness) open() {
 		h.t.Fatal(err)
 	}
 	h.server = server
-	handler := server.Handler()
+	handler := server.handler
 	h.httpServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages" {
 			h.capture(r)

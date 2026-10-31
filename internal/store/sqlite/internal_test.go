@@ -46,7 +46,7 @@ func TestConnectionsKeepTheirCacheAndTemporaryCopiesInMemory(t *testing.T) {
 	}
 }
 
-func TestMigrationStopsWhenItsContextEnds(t *testing.T) {
+func TestSchemaCreationStopsWhenItsContextEnds(t *testing.T) {
 	t.Parallel()
 	database, err := sql.Open("sqlite", dataSourceName(filepath.Join(t.TempDir(), "nylzo.db"), true))
 	if err != nil {
@@ -55,8 +55,8 @@ func TestMigrationStopsWhenItsContextEnds(t *testing.T) {
 	defer database.Close()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err = migrate(ctx, database); !errors.Is(err, context.Canceled) {
-		t.Fatalf("migrate with a cancelled context: %v", err)
+	if err = createSchema(ctx, database); !errors.Is(err, context.Canceled) {
+		t.Fatalf("schema creation with a cancelled context: %v", err)
 	}
 }
 

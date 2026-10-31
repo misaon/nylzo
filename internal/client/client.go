@@ -16,6 +16,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/misaon/nylzo/internal/loopback"
 )
 
 const (
@@ -96,7 +98,7 @@ func Origin(server string) (string, error) {
 	scheme := strings.ToLower(parsed.Scheme)
 	switch {
 	case scheme == "https":
-	case scheme == "http" && loopback(parsed.Hostname()):
+	case scheme == "http" && loopback.Host(parsed.Hostname()):
 	case scheme == "http":
 		return "", ErrInsecureServer
 	default:
@@ -192,18 +194,10 @@ func loopbackOnly(_, address string, _ syscall.RawConn) error {
 	if err != nil {
 		return err
 	}
-	if ip, parseErr := netip.ParseAddr(host); parseErr != nil || !ip.Unmap().IsLoopback() {
+	if address, parseErr := netip.ParseAddr(host); parseErr != nil || !loopback.Address(address) {
 		return ErrInsecureServer
 	}
 	return nil
-}
-
-func loopback(host string) bool {
-	if strings.EqualFold(host, "localhost") {
-		return true
-	}
-	ip, err := netip.ParseAddr(host)
-	return err == nil && ip.Unmap().IsLoopback()
 }
 
 func apiError(response *http.Response) error {

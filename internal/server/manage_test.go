@@ -122,7 +122,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 				return
 			default:
 			}
-			if _, err := harness.server.SweepOnce(t.Context()); !onlyCheckpointBusy(err) {
+			if _, err := harness.server.sweepOnce(t.Context()); !onlyCheckpointBusy(err) {
 				t.Errorf("sweep in the server process: %v", err)
 			}
 		}
@@ -291,7 +291,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 		}
 	}
 	harness.clock.Advance(2 * time.Hour)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	for i, message := range messages {

@@ -76,7 +76,7 @@ export function checkPatchBinding(patch: Buffer, workspaceManifest: string, lock
   assert.doesNotMatch(lock, /^ {2}deepmerge@4\.3\.1: \{\}$/m, 'Unpatched deepmerge snapshot');
 }
 
-export function checkMerge(merge: Deepmerge): void {
+function checkMerge(merge: Deepmerge): void {
   for (const target of poisoningTargets()) {
     const results = [
       merge(target, poisonedPayload()),

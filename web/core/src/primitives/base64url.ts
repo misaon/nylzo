@@ -26,6 +26,10 @@ export function encodeBase64url(bytes: Uint8Array): string {
   return encoded;
 }
 
+export function decodeBase64url(text: string): Uint8Array<ArrayBuffer> {
+  return decodeBase64urlExact(text, Math.floor((text.length * 3) / 4));
+}
+
 export function decodeBase64urlExact(text: string, byteLength: number): Uint8Array<ArrayBuffer> {
   if (text.length !== encodedLength(byteLength)) {
     throw new EncodingError();

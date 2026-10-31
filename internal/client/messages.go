@@ -57,17 +57,15 @@ type Report struct {
 }
 
 type Metadata struct {
-	State              string `json:"state"`
-	CreatedAt          string `json:"created_at"`
-	ExpiresAt          string `json:"expires_at"`
-	OpensMax           int    `json:"opens_max"`
-	OpensRemaining     int    `json:"opens_remaining"`
-	TTLSeconds         int64  `json:"ttl_s"`
-	PassphraseRequired bool   `json:"passphrase_required"`
-	KDF                int    `json:"kdf_id"`
-	Size               int64  `json:"size"`
-	FirstOpenedAt      string `json:"first_opened_at"`
-	EndedAt            string `json:"ended_at"`
+	State         string `json:"state"`
+	CreatedAt     string `json:"created_at"`
+	ExpiresAt     string `json:"expires_at"`
+	OpensMax      int    `json:"opens_max"`
+	TTLSeconds    int64  `json:"ttl_s"`
+	KDF           int    `json:"kdf_id"`
+	Size          int64  `json:"size"`
+	FirstOpenedAt string `json:"first_opened_at"`
+	EndedAt       string `json:"ended_at"`
 }
 
 type Status struct {

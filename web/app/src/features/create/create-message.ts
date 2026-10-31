@@ -1,7 +1,5 @@
 import {
-  assertStrongPassphrase,
   type ContentKeys,
-  type CryptoRequestKey,
   deriveContent,
   deriveLink,
   formatLink,
@@ -10,7 +8,6 @@ import {
   KDF_SCRYPT,
   type KdfId,
   type LinkKeys,
-  MalformedPassphraseError,
   MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
   type Meta,
@@ -18,13 +15,14 @@ import {
   newHeader,
   newRequestKey,
   newSecret,
+  passphraseProblem,
   PowTimeoutError,
+  type RequestKey,
   requestKey,
   seal,
   sealWithCompression,
   TooLargeError,
   utf8,
-  WeakPassphraseError,
   wipeRequestKey,
 } from '@nylzo/core';
 
@@ -87,7 +85,7 @@ export interface Created {
   readonly link: string;
   readonly expiresAt: string;
   readonly id: string;
-  readonly manageKey: CryptoRequestKey;
+  readonly manageKey: RequestKey;
 }
 
 export interface CreateDependencies {
@@ -113,7 +111,7 @@ type ReportProgress = (progress: CreateProgress) => void;
 interface SealedMessage {
   readonly object: Uint8Array<ArrayBuffer>;
   readonly readPublicKey: Uint8Array<ArrayBuffer>;
-  readonly manageKey: CryptoRequestKey;
+  readonly manageKey: RequestKey;
   readonly verifierKey: Uint8Array<ArrayBuffer> | undefined;
 }
 
@@ -131,19 +129,12 @@ export function passphraseIsWeak(passphrase: string): boolean {
   return characters < WEAK_BELOW_CHARACTERS || words < WEAK_BELOW_WORDS;
 }
 
-function passphraseProblem(passphrase: string): CreateProblem | undefined {
-  try {
-    assertStrongPassphrase(passphrase);
+function weakPassphrase(passphrase: string): CreateProblem | undefined {
+  const problem = passphraseProblem(passphrase);
+  if (problem === undefined) {
     return undefined;
-  } catch (error) {
-    if (error instanceof WeakPassphraseError) {
-      return { field: 'passphrase', code: error.problem === 'short' ? 'too_short' : error.problem };
-    }
-    if (error instanceof MalformedPassphraseError) {
-      return { field: 'passphrase', code: 'malformed' };
-    }
-    throw error;
   }
+  return { field: 'passphrase', code: problem === 'short' ? 'too_short' : problem };
 }
 
 export function validateCreate(input: CreateInput, limits: InstanceLimits): CreateProblem[] {
@@ -164,7 +155,7 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
   if (!Number.isSafeInteger(opensMax) || opensMax < 1 || opensMax > limits.maxOpens) {
     problems.push({ field: 'opens', code: 'out_of_range' });
   }
-  const passphrase = input.passphrase === '' ? undefined : passphraseProblem(input.passphrase);
+  const passphrase = input.passphrase === '' ? undefined : weakPassphrase(input.passphrase);
   if (passphrase) {
     problems.push(passphrase);
   }

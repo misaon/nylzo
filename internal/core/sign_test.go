@@ -118,21 +118,3 @@ func isSmallOrder(key []byte) bool {
 	point, err := new(edwards25519.Point).SetBytes(key)
 	return err == nil && new(edwards25519.Point).MultByCofactor(point).Equal(edwards25519.NewIdentityPoint()) == 1
 }
-
-func BenchmarkValidPublicKey(b *testing.B) {
-	key := core.PublicKey(core.NewSecret())
-	for b.Loop() {
-		core.ValidPublicKey(key[:])
-	}
-}
-
-func BenchmarkVerifyRequest(b *testing.B) {
-	const path = "/api/v1/messages/AAAAAAAAAAAAAAAAAAAAAA"
-	var challenge [core.ChallengeLen]byte
-	signature := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil)
-	for b.Loop() {
-		if !signature.Verify(core.PurposeRead, "GET", path, nil) {
-			b.Fatal("the signature does not verify")
-		}
-	}
-}

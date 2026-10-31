@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -26,14 +25,9 @@ func identity(now time.Time) (credentials, error) {
 	if err != nil {
 		return credentials{}, err
 	}
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return credentials{}, err
-	}
 	certificate := &x509.Certificate{
-		SerialNumber: serial,
-		Subject:      pkix.Name{CommonName: "Nylzo read-only host monitor"},
-		NotBefore:    now.Add(-5 * time.Minute), NotAfter: now.Add(365 * 24 * time.Hour),
+		Subject:   pkix.Name{CommonName: "Nylzo read-only host monitor"},
+		NotBefore: now.Add(-5 * time.Minute), NotAfter: now.Add(365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		BasicConstraintsValid: true,

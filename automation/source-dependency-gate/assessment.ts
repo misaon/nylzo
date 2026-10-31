@@ -27,7 +27,7 @@ export const scannedLockfiles = ['go.mod', 'web/pnpm-lock.yaml', 'automation/pnp
 
 type ScannedLockfile = (typeof scannedLockfiles)[number];
 
-const patchedLockfile: ScannedLockfile = 'web/pnpm-lock.yaml';
+export const patchedLockfile: ScannedLockfile = 'web/pnpm-lock.yaml';
 const toolingLockfile: ScannedLockfile = 'automation/pnpm-lock.yaml';
 const commandPackage = 'github.com/misaon/nylzo/cmd/nylzo';
 const reviewedForbiddenImport = 'golang.org/x/crypto/openpgp';

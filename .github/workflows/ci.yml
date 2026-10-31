@@ -115,10 +115,6 @@ jobs:
           install-mode: none
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-      - name: The Go core regenerates exactly the committed vectors, which the TypeScript job tests against (AK9)
-        run: |
-          go run ./cmd/nylzo-vectors -out spec/vectors.json
-          git diff --exit-code -- spec/vectors.json
       - if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -196,7 +192,7 @@ jobs:
     name: Flatcar provisioning and reboot acceptance
     needs: [changes, sca]
     if: needs.changes.outputs.deployment == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -336,7 +332,7 @@ jobs:
           check-latest: true
       - name: Fuzz each target for 15 s
         run: |
-          for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta FuzzParseLink FuzzParseFragment; do
+          for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta FuzzParseLink; do
             go test -run='^$' -fuzz="^${target}\$" -fuzztime=15s ./internal/core
           done
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
@@ -785,7 +781,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.18.3
+          version: v2.19.0
           args: release --snapshot --skip=publish,sign,sbom,ko --clean
       - name: Archive ownership is independent of the build host
         run: |

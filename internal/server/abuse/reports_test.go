@@ -30,8 +30,8 @@ func spam(id string) *abuse.Report {
 	return &abuse.Report{ID: id, Reason: "spam"}
 }
 
-func dayFile(dataDir string, day time.Time, extension string) string {
-	return filepath.Join(abuse.Directory(dataDir), day.UTC().Format(time.DateOnly)+extension)
+func dayFile(dataDir string, day time.Time) string {
+	return filepath.Join(abuse.Directory(dataDir), day.UTC().Format(time.DateOnly)+abuse.FileExtension)
 }
 
 // TestStoredReportsAreSealedToTheOperator covers D101: the server writes reports it cannot read back.
@@ -51,7 +51,7 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 	if err := reports.Record(now, spam(other)); err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(dayFile(dataDir, now, abuse.FileExtension))
+	data, err := os.ReadFile(dayFile(dataDir, now))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 		t.Fatalf("a partial report: %v", err)
 	}
 	dayStart := time.Date(2026, 10, 22, 0, 0, 0, 0, time.UTC)
-	for _, path := range []string{dayFile(dataDir, now, abuse.FileExtension), abuse.Directory(dataDir)} {
+	for _, path := range []string{dayFile(dataDir, now), abuse.Directory(dataDir)} {
 		info, statErr := os.Stat(path)
 		if statErr != nil || !info.ModTime().Equal(dayStart) || info.Mode().Perm()&0o077 != 0 {
 			t.Fatalf("%s must be private and carry the start of the day: %v %v", path, info, statErr)
@@ -114,35 +114,6 @@ func TestTheLongestReportFitsItsSealedLength(t *testing.T) {
 	}
 }
 
-// TestReportsOfOlderBuildsAreSealedAtStart covers the upgrade: no report stays in the clear.
-func TestReportsOfOlderBuildsAreSealedAtStart(t *testing.T) {
-	t.Parallel()
-	dataDir := t.TempDir()
-	day := time.Now().UTC().Format(time.DateOnly)
-	legacyDay := filepath.Join(abuse.Directory(dataDir), day+".jsonl")
-	if err := os.MkdirAll(abuse.Directory(dataDir), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	line := `{"date":"` + day + `","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"fraud","good_faith":true,"contact":"a@example.cz"}` + "\n"
-	if err := os.WriteFile(legacyDay, []byte(line), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := newReports(dataDir).SealLegacy(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(legacyDay); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("the report in the clear survived: %v", err)
-	}
-	data, err := os.ReadFile(dayFile(dataDir, time.Now(), abuse.FileExtension))
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, err := abuse.Open(operatorKey, data)
-	if err != nil || len(opened) != 1 || opened[0].Contact != "a@example.cz" || opened[0].Reason != "fraud" {
-		t.Fatalf("the sealed copy of an older report: %+v %v", opened, err)
-	}
-}
-
 func TestReportFilesHaveACap(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
@@ -151,7 +122,7 @@ func TestReportFilesHaveACap(t *testing.T) {
 	if err := reports.Record(now, spam(core.NewID().String())); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Truncate(dayFile(dataDir, now, abuse.FileExtension), 64<<20); err != nil {
+	if err := os.Truncate(dayFile(dataDir, now), 64<<20); err != nil {
 		t.Fatal(err)
 	}
 	if err := reports.Record(now, spam(core.NewID().String())); !errors.Is(err, abuse.ErrFull) {
@@ -166,36 +137,25 @@ func TestOldReportsAreDropped(t *testing.T) {
 	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
 	oldDays := []time.Time{now.AddDate(0, 0, -21), now.AddDate(0, 0, -8), now.AddDate(0, 0, -7)}
 	recentDay := now.AddDate(0, 0, -6)
-	legacy := filepath.Join(dataDir, "abuse-reports.jsonl")
 	write := func() {
 		if err := os.MkdirAll(abuse.Directory(dataDir), 0o700); err != nil {
 			t.Fatal(err)
 		}
 		for _, day := range append(oldDays, recentDay) {
-			for _, extension := range []string{abuse.FileExtension, ".jsonl"} {
-				if err := os.WriteFile(dayFile(dataDir, day, extension), []byte("x\n"), 0o600); err != nil {
-					t.Fatal(err)
-				}
+			if err := os.WriteFile(dayFile(dataDir, day), []byte("x\n"), 0o600); err != nil {
+				t.Fatal(err)
 			}
-		}
-		if err := os.WriteFile(legacy, []byte("{}\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(legacy, oldDays[1], oldDays[1]); err != nil {
-			t.Fatal(err)
 		}
 	}
 	check := func(when string) {
 		t.Helper()
-		for _, extension := range []string{abuse.FileExtension, ".jsonl"} {
-			for _, path := range []string{dayFile(dataDir, oldDays[0], extension), dayFile(dataDir, oldDays[2], extension), legacy} {
-				if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-					t.Fatalf("%s kept %s: %v", when, filepath.Base(path), err)
-				}
+		for _, path := range []string{dayFile(dataDir, oldDays[0]), dayFile(dataDir, oldDays[2])} {
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%s kept %s: %v", when, filepath.Base(path), err)
 			}
-			if _, err := os.Stat(dayFile(dataDir, recentDay, extension)); err != nil {
-				t.Fatalf("%s dropped reports younger than 7 days: %v", when, err)
-			}
+		}
+		if _, err := os.Stat(dayFile(dataDir, recentDay)); err != nil {
+			t.Fatalf("%s dropped reports younger than 7 days: %v", when, err)
 		}
 	}
 	write()

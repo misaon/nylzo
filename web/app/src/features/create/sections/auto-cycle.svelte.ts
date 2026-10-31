@@ -16,10 +16,6 @@ export class AutoCycle {
   progress = $state(0);
 
   readonly observe: Attachment<HTMLElement> = (element) => {
-    if (typeof IntersectionObserver === 'undefined') {
-      this.#visible = true;
-      return;
-    }
     const observer = new IntersectionObserver(
       (entries) => {
         this.#visible = entries.some((entry) => entry.isIntersecting);

@@ -1,0 +1,18 @@
+{
+  "pullRequest": 193,
+  "title": "chore(deps): update ghcr.io/renovatebot/renovate docker tag to v44.198.3 (release/v0.2)",
+  "base": "06aea5e572a004c4b4f7d9d2a85e1d7009744789",
+  "head": "1c012f79dc5416bfcd0ce9e412ccdbe6911a9e4e",
+  "omitted": [],
+  "files": [
+    {
+      "path": ".github/workflows/renovate.yml",
+      "after": "        with:\n          token: ${{ steps.app.outputs.token }}\n          configurationFile: ${{ runner.temp }}/renovate-global.json\n          renovate-image: ghcr.io/renovatebot/renovate:44.198.3@sha256:bf344aa39d5b592ec728e1db5c3e1d940a5093a89a4598073efcb18d592d121c\n          mount-docker-socket: false\n          docker-volumes: /tmp:/tmp;${{ github.workspace }}/automation/dependency-sync/sync.ts:/opt/nylzo-dependency-sync.ts:ro\n      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n",
+      "before": "        with:\n          token: ${{ steps.app.outputs.token }}\n          configurationFile: ${{ runner.temp }}/renovate-global.json\n          renovate-image: ghcr.io/renovatebot/renovate:44.192.2@sha256:37960a62ba1faa9079a7c4eead9b3f4470748a64ecd207e06c09fd8858673e17\n          mount-docker-socket: false\n          docker-volumes: /tmp:/tmp;${{ github.workspace }}/automation/dependency-sync/sync.ts:/opt/nylzo-dependency-sync.ts:ro\n      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n"
+    }
+  ],
+  "upstream": {
+    "releaseAssets": {},
+    "tags": {}
+  }
+}

@@ -1,4 +1,4 @@
-import { type CryptoRequestKey, parseId, PUBLIC_KEY_LENGTH } from '@nylzo/core';
+import { parseId, PUBLIC_KEY_LENGTH, type RequestKey } from '@nylzo/core';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RETENTION_DAYS = 7;
@@ -11,7 +11,7 @@ export interface SentRecord {
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly endedAt?: number | undefined;
-  readonly manageKey: CryptoRequestKey;
+  readonly manageKey: RequestKey;
 }
 
 export interface StoredRecord {

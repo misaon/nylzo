@@ -2,8 +2,8 @@ package abuse
 
 import (
 	"crypto/hpke"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -24,7 +24,13 @@ const (
 	maxFilesBytes   = 64 << 20
 )
 
-var ErrFull = errors.New("server: abuse report files reached their size limit")
+var (
+	ErrFull          = errors.New("server: abuse report files reached their size limit")
+	ErrLegacyReports = errors.New(
+		"abuse: the data directory holds abuse reports in the clear from an unreleased development build; " +
+			"nylzo does not convert them, so remove them from the data directory",
+	)
+)
 
 type Reports struct {
 	directory string
@@ -65,64 +71,6 @@ func (r *Reports) Record(now time.Time, report *Report) error {
 	return r.appendToDay(reportDate(now), sealed)
 }
 
-// SealLegacy seals the reports that older builds kept in the clear, then deletes their files.
-func (r *Reports) SealLegacy() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	legacy := []string{filepath.Join(filepath.Dir(r.directory), legacyFile)}
-	entries, err := os.ReadDir(r.directory)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	for _, entry := range entries {
-		if strings.HasSuffix(entry.Name(), legacyExtension) {
-			legacy = append(legacy, filepath.Join(r.directory, entry.Name()))
-		}
-	}
-	var errs []error
-	for _, path := range legacy {
-		errs = append(errs, r.sealLegacyFile(path))
-	}
-	return errors.Join(errs...)
-}
-
-func (r *Reports) sealLegacyFile(path string) error {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	byDay := map[string][]byte{}
-	for line := range strings.Lines(string(data)) {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		var stored Stored
-		if decodeErr := json.Unmarshal([]byte(line), &stored); decodeErr != nil {
-			return decodeErr
-		}
-		if _, dateErr := time.Parse(time.DateOnly, stored.Date); dateErr != nil {
-			return dateErr
-		}
-		sealed, sealErr := sealStored(r.key, &stored)
-		if sealErr != nil {
-			return sealErr
-		}
-		byDay[stored.Date] = append(byDay[stored.Date], sealed...)
-	}
-	if mkdirErr := os.MkdirAll(r.directory, 0o700); mkdirErr != nil {
-		return mkdirErr
-	}
-	for day, sealed := range byDay {
-		if appendErr := r.appendToDay(day, sealed); appendErr != nil {
-			return appendErr
-		}
-	}
-	return removeFile(path)
-}
-
 func (r *Reports) appendToDay(day string, sealed []byte) error {
 	path := filepath.Join(r.directory, day+FileExtension)
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
@@ -143,7 +91,28 @@ func (r *Reports) appendToDay(day string, sealed []byte) error {
 	return nil
 }
 
-// Prune deletes the day files older than the retention, sealed or from older builds.
+func RefuseLegacyReports(dataDir string) error {
+	_, err := os.Lstat(filepath.Join(dataDir, legacyFile))
+	switch {
+	case err == nil:
+		return fmt.Errorf("%w: %s", ErrLegacyReports, legacyFile)
+	case !errors.Is(err, fs.ErrNotExist):
+		return err
+	default:
+	}
+	entries, err := os.ReadDir(Directory(dataDir))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), legacyExtension) {
+			return fmt.Errorf("%w: %s", ErrLegacyReports, filepath.Join(directoryName, entry.Name()))
+		}
+	}
+	return nil
+}
+
+// Prune deletes the day files older than the retention.
 func Prune(dataDir string, now time.Time) error {
 	return pruneDirectory(Directory(dataDir), now)
 }
@@ -151,10 +120,6 @@ func Prune(dataDir string, now time.Time) error {
 func pruneDirectory(directory string, now time.Time) error {
 	cutoff := now.Add(-Retention)
 	var errs []error
-	legacy := filepath.Join(filepath.Dir(directory), legacyFile)
-	if info, err := os.Stat(legacy); err == nil && info.ModTime().Before(cutoff) {
-		errs = append(errs, removeFile(legacy))
-	}
 	entries, err := os.ReadDir(directory)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		errs = append(errs, err)
@@ -195,9 +160,6 @@ func reportDate(moment time.Time) string {
 
 func reportDay(name string) (string, bool) {
 	day, sealed := strings.CutSuffix(name, FileExtension)
-	if !sealed {
-		day, sealed = strings.CutSuffix(name, legacyExtension)
-	}
 	if _, err := time.Parse(time.DateOnly, day); !sealed || err != nil {
 		return "", false
 	}

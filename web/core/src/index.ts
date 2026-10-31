@@ -1,30 +1,17 @@
-export { open, type Opened, type OpenedPayload, type Payload, seal, sealWithCompression } from './envelope/envelope.ts';
+export { open, seal, sealWithCompression } from './envelope/envelope.ts';
 export { type Header, newHeader, type Policy } from './envelope/header.ts';
-export type { FileMeta, Meta } from './envelope/meta.ts';
+export type { Meta } from './envelope/meta.ts';
 export {
-  EncodingError,
-  FlagsError,
-  HeaderError,
-  IntegrityError,
-  KdfError,
   KdfMismatchError,
-  LinkError,
   LinkRetiredKdfError,
   LinkVersionError,
   MalformedPassphraseError,
-  MetaError,
-  type PassphraseProblem,
-  PlaintextError,
-  PolicyError,
-  PowError,
   PowTimeoutError,
   TooLargeError,
-  VersionError,
-  WeakPassphraseError,
 } from './errors.ts';
 export { type ContentKeys, deriveContent, deriveLink, type LinkKeys } from './keys/derive.ts';
 export { assertWellFormedPassphrase, KDF_NONE, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
-export { assertStrongPassphrase, generatePassphrase, MIN_PASSPHRASE_CHARACTERS } from './keys/passphrase.ts';
+export { generatePassphrase, MIN_PASSPHRASE_CHARACTERS, passphraseProblem } from './keys/passphrase.ts';
 export {
   HEADER_LENGTH,
   ID_LENGTH,
@@ -44,14 +31,13 @@ export {
   parseLink,
   parsePath,
 } from './link/link.ts';
-export { encodeBase64url, encodedLength } from './primitives/base64url.ts';
+export { decodeBase64url, encodeBase64url, encodedLength } from './primitives/base64url.ts';
 export { utf8 } from './primitives/bytes.ts';
 export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
-export { type SolveOptions, solvePow } from './request/proof-of-work.ts';
+export { solvePow } from './request/proof-of-work.ts';
 export {
   authorizationHeader,
   CHALLENGE_LENGTH,
-  type CryptoRequestKey,
   newRequestKey,
   parseChallenge,
   PUBLIC_KEY_LENGTH,
@@ -62,7 +48,6 @@ export {
   type RequestKey,
   requestKey,
   requestMessage,
-  type RequestSignature,
   signRequest,
   verifierHeader,
   wipeRequestKey,

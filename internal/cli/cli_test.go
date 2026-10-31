@@ -94,7 +94,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 		t.Fatal(err)
 	}
 	instance := &testServer{directory: directory, release: make(chan struct{})}
-	handler := apiServer.Handler()
+	handler := apiServer.HTTPServer().Handler
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		instance.requests.Add(1)
 		if instance.hold != nil && instance.hold(r) {

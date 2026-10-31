@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { EncodingError } from '../errors.ts';
-import { decodeBase64urlExact, encodeBase64url } from './base64url.ts';
+import { decodeBase64url, decodeBase64urlExact, encodeBase64url } from './base64url.ts';
 
 describe('canonical base64url (spec 1.1)', () => {
   it('round trips every length from 0 to 64 bytes', () => {
     for (let length = 0; length <= 64; length++) {
       const bytes = crypto.getRandomValues(new Uint8Array(length));
       expect(decodeBase64urlExact(encodeBase64url(bytes), length)).toEqual(bytes);
+      expect(decodeBase64url(encodeBase64url(bytes))).toEqual(bytes);
     }
   });
 
@@ -30,5 +31,9 @@ describe('canonical base64url (spec 1.1)', () => {
     ['an empty string', '', 16],
   ])('rejects %s', (_, text, byteLength) => {
     expect(() => decodeBase64urlExact(text, byteLength)).toThrow(EncodingError);
+  });
+
+  it.each(['AQJ', 'A', 'AQ==', 'AQ\n'])('rejects %j at any length', (text) => {
+    expect(() => decodeBase64url(text)).toThrow(EncodingError);
   });
 });

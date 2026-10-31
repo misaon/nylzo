@@ -1,0 +1,18 @@
+{
+  "pullRequest": 186,
+  "title": "chore(deps): update caddy:2.11.7 docker digest to 36c24ad (main)",
+  "base": "4025fd127a6b02727d4b8c3d4ea7ee1da301705d",
+  "head": "5ca3ba0ace96445f1dce04beb946455e309b752d",
+  "omitted": [],
+  "files": [
+    {
+      "path": "deploy/compose/compose.yaml",
+      "after": "        max-file: \"3\"\n\n  caddy:\n    image: caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e\n    restart: unless-stopped\n    read_only: true\n    cap_drop: [ALL]\n",
+      "before": "        max-file: \"3\"\n\n  caddy:\n    image: caddy:2.11.7@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489\n    restart: unless-stopped\n    read_only: true\n    cap_drop: [ALL]\n"
+    }
+  ],
+  "upstream": {
+    "releaseAssets": {},
+    "tags": {}
+  }
+}

@@ -264,7 +264,7 @@ func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, settings *confi
 	if err != nil {
 		return nil, err
 	}
-	httpServer := httptest.NewServer(server.Handler())
+	httpServer := httptest.NewServer(server.handler)
 	t.Cleanup(httpServer.Close)
 	return httpServer, nil
 }
@@ -469,7 +469,7 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := json.Marshal(build.Manifest("v1.2.3", settings.PublicURL))
+	want, err := json.Marshal(build.Manifest("v1.2.3", settings.PublicURL, settings.Build))
 	if err != nil {
 		t.Fatal(err)
 	}
