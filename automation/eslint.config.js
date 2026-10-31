@@ -58,6 +58,23 @@ export default defineConfig(
     },
   },
   {
+    files: ['source-dependency-gate/**', 'web-install/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: String.raw`^(?!node:|\./[^/]+$|\.\./(source-dependency-gate|web-install)/[^/]+$)`,
+              message:
+                'The source dependency gate runs before automation dependencies are installed; use node: modules.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.js'],
     extends: [typescript.configs.disableTypeChecked],
   },

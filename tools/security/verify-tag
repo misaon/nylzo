@@ -1,38 +1,71 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-[[ "$GITHUB_REPOSITORY" = misaon/nylzo ]] || exit 1
-[[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 1
-reference="refs/tags/${GITHUB_REF_NAME}"
-git fetch --force --no-tags origin "${reference}:${reference}" "+refs/heads/main:refs/remotes/origin/main"
-[[ "$(git cat-file -t "$reference")" = tag ]] || exit 1
-[[ "$(git rev-parse "${reference}^{commit}")" = "$GITHUB_SHA" ]] || exit 1
-[[ "$(git cat-file tag "$reference" | sed -n '/^$/q;s/^tag //p')" = "$GITHUB_REF_NAME" ]] || exit 1
-on_main=false
-if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then on_main=true; fi
-object=$(git rev-parse "$reference")
-gh api "repos/${GITHUB_REPOSITORY}/git/tags/${object}" > "${RUNNER_TEMP}/release-tag.json"
-if [[ "$(jq -r .verification.verified "${RUNNER_TEMP}/release-tag.json")" = true ]]; then
-  [[ "$on_main" = true ]] || exit 1
-  [[ -n "$RELEASE_TAGGER_EMAIL" ]] || exit 1
-  [[ "$(jq -r .tagger.email "${RUNNER_TEMP}/release-tag.json")" = "$RELEASE_TAGGER_EMAIL" ]] || exit 1
+readonly semantic_version='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+
+fail() {
+  echo "verify-tag: $1" >&2
+  exit 1
+}
+
+verify_tag_object() {
+  [[ "$(git cat-file -t "$reference")" = tag ]] || fail 'the release tag must be an annotated tag'
+  [[ "$(git rev-parse "${reference}^{commit}")" = "$GITHUB_SHA" ]] || fail 'the tag must point at the released commit'
+  [[ "$(git cat-file tag "$reference" | sed -n '/^$/q;s/^tag //p')" = "$GITHUB_REF_NAME" ]] ||
+    fail 'the tag object must carry the pushed tag name'
+}
+
+verify_owner_release() {
+  [[ "$on_main" = true ]] || fail 'an owner-signed release must come from main'
+  [[ -n "$RELEASE_TAGGER_EMAIL" ]] || fail 'RELEASE_TAGGER_EMAIL is not configured'
+  [[ "$(jq -r .tagger.email "$tag_details")" = "$RELEASE_TAGGER_EMAIL" ]] || fail 'the tagger is not the release owner'
   echo 'environment=release' >> "$GITHUB_OUTPUT"
-else
-  [[ "${SECURITY_AUTOMATION_ENABLED:-}" = true ]] || exit 1
-  [[ -n "${DEPENDENCY_APP_SLUG:-}" && "$GITHUB_ACTOR" = "${DEPENDENCY_APP_SLUG}[bot]" ]] || exit 1
+}
+
+verify_automatic_release() {
+  [[ "${SECURITY_AUTOMATION_ENABLED:-}" = true ]] || fail 'automatic releases are disabled'
+  [[ -n "${DEPENDENCY_APP_SLUG:-}" && "$GITHUB_ACTOR" = "${DEPENDENCY_APP_SLUG}[bot]" ]] ||
+    fail 'only the dependency App may push an automatic release tag'
   bash "$(dirname "$0")/verify-keyless-tag" "$GITHUB_REF_NAME" "$GITHUB_SHA" workflow_run
   if [[ "$on_main" != true ]]; then
-    claims=$(git cat-file tag "$reference" | sed -n '/^$/,$p')
-    [[ $(grep -c '^Base-Release:' <<< "$claims") = 1 && $(grep -c '^Release-Kind:' <<< "$claims") = 1 ]] || exit 1
-    base=$(sed -n 's/^Base-Release: //p' <<< "$claims")
-    kind=$(sed -n 's/^Release-Kind: //p' <<< "$claims")
-    [[ "$base" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && "$kind" = security ]] || exit 1
-    [[ "${base%.*}" = "${GITHUB_REF_NAME%.*}" && "${GITHUB_REF_NAME##*.}" = "$(( ${base##*.} + 1 ))" ]] || exit 1
-    [[ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)" = "$base" ]] || exit 1
-    branch="release/${base%.*}"
-    git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
-    [[ "$(git rev-parse "refs/remotes/origin/$branch")" = "$GITHUB_SHA" ]] || exit 1
-    git merge-base --is-ancestor "$base" "$GITHUB_SHA"
+    verify_maintenance_patch
   fi
   echo 'environment=release-automatic' >> "$GITHUB_OUTPUT"
+}
+
+verify_maintenance_patch() {
+  local claims base kind branch
+  claims=$(git cat-file tag "$reference" | sed -n '/^$/,$p')
+  [[ $(grep -c '^Base-Release:' <<< "$claims") = 1 && $(grep -c '^Release-Kind:' <<< "$claims") = 1 ]] ||
+    fail 'a maintenance tag must carry exactly one Base-Release and one Release-Kind'
+  base=$(sed -n 's/^Base-Release: //p' <<< "$claims")
+  kind=$(sed -n 's/^Release-Kind: //p' <<< "$claims")
+  [[ "$base" =~ $semantic_version && "$kind" = security ]] || fail 'only security patches leave main'
+  [[ "${base%.*}" = "${GITHUB_REF_NAME%.*}" && "${GITHUB_REF_NAME##*.}" = "$(( ${base##*.} + 1 ))" ]] ||
+    fail 'a maintenance patch must be the next patch after its base release'
+  [[ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)" = "$base" ]] ||
+    fail 'the base must be the latest published release'
+  branch="release/${base%.*}"
+  git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+  [[ "$(git rev-parse "refs/remotes/origin/$branch")" = "$GITHUB_SHA" ]] || fail "the tag must sit on the tip of $branch"
+  git merge-base --is-ancestor "$base" "$GITHUB_SHA" || fail 'the patch must descend from its base release'
+}
+
+[[ "$GITHUB_REPOSITORY" = misaon/nylzo ]] || fail 'releases come only from misaon/nylzo'
+[[ "$GITHUB_REF_NAME" =~ $semantic_version ]] || fail "$GITHUB_REF_NAME is not a vX.Y.Z tag"
+reference="refs/tags/${GITHUB_REF_NAME}"
+git fetch --force --no-tags origin "${reference}:${reference}" "+refs/heads/main:refs/remotes/origin/main"
+verify_tag_object
+
+on_main=false
+if git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+  on_main=true
+fi
+tag_object=$(git rev-parse "$reference")
+tag_details="${RUNNER_TEMP}/release-tag.json"
+gh api "repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}" > "$tag_details"
+if [[ "$(jq -r .verification.verified "$tag_details")" = true ]]; then
+  verify_owner_release
+else
+  verify_automatic_release
 fi
