@@ -15,6 +15,7 @@
 | [web/e2e](../../../web/e2e)                                                                                         | Playwright tests, including CLI/browser interoperability                                 |
 | [skills/nylzo](../../../skills/nylzo)                                                                               | Agent Skills instructions for using the CLI                                              |
 | [deploy/compose](../../../deploy/compose)                                                                           | Self-hosting example with Caddy and Docker secrets                                       |
+| [deploy/caddy](../../../deploy/caddy)                                                                               | Caddy build that each release signs and ships                                            |
 | [deploy/hetzner-flatcar](../../../deploy/hetzner-flatcar)                                                           | Hetzner Flatcar provisioning, signed self-updates and host policy                        |
 | [assets/brand](../../../assets/brand)                                                                               | Official light/dark logos and brand colors                                               |
 | [.github/](../../../.github), [.goreleaser.yaml](../../../.goreleaser.yaml)                                         | CI, community forms, dependency updates, and release configuration                       |

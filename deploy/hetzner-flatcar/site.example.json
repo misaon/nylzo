@@ -11,7 +11,7 @@
   "contact": "",
   "hosting": "Hetzner Cloud",
   "dailyCreates": 250,
-  "initialRelease": "v0.1.5",
+  "initialRelease": "",
   "automaticUpdates": true,
   "publicAccess": false,
   "dnsZone": "nylzo.example.org",

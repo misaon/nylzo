@@ -94,6 +94,17 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
   }
 });
 
+test("any change to the Caddy module runs dependency review and every check that builds or scans Caddy", () => {
+  for (const file of ["deploy/caddy/go.mod", "deploy/caddy/go.sum", "deploy/caddy/main.go", "deploy/caddy/build-tags"]) {
+    const plan = planChecks([file], "pull_request");
+    assert.equal(plan.full, true, file);
+    assert.equal(plan.dependencies, true, file);
+    for (const job of ["go", "compose", "build", "deployment", "repository", "sca"] as const) {
+      assert.equal(plan.jobs[job], true, `${file}: ${job}`);
+    }
+  }
+});
+
 test("fork PRs keep tests and reports while the OIDC publishing job stays skipped", () => {
   const plan = planChecks(["web/app/src/App.svelte", "internal/server/router.go"], "pull_request", false);
   assert.equal(plan.jobs.web, true);

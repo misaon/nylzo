@@ -88,7 +88,7 @@ depends = ["install:web"]
 run = "node automation/source-dependency-gate/main.ts .sca-reports --sbom"
 
 [tasks."lint:go"]
-description = "Go modules, build, vet, go fix, golangci-lint and govulncheck"
+description = "Go modules, build, vet, go fix, golangci-lint and govulncheck, with the Caddy module and its release tags"
 run = [
   "go mod verify",
   "go mod tidy -diff",
@@ -97,6 +97,9 @@ run = [
   "go fix -diff ./...",
   "golangci-lint run ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
+  "go -C deploy/caddy mod verify",
+  "go -C deploy/caddy mod tidy -diff",
+  '''cd deploy/caddy && go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -tags="$(cat build-tags)" ./...''',
 ]
 
 [tasks."lint:web"]

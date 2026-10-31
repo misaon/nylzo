@@ -32,10 +32,6 @@ export function parseDependencyReport(value: unknown): DependencyReport {
   return { results: results.map((result, index) => parseLockfileReport(result, `report.results[${index}]`)) };
 }
 
-export function hasVulnerabilities(report: DependencyReport): boolean {
-  return report.results.some((result) => result.packages.some((locked) => locked.vulnerabilities.length > 0));
-}
-
 export function lockedPackageCount(report: DependencyReport): number {
   return report.results.flatMap((result) => result.packages).length;
 }

@@ -104,6 +104,16 @@
       "enabled": true
     },
     {
+      "description": "Only maintenance branches still pin the official Caddy image in Compose.",
+      "matchBaseBranches": [
+        "main"
+      ],
+      "matchManagers": [
+        "docker-compose"
+      ],
+      "enabled": false
+    },
+    {
       "matchManagers": [
         "terraform"
       ],
@@ -207,8 +217,8 @@
     },
     {
       "matchPackageNames": [
-        "caddy",
-        "caddyserver/caddy"
+        "github.com/caddyserver/caddy/v2",
+        "caddy"
       ],
       "groupName": "Caddy"
     },

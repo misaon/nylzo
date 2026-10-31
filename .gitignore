@@ -24,11 +24,12 @@ node_modules/
 .env.*
 !.env.example
 /deploy/compose/secrets/
+/deploy/compose/caddy-state/
 /.coverage/
 /web/core/coverage/
 /web/app/coverage/
 /vulnerability-reports/
-/grype-compose.json
+/grype-compose*.json
 
 # Local development instructions and research
 /.agents/

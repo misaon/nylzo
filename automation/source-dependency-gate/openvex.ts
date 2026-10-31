@@ -1,5 +1,7 @@
 import type { VexStatement } from './assessment.ts';
 
+import { goBuilds } from './go-imports.ts';
+
 export interface EvidenceSubject {
   readonly commit: string;
   readonly release: Release | undefined;
@@ -17,21 +19,27 @@ export function openVexDocument(
   subject: EvidenceSubject,
   timestamp: Date,
 ): object {
-  const product =
-    subject.release === undefined
-      ? `${repositoryUrl}/tree/${subject.commit}`
-      : `pkg:golang/github.com/misaon/nylzo@v${subject.release.version}`;
   return {
     '@context': 'https://openvex.dev/ns/v0.2.0',
     '@id': `${repositoryUrl}/commit/${subject.commit}#vex-${subject.release?.requestedVersion ?? 'source'}`,
     author: repositoryUrl,
     timestamp: timestamp.toISOString(),
     version: 1,
-    statements: statements.map(({ component, ...statement }) => ({
+    statements: statements.map(({ component, lockfile, ...statement }) => ({
       ...statement,
-      products: [{ '@id': product, subcomponents: [{ '@id': component }] }],
+      products: [{ '@id': productOf(subject, lockfile), subcomponents: [{ '@id': component }] }],
     })),
   };
+}
+
+function productOf(subject: EvidenceSubject, lockfile: string): string {
+  const directory = goBuilds[lockfile]?.directory ?? '.';
+  if (subject.release === undefined) {
+    const tree = `${repositoryUrl}/tree/${subject.commit}`;
+    return directory === '.' ? tree : `${tree}/${directory}`;
+  }
+  const release = `pkg:golang/github.com/misaon/nylzo@v${subject.release.version}`;
+  return directory === '.' ? release : `${release}#${directory}`;
 }
 
 export function openVexFileName(release: Release | undefined): string {

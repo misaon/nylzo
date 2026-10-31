@@ -24,7 +24,7 @@ qemu-img create -f qcow2 "$directory/installed.qcow2" 40G
 expected=$!
 accelerator=tcg
 if [[ -r /dev/kvm && -w /dev/kvm ]]; then accelerator=kvm; fi
-timeout 1500 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
+timeout 600 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
   -nographic -monitor none -no-reboot -drive "file=$directory/installed.qcow2,format=qcow2,if=virtio,detect-zeroes=unmap,discard=unmap" \
   -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
   -kernel "$directory/flatcar_production_pxe.vmlinuz" -initrd "$directory/initrd" \

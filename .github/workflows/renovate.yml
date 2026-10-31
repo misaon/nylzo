@@ -21,7 +21,7 @@ jobs:
       github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
       vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    name: Vulnerability inventory of the published release and main
+    name: Vulnerability inventory of the maintained releases and main
     runs-on: ubuntu-latest
     timeout-minutes: 35
     concurrency:
@@ -36,19 +36,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Find the latest immutable release
+      - name: Find the latest immutable release and the latest of every maintained line
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq 'select(.immutable and (.draft | not)) | .tag_name')
-          [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: refs/tags/${{ steps.release.outputs.tag }}
-          path: published-source
-          persist-credentials: false
+          latest=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq 'select(.immutable and (.draft | not)) | .tag_name')
+          releases=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" --jq '.[] | select(.immutable and (.draft | not) and (.prerelease | not)) | .tag_name')
+          lines=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/branches" --jq '.[].name | select(test("^release/v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$")) | ltrimstr("release/")')
+          tags="$latest"
+          for line in $lines; do
+            tag=$(grep -E "^${line//./\\.}\\.(0|[1-9][0-9]*)$" <<< "$releases" | sort --version-sort | tail -n 1 || true)
+            if [[ -n "$tag" && " $tags " != *" $tag "* ]]; then tags="$tags $tag"; fi
+          done
+          for tag in $tags; do [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; done
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+      - name: Check out each of those releases
+        env:
+          TAGS: ${{ steps.release.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            git fetch --no-tags --depth 1 origin "+refs/tags/${tag}:refs/tags/${tag}"
+            git worktree add --detach "published/${tag}" "refs/tags/${tag}"
+          done
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
@@ -56,13 +66,14 @@ jobs:
           install_args: node pnpm cosign grype osv-scanner
           cache: false
       - run: pnpm --dir automation install --frozen-lockfile
-      - name: Scan the published release, both source trees and every pinned tool
+      - name: Scan those releases, every source tree and every pinned tool
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: >-
-          node automation/vulnerability-scan/inventory.ts --published published-source --main .
-          --release-tag "$RELEASE_TAG" --reports "$RUNNER_TEMP/vulnerability-inventory"
+          TAGS: ${{ steps.release.outputs.tags }}
+        run: |
+          arguments=()
+          for tag in $TAGS; do arguments+=(--published "published/${tag}" --release-tag "$tag"); done
+          node automation/vulnerability-scan/inventory.ts "${arguments[@]}" --main . --reports "$RUNNER_TEMP/vulnerability-inventory"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

@@ -14,7 +14,7 @@ current_caddy=$(cat "$state/caddy.tag")
 previous_caddy=$(cat "$state/caddy.previous.tag" 2>/dev/null || true)
 for directory in /opt/nylzo/caddy/*; do
   name=${directory##*/}
-  if [[ "$name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$name" != "$current_caddy" && "$name" != "$previous_caddy" ]]; then
+  if [[ "$name" =~ ^(release-)?v[0-9]+\.[0-9]+\.[0-9]+$ && "$name" != "$current_caddy" && "$name" != "$previous_caddy" ]]; then
     rm -rf -- "$directory"
   fi
 done

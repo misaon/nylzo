@@ -5,6 +5,7 @@
     {
       "id": "GHSA-gcqx-w48m-w2h4",
       "ecosystem": "npm",
+      "lockfile": "web/pnpm-lock.yaml",
       "package": "deepmerge",
       "version": "4.3.1",
       "patchSha256": "c2cb33d5ff7ad8e752bdd9ec3a8e8e7520ad9b4da374307a6633372158ece14e",
@@ -16,12 +17,24 @@
     {
       "id": "GO-2026-5932",
       "ecosystem": "Go",
+      "lockfile": "go.mod",
       "package": "golang.org/x/crypto",
       "version": "0.58.0",
       "reviewUntil": "2027-01-25T00:00:00Z",
       "forbiddenImport": "golang.org/x/crypto/openpgp",
       "justification": "vulnerable_code_not_present",
       "impact": "The advisory concerns the deprecated OpenPGP packages. None of Nylzo's six supported build targets imports or links those packages. Other packages from golang.org/x/crypto remain in use. This assessment does not apply to a build that adds OpenPGP."
+    },
+    {
+      "id": "GO-2026-5932",
+      "ecosystem": "Go",
+      "lockfile": "deploy/caddy/go.mod",
+      "package": "golang.org/x/crypto",
+      "version": "0.58.0",
+      "reviewUntil": "2027-01-25T00:00:00Z",
+      "forbiddenImport": "golang.org/x/crypto/openpgp",
+      "justification": "vulnerable_code_not_present",
+      "impact": "The advisory concerns the deprecated OpenPGP packages. Neither Linux build of the Caddy that Nylzo releases imports or links them; both use the nobadger, nomysql and nopgx tags. Other packages from golang.org/x/crypto remain in use. This assessment does not apply to a build that adds OpenPGP."
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Verify a release
 
-Use only [misaon/nylzo releases](https://github.com/misaon/nylzo/releases) and `ghcr.io/misaon/nylzo`. Published release tags and assets are immutable. Choose a stable version from the releases page; the examples below use `v0.1.1`.
+Use only [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. Choose a stable version from the releases page; the examples below use `v0.1.1`.
 
 Install [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) from their official sources. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`.
 
@@ -24,7 +24,7 @@ gh attestation verify "$archive" --repo misaon/nylzo \
   --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
 ```
 
-Verify the signature **before** trusting the checksums, and require all checks to succeed before extracting or running the binary. On macOS without `sha256sum`, calculate `shasum -a 256 "$archive"` and compare its full value with that archive's entry in the signature-verified manifest. On Windows, use `Get-FileHash -Algorithm SHA256` for the same comparison.
+Verify the signature **before** trusting the checksums, and require all checks to succeed before extracting or running the binary. Releases that ship Caddy list its Linux archives, `nylzo-caddy_<version>_linux_amd64.tar.gz` and `_arm64`, in the same signed `checksums.txt`; verify them the same way. On macOS without `sha256sum`, calculate `shasum -a 256 "$archive"` and compare its full value with that archive's entry in the signature-verified manifest. On Windows, use `Get-FileHash -Algorithm SHA256` for the same comparison.
 
 Each release includes per-archive SPDX SBOMs. The signed manifest also lists the embedded web files. [Versioning and releases](../maintainers/Releasing.md) explains the version, source commit, source date, and modified-source flag embedded in the CLI, server, and web client.
 
@@ -71,7 +71,23 @@ gh attestation verify "oci://${image}" --repo misaon/nylzo \
 printf 'NYLZO_IMAGE=%s\n' "$image"
 ```
 
-Copy the printed `NYLZO_IMAGE` into your Compose `.env` only after verification succeeds. A mutable `latest` tag alone does not pin the image you verified. See [Self-hosting](Self-hosting.md) for deployment.
+A release that ships Caddy also has a Caddy image. Verify it against the same tag:
+
+```sh
+image="ghcr.io/misaon/nylzo-caddy:${tag#v}"
+digest=$(docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}')
+image="ghcr.io/misaon/nylzo-caddy@${digest}"
+
+cosign verify "$image" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
+gh attestation verify "oci://${image}" --repo misaon/nylzo \
+  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
+printf 'NYLZO_CADDY_IMAGE=%s\n' "$image"
+```
+
+Copy the printed `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE` into your Compose `.env` only after verification succeeds. A mutable `latest` tag alone does not pin the image you verified. See [Self-hosting](Self-hosting.md) for deployment.
 
 ## Rebuild independently
 
@@ -86,7 +102,7 @@ mise run release:verify
 mise run release:verify-image
 ```
 
-Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives and the embedded client, and compares their hashes. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
+Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives, the Caddy archives and the embedded client, and compares their hashes. `release:verify-image` compares the binaries in both images with that rebuild. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
 
 `release:verify-image` requires Docker. It verifies the image signature and provenance, then compares both Linux image binaries with the local rebuild.
 

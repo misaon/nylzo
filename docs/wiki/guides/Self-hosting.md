@@ -4,13 +4,15 @@ Deployment profiles live under [`deploy/`](../../../deploy). The Compose example
 
 The [Compose example](../../../deploy/compose) runs Nylzo behind Caddy with TLS. Use a Linux server with Docker Engine, Docker Compose v2, a domain pointing to the server, and ports 80/tcp, 443/tcp, and 443/udp open.
 
+Caddy comes from the same release as Nylzo. The release workflow builds `ghcr.io/misaon/nylzo-caddy` from [deploy/caddy](../../../deploy/caddy) with the repository's pinned Go toolchain and dependency versions, so a Go or dependency fix does not wait for an upstream image rebuild.
+
 The TLS endpoint sees ciphertext, request signatures, and leases, and can replace the web client. Terminate TLS on infrastructure you trust with the server itself. Read the [security model](Security-model.md) and [operations guide](Operations.md) before deployment.
 
 ## Prepare the deployment
 
-1. Download and [verify a release](Verify-a-release.md). Verify the container image's signature and provenance against the selected tag and pin its digest.
+1. Download and [verify a release](Verify-a-release.md). Verify the signatures and provenance of both container images against the selected tag and pin their digests.
 2. Copy [compose.yaml](../../../deploy/compose/compose.yaml), [Caddyfile](../../../deploy/compose/Caddyfile), and [.env.example](../../../deploy/compose/.env.example) into a private deployment directory. Copy `.env.example` to `.env`.
-3. Set `NYLZO_IMAGE` to the digest-pinned reference printed by the verification guide. Set `NYLZO_DOMAIN` to your lowercase domain and `NYLZO_GLOBAL_DAILY_CREATES` to a cap your disk can support.
+3. Set `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE` to the digest-pinned references printed by the verification guide. Set `NYLZO_DOMAIN` to your lowercase domain and `NYLZO_GLOBAL_DAILY_CREATES` to a cap your disk can support.
 4. Fill in `NYLZO_OPERATOR`, `NYLZO_CONTACT` (email or HTTPS address), and `NYLZO_HOSTING`. They appear on `/transparency`. Compose derives `NYLZO_PUBLIC_URL` from the domain for canonical URLs, previews, and the sitemap.
 
 Generate a server pepper in the deployment directory. The container runs as UID 65532 and must be the only account able to read the file:
@@ -23,7 +25,15 @@ sudo chown 65532:65532 secrets/pepper
 sudo chmod 0400 secrets/pepper
 ```
 
-Run this only for a new deployment; do not overwrite an existing pepper during an upgrade. Keep it outside the database. Losing the pepper makes existing tokens unverifiable and live messages inaccessible. A leaked pepper combined with server data enables additional guessing attacks; see the [protocol](../reference/Protocol.md).
+Create Caddy's state directory for its certificates and ACME account. Caddy runs as UID 65533, separate from Nylzo's 65532, so its account owns neither the pepper nor Nylzo's data, even outside the container:
+
+```sh
+sudo install -d -o 65533 -g 65533 -m 0700 caddy-state
+```
+
+Neither UID may belong to an account on the host. Compose refuses to start when `caddy-state` is missing, rather than creating a directory Caddy cannot write.
+
+Run the pepper commands only for a new deployment; do not overwrite an existing pepper during an upgrade. Keep it outside the database. Losing the pepper makes existing tokens unverifiable and live messages inaccessible. A leaked pepper combined with server data enables additional guessing attacks; see the [protocol](../reference/Protocol.md).
 
 On your own workstation, create the abuse-reporting key with a verified CLI:
 
@@ -44,6 +54,7 @@ Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client 
 ## What the example configures
 
 - Nylzo has a read-only root filesystem, drops all Linux capabilities, and sets `no-new-privileges`. Only `nylzo-data` is writable. The pepper is a Docker secret file, rather than a process environment value.
+- Caddy has the same restrictions and runs as UID and GID 65533, apart from Nylzo's 65532. Its container sets `net.ipv4.ip_unprivileged_port_start` to 80, which lets it bind ports 80 and 443 without `NET_BIND_SERVICE`. Only the `caddy-state` directory, which holds certificates and the ACME account, is writable.
 - The network has IPv4 and IPv6. Caddy uses fixed addresses `172.30.80.2` and `fd1f:9791:e50b::2`. Nylzo trusts only those proxy addresses, and Caddy replaces client-supplied forwarding headers. Other containers use the upper half of each subnet. If these ranges conflict with your network, change the subnets, Caddy addresses, and trusted proxies together.
 - Docker Engine's default IPv6 firewall support is required. Without the IPv6 network, Docker's userland proxy can make all IPv6 users share one source-address rate-limit bucket. Docker Desktop also proxies incoming traffic and can collapse source addresses; use Linux with Docker Engine for production.
 - The global daily cap defaults to 2,000 creations. Proof of work starts at 1,000; at the cap, creation returns 503 while reading continues. Address limits reset with the process, so the global cap protects disk capacity against clients rotating addresses.
@@ -75,7 +86,9 @@ Takedown deletes the server's message blob without reading its content. Use an o
 
 ## Upgrade and rotate keys
 
-Verify the new image against its exact tag, update the digest-pinned `NYLZO_IMAGE`, and run `docker compose up -d`. Do not overwrite the pepper or reporting key. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
+Verify both new images against their exact tag, update the digest-pinned `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE`, and run `docker compose up -d`. Do not overwrite the pepper or reporting key. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
+
+A deployment that still runs the official `caddy` image must also take the new `compose.yaml` and create `caddy-state` as shown above. Caddy then runs as UID 65533, keeps its state in that directory and requests a new certificate on first start. Once HTTPS works, remove the old volumes with `docker volume rm nylzo_caddy-data nylzo_caddy-config`.
 
 For pepper rotation, keep the previous pepper as a second Docker secret and configure `NYLZO_PEPPER_PREVIOUS_FILE`, then generate the new pepper. Retain the previous pepper for seven days so live messages remain accessible. See [Operations](Operations.md#configuration).
 

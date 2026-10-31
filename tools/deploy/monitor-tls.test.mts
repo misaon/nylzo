@@ -11,10 +11,12 @@ import { readHostStatus, requireClientAuthentication, validateHostStatus } from 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
 const docker = (...args: string[]) => execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
 
-test("Caddy serves host status only to the pinned mTLS identity, isolated from the public listener", { skip: !available, timeout: 180000 }, async () => {
+test("Caddy serves host status only to the pinned mTLS identity, isolated from the public listener", { skip: !available, timeout: 600000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-monitor-tls-"));
   const fixtureDirectory = join(directory, "public");
+  const binaryDirectory = join(directory, "bin");
   mkdirSync(fixtureDirectory);
+  mkdirSync(binaryDirectory);
   const name = `nylzo-monitor-test-${randomBytes(6).toString("hex")}`;
   try {
     for (const identity of ["trusted", "foreign"]) execFileSync("go", ["run", "./tools/deploy/monitor-identity", join(directory, identity)], { stdio: "pipe" });
@@ -31,10 +33,14 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     writeFileSync(join(fixtureDirectory, "Caddyfile"), configuration);
     chmodSync(fixtureDirectory, 0o755);
     for (const file of ["Caddyfile", "client.pem", "status.json"]) chmodSync(join(fixtureDirectory, file), 0o644);
-    const compose = readFileSync(resolve("deploy/compose/compose.yaml"), "utf8");
-    const image = /image: (caddy:[^\s]+@sha256:[a-f0-9]{64})/u.exec(compose)?.[1];
-    assert(image, "The integration test requires the pinned official Caddy image");
-    docker("run", "--detach", "--name", name, "--read-only", "--cap-drop", "ALL", "--cap-add", "NET_BIND_SERVICE", "--security-opt", "no-new-privileges:true", "--memory", "128m", "--pids-limit", "64", "--tmpfs", "/data", "--tmpfs", "/config", "--tmpfs", "/status", "--env", "NYLZO_DOMAIN=nylzo.test", "--publish", "127.0.0.1::14443", "--publish", "127.0.0.1::8443", "--mount", `type=bind,source=${fixtureDirectory},target=/fixture,readonly`, image, "caddy", "run", "--config", "/fixture/Caddyfile", "--adapter", "caddyfile");
+    const architecture = docker("version", "--format", "{{.Server.Arch}}").trim();
+    execFileSync("go", ["-C", "deploy/caddy", "build", "-trimpath", "-buildvcs=false", `-tags=${readFileSync("deploy/caddy/build-tags", "utf8").trim()}`, "-o", join(binaryDirectory, "caddy"), "."], { env: { ...process.env, CGO_ENABLED: "0", GOOS: "linux", GOARCH: architecture }, stdio: "pipe", timeout: 480000 });
+    chmodSync(binaryDirectory, 0o755);
+    chmodSync(join(binaryDirectory, "caddy"), 0o755);
+    const runtimeTest = readFileSync(resolve("tools/deploy/runtime.test.mts"), "utf8");
+    const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(runtimeTest)?.[1];
+    assert(image, "The integration test runs the release Caddy build in the pinned Ubuntu image of the runtime tests");
+    docker("run", "--detach", "--name", name, "--read-only", "--user", "2001:2001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--memory", "128m", "--pids-limit", "64", "--tmpfs", "/data:mode=1777", "--tmpfs", "/config:mode=1777", "--tmpfs", "/status:mode=1777", "--env", "XDG_DATA_HOME=/data", "--env", "XDG_CONFIG_HOME=/config", "--env", "NYLZO_DOMAIN=nylzo.test", "--publish", "127.0.0.1::14443", "--publish", "127.0.0.1::8443", "--mount", `type=bind,source=${fixtureDirectory},target=/fixture,readonly`, "--mount", `type=bind,source=${binaryDirectory},target=/opt/nylzo/bin,readonly`, image, "/opt/nylzo/bin/caddy", "run", "--config", "/fixture/Caddyfile", "--adapter", "caddyfile");
     const status = (document: unknown) => execFileSync("docker", ["exec", "--interactive", name, "sh", "-ec", "cat > /status/next.json\nchmod 0644 /status/next.json\nmv -f /status/next.json /status/status.json"], { input: JSON.stringify(document), stdio: ["pipe", "pipe", "pipe"], timeout: 10000 });
     status(healthy);
     let ca = "";

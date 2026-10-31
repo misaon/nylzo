@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Verify image signatures and provenance, then compare its binaries with the local release rebuild"
+#MISE description="Verify image signatures and provenance, then compare their binaries with the local release rebuild"
 set -euo pipefail
 
 tag="$(git describe --exact-match --tags HEAD)"
 [[ "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
-image="ghcr.io/misaon/nylzo:${tag#v}"
 verification="$(mktemp -d)"
 container=""
 cleanup() {
@@ -12,23 +11,29 @@ cleanup() {
   rm -rf "$verification"
 }
 trap cleanup EXIT
-cosign verify "$image" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}" \
-  > "$verification/signatures.json"
-digest="$(jq -er '[.[].critical.image."docker-manifest-digest"] | unique | if length == 1 then .[0] else error("ambiguous image digest") end' "$verification/signatures.json")"
-[[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-image="ghcr.io/misaon/nylzo@${digest}"
-gh attestation verify "oci://${image}" --repo misaon/nylzo \
-  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
-  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
-for architecture in amd64 arm64; do
-  docker pull -q --platform "linux/$architecture" "$image" > /dev/null
-  container="$(docker create --platform "linux/$architecture" "$image")"
-  docker cp "$container:/ko-app/nylzo" "dist/image-$architecture"
-  docker rm "$container" > /dev/null
-  container=""
-  local_build=(dist/nylzo_linux_"${architecture}"_*/nylzo)
-  cmp "dist/image-$architecture" "${local_build[0]}"
-  printf 'linux/%s: the verified image binary matches the local build\n' "$architecture"
-done
+verify() {
+  local repository="$1" binary="$2" image digest
+  image="ghcr.io/misaon/${repository}:${tag#v}"
+  cosign verify "$image" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}" \
+    > "$verification/signatures.json"
+  digest="$(jq -er '[.[].critical.image."docker-manifest-digest"] | unique | if length == 1 then .[0] else error("ambiguous image digest") end' "$verification/signatures.json")"
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+  image="ghcr.io/misaon/${repository}@${digest}"
+  gh attestation verify "oci://${image}" --repo misaon/nylzo \
+    --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+    --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
+  for architecture in amd64 arm64; do
+    docker pull -q --platform "linux/$architecture" "$image" > /dev/null
+    container="$(docker create --platform "linux/$architecture" "$image")"
+    docker cp "$container:/ko-app/$binary" "dist/image-$binary-$architecture"
+    docker rm "$container" > /dev/null
+    container=""
+    local_build=(dist/"${binary}"_linux_"${architecture}"_*/"$binary")
+    cmp "dist/image-$binary-$architecture" "${local_build[0]}"
+    printf '%s linux/%s: the verified image binary matches the local build\n' "$repository" "$architecture"
+  done
+}
+verify nylzo nylzo
+verify nylzo-caddy caddy
