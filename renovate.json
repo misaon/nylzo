@@ -323,6 +323,18 @@
         "major"
       ],
       "enabled": false
+    },
+    {
+      "description": "typescript-eslint and svelte-check accept TypeScript only below 7; lift this once both support it.",
+      "matchPackageNames": [
+        "typescript"
+      ],
+      "matchFileNames": [
+        "web/package.json",
+        "web/app/package.json",
+        "automation/package.json"
+      ],
+      "allowedVersions": "<7"
     }
   ],
   "customManagers": [
