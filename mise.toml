@@ -55,12 +55,13 @@ description = "Delete the local messages and the pepper in .dev"
 run = "rm -rf .dev"
 
 [tasks."test:go"]
-description = "Go tests with the race detector and coverage, then the AK21 and AK22 timing tests on their own"
+description = "Go tests with the race detector and coverage, then the timing tests (AK21, AK22, uniform key-check work) on their own"
 run = [
   "mkdir -p .coverage",
-  "go test -race -covermode=atomic -coverpkg=./... -coverprofile=.coverage/go.out -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./...",
+  "go test -race -covermode=atomic -coverpkg=./... -coverprofile=.coverage/go.out -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength|TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck)$' ./...",
   "go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/",
   "go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/",
+  "go test -race -count=1 -run '^TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck$' ./internal/server/",
 ]
 
 [tasks."test:web"]

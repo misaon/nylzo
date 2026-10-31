@@ -96,7 +96,7 @@ jobs:
       - name: Modules, build, vet, go fix, golangci-lint and govulncheck
         id: lint
         run: mise run lint:go
-      - name: Race tests with coverage, then the AK21 and AK22 timing tests alone
+      - name: Race tests with coverage, then the timing tests alone
         if: success() || steps.lint.conclusion == 'failure'
         run: |
           mise run test:go
