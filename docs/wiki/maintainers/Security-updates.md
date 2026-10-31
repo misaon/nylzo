@@ -22,7 +22,7 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 - The maintenance branch takes only security fixes. Ordinary updates reach production with the next planned release.
 - After CI succeeds on a merge into `release/vX.Y`, `release-tag.yml` signs `vX.Y.(Z+1)` with gitsign and the workflow's GitHub OIDC identity and pushes it with the Nylzo Dependency Updates App. The tag carries `Release-Kind: security`, `Base-Release` and `Policy-Commit`.
 - `release.yml` publishes only a tag whose keyless signature names `release-tag.yml` on `main`, whose base is the latest release, and which sits on the tip of `release/vX.Y`. It rebuilds, scans, signs and attests every artifact as for any release.
-- If a merged maintenance fix waits more than an hour for its release, the `monitor.yml` watchdog fails and GitHub notifies the maintainer. Re-run failed CI; a tag is never moved or reused.
+- If a merged maintenance fix waits more than an hour for its release, the `monitor.yml` watchdog fails and GitHub notifies the maintainer. Re-run failed CI; a tag is never moved or reused. GitHub may drop scheduled runs under load, so the watchdog also runs after every `ci`, `Release tag` and `release` run that did not come from a pull request.
 
 ## Planned releases
 
