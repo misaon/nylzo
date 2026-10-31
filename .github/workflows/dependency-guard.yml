@@ -1,0 +1,43 @@
+name: Dependency guard
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    branches: [main, "release/v*"]
+
+permissions: {}
+
+concurrency:
+  group: dependency-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Dependency guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # read both commits, CODEOWNERS and the changed files through the API
+      pull-requests: read # read the pull request, its commits and its reviews
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - name: Check out the default branch, never the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: automation/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - run: pnpm --dir automation install --frozen-lockfile
+      - name: Pass only verified dependency updates and code-owner approved changes
+        run: node automation/dependency-guard/main.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
+          DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}

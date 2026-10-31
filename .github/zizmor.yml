@@ -7,3 +7,10 @@ rules:
       # and never promotes a CI build artifact. Keep caching validation tools
       # and package downloads; release-checks.test.mts guards this separation.
       - ci.yml
+  dangerous-triggers:
+    ignore:
+      # The required Dependency guard check runs on pull_request_target so a
+      # pull request cannot replace the guard. It checks out only the default
+      # branch without credentials, runs no pull request code, reads the pull
+      # request through the API with a read-only token and uses no secrets.
+      - dependency-guard.yml
