@@ -79,6 +79,9 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
+	if err := abuse.RefuseLegacyReports(settings.DataDir); err != nil {
+		return nil, err
+	}
 	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
 	if err != nil {
 		return nil, err
@@ -111,9 +114,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(settings.DataDir, settings.ReportKey, server.logger)
-	if legacyErr := server.reports.SealLegacy(); legacyErr != nil {
-		server.logger.Error("abuse-legacy", "err", logging.ErrorText(legacyErr))
-	}
 	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
 	server.handler = server.routes()
 	return server, nil

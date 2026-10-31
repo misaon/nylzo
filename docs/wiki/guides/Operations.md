@@ -79,7 +79,7 @@ Cleanup runs every five minutes. For an external scheduler, set `NYLZO_SWEEP_INT
 bin/nylzo sweep-once
 ```
 
-Use an absolute `NYLZO_DATA_DIR`. `sweep-once` needs an existing database and blob directory, does not create or migrate them, and does not need the pepper. Upgrade the server before upgrading a separately scheduled cleanup image.
+Use an absolute `NYLZO_DATA_DIR`. `sweep-once` needs an existing database and blob directory, does not create them, and does not need the pepper. Upgrade the server before upgrading a separately scheduled cleanup image.
 
 ## Logging and upgrades
 
@@ -87,11 +87,11 @@ Request logs contain minute-rounded time, HTTP method, route pattern, and status
 
 Burn and cancel persist the intended end state before deleting a blob. A later request or cleanup completes an interrupted operation. Expiration follows `expires_at`. A missing blob for a live message without an end state returns 500 rather than deleting the message or consuming an open. Cleanup runs at startup; orphaned-blob inspection is retried after failure. `sweep-once` returns a nonzero status if any cleanup step fails.
 
-Schema 5 stores hashed IDs and sealed message records. Upgrading an unreleased development database from an earlier schema discards its messages because they cannot be sealed without the secrets in their links; daily cleanup removes their orphaned blobs. No published release used those older schemas. Stop old server processes before opening a database with a newer server, back up according to your retention policy, and do not downgrade a migrated database. The server refuses newer schema versions. Historical token formats and retired passphrase profiles are not compatible; ask senders to create new links.
+Schema 5 stores hashed IDs and sealed message records, and every release uses it. The server and `sweep-once` refuse a database with an older or newer schema version and name that version. Only unreleased development builds used older schemas; Nylzo does not convert their data, so start such an instance with an empty data directory. Stop old server processes before opening a database with a newer server, back up according to your retention policy, and do not downgrade a database. Historical token formats and retired passphrase profiles are not compatible; ask senders to create new links.
 
 ## Abuse reports and takedown
 
-Reports are sealed to the operator's public key with HPKE (MLKEM768-X25519) and padded to a fixed size. The server cannot decrypt them. Daily UTC files are stored as `data/abuse/YYYY-MM-DD.sealed`; their timestamps are normalized to the start of the day. Legacy plaintext `.jsonl` reports are sealed and removed on startup. Reports older than seven days are removed during cleanup and before new reports.
+Reports are sealed to the operator's public key with HPKE (MLKEM768-X25519) and padded to a fixed size. The server cannot decrypt them. Daily UTC files are stored as `data/abuse/YYYY-MM-DD.sealed`; their timestamps are normalized to the start of the day. The server refuses to start while plaintext `.jsonl` reports from an unreleased development build remain in the data directory. Reports older than seven days are removed during cleanup and before new reports.
 
 The reason is sanitized: controls become spaces, invisible formatting characters are removed, link fragments and long tokens are redacted, and length is capped. A decrypted report contains the UTC date, message ID, sanitized reason, good-faith declaration, and an optional contact email. Reports about ended messages are accepted but not stored. At most three reports per message per day are stored; a valid additional submission receives `{"status":"limit"}`. One reporter can exhaust this message-wide allowance. The total reporting files are capped at 64 MiB; an overflowing submission returns 503 and logs `abuse-file-full`. Process and remove those files to free space.
 

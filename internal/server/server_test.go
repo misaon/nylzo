@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"net/http/httptrace"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -597,6 +599,29 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 		change(&settings)
 		if _, err := New(&settings, database, nil); !errors.Is(err, config.ErrInvalid) {
 			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
+	t.Parallel()
+	database := openStore(t)
+	for _, name := range []string{"abuse-reports.jsonl", filepath.Join("abuse", "2026-10-20.jsonl")} {
+		settings := baseSettings(pepperA, nil)
+		settings.DataDir = t.TempDir()
+		path := filepath.Join(settings.DataDir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		report := []byte(`{"date":"2026-10-20","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"spam"}` + "\n")
+		if err := os.WriteFile(path, report, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(settings, database, nil); !errors.Is(err, abuse.ErrLegacyReports) {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if kept, err := os.ReadFile(path); err != nil || !bytes.Equal(kept, report) {
+			t.Fatalf("the refused start changed %s: %v", name, err)
 		}
 	}
 }
