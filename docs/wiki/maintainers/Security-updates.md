@@ -46,7 +46,7 @@ In CI, a changed tool or image fails only when it adds a high or critical vulner
 
 ## Credentials
 
-The Nylzo Dependency Updates App is installed on `misaon/nylzo` only. Its key lives in the main-only `dependency-updates` environment. Jobs request reduced, revocable tokens: Renovate gets contents, pull requests and workflows write and checks, statuses, actions and Dependabot alerts read; the tagger gets contents and workflows write. The App may bypass required review on pull requests and may create release tags; tag immutability and the integrity ruleset have no bypass. Renovate runs with scripts, plugins and unsafe executions disabled; its only post-upgrade command is the read-only mounted `automation/dependency-sync/sync.ts` from `main`.
+The Nylzo Dependency Updates App is installed on `misaon/nylzo` only. Its key lives in the main-only `dependency-updates` environment. Jobs request reduced, revocable tokens: Renovate gets contents, pull requests and workflows write and actions and Dependabot alerts read, and reads the check results of this public repository without a separate permission; the tagger gets contents and workflows write. The App may bypass required review on pull requests and may create release tags; tag immutability and the integrity ruleset have no bypass. Renovate runs with scripts, plugins and unsafe executions disabled; its only post-upgrade command is the read-only mounted `automation/dependency-sync/sync.ts` from `main`.
 
 ## Recovery
 

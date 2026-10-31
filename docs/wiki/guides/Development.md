@@ -36,6 +36,8 @@ mise run e2e
 
 `mise run build` embeds the production web client in `bin/nylzo` and injects the same build identity into Go and Vite. Untagged and modified checkouts identify themselves as development builds. See [versioning](../maintainers/Releasing.md#one-source-of-version-identity).
 
+[web/.browserslistrc](../../../web/.browserslistrc) defines the supported browsers as `baseline newly available`, resolved from the Baseline data pinned in the web lockfile. Vite derives the client's JavaScript and CSS build targets from it.
+
 ## Which CI checks run?
 
 CI selects test and build jobs from changed paths on pull requests and pushes to `main`. [dorny/paths-filter](https://github.com/dorny/paths-filter) reads the Git diff, including deleted paths and both sides of renames. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
