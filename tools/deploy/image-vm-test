@@ -20,6 +20,8 @@ done
 (cd "$directory/oem" && find usr -print0 | cpio --null --create --format=newc --quiet) | gzip > "$directory/oem.cpio.gz"
 cat "$directory/flatcar_production_pxe_image.cpio.gz" "$directory/oem.cpio.gz" > "$directory/initrd"
 qemu-img create -f qcow2 "$directory/installed.qcow2" 40G
+(bzip2 --decompress --stdout "$directory/flatcar_production_hetzner_image.bin.bz2" | dd of="$directory/expected.raw" bs=4M conv=sparse status=none) &
+expected=$!
 accelerator=tcg
 if [[ -r /dev/kvm && -w /dev/kvm ]]; then accelerator=kvm; fi
 timeout 1500 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2 -m 4096 \
@@ -28,6 +30,6 @@ timeout 1500 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 
   -kernel "$directory/flatcar_production_pxe.vmlinuz" -initrd "$directory/initrd" \
   -append 'flatcar.first_boot=1 console=tty0 console=ttyS0,115200n8' > "$directory/install.log" 2>&1 || { tail -200 "$directory/install.log"; exit 1; }
 grep --fixed-strings NYLZO_IMAGE_VERIFIED_AND_INSTALLED "$directory/install.log" || { tail -200 "$directory/install.log"; exit 1; }
-bzip2 --decompress --stdout "$directory/flatcar_production_hetzner_image.bin.bz2" | dd of="$directory/expected.raw" bs=4M conv=sparse status=none
+wait "$expected"
 qemu-img compare -f qcow2 -F raw "$directory/installed.qcow2" "$directory/expected.raw"
 echo 'NYLZO_IMAGE_VM_ACCEPTANCE_PASSED'

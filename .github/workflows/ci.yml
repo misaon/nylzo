@@ -202,8 +202,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
-      - run: tools/deploy/image-vm-test
-      - run: tools/deploy/vm-test
+      - name: Install from the Hetzner image and boot the runtime twice, in two VMs at once
+        run: |
+          set -o pipefail
+          (tools/deploy/image-vm-test 2>&1 | sed -u 's/^/image-vm-test | /') &
+          image=$!
+          (tools/deploy/vm-test 2>&1 | sed -u 's/^/vm-test | /') &
+          runtime=$!
+          status=0
+          wait "$image" || status=$?
+          wait "$runtime" || status=$?
+          exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
