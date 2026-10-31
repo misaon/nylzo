@@ -468,7 +468,7 @@ jobs:
         working-directory: web/e2e
         env:
           BROWSER: ${{ matrix.browser }}
-          E2E_WEBKIT_WORKERS: ${{ matrix.workers }}
+          E2E_WEBKIT_WORKERS: ${{ matrix.workers || 1 }}
         run: pnpm e2e --project="$BROWSER"
       - if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
