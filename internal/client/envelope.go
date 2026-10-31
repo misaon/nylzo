@@ -9,10 +9,12 @@ import (
 	"net/http"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 type Envelope struct {
-	Policy core.Policy
+	Policy envelope.Policy
 	KDF    core.KDF
 	Flags  int
 	Object []byte
@@ -34,7 +36,7 @@ func (c *Client) Claim(
 	request := signedRequest{
 		method:   http.MethodPost,
 		path:     messagePath(id) + "/claim",
-		purpose:  core.PurposeRead,
+		purpose:  signing.PurposeRead,
 		seed:     read,
 		verifier: verifier,
 	}
@@ -50,11 +52,11 @@ func (c *Client) Claim(
 	if onLease != nil {
 		onLease(lease)
 	}
-	envelope, err := readEnvelope(response)
+	received, err := readEnvelope(response)
 	if err != nil {
 		return Claimed{Lease: lease}, err
 	}
-	return Claimed{Lease: lease, Envelope: envelope}, nil
+	return Claimed{Lease: lease, Envelope: received}, nil
 }
 
 func (c *Client) Blob(
@@ -67,7 +69,7 @@ func (c *Client) Blob(
 	request := signedRequest{
 		method:  http.MethodGet,
 		path:    messagePath(id) + "/blob",
-		purpose: core.PurposeRead,
+		purpose: signing.PurposeRead,
 		seed:    read,
 		headers: map[string]string{"X-Nylzo-Lease": lease},
 	}
@@ -83,7 +85,7 @@ func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, 
 	request := signedRequest{
 		method:  http.MethodPost,
 		path:    messagePath(id) + "/ack",
-		purpose: core.PurposeRead,
+		purpose: signing.PurposeRead,
 		seed:    read,
 		headers: map[string]string{"X-Nylzo-Lease": lease},
 	}
@@ -95,11 +97,11 @@ func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, 
 }
 
 func readEnvelope(response *http.Response) (Envelope, error) {
-	envelope, err := decodePolicy(response.Header.Get("X-Nylzo-Policy"))
+	received, err := decodePolicy(response.Header.Get("X-Nylzo-Policy"))
 	if err != nil {
 		return Envelope{}, err
 	}
-	limit := core.ObjectLimit(core.MaxFileBytes)
+	limit := envelope.ObjectLimit(envelope.MaxFileBytes)
 	if response.ContentLength > limit {
 		return Envelope{}, ErrResponse
 	}
@@ -111,8 +113,8 @@ func readEnvelope(response *http.Response) (Envelope, error) {
 	if length > limit || (response.ContentLength >= 0 && length != response.ContentLength) {
 		return Envelope{}, ErrResponse
 	}
-	envelope.Object = object
-	return envelope, nil
+	received.Object = object
+	return received, nil
 }
 
 func decodePolicy(header string) (Envelope, error) {
@@ -136,7 +138,7 @@ func decodePolicy(header string) (Envelope, error) {
 		return Envelope{}, ErrResponse
 	}
 	return Envelope{
-		Policy: core.Policy{OpensMax: uint16(opensMax), TTLSeconds: uint32(ttl)},
+		Policy: envelope.Policy{OpensMax: uint16(opensMax), TTLSeconds: uint32(ttl)},
 		KDF:    core.KDF(kdf),
 		Flags:  *policy.Flags,
 	}, nil

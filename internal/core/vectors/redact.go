@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/report"
 )
 
 type Redact struct {
@@ -40,8 +41,8 @@ func (f *File) redact() error {
 		{"emoji", "\U0001F510 secret"},
 	}
 	for _, vector := range cases {
-		redacted := core.RedactReason(vector.reason)
-		if len(redacted) >= core.MaxReasonBytes {
+		redacted := report.RedactReason(vector.reason)
+		if len(redacted) >= report.MaxReasonBytes {
 			return fmt.Errorf("redact %s: the case must stay under the length limit", vector.name)
 		}
 		f.Redact = append(f.Redact, Redact{Name: vector.name, Reason: vector.reason, Redacted: redacted})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 type Request struct {
@@ -31,12 +32,12 @@ func (f *File) request() error {
 	id := deterministicID("request").String()
 	messagePath := "/api/v1/messages/" + id
 	cases := []requestCase{
-		{"metadata read", core.PurposeRead, "GET", messagePath, nil},
-		{"claim verifier", core.PurposeVerifier, "POST", messagePath + "/claim", nil},
-		{"status manage", core.PurposeManage, "GET", messagePath + "/status", nil},
+		{"metadata read", signing.PurposeRead, "GET", messagePath, nil},
+		{"claim verifier", signing.PurposeVerifier, "POST", messagePath + "/claim", nil},
+		{"status manage", signing.PurposeManage, "GET", messagePath + "/status", nil},
 		{
 			"abuse report with a body",
-			core.PurposeRead,
+			signing.PurposeRead,
 			"POST",
 			"/api/v1/abuse",
 			[]byte(`{"id":"` + id + `","reason":"spam"}`),
@@ -54,12 +55,12 @@ func (f *File) request() error {
 
 func requestVector(vector *requestCase) (Request, error) {
 	seed := deterministic32("request-seed/" + vector.name)
-	challenge := [core.ChallengeLen]byte(deterministic("request-challenge/"+vector.name, core.ChallengeLen))
-	signature := core.SignRequest(seed, vector.purpose, vector.method, vector.path, challenge, vector.body)
+	challenge := [signing.ChallengeLen]byte(deterministic("request-challenge/"+vector.name, signing.ChallengeLen))
+	signature := signing.SignRequest(seed, vector.purpose, vector.method, vector.path, challenge, vector.body)
 	if !signature.Verify(vector.purpose, vector.method, vector.path, vector.body) {
 		return Request{}, fmt.Errorf("vectors: request signature %q does not verify", vector.name)
 	}
-	message := core.RequestMessage(vector.purpose, vector.method, vector.path, &challenge, vector.body)
+	message := signing.RequestMessage(vector.purpose, vector.method, vector.path, &challenge, vector.body)
 	request := Request{
 		Name:      vector.name,
 		Seed:      hex.EncodeToString(seed[:]),
@@ -72,7 +73,7 @@ func requestVector(vector *requestCase) (Request, error) {
 		Message:   hex.EncodeToString(message),
 		Signature: core.Encode(signature.Value[:]),
 	}
-	if vector.purpose == core.PurposeVerifier {
+	if vector.purpose == signing.PurposeVerifier {
 		request.Verifier = signature.VerifierHeader()
 	} else {
 		request.Authorization = signature.Authorization()

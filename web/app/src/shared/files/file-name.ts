@@ -2,7 +2,7 @@ const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{115F}\u{1160}\u{3164}\u{FFA0}]/gu
 const RESERVED = /[/\\:*?"<>|]/g;
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[\d¹²³]|lpt[\d¹²³]|conin\$|conout\$)\s*(?:\.|$)/iu;
 const MAX_NAME_BYTES = 255;
-const MAX_EXTENSION_CHARACTERS = 16;
+const MAX_EXTENSION_BYTES = 16;
 const FALLBACK_NAME = 'nylzo';
 
 const SAFE_EXTENSIONS = new Set([
@@ -53,7 +53,7 @@ function truncateBytes(text: string, maxBytes: number): string {
 
 export function splitFileName(name: string): { readonly stem: string; readonly extension: string } {
   const dot = name.lastIndexOf('.');
-  return dot > 0 && name.length - dot - 1 <= MAX_EXTENSION_CHARACTERS
+  return dot > 0 && byteLength(name.slice(dot + 1)) <= MAX_EXTENSION_BYTES
     ? { stem: name.slice(0, dot), extension: name.slice(dot) }
     : { stem: name, extension: '' };
 }

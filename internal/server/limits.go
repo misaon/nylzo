@@ -24,7 +24,7 @@ func (s *Server) clientAddress(r *http.Request) netip.Addr {
 
 // allowAPI asks the token buckets in order, so a refused source or range takes no later token.
 func (s *Server) allowAPI(r *http.Request) bool {
-	now := s.clock()
+	now := time.Now()
 	address := s.clientAddress(r)
 	return s.sourceLimiter.Allow(s.addressKey.Source(address), now) &&
 		s.rangeLimiter.Allow(s.addressKey.Range(address), now) &&
@@ -36,7 +36,7 @@ func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string, limit int64) bool {
-	now := s.clock()
+	now := time.Now()
 	address := s.clientAddress(r)
 	hour := ratelimit.Hour(now)
 	retry := s.counters.Count([]ratelimit.Hit{

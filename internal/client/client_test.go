@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 func serve(t *testing.T, handler http.HandlerFunc) *Client {
@@ -151,7 +153,7 @@ func TestErrorsCarryTheServerReason(t *testing.T) {
 func TestServerStringsAreValidated(t *testing.T) {
 	t.Parallel()
 	challenge := `{"challenge":"` + core.Encode(
-		make([]byte, core.ChallengeLen),
+		make([]byte, signing.ChallengeLen),
 	) + `","expires_at":"2026-10-24T00:00:00Z"}`
 	for _, body := range []string{
 		`{"state":"\u001b]0;pwned\u0007","opens_used":0,"opens_max":1,"failed_passphrase_attempts":0}`,
@@ -177,7 +179,7 @@ func TestServerStringsAreValidated(t *testing.T) {
 
 func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 	t.Parallel()
-	limit := core.ObjectLimit(core.MaxFileBytes)
+	limit := envelope.ObjectLimit(envelope.MaxFileBytes)
 	policy := core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":0}`))
 	for name, test := range map[string]struct {
 		length string

@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/server/crossorigin"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -56,8 +57,16 @@ func (s *Server) routes() http.Handler {
 	routed := logging.Route(mux)
 	return logging.Requests(
 		s.logger,
-		s.noticeForwarded(securityHeaders(s.crossOriginGuard(s.spendChallenges(prefetchGuard(s.throttle(routed)))))),
+		s.noticeForwarded(securityHeaders(crossorigin.Guard(
+			s.settings.PublicURL,
+			http.HandlerFunc(refuseCrossOrigin),
+			s.spendChallenges(prefetchGuard(s.throttle(routed))),
+		))),
 	)
+}
+
+func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusForbidden, errCrossOrigin)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -72,15 +81,16 @@ func securityHeaders(next http.Handler) http.Handler {
 func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := ratelimit.ForwardingHeader(r)
-		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) && s.firstNoticeThisHour() {
+		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) &&
+			s.firstNoticeThisHour(time.Now()) {
 			s.logger.WarnContext(r.Context(), "forwarded-header-ignored", "header", header)
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) firstNoticeThisHour() bool {
-	hour := s.clock().UTC().Truncate(time.Hour).Unix()
+func (s *Server) firstNoticeThisHour(now time.Time) bool {
+	hour := now.UTC().Truncate(time.Hour).Unix()
 	hourSeconds := int64(time.Hour / time.Second)
 	for last := s.forwardedHour.Load(); hour > last || hour < last-hourSeconds; last = s.forwardedHour.Load() {
 		if s.forwardedHour.CompareAndSwap(last, hour) {
@@ -95,12 +105,12 @@ type spentKey struct{}
 // spendChallenges spends a signed request's challenge before any other check, whatever the answer will be.
 func (s *Server) spendChallenges(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		signature, err := core.ParseAuthorization(r.Header.Get("Authorization"))
+		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
 		if !strings.HasPrefix(r.URL.Path, "/api/") || err != nil {
 			next.ServeHTTP(w, r)
 			return
 		}
-		spent, err := s.challenges.Spend(r.Context(), signature.Challenge, s.clock())
+		spent, err := s.challenges.Spend(r.Context(), signature.Challenge, time.Now())
 		if err != nil {
 			s.writeInternal(w, r, err)
 			return
@@ -112,8 +122,8 @@ func (s *Server) spendChallenges(next http.Handler) http.Handler {
 	})
 }
 
-func spentBy(r *http.Request, challenge [core.ChallengeLen]byte) bool {
-	spent, ok := r.Context().Value(spentKey{}).(*[core.ChallengeLen]byte)
+func spentBy(r *http.Request, challenge [signing.ChallengeLen]byte) bool {
+	spent, ok := r.Context().Value(spentKey{}).(*[signing.ChallengeLen]byte)
 	return ok && *spent == challenge
 }
 
@@ -171,6 +181,7 @@ var (
 	errUnavailable    = apiError{Error: "unavailable"}
 	errWorkRequired   = apiError{Error: "pow"}
 	errIDToken        = apiError{Error: "id_token"}
+	errCrossOrigin    = apiError{Error: "cross_origin"}
 	errInternal       = apiError{Error: "internal"}
 )
 

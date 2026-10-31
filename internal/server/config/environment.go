@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -42,7 +42,7 @@ func FromEnv(getenv func(string) string, needPepper bool) (Server, error) {
 			return settings, fmt.Errorf("%w: %s: %w", ErrInvalid, variable.name, err)
 		}
 	}
-	settings.Limits.MaxObjectBytes = core.ObjectLimit(settings.Limits.MaxFileBytes)
+	settings.Limits.MaxObjectBytes = envelope.ObjectLimit(settings.Limits.MaxFileBytes)
 	if !needPepper {
 		err := settings.validateWithoutReports()
 		return settings, err

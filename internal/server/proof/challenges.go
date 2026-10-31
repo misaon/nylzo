@@ -9,7 +9,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -34,8 +34,8 @@ func NewChallenges(ring *pepper.Ring, counters store.Counters) *Challenges {
 	return &Challenges{ring: ring, seen: newSeenNonces(), batches: newSpendBatcher(counters)}
 }
 
-func (c *Challenges) Issue(now time.Time) ([core.ChallengeLen]byte, time.Time) {
-	var challenge [core.ChallengeLen]byte
+func (c *Challenges) Issue(now time.Time) ([signing.ChallengeLen]byte, time.Time) {
+	var challenge [signing.ChallengeLen]byte
 	expires := now.Add(challengeTTL).Truncate(time.Second)
 	binary.BigEndian.PutUint32(challenge[:4], unixSeconds(expires))
 	rand.Read(challenge[4:challengeSignedEnd])
@@ -44,7 +44,7 @@ func (c *Challenges) Issue(now time.Time) ([core.ChallengeLen]byte, time.Time) {
 }
 
 // Spend reports whether this request is the first to present the challenge; a failed write refuses it for good.
-func (c *Challenges) Spend(ctx context.Context, challenge [core.ChallengeLen]byte, now time.Time) (bool, error) {
+func (c *Challenges) Spend(ctx context.Context, challenge [signing.ChallengeLen]byte, now time.Time) (bool, error) {
 	if !c.valid(challenge, now) {
 		return false, nil
 	}
@@ -62,10 +62,10 @@ func (c *Challenges) Spend(ctx context.Context, challenge [core.ChallengeLen]byt
 
 func (c *Challenges) tag(signed []byte) []byte {
 	mac := c.ring.MAC(pepper.Challenge, signed).MAC
-	return mac[:core.ChallengeLen-challengeSignedEnd]
+	return mac[:signing.ChallengeLen-challengeSignedEnd]
 }
 
-func (c *Challenges) valid(challenge [core.ChallengeLen]byte, now time.Time) bool {
+func (c *Challenges) valid(challenge [signing.ChallengeLen]byte, now time.Time) bool {
 	tagOK := hmac.Equal(c.tag(challenge[:challengeSignedEnd]), challenge[challengeSignedEnd:])
 	left := int64(binary.BigEndian.Uint32(challenge[:4])) - now.Unix()
 	return tagOK && left >= 0 && left <= int64((challengeTTL+clockSkew)/time.Second)

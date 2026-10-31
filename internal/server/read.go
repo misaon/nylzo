@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -55,7 +56,7 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	now := s.clock()
+	now := time.Now()
 	record := &granted.record
 	message := record.Message
 	if !record.HasBlob() {
@@ -110,11 +111,11 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verifier.Challenge = granted.signature.Challenge
-	verifierKeyOK := core.ValidPublicKey(verifier.PublicKey[:])
+	verifierKeyOK := signing.ValidPublicKey(verifier.PublicKey[:])
 	if !verifierKeyOK {
 		verifier.PublicKey = dummyPublicKey
 	}
-	verifierSigned := verifier.Verify(core.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
+	verifierSigned := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
 	blob, ok := s.openBlob(w, r, &granted.record)
 	if !ok {
 		return
@@ -123,7 +124,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	lease := core.NewSecret()
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
 	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
-		Clock:        s.clock,
+		Clock:        time.Now,
 		VerifierSent: verifierSent,
 		VerifyMAC: func(pepperID byte, stored []byte) bool {
 			macOK := s.ring.Verify(pepper.Verifier, verifier.PublicKey[:], stored, pepperID)
@@ -142,12 +143,12 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob)
 }
 
-func parseVerifier(w http.ResponseWriter, r *http.Request) (core.Signature, bool, bool) {
+func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
 	header := r.Header.Get(verifierHeaderName)
 	if header == "" {
-		return core.Signature{PublicKey: dummyPublicKey}, false, true
+		return signing.Signature{PublicKey: dummyPublicKey}, false, true
 	}
-	verifier, err := core.ParseVerifierHeader(header, [core.ChallengeLen]byte{})
+	verifier, err := signing.ParseVerifierHeader(header, [signing.ChallengeLen]byte{})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return verifier, true, false
@@ -178,12 +179,12 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 // releaseAtLeaseEnd keeps the record key in memory until the last lease ends, so the blob goes at once.
 func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
 	locator, key := record.Row.Locator, record.Key
-	s.after(leaseExpires.Add(store.LeaseTimerSlack).Sub(s.clock()), func() {
+	s.leaseTimers.after(time.Until(leaseExpires.Add(store.LeaseTimerSlack)), func() {
 		ctx := context.Background()
 		kept := store.Record{Row: store.Row{Locator: locator}, Key: key}
 		err := s.reload(ctx, &kept)
 		if err == nil {
-			_, err = store.Finish(ctx, s.store, s.blobs, &kept, s.clock())
+			_, err = store.Finish(ctx, s.store, s.blobs, &kept, time.Now())
 		}
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
 			s.logger.Error("lease-timer", "err", logging.ErrorText(err))
@@ -253,7 +254,7 @@ func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAcces
 	if !ok {
 		return leaseAccess{}, false
 	}
-	leased := leaseAccess{record: granted.record, now: s.clock()}
+	leased := leaseAccess{record: granted.record, now: time.Now()}
 	lease, active := s.findLease(r, &leased.record, leased.now)
 	if !active {
 		s.writeCurrentGone(w, r, &leased.record)
@@ -291,7 +292,7 @@ type decryptedBlob struct {
 func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (io.ReadCloser, bool) {
 	key, err := record.BlobKey()
 	if errors.Is(err, store.ErrBlobMissing) {
-		writeGone(w, string(record.State(s.clock())))
+		writeGone(w, string(record.State(time.Now())))
 		return nil, false
 	}
 	var file io.ReadCloser
@@ -359,7 +360,7 @@ func (s *Server) finishMissingBlob(ctx context.Context, record *store.Record) (s
 		}
 		return "", err
 	}
-	now := s.clock()
+	now := time.Now()
 	if !record.Ended(now) {
 		return "", store.ErrBlobMissing
 	}
@@ -377,13 +378,13 @@ func (s *Server) writeCurrentGone(w http.ResponseWriter, r *http.Request, record
 	case err != nil:
 		s.writeInternal(w, r, err)
 	default:
-		writeGone(w, string(record.State(s.clock())))
+		writeGone(w, string(record.State(time.Now())))
 	}
 }
 
 func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, record *store.Record, state store.State) {
 	if err := s.reload(r.Context(), record); err == nil {
-		_, err = store.Finish(r.Context(), s.store, s.blobs, record, s.clock())
+		_, err = store.Finish(r.Context(), s.store, s.blobs, record, time.Now())
 		if err != nil {
 			s.logger.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
 		}

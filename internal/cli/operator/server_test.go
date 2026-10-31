@@ -1,7 +1,6 @@
-package cli
+package operator
 
 import (
-	"crypto/hpke"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -16,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 
@@ -82,7 +81,7 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 			"GOMEMLIMIT":       testCase.operatorLimit,
 		}
 		if _, err := serveSettings(
-			&Environment{Getenv: func(name string) string { return variables[name] }},
+			&command.Environment{Getenv: func(name string) string { return variables[name] }},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -120,51 +119,8 @@ func TestSweepOnceLeavesAMissingStoreAlone(t *testing.T) {
 	}
 }
 
-var testPepper = strings.Repeat("0123456789abcdef", 4)
-
-var testReportKey = func() hpke.PrivateKey {
-	key, err := abuse.NewKeyPair()
-	if err != nil {
-		panic(err)
-	}
-	return key
-}()
-
-var testReportKeyText = core.Encode(testReportKey.PublicKey().Bytes())
-
-func getenvFrom(values map[string]string) func(string) string {
-	return func(name string) string { return values[name] }
-}
-
-func TestRunAnswersUsageErrorsWithoutRunning(t *testing.T) {
-	directory := filepath.Join(t.TempDir(), "absent")
-	if result := runWith(t, "", nil, nil, "serve", "--help"); result.code != 0 || result.stderr != "" ||
-		!strings.HasPrefix(result.stdout, "usage: nylzo serve") {
-		t.Fatalf("serve --help: exit %d, stdout %q, stderr %q", result.code, result.stdout, result.stderr)
-	}
-	for _, arguments := range [][]string{nil, {"sweep-once", "--dry-run"}, {"serve", "extra"}, {"bogus"}, {"version", "extra"}} {
-		variables := map[string]string{"NYLZO_DATA_DIR": directory, "NYLZO_PEPPER": testPepper}
-		result := runWith(t, "", variables, nil, arguments...)
-		if result.code != 2 || result.stdout != "" || !strings.Contains(result.stderr, "nylzo") {
-			t.Fatalf("%v: exit %d, stdout %q, stderr %q", arguments, result.code, result.stdout, result.stderr)
-		}
-	}
-	if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("a usage error still ran a command")
-	}
-	for _, arguments := range [][]string{{"help"}, {"-h"}, {"--help"}} {
-		if result := runWith(t, "", nil, nil, arguments...); result.code != 0 ||
-			!strings.HasPrefix(result.stdout, "usage: nylzo ") || result.stderr != "" {
-			t.Fatalf("%v: exit %d, stdout %q, stderr %q", arguments, result.code, result.stdout, result.stderr)
-		}
-	}
-	if result := runWith(t, "", nil, nil, "version"); result.code != 0 || strings.TrimSpace(result.stdout) == "" {
-		t.Fatalf("version: exit %d, %q", result.code, result.stdout)
-	}
-}
-
 func TestConfigErrorsNameTheVariable(t *testing.T) {
-	result := runWith(t, "", map[string]string{"NYLZO_RATE_SOURCE_BURST": "0.5"}, nil, "sweep-once")
+	result := run(t, "", map[string]string{"NYLZO_RATE_SOURCE_BURST": "0.5"}, nil, RunSweepOnce)
 	if result.code != 1 || !strings.Contains(result.stderr, "NYLZO_RATE_SOURCE_BURST must be at least 1") {
 		t.Fatalf("exit %d, stderr %q", result.code, result.stderr)
 	}
@@ -185,7 +141,7 @@ func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	if err = os.WriteFile(old, make([]byte, abuse.SealedLen), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result := runWith(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, "sweep-once")
+	result := run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce)
 	if result.code != 0 {
 		t.Fatalf("sweep-once without a pepper: exit %d, %s", result.code, result.stderr)
 	}
@@ -203,7 +159,7 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer taken.Close()
-	result := runWith(
+	result := run(
 		t,
 		"",
 		map[string]string{
@@ -213,7 +169,7 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 			"NYLZO_LISTEN":     taken.Addr().String(),
 		},
 		nil,
-		"serve",
+		RunServe,
 	)
 	if result.code != 1 || strings.Contains(result.stderr, `"msg":"sweep`) ||
 		strings.Contains(result.stderr, `"msg":"listening"`) {
@@ -222,12 +178,12 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 }
 
 func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
-	stderr := runWith(
+	stderr := run(
 		t,
 		"",
 		map[string]string{"NYLZO_DATA_DIR": filepath.Join(t.TempDir(), "absent")},
 		nil,
-		"sweep-once",
+		RunSweepOnce,
 	).stderr
 	var line struct {
 		Time time.Time `json:"time"`
@@ -275,7 +231,7 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	database.Close()
-	result := runWith(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, "sweep-once")
+	result := run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce)
 	if result.code != 1 || !strings.Contains(result.stderr, "older schema") {
 		t.Fatalf("sweep-once on an older schema: exit %d, %s", result.code, result.stderr)
 	}
@@ -291,32 +247,8 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	if _, err = database.Exec(`PRAGMA user_version = 6`); err != nil {
 		t.Fatal(err)
 	}
-	if result = runWith(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, "sweep-once"); result.code != 1 ||
+	if result = run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce); result.code != 1 ||
 		!strings.Contains(result.stderr, "newer nylzo") {
 		t.Fatalf("sweep-once on a newer schema: exit %d, %s", result.code, result.stderr)
-	}
-}
-
-func TestUsageAlignsEverySummary(t *testing.T) {
-	names := []string{"help"}
-	for _, subcommand := range commands() {
-		names = append(names, subcommand.name)
-	}
-	columns := map[int][]string{}
-	for line := range strings.SplitSeq(usage(), "\n") {
-		for _, name := range names {
-			if rest, ok := strings.CutPrefix(line, "  "+name+" "); ok {
-				column := len(line) - len(strings.TrimLeft(rest, " "))
-				columns[column] = append(columns[column], name)
-			}
-		}
-	}
-	if len(columns) != 1 {
-		t.Fatalf("the summaries start at different columns: %v", columns)
-	}
-	for _, listed := range columns {
-		if len(listed) != len(names) {
-			t.Fatalf("usage lists %v, want %v", listed, names)
-		}
 	}
 }

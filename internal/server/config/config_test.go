@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 )
@@ -91,7 +92,7 @@ func TestFromEnvReadsEveryVariable(t *testing.T) {
 	if settings.Listen != ":9090" || !slices.Equal(settings.TrustedProxies, proxies) ||
 		settings.ProxyMode != config.ProxyModeScaleway || settings.SweepInterval != 15*time.Minute ||
 		settings.Limits.MaxTTL != config.MaxTTL || settings.Limits.MaxOpens != 3 ||
-		settings.Limits.MaxObjectBytes != core.ObjectLimit(1048576) || settings.Rates.CreatePerHour != 7 ||
+		settings.Limits.MaxObjectBytes != envelope.ObjectLimit(1048576) || settings.Rates.CreatePerHour != 7 ||
 		settings.Rates.GlobalDailyCreates != 500 || settings.PoWConcurrency != 4 || settings.MinFreeBytes != 0 ||
 		settings.PublicURL != "https://nylzo.example" || len(settings.PepperPrevious) != 32 {
 		t.Fatalf("settings %+v", settings)
@@ -122,7 +123,7 @@ func TestFromEnvRefusesInvalidValues(t *testing.T) {
 		{"NYLZO_DEFAULT_TTL", "30s"},
 		{"NYLZO_MAX_OPENS", "0"},
 		{"NYLZO_MAX_OPENS", "101"},
-		{"NYLZO_MAX_FILE_BYTES", strconv.Itoa(core.MaxFileBytes + 1)},
+		{"NYLZO_MAX_FILE_BYTES", strconv.Itoa(envelope.MaxFileBytes + 1)},
 		{"NYLZO_RATE_COARSE_MULTIPLIER", "4611686018427387905"},
 		{"NYLZO_RATE_SOURCE_RPS", "0"},
 		{"NYLZO_RATE_SOURCE_RPS", "NaN"},

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/client"
@@ -157,7 +158,7 @@ func browserAsks(path string) func(*http.Request) bool {
 func runVerify(t *testing.T, url string, local fs.FS, flags ...string) commandResult {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	environment := &Environment{
+	environment := &command.Environment{
 		Stdout:    &stdout,
 		Stderr:    &stderr,
 		Getenv:    getenvFrom(nil),
@@ -173,12 +174,12 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
 	result := runVerify(t, newWebTestServer(t, files, "test", nil), files)
-	if result.code != exitOK ||
+	if result.code != command.ExitOK ||
 		result.stdout != "the server sends the web client of nylzo test unchanged: 6 pages and 5 files checked\n" {
 		t.Fatalf("%+v", result)
 	}
 	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)
-	if public.code != exitOK {
+	if public.code != command.ExitOK {
 		t.Fatalf("a server with a public URL: %+v", public)
 	}
 	if !strings.Contains(result.stderr, "a server can recognise it") {
@@ -301,7 +302,8 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			t.Parallel()
 			files := webFiles(t)
 			result := runVerify(t, newWebTestServer(t, files, "test", testCase.wrap), files)
-			if result.code != exitError || result.stdout != "" || !strings.Contains(result.stderr, testCase.want) {
+			if result.code != command.ExitError || result.stdout != "" ||
+				!strings.Contains(result.stderr, testCase.want) {
 				t.Fatalf("want exit 1 with %q, got %+v", testCase.want, result)
 			}
 		})
@@ -312,7 +314,7 @@ func TestVerifyClientNeedsTheSameRelease(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
 	result := runVerify(t, newWebTestServer(t, files, "v9.9.9\x1b[31m", nil), files)
-	if result.code != exitError ||
+	if result.code != command.ExitError ||
 		!strings.Contains(result.stderr, `the server runs nylzo v9.9.9\u001b[31m and this binary is test`) {
 		t.Fatalf("%+v", result)
 	}
@@ -323,7 +325,7 @@ func TestVerifyClientNeedsALocalClient(t *testing.T) {
 	files := webFiles(t)
 	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}}
 	result := runVerify(t, newWebTestServer(t, files, "test", nil), placeholder)
-	if result.code != exitError || !strings.Contains(result.stderr, "carries no web client") {
+	if result.code != command.ExitError || !strings.Contains(result.stderr, "carries no web client") {
 		t.Fatalf("%+v", result)
 	}
 }
@@ -331,11 +333,11 @@ func TestVerifyClientNeedsALocalClient(t *testing.T) {
 func TestVerifyClientNeedsAServer(t *testing.T) {
 	t.Parallel()
 	result := runWith(t, "", nil, nil, "verify-client")
-	if result.code != exitUsage || !strings.Contains(result.stderr, "needs --server or NYLZO_SERVER") {
+	if result.code != command.ExitUsage || !strings.Contains(result.stderr, "needs --server or NYLZO_SERVER") {
 		t.Fatalf("%+v", result)
 	}
 	result = runWith(t, "", nil, nil, "verify-client", "--server", "http://example.org")
-	if result.code != exitError || !strings.Contains(result.stderr, "https") {
+	if result.code != command.ExitError || !strings.Contains(result.stderr, "https") {
 		t.Fatalf("plain http to a remote server must be refused: %+v", result)
 	}
 }
@@ -364,15 +366,15 @@ func TestVerifyClientAcceptsAllowedProxyHeaders(t *testing.T) {
 		t,
 		url,
 		files,
-	); result.code != exitError ||
+	); result.code != command.ExitError ||
 		!strings.Contains(result.stderr, "the server sent the Cf-Ray header") {
 		t.Fatalf("an unknown proxy header must fail until allowed: %+v", result)
 	}
-	if result := runVerify(t, url, files, "--allow-header", "cf-ray"); result.code != exitOK {
+	if result := runVerify(t, url, files, "--allow-header", "cf-ray"); result.code != command.ExitOK {
 		t.Fatalf("an allowed proxy header must pass: %+v", result)
 	}
 	for _, name := range []string{"Refresh", "set-cookie", "NEL", "Link", "Speculation-Rules"} {
-		if result := runVerify(t, url, files, "--allow-header", name); result.code != exitUsage {
+		if result := runVerify(t, url, files, "--allow-header", name); result.code != command.ExitUsage {
 			t.Fatalf("--allow-header %s must be refused: %+v", name, result)
 		}
 	}

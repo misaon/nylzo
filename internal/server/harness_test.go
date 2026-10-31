@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/base64"
@@ -25,6 +24,10 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -32,6 +35,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
+	"github.com/misaon/nylzo/internal/store/storetest"
 )
 
 var (
@@ -47,37 +51,6 @@ var testReportKey = func() hpke.PrivateKey {
 	}
 	return key
 }()
-
-type fakeClock struct {
-	mutex sync.Mutex
-	now   time.Time
-}
-
-func (c *fakeClock) Now() time.Time {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	return c.now
-}
-
-func (c *fakeClock) Advance(step time.Duration) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.now = c.now.Add(step)
-}
-
-func (c *fakeClock) Set(now time.Time) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.now = now
-}
-
-func withClock(clock func() time.Time) Option {
-	return func(server *Server) { server.clock = clock }
-}
-
-func withAfterFunc(after func(delay time.Duration, run func())) Option {
-	return func(server *Server) { server.after = after }
-}
 
 type syncBuffer struct {
 	mutex  sync.Mutex
@@ -96,25 +69,18 @@ func (b *syncBuffer) String() string {
 	return b.buffer.String()
 }
 
-type pendingTimer struct {
-	due time.Time
-	run func()
-}
-
-// testHarness runs the whole handler with a fake clock and lease timers that fire only when asked.
+// testHarness runs the whole handler over the in-memory network of httptest, so a synctest bubble can drive its time.
 type testHarness struct {
 	t          *testing.T
 	settings   config.Server
+	options    []Option
 	store      store.Store
 	blobs      store.Blobs
-	clock      *fakeClock
 	logs       *syncBuffer
 	server     *Server
 	httpServer *httptest.Server
 	client     *http.Client
 	directory  string
-	timersMu   sync.Mutex
-	timers     []pendingTimer
 	captureMu  sync.Mutex
 	lastCreate []byte
 }
@@ -145,7 +111,11 @@ func baseSettings(pepper, previous []byte) *config.Server {
 	settings.ReportKey = testReportKey.PublicKey()
 	settings.Pepper = pepper
 	settings.PepperPrevious = previous
-	settings.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
+	settings.TrustedProxies = []netip.Prefix{
+		netip.MustParsePrefix("192.0.2.1/32"),
+		netip.MustParsePrefix("127.0.0.0/8"),
+		netip.MustParsePrefix("::1/128"),
+	}
 	settings.Rates.BucketPerSecond = 1 << 20
 	settings.Rates.BucketBurst = 1 << 20
 	settings.Rates.SourcePerSecond = 1 << 20
@@ -153,15 +123,10 @@ func baseSettings(pepper, previous []byte) *config.Server {
 	return &settings
 }
 
-func newHarness(t *testing.T, settings *config.Server) *testHarness {
+func newHarness(t *testing.T, settings *config.Server, options ...Option) *testHarness {
 	t.Helper()
 	directory := t.TempDir()
 	settings.DataDir = directory
-	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
 	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -169,39 +134,32 @@ func newHarness(t *testing.T, settings *config.Server) *testHarness {
 	harness := &testHarness{
 		t:         t,
 		settings:  *settings,
-		store:     database,
+		options:   options,
+		store:     openStore(t, directory),
 		blobs:     blobs,
 		directory: directory,
 		logs:      &syncBuffer{},
 	}
-	harness.clock = &fakeClock{now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)}
 	harness.open()
 	return harness
 }
 
 func (h *testHarness) open() {
 	h.t.Helper()
-	server, err := New(&h.settings, h.store, h.blobs,
-		withClock(h.clock.Now),
-		WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil))),
-		withAfterFunc(func(delay time.Duration, run func()) {
-			h.timersMu.Lock()
-			defer h.timersMu.Unlock()
-			h.timers = append(h.timers, pendingTimer{due: h.clock.Now().Add(delay), run: run})
-		}),
-	)
+	options := append([]Option{WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil)))}, h.options...)
+	server, err := New(&h.settings, h.store, h.blobs, options...)
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	h.t.Cleanup(server.Close)
 	h.server = server
 	handler := server.handler
-	h.httpServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h.httpServer = httptest.NewTestServer(h.t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages" {
 			h.capture(r)
 		}
 		handler.ServeHTTP(w, r)
 	}))
-	h.t.Cleanup(h.httpServer.Close)
 	h.client = h.httpServer.Client()
 }
 
@@ -217,11 +175,23 @@ func (h *testHarness) capture(r *http.Request) {
 	h.lastCreate = dump.Bytes()
 }
 
+// reopen stops the old server and its lease timers, as a restart would.
 func (h *testHarness) reopen(settings *config.Server) {
 	h.httpServer.Close()
+	h.server.Close()
 	settings.DataDir = h.directory
 	h.settings = *settings
 	h.open()
+}
+
+func openStore(t *testing.T, directory string) *sqlite.Store {
+	t.Helper()
+	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	return database
 }
 
 func (h *testHarness) listen() string {
@@ -236,48 +206,22 @@ func (h *testHarness) listen() string {
 	return listener.Addr().String()
 }
 
-func (h *testHarness) challenge() [core.ChallengeLen]byte {
-	return h.challengeAt(h.clock.Now())
+func (h *testHarness) challenge() [signing.ChallengeLen]byte {
+	return h.challengeAt(time.Now())
 }
 
-func (h *testHarness) challengeAt(now time.Time) [core.ChallengeLen]byte {
+func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 	challenge, _ := h.server.challenges.Issue(now)
 	return challenge
 }
 
 func (h *testHarness) idToken(id core.ID) string {
-	token, _ := h.server.idTokens.Issue(id, h.clock.Now())
+	token, _ := h.server.idTokens.Issue(id, time.Now())
 	return token
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
 	h.server.disk = diskspace.NewReserver(h.settings.DataDir, h.settings.MinFreeBytes, free, h.server.logger)
-}
-
-func (h *testHarness) fireTimers() int {
-	h.timersMu.Lock()
-	now := h.clock.Now()
-	var due []func()
-	var waiting []pendingTimer
-	for _, timer := range h.timers {
-		if timer.due.After(now) {
-			waiting = append(waiting, timer)
-		} else {
-			due = append(due, timer.run)
-		}
-	}
-	h.timers = waiting
-	h.timersMu.Unlock()
-	for _, run := range due {
-		run()
-	}
-	return len(due)
-}
-
-func (h *testHarness) pendingTimers() int {
-	h.timersMu.Lock()
-	defer h.timersMu.Unlock()
-	return len(h.timers)
 }
 
 func (h *testHarness) do(request *testRequest) (testResponse, responseBody) {
@@ -471,7 +415,7 @@ func (h *testHarness) recordFrom(storage store.Store, message *testMessage) (sto
 	if err != nil {
 		return store.Record{}, err
 	}
-	readKey := core.PublicKey(&message.link.R)
+	readKey := signing.PublicKey(&message.link.R)
 	return openRow(&row, seal.Read, readKey[:])
 }
 
@@ -493,7 +437,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 		h.t.Fatal(err)
 	}
 	change(record.Message)
-	readKey, manageKey := core.PublicKey(&message.link.R), core.PublicKey(message.manage)
+	readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
 	rebuilt := store.NewRecord(
 		record.Row.Locator,
 		record.Message,
@@ -518,13 +462,13 @@ func (h *testHarness) endedState(message *testMessage) (store.State, bool) {
 	if err != nil || record.HasBlob() {
 		return "", false
 	}
-	return record.State(h.clock.Now()), true
+	return record.State(time.Now()), true
 }
 
 func (h *testHarness) markEnding(message *testMessage, state store.State) {
 	h.t.Helper()
 	record := h.mustRecord(message)
-	if _, err := store.MarkEnding(h.t.Context(), h.store, &record, state, h.clock.Now()); err != nil {
+	if _, err := store.MarkEnding(h.t.Context(), h.store, &record, state, time.Now()); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -537,21 +481,21 @@ func (h *testHarness) finish(message *testMessage, now time.Time) (bool, error) 
 	return store.Finish(h.t.Context(), h.store, h.blobs, &record, now)
 }
 
-func (h *testHarness) openObject(message *testMessage, object []byte, policy string) (core.Payload, error) {
+func (h *testHarness) openObject(message *testMessage, object []byte, policy string) (envelope.Payload, error) {
 	h.t.Helper()
 	decoded, err := decodePolicy(policy)
 	if err != nil {
-		return core.Payload{}, err
+		return envelope.Payload{}, err
 	}
-	_, payload, err := core.Open(&message.content.K, message.id, decoded, message.kdf, object)
+	_, payload, err := envelope.Open(&message.content.K, message.id, decoded, message.kdf, object)
 	return payload, err
 }
 
 func (h *testHarness) sign(r *http.Request, token, verifier string, body []byte) {
 	path := r.URL.EscapedPath()
-	purpose := core.PurposeRead
+	purpose := signing.PurposeRead
 	if strings.HasSuffix(path, "/status") || strings.HasSuffix(path, "/cancel") {
-		purpose = core.PurposeManage
+		purpose = signing.PurposeManage
 	}
 	challenge := h.challenge()
 	if verifier != "" {
@@ -620,99 +564,29 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 	return all, nil
 }
 
-type faultyBlobs struct {
-	store.Blobs
-
-	mutex      sync.Mutex
-	failDelete map[string]bool
-	deleteErr  map[string]error
-	failOpen   error
-	failPut    error
-	failList   error
-	failRead   error
-	onOpen     func(ref string)
+func (h *testHarness) endOnFirstLoad(message *testMessage, state store.State, finished bool) {
+	h.t.Helper()
+	inner := h.store
+	h.store = &racingStore{Store: inner, race: func() {
+		record := h.recordIn(inner, message)
+		var err error
+		if finished {
+			_, err = store.End(h.t.Context(), inner, h.blobs, &record, state, time.Now())
+		} else {
+			_, err = store.MarkEnding(h.t.Context(), inner, &record, state, time.Now())
+		}
+		if err != nil {
+			h.t.Error(err)
+		}
+	}}
+	h.reopen(&h.settings)
 }
 
-func (h *testHarness) withFaultyBlobs() *faultyBlobs {
-	faulty := &faultyBlobs{Blobs: h.blobs, failDelete: map[string]bool{}, deleteErr: map[string]error{}}
+func (h *testHarness) withFaultyBlobs() *storetest.FaultyBlobs {
+	faulty := storetest.NewFaultyBlobs(h.blobs)
 	h.blobs = faulty
 	h.reopen(&h.settings)
 	return faulty
-}
-
-func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
-	b.mutex.Lock()
-	failing, err := b.failDelete[ref], b.deleteErr[ref]
-	b.mutex.Unlock()
-	if err != nil {
-		return err
-	}
-	if failing {
-		return errInjected
-	}
-	return b.Blobs.Delete(ctx, ref)
-}
-
-func (b *faultyBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
-	errs := make([]error, len(refs))
-	for i, ref := range refs {
-		errs[i] = b.Delete(ctx, ref)
-	}
-	return errs
-}
-
-func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
-	b.mutex.Lock()
-	openErr, readErr, hook := b.failOpen, b.failRead, b.onOpen
-	b.mutex.Unlock()
-	if hook != nil {
-		hook(ref)
-	}
-	if openErr != nil {
-		return nil, 0, openErr
-	}
-	blob, size, err := b.Blobs.Open(ctx, ref)
-	if err != nil || readErr == nil {
-		return blob, size, err
-	}
-	return failingReader{ReadCloser: blob, err: readErr}, size, nil
-}
-
-func (b *faultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, size int64) error {
-	b.mutex.Lock()
-	err := b.failPut
-	b.mutex.Unlock()
-	if err != nil {
-		io.Copy(io.Discard, reader)
-		return err
-	}
-	return b.Blobs.Put(ctx, ref, reader, size)
-}
-
-func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
-	b.mutex.Lock()
-	err := b.failList
-	b.mutex.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	return b.Blobs.List(ctx)
-}
-
-func (b *faultyBlobs) set(change func(*faultyBlobs)) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	change(b)
-}
-
-type failingReader struct {
-	io.ReadCloser
-
-	err error
-}
-
-func (f failingReader) Read([]byte) (int, error) {
-	return 0, f.err
 }
 
 type testMessage struct {
@@ -720,9 +594,9 @@ type testMessage struct {
 	secret      *[core.SecretLen]byte
 	manage      *[core.SeedLen]byte
 	kdf         core.KDF
-	link        core.LinkKeys
-	content     core.ContentKeys
-	policy      core.Policy
+	link        keys.LinkKeys
+	content     keys.ContentKeys
+	policy      envelope.Policy
 	object      []byte
 	text        string
 	readToken   string
@@ -759,18 +633,24 @@ func buildMessageWithID(
 	text string,
 ) (*testMessage, error) {
 	message := &testMessage{id: id, secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
-	link, err := core.DeriveLink(id, message.secret)
+	link, err := keys.DeriveLink(id, message.secret)
 	if err != nil {
 		return nil, err
 	}
-	content, err := core.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.PassphraseSalt))
+	content, err := keys.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.PassphraseSalt))
 	if err != nil {
 		return nil, err
 	}
 	message.link, message.content = link, content
-	message.policy = core.Policy{OpensMax: opens, TTLSeconds: ttl}
-	payload := core.Payload{Meta: core.Meta{Text: &text}}
-	if message.object, err = core.Seal(&content.K, core.NewHeader(kdf), id, message.policy, payload); err != nil {
+	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl}
+	payload := envelope.Payload{Meta: envelope.Meta{Text: &text}}
+	if message.object, err = envelope.Seal(
+		&content.K,
+		envelope.NewHeader(kdf),
+		id,
+		message.policy,
+		payload,
+	); err != nil {
 		return nil, err
 	}
 	message.readToken = core.Encode(link.R[:])
@@ -780,7 +660,7 @@ func buildMessageWithID(
 }
 
 func publicKey(seed *[core.SeedLen]byte) string {
-	key := core.PublicKey(seed)
+	key := signing.PublicKey(seed)
 	return core.Encode(key[:])
 }
 
@@ -857,48 +737,48 @@ func decodeJSON(t *testing.T, body []byte) jsonFields {
 	return decoded
 }
 
-func decodePolicy(header string) (core.Policy, error) {
+func decodePolicy(header string) (envelope.Policy, error) {
 	var policy struct {
 		OpensMax   int `json:"opens_max"`
 		TTLSeconds int `json:"ttl_s"`
 	}
 	data, err := base64.RawURLEncoding.Strict().DecodeString(header)
 	if err != nil {
-		return core.Policy{}, err
+		return envelope.Policy{}, err
 	}
 	if decodeErr := json.Unmarshal(data, &policy); decodeErr != nil {
-		return core.Policy{}, decodeErr
+		return envelope.Policy{}, decodeErr
 	}
 	if policy.OpensMax == 0 {
-		return core.Policy{}, errors.New("policy header without opens_max")
+		return envelope.Policy{}, errors.New("policy header without opens_max")
 	}
-	return core.Policy{OpensMax: uint16(policy.OpensMax), TTLSeconds: uint32(policy.TTLSeconds)}, nil
+	return envelope.Policy{OpensMax: uint16(policy.OpensMax), TTLSeconds: uint32(policy.TTLSeconds)}, nil
 }
 
-func signedHeader(token, purpose, method, path string, challenge [core.ChallengeLen]byte, body []byte) string {
+func signedHeader(token, purpose, method, path string, challenge [signing.ChallengeLen]byte, body []byte) string {
 	seed, err := core.DecodeExact(token, core.SeedLen)
 	if err != nil {
-		return core.AuthScheme + " " + token
+		return signing.AuthScheme + " " + token
 	}
-	return core.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
+	return signing.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
 }
 
-func verifierHeader(verifier, method, path string, challenge [core.ChallengeLen]byte) string {
+func verifierHeader(verifier, method, path string, challenge [signing.ChallengeLen]byte) string {
 	seed, err := core.DecodeExact(verifier, core.SeedLen)
 	if err != nil {
 		return verifier
 	}
-	signature := core.SignRequest((*[core.SeedLen]byte)(seed), core.PurposeVerifier, method, path, challenge, nil)
+	signature := signing.SignRequest((*[core.SeedLen]byte)(seed), signing.PurposeVerifier, method, path, challenge, nil)
 	return signature.VerifierHeader()
 }
 
 func signedRequest(
 	seed *[core.SeedLen]byte,
 	purpose, method, path string,
-	challenge [core.ChallengeLen]byte,
+	challenge [signing.ChallengeLen]byte,
 	body []byte,
 ) *testRequest {
-	signature := core.SignRequest(seed, purpose, method, path, challenge, body)
+	signature := signing.SignRequest(seed, purpose, method, path, challenge, body)
 	return &testRequest{
 		method:  method,
 		path:    path,
@@ -917,7 +797,7 @@ func rawAuth(request *testRequest, authorization string) *testRequest {
 
 func solveWork(t *testing.T, challenge string, id core.ID, difficulty int) string {
 	t.Helper()
-	token, err := core.SolvePoW(t.Context(), challenge, id, difficulty)
+	token, err := proofofwork.Solve(t.Context(), challenge, id, difficulty)
 	if err != nil {
 		t.Fatal(err)
 	}

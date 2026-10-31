@@ -1,4 +1,4 @@
-package cli
+package operator
 
 import (
 	"bufio"
@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server"
@@ -39,6 +40,7 @@ const (
 	defaultMemoryLimit = 192 << 20
 	maxTakedownInput   = 1 << 20
 	maxTakedownIDs     = 10000
+	failureMessage     = command.Program
 )
 
 var (
@@ -47,7 +49,7 @@ var (
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
 )
 
-func runServe(ctx context.Context, environment *Environment, arguments []string) int {
+func RunServe(ctx context.Context, environment *command.Environment, arguments []string) int {
 	return runServer(
 		environment,
 		arguments,
@@ -56,7 +58,7 @@ func runServe(ctx context.Context, environment *Environment, arguments []string)
 	)
 }
 
-func runSweepOnce(_ context.Context, environment *Environment, arguments []string) int {
+func RunSweepOnce(_ context.Context, environment *command.Environment, arguments []string) int {
 	return runServer(
 		environment,
 		arguments,
@@ -65,17 +67,17 @@ func runSweepOnce(_ context.Context, environment *Environment, arguments []strin
 	)
 }
 
-func runServer(environment *Environment, arguments []string, name string, run func(*slog.Logger) error) int {
-	flags := newFlags(environment, name)
+func runServer(environment *command.Environment, arguments []string, name string, run func(*slog.Logger) error) int {
+	flags := command.NewFlags(environment, name)
 	flags.Usage = func() {
 		fmt.Fprintf(
 			flags.Output(),
 			"usage: %s %s\n\nThe server takes no flags; it reads NYLZO_* environment variables, described in README.md.\n",
-			program,
+			command.Program,
 			name,
 		)
 	}
-	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
+	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	logger := logging.New(environment.Stderr)
@@ -85,14 +87,14 @@ func runServer(environment *Environment, arguments []string, name string, run fu
 	}
 	switch {
 	case err == nil:
-		return exitOK
+		return command.ExitOK
 	case errors.Is(err, errSweepFailed):
 	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported):
-		logger.Error(program, "err", err.Error())
+		logger.Error(failureMessage, "err", err.Error())
 	default:
-		logger.Error(program, "err", logging.ErrorText(err))
+		logger.Error(failureMessage, "err", logging.ErrorText(err))
 	}
-	return exitError
+	return command.ExitError
 }
 
 func openStore(
@@ -141,7 +143,7 @@ func requireStore(dataDir string) error {
 	return nil
 }
 
-func serveSettings(environment *Environment) (config.Server, error) {
+func serveSettings(environment *command.Environment) (config.Server, error) {
 	settings, err := config.FromEnv(environment.Getenv, true)
 	if err != nil {
 		return settings, err
@@ -149,12 +151,12 @@ func serveSettings(environment *Environment) (config.Server, error) {
 	if environment.Getenv("GOMEMLIMIT") == "" {
 		debug.SetMemoryLimit(defaultMemoryLimit)
 	}
-	settings.Build = environment.buildInformation()
+	settings.Build = environment.BuildInformation()
 	settings.Version = settings.Build.Version
 	return settings, nil
 }
 
-func serve(ctx context.Context, environment *Environment, logger *slog.Logger) error {
+func serve(ctx context.Context, environment *command.Environment, logger *slog.Logger) error {
 	if !serverSupported {
 		return errServerUnsupported
 	}
@@ -264,39 +266,42 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	return nil
 }
 
-func runTakedown(ctx context.Context, environment *Environment, arguments []string) int {
-	flags := newFlags(environment, "takedown")
+func RunTakedown(ctx context.Context, environment *command.Environment, arguments []string) int {
+	flags := command.NewFlags(environment, "takedown")
 	flags.Usage = func() {
 		fmt.Fprintf(
 			flags.Output(),
 			"usage: %s takedown < ids\n\nRemoves every message whose id stands on its own line of stdin; readers then see deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n",
-			program,
+			command.Program,
 		)
 	}
-	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
+	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if !serverSupported {
-		return failf(environment, "%s", errServerUnsupported)
+		return command.Failf(environment, "%s", errServerUnsupported)
 	}
 	if err := hardenProcess(); err != nil {
-		return failf(environment, "%s", err)
+		return command.Failf(environment, "%s", err)
 	}
 	if environment.Terminal.StdinIsTerminal() {
-		fmt.Fprintln(environment.Stderr, program+" takedown reads the ids from a pipe or a file on stdin, one per line")
-		return exitUsage
+		fmt.Fprintln(
+			environment.Stderr,
+			command.Program+" takedown reads the ids from a pipe or a file on stdin, one per line",
+		)
+		return command.ExitUsage
 	}
 	ids, err := readIDs(environment.Stdin)
 	if err != nil {
-		fmt.Fprintln(environment.Stderr, program+" takedown: "+err.Error())
-		return exitUsage
+		fmt.Fprintln(environment.Stderr, command.Program+" takedown: "+err.Error())
+		return command.ExitUsage
 	}
 	settings, err := config.FromEnv(environment.Getenv, false)
 	if err != nil {
-		return failf(environment, "%s", err)
+		return command.Failf(environment, "%s", err)
 	}
 	if err = requireStore(settings.DataDir); err != nil {
-		return failf(environment, "%s", err)
+		return command.Failf(environment, "%s", err)
 	}
 	database, blobs, err := openStore(
 		settings.DataDir,
@@ -304,7 +309,7 @@ func runTakedown(ctx context.Context, environment *Environment, arguments []stri
 		slog.New(slog.NewTextHandler(environment.Stderr, nil)),
 	)
 	if err != nil {
-		return failf(environment, "%s", logging.ErrorText(err))
+		return command.Failf(environment, "%s", logging.ErrorText(err))
 	}
 	defer database.Close()
 	return takeDown(ctx, environment, database, blobs, ids)
@@ -313,7 +318,7 @@ func runTakedown(ctx context.Context, environment *Environment, arguments []stri
 // takeDown removes each message without opening its record; readers then see deleted (D63, D101).
 func takeDown(
 	ctx context.Context,
-	environment *Environment,
+	environment *command.Environment,
 	database store.Store,
 	blobs store.Blobs,
 	ids []core.ID,
@@ -321,8 +326,8 @@ func takeDown(
 	failed := 0
 	for _, id := range ids {
 		if ctx.Err() != nil {
-			fmt.Fprintln(environment.Stderr, program+": takedown stopped before every id was handled")
-			return exitInterrupted
+			fmt.Fprintln(environment.Stderr, command.Program+": takedown stopped before every id was handled")
+			return command.ExitInterrupted
 		}
 		removal, err := store.TakeDown(ctx, database, blobs, seal.LocatorOf(id[:]), time.Now())
 		switch {
@@ -338,19 +343,19 @@ func takeDown(
 		}
 	}
 	if failed > 0 {
-		return failf(
+		return command.Failf(
 			environment,
 			"%d of %d messages could not be removed; run takedown again for them",
 			failed,
 			len(ids),
 		)
 	}
-	return exitOK
+	return command.ExitOK
 }
 
 // readIDs refuses the whole input when one line is not an id, so a pasted link never ends anything.
 func readIDs(reader io.Reader) ([]core.ID, error) {
-	data, err := readLimited(reader, maxTakedownInput)
+	data, err := command.ReadLimited(reader, maxTakedownInput)
 	if err != nil {
 		return nil, errors.New("give at most 1 MiB of ids on stdin")
 	}

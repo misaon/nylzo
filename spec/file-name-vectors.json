@@ -1,0 +1,55 @@
+{
+  "description": "Shared cases for the length rule of both clients: a sanitised file name keeps at most 255 bytes of UTF-8 and keeps its extension only when the extension is at most 16 bytes. A name is its parts joined, each part a text repeated count times.",
+  "cases": [
+    {
+      "name": "an astral extension longer than 16 bytes is cut with the stem",
+      "input": [["a", 250], [".", 1], ["\ud83d\ude00", 9]],
+      "sanitized": [["a", 250], [".", 1], ["\ud83d\ude00", 1]]
+    },
+    {
+      "name": "an astral extension of 16 bytes is kept",
+      "input": [["a", 300], [".", 1], ["\ud83d\ude00", 4]],
+      "sanitized": [["a", 238], [".", 1], ["\ud83d\ude00", 4]]
+    },
+    {
+      "name": "an ASCII extension of 16 bytes is kept",
+      "input": [["b", 300], [".", 1], ["x", 16]],
+      "sanitized": [["b", 238], [".", 1], ["x", 16]]
+    },
+    {
+      "name": "an ASCII extension of 17 bytes is cut with the stem",
+      "input": [["b", 300], [".", 1], ["x", 17]],
+      "sanitized": [["b", 255]]
+    },
+    {
+      "name": "a two-byte extension within 16 bytes is kept",
+      "input": [["c", 300], [".", 1], ["\u010d", 8]],
+      "sanitized": [["c", 238], [".", 1], ["\u010d", 8]]
+    },
+    {
+      "name": "a two-byte extension longer than 16 bytes is cut with the stem",
+      "input": [["c", 300], [".", 1], ["\u010d", 9]],
+      "sanitized": [["c", 255]]
+    },
+    {
+      "name": "the stem is cut at a whole character",
+      "input": [["\ud83d\ude00", 70], [".txt", 1]],
+      "sanitized": [["\ud83d\ude00", 62], [".txt", 1]]
+    },
+    {
+      "name": "only the last extension is kept",
+      "input": [["\u010d", 200], [".tar.gz", 1]],
+      "sanitized": [["\u010d", 126], [".gz", 1]]
+    },
+    {
+      "name": "a three-byte stem is cut at a whole character",
+      "input": [["\u20ac", 100], [".txt", 1]],
+      "sanitized": [["\u20ac", 83], [".txt", 1]]
+    },
+    {
+      "name": "a name of 255 bytes stays whole",
+      "input": [["d", 251], [".txt", 1]],
+      "sanitized": [["d", 251], [".txt", 1]]
+    }
+  ]
+}

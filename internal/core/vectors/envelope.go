@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
 )
 
 const octetStream = "application/octet-stream"
@@ -85,7 +87,7 @@ var envelopeCases = []envelopeCase{
 		name:  "file-5mib",
 		opens: 1,
 		ttl:   604800,
-		file:  &fileCase{name: "big.bin", mime: octetStream, size: core.MaxFileBytes},
+		file:  &fileCase{name: "big.bin", mime: octetStream, size: envelope.MaxFileBytes},
 	},
 	{
 		name:       "scrypt-text",
@@ -116,11 +118,11 @@ var envelopeCases = []envelopeCase{
 
 func (f *File) envelope() error {
 	for _, vector := range envelopeCases {
-		envelope, err := envelopeVector(vector)
+		generated, err := envelopeVector(vector)
 		if err != nil {
 			return err
 		}
-		f.Envelope = append(f.Envelope, envelope)
+		f.Envelope = append(f.Envelope, generated)
 	}
 	return nil
 }
@@ -128,27 +130,27 @@ func (f *File) envelope() error {
 func envelopeVector(vector envelopeCase) (Envelope, error) {
 	id := deterministicID("env/" + vector.name)
 	secret := deterministic32("env/s/" + vector.name)
-	_, content, err := core.DeriveAll(id, secret, vector.kdf, valueOr(vector.passphrase))
+	_, content, err := keys.DeriveAll(id, secret, vector.kdf, valueOr(vector.passphrase))
 	if err != nil {
 		return Envelope{}, err
 	}
-	header := core.Header{
-		Version: core.Version,
+	header := envelope.Header{
+		Version: envelope.Version,
 		KDF:     vector.kdf,
-		IV:      [core.IVLen]byte(deterministic("iv/"+vector.name, core.IVLen)),
+		IV:      [envelope.IVLen]byte(deterministic("iv/"+vector.name, envelope.IVLen)),
 	}
-	policy := core.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl}
+	policy := envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl}
 	payload, file := vector.payload()
-	meta, err := core.EncodeMeta(payload.Meta)
+	meta, err := envelope.EncodeMeta(payload.Meta)
 	if err != nil {
 		return Envelope{}, err
 	}
-	object, err := core.Seal(&content.K, header, id, policy, payload)
+	object, err := envelope.Seal(&content.K, header, id, policy, payload)
 	if err != nil {
 		return Envelope{}, err
 	}
 	sum := sha256.Sum256(object)
-	envelope := Envelope{
+	generated := Envelope{
 		Name:         vector.name,
 		ID:           id.String(),
 		S:            hex.EncodeToString(secret[:]),
@@ -160,23 +162,23 @@ func envelopeVector(vector envelopeCase) (Envelope, error) {
 		Text:         vector.text,
 		File:         file,
 		MetaJSON:     string(meta),
-		PlaintextLen: len(object) - core.HeaderLen - core.TagLen,
-		AAD:          hex.EncodeToString(core.AAD(header, id, policy)),
+		PlaintextLen: len(object) - envelope.HeaderLen - envelope.TagLen,
+		AAD:          hex.EncodeToString(envelope.AAD(header, id, policy)),
 		ObjectLen:    len(object),
 		ObjectSHA256: hex.EncodeToString(sum[:]),
 	}
 	if len(object) <= inlineMax {
-		envelope.Object = new(core.Encode(object))
+		generated.Object = new(core.Encode(object))
 	}
-	return envelope, nil
+	return generated, nil
 }
 
-func (c envelopeCase) payload() (core.Payload, *FileContent) {
-	payload := core.Payload{Meta: core.Meta{Text: c.text}}
+func (c envelopeCase) payload() (envelope.Payload, *FileContent) {
+	payload := envelope.Payload{Meta: envelope.Meta{Text: c.text}}
 	if c.file == nil {
 		return payload, nil
 	}
-	payload.Meta.File = &core.FileMeta{Name: c.file.name, Mime: c.file.mime, Size: int64(c.file.size)}
+	payload.Meta.File = &envelope.FileMeta{Name: c.file.name, Mime: c.file.mime, Size: int64(c.file.size)}
 	payload.File = counterBytes(c.file.size)
 	content := &FileContent{Name: c.file.name, Mime: c.file.mime, Size: c.file.size, Content: "counter"}
 	if c.file.inHex {

@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -62,9 +63,9 @@ type verifyOptions struct {
 	allowed map[string]bool
 }
 
-func verifyFlags(environment *Environment) (*flag.FlagSet, *verifyOptions) {
+func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOptions) {
 	options := &verifyOptions{allowed: map[string]bool{}}
-	flags := newFlags(environment, "verify-client")
+	flags := command.NewFlags(environment, "verify-client")
 	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
 	flags.Func(
 		"allow-header",
@@ -81,29 +82,29 @@ func verifyFlags(environment *Environment) (*flag.FlagSet, *verifyOptions) {
 	return flags, options
 }
 
-func runVerifyClient(ctx context.Context, environment *Environment, arguments []string) int {
+func runVerifyClient(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := verifyFlags(environment)
-	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
+	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if options.server == "" {
 		options.server = environment.Getenv(envServer)
 	}
 	if options.server == "" {
-		fmt.Fprintln(environment.Stderr, program+" verify-client needs --server or "+envServer)
-		return exitUsage
+		fmt.Fprintln(environment.Stderr, command.Program+" verify-client needs --server or "+envServer)
+		return command.ExitUsage
 	}
 	api, err := client.New(options.server)
 	if err != nil {
-		return failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", explain(err))
 	}
-	local, err := environment.webClient()
+	local, err := webClient(environment)
 	if err != nil || !local.Built {
-		return failf(environment, "%s", errNoLocalClient)
+		return command.Failf(environment, "%s", errNoLocalClient)
 	}
 	check := &verifier{
 		api:         api,
-		information: environment.buildInformation(),
+		information: environment.BuildInformation(),
 		local:       local,
 		version:     buildVersion(environment.Version),
 		allowed:     options.allowed,
@@ -111,7 +112,7 @@ func runVerifyClient(ctx context.Context, environment *Environment, arguments []
 	}
 	result, err := check.run(ctx)
 	if err != nil {
-		return failf(environment, "%s", err)
+		return command.Failf(environment, "%s", err)
 	}
 	fmt.Fprintf(
 		environment.Stdout,
@@ -123,9 +124,9 @@ func runVerifyClient(ctx context.Context, environment *Environment, arguments []
 	fmt.Fprintf(
 		environment.Stderr,
 		"%s: this covers what the server sent to this command; a server can recognise it and send browsers something else\n",
-		program,
+		command.Program,
 	)
-	return exitOK
+	return command.ExitOK
 }
 
 func (v *verifier) run(ctx context.Context) (verified, error) {

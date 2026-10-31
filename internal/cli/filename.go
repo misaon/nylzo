@@ -4,7 +4,6 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -12,7 +11,7 @@ import (
 
 const (
 	maxNameBytes      = 255
-	maxExtensionRunes = 16
+	maxExtensionBytes = 16
 	fallbackName      = "nylzo"
 )
 
@@ -52,7 +51,7 @@ func attachmentName(name string) string {
 		return clean
 	}
 	extension := ""
-	if dot := strings.LastIndex(clean, "."); dot > 0 && utf8.RuneCountInString(clean[dot+1:]) <= maxExtensionRunes {
+	if dot := strings.LastIndex(clean, "."); dot > 0 && len(clean[dot+1:]) <= maxExtensionBytes {
 		extension = clean[dot:]
 	}
 	stem := strings.TrimSuffix(clean, extension)

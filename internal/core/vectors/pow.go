@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
 )
 
 type PoW struct {
@@ -51,14 +52,14 @@ func (f *File) pow() error {
 }
 
 func powVector(vector powCase) (PoW, error) {
-	rawChallenge := deterministic("pow-challenge/"+vector.name, core.PoWChallengeLen)
+	rawChallenge := deterministic("pow-challenge/"+vector.name, proofofwork.ChallengeLen)
 	challenge := core.Encode(rawChallenge)
 	id := deterministicID("pow/" + vector.name)
 	counter := vector.counter
 	if vector.solveTo != nil {
-		solved, err := core.FirstSolution(
+		solved, err := proofofwork.FirstSolution(
 			context.Background(),
-			(*[core.PoWChallengeLen]byte)(rawChallenge),
+			(*[proofofwork.ChallengeLen]byte)(rawChallenge),
 			id,
 			*vector.solveTo,
 		)
@@ -67,11 +68,11 @@ func powVector(vector powCase) (PoW, error) {
 		}
 		counter = solved
 	}
-	digest, err := core.PoWDigest((*[core.PoWChallengeLen]byte)(rawChallenge), id, counter)
+	digest, err := proofofwork.Digest((*[proofofwork.ChallengeLen]byte)(rawChallenge), id, counter)
 	if err != nil {
 		return PoW{}, err
 	}
-	zeroBits := core.LeadingZeroBits(digest[:])
+	zeroBits := proofofwork.LeadingZeroBits(digest[:])
 	if zeroBits < vector.minZeroBits {
 		return PoW{}, fmt.Errorf("vectors: pow case %q has fewer than %d zero bits", vector.name, vector.minZeroBits)
 	}
@@ -82,7 +83,7 @@ func powVector(vector powCase) (PoW, error) {
 		Counter:    counter,
 		Digest:     hex.EncodeToString(digest[:]),
 		ZeroBits:   zeroBits,
-		Token:      core.PoWToken(challenge, counter),
+		Token:      proofofwork.Token(challenge, counter),
 		Difficulty: vector.solveTo,
 	}, nil
 }

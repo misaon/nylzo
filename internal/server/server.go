@@ -48,8 +48,6 @@ type Server struct {
 	store           store.Store
 	blobs           store.Blobs
 	ring            *pepper.Ring
-	clock           func() time.Time
-	after           func(time.Duration, func())
 	leaseTimers     *timers
 	logger          *slog.Logger
 	instanceLimiter *ratelimit.Limiter
@@ -90,15 +88,12 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err != nil {
 		return nil, err
 	}
-	leaseTimers := &timers{}
 	server := &Server{
 		settings:    *settings,
 		store:       storage,
 		blobs:       blobs,
 		ring:        ring,
-		clock:       time.Now,
-		after:       leaseTimers.after,
-		leaseTimers: leaseTimers,
+		leaseTimers: &timers{},
 		logger:      logging.New(os.Stderr),
 		webFiles:    webFiles,
 		dummyRow:    newDummyRow(),
@@ -141,7 +136,7 @@ func (s *Server) HTTPServer() *http.Server {
 			MaxReceiveBufferPerStream:     h2cStreamBuffer,
 			MaxReadFrameSize:              h2cMaxFrame,
 		},
-		ErrorLog: logging.NewHTTPErrorLog(s.logger, s.clock),
+		ErrorLog: logging.NewHTTPErrorLog(s.logger),
 	}
 }
 
@@ -171,7 +166,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 }
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
+	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, time.Now())
 }
 
 func (s *Server) setUpLimits() {

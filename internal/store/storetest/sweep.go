@@ -51,8 +51,10 @@ func (f *fixture) sweepSurvivesBlobErrors() {
 		t.Fatal(err)
 	}
 	due := baseTime.Add(store.BlobPurgeStep)
-	report, err := f.sweep(newFailingBlobs(f.blobs, bad.ref()), due)
-	if !errors.Is(err, errDisk) || report.Blobs != 1 || report.Counters != 1 {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDelete(bad.ref(), ErrInjected)
+	report, err := f.sweep(failing, due)
+	if !errors.Is(err, ErrInjected) || report.Blobs != 1 || report.Counters != 1 {
 		t.Fatalf("%+v %v", report, err)
 	}
 	if record := f.get(bad); record.HasBlob() || record.Row.BlobRef != bad.ref() || !f.blobExists(bad.ref()) {
@@ -82,9 +84,12 @@ func (f *fixture) sweepPagesPastFailures() {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
-	failing := newFailingBlobs(f.blobs, failingRefs...)
+	failing := NewFaultyBlobs(f.blobs)
+	for _, ref := range failingRefs {
+		failing.FailDelete(ref, ErrInjected)
+	}
 	report, err := store.SweepAll(ctx, f.store, failing, baseTime.Add(store.BlobPurgeStep))
-	if !errors.Is(err, errDisk) || report.Blobs != 1 || f.get(rows[store.SweepBatch]).Row.BlobRef != "" {
+	if !errors.Is(err, ErrInjected) || report.Blobs != 1 || f.get(rows[store.SweepBatch]).Row.BlobRef != "" {
 		t.Fatalf("a full page of failures must not hide the rows behind it: %+v", report)
 	}
 }
@@ -97,9 +102,9 @@ func (f *fixture) sweepDeletesAPageTogether() {
 		t.Fatal(err)
 	}
 	burned := f.create(1, oneMinute, false)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(burned.ref())
-	if _, err := f.end(burned, store.StateDeleted, baseTime, failing); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(burned.ref(), ErrInjected)
+	if _, err := f.end(burned, store.StateDeleted, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
 	live := f.create(1, oneHour, false)
@@ -165,13 +170,15 @@ func (f *fixture) reconcile() {
 	if err != nil || !report.Listed || report.Orphans != 0 || !f.blobExists(fresh) {
 		t.Fatalf("a reconcile inside the grace window must keep fresh objects: %+v %v", report, err)
 	}
-	failing := newFailingBlobs(f.blobs, failingA, failingB)
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDelete(failingA, ErrInjected)
+	failing.FailDelete(failingB, ErrInjected)
 	report, err = store.Reconcile(ctx, f.store, failing, time.Now().Add(store.BlobGrace+time.Minute))
-	if !errors.Is(err, errDisk) || !report.Listed || report.Orphans != 2 || f.blobExists(fresh) ||
+	if !errors.Is(err, ErrInjected) || !report.Listed || report.Orphans != 2 || f.blobExists(fresh) ||
 		f.blobExists(orphan) {
 		t.Fatalf("a failing delete must not stop the others: %+v %v", report, err)
 	}
-	if failing.attemptsOn(failingA) != 1 || failing.attemptsOn(failingB) != 1 || !f.blobExists(live.ref()) {
+	if failing.DeleteAttempts(failingA) != 1 || failing.DeleteAttempts(failingB) != 1 || !f.blobExists(live.ref()) {
 		t.Fatal("the reconcile skipped an orphan after a failure or deleted a live blob")
 	}
 }

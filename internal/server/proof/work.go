@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -20,7 +21,7 @@ const (
 	workNonceKey = "pow:"
 	workNonceTTL = 2 * workWindow
 	workSlotWait = 10 * time.Second
-	workSigned   = core.PoWNonceOffset + core.PoWNonceLen
+	workSigned   = proofofwork.NonceOffset + proofofwork.NonceLen
 )
 
 var (
@@ -47,15 +48,15 @@ func NewWork(ring *pepper.Ring, counters store.Counters, concurrency, difficulty
 }
 
 func (w *Work) Challenge(now time.Time) string {
-	challenge := make([]byte, core.PoWChallengeLen)
-	binary.BigEndian.PutUint32(challenge[:core.PoWWindowLen], unixSeconds(now))
-	rand.Read(challenge[core.PoWNonceOffset:workSigned])
+	challenge := make([]byte, proofofwork.ChallengeLen)
+	binary.BigEndian.PutUint32(challenge[:proofofwork.WindowLen], unixSeconds(now))
+	rand.Read(challenge[proofofwork.NonceOffset:workSigned])
 	copy(challenge[workSigned:], w.tag(challenge[:workSigned]))
 	return core.Encode(challenge)
 }
 
 type workToken struct {
-	challenge *[core.PoWChallengeLen]byte
+	challenge *[proofofwork.ChallengeLen]byte
 	counter   uint64
 }
 
@@ -86,10 +87,10 @@ func (w *Work) Verify(ctx context.Context, encoded string, id core.ID, now time.
 
 func (w *Work) parse(encoded string, now time.Time) (workToken, bool) {
 	encodedChallenge, encodedCounter, ok := strings.Cut(encoded, ".")
-	if !ok || len(encodedCounter) != 2*core.PoWCounterLen || strings.ContainsAny(encodedCounter, "ABCDEF") {
+	if !ok || len(encodedCounter) != 2*proofofwork.CounterLen || strings.ContainsAny(encodedCounter, "ABCDEF") {
 		return workToken{}, false
 	}
-	decoded, err := core.DecodeExact(encodedChallenge, core.PoWChallengeLen)
+	decoded, err := core.DecodeExact(encodedChallenge, proofofwork.ChallengeLen)
 	if err != nil {
 		return workToken{}, false
 	}
@@ -97,21 +98,21 @@ func (w *Work) parse(encoded string, now time.Time) (workToken, bool) {
 	if err != nil {
 		return workToken{}, false
 	}
-	challenge := (*[core.PoWChallengeLen]byte)(decoded)
+	challenge := (*[proofofwork.ChallengeLen]byte)(decoded)
 	if !hmac.Equal(w.tag(challenge[:workSigned]), challenge[workSigned:]) {
 		return workToken{}, false
 	}
-	age := now.Unix() - int64(binary.BigEndian.Uint32(challenge[:core.PoWWindowLen]))
+	age := now.Unix() - int64(binary.BigEndian.Uint32(challenge[:proofofwork.WindowLen]))
 	if age < -int64(clockSkew/time.Second) || age > int64(workWindow/time.Second) {
 		return workToken{}, false
 	}
 	return workToken{challenge: challenge, counter: binary.BigEndian.Uint64(counter)}, true
 }
 
-func (w *Work) spend(ctx context.Context, challenge *[core.PoWChallengeLen]byte) error {
-	issued := time.Unix(int64(binary.BigEndian.Uint32(challenge[:core.PoWWindowLen])), 0)
+func (w *Work) spend(ctx context.Context, challenge *[proofofwork.ChallengeLen]byte) error {
+	issued := time.Unix(int64(binary.BigEndian.Uint32(challenge[:proofofwork.WindowLen])), 0)
 	used, err := w.counters.RateHit(ctx, []store.RateHit{{
-		Key:         workNonceKey + hex.EncodeToString(challenge[core.PoWNonceOffset:workSigned]),
+		Key:         workNonceKey + hex.EncodeToString(challenge[proofofwork.NonceOffset:workSigned]),
 		WindowStart: time.Unix(0, 0),
 		PurgeAt:     store.CeilMinute(issued.Add(workNonceTTL)),
 	}})
@@ -126,10 +127,10 @@ func (w *Work) spend(ctx context.Context, challenge *[core.PoWChallengeLen]byte)
 
 func (w *Work) tag(signed []byte) []byte {
 	mac := w.ring.MAC(pepper.PoW, signed).MAC
-	return mac[:core.PoWTagLen]
+	return mac[:proofofwork.TagLen]
 }
 
 func (t workToken) satisfies(id core.ID, difficulty int) bool {
-	digest, err := core.PoWDigest(t.challenge, id, t.counter)
-	return err == nil && core.LeadingZeroBits(digest[:]) >= difficulty
+	digest, err := proofofwork.Digest(t.challenge, id, t.counter)
+	return err == nil && proofofwork.LeadingZeroBits(digest[:]) >= difficulty
 }

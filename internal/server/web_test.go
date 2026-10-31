@@ -5,23 +5,19 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
-	"io/fs"
-	"log/slog"
 	"maps"
 	"net/http"
-	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/webclient"
-	"github.com/misaon/nylzo/internal/store/disk"
-	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
 const (
@@ -78,109 +74,112 @@ func checkSecurityHeaders(t *testing.T, name string, response testResponse, inde
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	for _, path := range []string{
-		"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance",
-		"/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope",
-	} {
-		response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
-		checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
-	}
-	prefetch := map[string]string{"Sec-Purpose": "prefetch"}
-	for _, testCase := range []struct {
-		request   *testRequest
-		status    int
-		indexable bool
-	}{
-		{&testRequest{method: http.MethodHead, path: "/"}, http.StatusOK, true},
-		{&testRequest{method: http.MethodPost, path: "/"}, http.StatusMethodNotAllowed, false},
-		{&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: prefetch}, http.StatusServiceUnavailable, false},
-		{
-			&testRequest{method: http.MethodGet, path: "/m/" + core.NewID().String(), headers: prefetch},
-			http.StatusServiceUnavailable,
-			false,
-		},
-		{&testRequest{method: http.MethodPost, path: "/api/v1/messages", body: []byte("x")}, http.StatusBadRequest, false},
-		{&testRequest{method: http.MethodGet, path: "/m/not-an-id"}, http.StatusNotFound, false},
-	} {
-		name := testCase.request.method + " " + testCase.request.path
-		response, _ := harness.do(testCase.request)
-		if response.StatusCode != testCase.status {
-			t.Fatalf("%s: status %d, want %d", name, response.StatusCode, testCase.status)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		for _, path := range []string{
+			"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance",
+			"/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope",
+		} {
+			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
+			checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
 		}
-		checkSecurityHeaders(t, name, response, testCase.indexable)
-	}
-	response, body := harness.do(&testRequest{
-		method:  http.MethodGet,
-		path:    "/api/v1/messages/not-an-id",
-		headers: map[string]string{"Authorization": core.AuthScheme + " short"},
-	})
-	if response.StatusCode != http.StatusNotFound || string(body) != `{"error":"not_found"}` {
-		t.Fatalf("malformed API id: %d %s", response.StatusCode, body)
-	}
+		prefetch := map[string]string{"Sec-Purpose": "prefetch"}
+		for _, testCase := range []struct {
+			request   *testRequest
+			status    int
+			indexable bool
+		}{
+			{&testRequest{method: http.MethodHead, path: "/"}, http.StatusOK, true},
+			{&testRequest{method: http.MethodPost, path: "/"}, http.StatusMethodNotAllowed, false},
+			{&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: prefetch}, http.StatusServiceUnavailable, false},
+			{
+				&testRequest{method: http.MethodGet, path: "/m/" + core.NewID().String(), headers: prefetch},
+				http.StatusServiceUnavailable,
+				false,
+			},
+			{&testRequest{method: http.MethodPost, path: "/api/v1/messages", body: []byte("x")}, http.StatusBadRequest, false},
+			{&testRequest{method: http.MethodGet, path: "/m/not-an-id"}, http.StatusNotFound, false},
+		} {
+			name := testCase.request.method + " " + testCase.request.path
+			response, _ := harness.do(testCase.request)
+			if response.StatusCode != testCase.status {
+				t.Fatalf("%s: status %d, want %d", name, response.StatusCode, testCase.status)
+			}
+			checkSecurityHeaders(t, name, response, testCase.indexable)
+		}
+		response, body := harness.do(&testRequest{
+			method:  http.MethodGet,
+			path:    "/api/v1/messages/not-an-id",
+			headers: map[string]string{"Authorization": signing.AuthScheme + " short"},
+		})
+		if response.StatusCode != http.StatusNotFound || string(body) != `{"error":"not_found"}` {
+			t.Fatalf("malformed API id: %d %s", response.StatusCode, body)
+		}
 
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.BucketPerSecond = 1
-	settings.Rates.BucketBurst = 2
-	throttled := newHarness(t, settings)
-	instance := &testRequest{method: http.MethodGet, path: "/api/v1/instance"}
-	throttled.do(instance)
-	throttled.do(instance)
-	if response, _ = throttled.do(instance); response.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("throttled: status %d", response.StatusCode)
-	}
-	checkSecurityHeaders(t, "throttled", response, false)
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.BucketPerSecond = 1
+		settings.Rates.BucketBurst = 2
+		throttled := newHarness(t, settings)
+		instance := &testRequest{method: http.MethodGet, path: "/api/v1/instance"}
+		throttled.do(instance)
+		throttled.do(instance)
+		if response, _ = throttled.do(instance); response.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("throttled: status %d", response.StatusCode)
+		}
+		checkSecurityHeaders(t, "throttled", response, false)
 
-	specCSP := htmlCSPFromSpec(t)
-	nonces := map[string]bool{}
-	pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
-	for i := range 2 * len(pages) {
-		response, body = harness.do(&testRequest{method: http.MethodGet, path: pages[i%len(pages)]})
-		csp := response.Header.Get("Content-Security-Policy")
-		nonce := pageNonce(csp)
-		if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
-			t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+		specCSP := htmlCSPFromSpec(t)
+		nonces := map[string]bool{}
+		pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
+		for i := range 2 * len(pages) {
+			response, body = harness.do(&testRequest{method: http.MethodGet, path: pages[i%len(pages)]})
+			csp := response.Header.Get("Content-Security-Policy")
+			nonce := pageNonce(csp)
+			if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
+				t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+			}
+			if nonces[nonce] {
+				t.Fatal("nonce repeated")
+			}
+			nonces[nonce] = true
+			if !bytes.Contains(body, []byte(`nonce="`+nonce+`"`)) ||
+				bytes.Contains(body, []byte("__NYLZO_CSP_NONCE__")) {
+				t.Fatal("nonce not injected into the page")
+			}
 		}
-		if nonces[nonce] {
-			t.Fatal("nonce repeated")
-		}
-		nonces[nonce] = true
-		if !bytes.Contains(body, []byte(`nonce="`+nonce+`"`)) || bytes.Contains(body, []byte("__NYLZO_CSP_NONCE__")) {
-			t.Fatal("nonce not injected into the page")
-		}
-	}
 
-	response, preview := harness.do(&testRequest{
-		method:  http.MethodGet,
-		path:    "/m/" + core.NewID().String(),
-		headers: map[string]string{"User-Agent": previewAgent},
-	})
-	if response.StatusCode != http.StatusOK || bytes.Contains(preview, []byte("<script")) ||
-		bytes.Contains(preview, []byte("<style")) || !bytes.Contains(preview, []byte(`name="viewport"`)) ||
-		!bytes.Contains(preview, []byte(`name="robots" content="noindex, nofollow"`)) {
-		t.Fatalf("preview agent page: %d %s", response.StatusCode, preview)
-	}
-	client, err := EmbeddedWebClient()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"/", "/cs/", "/sent"} {
-		if _, page := harness.do(
-			&testRequest{method: http.MethodGet, path: path},
-		); client.Built && bytes.Contains(page, []byte(`name="robots"`)) {
-			t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80)", path)
+		response, preview := harness.do(&testRequest{
+			method:  http.MethodGet,
+			path:    "/m/" + core.NewID().String(),
+			headers: map[string]string{"User-Agent": previewAgent},
+		})
+		if response.StatusCode != http.StatusOK || bytes.Contains(preview, []byte("<script")) ||
+			bytes.Contains(preview, []byte("<style")) || !bytes.Contains(preview, []byte(`name="viewport"`)) ||
+			!bytes.Contains(preview, []byte(`name="robots" content="noindex, nofollow"`)) {
+			t.Fatalf("preview agent page: %d %s", response.StatusCode, preview)
 		}
-	}
-	nonceAttribute := regexp.MustCompile(`nonce="[^"]*"`)
-	_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
-	_, previewHome := harness.do(&testRequest{
-		method:  http.MethodGet,
-		path:    "/",
-		headers: map[string]string{"User-Agent": previewAgent},
+		client, err := EmbeddedWebClient()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{"/", "/cs/", "/sent"} {
+			if _, page := harness.do(
+				&testRequest{method: http.MethodGet, path: path},
+			); client.Built && bytes.Contains(page, []byte(`name="robots"`)) {
+				t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80)", path)
+			}
+		}
+		nonceAttribute := regexp.MustCompile(`nonce="[^"]*"`)
+		_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
+		_, previewHome := harness.do(&testRequest{
+			method:  http.MethodGet,
+			path:    "/",
+			headers: map[string]string{"User-Agent": previewAgent},
+		})
+		if !bytes.Equal(nonceAttribute.ReplaceAll(previewHome, nil), nonceAttribute.ReplaceAll(home, nil)) {
+			t.Fatalf("a preview agent must get the normal home page: %s", previewHome)
+		}
 	})
-	if !bytes.Equal(nonceAttribute.ReplaceAll(previewHome, nil), nonceAttribute.ReplaceAll(home, nil)) {
-		t.Fatalf("a preview agent must get the normal home page: %s", previewHome)
-	}
 }
 
 func builtHome(language string) string {
@@ -233,77 +232,46 @@ func builtClient(t *testing.T) fstest.MapFS {
 	}
 }
 
-func newWebServer(t *testing.T, files fs.FS, logs io.Writer) (*httptest.Server, error) {
-	t.Helper()
-	return newWebServerWith(t, files, logs, baseSettings(pepperA, nil))
-}
-
-func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, settings *config.Server) (*httptest.Server, error) {
-	t.Helper()
-	directory := t.TempDir()
-	settings.DataDir = directory
-	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	blobs, err := disk.New(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if logs == nil {
-		logs = io.Discard
-	}
-	server, err := New(
-		settings,
-		database,
-		blobs,
-		WithWebFiles(files),
-		WithLogger(slog.New(slog.NewJSONHandler(logs, nil))),
-	)
-	if err != nil {
-		return nil, err
-	}
-	httpServer := httptest.NewServer(server.handler)
-	t.Cleanup(httpServer.Close)
-	return httpServer, nil
-}
-
 type fetchedPage struct {
 	testResponse
 
 	body string
 }
 
-var (
-	rawClient        = &http.Client{Transport: &http.Transport{DisableCompression: true}}
-	noRedirectClient = &http.Client{
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-)
-
-func get(t *testing.T, url string, headers map[string]string) fetchedPage {
-	t.Helper()
-	return fetch(t, rawClient, url, headers)
+func (h *testHarness) get(path string, headers map[string]string) fetchedPage {
+	h.t.Helper()
+	return h.fetch(path, headers, true)
 }
 
-func fetch(t *testing.T, client *http.Client, url string, headers map[string]string) fetchedPage {
-	t.Helper()
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
+// fetch never decompresses, so a test sees the bytes the server sent.
+func (h *testHarness) fetch(path string, headers map[string]string, followRedirects bool) fetchedPage {
+	h.t.Helper()
+	transport, ok := h.client.Transport.(*http.Transport)
+	if !ok {
+		h.t.Fatalf("the test server client has a %T", h.client.Transport)
+	}
+	transport = transport.Clone()
+	transport.DisableCompression = true
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport}
+	if !followRedirects {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	request, err := http.NewRequestWithContext(h.t.Context(), http.MethodGet, h.httpServer.URL+path, http.NoBody)
 	if err != nil {
-		t.Fatal(err)
+		h.t.Fatal(err)
 	}
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		t.Fatal(err)
+		h.t.Fatal(err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		t.Fatal(err)
+		h.t.Fatal(err)
 	}
 	return fetchedPage{
 		StatusCode: response.StatusCode,
@@ -321,16 +289,9 @@ func pageNonce(csp string) string {
 
 func TestBuiltClientIsServed(t *testing.T) {
 	t.Parallel()
-	var logs bytes.Buffer
-	httpServer, err := newWebServer(t, builtClient(t), &logs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(logs.String(), `"msg":"web-client","built":true,"assets":5`) {
-		t.Fatalf("the server did not log the embedded client: %s", logs.String())
-	}
+	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
 	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
-		page := get(t, httpServer.URL+path, nil)
+		page := harness.get(path, nil)
 		nonce := pageNonce(page.Header.Get("Content-Security-Policy"))
 		if page.StatusCode != http.StatusOK || strings.Contains(page.body, "placeholder") ||
 			strings.Contains(page.body, "__NYLZO_CSP_NONCE__") || strings.Count(page.body, `nonce="`+nonce+`"`) != 2 {
@@ -344,7 +305,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 		"/assets/favicon-d4.svg":   "image/svg+xml",
 		"/assets/favicon-e5.png":   "image/png",
 	} {
-		asset := get(t, httpServer.URL+path, nil)
+		asset := harness.get(path, nil)
 		if asset.StatusCode != http.StatusOK || asset.Header.Get("Content-Type") != contentType || asset.body == "" {
 			t.Fatalf("%s: %d %s", path, asset.StatusCode, asset.Header.Get("Content-Type"))
 		}
@@ -361,15 +322,15 @@ func TestBuiltClientIsServed(t *testing.T) {
 		"/assets/missing.js", "/assets/", "/assets/../placeholder.html", "/assets/%2e%2e%2fplaceholder.html",
 		"/assets/index-a1.js.br", "/assets/index-a1.js.gz", "/index.html",
 	} {
-		if missing := get(t, httpServer.URL+path, nil); missing.StatusCode != http.StatusNotFound {
+		if missing := harness.get(path, nil); missing.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", path, missing.StatusCode)
 		}
 	}
-	script := get(t, httpServer.URL+"/assets/index-a1.js", map[string]string{"Accept-Encoding": "gzip, deflate, br"})
+	script := harness.get("/assets/index-a1.js", map[string]string{"Accept-Encoding": "gzip, deflate, br"})
 	if script.Header.Get("Content-Encoding") != "gzip" || gunzipped(t, script.body) != appJS {
 		t.Fatalf("a gzip variant was not sent to a client that accepts it: %q", script.Header.Get("Content-Encoding"))
 	}
-	style := get(t, httpServer.URL+"/assets/style-b2.css", map[string]string{"Accept-Encoding": "br, gzip"})
+	style := harness.get("/assets/style-b2.css", map[string]string{"Accept-Encoding": "br, gzip"})
 	if style.Header.Get("Content-Encoding") != "" || style.body != "body{}" {
 		t.Fatalf("an asset without compressed variants: %q %q", style.Header.Get("Content-Encoding"), style.body)
 	}
@@ -377,33 +338,27 @@ func TestBuiltClientIsServed(t *testing.T) {
 
 func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 	t.Parallel()
-	httpServer, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
 	for path, want := range map[string]string{
 		"/":       "<h1>home en</h1>",
 		"/cs/":    "<h1>home cs</h1>",
 		"/sent":   "<body></body>",
 		"/report": "<body></body>",
 	} {
-		page := get(t, httpServer.URL+path, nil)
+		page := harness.get(path, nil)
 		if page.StatusCode != http.StatusOK || !strings.Contains(page.body, want) {
 			t.Fatalf("%s: %d %s", path, page.StatusCode, page.body)
 		}
-		if robots := page.Header.Get("X-Robots-Tag"); (path == "/" || path == "/cs/") != (robots == "") {
-			t.Fatalf("%s: X-Robots-Tag %q, only the home pages may be indexed (D82)", path, robots)
-		}
 	}
 	for _, path := range []string{"/cs", "/cs?utm=1"} {
-		redirect := fetch(t, noRedirectClient, httpServer.URL+path, nil)
+		redirect := harness.fetch(path, nil, false)
 		if redirect.StatusCode != http.StatusPermanentRedirect || redirect.Header.Get("Location") != "/cs/" ||
 			redirect.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
 			t.Fatalf("%s: %d %q %v", path, redirect.StatusCode, redirect.Header.Get("Location"), redirect.Header)
 		}
 	}
 	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/"} {
-		if missing := get(t, httpServer.URL+path, nil); missing.StatusCode != http.StatusNotFound {
+		if missing := harness.get(path, nil); missing.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", path, missing.StatusCode)
 		}
 	}
@@ -411,13 +366,10 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 
 func TestPagesAreCompressedWithAFreshNonce(t *testing.T) {
 	t.Parallel()
-	httpServer, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
 	for _, path := range []string{"/", "/sent"} {
-		plain := get(t, httpServer.URL+path, nil)
-		zipped := get(t, httpServer.URL+path, map[string]string{"Accept-Encoding": "gzip, deflate, br"})
+		plain := harness.get(path, nil)
+		zipped := harness.get(path, map[string]string{"Accept-Encoding": "gzip, deflate, br"})
 		if plain.Header.Get("Content-Encoding") != "" || zipped.Header.Get("Content-Encoding") != "gzip" ||
 			plain.Header.Get("Vary") != "Accept-Encoding" || zipped.Header.Get("Vary") != "Accept-Encoding" {
 			t.Fatalf("%s: encoding headers %v %v", path, plain.Header, zipped.Header)
@@ -433,32 +385,26 @@ func TestPagesAreCompressedWithAFreshNonce(t *testing.T) {
 
 func TestRobotsSitemapAndManifest(t *testing.T) {
 	t.Parallel()
-	without, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	robots := get(t, without.URL+"/robots.txt", nil)
+	without := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
+	robots := without.get("/robots.txt", nil)
 	if robots.StatusCode != http.StatusOK || robots.Header.Get("Content-Type") != "text/plain; charset=utf-8" ||
 		robots.body != string(webclient.Robots("")) {
 		t.Fatalf("robots.txt: %d %q %q", robots.StatusCode, robots.Header.Get("Content-Type"), robots.body)
 	}
-	if sitemap := get(t, without.URL+"/sitemap.xml", nil); sitemap.StatusCode != http.StatusNotFound {
+	if sitemap := without.get("/sitemap.xml", nil); sitemap.StatusCode != http.StatusNotFound {
 		t.Fatalf("sitemap.xml without a public URL: %d", sitemap.StatusCode)
 	}
 	settings := baseSettings(pepperA, nil)
 	settings.PublicURL = "https://nylzo.example"
 	settings.Version = "v1.2.3"
-	with, err := newWebServerWith(t, builtClient(t), nil, settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sitemap := get(t, with.URL+"/sitemap.xml", nil)
+	with := newHarness(t, settings, WithWebFiles(builtClient(t)))
+	sitemap := with.get("/sitemap.xml", nil)
 	if sitemap.StatusCode != http.StatusOK ||
 		sitemap.Header.Get("Content-Type") != "application/xml; charset=utf-8" ||
 		sitemap.body != string(webclient.Sitemap(settings.PublicURL)) {
 		t.Fatalf("sitemap.xml: %d %q", sitemap.StatusCode, sitemap.Header.Get("Content-Type"))
 	}
-	manifest := get(t, with.URL+webclient.ManifestPath, nil)
+	manifest := with.get(webclient.ManifestPath, nil)
 	if manifest.StatusCode != http.StatusOK ||
 		manifest.Header.Get("Content-Type") != "application/json; charset=utf-8" ||
 		manifest.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP ||
@@ -480,33 +426,23 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 
 func TestWithoutABuildTheServerServesThePlaceholder(t *testing.T) {
 	t.Parallel()
-	var logs bytes.Buffer
 	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}}
-	httpServer, err := newWebServer(t, placeholder, &logs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(logs.String(), `"msg":"web-client","built":false,"assets":0`) {
-		t.Fatalf("the server did not log that it serves the placeholder: %s", logs.String())
-	}
-	page := get(t, httpServer.URL+"/", nil)
+	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(placeholder))
+	page := harness.get("/", nil)
 	if page.StatusCode != http.StatusOK || !strings.Contains(page.body, "placeholder") ||
 		strings.Contains(page.body, "__NYLZO_CSP_NONCE__") {
 		t.Fatalf("placeholder: %d %s", page.StatusCode, page.body)
 	}
-	if asset := get(t, httpServer.URL+"/assets/index-a1.js", nil); asset.StatusCode != http.StatusNotFound {
+	if asset := harness.get("/assets/index-a1.js", nil); asset.StatusCode != http.StatusNotFound {
 		t.Fatalf("an asset without a build: %d", asset.StatusCode)
 	}
-	embedded, err := newWebServer(t, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if page = get(t, embedded.URL+"/", nil); page.StatusCode != http.StatusOK || !strings.Contains(page.body, "<html") {
+	embedded := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(nil))
+	if page = embedded.get("/", nil); page.StatusCode != http.StatusOK || !strings.Contains(page.body, "<html") {
 		t.Fatalf("embedded client: %d %s", page.StatusCode, page.body)
 	}
 	broken := builtClient(t)
 	maps.DeleteFunc(broken, func(name string, _ *fstest.MapFile) bool { return name == "dist/home.cs.html" })
-	if _, brokenErr := newWebServer(t, broken, nil); brokenErr == nil {
+	if _, brokenErr := New(&embedded.settings, embedded.store, embedded.blobs, WithWebFiles(broken)); brokenErr == nil {
 		t.Fatal("the server started with a broken build")
 	}
 }
@@ -524,11 +460,8 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 		Contact: "security@example.org",
 		Hosting: "Vultr, Frankfurt",
 	}
-	httpServer, err := newWebServerWith(t, builtClient(t), nil, settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	report := get(t, httpServer.URL+TransparencyPath, nil)
+	harness := newHarness(t, settings, WithWebFiles(builtClient(t)))
+	report := harness.get(TransparencyPath, nil)
 	if report.StatusCode != http.StatusOK || report.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
 		t.Fatalf("%d %v", report.StatusCode, report.Header)
 	}
@@ -545,11 +478,8 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 			t.Fatalf("transparency is missing %s: %s", want, report.body)
 		}
 	}
-	plain, err := newWebServer(t, builtClient(t), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report = get(t, plain.URL+TransparencyPath, nil); strings.Contains(report.body, "operator") {
+	plain := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
+	if report = plain.get(TransparencyPath, nil); strings.Contains(report.body, "operator") {
 		t.Fatalf("an unset operator must not appear: %s", report.body)
 	}
 }

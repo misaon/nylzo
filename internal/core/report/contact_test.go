@@ -1,4 +1,4 @@
-package core_test
+package report_test
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/report"
 )
 
 func TestParseContactKeepsPlausibleAddressesAndRefusesLinks(t *testing.T) {
@@ -19,7 +20,7 @@ func TestParseContactKeepsPlausibleAddressesAndRefusesLinks(t *testing.T) {
 		"jiří@háček.example":                     "jiří@háček.example",
 		strings.Repeat("a", 243) + "@example.cz": strings.Repeat("a", 243) + "@example.cz",
 	} {
-		if got, err := core.ParseContact(raw); err != nil || got != want {
+		if got, err := report.ParseContact(raw); err != nil || got != want {
 			t.Errorf("ParseContact(%q) = %q, %v, want %q", raw, got, err, want)
 		}
 	}
@@ -46,7 +47,7 @@ func TestParseContactKeepsPlausibleAddressesAndRefusesLinks(t *testing.T) {
 		link + "@example.cz",
 		"jana@example.cz " + link,
 	} {
-		if got, err := core.ParseContact(raw); !errors.Is(err, core.ErrContact) {
+		if got, err := report.ParseContact(raw); !errors.Is(err, report.ErrContact) {
 			t.Errorf("ParseContact(%q) = %q, %v, want ErrContact", raw, got, err)
 		}
 	}
