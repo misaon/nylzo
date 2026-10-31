@@ -180,8 +180,6 @@ linters:
     rules:
       - path: _test\.go
         linters: [dupl, funlen, gocognit, cyclop, goconst, errcheck, gosec, noctx, varnamelen]
-      - path: ^cmd/
-        linters: [forbidigo]
 
 issues:
   max-issues-per-linter: 0
