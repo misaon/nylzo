@@ -264,7 +264,7 @@ func newWebServerWith(t *testing.T, files fs.FS, logs io.Writer, settings *confi
 	if err != nil {
 		return nil, err
 	}
-	httpServer := httptest.NewServer(server.Handler())
+	httpServer := httptest.NewServer(server.handler)
 	t.Cleanup(httpServer.Close)
 	return httpServer, nil
 }

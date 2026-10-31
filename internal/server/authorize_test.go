@@ -1009,7 +1009,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
 		r.Header.Set("Authorization", authorization)
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, r)
+		server.handler.ServeHTTP(recorder, r)
 		return recorder.Code
 	}
 	if code := send(); code != http.StatusInternalServerError {

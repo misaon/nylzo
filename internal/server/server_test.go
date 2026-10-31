@@ -437,7 +437,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "/api/v1/messages/"+id+"/blob", http.NoBody),
 	} {
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, request)
+		server.handler.ServeHTTP(recorder, request)
 		if recorder.Code != http.StatusServiceUnavailable || recorder.Header().Get("Retry-After") != "5" {
 			t.Fatalf(
 				"%s with every stream slot busy: %d %q",
@@ -449,7 +449,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	}
 	server.streams.Release(source, ranges)
 	recorder := httptest.NewRecorder()
-	server.Handler().
+	server.handler.
 		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody))
 	if recorder.Code != http.StatusNotFound || !server.streams.Take(source, ranges) {
 		t.Fatalf("a claim with a free slot: %d, or it kept its slot", recorder.Code)
@@ -463,7 +463,7 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+core.NewID().String()+"/claim", http.NoBody)
 		request.RemoteAddr = address + ":1234"
 		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, request)
+		server.handler.ServeHTTP(recorder, request)
 		return recorder.Code
 	}
 	hold := func(address string) {

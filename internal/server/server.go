@@ -35,22 +35,6 @@ const (
 
 type Option func(*Server)
 
-func WithClock(clock func() time.Time) Option {
-	return func(server *Server) {
-		if clock != nil {
-			server.clock = clock
-		}
-	}
-}
-
-func WithAfterFunc(after func(delay time.Duration, run func())) Option {
-	return func(server *Server) {
-		if after != nil {
-			server.after = after
-		}
-	}
-}
-
 func WithLogger(logger *slog.Logger) Option {
 	return func(server *Server) {
 		if logger != nil {
@@ -137,10 +121,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 
 func (s *Server) Close() {
 	s.leaseTimers.stop()
-}
-
-func (s *Server) Handler() http.Handler {
-	return s.handler
 }
 
 func (s *Server) HTTPServer() *http.Server {
