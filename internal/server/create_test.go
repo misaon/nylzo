@@ -14,7 +14,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -28,7 +27,6 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
-	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
 func FuzzCreateHeader(f *testing.F) {
@@ -1137,7 +1135,7 @@ func TestCreateStorageFailureAnswers500(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		faulty := harness.withFaultyBlobs()
-		faulty.set(func(blobs *faultyBlobs) { blobs.failPut = errInjected })
+		faulty.FailPut(errInjected)
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		if response, _ := harness.create(message); response.StatusCode != http.StatusInternalServerError {
 			t.Fatalf("storage failure: %d", response.StatusCode)
@@ -1156,7 +1154,7 @@ func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
 		harness.mustCreate(existing)
 		early, earlyBody := harness.create(existing)
 		faulty := harness.withFaultyBlobs()
-		faulty.set(func(blobs *faultyBlobs) { blobs.failPut = store.ErrConflict })
+		faulty.FailPut(store.ErrConflict)
 		late, lateBody := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
 		if early.StatusCode != http.StatusConflict || late.StatusCode != http.StatusConflict ||
 			late.Close != early.Close ||
@@ -1239,15 +1237,12 @@ func (s cancelAfterCommit) RateReserve(ctx context.Context, hit store.RateHit) (
 
 func TestReserveKeepsItsSlotWhenTheRequestIsCanceled(t *testing.T) {
 	t.Parallel()
-	database, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer database.Close()
-	server := &Server{
-		settings: config.Server{Rates: config.Rates{GlobalDailyCreates: 3}},
-		store:    cancelAfterCommit{database},
-	}
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.GlobalDailyCreates = 3
+	harness := newHarness(t, settings)
+	harness.store = cancelAfterCommit{harness.store}
+	harness.reopen(&harness.settings)
+	server := harness.server
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if slot, reserveGlobalCreateErr := server.reserveGlobalCreate(

@@ -177,12 +177,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		stuck.address = ip4
 		harness.mustCreate(stuck)
 		needles.addMessage("stuck", stuck, "")
-		faulty.set(func(blobs *faultyBlobs) {
-			blobs.deleteErr[harness.blobRef(stuck)] = &fs.PathError{
-				Op:   "remove",
-				Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobRef(stuck)))),
-				Err:  syscall.EROFS,
-			}
+		faulty.FailDelete(harness.blobRef(stuck), &fs.PathError{
+			Op:   "remove",
+			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobRef(stuck)))),
+			Err:  syscall.EROFS,
 		})
 		if response, _ := harness.post(
 			stuck,

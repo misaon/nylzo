@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +26,6 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
-	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
 func headersWithoutDate(harness http.Header) map[string][]string {
@@ -973,7 +971,7 @@ func TestReplayAfterRestartIsRefused(t *testing.T) {
 }
 
 func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
-	server, _ := testServer(t, openStore(t), nil)
+	server := newHarness(t, baseSettings(pepperA, nil)).server
 	path := "/api/v1/messages/" + core.NewID().String()
 	var offCurve [signing.PublicKeyLen]byte
 	for i := byte(2); ; i++ {
@@ -1040,20 +1038,11 @@ func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateH
 
 func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	t.Parallel()
-	settings := config.Defaults()
-	settings.ReportKey = testReportKey.PublicKey()
-	settings.DataDir = t.TempDir()
-	settings.Pepper = bytes.Repeat([]byte{1}, 32)
-	database, err := sqlite.Open(t.Context(), filepath.Join(settings.DataDir, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	failing := &failingSpends{Store: database, fail: true}
-	server, err := New(&settings, failing, nil, WithLogger(slog.New(slog.DiscardHandler)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	failing := &failingSpends{Store: harness.store, fail: true}
+	harness.store = failing
+	harness.reopen(&harness.settings)
+	server := harness.server
 	path := "/api/v1/messages/" + core.NewID().String()
 	challenge, _ := server.challenges.Issue(time.Now())
 	authorization := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil).
@@ -1082,7 +1071,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 		message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 		harness.mustCreate(message)
 		harness.markEnding(message, store.StateCancelled)
-		faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(message)] = true })
+		faulty.FailDelete(harness.blobRef(message), errInjected)
 		unknown, unknownBody := harness.do(
 			&testRequest{
 				method: http.MethodGet,

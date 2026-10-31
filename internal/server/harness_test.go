@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"cmp"
-	"context"
 	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/base64"
@@ -36,6 +35,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
+	"github.com/misaon/nylzo/internal/store/storetest"
 )
 
 var (
@@ -73,6 +73,7 @@ func (b *syncBuffer) String() string {
 type testHarness struct {
 	t          *testing.T
 	settings   config.Server
+	options    []Option
 	store      store.Store
 	blobs      store.Blobs
 	logs       *syncBuffer
@@ -122,15 +123,10 @@ func baseSettings(pepper, previous []byte) *config.Server {
 	return &settings
 }
 
-func newHarness(t *testing.T, settings *config.Server) *testHarness {
+func newHarness(t *testing.T, settings *config.Server, options ...Option) *testHarness {
 	t.Helper()
 	directory := t.TempDir()
 	settings.DataDir = directory
-	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
 	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +134,8 @@ func newHarness(t *testing.T, settings *config.Server) *testHarness {
 	harness := &testHarness{
 		t:         t,
 		settings:  *settings,
-		store:     database,
+		options:   options,
+		store:     openStore(t, directory),
 		blobs:     blobs,
 		directory: directory,
 		logs:      &syncBuffer{},
@@ -149,7 +146,8 @@ func newHarness(t *testing.T, settings *config.Server) *testHarness {
 
 func (h *testHarness) open() {
 	h.t.Helper()
-	server, err := New(&h.settings, h.store, h.blobs, WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil))))
+	options := append([]Option{WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil)))}, h.options...)
+	server, err := New(&h.settings, h.store, h.blobs, options...)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -184,6 +182,16 @@ func (h *testHarness) reopen(settings *config.Server) {
 	settings.DataDir = h.directory
 	h.settings = *settings
 	h.open()
+}
+
+func openStore(t *testing.T, directory string) *sqlite.Store {
+	t.Helper()
+	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	return database
 }
 
 func (h *testHarness) listen() string {
@@ -556,99 +564,11 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 	return all, nil
 }
 
-type faultyBlobs struct {
-	store.Blobs
-
-	mutex      sync.Mutex
-	failDelete map[string]bool
-	deleteErr  map[string]error
-	failOpen   error
-	failPut    error
-	failList   error
-	failRead   error
-	onOpen     func(ref string)
-}
-
-func (h *testHarness) withFaultyBlobs() *faultyBlobs {
-	faulty := &faultyBlobs{Blobs: h.blobs, failDelete: map[string]bool{}, deleteErr: map[string]error{}}
+func (h *testHarness) withFaultyBlobs() *storetest.FaultyBlobs {
+	faulty := storetest.NewFaultyBlobs(h.blobs)
 	h.blobs = faulty
 	h.reopen(&h.settings)
 	return faulty
-}
-
-func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
-	b.mutex.Lock()
-	failing, err := b.failDelete[ref], b.deleteErr[ref]
-	b.mutex.Unlock()
-	if err != nil {
-		return err
-	}
-	if failing {
-		return errInjected
-	}
-	return b.Blobs.Delete(ctx, ref)
-}
-
-func (b *faultyBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
-	errs := make([]error, len(refs))
-	for i, ref := range refs {
-		errs[i] = b.Delete(ctx, ref)
-	}
-	return errs
-}
-
-func (b *faultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
-	b.mutex.Lock()
-	openErr, readErr, hook := b.failOpen, b.failRead, b.onOpen
-	b.mutex.Unlock()
-	if hook != nil {
-		hook(ref)
-	}
-	if openErr != nil {
-		return nil, 0, openErr
-	}
-	blob, size, err := b.Blobs.Open(ctx, ref)
-	if err != nil || readErr == nil {
-		return blob, size, err
-	}
-	return failingReader{ReadCloser: blob, err: readErr}, size, nil
-}
-
-func (b *faultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, size int64) error {
-	b.mutex.Lock()
-	err := b.failPut
-	b.mutex.Unlock()
-	if err != nil {
-		io.Copy(io.Discard, reader)
-		return err
-	}
-	return b.Blobs.Put(ctx, ref, reader, size)
-}
-
-func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
-	b.mutex.Lock()
-	err := b.failList
-	b.mutex.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	return b.Blobs.List(ctx)
-}
-
-func (b *faultyBlobs) set(change func(*faultyBlobs)) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	change(b)
-}
-
-type failingReader struct {
-	io.ReadCloser
-
-	err error
-}
-
-func (f failingReader) Read([]byte) (int, error) {
-	return 0, f.err
 }
 
 type testMessage struct {

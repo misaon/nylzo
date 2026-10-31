@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -31,8 +30,6 @@ import (
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
-	"github.com/misaon/nylzo/internal/store/disk"
-	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
 func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
@@ -194,36 +191,16 @@ func (b *gatedPut) Put(ctx context.Context, ref string, body io.Reader, size int
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
-	directory := t.TempDir()
-	database, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	blobs, err := disk.New(directory)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gated := &gatedPut{Blobs: blobs, entered: make(chan struct{}), release: make(chan struct{})}
-	settings := config.Defaults()
-	settings.ReportKey = testReportKey.PublicKey()
-	settings.DataDir = directory
-	settings.Pepper = bytes.Repeat([]byte{1}, 32)
-	server, err := New(&settings, database, gated, WithLogger(slog.New(slog.DiscardHandler)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	httpServer := server.HTTPServer()
-	go httpServer.Serve(listener)
-	t.Cleanup(func() { httpServer.Close() })
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	gated := &gatedPut{Blobs: harness.blobs, entered: make(chan struct{}), release: make(chan struct{})}
+	harness.blobs = gated
+	harness.reopen(&harness.settings)
+	server := harness.server
+	address := harness.listen()
 	var protocols http.Protocols
 	protocols.SetUnencryptedHTTP2(true)
 	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}}
-	base := "http://" + listener.Addr().String()
+	base := "http://" + address
 
 	id := core.NewID()
 	token, _ := server.idTokens.Issue(id, time.Now())
@@ -312,32 +289,15 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if want <= writeTimeout || store.LeaseFor(size) != want || store.LeaseFor(1000) != store.LeaseDuration {
 		t.Fatalf("lease for %d bytes %v, small %v", size, store.LeaseFor(size), store.LeaseFor(1000))
 	}
-	blobServer, _ := testServer(t, openStore(t), nil)
+	server := newHarness(t, baseSettings(pepperA, nil)).server
 	blobWriter := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	start := time.Now()
-	blobServer.serveBlob(blobWriter, r, &store.Message{Size: size}, "", strings.NewReader("x"))
+	server.serveBlob(blobWriter, r, &store.Message{Size: size}, "", strings.NewReader("x"))
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
 
-	settings := config.Defaults()
-	settings.ReportKey = testReportKey.PublicKey()
-	settings.DataDir = t.TempDir()
-	settings.Pepper = bytes.Repeat([]byte{1}, 32)
-	database, err := sqlite.Open(t.Context(), filepath.Join(settings.DataDir, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	blobs, err := disk.New(settings.DataDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	server, err := New(&settings, database, blobs, WithLogger(slog.New(slog.DiscardHandler)))
-	if err != nil {
-		t.Fatal(err)
-	}
 	id := core.NewID()
 	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
 	header, _ := json.Marshal(
@@ -405,36 +365,11 @@ func issueIDToken(server *Server, id core.ID) string {
 	return token
 }
 
-func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *syncBuffer) {
-	tb.Helper()
-	settings := config.Defaults()
-	settings.ReportKey = testReportKey.PublicKey()
-	settings.DataDir = tb.TempDir()
-	settings.Pepper = bytes.Repeat([]byte{1}, 32)
-	if change != nil {
-		change(&settings)
-	}
-	logs := &syncBuffer{}
-	server, err := New(&settings, database, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
-	if err != nil {
-		tb.Fatal(err)
-	}
-	return server, logs
-}
-
-func openStore(tb testing.TB) *sqlite.Store {
-	tb.Helper()
-	database, err := sqlite.Open(tb.Context(), filepath.Join(tb.TempDir(), "nylzo.db"))
-	if err != nil {
-		tb.Fatal(err)
-	}
-	tb.Cleanup(func() { database.Close() })
-	return database
-}
-
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	t.Parallel()
-	server, _ := testServer(t, openStore(t), func(settings *config.Server) { settings.MaxStreams = 1 })
+	settings := baseSettings(pepperA, nil)
+	settings.MaxStreams = 1
+	server := newHarness(t, settings).server
 	other := netip.MustParseAddr("198.51.100.7")
 	source, ranges := server.addressKey.Source(other), server.addressKey.Range(other)
 	if !server.streams.Take(source, ranges) {
@@ -467,7 +402,9 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 
 func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	t.Parallel()
-	server, _ := testServer(t, openStore(t), func(settings *config.Server) { settings.MaxStreams = 64 })
+	settings := baseSettings(pepperA, nil)
+	settings.MaxStreams = 64
+	server := newHarness(t, settings).server
 	claim := func(address string) int {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+core.NewID().String()+"/claim", http.NoBody)
 		request.RemoteAddr = address + ":1234"
@@ -502,15 +439,7 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 
 func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	t.Parallel()
-	server, _ := testServer(t, openStore(t), nil)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	httpServer := server.HTTPServer()
-	go httpServer.Serve(listener)
-	t.Cleanup(func() { httpServer.Close() })
-	connection, err := net.Dial("tcp", listener.Addr().String())
+	connection, err := net.Dial("tcp", newHarness(t, baseSettings(pepperA, nil)).listen())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,16 +479,10 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		server, logs := testServer(
-			t,
-			openStore(t),
-			func(settings *config.Server) { settings.SweepInterval = time.Minute },
-		)
-		blobs, err := disk.New(server.settings.DataDir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		server.blobs = blobs
+		settings := baseSettings(pepperA, nil)
+		settings.SweepInterval = time.Minute
+		harness := newHarness(t, settings)
+		server, logs := harness.server, harness.logs
 		ctx, cancel := context.WithCancel(t.Context())
 		stopped := make(chan struct{})
 		go func() {
@@ -596,7 +519,7 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 
 func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 	t.Parallel()
-	database := openStore(t)
+	database := openStore(t, t.TempDir())
 	for name, change := range map[string]func(*config.Server){
 		"no PoW slot": func(settings *config.Server) { settings.PoWConcurrency = 0 },
 	} {
@@ -612,7 +535,7 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 
 func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
 	t.Parallel()
-	database := openStore(t)
+	database := openStore(t, t.TempDir())
 	for _, name := range []string{"abuse-reports.jsonl", filepath.Join("abuse", "2026-10-20.jsonl")} {
 		settings := baseSettings(pepperA, nil)
 		settings.DataDir = t.TempDir()

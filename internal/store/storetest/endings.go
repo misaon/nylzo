@@ -35,13 +35,13 @@ func (f *fixture) crashAroundTheBlobDelete() {
 func (f *fixture) crashBeforeTheFileIsDeleted() *message {
 	t := f.t
 	created := f.create(1, oneHour, false)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(created.ref())
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(created.ref(), ErrInjected)
 	claimed, err := f.claim(created, baseTime, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.ack(created, &claimed.Lease, baseTime, failing); !errors.Is(err, errDisk) {
+	if err = f.ack(created, &claimed.Lease, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed delete after the last ack must surface: %v", err)
 	}
 	if f.get(created).HasBlob() || !f.blobExists(created.ref()) {
@@ -70,9 +70,9 @@ func (f *fixture) crashBeforeTheReferenceIsCleared() *message {
 func (f *fixture) crashBeforeTheEnd() {
 	t := f.t
 	created := f.create(2, oneHour, false)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(created.ref())
-	if _, err := f.end(created, store.StateCancelled, baseTime, failing); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	if _, err := f.end(created, store.StateCancelled, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed blob delete must surface: %v", err)
 	}
 	if record := f.get(created); record.Message.Ending != store.StateCancelled {
@@ -94,8 +94,8 @@ func (f *fixture) crashBeforeTheEnd() {
 		t.Fatal("the later ending left the blob or changed the state")
 	}
 	swept := f.create(1, oneHour, false)
-	failing.failOnce(swept.ref())
-	if _, err := f.end(swept, store.StateCancelled, baseTime, failing); !errors.Is(err, errDisk) {
+	failing.FailDeleteOnce(swept.ref(), ErrInjected)
+	if _, err := f.end(swept, store.StateCancelled, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
 	report, err := f.sweep(f.blobs, baseTime.Add(time.Second))
@@ -107,9 +107,9 @@ func (f *fixture) crashBeforeTheEnd() {
 func (f *fixture) failedDeleteLeavesNothingToRead() {
 	t := f.t
 	created := f.create(1, oneHour, false)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(created.ref())
-	if _, err := f.end(created, store.StateCancelled, baseTime, failing); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	if _, err := f.end(created, store.StateCancelled, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed blob delete must surface: %v", err)
 	}
 	record := f.get(created)
@@ -151,9 +151,9 @@ func (f *fixture) recordedReleaseEndsTheMessage() {
 		t.Fatal(err)
 	}
 	afterLease := baseTime.Add(store.LeaseDuration + store.LeaseTimerSlack)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(created.ref())
-	if _, err := f.finish(created, afterLease, failing); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	if _, err := f.finish(created, afterLease, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a release whose blob file could not be deleted: %v", err)
 	}
 	record := f.get(created)
@@ -176,9 +176,9 @@ func (f *fixture) recordedEndingHoldsTheLease(recorded store.State) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(created.ref())
-	if _, err = f.end(created, recorded, baseTime, failing); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	if _, err = f.end(created, recorded, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
 	if err = f.download(created, &claimed.Lease, baseTime); goneState(err) != recorded {
@@ -202,9 +202,9 @@ func (f *fixture) releaseAfterExpiryRecordsNothing() {
 		t.Fatal(err)
 	}
 	late := baseTime.Add(59*time.Minute + store.LeaseDuration + store.LeaseTimerSlack)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(created.ref())
-	if _, err := f.finish(created, late, failing); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	if _, err := f.finish(created, late, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("release: %v", err)
 	}
 	if record := f.get(created); record.Message.Ending != "" || !record.Message.EndedAt.IsZero() {
@@ -347,9 +347,18 @@ func (f *fixture) takeDownWithoutTheKey() {
 func (f *fixture) takeDownFinishesThroughTheSweep() {
 	t := f.t
 	stuck := f.create(1, oneHour, false)
-	failing := newFailingBlobs(f.blobs)
-	failing.failOnce(stuck.ref())
-	if _, err := store.TakeDown(t.Context(), f.store, failing, stuck.Row.Locator, baseTime); !errors.Is(err, errDisk) {
+	failing := NewFaultyBlobs(f.blobs)
+	failing.FailDeleteOnce(stuck.ref(), ErrInjected)
+	if _, err := store.TakeDown(
+		t.Context(),
+		f.store,
+		failing,
+		stuck.Row.Locator,
+		baseTime,
+	); !errors.Is(
+		err,
+		ErrInjected,
+	) {
 		t.Fatalf("a failed delete must surface: %v", err)
 	}
 	if f.get(stuck).HasBlob() {

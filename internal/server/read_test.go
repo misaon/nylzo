@@ -492,7 +492,7 @@ func TestDownloadAfterExpiryWithAStuckDeleteIsGone(t *testing.T) {
 		if response.StatusCode != http.StatusOK || lease == "" {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(message)] = true })
+		faulty.FailDelete(harness.blobRef(message), errInjected)
 		synctest.Sleep(61 * time.Second)
 		if got, body := harness.blob(
 			message,
@@ -855,15 +855,13 @@ func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 		response, _ := harness.claim(message, "", "")
 		lease := response.Header.Get("X-Nylzo-Lease")
 		var once sync.Once
-		faulty.set(func(blobs *faultyBlobs) {
-			blobs.onOpen = func(ref string) {
-				once.Do(func() {
-					synctest.Sleep(61 * time.Second)
-					if err := blobs.Blobs.Delete(t.Context(), ref); err != nil {
-						t.Error(err)
-					}
-				})
-			}
+		faulty.OnOpen(func(ref string) {
+			once.Do(func() {
+				time.Sleep(61 * time.Second)
+				if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
+					t.Error(err)
+				}
+			})
 		})
 		response, body := harness.blob(message, lease)
 		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
@@ -883,7 +881,7 @@ func TestClaimReadsItsBodyBeforeOpeningTheBlob(t *testing.T) {
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
 		var opens atomic.Int32
-		faulty.set(func(blobs *faultyBlobs) { blobs.onOpen = func(string) { opens.Add(1) } })
+		faulty.OnOpen(func(string) { opens.Add(1) })
 		response, _ := harness.do(
 			&testRequest{
 				method:  http.MethodPost,
@@ -1017,15 +1015,13 @@ func TestExpiryRacingADownloadWithAStuckEndAnswersExpired(t *testing.T) {
 		harness.store = failingForgetStore{Store: harness.store}
 		harness.reopen(&harness.settings)
 		var once sync.Once
-		faulty.set(func(blobs *faultyBlobs) {
-			blobs.onOpen = func(ref string) {
-				once.Do(func() {
-					synctest.Sleep(61 * time.Second)
-					if err := blobs.Blobs.Delete(t.Context(), ref); err != nil {
-						t.Error(err)
-					}
-				})
-			}
+		faulty.OnOpen(func(ref string) {
+			once.Do(func() {
+				time.Sleep(61 * time.Second)
+				if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
+					t.Error(err)
+				}
+			})
 		})
 		response, body := harness.blob(message, lease)
 		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
@@ -1237,7 +1233,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 		faulty := harness.withFaultyBlobs()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
-		faulty.set(func(blobs *faultyBlobs) { blobs.failRead = errInjected })
+		faulty.FailRead(errInjected)
 		request, err := http.NewRequest(
 			http.MethodPost,
 			harness.httpServer.URL+"/api/v1/messages/"+message.id.String()+"/claim",
@@ -1278,7 +1274,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 				t.Fatalf("the stream warning carries more than its name: %s", line)
 			}
 		}
-		faulty.set(func(blobs *faultyBlobs) { blobs.failRead = nil })
+		faulty.FailRead(nil)
 		response, object := harness.blob(message, lease)
 		if response.StatusCode != http.StatusOK || !bytes.Equal(object, message.object) {
 			t.Fatalf("retry through the lease: %d", response.StatusCode)
@@ -1291,7 +1287,7 @@ func TestStorageCancellationIsInternalWhileClientWaits(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		faulty := harness.withFaultyBlobs()
-		faulty.set(func(blobs *faultyBlobs) { blobs.failPut = context.Canceled })
+		faulty.FailPut(context.Canceled)
 		if response, _ := harness.create(
 			newMessage(t, core.KDFNone, "", 1, 3600, "x"),
 		); response.StatusCode != http.StatusInternalServerError {
@@ -1308,19 +1304,17 @@ func TestClaimFindsBlobRemovedByCommittedEnding(t *testing.T) {
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
 		inner := harness.store
-		faulty.set(func(blobs *faultyBlobs) {
-			blobs.onOpen = func(string) {
-				record := harness.recordIn(inner, message)
-				if _, err := store.End(
-					t.Context(),
-					inner,
-					blobs.Blobs,
-					&record,
-					store.StateDeleted,
-					time.Now(),
-				); err != nil {
-					t.Error(err)
-				}
+		faulty.OnOpen(func(string) {
+			record := harness.recordIn(inner, message)
+			if _, err := store.End(
+				t.Context(),
+				inner,
+				faulty.Blobs,
+				&record,
+				store.StateDeleted,
+				time.Now(),
+			); err != nil {
+				t.Error(err)
 			}
 		})
 		response, body := harness.claim(message, "", "")
@@ -1435,10 +1429,8 @@ func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
 		if response, _ := harness.claim(spent, "", ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		faulty.set(func(blobs *faultyBlobs) {
-			blobs.failDelete[harness.blobRef(unspent)] = true
-			blobs.failDelete[harness.blobRef(spent)] = true
-		})
+		faulty.FailDelete(harness.blobRef(unspent), errInjected)
+		faulty.FailDelete(harness.blobRef(spent), errInjected)
 		synctest.Sleep(time.Hour)
 		if _, metadata := harness.metadata(unspent); metadata["state"] != "expired" {
 			t.Fatalf("unspent: %v", metadata)
@@ -1464,7 +1456,7 @@ func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
 		faulty := harness.withFaultyBlobs()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
-		faulty.set(func(blobs *faultyBlobs) { blobs.failOpen = errInjected })
+		faulty.FailOpen(errInjected)
 		response, _ := harness.claim(message, "", "")
 		if response.StatusCode != http.StatusInternalServerError || response.Header.Get("X-Nylzo-Lease") != "" {
 			t.Fatalf(
@@ -1473,7 +1465,7 @@ func TestClaimOpenErrorSpendsNoOpen(t *testing.T) {
 				response.Header.Get("X-Nylzo-Lease"),
 			)
 		}
-		faulty.set(func(blobs *faultyBlobs) { blobs.failOpen = nil })
+		faulty.FailOpen(nil)
 		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
 			t.Fatalf("an open error spent an open: %v", metadata)
 		}

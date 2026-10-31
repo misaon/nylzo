@@ -596,7 +596,7 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 			harness.mustCreate(message)
 		}
 		harness.markEnding(ending, store.StateCancelled)
-		faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(ending)] = true })
+		faulty.FailDelete(harness.blobRef(ending), errInjected)
 		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
 			t.Fatalf("burn: %d", response.StatusCode)
 		}

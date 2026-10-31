@@ -1,13 +1,11 @@
 package sweep_test
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,60 +16,13 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
+	"github.com/misaon/nylzo/internal/store/storetest"
 )
-
-var errInjected = errors.New("test: injected storage failure")
-
-type faultyBlobs struct {
-	store.Blobs
-
-	mutex      sync.Mutex
-	failList   bool
-	failDelete map[string]bool
-}
-
-func (b *faultyBlobs) Delete(ctx context.Context, ref string) error {
-	b.mutex.Lock()
-	failing := b.failDelete[ref]
-	b.mutex.Unlock()
-	if failing {
-		return errInjected
-	}
-	return b.Blobs.Delete(ctx, ref)
-}
-
-func (b *faultyBlobs) DeleteBatch(ctx context.Context, refs []string) []error {
-	errs := make([]error, len(refs))
-	for i, ref := range refs {
-		errs[i] = b.Delete(ctx, ref)
-	}
-	return errs
-}
-
-func (b *faultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
-	b.mutex.Lock()
-	failing := b.failList
-	b.mutex.Unlock()
-	if failing {
-		return nil, errInjected
-	}
-	return b.Blobs.List(ctx)
-}
-
-func (b *faultyBlobs) fail(list bool, refs ...string) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	b.failList = list
-	b.failDelete = map[string]bool{}
-	for _, ref := range refs {
-		b.failDelete[ref] = true
-	}
-}
 
 type fixture struct {
 	dataDir string
 	store   *sqlite.Store
-	blobs   *faultyBlobs
+	blobs   *storetest.FaultyBlobs
 }
 
 func newFixture(t *testing.T) fixture {
@@ -86,7 +37,7 @@ func newFixture(t *testing.T) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{dataDir: dataDir, store: storage, blobs: &faultyBlobs{Blobs: blobs}}
+	return fixture{dataDir: dataDir, store: storage, blobs: storetest.NewFaultyBlobs(blobs)}
 }
 
 func (f fixture) putBlob(t *testing.T, ref string) {
@@ -172,12 +123,15 @@ func TestReconcileRunsOncePerDayUntilItHasListedTheStore(t *testing.T) {
 	tomorrow := now.Add(24 * time.Hour)
 	setup.putBlob(t, "0-stuck")
 	id := setup.createExpiring(t, tomorrow)
-	setup.blobs.fail(true, id)
+	setup.blobs.FailList(storetest.ErrInjected)
+	setup.blobs.FailDelete(id, storetest.ErrInjected)
 	report, err := setup.run(t, tomorrow.Add(store.BlobPurgeStep))
 	if err == nil || report.Blobs != 0 || report.OrphanedBlobs != 0 {
 		t.Fatalf("a failed listing: %+v %v", report, err)
 	}
-	setup.blobs.fail(false, "0-stuck")
+	setup.blobs.FailList(nil)
+	setup.blobs.FailDelete(id, nil)
+	setup.blobs.FailDelete("0-stuck", storetest.ErrInjected)
 	report, err = setup.run(t, tomorrow.Add(store.BlobPurgeStep+time.Minute))
 	if err == nil || report.Blobs != 1 || report.OrphanedBlobs != 1 {
 		t.Fatalf(
@@ -196,7 +150,8 @@ func TestLogAttributesCountEveryFailedItem(t *testing.T) {
 	t.Parallel()
 	setup := newFixture(t)
 	now := nextDay()
-	setup.blobs.fail(false, setup.createExpiring(t, now), setup.createExpiring(t, now))
+	setup.blobs.FailDelete(setup.createExpiring(t, now), storetest.ErrInjected)
+	setup.blobs.FailDelete(setup.createExpiring(t, now), storetest.ErrInjected)
 	report, err := setup.run(t, now.Add(store.BlobPurgeStep))
 	attributes := sweep.LogAttributes(report, err)
 	got := map[any]any{}
