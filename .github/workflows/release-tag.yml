@@ -23,6 +23,7 @@ jobs:
     concurrency:
       group: release-tag
       cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       checks: read # the release commit passed full CI and every CodeQL analysis
@@ -102,6 +103,7 @@ jobs:
     concurrency:
       group: release-published
       cancel-in-progress: false
+      queue: max
     environment: dependency-updates
     permissions:
       contents: read
