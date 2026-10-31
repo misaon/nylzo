@@ -196,7 +196,7 @@ jobs:
     name: Flatcar provisioning and reboot acceptance
     needs: [changes, sca]
     if: needs.changes.outputs.deployment == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -785,7 +785,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.18.3
+          version: v2.19.0
           args: release --snapshot --skip=publish,sign,sbom,ko --clean
       - name: Archive ownership is independent of the build host
         run: |
