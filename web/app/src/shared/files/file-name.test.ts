@@ -1,6 +1,23 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { fileExtension, isKnownSafeFile, sanitizeFileName, splitFileName } from './file-name.ts';
+
+type Part = readonly [text: string, count: number];
+
+interface FileNameVector {
+  readonly name: string;
+  readonly input: readonly Part[];
+  readonly sanitized: readonly Part[];
+}
+
+const { cases } = JSON.parse(
+  readFileSync(new URL('../../../../../spec/file-name-vectors.json', import.meta.url), 'utf8'),
+) as { readonly cases: readonly FileNameVector[] };
+
+function joinParts(parts: readonly Part[]): string {
+  return parts.map(([text, count]) => text.repeat(count)).join('');
+}
 
 describe('file names', () => {
   it.each([
@@ -40,11 +57,14 @@ describe('file names', () => {
     expect(splitFileName(`a.${'x'.repeat(16)}`)).toEqual({ stem: 'a', extension: `.${'x'.repeat(16)}` });
     expect(splitFileName(`a.${'x'.repeat(17)}`)).toEqual({ stem: `a.${'x'.repeat(17)}`, extension: '' });
   });
+});
 
-  it('keeps the extension when it cuts a long name to 255 bytes', () => {
-    const name = sanitizeFileName(`${'č'.repeat(200)}.tar.gz`);
-    expect(new TextEncoder().encode(name).length).toBeLessThanOrEqual(255);
-    expect(name.endsWith('.gz')).toBe(true);
+describe('long file names match the CLI (spec/file-name-vectors.json)', () => {
+  it('has vectors', () => {
+    expect(cases.length).toBeGreaterThan(0);
+  });
+  it.each(cases)('$name', ({ input, sanitized }) => {
+    expect(sanitizeFileName(joinParts(input))).toBe(joinParts(sanitized));
   });
 });
 

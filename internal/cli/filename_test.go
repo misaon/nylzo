@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"encoding/json"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -52,16 +55,48 @@ func TestAttachmentNamesMatchTheWebClient(t *testing.T) {
 	}
 }
 
-func TestLongNamesKeepTheirExtension(t *testing.T) {
+func TestLongNamesMatchTheSharedVectors(t *testing.T) {
 	t.Parallel()
-	for in, want := range map[string]string{
-		strings.Repeat("č", 200) + ".tar.gz": strings.Repeat("č", 126) + ".gz",
-		strings.Repeat("€", 100) + ".txt":    strings.Repeat("€", 83) + ".txt",
-	} {
-		if got := attachmentName(in); got != want {
-			t.Fatalf("%d bytes: %q, want %q", len(got), got, want)
+	data, err := os.ReadFile("../../spec/file-name-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		Cases []struct {
+			Name      string `json:"name"`
+			Input     []part `json:"input"`
+			Sanitized []part `json:"sanitized"`
+		} `json:"cases"`
+	}
+	if err = json.Unmarshal(data, &vectors); err != nil || len(vectors.Cases) == 0 {
+		t.Fatalf("spec/file-name-vectors.json: %v", err)
+	}
+	for _, vector := range vectors.Cases {
+		if got, want := attachmentName(joinParts(vector.Input)), joinParts(vector.Sanitized); got != want {
+			t.Errorf("%s: %d bytes %q, want %d bytes %q", vector.Name, len(got), got, len(want), want)
 		}
 	}
+}
+
+type part struct {
+	text  string
+	count int
+}
+
+func (p *part) UnmarshalJSON(data []byte) error {
+	var fields []json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil || len(fields) != 2 {
+		return errors.New("a part is a text and a count")
+	}
+	return errors.Join(json.Unmarshal(fields[0], &p.text), json.Unmarshal(fields[1], &p.count))
+}
+
+func joinParts(parts []part) string {
+	var builder strings.Builder
+	for _, piece := range parts {
+		builder.WriteString(strings.Repeat(piece.text, piece.count))
+	}
+	return builder.String()
 }
 
 func TestNamesCompareWithFullCaseFolding(t *testing.T) {
