@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
@@ -91,7 +92,7 @@ func parseOpenLink(raw string) (openLink, error) {
 	return link, nil
 }
 
-func linkFromInput(environment *Environment, linkFile string) (openLink, error) {
+func linkFromInput(environment *command.Environment, linkFile string) (openLink, error) {
 	raw, err := readLink(environment, linkFile)
 	if err != nil {
 		return openLink{}, err
@@ -99,9 +100,9 @@ func linkFromInput(environment *Environment, linkFile string) (openLink, error) 
 	return parseOpenLink(raw)
 }
 
-func readFlags(environment *Environment) (*flag.FlagSet, *readOptions) {
+func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	options := &readOptions{}
-	flags := newFlags(environment, "read")
+	flags := command.NewFlags(environment, "read")
 	flags.StringVar(&options.linkFile, "link-file", "", "read the link from this file (or "+envLink+", or stdin)")
 	flags.StringVar(
 		&options.passphrase.file,
@@ -126,45 +127,45 @@ func readFlags(environment *Environment) (*flag.FlagSet, *readOptions) {
 }
 
 // runRead creates the output directory before the claim, so a write problem never spends an open.
-func runRead(ctx context.Context, environment *Environment, arguments []string) int {
+func runRead(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := readFlags(environment)
-	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
+	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if !options.stdout && options.out == "" {
-		fmt.Fprintln(environment.Stderr, program+": "+errNoDestination.Error())
-		return exitUsage
+		fmt.Fprintln(environment.Stderr, command.Program+": "+errNoDestination.Error())
+		return command.ExitUsage
 	}
 	link, err := linkFromInput(environment, options.linkFile)
 	if err != nil {
-		return failf(environment, "link: %s", explain(err))
+		return command.Failf(environment, "link: %s", explain(err))
 	}
 	defer link.wipe()
 	api, err := client.New(link.origin)
 	if err != nil {
-		return failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", explain(err))
 	}
 	directory := ""
 	if options.out != "" {
 		if directory, err = outputDir(options.out); err != nil {
-			return failf(environment, "%s", err)
+			return command.Failf(environment, "%s", err)
 		}
 		defer removeIfEmpty(directory)
 	}
 	opened, err := readMessage(ctx, environment, api, &link, options.passphrase, directory != "")
 	if err != nil {
-		return failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", explain(err))
 	}
 	defer clear(opened.payload.File)
 	paths, err := saveMessage(environment, directory, options.out, options.stdout, opened.payload)
 	if err != nil {
-		return failf(environment, "the message was opened but could not be saved: %s", err)
+		return command.Failf(environment, "the message was opened but could not be saved: %s", err)
 	}
 	if err = api.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, "gone") {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
-			program,
+			command.Program,
 		)
 	}
 	for _, path := range paths {
@@ -174,11 +175,10 @@ func runRead(ctx context.Context, environment *Environment, arguments []string) 
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: the files hold the plaintext; delete them when you no longer need them "+
-				"(on SSDs and in backups a deletion may not erase them)\n",
-			program,
+				"(on SSDs and in backups a deletion may not erase them)\n", command.Program,
 		)
 	}
-	return exitOK
+	return command.ExitOK
 }
 
 type openedMessage struct {
@@ -188,7 +188,7 @@ type openedMessage struct {
 
 func readMessage(
 	ctx context.Context,
-	environment *Environment,
+	environment *command.Environment,
 	api *client.Client,
 	link *openLink,
 	source passphraseSource,
@@ -238,7 +238,7 @@ func readMessage(
 	return openedMessage{payload: payload, lease: lease}, nil
 }
 
-func passphraseKey(environment *Environment, link *openLink, source passphraseSource) ([]byte, error) {
+func passphraseKey(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
 	if link.kdf == core.KDFNone {
 		return nil, nil
 	}
@@ -295,7 +295,7 @@ type outputFile struct {
 }
 
 func saveMessage(
-	environment *Environment,
+	environment *command.Environment,
 	directory, base string,
 	toStdout bool,
 	payload core.Payload,
@@ -328,7 +328,7 @@ func saveMessage(
 	}
 	if toStdout {
 		for _, path := range paths {
-			fmt.Fprintf(environment.Stderr, "%s: the attachment is in %s\n", program, path)
+			fmt.Fprintf(environment.Stderr, "%s: the attachment is in %s\n", command.Program, path)
 		}
 		return nil, nil
 	}
@@ -342,12 +342,12 @@ func wipeOutputFiles(files []outputFile) {
 }
 
 // printText escapes terminal controls only for a terminal, so a pipe or a file still gets the exact text.
-func printText(environment *Environment, text string) {
+func printText(environment *command.Environment, text string) {
 	if environment.Terminal.StdoutIsTerminal() && strings.ContainsFunc(text, terminalControl) {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: the text holds terminal control characters, shown escaped; pipe the output to a file for the exact text\n",
-			program,
+			command.Program,
 		)
 		text = escapeTerminalControls(text)
 	}
@@ -358,7 +358,7 @@ func printText(environment *Environment, text string) {
 }
 
 // writeWithFallback tries a second new directory next to the first, so a failed write does not lose the message.
-func writeWithFallback(environment *Environment, directory, base string, files []outputFile) ([]string, error) {
+func writeWithFallback(environment *command.Environment, directory, base string, files []outputFile) ([]string, error) {
 	paths, err := writeAll(directory, files)
 	if err == nil {
 		return paths, nil
@@ -369,8 +369,7 @@ func writeWithFallback(environment *Environment, directory, base string, files [
 	}
 	fmt.Fprintf(
 		environment.Stderr,
-		"%s: warning: writing the files failed, trying a second new directory next to the first\n",
-		program,
+		"%s: warning: writing the files failed, trying a second new directory next to the first\n", command.Program,
 	)
 	if paths, err = writeAll(fallback, files); err != nil {
 		removeIfEmpty(fallback)
@@ -433,7 +432,7 @@ func writePrivate(directory, name string, data []byte) (string, error) {
 		return "", err
 	}
 	defer root.Close()
-	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateFileMode)
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
 	if err != nil {
 		return "", err
 	}

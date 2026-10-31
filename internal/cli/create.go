@@ -14,18 +14,18 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 )
 
 const (
-	createAttempts  = 3
-	workBudget      = 110 * time.Second
-	workRounds      = 2
-	weakBelowChars  = 16
-	weakBelowWords  = 4
-	attachmentMime  = "application/octet-stream"
-	privateFileMode = 0o600
+	createAttempts = 3
+	workBudget     = 110 * time.Second
+	workRounds     = 2
+	weakBelowChars = 16
+	weakBelowWords = 4
+	attachmentMime = "application/octet-stream"
 )
 
 var (
@@ -54,9 +54,9 @@ func (c *content) wipe() {
 	clear(c.file)
 }
 
-func createFlags(environment *Environment) (*flag.FlagSet, *createOptions) {
+func createFlags(environment *command.Environment) (*flag.FlagSet, *createOptions) {
 	options := &createOptions{}
-	flags := newFlags(environment, "create")
+	flags := command.NewFlags(environment, "create")
 	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
 	flags.StringVar(&options.fromFile, "from-file", "", "send this file as an attachment instead of text from stdin")
 	flags.DurationVar(
@@ -94,48 +94,48 @@ func createFlags(environment *Environment) (*flag.FlagSet, *createOptions) {
 	return flags, options
 }
 
-func runCreate(ctx context.Context, environment *Environment, arguments []string) int {
+func runCreate(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := createFlags(environment)
-	if code, done := flagsDone(parseFlags(flags, environment, arguments)); done {
+	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
 	if options.server == "" {
 		options.server = environment.Getenv(envServer)
 	}
 	if options.server == "" {
-		fmt.Fprintln(environment.Stderr, program+" create needs --server or "+envServer)
-		return exitUsage
+		fmt.Fprintln(environment.Stderr, command.Program+" create needs --server or "+envServer)
+		return command.ExitUsage
 	}
 	api, err := client.New(options.server)
 	if err != nil {
-		return failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", explain(err))
 	}
 	message, err := readContent(environment, options.fromFile)
 	if err != nil {
-		return failf(environment, "%s", err)
+		return command.Failf(environment, "%s", err)
 	}
 	defer message.wipe()
 	passphrase, generated, err := chosenPassphrase(environment, options)
 	if err != nil {
-		return failf(environment, "passphrase: %s", explain(err))
+		return command.Failf(environment, "passphrase: %s", explain(err))
 	}
 	manage, err := reserveManageFile(options.manageFile)
 	if err != nil {
 		generated.discard()
-		return failf(environment, "--manage-token-file: the file already exists or cannot be created")
+		return command.Failf(environment, "--manage-token-file: the file already exists or cannot be created")
 	}
 	created, err := createMessage(ctx, environment, api, options, passphrase, &message)
 	if err != nil {
 		manage.discard()
 		generated.discard()
-		return failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", explain(err))
 	}
 	defer created.wipe()
 	return reportCreated(environment, api, options, &created, manage)
 }
 
 // chosenPassphrase writes a generated passphrase before the create, so a failed write never leaves an unreadable message.
-func chosenPassphrase(environment *Environment, options *createOptions) (string, *generatedPassphrase, error) {
+func chosenPassphrase(environment *command.Environment, options *createOptions) (string, *generatedPassphrase, error) {
 	if options.generate == "" {
 		passphrase, err := createPassphrase(environment, options.passphrase)
 		return passphrase, nil, err
@@ -163,7 +163,7 @@ func (g *generatedPassphrase) discard() {
 
 func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
 	passphrase := core.GeneratePassphrase()
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateFileMode)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
 	if err != nil {
 		return nil, errors.New("--generate-passphrase-file: the file already exists or cannot be created")
 	}
@@ -175,7 +175,7 @@ func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
 	return &generatedPassphrase{passphrase: passphrase, path: path}, nil
 }
 
-func createPassphrase(environment *Environment, source passphraseSource) (string, error) {
+func createPassphrase(environment *command.Environment, source passphraseSource) (string, error) {
 	if !source.given(environment) {
 		return "", nil
 	}
@@ -190,7 +190,7 @@ func createPassphrase(environment *Environment, source passphraseSource) (string
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: warning: a passphrase of at least %d words and %d characters is much harder to guess\n",
-			program,
+			command.Program,
 			weakBelowWords,
 			weakBelowChars,
 		)
@@ -199,7 +199,7 @@ func createPassphrase(environment *Environment, source passphraseSource) (string
 }
 
 func reportCreated(
-	environment *Environment,
+	environment *command.Environment,
 	api *client.Client,
 	options *createOptions,
 	created *createdMessage,
@@ -208,7 +208,7 @@ func reportCreated(
 	token := formatManageToken(api.Origin(), created.id, &created.manage)
 	if err := manage.write(token); err != nil {
 		fmt.Fprintln(environment.Stdout, created.link)
-		return failf(environment, "the message was created, but its manage token file could not be written")
+		return command.Failf(environment, "the message was created, but its manage token file could not be written")
 	}
 	fmt.Fprintln(environment.Stdout, created.link)
 	if options.printManage {
@@ -216,11 +216,9 @@ func reportCreated(
 	}
 	fmt.Fprintf(
 		environment.Stderr,
-		"%s: the link works until %s\n",
-		program,
-		created.expires.Local().Format(time.RFC1123),
+		"%s: the link works until %s\n", command.Program, created.expires.Local().Format(time.RFC1123),
 	)
-	return exitOK
+	return command.ExitOK
 }
 
 func weakPassphrase(passphrase string) bool {
@@ -231,7 +229,7 @@ func weakPassphrase(passphrase string) bool {
 	return utf8.RuneCountInString(normalized) < weakBelowChars || len(words) < weakBelowWords
 }
 
-func readContent(environment *Environment, fromFile string) (content, error) {
+func readContent(environment *command.Environment, fromFile string) (content, error) {
 	if fromFile != "" {
 		return readAttachment(fromFile)
 	}
@@ -240,7 +238,7 @@ func readContent(environment *Environment, fromFile string) (content, error) {
 	if environment.Terminal.StdinIsTerminal() {
 		raw, err = environment.Terminal.ReadSecret("Message, one line (hidden): ")
 	} else {
-		raw, err = readLimited(environment.Stdin, core.MaxTextBytes)
+		raw, err = command.ReadLimited(environment.Stdin, core.MaxTextBytes)
 	}
 	if err != nil {
 		return content{}, err
@@ -259,12 +257,12 @@ func readContent(environment *Environment, fromFile string) (content, error) {
 func readAttachment(path string) (content, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return content{}, fmt.Errorf("--from-file: %w", unreadable(err))
+		return content{}, fmt.Errorf("--from-file: %w", command.Unreadable(err))
 	}
 	if !info.Mode().IsRegular() || info.Size() > core.MaxFileBytes {
 		return content{}, fmt.Errorf("--from-file must be a regular file of at most %d bytes", core.MaxFileBytes)
 	}
-	data, err := readFileLimited(path, core.MaxFileBytes)
+	data, err := command.ReadFileLimited(path, core.MaxFileBytes)
 	if err != nil {
 		return content{}, fmt.Errorf("--from-file: %w", err)
 	}
@@ -294,7 +292,7 @@ func (m *createdMessage) wipe() {
 // createMessage retries with a fresh id when the server refused the id or the proof of work.
 func createMessage(
 	ctx context.Context,
-	environment *Environment,
+	environment *command.Environment,
 	api *client.Client,
 	options *createOptions,
 	passphrase string,
@@ -314,7 +312,7 @@ func retryWithNewID(err error) bool {
 
 func createOnce(
 	ctx context.Context,
-	environment *Environment,
+	environment *command.Environment,
 	api *client.Client,
 	options *createOptions,
 	passphrase string,
@@ -449,7 +447,7 @@ func createPolicy(options *createOptions, limits client.Limits, message *content
 }
 
 // prove solves the proof of work and fetches a new challenge once if the first one runs out of time.
-func prove(ctx context.Context, environment *Environment, api *client.Client, id core.ID) (string, error) {
+func prove(ctx context.Context, environment *command.Environment, api *client.Client, id core.ID) (string, error) {
 	for round := 1; ; round++ {
 		instance, err := api.Instance(ctx)
 		if err != nil {
@@ -461,7 +459,7 @@ func prove(ctx context.Context, environment *Environment, api *client.Client, id
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: the server is busy, solving a proof of work (difficulty %d)\n",
-			program,
+			command.Program,
 			instance.PoW.Difficulty,
 		)
 		solving, cancel := context.WithTimeout(ctx, workBudget)
@@ -484,7 +482,7 @@ func reserveManageFile(path string) (manageFile, error) {
 	if path == "" {
 		return manageFile{}, nil
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, privateFileMode)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
 	if err != nil {
 		return manageFile{}, err
 	}

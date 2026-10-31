@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/abuse"
 )
@@ -30,7 +31,7 @@ func TestReportSendsARedactedReason(t *testing.T) {
 		" jana@example.cz",
 		"--good-faith",
 	)
-	if result.code != exitOK || !strings.Contains(result.stdout, "the report was sent") {
+	if result.code != command.ExitOK || !strings.Contains(result.stdout, "the report was sent") {
 		t.Fatalf("%+v", result)
 	}
 	files, err := filepath.Glob(filepath.Join(instance.directory, "abuse", "*"+abuse.FileExtension))
@@ -59,12 +60,12 @@ func TestReportSaysWhenTheDailyLimitDroppedIt(t *testing.T) {
 	instance := newTestServer(t, nil)
 	link, _ := createText(t, instance, "podvod")
 	for range 3 {
-		if result := runWith(t, link, nil, nil, "report"); result.code != exitOK {
+		if result := runWith(t, link, nil, nil, "report"); result.code != command.ExitOK {
 			t.Fatalf("a report within the daily budget: %+v", result)
 		}
 	}
 	result := runWith(t, link, nil, nil, "report")
-	if result.code != exitError || !strings.Contains(result.stderr, "already has three reports today") ||
+	if result.code != command.ExitError || !strings.Contains(result.stderr, "already has three reports today") ||
 		strings.Contains(result.stdout, "the report was sent") {
 		t.Fatalf("a dropped report must not read as sent: %+v", result)
 	}
@@ -77,13 +78,13 @@ func TestReportRefusesALongReasonBeforeAnyRequest(t *testing.T) {
 	before := instance.requests.Load()
 	for _, reason := range []string{strings.Repeat("ab ", 400), strings.Repeat("# ", 150)} {
 		result := runWith(t, link, nil, nil, "report", "--reason-file", writeSecretFile(t, reason))
-		if result.code != exitUsage || !strings.Contains(result.stderr, "longer than 1000 bytes") ||
+		if result.code != command.ExitUsage || !strings.Contains(result.stderr, "longer than 1000 bytes") ||
 			instance.requests.Load() != before {
 			t.Fatalf("%+v, %d requests", result, instance.requests.Load()-before)
 		}
 	}
 	refused := runWith(t, link, nil, nil, "report", "--contact", "jana@example")
-	if refused.code != exitUsage || !strings.Contains(refused.stderr, "must be an email address") ||
+	if refused.code != command.ExitUsage || !strings.Contains(refused.stderr, "must be an email address") ||
 		instance.requests.Load() != before {
 		t.Fatalf("an implausible contact: %+v, %d requests", refused, instance.requests.Load()-before)
 	}
@@ -96,7 +97,7 @@ func TestReportRefusesALongReasonBeforeAnyRequest(t *testing.T) {
 		"report",
 		"--reason-file",
 		writeSecretFile(t, short),
-	); result.code != exitOK {
+	); result.code != command.ExitOK {
 		t.Fatalf("a reason that fits after redaction must pass: %+v", result)
 	}
 }

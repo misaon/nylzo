@@ -1,4 +1,4 @@
-package cli
+package operator
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/server/abuse"
 )
 
@@ -15,15 +16,15 @@ import (
 func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 	t.Parallel()
 	keyFile := filepath.Join(t.TempDir(), "report-key")
-	created := runWith(t, "", nil, nil, "report-key", "--key-file", keyFile)
+	created := run(t, "", nil, nil, RunReportKey, "--key-file", keyFile)
 	public, found := strings.CutPrefix(strings.TrimSpace(created.stdout), "NYLZO_REPORT_KEY=")
-	if created.code != exitOK || !found {
+	if created.code != command.ExitOK || !found {
 		t.Fatalf("report-key: %+v", created)
 	}
-	if info, err := os.Stat(keyFile); err != nil || info.Mode().Perm() != privateFileMode {
+	if info, err := os.Stat(keyFile); err != nil || info.Mode().Perm() != command.PrivateFileMode {
 		t.Fatalf("the private key file must be private: %v %v", info, err)
 	}
-	if again := runWith(t, "", nil, nil, "report-key", "--key-file", keyFile); again.code == exitOK {
+	if again := run(t, "", nil, nil, RunReportKey, "--key-file", keyFile); again.code == command.ExitOK {
 		t.Fatal("report-key overwrote an existing private key")
 	}
 	publicKey, err := abuse.ParsePublicKey(public)
@@ -40,15 +41,15 @@ func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened := runWith(t, string(sealed), nil, nil, "reports", "--key-file", keyFile)
+	opened := run(t, string(sealed), nil, nil, RunReports, "--key-file", keyFile)
 	var stored abuse.Stored
-	if opened.code != exitOK || json.Unmarshal([]byte(opened.stdout), &stored) != nil ||
+	if opened.code != command.ExitOK || json.Unmarshal([]byte(opened.stdout), &stored) != nil ||
 		stored.ID != report.ID || stored.Contact != report.Contact || stored.Date != "2026-10-22" {
 		t.Fatalf("reports: %+v", opened)
 	}
 	otherKey := filepath.Join(t.TempDir(), "other")
-	runWith(t, "", nil, nil, "report-key", "--key-file", otherKey)
-	if wrong := runWith(t, string(sealed), nil, nil, "reports", "--key-file", otherKey); wrong.code == exitOK ||
+	run(t, "", nil, nil, RunReportKey, "--key-file", otherKey)
+	if wrong := run(t, string(sealed), nil, nil, RunReports, "--key-file", otherKey); wrong.code == command.ExitOK ||
 		strings.Contains(wrong.stdout, report.Contact) {
 		t.Fatalf("another private key opened a report: %+v", wrong)
 	}

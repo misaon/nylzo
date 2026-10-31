@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/misaon/nylzo/internal/cli"
+	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
 )
 
@@ -15,7 +16,7 @@ var (
 )
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], &cli.Environment{
+	os.Exit(cli.Run(os.Args[1:], &command.Environment{
 		Stdin:    os.Stdin,
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,
