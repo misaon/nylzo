@@ -40,9 +40,15 @@ The integrity ruleset has no bypass, so this check also limits what the App's re
 
 ## Vulnerability inventory
 
-The six-hour run first verifies the signatures of the latest release and scans its SBOMs and both container platforms, both source trees, the pinned tools, the Caddy and Renovate images and the host binaries with Grype and osv-scanner. Integrity or scanner failures fail the job. The affected dependencies go to Renovate as a fast path that ignores the schedule and the minimum release age. Reports stay as workflow artifacts for 14 days.
+The six-hour run first verifies the signatures of the latest release and scans its SBOMs and both platforms of its Nylzo and Caddy images. It then scans both source trees including the Caddy module, the pinned tools, the Renovate image and the host binaries with Grype and osv-scanner. Integrity or scanner failures fail the job. The affected dependencies go to Renovate as a fast path that ignores the schedule and the minimum release age. Reports stay as workflow artifacts for 14 days.
 
 In CI, a changed tool or image fails only when it adds a high or critical vulnerability that the current version does not have. Findings that an upstream release has not fixed stay visible in the reports; every shipped archive and container still passes the strict release gate.
+
+## Caddy
+
+Production Caddy is built from [deploy/caddy](../../../deploy/caddy), a separate Go module that imports Caddy's standard modules as [Caddy's build guide](https://caddyserver.com/docs/build) describes. Each release compiles it with the Go version from `mise.toml` and signs, attests and scans it like Nylzo; CI fails when the module's `toolchain` line differs from `mise.toml`. Renovate updates the module like the root `go.mod`, and the dependency guard applies the same rules to it.
+
+The module may require newer dependencies than Caddy itself when a fix ships before a Caddy release. On 31 October 2026 Grype 0.121.0 found 67 high or critical matches (37 advisories) on each platform of the official `caddy:2.11.7` image: the Go 1.26.8 standard library, `golang.org/x/net` 0.59.0, `go-jose` v3 and v4, and Alpine's curl and brotli. The module requires `x/net` 0.62.0, `go-jose/v4` 4.1.7 and `go-chi/chi/v5` 5.5.0. `go-jose/v3` has no tagged fix for GHSA-mgcc-cww5-fp2q, so the module pins the maintainers' backport commit on the `v3` branch; move it to v3.0.6 once that tag exists. The Compose job in CI fails on any high or critical Grype match in the built Caddy image.
 
 ## Credentials
 

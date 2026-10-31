@@ -12,6 +12,7 @@
 | [web/e2e](../../../web/e2e)                                                                                         | Playwright tests, including CLI/browser interoperability                     |
 | [skills/nylzo](../../../skills/nylzo)                                                                               | Agent Skills instructions for using the CLI                                  |
 | [deploy/compose](../../../deploy/compose)                                                                           | Self-hosting example with Caddy and Docker secrets                           |
+| [deploy/caddy](../../../deploy/caddy)                                                                               | Caddy build that each release signs and ships                                |
 | [assets/brand](../../../assets/brand)                                                                               | Official light/dark logos and brand colors                                   |
 | [.github/](../../../.github), [.goreleaser.yaml](../../../.goreleaser.yaml)                                         | CI, community forms, dependency updates, and release configuration           |
 | [automation](../../../automation)                                                                                   | Typed scripts for Renovate, the dependency guard, release tags and scans     |

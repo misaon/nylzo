@@ -85,12 +85,14 @@ The public network interface has a shared 40 Mbit/s outbound ceiling for IPv4 an
 With `automaticUpdates: true`, a timer checks every ten minutes, with up to one minute of jitter:
 
 - Nylzo accepts a newer stable patch in the installed major/minor series. It requires an immutable GitHub release, the exact release workflow's Sigstore identity, GitHub provenance, and a digest-pinned image. A probe uses disposable data with no network before persistent state is touched.
-- Caddy verifies its publisher's signature and SHA-512 checksum and accepts patch upgrades in its installed major/minor series. Its update runs independently of Nylzo's update.
+- Caddy comes from the Nylzo release being installed, built from [deploy/caddy](../../../deploy/caddy) by the same release workflow. The updater verifies the release's signed `checksums.txt` against that workflow's Sigstore identity, the archive's SHA-256 and its GitHub provenance, then validates the Caddyfile before it restarts Caddy. A release whose Caddy binary is byte-identical to the running one is recorded without a restart. A release without a Caddy build leaves the installed Caddy in place and logs that, so `initialRelease` in `site.json` must be a release whose assets include the `nylzo-caddy_*` archives.
 - Host verification tools use SHA-256 pins from the reviewed initial configuration. Later Nylzo releases carry a signed `host-tools.json` manifest to refresh them transactionally; downloads are verified with the already trusted tools. A failed refresh retains the previous verified generation and prevents deployment of the candidate Nylzo release.
 
 Minor/major upgrades require review. Host scripts and infrastructure are not automatically executed from the GitHub main branch. Flatcar uses its own signed Stable OS update mechanism and reboot window (03:00–04:00 UTC). The application health gate runs before update-engine can confirm a new boot slot; a failed new OS requests a reboot while the slot is still unconfirmed. Actual A/B recovery remains a cloud acceptance requirement.
 
 If a candidate fails after opening persistent state, the updater stops Nylzo and writes `failed.json`. It refuses automatic retries and does not restore an old database or blindly run an older binary. Restoring old message state could resurrect consumed capabilities. Investigate the failed version and database compatibility before recovery. Caddy can restore its previous binary because its update does not migrate message state.
+
+Ignition runs only on first boot, so a server provisioned before the release Caddy build keeps installing the official Caddy release, which had unfixed high and critical vulnerabilities in October 2026. Apply the reviewed `runtime/update` and `runtime/refresh-tools` to such a server over the administrator connection, or provision a replacement. Releases still name the Caddy version in `host-tools.json`, so such a server keeps accepting Nylzo updates in the meantime.
 
 ## Authenticated host monitoring
 
@@ -123,11 +125,11 @@ Hetzner and administrator accounts remain trusted. This profile does not provide
 
 ## Sources and maintenance
 
-Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/toolchain.json), `mise.lock`, and the provider locks. Renovate tracks providers, tool versions and binary checksums. Qualifying changes follow the [dependency update policy](../maintainers/Security-updates.md); signed Nylzo release evidence authorizes the host-tool and Caddy versions. The profile emits native Ignition JSON and validates it with the official validator; it does not depend on Butane.
+Versions and checksums are in [toolchain.json](../../../deploy/hetzner-flatcar/toolchain.json), `mise.lock`, and the provider locks. Renovate tracks providers, tool versions and binary checksums. Qualifying changes follow the [dependency update policy](../maintainers/Security-updates.md); signed Nylzo release evidence authorizes the host-tool versions, and each release carries its own Caddy build. The profile emits native Ignition JSON and validates it with the official validator; it does not depend on Butane.
 
 - [OpenTofu: state and plan encryption](https://opentofu.org/docs/v1.13/language/state/encryption/)
 - [Flatcar: supply-chain verification](https://www.flatcar.org/docs/latest/security/supply-chain/), [PXE provisioning](https://www.flatcar.org/docs/latest/deploy/bare-metal/booting-with-pxe/), and [update strategies](https://www.flatcar.org/docs/latest/updates-releases/releases/update-strategies/)
-- [Caddy: signature verification](https://caddyserver.com/docs/signature-verification)
+- [Caddy: build from source](https://caddyserver.com/docs/build)
 - [Cloudflare: DNS-only mode](https://developers.cloudflare.com/dns/proxy-status/), [DNSSEC](https://developers.cloudflare.com/dns/dnssec/), and [migration](https://developers.cloudflare.com/dns/dnssec/dnssec-active-migration/)
 - [Hetzner: server security limitations](https://docs.hetzner.com/cloud/servers/faq/)
 - [systemd-networkd: token bucket traffic shaping](https://www.freedesktop.org/software/systemd/man/254/systemd.network.html#%5BTokenBucketFilter%5D%20Section%20Options)
