@@ -19,6 +19,7 @@ concurrency:
 env:
   GOTOOLCHAIN: local
   MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
   changes:
@@ -48,21 +49,12 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.node-version
-      - id: diff
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          token: ""
-          base: ${{ github.event.pull_request.base.sha || github.event.before || github.ref }}
-          list-files: json
-          filters: |
-            changed:
-              - '**'
       - id: plan
         name: Select checks from the complete changed-file list
         env:
           EVENT: ${{ github.event_name }}
-          CHANGED_FILES: ${{ steps.diff.outputs.changed_files }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
           TRUSTED_COVERAGE: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           FORCE_FULL_VERIFICATION: ${{ startsWith(github.ref, 'refs/heads/release/v') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID && startsWith(github.event.pull_request.head.ref, 'renovate/')) }}
         run: node tools/ci-plan.mts
@@ -71,12 +63,12 @@ jobs:
           node --test tools/ci-plan.test.mts tools/release-checks.test.mts
           node tools/wiki.mts
 
-  go-lint:
-    name: Go static checks and vectors (AK9)
+  go:
+    name: Go checks and race tests (AK9, AK21, AK22)
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -84,50 +76,53 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go golangci-lint
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+            ~/.cache/golangci-lint
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-lint-${{ runner.os }}-
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-${{ runner.arch }}-
+      - name: Modules, build, vet, go fix, golangci-lint and govulncheck
+        id: lint
+        run: mise run lint:go
+      - name: Race tests with coverage, then the timing tests alone
+        if: success() || steps.lint.conclusion == 'failure'
+        run: |
+          mise run test:go
+          go tool cover -func .coverage/go.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -html .coverage/go.out -o .coverage/go.html
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
-          install_args: golangci-lint
-      - run: go mod verify
-      - run: go mod tidy -diff
-      - run: go build ./...
-      - run: GOOS=darwin go vet ./...
-      - name: go fix (modernize)
-        run: go fix -diff ./...
-      - name: golangci-lint with the formatters, the binary from mise.lock
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          install-mode: none
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          name: coverage-go
+          path: .coverage/go.*
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
       - if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-lint-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+            ~/.cache/golangci-lint
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   sca:
     name: Dependency vulnerabilities, malware, and licenses
     needs: changes
     if: needs.changes.outputs.sca == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     permissions:
       contents: read
@@ -135,6 +130,12 @@ jobs:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
+      - name: Dependency review
+        if: github.event_name == 'pull_request' && needs.changes.outputs.dependencies == 'true'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          comment-summary-in-pr: never
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -143,8 +144,10 @@ jobs:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: go node pnpm osv-scanner
-      - run: node automation/web-install/main.ts
-      - run: node automation/source-dependency-gate/main.ts .sca-reports --sbom
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - name: Known vulnerabilities, malware and licenses of the locked dependencies, with the source SBOM
+        run: mise run lint:dependencies
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && hashFiles('.sca-reports/source.json') != ''
         with:
@@ -158,7 +161,7 @@ jobs:
     name: Workflows and scripts
     needs: [changes, sca]
     if: needs.changes.outputs.repository == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -172,28 +175,19 @@ jobs:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: actionlint zizmor shellcheck node go pnpm
-      - name: Install the automation workspace and audit its locked dependencies
-        run: |
-          pnpm --dir automation install --frozen-lockfile
-          pnpm --dir automation audit --audit-level=moderate
-      - name: Lint, type-check and test the repository automation
-        run: |
-          pnpm --dir automation lint
-          pnpm --dir automation typecheck
-          pnpm --dir automation test
-      - name: Check every repository tool's syntax before executing it
-        run: git ls-files -z 'tools/*.mts' 'tools/**/*.mts' | xargs -0 -n 1 node --check
-      - run: node --test tools/build-info.test.mts tools/security/*.test.mts tools/coverage/*.test.mts tools/deploy/*.test.mts
-      - run: actionlint
-      - run: zizmor --persona pedantic .github/workflows
-      - run: shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test}
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - name: Audit and lint the automation, check tool syntax, Wiki links, workflows and shell scripts
+        run: mise run lint:repository
+      - name: Test the automation and the repository tools
+        run: mise run test:repository
 
   deployment:
     name: Flatcar provisioning and reboot acceptance
     needs: [changes, sca]
     if: needs.changes.outputs.deployment == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -206,14 +200,25 @@ jobs:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
           install_args: go node opentofu
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
       - run: tools/deploy/validate
       - name: Install the virtual-machine test runtime
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
-      - run: tools/deploy/image-vm-test
-      - run: tools/deploy/vm-test
+      - name: Install from the Hetzner image and boot the runtime twice, in two VMs at once
+        run: |
+          set -o pipefail
+          (tools/deploy/image-vm-test 2>&1 | sed -u 's/^/image-vm-test | /') &
+          image=$!
+          (tools/deploy/vm-test 2>&1 | sed -u 's/^/vm-test | /') &
+          runtime=$!
+          status=0
+          wait "$image" || status=$?
+          wait "$runtime" || status=$?
+          exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -222,103 +227,12 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  go-test:
-    name: Go tests (${{ matrix.shard }})
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [core, vectors, rest]
-    steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-test-${{ matrix.shard }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-test-${{ matrix.shard }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-test-${{ matrix.shard }}-${{ runner.os }}-
-      - name: go test -race
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: |
-          case "$SHARD" in
-            core) mapfile -t packages < <(go list ./internal/core/... | grep -v -e '/internal/core/vectors$') ;;
-            vectors) packages=(./internal/core/vectors) ;;
-            rest) mapfile -t packages < <(go list ./... | grep -v -e '/internal/core$' -e '/internal/core/') ;;
-          esac
-          mkdir -p .coverage
-          go test -race -covermode=atomic -coverpkg=./... -coverprofile=".coverage/go-${SHARD}.out" -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' "${packages[@]}"
-          go tool cover -func ".coverage/go-${SHARD}.out" | tail -1 >> "$GITHUB_STEP_SUMMARY"
-          go tool cover -html ".coverage/go-${SHARD}.out" -o ".coverage/go-${SHARD}.html"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage-go-${{ matrix.shard }}
-          path: .coverage/go-${{ matrix.shard }}.*
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 14
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-test-${{ matrix.shard }}-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-
-  go-timing:
-    name: Go timing tests (AK21, AK22)
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-test-rest-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-test-rest-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-test-rest-${{ runner.os }}-
-      - name: AK21 timing on its own
-        run: go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/
-      - name: AK22 slow connections on their own
-        run: go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/
-
   fuzz:
     name: Fuzz smoke
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -326,10 +240,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
-          check-latest: true
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-fuzz-${{ runner.os }}-${{ runner.arch }}-
       - name: Fuzz each target for 15 s
         run: |
           for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta; do
@@ -337,18 +263,22 @@ jobs:
           done
           go test -run='^$' -fuzz='^FuzzParseLink$' -fuzztime=15s ./internal/core
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   web:
     name: TypeScript core and web client
     needs: [changes, sca]
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: web
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -356,32 +286,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.node-version
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-      - name: Supply-chain policy
-        run: |
-          awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' pnpm-workspace.yaml
-          grep -Eq '^strictDepBuilds: *true$' pnpm-workspace.yaml
-          grep -Eq '^allowBuilds: *\{\}$' pnpm-workspace.yaml
-          test -f pnpm-lock.yaml
-      - run: node ../automation/web-install/main.ts
-      - run: pnpm audit --audit-level=moderate
-      - name: Prettier, ESLint and knip
-        run: pnpm lint
-      - run: pnpm -r typecheck
-      - name: Clean svelte-autofixer
-        run: pnpm --filter @nylzo/web check
-      - run: pnpm --filter @nylzo/core --filter @nylzo/web test --coverage
-        env:
-          NYLZO_HEAVY_TESTS: "1"
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: node pnpm
+          cache_save: ${{ github.event_name == 'push' }}
+      - name: Supply-chain policy, audit, Prettier, ESLint, knip, type checks and svelte-autofixer
+        run: mise run lint:web
+      - name: TypeScript core and web client tests with coverage
+        run: mise run test:web
       - name: Preserve repository-relative source paths
-        working-directory: .
         run: |
           mkdir -p .coverage
           node tools/coverage/normalize.mts web/core web/core/coverage/lcov.info .coverage/typescript-core.info
@@ -405,13 +320,13 @@ jobs:
 
   coverage:
     name: Coverage reports
-    needs: [changes, go-test, web]
+    needs: [changes, go, web]
     if: >-
       always() && !cancelled() && needs.changes.result == 'success' &&
       needs.changes.outputs.coverage == 'true' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       (needs.changes.outputs.go == 'true' || needs.changes.outputs.web == 'true') &&
-      (needs.changes.outputs.go != 'true' || needs.go-test.result == 'success') &&
+      (needs.changes.outputs.go != 'true' || needs.go.result == 'success') &&
       (needs.changes.outputs.web != 'true' || needs.web.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -446,7 +361,7 @@ jobs:
           override_commit: ${{ github.sha }}
           override_branch: ${{ github.head_ref || github.ref_name }}
           override_pr: ${{ github.event.pull_request.number || '' }}
-          files: reports/go-core.out,reports/go-vectors.out,reports/go-rest.out
+          files: reports/go.out
           flags: go
           disable_search: true
           fail_ci_if_error: false
@@ -469,22 +384,6 @@ jobs:
           disable_search: true
           fail_ci_if_error: false
 
-  dependency-review:
-    name: Dependency review
-    needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.dependencies == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: audit
-      - if: github.event_name == 'pull_request'
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          fail-on-severity: moderate
-          comment-summary-in-pr: never
-
   e2e:
     name: Web client end to end (${{ matrix.browser }})
     needs: [changes, sca]
@@ -504,7 +403,7 @@ jobs:
             runner: ubuntu-latest
             install: firefox
           - browser: webkit
-            runner: macos-26-intel
+            runner: macos-26
             install: webkit
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -513,23 +412,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
-          check-latest: true
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go node pnpm
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.node-version
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          key: go-e2e-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-e2e-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-e2e-${{ runner.os }}-${{ runner.arch }}-
       - name: Build the client that nylzo embeds
-        working-directory: web
-        run: |
-          node ../automation/web-install/main.ts
-          pnpm --filter @nylzo/web build
+        run: mise run build:web
       - name: Use the upstream Ubuntu mirror for browser dependencies
         if: runner.os == 'Linux'
         run: |
@@ -563,6 +464,14 @@ jobs:
         env:
           BROWSER: ${{ matrix.browser }}
         run: pnpm e2e --project="$BROWSER"
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/Library/Caches/go-build
+          key: go-e2e-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -591,13 +500,17 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.9
-          cache: true
-      - name: Inventory tools and block updates that add high or critical vulnerabilities
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - name: Block updates that add high or critical vulnerabilities; pushes also inventory unchanged tools
         env:
           DEPENDENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          SCAN_SCOPE: ${{ github.event_name == 'pull_request' && 'changed' || 'all' }}
         run: |
+          scope=()
+          if [ "$SCAN_SCOPE" = changed ]; then scope=(--changed-only); fi
           pnpm --dir automation install --frozen-lockfile --prod --ignore-scripts
-          node automation/vulnerability-scan/gate.ts --base "$DEPENDENCY_BASE_SHA" --reports "$RUNNER_TEMP/tool-vulnerability-reports"
+          node automation/vulnerability-scan/gate.ts --base "$DEPENDENCY_BASE_SHA" --reports "$RUNNER_TEMP/tool-vulnerability-reports" "${scope[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -605,7 +518,7 @@ jobs:
           path: ${{ runner.temp }}/tool-vulnerability-reports
           if-no-files-found: error
           retention-days: 14
-      - name: mise pins match go.mod, web/.node-version, packageManager, GoReleaser and the tools CI runs
+      - name: mise pins match go.mod, web/.node-version, packageManager and GoReleaser, and CI runs every mise check
         run: |
           test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' go.mod)"
           test "$(mise current node)" = "$(cat web/.node-version)"
@@ -615,10 +528,10 @@ jobs:
             test -n "$versions"
             for version in $versions; do test "$version" = "v$(mise current goreleaser)"; done
           done
-          tools=$(grep -o 'go run [a-z0-9./-]*@v[0-9][0-9.]*' mise.toml | cut -d' ' -f3 | sort -u)
-          test -n "$tools"
-          for tool in $tools; do
-            grep -qF "go run $tool" .github/workflows/ci.yml || { echo "mise.toml runs $tool, CI does not"; exit 1; }
+          tasks=$(mise tasks ls --json | jq -r '.[].name | select(test("^(lint|test):"))')
+          test -n "$tasks"
+          for task in $tasks; do
+            grep -qE "mise run ${task}\$" .github/workflows/ci.yml || { echo "mise.toml defines $task, CI does not run it"; exit 1; }
           done
       - run: mise run build
       - name: mise run dev serves the built client
@@ -645,34 +558,37 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
-          check-latest: true
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go node pnpm grype
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.node-version
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-compose-${{ runner.os }}-${{ runner.arch }}-
       - name: Build the web client that nylzo embeds
-        working-directory: web
-        run: |
-          node ../automation/web-install/main.ts
-          pnpm --filter @nylzo/web build
+        run: mise run build:web
       - name: Build nylzo and an image laid out like the release image
         run: |
           CGO_ENABLED=0 go build -trimpath -o dist/nylzo ./cmd/nylzo
           go build -o dist/tlscheck ./tools/tlscheck
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
-          install_args: grype
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
       - name: The production image has no high or critical known vulnerabilities
         env:
           GRYPE_CHECK_FOR_APP_UPDATE: "false"
@@ -751,7 +667,7 @@ jobs:
     needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       contents: read
     strategy:
@@ -766,10 +682,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go
           cache: false
+      - run: tools/verify-go-toolchain
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: web/package.json
@@ -811,30 +730,12 @@ jobs:
           path: hashes.txt
           retention-days: 7
 
-  reproducible:
-    name: Reproducible build (AK15)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [changes, build]
-    if: needs.changes.outputs.integration == 'true'
-    steps:
-      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
-        with:
-          egress-policy: audit
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: hashes-*
-      - name: Both runners built the same bytes
-        run: |
-          cat hashes-ubuntu-24.04/hashes.txt
-          diff hashes-ubuntu-24.04/hashes.txt hashes-ubuntu-24.04-arm/hashes.txt
-
   codeql-go:
     name: Analyze (go)
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
@@ -846,10 +747,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
-          check-latest: true
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go
+          cache_save: ${{ github.event_name == 'push' }}
+      - run: tools/verify-go-toolchain
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-codeql-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-codeql-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-codeql-${{ runner.os }}-${{ runner.arch }}-
       - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           languages: go
@@ -861,13 +774,20 @@ jobs:
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           category: /language:go
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-codeql-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   codeql-web:
     name: Analyze (javascript-typescript)
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
@@ -895,7 +815,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.actions == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
@@ -925,20 +845,16 @@ jobs:
       [
         changes,
         sca,
-        go-lint,
+        go,
         repository,
         deployment,
-        go-test,
-        go-timing,
         fuzz,
         web,
         coverage,
-        dependency-review,
         e2e,
         dev-setup,
         compose,
         build,
-        reproducible,
         codeql-go,
         codeql-web,
         codeql-actions,
@@ -966,7 +882,18 @@ jobs:
         env:
           RESULTS: ${{ toJSON(needs) }}
         run: node tools/ci-plan.mts check
-
+      - name: Download the hashes of both release builds
+        if: needs.changes.outputs.integration == 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: hashes-*
+          path: ${{ runner.temp }}/hashes
+          digest-mismatch: error
+      - name: Both runners built the same bytes (AK15)
+        if: needs.changes.outputs.integration == 'true'
+        run: |
+          cat "$RUNNER_TEMP/hashes/hashes-ubuntu-24.04/hashes.txt"
+          diff "$RUNNER_TEMP/hashes/hashes-ubuntu-24.04/hashes.txt" "$RUNNER_TEMP/hashes/hashes-ubuntu-24.04-arm/hashes.txt"
       - name: Required Socket scan of the exact PR head
         if: github.event_name == 'pull_request' && github.repository == 'misaon/nylzo'
         env:

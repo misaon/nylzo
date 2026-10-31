@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+entries=$(grep -c '^\[\[tools\.go\]\]$' mise.lock || true)
+if [ "$entries" != 1 ]; then
+  echo "mise.lock must pin exactly one Go version, found $entries." >&2
+  exit 1
+fi
+locked=$(awk '$0 == "[[tools.go]]" { getline; if ($1 == "version") print $3; exit }' mise.lock | tr -d '"')
+actual=$(go env GOVERSION)
+if [ "$actual" != "go$locked" ]; then
+  echo "$(command -v go) is $actual, but mise.lock pins go$locked." >&2
+  exit 1
+fi
+echo "$(command -v go) is $actual, the version mise.lock pins."

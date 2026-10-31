@@ -4,7 +4,7 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 
 ## Schedules
 
-- `renovate.yml` runs every six hours (`17 */6 * * *`, UTC), after every completed CI run on `main`, a maintenance branch or a `renovate/` branch, and on manual dispatch. Only one Renovate run is active at a time. GitHub schedules are best effort.
+- `renovate.yml` runs every six hours (`17 */6 * * *`, UTC), after every CI run on `main`, a maintenance branch or a `renovate/` branch that was not cancelled, and on manual dispatch. Only one Renovate run is active at a time. GitHub schedules are best effort.
 - Security fixes are proposed in any run. They come from GitHub advisories (Dependabot alerts read through the App), from OSV for direct Go and npm dependencies, and from the vulnerability inventory below.
 - Ordinary updates are proposed only on Monday before 08:00 UTC and only for versions at least three days old (`minimumReleaseAge`, strict). Registries that publish no release time, such as GHCR, therefore get ordinary updates only through the inventory's fast path.
 - pnpm keeps its own 24-hour minimum release age for every package, including security fixes. A fresh npm fix fails its lockfile update until it is a day old; a later Renovate run retries it.
@@ -13,16 +13,17 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 
 - Each security fix has its own PR. Ordinary updates are grouped: Go modules, web packages and GitHub Actions each in one PR, and each pinned tool in its own PR together with all files that pin it.
 - Renovate merges a PR itself, by squash, once every check on its current head is green, including the dependency guard. It merges one PR per branch per run; the run after the merge rebases the rest. GitHub auto-merge is not used, because a ruleset bypass applies only to a direct merge.
-- Majors, and minor updates of packages below 1.0, open as draft PRs labelled `requires-attention`. They merge only after a code owner approves them on the current head and re-runs the dependency guard.
+- Majors, and minor updates of packages below 1.0, open as draft PRs labelled `requires-attention`. They merge only after a code owner approves them on the current head and re-runs the dependency guard. Renovate rebases a draft only when it conflicts; add the `rebase` label or update the branch when one is ready for review.
 - When CI fails, Renovate assigns the PR to `misaon`. A failed group is not split automatically; fix it, close it, or let a later version replace it. The `manual-hold` label stops Renovate from rebasing a branch someone is editing.
 
 ## Maintenance branch and patch releases
 
 - Every planned release `vX.Y.0` opens `release/vX.Y` at its tag. Renovate processes `main` and the maintenance branch of the latest release only.
 - The maintenance branch takes only security fixes. Ordinary updates reach production with the next planned release.
+- Renovate does not update `monitor.yml`, `release-please.yml`, `release-tag.yml`, `renovate.yml` or `scorecard.yml` on a maintenance branch, not even through the inventory fast path. GitHub runs these workflows only from `main`, so such a PR would cost a patch release that changes nothing. A GitHub or OSV advisory against one of their dependencies still opens a PR.
 - After CI succeeds on a merge into `release/vX.Y`, `release-tag.yml` signs `vX.Y.(Z+1)` with gitsign and the workflow's GitHub OIDC identity and pushes it with the Nylzo Dependency Updates App. The tag carries `Release-Kind: security`, `Base-Release` and `Policy-Commit`.
 - `release.yml` publishes only a tag whose keyless signature names `release-tag.yml` on `main`, whose base is the latest release, and which sits on the tip of `release/vX.Y`. It rebuilds, scans, signs and attests every artifact as for any release.
-- If a merged maintenance fix waits more than an hour for its release, the `monitor.yml` watchdog fails and GitHub notifies the maintainer. Re-run failed CI; a tag is never moved or reused.
+- If a merged maintenance fix waits more than an hour for its release, the `monitor.yml` watchdog fails and GitHub notifies the maintainer. Re-run failed CI; a tag is never moved or reused. GitHub may drop scheduled runs under load, so the watchdog also runs after every `ci`, `Release tag` and `release` run that did not come from a pull request.
 
 ## Planned releases
 
@@ -42,7 +43,7 @@ The integrity ruleset has no bypass, so this check also limits what the App's re
 
 The six-hour run first verifies the signatures of the latest release and scans its SBOMs and both container platforms, both source trees, the pinned tools, the Caddy and Renovate images and the host binaries with Grype and osv-scanner. Integrity or scanner failures fail the job. The affected dependencies go to Renovate as a fast path that ignores the schedule and the minimum release age. Reports stay as workflow artifacts for 14 days.
 
-In CI, a changed tool or image fails only when it adds a high or critical vulnerability that the current version does not have. Findings that an upstream release has not fixed stay visible in the reports; every shipped archive and container still passes the strict release gate.
+In CI, a changed tool or image fails only when it adds a high or critical vulnerability that the current version does not have. Pull requests scan only the changed pins; pushes scan every pin for the inventory report. Findings that an upstream release has not fixed stay visible in the reports; every shipped archive and container still passes the strict release gate.
 
 ## Credentials
 

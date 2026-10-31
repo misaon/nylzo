@@ -296,6 +296,7 @@
       ],
       "automerge": false,
       "draftPR": true,
+      "rebaseWhen": "conflicted",
       "addLabels": [
         "requires-attention"
       ]
@@ -309,6 +310,7 @@
       "groupName": null,
       "automerge": false,
       "draftPR": true,
+      "rebaseWhen": "conflicted",
       "addLabels": [
         "requires-attention"
       ]
@@ -334,6 +336,20 @@
         "automation/package.json"
       ],
       "allowedVersions": "<7"
+    },
+    {
+      "description": "These workflows run only from main, so maintenance branches never need their updates.",
+      "matchBaseBranches": [
+        "/^release\\/v/"
+      ],
+      "matchFileNames": [
+        ".github/workflows/monitor.yml",
+        ".github/workflows/release-please.yml",
+        ".github/workflows/release-tag.yml",
+        ".github/workflows/renovate.yml",
+        ".github/workflows/scorecard.yml"
+      ],
+      "enabled": false
     }
   ],
   "customManagers": [

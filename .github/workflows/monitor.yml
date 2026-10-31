@@ -4,19 +4,24 @@ on:
   schedule:
     - cron: "23 * * * *"
     - cron: "8,38,53 * * * *"
+  workflow_run: # zizmor: ignore[dangerous-triggers] -- Runs main's definition for the watchdog only; reads the GitHub API and never downloads or runs anything from the triggering run.
+    workflows: [ci, Release tag, release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: monitor
+  group: monitor-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
   maintenance:
     name: Maintenance publication watchdog
-    if: github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.event != 'pull_request')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -42,7 +47,7 @@ jobs:
 
   host:
     name: Authenticated host readiness
-    if: vars.NYLZO_HOST_MONITOR_URL != '' && github.ref == 'refs/heads/main'
+    if: vars.NYLZO_HOST_MONITOR_URL != '' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_run'
     environment: host-monitoring
     runs-on: ubuntu-latest
     timeout-minutes: 8

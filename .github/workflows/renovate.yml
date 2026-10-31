@@ -81,6 +81,7 @@ jobs:
       always() && github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
       needs.inventory.result != 'cancelled' &&
       (github.event_name != 'workflow_run' || (
+        github.event.workflow_run.conclusion != 'cancelled' &&
         github.event.workflow_run.head_repository.full_name == github.repository &&
         (github.event.workflow_run.event == 'push' || startsWith(github.event.workflow_run.head_branch, 'renovate/'))))
     name: Propose, rebase and merge dependency updates

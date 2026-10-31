@@ -89,6 +89,7 @@ jobs:
           version: 2026.10.9
           install_args: go osv-scanner
           cache: false
+      - run: tools/verify-go-toolchain
       - name: Install locked dependencies without lifecycle scripts
         run: node automation/web-install/main.ts
       - name: Check source dependencies and generate the release SBOM and VEX
@@ -174,10 +175,13 @@ jobs:
           cd "$RUNNER_TEMP/web-client"
           test "$(sha256sum < evidence.sha256 | cut -d ' ' -f 1)" = "$EXPECTED_EVIDENCE_SHA256"
           (cd evidence && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | cmp - evidence.sha256
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
-          go-version-file: go.mod
+          # renovate: datasource=github-releases depName=jdx/mise
+          version: 2026.10.9
+          install_args: go grype
           cache: false
+      - run: tools/verify-go-toolchain
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign
@@ -186,12 +190,6 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=anchore/syft
           syft-version: v1.55.0
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
-        with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
-          install_args: grype
-          cache: false
       - name: The base image is the one the distroless project signed
         run: |
           test "$(yq '.kos | length' .goreleaser.yaml)" = 1
