@@ -3,9 +3,13 @@ package webclient_test
 import (
 	"compress/gzip"
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -60,7 +64,7 @@ func TestPublicURLFillsTheHomePages(t *testing.T) {
 
 func TestPublicBlocksAreFilledOrDropped(t *testing.T) {
 	t.Parallel()
-	const page = `<p nonce="__NYLZO_CSP_NONCE__"></p>`
+	const page = `<p></p>`
 	const blocks = page + "a<!--nylzo:public-->[__NYLZO_PUBLIC_URL__/x]<!--/nylzo:public-->b" +
 		"<!--nylzo:public-->__NYLZO_PUBLIC_URL__<!--/nylzo:public-->c"
 	build := load(t, templates(page, blocks, page))
@@ -74,29 +78,39 @@ func TestPublicBlocksAreFilledOrDropped(t *testing.T) {
 	}
 }
 
-func TestCompressedPagesCarryTheirNonce(t *testing.T) {
+func hashSource(content string) string {
+	sum := sha512.Sum384([]byte(content))
+	return "'sha384-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+}
+
+func TestPagePolicyAdmitsOnlyTheInlineCodeOfThePage(t *testing.T) {
 	t.Parallel()
-	long := `<!doctype html><script nonce="__NYLZO_CSP_NONCE__"></script>` + strings.Repeat("<p>nylzo</p>", 20000) +
-		`<style nonce="__NYLZO_CSP_NONCE__"></style>__NYLZO_CSP_NONCE____NYLZO_CSP_NONCE__`
+	const page = `<!doctype html><head><script type="importmap">{"integrity":{}}</script>` +
+		`<script type="application/ld+json">{"name":"Nylzo"}</script><script type="module" src="/assets/index-a1.js"></script>` +
+		`<style>p{}</style><noscript><style>body{}</style></noscript><style>p{}</style></head>` + "\n<body></body>"
 	files := builtClient(t)
-	files["dist/index.html"] = &fstest.MapFile{Data: []byte(long)}
+	files["dist/index.html"] = &fstest.MapFile{Data: []byte(page + strings.Repeat("<p>nylzo</p>", 20000))}
 	pages, err := load(t, files).Render("https://nylzo.example")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", "/cs/", "/sent"} {
-		page := pages.For(path)
-		plain, packed := page.Plain("first"), page.Gzip("second")
-		unpacked := gunzipped(t, packed)
-		if strings.ReplaceAll(unpacked, "second", "N") != strings.ReplaceAll(string(plain), "first", "N") ||
-			strings.Contains(unpacked, "__NYLZO_CSP_NONCE__") {
-			t.Fatalf("%s: the compressed page differs from the plain one", path)
-		}
-	}
 	sent := pages.For("/sent")
-	packed := sent.Gzip("N0NCE")
-	if len(packed) > len(sent.Plain("N0NCE"))/50 || strings.Count(gunzipped(t, packed), "N0NCE") != 4 {
-		t.Fatalf("/sent: %d bytes compressed, or a nonce is missing", len(packed))
+	want := "default-src 'none'; script-src 'self' " + hashSource(`{"integrity":{}}`) + "; style-src 'self' " +
+		hashSource("p{}") + " " + hashSource("body{}") + "; connect-src 'self'"
+	if !strings.HasPrefix(sent.Policy(), want) {
+		t.Fatalf("policy %q, want it to start with %q", sent.Policy(), want)
+	}
+	if home := pages.For("/").Policy(); !strings.Contains(home, "script-src 'self'; style-src 'self';") {
+		t.Fatalf("a page without inline code must admit none: %q", home)
+	}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/sent", http.NoBody)
+	request.Header.Set("Accept-Encoding", "gzip")
+	sent.Serve(recorder, request)
+	packed := recorder.Body.Bytes()
+	if gunzipped(t, packed) != string(sent.Body()) || len(packed) > len(sent.Body())/50 ||
+		recorder.Header().Get("Content-Security-Policy") != sent.Policy() {
+		t.Fatalf("/sent: %d bytes compressed, or the compressed page differs from the plain one", len(packed))
 	}
 }
 
@@ -152,32 +166,50 @@ func TestCheckPublicURL(t *testing.T) {
 
 func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 	t.Parallel()
-	got := load(t, builtClient(t)).Manifest("v1.2.3", "https://nylzo.example", buildinfo.Info{})
+	build := load(t, builtClient(t))
+	pages, err := build.Render("https://nylzo.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := func(path string) string {
+		page, renderErr := build.Page(path, "https://nylzo.example")
+		if renderErr != nil {
+			t.Fatal(renderErr)
+		}
+		return sha(page)
+	}
+	got := build.Manifest("v1.2.3", "https://nylzo.example", pages, buildinfo.Info{})
 	want := webclient.Manifest{
-		Build:            buildinfo.Info{Version: "v1.2.3"},
-		Server:           "v1.2.3",
-		Built:            true,
-		NoncePlaceholder: "__NYLZO_CSP_NONCE__",
-		PublicURL:        "https://nylzo.example",
-		Pages:            []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/{id}"},
+		Build:     buildinfo.Info{Version: "v1.2.3"},
+		Server:    "v1.2.3",
+		Built:     true,
+		PublicURL: "https://nylzo.example",
+		Pages:     []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/{id}"},
 		Files: []webclient.ManifestFile{
-			{Path: "/", SHA256: sha(builtHome("en"))},
-			{Path: "/cs/", SHA256: sha(builtHome("cs"))},
-			{Path: "/sent", SHA256: sha(builtIndex)},
+			{Path: "/", SHA256: served("/")},
+			{Path: "/cs/", SHA256: served("/cs/")},
+			{Path: "/sent", SHA256: served("/sent")},
 			{Path: "/assets/favicon-d4.svg", SHA256: sha(faviconSVG)},
 			{Path: "/assets/favicon-e5.png", SHA256: sha(faviconPNG)},
 			{Path: "/assets/index-a1.js", SHA256: sha(appJS)},
 			{Path: "/assets/kdf-worker-c3.js", SHA256: sha("self.onmessage=null")},
 			{Path: "/assets/style-b2.css", SHA256: sha("body{}")},
 		},
+		Templates: []webclient.ManifestTemplate{
+			{Name: "home.cs.html", SHA256: sha(builtHome("cs"))},
+			{Name: "home.en.html", SHA256: sha(builtHome("en"))},
+			{Name: "index.html", SHA256: sha(builtIndex)},
+		},
 	}
 	if gotJSON, wantJSON := encode(t, got), encode(t, want); gotJSON != wantJSON {
 		t.Fatalf("manifest\n got %s\nwant %s", gotJSON, wantJSON)
 	}
-	placeholder := load(
-		t,
-		fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}},
-	).Manifest("v1", "", buildinfo.Info{})
+	placeholderBuild := load(t, fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}})
+	placeholderPages, err := placeholderBuild.Render("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	placeholder := placeholderBuild.Manifest("v1", "", placeholderPages, buildinfo.Info{})
 	if encoded := encode(t, placeholder); !strings.Contains(encoded, `"built":false`) ||
 		!strings.Contains(encoded, `"public_url":""`) || !strings.Contains(encoded, `"files":[]`) {
 		t.Fatalf("manifest without a build: %s", encoded)

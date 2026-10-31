@@ -2,12 +2,12 @@ package webclient
 
 import (
 	"bytes"
-	"compress/flate"
-	"encoding/binary"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash/crc32"
-	"math"
+	"net/http"
 	"strings"
 )
 
@@ -15,14 +15,12 @@ const (
 	publicURLPlaceholder = "__NYLZO_PUBLIC_URL__"
 	publicStart          = "<!--nylzo:public-->"
 	publicEnd            = "<!--/nylzo:public-->"
-	startupNonce         = "nylzo-startup-check-nonce"
 	englishHome          = "/"
 	czechHome            = "/cs/"
+	htmlContentType      = "text/html; charset=utf-8"
 )
 
 var homeTemplates = map[string]string{englishHome: "home.en.html", czechHome: "home.cs.html"}
-
-var gzipHeader = []byte{0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 2, 255}
 
 func IsHomePath(path string) bool {
 	_, ok := homeTemplates[path]
@@ -88,76 +86,66 @@ func render(template, publicURL string) (string, error) {
 	return out.String(), nil
 }
 
-// Page keeps the pieces around each nonce deflated once, so a compressed response costs no compression work.
 type Page struct {
-	pieces   [][]byte
-	deflated [][]byte
-	size     int
+	body   []byte
+	gzip   []byte
+	policy string
 }
 
 func newPage(html string) (Page, error) {
-	page := Page{pieces: bytes.Split([]byte(html), []byte(NoncePlaceholder))}
-	for _, piece := range page.pieces {
-		deflated, err := deflate(piece)
-		if err != nil {
-			return Page{}, err
-		}
-		page.deflated = append(page.deflated, deflated)
-		page.size += len(deflated)
+	page := Page{body: []byte(html), policy: PagePolicy(html)}
+	var buffer bytes.Buffer
+	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
+	if err != nil {
+		return Page{}, err
 	}
-	if err := sameAfterGunzip(page.Gzip(startupNonce), page.Plain(startupNonce)); err != nil {
-		return Page{}, fmt.Errorf("server: page compression: %w", err)
+	_, writeErr := writer.Write(page.body)
+	if closeErr := errors.Join(writeErr, writer.Close()); closeErr != nil {
+		return Page{}, fmt.Errorf("server: page compression: %w", closeErr)
 	}
+	page.gzip = buffer.Bytes()
 	return page, nil
 }
 
-func deflate(piece []byte) ([]byte, error) {
-	var buffer bytes.Buffer
-	writer, err := flate.NewWriter(&buffer, flate.BestCompression)
-	if err != nil {
-		return nil, err
-	}
-	_, writeErr := writer.Write(piece)
-	if flushErr := errors.Join(writeErr, writer.Flush()); flushErr != nil {
-		return nil, flushErr
-	}
-	return buffer.Bytes(), nil
+func (p Page) Body() []byte {
+	return p.body
 }
 
-func (p Page) Plain(nonce string) []byte {
-	return bytes.Join(p.pieces, []byte(nonce))
+func (p Page) Policy() string {
+	return p.policy
 }
 
-func (p Page) Gzip(nonce string) []byte {
-	out := bytes.NewBuffer(make([]byte, 0, p.size+len(p.pieces)*(len(nonce)+5)+32))
-	out.Write(gzipHeader)
-	checksum := crc32.NewIEEE()
-	nonceBlock := storedBlock(false, nonce)
-	size := 0
-	for i, piece := range p.pieces {
-		if i > 0 {
-			out.Write(nonceBlock)
-			checksum.Write([]byte(nonce))
-			size += len(nonce)
-		}
-		out.Write(p.deflated[i])
-		checksum.Write(piece)
-		size += len(piece)
-	}
-	out.Write(storedBlock(true, ""))
-	out.Write(binary.LittleEndian.AppendUint32(nil, checksum.Sum32()))
-	out.Write(binary.LittleEndian.AppendUint32(nil, uint32(size&math.MaxUint32)))
-	return out.Bytes()
+func (p Page) SHA256() string {
+	return sha256Hex(p.body)
 }
 
-// storedBlock writes data uncompressed; a nonce always fits the 64 KiB limit of one block.
-func storedBlock(final bool, data string) []byte {
-	block := []byte{0}
-	if final {
-		block[0] = 1
+// Serve writes the page; the caller has set the headers shared with every other response.
+func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
+	header := w.Header()
+	header.Set("Content-Security-Policy", p.policy)
+	header.Set("Content-Type", htmlContentType)
+	header.Set("Vary", "Accept-Encoding")
+	if AcceptsGzip(r.Header.Get("Accept-Encoding")) {
+		header.Set("Content-Encoding", EncodingGzip)
+		w.Write(p.gzip)
+		return
 	}
-	length := uint16(len(data) & math.MaxUint16)
-	block = binary.LittleEndian.AppendUint16(block, length)
-	block = binary.LittleEndian.AppendUint16(block, ^length)
-	return append(block, data...)
+	w.Write(p.body)
+}
+
+func (a Asset) Serve(w http.ResponseWriter, r *http.Request) {
+	header := w.Header()
+	header.Set("Content-Type", a.ContentType)
+	header.Set("Vary", "Accept-Encoding")
+	if len(a.Gzip) > 0 && AcceptsGzip(r.Header.Get("Accept-Encoding")) {
+		header.Set("Content-Encoding", EncodingGzip)
+		w.Write(a.Gzip)
+		return
+	}
+	w.Write(a.Body)
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

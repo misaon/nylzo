@@ -13,12 +13,11 @@ import (
 )
 
 const (
-	NoncePlaceholder = "__NYLZO_CSP_NONCE__"
-	EncodingGzip     = "gzip"
-	indexTemplate    = "index.html"
-	placeholderFile  = "placeholder.html"
-	distDirectory    = "dist"
-	assetsDirectory  = "dist/assets"
+	EncodingGzip    = "gzip"
+	indexTemplate   = "index.html"
+	placeholderFile = "placeholder.html"
+	distDirectory   = "dist"
+	assetsDirectory = "dist/assets"
 )
 
 var templateNames = []string{indexTemplate, "home.en.html", "home.cs.html"}
@@ -83,9 +82,6 @@ func loadTemplate(files fs.FS, name string, assets map[string]Asset) (string, er
 	template, err := fs.ReadFile(files, path.Join(distDirectory, name))
 	if err != nil {
 		return "", fmt.Errorf("server: web client %s: %w", name, err)
-	}
-	if !bytes.Contains(template, []byte(NoncePlaceholder)) {
-		return "", fmt.Errorf("server: web client %s has no nonce placeholder", name)
 	}
 	if _, err = render(string(template), "https://nylzo.invalid"); err != nil {
 		return "", fmt.Errorf("server: web client %s: %w", name, err)

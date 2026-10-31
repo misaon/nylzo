@@ -3,6 +3,10 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"maps"
@@ -21,7 +25,7 @@ import (
 )
 
 const (
-	builtIndex   = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
+	builtIndex   = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="importmap">{"integrity":{}}</script><script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body></body></html>`
 	appJS        = "console.log('nylzo')"
 	previewAgent = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
 )
@@ -47,10 +51,28 @@ func htmlCSPFromSpec(t *testing.T) string {
 	const marker = "- HTML responses carry `Content-Security-Policy: "
 	_, rest, ok := strings.Cut(string(spec), marker)
 	csp, _, closed := strings.Cut(rest, "`")
-	if !ok || !closed || strings.Count(csp, "{nonce}") != 2 {
+	if !ok || !closed || !strings.Contains(csp, "script-src 'self' {script hashes}; style-src 'self' {style hashes};") {
 		t.Fatal("spec section 9 lost the HTML CSP line")
 	}
 	return csp
+}
+
+var (
+	inlineScriptInTest = regexp.MustCompile(`(?s)<script(?: type="importmap")?>(.*?)</script>`)
+	inlineStyleInTest  = regexp.MustCompile(`(?s)<style>(.*?)</style>`)
+)
+
+func policyFromSpec(specCSP string, page []byte) string {
+	hashes := func(pattern *regexp.Regexp) string {
+		var list strings.Builder
+		for _, match := range pattern.FindAllSubmatch(page, -1) {
+			sum := sha512.Sum384(match[1])
+			list.WriteString(" 'sha384-" + base64.StdEncoding.EncodeToString(sum[:]) + "'")
+		}
+		return list.String()
+	}
+	policy := strings.Replace(specCSP, " {script hashes}", hashes(inlineScriptInTest), 1)
+	return strings.Replace(policy, " {style hashes}", hashes(inlineStyleInTest), 1)
 }
 
 func checkSecurityHeaders(t *testing.T, name string, response testResponse, indexable bool) {
@@ -72,7 +94,7 @@ func checkSecurityHeaders(t *testing.T, name string, response testResponse, inde
 	}
 }
 
-func TestSecurityHeadersAndNonce(t *testing.T) {
+func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -129,22 +151,16 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 		checkSecurityHeaders(t, "throttled", response, false)
 
 		specCSP := htmlCSPFromSpec(t)
-		nonces := map[string]bool{}
-		pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
-		for i := range 2 * len(pages) {
-			response, body = harness.do(&testRequest{method: http.MethodGet, path: pages[i%len(pages)]})
-			csp := response.Header.Get("Content-Security-Policy")
-			nonce := pageNonce(csp)
-			if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
-				t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+		for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
+			first, firstBody := harness.do(&testRequest{method: http.MethodGet, path: path})
+			second, secondBody := harness.do(&testRequest{method: http.MethodGet, path: path})
+			csp := first.Header.Get("Content-Security-Policy")
+			if want := policyFromSpec(specCSP, firstBody); csp != want {
+				t.Fatalf("%s: csp %q differs from spec section 9 %q", path, csp, want)
 			}
-			if nonces[nonce] {
-				t.Fatal("nonce repeated")
-			}
-			nonces[nonce] = true
-			if !bytes.Contains(body, []byte(`nonce="`+nonce+`"`)) ||
-				bytes.Contains(body, []byte("__NYLZO_CSP_NONCE__")) {
-				t.Fatal("nonce not injected into the page")
+			if second.Header.Get("Content-Security-Policy") != csp || !bytes.Equal(firstBody, secondBody) ||
+				bytes.Contains(firstBody, []byte("nonce")) {
+				t.Fatalf("%s: two responses differ, so the page cannot be pinned (A3-06)", path)
 			}
 		}
 
@@ -169,14 +185,13 @@ func TestSecurityHeadersAndNonce(t *testing.T) {
 				t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80)", path)
 			}
 		}
-		nonceAttribute := regexp.MustCompile(`nonce="[^"]*"`)
 		_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
 		_, previewHome := harness.do(&testRequest{
 			method:  http.MethodGet,
 			path:    "/",
 			headers: map[string]string{"User-Agent": previewAgent},
 		})
-		if !bytes.Equal(nonceAttribute.ReplaceAll(previewHome, nil), nonceAttribute.ReplaceAll(home, nil)) {
+		if !bytes.Equal(previewHome, home) {
 			t.Fatalf("a preview agent must get the normal home page: %s", previewHome)
 		}
 	})
@@ -187,7 +202,7 @@ func builtHome(language string) string {
 <!--nylzo:public-->
 <link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/favicon-e5.png">
 <!--/nylzo:public-->
-<script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body><h1>home ` + language + `</h1></body></html>`
+<script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"><style>h1{color:white}</style></head><body><h1>home ` + language + `</h1></body></html>`
 }
 
 func gzipped(t *testing.T, data string) []byte {
@@ -281,20 +296,13 @@ func (h *testHarness) fetch(path string, headers map[string]string, followRedire
 	}
 }
 
-func pageNonce(csp string) string {
-	_, rest, _ := strings.Cut(csp, "'nonce-")
-	nonce, _, _ := strings.Cut(rest, "'")
-	return nonce
-}
-
 func TestBuiltClientIsServed(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
 	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
 		page := harness.get(path, nil)
-		nonce := pageNonce(page.Header.Get("Content-Security-Policy"))
 		if page.StatusCode != http.StatusOK || strings.Contains(page.body, "placeholder") ||
-			strings.Contains(page.body, "__NYLZO_CSP_NONCE__") || strings.Count(page.body, `nonce="`+nonce+`"`) != 2 {
+			strings.Contains(page.body, "nonce") || !strings.Contains(page.body, `src="/assets/index-a1.js"`) {
 			t.Fatalf("%s: %d %s", path, page.StatusCode, page.body)
 		}
 	}
@@ -364,21 +372,34 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 	}
 }
 
-func TestPagesAreCompressedWithAFreshNonce(t *testing.T) {
+func TestPagesAreTheSameOnEveryResponse(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
-	for _, path := range []string{"/", "/sent"} {
-		plain := harness.get(path, nil)
-		zipped := harness.get(path, map[string]string{"Accept-Encoding": "gzip, deflate, br"})
+	settings := baseSettings(pepperA, nil)
+	settings.PublicURL = "https://nylzo.example"
+	harness := newHarness(t, settings, WithWebFiles(builtClient(t)))
+	var manifest webclient.Manifest
+	if err := json.Unmarshal([]byte(harness.get(webclient.ManifestPath, nil).body), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	published := map[string]string{}
+	for _, file := range manifest.Files {
+		published[file.Path] = file.SHA256
+	}
+	browser := map[string]string{"Accept-Encoding": "gzip, deflate, br"}
+	for path, manifestPath := range map[string]string{
+		"/": "/", "/cs/": "/cs/", "/sent": "/sent", "/report": "/sent", "/transparency": "/sent",
+		"/m/" + core.NewID().String(): "/sent",
+	} {
+		plain, again := harness.get(path, nil), harness.get(path, nil)
+		zipped, zippedAgain := harness.get(path, browser), harness.get(path, browser)
 		if plain.Header.Get("Content-Encoding") != "" || zipped.Header.Get("Content-Encoding") != "gzip" ||
 			plain.Header.Get("Vary") != "Accept-Encoding" || zipped.Header.Get("Vary") != "Accept-Encoding" {
 			t.Fatalf("%s: encoding headers %v %v", path, plain.Header, zipped.Header)
 		}
-		first := pageNonce(plain.Header.Get("Content-Security-Policy"))
-		second := pageNonce(zipped.Header.Get("Content-Security-Policy"))
-		unpacked := gunzipped(t, zipped.body)
-		if first == second || strings.ReplaceAll(unpacked, second, "N") != strings.ReplaceAll(plain.body, first, "N") {
-			t.Fatalf("%s: the compressed page differs from the plain one or reuses its nonce", path)
+		sum := sha256.Sum256([]byte(plain.body))
+		if plain.body != again.body || zipped.body != zippedAgain.body || gunzipped(t, zipped.body) != plain.body ||
+			hex.EncodeToString(sum[:]) != published[manifestPath] {
+			t.Fatalf("%s: the page differs between responses or from its manifest entry (A3-06)", path)
 		}
 	}
 }
@@ -415,7 +436,11 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, err := json.Marshal(build.Manifest("v1.2.3", settings.PublicURL, settings.Build))
+	pages, err := build.Render(settings.PublicURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(build.Manifest("v1.2.3", settings.PublicURL, pages, settings.Build))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,11 +451,10 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 
 func TestWithoutABuildTheServerServesThePlaceholder(t *testing.T) {
 	t.Parallel()
-	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte(`<p nonce="__NYLZO_CSP_NONCE__">placeholder</p>`)}}
+	placeholder := fstest.MapFS{"placeholder.html": {Data: []byte(`<p>placeholder</p>`)}}
 	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(placeholder))
 	page := harness.get("/", nil)
-	if page.StatusCode != http.StatusOK || !strings.Contains(page.body, "placeholder") ||
-		strings.Contains(page.body, "__NYLZO_CSP_NONCE__") {
+	if page.StatusCode != http.StatusOK || !strings.Contains(page.body, "placeholder") {
 		t.Fatalf("placeholder: %d %s", page.StatusCode, page.body)
 	}
 	if asset := harness.get("/assets/index-a1.js", nil); asset.StatusCode != http.StatusNotFound {

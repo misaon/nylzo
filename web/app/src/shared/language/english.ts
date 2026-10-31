@@ -209,8 +209,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.client.commit': 'Web client commit',
   'transparency.server.title': 'Information reported by the server',
   'transparency.server.version': 'Reported server version',
-  'transparency.client.files':
-    'SHA-256 of the web client files. For the page it is the template into which the server inserts a nonce.',
+  'transparency.client.files': 'SHA-256 of the web client files exactly as this server sends them.',
   'transparency.client.verify':
     'This command, from the nylzo release of the same version, checks that the server sends exactly these files with the same headers:',
   'transparency.client.limit':

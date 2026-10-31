@@ -1,7 +1,6 @@
 package webclient
 
 import (
-	"fmt"
 	"maps"
 	"net/http"
 	"slices"
@@ -11,7 +10,7 @@ import (
 
 const NonHTMLCSP = "default-src 'none'; frame-ancestors 'none'"
 
-const pageCSPFormat = "default-src 'none'; script-src 'nonce-%s' 'strict-dynamic'; style-src 'nonce-%s'; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
+const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'self'%s; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
 
 const robotsTag = "noindex, nofollow"
 
@@ -33,10 +32,6 @@ var previewAgents = []string{
 	"slackbot", "twitterbot", "facebookexternalhit", "facebot", "whatsapp", "telegrambot", "discordbot",
 	"linkedinbot", "skypeuripreview", "applebot", "googlebot", "bingbot", "embedly", "iframely",
 	"pinterestbot", "redditbot", "mastodon", "signal", "viber", "yahoo! slurp", "duckduckbot", "petalbot",
-}
-
-func PageCSP(nonce string) string {
-	return fmt.Sprintf(pageCSPFormat, nonce, nonce)
 }
 
 // SecurityHeaders lists the headers every response for path carries besides its Content-Security-Policy.

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	builtIndex = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
+	builtIndex = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body></body></html>`
 	appJS      = "console.log('nylzo')"
 	faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg"/>`
 	faviconPNG = "\x89PNG\r\n\x1a\n"
@@ -23,7 +23,7 @@ func builtHome(language string) string {
 <!--nylzo:public-->
 <link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/favicon-e5.png">
 <!--/nylzo:public-->
-<script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body><h1>home ` + language + `</h1></body></html>`
+<script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body><h1>home ` + language + `</h1></body></html>`
 }
 
 func templates(index, english, czech string) fstest.MapFS {
@@ -93,7 +93,7 @@ func TestLoadTypesEveryAsset(t *testing.T) {
 	if placeholder.Built || len(placeholder.Assets) != 0 || placeholder.Templates["home.cs.html"] != "placeholder" {
 		t.Fatalf("a missing build must give the placeholder: %+v", placeholder)
 	}
-	const page = `<p nonce="__NYLZO_CSP_NONCE__">built</p>`
+	const page = `<p>built</p>`
 	if withoutAssets := load(t, templates(page, page, page)); !withoutAssets.Built {
 		t.Fatal("a build without assets must load")
 	}
@@ -101,7 +101,7 @@ func TestLoadTypesEveryAsset(t *testing.T) {
 
 func TestLoadRefusesABrokenBuild(t *testing.T) {
 	t.Parallel()
-	const page = `<p nonce="__NYLZO_CSP_NONCE__"></p>`
+	const page = `<p></p>`
 	index := func(extra fstest.MapFS) fstest.MapFS {
 		files := templates(page, page, page)
 		maps.Copy(files, extra)
@@ -130,18 +130,13 @@ func TestLoadRefusesABrokenBuild(t *testing.T) {
 			"dist/assets/a.js.gz": {Data: []byte("a")},
 		}),
 		"compressed unknown type": index(fstest.MapFS{"dist/assets/a.map": {}, "dist/assets/a.map.gz": {}}),
-		"index without the nonce": index(fstest.MapFS{
-			"dist/index.html":  {Data: []byte(`<script src="/assets/a.js"></script>`)},
-			"dist/assets/a.js": {},
-		}),
 		"index with a missing asset": index(fstest.MapFS{
 			"dist/index.html": {
-				Data: []byte(`<script nonce="__NYLZO_CSP_NONCE__" src="/assets/a.js"></script><link href="/assets/gone.css">`),
+				Data: []byte(`<script src="/assets/a.js"></script><link href="/assets/gone.css">`),
 			},
 			"dist/assets/a.js": {},
 		}),
-		"missing Czech home page":     withoutCzech,
-		"home page without the nonce": home(`<p></p>`),
+		"missing Czech home page": withoutCzech,
 		"public block that does not close": home(
 			page + `<!--nylzo:public--><link rel="canonical" href="__NYLZO_PUBLIC_URL__/">`,
 		),
@@ -154,10 +149,10 @@ func TestLoadRefusesABrokenBuild(t *testing.T) {
 			page + `<!--nylzo:public--><meta property="og:image" content="__NYLZO_PUBLIC_URL__/assets/og-gone.png"><!--/nylzo:public-->`,
 		),
 		"inline style with a missing font": home(
-			page + `<style nonce="__NYLZO_CSP_NONCE__">@font-face{src:url(/assets/gone.woff2)}</style>`,
+			page + `<style>@font-face{src:url(/assets/gone.woff2)}</style>`,
 		),
 		"quoted font that is not embedded": home(
-			page + `<style nonce="__NYLZO_CSP_NONCE__">@font-face{src:url("/assets/gone.woff2")}</style>`,
+			page + `<style>@font-face{src:url("/assets/gone.woff2")}</style>`,
 		),
 	} {
 		if _, err := webclient.Load(files); err == nil || !strings.HasPrefix(err.Error(), "server: ") {

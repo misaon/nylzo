@@ -58,20 +58,6 @@ function buildMetadata(): Plugin {
   };
 }
 
-function withoutNonceMeta(): Plugin {
-  return {
-    name: 'nylzo-without-nonce-meta',
-    apply: 'build',
-    enforce: 'post',
-    generateBundle(_, bundle) {
-      const index = bundle['index.html'];
-      if (index?.type === 'asset' && typeof index.source === 'string') {
-        index.source = index.source.replace(/\s*<meta property="csp-nonce"[^>]*>/, '');
-      }
-    },
-  };
-}
-
 function preloadFonts(): Plugin {
   return {
     name: 'nylzo-preload-fonts',
@@ -110,13 +96,8 @@ function precompress(): Plugin {
 }
 
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [
-    tailwindcss(),
-    svelte(),
-    ...(isSsrBuild ? [] : [buildMetadata(), withoutNonceMeta(), preloadFonts(), precompress()]),
-  ],
+  plugins: [tailwindcss(), svelte(), ...(isSsrBuild ? [] : [buildMetadata(), preloadFonts(), precompress()])],
   define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
-  html: { cspNonce: '__NYLZO_CSP_NONCE__' },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {
     ...(!isSsrBuild && { target: browserTargets() }),

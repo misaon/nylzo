@@ -31,7 +31,7 @@ for (const home of HOMES) {
     expect(image.startsWith(`${BASE_URL}/assets/`)).toBe(true);
     const preview = await request.get(image);
     expect(preview.headers()['content-type']).toBe('image/png');
-    const structured = /<script type="application\/ld\+json" nonce="[^"]+">([^<]+)<\/script>/.exec(html)?.[1] ?? '';
+    const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/.exec(html)?.[1] ?? '';
     const graph = (JSON.parse(structured) as { '@graph': { url: string }[] })['@graph'];
     expect(graph.map((node) => node.url)).toEqual([`${BASE_URL}/`, `${BASE_URL}${home.path}`]);
 

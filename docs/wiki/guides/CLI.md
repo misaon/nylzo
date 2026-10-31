@@ -55,7 +55,7 @@ Downloaded files contain plaintext. Delete them when no longer needed, while rec
 nylzo verify-client --server https://nylzo.example
 ```
 
-This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, nonce-bearing CSP, security headers, and `/.well-known/nylzo/client.json`.
+This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, the static CSP, security headers, and `/.well-known/nylzo/client.json`.
 
 Unexpected headers are mismatches. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
 

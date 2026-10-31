@@ -9,11 +9,10 @@ const assets = new Map([
   ['/assets/style.css', Buffer.from('body{color:red}')],
   ['/assets/font.woff2', Buffer.from('font')],
 ]);
-const nonce = '__NYLZO_CSP_NONCE__';
-const html = `<html><head><script nonce="${nonce}" src="/assets/app.js" type="module"></script><link nonce="${nonce}" rel="stylesheet" href="/assets/style.css"></head><body></body></html>`;
+const html = `<html><head><meta charset="utf-8"><script src="/assets/app.js" type="module"></script><link rel="stylesheet" href="/assets/style.css"></head><body></body></html>`;
 
 describe('final frontend resource policy', () => {
-  it('seals scripts, styles and module preloads after prerendering without changing their nonces', () => {
+  it('seals scripts, styles and module preloads after prerendering and adds no nonce or second policy', () => {
     const output = secureHtml(
       html.replace('</head>', '<link rel="modulepreload" href="/assets/start.js"></head>'),
       assets,
@@ -24,10 +23,9 @@ describe('final frontend resource policy', () => {
         `integrity="${integrity(assets.get(`/assets/${name}`) ?? new Uint8Array())}" crossorigin="anonymous"`,
       );
     }
-    expect(output.match(new RegExp(`nonce="${nonce}"`, 'g'))).toHaveLength(3);
-    expect(output).toContain('<head><meta http-equiv="Content-Security-Policy"');
-    expect(output).toContain("style-src 'self' 'unsafe-inline'");
-    expect(output).toContain('type="importmap"');
+    expect(output).not.toContain('nonce');
+    expect(output).not.toContain('http-equiv');
+    expect(output).toContain('<head><meta charset="utf-8"><script type="importmap">');
   });
 
   it.each([
@@ -37,7 +35,7 @@ describe('final frontend resource policy', () => {
     '/assets/app.js?new=1',
     'data:text/javascript,alert(1)',
     'https&#58;//evil.invalid/a.js',
-  ])('rejects unbundled HTML script URL %s even with a nonce', (url) => {
+  ])('rejects unbundled HTML script URL %s', (url) => {
     expect(() =>
       secureHtml(
         html.replace('/assets/app.js', () => url),
@@ -57,7 +55,7 @@ describe('final frontend resource policy', () => {
     }
     expect(
       secureHtml(
-        html.replace('</head>', () => `<script nonce="${nonce}" type="application/ld+json">{}</script></head>`),
+        html.replace('</head>', () => `<script type="application/ld+json">{}</script></head>`),
         assets,
       ),
     ).toContain('application/ld+json');
@@ -66,7 +64,7 @@ describe('final frontend resource policy', () => {
   it('also seals and validates fallback styles when JavaScript is disabled', () => {
     const page = html.replace(
       '</head>',
-      () => `<noscript><link rel="stylesheet" nonce="${nonce}" href="/assets/style.css"></noscript></head>`,
+      () => `<noscript><link rel="stylesheet" href="/assets/style.css"></noscript></head>`,
     );
     expect(secureHtml(page, assets).match(/integrity="sha384-/g)).toHaveLength(3);
     expect(() => secureHtml(page.replaceAll('/assets/style.css', 'https://evil.invalid/style.css'), assets)).toThrow(
@@ -106,7 +104,7 @@ describe('final frontend resource policy', () => {
       expect(() => checkStyles(css, '/assets/style.css', assets)).toThrow(/resource integrity/);
       expect(() =>
         secureHtml(
-          html.replace('</head>', () => `<style nonce="${nonce}">${css}</style></head>`),
+          html.replace('</head>', () => `<style>${css}</style></head>`),
           assets,
         ),
       ).toThrow(/resource integrity/);
