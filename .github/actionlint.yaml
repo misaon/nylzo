@@ -1,6 +1,10 @@
 # GitHub added concurrency.queue in May 2026; actionlint 1.7.12 does not
 # recognize it yet: https://github.com/rhysd/actionlint/issues/657
 # Keep every other syntax/security diagnostic enabled.
+self-hosted-runner:
+  # GitHub-hosted since 2026; actionlint 1.7.12 predates the label.
+  labels:
+    - ubuntu-26.04
 paths:
   .github/workflows/release.yml:
     ignore:
