@@ -2,7 +2,7 @@
 set -euo pipefail
 
 readonly clean=0 vulnerable=1 broken=2
-readonly archive_count=6 report_count=8
+readonly archive_count=8 report_count=12
 
 abort() {
   echo "$1" >&2
@@ -34,18 +34,20 @@ scan() {
   jq -n --arg report "$filename" --argjson exitCode "$code" '{report:$report,exitCode:$exitCode}' >> "$statuses"
 }
 
-[[ $# = 3 ]] || abort 'Usage: scan-release IMAGE@SHA256 SBOM_DIRECTORY REPORT_DIRECTORY'
+[[ $# = 4 ]] || abort 'Usage: scan-release IMAGE@SHA256 CADDY_IMAGE@SHA256 SBOM_DIRECTORY REPORT_DIRECTORY'
 image="$1"
-sbom_directory="$2"
-report_directory="$3"
+caddy_image="$2"
+sbom_directory="$3"
+report_directory="$4"
 [[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || abort 'Expected the canonical image by SHA-256 digest.'
+[[ "$caddy_image" =~ ^ghcr\.io/misaon/nylzo-caddy@sha256:[0-9a-f]{64}$ ]] || abort 'Expected the canonical Caddy image by SHA-256 digest.'
 mkdir -p "$report_directory"
 export GRYPE_CHECK_FOR_APP_UPDATE=false
 export GRYPE_DB_VALIDATE_AGE=true
 export GRYPE_DB_MAX_ALLOWED_BUILT_AGE=48h
 shopt -s nullglob
-sboms=("$sbom_directory"/nylzo_*.sbom.json)
-[[ "${#sboms[@]}" = "$archive_count" ]] || abort 'Expected six release archive SBOMs.'
+sboms=("$sbom_directory"/nylzo_*.sbom.json "$sbom_directory"/nylzo-caddy_*.sbom.json)
+[[ "${#sboms[@]}" = "$archive_count" ]] || abort "Expected $archive_count release archive SBOMs."
 
 status=$clean
 statuses=$(mktemp)
@@ -56,6 +58,7 @@ for sbom in "${sboms[@]}"; do
 done
 for architecture in amd64 arm64; do
   scan "image-linux-${architecture}.grype.json" "registry:${image}" --platform "linux/${architecture}"
+  scan "caddy-image-linux-${architecture}.grype.json" "registry:${caddy_image}" --platform "linux/${architecture}"
 done
 
 reports=("$report_directory"/*.grype.json)

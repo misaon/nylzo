@@ -45,9 +45,9 @@ const opentofu = captured(
 );
 toolchain['opentofu'] = opentofu;
 toolchain['caddy'] = captured(
-  readFileSync('deploy/compose/compose.yaml', 'utf8'),
-  /image: caddy:(\d+\.\d+\.\d+)@sha256:/,
-  'the Caddy image in deploy/compose/compose.yaml',
+  readFileSync('deploy/caddy/go.mod', 'utf8'),
+  /^(?:require )?\s*github\.com\/caddyserver\/caddy\/v2 v(\d+\.\d+\.\d+)$/m,
+  'the Caddy module in deploy/caddy/go.mod',
 );
 writeFileSync('deploy/hetzner-flatcar/toolchain.json', `${JSON.stringify(toolchain, undefined, 2)}\n`);
 

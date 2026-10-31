@@ -8,7 +8,6 @@
     "npm",
     "gomod",
     "github-actions",
-    "docker-compose",
     "mise",
     "terraform",
     "nodenv",
@@ -208,8 +207,7 @@
     },
     {
       "matchPackageNames": [
-        "caddy",
-        "caddyserver/caddy"
+        "github.com/caddyserver/caddy/v2"
       ],
       "groupName": "Caddy"
     },

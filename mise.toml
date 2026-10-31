@@ -64,6 +64,8 @@ run = [
   "node automation/source-dependency-gate/main.ts .sca-reports",
   "go mod verify",
   "go mod tidy -diff",
+  "go -C deploy/caddy mod verify",
+  "go -C deploy/caddy mod tidy -diff",
   "golangci-lint run ./...",
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
