@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/signing"
@@ -79,109 +80,112 @@ func checkSecurityHeaders(t *testing.T, name string, response testResponse, inde
 
 func TestSecurityHeadersAndNonce(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	for _, path := range []string{
-		"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance",
-		"/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope",
-	} {
-		response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
-		checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
-	}
-	prefetch := map[string]string{"Sec-Purpose": "prefetch"}
-	for _, testCase := range []struct {
-		request   *testRequest
-		status    int
-		indexable bool
-	}{
-		{&testRequest{method: http.MethodHead, path: "/"}, http.StatusOK, true},
-		{&testRequest{method: http.MethodPost, path: "/"}, http.StatusMethodNotAllowed, false},
-		{&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: prefetch}, http.StatusServiceUnavailable, false},
-		{
-			&testRequest{method: http.MethodGet, path: "/m/" + core.NewID().String(), headers: prefetch},
-			http.StatusServiceUnavailable,
-			false,
-		},
-		{&testRequest{method: http.MethodPost, path: "/api/v1/messages", body: []byte("x")}, http.StatusBadRequest, false},
-		{&testRequest{method: http.MethodGet, path: "/m/not-an-id"}, http.StatusNotFound, false},
-	} {
-		name := testCase.request.method + " " + testCase.request.path
-		response, _ := harness.do(testCase.request)
-		if response.StatusCode != testCase.status {
-			t.Fatalf("%s: status %d, want %d", name, response.StatusCode, testCase.status)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		for _, path := range []string{
+			"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance",
+			"/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope",
+		} {
+			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
+			checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
 		}
-		checkSecurityHeaders(t, name, response, testCase.indexable)
-	}
-	response, body := harness.do(&testRequest{
-		method:  http.MethodGet,
-		path:    "/api/v1/messages/not-an-id",
-		headers: map[string]string{"Authorization": signing.AuthScheme + " short"},
-	})
-	if response.StatusCode != http.StatusNotFound || string(body) != `{"error":"not_found"}` {
-		t.Fatalf("malformed API id: %d %s", response.StatusCode, body)
-	}
+		prefetch := map[string]string{"Sec-Purpose": "prefetch"}
+		for _, testCase := range []struct {
+			request   *testRequest
+			status    int
+			indexable bool
+		}{
+			{&testRequest{method: http.MethodHead, path: "/"}, http.StatusOK, true},
+			{&testRequest{method: http.MethodPost, path: "/"}, http.StatusMethodNotAllowed, false},
+			{&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: prefetch}, http.StatusServiceUnavailable, false},
+			{
+				&testRequest{method: http.MethodGet, path: "/m/" + core.NewID().String(), headers: prefetch},
+				http.StatusServiceUnavailable,
+				false,
+			},
+			{&testRequest{method: http.MethodPost, path: "/api/v1/messages", body: []byte("x")}, http.StatusBadRequest, false},
+			{&testRequest{method: http.MethodGet, path: "/m/not-an-id"}, http.StatusNotFound, false},
+		} {
+			name := testCase.request.method + " " + testCase.request.path
+			response, _ := harness.do(testCase.request)
+			if response.StatusCode != testCase.status {
+				t.Fatalf("%s: status %d, want %d", name, response.StatusCode, testCase.status)
+			}
+			checkSecurityHeaders(t, name, response, testCase.indexable)
+		}
+		response, body := harness.do(&testRequest{
+			method:  http.MethodGet,
+			path:    "/api/v1/messages/not-an-id",
+			headers: map[string]string{"Authorization": signing.AuthScheme + " short"},
+		})
+		if response.StatusCode != http.StatusNotFound || string(body) != `{"error":"not_found"}` {
+			t.Fatalf("malformed API id: %d %s", response.StatusCode, body)
+		}
 
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.BucketPerSecond = 1
-	settings.Rates.BucketBurst = 2
-	throttled := newHarness(t, settings)
-	instance := &testRequest{method: http.MethodGet, path: "/api/v1/instance"}
-	throttled.do(instance)
-	throttled.do(instance)
-	if response, _ = throttled.do(instance); response.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("throttled: status %d", response.StatusCode)
-	}
-	checkSecurityHeaders(t, "throttled", response, false)
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.BucketPerSecond = 1
+		settings.Rates.BucketBurst = 2
+		throttled := newHarness(t, settings)
+		instance := &testRequest{method: http.MethodGet, path: "/api/v1/instance"}
+		throttled.do(instance)
+		throttled.do(instance)
+		if response, _ = throttled.do(instance); response.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("throttled: status %d", response.StatusCode)
+		}
+		checkSecurityHeaders(t, "throttled", response, false)
 
-	specCSP := htmlCSPFromSpec(t)
-	nonces := map[string]bool{}
-	pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
-	for i := range 2 * len(pages) {
-		response, body = harness.do(&testRequest{method: http.MethodGet, path: pages[i%len(pages)]})
-		csp := response.Header.Get("Content-Security-Policy")
-		nonce := pageNonce(csp)
-		if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
-			t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+		specCSP := htmlCSPFromSpec(t)
+		nonces := map[string]bool{}
+		pages := []string{"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String()}
+		for i := range 2 * len(pages) {
+			response, body = harness.do(&testRequest{method: http.MethodGet, path: pages[i%len(pages)]})
+			csp := response.Header.Get("Content-Security-Policy")
+			nonce := pageNonce(csp)
+			if len(nonce) < 22 || csp != strings.ReplaceAll(specCSP, "{nonce}", nonce) {
+				t.Fatalf("csp %q differs from spec section 9 %q", csp, specCSP)
+			}
+			if nonces[nonce] {
+				t.Fatal("nonce repeated")
+			}
+			nonces[nonce] = true
+			if !bytes.Contains(body, []byte(`nonce="`+nonce+`"`)) ||
+				bytes.Contains(body, []byte("__NYLZO_CSP_NONCE__")) {
+				t.Fatal("nonce not injected into the page")
+			}
 		}
-		if nonces[nonce] {
-			t.Fatal("nonce repeated")
-		}
-		nonces[nonce] = true
-		if !bytes.Contains(body, []byte(`nonce="`+nonce+`"`)) || bytes.Contains(body, []byte("__NYLZO_CSP_NONCE__")) {
-			t.Fatal("nonce not injected into the page")
-		}
-	}
 
-	response, preview := harness.do(&testRequest{
-		method:  http.MethodGet,
-		path:    "/m/" + core.NewID().String(),
-		headers: map[string]string{"User-Agent": previewAgent},
-	})
-	if response.StatusCode != http.StatusOK || bytes.Contains(preview, []byte("<script")) ||
-		bytes.Contains(preview, []byte("<style")) || !bytes.Contains(preview, []byte(`name="viewport"`)) ||
-		!bytes.Contains(preview, []byte(`name="robots" content="noindex, nofollow"`)) {
-		t.Fatalf("preview agent page: %d %s", response.StatusCode, preview)
-	}
-	client, err := EmbeddedWebClient()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{"/", "/cs/", "/sent"} {
-		if _, page := harness.do(
-			&testRequest{method: http.MethodGet, path: path},
-		); client.Built && bytes.Contains(page, []byte(`name="robots"`)) {
-			t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80)", path)
+		response, preview := harness.do(&testRequest{
+			method:  http.MethodGet,
+			path:    "/m/" + core.NewID().String(),
+			headers: map[string]string{"User-Agent": previewAgent},
+		})
+		if response.StatusCode != http.StatusOK || bytes.Contains(preview, []byte("<script")) ||
+			bytes.Contains(preview, []byte("<style")) || !bytes.Contains(preview, []byte(`name="viewport"`)) ||
+			!bytes.Contains(preview, []byte(`name="robots" content="noindex, nofollow"`)) {
+			t.Fatalf("preview agent page: %d %s", response.StatusCode, preview)
 		}
-	}
-	nonceAttribute := regexp.MustCompile(`nonce="[^"]*"`)
-	_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
-	_, previewHome := harness.do(&testRequest{
-		method:  http.MethodGet,
-		path:    "/",
-		headers: map[string]string{"User-Agent": previewAgent},
+		client, err := EmbeddedWebClient()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{"/", "/cs/", "/sent"} {
+			if _, page := harness.do(
+				&testRequest{method: http.MethodGet, path: path},
+			); client.Built && bytes.Contains(page, []byte(`name="robots"`)) {
+				t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80)", path)
+			}
+		}
+		nonceAttribute := regexp.MustCompile(`nonce="[^"]*"`)
+		_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
+		_, previewHome := harness.do(&testRequest{
+			method:  http.MethodGet,
+			path:    "/",
+			headers: map[string]string{"User-Agent": previewAgent},
+		})
+		if !bytes.Equal(nonceAttribute.ReplaceAll(previewHome, nil), nonceAttribute.ReplaceAll(home, nil)) {
+			t.Fatalf("a preview agent must get the normal home page: %s", previewHome)
+		}
 	})
-	if !bytes.Equal(nonceAttribute.ReplaceAll(previewHome, nil), nonceAttribute.ReplaceAll(home, nil)) {
-		t.Fatalf("a preview agent must get the normal home page: %s", previewHome)
-	}
 }
 
 func builtHome(language string) string {

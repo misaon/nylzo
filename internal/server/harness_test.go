@@ -52,37 +52,6 @@ var testReportKey = func() hpke.PrivateKey {
 	return key
 }()
 
-type fakeClock struct {
-	mutex sync.Mutex
-	now   time.Time
-}
-
-func (c *fakeClock) Now() time.Time {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	return c.now
-}
-
-func (c *fakeClock) Advance(step time.Duration) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.now = c.now.Add(step)
-}
-
-func (c *fakeClock) Set(now time.Time) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	c.now = now
-}
-
-func withClock(clock func() time.Time) Option {
-	return func(server *Server) { server.clock = clock }
-}
-
-func withAfterFunc(after func(delay time.Duration, run func())) Option {
-	return func(server *Server) { server.after = after }
-}
-
 type syncBuffer struct {
 	mutex  sync.Mutex
 	buffer bytes.Buffer
@@ -100,25 +69,17 @@ func (b *syncBuffer) String() string {
 	return b.buffer.String()
 }
 
-type pendingTimer struct {
-	due time.Time
-	run func()
-}
-
-// testHarness runs the whole handler with a fake clock and lease timers that fire only when asked.
+// testHarness runs the whole handler over the in-memory network of httptest, so a synctest bubble can drive its time.
 type testHarness struct {
 	t          *testing.T
 	settings   config.Server
 	store      store.Store
 	blobs      store.Blobs
-	clock      *fakeClock
 	logs       *syncBuffer
 	server     *Server
 	httpServer *httptest.Server
 	client     *http.Client
 	directory  string
-	timersMu   sync.Mutex
-	timers     []pendingTimer
 	captureMu  sync.Mutex
 	lastCreate []byte
 }
@@ -149,7 +110,11 @@ func baseSettings(pepper, previous []byte) *config.Server {
 	settings.ReportKey = testReportKey.PublicKey()
 	settings.Pepper = pepper
 	settings.PepperPrevious = previous
-	settings.TrustedProxies = []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("::1/128")}
+	settings.TrustedProxies = []netip.Prefix{
+		netip.MustParsePrefix("192.0.2.1/32"),
+		netip.MustParsePrefix("127.0.0.0/8"),
+		netip.MustParsePrefix("::1/128"),
+	}
 	settings.Rates.BucketPerSecond = 1 << 20
 	settings.Rates.BucketBurst = 1 << 20
 	settings.Rates.SourcePerSecond = 1 << 20
@@ -178,34 +143,25 @@ func newHarness(t *testing.T, settings *config.Server) *testHarness {
 		directory: directory,
 		logs:      &syncBuffer{},
 	}
-	harness.clock = &fakeClock{now: time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)}
 	harness.open()
 	return harness
 }
 
 func (h *testHarness) open() {
 	h.t.Helper()
-	server, err := New(&h.settings, h.store, h.blobs,
-		withClock(h.clock.Now),
-		WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil))),
-		withAfterFunc(func(delay time.Duration, run func()) {
-			h.timersMu.Lock()
-			defer h.timersMu.Unlock()
-			h.timers = append(h.timers, pendingTimer{due: h.clock.Now().Add(delay), run: run})
-		}),
-	)
+	server, err := New(&h.settings, h.store, h.blobs, WithLogger(slog.New(slog.NewJSONHandler(h.logs, nil))))
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	h.t.Cleanup(server.Close)
 	h.server = server
 	handler := server.handler
-	h.httpServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h.httpServer = httptest.NewTestServer(h.t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages" {
 			h.capture(r)
 		}
 		handler.ServeHTTP(w, r)
 	}))
-	h.t.Cleanup(h.httpServer.Close)
 	h.client = h.httpServer.Client()
 }
 
@@ -221,8 +177,10 @@ func (h *testHarness) capture(r *http.Request) {
 	h.lastCreate = dump.Bytes()
 }
 
+// reopen stops the old server and its lease timers, as a restart would.
 func (h *testHarness) reopen(settings *config.Server) {
 	h.httpServer.Close()
+	h.server.Close()
 	settings.DataDir = h.directory
 	h.settings = *settings
 	h.open()
@@ -241,7 +199,7 @@ func (h *testHarness) listen() string {
 }
 
 func (h *testHarness) challenge() [signing.ChallengeLen]byte {
-	return h.challengeAt(h.clock.Now())
+	return h.challengeAt(time.Now())
 }
 
 func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
@@ -250,38 +208,12 @@ func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 }
 
 func (h *testHarness) idToken(id core.ID) string {
-	token, _ := h.server.idTokens.Issue(id, h.clock.Now())
+	token, _ := h.server.idTokens.Issue(id, time.Now())
 	return token
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
 	h.server.disk = diskspace.NewReserver(h.settings.DataDir, h.settings.MinFreeBytes, free, h.server.logger)
-}
-
-func (h *testHarness) fireTimers() int {
-	h.timersMu.Lock()
-	now := h.clock.Now()
-	var due []func()
-	var waiting []pendingTimer
-	for _, timer := range h.timers {
-		if timer.due.After(now) {
-			waiting = append(waiting, timer)
-		} else {
-			due = append(due, timer.run)
-		}
-	}
-	h.timers = waiting
-	h.timersMu.Unlock()
-	for _, run := range due {
-		run()
-	}
-	return len(due)
-}
-
-func (h *testHarness) pendingTimers() int {
-	h.timersMu.Lock()
-	defer h.timersMu.Unlock()
-	return len(h.timers)
 }
 
 func (h *testHarness) do(request *testRequest) (testResponse, responseBody) {
@@ -522,13 +454,13 @@ func (h *testHarness) endedState(message *testMessage) (store.State, bool) {
 	if err != nil || record.HasBlob() {
 		return "", false
 	}
-	return record.State(h.clock.Now()), true
+	return record.State(time.Now()), true
 }
 
 func (h *testHarness) markEnding(message *testMessage, state store.State) {
 	h.t.Helper()
 	record := h.mustRecord(message)
-	if _, err := store.MarkEnding(h.t.Context(), h.store, &record, state, h.clock.Now()); err != nil {
+	if _, err := store.MarkEnding(h.t.Context(), h.store, &record, state, time.Now()); err != nil {
 		h.t.Fatal(err)
 	}
 }

@@ -82,7 +82,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer releaseDisk()
-	now := s.clock()
+	now := time.Now()
 	releaseSlot, ok := s.reserveCreate(w, r, &request, now)
 	if !ok {
 		return
@@ -110,7 +110,7 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 	switch {
 	case !ok:
 		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
-	case !s.idTokens.Valid(request.id, request.header.IDToken, s.clock()):
+	case !s.idTokens.Valid(request.id, request.header.IDToken, time.Now()):
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
 	case r.ContentLength < 0 || r.Header.Get("Content-Length") == "":
 		rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
@@ -383,7 +383,7 @@ func (s *Server) storeMessage(
 	blob *storedBlob,
 	now time.Time,
 ) bool {
-	message := s.newMessage(request, envelopeHeader, s.clock())
+	message := s.newMessage(request, envelopeHeader, time.Now())
 	locator := seal.LocatorOf(request.id[:])
 	record := store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
 	err := s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
@@ -518,7 +518,7 @@ type transparencyRetention struct {
 }
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
-	now := s.clock()
+	now := time.Now()
 	id := core.NewID()
 	token, expires := s.idTokens.Issue(id, now)
 	response := instanceResponse{
@@ -547,7 +547,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {
-	challenge, expires := s.challenges.Issue(s.clock())
+	challenge, expires := s.challenges.Issue(time.Now())
 	writeJSON(w, http.StatusOK, challengeResponse{Challenge: core.Encode(challenge[:]), ExpiresAt: formatTime(expires)})
 }
 

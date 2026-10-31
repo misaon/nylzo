@@ -48,7 +48,7 @@ func (s *Server) authorize(
 	if !granted.known || !parsed || !fresh || !opened {
 		return granted, false, nil
 	}
-	s.settle(ctx, &granted.record, s.clock())
+	s.settle(ctx, &granted.record, time.Now())
 	return granted, true, nil
 }
 
@@ -153,7 +153,7 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	if !ok {
 		return granted, false
 	}
-	if now := s.clock(); granted.record.Ended(now) {
+	if now := time.Now(); granted.record.Ended(now) {
 		writeGone(w, string(granted.record.State(now)))
 		return granted, false
 	}

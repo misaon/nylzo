@@ -81,15 +81,16 @@ func securityHeaders(next http.Handler) http.Handler {
 func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := ratelimit.ForwardingHeader(r)
-		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) && s.firstNoticeThisHour() {
+		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) &&
+			s.firstNoticeThisHour(time.Now()) {
 			s.logger.WarnContext(r.Context(), "forwarded-header-ignored", "header", header)
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (s *Server) firstNoticeThisHour() bool {
-	hour := s.clock().UTC().Truncate(time.Hour).Unix()
+func (s *Server) firstNoticeThisHour(now time.Time) bool {
+	hour := now.UTC().Truncate(time.Hour).Unix()
 	hourSeconds := int64(time.Hour / time.Second)
 	for last := s.forwardedHour.Load(); hour > last || hour < last-hourSeconds; last = s.forwardedHour.Load() {
 		if s.forwardedHour.CompareAndSwap(last, hour) {
@@ -109,7 +110,7 @@ func (s *Server) spendChallenges(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		spent, err := s.challenges.Spend(r.Context(), signature.Challenge, s.clock())
+		spent, err := s.challenges.Spend(r.Context(), signature.Challenge, time.Now())
 		if err != nil {
 			s.writeInternal(w, r, err)
 			return

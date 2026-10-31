@@ -127,13 +127,18 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 
 func TestH2CReceiveBufferIsBounded(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	http2 := harness.server.HTTPServer().HTTP2
-	if http2 == nil || http2.MaxReceiveBufferPerStream < 64<<10 || http2.MaxReceiveBufferPerStream > 256<<10 ||
-		http2.MaxReceiveBufferPerConnection < 4*http2.MaxReceiveBufferPerStream ||
-		http2.MaxReceiveBufferPerConnection > 1<<20 {
-		t.Fatalf("h2c must bound unread body per stream and leave the connection room for other streams: %+v", http2)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		http2 := harness.server.HTTPServer().HTTP2
+		if http2 == nil || http2.MaxReceiveBufferPerStream < 64<<10 || http2.MaxReceiveBufferPerStream > 256<<10 ||
+			http2.MaxReceiveBufferPerConnection < 4*http2.MaxReceiveBufferPerStream ||
+			http2.MaxReceiveBufferPerConnection > 1<<20 {
+			t.Fatalf(
+				"h2c must bound unread body per stream and leave the connection room for other streams: %+v",
+				http2,
+			)
+		}
+	})
 }
 
 func TestRejectedCreateKeepsH2CConnection(t *testing.T) {
@@ -221,7 +226,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	base := "http://" + listener.Addr().String()
 
 	id := core.NewID()
-	token, _ := server.idTokens.Issue(id, server.clock())
+	token, _ := server.idTokens.Issue(id, time.Now())
 	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
 	size := int64(256 << 10)
 	header, _ := json.Marshal(
@@ -396,7 +401,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 }
 
 func issueIDToken(server *Server, id core.ID) string {
-	token, _ := server.idTokens.Issue(id, server.clock())
+	token, _ := server.idTokens.Issue(id, time.Now())
 	return token
 }
 
@@ -665,74 +670,84 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	httpServer := harness.server.HTTPServer()
-	if httpServer.ErrorLog == nil {
-		t.Fatal("ErrorLog is nil: net/http would log peer addresses to stderr")
-	}
-	httpServer.ErrorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
-	secret := core.NewSecret()
-	id := core.NewID()
-	harness.do(&testRequest{method: http.MethodGet, path: "/m/" + id.String() + "%231.0." + core.Encode(secret[:])})
-	logs := harness.logs.String()
-	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, core.Encode(secret[:])) {
-		t.Fatal("log contains a peer address or a link secret")
-	}
-	if !strings.Contains(logs, "net/http error") {
-		t.Fatal("net/http errors must still leave a signal")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		httpServer := harness.server.HTTPServer()
+		if httpServer.ErrorLog == nil {
+			t.Fatal("ErrorLog is nil: net/http would log peer addresses to stderr")
+		}
+		httpServer.ErrorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
+		secret := core.NewSecret()
+		id := core.NewID()
+		harness.do(&testRequest{method: http.MethodGet, path: "/m/" + id.String() + "%231.0." + core.Encode(secret[:])})
+		logs := harness.logs.String()
+		if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, core.Encode(secret[:])) {
+			t.Fatal("log contains a peer address or a link secret")
+		}
+		if !strings.Contains(logs, "net/http error") {
+			t.Fatal("net/http errors must still leave a signal")
+		}
+	})
 }
 
 func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T) {
 	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.TrustedProxies = nil
-	harness := newHarness(t, settings)
-	harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
-	if strings.Contains(harness.logs.String(), "forwarded-header-ignored") {
-		t.Fatal("a request without a forwarding header must not warn")
-	}
-	for range 3 {
-		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
-	}
-	if count := strings.Count(
-		harness.logs.String(),
-		`"msg":"forwarded-header-ignored","header":"X-Forwarded-For"`,
-	); count != 1 {
-		t.Fatalf("want one warning in the hour, got %d: %s", count, harness.logs.String())
-	}
-	harness.clock.Advance(time.Hour)
-	harness.statusFrom(
-		&testRequest{method: http.MethodGet, path: "/", headers: map[string]string{"Forwarded": "for=198.51.100.7"}},
-	)
-	logs := harness.logs.String()
-	if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"header":"Forwarded"`) {
-		t.Fatalf("the next hour must warn again, for pages too: %s", logs)
-	}
-	if strings.Contains(logs, "198.51.100") {
-		t.Fatal("the log names a client address")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.TrustedProxies = nil
+		harness := newHarness(t, settings)
+		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+		if strings.Contains(harness.logs.String(), "forwarded-header-ignored") {
+			t.Fatal("a request without a forwarding header must not warn")
+		}
+		for range 3 {
+			harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
+		}
+		if count := strings.Count(
+			harness.logs.String(),
+			`"msg":"forwarded-header-ignored","header":"X-Forwarded-For"`,
+		); count != 1 {
+			t.Fatalf("want one warning in the hour, got %d: %s", count, harness.logs.String())
+		}
+		synctest.Sleep(time.Hour)
+		harness.statusFrom(
+			&testRequest{
+				method:  http.MethodGet,
+				path:    "/",
+				headers: map[string]string{"Forwarded": "for=198.51.100.7"},
+			},
+		)
+		logs := harness.logs.String()
+		if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"header":"Forwarded"`) {
+			t.Fatalf("the next hour must warn again, for pages too: %s", logs)
+		}
+		if strings.Contains(logs, "198.51.100") {
+			t.Fatal("the log names a client address")
+		}
+	})
 }
 
 func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
-	scaleway := baseSettings(pepperA, nil)
-	scaleway.ProxyMode = config.ProxyModeScaleway
-	scalewayHarness := newHarness(t, scaleway)
-	scalewayHarness.statusFrom(
-		&testRequest{
-			method:  http.MethodGet,
-			path:    "/api/v1/instance",
-			headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"},
-		},
-	)
-	for _, logs := range []string{harness.logs.String(), scalewayHarness.logs.String()} {
-		if strings.Contains(logs, "forwarded-header-ignored") {
-			t.Fatalf("a header the server used must not warn: %s", logs)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
+		scaleway := baseSettings(pepperA, nil)
+		scaleway.ProxyMode = config.ProxyModeScaleway
+		scalewayHarness := newHarness(t, scaleway)
+		scalewayHarness.statusFrom(
+			&testRequest{
+				method:  http.MethodGet,
+				path:    "/api/v1/instance",
+				headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"},
+			},
+		)
+		for _, logs := range []string{harness.logs.String(), scalewayHarness.logs.String()} {
+			if strings.Contains(logs, "forwarded-header-ignored") {
+				t.Fatalf("a header the server used must not warn: %s", logs)
+			}
 		}
-	}
+	})
 }
 
 func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
@@ -753,79 +768,74 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
-			harness := newHarness(t, &testCase.settings)
-			harness.statusFrom(
-				&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: testCase.headers},
-			)
-			if !strings.Contains(
-				harness.logs.String(),
-				`"msg":"forwarded-header-ignored","header":"`+testCase.header+`"`,
-			) {
-				t.Fatalf("no warning: %s", harness.logs.String())
-			}
+			synctest.Test(t, func(t *testing.T) {
+				harness := newHarness(t, &testCase.settings)
+				harness.statusFrom(
+					&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: testCase.headers},
+				)
+				if !strings.Contains(
+					harness.logs.String(),
+					`"msg":"forwarded-header-ignored","header":"`+testCase.header+`"`,
+				) {
+					t.Fatalf("no warning: %s", harness.logs.String())
+				}
+			})
 		})
 	}
 }
 
 func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
 	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.TrustedProxies = nil
-	harness := newHarness(t, settings)
-	harness.clock.Advance(48 * time.Hour)
-	harness.statusFrom(
-		&testRequest{method: http.MethodGet, path: "/", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}},
-	)
-	harness.clock.Advance(-47 * time.Hour)
-	harness.statusFrom(
-		&testRequest{method: http.MethodGet, path: "/", headers: map[string]string{"X-Forwarded-For": "203.0.113.1"}},
-	)
-	if count := strings.Count(harness.logs.String(), "forwarded-header-ignored"); count != 2 {
-		t.Fatalf("want a warning after the clock stepped back, got %d", count)
+	server := &Server{}
+	now := time.Now()
+	if !server.firstNoticeThisHour(now.Add(48*time.Hour)) || !server.firstNoticeThisHour(now.Add(time.Hour)) {
+		t.Fatal("want a warning after the clock stepped back")
 	}
 }
 
 func TestRequestLinesLogNoSize(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
-	harness.mustCreate(message)
-	response, _ := harness.claim(message, "", "")
-	if blobResponse, _ := harness.blob(
-		message,
-		response.Header.Get("X-Nylzo-Lease"),
-	); blobResponse.StatusCode != http.StatusOK {
-		t.Fatalf("blob: %d", blobResponse.StatusCode)
-	}
-	harness.metadata(message)
-	harness.status(message)
-	seen := map[string]bool{}
-	for line := range strings.SplitSeq(strings.TrimSpace(harness.logs.String()), "\n") {
-		var entry map[string]any
-		if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "request" {
-			continue
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
+		harness.mustCreate(message)
+		response, _ := harness.claim(message, "", "")
+		if blobResponse, _ := harness.blob(
+			message,
+			response.Header.Get("X-Nylzo-Lease"),
+		); blobResponse.StatusCode != http.StatusOK {
+			t.Fatalf("blob: %d", blobResponse.StatusCode)
 		}
-		route, _ := entry["route"].(string)
-		_, size := entry["bytes"]
-		_, latency := entry["duration_ms"]
-		object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") ||
-			strings.HasSuffix(route, "/blob")
-		if size {
-			t.Fatalf("%s logs its response size: %s", route, line)
+		harness.metadata(message)
+		harness.status(message)
+		seen := map[string]bool{}
+		for line := range strings.SplitSeq(strings.TrimSpace(harness.logs.String()), "\n") {
+			var entry map[string]any
+			if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "request" {
+				continue
+			}
+			route, _ := entry["route"].(string)
+			_, size := entry["bytes"]
+			_, latency := entry["duration_ms"]
+			object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") ||
+				strings.HasSuffix(route, "/blob")
+			if size {
+				t.Fatalf("%s logs its response size: %s", route, line)
+			}
+			if object && latency {
+				t.Fatalf("%s logs its latency: %s", route, line)
+			}
+			if !object && route != "" && !latency {
+				t.Fatalf("%s lost its latency: %s", route, line)
+			}
+			seen[route] = true
 		}
-		if object && latency {
-			t.Fatalf("%s logs its latency: %s", route, line)
+		for _, requestLine := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
+			if !seen[requestLine] {
+				t.Fatalf("no request line for %s", requestLine)
+			}
 		}
-		if !object && route != "" && !latency {
-			t.Fatalf("%s lost its latency: %s", route, line)
-		}
-		seen[route] = true
-	}
-	for _, requestLine := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
-		if !seen[requestLine] {
-			t.Fatalf("no request line for %s", requestLine)
-		}
-	}
+	})
 }
 
 func TestTokenBucketsThrottleTheAPIInOrder(t *testing.T) {
@@ -841,82 +851,90 @@ func TestTokenBucketsThrottleTheAPIInOrder(t *testing.T) {
 	ok, refused := http.StatusOK, http.StatusTooManyRequests
 	t.Run("instance", func(t *testing.T) {
 		t.Parallel()
-		settings := baseSettings(pepperA, nil)
-		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 3
-		harness := newHarness(t, settings)
-		got := statuses(harness, "203.0.0.1", "203.0.1.1", "203.0.2.1", "203.0.3.1")
-		if !slices.Equal(got, []int{ok, ok, ok, refused}) {
-			t.Fatalf("the instance bucket: %v", got)
-		}
-		if response, _ := harness.do(
-			&testRequest{method: http.MethodGet, path: "/healthz"},
-		); response.StatusCode != ok {
-			t.Fatal("a path outside the API was throttled")
-		}
-		harness.clock.Advance(2 * time.Second)
-		if got = statuses(harness, "203.0.9.1"); got[0] != ok {
-			t.Fatal("the instance bucket did not refill")
-		}
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 3
+			harness := newHarness(t, settings)
+			got := statuses(harness, "203.0.0.1", "203.0.1.1", "203.0.2.1", "203.0.3.1")
+			if !slices.Equal(got, []int{ok, ok, ok, refused}) {
+				t.Fatalf("the instance bucket: %v", got)
+			}
+			if response, _ := harness.do(
+				&testRequest{method: http.MethodGet, path: "/healthz"},
+			); response.StatusCode != ok {
+				t.Fatal("a path outside the API was throttled")
+			}
+			synctest.Sleep(2 * time.Second)
+			if got = statuses(harness, "203.0.9.1"); got[0] != ok {
+				t.Fatal("the instance bucket did not refill")
+			}
+		})
 	})
 	t.Run("source", func(t *testing.T) {
 		t.Parallel()
-		settings := baseSettings(pepperA, nil)
-		settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1, 2
-		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 6
-		harness := newHarness(t, settings)
-		got := statuses(harness,
-			"203.0.113.1", "203.0.113.1", "203.0.113.1",
-			"2001:db8:1:1::1", "2001:db8:1:1::2", "2001:db8:1:1::3",
-			"203.0.113.2", "192.0.2.3",
-		)
-		if !slices.Equal(got, []int{ok, ok, refused, ok, ok, refused, ok, ok}) {
-			t.Fatalf("a source and its /64 share a bucket and refused requests take no instance token: %v", got)
-		}
-		harness.clock.Advance(2 * time.Second)
-		if got = statuses(harness, "203.0.113.1"); got[0] != ok {
-			t.Fatal("the source bucket did not refill")
-		}
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1, 2
+			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 6
+			harness := newHarness(t, settings)
+			got := statuses(harness,
+				"203.0.113.1", "203.0.113.1", "203.0.113.1",
+				"2001:db8:1:1::1", "2001:db8:1:1::2", "2001:db8:1:1::3",
+				"203.0.113.2", "192.0.2.3",
+			)
+			if !slices.Equal(got, []int{ok, ok, refused, ok, ok, refused, ok, ok}) {
+				t.Fatalf("a source and its /64 share a bucket and refused requests take no instance token: %v", got)
+			}
+			synctest.Sleep(2 * time.Second)
+			if got = statuses(harness, "203.0.113.1"); got[0] != ok {
+				t.Fatal("the source bucket did not refill")
+			}
+		})
 	})
 	t.Run("range", func(t *testing.T) {
 		t.Parallel()
-		settings := baseSettings(pepperA, nil)
-		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 10, 10
-		harness := newHarness(t, settings)
-		var addresses []string
-		for i := range 8 {
-			addresses = append(addresses, fmt.Sprintf("2001:db8:1:%x::1", i))
-		}
-		for i := range 5 {
-			addresses = append(addresses, fmt.Sprintf("2001:db8:%x::1", i+2))
-		}
-		got := statuses(harness, addresses...)
-		want := []int{ok, ok, ok, ok, ok, refused, refused, refused, ok, ok, ok, ok, ok}
-		if !slices.Equal(got, want) {
-			t.Fatalf("one /48 gets at most half of the instance bucket and its refusals take no token: %v", got)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 10, 10
+			harness := newHarness(t, settings)
+			var addresses []string
+			for i := range 8 {
+				addresses = append(addresses, fmt.Sprintf("2001:db8:1:%x::1", i))
+			}
+			for i := range 5 {
+				addresses = append(addresses, fmt.Sprintf("2001:db8:%x::1", i+2))
+			}
+			got := statuses(harness, addresses...)
+			want := []int{ok, ok, ok, ok, ok, refused, refused, refused, ok, ok, ok, ok, ok}
+			if !slices.Equal(got, want) {
+				t.Fatalf("one /48 gets at most half of the instance bucket and its refusals take no token: %v", got)
+			}
+		})
 	})
 }
 
 func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", &unreadableBody{t: t})
-	challenge, _ := harness.server.challenges.Issue(harness.clock.Now())
-	seed := [core.SeedLen]byte{1}
-	signature := signing.SignRequest(&seed, signing.PurposeRead, request.Method, request.URL.Path, challenge, nil)
-	request.Header.Set("Authorization", signature.Authorization())
-	request.Header.Set("Origin", "https://attacker.example")
-	request.Header.Set("X-Requested-With", "XMLHttpRequest")
-	response := httptest.NewRecorder()
-	harness.server.handler.ServeHTTP(response, request)
-	if response.Code != http.StatusForbidden ||
-		strings.TrimSpace(response.Body.String()) != `{"error":"cross_origin"}` {
-		t.Fatalf("unexpected denial: %d %s", response.Code, response.Body.String())
-	}
-	spent, err := harness.server.challenges.Spend(t.Context(), challenge, harness.clock.Now())
-	if err != nil || !spent {
-		t.Fatalf("cross-origin request consumed a challenge: first spend=%v, err=%v", spent, err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", &unreadableBody{t: t})
+		challenge, _ := harness.server.challenges.Issue(time.Now())
+		seed := [core.SeedLen]byte{1}
+		signature := signing.SignRequest(&seed, signing.PurposeRead, request.Method, request.URL.Path, challenge, nil)
+		request.Header.Set("Authorization", signature.Authorization())
+		request.Header.Set("Origin", "https://attacker.example")
+		request.Header.Set("X-Requested-With", "XMLHttpRequest")
+		response := httptest.NewRecorder()
+		harness.server.handler.ServeHTTP(response, request)
+		if response.Code != http.StatusForbidden ||
+			strings.TrimSpace(response.Body.String()) != `{"error":"cross_origin"}` {
+			t.Fatalf("unexpected denial: %d %s", response.Code, response.Body.String())
+		}
+		spent, err := harness.server.challenges.Spend(t.Context(), challenge, time.Now())
+		if err != nil || !spent {
+			t.Fatalf("cross-origin request consumed a challenge: first spend=%v, err=%v", spent, err)
+		}
+	})
 }
 
 type unreadableBody struct{ t *testing.T }

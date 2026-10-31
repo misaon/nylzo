@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -141,7 +142,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			process.Env = append(
 				os.Environ(),
 				sweepDirEnv+"="+harness.directory,
-				sweepNowEnv+"="+harness.clock.Now().Format(time.RFC3339Nano),
+				sweepNowEnv+"="+time.Now().Format(time.RFC3339Nano),
 			)
 			out, err := process.CombinedOutput()
 			if err != nil || !strings.Contains(string(out), sweptMarker) {
@@ -290,8 +291,8 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 			t.Errorf("message %d in state %s: blob present %v", i, want, !ended)
 		}
 	}
-	harness.clock.Advance(2 * time.Hour)
-	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
+	_, err := sweep.Run(t.Context(), harness.store, harness.blobs, harness.directory, time.Now().Add(2*time.Hour))
+	if err != nil {
 		t.Fatal(err)
 	}
 	for i, message := range messages {
@@ -303,65 +304,67 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 
 func TestBurnAndCancelEndpoints(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	burn := newMessage(t, core.KDFNone, "", 1, 3600, "b")
-	cancel := newMessage(t, core.KDFNone, "", 2, 3600, "c")
-	harness.mustCreate(burn)
-	harness.mustCreate(cancel)
-	unknown, unknownBody := harness.do(
-		&testRequest{
-			method: http.MethodPost,
-			path:   "/api/v1/messages/" + core.NewID().String() + "/burn",
-			token:  burn.readToken,
-		},
-	)
-	if unknown.StatusCode != http.StatusNotFound {
-		t.Fatalf("unknown id: %d", unknown.StatusCode)
-	}
-	for _, testCase := range []struct {
-		message       *testMessage
-		action, token string
-	}{{burn, "burn", burn.manageToken}, {cancel, "cancel", cancel.readToken}} {
-		response, body := harness.post(testCase.message, testCase.action, testCase.token)
-		if response.StatusCode != http.StatusNotFound || string(body) != string(unknownBody) {
-			t.Fatalf("%s with the token of the other purpose: %d %s", testCase.action, response.StatusCode, body)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		burn := newMessage(t, core.KDFNone, "", 1, 3600, "b")
+		cancel := newMessage(t, core.KDFNone, "", 2, 3600, "c")
+		harness.mustCreate(burn)
+		harness.mustCreate(cancel)
+		unknown, unknownBody := harness.do(
+			&testRequest{
+				method: http.MethodPost,
+				path:   "/api/v1/messages/" + core.NewID().String() + "/burn",
+				token:  burn.readToken,
+			},
+		)
+		if unknown.StatusCode != http.StatusNotFound {
+			t.Fatalf("unknown id: %d", unknown.StatusCode)
 		}
-		if !harness.blobExists(testCase.message) {
-			t.Fatalf("%s with a wrong token removed the blob", testCase.action)
+		for _, testCase := range []struct {
+			message       *testMessage
+			action, token string
+		}{{burn, "burn", burn.manageToken}, {cancel, "cancel", cancel.readToken}} {
+			response, body := harness.post(testCase.message, testCase.action, testCase.token)
+			if response.StatusCode != http.StatusNotFound || string(body) != string(unknownBody) {
+				t.Fatalf("%s with the token of the other purpose: %d %s", testCase.action, response.StatusCode, body)
+			}
+			if !harness.blobExists(testCase.message) {
+				t.Fatalf("%s with a wrong token removed the blob", testCase.action)
+			}
 		}
-	}
-	if response, _ := harness.post(
-		burn,
-		"burn",
-		burn.readToken,
-	); response.StatusCode != http.StatusNoContent ||
-		harness.blobExists(burn) {
-		t.Fatalf("burn: %d", response.StatusCode)
-	}
-	if _, metadata := harness.metadata(burn); metadata["state"] != "deleted" {
-		t.Fatalf("metadata after burn: %v", metadata)
-	}
-	if response, _ := harness.claim(cancel, "", ""); response.StatusCode != http.StatusOK {
-		t.Fatal("claim before cancel")
-	}
-	if response, _ := harness.post(
-		cancel,
-		"cancel",
-		cancel.manageToken,
-	); response.StatusCode != http.StatusNoContent ||
-		harness.blobExists(cancel) {
-		t.Fatalf("cancel: %d", response.StatusCode)
-	}
-	if _, status := harness.status(cancel); status["state"] != "cancelled" || status["first_opened_at"] == nil {
-		t.Fatalf("status after cancel: %v", status)
-	}
-	response, body := harness.post(burn, "burn", burn.readToken)
-	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
-		t.Fatalf("second burn: %d %s", response.StatusCode, body)
-	}
-	if got, _ := harness.post(cancel, "cancel", cancel.manageToken); got.StatusCode != http.StatusGone {
-		t.Fatalf("second cancel: %d", got.StatusCode)
-	}
+		if response, _ := harness.post(
+			burn,
+			"burn",
+			burn.readToken,
+		); response.StatusCode != http.StatusNoContent ||
+			harness.blobExists(burn) {
+			t.Fatalf("burn: %d", response.StatusCode)
+		}
+		if _, metadata := harness.metadata(burn); metadata["state"] != "deleted" {
+			t.Fatalf("metadata after burn: %v", metadata)
+		}
+		if response, _ := harness.claim(cancel, "", ""); response.StatusCode != http.StatusOK {
+			t.Fatal("claim before cancel")
+		}
+		if response, _ := harness.post(
+			cancel,
+			"cancel",
+			cancel.manageToken,
+		); response.StatusCode != http.StatusNoContent ||
+			harness.blobExists(cancel) {
+			t.Fatalf("cancel: %d", response.StatusCode)
+		}
+		if _, status := harness.status(cancel); status["state"] != "cancelled" || status["first_opened_at"] == nil {
+			t.Fatalf("status after cancel: %v", status)
+		}
+		response, body := harness.post(burn, "burn", burn.readToken)
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
+			t.Fatalf("second burn: %d %s", response.StatusCode, body)
+		}
+		if got, _ := harness.post(cancel, "cancel", cancel.manageToken); got.StatusCode != http.StatusGone {
+			t.Fatalf("second cancel: %d", got.StatusCode)
+		}
+	})
 }
 
 type racingStore struct {
@@ -381,56 +384,60 @@ func (s *racingStore) Load(ctx context.Context, locator seal.Locator) (store.Row
 
 func TestBurnRacingCancelReportsTheRealState(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	harness.mustCreate(message)
-	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func() {
-		record := harness.recordIn(inner, message)
-		if _, err := store.End(
-			t.Context(),
-			inner,
-			harness.blobs,
-			&record,
-			store.StateCancelled,
-			harness.clock.Now(),
-		); err != nil {
-			t.Error(err)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		inner := harness.store
+		harness.store = &racingStore{Store: inner, race: func() {
+			record := harness.recordIn(inner, message)
+			if _, err := store.End(
+				t.Context(),
+				inner,
+				harness.blobs,
+				&record,
+				store.StateCancelled,
+				time.Now(),
+			); err != nil {
+				t.Error(err)
+			}
+		}}
+		harness.reopen(&harness.settings)
+		response, body := harness.post(message, "burn", message.readToken)
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+			t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
 		}
-	}}
-	harness.reopen(&harness.settings)
-	response, body := harness.post(message, "burn", message.readToken)
-	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-		t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
-	}
+	})
 }
 
 func TestBurnFinishesRecordedCancel(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	harness.mustCreate(message)
-	inner := harness.store
-	harness.store = &racingStore{Store: inner, race: func() {
-		record := harness.recordIn(inner, message)
-		if _, err := store.MarkEnding(
-			t.Context(),
-			inner,
-			&record,
-			store.StateCancelled,
-			harness.clock.Now(),
-		); err != nil {
-			t.Error(err)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		inner := harness.store
+		harness.store = &racingStore{Store: inner, race: func() {
+			record := harness.recordIn(inner, message)
+			if _, err := store.MarkEnding(
+				t.Context(),
+				inner,
+				&record,
+				store.StateCancelled,
+				time.Now(),
+			); err != nil {
+				t.Error(err)
+			}
+		}}
+		harness.reopen(&harness.settings)
+		response, body := harness.post(message, "burn", message.readToken)
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+			t.Fatalf("burn after a recorded cancel: %d %s", response.StatusCode, body)
 		}
-	}}
-	harness.reopen(&harness.settings)
-	response, body := harness.post(message, "burn", message.readToken)
-	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-		t.Fatalf("burn after a recorded cancel: %d %s", response.StatusCode, body)
-	}
-	if _, status := harness.status(message); status["state"] != "cancelled" {
-		t.Fatalf("status: %v", status)
-	}
+		if _, status := harness.status(message); status["state"] != "cancelled" {
+			t.Fatalf("status: %v", status)
+		}
+	})
 }
 
 type failingForgetStore struct {
@@ -443,30 +450,36 @@ func (failingForgetStore) ForgetBlobs(context.Context, []store.DueBlob) error {
 
 func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
-	harness.mustCreate(message)
-	inner := harness.store
-	harness.store = &racingStore{Store: failingForgetStore{Store: inner}, race: func() {
-		record := harness.recordIn(inner, message)
-		if _, err := store.MarkEnding(
-			t.Context(),
-			inner,
-			&record,
-			store.StateCancelled,
-			harness.clock.Now(),
-		); err != nil {
-			t.Error(err)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+		harness.mustCreate(message)
+		inner := harness.store
+		harness.store = &racingStore{Store: failingForgetStore{Store: inner}, race: func() {
+			record := harness.recordIn(inner, message)
+			if _, err := store.MarkEnding(
+				t.Context(),
+				inner,
+				&record,
+				store.StateCancelled,
+				time.Now(),
+			); err != nil {
+				t.Error(err)
+			}
+			if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+				t.Error(err)
+			}
+		}}
+		harness.reopen(&harness.settings)
+		response, body := harness.claim(message, "", "")
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+			t.Fatalf(
+				"an ending that cannot finish must still report its recorded state: %d %s",
+				response.StatusCode,
+				body,
+			)
 		}
-		if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
-			t.Error(err)
-		}
-	}}
-	harness.reopen(&harness.settings)
-	response, body := harness.claim(message, "", "")
-	if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-		t.Fatalf("an ending that cannot finish must still report its recorded state: %d %s", response.StatusCode, body)
-	}
+	})
 }
 
 type vanishingStore struct {
@@ -489,18 +502,20 @@ func (s *vanishingStore) Load(ctx context.Context, locator seal.Locator) (store.
 
 func TestBurnWithUnreadableEndAnswers500(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	harness.mustCreate(message)
-	harness.store = &vanishingStore{Store: harness.store}
-	harness.reopen(&harness.settings)
-	if response, body := harness.post(
-		message,
-		"burn",
-		message.readToken,
-	); response.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("a burn that cannot read the final state must not guess it: %d %s", response.StatusCode, body)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		harness.store = &vanishingStore{Store: harness.store}
+		harness.reopen(&harness.settings)
+		if response, body := harness.post(
+			message,
+			"burn",
+			message.readToken,
+		); response.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("a burn that cannot read the final state must not guess it: %d %s", response.StatusCode, body)
+		}
+	})
 }
 
 type deleteHookBlobs struct {
@@ -517,31 +532,37 @@ func (b *deleteHookBlobs) Delete(ctx context.Context, ref string) error {
 
 func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-	harness.mustCreate(message)
-	if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
-		t.Fatalf("claim: %d", response.StatusCode)
-	}
-	raw := harness.blobs
-	harness.blobs = &deleteHookBlobs{Blobs: raw, hook: func() {
-		harness.clock.Advance(store.LeaseDuration)
-		record := harness.mustRecord(message)
-		if _, err := store.Finish(t.Context(), harness.store, raw, &record, harness.clock.Now()); err != nil {
-			t.Error(err)
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
 		}
-	}}
-	harness.reopen(&harness.settings)
-	if response, body := harness.post(message, "burn", message.readToken); response.StatusCode != http.StatusNoContent {
-		t.Fatalf(
-			"the burn that recorded the first ending must answer 204 when a release finishes it: %d %s",
-			response.StatusCode,
-			body,
-		)
-	}
-	if state, gone := harness.endedState(message); !gone || state != store.StateDeleted {
-		t.Fatalf("after the burn: %s %v", state, gone)
-	}
+		raw := harness.blobs
+		harness.blobs = &deleteHookBlobs{Blobs: raw, hook: func() {
+			synctest.Sleep(store.LeaseDuration)
+			record := harness.mustRecord(message)
+			if _, err := store.Finish(t.Context(), harness.store, raw, &record, time.Now()); err != nil {
+				t.Error(err)
+			}
+		}}
+		harness.reopen(&harness.settings)
+		if response, body := harness.post(
+			message,
+			"burn",
+			message.readToken,
+		); response.StatusCode != http.StatusNoContent {
+			t.Fatalf(
+				"the burn that recorded the first ending must answer 204 when a release finishes it: %d %s",
+				response.StatusCode,
+				body,
+			)
+		}
+		if state, gone := harness.endedState(message); !gone || state != store.StateDeleted {
+			t.Fatalf("after the burn: %s %v", state, gone)
+		}
+	})
 }
 
 func abuseReport(t *testing.T, harness *testHarness, message *testMessage, ip string) {
@@ -563,217 +584,227 @@ func abuseReport(t *testing.T, harness *testHarness, message *testMessage, ip st
 
 func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	faulty := harness.withFaultyBlobs()
-	burned := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	expired := newMessage(t, core.KDFNone, "", 1, 60, "abuse")
-	opened := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	ending := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	live := newMessage(t, core.KDFNone, "", 2, 3600, "abuse")
-	for _, message := range []*testMessage{burned, expired, opened, ending, live} {
-		harness.mustCreate(message)
-	}
-	harness.markEnding(ending, store.StateCancelled)
-	faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(ending)] = true })
-	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
-		t.Fatalf("burn: %d", response.StatusCode)
-	}
-	response, _ := harness.claim(opened, "", "")
-	if response.StatusCode != http.StatusOK ||
-		harness.ack(opened, response.Header.Get("X-Nylzo-Lease")).StatusCode != http.StatusNoContent {
-		t.Fatalf("open: %d", response.StatusCode)
-	}
-	harness.clock.Advance(2 * time.Minute)
-	for i, message := range []*testMessage{burned, expired, opened, ending} {
-		abuseReport(t, harness, message, fmt.Sprintf("203.0.113.%d", 50+i))
-	}
-	if data, err := harness.abuseReports(); (err != nil && !errors.Is(err, os.ErrNotExist)) || len(data) != 0 {
-		t.Fatalf("reports about ended messages were stored: %q %v", data, err)
-	}
-	abuseReport(t, harness, live, "203.0.113.60")
-	if data, err := harness.abuseReports(); err != nil || !strings.Contains(string(data), live.id.String()) {
-		t.Fatalf("the report about a live message was not stored: %q %v", data, err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		burned := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		expired := newMessage(t, core.KDFNone, "", 1, 60, "abuse")
+		opened := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		ending := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		live := newMessage(t, core.KDFNone, "", 2, 3600, "abuse")
+		for _, message := range []*testMessage{burned, expired, opened, ending, live} {
+			harness.mustCreate(message)
+		}
+		harness.markEnding(ending, store.StateCancelled)
+		faulty.set(func(blobs *faultyBlobs) { blobs.failDelete[harness.blobRef(ending)] = true })
+		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
+			t.Fatalf("burn: %d", response.StatusCode)
+		}
+		response, _ := harness.claim(opened, "", "")
+		if response.StatusCode != http.StatusOK ||
+			harness.ack(opened, response.Header.Get("X-Nylzo-Lease")).StatusCode != http.StatusNoContent {
+			t.Fatalf("open: %d", response.StatusCode)
+		}
+		synctest.Sleep(2 * time.Minute)
+		for i, message := range []*testMessage{burned, expired, opened, ending} {
+			abuseReport(t, harness, message, fmt.Sprintf("203.0.113.%d", 50+i))
+		}
+		if data, err := harness.abuseReports(); (err != nil && !errors.Is(err, os.ErrNotExist)) || len(data) != 0 {
+			t.Fatalf("reports about ended messages were stored: %q %v", data, err)
+		}
+		abuseReport(t, harness, live, "203.0.113.60")
+		if data, err := harness.abuseReports(); err != nil || !strings.Contains(string(data), live.id.String()) {
+			t.Fatalf("the report about a live message was not stored: %q %v", data, err)
+		}
+	})
 }
 
 func TestMalformedAbuseReportsSpendNoRateLimit(t *testing.T) {
 	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.AbusePerHour = 1
-	harness := newHarness(t, settings)
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	harness.mustCreate(message)
-	report := func(id string) int {
-		body, _ := json.Marshal(map[string]string{"id": id, "reason": "spam"})
-		response, _ := harness.do(
-			&testRequest{
-				method:  http.MethodPost,
-				path:    "/api/v1/abuse",
-				address: "203.0.113.44",
-				body:    body,
-				token:   message.readToken,
-				headers: map[string]string{"Content-Type": "application/json"},
-			},
-		)
-		return response.StatusCode
-	}
-	for range 3 {
-		if code := report("not-an-id"); code != http.StatusAccepted {
-			t.Fatalf("malformed id: %d", code)
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.AbusePerHour = 1
+		harness := newHarness(t, settings)
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		harness.mustCreate(message)
+		report := func(id string) int {
+			body, _ := json.Marshal(map[string]string{"id": id, "reason": "spam"})
+			response, _ := harness.do(
+				&testRequest{
+					method:  http.MethodPost,
+					path:    "/api/v1/abuse",
+					address: "203.0.113.44",
+					body:    body,
+					token:   message.readToken,
+					headers: map[string]string{"Content-Type": "application/json"},
+				},
+			)
+			return response.StatusCode
 		}
-	}
-	if code := report(message.id.String()); code != http.StatusAccepted {
-		t.Fatalf("a valid report after malformed ones was rate limited: %d", code)
-	}
-	if data, err := harness.abuseReports(); err != nil || !strings.Contains(string(data), message.id.String()) {
-		t.Fatalf("the valid report was not stored: %v", err)
-	}
+		for range 3 {
+			if code := report("not-an-id"); code != http.StatusAccepted {
+				t.Fatalf("malformed id: %d", code)
+			}
+		}
+		if code := report(message.id.String()); code != http.StatusAccepted {
+			t.Fatalf("a valid report after malformed ones was rate limited: %d", code)
+		}
+		if data, err := harness.abuseReports(); err != nil || !strings.Contains(string(data), message.id.String()) {
+			t.Fatalf("the valid report was not stored: %v", err)
+		}
+	})
 }
 
 func TestAbuseReportsRecordOnlyValidReports(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	harness.mustCreate(message)
-	send := func(token, body string) int {
-		response, _ := harness.do(
-			&testRequest{
-				method:  http.MethodPost,
-				path:    "/api/v1/abuse",
-				address: "203.0.113.70",
-				body:    []byte(body),
-				token:   token,
-				headers: map[string]string{"Content-Type": "application/json"},
-			},
-		)
-		return response.StatusCode
-	}
-	long := strings.Repeat("r", 3000)
-	if send(message.readToken, fmt.Sprintf(`{"id":%q,"reason":%q}`, message.id.String(), long)) != 202 ||
-		send(message.readToken, fmt.Sprintf(`{"id":%q}`, core.NewID().String())) != 202 ||
-		send(core.Encode(make([]byte, 32)), fmt.Sprintf(`{"id":%q}`, message.id.String())) != 202 {
-		t.Fatal("reports must answer 202")
-	}
-	if send("", `{"id":`) != 400 {
-		t.Fatal("malformed report body")
-	}
-	data, err := harness.abuseReports()
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 1 || !strings.Contains(lines[0], message.id.String()) ||
-		strings.Contains(lines[0], strings.Repeat("r", 1001)) {
-		t.Fatalf("recorded reports: %d lines", len(lines))
-	}
-	if response, metadata := harness.metadata(
-		message,
-	); response.StatusCode != http.StatusOK ||
-		metadata["state"] != "available" {
-		t.Fatal("abuse report changed the message")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		harness.mustCreate(message)
+		send := func(token, body string) int {
+			response, _ := harness.do(
+				&testRequest{
+					method:  http.MethodPost,
+					path:    "/api/v1/abuse",
+					address: "203.0.113.70",
+					body:    []byte(body),
+					token:   token,
+					headers: map[string]string{"Content-Type": "application/json"},
+				},
+			)
+			return response.StatusCode
+		}
+		long := strings.Repeat("r", 3000)
+		if send(message.readToken, fmt.Sprintf(`{"id":%q,"reason":%q}`, message.id.String(), long)) != 202 ||
+			send(message.readToken, fmt.Sprintf(`{"id":%q}`, core.NewID().String())) != 202 ||
+			send(core.Encode(make([]byte, 32)), fmt.Sprintf(`{"id":%q}`, message.id.String())) != 202 {
+			t.Fatal("reports must answer 202")
+		}
+		if send("", `{"id":`) != 400 {
+			t.Fatal("malformed report body")
+		}
+		data, err := harness.abuseReports()
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		if len(lines) != 1 || !strings.Contains(lines[0], message.id.String()) ||
+			strings.Contains(lines[0], strings.Repeat("r", 1001)) {
+			t.Fatalf("recorded reports: %d lines", len(lines))
+		}
+		if response, metadata := harness.metadata(
+			message,
+		); response.StatusCode != http.StatusOK ||
+			metadata["state"] != "available" {
+			t.Fatal("abuse report changed the message")
+		}
+	})
 }
 
 func TestAbuseReportHardening(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	harness.mustCreate(message)
-	link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
-	_, fragment, _ := strings.Cut(link, "#")
-	body := fmt.Sprintf(`{"id":%q,"reason":%q}`, message.id.String(), "malware at "+link+" and again "+fragment)
-	for _, contentType := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		harness.mustCreate(message)
+		link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
+		_, fragment, _ := strings.Cut(link, "#")
+		body := fmt.Sprintf(`{"id":%q,"reason":%q}`, message.id.String(), "malware at "+link+" and again "+fragment)
+		for _, contentType := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
+			response, _ := harness.do(
+				&testRequest{
+					method:  http.MethodPost,
+					path:    "/api/v1/abuse",
+					address: "203.0.113.80",
+					body:    []byte(body),
+					token:   message.readToken,
+					headers: map[string]string{"Content-Type": contentType},
+				},
+			)
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("content type %q: %d", contentType, response.StatusCode)
+			}
+		}
 		response, _ := harness.do(
 			&testRequest{
 				method:  http.MethodPost,
 				path:    "/api/v1/abuse",
-				address: "203.0.113.80",
+				address: "203.0.113.81",
 				body:    []byte(body),
 				token:   message.readToken,
-				headers: map[string]string{"Content-Type": contentType},
+				headers: map[string]string{"Content-Type": "application/json; charset=utf-8"},
 			},
 		)
-		if response.StatusCode != http.StatusBadRequest {
-			t.Fatalf("content type %q: %d", contentType, response.StatusCode)
+		if response.StatusCode != http.StatusAccepted {
+			t.Fatalf("json report: %d", response.StatusCode)
 		}
-	}
-	response, _ := harness.do(
-		&testRequest{
-			method:  http.MethodPost,
-			path:    "/api/v1/abuse",
-			address: "203.0.113.81",
-			body:    []byte(body),
-			token:   message.readToken,
-			headers: map[string]string{"Content-Type": "application/json; charset=utf-8"},
-		},
-	)
-	if response.StatusCode != http.StatusAccepted {
-		t.Fatalf("json report: %d", response.StatusCode)
-	}
-	path := harness.abuseFile(harness.clock.Now())
-	data, err := harness.abuseReports()
-	if err != nil {
-		t.Fatal(err)
-	}
-	secret := core.Encode(message.secret[:])
-	if strings.Contains(string(data), secret) || !strings.Contains(string(data), "[redacted]") {
-		t.Fatalf("the report kept the link secret: %s", data)
-	}
-	if truncateErr := os.Truncate(path, 64<<20); truncateErr != nil {
-		t.Fatal(truncateErr)
-	}
-	response, _ = harness.do(
-		&testRequest{
-			method:  http.MethodPost,
-			path:    "/api/v1/abuse",
-			address: "203.0.113.82",
-			body:    []byte(body),
-			token:   message.readToken,
-			headers: map[string]string{"Content-Type": "application/json"},
-		},
-	)
-	info, err := os.Stat(path)
-	if response.StatusCode != http.StatusServiceUnavailable || err != nil || info.Size() != 64<<20 ||
-		!strings.Contains(harness.logs.String(), "abuse-file-full") {
-		t.Fatalf(
-			"a full report file must answer 503, log an error and not grow: %d %v %d",
-			response.StatusCode,
-			err,
-			info.Size(),
+		path := harness.abuseFile(time.Now())
+		data, err := harness.abuseReports()
+		if err != nil {
+			t.Fatal(err)
+		}
+		secret := core.Encode(message.secret[:])
+		if strings.Contains(string(data), secret) || !strings.Contains(string(data), "[redacted]") {
+			t.Fatalf("the report kept the link secret: %s", data)
+		}
+		if truncateErr := os.Truncate(path, 64<<20); truncateErr != nil {
+			t.Fatal(truncateErr)
+		}
+		response, _ = harness.do(
+			&testRequest{
+				method:  http.MethodPost,
+				path:    "/api/v1/abuse",
+				address: "203.0.113.82",
+				body:    []byte(body),
+				token:   message.readToken,
+				headers: map[string]string{"Content-Type": "application/json"},
+			},
 		)
-	}
+		info, err := os.Stat(path)
+		if response.StatusCode != http.StatusServiceUnavailable || err != nil || info.Size() != 64<<20 ||
+			!strings.Contains(harness.logs.String(), "abuse-file-full") {
+			t.Fatalf(
+				"a full report file must answer 503, log an error and not grow: %d %v %d",
+				response.StatusCode,
+				err,
+				info.Size(),
+			)
+		}
+	})
 }
 
 func TestAbuseReports(t *testing.T) {
 	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	harness.mustCreate(message)
-	report := func(id, token string) int {
-		response, _ := harness.do(
-			&testRequest{
-				method:  http.MethodPost,
-				path:    "/api/v1/abuse",
-				address: "203.0.113.77",
-				body:    []byte(fmt.Sprintf(`{"id":%q,"reason":"spam"}`, id)),
-				token:   token,
-				headers: map[string]string{"Content-Type": "application/json"},
-			},
-		)
-		return response.StatusCode
-	}
-	if report(message.id.String(), message.readToken) != http.StatusAccepted {
-		t.Fatal("valid report")
-	}
-	if report(core.NewID().String(), message.readToken) != http.StatusAccepted {
-		t.Fatal("unknown id must get the same 202")
-	}
-	for range 3 {
-		report(message.id.String(), core.Encode(make([]byte, 32)))
-	}
-	if report(message.id.String(), message.readToken) != http.StatusTooManyRequests {
-		t.Fatal("sixth report per hour must be limited")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		harness.mustCreate(message)
+		report := func(id, token string) int {
+			response, _ := harness.do(
+				&testRequest{
+					method:  http.MethodPost,
+					path:    "/api/v1/abuse",
+					address: "203.0.113.77",
+					body:    []byte(fmt.Sprintf(`{"id":%q,"reason":"spam"}`, id)),
+					token:   token,
+					headers: map[string]string{"Content-Type": "application/json"},
+				},
+			)
+			return response.StatusCode
+		}
+		if report(message.id.String(), message.readToken) != http.StatusAccepted {
+			t.Fatal("valid report")
+		}
+		if report(core.NewID().String(), message.readToken) != http.StatusAccepted {
+			t.Fatal("unknown id must get the same 202")
+		}
+		for range 3 {
+			report(message.id.String(), core.Encode(make([]byte, 32)))
+		}
+		if report(message.id.String(), message.readToken) != http.StatusTooManyRequests {
+			t.Fatal("sixth report per hour must be limited")
+		}
+	})
 }
 
 func reportAbuse(t *testing.T, harness *testHarness, token string, report map[string]any) string {
@@ -804,81 +835,85 @@ func reportAbuse(t *testing.T, harness *testHarness, token string, report map[st
 
 func TestAbuseReportsRefuseAnImplausibleContactAndStoreAValidOneAsGiven(t *testing.T) {
 	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.AbusePerHour = 1
-	harness := newHarness(t, settings)
-	message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	harness.mustCreate(message)
-	link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
-	for _, id := range []string{message.id.String(), core.NewID().String(), "not-an-id"} {
-		for _, contact := range []string{"jana", "jana@example", "ja na@example.cz", link + "@example.cz"} {
-			report := map[string]any{"id": id, "reason": "spam", "contact": contact, "good_faith": true}
-			if got := reportAbuse(t, harness, message.readToken, report); got != "400 contact" {
-				t.Fatalf("contact %q about %s: %s", contact, id, got)
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.AbusePerHour = 1
+		harness := newHarness(t, settings)
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		harness.mustCreate(message)
+		link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
+		for _, id := range []string{message.id.String(), core.NewID().String(), "not-an-id"} {
+			for _, contact := range []string{"jana", "jana@example", "ja na@example.cz", link + "@example.cz"} {
+				report := map[string]any{"id": id, "reason": "spam", "contact": contact, "good_faith": true}
+				if got := reportAbuse(t, harness, message.readToken, report); got != "400 contact" {
+					t.Fatalf("contact %q about %s: %s", contact, id, got)
+				}
 			}
 		}
-	}
-	contact := "abcdefghijklmnopqrstuvwxyz@example.cz"
-	report := map[string]any{
-		"id":         message.id.String(),
-		"reason":     "spam",
-		"contact":    " " + contact + "\n",
-		"good_faith": true,
-	}
-	if got := reportAbuse(t, harness, message.readToken, report); got != "202 accepted" {
-		t.Fatalf("a refused contact spent the rate limit or the valid report failed: %s", got)
-	}
-	data, err := harness.abuseReports()
-	var stored map[string]any
-	if err != nil || json.Unmarshal(data, &stored) != nil || stored["contact"] != contact ||
-		stored["good_faith"] != true {
-		t.Fatalf("the report must keep the trimmed contact without redaction and the good faith: %s %v", data, err)
-	}
+		contact := "abcdefghijklmnopqrstuvwxyz@example.cz"
+		report := map[string]any{
+			"id":         message.id.String(),
+			"reason":     "spam",
+			"contact":    " " + contact + "\n",
+			"good_faith": true,
+		}
+		if got := reportAbuse(t, harness, message.readToken, report); got != "202 accepted" {
+			t.Fatalf("a refused contact spent the rate limit or the valid report failed: %s", got)
+		}
+		data, err := harness.abuseReports()
+		var stored map[string]any
+		if err != nil || json.Unmarshal(data, &stored) != nil || stored["contact"] != contact ||
+			stored["good_faith"] != true {
+			t.Fatalf("the report must keep the trimmed contact without redaction and the good faith: %s %v", data, err)
+		}
+	})
 }
 
 func TestAbuseReportsAnswerTheLimitOnlyForALiveMessage(t *testing.T) {
 	t.Parallel()
-	settings := baseSettings(pepperA, nil)
-	settings.Rates.AbusePerHour = 0
-	harness := newHarness(t, settings)
-	live := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	burned := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
-	harness.mustCreate(live)
-	harness.mustCreate(burned)
-	for _, message := range []*testMessage{live, burned} {
-		for range 3 {
-			if got := reportAbuse(
-				t,
-				harness,
-				message.readToken,
-				map[string]any{"id": message.id.String()},
-			); got != "202 accepted" {
-				t.Fatalf("a report within the daily budget: %s", got)
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.AbusePerHour = 0
+		harness := newHarness(t, settings)
+		live := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		burned := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
+		harness.mustCreate(live)
+		harness.mustCreate(burned)
+		for _, message := range []*testMessage{live, burned} {
+			for range 3 {
+				if got := reportAbuse(
+					t,
+					harness,
+					message.readToken,
+					map[string]any{"id": message.id.String()},
+				); got != "202 accepted" {
+					t.Fatalf("a report within the daily budget: %s", got)
+				}
 			}
 		}
-	}
-	if got := reportAbuse(t, harness, live.readToken, map[string]any{"id": live.id.String()}); got != "202 limit" {
-		t.Fatalf("a fourth report about a live message must not read as received: %s", got)
-	}
-	if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
-		t.Fatalf("burn: %d", response.StatusCode)
-	}
-	wrongKey := core.Encode(make([]byte, 32))
-	for name, request := range map[string]struct {
-		token string
-		id    string
-	}{
-		"a wrong key":    {wrongKey, live.id.String()},
-		"an ended id":    {burned.readToken, burned.id.String()},
-		"an unknown id":  {live.readToken, core.NewID().String()},
-		"a malformed id": {live.readToken, "not-an-id"},
-	} {
-		if got := reportAbuse(t, harness, request.token, map[string]any{"id": request.id}); got != "202 accepted" {
-			t.Errorf("%s must keep the uniform answer: %s", name, got)
+		if got := reportAbuse(t, harness, live.readToken, map[string]any{"id": live.id.String()}); got != "202 limit" {
+			t.Fatalf("a fourth report about a live message must not read as received: %s", got)
 		}
-	}
-	data, err := harness.abuseReports()
-	if err != nil || strings.Count(string(data), "\n") != 6 {
-		t.Fatalf("stored reports: %q %v", data, err)
-	}
+		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
+			t.Fatalf("burn: %d", response.StatusCode)
+		}
+		wrongKey := core.Encode(make([]byte, 32))
+		for name, request := range map[string]struct {
+			token string
+			id    string
+		}{
+			"a wrong key":    {wrongKey, live.id.String()},
+			"an ended id":    {burned.readToken, burned.id.String()},
+			"an unknown id":  {live.readToken, core.NewID().String()},
+			"a malformed id": {live.readToken, "not-an-id"},
+		} {
+			if got := reportAbuse(t, harness, request.token, map[string]any{"id": request.id}); got != "202 accepted" {
+				t.Errorf("%s must keep the uniform answer: %s", name, got)
+			}
+		}
+		data, err := harness.abuseReports()
+		if err != nil || strings.Count(string(data), "\n") != 6 {
+			t.Fatalf("stored reports: %q %v", data, err)
+		}
+	})
 }

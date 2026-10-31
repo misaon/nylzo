@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -80,32 +81,33 @@ func TestLogLinesCarryTheMinuteOnly(t *testing.T) {
 
 func TestHTTPErrorLogKeepsCategoriesOnlyAndLimitsThem(t *testing.T) {
 	t.Parallel()
-	var buffer bytes.Buffer
-	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
-	errorLog := logging.NewHTTPErrorLog(slog.New(slog.NewJSONHandler(&buffer, nil)), func() time.Time { return now })
-	errorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
-	for range 40 {
-		errorLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
-	}
-	errorLog.Printf("http2: panic serving 203.0.113.99:4242: boom")
-	logs := buffer.String()
-	for _, want := range []string{`"category":"tls-handshake"`, `"category":"http2"`, `"category":"panic"`} {
-		if !strings.Contains(logs, want) {
-			t.Fatalf("%s missing: %s", want, logs)
+	synctest.Test(t, func(t *testing.T) {
+		var buffer bytes.Buffer
+		errorLog := logging.NewHTTPErrorLog(slog.New(slog.NewJSONHandler(&buffer, nil)))
+		errorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
+		for range 40 {
+			errorLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
 		}
-	}
-	if count := strings.Count(logs, `"level":"WARN","msg":"net/http error"`); count != 20 {
-		t.Fatalf("net/http warnings must be limited to a burst of 20, got %d", count)
-	}
-	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, "boom") {
-		t.Fatal("net/http error text reached the log")
-	}
-	for _, dropped := range []string{`"dropped":21`, `"dropped":0`} {
-		now = now.Add(time.Second)
-		buffer.Reset()
-		errorLog.Printf("http2: server: error reading preface")
-		if !strings.Contains(buffer.String(), dropped) {
-			t.Fatalf("dropped lines must be reported once and then reset, want %s: %s", dropped, buffer.String())
+		errorLog.Printf("http2: panic serving 203.0.113.99:4242: boom")
+		logs := buffer.String()
+		for _, want := range []string{`"category":"tls-handshake"`, `"category":"http2"`, `"category":"panic"`} {
+			if !strings.Contains(logs, want) {
+				t.Fatalf("%s missing: %s", want, logs)
+			}
 		}
-	}
+		if count := strings.Count(logs, `"level":"WARN","msg":"net/http error"`); count != 20 {
+			t.Fatalf("net/http warnings must be limited to a burst of 20, got %d", count)
+		}
+		if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, "boom") {
+			t.Fatal("net/http error text reached the log")
+		}
+		for _, dropped := range []string{`"dropped":21`, `"dropped":0`} {
+			time.Sleep(time.Second)
+			buffer.Reset()
+			errorLog.Printf("http2: server: error reading preface")
+			if !strings.Contains(buffer.String(), dropped) {
+				t.Fatalf("dropped lines must be reported once and then reset, want %s: %s", dropped, buffer.String())
+			}
+		}
+	})
 }

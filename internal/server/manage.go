@@ -55,7 +55,7 @@ func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpos
 	if !ok {
 		return
 	}
-	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, s.clock())
+	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, time.Now())
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.writeCurrentGone(w, r, &granted.record)
@@ -73,7 +73,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	now := s.clock()
+	now := time.Now()
 	record := &granted.record
 	message := record.Message
 	if !record.HasBlob() {
@@ -120,7 +120,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	if !s.allowHourly(w, r, "abuse", s.settings.Rates.AbusePerHour) {
 		return
 	}
-	now := s.clock()
+	now := time.Now()
 	granted, ok, err := s.authorize(r.Context(), r, submitted.ID, seal.Read, raw)
 	if err != nil {
 		s.writeInternal(w, r, err)
