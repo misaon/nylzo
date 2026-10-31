@@ -1,7 +1,6 @@
 import { newSecret, type RequestKey, requestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
-import { newGate } from '../testing/gate.ts';
 import { memoryStore } from './memory-sent-store.ts';
 import {
   ExtractableKeyError,
@@ -143,18 +142,18 @@ describe('remembering a new message', () => {
 
   it('removes a record that lands after the page said it was not saved', async () => {
     const store = memoryStore();
-    const gate = newGate();
-    const landed = newGate();
+    const gate = Promise.withResolvers<undefined>();
+    const landed = Promise.withResolvers<undefined>();
     const put = store.put.bind(store);
     store.put = async (record) => {
-      await gate.opened;
+      await gate.promise;
       await put(record);
-      landed.open();
+      landed.resolve(undefined);
     };
     expect(await rememberSent(store, await newRecord(), 10)).toBe(false);
     expect(store.records.has(ID)).toBe(false);
-    gate.open();
-    await landed.opened;
+    gate.resolve(undefined);
+    await landed.promise;
     await vi.waitFor(() => expect(store.records.has(ID)).toBe(false));
   });
 });

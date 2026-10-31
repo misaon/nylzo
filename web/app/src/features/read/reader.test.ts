@@ -18,7 +18,6 @@ import type { ResumeStore } from '../../shared/sent-records/resume-store.ts';
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import { newGate } from '../../shared/testing/gate.ts';
 import { type CreateDependencies, type CreateInput, createMessage } from '../create/create-message.ts';
 import { createReader, type ReaderDependencies, type ReadView, type SessionStore } from './reader.ts';
 
@@ -209,8 +208,8 @@ describe('reading a message', () => {
   it('drops the fragment before its first request and acknowledges only once the page shows the message (D95)', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const display = newGate();
-    const reader = openReader(api, created.link, { shown: () => display.opened });
+    const display = Promise.withResolvers<undefined>();
+    const reader = openReader(api, created.link, { shown: () => display.promise });
     const before = api.calls.length;
     await reader.load();
     expect(reader.dropped()).toBe(1);
@@ -218,7 +217,7 @@ describe('reading a message', () => {
     const revealing = reader.reveal();
     await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
     expect(api.calls).not.toContain('ack');
-    display.open();
+    display.resolve(undefined);
     await revealing;
     expect(api.calls.at(-1)).toBe('ack');
     expect(reader.dropped()).toBe(1);
@@ -243,13 +242,13 @@ describe('reading a message', () => {
   it('keeps the lease and the link in the session when the page is left before it shows the message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    const display = newGate();
-    const reader = openReader(api, created.link, { shown: () => display.opened });
+    const display = Promise.withResolvers<undefined>();
+    const reader = openReader(api, created.link, { shown: () => display.promise });
     await reader.load();
     const revealing = reader.reveal();
     await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
     reader.clear();
-    display.open();
+    display.resolve(undefined);
     await revealing;
     expect(api.calls).not.toContain('ack');
     expect(reader.last()).toEqual({ view: 'cleared' });
@@ -757,16 +756,16 @@ describe('leaving the page', () => {
     await reader.reveal();
     const shown = reader.last();
     expect(shown).toMatchObject({ view: 'revealed', burnable: true });
-    const gate = newGate();
+    const gate = Promise.withResolvers<undefined>();
     const burn = api.burn.bind(api);
     api.burn = async (...parameters: Parameters<typeof burn>) => {
-      await gate.opened;
+      await gate.promise;
       return burn(...parameters);
     };
     const burning = reader.burn();
     reader.clear();
     const after = reader.views.length;
-    gate.open();
+    gate.resolve(undefined);
     expect(await burning).toEqual({ outcome: 'deleted' });
     expect(reader.views.slice(after - 1)).toEqual([{ view: 'cleared' }]);
     expect(shown?.view === 'revealed' && shown.file?.bytes.every((byte) => byte === 0)).toBe(true);
@@ -782,22 +781,22 @@ describe('leaving the page', () => {
     const session = memorySession();
     const reader = openReader(api, created.link, { session });
     await reader.load();
-    const gate = newGate();
-    const asked = newGate();
+    const gate = Promise.withResolvers<undefined>();
+    const asked = Promise.withResolvers<undefined>();
     const claim = api.claim.bind(api);
     let claimed: Uint8Array | undefined;
     api.claim = async (id, readKey, options = {}) => {
-      asked.open();
-      await gate.opened;
+      asked.resolve(undefined);
+      await gate.promise;
       const envelope = await claim(id, readKey, { ...options, proceed: () => true });
       claimed = envelope.object;
       return envelope;
     };
     const revealing = reader.reveal();
-    await asked.opened;
+    await asked.promise;
     reader.clear();
     const after = reader.views.length;
-    gate.open();
+    gate.resolve(undefined);
     await revealing;
     expect(reader.views.slice(after - 1).every((view) => view.view === 'cleared')).toBe(true);
     expect(claimed).toBeDefined();
@@ -815,20 +814,20 @@ describe('leaving the page', () => {
   it('sends no claim when the page was left during the key derivation', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
-    const gate = newGate();
-    const asked = newGate();
+    const gate = Promise.withResolvers<undefined>();
+    const asked = Promise.withResolvers<undefined>();
     const reader = openReader(api, created.link, {
       scrypt: async (...parameters) => {
-        asked.open();
-        await gate.opened;
+        asked.resolve(undefined);
+        await gate.promise;
         return scrypt(...parameters);
       },
     });
     await reader.load();
     const revealing = reader.reveal('correct horse battery staple');
-    await asked.opened;
+    await asked.promise;
     reader.clear();
-    gate.open();
+    gate.resolve(undefined);
     await revealing;
     expect(reader.last()).toEqual({ view: 'cleared' });
     expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
@@ -894,10 +893,10 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const reader = openReader(api, created.link);
     await reader.load();
-    const gate = newGate();
+    const gate = Promise.withResolvers<undefined>();
     const ack = api.ack.bind(api);
     api.ack = async (...parameters: Parameters<typeof ack>) => {
-      await gate.opened;
+      await gate.promise;
       return ack(...parameters);
     };
     await reader.reveal();
@@ -905,7 +904,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const burning = reader.burn();
     await Promise.resolve();
     expect(api.calls).not.toContain('burn');
-    gate.open();
+    gate.resolve(undefined);
     expect(await burning).toEqual({ outcome: 'deleted' });
     const order = api.calls.filter((call) => call === 'ack' || call === 'burn');
     expect(order).toEqual(['ack', 'burn']);
@@ -1020,19 +1019,19 @@ describe('native signing after a PKCS#8 import failure (WebKit on Linux, D66)', 
       await reader.load();
       await reader.reveal();
       expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
-      const gate = newGate();
+      const gate = Promise.withResolvers<undefined>();
       let usedKey: { privateKey: CryptoKey } | undefined;
       let intactWhenSent = false;
       const burn = api.burn.bind(api);
       api.burn = async (...parameters: Parameters<typeof burn>) => {
-        await gate.opened;
+        await gate.promise;
         usedKey = parameters[1];
         intactWhenSent = !usedKey.privateKey.extractable;
         return burn(...parameters);
       };
       const burning = reader.burn();
       reader.clear();
-      gate.open();
+      gate.resolve(undefined);
       expect(await burning).toEqual({ outcome: 'deleted' });
       expect(usedKey?.privateKey).toBeInstanceOf(CryptoKey);
       expect(intactWhenSent).toBe(true);
@@ -1070,19 +1069,19 @@ describe('native signing after a PKCS#8 import failure (WebKit on Linux, D66)', 
       const created = await createMessage(input(), createDependencies(api));
       const reader = openReader(api, created.link);
       await reader.load();
-      const gate = newGate();
+      const gate = Promise.withResolvers<undefined>();
       let usedKey: { privateKey: CryptoKey } | undefined;
       let intactWhenSent = false;
       const ack = api.ack.bind(api);
       api.ack = async (...parameters: Parameters<typeof ack>) => {
-        await gate.opened;
+        await gate.promise;
         usedKey = parameters[1];
         intactWhenSent = !usedKey.privateKey.extractable;
         return ack(...parameters);
       };
       await reader.reveal();
       reader.clear();
-      gate.open();
+      gate.resolve(undefined);
       await vi.waitFor(() => expect(usedKey?.privateKey.extractable).toBe(false));
       expect(intactWhenSent).toBe(true);
     } finally {
