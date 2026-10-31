@@ -20,6 +20,12 @@ rsvg-convert -w 180 -h 180 -o apple-touch-icon.png assets/brand/dark/nylzo-icon-
 
 The web client uses the dark icon variants in [web/app/icons](../../../web/app/icons). Its SVG favicon matches the original logo, and its PNG icons are rendered at 32 and 180 pixels.
 
+The social preview image `og-image.png` is rendered from `og-image.svg` in the same folder. With librsvg 2.63.2 this command reproduces the committed file byte for byte:
+
+```sh
+rsvg-convert -w 1200 -h 630 -o web/app/icons/og-image.png web/app/icons/og-image.svg
+```
+
 ## README covers
 
 [assets/readme](../../../assets/readme) contains matching light and dark SVG covers using the original logo geometry and theme colors. The sealed-message artwork illustrates sharing and expiry; it is not a product screenshot or a security certification.
