@@ -19,7 +19,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -397,24 +396,7 @@ func issueIDToken(server *Server, id core.ID) string {
 	return token
 }
 
-type lockedBuffer struct {
-	mutex  sync.Mutex
-	buffer bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(data []byte) (int, error) {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	return b.buffer.Write(data)
-}
-
-func (b *lockedBuffer) String() string {
-	b.mutex.Lock()
-	defer b.mutex.Unlock()
-	return b.buffer.String()
-}
-
-func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *lockedBuffer) {
+func testServer(tb testing.TB, database store.Store, change func(*config.Server)) (*Server, *syncBuffer) {
 	tb.Helper()
 	settings := config.Defaults()
 	settings.ReportKey = testReportKey.PublicKey()
@@ -423,7 +405,7 @@ func testServer(tb testing.TB, database store.Store, change func(*config.Server)
 	if change != nil {
 		change(&settings)
 	}
-	logs := &lockedBuffer{}
+	logs := &syncBuffer{}
 	server, err := New(&settings, database, nil, WithLogger(slog.New(slog.NewJSONHandler(logs, nil))))
 	if err != nil {
 		tb.Fatal(err)
