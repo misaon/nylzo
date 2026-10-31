@@ -15,7 +15,6 @@
     "custom.regex"
   ],
   "platformCommit": "enabled",
-  "automerge": false,
   "pinDigests": true,
   "ignoreScripts": true,
   "ignorePlugins": true,
@@ -23,62 +22,67 @@
   "semanticCommitType": "fix",
   "semanticCommitScope": "deps",
   "labels": [
-    "dependencies",
-    "automation:candidate"
+    "dependencies"
   ],
   "assignees": [
     "misaon"
   ],
   "branchPrefix": "renovate/",
-  "prConcurrentLimit": 2,
+  "baseBranchPatterns": [
+    "main",
+    "/^release\\/v(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/"
+  ],
+  "prConcurrentLimit": 8,
   "prHourlyLimit": 0,
+  "schedule": [
+    "* 0-7 * * 1"
+  ],
   "minimumReleaseAge": "3 days",
+  "internalChecksFilter": "strict",
   "rebaseWhen": "behind-base-branch",
   "separateMinorPatch": false,
   "rangeStrategy": "pin",
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": false,
+  "automergeStrategy": "squash",
+  "stopUpdatingLabel": "manual-hold",
   "vulnerabilityAlerts": {
     "enabled": true,
     "labels": [
       "dependencies",
-      "automation:security"
+      "security"
     ],
-    "minimumReleaseAge": null,
-    "schedule": [],
-    "prConcurrentLimit": 1
+    "automerge": true,
+    "minimumReleaseAge": null
   },
   "osvVulnerabilityAlerts": true,
+  "statusCheckNames": {
+    "artifactError": null,
+    "configValidation": null,
+    "mergeConfidence": null,
+    "minimumReleaseAge": null
+  },
+  "logLevelRemap": [
+    {
+      "matchMessage": "/^(?:Error updating branch:|artifactErrors$)/",
+      "newLogLevel": "error"
+    }
+  ],
+  "postUpgradeTasks": {
+    "commands": [
+      "node /opt/nylzo-dependency-sync.ts"
+    ],
+    "fileFilters": [
+      "deploy/hetzner-flatcar/toolchain.json",
+      "mise-tasks/deploy"
+    ],
+    "executionMode": "branch"
+  },
   "packageRules": [
-    {
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "addLabels": [
-        "requires-attention",
-        "manual-hold"
-      ],
-      "dependencyDashboardApproval": false,
-      "draftPR": true
-    },
-    {
-      "matchCurrentVersion": "/^0\\./",
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "addLabels": [
-        "requires-attention",
-        "manual-hold"
-      ],
-      "draftPR": true
-    },
-    {
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDepTypes": [
-        "indirect"
-      ],
-      "enabled": true
-    },
     {
       "matchPackageNames": [
         "github.com/misaon/nylzo",
@@ -87,23 +91,17 @@
       "enabled": false
     },
     {
-      "matchPackageNames": [
-        "opentofu/opentofu"
+      "description": "Indirect Go modules update on main; maintenance branches take them only as security fixes.",
+      "matchBaseBranches": [
+        "main"
       ],
-      "groupName": "OpenTofu"
-    },
-    {
-      "matchPackageNames": [
-        "jdx/mise"
+      "matchManagers": [
+        "gomod"
       ],
-      "groupName": "mise"
-    },
-    {
-      "matchPackageNames": [
-        "caddy",
-        "caddyserver/caddy"
+      "matchDepTypes": [
+        "indirect"
       ],
-      "groupName": "Caddy"
+      "enabled": true
     },
     {
       "matchManagers": [
@@ -122,6 +120,45 @@
       "registryUrls": [
         "https://registry.opentofu.org"
       ]
+    },
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ],
+      "matchUpdateTypes": [
+        "pin"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Custom managers update these CLI inputs together with their verified binary checksums.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepTypes": [
+        "uses-with"
+      ],
+      "matchPackageNames": [
+        "goreleaser/goreleaser",
+        "ghcr.io/renovatebot/renovate",
+        "sigstore/cosign",
+        "jdx/mise",
+        "actions/node-versions"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Follow even-year Ubuntu LTS tags; test OS upgrades still require review.",
+      "matchPackageNames": [
+        "ubuntu"
+      ],
+      "matchDatasources": [
+        "docker"
+      ],
+      "allowedVersions": "/^\\d*[02468]\\.04$/"
     },
     {
       "matchManagers": [
@@ -157,27 +194,24 @@
       "groupName": "GitHub Actions"
     },
     {
-      "matchCurrentVersion": "/^0\\./",
-      "matchUpdateTypes": [
-        "minor"
+      "description": "Each tool updates every pin and checksum it owns in one PR.",
+      "matchPackageNames": [
+        "opentofu/opentofu"
       ],
-      "groupName": null,
-      "addLabels": [
-        "requires-attention",
-        "manual-hold"
-      ],
-      "draftPR": true
+      "groupName": "OpenTofu"
     },
     {
-      "matchUpdateTypes": [
-        "major"
+      "matchPackageNames": [
+        "jdx/mise"
       ],
-      "groupName": null,
-      "addLabels": [
-        "requires-attention",
-        "manual-hold"
+      "groupName": "mise"
+    },
+    {
+      "matchPackageNames": [
+        "caddy",
+        "caddyserver/caddy"
       ],
-      "draftPR": true
+      "groupName": "Caddy"
     },
     {
       "matchPackageNames": [
@@ -229,45 +263,6 @@
       "groupName": "Codecov CLI"
     },
     {
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchPackageNames": [
-        "goreleaser/goreleaser",
-        "ghcr.io/renovatebot/renovate",
-        "sigstore/cosign",
-        "jdx/mise",
-        "actions/node-versions"
-      ],
-      "enabled": false,
-      "description": "Custom managers update these CLI inputs together with their verified binary checksums.",
-      "matchDepTypes": [
-        "uses-with"
-      ]
-    },
-    {
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDepTypes": [
-        "golang"
-      ],
-      "matchUpdateTypes": [
-        "pin"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "Follow even-year Ubuntu LTS tags; test OS upgrades still require review.",
-      "matchPackageNames": [
-        "ubuntu"
-      ],
-      "matchDatasources": [
-        "docker"
-      ],
-      "allowedVersions": "/^\\d*[02468]\\.04$/"
-    },
-    {
       "matchPackageNames": [
         "go",
         "golang/go"
@@ -296,34 +291,38 @@
       "groupName": "Node.js migration"
     },
     {
-      "description": "Breaking upgrades belong to planned main releases, not automatic production patches.",
-      "matchBaseBranches": [
-        "/^release\\/v/"
+      "description": "Breaking upgrades need a planned migration and a code owner approval.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "draftPR": true,
+      "addLabels": [
+        "requires-attention"
+      ]
+    },
+    {
+      "description": "Minor upgrades below 1.0 can break; treat them like majors.",
+      "matchCurrentVersion": "/^0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "groupName": null,
+      "automerge": false,
+      "draftPR": true,
+      "addLabels": [
+        "requires-attention"
+      ]
+    },
+    {
+      "description": "modernc.org/libc follows modernc.org/sqlite; a libc major on its own is never wanted.",
+      "matchPackageNames": [
+        "modernc.org/libc"
       ],
       "matchUpdateTypes": [
         "major"
       ],
       "enabled": false
-    },
-    {
-      "description": "Pre-1.0 minor upgrades require a planned main release.",
-      "matchBaseBranches": [
-        "/^release\\/v/"
-      ],
-      "matchCurrentVersion": "/^0\\./",
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "Keep Go checksum metadata consistent after dependency updates.",
-      "matchManagers": [
-        "gomod"
-      ],
-      "postUpdateOptions": [
-        "gomodTidy"
-      ]
     }
   ],
   "customManagers": [
@@ -395,7 +394,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github/workflows/dependencies\\.yml$/"
+        "/^\\.github/workflows/renovate\\.yml$/"
       ],
       "matchStrings": [
         "renovate-image: (?<depName>ghcr\\.io/renovatebot/renovate):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)@(?<currentDigest>sha256:[a-f0-9]{64})"
@@ -423,37 +422,5 @@
         "{ \"releases\": $map($keys($), function($v) { { \"version\": $v } }) }"
       ]
     }
-  },
-  "postUpgradeTasks": {
-    "commands": [
-      "node /opt/nylzo-dependency-sync.mts --locks"
-    ],
-    "fileFilters": [
-      "deploy/hetzner-flatcar/toolchain.json",
-      "tools/security/runtime.toml",
-      "tools/security/runtime.lock",
-      "tools/security/bootstrap-policy",
-      ".github/workflows/security-updates.yml",
-      ".github/workflows/release.yml",
-      "mise-tasks/deploy",
-      "mise.toml"
-    ],
-    "executionMode": "branch"
-  },
-  "statusCheckNames": {
-    "artifactError": null,
-    "configValidation": null,
-    "mergeConfidence": null,
-    "minimumReleaseAge": null
-  },
-  "logLevelRemap": [
-    {
-      "matchMessage": "/^(?:Error updating branch:|artifactErrors$)/",
-      "newLogLevel": "error"
-    }
-  ],
-  "stopUpdatingLabel": "manual-hold",
-  "baseBranchPatterns": [
-    "main"
-  ]
+  }
 }

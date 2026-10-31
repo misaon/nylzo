@@ -15,6 +15,6 @@ export function automationBot(environment: NodeJS.ProcessEnv = process.env): Bot
   return { id: DEPENDENCY_BOT_ID, login: `${DEPENDENCY_APP_SLUG}[bot]` };
 }
 
-export function isBot(user: { id: number; login: string } | null | undefined, bot: BotIdentity): boolean {
+export function isBot(user: { id: bigint | number; login: string } | null | undefined, bot: BotIdentity): boolean {
   return user?.id === bot.id && user.login === bot.login;
 }
