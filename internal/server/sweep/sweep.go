@@ -49,21 +49,9 @@ func LogAttributes(report store.SweepReport, err error) []any {
 	if err == nil {
 		return attributes
 	}
-	leaves := leafErrors(err)
-	if len(leaves) == 0 {
-		leaves = []error{err}
+	failures := logging.JoinedErrors(err)
+	if len(failures) == 0 {
+		failures = []error{err}
 	}
-	return append(attributes, "errors", len(leaves), "err", logging.ErrorText(leaves[0]))
-}
-
-func leafErrors(err error) []error {
-	joined, ok := err.(interface{ Unwrap() []error })
-	if !ok {
-		return []error{err}
-	}
-	var leaves []error
-	for _, inner := range joined.Unwrap() {
-		leaves = append(leaves, leafErrors(inner)...)
-	}
-	return leaves
+	return append(attributes, "errors", len(failures), "err", logging.ErrorText(failures[0]))
 }
