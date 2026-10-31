@@ -6,14 +6,13 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/misaon/nylzo/internal/loopback"
 )
 
 var dnsName = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
-
-var loopbackHosts = []string{"localhost", "127.0.0.1", "::1"}
 
 func CheckPublicURL(publicURL string) error {
 	parsed, err := url.Parse(publicURL)
@@ -27,10 +26,10 @@ func CheckPublicURL(publicURL string) error {
 	if hostErr := checkHost(host); hostErr != nil {
 		return hostErr
 	}
-	if parsed.Scheme == "https" || parsed.Scheme == "http" && slices.Contains(loopbackHosts, host) {
+	if parsed.Scheme == "https" || parsed.Scheme == "http" && loopback.Host(host) {
 		return nil
 	}
-	return errors.New("want https://; http:// is only for localhost, 127.0.0.1 or [::1]")
+	return errors.New("want https://; http:// is only for localhost or a loopback address")
 }
 
 func checkPort(port string) error {

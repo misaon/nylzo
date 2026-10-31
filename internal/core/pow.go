@@ -59,14 +59,14 @@ func SolvePoW(ctx context.Context, challenge string, id ID, difficulty int) (str
 	if err != nil {
 		return "", err
 	}
-	counter, err := firstSolution(ctx, (*[PoWChallengeLen]byte)(decoded), id, difficulty)
+	counter, err := FirstSolution(ctx, (*[PoWChallengeLen]byte)(decoded), id, difficulty)
 	if err != nil {
 		return "", err
 	}
 	return PoWToken(challenge, counter), nil
 }
 
-func firstSolution(ctx context.Context, challenge *[PoWChallengeLen]byte, id ID, difficulty int) (uint64, error) {
+func FirstSolution(ctx context.Context, challenge *[PoWChallengeLen]byte, id ID, difficulty int) (uint64, error) {
 	for counter := uint64(0); ; counter++ {
 		if err := ctx.Err(); err != nil {
 			return 0, err

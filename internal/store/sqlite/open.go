@@ -36,7 +36,7 @@ type Store struct {
 var _ store.Store = (*Store)(nil)
 
 func Open(ctx context.Context, path string) (*Store, error) {
-	return openWith(ctx, path, migrate)
+	return openWith(ctx, path, createSchema)
 }
 
 func OpenCurrent(ctx context.Context, path string) (*Store, error) {

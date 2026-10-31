@@ -101,25 +101,23 @@ func NewKeyPair() (hpke.PrivateKey, error) {
 }
 
 func ParsePublicKey(text string) (hpke.PublicKey, error) {
-	raw, err := core.DecodeExact(text, len(text)*3/4)
-	if err != nil {
-		return nil, ErrReportKey
-	}
-	key, err := kem().NewPublicKey(raw)
-	if err != nil {
-		return nil, ErrReportKey
-	}
-	return key, nil
+	return parseKey(text, kem().NewPublicKey)
 }
 
 func ParsePrivateKey(text string) (hpke.PrivateKey, error) {
+	return parseKey(text, kem().NewPrivateKey)
+}
+
+//nolint:ireturn // Key is hpke.PublicKey or hpke.PrivateKey, the interfaces the exported parsers return.
+func parseKey[Key any](text string, newKey func(raw []byte) (Key, error)) (Key, error) {
+	var none Key
 	raw, err := core.DecodeExact(text, len(text)*3/4)
 	if err != nil {
-		return nil, ErrReportKey
+		return none, ErrReportKey
 	}
-	key, err := kem().NewPrivateKey(raw)
+	key, err := newKey(raw)
 	if err != nil {
-		return nil, ErrReportKey
+		return none, ErrReportKey
 	}
 	return key, nil
 }

@@ -1,6 +1,7 @@
 package vectors
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -49,25 +50,18 @@ func (f *File) pow() error {
 	return errors.Join(errs...)
 }
 
-func firstSolution(challenge *[core.PoWChallengeLen]byte, id core.ID, difficulty int) (uint64, error) {
-	for counter := uint64(0); ; counter++ {
-		digest, err := core.PoWDigest(challenge, id, counter)
-		if err != nil {
-			return 0, err
-		}
-		if core.LeadingZeroBits(digest[:]) >= difficulty {
-			return counter, nil
-		}
-	}
-}
-
 func powVector(vector powCase) (PoW, error) {
 	rawChallenge := deterministic("pow-challenge/"+vector.name, core.PoWChallengeLen)
 	challenge := core.Encode(rawChallenge)
 	id := deterministicID("pow/" + vector.name)
 	counter := vector.counter
 	if vector.solveTo != nil {
-		solved, err := firstSolution((*[core.PoWChallengeLen]byte)(rawChallenge), id, *vector.solveTo)
+		solved, err := core.FirstSolution(
+			context.Background(),
+			(*[core.PoWChallengeLen]byte)(rawChallenge),
+			id,
+			*vector.solveTo,
+		)
 		if err != nil {
 			return PoW{}, err
 		}

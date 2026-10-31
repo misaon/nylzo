@@ -184,7 +184,6 @@ type Store interface {
 	Messages
 	Counters
 	Checkpoint(ctx context.Context) error
-	Close() error
 }
 
 type BlobInfo struct {

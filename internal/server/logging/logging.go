@@ -26,10 +26,24 @@ func minuteTime(groups []string, attribute slog.Attr) slog.Attr {
 
 func ErrorText(err error) string {
 	text := err.Error()
-	for _, link := range errorChain(err) {
+	walk(err, func(link error) bool {
 		text = withoutPath(text, link)
-	}
+		return true
+	})
 	return idLike.ReplaceAllString(text, "[redacted]")
+}
+
+// JoinedErrors flattens the errors that errors.Join or fmt.Errorf with several %w combine; other wrappers stay whole.
+func JoinedErrors(err error) []error {
+	var parts []error
+	walk(err, func(link error) bool {
+		if _, joined := link.(interface{ Unwrap() []error }); joined {
+			return true
+		}
+		parts = append(parts, link)
+		return false
+	})
+	return parts
 }
 
 func withoutPath(text string, err error) string {
@@ -42,15 +56,15 @@ func withoutPath(text string, err error) string {
 	return text
 }
 
-func errorChain(err error) []error {
-	if err == nil {
-		return nil
+func walk(err error, visit func(error) bool) {
+	if err == nil || !visit(err) {
+		return
 	}
-	chain := append([]error{err}, errorChain(errors.Unwrap(err))...)
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
 		for _, inner := range joined.Unwrap() {
-			chain = append(chain, errorChain(inner)...)
+			walk(inner, visit)
 		}
+		return
 	}
-	return chain
+	walk(errors.Unwrap(err), visit)
 }

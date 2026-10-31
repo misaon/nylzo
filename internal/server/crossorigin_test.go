@@ -83,7 +83,7 @@ func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
 	request.Header.Set("Origin", "https://attacker.example")
 	request.Header.Set("X-Requested-With", requestedWith)
 	response := httptest.NewRecorder()
-	harness.server.Handler().ServeHTTP(response, request)
+	harness.server.handler.ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden ||
 		strings.TrimSpace(response.Body.String()) != `{"error":"cross_origin"}` {
 		t.Fatalf("unexpected denial: %d %s", response.Code, response.Body.String())

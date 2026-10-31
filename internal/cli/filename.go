@@ -55,19 +55,8 @@ func attachmentName(name string) string {
 	if dot := strings.LastIndex(clean, "."); dot > 0 && utf8.RuneCountInString(clean[dot+1:]) <= maxExtensionRunes {
 		extension = clean[dot:]
 	}
-	return truncateBytes(strings.TrimSuffix(clean, extension), maxNameBytes-len(extension)) + extension
-}
-
-func truncateBytes(text string, limit int) string {
-	used := 0
-	for i, character := range text {
-		size := utf8.RuneLen(character)
-		if used+size > limit {
-			return text[:i]
-		}
-		used += size
-	}
-	return text
+	stem := strings.TrimSuffix(clean, extension)
+	return strings.ToValidUTF8(stem[:min(maxNameBytes-len(extension), len(stem))], "") + extension
 }
 
 func sameFileName(first, second string) bool {
