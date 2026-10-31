@@ -1,9 +1,9 @@
 import { gzipSync } from 'node:zlib';
 
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
-import { expectMessageShown, notInert, showMessage } from './support/pages.ts';
-import { watchDownloads } from './support/watchers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { expectMessageShown, notInert, showMessage } from '../support/pages.ts';
+import { watchDownloads } from '../support/watchers.ts';
 
 const RISKY_FILES = [
   {

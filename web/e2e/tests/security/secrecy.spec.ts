@@ -3,11 +3,11 @@ import type { Locator } from '@playwright/test';
 import { deriveContent, deriveLink, encodeBase64url, parseLink, requestKey } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
-import { createMessageInPage, expectMessageShown, notInert, openApp, showMessage } from './support/pages.ts';
-import { encodedForms, expectNoSecretSent, recordRequests, textForms } from './support/requests.ts';
-import { watchViolations } from './support/watchers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { createMessageInPage, expectMessageShown, notInert, openApp, showMessage } from '../support/pages.ts';
+import { encodedForms, expectNoSecretSent, recordRequests, textForms } from '../support/requests.ts';
+import { watchViolations } from '../support/watchers.ts';
 
 const PASSPHRASE = 'four random words here';
 const WRONG_PASSPHRASE = 'definitely the wrong one';

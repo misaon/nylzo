@@ -1,11 +1,11 @@
 import type { Page } from '@playwright/test';
 
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
-import { expectMessageShown, showMessage } from './support/pages.ts';
-import { encodedForms, expectNoSecretSent, recordRequests } from './support/requests.ts';
-import { BASE_URL } from './support/servers.ts';
-import { watchViolations } from './support/watchers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { expectMessageShown, showMessage } from '../support/pages.ts';
+import { encodedForms, expectNoSecretSent, recordRequests } from '../support/requests.ts';
+import { BASE_URL } from '../support/servers.ts';
+import { watchViolations } from '../support/watchers.ts';
 
 function goodFaith(page: Page) {
   return page.getByRole('checkbox', { name: /^I believe in good faith/ });

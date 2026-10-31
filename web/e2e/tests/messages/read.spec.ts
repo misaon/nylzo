@@ -1,7 +1,7 @@
 import { KDF_NONE } from '@nylzo/core';
 
-import { expect, test } from './support/fixtures.ts';
-import { createMessageThroughApi } from './support/messages.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
 import {
   expectMessageShown,
   leavePage,
@@ -10,8 +10,8 @@ import {
   openApp,
   returnFromBackForwardCache,
   showMessage,
-} from './support/pages.ts';
-import { BASE_URL } from './support/servers.ts';
+} from '../support/pages.ts';
+import { BASE_URL } from '../support/servers.ts';
 
 declare global {
   var nylzoShown: boolean | undefined;

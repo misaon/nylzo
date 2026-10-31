@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
-import { expect, test } from './support/fixtures.ts';
-import { BASE_URL, NYLZO_BINARY } from './support/servers.ts';
+import { expect, test } from '../support/fixtures.ts';
+import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 interface ClientManifest {
   readonly server: string;
