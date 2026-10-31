@@ -122,7 +122,7 @@ jobs:
     name: Dependency vulnerabilities, malware, and licenses
     needs: changes
     if: needs.changes.outputs.sca == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     permissions:
       contents: read
@@ -161,7 +161,7 @@ jobs:
     name: Workflows and scripts
     needs: [changes, sca]
     if: needs.changes.outputs.repository == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
@@ -275,7 +275,7 @@ jobs:
     name: TypeScript core and web client
     needs: [changes, sca]
     if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     permissions:
       contents: read
