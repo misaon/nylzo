@@ -2,6 +2,7 @@ import type { Plugin } from 'vite';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
+import browserslist from 'browserslist';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -17,6 +18,34 @@ const GZIP_OS_UNKNOWN = 255;
 const PRELOADED_FONTS =
   /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/;
 const PRECOMPRESSED = /\.(?:js|css)$/;
+const VITE_BROWSER_NAMES = new Map([
+  ['and_chr', 'chrome'],
+  ['and_ff', 'firefox'],
+  ['chrome', 'chrome'],
+  ['edge', 'edge'],
+  ['firefox', 'firefox'],
+  ['ios_saf', 'ios'],
+  ['safari', 'safari'],
+]);
+const versionOrder = new Intl.Collator('en', { numeric: true });
+
+function browserTargets(): string[] {
+  const browsers = browserslist(undefined, { path: import.meta.dirname });
+  const minimumVersions = new Map<string, string>();
+  for (const browser of browsers) {
+    const [name = '', versions = ''] = browser.split(' ', 2);
+    const viteName = VITE_BROWSER_NAMES.get(name);
+    if (viteName === undefined) {
+      throw new Error(`Browserslist selected ${browser}, which has no Vite build target.`);
+    }
+    const [version = versions] = versions.split('-', 1);
+    const minimum = minimumVersions.get(viteName);
+    if (minimum === undefined || versionOrder.compare(version, minimum) < 0) {
+      minimumVersions.set(viteName, version);
+    }
+  }
+  return Array.from(minimumVersions, ([viteName, version]) => `${viteName}${version}`);
+}
 
 function buildMetadata(): Plugin {
   return {
@@ -90,6 +119,7 @@ export default defineConfig(({ isSsrBuild }) => ({
   html: { cspNonce: '__NYLZO_CSP_NONCE__' },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {
+    ...(!isSsrBuild && { target: browserTargets() }),
     outDir: outputDirectory,
     emptyOutDir: true,
     assetsInlineLimit: 0,

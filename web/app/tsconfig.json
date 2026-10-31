@@ -3,7 +3,7 @@
   "compilerOptions": {
     "module": "preserve",
     "moduleResolution": "bundler",
-    "lib": ["es2024", "dom", "dom.iterable"],
+    "lib": ["es2025", "dom"],
     "allowJs": true,
     "checkJs": true,
     "types": ["vite/client", "svelte"]
