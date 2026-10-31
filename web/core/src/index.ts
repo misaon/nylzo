@@ -8,11 +8,10 @@ export {
   MalformedPassphraseError,
   PowTimeoutError,
   TooLargeError,
-  WeakPassphraseError,
 } from './errors.ts';
 export { type ContentKeys, deriveContent, deriveLink, type LinkKeys } from './keys/derive.ts';
 export { assertWellFormedPassphrase, KDF_NONE, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
-export { assertStrongPassphrase, generatePassphrase, MIN_PASSPHRASE_CHARACTERS } from './keys/passphrase.ts';
+export { generatePassphrase, MIN_PASSPHRASE_CHARACTERS, passphraseProblem } from './keys/passphrase.ts';
 export {
   HEADER_LENGTH,
   ID_LENGTH,
@@ -32,7 +31,7 @@ export {
   parseLink,
   parsePath,
 } from './link/link.ts';
-export { encodeBase64url, encodedLength } from './primitives/base64url.ts';
+export { decodeBase64url, encodeBase64url, encodedLength } from './primitives/base64url.ts';
 export { utf8 } from './primitives/bytes.ts';
 export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
 export { solvePow } from './request/proof-of-work.ts';

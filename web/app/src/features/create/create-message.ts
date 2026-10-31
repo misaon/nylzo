@@ -1,5 +1,4 @@
 import {
-  assertStrongPassphrase,
   type ContentKeys,
   deriveContent,
   deriveLink,
@@ -9,7 +8,6 @@ import {
   KDF_SCRYPT,
   type KdfId,
   type LinkKeys,
-  MalformedPassphraseError,
   MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
   type Meta,
@@ -17,6 +15,7 @@ import {
   newHeader,
   newRequestKey,
   newSecret,
+  passphraseProblem,
   PowTimeoutError,
   type RequestKey,
   requestKey,
@@ -24,7 +23,6 @@ import {
   sealWithCompression,
   TooLargeError,
   utf8,
-  WeakPassphraseError,
   wipeRequestKey,
 } from '@nylzo/core';
 
@@ -131,19 +129,12 @@ export function passphraseIsWeak(passphrase: string): boolean {
   return characters < WEAK_BELOW_CHARACTERS || words < WEAK_BELOW_WORDS;
 }
 
-function passphraseProblem(passphrase: string): CreateProblem | undefined {
-  try {
-    assertStrongPassphrase(passphrase);
+function weakPassphrase(passphrase: string): CreateProblem | undefined {
+  const problem = passphraseProblem(passphrase);
+  if (problem === undefined) {
     return undefined;
-  } catch (error) {
-    if (error instanceof WeakPassphraseError) {
-      return { field: 'passphrase', code: error.problem === 'short' ? 'too_short' : error.problem };
-    }
-    if (error instanceof MalformedPassphraseError) {
-      return { field: 'passphrase', code: 'malformed' };
-    }
-    throw error;
   }
+  return { field: 'passphrase', code: problem === 'short' ? 'too_short' : problem };
 }
 
 export function validateCreate(input: CreateInput, limits: InstanceLimits): CreateProblem[] {
@@ -164,7 +155,7 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
   if (!Number.isSafeInteger(opensMax) || opensMax < 1 || opensMax > limits.maxOpens) {
     problems.push({ field: 'opens', code: 'out_of_range' });
   }
-  const passphrase = input.passphrase === '' ? undefined : passphraseProblem(input.passphrase);
+  const passphrase = input.passphrase === '' ? undefined : weakPassphrase(input.passphrase);
   if (passphrase) {
     problems.push(passphrase);
   }
