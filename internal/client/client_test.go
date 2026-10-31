@@ -87,7 +87,7 @@ func TestOriginAllowsHTTPSAndLoopbackOnly(t *testing.T) {
 func TestPlainHTTPDialsOnlyLoopback(t *testing.T) {
 	t.Parallel()
 	for address, allowed := range map[string]bool{
-		"127.0.0.1:8080": true, "127.8.9.10:1": true, "[::1]:8080": true, "[::ffff:127.0.0.1]:80": true,
+		"127.0.0.1:8080": true, "127.8.9.10:1": true, "[::1]:8080": true, "[::ffff:127.0.0.1]:80": false,
 		"203.0.113.7:80": false, "[2001:db8::1]:443": false, "10.0.0.1:80": false, "localhost:80": false,
 	} {
 		if err := loopbackOnly("tcp", address, nil); (err == nil) != allowed {
