@@ -181,7 +181,7 @@ jobs:
     needs: [changes, sca]
     if: needs.changes.outputs.deployment == 'true'
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 25
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -226,7 +226,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -270,7 +270,7 @@ jobs:
     needs: [changes, sca]
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -677,7 +677,7 @@ jobs:
     needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       contents: read
     strategy:
@@ -763,7 +763,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
@@ -815,7 +815,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
@@ -843,7 +843,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.actions == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
