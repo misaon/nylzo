@@ -34,7 +34,7 @@ function lockfileLineProblem(line: string, allowedLinks: readonly string[]): str
   if (externalSource.test(withoutWorkspaceLinks)) {
     return 'download source outside the registry';
   }
-  if (line.includes('resolution:') && !integrityResolution.test(line)) {
+  if (line.includes('resolution') && !integrityResolution.test(line)) {
     return 'resolution without registry integrity';
   }
   return undefined;

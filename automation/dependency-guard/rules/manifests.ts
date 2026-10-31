@@ -49,10 +49,6 @@ export const packageManifest: FileRule = (path, before, after) => {
     if (!isObject(oldDependencies) || !isObject(newDependencies)) {
       continue;
     }
-    if (!sameKeys(oldDependencies, newDependencies)) {
-      review.findings.push(`${path}: adding or removing ${section} needs review`);
-      continue;
-    }
     for (const [name, value] of Object.entries(oldDependencies)) {
       const updated = newDependencies[name];
       if (typeof value !== 'string' || typeof updated !== 'string' || value === updated) {
@@ -71,7 +67,9 @@ export const packageManifest: FileRule = (path, before, after) => {
     }
   }
   if (!isDeepStrictEqual(next, old)) {
-    review.findings.push(`${path}: scripts, sources and other package fields cannot change automatically`);
+    review.findings.push(
+      `${path}: only dependency versions may change, not the dependency list, scripts or other fields`,
+    );
   }
   return review;
 };

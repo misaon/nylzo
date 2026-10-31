@@ -94,11 +94,7 @@ export function compareSnapshots(path: string, before: Snapshot, after: Snapshot
   }
   for (const [index, old] of before.values.entries()) {
     const next = after.values[index];
-    if (next?.name !== old.name || next.kind !== old.kind) {
-      review.findings.push(`${path}: dependency ${old.name} was replaced`);
-      continue;
-    }
-    if (next.value === old.value) {
+    if (next === undefined || next.value === old.value) {
       continue;
     }
     if (old.kind === 'version') {

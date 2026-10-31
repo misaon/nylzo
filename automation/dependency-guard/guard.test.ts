@@ -80,6 +80,14 @@ function review(reviewer: Review['reviewer'], state: string, commit: string | nu
   return { commit, reviewer, state };
 }
 
+const secondOwner = { id: 2, login: 'second-owner', type: 'User' };
+const twoOwners = '* @misaon @second-owner\n';
+const twoOwnerSnapshots = Object.fromEntries(
+  Object.entries(safeUpdate().snapshots).map(([commit, files]) => [
+    commit,
+    { ...files, '.github/CODEOWNERS': twoOwners },
+  ]),
+);
 const ownerCommit: Commit = { author: owner, committer: owner, parents: [baseCommit], sha: headCommit, verified: true };
 const strangerCommit = appCommit({ author: stranger, committer: stranger });
 const approval = review(owner, 'APPROVED');
@@ -342,6 +350,19 @@ const scenarios: readonly Scenario[] = [
       safeUpdate({
         commits: [strangerCommit],
         reviews: [review(owner, 'CHANGES_REQUESTED'), approval, review(owner, 'CHANGES_REQUESTED')],
+      }),
+    ),
+  },
+  {
+    name: 'a pull request approved by one code owner while another requested changes',
+    passed: false,
+    reason: /approve/,
+    repository: withPull(
+      { author: stranger },
+      safeUpdate({
+        commits: [strangerCommit],
+        reviews: [review(secondOwner, 'CHANGES_REQUESTED'), approval],
+        snapshots: twoOwnerSnapshots,
       }),
     ),
   },

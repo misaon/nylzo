@@ -417,6 +417,20 @@ const cases: readonly Case[] = [
     path: 'web/pnpm-lock.yaml',
   },
   {
+    after: `${lockfileUpdate}\n  outside@1.0.0:\n    resolution: {directory: ../../outside, type: directory}\n`,
+    before: lockfile,
+    expected: 'rejected',
+    name: 'pnpm lockfile directory source',
+    path: 'web/pnpm-lock.yaml',
+  },
+  {
+    after: lockfileUpdate.replace('    deprecated:', '    tarball: //attacker.invalid/svelte.tgz\n    deprecated:'),
+    before: lockfile,
+    expected: 'rejected',
+    name: 'pnpm lockfile tarball key',
+    path: 'web/pnpm-lock.yaml',
+  },
+  {
     after: miseTools.replace('24.22.1', '24.22.2'),
     before: miseTools,
     expected: 'safe',
@@ -621,6 +635,13 @@ const cases: readonly Case[] = [
     path: '.goreleaser.yaml',
   },
   { after: '24.22.2\n', before: '24.22.1\n', expected: 'safe', name: 'Node.js version', path: 'web/.node-version' },
+  {
+    after: '⟪version⟫\n',
+    before: '24.22.1\n',
+    expected: 'rejected',
+    name: 'a literal placeholder in place of a version',
+    path: 'web/.node-version',
+  },
   {
     after: deployTask.replace('1.13.2', '1.13.3'),
     before: deployTask,
