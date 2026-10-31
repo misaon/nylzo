@@ -2,16 +2,20 @@
 #MISE description="Require full CI and CodeQL verification for a release commit"
 set -euo pipefail
 
+readonly required_checks='["CI required", "Analyze (go)", "Analyze (javascript-typescript)", "Analyze (actions)"]'
+
 commit="${1:-$(git rev-parse HEAD)}"
-[[ "$commit" =~ ^[0-9a-f]{40}$ ]]
-gh api "repos/misaon/nylzo/commits/${commit}/check-runs?per_page=100" | jq -e '
-  .check_runs as $checks |
-  any($checks[];
-    select(.name == "Release verification" and .app.slug == "github-actions" and .conclusion == "success") |
-    .check_suite.id as $suite |
-    all(["CI required", "Analyze (go)", "Analyze (javascript-typescript)", "Analyze (actions)"][];
-      . as $name | any($checks[];
-        .name == $name and .check_suite.id == $suite and .app.slug == "github-actions" and .conclusion == "success")))' > /dev/null || {
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || {
+  echo 'Expected a full commit hash.' >&2
+  exit 1
+}
+gh api "repos/misaon/nylzo/commits/${commit}/check-runs?per_page=100" | jq -e --argjson required "$required_checks" '
+  def passed: .app.slug == "github-actions" and .conclusion == "success";
+  .check_runs as $checks
+  | any($checks[] | select(.name == "Release verification" and passed);
+      .check_suite.id as $suite
+      | all($required[]; . as $name | any($checks[]; .name == $name and .check_suite.id == $suite and passed)))
+' > /dev/null || {
   echo 'Full source verification is required. Run gh workflow run ci.yml --ref main, wait for Release verification to pass, then retry.' >&2
   exit 1
 }

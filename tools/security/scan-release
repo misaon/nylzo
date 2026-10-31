@@ -1,51 +1,68 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# != 3 ]]; then
-  echo 'Usage: scan-release IMAGE@SHA256 SBOM_DIRECTORY REPORT_DIRECTORY' >&2
-  exit 2
-fi
+readonly clean=0 vulnerable=1 broken=2
+readonly archive_count=6 report_count=8
+
+abort() {
+  echo "$1" >&2
+  exit "$broken"
+}
+
+is_grype_report() {
+  jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$1" > /dev/null
+}
+
+has_high_or_critical() {
+  jq -e 'any(.matches[]; (.vulnerability.severity | ascii_downcase) as $severity | $severity == "high" or $severity == "critical")' "$1" > /dev/null
+}
+
+scan() {
+  local filename="$1" code=0
+  shift
+  local report="$report_directory/$filename"
+  grype "$@" --fail-on high --output json --file "$report" || code=$?
+  if [[ "$code" != 0 && "$code" != 2 ]] || ! is_grype_report "$report"; then
+    status=$broken
+  elif [[ "$code" = 2 ]]; then
+    if ! has_high_or_critical "$report"; then
+      status=$broken
+    elif [[ "$status" = "$clean" ]]; then
+      status=$vulnerable
+    fi
+  fi
+  jq -n --arg report "$filename" --argjson exitCode "$code" '{report:$report,exitCode:$exitCode}' >> "$statuses"
+}
+
+[[ $# = 3 ]] || abort 'Usage: scan-release IMAGE@SHA256 SBOM_DIRECTORY REPORT_DIRECTORY'
 image="$1"
 sbom_directory="$2"
 report_directory="$3"
-[[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || { echo 'Expected the canonical image by SHA-256 digest.' >&2; exit 2; }
+[[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || abort 'Expected the canonical image by SHA-256 digest.'
 mkdir -p "$report_directory"
 export GRYPE_CHECK_FOR_APP_UPDATE=false
 export GRYPE_DB_VALIDATE_AGE=true
 export GRYPE_DB_MAX_ALLOWED_BUILT_AGE=48h
 shopt -s nullglob
 sboms=("$sbom_directory"/nylzo_*.sbom.json)
-[[ "${#sboms[@]}" = 6 ]] || { echo 'Expected six release archive SBOMs.' >&2; exit 2; }
-status=0
+[[ "${#sboms[@]}" = "$archive_count" ]] || abort 'Expected six release archive SBOMs.'
+
+status=$clean
 statuses=$(mktemp)
 trap 'rm -f "$statuses"' EXIT
-scan() {
-  local filename="$1" code=0
-  shift
-  grype "$@" --fail-on high --output json --file "$report_directory/$filename" || code=$?
-  if [[ "$code" != 0 && "$code" != 2 ]]; then
-    status=2
-  elif ! jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$report_directory/$filename" >/dev/null; then
-    status=2
-  elif [[ "$code" = 2 ]]; then
-    if ! jq -e 'any(.matches[]; (.vulnerability.severity | ascii_downcase) as $severity | $severity == "high" or $severity == "critical")' "$report_directory/$filename" >/dev/null; then status=2
-    elif [[ "$status" = 0 ]]; then status=1
-    fi
-  fi
-  jq -n --arg report "$filename" --argjson exitCode "$code" '{report:$report,exitCode:$exitCode}' >> "$statuses"
-}
 for sbom in "${sboms[@]}"; do
-  name="$(basename "$sbom")"
-  [[ -s "$sbom" ]] || { echo 'An archive SBOM is empty or missing.' >&2; exit 2; }
-  scan "${name}.grype.json" "sbom:${sbom}"
+  [[ -s "$sbom" ]] || abort 'An archive SBOM is empty or missing.'
+  scan "$(basename "$sbom").grype.json" "sbom:${sbom}"
 done
 for architecture in amd64 arm64; do
   scan "image-linux-${architecture}.grype.json" "registry:${image}" --platform "linux/${architecture}"
 done
+
 reports=("$report_directory"/*.grype.json)
-[[ "${#reports[@]}" = 8 ]] || status=2
+[[ "${#reports[@]}" = "$report_count" ]] || status=$broken
 for report in "${reports[@]}"; do
-  jq -e '(.matches | type) == "array" and .descriptor.name == "grype"' "$report" > /dev/null || status=2
+  is_grype_report "$report" || status=$broken
 done
-jq -s '{format:1,complete:(length == 8),scans:.}' "$statuses" > "$report_directory/scan-status.json"
+jq -s --argjson expected "$report_count" '{format:1,complete:(length == $expected),scans:.}' "$statuses" \
+  > "$report_directory/scan-status.json"
 exit "$status"
