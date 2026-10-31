@@ -26,7 +26,21 @@ gh attestation verify "$archive" --repo misaon/nylzo \
 
 Verify the signature **before** trusting the checksums, and require all checks to succeed before extracting or running the binary. Releases that ship Caddy list its Linux archives, `nylzo-caddy_<version>_linux_amd64.tar.gz` and `_arm64`, in the same signed `checksums.txt`; verify them the same way. On macOS without `sha256sum`, calculate `shasum -a 256 "$archive"` and compare its full value with that archive's entry in the signature-verified manifest. On Windows, use `Get-FileHash -Algorithm SHA256` for the same comparison.
 
-Each release includes per-archive SPDX SBOMs. The signed manifest also lists the embedded web files. [Versioning and releases](../maintainers/Releasing.md) explains the version, source commit, source date, and modified-source flag embedded in the CLI, server, and web client.
+Each release includes per-archive SPDX SBOMs. [Versioning and releases](../maintainers/Releasing.md) explains the version, source commit, source date, and modified-source flag embedded in the CLI, server, and web client.
+
+## Map the web client to the signed manifest
+
+The signed `checksums.txt` also lists every file of the web client that the binary embeds and serves. Assets appear under their own names, such as `index-CSp4oozy.js`. The pages come from three templates:
+
+| Template in `checksums.txt` | Pages an instance renders from it |
+| --- | --- |
+| `home.en.html` | `/` |
+| `home.cs.html` | `/cs/` |
+| `index.html` | `/sent`, `/report`, `/transparency` and `/m/{id}` |
+
+An instance fills its public URL into the marked blocks of a template and serves the result unchanged on every response. Its `/.well-known/nylzo/client.json` lists the template hashes under `templates`, which match `checksums.txt`, and the hashes of the pages as it sends them under `files`.
+
+Releases up to `v0.2.3` list `index.html` and the assets but not the two home templates; for those, extract the templates from a rebuild with `mise run release:verify`.
 
 ## Verify dependency evidence
 
