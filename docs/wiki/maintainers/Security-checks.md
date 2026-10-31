@@ -6,7 +6,7 @@ Nylzo publishes evidence about its development process and releases. These check
 | ----------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | CodeQL            | Go, JavaScript/TypeScript, and GitHub Actions security analysis                                | Every PR; affected languages on main; full weekly and manual runs                                  |
 | OpenSSF Scorecard | Repository protections, workflow permissions, dependency practices, and other project controls | Relevant main changes and weekly                                                                   |
-| Codecov           | Go race-test shard coverage and TypeScript unit coverage                                       | Existing relevant test jobs; reports uploaded after successful tests                               |
+| Codecov           | Go race-test coverage and TypeScript unit coverage                                             | Existing relevant test jobs; reports uploaded after successful tests                               |
 | Grype             | Known vulnerabilities in the release archive SBOMs and both container platforms                | Before stable release promotion; daily for the latest published release; Compose integration tests |
 | Harden-Runner     | Network, process, and file activity on CI runners                                              | Jobs that execute source code or automation tools                                                  |
 | OpenSSF Baseline  | Maintainer assertions against the published baseline requirements                              | Maintainer review when the project or its controls change                                          |
@@ -49,9 +49,9 @@ The [control policies](Security-controls.md) define source-analysis, license, VE
 
 ## Test coverage
 
-[Codecov](https://app.codecov.io/gh/misaon/nylzo) receives the existing Go race-test shard profiles and the core and web-client Vitest reports. Go profiles use atomic counters and instrument first-party packages. The TypeScript core and web client use Istanbul to avoid profiling third-party cryptographic dependencies in hot loops.
+[Codecov](https://app.codecov.io/gh/misaon/nylzo) receives the Go race-test profile and the core and web-client Vitest reports. Go profiles use atomic counters and instrument first-party packages. The TypeScript core and web client use Istanbul to avoid profiling third-party cryptographic dependencies in hot loops.
 
-TypeScript reports include unexecuted source files. Go reports cover the packages compiled for the Linux test jobs. Test files and TypeScript declaration files are excluded. Go timing acceptance tests, fuzzing, and Playwright tests still run separately; they are not represented in these unit-coverage percentages. The component breakdown separates cryptographic code from the browser UI and server.
+TypeScript reports include unexecuted source files. Go reports cover the packages compiled for the Linux test jobs. Test files and TypeScript declaration files are excluded. The Go timing acceptance tests run alone after the race suite, without coverage; fuzzing and Playwright tests run in their own jobs. None of them is represented in these unit-coverage percentages. The component breakdown separates cryptographic code from the browser UI and server.
 
 Go and TypeScript have separate carryforward flags, so a skipped, unchanged component can retain its previous report. Documentation changes do not start test jobs to refresh a badge. Repository-relative LCOV paths prevent identically named files in the two TypeScript workspaces from being combined incorrectly.
 

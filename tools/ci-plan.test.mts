@@ -24,7 +24,7 @@ test("documentation skips application tests and builds while consumed protocol a
 
 test("Go and web changes retain integration coverage and their language security analysis", () => {
   const go = planChecks(["internal/server/router.go"], "pull_request");
-  assert.equal(go.jobs["go-test"], true);
+  assert.equal(go.jobs.go, true);
   assert.equal(go.jobs["codeql-go"], true);
   assert.equal(go.jobs.e2e, true);
   assert.equal(go.jobs.web, false);
@@ -32,7 +32,7 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(web.jobs.web, true);
   assert.equal(web.jobs["codeql-web"], true);
   assert.equal(web.jobs.build, true);
-  assert.equal(web.jobs["go-test"], false);
+  assert.equal(web.jobs.go, false);
   assert.equal(planChecks(["web/package.json"], "pull_request").jobs["dependency-review"], true);
 });
 
@@ -87,7 +87,7 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
     const plan = planChecks([file], "pull_request");
     assert.equal(plan.jobs.deployment, true);
     assert.equal(plan.jobs.repository, true);
-    assert.equal(plan.jobs["go-test"], false);
+    assert.equal(plan.jobs.go, false);
     assert.equal(plan.jobs.e2e, false);
   }
 });
@@ -95,7 +95,7 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
 test("fork PRs keep tests and reports while the OIDC publishing job stays skipped", () => {
   const plan = planChecks(["web/app/src/App.svelte", "internal/server/router.go"], "pull_request", false);
   assert.equal(plan.jobs.web, true);
-  assert.equal(plan.jobs["go-test"], true);
+  assert.equal(plan.jobs.go, true);
   assert.equal(plan.jobs.coverage, false);
   assert.equal(plan.coverage, false);
   assert.equal(planChecks(["web/app/src/App.svelte"], "pull_request", true).jobs.coverage, true);

@@ -32,7 +32,7 @@ mise run e2e:browsers
 mise run e2e
 ```
 
-`test` runs Go with the race detector and the TypeScript suites. `lint` runs Go, TypeScript, workflow, and shell checks. `mise tasks` lists all tasks.
+`test` runs the Go race tests, the TypeScript suites and the repository tool tests. `lint` runs the dependency gate and the Go, TypeScript, workflow and shell checks. CI jobs call the same `lint:*` and `test:*` tasks, and the developer setup job fails if CI skips one, so both run one list of checks. `mise tasks` lists all tasks.
 
 `mise run build` embeds the production web client in `bin/nylzo` and injects the same build identity into Go and Vite. Untagged and modified checkouts identify themselves as development builds. See [versioning](../maintainers/Releasing.md#one-source-of-version-identity).
 

@@ -47,9 +47,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
   const sca = Object.values(groups).some(Boolean);
   const jobs = {
     sca,
-    "go-lint": groups.go,
-    "go-test": groups.go,
-    "go-timing": groups.go,
+    go: groups.go,
     fuzz: groups.go,
     web: groups.web,
     coverage: (groups.go || groups.web) && trustedCoverage,

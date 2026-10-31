@@ -23,13 +23,21 @@ opentofu = "1.13.2"
 [env]
 GOTOOLCHAIN = "local"
 
+[tasks."install:web"]
+description = "Install the web dependencies exactly as locked"
+run = "node automation/web-install/main.ts"
+
+[tasks."install:automation"]
+description = "Install the automation dependencies exactly as locked"
+run = "pnpm --dir automation install --frozen-lockfile"
+
 [tasks.install]
 description = "Install the web and automation dependencies exactly as locked"
-run = ["node automation/web-install/main.ts", "pnpm --dir automation install --frozen-lockfile"]
+depends = ["install:web", "install:automation"]
 
 [tasks."build:web"]
 description = "Build the web client into internal/server/web/dist, where nylzo embeds it"
-depends = ["install"]
+depends = ["install:web"]
 run = "pnpm --dir web --filter @nylzo/web build"
 
 [tasks.build]
@@ -39,55 +47,93 @@ run = "node tools/build.mts"
 
 [tasks."dev:web"]
 description = "Vite with hot reload on http://localhost:5173, API from mise run dev"
-depends = ["install"]
+depends = ["install:web"]
 run = "pnpm --dir web --filter @nylzo/web exec vite"
 
 [tasks."dev:reset"]
 description = "Delete the local messages and the pepper in .dev"
 run = "rm -rf .dev"
 
-[tasks.test]
-description = "The Go and TypeScript tests of CI, Go with the race detector"
-depends = ["install"]
+[tasks."test:go"]
+description = "Go tests with the race detector and coverage, then the AK21 and AK22 timing tests on their own"
 run = [
-  "go test -race -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./...",
+  "mkdir -p .coverage",
+  "go test -race -covermode=atomic -coverpkg=./... -coverprofile=.coverage/go.out -count=1 -shuffle=on -skip '^(TestAK21UniformNotFoundAndConflict|TestAK22SlowConnectionsAndLyingContentLength)$' ./...",
   "go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/",
   "go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/",
-  "NYLZO_HEAVY_TESTS=1 pnpm --dir web -r test",
-  "pnpm --dir automation test",
 ]
 
-[tasks.lint]
-description = "Every static check of CI: Go, TypeScript, workflows and scripts"
-depends = ["install"]
+[tasks."test:web"]
+description = "TypeScript core and web client tests with coverage, including the heavy cryptographic cases"
+depends = ["install:web"]
+env = { NYLZO_HEAVY_TESTS = "1" }
+run = "pnpm --dir web --filter @nylzo/core --filter @nylzo/web test --coverage"
+
+[tasks."test:repository"]
+description = "Tests of the automation workspace and the repository tools"
+depends = ["install:automation"]
 run = [
-  "node automation/source-dependency-gate/main.ts .sca-reports",
+  "pnpm --dir automation test",
+  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/deploy/*.test.mts",
+]
+
+[tasks.test]
+description = "Every test suite of CI, one after another so the Go timing tests run alone"
+run = [{ task = "test:go" }, { task = "test:web" }, { task = "test:repository" }]
+
+[tasks."lint:dependencies"]
+description = "Known vulnerabilities, malware and licenses of the locked dependencies, with the source SBOM"
+depends = ["install:web"]
+run = "node automation/source-dependency-gate/main.ts .sca-reports --sbom"
+
+[tasks."lint:go"]
+description = "Go modules, build, vet, go fix, golangci-lint and govulncheck"
+run = [
   "go mod verify",
   "go mod tidy -diff",
-  "golangci-lint run ./...",
+  "go build ./...",
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
+  "golangci-lint run ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
-  "node --test tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/deploy/*.test.mts",
-  "node tools/wiki.mts",
-  "actionlint",
-  "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test} tools/verify-go-toolchain",
+]
+
+[tasks."lint:web"]
+description = "Web supply-chain policy, dependency audit, Prettier, ESLint, knip, type checks and svelte-autofixer"
+depends = ["install:web"]
+run = [
   '''awk '/^minimumReleaseAge:/ { found = ($2 + 0 >= 1440) } END { exit !found }' web/pnpm-workspace.yaml''',
   '''grep -Eq '^strictDepBuilds: *true$' web/pnpm-workspace.yaml''',
   '''grep -Eq '^allowBuilds: *\{\}$' web/pnpm-workspace.yaml''',
+  "test -f web/pnpm-lock.yaml",
   "pnpm --dir web audit --audit-level=moderate",
   "pnpm --dir web lint",
   "pnpm --dir web -r typecheck",
   "pnpm --dir web --filter @nylzo/web check",
+]
+
+[tasks."lint:repository"]
+description = "Automation workspace, repository tools, Wiki links, workflows and shell scripts"
+shell = "bash -o errexit -o pipefail -c"
+depends = ["install:automation"]
+run = [
   "pnpm --dir automation audit --audit-level=moderate",
   "pnpm --dir automation lint",
   "pnpm --dir automation typecheck",
+  "git ls-files -z 'tools/*.mts' 'tools/**/*.mts' | xargs -0 -n 1 node --check",
+  "node tools/wiki.mts",
+  "actionlint",
+  "zizmor --persona pedantic .github/workflows",
+  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/runtime/{run,prepare,health,host-policy,host-status,recover-os,install-tools,update,release-policy,refresh-tools,clean,bandwidth} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test} tools/verify-go-toolchain",
 ]
+
+[tasks.lint]
+description = "Every static check of CI: dependencies, Go, TypeScript, workflows and scripts"
+depends = ["lint:dependencies", "lint:go", "lint:web", "lint:repository"]
 
 [tasks."e2e:browsers"]
 description = "Download the Playwright browsers once"
-depends = ["install"]
+depends = ["install:web"]
 run = "pnpm --dir web/e2e exec playwright install chromium firefox webkit"
 
 [tasks.e2e]
