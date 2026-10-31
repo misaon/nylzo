@@ -30,12 +30,8 @@ type Manifest struct {
 	Files            []ManifestFile `json:"files"`
 }
 
-func (b Build) Manifest(version, publicURL string, information ...buildinfo.Info) Manifest {
-	build := buildinfo.Info{Version: version}
-	if len(information) > 0 {
-		build = information[0]
-		build.Version = version
-	}
+func (b Build) Manifest(version, publicURL string, build buildinfo.Info) Manifest {
+	build.Version = version
 	manifest := Manifest{
 		Build:            build,
 		Server:           version,

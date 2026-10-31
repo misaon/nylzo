@@ -609,14 +609,14 @@ func TestSpentChallengesExpire(t *testing.T) {
 		t.Fatal("a passed request must record its challenge")
 	}
 	harness.clock.Advance(time.Minute)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if spentRows() != 1 {
 		t.Fatal("a sweep dropped a challenge that could still be replayed by a slower instance")
 	}
 	harness.clock.Advance(2 * time.Minute)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if spentRows() != 0 {
@@ -874,7 +874,7 @@ func TestAK27PreviousPepperHorizon(t *testing.T) {
 	harness.mustCreate(old)
 	harness.reopen(baseSettings(pepperB, pepperA))
 	harness.clock.Advance(7*24*time.Hour + time.Minute)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if response, metadata := harness.metadata(
@@ -887,7 +887,7 @@ func TestAK27PreviousPepperHorizon(t *testing.T) {
 		t.Fatal("no live message may remain after the maximum TTL")
 	}
 	harness.clock.Advance(store.TombstoneTTL)
-	if _, err := harness.server.SweepOnce(t.Context()); err != nil {
+	if _, err := harness.server.sweepOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	harness.reopen(baseSettings(pepperB, nil))

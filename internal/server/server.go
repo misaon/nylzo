@@ -145,10 +145,6 @@ func (s *Server) HTTPServer() *http.Server {
 	}
 }
 
-func (s *Server) SweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
-}
-
 func (s *Server) RunSweeper(ctx context.Context) {
 	if s.settings.SweepInterval <= 0 {
 		return
@@ -156,7 +152,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
-		report, err := s.SweepOnce(ctx)
+		report, err := s.sweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
 			s.logger.InfoContext(ctx, "sweep-stopped", report.LogAttrs()...)
@@ -172,6 +168,10 @@ func (s *Server) RunSweeper(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
+	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, s.clock())
 }
 
 func (s *Server) setUpLimits() {
