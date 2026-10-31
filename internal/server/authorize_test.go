@@ -1059,23 +1059,3 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 		t.Fatalf("metadata: %v", metadata)
 	}
 }
-
-func BenchmarkSignedMetadataWithASpentChallenge(b *testing.B) {
-	server, _ := testServer(b, openStore(b), func(settings *config.Server) {
-		settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1e9, 1e9
-		settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1e9, 1e9
-		settings.Rates.ReadPerHour = 0
-	})
-	path := "/api/v1/messages/" + core.NewID().String()
-	challenge, _ := server.challenges.Issue(server.clock().Add(-2 * time.Minute))
-	authorization := core.SignRequest(core.NewSecret(), core.PurposeRead, "GET", path, challenge, nil).Authorization()
-	for b.Loop() {
-		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
-		r.Header.Set("Authorization", authorization)
-		recorder := httptest.NewRecorder()
-		server.Handler().ServeHTTP(recorder, r)
-		if recorder.Code != http.StatusNotFound {
-			b.Fatalf("status %d", recorder.Code)
-		}
-	}
-}
