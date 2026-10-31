@@ -5,7 +5,13 @@ directory="${1:-.deploy/vm}"
 mkdir -p "$directory"
 directory=$(realpath "$directory")
 node tools/deploy/check.mts "$directory"
-node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign"
+mkdir -p "$directory/serve"
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go -C deploy/caddy build -trimpath -buildvcs=false -tags=nobadger,nomysql,nopgx -ldflags='-s -w' -o "$directory/serve/caddy" .
+port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+python3 -m http.server --bind 127.0.0.1 --directory "$directory/serve" "$port" > "$directory/serve.log" 2>&1 &
+server=$!
+trap 'kill "$server" 2>/dev/null || true' EXIT
+node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign" "$directory/serve/caddy" "http://10.0.2.2:$port/caddy"
 version=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
 base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
 image=flatcar_production_qemu_image.img.bz2

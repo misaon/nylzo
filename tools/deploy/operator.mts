@@ -43,6 +43,14 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
   };
 }
 
+export async function requireCaddyBuild(release: string, architecture: string) {
+  const response = await fetch(`https://github.com/misaon/nylzo/releases/download/${release}/checksums.txt`, { signal: AbortSignal.timeout(30000) });
+  assert(response.ok, `Cannot read the checksums of ${release}; set initialRelease to a published Nylzo release`);
+  const archive = `nylzo-caddy_${release.slice(1)}_linux_${architecture}.tar.gz`;
+  const listed = (await response.text()).split("\n").filter(line => line.split(/\s+/u)[1] === archive);
+  assert.equal(listed.length, 1, `Release ${release} ships no Caddy build; set initialRelease to a release that lists ${archive}`);
+}
+
 export function execute(directory: string, environment: NodeJS.ProcessEnv, arguments_: string[], capture = false) {
   const result = execFileSync("tofu", [`-chdir=${directory}`, ...arguments_], {
     env: environment, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit", maxBuffer: 8 * 1024 * 1024,
@@ -56,6 +64,7 @@ export async function prepare(siteFile: string, kind: string) {
   assert(!/(^|\.)example\.(org|com|net)$/u.test(site.domain), "Replace the example domain before provisioning");
   assert(site.administratorNetworks.every((network: string) => !/^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)/iu.test(network)), "Replace the example administrator networks before provisioning");
   assert(site.operator.length > 0 && site.contact.length > 0, "Set the public operator and contact details before provisioning");
+  if (kind !== "dns") await requireCaddyBuild(site.initialRelease, site.architecture);
   const root = path.dirname(path.resolve(siteFile));
   const privateDirectory = await lstat(root);
   assert(privateDirectory.isDirectory() && !privateDirectory.isSymbolicLink() && (privateDirectory.mode & 0o077) === 0, "Operator directory must be private (0700) and must not be a symlink");

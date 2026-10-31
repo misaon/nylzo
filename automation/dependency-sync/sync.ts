@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 interface AssetPin {
   readonly sha256: string;
@@ -44,11 +44,17 @@ const opentofu = captured(
   'the OpenTofu pin in mise.toml',
 );
 toolchain['opentofu'] = opentofu;
-toolchain['caddy'] = captured(
-  readFileSync('deploy/compose/compose.yaml', 'utf8'),
-  /image: caddy:(\d+\.\d+\.\d+)@sha256:/,
-  'the Caddy image in deploy/compose/compose.yaml',
-);
+toolchain['caddy'] = existsSync('deploy/caddy/go.mod')
+  ? captured(
+      readFileSync('deploy/caddy/go.mod', 'utf8'),
+      /^(?:require )?\s*github\.com\/caddyserver\/caddy\/v2 v(\d+\.\d+\.\d+)$/m,
+      'the Caddy module in deploy/caddy/go.mod',
+    )
+  : captured(
+      readFileSync('deploy/compose/compose.yaml', 'utf8'),
+      /image: caddy:(\d+\.\d+\.\d+)@sha256:/,
+      'the Caddy image in deploy/compose/compose.yaml',
+    );
 writeFileSync('deploy/hetzner-flatcar/toolchain.json', `${JSON.stringify(toolchain, undefined, 2)}\n`);
 
 const deployTask = readFileSync('mise-tasks/deploy', 'utf8');

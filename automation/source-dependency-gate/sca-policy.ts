@@ -4,6 +4,7 @@ export interface Assessment {
   readonly ecosystem: string;
   readonly id: string;
   readonly impact: string;
+  readonly lockfile?: string;
   readonly package: string;
   readonly reviewUntil: string;
   readonly version: string;
@@ -59,6 +60,7 @@ function parseAssessment(entry: JsonObject, location: string): Assessment {
     ecosystem: textAt(entry['ecosystem'], `${location}.ecosystem`),
     id: textAt(entry['id'], `${location}.id`),
     impact: textAt(entry['impact'], `${location}.impact`),
+    ...(entry['lockfile'] !== undefined && { lockfile: textAt(entry['lockfile'], `${location}.lockfile`) }),
     package: textAt(entry['package'], `${location}.package`),
     reviewUntil: textAt(entry['reviewUntil'], `${location}.reviewUntil`),
     version: textAt(entry['version'], `${location}.version`),

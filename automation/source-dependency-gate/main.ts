@@ -9,7 +9,7 @@ import { assessSourceDependencies, scannedLockfiles } from './assessment.ts';
 import { collectGoImports } from './go-imports.ts';
 import { arrayAt, objectAt } from './json-values.ts';
 import { openVexDocument, openVexFileName, type Release } from './openvex.ts';
-import { hasVulnerabilities, lockedPackageCount, parseDependencyReport } from './osv-report.ts';
+import { lockedPackageCount, parseDependencyReport } from './osv-report.ts';
 import { parseScaPolicy } from './sca-policy.ts';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '../..');
@@ -40,7 +40,7 @@ const scannerArguments = [
 const reportPath = path.join(reportDirectory, 'source.json');
 runScanner(['--format=json', `--output-file=${reportPath}`], 'Dependency scanner failed');
 const report = parseDependencyReport(readJson(reportPath));
-const imports = hasVulnerabilities(report) ? collectGoImports(repositoryRoot) : {};
+const imports = collectGoImports(repositoryRoot);
 writeJson(path.join(reportDirectory, 'go-imports.json'), imports);
 
 const now = new Date();

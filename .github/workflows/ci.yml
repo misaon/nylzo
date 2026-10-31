@@ -89,9 +89,9 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
           restore-keys: |
-            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-
             go-${{ runner.os }}-${{ runner.arch }}-
       - name: Modules, build, vet, go fix, golangci-lint and govulncheck
         id: lint
@@ -116,7 +116,7 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
             ~/.cache/golangci-lint
-          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
 
   sca:
     name: Dependency vulnerabilities, malware, and licenses
@@ -162,7 +162,7 @@ jobs:
     needs: [changes, sca]
     if: needs.changes.outputs.repository == 'true'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -521,6 +521,7 @@ jobs:
       - name: mise pins match go.mod, web/.node-version, packageManager and GoReleaser, and CI runs every mise check
         run: |
           test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' go.mod)"
+          test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' deploy/caddy/go.mod)"
           test "$(mise current node)" = "$(cat web/.node-version)"
           test "pnpm@$(mise current pnpm)" = "$(jq -r .packageManager web/package.json)"
           for workflow in .github/workflows/ci.yml .github/workflows/release.yml; do
@@ -570,36 +571,42 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
           restore-keys: |
-            go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+            go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-
             go-compose-${{ runner.os }}-${{ runner.arch }}-
       - name: Build the web client that nylzo embeds
         run: mise run build:web
-      - name: Build nylzo and an image laid out like the release image
+      - name: Build nylzo, Caddy and images laid out like the release images
         run: |
           CGO_ENABLED=0 go build -trimpath -o dist/nylzo ./cmd/nylzo
+          CGO_ENABLED=0 go -C deploy/caddy build -trimpath -buildvcs=false -tags="$(cat deploy/caddy/build-tags)" -ldflags='-s -w' -o ../../dist/caddy .
           go build -o dist/tlscheck ./tools/tlscheck
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
+          printf 'FROM %s\nCOPY caddy /ko-app/caddy\nUSER 65533:65533\nENTRYPOINT ["/ko-app/caddy"]\n' "$base" | docker build -q -t caddy:ci -f - dist
       - if: github.event_name == 'push'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-      - name: The production image has no high or critical known vulnerabilities
+          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
+      - name: The production images have no high or critical known vulnerabilities
         env:
           GRYPE_CHECK_FOR_APP_UPDATE: "false"
           GRYPE_DB_VALIDATE_AGE: "true"
           GRYPE_DB_MAX_ALLOWED_BUILT_AGE: 48h
-        run: grype docker:nylzo:ci --fail-on high --output json --file grype-compose.json
+        run: |
+          status=0
+          grype docker:nylzo:ci --fail-on high --output json --file grype-compose.json || status=$?
+          grype docker:caddy:ci --fail-on high --output json --file grype-compose-caddy.json || status=$?
+          exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always() && hashFiles('grype-compose.json') != ''
+        if: always() && hashFiles('grype-compose*.json') != ''
         with:
           name: compose-vulnerability-report
-          path: grype-compose.json
+          path: grype-compose*.json
           if-no-files-found: error
           retention-days: 14
       - name: Start the Compose example for localhost
@@ -609,11 +616,12 @@ jobs:
           openssl rand -hex 32 > secrets/pepper
           sudo chown 65532:65532 secrets/pepper
           sudo chmod 0400 secrets/pepper
+          sudo install -d -o 65533 -g 65533 -m 0700 caddy-state
           report_key=$(../../dist/nylzo report-key --key-file "$RUNNER_TEMP/report-key" | cut -d= -f2-)
-          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
+          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
           docker compose up -d
           for _ in $(seq 1 60); do
-            docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break
+            docker compose cp caddy:/var/lib/caddy/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break
             sleep 1
           done
           curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz || { docker compose logs; exit 1; }
@@ -702,7 +710,7 @@ jobs:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
           version: v2.19.0
-          args: release --snapshot --skip=publish,sign,sbom,ko --clean
+          args: release --snapshot --skip=publish,sign,sbom --clean
       - name: Archive ownership is independent of the build host
         run: |
           python3 - <<'PY'
@@ -710,20 +718,33 @@ jobs:
           import tarfile
 
           archives = list(pathlib.Path("dist").glob("*.tar.gz"))
-          assert len(archives) == 4, archives
+          assert len(archives) == 6, archives
           for archive in archives:
               with tarfile.open(archive) as contents:
                   for member in contents:
                       ownership = (member.uid, member.gid, member.uname, member.gname)
                       assert ownership == (0, 0, "root", "root"), (archive, member.name, ownership)
           PY
+      - name: The ko images run as their own users and contain the archived binaries
+        run: |
+          for id in nylzo caddy; do
+            image=$(jq -er --arg id "$id" '[.[] | select(.type == "Docker Manifest" and .extra.ID == $id) | .name] | unique | if length == 1 then .[0] else error("expected one \($id) image") end' dist/artifacts.json)
+            architecture=$(docker image inspect --format '{{.Architecture}}' "$image")
+            user=$(docker image inspect --format '{{.Config.User}}' "$image")
+            if [ "$id" = caddy ]; then test "$user" = 65533:65533; else test "$user" = 65532; fi
+            container=$(docker create "$image")
+            docker cp "${container}:/ko-app/${id}" "${RUNNER_TEMP}/${id}-image"
+            docker rm "$container" > /dev/null
+            binary=(dist/"${id}"_linux_"${architecture}"_*/"${id}")
+            cmp "${RUNNER_TEMP}/${id}-image" "${binary[0]}"
+          done
       - name: The binary and embedded client carry the same build identity
         run: |
           architecture=amd64
           if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
           binary=(dist/nylzo_linux_"${architecture}"_*/nylzo)
           "${binary[0]}" version --json | cmp - internal/server/web/dist/assets/build-info.json
-      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*.tar.gz dist/*.zip internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
+      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.runner }}

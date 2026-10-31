@@ -38,47 +38,95 @@ latest() {
   download "https://api.github.com/repos/$1/releases/latest" "$temporary/release.json" || return
   jq -er 'select(.draft == false and .prerelease == false) | .tag_name' "$temporary/release.json"
 }
-caddy() {
-  local version previous directory
-  version="v$(jq -r .caddy "$site")"
-  if [[ -s "$state/caddy.tag" ]]; then
-    previous=$(cat "$state/caddy.tag")
-    if [[ -s "$state/caddy.approved.tag" ]]; then version=$(cat "$state/caddy.approved.tag"); else version="$previous"; fi
-    [[ "$previous" != "$version" ]] || return 0
-    [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-    [[ "$(printf '%s\n%s\n' "$previous" "$version" | sort --version-sort | tail -n 1)" = "$version" ]] || { echo 'Caddy downgrade refused.' >&2; return 1; }
-  fi
-  [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
-  directory="/opt/nylzo/caddy/$version"
-  mkdir -p /opt/nylzo/caddy "$directory"
-  chmod 0755 /opt/nylzo/caddy "$directory"
-  local base="https://github.com/caddyserver/caddy/releases/download/$version/caddy_${version#v}"
-  for suffix in checksums.txt checksums.txt.pem checksums.txt.sig; do download "${base}_${suffix}" "$temporary/$suffix"; done
-  cosign verify-blob "$temporary/checksums.txt" --certificate "$temporary/checksums.txt.pem" --signature "$temporary/checksums.txt.sig" \
+older() {
+  [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort --version-sort | head -n 1)" = "$1" ]]
+}
+upstream() {
+  local version="$1" architecture="$2" base archive
+  base="https://github.com/caddyserver/caddy/releases/download/$version/caddy_${version#v}"
+  for suffix in checksums.txt checksums.txt.pem checksums.txt.sig; do download "${base}_${suffix}" "$temporary/upstream-$suffix"; done
+  cosign verify-blob "$temporary/upstream-checksums.txt" --certificate "$temporary/upstream-checksums.txt.pem" --signature "$temporary/upstream-checksums.txt.sig" \
     --certificate-identity "https://github.com/caddyserver/caddy/.github/workflows/release.yml@refs/tags/$version" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
-  local architecture archive
-  architecture=$(jq -r .architecture "$site")
   archive="caddy_${version#v}_linux_${architecture}.tar.gz"
   download "${base}_linux_${architecture}.tar.gz" "$temporary/$archive"
-  (cd "$temporary" && awk -v name="$archive" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' checksums.txt | sha512sum --check --strict)
-  tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$directory/caddy"
+  (cd "$temporary" && awk -v name="$archive" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' upstream-checksums.txt | sha512sum --check --strict >/dev/null)
+  tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
+}
+caddy() {
+  local release="$1" previous="" candidate directory architecture archive digest built restart=true
+  [[ "$release" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  [[ ! -s "$state/caddy.tag" ]] || previous=$(cat "$state/caddy.tag")
+  [[ -z "$previous" || "$previous" =~ ^(release-)?v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+  if [[ "$previous" = release-* ]]; then
+    [[ "$previous" != "release-$release" ]] || { systemctl start caddy.service; return; }
+    older "${previous#release-}" "$release" || { echo 'Caddy downgrade refused.' >&2; return 1; }
+  fi
+  if ! jq -e --arg version "$release" '.tag_name == $version' "$temporary/release.json" >/dev/null 2>&1; then
+    download "https://api.github.com/repos/misaon/nylzo/releases/tags/$release" "$temporary/release.json"
+  fi
+  jq -e --arg version "$release" '.tag_name == $version and .immutable == true and .draft == false and .prerelease == false' "$temporary/release.json" >/dev/null
+  for file in checksums.txt checksums.txt.sigstore.json; do
+    download "https://github.com/misaon/nylzo/releases/download/$release/$file" "$temporary/$file"
+  done
+  cosign verify-blob "$temporary/checksums.txt" --bundle "$temporary/checksums.txt.sigstore.json" \
+    --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$release" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+  architecture=$(jq -r .architecture "$site")
+  archive="nylzo-caddy_${release#v}_linux_${architecture}.tar.gz"
+  if awk -v name="$archive" '$2 == name { found++ } END { exit found != 1 }' "$temporary/checksums.txt"; then
+    candidate="release-$release"
+    download "https://github.com/misaon/nylzo/releases/download/$release/$archive" "$temporary/$archive"
+    (cd "$temporary" && awk -v name="$archive" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' checksums.txt | sha256sum --check --strict >/dev/null)
+    digest=$(sha256sum "$temporary/$archive" | cut -d ' ' -f 1)
+    download "https://api.github.com/repos/misaon/nylzo/attestations/sha256:$digest" "$temporary/caddy-provenance.json"
+    jq -ce '.attestations[].bundle' "$temporary/caddy-provenance.json" > "$temporary/caddy-provenance.jsonl"
+    gh attestation verify "$temporary/$archive" --bundle "$temporary/caddy-provenance.jsonl" --repo misaon/nylzo \
+      --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$release" --deny-self-hosted-runners >/dev/null
+    tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
+  else
+    [[ -n "$previous" ]] || { echo "Release $release ships no Caddy build; provision from a release that does." >&2; return 1; }
+    if [[ "$previous" = release-* ]]; then
+      echo "Release $release ships no Caddy build; Caddy from ${previous#release-} stays installed." >&2
+      systemctl start caddy.service
+      return
+    fi
+    candidate="$previous"
+    [[ ! -s "$state/caddy.approved.tag" ]] || candidate=$(cat "$state/caddy.approved.tag")
+    [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
+    [[ "$candidate" != "$previous" ]] || { systemctl start caddy.service; return; }
+    older "$previous" "$candidate" || { echo 'Caddy downgrade refused.' >&2; return 1; }
+    upstream "$candidate" "$architecture"
+  fi
+  directory="/opt/nylzo/caddy/$candidate"
+  mkdir -p /opt/nylzo/caddy "$directory"
+  chmod 0755 /opt/nylzo/caddy "$directory"
+  cp "$temporary/caddy" "$directory/caddy"
   chmod 0755 "$directory/caddy"
   export NYLZO_DOMAIN
   NYLZO_DOMAIN=$(jq -r .domain "$site")
   systemd-run --wait --pipe --collect --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$NYLZO_DOMAIN" "$directory/caddy" validate --config /etc/caddy/Caddyfile >/dev/null
+  if [[ "$previous" = v* && "$candidate" = release-* ]]; then
+    built=$(systemd-run --wait --pipe --collect --uid=caddy --gid=caddy "$directory/caddy" version | cut -d ' ' -f 1)
+    if [[ ! "$built" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || older "$built" "$previous"; then
+      echo "Caddy downgrade refused: release $release builds Caddy $built, older than the installed $previous." >&2
+      return 1
+    fi
+  fi
+  if [[ -n "$previous" ]] && cmp --silent "$directory/caddy" "/opt/nylzo/caddy/$previous/caddy"; then restart=false; fi
   ln --symbolic --force --no-dereference --no-target-directory "$directory/caddy" /opt/nylzo/bin/caddy.next
   mv -T /opt/nylzo/bin/caddy.next /opt/nylzo/bin/caddy
-  if ! systemctl restart caddy.service || ! sleep 2 || ! systemctl is-active --quiet caddy.service; then
-    if [[ -n "${previous:-}" ]]; then
+  if [[ "$restart" = true ]] && { ! systemctl restart caddy.service || ! sleep 2 || ! systemctl is-active --quiet caddy.service; }; then
+    if [[ -n "$previous" ]]; then
       ln --symbolic --force --no-dereference --no-target-directory "/opt/nylzo/caddy/$previous/caddy" /opt/nylzo/bin/caddy.previous
       mv -T /opt/nylzo/bin/caddy.previous /opt/nylzo/bin/caddy
       systemctl restart caddy.service
     fi
     return 1
   fi
-  if [[ -n "${previous:-}" ]]; then printf '%s\n' "$previous" > "$state/caddy.previous.tag"; fi
-  printf '%s\n' "$version" > "$state/caddy.tag"
+  [[ "$restart" = true ]] || systemctl start caddy.service
+  if [[ -n "$previous" ]]; then printf '%s\n' "$previous" > "$state/caddy.previous.tag"; fi
+  printf '%s\n' "$candidate" > "$state/caddy.tag"
 }
 nylzo() {
   local version previous digest image
@@ -106,10 +154,8 @@ nylzo() {
   jq -ce '.attestations[].bundle' "$temporary/provenance.json" > "$temporary/provenance.jsonl"
   gh attestation verify "oci://$image@$digest" --bundle "$temporary/provenance.jsonl" --repo misaon/nylzo \
     --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$version" --deny-self-hosted-runners >/dev/null
-  if [[ -n "${previous:-}" ]]; then
-    /opt/nylzo/runtime/refresh-tools "$version"
-    caddy
-  fi
+  if [[ -n "${previous:-}" ]]; then /opt/nylzo/runtime/refresh-tools "$version"; fi
+  caddy "$version"
   docker pull "$image@$digest" >/dev/null
   mkdir "$temporary/data"
   chown 165532:165532 "$temporary/data"
@@ -148,11 +194,13 @@ case "${1:-}" in
     if [[ -s "$state/current.json" ]]; then
       systemctl start nylzo.service caddy.service
     else
-      caddy
       nylzo
     fi
     ;;
-  caddy) caddy ;;
+  caddy)
+    [[ -s "$state/current.json" && "${2:-}" = "$(jq -r .tag "$state/current.json")" ]] || { echo 'Caddy comes only from the installed Nylzo release.' >&2; exit 1; }
+    caddy "$2"
+    ;;
   nylzo) nylzo ;;
-  *) echo 'Usage: update initialize|check|caddy|nylzo' >&2; exit 2 ;;
+  *) echo 'Usage: update initialize|check|caddy vX.Y.Z|nylzo' >&2; exit 2 ;;
 esac

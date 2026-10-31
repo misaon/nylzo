@@ -68,3 +68,14 @@ test("a release requires full verification and successful security checks from t
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("Caddy runs under its own UID and GID, apart from Nylzo's distroless 65532", () => {
+  const services = readFileSync("deploy/compose/compose.yaml", "utf8").split(/^ {2}(?=[a-z-]+:\n)/mu);
+  const user = (name: string) => /^ {4}user: "(\d+):(\d+)"$/mu.exec(services.find(block => block.startsWith(`${name}:\n`)) ?? "")?.slice(1);
+  assert.equal(user("nylzo"), undefined, "Nylzo keeps the distroless nonroot user, UID 65532");
+  assert.deepEqual(user("caddy"), ["65533", "65533"]);
+  const images = readFileSync(".goreleaser.yaml", "utf8").split(/^ {2}- id: /mu);
+  const image = (repository: string) => images.find(block => block.includes(`repositories: [${repository}]\n`)) ?? "";
+  assert.doesNotMatch(image("ghcr.io/misaon/nylzo"), /^ {4}user:/mu);
+  assert.match(image("ghcr.io/misaon/nylzo-caddy"), /^ {4}user: "65533:65533"$/mu);
+});

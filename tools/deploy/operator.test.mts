@@ -3,7 +3,7 @@ import { test, mock } from "node:test";
 import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { privateFile, inputs, client, initialize } from "./operator.mts";
+import { privateFile, inputs, client, initialize, prepare, requireCaddyBuild } from "./operator.mts";
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));
@@ -38,6 +38,49 @@ test("cloud API calls cannot redirect credentials or reach endpoints supplied by
       { url: "https://api.cloudflare.com/client/v4/zones?name=domain.example", redirect: "error" },
     ]);
   } finally { fetch.mock.restore(); }
+});
+
+test("provisioning refuses an initial release that ships no Caddy build for the host architecture", async () => {
+  const checksums: Record<string, string> = {
+    "https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt": `${"a".repeat(64)}  nylzo_0.1.5_linux_amd64.tar.gz\n`,
+    "https://github.com/misaon/nylzo/releases/download/v0.3.0/checksums.txt": `${"a".repeat(64)}  nylzo-caddy_0.3.0_linux_amd64.tar.gz\n${"b".repeat(64)}  nylzo-caddy_0.3.0_linux_arm64.tar.gz.sbom.json\n`,
+  };
+  const fetch = mock.method(globalThis, "fetch", async (url: string) => {
+    const body = checksums[url];
+    return body === undefined ? new Response("", { status: 404 }) : new Response(body, { status: 200 });
+  });
+  try {
+    await requireCaddyBuild("v0.3.0", "amd64");
+    await assert.rejects(requireCaddyBuild("v0.3.0", "arm64"), /ships no Caddy build/u);
+    await assert.rejects(requireCaddyBuild("v0.1.5", "amd64"), /ships no Caddy build/u);
+    await assert.rejects(requireCaddyBuild("v9.9.9", "amd64"), /Cannot read the checksums/u);
+  } finally { fetch.mock.restore(); }
+});
+
+test("planning the image or server stops before any cloud call when the initial release ships no Caddy build", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "nylzo-site-"));
+  const seen: string[] = [];
+  const fetch = mock.method(globalThis, "fetch", async (url: string) => {
+    seen.push(url);
+    return new Response(`${"a".repeat(64)}  nylzo_0.1.5_linux_amd64.tar.gz\n`, { status: 200 });
+  });
+  try {
+    await chmod(directory, 0o700);
+    const siteFile = path.join(directory, "site.json");
+    await writeFile(siteFile, JSON.stringify({
+      name: "nylzo-test", domain: "nylzo.test-instance.dev", location: "nbg1", serverType: "cx23", architecture: "amd64",
+      administratorNetworks: ["10.1.2.3/32"],
+      administratorPublicKey: "ssh-ed25519 " + Buffer.concat([Buffer.from("0000000b7373682d6564323535313900000020", "hex"), Buffer.alloc(32, 1)]).toString("base64"),
+      reportPublicKey: Buffer.alloc(1216, 1).toString("base64url"),
+      operator: "Test operator", contact: "security@nylzo.test-instance.dev", hosting: "Test provider",
+      dailyCreates: 250, initialRelease: "v0.1.5", automaticUpdates: true,
+    }));
+    for (const kind of ["image", "server"]) await assert.rejects(prepare(siteFile, kind), /ships no Caddy build/u);
+    assert.deepEqual(seen, Array(2).fill("https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt"));
+  } finally {
+    fetch.mock.restore();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("reviewed plans are bound to provider locks, infrastructure, variables and generated host configuration", async () => {

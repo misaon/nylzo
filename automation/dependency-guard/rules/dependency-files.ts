@@ -18,8 +18,8 @@ export const binaryAssetsPath = 'tools/dependencies/assets.json';
 export const hostToolchainPath = 'deploy/hetzner-flatcar/toolchain.json';
 
 const rules: readonly (readonly [RegExp, FileRule])[] = [
-  [/^go\.mod$/, goModule],
-  [/^go\.sum$/, goChecksums],
+  [/^(?:deploy\/caddy\/)?go\.mod$/, goModule],
+  [/^(?:deploy\/caddy\/)?go\.sum$/, goChecksums],
   [/^(?:automation|web(?:\/[^/]+)?)\/package\.json$/, packageManifest],
   [/^web\/pnpm-lock\.yaml$/, pnpmLock(['../core'])],
   [/^automation\/pnpm-lock\.yaml$/, pnpmLock([])],

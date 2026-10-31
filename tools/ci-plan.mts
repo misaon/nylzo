@@ -43,7 +43,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
       continue;
     } else if (
       /^(go\.(mod|sum)|mise\.(toml|lock)|\.goreleaser\.yaml|\.golangci\.yml)$/u.test(file) ||
-      /^(\.github\/workflows\/|tools\/|mise-tasks\/)/u.test(file) ||
+      /^(\.github\/workflows\/|tools\/|mise-tasks\/|deploy\/caddy\/)/u.test(file) ||
       /^web\/(.*\/)?(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.node-version)$/u.test(file)
     ) {
       full = true;
