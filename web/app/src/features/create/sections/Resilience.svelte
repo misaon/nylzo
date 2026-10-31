@@ -40,30 +40,23 @@
   const ticking: Attachment<HTMLElement> = (element) => {
     let visible = false;
     let timer: ReturnType<typeof setInterval> | undefined;
-    const observer =
-      typeof IntersectionObserver === 'undefined'
-        ? undefined
-        : new IntersectionObserver(
-            (entries) => {
-              const next = entries.some((entry) => entry.isIntersecting);
-              if (next === visible) {
-                return;
-              }
-              visible = next;
-              clearInterval(timer);
-              if (visible) {
-                timer = setInterval(() => (elapsed += TICK_MS), TICK_MS);
-              }
-            },
-            { threshold: VISIBLE_THRESHOLD },
-          );
-    if (observer) {
-      observer.observe(element);
-    } else {
-      timer = setInterval(() => (elapsed += TICK_MS), TICK_MS);
-    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const next = entries.some((entry) => entry.isIntersecting);
+        if (next === visible) {
+          return;
+        }
+        visible = next;
+        clearInterval(timer);
+        if (visible) {
+          timer = setInterval(() => (elapsed += TICK_MS), TICK_MS);
+        }
+      },
+      { threshold: VISIBLE_THRESHOLD },
+    );
+    observer.observe(element);
     return () => {
-      observer?.disconnect();
+      observer.disconnect();
       clearInterval(timer);
     };
   };
