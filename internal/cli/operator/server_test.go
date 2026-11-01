@@ -76,9 +76,9 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 		debug.SetMemoryLimit(math.MaxInt64)
 		variables := map[string]string{
 			"NYLZO_PEPPER_FILE": pepperFile(t),
-			"NYLZO_REPORT_KEY": testReportKeyText,
-			"NYLZO_DATA_DIR":   t.TempDir(),
-			"GOMEMLIMIT":       testCase.operatorLimit,
+			"NYLZO_REPORT_KEY":  testReportKeyText,
+			"NYLZO_DATA_DIR":    t.TempDir(),
+			"GOMEMLIMIT":        testCase.operatorLimit,
 		}
 		if _, err := serveSettings(
 			&command.Environment{Getenv: func(name string) string { return variables[name] }},
@@ -163,10 +163,10 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 		t,
 		"",
 		map[string]string{
-			"NYLZO_DATA_DIR":   t.TempDir(),
+			"NYLZO_DATA_DIR":    t.TempDir(),
 			"NYLZO_PEPPER_FILE": pepperFile(t),
-			"NYLZO_REPORT_KEY": testReportKeyText,
-			"NYLZO_LISTEN":     taken.Addr().String(),
+			"NYLZO_REPORT_KEY":  testReportKeyText,
+			"NYLZO_LISTEN":      taken.Addr().String(),
 		},
 		nil,
 		RunServe,
