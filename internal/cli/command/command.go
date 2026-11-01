@@ -41,6 +41,7 @@ type Environment struct {
 	Date      string
 	Dirty     string
 	WebClient func() (webclient.Build, error)
+	Browser   func(target string) error
 }
 
 func (e *Environment) BuildInformation() buildinfo.Info {

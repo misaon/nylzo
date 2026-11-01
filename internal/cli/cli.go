@@ -43,6 +43,8 @@ func commands() []subcommand {
 	return []subcommand{
 		{"create", "encrypt text from stdin or a file and print its link", runCreate},
 		{"read", "read a link from stdin and decrypt the message into private files", runRead},
+		{"open", "open a link from stdin in the browser with the verified web client of this nylzo", runOpen},
+		{"web", "serve the verified web client of this nylzo on this computer for an instance", runWeb},
 		{"status", "show the state of a message from its manage token", runStatus},
 		{"cancel", "end a message with its manage token", runCancel},
 		{"report", "report a message for abuse from its link on stdin", runReport},

@@ -1,5 +1,6 @@
 import '../app.css';
 import { browserPreferences, type Language, savedLanguage, storedLanguage } from '../shared/language/language.ts';
+import { takeHandoff } from '../shared/local-client/handoff.ts';
 import { HOME_PATHS, homeLanguage } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
@@ -39,6 +40,7 @@ async function contentPainted(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
+  await takeHandoff();
   const path = location.pathname;
   const preferences = browserPreferences();
   const homePage = homeLanguage(path);

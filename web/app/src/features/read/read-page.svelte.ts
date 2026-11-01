@@ -11,6 +11,7 @@ import { createApi } from '../../shared/api/api.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
 import { scryptInWorker } from '../../shared/kdf/kdf.ts';
 import { formatWait } from '../../shared/language/format.ts';
+import { takeHandedOverFragment } from '../../shared/local-client/handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
 import { Flash } from '../../shared/ui/flash.svelte.ts';
@@ -370,7 +371,14 @@ export class ReadPage {
     this.#reader = createReader(
       {
         api: createApi(),
-        location,
+        location: {
+          get pathname() {
+            return location.pathname;
+          },
+          get hash() {
+            return takeHandedOverFragment() ?? location.hash;
+          },
+        },
         session: {
           getItem: (key) => sessionStorage.getItem(key),
           setItem: (key, value) => sessionStorage.setItem(key, value),

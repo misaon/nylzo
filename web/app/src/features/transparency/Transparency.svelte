@@ -3,6 +3,7 @@
   import { BUILD_INFO } from '../../shared/build-info.ts';
   import { formatBytes, formatDays, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
   import { REPOSITORY_URL } from '../../shared/shell/repository.ts';
   import {
     PAGE_ALERT,
@@ -45,7 +46,7 @@
   const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
 
   function verifyCommand(): string {
-    return `nylzo verify-client --server ${location.origin}`;
+    return `nylzo verify-client --server ${instanceOrigin()}`;
   }
 
   async function load() {

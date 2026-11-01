@@ -11,6 +11,7 @@ import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
 import { createApi } from '../../../shared/api/api.ts';
 import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
 import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
+import { instanceOrigin } from '../../../shared/local-client/instance-origin.ts';
 import { PacedTimeline, type TimelineSettings } from '../../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../../shared/pipeline/random-text.ts';
 import { browserSentStore, rememberSent, type SentStore } from '../../../shared/sent-records/sent-store.ts';
@@ -420,7 +421,7 @@ export class Composer {
     try {
       const created = await createMessage(
         input,
-        { api: this.#api, origin: location.origin, scrypt: scryptInWorker, solvePow: solvePowInWorker },
+        { api: this.#api, origin: instanceOrigin(), scrypt: scryptInWorker, solvePow: solvePowInWorker },
         (progress) => {
           if (!stale()) {
             this.#onProgress(progress);

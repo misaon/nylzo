@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createApi } from '../../shared/api/api.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
   import { reportLink, type ReportOutcome, type ReportSubmission } from '../../shared/report/report.ts';
   import ReportForm from '../../shared/report/ReportForm.svelte';
   import { PAGE_TEXT, PAGE_TITLE } from '../../shared/ui/page-classes.ts';
@@ -9,7 +10,7 @@
   const api = createApi();
 
   async function submit({ link, ...report }: ReportSubmission): Promise<ReportOutcome> {
-    return reportLink(api, location.origin, link, report);
+    return reportLink(api, instanceOrigin(), link, report);
   }
 </script>
 
