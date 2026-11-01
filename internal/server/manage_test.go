@@ -399,6 +399,14 @@ func (s *racingStore) Load(ctx context.Context, locator seal.Locator) (store.Row
 	return row, err
 }
 
+func (s *racingStore) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bool, error) {
+	row, known, err := s.Store.Lookup(ctx, locator)
+	if err == nil && known {
+		s.once.Do(s.race)
+	}
+	return row, known, err
+}
+
 func TestBurnRacingACancelReportsTheCancel(t *testing.T) {
 	t.Parallel()
 	for name, finished := range map[string]bool{"recorded cancel": false, "finished cancel": true} {

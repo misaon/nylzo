@@ -389,7 +389,7 @@ func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
 	)
 	spent := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`)
 	nonces := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`)
-	if rows != int64(created) || ended != 6 || spent == 0 || nonces != 1 {
+	if rows != int64(created)+1 || ended != 6 || spent == 0 || nonces != 1 {
 		t.Fatalf(
 			"the flows did not leave the expected rows: %d rows, %d without a blob key, %d spent challenges, %d PoW nonces",
 			rows,

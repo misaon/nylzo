@@ -64,6 +64,9 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 		if state := current.State(now); state != StateAvailable {
 			return &GoneError{State: state}
 		}
+		if wait, busy := leasesFull(current.Message, now); busy {
+			return &BusyError{RetryAfter: wait}
+		}
 		if current.Message.PassphraseRequired() {
 			if refusal, refused = checkPassphrase(current.Message, &parameters, now); refused {
 				return nil
@@ -101,6 +104,20 @@ func checkPassphrase(message *Message, parameters *ClaimParameters, now time.Tim
 		wait = message.NextAttemptAt.Sub(now)
 	}
 	return PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}, true
+}
+
+// leasesFull caps the active leases, so every record fits one RecordBlock and its length says nothing (A4-4).
+func leasesFull(message *Message, now time.Time) (time.Duration, bool) {
+	var active []time.Time
+	for _, lease := range message.Leases {
+		if lease.Active(now) {
+			active = append(active, lease.ExpiresAt)
+		}
+	}
+	if len(active) < MaxActiveLeases {
+		return 0, false
+	}
+	return slices.MinFunc(active, time.Time.Compare).Sub(now), true
 }
 
 func consumeOpen(record *Record, parameters *ClaimParameters, now time.Time) Lease {

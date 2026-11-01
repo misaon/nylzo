@@ -36,13 +36,11 @@ func (s *Server) authorize(
 	granted := access{id: id, signature: signature}
 	row := s.dummyRow
 	if idErr == nil {
-		found, known, err := s.lookUp(ctx, id)
+		found, known, err := s.store.Lookup(ctx, seal.LocatorOf(id[:]))
 		if err != nil {
 			return granted, false, err
 		}
-		if known {
-			row, granted.known = found, true
-		}
+		row, granted.known = found, known
 	}
 	opened := openWithSignature(r, &granted, &row, purpose, body)
 	if !granted.known || !parsed || !fresh || !opened {
@@ -52,23 +50,22 @@ func (s *Server) authorize(
 	return granted, true, nil
 }
 
+// refusalFloor is above the p99 of the work of a refused request, so its answer time says nothing about the id.
+const refusalFloor = 5 * time.Millisecond
+
+func waitForTheFloor(r *http.Request, arrived time.Time) {
+	select {
+	case <-r.Context().Done():
+	case <-time.After(time.Until(arrived.Add(refusalFloor))):
+	}
+}
+
 func parseSignature(r *http.Request) (signing.Signature, bool) {
 	signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
 	if err != nil {
 		return signing.Signature{PublicKey: dummyPublicKey}, false
 	}
 	return signature, true
-}
-
-func (s *Server) lookUp(ctx context.Context, id core.ID) (store.Row, bool, error) {
-	row, err := s.store.Load(ctx, seal.LocatorOf(id[:]))
-	if err == nil {
-		return row, true, nil
-	}
-	if errors.Is(err, store.ErrNotFound) {
-		return store.Row{}, false, nil
-	}
-	return store.Row{}, false, err
 }
 
 func openWithSignature(
@@ -141,12 +138,14 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose seal
 	if !emptyBody(w, r) {
 		return access{}, false
 	}
+	arrived := time.Now()
 	granted, ok, err := s.authorize(r.Context(), r, r.PathValue("id"), purpose, nil)
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return granted, false
 	}
 	if !ok {
+		waitForTheFloor(r, arrived)
 		writeNotFound(w)
 		return granted, false
 	}

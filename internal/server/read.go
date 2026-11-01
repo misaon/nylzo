@@ -171,6 +171,11 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 		})
 		return
 	}
+	if busyErr, isBusy := errors.AsType[*store.BusyError](err); isBusy {
+		setRetryAfter(w, busyErr.RetryAfter)
+		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeNotFound(w)
 		return
@@ -219,6 +224,9 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
+		return
+	}
 	leased, ok := s.activeLease(w, r)
 	if !ok {
 		return

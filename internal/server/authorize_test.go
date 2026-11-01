@@ -1103,3 +1103,37 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 		}
 	})
 }
+
+// TestARefusalTakesTheFloorAndSpendsTheReadBudget covers F1 and A4-4: the answer time of a 404 says nothing about
+// the id, and every signed route counts against the hourly read budget.
+func TestARefusalTakesTheFloorAndSpendsTheReadBudget(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.ReadPerHour = 4
+	harness := newHarness(t, settings)
+	live := newMessage(t, core.KDFNone, "", 1, 3600, "live")
+	harness.mustCreate(live)
+	wrongSeed := core.NewSecret()
+	for name, path := range map[string]string{
+		"unknown id": "/api/v1/messages/" + core.NewID().String() + "/status",
+		"wrong key":  "/api/v1/messages/" + live.id.String() + "/status",
+	} {
+		start := time.Now()
+		request := signedRequest(wrongSeed, signing.PurposeManage, http.MethodGet, path, harness.challenge(), nil)
+		request.address = "198.51.100.40"
+		if response, _ := harness.do(request); response.StatusCode != http.StatusNotFound ||
+			time.Since(start) < refusalFloor {
+			t.Fatalf("%s: %d after %v, want 404 after at least %v", name, response.StatusCode, time.Since(start), refusalFloor)
+		}
+	}
+	for _, action := range []string{"burn", "cancel"} {
+		request := &testRequest{method: http.MethodPost, path: "/api/v1/messages/" + core.NewID().String() + "/" + action}
+		request.address = "198.51.100.40"
+		harness.do(request)
+	}
+	request := &testRequest{method: http.MethodGet, path: "/api/v1/messages/" + live.id.String() + "/status"}
+	request.address = "198.51.100.40"
+	if response, _ := harness.do(request); response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status, burn and cancel must spend the hourly read budget: %d", response.StatusCode)
+	}
+}

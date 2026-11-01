@@ -5,12 +5,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -108,6 +110,45 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	}
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestLookupDoesTheSameWorkForEveryLocator covers AK21 and F1; it runs alone because allocations are counted per
+// process.
+func TestLookupDoesTheSameWorkForEveryLocator(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	storage := openStore(t, path)
+	live, ended := newRecord(1, false), newRecord(1, false)
+	create(t, storage, live)
+	create(t, storage, ended)
+	if _, err := openRaw(t, path).Exec(
+		`UPDATE messages SET blob_ref = NULL, blob_wrap = NULL, blob_purge_at = NULL WHERE locator = ?`,
+		ended.Row.Locator[:],
+	); err != nil {
+		t.Fatal(err)
+	}
+	unknown := seal.LocatorOf([]byte("never created"))
+	work := map[string]float64{}
+	lengths := map[string]int{}
+	for name, locator := range map[string]seal.Locator{
+		"live":    live.Row.Locator,
+		"ended":   ended.Row.Locator,
+		"unknown": unknown,
+	} {
+		row, known, err := storage.Lookup(t.Context(), locator)
+		if err != nil || known == (name == "unknown") {
+			t.Fatalf("%s: known %v, %v", name, known, err)
+		}
+		lengths[name] = len(row.ReadWrap) + len(row.ManageWrap) + len(row.Record)
+		work[name] = math.MaxFloat64
+		for range 20 {
+			work[name] = min(work[name], testing.AllocsPerRun(20, func() { storage.Lookup(t.Context(), locator) }))
+		}
+	}
+	const driverNoise = 5
+	spread := max(work["live"], work["ended"], work["unknown"]) - min(work["live"], work["ended"], work["unknown"])
+	if spread > driverNoise || lengths["live"] != lengths["unknown"] || lengths["ended"] != lengths["unknown"] {
+		t.Fatalf("a lookup must do the same work for every locator: allocations %v, sealed bytes %v", work, lengths)
 	}
 }
 
