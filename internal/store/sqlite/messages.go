@@ -21,7 +21,7 @@ const (
 		ifnull(blob_wrap, zeroblob(60)), blob_wrap IS NULL,
 		ifnull(blob_purge_at, 0), blob_purge_at IS NULL, purge_at
 		FROM messages WHERE locator = ?`
-	updateRow  = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
+	updateRow = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ? WHERE locator = ?`
 	updateRowAndPurge = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ?, purge_at = ? WHERE locator = ?`
