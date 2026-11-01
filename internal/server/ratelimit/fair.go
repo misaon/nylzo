@@ -27,20 +27,19 @@ func (f *Fair) Allow(addressRange Bucket, now time.Time) bool {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 	f.refill(now)
-	if f.tokens >= f.burst/2 {
-		f.tokens--
-		f.served[addressRange]++
-		return true
-	}
-	ranges := len(f.served)
-	if _, seen := f.served[addressRange]; !seen {
-		ranges++
-	}
-	share := max(1, int(f.rate)/max(ranges, f.rangesLastTime))
-	if f.served[addressRange] >= share {
+	if f.tokens < 1 {
 		return false
 	}
-	f.tokens = max(0, f.tokens-1)
+	if f.tokens < f.burst/2 {
+		ranges := len(f.served)
+		if _, seen := f.served[addressRange]; !seen {
+			ranges++
+		}
+		if f.served[addressRange] >= max(1, int(f.rate)/max(ranges, f.rangesLastTime)) {
+			return false
+		}
+	}
+	f.tokens--
 	f.served[addressRange]++
 	return true
 }

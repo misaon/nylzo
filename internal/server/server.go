@@ -45,35 +45,35 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 type Server struct {
-	settings        config.Server
-	store           store.Store
-	blobs           store.Blobs
-	ring            *pepper.Ring
-	leaseTimers     *timers
-	logger          *slog.Logger
-	instance        *ratelimit.Fair
-	sourceLimiter   *ratelimit.Limiter
-	rangeLimiter    *ratelimit.Limiter
-	addressKey      *ratelimit.AddressKey
-	proxies         ratelimit.Proxies
-	counters        *ratelimit.Counters
-	streams         *ratelimit.Streams
-	forwardedHour   atomic.Int64
-	challenges      *proof.Challenges
-	work            *proof.Work
-	idTokens        proof.IDTokens
-	disk            *diskspace.Reserver
-	reports         *abuse.Reports
-	dummyRow        store.Row
-	webFiles        fs.FS
-	webBuild        webclient.Build
-	pages           webclient.Pages
-	robots          []byte
-	sitemap         []byte
-	manifest        webclient.Manifest
-	requestCounts   *logging.RequestCounts
-	pace            pace
-	handler         http.Handler
+	settings      config.Server
+	store         store.Store
+	blobs         store.Blobs
+	ring          *pepper.Ring
+	leaseTimers   *timers
+	logger        *slog.Logger
+	instance      *ratelimit.Fair
+	sourceLimiter *ratelimit.Limiter
+	rangeLimiter  *ratelimit.Limiter
+	addressKey    *ratelimit.AddressKey
+	proxies       ratelimit.Proxies
+	counters      *ratelimit.Counters
+	streams       *ratelimit.Streams
+	forwardedHour atomic.Int64
+	challenges    *proof.Challenges
+	work          *proof.Work
+	idTokens      proof.IDTokens
+	disk          *diskspace.Reserver
+	reports       *abuse.Reports
+	dummyRow      store.Row
+	webFiles      fs.FS
+	webBuild      webclient.Build
+	pages         webclient.Pages
+	robots        []byte
+	sitemap       []byte
+	manifest      webclient.Manifest
+	requestCounts *logging.RequestCounts
+	pace          pace
+	handler       http.Handler
 }
 
 func New(settings *config.Server, storage store.Store, blobs store.Blobs, options ...Option) (*Server, error) {
