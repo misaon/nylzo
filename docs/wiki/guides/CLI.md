@@ -19,13 +19,15 @@ nylzo create --server https://nylzo.example --ttl 1h \
 
 Create input/output files inside a directory accessible only to you, and use a restrictive umask such as `umask 077`. `create` prints only the link. It reads text from stdin (one hidden line when stdin is a terminal) and takes an attachment through `--from-file`. `NYLZO_SERVER` can select the instance instead of `--server`.
 
+`--compress` gzips the attachment on your device before encryption. The CLI keeps the compressed form only when it at least halves the padded size, and sends the file unchanged otherwise. The padded size of a compressed file still says something about its content, so do not compress a file that mixes a secret with bytes someone else can choose. See the [protocol](../reference/Protocol.md#32-compressed-attachments).
+
 Passphrase options:
 
 - `--generate-passphrase-file FILE` creates a strong passphrase in a new mode-0600 file and does not print it.
 - `--passphrase-file FILE` or `NYLZO_PASSPHRASE_FILE` reads the first line of an existing file.
 - `--ask-passphrase` prompts twice without echo.
 
-Passphrase key derivation uses scrypt. The management token is written only when requested with `--manage-token-file` (a new mode-0600 file) or `--print-manage-token`. It has two lines: the link, then the management token. Keep both private.
+A passphrase you choose needs at least 15 characters and must pass the checks of [protocol section 2](../reference/Protocol.md#2-key-derivation-client); a generated one always does. Passphrase key derivation uses scrypt with `N = 2^18`. The management token is written only when requested with `--manage-token-file` (a new mode-0600 file) or `--print-manage-token`. It has two lines: the link, then the management token. Keep both private.
 
 ## Read, inspect, cancel, or delete
 
@@ -36,11 +38,13 @@ nylzo cancel --manage-token-file management.txt
 nylzo burn < link.txt
 ```
 
-`read` and `burn` accept the link through stdin, `--link-file`, or `NYLZO_LINK`. Using the environment variable produces a notice on stderr. Links using a newer protocol version prompt an upgrade; links using the retired passphrase profile (`kdf_id` 2) prompt a replacement link from the sender.
+`read` and `burn` accept the link through stdin, `--link-file`, or `NYLZO_LINK`. Using the environment variable produces a notice on stderr. Links using a newer protocol version prompt an upgrade; links using the retired passphrase profile (`kdf_id` 2) prompt a replacement link from the sender. A link from Nylzo 0.1 or 0.2 (`/m/{id}#1.…`) reports that the instance upgrade to protocol version 2 deleted its message.
+
+A CLI from Nylzo 0.1 or 0.2 can neither create nor read messages on an instance that runs protocol version 2: it reports a malformed response from the server, or the server answers `client_outdated`. Update it to a current release.
 
 `read` requires an explicit destination before making a request:
 
-- `--stdout` prints text without writing files. If the message may carry an attachment, it requires `--out` and does not consume an open just to reject it. Control characters are escaped on a terminal; a pipe or file receives the original text.
+- `--stdout` prints text without writing files, so it cannot deliver an attachment. A message does not show whether it holds a file until it is opened: `--stdout` then prints the text, spends the open and reports the file it did not save. Use `--out` when a file may be attached. Control characters are escaped on a terminal; a pipe or file receives the original text.
 - `--out DIRECTORY` creates a new mode-0700 subdirectory before opening the message, writes `message.txt` and any attachment using a sanitized filename with mode 0600, and prints their paths. Name collisions do not consume an open. A failed write may be retried in a second new subdirectory beside the first, never in another location.
 
 For passphrase-protected messages, `read` prompts without echo or uses `--passphrase-file`. Ctrl-C restores terminal echo before exiting. Interrupted downloads are retried within the same invocation using the lease, without consuming another open.
