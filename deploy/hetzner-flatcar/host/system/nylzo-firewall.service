@@ -26,8 +26,9 @@ RestrictRealtime=true
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
-CapabilityBoundingSet=CAP_NET_ADMIN
-RestrictAddressFamilies=AF_NETLINK AF_UNIX
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+RestrictAddressFamilies=AF_NETLINK AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/run
 LimitCORE=0
 [Install]
 WantedBy=sysinit.target

@@ -14,7 +14,7 @@ test("the host firewall admits only what the cloud firewall admits and limits ea
     encoding: "utf8", timeout: 280000, input: String.raw`set -euo pipefail
 trap 'echo "failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >/dev/null && apt-get install -qq -y --no-install-recommends nftables >/dev/null
+apt-get update -qq >/dev/null && apt-get install -qq -y --no-install-recommends nftables iptables >/dev/null
 mkdir -p /etc/nylzo
 run() { printf '%s\n' "$@" > /tmp/host.env; NYLZO_HOST_SETTINGS=/tmp/host.env bash /firewall; }
 has() { nft --numeric-protocol list chain inet nylzo input > /tmp/rules; grep -Fq -- "$1" /tmp/rules; }
@@ -23,8 +23,11 @@ has 'type filter hook input priority filter; policy drop;'
 has 'ip saddr @administrators4 tcp dport 22 accept'
 has 'ip6 saddr @administrators6 tcp dport 22 accept'
 has 'ip saddr @administrators4 meta l4proto { 6, 17 } th dport 443 accept'
-has 'ip saddr ct count over 64'
-has 'ip6 saddr & ffff:ffff:ffff:ffff:: ct count over 64'
+for command in iptables ip6tables; do
+  "$command" --wait --list-rules nylzo-connections > /tmp/limit
+  grep -q 'connlimit --connlimit-above 64' /tmp/limit
+  "$command" --wait --check INPUT --jump nylzo-connections
+done
 if has 'dport 8443'; then exit 1; fi
 if has 'meta nfproto ipv4 meta l4proto { 6, 17 } th dport 443 accept'; then exit 1; fi
 nft list set inet nylzo administrators4 > /tmp/set
