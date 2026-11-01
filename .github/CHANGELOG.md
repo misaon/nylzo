@@ -2,6 +2,18 @@
 
 ## [0.3.0](https://github.com/misaon/nylzo/compare/v0.2.0...v0.3.0) (2026-11-01)
 
+### Upgrade notes
+
+This release follows a full security audit. Read these before you upgrade an instance.
+
+* The first start erases every message stored by 0.1 or 0.2, including unread ones. Their links then show a notice that the message was deleted. Tell your users before you upgrade.
+* The `nylzo` CLI 0.1 and 0.2 can no longer create or read messages. Update it.
+* The server runs only on Linux, with the data directory on ext4 (without journalled data) or XFS. It needs unlimited locked memory (`--ulimit memlock=-1:-1`, or `memlock: -1` in Compose) and reads the pepper only from `NYLZO_PEPPER_FILE`. `NYLZO_PEPPER` in the environment is refused.
+* The expiry key seed lives in `NYLZO_EPOCH_DIR`, by default `epoch` inside the data directory. On a tmpfs, no disk image or backup holds it, but a host reboot ends every live message. The Hetzner Flatcar profile uses a tmpfs.
+* Both deployment profiles accept only TLS 1.3 with X25519MLKEM768, and SSH accepts only post-quantum key exchange. Safari and iOS before 26, Firefox ESR 128, clients on OpenSSL before 3.5, and SSH clients without `mlkem768x25519-sha256` or `sntrup761x25519-sha512` cannot connect.
+* Compose needs `NYLZO_CADDY_IMAGE` and runs Caddy as UID 65533, with its state in the `caddy-state` directory.
+* A Hetzner Flatcar host keeps 0.2 until you run the one-time host step in the Hetzner Flatcar guide. Run it after this release is published.
+
 
 ### ⚠ BREAKING CHANGES
 
