@@ -443,11 +443,11 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	if got := claim("198.51.100.1"); got != http.StatusNotFound {
 		t.Fatalf("another address while the first holds its share: %d, want 404 after the slot", got)
 	}
-	for i := 2; i <= 7; i++ {
+	for i := 2; i <= 3; i++ {
 		hold(fmt.Sprintf("203.0.113.%d", i))
 	}
 	if got := claim("203.0.113.9"); got != http.StatusServiceUnavailable {
-		t.Fatalf("a ninth stream from one /24: %d, want 503", got)
+		t.Fatalf("F3: a fifth stream from one /24: %d, want 503", got)
 	}
 	if got := claim("2001:db8:1:2::1"); got != http.StatusNotFound {
 		t.Fatalf("an IPv6 source while one /24 holds its share: %d, want 404 after the slot", got)
