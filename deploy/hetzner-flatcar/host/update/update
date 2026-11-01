@@ -195,7 +195,7 @@ nylzo() {
   chmod 0400 "$temporary/pepper"
   docker run --detach --name nylzo-probe --user 65532:65532 --network none \
     --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-    --memory 1g --cpus 1.5 --pids-limit 128 --ulimit memlock=1073741824:1073741824 --ulimit core=0:0 --env-file /etc/nylzo/service.env \
+    --memory 1g --cpus 1.5 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 --env-file /etc/nylzo/service.env \
     --volume "$temporary/data:/home/nonroot:Z" \
     --volume "$temporary/pepper:/run/nylzo-pepper:ro,Z" "$image@$digest" serve >/dev/null
   local ready=false

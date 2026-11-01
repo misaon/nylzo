@@ -90,7 +90,7 @@ test("server user data stays small, carries no secret, and installs only the sig
 test("the host bundle isolates the pepper, the probe and the deployment credentials", async () => {
   const sources = await hostSources();
   assert.match(sources.get("application/run")!, /\/run\/nylzo-pepper:ro,Z/u);
-  assert.match(sources.get("application/run")!, /--ulimit memlock=1073741824:1073741824/u);
+  assert.match(sources.get("application/run")!, /--ulimit memlock=-1:-1/u);
   assert(!sources.get("application/run")!.includes("--publish"));
   assert.match(sources.get("monitoring/host-policy")!, /SELinux enforcement is required/u);
   assert.match(sources.get("application/prepare")!, /systemd-sysctl \/etc\/sysctl\.d\/90-nylzo\.conf/u);
