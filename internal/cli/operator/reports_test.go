@@ -47,6 +47,12 @@ func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 		stored.ID != report.ID || stored.Contact != report.Contact || stored.Date != "2026-10-22" {
 		t.Fatalf("reports: %+v", opened)
 	}
+	damaged := string(sealed) + strings.Repeat("x", abuse.SealedLen) + string(sealed) + "partial"
+	if both := run(t, damaged, nil, nil, RunReports, "--key-file", keyFile); both.code != command.ExitError ||
+		strings.Count(both.stdout, report.Contact) != 2 || !strings.Contains(both.stderr, "positions 2") ||
+		!strings.Contains(both.stderr, "partial report") {
+		t.Fatalf("a damaged report must not hide the others and must be named: %+v", both)
+	}
 	otherKey := filepath.Join(t.TempDir(), "other")
 	run(t, "", nil, nil, RunReportKey, "--key-file", otherKey)
 	if wrong := run(t, string(sealed), nil, nil, RunReports, "--key-file", otherKey); wrong.code == command.ExitOK ||

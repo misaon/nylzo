@@ -28,7 +28,7 @@ const (
 	MaxFailedAttempts = 100
 	FreeAttempts      = 5
 	MaxBackoff        = time.Hour
-	SweepBatch        = 1000
+	SweepBatch        = 100
 	BlobGrace         = 15 * time.Minute
 	MinTransferRate   = 16000
 	BlobPurgeStep     = 15 * time.Minute
@@ -38,6 +38,10 @@ const (
 
 func CeilMinute(moment time.Time) time.Time {
 	return ceil(moment, time.Minute)
+}
+
+func CeilQuarterHour(moment time.Time) time.Time {
+	return ceil(moment, BlobPurgeStep)
 }
 
 func ceil(moment time.Time, step time.Duration) time.Time {
@@ -198,4 +202,5 @@ type Blobs interface {
 	DeleteBatch(ctx context.Context, refs []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)
 	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
+	Restamp(ctx context.Context, now time.Time) error
 }

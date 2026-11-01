@@ -24,7 +24,8 @@ func Run(
 	pruneErr := abuse.Prune(dataDir, now)
 	orphans, reconcileErr := reconcileOncePerDay(ctx, storage, blobs, now)
 	report.OrphanedBlobs = orphans
-	return report, errors.Join(err, pruneErr, reconcileErr)
+	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDir, now))
+	return report, errors.Join(err, pruneErr, reconcileErr, restampErr)
 }
 
 func reconcileOncePerDay(ctx context.Context, storage store.Store, blobs store.Blobs, now time.Time) (int, error) {

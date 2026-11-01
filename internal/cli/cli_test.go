@@ -32,6 +32,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/signing"
 
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -355,8 +356,13 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	salt, err := seal.ReadEraseBlock(bytes.NewReader(stored))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted := stored[erase.BlockLen:]
 	object := make([]byte, record.Message.Size)
-	seal.BlobStream(blobKey).XORKeyStream(object, stored[:record.Message.Size])
+	seal.BlobStream(blobKey, salt).XORKeyStream(object, encrypted[:record.Message.Size])
 	return object
 }
 

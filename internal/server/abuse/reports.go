@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/server/logging"
+	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
@@ -71,14 +72,32 @@ func (r *Reports) Record(now time.Time, report *Report) error {
 	return r.appendToDay(reportDate(now), sealed)
 }
 
+// appendToDay writes at the end of the whole reports and cuts a failed write off again, so one report never hides the next.
 func (r *Reports) appendToDay(day string, sealed []byte) error {
 	path := filepath.Join(r.directory, day+FileExtension)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.Write(sealed)
-	if closeErr := errors.Join(writeErr, file.Sync(), file.Close()); closeErr != nil {
+	info, err := file.Stat()
+	if err != nil {
+		return errors.Join(err, file.Close())
+	}
+	whole := info.Size() - info.Size()%SealedLen
+	if whole != info.Size() {
+		r.logger.Warn("abuse-tail-truncated", "bytes", info.Size()-whole)
+	}
+	_, writeErr := file.WriteAt(sealed, whole)
+	if writeErr == nil {
+		writeErr = file.Truncate(whole + int64(len(sealed)))
+	}
+	if writeErr == nil {
+		writeErr = file.Sync()
+	}
+	if writeErr != nil {
+		writeErr = errors.Join(writeErr, file.Truncate(whole), file.Sync())
+	}
+	if closeErr := errors.Join(writeErr, file.Close()); closeErr != nil {
 		return closeErr
 	}
 	start, err := time.Parse(time.DateOnly, day)
@@ -110,6 +129,34 @@ func RefuseLegacyReports(dataDir string) error {
 		}
 	}
 	return nil
+}
+
+// Restamp sets the times of the day files and their directory again, so no ctime shows when a report arrived.
+func Restamp(dataDir string, now time.Time) error {
+	directory := Directory(dataDir)
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, entry := range entries {
+		day, ok := reportDay(entry.Name())
+		if !ok {
+			continue
+		}
+		start, parseErr := time.Parse(time.DateOnly, day)
+		if parseErr != nil {
+			continue
+		}
+		if chtimesErr := os.Chtimes(filepath.Join(directory, entry.Name()), start, start); !errors.Is(chtimesErr, fs.ErrNotExist) {
+			errs = append(errs, chtimesErr)
+		}
+	}
+	quarter := now.Truncate(store.BlobPurgeStep)
+	return errors.Join(append(errs, os.Chtimes(directory, quarter, quarter))...)
 }
 
 // Prune deletes the day files older than the retention.

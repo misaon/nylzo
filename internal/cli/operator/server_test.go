@@ -244,7 +244,7 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	if err = database.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("sweep-once changed the version of a database it refused: version %d %v", version, err)
 	}
-	if _, err = database.Exec(`PRAGMA user_version = 6`); err != nil {
+	if _, err = database.Exec(`PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}
 	if result = run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce); result.code != 1 ||

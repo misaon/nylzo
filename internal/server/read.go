@@ -120,14 +120,16 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer blob.Close()
+	defer blob.content.Close()
+	defer clear(blob.salt[:])
 	lease := core.NewSecret()
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
 	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
 		Clock:        time.Now,
 		VerifierSent: verifierSent,
 		VerifyMAC: func(pepperID byte, stored []byte) bool {
-			macOK := s.ring.Verify(pepper.Verifier, verifier.PublicKey[:], stored, pepperID)
+			input := verifierInput(blob.salt, verifier.PublicKey[:])
+			macOK := s.ring.Verify(pepper.Verifier, input, stored, pepperID)
 			return macOK && verifierSigned
 		},
 		LeaseMAC:      leaseTag.MAC[:],
@@ -140,7 +142,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if result.Message.OpensRemaining == 0 {
 		s.releaseAtLeaseEnd(&granted.record, result.Lease.ExpiresAt)
 	}
-	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob)
+	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob.content)
 }
 
 func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
@@ -211,8 +213,9 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer blob.Close()
-	s.serveBlob(w, r, leased.record.Message, "", blob)
+	defer blob.content.Close()
+	clear(blob.salt[:])
+	s.serveBlob(w, r, leased.record.Message, "", blob.content)
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
@@ -288,35 +291,61 @@ type decryptedBlob struct {
 	io.Closer
 }
 
+type openedBlob struct {
+	content io.ReadCloser
+	salt    seal.EraseSalt
+}
+
 // openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
-func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (io.ReadCloser, bool) {
+func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (openedBlob, bool) {
 	key, err := record.BlobKey()
+	defer clear(key[:])
 	if errors.Is(err, store.ErrBlobMissing) {
 		writeGone(w, string(record.State(time.Now())))
-		return nil, false
+		return openedBlob{}, false
 	}
 	var file io.ReadCloser
-	var size int64
+	var salt seal.EraseSalt
 	if err == nil {
-		file, size, err = s.blobs.Open(r.Context(), record.Row.BlobRef)
+		file, salt, err = s.openStoredBlob(r.Context(), record)
 	}
 	if errors.Is(err, store.ErrBlobMissing) {
 		var state store.State
 		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
 			writeGone(w, string(state))
-			return nil, false
+			return openedBlob{}, false
 		}
-	}
-	if err == nil && size != seal.PaddedSize(record.Message.Size) {
-		file.Close()
-		err = errBlobSize
 	}
 	if err != nil {
 		s.writeInternal(w, r, err)
-		return nil, false
+		return openedBlob{}, false
 	}
-	plain := cipher.StreamReader{S: seal.BlobStream(key), R: file}
-	return decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}, true
+	plain := cipher.StreamReader{S: seal.BlobStream(key, salt), R: file}
+	content := decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}
+	return openedBlob{content: content, salt: salt}, true
+}
+
+// openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
+func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadCloser, seal.EraseSalt, error) {
+	file, size, err := s.blobs.Open(ctx, record.Row.BlobRef)
+	if err != nil {
+		return nil, seal.EraseSalt{}, err
+	}
+	if size != seal.StoredBlobSize(record.Message.Size) {
+		file.Close()
+		return nil, seal.EraseSalt{}, errBlobSize
+	}
+	salt, err := seal.ReadEraseBlock(file)
+	switch {
+	case errors.Is(err, seal.ErrErased):
+		file.Close()
+		return nil, salt, store.ErrBlobMissing
+	case err != nil:
+		file.Close()
+		return nil, salt, err
+	default:
+		return file, salt, nil
+	}
 }
 
 // serveBlob gives the response as long as a lease, so a recipient on a 128 kbit/s link receives the largest object.

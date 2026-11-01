@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"encoding/hex"
 	"io/fs"
 	"maps"
@@ -86,6 +87,47 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 	}
 	message.object = object
 	return message
+}
+
+// TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow covers A4-1: the file is kept open to read its own blocks.
+func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	for _, ending := range []string{"burn", "ack"} {
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "ending sentinel "+ending)
+		harness.mustCreate(message)
+		older, err := harness.store.Load(t.Context(), seal.LocatorOf(message.id[:]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := os.Open(filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(older.BlobRef))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer stored.Close()
+		switch ending {
+		case "burn":
+			if response, _ := harness.post(message, "burn", message.readToken); response.StatusCode != http.StatusNoContent {
+				t.Fatalf("burn: %d", response.StatusCode)
+			}
+		default:
+			claimed, _ := harness.claim(message, "", message.address)
+			if response := harness.ack(message, claimed.Header.Get("X-Nylzo-Lease")); response.StatusCode != http.StatusNoContent {
+				t.Fatalf("ack: %d", response.StatusCode)
+			}
+		}
+		readKey := signing.PublicKey(&message.link.R)
+		record, err := openRow(&older, seal.Read, readKey[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = record.BlobKey(); err != nil {
+			t.Fatalf("%s: the older row must still give the blob key, as a remnant on the disk would: %v", ending, err)
+		}
+		if _, err = seal.ReadEraseBlock(stored); !errors.Is(err, seal.ErrErased) {
+			t.Fatalf("%s: the erase block survived in the blob's own blocks, so the link opens it: %v", ending, err)
+		}
+	}
 }
 
 func TestStolenServerRevealsNothing(t *testing.T) {
@@ -322,7 +364,7 @@ func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
 		`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
 	); !slices.Equal(
 		tables,
-		[]string{"messages", "rate_counters"},
+		[]string{"messages", "rate_counters", "wal_scrub"},
 	) {
 		t.Fatalf("the database keeps more tables than the spec lists: %v", tables)
 	}
@@ -354,6 +396,11 @@ func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
 			spent,
 			nonces,
 		)
+	}
+	if filled := count(
+		`SELECT COUNT(*) FROM wal_scrub WHERE generation NOT IN (0, 1) OR filler != zeroblob(length(filler))`,
+	); filled != 0 {
+		t.Fatalf("wal_scrub holds %d rows with something other than zeros", filled)
 	}
 	for _, key := range column[string](t, database, `SELECT key FROM rate_counters`) {
 		if !slices.ContainsFunc(

@@ -1,11 +1,13 @@
 package abuse_test
 
 import (
+	"bytes"
 	"crypto/hpke"
 	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +94,46 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 		if statErr != nil || !info.ModTime().Equal(dayStart) || info.Mode().Perm()&0o077 != 0 {
 			t.Fatalf("%s must be private and carry the start of the day: %v %v", path, info, statErr)
 		}
+	}
+}
+
+// TestADamagedReportHidesNoOtherReport covers A4-6 and A2: a partial write or a foreign chunk costs only itself.
+func TestADamagedReportHidesNoOtherReport(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	reports := newReports(dataDir)
+	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+	appendRaw := func(data []byte) {
+		file, err := os.OpenFile(dayFile(dataDir, now), os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = file.Write(data); err != nil {
+			t.Fatal(err)
+		}
+		file.Close()
+	}
+	ids := []string{core.NewID().String(), core.NewID().String(), core.NewID().String()}
+	if err := reports.Record(now, spam(ids[0])); err != nil {
+		t.Fatal(err)
+	}
+	appendRaw(make([]byte, 1000))
+	if err := reports.Record(now, spam(ids[1])); err != nil {
+		t.Fatal(err)
+	}
+	appendRaw(bytes.Repeat([]byte{7}, abuse.SealedLen))
+	if err := reports.Record(now, spam(ids[2])); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(dayFile(dataDir, now))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := abuse.Open(operatorKey, append(data, 1, 2, 3))
+	damaged, isDamaged := errors.AsType[*abuse.DamagedError](err)
+	if len(opened) != 3 || opened[0].ID != ids[0] || opened[1].ID != ids[1] || opened[2].ID != ids[2] ||
+		!isDamaged || !slices.Equal(damaged.Unreadable, []int{3}) || damaged.TailBytes != 3 {
+		t.Fatalf("every whole report must open and the damage must be named: %+v %v", opened, err)
 	}
 }
 

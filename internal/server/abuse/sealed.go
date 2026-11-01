@@ -5,7 +5,10 @@ import (
 	"crypto/hpke"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -22,7 +25,8 @@ const (
 
 var (
 	ErrReportKey = errors.New("abuse: the report key is not a MLKEM768-X25519 key in base64url")
-	ErrSealed    = errors.New("abuse: the sealed reports are not whole reports")
+	ErrSealed     = errors.New("abuse: the sealed reports are not whole reports")
+	ErrUnreadable = errors.New("abuse: a sealed report does not open with this key")
 	errTooLong   = errors.New("abuse: the report does not fit the sealed length")
 )
 
@@ -77,24 +81,66 @@ func sealStored(key hpke.PublicKey, stored *Stored) ([]byte, error) {
 	return sealed, nil
 }
 
-// Open reads reports that lie one after another, as the server appends them to a day file.
-func Open(key hpke.PrivateKey, sealed []byte) ([]Stored, error) {
-	if len(sealed)%SealedLen != 0 {
-		return nil, ErrSealed
-	}
-	reports := make([]Stored, 0, len(sealed)/SealedLen)
-	for chunk := range slices.Chunk(sealed, SealedLen) {
-		plain, err := hpke.Open(key, hpke.HKDFSHA256(), hpke.AES256GCM(), []byte(info), chunk)
-		if err != nil {
-			return nil, err
+// DamagedError names the reports that did not open and a partial report at the end, after Open read all others.
+type DamagedError struct {
+	Unreadable []int
+	TailBytes  int
+}
+
+func (e *DamagedError) Error() string {
+	text := "abuse: "
+	if len(e.Unreadable) > 0 {
+		positions := make([]string, len(e.Unreadable))
+		for i, position := range e.Unreadable {
+			positions[i] = strconv.Itoa(position)
 		}
-		var stored Stored
-		if decodeErr := json.Unmarshal(bytes.TrimRight(plain, " \n"), &stored); decodeErr != nil {
-			return nil, decodeErr
+		text += fmt.Sprintf("the sealed reports at positions %s do not open with this key", strings.Join(positions, ", "))
+	}
+	if e.TailBytes > 0 {
+		if len(e.Unreadable) > 0 {
+			text += "; "
+		}
+		text += fmt.Sprintf("the last %d bytes are a partial report", e.TailBytes)
+	}
+	return text
+}
+
+func (e *DamagedError) Unwrap() error {
+	if e.TailBytes > 0 {
+		return ErrSealed
+	}
+	return ErrUnreadable
+}
+
+// Open reads reports that lie one after another, as the server appends them, and skips any that do not open.
+func Open(key hpke.PrivateKey, sealed []byte) ([]Stored, error) {
+	damaged := &DamagedError{TailBytes: len(sealed) % SealedLen}
+	whole := sealed[:len(sealed)-damaged.TailBytes]
+	reports := make([]Stored, 0, len(whole)/SealedLen)
+	position := 0
+	for chunk := range slices.Chunk(whole, SealedLen) {
+		position++
+		stored, err := openOne(key, chunk)
+		if err != nil {
+			damaged.Unreadable = append(damaged.Unreadable, position)
+			continue
 		}
 		reports = append(reports, stored)
 	}
+	if len(damaged.Unreadable) > 0 || damaged.TailBytes > 0 {
+		return reports, damaged
+	}
 	return reports, nil
+}
+
+func openOne(key hpke.PrivateKey, chunk []byte) (Stored, error) {
+	plain, err := hpke.Open(key, hpke.HKDFSHA256(), hpke.AES256GCM(), []byte(info), chunk)
+	if err != nil {
+		return Stored{}, err
+	}
+	var stored Stored
+	err = json.Unmarshal(bytes.TrimRight(plain, " \n"), &stored)
+	return stored, err
 }
 
 func NewKeyPair() (hpke.PrivateKey, error) {

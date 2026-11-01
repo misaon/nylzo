@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -96,7 +97,7 @@ func (b *FaultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int6
 	if err != nil || readErr == nil {
 		return blob, size, err
 	}
-	return failingReader{ReadCloser: blob, err: readErr}, size, nil
+	return &failingReader{ReadCloser: blob, err: readErr}, size, nil
 }
 
 func (b *FaultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, size int64) error {
@@ -150,14 +151,21 @@ func (b *FaultyBlobs) deleteFailure(ref string) error {
 	return fault.err
 }
 
+// failingReader passes the erase block and fails inside the encrypted object, as a disk fault during a stream would.
 type failingReader struct {
 	io.ReadCloser
 
-	err error
+	err    error
+	passed int64
 }
 
-func (f failingReader) Read([]byte) (int, error) {
-	return 0, f.err
+func (f *failingReader) Read(buffer []byte) (int, error) {
+	if f.passed >= erase.BlockLen {
+		return 0, f.err
+	}
+	read, err := f.ReadCloser.Read(buffer[:min(int64(len(buffer)), erase.BlockLen-f.passed)])
+	f.passed += int64(read)
+	return read, err
 }
 
 type batchRecorder struct {

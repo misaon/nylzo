@@ -27,9 +27,14 @@ CREATE TABLE IF NOT EXISTS rate_counters (
 	purge_at INTEGER NOT NULL,
 	PRIMARY KEY (key, window_start)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS wal_scrub (
+	slot INTEGER PRIMARY KEY,
+	generation INTEGER NOT NULL,
+	filler BLOB NOT NULL
+);
 `
 
-const schemaVersion = 5
+const schemaVersion = 6
 
 var (
 	ErrNewerSchema = errors.New("sqlite: the database was written by a newer nylzo")

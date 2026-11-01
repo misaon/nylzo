@@ -4,12 +4,14 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	sqldriver "database/sql/driver"
 	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	driver "modernc.org/sqlite"
@@ -27,10 +29,17 @@ const (
 	busyTimeoutMilliseconds = 5000
 )
 
+var errNoFileControl = errors.New("sqlite: the driver cannot keep the log file, so it would free its blocks")
+
 type Store struct {
-	writer     *sql.DB
-	reader     *sql.DB
-	statements *statements
+	path        string
+	pageSize    int
+	writer      *sql.DB
+	reader      *sql.DB
+	statements  *statements
+	scrubs      chan struct{}
+	stopScrubs  context.CancelFunc
+	scrubbersUp sync.WaitGroup
 }
 
 var _ store.Store = (*Store)(nil)
@@ -43,8 +52,15 @@ func OpenCurrent(ctx context.Context, path string) (*Store, error) {
 	return openWith(ctx, path, requireCurrent)
 }
 
+// Close scrubs the log once more, so a process that ended messages leaves no older row version in it.
 func (s *Store) Close() error {
-	return errors.Join(s.statements.close(), s.reader.Close(), s.writer.Close())
+	s.stopScrubs()
+	s.scrubbersUp.Wait()
+	scrubErr := s.Checkpoint(context.Background())
+	if errors.Is(scrubErr, ErrCheckpointBusy) {
+		scrubErr = nil
+	}
+	return errors.Join(scrubErr, s.statements.close(), s.reader.Close(), s.writer.Close())
 }
 
 func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) error {
@@ -133,7 +149,7 @@ func busy(err error) bool {
 }
 
 func connect(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {
-	writer, err := sql.Open("sqlite", dataSourceName(path, true))
+	writer, err := openPersistent(path, true)
 	if err != nil {
 		return nil, err
 	}
@@ -142,24 +158,57 @@ func connect(ctx context.Context, path string, prepareSchema func(context.Contex
 		writer.Close()
 		return nil, fmt.Errorf("sqlite: schema: %w", err)
 	}
-	reader, err := sql.Open("sqlite", dataSourceName(path, false))
+	reader, err := openPersistent(path, false)
 	if err != nil {
 		writer.Close()
 		return nil, err
 	}
 	reader.SetMaxOpenConns(readerConnections)
 	reader.SetMaxIdleConns(readerConnections)
-	err = reader.PingContext(ctx)
-	var prepared *statements
+	opened := &Store{path: path, writer: writer, reader: reader, scrubs: make(chan struct{}, 1)}
+	err = reader.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&opened.pageSize)
 	if err == nil {
-		prepared, err = prepare(ctx, writer, reader)
+		opened.statements, err = prepare(ctx, writer, reader)
 	}
 	if err != nil {
 		reader.Close()
 		writer.Close()
 		return nil, err
 	}
-	return &Store{writer: writer, reader: reader, statements: prepared}, nil
+	scrubContext, stop := context.WithCancel(context.WithoutCancel(ctx))
+	opened.stopScrubs = stop
+	opened.scrubbersUp.Go(func() { opened.scrubWhenAsked(scrubContext) })
+	return opened, nil
+}
+
+// openPersistent keeps the log file when a connection closes, so its blocks are overwritten and never freed.
+func openPersistent(path string, write bool) (*sql.DB, error) {
+	connector, err := driver.NewConnector(dataSourceName(path, write))
+	if err != nil {
+		return nil, err
+	}
+	return sql.OpenDB(persistentLog{Connector: connector}), nil
+}
+
+type persistentLog struct {
+	sqldriver.Connector
+}
+
+func (p persistentLog) Connect(ctx context.Context) (sqldriver.Conn, error) {
+	connection, err := p.Connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	control, ok := connection.(driver.FileControl)
+	if !ok {
+		connection.Close()
+		return nil, errNoFileControl
+	}
+	if _, err = control.FileControlPersistWAL("main", 1); err != nil {
+		connection.Close()
+		return nil, err
+	}
+	return connection, nil
 }
 
 func dataSourceName(path string, write bool) string {
@@ -172,7 +221,7 @@ func dataSourceName(path string, write bool) string {
 	query.Add("_pragma", "foreign_keys(1)")
 	query.Add("_pragma", "synchronous(FULL)")
 	query.Add("_pragma", "secure_delete(1)")
-	query.Add("_pragma", "journal_size_limit(0)")
+	query.Add("_pragma", "journal_size_limit(-1)")
 	query.Add("_pragma", "wal_autocheckpoint(1)")
 	query.Add("_pragma", fmt.Sprintf("cache_size(-%d)", maxCacheKiB))
 	query.Add("_pragma", "temp_store(2)")

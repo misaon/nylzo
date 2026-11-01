@@ -173,7 +173,7 @@ func (f *fixture) reconcile() {
 	failing := NewFaultyBlobs(f.blobs)
 	failing.FailDelete(failingA, ErrInjected)
 	failing.FailDelete(failingB, ErrInjected)
-	report, err = store.Reconcile(ctx, f.store, failing, time.Now().Add(store.BlobGrace+time.Minute))
+	report, err = store.Reconcile(ctx, f.store, failing, time.Now().Add(store.BlobGrace+store.BlobPurgeStep))
 	if !errors.Is(err, ErrInjected) || !report.Listed || report.Orphans != 2 || f.blobExists(fresh) ||
 		f.blobExists(orphan) {
 		t.Fatalf("a failing delete must not stop the others: %+v %v", report, err)

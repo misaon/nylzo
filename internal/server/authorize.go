@@ -100,6 +100,11 @@ func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Reco
 	return record, errors.Join(unwrapErr, openErr)
 }
 
+// verifierInput binds the verifier mac to the erase salt, so once the blob is erased no copy of a record tests a passphrase.
+func verifierInput(salt seal.EraseSalt, verifierKey []byte) []byte {
+	return append(salt[:len(salt):len(salt)], verifierKey...)
+}
+
 func signedPurpose(purpose seal.Purpose) string {
 	if purpose == seal.Manage {
 		return signing.PurposeManage

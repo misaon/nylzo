@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -54,7 +55,7 @@ func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64
 		err = os.Link(temporary, final)
 	}
 	if temporary != "" {
-		os.Remove(temporary)
+		dropTemporary(temporary, err == nil)
 	}
 	if errors.Is(err, os.ErrExist) {
 		return store.ErrConflict
@@ -63,10 +64,19 @@ func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64
 		return err
 	}
 	if err = b.syncDirectory(); err != nil {
-		os.Remove(final)
+		erase.Shred(final, erase.BlockLen)
 		return err
 	}
 	return nil
+}
+
+// dropTemporary unlinks the temporary name of a published blob, whose final name keeps the data, and shreds any other.
+func dropTemporary(temporary string, published bool) {
+	if published {
+		os.Remove(temporary)
+		return
+	}
+	erase.Shred(temporary, erase.BlockLen)
 }
 
 func (b *Blobs) Open(_ context.Context, ref string) (io.ReadCloser, int64, error) {
@@ -200,10 +210,47 @@ func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
 		err = closeErr
 	}
 	if err == nil {
-		minute := time.Now().Truncate(time.Minute)
-		err = os.Chtimes(file.Name(), minute, minute)
+		quarter := store.CeilQuarterHour(time.Now())
+		err = os.Chtimes(file.Name(), quarter, quarter)
 	}
 	return file.Name(), err
+}
+
+// Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload.
+func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
+	var errs []error
+	for _, directory := range []string{b.root, filepath.Join(b.root, temporaryDirectory)} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
+			}
+		}
+	}
+	quarter := now.Truncate(store.BlobPurgeStep)
+	for _, directory := range []string{filepath.Join(b.root, temporaryDirectory), b.root} {
+		errs = append(errs, os.Chtimes(directory, quarter, quarter))
+	}
+	return errors.Join(errs...)
+}
+
+func restampFile(path string, entry os.DirEntry) error {
+	info, err := entry.Info()
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	modified := info.ModTime()
+	if err = os.Chtimes(path, modified, modified); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func (b *Blobs) syncDirectory() error {
@@ -215,17 +262,16 @@ func (b *Blobs) syncDirectory() error {
 	return directory.Sync()
 }
 
+// remove overwrites the erase block in place before it unlinks the file, so no freed block holds its salt.
 func (b *Blobs) remove(ref string) error {
 	path, err := b.path(ref)
 	if err != nil {
 		return err
 	}
-	if err = os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
+	return erase.Shred(path, erase.BlockLen)
 }
 
+// removeStale only unlinks a temporary name that still shares its file with a published blob after a crash.
 func removeStale(directory string, entry os.DirEntry, olderThan time.Time) (bool, error) {
 	info, err := entry.Info()
 	if errors.Is(err, os.ErrNotExist) {
@@ -237,7 +283,12 @@ func removeStale(directory string, entry os.DirEntry, olderThan time.Time) (bool
 	if info.ModTime().After(olderThan) {
 		return false, nil
 	}
-	err = os.Remove(filepath.Join(directory, entry.Name()))
+	path := filepath.Join(directory, entry.Name())
+	if linkCount(info) > 1 {
+		err = os.Remove(path)
+	} else {
+		err = erase.Shred(path, erase.BlockLen)
+	}
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}

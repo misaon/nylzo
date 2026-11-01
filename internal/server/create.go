@@ -97,6 +97,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	blob := newStoredBlob()
+	defer blob.clear()
 	envelopeHeader, ok := s.receiveBlob(w, r, &request, &blob)
 	if !ok {
 		return
@@ -306,19 +307,26 @@ func (t *trackingReader) Read(buffer []byte) (int, error) {
 }
 
 type storedBlob struct {
-	ref string
-	key seal.Key
+	ref  string
+	key  seal.Key
+	salt seal.EraseSalt
 }
 
 func newStoredBlob() storedBlob {
 	ref := core.NewID()
-	return storedBlob{ref: core.Encode(ref[:]), key: seal.NewKey()}
+	return storedBlob{ref: core.Encode(ref[:]), key: seal.NewKey(), salt: seal.NewEraseSalt()}
 }
 
-// sealed encrypts the object with the blob key and pads it with Padmé, so the stored length shows only a size class.
-func (b *storedBlob) sealed(object io.Reader, size, padded int64) io.Reader {
-	plain := io.MultiReader(object, io.LimitReader(zeros{}, padded-size))
-	return cipher.StreamReader{S: seal.BlobStream(b.key), R: plain}
+// sealed puts the erase block first and pads the object with Padmé, so the stored length shows only a size class.
+func (b *storedBlob) sealed(object io.Reader, size int64) io.Reader {
+	plain := io.MultiReader(object, io.LimitReader(zeros{}, seal.PaddedSize(size)-size))
+	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key, b.salt), R: plain}
+	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), encrypted)
+}
+
+func (b *storedBlob) clear() {
+	clear(b.key[:])
+	clear(b.salt[:])
 }
 
 type zeros struct{}
@@ -346,12 +354,11 @@ func (s *Server) receiveBlob(
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return envelope.Header{}, false
 	}
-	padded := seal.PaddedSize(size)
 	err = s.blobs.Put(
 		r.Context(),
 		blob.ref,
-		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size, padded),
-		padded,
+		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size),
+		seal.StoredBlobSize(size),
 	)
 	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
 	if err == nil {
@@ -383,7 +390,7 @@ func (s *Server) storeMessage(
 	blob *storedBlob,
 	now time.Time,
 ) bool {
-	message := s.newMessage(request, envelopeHeader, time.Now())
+	message := s.newMessage(request, envelopeHeader, time.Now(), blob.salt)
 	locator := seal.LocatorOf(request.id[:])
 	record := store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
 	err := s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
@@ -407,7 +414,12 @@ func (s *Server) storeMessage(
 }
 
 // newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
-func (s *Server) newMessage(request *createRequest, envelopeHeader envelope.Header, uploaded time.Time) *store.Message {
+func (s *Server) newMessage(
+	request *createRequest,
+	envelopeHeader envelope.Header,
+	uploaded time.Time,
+	salt seal.EraseSalt,
+) *store.Message {
 	message := &store.Message{
 		Version:        envelopeHeader.Version,
 		KDF:            uint8(envelopeHeader.KDF),
@@ -420,7 +432,7 @@ func (s *Server) newMessage(request *createRequest, envelopeHeader envelope.Head
 		Size:           request.header.Size,
 	}
 	if request.verifierKey != nil {
-		verifier := s.ring.MAC(pepper.Verifier, request.verifierKey)
+		verifier := s.ring.MAC(pepper.Verifier, verifierInput(salt, request.verifierKey))
 		message.VerifierMAC = verifier.MAC[:]
 		message.VerifierPepperID = verifier.PepperID
 	}

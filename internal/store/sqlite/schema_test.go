@@ -59,8 +59,8 @@ func TestOpenRefusesAnotherSchemaVersion(t *testing.T) {
 		statements string
 		want       error
 	}{
-		"a newer version":                    {`PRAGMA user_version = 6;`, sqlite.ErrNewerSchema},
-		"a pre-release version":              {preRelease + `PRAGMA user_version = 4;`, sqlite.ErrOlderSchema},
+		"a newer version":                    {`PRAGMA user_version = 7;`, sqlite.ErrNewerSchema},
+		"a pre-release version":              {preRelease + `PRAGMA user_version = 5;`, sqlite.ErrOlderSchema},
 		"pre-release tables without version": {preRelease, sqlite.ErrOlderSchema},
 	} {
 		path := rawDatabase(t, testCase.statements)
