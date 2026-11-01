@@ -102,7 +102,7 @@ Any release signed by the release workflow reaches production within one timer p
 
 ### One-time step for servers provisioned before the host bundle
 
-A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. Its updater never installs a bundle. Over SSH, with the tag of a release that ships `nylzo-host_*.tar`:
+A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe lacks the memory-lock limit that Nylzo now needs, so they refuse every new release and the server stays on its current version. Install the bundle once by hand, with the tag of the first release that ships `nylzo-host_*.tar`, and keep the Hetzner console open:
 
 ```sh
 tag=vX.Y.Z
@@ -116,13 +116,13 @@ grep " nylzo-host_${tag#v}.tar\$" checksums.txt | sha256sum --check --strict
 /opt/nylzo/bin/gh attestation verify "nylzo-host_${tag#v}.tar" --repo misaon/nylzo \
   --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$tag" --deny-self-hosted-runners
 printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=203.0.113.7/32\n' | sudo tee /etc/nylzo/host.env
-sudo mkdir -p "/opt/nylzo/host/release-$tag" /etc/systemd/coredump.conf.d
+sudo mkdir -p "/opt/nylzo/host/release-$tag"
 sudo tar --extract --file "nylzo-host_${tag#v}.tar" --directory "/opt/nylzo/host/release-$tag" --no-same-owner
 sudo bash "/opt/nylzo/host/release-$tag/update/activate" "/opt/nylzo/host/release-$tag"
 sudo /opt/nylzo/runtime/host-policy && sudo systemctl is-active nylzo caddy nylzo-firewall
 ```
 
-Set `host.env` to the real values first: `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. Keep the Hetzner console open while you run it. Then replace the old Ed25519 key in `~core/.ssh/authorized_keys` with the hardware key, confirm a new login, and close the old session.
+Put the real values into `host.env`: `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. The next update check, within ten minutes, installs the release itself. Then replace the old Ed25519 key in `~core/.ssh/authorized_keys` with the hardware key, confirm a new login, and close the old session.
 
 ## Encrypted data volume
 

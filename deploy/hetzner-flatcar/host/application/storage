@@ -37,10 +37,14 @@ if [[ ! -e "/dev/mapper/$name" ]]; then
     fallocate --length "$size" "$image.new"
     loop=$(losetup --find --show "$image.new")
     key=$(mktemp /run/nylzo-storage-key.XXXXXXXX)
-    trap 'rm -f "$key"' EXIT
+    generator=$(mktemp -d /run/nylzo-storage-bin.XXXXXXXX)
+    trap 'rm -rf "$key" "$generator"' EXIT
     head -c 64 /dev/urandom > "$key"
     cryptsetup luksFormat --batch-mode --type luks2 --cipher aes-xts-plain64 --key-size 512 --pbkdf argon2id --key-file "$key" "$loop"
-    clevis luks bind -y -k "$key" -d "$loop" sss "$(cat "$tang")"
+    # clevis takes the new keyslot passphrase from pwmake, which fails on Flatcar without a cracklib dictionary.
+    printf '#!/bin/sh\nexec openssl rand -hex 64\n' > "$generator/pwmake"
+    chmod 0700 "$generator/pwmake"
+    PATH="$generator:$PATH" clevis luks bind -y -k "$key" -d "$loop" sss "$(cat "$tang")"
     cryptsetup luksRemoveKey --batch-mode "$loop" "$key"
     rm -f "$key"
     unlock "$loop"
