@@ -385,7 +385,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 }
 
 func issueIDToken(server *Server, id core.ID) string {
-	token, _ := server.idTokens.Issue(id, shareEpochFor(60), time.Now())
+	token, _ := server.idTokens.Issue(id, shareEpochFor(60), server.epochs.ID(), time.Now())
 	return token
 }
 

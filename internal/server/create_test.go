@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -1424,6 +1425,36 @@ func TestShareEpochBudgetsTheWholeCreateBody(t *testing.T) {
 				message.epoch,
 				epoch.Hour(boundary),
 			)
+		}
+	})
+}
+
+// A new seed between the instance answer and the create would store a message whose share nobody can make, so
+// the create names the ratchet through its id token and is refused before anything is stored.
+func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		stale := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued before the new seed")
+		if err := os.Remove(filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)); err != nil {
+			t.Fatal(err)
+		}
+		harness.reopen(&harness.settings)
+		if response, body := harness.create(stale); response.StatusCode != http.StatusConflict ||
+			decodeJSON(t, body)["error"] != "share_lost" {
+			t.Fatalf("a create whose share came from the earlier seed: %d %s", response.StatusCode, body)
+		}
+		if response, _ := harness.metadata(stale); response.StatusCode != http.StatusNotFound {
+			t.Fatalf("the refused create stored a message: %d", response.StatusCode)
+		}
+		fresh := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued after the new seed")
+		harness.mustCreate(fresh)
+		response, object := harness.claim(fresh, fresh.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("a message of the new seed: %d", response.StatusCode)
+		}
+		if _, err := harness.openObject(fresh, object, response.Header.Get(policyHeaderName)); err != nil {
+			t.Fatal(err)
 		}
 	})
 }

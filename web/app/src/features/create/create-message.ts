@@ -122,7 +122,7 @@ interface SealedMessage {
 
 const MAX_ATTEMPTS = 3;
 const POW_ROUNDS = 2;
-const RETRY_WITH_NEW_ID = ['id_token', 'conflict', 'pow'] as const;
+const RETRY_WITH_NEW_ID = ['id_token', 'conflict', 'share_lost', 'pow'] as const;
 export const WEAK_BELOW_CHARACTERS = 16;
 export const WEAK_BELOW_WORDS = 4;
 export const POW_BUDGET_MS = 110_000;

@@ -221,7 +221,7 @@ func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 }
 
 func (h *testHarness) idToken(id core.ID, shareEpoch uint32) string {
-	token, _ := h.server.idTokens.Issue(id, shareEpoch, time.Now())
+	token, _ := h.server.idTokens.Issue(id, shareEpoch, h.server.epochs.ID(), time.Now())
 	return token
 }
 

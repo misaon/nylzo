@@ -1016,9 +1016,9 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages" {
 			ids.Store(r.Header.Get("X-Nylzo-Create"), true)
-			if creates.Add(1) == 1 {
+			if refusal, refused := map[int32]string{1: "conflict", 2: "share_lost"}[creates.Add(1)]; refused {
 				w.WriteHeader(http.StatusConflict)
-				w.Write([]byte(`{"error":"conflict"}`))
+				w.Write([]byte(`{"error":"` + refusal + `"}`))
 				return
 			}
 		}
@@ -1042,12 +1042,17 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 	}))
 	t.Cleanup(proxy.Close)
 	result := runWith(t, "second try", nil, nil, "create", "--server", proxy.URL)
-	if result.code != command.ExitOK || creates.Load() != 2 {
-		t.Fatalf("create after a conflict: %d %q, %d creates", result.code, result.stderr, creates.Load())
+	if result.code != command.ExitOK || creates.Load() != 3 {
+		t.Fatalf(
+			"create after a conflict and a lost share: %d %q, %d creates",
+			result.code,
+			result.stderr,
+			creates.Load(),
+		)
 	}
 	distinct := 0
 	ids.Range(func(any, any) bool { distinct++; return true })
-	if distinct != 2 {
+	if distinct != 3 {
 		t.Fatal("the retry reused the refused create header")
 	}
 	link, _, _ := strings.Cut(result.stdout, "\n")

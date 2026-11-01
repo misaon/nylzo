@@ -193,6 +193,7 @@ var (
 	errContact        = apiError{Error: "contact"}
 	errNotFound       = apiError{Error: "not_found"}
 	errConflict       = apiError{Error: "conflict"}
+	errShareLost      = apiError{Error: "share_lost"}
 	errLengthRequired = apiError{Error: "length_required"}
 	errTooLarge       = apiError{Error: "too_large"}
 	errUnavailable    = apiError{Error: "unavailable"}

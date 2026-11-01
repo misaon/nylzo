@@ -162,17 +162,31 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 	now := time.Now()
 	id := core.NewID()
 	const epoch = 493_000
-	ahead, _ := tokens.Issue(id, epoch, now.Add(5*time.Second))
-	if !tokens.Valid(id, epoch, ahead, now) {
-		t.Fatal("a token from an instance 5 s ahead must pass")
+	ratchet := [RatchetIDLen]byte{7}
+	ahead, _ := tokens.Issue(id, epoch, ratchet, now.Add(5*time.Second))
+	if named, ok := tokens.Valid(id, epoch, ahead, now); !ok || named != ratchet {
+		t.Fatal("a token from an instance 5 s ahead must pass and name its ratchet")
 	}
-	future, _ := tokens.Issue(id, epoch, now.Add(time.Minute))
-	expired, _ := tokens.Issue(id, epoch, now.Add(-idTokenTTL-time.Second))
-	if tokens.Valid(id, epoch, future, now) || tokens.Valid(id, epoch, expired, now) ||
-		tokens.Valid(core.NewID(), epoch, ahead, now) {
+	future, _ := tokens.Issue(id, epoch, ratchet, now.Add(time.Minute))
+	expired, _ := tokens.Issue(id, epoch, ratchet, now.Add(-idTokenTTL-time.Second))
+	if valid(tokens, id, epoch, future, now) || valid(tokens, id, epoch, expired, now) ||
+		valid(tokens, core.NewID(), epoch, ahead, now) {
 		t.Fatal("a token outside its window or for another id was accepted")
 	}
-	if tokens.Valid(id, epoch+1, ahead, now) {
+	if valid(tokens, id, epoch+1, ahead, now) {
 		t.Fatal("F3: a token was accepted for another epoch than its share")
 	}
+	raw, err := core.DecodeExact(ahead, idTokenLength)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw[8] ^= 1
+	if valid(tokens, id, epoch, core.Encode(raw), now) {
+		t.Fatal("a token whose ratchet was changed passed")
+	}
+}
+
+func valid(tokens IDTokens, id core.ID, epoch uint32, token string, now time.Time) bool {
+	_, ok := tokens.Valid(id, epoch, token, now)
+	return ok
 }

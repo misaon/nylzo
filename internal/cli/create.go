@@ -338,7 +338,8 @@ func createMessage(
 }
 
 func retryWithNewID(err error) bool {
-	return client.IsKind(err, "id_token") || client.IsKind(err, "conflict") || client.IsKind(err, "pow")
+	return client.IsKind(err, "id_token") || client.IsKind(err, "conflict") || client.IsKind(err, "share_lost") ||
+		client.IsKind(err, "pow")
 }
 
 func createOnce(

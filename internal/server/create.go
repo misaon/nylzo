@@ -78,6 +78,7 @@ type createRequest struct {
 	ttlSeconds  uint32
 	bodyBy      time.Time
 	outdated    bool
+	ratchetID   epoch.RatchetID
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -119,13 +120,21 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequest, bool) {
 	request, ok := parseCreateHeader(r.Header.Get(createHeaderName), s.settings.Limits)
 	size := request.header.Size
+	tokenOK := false
+	if ok {
+		var ratchetID [proof.RatchetIDLen]byte
+		ratchetID, tokenOK = s.idTokens.Valid(request.id, *request.header.Epoch, request.header.IDToken, time.Now())
+		request.ratchetID = epoch.RatchetID(ratchetID)
+	}
 	switch {
 	case request.outdated:
 		rejectCreate(w, r, http.StatusBadRequest, errClientOutdated)
 	case !ok:
 		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
-	case !s.idTokens.Valid(request.id, *request.header.Epoch, request.header.IDToken, time.Now()):
+	case !tokenOK:
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
+	case request.ratchetID != s.epochs.ID():
+		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	case r.ContentLength < 0 || r.Header.Get("Content-Length") == "":
 		rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
 	case r.ContentLength != size:
@@ -417,7 +426,9 @@ func (s *Server) storeMessage(
 	message := s.newMessage(request, envelopeHeader, time.Now(), blob.salt)
 	locator := seal.LocatorOf(request.id[:])
 	err := errShareEpoch
-	if shareOutlives(message.Epoch, message.ExpiresAt) {
+	if request.ratchetID != s.epochs.ID() {
+		err = errRatchetChanged
+	} else if shareOutlives(message.Epoch, message.ExpiresAt) {
 		var record store.Record
 		secretmode.Do(func() {
 			record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
@@ -441,13 +452,18 @@ func (s *Server) storeMessage(
 		rejectCreate(w, r, http.StatusConflict, errConflict)
 	case errors.Is(err, errShareEpoch):
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
+	case errors.Is(err, errRatchetChanged):
+		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	default:
 		s.writeInternal(w, r, err)
 	}
 	return false
 }
 
-var errShareEpoch = errors.New("server: the share epoch does not cover the expiry")
+var (
+	errShareEpoch     = errors.New("server: the share epoch does not cover the expiry")
+	errRatchetChanged = errors.New("server: the share of the id came from an earlier seed")
+)
 
 // shareOutlives keeps every message inside the life of its share, and every share at most an hour past its message.
 func shareOutlives(shareEpoch uint32, expiresAt time.Time) bool {
@@ -473,7 +489,7 @@ func (s *Server) newMessage(
 		OpensRemaining: request.opensMax,
 		Size:           request.header.Size,
 		Epoch:          *request.header.Epoch,
-		RatchetID:      s.epochs.ID(),
+		RatchetID:      request.ratchetID,
 	}
 	if envelopeHeader.KDF.RequiresPassphrase() {
 		verifier := s.ring.MAC(pepper.Verifier, verifierInput(salt, request.verifierKey))
@@ -645,8 +661,9 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (instanceCrea
 	upload := max(createBodyTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
 	latestExpiry := now.Add(proof.IDTokenTTL() + upload + storeSlack + creation.ttl)
 	shareEpoch := epoch.Hour(latestExpiry)
-	token, expires := s.idTokens.Issue(id, shareEpoch, now)
-	expiryShare, err := s.epochs.Share(s.epochs.ID(), shareEpoch, seal.LocatorOf(id[:]), now)
+	ratchetID := s.epochs.ID()
+	token, expires := s.idTokens.Issue(id, shareEpoch, ratchetID, now)
+	expiryShare, err := s.epochs.Share(ratchetID, shareEpoch, seal.LocatorOf(id[:]), now)
 	if err != nil {
 		return instanceCreate{}, err
 	}

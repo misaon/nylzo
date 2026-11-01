@@ -79,8 +79,8 @@ describe('creating a message', () => {
     expect(message?.request.object).toHaveLength(65_536);
   });
 
-  it('fetches a new id when the token expired or the id is taken', async () => {
-    const api = fakeApi({ failCreate: [new ApiError(403, 'id_token'), new ApiError(409, 'conflict')] });
+  it('fetches a new id when the token expired, the id is taken or its share came from an earlier seed', async () => {
+    const api = fakeApi({ failCreate: [new ApiError(403, 'id_token'), new ApiError(409, 'share_lost')] });
     const created = await createMessage(input(), createDependencies(api));
     expect(api.calls).toEqual(['instance+id', 'create', 'instance+id', 'create', 'instance+id', 'create']);
     expect(created.link).toContain(`/r#2.0.${encodeBase64url(api.issuedIds[2] ?? new Uint8Array(16))}.`);
