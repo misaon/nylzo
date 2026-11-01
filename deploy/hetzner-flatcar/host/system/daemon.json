@@ -1,0 +1,1 @@
+{"userns-remap":"dockremap","no-new-privileges":true,"log-driver":"local","log-opts":{"max-size":"10m","max-file":"3"},"default-ulimits":{"core":{"Name":"core","Soft":0,"Hard":0}}}

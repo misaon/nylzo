@@ -1,6 +1,11 @@
 https://{$NYLZO_DOMAIN}:8443 {
     tls {
         protocols tls1.3
+        curves x25519mlkem768
+        issuer acme {
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
         client_auth {
             mode require_and_verify
             trust_pool file /etc/nylzo/monitor-client.pem

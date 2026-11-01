@@ -18,4 +18,6 @@ fi
 docker network inspect nylzo | /opt/nylzo/bin/jq -e '.[0].Driver == "bridge" and .[0].Internal == true and .[0].Options["com.docker.network.bridge.name"] == "nylzo0" and .[0].IPAM.Config[0].Subnet == "172.30.81.0/24" and .[0].IPAM.Config[0].Gateway == "172.30.81.1"' >/dev/null
 iptables --check INPUT --in-interface nylzo0 --match conntrack --ctstate NEW,INVALID --jump REJECT 2>/dev/null || \
   iptables --insert INPUT 1 --in-interface nylzo0 --match conntrack --ctstate NEW,INVALID --jump REJECT
+ip6tables --check INPUT --in-interface nylzo0 --jump REJECT 2>/dev/null || \
+  ip6tables --insert INPUT 1 --in-interface nylzo0 --jump REJECT
 test "$(docker info --format '{{json .SecurityOptions}}' | /opt/nylzo/bin/jq 'any(.[]; contains("userns"))')" = true

@@ -12,8 +12,18 @@ services=false
 disk_reserve=false
 application_updates=false
 os_updates=false
+clock=false
+certificate=false
 if timeout 20 host-policy >/dev/null 2>&1; then host_policy=true; fi
-if systemctl is-active --quiet nylzo.service caddy.service nylzo-ready.service update-engine.service nylzo-update.timer; then services=true; fi
+verified=$(cat "${NYLZO_CLOCK_STATE:-/run/nylzo-clock/verified}" 2>/dev/null || true)
+if [[ "$verified" =~ ^[0-9]{1,12}$ ]] && (( now >= 10#$verified && now - 10#$verified <= 3600 )); then clock=true; fi
+domain=$(sed -n 's/^NYLZO_DOMAIN=//p' "${NYLZO_CADDY_ENV:-/etc/nylzo/caddy.env}")
+if [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ ]]; then
+  for file in "${NYLZO_CERTIFICATES:-/var/lib/caddy/caddy/certificates}"/*/"$domain/$domain.crt"; do
+    if [[ -f "$file" ]] && openssl x509 -noout -checkend 129600 -in "$file" >/dev/null 2>&1; then certificate=true; fi
+  done
+fi
+if systemctl is-active --quiet nylzo.service caddy.service nylzo-ready.service nylzo-firewall.service update-engine.service nylzo-update.timer; then services=true; fi
 available=$(df -Pk /var/lib/nylzo | awk 'NR == 2 { print $4 }')
 if [[ "$available" =~ ^[0-9]{1,14}$ ]] && (( 10#$available >= 8 * 1024 * 1024 )); then disk_reserve=true; fi
 limit=1800
@@ -34,7 +44,7 @@ temporary=$(mktemp "$directory/.status.XXXXXXXX")
 trap 'rm -f "$temporary"' EXIT
 jq --null-input --compact-output --argjson observed "$now" \
   --argjson policy "$host_policy" --argjson services "$services" --argjson disk "$disk_reserve" \
-  --argjson application "$application_updates" --argjson os "$os_updates" \
-  '{version:1,observedAt:$observed,checks:{hostPolicy:$policy,services:$services,diskReserve:$disk,applicationUpdates:$application,osUpdates:$os}}' > "$temporary"
+  --argjson application "$application_updates" --argjson os "$os_updates" --argjson clock "$clock" --argjson certificate "$certificate" \
+  '{version:1,observedAt:$observed,checks:{hostPolicy:$policy,services:$services,diskReserve:$disk,applicationUpdates:$application,osUpdates:$os,clock:$clock,certificate:$certificate}}' > "$temporary"
 chmod 0640 "$temporary"
 mv -f "$temporary" "$directory/status.json"

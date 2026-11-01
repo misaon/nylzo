@@ -4,7 +4,7 @@ import { hostConnection, validateHostStatus } from "./monitor-host.mts";
 
 test("host monitoring rejects missing, unhealthy, stale, future, and incorrectly typed observations", () => {
   const now = Date.now();
-  const healthy = { version: 1, observedAt: Math.floor(now / 1000), checks: { hostPolicy: true, services: true, diskReserve: true, applicationUpdates: true, osUpdates: true } };
+  const healthy = { version: 1, observedAt: Math.floor(now / 1000), checks: { hostPolicy: true, services: true, diskReserve: true, applicationUpdates: true, osUpdates: true, clock: true, certificate: true } };
   validateHostStatus(healthy, now);
   for (const input of [null, {}, { ...healthy, version: 2 }, { ...healthy, observedAt: "now" }, { ...healthy, observedAt: healthy.observedAt - 361 }, { ...healthy, observedAt: healthy.observedAt + 62 }]) assert.throws(() => validateHostStatus(input, now));
   for (const component of Object.keys(healthy.checks)) {

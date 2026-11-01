@@ -8,8 +8,13 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1.5
+    pids_limit: 128
     ulimits:
-      memlock: -1
+      memlock: 536870912
+      core: 0
     environment:
       NYLZO_LISTEN: ":8080"
       NYLZO_DATA_DIR: /home/nonroot
@@ -39,6 +44,12 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    pids_limit: 256
+    ulimits:
+      core: 0
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 80
     environment:

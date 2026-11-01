@@ -1,0 +1,9 @@
+[Unit]
+Description=Check verified releases of Nylzo, Caddy and the host configuration
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=10min
+RandomizedDelaySec=1min
+Persistent=true
+[Install]
+WantedBy=timers.target

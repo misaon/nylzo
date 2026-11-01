@@ -1,17 +1,21 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { configuration } from "./configuration.mts";
-import { profile, render, toolchain } from "./render.mts";
+import { administratorKeyIsHardware, configuration } from "./configuration.mts";
+import { profile, releaseBundle, render, toolchain } from "./render.mts";
 import { privateFile } from "../security/private-file.mts";
 
 export { privateFile };
 
 export async function credential(name: string) {
-  const value = process.env[name] ?? (process.env[`${name}_FILE`] ? await privateFile(process.env[`${name}_FILE`]!) : "");
-  assert.match(value, /^[!-~]{20,512}$/u, `Set ${name} or its private ${name}_FILE; never paste it into chat`);
+  const command = process.env[`${name}_COMMAND`];
+  const value = process.env[name] ?? (command
+    ? execFileSync("/bin/sh", ["-c", command], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], timeout: 120000 }).trim()
+    : process.env[`${name}_FILE`] ? await privateFile(process.env[`${name}_FILE`]!) : "");
+  assert.match(value, /^[!-~]{20,512}$/u, `Set ${name}_COMMAND to read it from a password manager, or set ${name} or its private ${name}_FILE; never paste it into chat`);
   return value;
 }
 
@@ -27,7 +31,7 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
   return async (pathname: string, body?: object) => {
     const allowed = service === "hetzner"
       ? /^\/(?:servers\/[1-9][0-9]*(?:\/actions\/create_image)?|images\/[1-9][0-9]*)$/u
-      : /^\/zones(?:\/[a-f0-9]{32}\/dns_records)?\?name=[a-z0-9.-]+(?:&type=(?:A|AAAA|CAA))?$/u;
+      : /^\/zones(?:\/[a-f0-9]{32}\/dns_records)?\?name=[a-z0-9._-]+(?:&type=(?:A|AAAA|CAA|CNAME|MX|TXT))?$/u;
     if (!allowed.test(pathname) || pathname.includes("..")) throw new Error("Cloud API endpoint is not allowed");
     const endpoint = new URL(origin);
     const [resource, query = ""] = pathname.split("?");
@@ -43,12 +47,33 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
   };
 }
 
-export async function requireCaddyBuild(release: string, architecture: string) {
-  const response = await fetch(`https://github.com/misaon/nylzo/releases/download/${release}/checksums.txt`, { signal: AbortSignal.timeout(30000) });
+const releaseAsset = (release: string, name: string) => `https://github.com/misaon/nylzo/releases/download/${release}/${name}`;
+
+export function verifyChecksums(release: string, checksums: string, bundle: string) {
+  execFileSync("cosign", ["verify-blob", checksums, "--bundle", bundle,
+    "--certificate-identity", `https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${release}`,
+    "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com"], { stdio: ["ignore", "ignore", "inherit"], timeout: 120000 });
+}
+
+export async function releaseEvidence(release: string, architecture: string, verify = verifyChecksums) {
+  const response = await fetch(releaseAsset(release, "checksums.txt"), { signal: AbortSignal.timeout(30000) });
   assert(response.ok, `Cannot read the checksums of ${release}; set initialRelease to a published Nylzo release`);
-  const archive = `nylzo-caddy_${release.slice(1)}_linux_${architecture}.tar.gz`;
-  const listed = (await response.text()).split("\n").filter(line => line.split(/\s+/u)[1] === archive);
-  assert.equal(listed.length, 1, `Release ${release} ships no Caddy build; set initialRelease to a release that lists ${archive}`);
+  const checksums = await response.text();
+  const listed = (name: string) => checksums.split("\n").map(line => line.split(/\s+/u)).filter(([digest, file]) => file === name && /^[a-f0-9]{64}$/u.test(digest ?? ""));
+  const caddy = `nylzo-caddy_${release.slice(1)}_linux_${architecture}.tar.gz`;
+  assert.equal(listed(caddy).length, 1, `Release ${release} ships no Caddy build; set initialRelease to a release that lists ${caddy}`);
+  const host = `nylzo-host_${release.slice(1)}.tar`;
+  const bundle = listed(host);
+  assert.equal(bundle.length, 1, `Release ${release} ships no host bundle; set initialRelease to a release that lists ${host}`);
+  const signature = await fetch(releaseAsset(release, "checksums.txt.sigstore.json"), { signal: AbortSignal.timeout(30000) });
+  assert(signature.ok, `Cannot read the checksum signature of ${release}`);
+  const directory = await mkdtemp(path.join(tmpdir(), "nylzo-release-"));
+  try {
+    await writeFile(path.join(directory, "checksums.txt"), checksums);
+    await writeFile(path.join(directory, "checksums.txt.sigstore.json"), Buffer.from(await signature.arrayBuffer()));
+    verify(release, path.join(directory, "checksums.txt"), path.join(directory, "checksums.txt.sigstore.json"));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+  return releaseBundle(release, bundle[0]![0]!);
 }
 
 export function execute(directory: string, environment: NodeJS.ProcessEnv, arguments_: string[], capture = false) {
@@ -58,13 +83,14 @@ export function execute(directory: string, environment: NodeJS.ProcessEnv, argum
   return capture ? result.toString() : "";
 }
 
-export async function prepare(siteFile: string, kind: string) {
+export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
   assert(["image", "server", "dns"].includes(kind));
   const site = configuration(JSON.parse(await readFile(siteFile, "utf8")));
   assert(!/(^|\.)example\.(org|com|net)$/u.test(site.domain), "Replace the example domain before provisioning");
   assert(site.administratorNetworks.every((network: string) => !/^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)/iu.test(network)), "Replace the example administrator networks before provisioning");
   assert(site.operator.length > 0 && site.contact.length > 0, "Set the public operator and contact details before provisioning");
-  if (kind !== "dns") await requireCaddyBuild(site.initialRelease, site.architecture);
+  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com administrator key; create one with ssh-keygen -t ed25519-sk -O verify-required");
+  const bundle = kind === "dns" ? undefined : await releaseEvidence(site.initialRelease, site.architecture, verify);
   const root = path.dirname(path.resolve(siteFile));
   const privateDirectory = await lstat(root);
   assert(privateDirectory.isDirectory() && !privateDirectory.isSymbolicLink() && (privateDirectory.mode & 0o077) === 0, "Operator directory must be private (0700) and must not be a symlink");
@@ -74,10 +100,11 @@ export async function prepare(siteFile: string, kind: string) {
   for (const filename of await readdir(source)) {
     if (filename.endsWith(".tf") || filename === ".terraform.lock.hcl") await copyFile(path.join(source, filename), path.join(directory, filename));
   }
-  const rendered = await render(site);
-  const userData = kind === "image" ? rendered.cloud : JSON.stringify(rendered.ignition);
   const userDataPath = path.join(directory, "user-data");
-  if (kind !== "dns") await writeFile(userDataPath, userData, { mode: 0o600 });
+  if (bundle) {
+    const rendered = await render(site, bundle);
+    await writeFile(userDataPath, kind === "image" ? rendered.cloud : JSON.stringify(rendered.ignition), { mode: 0o600 });
+  }
   let variables: object = { name: site.name, location: site.location, server_type: site.serverType, user_data_path: userDataPath };
   if (kind === "server") {
     const image = JSON.parse(await readFile(path.join(root, "image.json"), "utf8"));
@@ -89,7 +116,7 @@ export async function prepare(siteFile: string, kind: string) {
   if (kind === "dns") {
     assert.match(site.cloudflareAccountId, /^[a-f0-9]{32}$/u, "Set the Cloudflare account ID in site.json");
     const outputs = JSON.parse(execute(path.join(root, "server"), { ...process.env, TF_ENCRYPTION: await encryption(root) }, ["output", "-json"], true));
-    variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value };
+    variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value, acme_account_uri: site.acmeAccountUri ?? "" };
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
   const environment: NodeJS.ProcessEnv = { ...process.env, TF_IN_AUTOMATION: "true", TF_ENCRYPTION: await encryption(root) };
@@ -126,18 +153,29 @@ export async function importDns(prepared: Awaited<ReturnType<typeof prepare>>) {
   const zone = zones[0];
   assert.equal(zone.account.id, site.cloudflareAccountId);
   assert.match(zone.id, /^[a-f0-9]{32}$/u);
-  const imports: [string, string][] = [["cloudflare_zone.zone", zone.id]];
-  for (const type of ["A", "AAAA", "CAA"]) {
-    const { result: records } = await api(`/zones/${zone.id}/dns_records?name=${site.domain}&type=${type}`);
-    assert(Array.isArray(records));
-    for (const [resource, matching] of type === "CAA"
-      ? [["cloudflare_dns_record.certificate_authority", records.filter((record: any) => record.data?.tag === "issue")], ["cloudflare_dns_record.no_wildcard_certificates", records.filter((record: any) => record.data?.tag === "issuewild")]] as const
-      : [[`cloudflare_dns_record.addresses["${type}"]`, records]] as const) {
-      assert(matching.length <= 1, "Multiple existing address or CAA records require explicit migration review");
-      if (matching.length === 1) {
-        assert.match(matching[0].id, /^[a-f0-9]{32}$/u);
-        imports.push([resource, `${zone.id}/${matching[0].id}`]);
-      }
+  const imports: [string, string][] = [["cloudflare_zone.zone", zone.id], ["cloudflare_universal_ssl_setting.zone", zone.id]];
+  const records = async (name: string, type: string) => {
+    const { result } = await api(`/zones/${zone.id}/dns_records?name=${name}&type=${type}`);
+    assert(Array.isArray(result));
+    return result;
+  };
+  const text = (record: any) => String(record.content ?? "").replace(/^"|"$/gu, "");
+  const managed: [string, string, string, (record: any) => boolean][] = [
+    ['cloudflare_dns_record.addresses["A"]', site.domain, "A", () => true],
+    ['cloudflare_dns_record.addresses["AAAA"]', site.domain, "AAAA", () => true],
+    ["cloudflare_dns_record.certificate_authority", site.domain, "CAA", record => record.data?.tag === "issue"],
+    ["cloudflare_dns_record.no_wildcard_certificates", site.domain, "CAA", record => record.data?.tag === "issuewild"],
+    ["cloudflare_dns_record.null_mail_exchanger", site.domain, "MX", () => true],
+    ["cloudflare_dns_record.no_mail_senders", site.domain, "TXT", record => text(record).startsWith("v=spf1")],
+    ["cloudflare_dns_record.reject_spoofed_mail", `_dmarc.${site.domain}`, "TXT", record => text(record).startsWith("v=DMARC1")],
+  ];
+  if ((site.dnsZone ?? site.domain) === site.domain) managed.push(["cloudflare_dns_record.www[0]", `www.${site.domain}`, "CNAME", () => true]);
+  for (const [resource, name, type, selected] of managed) {
+    const matching = (await records(name, type)).filter(selected);
+    assert(matching.length <= 1, "Multiple existing records of one managed kind require explicit migration review");
+    if (matching.length === 1) {
+      assert.match(matching[0].id, /^[a-f0-9]{32}$/u);
+      imports.push([resource, `${zone.id}/${matching[0].id}`]);
     }
   }
   await writeFile(path.join(directory, "existing-zone.tf"), imports.map(([resource, id]) => `import {\n  to = ${resource}\n  id = ${JSON.stringify(id)}\n}\n`).join("\n"), { mode: 0o600 });
@@ -186,11 +224,17 @@ export async function initialize(sshPublicKey: string, destination: string) {
   await mkdir(root, { mode: 0o700 });
   const site = JSON.parse(await readFile(path.join(profile, "site.example.json"), "utf8"));
   site.administratorPublicKey = (await readFile(sshPublicKey, "utf8")).trim();
-  const keyFile = path.join(root, "report-key");
-  const report = execFileSync(process.env.NYLZO_CLI ?? "nylzo", ["report-key", "--key-file", keyFile], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  assert(report.startsWith("NYLZO_REPORT_KEY="));
-  site.reportPublicKey = report.trim().slice("NYLZO_REPORT_KEY=".length);
+  const recipient = process.env.NYLZO_REPORT_KEY_RECIPIENT;
+  if (recipient !== undefined) assert.match(recipient, /^age1[0-9a-z]{20,200}$/u, "NYLZO_REPORT_KEY_RECIPIENT must be one age recipient, for example from age-plugin-yubikey");
+  const staging = await mkdtemp(path.join(root, ".report-key-"));
+  try {
+    const plaintext = path.join(staging, "report-key");
+    const report = execFileSync(process.env.NYLZO_CLI ?? "nylzo", ["report-key", "--key-file", plaintext], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    assert(report.startsWith("NYLZO_REPORT_KEY="));
+    site.reportPublicKey = report.trim().slice("NYLZO_REPORT_KEY=".length);
+    execFileSync(process.env.NYLZO_AGE ?? "age", ["--encrypt", ...(recipient ? ["--recipient", recipient] : ["--passphrase"]), "--output", path.join(root, "report-key.age"), plaintext], { stdio: ["inherit", "inherit", "inherit"] });
+  } finally { await rm(staging, { recursive: true, force: true }); }
   await writeFile(path.join(root, "state-encryption.key"), randomBytes(64).toString("base64"), { mode: 0o600, flag: "wx" });
   await writeFile(path.join(root, "site.json"), JSON.stringify(site, null, 2) + "\n", { mode: 0o600, flag: "wx" });
-  console.log(`Created private operator configuration in ${root}. Back up the reporting and state-encryption keys securely before provisioning.`);
+  console.log(`Created private operator configuration in ${root}. The reporting key is encrypted in report-key.age; back it up and the state-encryption key securely before provisioning.`);
 }

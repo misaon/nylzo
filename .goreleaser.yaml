@@ -5,6 +5,7 @@ before:
   hooks:
     - node automation/web-install/main.ts
     - env NYLZO_VERSION={{ .Version }} pnpm --dir web --filter @nylzo/web build
+    - node tools/deploy/bundle.mts .host-bundle/nylzo-host_{{ .Version }}.tar
 
 builds:
   - id: nylzo
@@ -81,6 +82,7 @@ checksum:
   extra_files:
     - glob: internal/server/web/dist/*.html
     - glob: internal/server/web/dist/assets/*
+    - glob: .host-bundle/nylzo-host_{{ .Version }}.tar
 
 sboms:
   - artifacts: archive
@@ -194,6 +196,8 @@ release:
   name_template: "Nylzo {{ .Tag }}"
   draft: true
   prerelease: false
+  extra_files:
+    - glob: .host-bundle/nylzo-host_{{ .Version }}.tar
   header: |
     ## Download Nylzo {{ .Version }}
 
@@ -222,7 +226,7 @@ release:
     cosign verify ghcr.io/misaon/nylzo-caddy:{{ .Version }} --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/{{ .Tag }}"
     ```
 
-    `checksums.txt` also lists the files of the embedded web client and the `nylzo-caddy` archives, the Caddy build for self-hosting.
+    `checksums.txt` also lists the files of the embedded web client, the `nylzo-caddy` archives (the Caddy build for self-hosting) and `nylzo-host_{{ .Version }}.tar`, the host configuration that Hetzner Flatcar servers verify and install.
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"

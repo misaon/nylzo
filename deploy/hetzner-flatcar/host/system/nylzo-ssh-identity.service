@@ -1,0 +1,10 @@
+[Unit]
+Requires=sshd-keygen.service
+After=sshd-keygen.service nylzo-ready.service
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub
+StandardOutput=tty
+TTYPath=/dev/tty1
+[Install]
+WantedBy=multi-user.target

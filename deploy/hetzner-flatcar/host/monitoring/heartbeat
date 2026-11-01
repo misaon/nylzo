@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+address=$(< "${NYLZO_HEARTBEAT_URL_FILE:-/etc/nylzo/heartbeat.url}")
+status=${NYLZO_HOST_STATUS:-/var/lib/nylzo-monitor/status.json}
+[[ "$address" =~ ^https://[a-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+){1,8}$ ]] || {
+  echo 'The heartbeat address must be one HTTPS URL without a query or fragment.' >&2
+  exit 1
+}
+now=$(date +%s)
+result=/fail
+if [[ -s "$status" ]] && observed=$(sed -n 's/^{"version":1,"observedAt":\([0-9]\{1,12\}\),"checks":{.*}}$/\1/p' "$status") && [[ -n "$observed" ]] &&
+  (( now >= 10#$observed && now - 10#$observed <= 360 )) && ! grep --quiet --fixed-strings ':false' "$status"; then
+  result=""
+fi
+curl --fail --silent --show-error --proto '=https' --tlsv1.3 --max-time 20 --retry 2 --output /dev/null --request POST --data-binary '' "$address$result"

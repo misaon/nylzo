@@ -2,7 +2,7 @@
 set -euo pipefail
 export LC_ALL=C
 [[ "$(getenforce)" = Enforcing ]] || { echo 'SELinux enforcement is required.' >&2; exit 1; }
-for check in kernel.dmesg_restrict=1 kernel.kptr_restrict=2 net.ipv4.conf.all.rp_filter=2; do
+for check in kernel.dmesg_restrict=1 kernel.kptr_restrict=2 kernel.kexec_load_disabled=1 kernel.io_uring_disabled=2 kernel.sysrq=0 dev.tty.ldisc_autoload=0 fs.suid_dumpable=0 net.ipv4.conf.all.rp_filter=2; do
   [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Host policy failed: ${check%%=*}" >&2; exit 1; }
 done
 interface=$(ip -o -4 route show default | awk '{ for (i=1; i<NF; i++) if ($i == "dev") print $(i+1) }' | sort -u)
@@ -11,6 +11,8 @@ for check in "net.ipv4.conf.$interface.rp_filter=2" "net.ipv4.conf.$interface.ac
   [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Host policy failed: ${check%%=*}" >&2; exit 1; }
 done
 tc qdisc show dev "$interface" | grep --extended-regexp --quiet '^qdisc tbf 1: root .*rate 40Mbit '
+firewall=$(nft list chain inet nylzo input) || { echo 'The host firewall is not loaded.' >&2; exit 1; }
+grep --quiet --fixed-strings 'type filter hook input priority filter; policy drop;' <<< "$firewall" || { echo 'The host firewall does not drop unlisted input.' >&2; exit 1; }
 options=$(docker info --format '{{range .SecurityOptions}}{{println .}}{{end}}')
 for required in name=selinux name=userns name=no-new-privileges; do
   grep --fixed-strings --line-regexp --quiet "$required" <<< "$options"

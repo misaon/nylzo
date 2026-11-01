@@ -4,7 +4,7 @@ import { request, type RequestOptions } from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 import { privateFile } from "./private-file.mts";
 
-const components = ["hostPolicy", "services", "diskReserve", "applicationUpdates", "osUpdates"];
+const components = ["hostPolicy", "services", "diskReserve", "applicationUpdates", "osUpdates", "clock", "certificate"];
 
 export function hostConnection(address?: string): Pick<RequestOptions, "lookup"> {
   if (!address) return {};

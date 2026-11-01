@@ -1,23 +1,48 @@
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import assert from "node:assert/strict";
 import { configuration } from "./configuration.mts";
+import { archive, hostSources } from "./bundle.mts";
 
 export const profile = fileURLToPath(new URL("../../deploy/hetzner-flatcar/", import.meta.url));
 const read = (filename: string) => readFile(path.join(profile, filename), "utf8");
-const embedded = (filename: string, contents: string, mode = 0o644) => ({ path: filename, mode, overwrite: true, contents: { compression: "gzip", source: `data:;base64,${gzipSync(contents).toString("base64")}` } });
+const embedded = (filename: string, contents: string | Buffer, mode = 0o644) => ({ path: filename, mode, overwrite: true, contents: { compression: "gzip", source: `data:;base64,${gzipSync(contents, { level: 9 }).toString("base64")}` } });
+const remote = (filename: string, bundle: { url: string; sha256: string }) => {
+  assert.match(bundle.url, /^https:\/\/github\.com\/misaon\/nylzo\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/nylzo-host_[0-9]+\.[0-9]+\.[0-9]+\.tar$/u);
+  assert.match(bundle.sha256, /^[a-f0-9]{64}$/u);
+  return { path: filename, mode: 0o600, overwrite: true, contents: { source: bundle.url, verification: { hash: `sha256-${bundle.sha256}` } } };
+};
 const service = (name: string, contents: string, enabled = false) => ({ name, contents, enabled });
 export const key = await read("bootstrap/flatcar.asc");
 export const toolchain = JSON.parse(await read("toolchain.json"));
+const early = ["/etc/ssh/sshd_config.d/20-nylzo.conf", "/etc/sysctl.d/90-nylzo.conf", "/etc/systemd/journald.conf.d/20-nylzo.conf", "/etc/systemd/coredump.conf.d/20-nylzo.conf"];
+const firstBoot = `[Unit]
+Description=Install the host configuration of this Nylzo release
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target network-pre.target shutdown.target
+Wants=network-pre.target
+Conflicts=shutdown.target
+ConditionPathExists=!/opt/nylzo/host/current
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/mkdir -p /opt/nylzo/host/initial
+ExecStart=/usr/bin/tar --extract --file /opt/nylzo/host/initial.tar --directory /opt/nylzo/host/initial --no-same-owner --no-same-permissions
+ExecStart=/usr/bin/bash /opt/nylzo/host/initial/update/activate --first-boot /opt/nylzo/host/initial
+[Install]
+WantedBy=sysinit.target
+`;
 
-export async function render(input: unknown) {
+export type HostBundle = { url: string; sha256: string } | Map<string, string>;
+
+export const releaseBundle = (release: string, sha256: string) => ({ url: `https://github.com/misaon/nylzo/releases/download/${release}/nylzo-host_${release.slice(1)}.tar`, sha256 });
+
+export async function render(input: unknown, bundle: HostBundle) {
   const site = configuration(input);
-  const files: any[] = [];
-  for (const filename of await readdir(path.join(profile, "runtime"))) {
-    if (!filename.endsWith("Caddyfile")) files.push(embedded(`/opt/nylzo/runtime/${filename}`, await read(`runtime/${filename}`), 0o755));
-  }
+  const host = bundle instanceof Map ? bundle : await hostSources();
   const tools = [
     `ARCHITECTURE=${site.architecture}`,
     ...["gh", "cosign", "jq"].flatMap(name => [`${name.toUpperCase()}_VERSION=${toolchain[name].version}`, `${name.toUpperCase()}_SHA256=${toolchain[name][site.architecture]}`]),
@@ -29,50 +54,35 @@ export async function render(input: unknown) {
     NYLZO_MIN_FREE_BYTES: 4 * 1024 ** 3,
     NYLZO_CONTACT: site.contact, NYLZO_HOSTING: site.hosting, NYLZO_PUBLIC_URL: `https://${site.domain}`,
   }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
-  files.push(
+  const settings = Object.entries({
+    AUTOMATIC_UPDATES: site.automaticUpdates, PUBLIC_ACCESS: site.publicAccess ?? false,
+    WWW_REDIRECT: site.dnsZone === site.domain, ADMINISTRATOR_NETWORKS: site.administratorNetworks.map((network: string) => network.toLowerCase()).join(","),
+  }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
+  const manifest = new Map(host.get("manifest")!.trimEnd().split("\n").slice(1).map(line => line.split(" ") as [string, string]));
+  const files: any[] = [
     embedded("/etc/nylzo/tools.env", tools),
     embedded("/etc/nylzo/site.json", JSON.stringify({ architecture: site.architecture, domain: site.domain, initialRelease: site.initialRelease })),
     embedded("/etc/nylzo/service.env", environment),
     embedded("/etc/nylzo/caddy.env", `NYLZO_DOMAIN=${site.domain}\n`),
-    embedded("/etc/caddy/Caddyfile", await read("runtime/Caddyfile") + (site.monitorClientCertificate ? "\n" + await read("runtime/monitor.Caddyfile") : "")),
+    embedded("/etc/nylzo/host.env", settings),
     embedded("/etc/subuid", "dockremap:100000:65536\n"),
     embedded("/etc/subgid", "dockremap:100000:65536\n"),
-    embedded("/etc/docker/daemon.json", JSON.stringify({ "userns-remap": "dockremap", "no-new-privileges": true, "log-driver": "local", "log-opts": { "max-size": "10m", "max-file": "3" } })),
-    embedded("/etc/containerd/nylzo.toml", 'version = 3\nimports = ["/usr/share/containerd/config.toml"]\ndisabled_plugins = ["io.containerd.grpc.v1.cri", "io.containerd.cri.v1.images", "io.containerd.cri.v1.runtime", "io.containerd.grpc.v1.transfer", "io.containerd.transfer.v1.local"]\n'),
-    embedded("/etc/ssh/sshd_config.d/20-nylzo.conf", "PermitRootLogin no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nAuthenticationMethods publickey\nAllowUsers core\nPubkeyAcceptedAlgorithms -ssh-rsa,ssh-rsa-cert-v01@openssh.com\nHostKeyAlgorithms -ssh-rsa\nCASignatureAlgorithms -ssh-rsa\nAllowAgentForwarding no\nAllowTcpForwarding no\nX11Forwarding no\nPermitTunnel no\n"),
-    embedded("/etc/flatcar/update.conf", "GROUP=stable\nREBOOT_STRATEGY=reboot\nLOCKSMITHD_REBOOT_WINDOW_START=03:00\nLOCKSMITHD_REBOOT_WINDOW_LENGTH=1h\n"),
     embedded("/etc/selinux/config", "SELINUX=enforcing\nSELINUXTYPE=mcs\n"),
-    embedded("/etc/sysctl.d/90-nylzo.conf", "kernel.dmesg_restrict=1\nkernel.kptr_restrict=2\nfs.protected_hardlinks=1\nfs.protected_symlinks=1\nfs.protected_fifos=2\nfs.protected_regular=2\nnet.ipv4.conf.all.rp_filter=2\nnet.ipv4.conf.default.rp_filter=2\nnet.ipv4.conf.*.rp_filter=2\nnet.ipv4.conf.*.accept_redirects=0\nnet.ipv4.conf.*.send_redirects=0\nnet.ipv4.conf.*.accept_source_route=0\nnet.ipv6.conf.*.accept_redirects=0\nnet.ipv6.conf.*.accept_source_route=-1\n"),
-    embedded("/etc/systemd/journald.conf.d/20-nylzo.conf", "[Journal]\nSystemMaxUse=128M\nRuntimeMaxUse=32M\nMaxRetentionSec=7day\n"),
-  );
-  if (site.monitorClientCertificate) files.push(embedded("/etc/nylzo/monitor-client.pem", site.monitorClientCertificate));
-  const units = [
-    { name: "serial-getty@ttyS0.service", mask: true },
-    { name: "getty@tty1.service", mask: true },
-    { name: "containerd.service", dropins: [{ name: "20-nylzo.conf", contents: "[Service]\nEnvironment=CONTAINERD_CONFIG=/etc/containerd/nylzo.toml\n" }] },
-    service("nylzo-ssh-identity.service", "[Unit]\nRequires=sshd-keygen.service\nAfter=sshd-keygen.service nylzo-ready.service\n[Service]\nType=oneshot\nExecStart=/usr/bin/ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub\nStandardOutput=tty\nTTYPath=/dev/tty1\n[Install]\nWantedBy=multi-user.target\n", true),
-    service("nylzo-tools.service", "[Unit]\nRequires=nylzo-bandwidth.service\nWants=network-online.target\nAfter=nylzo-bandwidth.service network-online.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=10min\nExecStart=/opt/nylzo/runtime/install-tools\n"),
-    service("nylzo-bandwidth.service", "[Unit]\nWants=network-online.target\nAfter=network-online.target\nBefore=nylzo-tools.service\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/opt/nylzo/runtime/bandwidth\n[Install]\nWantedBy=multi-user.target\n", true),
-    service("nylzo-initialize.service", "[Unit]\nRequires=nylzo-tools.service nylzo-bandwidth.service docker.service\nAfter=nylzo-tools.service nylzo-bandwidth.service docker.service network-online.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=15min\nExecStart=/opt/nylzo/runtime/prepare\nExecStart=/opt/nylzo/runtime/update initialize\n[Install]\nWantedBy=multi-user.target\n", true),
-    service("nylzo.service", "[Unit]\nRequires=docker.service nylzo-bandwidth.service\nAfter=docker.service nylzo-bandwidth.service\nStartLimitIntervalSec=60\nStartLimitBurst=5\n[Service]\nExecStart=/opt/nylzo/runtime/run\nExecStop=/usr/bin/docker stop --time 30 nylzo\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=45\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nPrivateDevices=true\nProtectKernelTunables=true\nProtectKernelModules=true\nProtectControlGroups=true\nRestrictSUIDSGID=true\nLockPersonality=true\nCapabilityBoundingSet=\nRestrictAddressFamilies=AF_UNIX\nUMask=0077\nTasksMax=64\n"),
-    service("caddy.service", "[Unit]\nRequires=nylzo-bandwidth.service\nAfter=network-online.target nylzo-bandwidth.service\nWants=network-online.target\n[Service]\nUser=caddy\nGroup=caddy\nEnvironmentFile=/etc/nylzo/caddy.env\nEnvironment=XDG_DATA_HOME=/var/lib/caddy\nEnvironment=XDG_CONFIG_HOME=/var/lib/caddy/config\nExecStart=/opt/nylzo/bin/caddy run --config /etc/caddy/Caddyfile\nRestart=on-failure\nRestartSec=5\nStateDirectory=caddy\nAmbientCapabilities=CAP_NET_BIND_SERVICE\nCapabilityBoundingSet=CAP_NET_BIND_SERVICE\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nPrivateDevices=true\nProtectKernelTunables=true\nProtectKernelModules=true\nProtectControlGroups=true\nRestrictSUIDSGID=true\nLockPersonality=true\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX\nMemoryMax=256M\nTasksMax=128\nUMask=0077\nProtectKernelLogs=true\nProtectClock=true\nProtectHostname=true\nMemoryDenyWriteExecute=true\nSystemCallArchitectures=native\n"),
-    service("nylzo-ready.service", "[Unit]\nRequires=nylzo-initialize.service\nAfter=nylzo-initialize.service\nOnFailure=nylzo-recover-os.service\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=3min\nExecStart=/opt/nylzo/runtime/health\n"),
-    service("nylzo-recover-os.service", "[Service]\nType=oneshot\nExecStart=/opt/nylzo/runtime/recover-os\n"),
-    { name: "update-engine.service", dropins: [{ name: "20-nylzo-health.conf", contents: "[Unit]\nRequires=nylzo-ready.service\nAfter=nylzo-ready.service\n" }] },
-    service("nylzo-update.service", "[Unit]\nRequires=nylzo-initialize.service\nAfter=nylzo-initialize.service network-online.target\n[Service]\nType=oneshot\nTimeoutStartSec=15min\nExecStart=/opt/nylzo/runtime/update check\n"),
-    service("nylzo-update.timer", "[Unit]\nDescription=Check verified patch releases of Nylzo and Caddy\n[Timer]\nOnBootSec=5min\nOnUnitInactiveSec=10min\nRandomizedDelaySec=1min\nPersistent=true\n[Install]\nWantedBy=timers.target\n", site.automaticUpdates),
+    ...early.map(target => embedded(target, host.get(manifest.get(target)!)!)),
+    bundle instanceof Map ? embedded("/opt/nylzo/host/initial.tar", archive(bundle), 0o600) : remote("/opt/nylzo/host/initial.tar", bundle),
   ];
-  if (site.monitorClientCertificate) units.push(
-    service("nylzo-host-status.service", "[Unit]\nRequires=nylzo-ready.service\nAfter=nylzo-ready.service\n[Service]\nType=oneshot\nExecStart=/opt/nylzo/runtime/host-status\nTimeoutStartSec=45\nGroup=caddy\nStateDirectory=nylzo-monitor\nStateDirectoryMode=2750\nUMask=0027\nNoNewPrivileges=true\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nPrivateDevices=true\nProtectKernelTunables=true\nProtectKernelModules=true\nProtectControlGroups=true\nRestrictSUIDSGID=true\nLockPersonality=true\nCapabilityBoundingSet=\nRestrictAddressFamilies=AF_UNIX AF_NETLINK\nMemoryMax=128M\nTasksMax=64\n"),
-    service("nylzo-host-status.timer", "[Unit]\nDescription=Refresh read-only host readiness\n[Timer]\nOnBootSec=2min\nOnUnitInactiveSec=2min\nAccuracySec=10s\n[Install]\nWantedBy=timers.target\n", true),
-  );
+  if (site.monitorClientCertificate) files.push(embedded("/etc/nylzo/monitor-client.pem", site.monitorClientCertificate));
+  if (site.heartbeatUrl) files.push(embedded("/etc/nylzo/heartbeat.url", `${site.heartbeatUrl}\n`, 0o600));
+  if (site.tang) files.push(embedded("/etc/nylzo/tang.json", JSON.stringify({ t: site.tang.threshold, pins: { tang: site.tang.servers.map((server: { url: string; thumbprint: string }) => ({ url: server.url, thp: server.thumbprint })) } }), 0o600));
   const ignition = {
     ignition: { version: "3.4.0" },
     passwd: { groups: [{ name: "dockremap", gid: 2000 }, { name: "caddy", gid: 2001 }], users: [
       { name: "root", passwordHash: "*" }, { name: "core", passwordHash: "*", sshAuthorizedKeys: [site.administratorPublicKey] },
       { name: "dockremap", uid: 2000, primaryGroup: "dockremap", noCreateHome: true, shell: "/sbin/nologin" },
       { name: "caddy", uid: 2001, primaryGroup: "caddy", noCreateHome: true, shell: "/sbin/nologin" },
-    ] }, storage: { files }, systemd: { units },
+    ] }, storage: { files }, systemd: { units: [
+      { name: "serial-getty@ttyS0.service", mask: true }, { name: "getty@tty1.service", mask: true }, service("nylzo-host.service", firstBoot, true),
+    ] as any[] },
   };
   const board = site.architecture === "amd64" ? "amd64-usr" : "arm64-usr";
   const installer = {
@@ -92,12 +102,12 @@ export async function render(input: unknown) {
     runcmd: [["/bin/bash", "-c", "set -a; . /var/tmp/nylzo-image/env; exec /bin/bash /var/tmp/nylzo-image/boot"]],
   });
   assert(Buffer.byteLength(cloud) <= 32768, "Image factory user_data exceeds 32 KiB");
-  assert(Buffer.byteLength(JSON.stringify(ignition)) <= 32768, "Server user_data exceeds 32 KiB");
+  assert(bundle instanceof Map || Buffer.byteLength(JSON.stringify(ignition)) <= 32768, "Server user_data exceeds 32 KiB");
   return { site, ignition, installer, cloud };
 }
 
 if (import.meta.main) {
-  const result = await render(JSON.parse(await readFile(process.argv[2]!, "utf8")));
+  const result = await render(JSON.parse(await readFile(process.argv[2]!, "utf8")), await hostSources());
   const destination = path.resolve(process.argv[3] ?? ".deploy/rendered");
   await mkdir(destination, { recursive: true, mode: 0o700 });
   for (const [name, contents] of Object.entries({ "server.ign": JSON.stringify(result.ignition), "installer.ign": JSON.stringify(result.installer), "image.cloud-config": result.cloud })) await writeFile(path.join(destination, name), contents, { mode: 0o600 });

@@ -24,11 +24,12 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     const key = readFileSync(join(directory, "trusted/client-key.pem"), "utf8");
     const foreign = { cert: readFileSync(join(directory, "foreign/client.pem"), "utf8"), key: readFileSync(join(directory, "foreign/client-key.pem"), "utf8") };
     writeFileSync(join(fixtureDirectory, "client.pem"), publicClient);
-    const healthy = { version: 1, observedAt: Math.floor(Date.now() / 1000), checks: { hostPolicy: true, services: true, diskReserve: true, applicationUpdates: true, osUpdates: true } };
+    const healthy = { version: 1, observedAt: Math.floor(Date.now() / 1000), checks: { hostPolicy: true, services: true, diskReserve: true, applicationUpdates: true, osUpdates: true, clock: true, certificate: true } };
     writeFileSync(join(fixtureDirectory, "status.json"), JSON.stringify(healthy));
-    let configuration = readFileSync(resolve("deploy/hetzner-flatcar/runtime/Caddyfile"), "utf8") + "\n" + readFileSync(resolve("deploy/hetzner-flatcar/runtime/monitor.Caddyfile"), "utf8");
+    let configuration = readFileSync(resolve("deploy/hetzner-flatcar/host/proxy/Caddyfile"), "utf8") + "\n" + readFileSync(resolve("deploy/hetzner-flatcar/host/proxy/monitor.Caddyfile"), "utf8");
+    configuration = configuration.replace(/\n *issuer acme \{\n[^}]*\}/gu, "");
     configuration = configuration.replace("    admin off", "    admin off\n    local_certs\n    skip_install_trust\n    https_port 14443\n    http_port 18080");
-    configuration = configuration.replace(/    reverse_proxy 172\.30\.81\.2:8080 \{\n        transport http \{\n            keepalive 25s\n        \}\n    \}/u, '    respond "public application"');
+    configuration = configuration.replace(/    reverse_proxy 172\.30\.81\.2:8080 \{\n[\s\S]*?\n    \}/u, '    respond "public application"');
     configuration = configuration.replaceAll("/etc/nylzo/monitor-client.pem", "/fixture/client.pem").replaceAll("/var/lib/nylzo-monitor", "/status");
     writeFileSync(join(fixtureDirectory, "Caddyfile"), configuration);
     chmodSync(fixtureDirectory, 0o755);

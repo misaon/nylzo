@@ -1,0 +1,7 @@
+[Unit]
+Requires=nylzo-initialize.service
+After=nylzo-initialize.service network-online.target
+[Service]
+Type=oneshot
+TimeoutStartSec=15min
+ExecStart=/opt/nylzo/runtime/update check

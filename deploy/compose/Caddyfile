@@ -1,21 +1,58 @@
 {
+	admin off
+	acme_ca https://acme-v02.api.letsencrypt.org/directory
+	servers {
+		strict_sni_host on
+		0rtt off
+		max_header_size 16KB
+		timeouts {
+			read_header 10s
+			read_body 6m
+			read_body_idle 20s
+			write 6m
+			idle 2m
+		}
+	}
 	log default {
 		exclude http.log http.handlers http.stdlib
 	}
 }
 
 {$NYLZO_DOMAIN} {
+	tls {
+		protocols tls1.3
+		curves x25519mlkem768
+	}
+	request_body {
+		max_size 6MiB
+	}
 	header {
 		-Server
 		-Via
 	}
 	reverse_proxy nylzo:8080 {
+		header_up -X-Real-IP
+		header_up -Forwarded
+		header_up -X-Client-IP
+		header_up -True-Client-IP
+		header_up -CF-Connecting-IP
+		header_up -Fastly-Client-IP
+		header_up -X-Cluster-Client-IP
+		header_up -Client-IP
 		transport http {
 			keepalive 25s
 		}
 	}
 	handle_errors {
-		header -Server
+		header {
+			-Server
+			Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+			X-Content-Type-Options nosniff
+			Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+			Cache-Control no-store
+			Referrer-Policy no-referrer
+			Cross-Origin-Resource-Policy same-origin
+		}
 		respond {err.status_code}
 	}
 }
@@ -30,5 +67,9 @@ http:// {
 }
 
 https:// {
+	tls {
+		protocols tls1.3
+		curves x25519mlkem768
+	}
 	abort
 }
