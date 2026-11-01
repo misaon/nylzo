@@ -20,7 +20,7 @@ export const czech = {
   'problem.content.missing': 'Napište text nebo přiložte soubor.',
   'problem.text.too_large': 'Text je delší než {size}.',
   'problem.file.too_large': 'Soubor je větší než {size}.',
-  'problem.file.unreadable': 'Soubor nejde přečíst. Složku přiložit nejde, vyberte soubor.',
+  'problem.file.unreadable': 'Soubor se nepodařilo přečíst. Složku přiložit nelze, vyberte soubor.',
   'problem.ttl.out_of_range': 'Zvolte platnost z nabídky.',
   'problem.opens.out_of_range': 'Počet otevření musí být 1 až {max}.',
   'problem.passphrase.too_short': 'Passphrase musí mít aspoň {min} znaků.',
@@ -44,8 +44,8 @@ export const czech = {
   'created.copied': 'Odkaz je ve schránce',
   'created.share': 'Sdílet odkaz',
   'created.paste_tip':
-    'Požádejte příjemce, ať odkaz neotevírá kliknutím, ale vloží ho na {address} do pole Otevřít odkaz. Odkaz otevřený kliknutím zůstane v\u{A0}historii prohlížeče.',
-  'clipboard.copied': 'Zkopírováno. Kopii může držet historie schránky i\u{A0}synchronizovaná schránka.',
+    'Požádejte příjemce, aby odkaz neotevíral kliknutím, ale vložil ho na stránce {address} do pole Otevřít odkaz. Odkaz otevřený kliknutím zůstane v\u{A0}historii prohlížeče.',
+  'clipboard.copied': 'Zkopírováno. Kopie může zůstat v\u{A0}historii schránky i\u{A0}v\u{A0}synchronizované schránce.',
   'clipboard.clear': 'Vyprázdnit schránku',
   'clipboard.cleared': 'Schránka je prázdná. Kopie, které už jsou v\u{A0}historii schránky, tam zůstanou.',
   'created.another': 'Nová zpráva',
@@ -135,16 +135,16 @@ export const czech = {
   'revealed.confirm.download': 'Přesto stáhnout',
   'revealed.confirm.cancel': 'Nestahovat',
   'revealed.history':
-    'Zprávu jste otevřeli kliknutím na odkaz, takže v\u{A0}historii tohoto prohlížeče zůstane funkční odkaz až do posledního otevření. Pokud zbývající otevření nikdo jiný nepotřebuje, smažte je.',
+    'Zprávu jste otevřeli kliknutím na odkaz, takže v\u{A0}historii tohoto prohlížeče zůstane funkční odkaz, dokud zpráva nevyčerpá všechna povolená otevření. Pokud zbývající otevření nikdo jiný nepotřebuje, smažte je.',
   'revealed.hidden':
-    'Skryté znaky nebo znaky měnící směr textu: {count}. Zobrazujeme je jako kódy, třeba U+202E, protože text na obrazovce s\u{A0}nimi může vypadat jinak, než jaký je po zkopírování.',
+    'Skryté znaky nebo znaky měnící směr textu: {count}. Zobrazujeme je jako kódy, například U+202E, protože kvůli nim může text na obrazovce vypadat jinak, než jak ho zkopírujete.',
   'revealed.hidden.confirm':
     'Text obsahuje skryté znaky nebo znaky měnící směr textu. Kopie je zachová přesně tak, jak je odesílatel napsal. Přesto zkopírovat?',
   'revealed.hidden.copy': 'Přesto zkopírovat',
   'revealed.hidden.keep': 'Nekopírovat',
   'paste.title': 'Otevřít odkaz',
   'paste.hint':
-    'Odkaz z\u{A0}Nylzo sem vložte místo kliknutí a\u{A0}klíč se do historie prohlížeče nedostane. Odkaz otevřený kliknutím zůstane v\u{A0}historii i\u{A0}v\u{A0}synchronizovaných kartách a\u{A0}Chrome ho může s\u{A0}daty o\u{A0}používání poslat Googlu.',
+    'Když odkaz z\u{A0}Nylzo místo kliknutí vložíte sem, klíč se do historie prohlížeče nedostane. Odkaz otevřený kliknutím zůstane v\u{A0}historii i\u{A0}v\u{A0}synchronizovaných kartách a\u{A0}Chrome ho může s\u{A0}daty o\u{A0}používání poslat Googlu.',
   'paste.label': 'Odkaz k\u{A0}otevření',
   'paste.placeholder': 'Vložte celý odkaz',
   'paste.submit': 'Otevřít',
@@ -153,7 +153,7 @@ export const czech = {
   'report.note':
     'Nahlaste zprávu, která šíří podvod, malware nebo nezákonný obsah. Každé hlášení posoudí člověk a\u{A0}nic se nemaže automaticky. Hlášení přijímáme jen ke zprávám, které ještě existují, a\u{A0}nejvýš tři na zprávu za den.',
   'report.privacy':
-    'Server dostane jen id zprávy, důvod, váš e-mail, pokud ho uvedete, prohlášení o\u{A0}dobré víře a\u{A0}podpis odvozený z\u{A0}odkazu. Odkaz ani obsah zprávy stránku neopustí.',
+    'Server dostane jen ID zprávy, důvod, váš e-mail, pokud ho uvedete, prohlášení o\u{A0}dobré víře a\u{A0}podpis odvozený z\u{A0}odkazu. Odkaz ani obsah zprávy stránku neopustí.',
   'report.link': 'Odkaz na zprávu',
   'report.link.hint': 'Vložte celý odkaz včetně části za #.',
   'report.reason': 'Důvod, volitelný',
@@ -189,13 +189,13 @@ export const czech = {
   'transparency.stores.content':
     'Zašifrovanou zprávu, ještě jednou zašifrovanou vlastním klíčem a\u{A0}doplněnou tak, aby uložená délka prozradila jen přibližnou velikost. Klíč k\u{A0}obsahu je jen v\u{A0}části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
   'transparency.stores.metadata':
-    'U\u{A0}každé zprávy zapečetěný záznam s\u{A0}jejím nastavením, počty a\u{A0}časy zaokrouhlenými na minutu. Server ho otevře jen během požadavku s\u{A0}odkazem nebo správcovským klíčem, takže kopie serveru z\u{A0}něj nic neukáže. Čitelně drží jen hash id zprávy a\u{A0}čas úklidu zaokrouhlený nahoru na čtvrthodinu nebo hodinu.',
+    'U\u{A0}každé zprávy zapečetěný záznam s\u{A0}jejím nastavením, počty a\u{A0}časy zaokrouhlenými na minutu. Server ho otevře jen během požadavku s\u{A0}odkazem nebo správcovským klíčem, takže kopie serveru z\u{A0}něj nic neukáže. Čitelně drží jen hash ID zprávy a\u{A0}čas úklidu zaokrouhlený nahoru na čtvrthodinu nebo hodinu.',
   'transparency.stores.keys':
     'Žádné klíče ani veřejné klíče. Co server potřebuje k\u{A0}otevření záznamu, dostane jen v\u{A0}požadavku s\u{A0}odkazem nebo správcovským klíčem.',
   'transparency.stores.ended':
     'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Nejdřív zahodí klíč uložené zprávy, takže nejde přečíst ani její zbytek na disku. Zapečetěný záznam skončené zprávy drží nejdéle {days}: jak a\u{A0}kdy skončila a\u{A0}kdy byla poprvé otevřena.',
   'transparency.stores.abuse':
-    'Hlášení zneužití, zapečetěná veřejným klíčem provozovatele, takže je server sám nepřečte: datum, id zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel sám uvedl, nejdéle {days}.',
+    'Hlášení zneužití, zapečetěná veřejným klíčem provozovatele, takže je server sám nepřečte: datum, ID zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel sám uvedl, nejdéle {days}.',
   'transparency.stores.counters':
     'Počítadla bez adres: denní počty vytvořených zpráv drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut. Hlášení na zprávu počítá v\u{A0}jejím zapečetěném záznamu.',
   'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
@@ -204,12 +204,12 @@ export const czech = {
   'transparency.logs.title': 'Co server loguje',
   'transparency.logs.what':
     'Čas zkrácený na minutu, metodu, typ cesty, stav odpovědi a dobu vyřízení. U vytvoření, otevření a stažení zprávy dobu vyřízení vynechá, protože by prozradila velikost zprávy.',
-  'transparency.logs.never': 'Nikdy id zprávy, IP adresu, klíče, podpisy, těla požadavků ani velikost zprávy.',
+  'transparency.logs.never': 'Nikdy ID zprávy, IP adresu, klíče, podpisy, těla požadavků ani velikost zprávy.',
   'transparency.others.title': 'Co vidí ostatní',
   'transparency.others.hosting':
     'Poskytovatel hostingu a proxy, která ukončuje HTTPS, vidí IP adresy, časy a velikosti požadavků a logují podle svých pravidel. Obsah zprávy nevidí.',
   'transparency.others.client':
-    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které mezitím někdo otevře nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Lokální klient (nylzo web a\u{A0}nylzo open) a\u{A0}příkazová řádka nylzo spouštějí kód z\u{A0}podepsaného vydání, takže je server změnit nemůže. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
+    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které někdo právě otevírá nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku spouštějí kód z\u{A0}podepsaného vydání, takže ho server změnit nemůže. Kontrola níže takovou záměnu odhalí, jen když server kontrolu neobchází.',
   'transparency.limits.title': 'Limity této instance',
   'transparency.limits.file': 'Největší příloha',
   'transparency.limits.ttl': 'Nejdelší platnost',
@@ -232,7 +232,7 @@ export const czech = {
   'transparency.client.limit':
     'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
   'transparency.client.independent':
-    'Web tomuto serveru důvěřuje: webový klient přichází z\u{A0}něj, takže server v\u{A0}cizích rukou by ho mohl změnit. nylzo web, nylzo open a\u{A0}příkazová řádka nylzo spouštějí kód z\u{A0}podepsaného vydání a\u{A0}spoléhají jen na šifrování.',
+    'Web musí tomuto serveru věřit: webový klient přichází z\u{A0}něj, takže server v\u{A0}cizích rukou by ho mohl změnit. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku spouštějí kód z\u{A0}podepsaného vydání a\u{A0}spoléhají jen na šifrování.',
   'transparency.source': 'Zdrojový kód, specifikace protokolu a model hrozeb',
 
   'nav.top': 'Nylzo, na začátek',
@@ -284,7 +284,7 @@ export const czech = {
   'compose.opens.more': 'Více otevření',
   'compose.opens.note': 'Po posledním otevření server šifru smaže. Nejvýš {max}.',
   'compose.opens.history':
-    'Příjemci, který na odkaz klikne, zůstane funkční odkaz v\u{A0}historii prohlížeče až do posledního otevření. Přidejte passphrase, nebo příjemce požádejte, ať odkaz místo kliknutí vloží.',
+    'Příjemci, který na odkaz klikne, zůstane funkční odkaz v\u{A0}historii prohlížeče, dokud zpráva nevyčerpá všechna povolená otevření. Přidejte passphrase, nebo příjemce požádejte, aby odkaz místo kliknutí vložil.',
   'compose.security': 'Zabezpečení',
   'compose.passphrase.chip': 'Passphrase',
   'compose.passphrase.switch': 'Chránit passphrase',
@@ -293,7 +293,7 @@ export const czech = {
   'compose.passphrase.generate': 'Vygenerovat',
   'compose.remember.switch': 'Zrušení z\u{A0}tohoto zařízení',
   'compose.remember.note':
-    'V\u{A0}tomto prohlížeči uloží klíč, kterým jde zprávu zrušit a\u{A0}zjistit její stav, a\u{A0}to do jednoho dne po jejím konci. Použít ho může i\u{A0}kdokoli, kdo si přečte soubory tohoto prohlížeče.',
+    'Volba uloží v\u{A0}tomto prohlížeči klíč, kterým jde zprávu zrušit a\u{A0}zjistit její stav. Klíč zůstane uložený ještě den po skončení zprávy. Použít ho může i\u{A0}kdokoli, kdo získá přístup k\u{A0}datům tohoto prohlížeče.',
   'compose.attach': 'Příloha',
   'compose.attach.limit': ', nejvýš {size}',
   'compose.submit': 'Zašifrovat a\u{A0}vytvořit odkaz',
@@ -317,18 +317,18 @@ export const czech = {
   'step.send.detail.pow': 'služba je vytížená, prohlížeč řeší krátkou úlohu',
   'step.link.label': 'Odkaz',
   'step.link.title': 'Skládáme odkaz',
-  'step.link.detail': 'klíč přidáme za #, které prohlížeč neodesílá',
+  'step.link.detail': 'klíč přidáme za znak #, část za ním prohlížeč neodesílá',
 
   'created.sub': 'Zkopírujte ho a\u{A0}pošlete příjemci.',
   'created.sub.passphrase': 'Odkaz a\u{A0}passphrase pošlete příjemci každý jinou cestou.',
   'created.server.sees': 'Server dostane',
-  'created.server.sees.what': 'adresu a\u{A0}id zprávy',
+  'created.server.sees.what': 'adresu a\u{A0}ID zprávy',
   'created.server.blind': 'Prohlížeč neodešle',
   'created.server.blind.what': 'klíč za #',
   'created.chip.expires': 'Platí do {time}',
   'open.title': 'Máte šifrovanou zprávu',
   'open.intro':
-    'Dešifruje se až v\u{A0}tomto prohlížeči. Klíč za znakem # prohlížeč serveru neposílá. Jenže i\u{A0}tahle stránka přichází ze serveru, a\u{A0}kdyby server ovládl někdo cizí, mohl by ji změnit.',
+    'Zpráva se dešifruje až v\u{A0}tomto prohlížeči. Klíč za znakem # prohlížeč serveru neposílá. Jenže i\u{A0}tato stránka přichází ze serveru, a\u{A0}kdyby server ovládl někdo cizí, mohl by ji změnit.',
   'open.verified': 'Jak zprávu přečíst bez důvěry v\u{A0}server',
   'open.ready.title': 'Zpráva čeká na zobrazení',
   'open.ready.sub': 'Otevření se započítá až tlačítkem Zobrazit zprávu.',
@@ -384,10 +384,10 @@ export const czech = {
     'Tento způsob ochrany Nylzo už nepodporuje, a\u{A0}tak zprávu otevřít nejde. Stránka ji nespotřebovala. Požádejte odesílatele o\u{A0}nový odkaz.',
   'open.notice.removed': 'Klíč už v\u{A0}adresním řádku není',
   'open.notice.removed.text':
-    'Stránka klíč z\u{A0}adresy kvůli bezpečnosti odstraní hned po načtení. Pro další pokus vložte odkaz níže, nebo ho otevřete znovu.',
-  'open.notice.reopen': 'Pro dokončení otevřete odkaz znovu',
+    'Stránka z\u{A0}bezpečnostních důvodů odstranila klíč z\u{A0}adresy hned po načtení. Chcete-li to zkusit znovu, vložte odkaz níže, nebo ho otevřete ještě jednou.',
+  'open.notice.reopen': 'Otevřete odkaz znovu a\u{A0}dokončete otevření zprávy',
   'open.notice.reopen.text':
-    'Stránka drží klíč jen v\u{A0}paměti, takže ho po obnovení zapomněla. Vložte odkaz níže, nebo ho otevřete znovu. Dokončení další otevření nespotřebuje.',
+    'Stránka uchovává klíč jen v\u{A0}paměti, takže ho po obnovení stránky zapomněla. Vložte odkaz níže, nebo ho otevřete znovu. Když otevření dokončíte, další otevření se nespotřebuje.',
   'open.notice.tampered': 'Zprávu nejde bezpečně otevřít',
   'open.notice.tampered.text': 'Server nebo spojení vrátilo jiná data, než odesílatel vytvořil.',
   'open.notice.failed': 'Něco se pokazilo',
@@ -419,12 +419,12 @@ export const czech = {
   'open.trust.gone.text': 'Po posledním otevření nebo po konci platnosti server šifru smaže.',
 
   'how.eyebrow': 'Jak to funguje',
-  'how.title': 'Klíč držíte vy. Server ukládá zprávu jen zašifrovanou.',
+  'how.title': 'Klíč máte jen vy. Server ukládá zprávu pouze zašifrovanou.',
   'how.step1.title': 'Zašifrujete u\u{A0}sebe',
   'how.step1.text': 'Prohlížeč vytvoří náhodný 256bitový klíč a\u{A0}zprávu jím zašifruje dřív, než cokoli odešle.',
   'how.step2.title': 'Server ji uloží zašifrovanou',
   'how.step2.text':
-    'Uloží šifrovaná data. Nastavení a\u{A0}časy zprávy drží zašifrované a\u{A0}otevře je jen během požadavku od vás nebo příjemce. Klíč mu prohlížeč nikdy nepošle, takže z\u{A0}uložených dat se zpráva přečíst nedá.',
+    'Server uloží zašifrovaná data. Nastavení a\u{A0}časy zprávy drží zašifrované a\u{A0}dešifruje je jen při požadavku od vás nebo od příjemce. Klíč mu prohlížeč nikdy nepošle, takže z\u{A0}uložených dat se zpráva přečíst nedá.',
   'how.step3.title': 'Příjemce otevře jednou',
   'how.step3.text':
     'Zpráva se otevře až kliknutím, samotné načtení odkazu nic nespotřebuje. Po posledním otevření server šifru smaže.',
@@ -435,7 +435,7 @@ export const czech = {
   'how.link.host.meta': 'vidí server i\u{A0}síť',
   'how.link.host.body':
     'Doména a\u{A0}cesta ke zprávě. Tuhle část dostane server, když stránku otevřete, a\u{A0}doménu vidí i\u{A0}síť, přes kterou jdete.',
-  'how.link.id.title': 'Id zprávy',
+  'how.link.id.title': 'ID zprávy',
   'how.link.id.meta': '128 bitů, vidí server',
   'how.link.id.body':
     'Náhodné číslo, podle kterého server najde šifrovaná data. Samo nic neotevře: k\u{A0}otevření je potřeba klíč, který je až za znakem #.',
@@ -446,9 +446,9 @@ export const czech = {
   'how.link.key.title': 'Klíč zprávy',
   'how.link.key.meta': '256 bitů, jen v\u{A0}prohlížeči',
   'how.link.key.body':
-    'Všechno za znakem # zůstává v\u{A0}prohlížeči a\u{A0}prohlížeč to neposílá v\u{A0}žádném požadavku, takže se to touto cestou k\u{A0}serveru ani k\u{A0}hostingu nedostane. Kdo klíč nemá, zprávu nepřečte.',
+    'Co je za znakem #, prohlížeč nepošle v\u{A0}žádném požadavku, takže se to k\u{A0}serveru ani k\u{A0}hostingu samo nedostane. Kdo klíč nemá, zprávu nepřečte.',
   'how.link.server.body':
-    'Server dostane adresu stránky a\u{A0}id zprávy; nic za znakem # prohlížeč neodešle. Kód stránky ale přichází taky ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho upravit a\u{A0}číst zprávy, které se v\u{A0}něm otevřou. Lokální klient (nylzo web, nylzo open) a\u{A0}příkazová řádka nylzo žádný kód ze serveru nespouštějí.',
+    'Server dostane adresu stránky a\u{A0}ID zprávy; nic za znakem # prohlížeč neodešle. Kód stránky ale přichází také ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho změnit a\u{A0}číst zprávy otevřené na takto upravené stránce. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku žádný kód ze serveru nespouštějí.',
   'who.eyebrow': 'Kdo co vidí',
   'who.title': 'Z\u{A0}dat na serveru se zpráva přečíst nedá',
   'who.sub': 'Tatáž zpráva očima tří stran. Přepněte a\u{A0}porovnejte, co kdo ve skutečnosti drží.',
@@ -470,8 +470,8 @@ export const czech = {
   'who.server.title': 'Záznam na serveru',
   'who.server.badge': 'Zašifrováno',
   'who.server.data': 'Šifrovaná data',
-  'who.server.id': 'Id zprávy',
-  'who.server.id.note': 'jen hash, id samo neukládá',
+  'who.server.id': 'ID zprávy',
+  'who.server.id.note': 'jen hash, ID samo neukládá',
   'who.server.size': 'Velikost',
   'who.server.size.value': '2,42 MB',
   'who.server.size.note': 'zarovnáno na 64 KiB',
@@ -546,7 +546,7 @@ export const czech = {
   'brute.live': 'naživo',
   'brute.done.keys': 'Už vyzkoušel',
   'brute.done.steps': 'Už udělal kroků',
-  'brute.fact.id': 'Id zprávy samo nic neotevře',
+  'brute.fact.id': 'ID zprávy samo nic neotevře',
   'brute.fact.id.note': 'Bez klíče z\u{A0}odkazu ani metadata',
   'brute.fact.pass': 'Passphrase po síti neuhádne',
   'brute.fact.pass.note': 'Po 100 chybách se zpráva zamkne',
@@ -563,7 +563,7 @@ export const czech = {
     'Slack, Teams ani e-mailový skener zprávu neotevřou. Otevření spotřebuje až kliknutí příjemce.',
   'promise.logs.title': 'Logy bez IP a\u{A0}odkazů',
   'promise.logs.text':
-    'Do logu nejdou IP adresy, id zpráv, klíče ani obsah. Limity na jednotlivé adresy drží server jen v\u{A0}paměti.',
+    'Do logu nejdou IP adresy, ID zpráv, klíče ani obsah. Limity na jednotlivé adresy drží server jen v\u{A0}paměti.',
   'promise.ttl.title': 'Platí nejdéle {days}',
   'promise.ttl.text':
     'Po posledním otevření nebo po vypršení server šifru smaže. Za dalších {days} zapomene i\u{A0}to, že zpráva existovala.',
@@ -580,7 +580,7 @@ export const czech = {
   'extra.sub': 'Šifrujeme prověřenými standardy. Navíc hlídáme i\u{A0}stopy, které po zprávě zůstávají na serveru.',
   'extra.stolen.title': 'Ukradený server obsah neprozradí',
   'extra.stolen.text':
-    'Test, který běží s\u{A0}každou změnou kódu, zkopíruje databázi, soubory i\u{A0}logy serveru a\u{A0}hledá v\u{A0}nich klíče, obsah, názvy souborů, id zpráv i\u{A0}IP adresy. Nesmí najít nic.',
+    'Test, který běží s\u{A0}každou změnou kódu, zkopíruje databázi, soubory i\u{A0}logy serveru a\u{A0}hledá v\u{A0}nich klíče, obsah, názvy souborů, ID zpráv i\u{A0}IP adresy. Nesmí najít nic.',
   'extra.stolen.copy': 'Kopie serveru',
   'extra.stolen.found': 'Nalezeno: 0',
   'extra.scan.keys': 'Klíče zpráv',
@@ -591,13 +591,13 @@ export const czech = {
   'extra.scan.passphrase.where': 'nikde',
   'extra.scan.ip': 'IP adresy',
   'extra.scan.ip.where': 'v\u{A0}databázi ani v\u{A0}logu',
-  'extra.scan.ids': 'Id zpráv',
+  'extra.scan.ids': 'ID zpráv',
   'extra.scan.ids.where': 'v\u{A0}databázi ani v\u{A0}logu',
   'extra.scan.times': 'Přesné časy',
   'extra.scan.times.where': 'v\u{A0}databázi čitelné jen na čtvrthodinu',
   'extra.signed.title': 'Každé stažení chce klíč',
   'extra.signed.text':
-    'Otevření i\u{A0}stažení šifry chtějí podpis klíčem z\u{A0}odkazu. Kdo zná jen id zprávy, nestáhne nic.',
+    'Otevření i\u{A0}stažení šifry chtějí podpis klíčem z\u{A0}odkazu. Kdo zná jen ID zprávy, nestáhne nic.',
   'extra.signed.denied': 'zamítnuto',
   'extra.signed.opens': 'otevře',
   'extra.padding.title': 'Heslo i\u{A0}odstavec vypadají stejně',
@@ -652,7 +652,7 @@ export const czech = {
   'compare.row.secret': 'Tajemství v\u{A0}odkazu',
   'compare.row.verify': 'Ověření servírovaného kódu proti vydání',
   'compare.row.length': 'Zaokrouhlí délku na celé bloky',
-  'compare.row.id': 'Samotné id zprávu neotevře',
+  'compare.row.id': 'Samotné ID zprávu neotevře',
   'compare.row.stolen': 'Automatický test ukradeného serveru',
   'compare.row.ip': 'Server nezapisuje IP adresy',
   'compare.row.audit': 'Nezávislý audit',
@@ -672,7 +672,7 @@ export const czech = {
   'compare.note.compression': 'jen komprese',
   'compare.note.server_sees': 'server vidí obsah',
   'compare.note.signed': 'podepsané požadavky',
-  'compare.note.id_enough': 'id stačí',
+  'compare.note.id_enough': 'ID stačí',
   'compare.note.every_change': 's\u{A0}každou změnou',
   'compare.note.memory': 'jen v\u{A0}paměti',
   'compare.note.hmac': 'HMAC na 10 s',
@@ -699,8 +699,8 @@ export const czech = {
   'limits.link.note': 'Passphrase proto pošlete jinou cestou.',
   'limits.server.title': 'Kdo ovládá server, může tento web změnit',
   'limits.server.note':
-    'Vybranému člověku může poslat stránku, která zprávu přečte, a\u{A0}v\u{A0}roce 2026 to žádný prohlížeč nepozná. nylzo verify-client odhalí chybné sestavení, ale ne server, který před ním záměnu schová. Zprávu, která musí zůstat v\u{A0}bezpečí i\u{A0}tehdy, pošlete i\u{A0}přečtěte přes nylzo web, nylzo open nebo příkazovou řádku nylzo, které spouštějí kód z\u{A0}podepsaného vydání.',
-  'limits.server.link': 'Ověření klienti',
+    'Vybranému člověku může poslat stránku, která zprávu vyzradí, a\u{A0}zatím to žádný prohlížeč nepozná. Příkaz nylzo verify-client odhalí upravené sestavení, ale ne server, který před ním záměnu schová. Zprávu, která musí zůstat v\u{A0}bezpečí i\u{A0}v\u{A0}takovém případě, pošlete i\u{A0}přečtěte přes nylzo web, nylzo open nebo nástroj nylzo pro příkazovou řádku, které spouštějí kód z\u{A0}podepsaného vydání.',
+  'limits.server.link': 'Ověřené klientské aplikace',
   'limits.abuse.title': 'Ne pro podvody a\u{A0}malware',
   'limits.abuse.note': 'Ani pro jiný nezákonný obsah.',
   'limits.liability':
@@ -713,7 +713,7 @@ export const czech = {
   'host.domain': 'vase-domena.cz',
   'host.terminal': 'bash — nylzo',
   'compare.note.dash': '—',
-  'compare.note.verify': 'jen to, co server pošle verify\u{2011}client',
+  'compare.note.verify': 'jen to, co server pošle příkazu verify\u{2011}client',
 };
 
 export type MessageKey = keyof typeof czech;
