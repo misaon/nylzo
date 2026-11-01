@@ -81,6 +81,7 @@ linters:
             - github.com/misaon/nylzo
             - filippo.io/edwards25519
             - golang.org/x/crypto
+            - golang.org/x/sys
             - golang.org/x/term
             - golang.org/x/text
             - modernc.org/sqlite

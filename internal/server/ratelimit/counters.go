@@ -1,7 +1,6 @@
 package ratelimit
 
 import (
-	"maps"
 	"math"
 	"sync"
 	"time"
@@ -79,8 +78,8 @@ func (c *Counters) Purge(now time.Time) {
 	defer c.mutex.Unlock()
 	nowSeconds := now.Unix()
 	for _, table := range c.tables {
-		maps.DeleteFunc(table.entries, func(_ Bucket, entry counter) bool {
-			return nowSeconds >= entry.start+table.windowSeconds
+		table.entries = Rebuilt(table.entries, func(entry counter) bool {
+			return nowSeconds < entry.start+table.windowSeconds
 		})
 	}
 }
@@ -88,7 +87,10 @@ func (c *Counters) Purge(now time.Time) {
 func (c *Counters) Reset() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	clear(c.tables)
+	for kind, table := range c.tables {
+		table.entries = Rebuilt(table.entries, func(counter) bool { return false })
+		delete(c.tables, kind)
+	}
 }
 
 func (c *Counters) add(hit *Hit, now time.Time) counter {

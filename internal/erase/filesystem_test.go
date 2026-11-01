@@ -2,24 +2,27 @@ package erase
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
 func TestOnlyFileSystemsThatOverwriteInPlaceAreAccepted(t *testing.T) {
 	t.Parallel()
+	options := func(text string) []string { return strings.Split(text, ",") }
 	for _, testCase := range []struct {
 		found    mount
 		accepted bool
 	}{
-		{mount{fileSystem: "ext4", superOptions: "rw,errors=remount-ro"}, true},
-		{mount{fileSystem: "ext4", superOptions: "rw,data=writeback"}, true},
-		{mount{fileSystem: "xfs", superOptions: "rw,attr2,inode64"}, true},
-		{mount{fileSystem: "tmpfs", superOptions: "rw,size=65536k"}, true},
-		{mount{fileSystem: "ext4", superOptions: "rw,data=journal"}, false},
-		{mount{fileSystem: "ext4", superOptions: "rw", journaledDirectory: true}, false},
-		{mount{fileSystem: "btrfs", superOptions: "rw,ssd"}, false},
-		{mount{fileSystem: "zfs", superOptions: "rw,xattr"}, false},
-		{mount{fileSystem: "overlay", superOptions: "rw,lowerdir=/a"}, false},
+		{mount{fileSystem: "ext4", dataOptions: options("rw,errors=remount-ro,data=ordered")}, true},
+		{mount{fileSystem: "ext4", dataOptions: options("rw,data=writeback")}, true},
+		{mount{fileSystem: "xfs"}, true},
+		{mount{fileSystem: "tmpfs"}, true},
+		{mount{fileSystem: "tmpfs", swapActive: true}, false},
+		{mount{fileSystem: "ext4", dataOptions: options("rw,data=journal")}, false},
+		{mount{fileSystem: "ext4", dataOptions: options("rw,data=ordered"), journaledData: true}, false},
+		{mount{fileSystem: "btrfs"}, false},
+		{mount{fileSystem: "zfs"}, false},
+		{mount{fileSystem: "overlay"}, false},
 		{mount{fileSystem: "a darwin file system"}, false},
 	} {
 		err := checkInPlace("/data", testCase.found)

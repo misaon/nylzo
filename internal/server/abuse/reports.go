@@ -23,7 +23,7 @@ const (
 	legacyExtension = ".jsonl"
 	legacyFile      = "abuse-reports.jsonl"
 	maxFilesBytes   = 64 << 20
-	keptDays        = 8
+	reportedDays    = 15
 )
 
 var (
@@ -43,13 +43,14 @@ type Reports struct {
 	mutex     sync.Mutex
 }
 
-// FilesBytes is room for every report the global cap admits, 3 per message for 8 days of creates, so the reports
-// about one sender's own messages cannot crowd out a notice; without a cap the files hold 64 MiB (F6).
+// FilesBytes is room for every report the global cap admits: 3 per message for 15 days of creates, since a report
+// stays 7 days, a message can be reported during its up to 7 days of life, and UTC days add one. The reports about
+// one sender's own messages then cannot crowd out a notice; without a cap the files hold 64 MiB (F6).
 func FilesBytes(dailyCreates, reportsPerMessage int64) int64 {
 	if dailyCreates <= 0 {
 		return maxFilesBytes
 	}
-	return max(maxFilesBytes, reportsPerMessage*dailyCreates*keptDays*SealedLen)
+	return max(maxFilesBytes, reportsPerMessage*dailyCreates*reportedDays*SealedLen)
 }
 
 func NewReports(dataDir string, key hpke.PublicKey, logger *slog.Logger, maxBytes int64) *Reports {

@@ -170,8 +170,8 @@ func TestReportFilesHaveACap(t *testing.T) {
 	if err := reports.Record(now, spam(core.NewID().String())); !errors.Is(err, abuse.ErrFull) {
 		t.Fatalf("a report that would pass 64 MiB: %v", err)
 	}
-	if room := abuse.FilesBytes(2000, 3); room < 3*2000*8*abuse.SealedLen {
-		t.Fatalf("F6: the files must hold every report that 8 days of capped creates allow, got %d bytes", room)
+	if room := abuse.FilesBytes(2000, 3); room < 3*2000*15*abuse.SealedLen {
+		t.Fatalf("F6: the files must hold every report that 15 days of capped creates allow, got %d bytes", room)
 	}
 }
 
