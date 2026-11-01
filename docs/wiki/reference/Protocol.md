@@ -556,7 +556,7 @@ A message is safe from such a server only when its sender and its reader both us
 
 ### 14.2 Handing a link to the local client
 
-`nylzo open` reads the link like `nylzo read` (§4), checks it the same way and refuses one whose origin differs from `--server` or `NYLZO_SERVER` when either is set; without them the link names the instance. The handoff keeps `S` out of every process argument, out of every address the browser navigates to, and so out of the browser history:
+`nylzo open` reads the link like `nylzo read` (§4), checks it the same way and refuses one whose origin differs from the instance named by `--server` or `NYLZO_SERVER`, which the command requires. The handoff keeps `S` out of every process argument, out of every address the browser navigates to, and so out of the browser history:
 
 1. The local client keeps the text of the link after its origin, split into the path and the fragment, under a token of 130 random bits (`crypto/rand.Text`) for 2 minutes.
 2. `nylzo open` writes a page that refreshes to `http://127.0.0.1:{port}/open#{token}` into a new file of mode 0600 in a new directory of mode 0700, opens that file in the default browser, and deletes both once the token is used, expires or the command ends. With `--no-browser` it prints the address instead.

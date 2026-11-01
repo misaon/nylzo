@@ -1468,23 +1468,32 @@ func TestOpenRefusesALinkItCannotHandOver(t *testing.T) {
 	link, _ := createText(t, instance, "opened elsewhere")
 	before := instance.requests.Load()
 	for name, testCase := range map[string]struct {
-		stdin     string
-		arguments []string
-		want      string
+		stdin  string
+		server string
+		want   string
 	}{
-		"another instance": {link, []string{"--server", "https://nylzo.example"}, "belongs to another instance"},
-		"damaged link":     {strings.Replace(link, "#1.", "#1.9", 1), nil, "incomplete or damaged"},
-		"newer link":       {strings.Replace(link, "#1.", "#7.", 1), nil, "newer version"},
-		"no link":          {"", nil, "empty"},
+		"another instance": {link, "https://nylzo.example", "belongs to another instance"},
+		"damaged link":     {strings.Replace(link, "#1.", "#1.9", 1), instance.url, "incomplete or damaged"},
+		"newer link":       {strings.Replace(link, "#1.", "#7.", 1), instance.url, "newer version"},
+		"no link":          {"", instance.url, "empty"},
 	} {
-		arguments := append([]string{"open", "--no-browser"}, testCase.arguments...)
-		result := runWith(t, testCase.stdin, nil, nil, arguments...)
+		result := runWith(t, testCase.stdin, nil, nil, "open", "--no-browser", "--server", testCase.server)
 		if result.code != command.ExitError || !strings.Contains(result.stderr, testCase.want) || result.stdout != "" {
 			t.Fatalf("%s: %+v", name, result)
 		}
 	}
-	if result := runWith(t, "", nil, nil, "web", "--no-browser"); result.code != command.ExitUsage {
-		t.Fatalf("web without an instance: %+v", result)
+	for _, name := range []string{"web", "open"} {
+		if result := runWith(
+			t,
+			link,
+			nil,
+			nil,
+			name,
+			"--no-browser",
+		); result.code != command.ExitUsage ||
+			result.stdout != "" {
+			t.Fatalf("%s without an instance: %+v", name, result)
+		}
 	}
 	if instance.requests.Load() != before {
 		t.Fatal("a refused open talked to the instance")
@@ -1500,7 +1509,7 @@ func TestOpenHandsOverAValidLinkOfItsInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	head, fragment, _ := strings.Cut(link, "#")
-	if handed.instance != instance.url || !strings.HasSuffix(head, handed.path) || handed.fragment != fragment {
+	if !strings.HasSuffix(head, handed.path) || handed.fragment != fragment {
 		t.Fatalf("%+v from %s", handed, link)
 	}
 }

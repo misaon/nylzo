@@ -19,15 +19,22 @@ interface HostileServer {
 }
 
 function relayed(incoming: IncomingMessage, outgoing: ServerResponse, origin: string, hostile: HostileServer): void {
-  const target = new URL(incoming.url ?? '/', BASE_URL);
-  const headers = { ...incoming.headers, host: target.host, 'accept-encoding': 'identity' };
+  const instance = new URL(BASE_URL);
+  const headers = { ...incoming.headers, host: instance.host, 'accept-encoding': 'identity' };
   for (const name of ['origin', 'referer'] as const) {
     const value = headers[name];
     if (typeof value === 'string') {
       headers[name] = value.replace(origin, () => BASE_URL);
     }
   }
-  const upstream = forward(target, { method: incoming.method ?? 'GET', headers }, (answer) => {
+  const target = {
+    hostname: instance.hostname,
+    port: instance.port,
+    path: `/${(incoming.url ?? '/').replace(/^\/+/, '')}`,
+    method: incoming.method ?? 'GET',
+    headers,
+  };
+  const upstream = forward(target, (answer) => {
     const chunks: Buffer[] = [];
     answer.on('data', (chunk: Buffer) => {
       chunks.push(chunk);
@@ -133,7 +140,7 @@ test(
       );
       expect(link.startsWith(`${hostile.origin}/m/`), 'links from the verified client name the instance').toBe(true);
 
-      const open = runNylzo(['open', '--no-browser'], link);
+      const open = runNylzo(['open', '--no-browser', '--server', hostile.origin], link);
       running.push(open);
       const handoff = await open.firstLine;
       expect(handoff).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/open#[A-Z2-7]{26}$/);

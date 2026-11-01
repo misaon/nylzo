@@ -40,12 +40,12 @@ Your browser opens the familiar page at a random address such as `http://127.0.0
 To read a message, copy the link and run:
 
 ```sh
-nylzo open
+nylzo open --server https://nylzo.example
 ```
 
-Paste the link at the hidden prompt and press Enter. You can also pipe it in (`pbpaste | nylzo open`) or use `--link-file`. The browser opens the message from the local client. The link never appears in a command, in the address bar or in the browser history: the browser receives a one-time address that works once, for two minutes, and the page then takes the link from the local client in memory. If that address is used twice, the command warns you, because another program may have taken the link. Press Ctrl-C when you are done reading.
+Paste the link at the hidden prompt and press Enter. You can also pipe it in (`pbpaste | nylzo open --server …`) or use `--link-file`, and set `NYLZO_SERVER` once instead of `--server`. The browser opens the message from the local client. The link never appears in a command, in the address bar or in the browser history: the browser receives a one-time address that works once, for two minutes, and the page then takes the link from the local client in memory. If that address is used twice, the command warns you, because another program may have taken the link. Press Ctrl-C when you are done reading.
 
-`nylzo open` refuses a link of another instance than `--server` or `NYLZO_SERVER`, when you set one.
+`nylzo open` refuses a link of another instance than the one you name, so a link that points somewhere unexpected does not open.
 
 ## What the local client does
 

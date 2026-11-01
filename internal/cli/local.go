@@ -63,11 +63,19 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 	if options.server == "" {
 		options.server = environment.Getenv(envServer)
 	}
+	if options.server == "" {
+		fmt.Fprintln(environment.Stderr, command.Program+" open needs --server or "+envServer)
+		return command.ExitUsage
+	}
+	instance, err := client.Origin(options.server)
+	if err != nil {
+		return command.Failf(environment, "%s", explain(err))
+	}
 	raw, err := readLink(environment, *linkFile)
 	if err != nil {
 		return command.Failf(environment, "link: %s", explain(err))
 	}
-	link, err := handedOverLink(raw, options.server)
+	link, err := handedOverLink(raw, instance)
 	if err != nil {
 		return command.Failf(environment, "link: %s", explain(err))
 	}
@@ -76,7 +84,7 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 		return command.Failf(environment, "%s", errNoLocalClient)
 	}
 	return local.Serve(ctx, environment, local.Options{
-		Instance:    link.instance,
+		Instance:    instance,
 		Build:       build,
 		OpenBrowser: !options.noBrowser,
 		Link:        &local.Link{Path: link.path, Fragment: link.fragment, Lifetime: local.HandoffLifetime},
@@ -84,30 +92,23 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 }
 
 type handedOver struct {
-	instance string
 	path     string
 	fragment string
 }
 
-func handedOverLink(raw, server string) (handedOver, error) {
+func handedOverLink(raw, instance string) (handedOver, error) {
 	parsed, err := parseOpenLink(raw)
 	if err != nil {
 		return handedOver{}, err
 	}
 	parsed.wipe()
-	if server != "" {
-		instance, originErr := client.Origin(server)
-		if originErr != nil {
-			return handedOver{}, originErr
-		}
-		if instance != parsed.origin {
-			return handedOver{}, errors.New("the link belongs to another instance than --server or " + envServer)
-		}
+	if parsed.origin != instance {
+		return handedOver{}, errors.New("the link belongs to another instance than --server or " + envServer)
 	}
 	head, fragment, _ := strings.Cut(raw, "#")
 	address, err := url.Parse(head)
 	if err != nil {
 		return handedOver{}, errors.New("the link is incomplete or damaged")
 	}
-	return handedOver{instance: parsed.origin, path: address.EscapedPath(), fragment: fragment}, nil
+	return handedOver{path: address.EscapedPath(), fragment: fragment}, nil
 }
