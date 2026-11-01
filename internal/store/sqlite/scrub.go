@@ -78,7 +78,7 @@ func restartLog(ctx context.Context, connection *sql.Conn) error {
 	err := connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(RESTART)`).Scan(&blocked, &frames, &moved)
 	switch {
 	case busy(err):
-		return errors.Join(ErrCheckpointBusy, err)
+		return fmt.Errorf("%w (%v)", ErrCheckpointBusy, err)
 	case err != nil:
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	case blocked != 0:
@@ -106,7 +106,7 @@ func wrapScrub(err error) error {
 	case err == nil:
 		return nil
 	case busy(err):
-		return errors.Join(ErrCheckpointBusy, err)
+		return fmt.Errorf("%w (%v)", ErrCheckpointBusy, err)
 	default:
 		return fmt.Errorf("sqlite: wal scrub: %w", err)
 	}
