@@ -54,7 +54,6 @@ for boot in first second; do
     -nographic -monitor none -no-reboot -drive "file=$directory/runtime.qcow2,format=qcow2,if=virtio" \
     -netdev user,id=net0 -device virtio-net-pci,netdev=net0 \
     -fw_cfg "name=opt/org.flatcar-linux/config,file=$directory/vm.ign" > "$directory/$boot.log" 2>&1 || { tail -200 "$directory/$boot.log"; exit 1; }
-  grep --fixed-strings NYLZO_VM_DIAGNOSTIC "$directory/$boot.log" || true
   if [[ "$boot" = first ]]; then marker=NYLZO_VM_REBOOT_READY; else marker=NYLZO_VM_ACCEPTANCE_PASSED; fi
   grep --fixed-strings "$marker" "$directory/$boot.log" || { tail -200 "$directory/$boot.log"; exit 1; }
 done

@@ -20,12 +20,6 @@ expect kexalgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x2551
 expect hostkeyalgorithms ssh-ed25519
 expect pubkeyacceptedalgorithms sk-ssh-ed25519@openssh.com
 expect pubkeyauthoptions verify-required
-for file in /home/core/.ssh/authorized_keys /home/core/.ssh/authorized_keys.d/*; do
-  [[ ! -f "$file" ]] || echo "NYLZO_VM_DIAGNOSTIC $file $(cut -d ' ' -f 1,2 "$file" | cut -c 1-40 | tr '\n' ' ')"
-done
-echo "NYLZO_VM_DIAGNOSTIC sshd $(grep -E '^(authorizedkeysfile|authorizedkeyscommand) ' <<< "$ssh_policy" | tr '\n' ' ')"
-echo "NYLZO_VM_DIAGNOSTIC units $(systemctl is-active update-ssh-keys-after-ignition.service sshkeys.service coreos-metadata-sshkeys@core.service 2>&1 | tr '\n' ' ')"
-echo "NYLZO_VM_DIAGNOSTIC list $(sudo -u core update-ssh-keys -l 2>&1 | tr '\n' ' ')"
 expect ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
 expect macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 [[ "$(awk '$1 == "hostkey" { print $2 }' <<< "$ssh_policy")" = /etc/ssh/ssh_host_ed25519_key ]]
