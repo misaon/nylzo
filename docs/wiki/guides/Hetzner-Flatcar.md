@@ -11,7 +11,7 @@ This is a single-server deployment with brief restart windows, not a highly avai
 - Create a dedicated Hetzner Cloud project. Hetzner tokens have no expiry, IP filter or narrower scope, and a Read & Write token is root on the server. Create one for a plan/apply session and delete it afterwards, or keep it in a password manager and pass it only to that command, for example `HCLOUD_TOKEN="$(op read op://nylzo/hetzner/token)" mise run deploy plan server …`. `HCLOUD_TOKEN_FILE` still works for a private `0600` file.
 - Enable the strongest 2FA each provider offers on the hosting, DNS, registrar, and GitHub accounts, and keep recovery codes offline.
 - Choose administrator networks: IPv4 /24 or narrower, IPv6 /64 or narrower. A single /32 or /128, or a WireGuard exit you control, is better than a shared VPN range.
-- Create a hardware-backed SSH key: `ssh-keygen -t ed25519-sk -O verify-required -O resident`. A production server accepts only `sk-ssh-ed25519@openssh.com` keys, and sshd requires the PIN (`PubkeyAuthOptions verify-required`).
+- Create a hardware-backed SSH key: `ssh-keygen -t ed25519-sk -O verify-required -O resident`. Provisioning a server requires one and writes `HARDWARE_KEYS_ONLY=true` to its `/etc/nylzo/host.env`, so the server accepts only `sk-ssh-ed25519@openssh.com` keys. sshd requires the PIN (`PubkeyAuthOptions verify-required`).
 - Install [mise](https://mise.jdx.dev/getting-started.html) and [age](https://github.com/FiloSottile/age), clone a reviewed Nylzo revision, and use a [verified Nylzo CLI](Verify-a-release.md).
 
 ```sh
@@ -74,10 +74,10 @@ At the registrar, turn on the transfer, update and delete locks, ask for the `.c
 ## Runtime
 
 - The cloud firewall admits 80/tcp, 443/tcp and 443/udp, ICMP, SSH from the administrator networks, and 8443/tcp when host monitoring is on. An nftables policy on the host admits exactly the same with input policy drop, so a detached or edited cloud firewall exposes nothing new. An iptables `connlimit` rule allows each IPv4 address and IPv6 /64 at most 64 TCP connections to the web ports; Flatcar's kernel has no nftables connection counting. New connections from the container bridge are rejected over IPv4 and IPv6.
-- Caddy accepts only TLS 1.3 with X25519MLKEM768. Every target in `web/.browserslistrc` supports it (Chrome and Edge 131+, Firefox 132+, Firefox for Android 145+, Safari and iOS 26+), as do the CLI (Go 1.24+) and Node 26. Clients with OpenSSL older than 3.5, such as curl on Ubuntu 24.04, cannot connect, and neither can link-preview bots. HTTP/3 0-RTT is off, so every request comes from a validated client address. Caddy removes client-sent `X-Real-IP`, `Forwarded` and similar headers and sets `X-Forwarded-For` itself; Nylzo trusts only the bridge gateway.
+- Caddy accepts only TLS 1.3 with X25519MLKEM768. Every target in `web/.browserslistrc` supports it (Chrome and Edge 131+, Firefox 132+, Firefox for Android 145+, Safari and iOS 26+), as do the CLI (Go 1.24+) and Node 26. Older clients cannot connect, among them Safari and iOS before 26, Firefox ESR 128, curl on Ubuntu 24.04, and many link-preview bots and uptime monitors ([transport](Security-model.md#transport)). HTTP/3 0-RTT is off, so every request comes from a validated client address. Caddy removes client-sent `X-Real-IP`, `Forwarded` and similar headers and sets `X-Forwarded-For` itself; Nylzo trusts only the bridge gateway.
 - Caddy requests Let's Encrypt `shortlived` certificates (160 hours) and renews them with ACME Renewal Info. A stolen TLS key stays valid for days, not months. A Let's Encrypt outage of about two days triggers the certificate alert; one of about a week stops HTTPS.
 - Caddy limits headers to 16 KB, bodies to 6 MiB, and sets `read_header 10s`, `read_body 6m`, `read_body_idle 20s`, `write 6m` and `idle 2m`. Its own error pages carry CSP, `nosniff`, HSTS and `no-store`.
-- SSH key exchange is `mlkem768x25519-sha256` or `sntrup761x25519-sha512` only, with an Ed25519 host key, AEAD ciphers and ETM MACs. A client that prefers ECDH, such as the macOS 27 client, still negotiates ML-KEM because the server offers nothing else.
+- SSH key exchange is `mlkem768x25519-sha256` or `sntrup761x25519-sha512`, the latter also under its older name `sntrup761x25519-sha512@openssh.com`, so OpenSSH 8.9 and newer connect with default settings. The server offers no classical key exchange, so a client that prefers ECDH, such as the macOS 27 client, still negotiates ML-KEM. The host key is Ed25519, with AEAD ciphers and ETM MACs. sshd accepts `sk-ssh-ed25519@openssh.com` keys, and plain `ssh-ed25519` keys too unless `HARDWARE_KEYS_ONLY=true`.
 - Caddy, the updater, the clock check, the heartbeat, the firewall and the Docker client each run in a systemd sandbox with a system-call filter, no user namespaces, no core dumps and no metadata-service access. Core dumps are not stored anywhere (`Storage=none`, `fs.suid_dumpable=0`).
 - `90-nylzo.conf` disables kexec, io_uring, SysRq and line-discipline autoloading, hides kernel pointers and logs, and rejects redirects and source routing. Host policy checks the effective values on every boot.
 - Flatcar has no NTS client: systemd-timesyncd lacks NTS and the image ships no chrony. Every 15 minutes the host compares its clock with the TLS-authenticated `Date` of GitHub, Sigstore and Let's Encrypt. If two of three disagree by more than a minute, the host reports `clock: false`, so an NTP attacker can shift message expiry by about a minute without an alert.
@@ -92,7 +92,7 @@ With `automaticUpdates: true`, a timer checks every ten minutes.
 
 - A patch of the installed line installs directly. A newer minor or major installs only when its `vX.Y.0` carries signed `kind: planned` evidence, and then the host goes straight to the newest patch of that line. A host that missed a planned release window, for example v0.1.12 while v0.2.3 is a security patch of planned v0.2.0, therefore still reaches the patched line. If the newest line is not approved, the host takes the newest patch of its own line. Downgrades are refused.
 - The image needs an immutable release, the release workflow's Sigstore identity for that tag, GitHub provenance, and a pinned digest. A probe runs on disposable data without network before persistent state is touched.
-- `nylzo-host_X.Y.Z.tar` holds every script, unit, drop-in and configuration file of this page. The updater verifies it like the Caddy build (signed `checksums.txt`, SHA-256, provenance for the tag), rejects unexpected paths, and stages it under `/opt/nylzo/host/release-vX.Y.Z`. Activation installs each file atomically, reloads systemd, and restarts only what changed: sysctl, journald, the firewall, Caddy after `caddy validate`, timers, and Docker only if its configuration changed. If host policy or Caddy fails afterwards, the previous generation is activated again. Site values stay in `/etc/nylzo/*.env` and `site.json`. `sudo /opt/nylzo/runtime/update host vX.Y.Z` re-applies the bundle of the installed release.
+- `nylzo-host_X.Y.Z.tar` holds every script, unit, drop-in and configuration file of this page. The updater verifies it like the Caddy build (signed `checksums.txt`, SHA-256, provenance for the tag), rejects unexpected paths, and stages it under `/opt/nylzo/host/release-vX.Y.Z`. Activation installs each file atomically, reloads systemd, and restarts only what changed: sysctl, journald, the firewall, Caddy after `caddy validate`, timers, and Docker only if its configuration changed. If host policy or Caddy fails afterwards, the previous generation is activated again. Site values stay in `/etc/nylzo/*.env` and `site.json`. After a change to `host.env`, `heartbeat.url` or `monitor-client.pem`, re-apply the current bundle with `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`.
 - Caddy comes from the release being installed; host tools from its signed `host-tools.json`. Both refuse downgrades and keep the previous verified version.
 - Flatcar's signed Stable updates reboot between 03:00 and 04:00 UTC. The application health gate runs before update-engine confirms a new boot slot.
 
@@ -102,27 +102,50 @@ Any release signed by the release workflow reaches production within one timer p
 
 ### One-time step for servers provisioned before the host bundle
 
-A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe and `run` start the container without `--ulimit memlock=-1:-1`, which Nylzo now needs for `mlockall`, so they refuse every new release and the server stays on its current version. The bundle's `run` and updater pass that limit, and its containerd drop-in sets `LimitMEMLOCK=infinity`. Install the bundle once by hand, with the tag of the first release that ships `nylzo-host_*.tar`, and keep the Hetzner console open:
+A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe and `run` start the container without `--ulimit memlock=-1:-1`, which Nylzo now needs for `mlockall`. Until you install the bundle, the old updater tries each new release and stops at its probe, before it touches the service: the server stays on 0.2.x and `nylzo-update.service` fails every ten minutes. If the running container already has no memory-lock limit (`sudo grep 'locked memory' "/proc/$(docker inspect -f '{{.State.Pid}}' nylzo)/limits"` shows `unlimited`), the old probe passes instead and the old updater installs the release by itself.
+
+Install the bundle once by hand, after the release:
+
+1. Wait for a release that ships `nylzo-host_X.Y.Z.tar` and opens 0.2.x data: the [Operations guide](Operations.md#logging-and-upgrades) of that release says that `serve` upgrades a schema 5 database. A release that refuses schema 5 fails on the real data, and Caddy answers 502 until you recover as below.
+2. To choose the moment of the upgrade, write `AUTOMATIC_UPDATES=false` in the block below and tell your users that their open messages will be deleted. When you are ready, run `sudo systemctl start nylzo-update.service`, then set the value back to `true` and apply it as described under [Updates](#updates).
+3. Keep the Hetzner console open and run the block with that release's tag and your real `host.env` values. `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. The block stops at the first failed check.
 
 ```sh
+bash -euo pipefail <<'STEP'
 tag=vX.Y.Z
-work=$(mktemp -d) && cd "$work"
+bundle="nylzo-host_${tag#v}.tar"
+cd "$(mktemp -d)"
 base="https://github.com/misaon/nylzo/releases/download/$tag"
-curl -fsSLO "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json" -O "$base/nylzo-host_${tag#v}.tar"
+curl -fsSLO "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json" -O "$base/$bundle"
 /opt/nylzo/bin/cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$tag"
-grep " nylzo-host_${tag#v}.tar\$" checksums.txt | sha256sum --check --strict
-/opt/nylzo/bin/gh attestation verify "nylzo-host_${tag#v}.tar" --repo misaon/nylzo \
+grep " $bundle\$" checksums.txt | sha256sum --check --strict
+digest=$(sha256sum "$bundle" | cut -d ' ' -f 1)
+curl -fsSL "https://api.github.com/repos/misaon/nylzo/attestations/sha256:$digest" | /opt/nylzo/bin/jq -ce '.attestations[].bundle' > provenance.jsonl
+/opt/nylzo/bin/gh attestation verify "$bundle" --bundle provenance.jsonl --repo misaon/nylzo \
   --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$tag" --deny-self-hosted-runners
-printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=203.0.113.7/32\n' | sudo tee /etc/nylzo/host.env
+printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=203.0.113.7/32\nHARDWARE_KEYS_ONLY=false\n' | sudo tee /etc/nylzo/host.env
 sudo mkdir -p "/opt/nylzo/host/release-$tag"
-sudo tar --extract --file "nylzo-host_${tag#v}.tar" --directory "/opt/nylzo/host/release-$tag" --no-same-owner
+sudo tar --extract --file "$bundle" --directory "/opt/nylzo/host/release-$tag" --no-same-owner
 sudo bash "/opt/nylzo/host/release-$tag/update/activate" "/opt/nylzo/host/release-$tag"
-sudo /opt/nylzo/runtime/host-policy && sudo systemctl is-active nylzo caddy nylzo-firewall
+sudo /opt/nylzo/runtime/host-policy
+sudo systemctl is-active nylzo caddy nylzo-firewall
+STEP
 ```
 
-Put the real values into `host.env`: `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. The next update check, within ten minutes, installs the release itself. Then replace the old Ed25519 key in `~core/.ssh/authorized_keys` with the hardware key, confirm a new login, and close the old session.
+What follows:
+
+- Activation restarts the firewall, containerd, Docker and Caddy, and Nylzo 0.2.x restarts on the new `run`.
+- Within ten minutes, or when you start `nylzo-update.service`, the updater installs the release. It switches to the release's Caddy, probes the image on empty data, stops Nylzo and starts the release on the real data. That first start deletes every message stored before it and logs `store-upgraded`, so every link sent earlier stops working.
+- Back up nothing first. The release cannot read those messages, and a copy would let them outlive their opens and expiry.
+- If the release does not become healthy, the updater stops Nylzo and writes `failed.json`, and Caddy answers 502. Read `sudo journalctl -u nylzo`. If the release refused the database without changing it, go back: copy `/var/lib/nylzo-deploy/previous.json` over `current.json`, delete `failed.json` and run `sudo systemctl start nylzo`. The previous release opens the untouched database.
+
+Then move SSH to the hardware key. On Hetzner, Flatcar rebuilds `~core/.ssh/authorized_keys` from the files in `~core/.ssh/authorized_keys.d` at every boot, so an edit of `authorized_keys` itself is undone at the next reboot. Use `update-ssh-keys` as `core`:
+
+1. Copy the public key to the server and add it with `update-ssh-keys -a hardware hardware.pub`. Log in with it from a second terminal.
+2. `update-ssh-keys -l` lists the key sets. Remove the one with the old Ed25519 key, `ignition` on a server that Ignition provisioned, with `update-ssh-keys -d ignition`.
+3. Set `HARDWARE_KEYS_ONLY=true` in `/etc/nylzo/host.env` and run `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`. Activation refuses the setting while `authorized_keys.d` holds no `sk-ssh-ed25519@openssh.com` key. sshd applies it to the next connection, so confirm one more login before you close the old session.
 
 ## Encrypted data volume
 

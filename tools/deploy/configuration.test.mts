@@ -69,12 +69,12 @@ test("server user data stays small, carries no secret, and installs only the sig
   const files = decode(ignition);
   assert(!JSON.stringify(ignition).includes("HCLOUD_TOKEN"));
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
-  assert.match(files.get("/etc/ssh/sshd_config.d/20-nylzo.conf")!, /^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512$/mu);
+  assert.match(files.get("/etc/ssh/sshd_config.d/20-nylzo.conf")!, /^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh\.com$/mu);
   assert.match(files.get("/etc/sysctl.d/90-nylzo.conf")!, /^kernel.kexec_load_disabled=1$/mu);
   assert.match(files.get("/etc/systemd/coredump.conf.d/20-nylzo.conf")!, /^Storage=none$/mu);
   assert.match(files.get("/etc/selinux/config")!, /^SELINUX=enforcing$/mu);
   assert.match(files.get("/etc/nylzo/service.env")!, /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);
-  assert.equal(files.get("/etc/nylzo/host.env"), "AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=false\nADMINISTRATOR_NETWORKS=192.0.2.1/32,2001:db8::1/128\n");
+  assert.equal(files.get("/etc/nylzo/host.env"), "AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=false\nADMINISTRATOR_NETWORKS=192.0.2.1/32,2001:db8::1/128\nHARDWARE_KEYS_ONLY=true\n");
   assert.equal(JSON.parse(files.get("/etc/nylzo/tang.json")!).t, 2);
   assert.equal(ignition.storage.files.find(file => file.path === "/etc/nylzo/heartbeat.url")!.mode, 0o600);
   assert(!ignition.passwd.users.some(user => "sshAuthorizedKeys" in user && user.name !== "core"));
@@ -84,6 +84,7 @@ test("server user data stays small, carries no secret, and installs only the sig
   assert.match(first.contents, /activate --first-boot \/opt\/nylzo\/host\/initial$/mu);
   const apex = decode((await render({ ...site, dnsZone: site.domain }, bundle)).ignition);
   assert.match(apex.get("/etc/nylzo/host.env")!, /^WWW_REDIRECT=true$/mu);
+  assert.match(apex.get("/etc/nylzo/host.env")!, /^HARDWARE_KEYS_ONLY=false$/mu);
   assert(!decode((await render(site, bundle)).ignition).has("/etc/nylzo/tang.json"));
 });
 

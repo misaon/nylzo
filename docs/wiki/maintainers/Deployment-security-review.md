@@ -36,7 +36,7 @@ An infrastructure audit of the live profile and nylzo.com found 20 issues (I5-01
 - An optional LUKS2 data volume unlocked through Tang, a TLS-authenticated clock check, a certificate check, an outbound heartbeat, and a domain monitor for CAA, mail records, registrar locks and Certificate Transparency.
 - DNS code for CAA bound to the ACME account and HTTP-01, null MX, SPF, DMARC, `www`, and Universal SSL off.
 
-What the owner still applies by hand is listed in the [Hetzner Flatcar guide](../guides/Hetzner-Flatcar.md): the one-time host bundle installation on the existing server, a hardware SSH key, the DNS apply and CAA check, the registrar lock, the heartbeat and Tang servers, and revocation of the two Cloudflare-held wildcard certificates (Let's Encrypt through an account holding valid authorizations for both names, Sectigo through Sectigo).
+What the owner still applies by hand is listed in the [Hetzner Flatcar guide](../guides/Hetzner-Flatcar.md): the one-time host bundle installation on the existing server after a release that upgrades 0.2.x data, a hardware SSH key followed by `HARDWARE_KEYS_ONLY=true`, the DNS apply and CAA check, the registrar lock, the heartbeat and Tang servers, and revocation of the two Cloudflare-held wildcard certificates (Let's Encrypt through an account holding valid authorizations for both names, Sectigo through Sectigo).
 
 ## Outstanding acceptance
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import assert from "node:assert/strict";
-import { configuration } from "./configuration.mts";
+import { administratorKeyIsHardware, configuration } from "./configuration.mts";
 import { archive, hostSources } from "./bundle.mts";
 
 export const profile = fileURLToPath(new URL("../../deploy/hetzner-flatcar/", import.meta.url));
@@ -57,6 +57,7 @@ export async function render(input: unknown, bundle: HostBundle) {
   const settings = Object.entries({
     AUTOMATIC_UPDATES: site.automaticUpdates, PUBLIC_ACCESS: site.publicAccess ?? false,
     WWW_REDIRECT: site.dnsZone === site.domain, ADMINISTRATOR_NETWORKS: site.administratorNetworks.map((network: string) => network.toLowerCase()).join(","),
+    HARDWARE_KEYS_ONLY: administratorKeyIsHardware(site.administratorPublicKey),
   }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
   const manifest = new Map(host.get("manifest")!.trimEnd().split("\n").slice(1).map(line => line.split(" ") as [string, string]));
   const files: any[] = [

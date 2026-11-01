@@ -59,6 +59,22 @@ if [[ "$first_boot" = false && -x /opt/nylzo/bin/caddy ]] && ! cmp --silent "$co
   systemd-run --wait --pipe --collect --quiet --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$domain" \
     /opt/nylzo/bin/caddy validate --config "$composed" >/dev/null || fail 'Caddy rejects the new Caddyfile'
 fi
+hardware_keys=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
+case "$(setting HARDWARE_KEYS_ONLY)" in
+  true)
+    hardware_only=true
+    [[ -f "$generation/system/sshd-hardware-keys.conf" ]] || fail 'missing system/sshd-hardware-keys.conf'
+    authorized=(/home/core/.ssh/authorized_keys)
+    # Flatcar rebuilds authorized_keys from authorized_keys.d at boot.
+    if [[ -d /home/core/.ssh/authorized_keys.d ]]; then authorized=(/home/core/.ssh/authorized_keys.d/*); fi
+    if ! cmp --silent "$generation/system/sshd-hardware-keys.conf" "$hardware_keys" &&
+      ! grep --quiet --no-messages --extended-regexp '(^|[[:space:]])sk-ssh-ed25519@openssh\.com[[:space:]]' "${authorized[@]}"; then
+      fail 'HARDWARE_KEYS_ONLY=true needs an sk-ssh-ed25519@openssh.com key for core, added with update-ssh-keys; then run activate with sudo'
+    fi
+    ;;
+  false | '') hardware_only=false ;;
+  *) fail "set HARDWARE_KEYS_ONLY to true or false in $settings" ;;
+esac
 current=$(readlink -e "$library/current" 2>/dev/null || true)
 if [[ -n "$current" && "$current" != "$generation" && -s "$current/manifest" ]]; then
   while read -r target _; do
@@ -72,6 +88,11 @@ while read -r target source; do
   place "$target" "$generation/$source"
 done <<< "$entries"
 place /etc/caddy/Caddyfile "$composed"
+if [[ "$hardware_only" = true ]]; then
+  place "$hardware_keys" "$generation/system/sshd-hardware-keys.conf"
+else
+  rm -f -- "$hardware_keys"
+fi
 systemctl daemon-reload
 enabled=()
 while read -r action condition unit; do
