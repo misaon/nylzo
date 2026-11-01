@@ -23,7 +23,7 @@ const REMEMBERED = 'This device remembered the message.';
 const NOTHING_REMEMBERED = 'This device remembers no messages.';
 
 function idOf(link: string): string {
-  return new URL(link).pathname.slice('/m/'.length);
+  return new URL(link).hash.slice(1).split('.', 3)[2] ?? '';
 }
 
 test('the sender cancels a remembered message from the sent list, then forgets every message (D39)', async ({

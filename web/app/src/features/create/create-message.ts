@@ -1,7 +1,7 @@
 import {
-  type ContentKeys,
   deriveContent,
   deriveLink,
+  deriveVerifier,
   formatLink,
   idToString,
   KDF_NONE,
@@ -15,6 +15,8 @@ import {
   newHeader,
   newRequestKey,
   newSecret,
+  newShareKey,
+  objectHash,
   passphraseProblem,
   PowTimeoutError,
   type RequestKey,
@@ -22,11 +24,12 @@ import {
   seal,
   sealWithCompression,
   TooLargeError,
+  unwrapShare,
   utf8,
   wipeRequestKey,
 } from '@nylzo/core';
 
-import type { Api, Instance } from '../../shared/api/api.ts';
+import type { Api, Issued } from '../../shared/api/api.ts';
 import type { InstanceLimits } from '../../shared/api/responses.ts';
 import type { Progress } from '../../shared/kdf/kdf.ts';
 
@@ -46,6 +49,7 @@ export interface CreateInput {
   readonly ttlSeconds: number;
   readonly opensMax: number;
   readonly passphrase: string;
+  readonly compress?: boolean | undefined;
 }
 
 export type CreateProblem =
@@ -55,7 +59,7 @@ export type CreateProblem =
   | { readonly field: 'opens' | 'ttl'; readonly code: 'out_of_range' }
   | {
       readonly field: 'passphrase';
-      readonly code: 'common' | 'context' | 'malformed' | 'repetitive' | 'sequential' | 'too_short';
+      readonly code: 'common' | 'context' | 'malformed' | 'repetitive' | 'sequential' | 'too_short' | 'unassigned';
     };
 
 export type CreateField = CreateProblem['field'];
@@ -113,12 +117,12 @@ interface SealedMessage {
   readonly object: Uint8Array<ArrayBuffer>;
   readonly readPublicKey: Uint8Array<ArrayBuffer>;
   readonly manageKey: RequestKey;
-  readonly verifierKey: Uint8Array<ArrayBuffer> | undefined;
+  readonly verifierKey: Uint8Array<ArrayBuffer>;
 }
 
 const MAX_ATTEMPTS = 3;
 const POW_ROUNDS = 2;
-const RETRY_WITH_NEW_ID = ['id_token', 'conflict', 'pow'] as const;
+const RETRY_WITH_NEW_ID = ['id_token', 'conflict', 'share_lost', 'pow'] as const;
 export const WEAK_BELOW_CHARACTERS = 16;
 export const WEAK_BELOW_WORDS = 4;
 export const POW_BUDGET_MS = 110_000;
@@ -226,44 +230,52 @@ function failureOf(error: unknown): CreateFailure {
   return error instanceof KdfWorkerError ? { kind: 'kdf' } : { kind: 'failed' };
 }
 
+interface SealInput {
+  readonly input: CreateInput;
+  readonly issued: Issued;
+  readonly kdfId: KdfId;
+  readonly secret: Uint8Array<ArrayBuffer>;
+  readonly share: Uint8Array<ArrayBuffer>;
+  readonly maxObjectBytes: number;
+}
+
 async function sealMessage(
-  input: CreateInput,
-  instance: Instance,
-  kdfId: KdfId,
-  secret: Uint8Array<ArrayBuffer>,
+  sealing: SealInput,
   dependencies: CreateDependencies,
   onProgress: ReportProgress,
 ): Promise<SealedMessage> {
-  const { id } = instance.create;
+  const { input, kdfId, secret, share } = sealing;
+  const { id } = sealing.issued;
   let linkKeys: LinkKeys | undefined;
   let passphraseKey: Uint8Array | undefined;
-  let contentKeys: ContentKeys | undefined;
+  let verifierSeed: Uint8Array | undefined;
   try {
     linkKeys = await deriveLink(id, secret);
     passphraseKey = await derivePassphraseKey(input, kdfId, linkKeys.passphraseSalt, dependencies, onProgress);
-    contentKeys = await deriveContent(id, secret, passphraseKey);
+    verifierSeed = await deriveVerifier(id, secret, passphraseKey);
+    const contentKeys = await deriveContent(id, secret, passphraseKey, share);
     passphraseKey.fill(0);
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
     onProgress({ step: 'encrypting' });
-    const encode = instance.fileCompression === 'gzip' ? sealWithCompression : seal;
-    const object = await encode(contentKeys.contentKey, newHeader(kdfId), id, policy, {
+    const encode = input.compress === true ? sealWithCompression : seal;
+    const object = await encode(contentKeys, newHeader(kdfId), id, policy, {
       meta: metaOf(input),
       file: input.file?.bytes,
     });
-    if (object.length > instance.limits.maxObjectBytes) {
+    if (object.length > sealing.maxObjectBytes) {
       throw new CreateError({ kind: 'too_large' });
     }
     const readKey = await requestKey(linkKeys.readSeed);
     wipeRequestKey(readKey);
-    const verifierKey = kdfId === KDF_NONE ? undefined : await requestKey(contentKeys.verifierSeed);
+    const verifierKey = await requestKey(verifierSeed);
     wipeRequestKey(verifierKey);
     const manageKey = await newRequestKey();
-    return { object, readPublicKey: readKey.publicKey, manageKey, verifierKey: verifierKey?.publicKey };
+    return { object, readPublicKey: readKey.publicKey, manageKey, verifierKey: verifierKey.publicKey };
   } finally {
     linkKeys?.readSeed.fill(0);
     linkKeys?.passphraseSalt.fill(0);
     passphraseKey?.fill(0);
-    contentKeys?.verifierSeed.fill(0);
+    verifierSeed?.fill(0);
   }
 }
 
@@ -273,23 +285,32 @@ async function createOnce(
   onProgress: ReportProgress,
 ): Promise<Created> {
   onProgress({ step: 'preparing' });
-  const instance = await dependencies.api.instance();
+  const shareKey = await newShareKey();
+  const instance = await dependencies.api.instance({ ttlSeconds: input.ttlSeconds, shareKey: shareKey.publicKey });
   const problems = validateCreate(input, instance.limits);
   if (problems.length > 0) {
     throw new CreateError({ kind: 'invalid', problems });
   }
-  const { id, idToken } = instance.create;
-  const kdfId = input.passphrase === '' ? KDF_NONE : KDF_SCRYPT;
+  const issued = instance.create;
+  if (issued === undefined) {
+    throw new CreateError({ kind: 'failed' });
+  }
+  const share = await unwrapShare(shareKey, issued.share);
+  const { id, idToken, epoch } = issued;
+  const kdfId: KdfId = input.passphrase === '' ? KDF_NONE : KDF_SCRYPT;
   const secret = newSecret();
   try {
-    const sealed = await sealMessage(input, instance, kdfId, secret, dependencies, onProgress);
+    const sealing = { input, issued, kdfId, secret, share, maxObjectBytes: instance.limits.maxObjectBytes };
+    const sealed = await sealMessage(sealing, dependencies, onProgress);
     const powToken = instance.pow.required ? await prove(id, dependencies, onProgress) : undefined;
+    const hash = await objectHash(sealed.object);
     onProgress({ step: 'uploading' });
     const { expiresAt } = await dependencies.api.create({
       id,
       idToken,
+      epoch,
       readKey: sealed.readPublicKey,
-      ...(sealed.verifierKey && { verifierKey: sealed.verifierKey }),
+      verifierKey: sealed.verifierKey,
       manageKey: sealed.manageKey.publicKey,
       kdfId,
       opensMax: input.opensMax,
@@ -297,10 +318,11 @@ async function createOnce(
       object: sealed.object,
       ...(powToken !== undefined && { powToken }),
     });
-    const link = formatLink(dependencies.origin, id, kdfId, secret);
+    const link = formatLink(dependencies.origin, id, kdfId, secret, hash);
     return { link, expiresAt, id: idToString(id), manageKey: sealed.manageKey };
   } finally {
     secret.fill(0);
+    share.fill(0);
   }
 }
 

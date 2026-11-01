@@ -1,6 +1,8 @@
 package seal_test
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"math/bits"
 	"testing"
 
@@ -22,6 +24,35 @@ func TestPaddedSizeFollowsPadme(t *testing.T) {
 			bits.Len64(uint64(padded))-bits.TrailingZeros64(uint64(padded)) > significant+1 {
 			t.Fatalf("PaddedSize(%d) = %d leaks more than the top bits or costs more than 12 %%", size, padded)
 		}
+	}
+}
+
+// F10: the record key seals the fields and wraps the blob key only through keys of their own.
+func TestRecordKeyServesEachPurposeThroughItsOwnKey(t *testing.T) {
+	t.Parallel()
+	recordKey, blobKey := seal.NewKey(), seal.NewKey()
+	locator := seal.LocatorOf([]byte("message"))
+	aead := func(key seal.Key) cipher.AEAD {
+		block, err := aes.NewCipher(key[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		gcm, err := cipher.NewGCMWithRandomNonce(block)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return gcm
+	}
+	aad := func(label string) []byte { return append(locator[:len(locator):len(locator)], label...) }
+	if _, err := aead(
+		recordKey,
+	).Open(nil, nil, seal.Record(recordKey, locator, []byte("fields")), aad("record")); err == nil {
+		t.Fatal("the fields are sealed under the record key itself")
+	}
+	if _, err := aead(
+		recordKey,
+	).Open(nil, nil, seal.WrapBlobKey(recordKey, blobKey, locator), aad("blob")); err == nil {
+		t.Fatal("the blob key is wrapped under the record key itself")
 	}
 }
 

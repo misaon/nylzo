@@ -8,6 +8,7 @@ export const ERROR_KINDS = [
   'id_token',
   'not_found',
   'conflict',
+  'share_lost',
   'gone',
   'length_required',
   'too_large',

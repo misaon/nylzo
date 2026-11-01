@@ -1,17 +1,24 @@
-export { open, seal, sealWithCompression } from './envelope/envelope.ts';
+export { type Expected, objectHash, open, seal, sealWithCompression } from './envelope/envelope.ts';
 export { type Header, newHeader, type Policy } from './envelope/header.ts';
 export type { Meta } from './envelope/meta.ts';
 export {
+  IntegrityError,
   KdfMismatchError,
+  LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
   MalformedPassphraseError,
   PowTimeoutError,
   TooLargeError,
 } from './errors.ts';
-export { type ContentKeys, deriveContent, deriveLink, type LinkKeys } from './keys/derive.ts';
+export { type ContentKeys, deriveContent, deriveLink, deriveVerifier, type LinkKeys } from './keys/derive.ts';
 export { assertWellFormedPassphrase, KDF_NONE, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
-export { generatePassphrase, MIN_PASSPHRASE_CHARACTERS, passphraseProblem } from './keys/passphrase.ts';
+export {
+  ASSIGNED_UNICODE_VERSION,
+  generatePassphrase,
+  MIN_PASSPHRASE_CHARACTERS,
+  passphraseProblem,
+} from './keys/passphrase.ts';
 export {
   HEADER_LENGTH,
   ID_LENGTH,
@@ -22,19 +29,12 @@ export {
   MIN_TTL_SECONDS,
   transferSeconds,
 } from './limits.ts';
-export {
-  assertProfile,
-  formatLink,
-  type Fragment,
-  type Link,
-  parseFragment,
-  parseLink,
-  parsePath,
-} from './link/link.ts';
+export { assertProfile, formatLink, isReadPath, type Link, parseFragment, parseLink } from './link/link.ts';
 export { decodeBase64url, encodeBase64url, encodedLength } from './primitives/base64url.ts';
 export { utf8 } from './primitives/bytes.ts';
 export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
-export { solvePow } from './request/proof-of-work.ts';
+export { MAX_POW_DIFFICULTY, solvePow } from './request/proof-of-work.ts';
+export { newShareKey, parseWrappedShare, type ShareKey, shareKeyText, unwrapShare } from './request/share.ts';
 export {
   authorizationHeader,
   CHALLENGE_LENGTH,

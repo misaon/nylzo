@@ -54,13 +54,21 @@ func (s *Server) pageHandler(path string) http.HandlerFunc {
 	return s.pages.For(path).Serve
 }
 
-// handleMessagePage serves link previews a page without script; loading the page consumes nothing.
+// handleMessagePage serves the page that tells a holder of a protocol version 1 link that its message is gone.
 func (s *Server) handleMessagePage(w http.ResponseWriter, r *http.Request) {
 	if _, err := core.ParseID(r.PathValue("id")); err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	page := s.pages.For(messagePagePath)
+	servePreviewOr(w, r, s.pages.For(messagePagePath))
+}
+
+// handleReadPage serves every reader the same page and link previews a page without script.
+func (s *Server) handleReadPage(w http.ResponseWriter, r *http.Request) {
+	servePreviewOr(w, r, s.pages.For(core.LinkPath))
+}
+
+func servePreviewOr(w http.ResponseWriter, r *http.Request, page webclient.Page) {
 	if webclient.IsPreviewAgent(r.UserAgent()) {
 		w.Header().Set("Content-Security-Policy", page.Policy())
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

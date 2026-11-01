@@ -3,10 +3,12 @@ package core
 import "crypto/rand"
 
 const (
-	IDLen     = 16
-	SecretLen = 32
-	KeyLen    = 32
-	SeedLen   = 32
+	IDLen         = 16
+	SecretLen     = 32
+	KeyLen        = 32
+	SeedLen       = 32
+	ObjectHashLen = 32
+	ShareLen      = 32
 )
 
 type ID [IDLen]byte

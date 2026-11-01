@@ -53,7 +53,7 @@ test('the composer forgets the text, the passphrase and the file once the link e
   expect(await attachedFiles()).toBe(0);
 
   const link = await createMessageInPage(page, { text: 'forget me', passphrase: PASSPHRASE, file: NOTES });
-  expect(link).toContain('#1.1.');
+  expect(link).toContain('#2.3.');
   await expect(text).toHaveValue('');
   await expect(passphrase).toHaveValue('');
   expect(await attachedFiles()).toBe(0);

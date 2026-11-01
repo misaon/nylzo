@@ -27,7 +27,11 @@ type subcommand struct {
 
 var (
 	fragmentLike = regexp.MustCompile(
-		fmt.Sprintf(`#[0-9]+\.[0-9]+\.[A-Za-z0-9_-]{%d}`, base64.RawURLEncoding.EncodedLen(core.SecretLen)),
+		fmt.Sprintf(
+			`#[0-9]+\.[0-9]+\.(?:[A-Za-z0-9_-]{%d}\.)?[A-Za-z0-9_-]{%d}`,
+			base64.RawURLEncoding.EncodedLen(core.IDLen),
+			base64.RawURLEncoding.EncodedLen(core.SecretLen),
+		),
 	)
 	commandLike = regexp.MustCompile(`^[a-z][a-z-]{0,19}$`)
 )
@@ -51,6 +55,11 @@ func commands() []subcommand {
 		{"burn", "delete the remaining opens of a message from its link", runBurn},
 		{"serve", "run the server with the embedded web client", operator.RunServe},
 		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce},
+		{
+			"store-check",
+			"tell, without writing, whether this build can open the data directory",
+			operator.RunStoreCheck,
+		},
 		{"takedown", "remove reported messages by id from stdin, on the server host", operator.RunTakedown},
 		{"report-key", "create the key pair that seals abuse reports for the operator", operator.RunReportKey},
 		{"reports", "open sealed abuse reports from stdin with the operator's private key", operator.RunReports},

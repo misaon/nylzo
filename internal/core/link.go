@@ -9,16 +9,18 @@ import (
 )
 
 const (
-	FragmentVersion = 1
-
-	fragmentLabel  = string(rune('0' + FragmentVersion))
-	linkPathPrefix = "/m/"
+	FragmentVersion = 2
+	LinkPath        = "/r"
 )
 
 var (
 	ErrLink           = errors.New("core: invalid link")
 	ErrLinkVersion    = fmt.Errorf("%w: a newer fragment version", ErrLink)
 	ErrLinkRetiredKDF = fmt.Errorf("%w: a retired passphrase profile", ErrLink)
+	ErrLinkReleased   = fmt.Errorf(
+		"%w: a link from before protocol version 2, whose message the upgrade erased",
+		ErrLink,
+	)
 )
 
 var (
@@ -27,17 +29,25 @@ var (
 )
 
 type Link struct {
-	ID     ID
-	KDF    KDF
-	Secret [SecretLen]byte
+	ID         ID
+	KDF        KDF
+	Secret     [SecretLen]byte
+	ObjectHash [ObjectHashLen]byte
 }
 
-func Fragment(kdf KDF, secret *[SecretLen]byte) string {
-	return fragmentLabel + "." + kdf.String() + "." + Encode(secret[:])
+func (l *Link) Wipe() {
+	clear(l.Secret[:])
 }
 
-func FormatLink(base string, id ID, kdf KDF, secret *[SecretLen]byte) string {
-	return strings.TrimSuffix(base, "/") + linkPathPrefix + id.String() + "#" + Fragment(kdf, secret)
+func FormatLink(base string, id ID, kdf KDF, secret *[SecretLen]byte, objectHash *[ObjectHashLen]byte) string {
+	fragment := strings.Join([]string{
+		strconv.Itoa(FragmentVersion),
+		kdf.String(),
+		id.String(),
+		Encode(secret[:]),
+		Encode(objectHash[:]),
+	}, ".")
+	return strings.TrimSuffix(base, "/") + LinkPath + "#" + fragment
 }
 
 func ParseLink(raw string) (Link, error) {
@@ -52,27 +62,15 @@ func ParseLink(raw string) (Link, error) {
 	if newerFragment(fragment) {
 		return Link{}, ErrLinkVersion
 	}
-	id, err := ParsePath(match[1])
-	if err != nil {
-		return Link{}, err
+	label, _, _ := strings.Cut(fragment, ".")
+	switch {
+	case label == strconv.Itoa(FragmentVersion):
+		return parseFragment(match[1], fragment)
+	case releasedLink(match[1], fragment):
+		return Link{}, ErrLinkReleased
+	default:
+		return Link{}, ErrLink
 	}
-	kdf, secret, err := parseFragmentFields(fragment)
-	if err != nil {
-		return Link{}, err
-	}
-	return Link{ID: id, KDF: kdf, Secret: *secret}, nil
-}
-
-func ParsePath(path string) (ID, error) {
-	encoded, ok := strings.CutPrefix(path, linkPathPrefix)
-	if !ok {
-		return ID{}, ErrLink
-	}
-	id, err := ParseID(encoded)
-	if err != nil {
-		return ID{}, ErrLink
-	}
-	return id, nil
 }
 
 func AssertProfile(fragmentKDF KDF, serverKDF int) error {
@@ -82,28 +80,66 @@ func AssertProfile(fragmentKDF KDF, serverKDF int) error {
 	return nil
 }
 
-func parseFragmentFields(fragment string) (KDF, *[SecretLen]byte, error) {
-	if newerFragment(fragment) {
-		return 0, nil, ErrLinkVersion
+func parseFragment(path, fragment string) (Link, error) {
+	if path != LinkPath {
+		return Link{}, ErrLink
 	}
 	fields := strings.Split(fragment, ".")
-	if len(fields) != 3 || fields[0] != fragmentLabel {
-		return 0, nil, ErrLink
+	if len(fields) != 5 {
+		return Link{}, ErrLink
 	}
-	secret, err := Decode32(fields[2])
+	var link Link
+	id, err := ParseID(fields[2])
 	if err != nil {
-		return 0, nil, ErrLink
+		return Link{}, ErrLink
 	}
-	if fields[1] == KDFRetired.String() {
-		clear(secret[:])
-		return 0, nil, ErrLinkRetiredKDF
+	link.ID = id
+	if !decodeInto(link.Secret[:], fields[3]) || !decodeInto(link.ObjectHash[:], fields[4]) {
+		link.Wipe()
+		return Link{}, ErrLink
 	}
-	kdf, err := ParseKDF(fields[1])
+	if kdfErr := link.setKDF(fields[1]); kdfErr != nil {
+		return Link{}, kdfErr
+	}
+	return link, nil
+}
+
+// setKDF names a retired profile only for a link whose other fields are valid, and wipes the secret on any failure.
+func (l *Link) setKDF(text string) error {
+	if text == KDFRetired.String() {
+		l.Wipe()
+		return ErrLinkRetiredKDF
+	}
+	kdf, err := ParseKDF(text)
 	if err != nil {
-		clear(secret[:])
-		return 0, nil, ErrLink
+		l.Wipe()
+		return ErrLink
 	}
-	return kdf, secret, nil
+	l.KDF = kdf
+	return nil
+}
+
+// releasedLink recognises a well-formed link of protocol version 1 only to say that its message is gone.
+func releasedLink(path, fragment string) bool {
+	encodedID, ok := strings.CutPrefix(path, "/m/")
+	fields := strings.Split(fragment, ".")
+	if !ok || len(fields) != 3 || fields[0] != "1" || len(fields[1]) != 1 || fields[1] < "0" || fields[1] > "2" {
+		return false
+	}
+	_, idErr := ParseID(encodedID)
+	secret, secretErr := DecodeExact(fields[2], SecretLen)
+	clear(secret)
+	return idErr == nil && secretErr == nil
+}
+
+func decodeInto(destination []byte, text string) bool {
+	decoded, err := DecodeExact(text, len(destination))
+	if err != nil {
+		return false
+	}
+	copy(destination, decoded)
+	clear(decoded)
+	return true
 }
 
 func newerFragment(fragment string) bool {

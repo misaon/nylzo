@@ -30,10 +30,10 @@ vi.mock('@nylzo/core', async (importOriginal) => {
       keep(link.secret);
       return link;
     },
-    parseFragment: (text: string) => {
-      const fragment = core.parseFragment(text);
-      keep(fragment.secret);
-      return fragment;
+    parseFragment: (path: string, text: string) => {
+      const link = core.parseFragment(path, text);
+      keep(link.secret);
+      return link;
     },
     deriveLink: async (id: Uint8Array, secret: Uint8Array) => {
       const keys = await core.deriveLink(id, secret);
@@ -41,11 +41,9 @@ vi.mock('@nylzo/core', async (importOriginal) => {
       keep(keys.passphraseSalt);
       return keys;
     },
-    deriveContent: async (id: Uint8Array, secret: Uint8Array, passphraseKey: Uint8Array) => {
-      const keys = await core.deriveContent(id, secret, passphraseKey);
-      keep(keys.verifierSeed);
-      return keys;
-    },
+    deriveVerifier: async (id: Uint8Array, secret: Uint8Array, passphraseKey: Uint8Array) =>
+      keep(await core.deriveVerifier(id, secret, passphraseKey)),
+    unwrapShare: async (key: Core.ShareKey, wrapped: Uint8Array) => keep(await core.unwrapShare(key, wrapped)),
     requestKey: async (seed: Uint8Array) => {
       if (failing.requestKey > 0) {
         failing.requestKey--;
@@ -126,10 +124,10 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     failing.requestKey = 0;
   });
 
-  it('wipes S, R, salt_pw and V after creating a message', async () => {
+  it('wipes E, S, R, salt_pw and V after creating a message', async () => {
     await createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '' }, createDependencies(fakeApi()));
-    expect(captured).toHaveLength(4);
-    expect(zeroed()).toEqual([true, true, true, true]);
+    expect(captured).toHaveLength(5);
+    expect(zeroed()).toEqual([true, true, true, true, true]);
   });
 
   it('wipes P after creating a message', async () => {
@@ -147,26 +145,26 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
       'a retry with a new id fails too',
       { failCreate: [new ApiError(409, 'conflict'), new ApiError(503, 'unavailable', { retryAfter: 5 })] },
     ],
-  ])('wipes every S, R, salt_pw, V and P when %s', async (_scenario, options) => {
+  ])('wipes every E, S, R, salt_pw, V and P when %s', async (_scenario, options) => {
     const api = fakeApi(options);
     await expect(
       createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDependencies(api)),
     ).rejects.toThrow();
-    expect(captured.length).toBe(4 * api.calls.filter((call) => call === 'create').length);
+    expect(captured.length).toBe(5 * api.calls.filter((call) => call === 'create').length);
     expect(zeroed().every(Boolean)).toBe(true);
     expect(passphraseKeys.length).toBeGreaterThan(0);
     expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 
-  it('wipes S, R and salt_pw when the key derivation fails', async () => {
+  it('wipes E, S, R and salt_pw when the key derivation fails', async () => {
     const dependencies = createDependencies(fakeApi(), () => Promise.reject(new KdfWorkerError()));
     await expect(
       createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, dependencies),
     ).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });
-    expect(captured).toHaveLength(3);
-    expect(zeroed()).toEqual([true, true, true]);
+    expect(captured).toHaveLength(4);
+    expect(zeroed()).toEqual([true, true, true, true]);
   });
 
   it('wipes S, R and salt_pw after reporting a pasted link', async () => {
@@ -198,13 +196,13 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(zeroed()).toEqual([true]);
   });
 
-  it('wipes S, R, salt_pw and V once the reader shows the message', async () => {
+  it('wipes S, R, salt_pw, V and E once the reader shows the message', async () => {
     const api = fakeApi();
     const reader = readerFor(api, await created(api, 2));
     await reader.load();
     await reader.reveal();
-    expect(captured).toHaveLength(4);
-    expect(zeroed()).toEqual([true, true, true, true]);
+    expect(captured).toHaveLength(5);
+    expect(zeroed()).toEqual([true, true, true, true, true]);
     expect(await reader.report(abuseReport('after reading'))).toEqual({ outcome: 'accepted' });
   });
 

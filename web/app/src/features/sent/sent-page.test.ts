@@ -12,12 +12,17 @@ import { assess, createSentPage, type SentPage, type SentView } from './sent-pag
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 
 async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promise<SentRecord> {
-  const { create } = await api.instance();
+  const { create } = await api.instance({ ttlSeconds: 3600, shareKey: new Uint8Array(32).fill(9) });
+  if (create === undefined) {
+    throw new Error('the fake server issued no id');
+  }
   const manageKey = await newRequestKey();
   await api.create({
     id: create.id,
     idToken: create.idToken,
+    epoch: create.epoch,
     readKey: new Uint8Array(32),
+    verifierKey: new Uint8Array(32).fill(1),
     manageKey: manageKey.publicKey,
     kdfId: KDF_NONE,
     opensMax,

@@ -2,14 +2,17 @@ package client
 
 import (
 	"context"
+	"crypto/ecdh"
 	"encoding/json"
 	"maps"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/report"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
 
@@ -28,23 +31,32 @@ type PoW struct {
 	Challenge  string `json:"challenge"`
 }
 
+// Issued is an id with its token and the expiry share, still wrapped to the client's one-time key.
 type Issued struct {
 	ID      core.ID
 	IDToken string
+	Epoch   uint32
+	Share   [share.WrappedLen]byte
 }
 
 type Instance struct {
-	Limits          Limits
-	PoW             PoW
-	Create          Issued
-	FileCompression string
+	Limits Limits
+	PoW    PoW
+	Create *Issued
+}
+
+// Creation asks the instance for an id, for a message of this TTL, with its share wrapped to ShareKey.
+type Creation struct {
+	TTLSeconds uint32
+	ShareKey   *ecdh.PublicKey
 }
 
 type CreateRequest struct {
 	ID         core.ID
 	IDToken    string
+	Epoch      uint32
 	ReadKey    [signing.PublicKeyLen]byte
-	Verifier   *[signing.PublicKeyLen]byte
+	Verifier   [signing.PublicKeyLen]byte
 	ManageKey  [signing.PublicKeyLen]byte
 	KDF        core.KDF
 	OpensMax   uint16
@@ -92,53 +104,67 @@ type signedRequest struct {
 	body     []byte
 }
 
-func (c *Client) Instance(ctx context.Context) (Instance, error) {
-	response, err := c.do(ctx, http.MethodGet, "/api/v1/instance", nil, nil, shortTimeout)
+// Instance reads the limits, and with a creation also issues an id; it refuses a difficulty above the spec maximum.
+func (c *Client) Instance(ctx context.Context, creation *Creation) (Instance, error) {
+	var headers map[string]string
+	if creation != nil {
+		headers = map[string]string{
+			"X-Nylzo-Ttl":  strconv.FormatUint(uint64(creation.TTLSeconds), 10),
+			shareKeyHeader: core.Encode(creation.ShareKey.Bytes()),
+		}
+	}
+	response, err := c.do(ctx, http.MethodGet, "/api/v1/instance", headers, nil, shortTimeout)
 	if err != nil {
 		return Instance{}, err
 	}
 	var body struct {
-		FileCompression string  `json:"file_compression"`
-		Limits          *Limits `json:"limits"`
-		PoW             *PoW    `json:"pow"`
-		Create          *struct {
-			ID      string `json:"id"`
-			IDToken string `json:"id_token"`
+		Limits *Limits `json:"limits"`
+		PoW    *PoW    `json:"pow"`
+		Create *struct {
+			ID      string  `json:"id"`
+			IDToken string  `json:"id_token"`
+			Epoch   *uint32 `json:"epoch"`
+			Share   string  `json:"share"`
 		} `json:"create"`
 	}
 	err = readJSON(response, &body)
 	if err != nil {
 		return Instance{}, err
 	}
-	if body.Limits == nil || body.PoW == nil || body.Create == nil {
+	if body.Limits == nil || body.PoW == nil || (creation != nil && body.Create == nil) ||
+		body.PoW.Difficulty < 0 || body.PoW.Difficulty > proofofwork.MaxDifficulty {
 		return Instance{}, ErrResponse
+	}
+	instance := Instance{Limits: *body.Limits, PoW: *body.PoW}
+	if creation == nil {
+		return instance, nil
 	}
 	id, err := core.ParseID(body.Create.ID)
-	if err != nil || body.Create.IDToken == "" || body.PoW.Difficulty < 0 ||
-		body.PoW.Difficulty > proofofwork.MaxDifficulty {
+	wrapped, shareErr := core.DecodeExact(body.Create.Share, share.WrappedLen)
+	if err != nil || shareErr != nil || body.Create.IDToken == "" || body.Create.Epoch == nil {
 		return Instance{}, ErrResponse
 	}
-	return Instance{
-		Limits:          *body.Limits,
-		PoW:             *body.PoW,
-		Create:          Issued{ID: id, IDToken: body.Create.IDToken},
-		FileCompression: body.FileCompression,
-	}, nil
+	instance.Create = &Issued{
+		ID:      id,
+		IDToken: body.Create.IDToken,
+		Epoch:   *body.Create.Epoch,
+		Share:   [share.WrappedLen]byte(wrapped),
+	}
+	return instance, nil
 }
 
 func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time, error) {
 	fields := map[string]any{
-		"id":         request.ID.String(),
-		"id_token":   request.IDToken,
-		"read_key":   core.Encode(request.ReadKey[:]),
-		"manage_key": core.Encode(request.ManageKey[:]),
-		"kdf_id":     int(request.KDF),
-		"opens_max":  int(request.OpensMax),
-		"ttl_s":      int(request.TTLSeconds),
-		"size":       len(request.Object),
-	}
-	if request.Verifier != nil {
-		fields["verifier_key"] = core.Encode(request.Verifier[:])
+		"id":           request.ID.String(),
+		"id_token":     request.IDToken,
+		"epoch":        request.Epoch,
+		"read_key":     core.Encode(request.ReadKey[:]),
+		"verifier_key": core.Encode(request.Verifier[:]),
+		"manage_key":   core.Encode(request.ManageKey[:]),
+		"kdf_id":       int(request.KDF),
+		"opens_max":    int(request.OpensMax),
+		"ttl_s":        int(request.TTLSeconds),
+		"size":         len(request.Object),
 	}
 	header, err := json.Marshal(fields)
 	if err != nil {

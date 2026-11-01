@@ -99,6 +99,10 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   assert.match(sources.get("proxy/Caddyfile")!, /reverse_proxy 172\.30\.81\.2:8080/u);
   assert(!sources.get("update/update")!.includes("gh api"));
   assert.match(sources.get("update/update")!, /--network none/u);
+  const update = sources.get("update/update")!;
+  assert(update.indexOf('store_check "$image@$digest"') < update.indexOf("systemctl stop nylzo.service"), "the store check runs before the running release stops");
+  assert.match(sources.get("application/run")!, /--volume \/run\/nylzo-epoch:\/run\/nylzo-epoch:Z/u);
+  assert.match(sources.get("application/nylzo.service")!, /^ExecStartPre=\+\/usr\/bin\/chmod 0700 \/run\/nylzo-epoch$/mu);
   assert.match(sources.get("update/update-engine.conf")!, /Requires=nylzo-ready\.service/u);
   assert.match(sources.get("system/daemon.json")!, /"userns-remap":"dockremap"/u);
   assert.match(sources.get("system/containerd.toml")!, /disabled_plugins = \["io\.containerd\.grpc\.v1\.cri"/u);

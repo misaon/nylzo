@@ -153,7 +153,7 @@ test(
         { text: 'read in the verified client', passphrase: PASSPHRASE },
         local,
       );
-      expect(link.startsWith(`${hostile.origin}/m/`), 'links from the verified client name the instance').toBe(true);
+      expect(link.startsWith(`${hostile.origin}/r#`), 'links from the verified client name the instance').toBe(true);
       await expect(sender.getByRole('switch', { name: /^Cancel from this device/ })).toHaveCount(0);
       expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 

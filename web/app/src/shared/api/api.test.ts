@@ -70,7 +70,9 @@ function authorizationParts(header: string): [string, string, string] {
   return [publicKey, challenge, signature];
 }
 
-const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 1, flags: 0 })));
+const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, flags: 0 })));
+const shareKey = new Uint8Array(32).fill(5);
+const wrappedShare = encodeBase64url(new Uint8Array(64).fill(6));
 
 const instanceBody = {
   limits: {
@@ -82,8 +84,14 @@ const instanceBody = {
     max_opens: 10,
   },
   pow: { required: true, difficulty: 4, challenge: 'x' },
-  create: { id: 'AAAAAAAAAAAAAAAAAAAAAA', id_token: 'token', expires_at: '2026-10-23T10:10:00Z' },
-  versions: { api: 1, envelope: 1, fragment: 1, server: 'dev' },
+  create: {
+    id: 'AAAAAAAAAAAAAAAAAAAAAA',
+    id_token: 'token',
+    expires_at: '2026-10-23T10:10:00Z',
+    epoch: 493_000,
+    share: wrappedShare,
+  },
+  versions: { api: 1, envelope: 2, fragment: 2, server: 'dev' },
 };
 
 const CHUNKED_OBJECT = Uint8Array.from({ length: 200_000 }, (_, index) => index % 251);
@@ -100,21 +108,32 @@ function chunkedStream(object: Uint8Array): ReadableStream<Uint8Array> {
 }
 
 describe('api client', () => {
-  it.each([undefined, 'gzip', 'future'])(
-    'negotiates the optional file compression capability: %s',
-    async (encoding) => {
-      const server = fakeServer(() => json(200, { ...instanceBody, file_compression: encoding }));
-      const instance = await server.api.instance();
-      expect(instance.fileCompression).toBe(encoding === 'gzip' ? 'gzip' : undefined);
-    },
-  );
+  it('asks for an id with the TTL and a share key, and reads the wrapped share (spec 5.6)', async () => {
+    const server = fakeServer(() => json(200, instanceBody));
+    const instance = await server.api.instance({ ttlSeconds: 3600, shareKey });
+    const request = server.last();
+    expect(new URL(request.url).search).toBe('');
+    expect(request.headers.get('X-Nylzo-Ttl')).toBe('3600');
+    expect(request.headers.get('X-Nylzo-Share-Key')).toBe(encodeBase64url(shareKey));
+    expect(instance.create?.epoch).toBe(493_000);
+    expect(instance.create?.share).toEqual(new Uint8Array(64).fill(6));
+    await server.api.instance();
+    expect(server.last().headers.has('X-Nylzo-Share-Key')).toBe(false);
+  });
+
+  it('A-04: refuses a proof-of-work difficulty above the spec maximum before any work', async () => {
+    const server = fakeServer(() =>
+      json(200, { ...instanceBody, pow: { required: true, difficulty: 9, challenge: 'x' } }),
+    );
+    await expect(server.api.instance()).rejects.toThrow(ResponseError);
+  });
 
   it('reads the instance and takes no passphrase profile from it', async () => {
     const good = fakeServer(() => json(200, instanceBody));
     const instance = await good.api.instance();
     expect(instance.limits).not.toHaveProperty('defaultKdfId');
     expect(instance.pow).toEqual({ required: true, difficulty: 4, challenge: 'x' });
-    expect(idToString(instance.create.id)).toBe('AAAAAAAAAAAAAAAAAAAAAA');
+    expect(instance.create).toBeUndefined();
     const legacy = fakeServer(() =>
       json(200, { ...instanceBody, limits: { ...instanceBody.limits, default_kdf_id: 0 } }),
     );
@@ -151,7 +170,6 @@ describe('api client', () => {
         opens_max: 1,
         opens_remaining: 1,
         ttl_s: 86_400,
-        passphrase_required: false,
         kdf_id: 0,
         size: 4127,
       }),
@@ -259,6 +277,7 @@ describe('api client', () => {
           headers: {
             'X-Nylzo-Lease': 'lease-token',
             'X-Nylzo-Policy': policy,
+            'X-Nylzo-Share': wrappedShare,
             'Content-Length': String(object.length),
           },
         }),
@@ -267,6 +286,7 @@ describe('api client', () => {
     const leases: string[] = [];
     const claimed = await server.api.claim(id, readKey, {
       verifierKey,
+      shareKey,
       onLease: (lease) => {
         leases.push(lease);
       },
@@ -276,7 +296,8 @@ describe('api client', () => {
     });
     expect(leases).toEqual(['lease-token']);
     expect(claimed.lease).toBe('lease-token');
-    expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
+    expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, flags: 0 });
+    expect(claimed.share).toEqual(new Uint8Array(64).fill(6));
     expect(claimed.object).toEqual(object);
     expect(progress.at(-1)).toEqual([object.length, object.length]);
     const request = server.last();
@@ -291,6 +312,7 @@ describe('api client', () => {
     expect(await verifies(publicKey, challenge, signature, 'read', 'POST', path)).toBe(true);
     expect(await verifies(verifierPublicKey, challenge, verifierSignature, 'verifier', 'POST', path)).toBe(true);
     expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));
+    expect(request.headers.get('X-Nylzo-Share-Key')).toBe(encodeBase64url(shareKey));
   });
 
   it('retries a 404 once with a new challenge and then reports it', async () => {
@@ -323,7 +345,9 @@ describe('api client', () => {
     ];
     for (const [response, expected] of cases) {
       const server = fakeServer(() => response.clone());
-      await expect(server.api.claim(randomId(), readKey)).rejects.toMatchObject(expected);
+      await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toMatchObject(
+        expected,
+      );
     }
   });
 
@@ -333,7 +357,9 @@ describe('api client', () => {
     const keys = {
       id: randomId(),
       idToken: 'token',
+      epoch: 493_000,
       readKey: new Uint8Array(32).fill(1),
+      verifierKey: new Uint8Array(32).fill(2),
       manageKey: new Uint8Array(32).fill(3),
     };
     await server.api.create({
@@ -351,7 +377,9 @@ describe('api client', () => {
     expect(header).toEqual({
       id: idToString(keys.id),
       id_token: 'token',
+      epoch: 493_000,
       read_key: encodeBase64url(keys.readKey),
+      verifier_key: encodeBase64url(keys.verifierKey),
       manage_key: encodeBase64url(keys.manageKey),
       kdf_id: 0,
       opens_max: 1,
@@ -364,7 +392,7 @@ describe('api client', () => {
   });
 
   it('accepts only a canonical policy header with integer fields', () => {
-    expect(servedPolicy(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 1, flags: 0 });
+    expect(servedPolicy(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, flags: 0 });
     for (const malformed of [
       null,
       '',
@@ -387,7 +415,6 @@ describe('api client', () => {
         opens_max: 1,
         opens_remaining: 1,
         ttl_s: 86_400,
-        passphrase_required: false,
         kdf_id: 0,
         size: 1,
       }),
@@ -398,7 +425,7 @@ describe('api client', () => {
   it('leaves retryAfter empty when the server sends no Retry-After', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(6));
     const server = fakeServer(() => json(503, { error: 'unavailable' }));
-    await expect(server.api.claim(randomId(), readKey)).rejects.toMatchObject({
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toMatchObject({
       kind: 'unavailable',
       retryAfter: undefined,
     });
@@ -413,7 +440,9 @@ describe('api client', () => {
           headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) },
         }),
     );
-    await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toThrow(
+      ResponseError,
+    );
   });
 
   it('sends no claim once the caller stops it after the challenge', async () => {
@@ -424,7 +453,9 @@ describe('api client', () => {
       challenged = server.issued() > 0;
       return false;
     };
-    await expect(server.api.claim(randomId(), readKey, { proceed })).rejects.toThrow(StoppedError);
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey, proceed })).rejects.toThrow(
+      StoppedError,
+    );
     expect(challenged).toBe(true);
     expect(server.seen.map((request) => new URL(request.url).pathname)).toEqual(['/api/v1/challenge']);
   });
@@ -453,15 +484,17 @@ describe('api client', () => {
     await server.api.create({
       id,
       idToken: 't',
+      epoch: 1,
       readKey: readKey.publicKey,
+      verifierKey: readKey.publicKey,
       manageKey: readKey.publicKey,
       kdfId: 0,
       opensMax: 1,
       ttlSeconds: 3600,
       object,
     });
-    await server.api.claim(id, readKey);
-    await server.api.blob(id, readKey, 'l');
+    await server.api.claim(id, readKey, { verifierKey: readKey, shareKey });
+    await server.api.blob(id, readKey, 'l', shareKey);
     await server.api.ack(id, readKey, 'l');
     await server.api.burn(id, readKey);
     await server.api.report(id, readKey, abuseReport('spam'));
@@ -502,7 +535,9 @@ describe('api client', () => {
     const server = fakeServer(
       () => new Response(body, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } }),
     );
-    await expect(server.api.claim(randomId(), readKey)).rejects.toThrow(ResponseError);
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toThrow(
+      ResponseError,
+    );
     expect(sent).toBeLessThanOrEqual(MAX_OBJECT_BYTES + 2 * chunk.length);
   });
 
@@ -518,7 +553,7 @@ describe('api client', () => {
     };
     const progress: [number, number | undefined][] = [];
     const server = fakeServer(() => new Response(chunkedStream(CHUNKED_OBJECT), { status: 200, headers }));
-    const envelope = await server.api.blob(randomId(), readKey, 'l', (received, total) => {
+    const envelope = await server.api.blob(randomId(), readKey, 'l', shareKey, (received, total) => {
       progress.push([received, total]);
     });
     expect(envelope.object).toEqual(CHUNKED_OBJECT);

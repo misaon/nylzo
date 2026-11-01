@@ -311,7 +311,7 @@ func TestPagesAreTheEmbeddedClientWithTheInstanceAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	for path, template := range map[string]string{
-		"/": "/", "/cs/": "/cs/", "/sent": "/sent", "/m/AAAAAAAAAAAAAAAAAAAAAA": "/m/{id}", "/open": "/sent",
+		"/": "/", "/cs/": "/cs/", "/sent": "/sent", "/r": "/r", "/m/AAAAAAAAAAAAAAAAAAAAAA": "/m/{id}", "/open": "/sent",
 	} {
 		response := do(t, server, call{method: http.MethodGet, path: path})
 		want := pages.For(template)

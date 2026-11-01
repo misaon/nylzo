@@ -1,12 +1,13 @@
 import type { Locator } from '@playwright/test';
 
-import { deriveContent, deriveLink, encodeBase64url, parseLink, requestKey } from '@nylzo/core';
+import { deriveLink, deriveVerifier, encodeBase64url, parseLink, requestKey } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
 import { createMessageInPage, expectMessageShown, notInert, openApp, showMessage } from '../support/pages.ts';
 import { encodedForms, expectNoSecretSent, recordRequests, textForms } from '../support/requests.ts';
+import { BASE_URL } from '../support/servers.ts';
 import { watchViolations } from '../support/watchers.ts';
 
 const PASSPHRASE = 'four random words here';
@@ -29,7 +30,8 @@ test(
       buffer: Buffer.from('%PDF-1.4\n%nylzo příloha jen pro příjemce\n'),
     };
     const link = await createMessageInPage(sender, { text, file, passphrase: PASSPHRASE });
-    expect(link).toMatch(/^http:\/\/127\.0\.0\.1:8090\/m\/[\w-]{22}#1\.1\.[\w-]{43}$/);
+    expect(link.startsWith(`${BASE_URL}/r#`)).toBe(true);
+    expect(new URL(link).hash).toMatch(/^#2\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/);
 
     await showMessage(recipient, link, WRONG_PASSPHRASE);
     await expect(recipient.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
@@ -54,7 +56,7 @@ test(
     const { id, secret } = parseLink(link);
     const { readSeed, passphraseSalt } = await deriveLink(id, secret);
     const passphraseKey = scryptPassphraseKey(PASSPHRASE, passphraseSalt);
-    const { verifierSeed } = await deriveContent(id, secret, passphraseKey);
+    const verifierSeed = await deriveVerifier(id, secret, passphraseKey);
     const readKey = await requestKey(readSeed);
     const verifierKey = await requestKey(verifierSeed);
     const requests = [...(await senderRequests()), ...(await recipientRequests())];

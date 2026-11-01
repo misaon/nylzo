@@ -1,4 +1,5 @@
 import {
+  type ContentKeys,
   deriveLink,
   encodeBase64url,
   formatLink,
@@ -10,13 +11,17 @@ import {
   newHeader,
   newRequestKey,
   newSecret,
+  newShareKey,
+  objectHash,
   type Policy,
   requestKey,
   seal,
+  unwrapShare,
 } from '@nylzo/core';
 import { deriveAll } from '@nylzo/core/scrypt';
 
 import { createApi, type Status } from '../../../app/src/shared/api/api.ts';
+import { commitment } from '../../../core/src/envelope/envelope.ts';
 import { aad, headerBytes } from '../../../core/src/envelope/header.ts';
 import { arrayBufferBacked, concatenate } from '../../../core/src/primitives/bytes.ts';
 import { BASE_URL } from './servers.ts';
@@ -48,34 +53,40 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   const base = options.base ?? BASE_URL;
   const passphrase = options.passphrase ?? '';
   const kdfId = passphrase === '' ? KDF_NONE : KDF_SCRYPT;
+  const policy = { opensMax: options.opensMax ?? 1, ttlSeconds: 3600 };
   const api = createApi({ base });
-  const { create } = await api.instance();
+  const shareKey = await newShareKey();
+  const { create } = await api.instance({ ttlSeconds: policy.ttlSeconds, shareKey: shareKey.publicKey });
+  if (create === undefined) {
+    throw new Error('the instance issued no id');
+  }
   let secret = newSecret();
   while (options.readKeyStartsWithZero === true && !(await readKeyStartsWithZero(create.id, secret))) {
     secret = newSecret();
   }
-  const { link, content } = await deriveAll(create.id, secret, kdfId, passphrase);
-  const policy = { opensMax: options.opensMax ?? 1, ttlSeconds: 3600 };
+  const share = await unwrapShare(shareKey, create.share);
+  const { link, verifierSeed, content } = await deriveAll(create.id, secret, kdfId, passphrase, share);
   const header = newHeader(kdfId);
   const object =
     options.plaintext === undefined
-      ? await seal(content.contentKey, header, create.id, policy, { meta: metaOf(options), file: options.file?.buffer })
-      : await sealPlaintext(content.contentKey, header, create.id, policy, options.plaintext);
+      ? await seal(content, header, create.id, policy, { meta: metaOf(options), file: options.file?.buffer })
+      : await sealPlaintext(content, header, create.id, policy, options.plaintext);
   const readKey = await requestKey(link.readSeed);
-  const verifier = kdfId === KDF_NONE ? undefined : await requestKey(content.verifierSeed);
+  const verifier = await requestKey(verifierSeed);
   const manageKey = await newRequestKey();
   await api.create({
     id: create.id,
     idToken: create.idToken,
+    epoch: create.epoch,
     readKey: readKey.publicKey,
-    ...(verifier && { verifierKey: verifier.publicKey }),
+    verifierKey: verifier.publicKey,
     manageKey: manageKey.publicKey,
     kdfId,
     ...policy,
     object,
   });
   return {
-    link: formatLink(base, create.id, kdfId, secret),
+    link: formatLink(base, create.id, kdfId, secret, await objectHash(object)),
     id: idToString(create.id),
     secret: encodeBase64url(secret),
     status: () => api.status(create.id, manageKey),
@@ -83,18 +94,19 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
 }
 
 async function sealPlaintext(
-  key: CryptoKey,
+  content: ContentKeys,
   header: Header,
   id: Uint8Array,
   policy: Policy,
   plaintext: Uint8Array<ArrayBuffer>,
 ): Promise<Uint8Array<ArrayBuffer>> {
+  const committed = await commitment(content.commitmentKey, header, id, policy);
   const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: arrayBufferBacked(header.iv), additionalData: aad(header, id, policy) },
-    key,
+    { name: 'AES-GCM', iv: arrayBufferBacked(header.iv), additionalData: aad(header, committed, id, policy) },
+    content.contentKey,
     plaintext,
   );
-  return concatenate(headerBytes(header), new Uint8Array(ciphertext));
+  return concatenate(headerBytes(header), committed, new Uint8Array(ciphertext));
 }
 
 async function readKeyStartsWithZero(id: Uint8Array, secret: Uint8Array): Promise<boolean> {

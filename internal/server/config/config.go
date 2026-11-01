@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/netip"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -53,6 +54,7 @@ type Rates struct {
 type Server struct {
 	Listen         string
 	DataDir        string
+	EpochDir       string
 	Pepper         []byte
 	PepperPrevious []byte
 	ReportKey      hpke.PublicKey
@@ -113,6 +115,14 @@ func Defaults() Server {
 type rule struct {
 	holds   bool
 	message string
+}
+
+// EpochDirectory is where the epoch seed lives; keep it out of every backup (spec section 5.6).
+func (s *Server) EpochDirectory() string {
+	if s.EpochDir != "" {
+		return s.EpochDir
+	}
+	return filepath.Join(s.DataDir, "epoch")
 }
 
 // Validate checks a configuration that serves requests, which needs the operator's report key.

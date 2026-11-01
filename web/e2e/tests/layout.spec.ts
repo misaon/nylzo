@@ -158,8 +158,8 @@ for (const viewport of VIEWPORTS) {
     await reporter.getByRole('checkbox', { name: /^I believe in good faith/ }).check();
     const answers = [
       { link: 'not a link', answer: 'The link is incomplete or damaged.' },
-      { link: message.link.replace('#1.', '#2.'), answer: 'The link needs a newer version of Nylzo.' },
-      { link: message.link.replace('#1.0.', '#1.2.'), answer: 'The link uses a retired passphrase method.' },
+      { link: message.link.replace('#2.', '#3.'), answer: 'The link needs a newer version of Nylzo.' },
+      { link: message.link.replace('#2.0.', '#2.2.'), answer: 'The link uses a retired passphrase method.' },
       { link: message.link, answer: 'We received the report.' },
     ];
     for (const { link: pasted, answer } of answers) {

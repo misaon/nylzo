@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,8 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -25,9 +28,95 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/vectors"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/store"
 )
+
+func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		for _, headers := range []map[string]string{
+			{ttlHeaderName: "3600"},
+			{shareKeyHeaderName: testShareKeyHeader},
+			{ttlHeaderName: "59", shareKeyHeaderName: testShareKeyHeader},
+			{ttlHeaderName: "0600", shareKeyHeaderName: testShareKeyHeader},
+			{ttlHeaderName: "604801", shareKeyHeaderName: testShareKeyHeader},
+			{ttlHeaderName: "3600", shareKeyHeaderName: testShareKeyHeader + "A"},
+			{ttlHeaderName: "3600", shareKeyHeaderName: core.Encode(make([]byte, 32)) + ", " + testShareKeyHeader},
+		} {
+			if response, body := harness.do(
+				&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: headers},
+			); response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("instance %v: %d %s", headers, response.StatusCode, body)
+			}
+		}
+		message := harness.issueMessage(core.KDFScrypt, "issued passphrase", 2, 7200, "issued")
+		latest := time.Now().Add(10*time.Minute + 5*time.Second + 336*time.Second + 2*time.Minute + 7200*time.Second)
+		if message.epoch != epoch.Hour(latest) {
+			t.Fatalf("epoch %d, want the hour %d of the latest expiry", message.epoch, epoch.Hour(latest))
+		}
+		harness.mustCreate(message)
+		previous := ""
+		for range 2 {
+			response, object := harness.claim(message, message.verifier, "")
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("claim: %d", response.StatusCode)
+			}
+			if expiryShare := unwrapShare(t, response); expiryShare != *message.share {
+				t.Fatal("the claim recomputed another share than the instance issued")
+			}
+			if _, err := harness.openObject(message, object, response.Header.Get(policyHeaderName)); err != nil {
+				t.Fatalf("decrypt with the share of the claim: %v", err)
+			}
+			if response.Header.Get(shareHeaderName) == previous {
+				t.Fatal("two responses wrapped the share alike; each needs a fresh server key")
+			}
+			previous = response.Header.Get(shareHeaderName)
+		}
+	})
+}
+
+func TestCreateTellsAnOldClientToUpdateAndRefusesASharelessEpoch(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		released := newMessage(t, core.KDFNone, "", 1, 3600, "v1")
+		released.object[0] = 1
+		if response, body := harness.create(released); response.StatusCode != http.StatusBadRequest ||
+			!strings.Contains(string(body), `"client_outdated"`) {
+			t.Fatalf("an envelope of protocol version 1: %d %s", response.StatusCode, body)
+		}
+		withoutEpoch := newMessage(t, core.KDFNone, "", 1, 3600, "no epoch")
+		request := createRequestFor(withoutEpoch)
+		request.rawCreate = true
+		request.headers["X-Nylzo-Create"] = core.Encode(fmt.Appendf(nil,
+			`{"id":%q,"id_token":"x","read_key":%q,"manage_key":%q,"kdf_id":0,"opens_max":1,"ttl_s":3600,"size":%d}`,
+			withoutEpoch.id.String(), publicKey(&withoutEpoch.link.R), publicKey(withoutEpoch.manage),
+			len(withoutEpoch.object)))
+		if response, body := harness.do(request); response.StatusCode != http.StatusBadRequest ||
+			!strings.Contains(string(body), `"client_outdated"`) {
+			t.Fatalf("a create header of protocol version 1: %d %s", response.StatusCode, body)
+		}
+		for name, shareEpoch := range map[string]uint32{
+			"an epoch before the expiry":          shareEpochFor(3600) - 2,
+			"an epoch two hours after the expiry": shareEpochFor(3600) + 2,
+		} {
+			message := newMessage(t, core.KDFNone, "", 1, 3600, "epoch")
+			message.epoch = shareEpoch
+			if response, body := harness.create(message); response.StatusCode != http.StatusForbidden ||
+				decodeJSON(t, body)["error"] != "id_token" {
+				t.Fatalf("%s: %d %s", name, response.StatusCode, body)
+			}
+			if harness.storedBlobs() != 0 {
+				t.Fatalf("%s left a blob", name)
+			}
+		}
+	})
+}
 
 func FuzzCreateHeader(f *testing.F) {
 	message, err := buildMessageWithID(core.NewID(), core.KDFNone, "", 1, 3600, "seed")
@@ -43,6 +132,7 @@ func FuzzCreateHeader(f *testing.F) {
 	allowed := map[string]bool{
 		"id":           true,
 		"id_token":     true,
+		"epoch":        true,
 		"read_key":     true,
 		"verifier_key": true,
 		"manage_key":   true,
@@ -75,8 +165,8 @@ func FuzzCreateHeader(f *testing.F) {
 			TTL         int64   `json:"ttl_s"`
 		}
 		json.Unmarshal(data, &harness)
-		if (harness.KDFID != 0) != (harness.VerifierKey != nil) {
-			t.Fatal("verifier_key does not match kdf_id")
+		if harness.VerifierKey == nil || (harness.KDFID != 0 && harness.KDFID != 3) {
+			t.Fatal("accepted a header without a verifier key or with a profile v2 does not know")
 		}
 		if harness.OpensMax < 1 || harness.OpensMax > settings.Limits.MaxOpens ||
 			harness.TTL < envelope.MinTTLSeconds ||
@@ -115,20 +205,23 @@ func TestCreateHeaderRules(t *testing.T) {
 			none,
 			func(fields map[string]any) { fields["ID"] = fields["id"]; delete(fields, "id") },
 		),
-		"verifier-with-kdf0": mutateHeader(
+		"no-verifier-with-kdf0": mutateHeader(
 			t,
 			none,
-			func(fields map[string]any) { fields["verifier_key"] = publicKey(core.NewSecret()) },
+			func(fields map[string]any) { delete(fields, "verifier_key") },
 		),
-		"no-verifier-with-kdf1": mutateHeader(
+		"no-verifier-with-kdf3": mutateHeader(
 			t,
 			withPassphrase,
 			func(fields map[string]any) { delete(fields, "verifier_key") },
 		),
+		"no-epoch":        mutateHeader(t, none, func(fields map[string]any) { delete(fields, "epoch") }),
+		"negative-epoch":  mutateHeader(t, none, func(fields map[string]any) { fields["epoch"] = -1 }),
+		"kdf-1-v1-only":   mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["kdf_id"] = 1 }),
 		"kdf-2-retired":   mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["kdf_id"] = 2 }),
 		"opens-0":         mutateHeader(t, none, func(fields map[string]any) { fields["opens_max"] = 0 }),
 		"ttl-59":          mutateHeader(t, none, func(fields map[string]any) { fields["ttl_s"] = 59 }),
-		"kdf-3":           mutateHeader(t, none, func(fields map[string]any) { fields["kdf_id"] = 3 }),
+		"kdf-4-reserved":  mutateHeader(t, none, func(fields map[string]any) { fields["kdf_id"] = 4 }),
 		"trailing-brace":  core.Encode(append(append([]byte(nil), raw...), '}')),
 		"trailing-object": core.Encode(append(append([]byte(nil), raw...), []byte(" {}")...)),
 		"not-an-object":   core.Encode([]byte(`[1,2]`)),
@@ -156,7 +249,7 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 			"K": message.content.K[:],
 			"P": testPassphraseKey(message.kdf, "tajná fráze", &message.link.PassphraseSalt),
 			"R": message.link.R[:],
-			"V": message.content.V[:],
+			"V": message.verifierKey[:],
 			"M": message.manage[:],
 		}
 		for name, secret := range secrets {
@@ -268,7 +361,8 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 		instance := decodeJSON(t, body)
 		limits := instance["limits"].(map[string]any)
 		if limits["max_object_bytes"] != float64(5373952) ||
-			limits["max_text_bytes"] != float64(envelope.MaxTextBytes) || instance["file_compression"] != "gzip" {
+			limits["max_text_bytes"] != float64(envelope.MaxTextBytes) || instance["file_compression"] != nil ||
+			instance["create"] != nil {
 			t.Fatalf("instance reports %v", instance)
 		}
 	})
@@ -276,7 +370,10 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 
 func issuedID(t *testing.T, harness *testHarness) (core.ID, string, time.Time) {
 	t.Helper()
-	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
+		ttlHeaderName:      "3600",
+		shareKeyHeaderName: testShareKeyHeader,
+	}})
 	create, ok := decodeJSON(t, body)["create"].(map[string]any)
 	if !ok {
 		t.Fatalf("instance carries no create block: %s", body)
@@ -297,6 +394,11 @@ func createWithToken(t *testing.T, harness *testHarness, message *testMessage, t
 	header := mutateHeader(t, message, func(fields map[string]any) {
 		if token != nil {
 			fields["id_token"] = token
+		}
+		if text, ok := token.(string); ok {
+			if raw, err := core.DecodeExact(text, 24); err == nil {
+				fields["epoch"] = binary.BigEndian.Uint32(raw[4:8])
+			}
 		}
 	})
 	return harness.do(&testRequest{
@@ -418,7 +520,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 			t,
 			wrongKDF,
 			func(fields map[string]any) {
-				fields["kdf_id"] = 1
+				fields["kdf_id"] = 3
 				fields["verifier_key"] = publicKey(core.NewSecret())
 			},
 		)
@@ -954,7 +1056,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 			t,
 			message,
 			func(fields map[string]any) {
-				fields["kdf_id"] = 1
+				fields["kdf_id"] = 3
 				fields["verifier_key"] = publicKey(core.NewSecret())
 			},
 		)
@@ -1302,4 +1404,121 @@ func TestDailyCreateLimitsCountSourcesAndRanges(t *testing.T) {
 			})
 		})
 	}
+}
+
+// L4: on an instance whose upload limit takes less than the create body timeout, the share still covers an upload
+// that uses the whole timeout, plus the minute that rounds expires_at and the write of the upload.
+func TestShareEpochBudgetsTheWholeCreateBody(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Limits.MaxFileBytes = 64 << 10
+		settings.Limits.MaxObjectBytes = envelope.ObjectLimit(settings.Limits.MaxFileBytes)
+		harness := newHarness(t, settings)
+		base := time.Now().Add(proof.IDTokenTTL())
+		boundary := epoch.End(epoch.Hour(base.Add(time.Hour)))
+		ttl := boundary.Sub(base) - 120*time.Second - 120*time.Second
+		message := harness.issueMessage(core.KDFNone, "", 1, uint32(ttl/time.Second), "budget")
+		if message.epoch != epoch.Hour(boundary) {
+			t.Fatalf(
+				"epoch %d, want %d: the share would end before a slow upload's message",
+				message.epoch,
+				epoch.Hour(boundary),
+			)
+		}
+	})
+}
+
+// A new seed between the instance answer and the create would store a message whose share nobody can make, so
+// the create names the ratchet through its id token and is refused before anything is stored.
+func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		stale := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued before the new seed")
+		if err := os.Remove(filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)); err != nil {
+			t.Fatal(err)
+		}
+		harness.reopen(&harness.settings)
+		if response, body := harness.create(stale); response.StatusCode != http.StatusConflict ||
+			decodeJSON(t, body)["error"] != "share_lost" {
+			t.Fatalf("a create whose share came from the earlier seed: %d %s", response.StatusCode, body)
+		}
+		if response, _ := harness.metadata(stale); response.StatusCode != http.StatusNotFound {
+			t.Fatalf("the refused create stored a message: %d", response.StatusCode)
+		}
+		fresh := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued after the new seed")
+		harness.mustCreate(fresh)
+		response, object := harness.claim(fresh, fresh.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("a message of the new seed: %d", response.StatusCode)
+		}
+		if _, err := harness.openObject(fresh, object, response.Header.Get(policyHeaderName)); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// L5: a share key of small order would make every share zero, so it is malformed, not an internal error.
+func TestASmallOrderShareKeyIsMalformed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		for _, key := range smallOrderKeys(t) {
+			response, body := harness.do(&testRequest{
+				method:  http.MethodGet,
+				path:    "/api/v1/instance",
+				headers: map[string]string{ttlHeaderName: "3600", shareKeyHeaderName: key},
+			})
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("instance with the share key %s: %d %s", key, response.StatusCode, body)
+			}
+		}
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "small order")
+		harness.mustCreate(message)
+		for _, key := range smallOrderKeys(t) {
+			if response, body := harness.claimWithShareKey(message, key); response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("claim with the share key %s: %d %s", key, response.StatusCode, body)
+			}
+		}
+		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
+			t.Fatalf("the refused claims spent the open: %d", response.StatusCode)
+		}
+		if strings.Contains(harness.logs.String(), `"level":"ERROR"`) {
+			t.Fatalf("a malformed share key logged an error: %s", harness.logs.String())
+		}
+	})
+}
+
+func smallOrderKeys(t *testing.T) []string {
+	t.Helper()
+	file := loadSpecVectors(t)
+	if len(file.ShareKeyRejected) == 0 {
+		t.Fatal("the vectors hold no rejected share keys")
+	}
+	keys := make([]string, 0, len(file.ShareKeyRejected))
+	for _, vector := range file.ShareKeyRejected {
+		keys = append(keys, vector.Key)
+	}
+	return keys
+}
+
+func (h *testHarness) claimWithShareKey(message *testMessage, key string) (testResponse, responseBody) {
+	h.t.Helper()
+	request := claimRequestFor(message, message.verifier, "")
+	request.headers = map[string]string{shareKeyHeaderName: key}
+	return h.do(request)
+}
+
+func loadSpecVectors(t *testing.T) vectors.File {
+	t.Helper()
+	data, err := os.ReadFile("../../spec/vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file vectors.File
+	if err = json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	return file
 }

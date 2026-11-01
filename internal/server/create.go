@@ -4,23 +4,27 @@ import (
 	"bytes"
 	"context"
 	"crypto/cipher"
+	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -34,11 +38,14 @@ const (
 	diskFullRetry    = 60 * time.Second
 	workBusyRetry    = 5 * time.Second
 	capPendingRetry  = time.Minute
+	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
+	storeSlack = 2 * time.Minute
 )
 
 type createHeader struct {
 	ID          string  `json:"id"`
 	IDToken     string  `json:"id_token"`
+	Epoch       *uint32 `json:"epoch"`
 	ReadKey     string  `json:"read_key"`
 	VerifierKey *string `json:"verifier_key"`
 	ManageKey   string  `json:"manage_key"`
@@ -51,6 +58,7 @@ type createHeader struct {
 var createHeaderKeys = map[string]bool{
 	"id":           true,
 	"id_token":     true,
+	"epoch":        true,
 	"read_key":     true,
 	"verifier_key": true,
 	"manage_key":   true,
@@ -69,6 +77,8 @@ type createRequest struct {
 	opensMax    uint16
 	ttlSeconds  uint32
 	bodyBy      time.Time
+	outdated    bool
+	ratchetID   epoch.RatchetID
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -110,11 +120,21 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequest, bool) {
 	request, ok := parseCreateHeader(r.Header.Get(createHeaderName), s.settings.Limits)
 	size := request.header.Size
+	tokenOK := false
+	if ok {
+		var ratchetID [proof.RatchetIDLen]byte
+		ratchetID, tokenOK = s.idTokens.Valid(request.id, *request.header.Epoch, request.header.IDToken, time.Now())
+		request.ratchetID = epoch.RatchetID(ratchetID)
+	}
 	switch {
+	case request.outdated:
+		rejectCreate(w, r, http.StatusBadRequest, errClientOutdated)
 	case !ok:
 		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
-	case !s.idTokens.Valid(request.id, request.header.IDToken, time.Now()):
+	case !tokenOK:
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
+	case request.ratchetID != s.epochs.ID():
+		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	case r.ContentLength < 0 || r.Header.Get("Content-Length") == "":
 		rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
 	case r.ContentLength != size:
@@ -139,6 +159,10 @@ func parseCreateHeader(raw string, limits config.Limits) (createRequest, bool) {
 		return request, false
 	}
 	header := &request.header
+	if header.Epoch == nil {
+		request.outdated = true
+		return request, false
+	}
 	if request.id, err = core.ParseID(header.ID); err != nil {
 		return request, false
 	}
@@ -190,11 +214,8 @@ func (c *createRequest) decodeKeys() bool {
 	kdf := core.KDF(c.header.KDFID)
 	keysOK := signing.ValidPublicKey(c.readKey) && signing.ValidPublicKey(c.manageKey) &&
 		!bytes.Equal(c.readKey, c.manageKey)
-	if !kdf.Valid() || !keysOK || kdf.RequiresPassphrase() != (c.header.VerifierKey != nil) {
+	if !kdf.Valid() || !keysOK || c.header.VerifierKey == nil {
 		return false
-	}
-	if c.header.VerifierKey == nil {
-		return true
 	}
 	if c.verifierKey, err = core.DecodeExact(*c.header.VerifierKey, signing.PublicKeyLen); err != nil {
 		return false
@@ -358,6 +379,10 @@ func (s *Server) receiveBlob(
 		return envelope.Header{}, false
 	}
 	envelopeHeader, err := envelope.ParseHeader(raw[:])
+	if raw[0] < envelope.Version {
+		writeError(w, http.StatusBadRequest, errClientOutdated)
+		return envelope.Header{}, false
+	}
 	if err != nil || int(envelopeHeader.KDF) != request.header.KDFID {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return envelope.Header{}, false
@@ -400,12 +425,17 @@ func (s *Server) storeMessage(
 ) bool {
 	message := s.newMessage(request, envelopeHeader, time.Now(), blob.salt)
 	locator := seal.LocatorOf(request.id[:])
-	var record store.Record
-	secretmode.Do(func() {
-		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
-	})
-	defer clear(record.Key[:])
-	err := s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
+	err := errShareEpoch
+	if request.ratchetID != s.epochs.ID() {
+		err = errRatchetChanged
+	} else if shareOutlives(message.Epoch, message.ExpiresAt) {
+		var record store.Record
+		secretmode.Do(func() {
+			record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
+		})
+		defer clear(record.Key[:])
+		err = s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
+	}
 	if err == nil {
 		writeJSON(
 			w,
@@ -417,12 +447,28 @@ func (s *Server) storeMessage(
 	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), blob.ref); deleteErr != nil {
 		s.logger.ErrorContext(r.Context(), "create-cleanup", "err", logging.ErrorText(deleteErr))
 	}
-	if errors.Is(err, store.ErrConflict) {
+	switch {
+	case errors.Is(err, store.ErrConflict):
 		rejectCreate(w, r, http.StatusConflict, errConflict)
-		return false
+	case errors.Is(err, errShareEpoch):
+		rejectCreate(w, r, http.StatusForbidden, errIDToken)
+	case errors.Is(err, errRatchetChanged):
+		rejectCreate(w, r, http.StatusConflict, errShareLost)
+	default:
+		s.writeInternal(w, r, err)
 	}
-	s.writeInternal(w, r, err)
 	return false
+}
+
+var (
+	errShareEpoch     = errors.New("server: the share epoch does not cover the expiry")
+	errRatchetChanged = errors.New("server: the share of the id came from an earlier seed")
+)
+
+// shareOutlives keeps every message inside the life of its share, and every share at most an hour past its message.
+func shareOutlives(shareEpoch uint32, expiresAt time.Time) bool {
+	expiryEpoch := epoch.Hour(expiresAt)
+	return expiryEpoch <= shareEpoch && shareEpoch <= expiryEpoch+1
 }
 
 // newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
@@ -442,8 +488,10 @@ func (s *Server) newMessage(
 		OpensMax:       request.opensMax,
 		OpensRemaining: request.opensMax,
 		Size:           request.header.Size,
+		Epoch:          *request.header.Epoch,
+		RatchetID:      request.ratchetID,
 	}
-	if request.verifierKey != nil {
+	if envelopeHeader.KDF.RequiresPassphrase() {
 		verifier := s.ring.MAC(pepper.Verifier, verifierInput(salt, request.verifierKey))
 		message.VerifierMAC = verifier.MAC[:]
 		message.VerifierPepperID = verifier.PepperID
@@ -474,12 +522,11 @@ func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 const TransparencyPath = "/.well-known/nylzo/transparency.json"
 
 type instanceResponse struct {
-	Limits          instanceLimits   `json:"limits"`
-	Work            instanceWork     `json:"pow"`
-	Create          instanceCreate   `json:"create"`
-	Versions        instanceVersions `json:"versions"`
-	Build           buildinfo.Info   `json:"build"`
-	FileCompression string           `json:"file_compression"`
+	Limits   instanceLimits   `json:"limits"`
+	Work     instanceWork     `json:"pow"`
+	Create   *instanceCreate  `json:"create,omitempty"`
+	Versions instanceVersions `json:"versions"`
+	Build    buildinfo.Info   `json:"build"`
 }
 
 type instanceLimits struct {
@@ -501,6 +548,8 @@ type instanceCreate struct {
 	ID        string `json:"id"`
 	IDToken   string `json:"id_token"`
 	ExpiresAt string `json:"expires_at"`
+	Epoch     uint32 `json:"epoch"`
+	Share     string `json:"share"`
 }
 
 type instanceVersions struct {
@@ -543,20 +592,29 @@ type transparencyRetention struct {
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	id := core.NewID()
-	token, expires := s.idTokens.Issue(id, now)
+	creation, ok := s.parseCreation(r.Header)
+	if !ok {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return
+	}
 	response := instanceResponse{
-		FileCompression: "gzip",
-		Limits:          s.instanceLimits(),
-		Build:           s.buildInformation(),
-		Work:            instanceWork{Difficulty: s.settings.PoWDifficulty},
-		Create:          instanceCreate{ID: id.String(), IDToken: token, ExpiresAt: formatTime(expires)},
+		Limits: s.instanceLimits(),
+		Build:  s.buildInformation(),
+		Work:   instanceWork{Difficulty: s.settings.PoWDifficulty},
 		Versions: instanceVersions{
 			API:      1,
-			Envelope: envelope.Version,
-			Fragment: core.FragmentVersion,
+			Envelope: int(envelope.Version),
+			Fragment: int(core.FragmentVersion),
 			Server:   s.settings.Version,
 		},
+	}
+	if creation.requested {
+		created, err := s.issueID(&creation, now)
+		if err != nil {
+			s.writeInternal(w, r, err)
+			return
+		}
+		response.Create = &created
 	}
 	gate, err := s.globalGate(r.Context(), now)
 	if err != nil {
@@ -568,6 +626,59 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 		response.Work.Challenge = s.work.Challenge(now)
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+type creationRequest struct {
+	requested bool
+	ttl       time.Duration
+	shareKey  *ecdh.PublicKey
+}
+
+// parseCreation reads the TTL and share key headers, which a client sends together when it is about to create a message.
+func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
+	ttlValues, keyValues := header.Values(ttlHeaderName), header.Values(shareKeyHeaderName)
+	if len(ttlValues) == 0 && len(keyValues) == 0 {
+		return creationRequest{}, true
+	}
+	if len(ttlValues) != 1 || len(keyValues) != 1 {
+		return creationRequest{}, false
+	}
+	seconds, err := strconv.ParseInt(ttlValues[0], 10, 64)
+	if err != nil || seconds < envelope.MinTTLSeconds || seconds > int64(s.settings.Limits.MaxTTL/time.Second) ||
+		strconv.FormatInt(seconds, 10) != ttlValues[0] {
+		return creationRequest{}, false
+	}
+	key, err := share.ParseKey(keyValues[0])
+	if err != nil {
+		return creationRequest{}, false
+	}
+	return creationRequest{requested: true, ttl: time.Duration(seconds) * time.Second, shareKey: key}, true
+}
+
+// issueID hands out an id with the share of the hour in which a message made with it can expire at the latest.
+func (s *Server) issueID(creation *creationRequest, now time.Time) (instanceCreate, error) {
+	id := core.NewID()
+	upload := max(createBodyTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
+	latestExpiry := now.Add(proof.IDTokenTTL() + upload + storeSlack + creation.ttl)
+	shareEpoch := epoch.Hour(latestExpiry)
+	ratchetID := s.epochs.ID()
+	token, expires := s.idTokens.Issue(id, shareEpoch, ratchetID, now)
+	expiryShare, err := s.epochs.Share(ratchetID, shareEpoch, seal.LocatorOf(id[:]), now)
+	if err != nil {
+		return instanceCreate{}, err
+	}
+	defer clear(expiryShare[:])
+	wrapped, err := share.Wrap(&expiryShare, creation.shareKey)
+	if err != nil {
+		return instanceCreate{}, err
+	}
+	return instanceCreate{
+		ID:        id.String(),
+		IDToken:   token,
+		ExpiresAt: formatTime(expires),
+		Epoch:     shareEpoch,
+		Share:     core.Encode(wrapped[:]),
+	}, nil
 }
 
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {

@@ -11,7 +11,7 @@ import (
 
 func TestParseContactKeepsPlausibleAddressesAndRefusesLinks(t *testing.T) {
 	t.Parallel()
-	link := core.FormatLink("https://nylzo.example", core.NewID(), core.KDFNone, core.NewSecret())
+	link := core.FormatLink("https://nylzo.example", core.NewID(), core.KDFNone, core.NewSecret(), core.NewSecret())
 	for raw, want := range map[string]string{
 		"":                                 "",
 		" \t\n":                            "",

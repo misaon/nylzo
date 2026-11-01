@@ -17,12 +17,13 @@ type Redact struct {
 func (f *File) redact() error {
 	secret := deterministic32("s/redact")
 	encodedSecret := core.Encode(secret[:])
-	link := core.FormatLink(base, deterministicID("redact"), core.KDFNone, secret)
+	link := core.FormatLink(base, deterministicID("redact"), core.KDFNone, secret, deterministic32("h/redact"))
 	percentLink := strings.NewReplacer(":", "%3A", "/", "%2F", "#", "%23").Replace(link)
 	cases := []struct{ name, reason string }{
 		{"plain", "phishing for bank logins"},
 		{"empty", ""},
 		{"link", "see " + link + " please"},
+		{"v1-link", "see " + base + "/m/" + deterministicID("redact").String() + "#1.0." + encodedSecret + " please"},
 		{"hash-run", "see https://x.example/p#token-abc def"},
 		{"bare-secret", "bare " + encodedSecret + " end"},
 		{"glued-secret", "key_1.0." + encodedSecret},

@@ -204,19 +204,21 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	base := "http://" + address
 
 	id := core.NewID()
-	token, _ := server.idTokens.Issue(id, time.Now())
+	token := issueIDToken(server, id)
 	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
 	size := int64(256 << 10)
 	header, _ := json.Marshal(
 		map[string]any{
-			"id":         id.String(),
-			"id_token":   token,
-			"read_key":   core.Encode(readKey[:]),
-			"manage_key": core.Encode(manageKey[:]),
-			"kdf_id":     0,
-			"opens_max":  1,
-			"ttl_s":      60,
-			"size":       size,
+			"id":           id.String(),
+			"id_token":     token,
+			"read_key":     core.Encode(readKey[:]),
+			"manage_key":   core.Encode(manageKey[:]),
+			"verifier_key": otherPublicKey(),
+			"epoch":        shareEpochFor(60),
+			"kdf_id":       0,
+			"opens_max":    1,
+			"ttl_s":        60,
+			"size":         size,
 		},
 	)
 	done := make(chan struct{})
@@ -301,7 +303,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	blobWriter := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	start := time.Now()
-	server.serveBlob(blobWriter, r, &store.Message{Size: size}, "", bytes.NewReader(make([]byte, size)))
+	server.serveBlob(blobWriter, r, &store.Message{Size: size}, servedHeaders{}, bytes.NewReader(make([]byte, size)))
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
@@ -317,14 +319,16 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
 	header, _ := json.Marshal(
 		map[string]any{
-			"id":         id.String(),
-			"id_token":   issueIDToken(server, id),
-			"read_key":   core.Encode(readKey[:]),
-			"manage_key": core.Encode(manageKey[:]),
-			"kdf_id":     0,
-			"opens_max":  1,
-			"ttl_s":      60,
-			"size":       size,
+			"id":           id.String(),
+			"id_token":     issueIDToken(server, id),
+			"read_key":     core.Encode(readKey[:]),
+			"manage_key":   core.Encode(manageKey[:]),
+			"verifier_key": otherPublicKey(),
+			"epoch":        shareEpochFor(60),
+			"kdf_id":       0,
+			"opens_max":    1,
+			"ttl_s":        60,
+			"size":         size,
 		},
 	)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(""))
@@ -350,14 +354,16 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	id = core.NewID()
 	header, _ = json.Marshal(
 		map[string]any{
-			"id":         id.String(),
-			"id_token":   issueIDToken(server, id),
-			"read_key":   core.Encode(readKey[:]),
-			"manage_key": core.Encode(manageKey[:]),
-			"kdf_id":     0,
-			"opens_max":  1,
-			"ttl_s":      60,
-			"size":       len(body),
+			"id":           id.String(),
+			"id_token":     issueIDToken(server, id),
+			"read_key":     core.Encode(readKey[:]),
+			"manage_key":   core.Encode(manageKey[:]),
+			"verifier_key": otherPublicKey(),
+			"epoch":        shareEpochFor(60),
+			"kdf_id":       0,
+			"opens_max":    1,
+			"ttl_s":        60,
+			"size":         len(body),
 		},
 	)
 	request = httptest.NewRequest(http.MethodPost, "/api/v1/messages", bytes.NewReader(body))
@@ -379,8 +385,13 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 }
 
 func issueIDToken(server *Server, id core.ID) string {
-	token, _ := server.idTokens.Issue(id, time.Now())
+	token, _ := server.idTokens.Issue(id, shareEpochFor(60), server.epochs.ID(), time.Now())
 	return token
+}
+
+func otherPublicKey() string {
+	key := signing.PublicKey(core.NewSecret())
+	return core.Encode(key[:])
 }
 
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {

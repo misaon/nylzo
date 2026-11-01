@@ -334,6 +334,9 @@ export class Composer {
   readonly toggleProtect = async (): Promise<void> => {
     this.protect = !this.protect;
     if (this.protect) {
+      if (this.passphrase === '') {
+        this.generatePassphrase();
+      }
       await this.focus.focusAfterUpdate(() => 'passphrase');
       return;
     }

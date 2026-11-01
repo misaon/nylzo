@@ -9,8 +9,8 @@ type KDF uint8
 
 const (
 	KDFNone    KDF = 0
-	KDFScrypt  KDF = 1
 	KDFRetired KDF = 2
+	KDFScrypt  KDF = 3
 )
 
 var (
@@ -19,18 +19,16 @@ var (
 )
 
 func ParseKDF(text string) (KDF, error) {
-	switch text {
-	case "0":
-		return KDFNone, nil
-	case "1":
-		return KDFScrypt, nil
-	default:
-		return 0, ErrKDF
+	for _, kdf := range []KDF{KDFNone, KDFScrypt} {
+		if text == kdf.String() {
+			return kdf, nil
+		}
 	}
+	return 0, ErrKDF
 }
 
 func (k KDF) Valid() bool {
-	return k <= KDFScrypt
+	return k == KDFNone || k == KDFScrypt
 }
 
 func (k KDF) RequiresPassphrase() bool {

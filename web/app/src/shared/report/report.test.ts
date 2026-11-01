@@ -70,11 +70,11 @@ describe('reporting a pasted link (D41)', () => {
 
   it('tells a link from a newer version apart and sends nothing', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#2.'), abuseReport(''))).toEqual({
+    expect(await reportLink(api, ORIGIN, link.replace('#2.', '#3.'), abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_newer'],
     });
-    expect(await reportLink(api, ORIGIN, link.replace('#1.', '#0.'), abuseReport(''))).toEqual({
+    expect(await reportLink(api, ORIGIN, link.replace('#2.', '#0.'), abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_invalid'],
     });
@@ -83,12 +83,12 @@ describe('reporting a pasted link (D41)', () => {
 
   it('tells a link with the retired passphrase profile apart and sends nothing', async () => {
     const { api, link } = await setup();
-    expect(await reportLink(api, ORIGIN, link.replace('#1.0.', '#1.2.'), abuseReport(''))).toEqual({
+    expect(await reportLink(api, ORIGIN, link.replace('#2.0.', '#2.2.'), abuseReport(''))).toEqual({
       outcome: 'invalid',
       problems: ['link_retired'],
     });
     expect(
-      await reportLink(api, ORIGIN, link.replace('/m/', '/x/').replace('#1.0.', '#1.2.'), abuseReport('')),
+      await reportLink(api, ORIGIN, link.replace('/r#', '/x#').replace('#2.0.', '#2.2.'), abuseReport('')),
     ).toEqual({
       outcome: 'invalid',
       problems: ['link_invalid'],
@@ -206,7 +206,7 @@ describe('redacting a reason before it is signed (D41)', () => {
     expect(redacted.filter((reason) => reason.includes(secret))).toEqual([]);
     expect(redacted.filter((reason) => !reason.includes('[redacted]'))).toEqual([]);
     expect(await reportLink(api, ORIGIN, link, abuseReport(`phishing, see ${link}`))).toEqual({ outcome: 'accepted' });
-    expect(api.reports[0]?.reason).toBe('phishing, see https://nylzo.test/m/[redacted][redacted]');
+    expect(api.reports[0]?.reason).toBe('phishing, see https://nylzo.test/r[redacted]');
   });
 
   it('redacts S that was percent-encoded three times, as deep as the server decodes', () => {

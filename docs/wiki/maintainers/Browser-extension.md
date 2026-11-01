@@ -8,10 +8,10 @@ The extension, working name "Nylzo Verified", is a verified client for people wh
 
 - Targets: Chrome and Edge, Firefox on desktop and Android, Safari on macOS and iOS. Chrome on Android has no extensions, so its users need a native app.
 - Content: the `dist` of the release, with the instance address and the link origin taken from the extension's settings instead of `location.origin`.
-- Interception: one `declarativeNetRequest` redirect rule per configured instance, for example `^https://nylzo\.com/m/([A-Za-z0-9_-]+)(#.*)?$` to `read.html?i=nylzo.com&id=\1\2`. In Chromium 156 the rule sees the URL with its fragment, so the key reaches the extension page; a pattern that ends after the id never matches. A `{22}` quantifier exceeds the 2 KB limit of a compiled rule. Measured by the October 2026 audit: a click on a link reached the extension page with the fragment intact and no page or asset request reached the instance.
+- Interception: one `declarativeNetRequest` redirect rule per configured instance, for example `^https://nylzo\.com/r(#.*)?$` to `read.html?i=nylzo.com\1`. In Chromium 156 the rule sees the URL with its fragment, so the key reaches the extension page. Measured by the October 2026 audit: a click on a link reached the extension page with the fragment intact and no page or asset request reached the instance.
 - Permissions: host permission only for the configured instances.
 - Release: the release workflow builds the extension package reproducibly and lists it in the signed `checksums.txt`, so anyone can compare the store copy with the release.
-- Link format v2 puts the message id into the fragment; the rule must match both formats.
+- A link carries the message id in the fragment, so the rule matches only the `/r` path.
 
 ## Server change
 

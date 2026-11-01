@@ -18,30 +18,40 @@ const (
 
 // Secure narrows group and other access on entries the process owns and refuses entries owned by another user.
 func Secure(layout Layout) (int, error) {
+	narrowed := 0
+	err := walkLayout(layout, &narrowed)
+	return narrowed, err
+}
+
+// Check refuses what Secure refuses and changes nothing, so it can run on a directory mounted read-only.
+func Check(layout Layout) error {
+	return walkLayout(layout, nil)
+}
+
+func walkLayout(layout Layout, narrowed *int) error {
 	info, err := os.Stat(layout.Directory)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	narrowed := 0
-	if err = secureEntry(layout.Directory, info, &narrowed); err != nil {
-		return narrowed, fmt.Errorf("%w (the data directory)", err)
+	if err = secureEntry(layout.Directory, info, narrowed); err != nil {
+		return fmt.Errorf("%w (the data directory)", err)
 	}
 	for _, path := range layout.Files {
 		if info, err = os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {
-			return narrowed, err
+			return err
 		}
-		if err = secureEntry(path, info, &narrowed); err != nil {
-			return narrowed, fmt.Errorf("%w (%s)", err, filepath.Base(path))
+		if err = secureEntry(path, info, narrowed); err != nil {
+			return fmt.Errorf("%w (%s)", err, filepath.Base(path))
 		}
 	}
 	for _, tree := range layout.Trees {
-		if err = secureTree(tree, &narrowed); err != nil {
-			return narrowed, fmt.Errorf("%w (in %s)", err, filepath.Base(tree))
+		if err = secureTree(tree, narrowed); err != nil {
+			return fmt.Errorf("%w (in %s)", err, filepath.Base(tree))
 		}
 	}
-	return narrowed, nil
+	return nil
 }
 
 func secureTree(tree string, narrowed *int) error {
@@ -68,7 +78,7 @@ func secureEntry(path string, info fs.FileInfo, narrowed *int) error {
 	if !ok || int(stat.Uid) != os.Getuid() {
 		return ErrForeignOwner
 	}
-	if info.Mode().Perm()&0o077 == 0 {
+	if info.Mode().Perm()&0o077 == 0 || narrowed == nil {
 		return nil
 	}
 	mode := privateFileMode

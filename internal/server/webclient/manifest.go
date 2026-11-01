@@ -5,11 +5,12 @@ import (
 	"slices"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
+	"github.com/misaon/nylzo/internal/core"
 )
 
 const ManifestPath = "/.well-known/nylzo/client.json"
 
-var PagePaths = []string{englishHome, czechHome, "/sent", "/report", "/transparency", "/m/{id}"}
+var PagePaths = []string{englishHome, czechHome, "/sent", "/report", "/transparency", core.LinkPath, "/m/{id}"}
 
 var manifestPages = []string{englishHome, czechHome, "/sent"}
 

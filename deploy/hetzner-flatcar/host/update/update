@@ -17,7 +17,7 @@ mkdir -p "$state" "$GH_CONFIG_DIR"
 [[ ! -e "$state/failed.json" ]] || { echo 'A failed deployment requires inspection; database rollback is refused.' >&2; exit 1; }
 temporary=$(mktemp -d /var/tmp/nylzo-update.XXXXXXXX)
 cleanup() {
-  docker rm --force nylzo-probe >/dev/null 2>&1 || true
+  docker rm --force nylzo-probe nylzo-store-check >/dev/null 2>&1 || true
   rm -rf "$temporary"
 }
 trap cleanup EXIT
@@ -162,6 +162,21 @@ caddy() {
   if [[ -n "$previous" ]]; then printf '%s\n' "$previous" > "$state/caddy.previous.tag"; fi
   printf '%s\n' "$candidate" > "$state/caddy.tag"
 }
+# The data stays labelled for the running container, so the check joins its SELinux level instead of relabelling.
+store_check() {
+  local level mode=ro,Z label=()
+  level=$(docker inspect --format '{{.ProcessLabel}}' nylzo 2>/dev/null | cut -d: -f4-) || level=
+  if [[ -n "$level" ]]; then
+    label=(--security-opt "label=level:$level")
+    mode=ro
+  fi
+  docker run --rm --name nylzo-store-check --user 65532:65532 --network none \
+    --read-only --cap-drop ALL --security-opt no-new-privileges:true "${label[@]}" \
+    --memory 256m --cpus 1 --pids-limit 64 --ulimit core=0:0 \
+    --env NYLZO_DATA_DIR=/home/nonroot --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
+    --volume "/var/lib/nylzo/data:/home/nonroot:$mode" \
+    --volume "/run/nylzo-epoch:/run/nylzo-epoch:$mode" "$1" store-check
+}
 nylzo() {
   local version previous digest image
   version=$(jq -r .initialRelease "$site")
@@ -188,15 +203,17 @@ nylzo() {
   fi
   caddy "$version"
   docker pull "$image@$digest" >/dev/null
-  mkdir "$temporary/data"
-  chown 165532:165532 "$temporary/data"
+  mkdir "$temporary/data" "$temporary/epoch"
+  chown 165532:165532 "$temporary/data" "$temporary/epoch"
   openssl rand -hex 32 > "$temporary/pepper"
   chown 165532:165532 "$temporary/pepper"
   chmod 0400 "$temporary/pepper"
   docker run --detach --name nylzo-probe --user 65532:65532 --network none \
     --read-only --cap-drop ALL --security-opt no-new-privileges:true \
     --memory 1g --cpus 1.5 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 --env-file /etc/nylzo/service.env \
+    --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
     --volume "$temporary/data:/home/nonroot:Z" \
+    --volume "$temporary/epoch:/run/nylzo-epoch:Z" \
     --volume "$temporary/pepper:/run/nylzo-pepper:ro,Z" "$image@$digest" serve >/dev/null
   local ready=false
   for ((attempt = 0; attempt < 30; attempt++)); do
@@ -205,6 +222,10 @@ nylzo() {
   done
   [[ "$ready" = true ]] || return 1
   docker rm --force nylzo-probe >/dev/null
+  if [[ -n "${previous:-}" ]] && ! store_check "$image@$digest"; then
+    echo "Nylzo $version cannot open the data directory; the running release stays." >&2
+    return 1
+  fi
   systemctl stop nylzo.service
   [[ ! -s "$state/current.json" ]] || cp "$state/current.json" "$state/previous.json"
   jq -n --arg tag "$version" --arg digest "$digest" '{tag:$tag,digest:$digest}' > "$state/current.json.new"

@@ -1,14 +1,20 @@
 import {
   deriveContent,
   deriveLink,
+  deriveVerifier,
   encodeBase64url,
   formatLink,
+  idToString,
   KDF_NONE,
   KDF_SCRYPT,
   newHeader,
   newSecret,
+  newShareKey,
+  objectHash,
+  parseLink,
   requestKey,
   seal,
+  unwrapShare,
 } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
@@ -23,6 +29,7 @@ type Scrypt = ReaderDependencies['scrypt'];
 
 const scrypt: Scrypt = (passphrase, passphraseSalt, onProgress) =>
   Promise.resolve(scryptPassphraseKey(passphrase, passphraseSalt, onProgress));
+const shareKey = new Uint8Array(32).fill(5);
 
 class ImpostorError extends Error {
   override readonly name = 'KdfWorkerError';
@@ -117,7 +124,15 @@ function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {})
 }
 
 function idTextOf(link: string): string {
-  return /\/m\/([^#]+)/.exec(link)?.[1] ?? '';
+  return idToString(parseLink(link).id);
+}
+
+// Every link opens on /r, so the read page keeps its state under `r`.
+const PAGE_KEY = 'r';
+const LEASE_KEY = `nylzo:lease:${PAGE_KEY}`;
+
+function leaseValue(link: string, lease: string): string {
+  return `${idTextOf(link)} ${lease}`;
 }
 
 async function storeRaw(
@@ -125,30 +140,32 @@ async function storeRaw(
   meta: { text?: string; file?: { name: string; mime: string; size: number } },
   file?: Uint8Array,
 ): Promise<string> {
-  const { create } = await api.instance();
+  const issuing = await newShareKey();
+  const { create } = await api.instance({ ttlSeconds: 3600, shareKey: issuing.publicKey });
+  if (create === undefined) {
+    throw new Error('the fake server issued no id');
+  }
   const secret = newSecret();
   const keys = await deriveLink(create.id, secret);
-  const content = await deriveContent(create.id, secret, new Uint8Array(0));
-  const object = await seal(
-    content.contentKey,
-    newHeader(KDF_NONE),
-    create.id,
-    { opensMax: 1, ttlSeconds: 3600 },
-    { meta, file },
-  );
+  const share = await unwrapShare(issuing, create.share);
+  const content = await deriveContent(create.id, secret, new Uint8Array(0), share);
+  const object = await seal(content, newHeader(KDF_NONE), create.id, { opensMax: 1, ttlSeconds: 3600 }, { meta, file });
   const readKey = await requestKey(keys.readSeed);
+  const verifierKey = await requestKey(await deriveVerifier(create.id, secret, new Uint8Array(0)));
   const manageKey = await requestKey(newSecret());
   await api.create({
     id: create.id,
     idToken: create.idToken,
+    epoch: create.epoch,
     readKey: readKey.publicKey,
+    verifierKey: verifierKey.publicKey,
     manageKey: manageKey.publicKey,
     kdfId: KDF_NONE,
     opensMax: 1,
     ttlSeconds: 3600,
     object,
   });
-  return formatLink('https://nylzo.test', create.id, KDF_NONE, secret);
+  return formatLink('https://nylzo.test', create.id, KDF_NONE, secret, await objectHash(object));
 }
 
 describe('reading a message', () => {
@@ -160,13 +177,12 @@ describe('reading a message', () => {
     await reader.load();
     const revealing = reader.reveal('four random words here');
     await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
-    const id = idTextOf(created.link);
     expect(
       reader.session.map
         .keys()
         .toArray()
         .toSorted((left, right) => left.localeCompare(right)),
-    ).toEqual([`nylzo:dropped:${id}`, `nylzo:lease:${id}`]);
+    ).toEqual([`nylzo:dropped:${PAGE_KEY}`, `nylzo:lease:${PAGE_KEY}`]);
     const stored = reader.session.map.values().toArray().join(' ');
     const secret = new URL(created.link).hash.slice(1).split('.').at(-1) ?? '';
     expect(secret).toHaveLength(43);
@@ -179,13 +195,13 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
-    session.setItem(leaseKeyOf(created.link), 'pending-lease');
+    session.setItem(LEASE_KEY, leaseValue(created.link, 'pending-lease'));
     const before = api.calls.length;
     const reader = openReader(api, created.link, { session, reloaded: true });
     await reader.load();
     expect(reader.last()).toEqual({ view: 'reopen' });
     expect(api.calls.slice(before)).toEqual(['view:loading', 'view:reopen']);
-    expect(session.map.get(leaseKeyOf(created.link))).toBe('pending-lease');
+    expect(session.map.get(LEASE_KEY)).toBe(leaseValue(created.link, 'pending-lease'));
   });
 
   it('drops the fragment before its first request and acknowledges only once the page shows the message (D95)', async () => {
@@ -216,7 +232,7 @@ describe('reading a message', () => {
     await reloaded.load();
     expect(reloaded.last()).toEqual({ view: 'removed' });
     expect(api.calls.slice(before).filter((call) => !call.startsWith('view:'))).toEqual([]);
-    const damaged = openReader(api, created.link.replace('#1.', '#0.'));
+    const damaged = openReader(api, created.link.replace('#2.', '#0.'));
     await damaged.load();
     expect(damaged.last()).toEqual({ view: 'invalid' });
     expect(damaged.dropped()).toBe(1);
@@ -235,7 +251,7 @@ describe('reading a message', () => {
     await revealing;
     expect(api.calls).not.toContain('ack');
     expect(reader.last()).toEqual({ view: 'cleared' });
-    expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(true);
+    expect(reader.session.map.has(LEASE_KEY)).toBe(true);
     const reloaded = openReader(api, created.link, { session: reader.session, reloaded: true });
     await reloaded.load();
     expect(reloaded.last()).toEqual({ view: 'reopen' });
@@ -247,7 +263,7 @@ describe('reading a message', () => {
   it('shows the text before it acknowledges the lease and then forgets the lease', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/m\/[\w-]{22}#1\.0\.[\w-]{43}$/);
+    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/r#2\.0\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/);
     const reader = openReader(api, created.link);
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
@@ -261,11 +277,10 @@ describe('reading a message', () => {
       'ack',
     ]);
     expect(reader.dropped()).toBe(1);
-    const id = idTextOf(created.link);
     expect(reader.session.log).toEqual([
-      `set nylzo:dropped:${id}`,
-      `set nylzo:lease:${id}`,
-      `remove nylzo:lease:${id}`,
+      `set nylzo:dropped:${PAGE_KEY}`,
+      `set nylzo:lease:${PAGE_KEY}`,
+      `remove nylzo:lease:${PAGE_KEY}`,
     ]);
   });
 
@@ -280,7 +295,7 @@ describe('reading a message', () => {
       }),
       createDependencies(api),
     );
-    expect(created.link).toContain('#1.1.');
+    expect(created.link).toContain('#2.3.');
     const reader = openReader(api, created.link);
     await reader.load();
     await reader.reveal('špatná passphrase tady');
@@ -301,7 +316,7 @@ describe('reading a message', () => {
       mime: 'application/pdf',
       bytes,
     });
-    expect(api.calls.filter((call) => call.startsWith('claim'))).toEqual(['claim+verifier', 'claim+verifier']);
+    expect(api.calls.filter((call) => call.startsWith('claim'))).toEqual(['claim', 'claim']);
   });
 
   it('marks the scrypt derivation in the session and removes the mark afterwards', async () => {
@@ -313,11 +328,11 @@ describe('reading a message', () => {
     expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
     const id = idTextOf(created.link);
     expect(reader.session.log).toEqual([
-      `set nylzo:dropped:${id}`,
+      `set nylzo:dropped:${PAGE_KEY}`,
       `set nylzo:kdf:${id}`,
       `remove nylzo:kdf:${id}`,
-      `set nylzo:lease:${id}`,
-      `remove nylzo:lease:${id}`,
+      `set nylzo:lease:${PAGE_KEY}`,
+      `remove nylzo:lease:${PAGE_KEY}`,
     ]);
     expect(
       reader.views.filter((readView) => readView.view === 'busy' && readView.step === 'deriving').length,
@@ -407,7 +422,9 @@ describe('reading a message', () => {
       stored?.request.id ?? new Uint8Array(16),
       { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
       {
-        onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
+        verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
+        shareKey,
+        onLease: (lease) => session.setItem(LEASE_KEY, leaseValue(created.link, lease)),
       },
     );
     const second = openReader(api, created.link, { session });
@@ -440,7 +457,8 @@ describe('reading a message', () => {
       { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
       {
         verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        onLease: (lease) => session.setItem(`nylzo:lease:${id}`, lease),
+        shareKey,
+        onLease: (lease) => session.setItem(LEASE_KEY, leaseValue(created.link, lease)),
       },
     );
     const again = openReader(api, created.link, { session });
@@ -471,47 +489,47 @@ describe('reading a message', () => {
     const reader = openReader(api, created.link, { session });
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true });
-    expect(Object.fromEntries(session.map)).toEqual({ [`nylzo:dropped:${idTextOf(created.link)}`]: '1' });
+    expect(Object.fromEntries(session.map)).toEqual({ [`nylzo:dropped:${PAGE_KEY}`]: '1' });
   });
 
-  it('tells a malformed link, a link from a newer version, one with the retired profile and an unknown one apart', async () => {
+  it('tells a malformed link, a newer one, a retired profile, a link from before the upgrade and an unknown one apart', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const before = api.calls.length;
-    const broken = openReader(api, created.link.replace('#1.', '#0.'));
+    const broken = openReader(api, created.link.replace('#2.', '#0.'));
     await broken.load();
     expect(broken.last()).toEqual({ view: 'invalid' });
-    const brokenPath = openReader(api, created.link.replace('/m/', '/m/x'));
+    const brokenPath = openReader(api, created.link.replace('/r#', '/rx#'));
     await brokenPath.load();
     expect(brokenPath.last()).toEqual({ view: 'invalid' });
     for (const newerLink of [
-      created.link.replace('#1.', '#2.'),
-      created.link.replace('/m/', '/m/x').replace(/#.*$/, '#10.a.b.c'),
+      created.link.replace('#2.', '#3.'),
+      created.link.replace('/r#', '/rx#').replace(/#.*$/, '#10.a.b.c'),
     ]) {
       const newer = openReader(api, newerLink);
       await newer.load();
       expect(newer.last()).toEqual({ view: 'newer' });
     }
-    const retired = openReader(api, created.link.replace('#1.0.', '#1.2.'));
+    const retired = openReader(api, created.link.replace('#2.0.', '#2.2.'));
     await retired.load();
     expect(retired.last()).toEqual({ view: 'retired' });
-    const retiredBadPath = openReader(api, created.link.replace('/m/', '/m/x').replace('#1.0.', '#1.2.'));
+    const retiredBadPath = openReader(api, created.link.replace('/r#', '/rx#').replace('#2.0.', '#2.2.'));
     await retiredBadPath.load();
     expect(retiredBadPath.last()).toEqual({ view: 'invalid' });
+    const secret = encodeBase64url(new Uint8Array(32).fill(3));
+    const released = openReader(api, `https://nylzo.test/m/${idTextOf(created.link)}#1.0.${secret}`);
+    await released.load();
+    expect(released.last()).toEqual({ view: 'released' });
     expect(api.calls.slice(before).filter((call) => !call.startsWith('view:') && call !== 'drop-fragment')).toEqual([]);
     const other = encodeBase64url(new Uint8Array(32).fill(5));
     const unknown = openReader(
       api,
-      created.link.replace(/#1\.0\..*$/, () => `#1.0.${other}`),
+      created.link.replace(/#2\.0\.([^.]+)\..*$/, (_, id: string) => `#2.0.${id}.${other}.${other}`),
     );
     await unknown.load();
     expect(unknown.last()).toEqual({ view: 'unknown' });
   });
 });
-
-function leaseKeyOf(link: string): string {
-  return `nylzo:lease:${idTextOf(link)}`;
-}
 
 function storedOf(api: FakeApi, link: string) {
   const stored = api.stored.get(idTextOf(link));
@@ -526,7 +544,7 @@ describe('reading through the lease and claim edge cases', () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 3 }), createDependencies(api));
     const session = memorySession();
-    session.setItem(leaseKeyOf(created.link), 'stale');
+    session.setItem(LEASE_KEY, leaseValue(created.link, 'stale'));
     const reader = openReader(api, created.link, { session });
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: true });
@@ -534,7 +552,7 @@ describe('reading through the lease and claim edge cases', () => {
     await reader.reveal();
     expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob']);
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
-    expect(session.map.has(leaseKeyOf(created.link))).toBe(false);
+    expect(session.map.has(LEASE_KEY)).toBe(false);
     expect(storedOf(api, created.link).opensRemaining).toBe(3);
     await reader.reveal();
     expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob', 'claim']);
@@ -542,11 +560,24 @@ describe('reading through the lease and claim edge cases', () => {
     expect(storedOf(api, created.link).opensRemaining).toBe(2);
   });
 
+  it('ignores a lease that another message left on the shared read page', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const session = memorySession();
+    session.setItem(LEASE_KEY, 'AAAAAAAAAAAAAAAAAAAAAA lease-1');
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false });
+    await reader.reveal();
+    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['claim']);
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+  });
+
   it('keeps the lease when the download limit of the lease is reached', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const session = memorySession();
-    session.setItem(leaseKeyOf(created.link), 'lease-1');
+    session.setItem(LEASE_KEY, leaseValue(created.link, 'lease-1'));
     api.blob = () => {
       api.calls.push('blob');
       return Promise.reject(new ApiError(429, 'rate_limited', { retryAfter: 90 }));
@@ -555,7 +586,7 @@ describe('reading through the lease and claim edge cases', () => {
     await reader.load();
     await reader.reveal();
     expect(reader.last()).toEqual({ view: 'retry_later', retryAfter: 90 });
-    expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
+    expect(session.map.get(LEASE_KEY)).toBe(leaseValue(created.link, 'lease-1'));
     expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob']);
   });
 
@@ -564,7 +595,7 @@ describe('reading through the lease and claim edge cases', () => {
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
     const claim = api.claim.bind(api);
-    api.claim = async (id, readKey, options = {}) => {
+    api.claim = async (id, readKey, options) => {
       await claim(id, readKey, options);
       throw new TypeError('network error');
     };
@@ -572,7 +603,7 @@ describe('reading through the lease and claim edge cases', () => {
     await first.load();
     await first.reveal();
     expect(first.last()).toEqual({ view: 'failed' });
-    expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
+    expect(session.map.get(LEASE_KEY)).toBe(leaseValue(created.link, 'lease-1'));
     api.claim = claim;
     const again = openReader(api, created.link, { session });
     await again.load();
@@ -589,11 +620,11 @@ describe('reading through the lease and claim edge cases', () => {
       const created = await createMessage(input(), createDependencies(api));
       const reader = openReader(api, created.link);
       await reader.load();
-      reader.session.setItem(leaseKeyOf(created.link), 'stale');
+      reader.session.setItem(LEASE_KEY, leaseValue(created.link, 'stale'));
       storedOf(api, created.link).state = state;
       await reader.reveal();
       expect(reader.last()).toMatchObject({ view: 'ended', state });
-      expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(false);
+      expect(reader.session.map.has(LEASE_KEY)).toBe(false);
       expect(await reader.report(abuseReport('late'))).toEqual({ outcome: 'ignored' });
     },
   );
@@ -612,7 +643,7 @@ describe('reading through the lease and claim edge cases', () => {
     await reader.load();
     await reader.reveal();
     expect(reader.last()).toEqual({ view: 'retry_later', retryAfter: wait });
-    expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(false);
+    expect(reader.session.map.has(LEASE_KEY)).toBe(false);
     expect(storedOf(api, created.link).opensRemaining).toBe(1);
   });
 
@@ -654,7 +685,7 @@ describe('passphrase handling on the read page', () => {
     expect(reader.views.some((readView) => readView.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);
     expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
-    expect(Object.fromEntries(reader.session.map)).toEqual({ [`nylzo:dropped:${idTextOf(created.link)}`]: '1' });
+    expect(Object.fromEntries(reader.session.map)).toEqual({ [`nylzo:dropped:${PAGE_KEY}`]: '1' });
   });
 
   it('suggests another device when the key derivation worker fails', async () => {
@@ -767,7 +798,7 @@ describe('leaving the page', () => {
     const asked = Promise.withResolvers<undefined>();
     const claim = api.claim.bind(api);
     let claimed: Uint8Array | undefined;
-    api.claim = async (id, readKey, options = {}) => {
+    api.claim = async (id, readKey, options) => {
       asked.resolve(undefined);
       await gate.promise;
       const envelope = await claim(id, readKey, { ...options, proceed: () => true });
@@ -783,7 +814,7 @@ describe('leaving the page', () => {
     expect(reader.views.slice(after - 1).every((view) => view.view === 'cleared')).toBe(true);
     expect(claimed).toBeDefined();
     expect(api.calls).not.toContain('ack');
-    expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
+    expect(session.map.get(LEASE_KEY)).toBe(leaseValue(created.link, 'lease-1'));
     api.claim = claim;
     const reopened = openReader(api, created.link, { session });
     await reopened.load();
@@ -861,7 +892,7 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     const session = memorySession();
     const first = openReader(api, created.link, { session });
     await first.load();
-    session.setItem(`nylzo:lease:${idTextOf(created.link)}`, 'lease-1');
+    session.setItem(LEASE_KEY, leaseValue(created.link, 'lease-1'));
     storedOf(api, created.link).leases.add('lease-1');
     storedOf(api, created.link).opensRemaining = 1;
     const resumed = openReader(api, created.link, { session });

@@ -61,7 +61,7 @@ function malformedCompressedAttachment(
       file: { name: 'rows.csv', size, encoding: 'gzip', encoded_size: encoded.length },
     }),
   );
-  const plaintext = new Uint8Array(65_536 - 15 - 16);
+  const plaintext = new Uint8Array(65_536 - 15 - 32 - 16);
   new DataView(plaintext.buffer).setUint32(0, meta.length);
   plaintext.set(meta, 4);
   plaintext.set(encoded, 4 + meta.length);

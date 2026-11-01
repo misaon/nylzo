@@ -687,7 +687,7 @@ func TestAbuseReportHardening(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 		harness.mustCreate(message)
-		link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
+		link := message.linkText()
 		_, fragment, _ := strings.Cut(link, "#")
 		body := fmt.Sprintf(`{"id":%q,"reason":%q}`, message.id.String(), "malware at "+link+" and again "+fragment)
 		for _, contentType := range []string{"", "text/plain", "application/x-www-form-urlencoded"} {
@@ -810,7 +810,7 @@ func TestAbuseReportsRefuseAnImplausibleContactAndStoreAValidOneAsGiven(t *testi
 		harness := newHarness(t, settings)
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "abuse")
 		harness.mustCreate(message)
-		link := core.FormatLink("https://nylzo.example", message.id, message.kdf, message.secret)
+		link := message.linkText()
 		for _, id := range []string{message.id.String(), core.NewID().String(), "not-an-id"} {
 			for _, contact := range []string{"jana", "jana@example", "ja na@example.cz", link + "@example.cz"} {
 				report := map[string]any{"id": id, "reason": "spam", "contact": contact, "good_faith": true}

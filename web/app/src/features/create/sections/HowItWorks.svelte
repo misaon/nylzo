@@ -15,12 +15,13 @@
   const parts = [
     {
       id: 'host',
-      text: 'https://nylzo.example/m/',
+      text: 'https://nylzo.example/r',
       server: true,
       tone: 'text-ink-soft',
       dot: 'bg-ink-mute',
       bar: 'text-ink-mute',
     },
+    { id: 'meta', text: '#2.0.', server: false, tone: 'text-rose-300', dot: 'bg-rose-300', bar: 'text-rose-300' },
     {
       id: 'id',
       text: 'Q3tN0xvR8kLp2WcY5aHf1g',
@@ -29,10 +30,9 @@
       dot: 'bg-nebula-300',
       bar: 'text-nebula-300',
     },
-    { id: 'meta', text: '#1.0.', server: false, tone: 'text-rose-300', dot: 'bg-rose-300', bar: 'text-rose-300' },
     {
       id: 'key',
-      text: 'Vh2sXq9LmB4tRk7PzW1eNc6YuJ3oFa8DiG5bTn0KwEs',
+      text: '.Vh2sXq9LmB4tRk7PzW1eNc6YuJ3oFa8DiG5bTn0KwEs.T7cQm…',
       server: false,
       tone: 'text-aegis-300',
       dot: 'bg-aegis-400',

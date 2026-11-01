@@ -18,6 +18,7 @@ type Envelope struct {
 	S            string       `json:"s"`
 	KDFID        int          `json:"kdf_id"`
 	Passphrase   *string      `json:"passphrase,omitempty"`
+	E            string       `json:"e_hex"`
 	Flags        int          `json:"flags"`
 	IV           string       `json:"iv_hex"`
 	OpensMax     int          `json:"opens_max"`
@@ -26,9 +27,12 @@ type Envelope struct {
 	File         *FileContent `json:"file,omitempty"`
 	MetaJSON     string       `json:"meta_json"`
 	PlaintextLen int          `json:"plaintext_len"`
+	Commitment   string       `json:"commitment_hex"`
 	AAD          string       `json:"aad_hex"`
 	ObjectLen    int          `json:"object_len"`
 	ObjectSHA256 string       `json:"object_sha256"`
+	ObjectHash   string       `json:"h"`
+	Link         string       `json:"link"`
 	Object       *string      `json:"object_b64,omitempty"`
 }
 
@@ -56,16 +60,19 @@ type fileCase struct {
 	inHex bool
 }
 
+// textFilling is the text that makes an object exactly one 64 KiB block: 84 bytes of envelope and meta overhead.
+const textFilling = envelope.Pad - 84
+
 var envelopeCases = []envelopeCase{
 	{name: "text-ascii", opens: 1, ttl: 86400, text: new("hello nylzo")},
 	{
 		name:  "text-escapes",
 		opens: 2,
 		ttl:   3600,
-		text:  new("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash \u2028 line sep \U0001F600"),
+		text:  new("český text \"quoted\" back\\slash\nnewline\ttab \u0001ctrl /slash   line sep \U0001F600"),
 	},
-	{name: "text-exact-4096", opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4044))},
-	{name: "text-4097", opens: 1, ttl: 86400, text: new(strings.Repeat("a", 4045))},
+	{name: "text-exact-65536", opens: 1, ttl: 86400, text: new(strings.Repeat("a", textFilling))},
+	{name: "text-65537", opens: 1, ttl: 86400, text: new(strings.Repeat("a", textFilling+1))},
 	{name: "file-empty", opens: 1, ttl: 86400, file: &fileCase{name: "empty.bin", mime: octetStream}},
 	{
 		name:  "file-one-byte",
@@ -73,7 +80,6 @@ var envelopeCases = []envelopeCase{
 		ttl:   86400,
 		file:  &fileCase{name: "b.bin", mime: octetStream, size: 1, inHex: true},
 	},
-	{name: "file-65536", opens: 3, ttl: 259200, file: &fileCase{name: "block.bin", size: 65536}},
 	{
 		name:       "file-and-text-scrypt",
 		kdf:        core.KDFScrypt,
@@ -100,18 +106,10 @@ var envelopeCases = []envelopeCase{
 	{
 		name:       "scrypt-nfc-decomposed",
 		kdf:        core.KDFScrypt,
-		passphrase: new("he\u0301slo s c\u030ces\u030ctinou"),
+		passphrase: new("héslo s češtinou"),
 		opens:      1,
 		ttl:        86400,
 		text:       new("nfc"),
-	},
-	{
-		name:       "scrypt-empty-passphrase",
-		kdf:        core.KDFScrypt,
-		passphrase: new(""),
-		opens:      1,
-		ttl:        86400,
-		text:       new("empty passphrase"),
 	},
 	{name: "opens-10-ttl-7d", opens: 10, ttl: 604800, text: new("many opens")},
 }
@@ -127,45 +125,79 @@ func (f *File) envelope() error {
 	return nil
 }
 
+type sealedCase struct {
+	id      core.ID
+	secret  *[core.SecretLen]byte
+	share   *[core.ShareLen]byte
+	header  envelope.Header
+	policy  envelope.Policy
+	payload envelope.Payload
+	content keys.ContentKeys
+	object  []byte
+}
+
+func sealCase(vector envelopeCase) (sealedCase, error) {
+	sealed := sealedCase{
+		id:     deterministicID("env/" + vector.name),
+		secret: deterministic32("env/s/" + vector.name),
+		share:  deterministic32("env/e/" + vector.name),
+		header: envelope.Header{
+			Version: envelope.Version,
+			KDF:     vector.kdf,
+			IV:      [envelope.IVLen]byte(deterministic("iv/"+vector.name, envelope.IVLen)),
+		},
+		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl},
+	}
+	derived, err := keys.DeriveAll(
+		sealed.id,
+		sealed.secret,
+		vector.kdf,
+		valueOr(vector.passphrase),
+		sealed.share,
+	)
+	if err != nil {
+		return sealedCase{}, err
+	}
+	sealed.content = derived.Content
+	sealed.payload, _ = vector.payload()
+	sealed.object, err = envelope.Seal(&sealed.content, sealed.header, sealed.id, sealed.policy, sealed.payload)
+	return sealed, err
+}
+
 func envelopeVector(vector envelopeCase) (Envelope, error) {
-	id := deterministicID("env/" + vector.name)
-	secret := deterministic32("env/s/" + vector.name)
-	_, content, err := keys.DeriveAll(id, secret, vector.kdf, valueOr(vector.passphrase))
+	sealed, err := sealCase(vector)
 	if err != nil {
 		return Envelope{}, err
 	}
-	header := envelope.Header{
-		Version: envelope.Version,
-		KDF:     vector.kdf,
-		IV:      [envelope.IVLen]byte(deterministic("iv/"+vector.name, envelope.IVLen)),
-	}
-	policy := envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl}
-	payload, file := vector.payload()
-	meta, err := envelope.EncodeMeta(payload.Meta)
+	_, file := vector.payload()
+	meta, err := envelope.EncodeMeta(sealed.payload.Meta)
 	if err != nil {
 		return Envelope{}, err
 	}
-	object, err := envelope.Seal(&content.K, header, id, policy, payload)
-	if err != nil {
-		return Envelope{}, err
-	}
+	object := sealed.object
+	commitment := object[envelope.HeaderLen:envelope.PrefixLen]
 	sum := sha256.Sum256(object)
+	hash := envelope.ObjectHash(object)
 	generated := Envelope{
 		Name:         vector.name,
-		ID:           id.String(),
-		S:            hex.EncodeToString(secret[:]),
+		ID:           sealed.id.String(),
+		S:            hex.EncodeToString(sealed.secret[:]),
 		KDFID:        int(vector.kdf),
 		Passphrase:   vector.passphrase,
-		IV:           hex.EncodeToString(header.IV[:]),
+		IV:           hex.EncodeToString(sealed.header.IV[:]),
 		OpensMax:     int(vector.opens),
 		TTLSeconds:   int(vector.ttl),
 		Text:         vector.text,
 		File:         file,
 		MetaJSON:     string(meta),
-		PlaintextLen: len(object) - envelope.HeaderLen - envelope.TagLen,
-		AAD:          hex.EncodeToString(envelope.AAD(header, id, policy)),
+		E:            hex.EncodeToString(sealed.share[:]),
+		PlaintextLen: len(object) - envelope.PrefixLen - envelope.TagLen,
+		Commitment:   hex.EncodeToString(commitment),
+		AAD:          hex.EncodeToString(envelope.AAD(sealed.header, commitment, sealed.id, sealed.policy)),
 		ObjectLen:    len(object),
 		ObjectSHA256: hex.EncodeToString(sum[:]),
+		ObjectHash:   core.Encode(hash[:]),
+		Link:         core.FormatLink(base, sealed.id, vector.kdf, sealed.secret, &hash),
 	}
 	if len(object) <= inlineMax {
 		generated.Object = new(core.Encode(object))

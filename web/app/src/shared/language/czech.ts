@@ -29,6 +29,8 @@ export const czech = {
   'problem.passphrase.sequential': 'Passphrase je souvislá řada písmen, číslic nebo kláves.',
   'problem.passphrase.context': 'Passphrase tvoří hlavně slovo Nylzo.',
   'problem.passphrase.common': 'Tato passphrase je na seznamu běžně používaných hesel.',
+  'problem.passphrase.unassigned':
+    'Passphrase obsahuje znak novější než Unicode 15.1, jiné zařízení by ji mohlo přečíst jinak.',
 
   'failure.instance': 'Nastavení služby se nepodařilo načíst.',
   'failure.rate_limited': 'Za krátkou dobu přišlo příliš mnoho zpráv. Zkuste to za {time}.',
@@ -169,6 +171,7 @@ export const czech = {
   'report.failed': 'Hlášení se nepodařilo odeslat. Zkuste to znovu.',
   'report.problem.link_invalid': 'Odkaz je neúplný nebo poškozený.',
   'report.problem.link_newer': 'Odkaz potřebuje novější verzi Nylzo.',
+  'report.problem.link_released': 'Zprávu z\u{A0}tohoto odkazu smazala bezpečnostní aktualizace serveru.',
   'report.problem.link_retired': 'Odkaz má vyřazenou ochranu passphrase.',
   'report.problem.link_foreign': 'Odkaz patří jiné službě.',
   'report.problem.reason_too_long': 'Důvod je delší než {bytes} bajtů.',
@@ -382,6 +385,9 @@ export const czech = {
   'open.notice.retired': 'Odkaz chrání vyřazená passphrase',
   'open.notice.retired.text':
     'Tento způsob ochrany Nylzo už nepodporuje, a\u{A0}tak zprávu otevřít nejde. Stránka ji nespotřebovala. Požádejte odesílatele o\u{A0}nový odkaz.',
+  'open.notice.released': 'Zprávu smazala bezpečnostní aktualizace',
+  'open.notice.released.text':
+    'Odkaz vznikl před aktualizací tohoto serveru a\u{A0}aktualizace smazala všechny starší zprávy. Zprávu už nikdo neotevře. Požádejte odesílatele, ať ji pošle znovu.',
   'open.notice.removed': 'Klíč už v\u{A0}adresním řádku není',
   'open.notice.removed.text':
     'Stránka z\u{A0}bezpečnostních důvodů odstranila klíč z\u{A0}adresy hned po načtení. Chcete-li to zkusit znovu, vložte odkaz níže, nebo ho otevřete ještě jednou.',
@@ -434,21 +440,21 @@ export const czech = {
   'how.link.host.title': 'Adresa serveru',
   'how.link.host.meta': 'vidí server i\u{A0}síť',
   'how.link.host.body':
-    'Doména a\u{A0}cesta ke zprávě. Tuhle část dostane server, když stránku otevřete, a\u{A0}doménu vidí i\u{A0}síť, přes kterou jdete.',
+    'Doména a\u{A0}cesta ke stránce, stejná pro všechny zprávy. Tuhle část dostane server, když stránku otevřete, a\u{A0}doménu vidí i\u{A0}síť, přes kterou jdete.',
   'how.link.id.title': 'ID zprávy',
   'how.link.id.meta': '128 bitů, vidí server',
   'how.link.id.body':
-    'Náhodné číslo, podle kterého server najde šifrovaná data. Samo nic neotevře: k\u{A0}otevření je potřeba klíč, který je až za znakem #.',
+    'Náhodné číslo, podle kterého server najde šifrovaná data. Prohlížeč ho serveru pošle, až když si zprávu vyžádá. Samo nic neotevře: k\u{A0}otevření je potřeba klíč, který stojí hned za ním.',
   'how.link.meta.title': 'Verze a\u{A0}profil',
   'how.link.meta.meta': 'za #, server je stejně zná',
   'how.link.meta.body':
-    'Jednička je verze formátu odkazu, nula znamená zprávu bez passphrase. Starší Nylzo podle verze pozná odkaz z\u{A0}novější verze a\u{A0}řekne to, místo aby ho označilo za poškozený. Server obě hodnoty zná i\u{A0}ze zprávy, takže mu tahle část nic nového neřekne.',
+    'Dvojka je verze formátu odkazu, nula znamená zprávu bez passphrase. Starší Nylzo podle verze pozná odkaz z\u{A0}novější verze a\u{A0}řekne to, místo aby ho označilo za poškozený. Server obě hodnoty zná i\u{A0}ze zprávy, takže mu tahle část nic nového neřekne.',
   'how.link.key.title': 'Klíč zprávy',
   'how.link.key.meta': '256 bitů, jen v\u{A0}prohlížeči',
   'how.link.key.body':
-    'Co je za znakem #, prohlížeč nepošle v\u{A0}žádném požadavku, takže se to k\u{A0}serveru ani k\u{A0}hostingu samo nedostane. Kdo klíč nemá, zprávu nepřečte.',
+    'Klíč zprávy a\u{A0}otisk šifrovaných dat. Prohlížeč je nepošle v\u{A0}žádném požadavku, takže se k\u{A0}serveru ani k\u{A0}hostingu samy nedostanou. Kdo klíč nemá, zprávu nepřečte. Podle otisku prohlížeč pozná, že dostal přesně tu zprávu, kterou odesílatel poslal.',
   'how.link.server.body':
-    'Server dostane adresu stránky a\u{A0}ID zprávy; nic za znakem # prohlížeč neodešle. Kód stránky ale přichází také ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho změnit a\u{A0}číst zprávy otevřené na takto upravené stránce. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku žádný kód ze serveru nespouštějí.',
+    'Server dostane adresu stránky, která je pro všechny zprávy stejná, a\u{A0}ID zprávy, když si ji prohlížeč vyžádá; nic dalšího za znakem # prohlížeč neodešle. Kód stránky ale přichází také ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho změnit a\u{A0}číst zprávy otevřené na takto upravené stránce. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku žádný kód ze serveru nespouštějí.',
   'who.eyebrow': 'Kdo co vidí',
   'who.title': 'Z\u{A0}dat na serveru se zpráva přečíst nedá',
   'who.sub': 'Tatáž zpráva očima tří stran. Přepněte a\u{A0}porovnejte, co kdo ve skutečnosti drží.',

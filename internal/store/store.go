@@ -34,7 +34,7 @@ const (
 	BlobPurgeStep     = 15 * time.Minute
 	RowPurgeStep      = time.Hour
 	ReportsPerMessage = 3
-	MaxActiveLeases   = 9
+	MaxActiveLeases   = 8
 )
 
 func CeilMinute(moment time.Time) time.Time {
@@ -116,7 +116,12 @@ type Message struct {
 	Leases           []Lease
 	ReportDay        int64
 	Reports          int
+	// Epoch and RatchetID name the expiry share of the message (spec section 5.6).
+	Epoch     uint32
+	RatchetID [RatchetIDLen]byte
 }
+
+const RatchetIDLen = 16
 
 func (m *Message) PassphraseRequired() bool {
 	return len(m.VerifierMAC) > 0

@@ -20,11 +20,126 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/store"
 )
+
+// openWithShares tries every share a seed directory can still make, as an attacker with the link would.
+func openWithShares(t *testing.T, directory string, link *core.Link, policy envelope.Policy, object []byte) bool {
+	t.Helper()
+	ratchet, _, err := epoch.Open(directory, time.Now(), epoch.Options{})
+	if err != nil || ratchet == nil {
+		t.Fatalf("open the stolen seed: %v", err)
+	}
+	defer ratchet.Close()
+	locator := seal.LocatorOf(link.ID[:])
+	now := epoch.Hour(time.Now())
+	for hour := now; hour < now+200; hour++ {
+		expiryShare, shareErr := ratchet.Share(ratchet.ID(), hour, locator, time.Now())
+		if shareErr != nil {
+			t.Fatal(shareErr)
+		}
+		derived, deriveErr := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", &expiryShare)
+		if deriveErr != nil {
+			t.Fatal(deriveErr)
+		}
+		expected := envelope.Expected{
+			ID:         link.ID,
+			Policy:     policy,
+			KDF:        link.KDF,
+			ObjectHash: &link.ObjectHash,
+		}
+		if _, _, openErr := envelope.Open(&derived.Content, &expected, object); openErr == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func seedCopy(t *testing.T, seed []byte) string {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, epoch.FileName), seed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return directory
+}
+
+// TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed copies the data directory and the object while a
+// message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal then,
+// the link included, opens the copy (spec section 5.6).
+func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.EpochDir = t.TempDir()
+		harness := newHarness(t, settings)
+		message := harness.issueMessage(core.KDFNone, "", 2, 600, "plaintext expiring sentinel")
+		harness.mustCreate(message)
+		response, object := harness.claim(message, message.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		policy, err := decodePolicy(response.Header.Get(policyHeaderName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dataCopy := harness.stolenCopy()
+		seedPath := filepath.Join(settings.EpochDir, epoch.FileName)
+		liveSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		link, err := core.ParseLink(message.linkText())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !openWithShares(t, seedCopy(t, liveSeed), &link, policy, object) {
+			t.Fatal("the seed of a live message must open it; the test would prove nothing")
+		}
+
+		synctest.Sleep(time.Until(epoch.End(message.epoch)) + time.Minute)
+		if _, err = harness.server.sweepOnce(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if response, _ = harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone {
+			t.Fatalf("a claim after the expiry: %d", response.StatusCode)
+		}
+		currentSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldSeed := liveSeed[epoch.SeedOffset : epoch.SeedOffset+epoch.SeedLen]
+		if bytes.Contains(currentSeed, oldSeed) {
+			t.Fatal("the seed file still holds the seed of the hour that has passed")
+		}
+		for where, data := range dataCopy {
+			if bytes.Contains(data, oldSeed) {
+				t.Fatalf("the copy of the data directory holds the seed in %s", where)
+			}
+		}
+		if openWithShares(t, seedCopy(t, currentSeed), &link, policy, object) {
+			t.Fatal("the seed stolen after the expiry hour opened a copy taken while the message lived")
+		}
+		missing := envelope.Expected{
+			ID:         link.ID,
+			Policy:     policy,
+			KDF:        link.KDF,
+			ObjectHash: &link.ObjectHash,
+		}
+		withoutShare, err := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", new([core.ShareLen]byte))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err = envelope.Open(&withoutShare.Content, &missing, object); err == nil {
+			t.Fatal("the link alone opened the copy")
+		}
+	})
+}
 
 type stolenNeedles struct {
 	t     *testing.T
@@ -46,9 +161,14 @@ func (n *stolenNeedles) addMessage(label string, message *testMessage, passphras
 	n.secret(label+" S", message.secret[:])
 	n.secret(label+" R", message.link.R[:])
 	n.secret(label+" K", message.content.K[:])
-	n.secret(label+" V", message.content.V[:])
+	n.secret(label+" K_c", message.content.Commitment[:])
+	n.secret(label+" E the sender sealed with", message.share[:])
+	hash := envelope.ObjectHash(message.object)
+	n.secret(label+" H", hash[:])
+	n.secret(label+" commitment", message.object[envelope.HeaderLen:envelope.PrefixLen])
+	n.secret(label+" V", message.verifierKey[:])
 	n.secret(label+" M", message.manage[:])
-	readKey, verifierKey := signing.PublicKey(&message.link.R), signing.PublicKey(&message.content.V)
+	readKey, verifierKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.verifierKey)
 	manageKey := signing.PublicKey(message.manage)
 	n.secret(label+" pk_R", readKey[:])
 	n.secret(label+" pk_V", verifierKey[:])
@@ -67,7 +187,7 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
 	message.text = ""
 	object, err := envelope.Seal(
-		&message.content.K,
+		&message.content,
 		envelope.NewHeader(core.KDFNone),
 		message.id,
 		message.policy,
@@ -165,6 +285,8 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 				t.Fatal(err)
 			}
 			needles.secret("lease of "+message.id.String(), raw)
+			expiryShare := unwrapShare(t, response)
+			needles.secret("E of "+message.id.String(), expiryShare[:])
 		}
 
 		expired := newMessage(t, core.KDFNone, "", 1, 60, "plaintext expired sentinel")
@@ -283,7 +405,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.addMessage("pow", pow, "")
 
-		link := core.FormatLink("https://nylzo.example", opened.id, opened.kdf, opened.secret)
+		link := opened.linkText()
 		contact := "notifier.contact@example.cz"
 		report := map[string]any{
 			"id":         leased.id.String(),
@@ -485,7 +607,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		forbidden := map[string][]byte{
 			"S": message.secret[:],
 			"R": message.link.R[:],
-			"V": message.content.V[:],
+			"V": message.verifierKey[:],
 			"M": message.manage[:],
 			"K": message.content.K[:],
 			"L": leaseBytes,

@@ -1,3 +1,5 @@
+import { isReadPath } from '@nylzo/core';
+
 import { type Language, LANGUAGES } from '../shared/language/language.ts';
 import { HANDOFF_PATH } from '../shared/local-client/handoff.ts';
 
@@ -17,5 +19,5 @@ export function homeLanguage(path: string): Language | undefined {
 }
 
 export function screenOf(path: string): Screen {
-  return PAGES.get(path) ?? (path.startsWith('/m/') ? 'read' : 'create');
+  return PAGES.get(path) ?? (isReadPath(path) ? 'read' : 'create');
 }

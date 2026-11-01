@@ -1,8 +1,8 @@
-import { idToString, LinkRetiredKdfError, LinkVersionError, parseLink } from '@nylzo/core';
+import { LinkReleasedError, LinkRetiredKdfError, LinkVersionError, parseLink } from '@nylzo/core';
 
 import { takeHandedOverFragment } from '../local-client/handoff.ts';
 
-export type LinkProblem = 'foreign' | 'invalid' | 'newer' | 'retired';
+export type LinkProblem = 'foreign' | 'invalid' | 'newer' | 'released' | 'retired';
 
 export type HandOver = { readonly path: string } | { readonly problem: LinkProblem };
 
@@ -11,6 +11,7 @@ declare global {
 }
 
 const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/i;
+const LINK_PATH = '/r';
 
 const pasted: { link?: { readonly path: string; readonly fragment: string } } = {};
 
@@ -18,24 +19,24 @@ function problemOf(error: unknown): LinkProblem {
   if (error instanceof LinkVersionError) {
     return 'newer';
   }
+  if (error instanceof LinkReleasedError) {
+    return 'released';
+  }
   return error instanceof LinkRetiredKdfError ? 'retired' : 'invalid';
 }
 
 export function handOverLink(text: string, origin: string): HandOver {
   const link = text.trim();
-  let path: string;
   try {
-    const parsed = parseLink(link);
-    parsed.secret.fill(0);
-    path = `/m/${idToString(parsed.id)}`;
+    parseLink(link).secret.fill(0);
   } catch (error) {
     return { problem: problemOf(error) };
   }
   if (LINK_ORIGIN.exec(link)?.[1]?.toLowerCase() !== origin.toLowerCase()) {
     return { problem: 'foreign' };
   }
-  pasted.link = { path, fragment: link.slice(link.indexOf('#')) };
-  return { path };
+  pasted.link = { path: LINK_PATH, fragment: link.slice(link.indexOf('#')) };
+  return { path: LINK_PATH };
 }
 
 function takeAddressFragment(): string {

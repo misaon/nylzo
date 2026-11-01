@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -13,7 +14,7 @@ import (
 )
 
 const (
-	MinPassphraseCharacters         = 12
+	MinPassphraseCharacters         = 15
 	minPassphraseDistinctCharacters = 6
 	passphraseContextWord           = "nylzo"
 	generatedPassphraseGroups       = 4
@@ -30,7 +31,11 @@ const (
 	PassphraseSequential PassphraseProblem = "sequential"
 	PassphraseContext    PassphraseProblem = "context"
 	PassphraseCommon     PassphraseProblem = "common"
+	PassphraseUnassigned PassphraseProblem = "unassigned"
 )
+
+// AssignedUnicodeVersion is the Unicode version whose assigned code points a new passphrase may use.
+const AssignedUnicodeVersion = "15.1"
 
 var ErrWeakPassphrase = errors.New("core: weak passphrase")
 
@@ -58,6 +63,47 @@ var commonPassphrases = sync.OnceValue(func() map[string]struct{} {
 	return set
 })
 
+//go:embed unicode-15.1-assigned.txt
+var AssignedCodePointList string
+
+type codePointRange struct {
+	first, last rune
+}
+
+var assignedRanges = sync.OnceValue(func() []codePointRange {
+	lines := strings.Split(strings.TrimSuffix(AssignedCodePointList, "\n"), "\n")
+	ranges := make([]codePointRange, 0, len(lines))
+	for _, line := range lines {
+		first, last, _ := strings.Cut(line, " ")
+		ranges = append(ranges, codePointRange{first: parseCodePoint(first), last: parseCodePoint(last)})
+	}
+	return ranges
+})
+
+func parseCodePoint(text string) rune {
+	value, err := strconv.ParseInt(text, 16, 32)
+	if err != nil {
+		panic("keys: the assigned code point table is malformed")
+	}
+	return rune(value)
+}
+
+// assigned tells whether Unicode 15.1 assigns the code point, whatever the Unicode version of this build.
+func assigned(character rune) bool {
+	ranges := assignedRanges()
+	index, _ := slices.BinarySearchFunc(ranges, character, func(span codePointRange, target rune) int {
+		switch {
+		case span.last < target:
+			return -1
+		case span.first > target:
+			return 1
+		default:
+			return 0
+		}
+	})
+	return index < len(ranges) && ranges[index].first <= character && character <= ranges[index].last
+}
+
 var passphraseSequences = []string{
 	"abcdefghijklmnopqrstuvwxyz",
 	"01234567890123456789",
@@ -69,6 +115,9 @@ var passphraseSequences = []string{
 func CheckPassphraseStrength(passphrase string) error {
 	if !utf8.ValidString(passphrase) {
 		return ErrMalformedPassphrase
+	}
+	if strings.ContainsFunc(passphrase, func(character rune) bool { return !assigned(character) }) {
+		return &WeakPassphraseError{PassphraseUnassigned}
 	}
 	normalized := norm.NFC.String(passphrase)
 	if utf8.RuneCountInString(normalized) < MinPassphraseCharacters {

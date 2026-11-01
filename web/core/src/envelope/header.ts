@@ -12,7 +12,7 @@ import {
 import { assertLength, concatenate } from '../primitives/bytes.ts';
 
 export interface Header {
-  readonly version: number;
+  readonly version: typeof VERSION;
   readonly kdfId: KdfId;
   readonly flags: number;
   readonly iv: Uint8Array;
@@ -49,8 +49,14 @@ export function parseHeader(bytes: Uint8Array): Header {
     throw new HeaderError();
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const kdfId = checkHeaderFields(view.getUint8(0), view.getUint8(1), view.getUint8(2));
-  return { version: VERSION, kdfId, flags: 0, iv: bytes.slice(IV_OFFSET, HEADER_LENGTH) };
+  const version = view.getUint8(0);
+  const kdfId = checkHeaderFields(version, view.getUint8(1), view.getUint8(2));
+  return {
+    version: VERSION,
+    kdfId,
+    flags: 0,
+    iv: bytes.slice(IV_OFFSET, HEADER_LENGTH),
+  };
 }
 
 export function validatePolicy(policy: Policy): void {
@@ -60,7 +66,7 @@ export function validatePolicy(policy: Policy): void {
   }
 }
 
-function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
+export function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
   assertPolicyRange(policy);
   const bytes = new Uint8Array(POLICY_LENGTH);
   const view = new DataView(bytes.buffer);
@@ -69,9 +75,9 @@ function policyBytes(policy: Policy): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
-export function aad(header: Header, id: Uint8Array, policy: Policy): Uint8Array<ArrayBuffer> {
+export function aad(header: Header, commitment: Uint8Array, id: Uint8Array, policy: Policy): Uint8Array<ArrayBuffer> {
   assertLength(id, ID_LENGTH, 'id');
-  return concatenate(headerBytes(header), id, policyBytes(policy));
+  return concatenate(headerBytes(header), commitment, id, policyBytes(policy));
 }
 
 function checkHeaderFields(version: number, kdfId: number, flags: number): KdfId {

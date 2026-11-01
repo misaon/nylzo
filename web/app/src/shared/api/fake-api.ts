@@ -1,4 +1,4 @@
-import { encodeBase64url, idToString, type RequestKey } from '@nylzo/core';
+import { encodeBase64url, idToString, type RequestKey, utf8 } from '@nylzo/core';
 
 import type { AbuseReport, Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
 
@@ -21,8 +21,8 @@ interface Report extends AbuseReport {
 const REPORTS_PER_MESSAGE = 3;
 
 export interface FakeOptions {
-  fileCompression?: boolean;
   pow?: { required: boolean; difficulty: number };
+  withholdShare?: boolean;
   failCreate?: ApiError[];
   servedKdfId?: number;
   servedOpensMax?: number;
@@ -53,6 +53,24 @@ export function abuseReport(reason: string, contact = ''): AbuseReport {
   return { reason, contact, goodFaith: true };
 }
 
+// Wraps a share as the server does (spec 5.6), so the flow tests exercise the client's unwrapping.
+async function wrapShare(share: Uint8Array<ArrayBuffer>, clientKey: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+  const server = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
+  const client = await crypto.subtle.importKey('raw', new Uint8Array(clientKey), { name: 'X25519' }, true, []);
+  const secret = await crypto.subtle.deriveBits({ name: 'X25519', public: client }, server.privateKey, 256);
+  const serverPublic = new Uint8Array(await crypto.subtle.exportKey('raw', server.publicKey));
+  const keyMaterial = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']);
+  const salt = new Uint8Array([...clientKey, ...serverPublic]);
+  const mask = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt, info: utf8('nylzo/v2/share') },
+      keyMaterial,
+      256,
+    ),
+  );
+  return new Uint8Array([...serverPublic, ...share.map((byte, index) => byte ^ (mask[index] ?? 0))]);
+}
+
 function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined): boolean {
   return (
     first !== undefined && second?.length === first.length && first.every((value, index) => value === second[index])
@@ -70,6 +88,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   const failBurn = [...(options.failBurn ?? [])];
   const failReport = [...(options.failReport ?? [])];
   const reports: Report[] = [];
+  const shares = new Map<string, Uint8Array<ArrayBuffer>>();
   const expiresAt = new Date(Date.now() + (options.expiresInSeconds ?? 3600) * 1000).toISOString();
 
   function find(id: Uint8Array, readKey: RequestKey): Stored {
@@ -97,11 +116,12 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     message.endedAt = '2026-10-23T11:00:00Z';
   }
 
-  function envelope(message: Stored) {
+  async function envelope(message: Stored, shareKey: Uint8Array) {
     const object = new Uint8Array(message.request.object);
     if (options.tamperObject) {
       object[object.length - 1] = (object.at(-1) ?? 0) ^ 1;
     }
+    const share = shares.get(idToString(message.request.id));
     return {
       policy: {
         opensMax: options.servedOpensMax ?? message.request.opensMax,
@@ -110,19 +130,25 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         flags: options.servedFlags ?? 0,
       },
       object,
+      share: share === undefined || options.withholdShare === true ? undefined : await wrapShare(share, shareKey),
     };
   }
 
   /* eslint-disable @typescript-eslint/require-await -- the fake keeps the async methods of Api, so a thrown ApiError rejects the promise as in the real client */
   const api: Api = {
-    async instance(): Promise<Instance> {
-      calls.push('instance');
-      const id = crypto.getRandomValues(new Uint8Array(16));
-      issuedIds.push(id);
+    async instance(creation): Promise<Instance> {
+      calls.push(creation === undefined ? 'instance' : 'instance+id');
       const challenge = encodeBase64url(new Uint8Array(36).fill(challenges.length + 1));
       challenges.push(challenge);
+      let create: Instance['create'];
+      if (creation !== undefined) {
+        const id = crypto.getRandomValues(new Uint8Array(16));
+        issuedIds.push(id);
+        const share = crypto.getRandomValues(new Uint8Array(32));
+        shares.set(idToString(id), share);
+        create = { id, idToken: 'token', epoch: 493_000, share: await wrapShare(share, creation.shareKey) };
+      }
       return {
-        ...(options.fileCompression === true && { fileCompression: 'gzip' as const }),
         limits: {
           maxFileBytes: 5_242_880,
           maxTextBytes: 102_400,
@@ -132,7 +158,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
           maxOpens: 10,
         },
         pow: options.pow?.required ? { ...options.pow, challenge } : { required: false, difficulty: 4 },
-        create: { id, idToken: 'token' },
+        create,
       };
     },
 
@@ -164,7 +190,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
           opensMax: 0,
           opensRemaining: 0,
           ttlSeconds: 0,
-          passphraseRequired: false,
           kdfId: 0,
           size: 0,
           firstOpenedAt: '2026-10-23T10:00:00Z',
@@ -176,23 +201,22 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         opensMax: options.metadataOpensMax ?? message.request.opensMax,
         opensRemaining: message.opensRemaining,
         ttlSeconds: options.metadataTtlSeconds ?? message.request.ttlSeconds,
-        passphraseRequired: message.request.kdfId !== 0,
         kdfId: options.metadataKdfId ?? message.request.kdfId,
         size: message.request.object.length,
         createdAt: new Date().toISOString(),
         expiresAt,
       };
     },
-    async claim(id, readKey, claimOptions = {}) {
+    async claim(id, readKey, claimOptions) {
       if (claimOptions.proceed?.() === false) {
         throw new StoppedError();
       }
-      calls.push(claimOptions.verifierKey ? 'claim+verifier' : 'claim');
+      calls.push('claim');
       const message = find(id, readKey);
       if (message.state !== 'available') {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      if (message.request.kdfId !== 0 && !sameBytes(message.request.verifierKey, claimOptions.verifierKey?.publicKey)) {
+      if (message.request.kdfId !== 0 && !sameBytes(message.request.verifierKey, claimOptions.verifierKey.publicKey)) {
         message.failures++;
         const locked = message.failures >= (options.lockAfter ?? 100);
         throw new ApiError(403, 'passphrase', {
@@ -207,17 +231,17 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       const lease = `lease-${message.leases.size + 1}`;
       message.leases.add(lease);
       claimOptions.onLease?.(lease);
-      const served = envelope(message);
+      const served = await envelope(message, claimOptions.shareKey);
       claimOptions.onProgress?.(served.object.length, served.object.length);
       return { lease, ...served };
     },
-    async blob(id, readKey, lease) {
+    async blob(id, readKey, lease, shareKey) {
       calls.push('blob');
       const message = find(id, readKey);
       if (!message.leases.has(lease)) {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      return envelope(message);
+      return envelope(message, shareKey);
     },
     async ack(id, readKey, lease) {
       calls.push('ack');

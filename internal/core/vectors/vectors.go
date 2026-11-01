@@ -12,27 +12,33 @@ import (
 )
 
 const (
-	Spec      = "nylzo/v1"
+	Spec      = "nylzo/v2"
 	Generator = "go run ./cmd/nylzo-vectors -out spec/vectors.json"
 	seed      = "nylzo/vectors/2026-10-22"
-	inlineMax = 70000
+	inlineMax = 4096
 	base      = "https://nylzo.example"
 )
 
 type File struct {
-	Spec      string     `json:"spec"`
-	Generator string     `json:"generator"`
-	Scrypt    []Scrypt   `json:"scrypt_rfc7914"`
-	Derive    []Derive   `json:"derive"`
-	Envelope  []Envelope `json:"envelope"`
-	Link      []Link     `json:"link"`
-	Meta      []MetaCase `json:"meta"`
-	Strength  []Strength `json:"passphrase_strength"`
-	ListHash  string     `json:"passphrase_list_sha256"`
-	Request   []Request  `json:"request"`
-	PoW       []PoW      `json:"pow"`
-	Redact    []Redact   `json:"redact"`
-	Server    Server     `json:"server"`
+	Spec             string             `json:"spec"`
+	Generator        string             `json:"generator"`
+	Scrypt           []Scrypt           `json:"scrypt_rfc7914"`
+	Derive           []Derive           `json:"derive"`
+	Envelope         []Envelope         `json:"envelope"`
+	Rejected         []Rejected         `json:"envelope_rejected"`
+	CompressedLength []CompressedLength `json:"compressed_length"`
+	Share            []ShareCase        `json:"share"`
+	ShareKeyRejected []ShareKeyRejected `json:"share_key_rejected"`
+	Link             []Link             `json:"link"`
+	Meta             []MetaCase         `json:"meta"`
+	Strength         []Strength         `json:"passphrase_strength"`
+	ListHash         string             `json:"passphrase_list_sha256"`
+	AssignedHash     string             `json:"unicode_assigned_sha256"`
+	AssignedVersion  string             `json:"unicode_assigned_version"`
+	Request          []Request          `json:"request"`
+	PoW              []PoW              `json:"pow"`
+	Redact           []Redact           `json:"redact"`
+	Server           Server             `json:"server"`
 }
 
 func Generate() (*File, error) {
@@ -41,6 +47,10 @@ func Generate() (*File, error) {
 		file.scrypt,
 		file.derive,
 		file.envelope,
+		file.rejected,
+		file.compressedLength,
+		file.share,
+		file.shareKeyRejected,
 		file.link,
 		file.meta,
 		file.strength,

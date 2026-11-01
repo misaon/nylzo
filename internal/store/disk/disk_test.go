@@ -182,3 +182,34 @@ func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 		}
 	}
 }
+
+// A second link to each file shows its bytes after EraseAll: only an overwrite in place turns them into zeros.
+func TestEraseAllOverwritesEveryReleasedBlobInFullBeforeItGoes(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	newBlobs(t, directory)
+	keep := t.TempDir()
+	content := bytes.Repeat([]byte{0xa5}, 3*erase.BlockLen+17)
+	names := []string{"7265662d6f6e65", filepath.Join("tmp", "blob-1")}
+	for _, name := range names {
+		path := filepath.Join(directory, disk.Directory, name)
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(path, filepath.Join(keep, filepath.Base(name))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := disk.EraseAll(directory); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		left, err := os.ReadFile(filepath.Join(keep, filepath.Base(name)))
+		if err != nil || !bytes.Equal(left, make([]byte, len(content))) {
+			t.Fatalf("%s kept some of its bytes: %v", name, err)
+		}
+		if _, err = os.Stat(filepath.Join(directory, disk.Directory, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s is still in the blob directory: %v", name, err)
+		}
+	}
+}

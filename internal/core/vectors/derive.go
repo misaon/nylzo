@@ -15,16 +15,17 @@ type Derive struct {
 	S              string  `json:"s"`
 	KDFID          int     `json:"kdf_id"`
 	Passphrase     *string `json:"passphrase,omitempty"`
+	E              string  `json:"e_hex"`
 	HSalt          string  `json:"hsalt_hex"`
 	R              string  `json:"r_hex"`
 	PassphraseSalt string  `json:"salt_pw_hex"`
 	P              string  `json:"p_hex"`
 	K              string  `json:"k_hex"`
+	Commitment     string  `json:"kc_hex"`
 	V              string  `json:"v_hex"`
 	M              string  `json:"m_hex"`
-	Fragment       string  `json:"fragment"`
 	ReadKey        string  `json:"read_key"`
-	VerifierKey    *string `json:"verifier_key,omitempty"`
+	VerifierKey    string  `json:"verifier_key"`
 	ManageKey      string  `json:"manage_key"`
 }
 
@@ -38,7 +39,7 @@ var deriveCases = []deriveCase{
 	{"no-passphrase", core.KDFNone, nil},
 	{"scrypt-ascii", core.KDFScrypt, new("correct horse battery staple")},
 	{"scrypt-nfc-composed", core.KDFScrypt, new("héslo s češtinou")},
-	{"scrypt-nfc-decomposed", core.KDFScrypt, new("he\u0301slo s c\u030ces\u030ctinou")},
+	{"scrypt-nfc-decomposed", core.KDFScrypt, new("héslo s češtinou")},
 	{"scrypt-emoji", core.KDFScrypt, new("\U0001F510 tajné heslo")},
 	{"scrypt-empty", core.KDFScrypt, new("")},
 }
@@ -56,12 +57,13 @@ func (f *File) derive() error {
 
 func deriveVector(vector deriveCase) (Derive, error) {
 	label := vector.name
-	if strings.HasPrefix(vector.name, "scrypt-nfc") {
+	if strings.HasPrefix(label, "scrypt-nfc") {
 		label = "scrypt-nfc"
 	}
 	id := deterministicID(label)
 	secret := deterministic32("s/" + label)
 	manageSeed := deterministic32("m/" + label)
+	share := deterministic32("e/" + label)
 	link, err := keys.DeriveLink(id, secret)
 	if err != nil {
 		return Derive{}, err
@@ -70,12 +72,17 @@ func deriveVector(vector deriveCase) (Derive, error) {
 	if err != nil {
 		return Derive{}, err
 	}
-	content, err := keys.DeriveContent(id, secret, passphraseKey)
+	verifier, err := keys.DeriveVerifier(id, secret, passphraseKey)
+	if err != nil {
+		return Derive{}, err
+	}
+	content, err := keys.DeriveContent(id, secret, passphraseKey, share)
 	if err != nil {
 		return Derive{}, err
 	}
 	hsalt := keys.HSalt(id)
 	readKey, manageKey := signing.PublicKey(&link.R), signing.PublicKey(manageSeed)
+	verifierKey := signing.PublicKey(&verifier)
 	derived := Derive{
 		Name:           vector.name,
 		ID:             id.String(),
@@ -86,16 +93,14 @@ func deriveVector(vector deriveCase) (Derive, error) {
 		R:              hex.EncodeToString(link.R[:]),
 		PassphraseSalt: hex.EncodeToString(link.PassphraseSalt[:]),
 		P:              hex.EncodeToString(passphraseKey),
+		E:              hex.EncodeToString(share[:]),
 		K:              hex.EncodeToString(content.K[:]),
-		V:              hex.EncodeToString(content.V[:]),
+		Commitment:     hex.EncodeToString(content.Commitment[:]),
+		V:              hex.EncodeToString(verifier[:]),
 		M:              hex.EncodeToString(manageSeed[:]),
-		Fragment:       core.Fragment(vector.kdf, secret),
 		ReadKey:        core.Encode(readKey[:]),
+		VerifierKey:    core.Encode(verifierKey[:]),
 		ManageKey:      core.Encode(manageKey[:]),
-	}
-	if vector.kdf != core.KDFNone {
-		verifierKey := signing.PublicKey(&content.V)
-		derived.VerifierKey = new(core.Encode(verifierKey[:]))
 	}
 	return derived, nil
 }

@@ -97,7 +97,7 @@ The Caddyfile requests ordinary 90-day certificates. To match the Hetzner profil
 
 For pepper rotation, keep the previous pepper as a second Docker secret and configure `NYLZO_PEPPER_PREVIOUS_FILE`, then generate the new pepper. Retain the previous pepper for seven days so live messages remain accessible. See [Operations](Operations.md#configuration).
 
-The example's retention policy does not back up message content. Keep configuration and pepper backups separate from message data, and keep the reporting private key on the workstation. Review your own retention policy before adding database, volume, or host-level backups.
+The example's retention policy does not back up message content. Keep configuration and pepper backups separate from message data, and keep the reporting private key on the workstation. Review your own retention policy before adding database, volume, or host-level backups. Such a backup must leave out the epoch seed (`epoch/` in the data volume): a copy of it, together with a link and a copy of the message, opens any message that expires after the backup was taken, at any later time. The same holds for a disk image or provider snapshot of the host. To keep the seed off the disk, bind-mount a host directory on tmpfs, such as `/run/nylzo-epoch` owned by UID 65532 with mode 0700, and set `NYLZO_EPOCH_DIR` to it; a host reboot then ends every live message. See [Expiry keys](Operations.md#expiry-keys).
 
 ## Choosing a runtime for a new VPS
 

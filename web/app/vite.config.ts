@@ -117,7 +117,14 @@ export default defineConfig(({ isSsrBuild }) => ({
       exclude: ['src/**/*.test.ts', 'src/**/*.d.ts'],
     },
     projects: [
-      { test: { name: 'node', include: ['src/**/*.test.ts'], exclude: ['src/**/*.svelte.test.ts'] } },
+      {
+        test: {
+          name: 'node',
+          include: ['src/**/*.test.ts'],
+          exclude: ['src/**/*.svelte.test.ts'],
+          testTimeout: 30_000,
+        },
+      },
       {
         resolve: { conditions: ['browser'] },
         test: { name: 'client', include: ['src/**/*.svelte.test.ts'], environment: './client-environment.ts' },

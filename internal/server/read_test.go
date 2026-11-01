@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,8 +23,54 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/store"
 )
+
+// L3: a lost seed ends the live messages and the server goes on with a new one; a damaged seed or a missing
+// directory, which may be a volume that failed to mount, stops it.
+func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		lost := harness.issueMessage(core.KDFNone, "", 2, 3600, "before the loss")
+		harness.mustCreate(lost)
+		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
+		if err := os.Remove(seedPath); err != nil {
+			t.Fatal(err)
+		}
+		harness.reopen(&harness.settings)
+		if !strings.Contains(harness.logs.String(), "epoch-seed-created") {
+			t.Fatal("the new ratchet was not logged")
+		}
+		if response, body := harness.claim(lost, lost.verifier, ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "deleted" {
+			t.Fatalf("a claim whose share is lost: %d %s", response.StatusCode, body)
+		}
+		if _, metadata := harness.metadata(lost); metadata["state"] != "deleted" || harness.blobExists(lost) {
+			t.Fatalf("the message whose share is lost must end: %v", metadata)
+		}
+		fresh := harness.issueMessage(core.KDFNone, "", 1, 3600, "after the loss")
+		harness.mustCreate(fresh)
+		response, object := harness.claim(fresh, fresh.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("a message after the loss: %d", response.StatusCode)
+		}
+		if _, err := harness.openObject(fresh, object, response.Header.Get(policyHeaderName)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrCorrupt) {
+			t.Fatalf("a damaged seed must stop the server: %v", err)
+		}
+		harness.settings.EpochDir = filepath.Join(t.TempDir(), "unmounted")
+		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrNoDirectory) {
+			t.Fatalf("a missing epoch directory must stop the server: %v", err)
+		}
+	})
+}
 
 func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	t.Parallel()
@@ -43,7 +91,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 			response, metadata := harness.metadata(message)
 			if response.StatusCode != http.StatusOK || metadata["opens_remaining"].(float64) != 1 ||
 				metadata["state"] != "available" ||
-				metadata["passphrase_required"] != false ||
+				metadata["passphrase_required"] != nil ||
 				metadata["kdf_id"].(float64) != 0 {
 				t.Fatalf("metadata %d: %v", response.StatusCode, metadata)
 			}
@@ -69,11 +117,16 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 			{OpensMax: decoded.OpensMax + 1, TTLSeconds: decoded.TTLSeconds},
 			{OpensMax: decoded.OpensMax, TTLSeconds: decoded.TTLSeconds - 1},
 		} {
+			hash := envelope.ObjectHash(object)
+			expected := envelope.Expected{
+				ID:         message.id,
+				Policy:     bad,
+				KDF:        message.kdf,
+				ObjectHash: &hash,
+			}
 			if _, _, openErr := envelope.Open(
-				&message.content.K,
-				message.id,
-				bad,
-				message.kdf,
+				&message.content,
+				&expected,
 				object,
 			); !errors.Is(
 				openErr,
@@ -1180,6 +1233,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			t.Fatal(err)
 		}
 		harness.sign(request, message.readToken, "", nil)
+		request.Header.Set(shareKeyHeaderName, testShareKeyHeader)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)
 		if err != nil {

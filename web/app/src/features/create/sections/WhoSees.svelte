@@ -203,8 +203,8 @@
             <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{translate('who.you.key')}</p>
             <p class="mt-3 text-[13px] leading-relaxed text-ink-soft">{translate('who.you.keynote')}</p>
             <p class="mt-1.5 font-mono text-[13px] break-all text-ink-mute">
-              nylzo.example/m/Q3tN0xvR8kLp2WcY5aHf1g<span class="rounded-[4px] bg-aegis-500/15 px-0.5 text-aegis-200"
-                >#1.0.Vh2sXq9LmB4tRk7PzW1eNc…</span
+              nylzo.example/r#2.0.Q3tN0xvR8kLp2WcY5aHf1g<span
+                class="rounded-[4px] bg-aegis-500/15 px-0.5 text-aegis-200">.Vh2sXq9LmB4tRk7PzW1eNc…</span
               >
             </p>
           </div>

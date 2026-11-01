@@ -4,7 +4,16 @@ import { sha256Hex, vectors } from '../../test/vectors.ts';
 import { WeakPassphraseError } from '../errors.ts';
 import { utf8 } from '../primitives/bytes.ts';
 import { COMMON_PASSPHRASES } from './common-passphrases.ts';
-import { assertStrongPassphrase, generatePassphrase } from './passphrase.ts';
+import {
+  assertStrongPassphrase,
+  ASSIGNED_UNICODE_VERSION,
+  assignedCodePointRanges,
+  generatePassphrase,
+} from './passphrase.ts';
+
+function upperHex(codePoint: number): string {
+  return codePoint.toString(16).toUpperCase();
+}
 
 describe('AK9: passphrase strength vectors', () => {
   const accepted = vectors.passphrase_strength.filter((vector) => vector.accepted);
@@ -25,6 +34,14 @@ describe('AK9: passphrase strength vectors', () => {
   it('uses the same list of common passwords as the Go core', async () => {
     const list = utf8(`${COMMON_PASSPHRASES.join('\n')}\n`);
     expect(await sha256Hex(list)).toBe(vectors.passphrase_list_sha256);
+  });
+
+  it('A1: uses the same table of code points assigned in Unicode 15.1 as the Go core', async () => {
+    const file = assignedCodePointRanges()
+      .map(([first, last]) => `${upperHex(first)} ${upperHex(last)}\n`)
+      .join('');
+    expect(await sha256Hex(utf8(file))).toBe(vectors.unicode_assigned_sha256);
+    expect(ASSIGNED_UNICODE_VERSION).toBe(vectors.unicode_assigned_version);
   });
 });
 
