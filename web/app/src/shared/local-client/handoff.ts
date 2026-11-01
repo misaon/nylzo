@@ -3,7 +3,7 @@ export const HANDOFF_PATH = '/open';
 const PATH = /^\/[\w/-]*$/;
 const FRAGMENT = /^[\w.-]+$/;
 
-let handedOver: string | undefined;
+const handedOver: { fragment: string | undefined } = { fragment: undefined };
 
 function isHandoff(value: unknown): value is { readonly path: string; readonly fragment: string } {
   if (typeof value !== 'object' || value === null) {
@@ -28,7 +28,7 @@ export async function takeHandoff(): Promise<void> {
     const body: unknown = response.ok ? await response.json() : undefined;
     if (isHandoff(body)) {
       history.replaceState(null, '', body.path);
-      handedOver = `#${body.fragment}`;
+      handedOver.fragment = `#${body.fragment}`;
     }
   } catch {
     return;
@@ -36,7 +36,7 @@ export async function takeHandoff(): Promise<void> {
 }
 
 export function takeHandedOverFragment(): string | undefined {
-  const fragment = handedOver;
-  handedOver = undefined;
+  const { fragment } = handedOver;
+  handedOver.fragment = undefined;
   return fragment;
 }

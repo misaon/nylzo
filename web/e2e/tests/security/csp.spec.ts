@@ -11,8 +11,8 @@ const HASHES = / 'sha384-[A-Za-z0-9+/]+={0,2}'/g;
 
 function withHashPlaceholders(policy: string): string {
   return policy
-    .replace(/(script-src 'self')((?: 'sha384-[^']+')*)/, '$1 {script hashes}')
-    .replace(/(style-src 'self')((?: 'sha384-[^']+')*)/, '$1 {style hashes}');
+    .replace(/(script-src 'self')(?: 'sha384-[^']+')*/, '$1 {script hashes}')
+    .replace(/(style-src 'self')(?: 'sha384-[^']+')*/, '$1 {style hashes}');
 }
 
 for (const path of PAGES) {
@@ -28,7 +28,7 @@ for (const path of PAGES) {
       const response = await openApp(page, path);
       const policy = response?.headers()['content-security-policy'] ?? '';
       expect(withHashPlaceholders(policy), path).toBe(htmlPolicy);
-      expect(/script-src 'self' 'sha384-/.test(policy), `${path} admits its import map by hash`).toBe(true);
+      expect(policy.includes("script-src 'self' 'sha384-"), `${path} admits its import map by hash`).toBe(true);
       expect(policy.replaceAll(HASHES, ''), path).not.toMatch(/'nonce-|'strict-dynamic'|'unsafe-/);
       await expect(page.getByRole('heading', { level: 1 }), path).toBeVisible();
       expect(await violations(), path).toEqual([]);

