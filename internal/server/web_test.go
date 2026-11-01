@@ -39,7 +39,7 @@ var requiredHeaders = map[string]string{
 	"Cross-Origin-Embedder-Policy": "require-corp",
 	"Cross-Origin-Resource-Policy": "same-origin",
 	"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
-	"Permissions-Policy":           "accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+	"Permissions-Policy":           "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), direct-sockets=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
 }
 
 func htmlCSPFromSpec(t *testing.T) string {
