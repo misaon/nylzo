@@ -24,7 +24,8 @@ import (
 
 const (
 	readHeaderTimeout   = 5 * time.Second
-	readTimeout         = 120 * time.Second
+	readTimeout         = 10 * time.Second
+	createBodyTimeout   = 120 * time.Second
 	writeTimeout        = 120 * time.Second
 	idleTimeout         = 30 * time.Second
 	maxHeaderBytes      = 4 << 10
@@ -71,6 +72,7 @@ type Server struct {
 	sitemap         []byte
 	manifest        webclient.Manifest
 	requestCounts   *logging.RequestCounts
+	pace            pace
 	handler         http.Handler
 }
 
@@ -98,6 +100,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		logger:      logging.New(os.Stderr),
 		webFiles:    webFiles,
 		dummyRow:    newDummyRow(),
+		pace:        defaultPace(),
 	}
 	for _, option := range options {
 		option(server)

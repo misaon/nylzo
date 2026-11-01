@@ -55,12 +55,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", handleHealth)
 	routed := logging.Route(mux)
-	return s.requestCounts.Requests(
+	return s.requestCounts.Requests(closeUnreadBodies(
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
 			s.settings.PublicURL,
 			http.HandlerFunc(refuseCrossOrigin),
 			s.spendChallenges(prefetchGuard(s.throttle(routed))),
-		))),
+		)))),
 	)
 }
 

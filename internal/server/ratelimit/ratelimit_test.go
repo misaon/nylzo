@@ -171,7 +171,7 @@ func TestStreamsLimitEachSourceAndRange(t *testing.T) {
 		streams.Take(Bucket{source}, addressRange)
 	}
 	if streams.Take(Bucket{5}, addressRange) || !streams.Take(Bucket{5}, Bucket{10}) {
-		t.Fatal("a range must hold at most 8 slots while other ranges still get theirs")
+		t.Fatal("a range must hold at most 4 slots while other ranges still get theirs")
 	}
 	streams.Release(Bucket{0}, addressRange)
 	if !streams.Take(Bucket{6}, addressRange) {

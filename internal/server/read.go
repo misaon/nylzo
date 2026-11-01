@@ -357,7 +357,8 @@ func (s *Server) serveBlob(
 	blob io.Reader,
 ) {
 	size := message.Size
-	s.setWriteDeadline(w, time.Now().Add(max(writeTimeout, store.TransferTime(size))))
+	overall := time.Now().Add(max(writeTimeout, store.TransferTime(size)))
+	s.setWriteDeadline(w, overall)
 	header := w.Header()
 	if lease != "" {
 		header.Set(leaseHeaderName, lease)
@@ -366,7 +367,8 @@ func (s *Server) serveBlob(
 	header.Set("Content-Type", octetStream)
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	if copied, err := io.Copy(w, blob); (err != nil || copied != size) && r.Context().Err() == nil {
+	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
+	if copied, err := io.Copy(paced, blob); (err != nil || copied != size) && r.Context().Err() == nil {
 		s.logger.WarnContext(r.Context(), "blob-stream")
 	}
 }

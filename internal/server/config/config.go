@@ -104,7 +104,7 @@ func Defaults() Server {
 		},
 		PoWDifficulty:  4,
 		PoWConcurrency: 4,
-		MaxStreams:     64,
+		MaxStreams:     256,
 		MinFreeBytes:   1 << 30,
 		Version:        "dev",
 	}

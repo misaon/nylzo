@@ -165,7 +165,12 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	return granted, true
 }
 
+// emptyBody answers a declared body at once, so the server never waits for bytes a signed request must not have.
 func emptyBody(w http.ResponseWriter, r *http.Request) bool {
+	if r.ContentLength > 0 {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return false
+	}
 	var one [1]byte
 	if extraBytes, err := io.ReadFull(r.Body, one[:]); extraBytes != 0 || !errors.Is(err, io.EOF) {
 		writeError(w, http.StatusBadRequest, errBadRequest)

@@ -67,6 +67,7 @@ type createRequest struct {
 	manageKey   []byte
 	opensMax    uint16
 	ttlSeconds  uint32
+	bodyBy      time.Time
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -120,7 +121,8 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 	case size > s.settings.Limits.MaxObjectBytes:
 		rejectCreate(w, r, http.StatusRequestEntityTooLarge, errTooLarge)
 	default:
-		s.setCreateDeadlines(w, time.Now().Add(max(readTimeout, store.TransferTime(size))))
+		request.bodyBy = time.Now().Add(max(createBodyTimeout, store.TransferTime(size)))
+		s.setCreateDeadlines(w, request.bodyBy)
 		return request, true
 	}
 	return request, false
@@ -343,7 +345,12 @@ func (s *Server) receiveBlob(
 	blob *storedBlob,
 ) (envelope.Header, bool) {
 	size := request.header.Size
-	body := &trackingReader{reader: http.MaxBytesReader(w, r.Body, size)}
+	body := &trackingReader{reader: &pacedReader{
+		reader:     http.MaxBytesReader(w, r.Body, size),
+		controller: http.NewResponseController(w),
+		pace:       s.pace,
+		overall:    request.bodyBy,
+	}}
 	var raw [envelope.HeaderLen]byte
 	if _, err := io.ReadFull(body, raw[:]); err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)

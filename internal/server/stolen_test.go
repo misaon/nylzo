@@ -300,6 +300,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.text("contact", contact)
 		needles.text("reason", "spam, see")
+		harness.server.requestCounts.Flush()
 		stolen := harness.stolenCopy()
 		reportFile := filepath.Join("abuse", time.Now().UTC().Format(time.DateOnly)+abuse.FileExtension)
 		for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {
@@ -465,6 +466,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		if want := []int{200, 200, 200, 204, 200, 410, 200}; !slices.Equal(codes, want) {
 			t.Fatalf("the flow behind the log check answered %v, want %v", codes, want)
 		}
+		harness.server.requestCounts.Flush()
 		logs := harness.logs.String()
 		if !strings.Contains(logs, "POST /api/v1/messages/{id}/claim") {
 			t.Fatal("log should contain the route pattern")

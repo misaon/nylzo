@@ -23,7 +23,15 @@ type browserMetadata struct {
 func Guard(publicURL string, refuse, next http.Handler) http.Handler {
 	protection := http.NewCrossOriginProtection()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") || safeMethod(r.Method) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !sameOriginOrDirect(r.Header) {
+			refuse.ServeHTTP(w, r)
+			return
+		}
+		if safeMethod(r.Method) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -33,6 +41,13 @@ func Guard(publicURL string, refuse, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// sameOriginOrDirect is the Fetch Metadata resource isolation policy: an image or a link on another site must not
+// spend its visitors' read budget (F2). A request without Sec-Fetch-Site comes from a native client.
+func sameOriginOrDirect(header http.Header) bool {
+	site := header.Values("Sec-Fetch-Site")
+	return len(site) == 0 || len(site) == 1 && (site[0] == "same-origin" || site[0] == "none")
 }
 
 func safeMethod(method string) bool {

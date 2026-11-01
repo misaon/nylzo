@@ -1140,8 +1140,12 @@ type slowPutBlobs struct {
 }
 
 func (b slowPutBlobs) Put(ctx context.Context, ref string, body io.Reader, size int64) error {
+	received, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
 	time.Sleep(b.delay)
-	return b.Blobs.Put(ctx, ref, body, size)
+	return b.Blobs.Put(ctx, ref, bytes.NewReader(received), size)
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {

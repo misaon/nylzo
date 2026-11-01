@@ -269,16 +269,23 @@ func (s *signalReader) Read(data []byte) (int, error) {
 type deadlineWriter struct {
 	http.ResponseWriter
 
-	read, write time.Time
+	read, write   time.Time
+	reads, writes []time.Time
 }
 
 func (w *deadlineWriter) SetReadDeadline(deadline time.Time) error {
-	w.read = deadline
+	if w.reads == nil {
+		w.read = deadline
+	}
+	w.reads = append(w.reads, deadline)
 	return nil
 }
 
 func (w *deadlineWriter) SetWriteDeadline(deadline time.Time) error {
-	w.write = deadline
+	if w.writes == nil {
+		w.write = deadline
+	}
+	w.writes = append(w.writes, deadline)
 	return nil
 }
 
@@ -293,9 +300,16 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	blobWriter := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	start := time.Now()
-	server.serveBlob(blobWriter, r, &store.Message{Size: size}, "", strings.NewReader("x"))
+	server.serveBlob(blobWriter, r, &store.Message{Size: size}, "", bytes.NewReader(make([]byte, size)))
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
+	}
+	window := defaultPace().window
+	if chunks := len(blobWriter.writes) - 1; chunks < size/paceChunk ||
+		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
+			return deadline.Sub(time.Now()) > window
+		}) {
+		t.Fatalf("F3: every 64 KiB of a response must go out within %v, so a reader that stops frees its slot", window)
 	}
 
 	id := core.NewID()
@@ -355,8 +369,11 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if record.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", record.Code, record.Body)
 	}
-	if got := writer.write.Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
+	if got := writer.writes[len(writer.writes)-1].Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
+	}
+	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > defaultPace().window {
+		t.Fatalf("F7: the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
 	}
 }
 
@@ -873,6 +890,40 @@ type unreadableBody struct{ t *testing.T }
 func (body *unreadableBody) Read([]byte) (int, error) {
 	body.t.Error("the rejected cross-origin request body was read")
 	return 0, io.EOF
+}
+
+// TestABodyThatNeverArrivesIsAnsweredAtOnce covers F5: an early answer closes instead of waiting for the body.
+func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	address := harness.listen()
+	id := core.NewID().String()
+	for _, request := range []string{
+		"POST /api/v1/abuse HTTP/1.1\r\nContent-Type: text/plain\r\n",
+		"POST /api/v1/messages/" + id + "/burn HTTP/1.1\r\n",
+	} {
+		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		fmt.Fprintf(
+			connection,
+			"%sHost: nylzo.test\r\nX-Requested-With: XMLHttpRequest\r\nContent-Length: 4000\r\n\r\n",
+			request,
+		)
+		connection.SetReadDeadline(start.Add(5 * time.Second))
+		reader := bufio.NewReader(connection)
+		response, err := http.ReadResponse(reader, nil)
+		if err != nil || response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%q: %v %v", request, response, err)
+		}
+		io.Copy(io.Discard, response.Body)
+		if _, err = reader.ReadByte(); !errors.Is(err, io.EOF) || time.Since(start) > time.Second {
+			t.Fatalf("%q: the connection must close at once, not wait for the body: %v after %v", request, err, time.Since(start))
+		}
+		connection.Close()
+	}
 }
 
 // TestHeadersOver8KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.

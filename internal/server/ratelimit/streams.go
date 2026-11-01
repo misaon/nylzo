@@ -4,7 +4,7 @@ import "sync"
 
 const (
 	maxStreamsPerSource = 2
-	maxStreamsPerRange  = 8
+	maxStreamsPerRange  = 4
 )
 
 type Streams struct {
