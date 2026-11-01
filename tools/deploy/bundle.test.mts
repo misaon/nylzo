@@ -92,7 +92,7 @@ bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3
 [[ ! -e /opt/nylzo/runtime/heartbeat && ! -e /etc/systemd/system/nylzo-heartbeat.timer ]]
 grep -qx 'ClientAliveInterval 60' /etc/ssh/sshd_config.d/20-nylzo.conf
 if grep -q '^www\.' /etc/caddy/Caddyfile; then exit 1; fi
-grep -q 'caddy validate --config /var/tmp/nylzo-caddyfile\.' /tmp/systemd-run
+grep -q 'caddy validate --config /run/nylzo-caddyfile\.' /tmp/systemd-run
 grep -qx 'disable --quiet --now nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
 grep -qx 'try-restart caddy.service nylzo-clock.timer' /tmp/systemctl

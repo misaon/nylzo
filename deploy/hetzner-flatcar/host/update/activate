@@ -47,7 +47,7 @@ place() {
   mv -f "$target.nylzo-new" "$target"
   changed+=("$target")
 }
-composed=$(mktemp /var/tmp/nylzo-caddyfile.XXXXXXXX)
+composed=$(mktemp /run/nylzo-caddyfile.XXXXXXXX)
 trap 'rm -f "$composed"' EXIT
 cat "$generation/proxy/Caddyfile" > "$composed"
 if [[ "$(setting WWW_REDIRECT)" = true ]]; then printf '\n' >> "$composed"; cat "$generation/proxy/www.Caddyfile" >> "$composed"; fi

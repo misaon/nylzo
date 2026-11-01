@@ -13,7 +13,6 @@ ExecReload=/opt/nylzo/runtime/firewall
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-PrivateTmp=true
 PrivateDevices=true
 ProtectKernelTunables=true
 ProtectKernelModules=true

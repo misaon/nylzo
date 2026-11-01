@@ -26,7 +26,7 @@ func identity(now time.Time) (credentials, error) {
 		return credentials{}, err
 	}
 	certificate := &x509.Certificate{
-		Subject:   pkix.Name{CommonName: "Nylzo read-only host monitor"},
+		Subject:   pkix.Name{CommonName: "client"},
 		NotBefore: now.Add(-5 * time.Minute), NotAfter: now.Add(365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},

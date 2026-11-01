@@ -553,7 +553,8 @@ jobs:
     name: Compose with Caddy (AK12, AK17, AK26)
     needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
-    runs-on: ubuntu-latest
+    # Caddy accepts only X25519MLKEM768, so the probes need OpenSSL 3.5 or newer.
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
