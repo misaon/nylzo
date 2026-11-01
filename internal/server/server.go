@@ -317,7 +317,7 @@ func PrepareEpochDirectory(settings *config.Server) error {
 }
 
 func (s *Server) requireErasableEpochDirectory(directory string) error {
-	err := erase.RequireInPlace(directory)
+	err := erase.RequireInPlace(epoch.ErasablePaths(directory)...)
 	if errors.Is(err, erase.ErrNotInPlace) && s.settings.Development.AllowUnerasableStorage {
 		s.logger.Warn("storage-not-erasable", "directory", "epoch")
 		return nil

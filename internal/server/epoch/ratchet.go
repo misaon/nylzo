@@ -138,6 +138,20 @@ func Inspect(directory string) (State, error) {
 	return StateSeed, nil
 }
 
+// ErasablePaths are the directory and, once it exists, the seed file, whose overwrites must land in place.
+func ErasablePaths(directory string) []string {
+	paths := []string{directory}
+	if seed := filepath.Join(directory, FileName); fileExists(seed) {
+		paths = append(paths, seed)
+	}
+	return paths
+}
+
+func fileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
 // Ratchet holds the seed of the current hour only, in memory and in its file.
 type Ratchet struct {
 	path     string

@@ -222,7 +222,7 @@ func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
 	if _, err := epoch.Inspect(directory); err != nil {
 		return err
 	}
-	return requireErasable([]string{directory}, settings.Development, logger)
+	return requireErasable(epoch.ErasablePaths(directory), settings.Development, logger)
 }
 
 // upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
@@ -401,7 +401,7 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 // and only a directory the operator named must exist.
 func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger) error {
 	options := epoch.Options{CheckFileSystem: func(directory string) error {
-		return requireErasable([]string{directory}, settings.Development, logger)
+		return requireErasable(epoch.ErasablePaths(directory), settings.Development, logger)
 	}}
 	var ratchet *epoch.Ratchet
 	var err error

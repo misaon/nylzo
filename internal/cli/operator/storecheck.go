@@ -56,9 +56,13 @@ func checkDataDirectory(settings *config.Server, output io.Writer, logger *slog.
 	if err != nil {
 		return err
 	}
-	blobs := filepath.Join(dataDir, disk.Directory)
-	directories := existing(dataDir, blobs, filepath.Join(blobs, "tmp"))
-	if erasableErr := requireErasable(directories, settings.Development, logger); erasableErr != nil {
+	paths := []string{dataDir}
+	if len(existing(filepath.Join(dataDir, disk.Directory, "tmp"))) > 0 {
+		if paths, err = erasablePaths(dataDir); err != nil {
+			return err
+		}
+	}
+	if erasableErr := requireErasable(paths, settings.Development, logger); erasableErr != nil {
 		return erasableErr
 	}
 	readiness, err := sqlite.Inspect(context.Background(), databasePath)
@@ -88,7 +92,11 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 	case err != nil:
 		return err
 	}
-	if erasableErr := requireErasable([]string{directory}, settings.Development, logger); erasableErr != nil {
+	if erasableErr := requireErasable(
+		epoch.ErasablePaths(directory),
+		settings.Development,
+		logger,
+	); erasableErr != nil {
 		return erasableErr
 	}
 	if state == epoch.StateSeed {
