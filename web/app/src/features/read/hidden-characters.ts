@@ -1,4 +1,4 @@
-export interface TextPiece {
+interface TextPiece {
   readonly key: number;
   readonly text: string;
   readonly hidden: boolean;

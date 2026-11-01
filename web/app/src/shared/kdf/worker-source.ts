@@ -54,7 +54,7 @@ async function fetchVerified(): Promise<Blob> {
   return new Blob([await response.arrayBuffer()], { type: 'text/javascript' });
 }
 
-export async function loadWorkerSource(): Promise<Blob> {
+async function loadWorkerSource(): Promise<Blob> {
   verified.source ??= fetchVerified();
   try {
     return await verified.source;
