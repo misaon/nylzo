@@ -65,3 +65,35 @@ func TestOnlyRefusesAServerThatStillAcceptsClassicalHandshakes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestChecksRejectMissingOrInvalidRootCertificatesAndAddresses(t *testing.T) {
+	t.Parallel()
+	server := startServer(t, []tls.CurveID{tls.X25519MLKEM768})
+	invalid := filepath.Join(t.TempDir(), "invalid.pem")
+	if err := os.WriteFile(invalid, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, probe := range map[string]func(string, string) error{"check": check, "only": refusesClassical} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			for _, test := range []struct{ address, root, want string }{
+				{server.address, invalid + ".missing", "no such file"},
+				{server.address, invalid, "no certificate"},
+				{"not-a-host-port", server.rootFile, "missing port"},
+			} {
+				if err := probe(test.address, test.root); err == nil || !strings.Contains(err.Error(), test.want) {
+					t.Fatalf("probe(%q, %q) = %v, want %q", test.address, test.root, err, test.want)
+				}
+			}
+		})
+	}
+}
+
+func TestCheckRejectsAnUntrustedServer(t *testing.T) {
+	t.Parallel()
+	server := startServer(t, []tls.CurveID{tls.X25519MLKEM768})
+	// httptest shares a static certificate, so use a valid certificate that cannot authenticate this address.
+	if err := check("localhost:"+strings.Split(server.address, ":")[1], server.rootFile); err == nil {
+		t.Fatal("accepted a certificate for a different hostname")
+	}
+}
