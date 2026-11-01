@@ -27,7 +27,20 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 
 ## Planned releases
 
-`release-please.yml` keeps the `chore(main): release X.Y.0` PR current with `versioning: always-bump-minor`, so planned releases raise the minor version and patches stay on the maintenance branch. Merging that PR approves the release; `release-tag.yml` then tags the manifest version with `Release-Kind: planned`. Production hosts install minor and major releases only with that signed evidence. See [releasing](Releasing.md).
+`release-please.yml` keeps the `chore(main): release X.Y.0` PR current with `versioning: always-bump-minor`, so planned releases raise the minor version and patches stay on the maintenance branch. Merging that PR approves the release; `release-tag.yml` then tags the manifest version with `Release-Kind: planned`. See [releasing](Releasing.md).
+
+Production hosts move to a newer minor or major line only when its `vX.Y.0` carries that signed `planned` evidence, and then install the newest patch of the line directly. A host that was offline while `vX.Y.0` was the latest release still reaches the patched line, and a host whose newest line is not approved takes the newest patch of its own line ([Hetzner Flatcar](../guides/Hetzner-Flatcar.md#updates)).
+
+## Human approval for non-security releases
+
+Today any release that `release.yml` signs reaches production within ten minutes. A planned release needs a merged release PR, but that approval lives in the same GitHub account an attacker would use. Proposal for the owner, not yet implemented:
+
+- Hosts keep installing `kind: security` patches of an approved line at once, so security fixes stay as fast as now.
+- Every other kind (`planned`, `weekly`, `manual`) also needs an owner signature over `nylzo_X.Y.Z.evidence.sha256`, made with the owner's FIDO2 SSH key: `ssh-keygen -Y sign -f id_ed25519_sk -n nylzo-release`. The allowed signer lives in `/etc/nylzo/release-signers`, written by Ignition and never by a release, so a malicious release cannot replace it.
+- Release assets are immutable after publication, so the signature travels separately: the owner pushes it over SSH, or commits it to a signed approvals branch that hosts read.
+- Cost: planned releases wait for the owner. A forged release labelled `security` still installs at once; the planned-base rule limits it to a patch of an approved line, and a host-checked, owner-signed revocation list could stop a bad one within one timer period.
+
+The repository side (who may tag `security`) belongs to [release tagging](#maintenance-branch-and-patch-releases).
 
 ## The dependency guard
 

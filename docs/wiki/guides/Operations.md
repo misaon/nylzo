@@ -73,7 +73,7 @@ Use a local ext4 (`data=ordered` or `data=writeback`), XFS or tmpfs file system 
 
 Database files, including WAL and SHM files, are created with mode 0600. At startup, the server checks ownership and permissions of the data directory, database, blobs, and reports. It narrows its own files/directories to 0600/0700 and logs `permissions-narrowed`. It rejects foreign ownership or symbolic links. Pepper files readable by the group or others are rejected. SQLite uses `secure_delete` and checkpoints each transaction. The WAL file keeps its size and is never deleted, and after every deletion and sweep the server overwrites all of its frames with zero pages from the `wal_scrub` table, so neither the WAL nor free disk space keeps an older version of a row. This adds disk synchronizations. Do not open the database with another SQLite client while the server runs; a client without persistent WAL mode deletes the WAL when it closes.
 
-Without an explicit `GOMEMLIMIT`, `serve` sets a soft Go memory limit of 192 MiB for a 256 MB container. SQLite's cache is outside that limit and is limited to 512 KiB per connection. Cleartext HTTP/2 buffers at most 64 KiB of unread request data per stream and 1 MiB per connection. On Linux, `serve`, `sweep-once`, and `takedown` disable core dumps and restrict memory inspection by other processes of the same user, and `serve` locks its memory against swap (see above for the memlock limit). Every API request runs in the secret mode of Go's `runtime/secret`, which the release build enables.
+Without an explicit `GOMEMLIMIT`, `serve` sets a soft Go memory limit of 192 MiB for a 256 MB container. SQLite's cache is outside that limit and is limited to 512 KiB per connection. Cleartext HTTP/2 buffers at most 64 KiB of unread request data per stream and 1 MiB per connection. On Linux, `serve`, `sweep-once`, and `takedown` disable core dumps and restrict memory inspection by other processes of the same user, and `serve` locks its memory against swap (see above for the memlock limit). Every API request runs in the secret mode of Go's `runtime/secret`, which the release build enables. The deployment profiles also forbid core dumps (`ulimit core=0`) and remove the memory-lock limit (`ulimit memlock=-1`) so the server can lock its memory; a systemd unit that runs `nylzo serve` directly needs `LimitCORE=0`, `LimitMEMLOCK=infinity` and a `MemoryMax=`.
 
 Cleanup runs every five minutes. For an external scheduler, set `NYLZO_SWEEP_INTERVAL=0` and run:
 
@@ -97,11 +97,13 @@ Reports are sealed to the operator's public key with HPKE (MLKEM768-X25519) and 
 
 The reason is sanitized: controls become spaces, invisible formatting characters are removed, link fragments and long tokens are redacted, and length is capped. A decrypted report contains the UTC date, message ID, sanitized reason, good-faith declaration, and an optional contact email. Reports about ended messages are accepted but not stored. At most three reports per message are stored over its whole life; a valid additional submission receives `{"status":"limit"}`. One reporter can exhaust this message-wide allowance. The report files hold three reports for every message that eight days of `NYLZO_GLOBAL_DAILY_CREATES` admit, and at least 64 MiB; the server logs `abuse-files-half-full` once a day past half, and an overflowing submission returns 503 and logs `abuse-file-full`. Process and remove those files to free space. `nylzo reports` prints every report that opens and names any damaged or partial one, exiting 1 in that case.
 
-Decrypt on the operator's workstation, using the private key kept off the server:
+Decrypt on the operator's workstation, using the private key kept off the server and encrypted at rest, for example with [age](https://github.com/FiloSottile/age):
 
 ```sh
-nylzo reports --key-file "$HOME/nylzo-report-key" < abuse/2026-10-24.sealed
+nylzo reports --key-file <(age --decrypt "$HOME/nylzo-report-key.age") < abuse/2026-10-24.sealed
 ```
+
+Copy report files out of the server or container; never `docker cp` anything into the Nylzo container. On Docker 28 and older a compromised container can turn such a copy into a write to host files.
 
 After review, place approved message IDs in a private file, one per line, and run `nylzo takedown < approved-ids.txt` on the server with the intended `NYLZO_DATA_DIR`. This removes the blob key and blob, leaving the row for cleanup after seven days; it cannot read the message. If any line is not a message ID, the command rejects the whole input. This includes links carrying a secret. It returns a result per ID without logging it to the server log. The recipient sees a deleted message; the sender sees that a recipient or the operator removed it, without an end time.
 

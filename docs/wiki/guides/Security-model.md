@@ -80,6 +80,12 @@ Large attachments may be gzip-compressed on the sender's device before encryptio
 
 Inspect an instance's `/transparency` page for its operator, limits, storage and logging policy, web-client hashes, and client/server build identities. These are the operator's declarations. A hostile operator can falsify them.
 
+## Transport
+
+The deployment profiles accept only TLS 1.3 with the hybrid post-quantum key exchange X25519MLKEM768, so traffic recorded today cannot be decrypted later with a quantum computer that breaks X25519 alone. Every browser in `web/.browserslistrc` uses it by default, as do the CLI and Node 26; older clients cannot connect. HTTP/3 0-RTT is off, because early data can be replayed and is protected only by the resumption secret. Caddy sets the client address itself and drops client-sent forwarding headers.
+
+TLS protects the connection, not the server: whoever holds the instance's certificate key or controls the server sees what that server sees. Certificates live 160 hours on the Hetzner profile, CAA restricts issuance to the instance's own Let's Encrypt account, and a monitor watches Certificate Transparency for any other certificate. See [Hetzner Flatcar](Hetzner-Flatcar.md#runtime).
+
 ## Verify the software you run
 
 [Verify a release](Verify-a-release.md) against the canonical repository, exact tag, and release workflow. Version strings and server JSON identify a build; they are not cryptographic proof. A signed checksum manifest binds the downloaded files to the publishing workflow. Provenance identifies their source and build workflow. An independent rebuild checks whether the same source produces the published bytes.
