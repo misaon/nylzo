@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/misaon/nylzo/compare/v0.3.0...v0.4.0) (2026-11-01)
+
+
+### Tests
+
+* expand browser, storage and Go command coverage ([#213](https://github.com/misaon/nylzo/issues/213)) ([2c05f9d](https://github.com/misaon/nylzo/commit/2c05f9ddb8a7e9151e073216ba4ba8cbd096b2a9))
+* **web:** increase composer and read page coverage ([#211](https://github.com/misaon/nylzo/issues/211)) ([699624d](https://github.com/misaon/nylzo/commit/699624dcdcfe7e5e801c531cc8e81878816b1c97))
+
+
+### Maintenance
+
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.199.0 (main) ([#210](https://github.com/misaon/nylzo/issues/210)) ([85d459e](https://github.com/misaon/nylzo/commit/85d459eb7924d52bcf49c2484dbd3dfe9a8c9dde))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.199.2 (main) ([#214](https://github.com/misaon/nylzo/issues/214)) ([767e735](https://github.com/misaon/nylzo/commit/767e7354f5fa4225cf8bdc008624057ed116c4c6))
+
 ## [0.3.0](https://github.com/misaon/nylzo/compare/v0.2.0...v0.3.0) (2026-11-01)
 
 ### Upgrade notes
