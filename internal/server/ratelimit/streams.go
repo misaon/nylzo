@@ -41,6 +41,15 @@ func (s *Streams) Release(source, addressRange Bucket) {
 	decrement(s.perRange, addressRange)
 }
 
+// Purge copies the slots still held into new maps, so no released bucket stays in memory.
+func (s *Streams) Purge() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	held := func(count int) bool { return count > 0 }
+	s.perSource = Rebuilt(s.perSource, held)
+	s.perRange = Rebuilt(s.perRange, held)
+}
+
 func decrement(held map[Bucket]int, bucket Bucket) {
 	if held[bucket] <= 1 {
 		delete(held, bucket)

@@ -59,3 +59,29 @@ func TestManyRangesCannotTakeTheInstanceFromAQuietOne(t *testing.T) {
 		t.Fatalf("the bystander got %d of %d requests through, all ranges %d", served, asked, admitted+served)
 	}
 }
+
+// TestARangeWithinItsShareGetsThroughWhenRangesOutnumberTheRate covers L5: 200 ranges at one request a second and a
+// bystander that asks once every 25 seconds share an instance bucket of 10 a second for 1000 seconds.
+func TestARangeWithinItsShareGetsThroughWhenRangesOutnumberTheRate(t *testing.T) {
+	t.Parallel()
+	fair := NewFair(10, 20)
+	start := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	bystander, served, asked, admitted := Bucket{0xff, 0xff}, 0, 0, 0
+	for step := range 100_000 {
+		now := start.Add(time.Duration(step) * 10 * time.Millisecond)
+		for attacker := range 200 {
+			if (step+attacker*7)%100 == 0 && fair.Allow(Bucket{byte(attacker), 1}, now) {
+				admitted++
+			}
+		}
+		if step%2500 == 1251 {
+			asked++
+			if fair.Allow(bystander, now) {
+				served++
+			}
+		}
+	}
+	if served*100 < asked*95 || admitted+served > 10*1000+20 {
+		t.Fatalf("the bystander got %d of %d requests through, all ranges %d", served, asked, admitted+served)
+	}
+}
