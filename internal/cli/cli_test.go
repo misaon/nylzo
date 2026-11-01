@@ -1424,7 +1424,7 @@ func TestRunAnswersUsageErrorsWithoutRunning(t *testing.T) {
 		t.Fatalf("serve --help: exit %d, stdout %q, stderr %q", result.code, result.stdout, result.stderr)
 	}
 	for _, arguments := range [][]string{nil, {"sweep-once", "--dry-run"}, {"serve", "extra"}, {"bogus"}, {"version", "extra"}} {
-		variables := map[string]string{"NYLZO_DATA_DIR": directory, "NYLZO_PEPPER": testPepper}
+		variables := map[string]string{"NYLZO_DATA_DIR": directory, "NYLZO_PEPPER_FILE": filepath.Join(directory, "pepper")}
 		result := runWith(t, "", variables, nil, arguments...)
 		if result.code != 2 || result.stdout != "" || !strings.Contains(result.stderr, "nylzo") {
 			t.Fatalf("%v: exit %d, stdout %q, stderr %q", arguments, result.code, result.stdout, result.stderr)

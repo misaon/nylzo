@@ -3,8 +3,8 @@ package server
 import (
 	"bytes"
 	"database/sql"
-	"errors"
 	"encoding/hex"
+	"errors"
 	"io/fs"
 	"maps"
 	"net/http"

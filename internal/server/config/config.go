@@ -69,6 +69,13 @@ type Server struct {
 	PublicURL      string
 	Version        string
 	Build          buildinfo.Info
+	Development    Development
+}
+
+// Development holds the opt-outs a developer machine needs; each one weakens what a stolen server reveals.
+type Development struct {
+	AllowSwap              bool
+	AllowUnerasableStorage bool
 }
 
 func Defaults() Server {

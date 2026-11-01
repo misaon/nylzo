@@ -24,10 +24,10 @@ const (
 )
 
 var (
-	ErrReportKey = errors.New("abuse: the report key is not a MLKEM768-X25519 key in base64url")
+	ErrReportKey  = errors.New("abuse: the report key is not a MLKEM768-X25519 key in base64url")
 	ErrSealed     = errors.New("abuse: the sealed reports are not whole reports")
 	ErrUnreadable = errors.New("abuse: a sealed report does not open with this key")
-	errTooLong   = errors.New("abuse: the report does not fit the sealed length")
+	errTooLong    = errors.New("abuse: the report does not fit the sealed length")
 )
 
 type Report struct {
