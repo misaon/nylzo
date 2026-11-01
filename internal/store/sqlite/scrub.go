@@ -132,6 +132,12 @@ func (s *Store) requestScrub() {
 	}
 }
 
+// OnScrubFailure sets what receives the error of a scrub that an ending asked for and that failed after its retries;
+// the older row versions then stay in the log until the next sweep scrubs it.
+func (s *Store) OnScrubFailure(report func(error)) {
+	s.scrubFailed.Store(&report)
+}
+
 // scrubWhenAsked runs the scrubs that endings ask for, one at a time, and tries a busy one again a few times.
 func (s *Store) scrubWhenAsked(ctx context.Context) {
 	for {
@@ -140,17 +146,25 @@ func (s *Store) scrubWhenAsked(ctx context.Context) {
 			return
 		case <-s.scrubs:
 		}
-		for range scrubRetries {
-			if err := s.Checkpoint(ctx); !errors.Is(err, ErrCheckpointBusy) {
-				break
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(scrubRetryDelay):
+		if err := s.scrubWithRetries(ctx); err != nil && ctx.Err() == nil {
+			if report := s.scrubFailed.Load(); report != nil {
+				(*report)(err)
 			}
 		}
 	}
+}
+
+func (s *Store) scrubWithRetries(ctx context.Context) error {
+	err := s.Checkpoint(ctx)
+	for retry := 1; retry < scrubRetries && errors.Is(err, ErrCheckpointBusy); retry++ {
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(scrubRetryDelay):
+		}
+		err = s.Checkpoint(ctx)
+	}
+	return err
 }
 
 func ignoreBadConn(err error) error {

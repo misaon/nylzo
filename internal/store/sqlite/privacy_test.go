@@ -289,6 +289,14 @@ func TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion(t *testing.T) {
 	if err := storage.Checkpoint(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	snapshot, beginErr := openRaw(t, path).Begin()
+	if beginErr != nil {
+		t.Fatal(beginErr)
+	}
+	var messages int
+	if err := snapshot.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&messages); err != nil {
+		t.Fatal(err)
+	}
 	record := newRecord(2, false)
 	create(t, storage, record, hits...)
 	checkLog("create")
@@ -297,6 +305,9 @@ func TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion(t *testing.T) {
 	checkLog("claim")
 	if before, err := os.ReadFile(path + "-wal"); err != nil || !bytes.Contains(before, older[:64]) {
 		t.Fatalf("the test needs a stale frame with the older record before the scrub: %v", err)
+	}
+	if err := snapshot.Rollback(); err != nil {
+		t.Fatal(err)
 	}
 	if err := storage.Checkpoint(t.Context()); err != nil {
 		t.Fatal(err)

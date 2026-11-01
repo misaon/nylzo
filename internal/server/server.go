@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
@@ -206,16 +207,25 @@ func eraseUnreachableSecrets() {
 	runtime.GC()
 }
 
+// Secret mode makes the runtime erase the replaced maps, which held address buckets, once they are unreachable.
 func (s *Server) purgeRateTables(now time.Time) {
-	s.sourceLimiter.Purge(now)
-	s.rangeLimiter.Purge(now)
-	s.counters.Purge(now)
+	secretmode.Do(func() {
+		s.sourceLimiter.Purge(now)
+		s.rangeLimiter.Purge(now)
+		s.counters.Purge(now)
+		s.instance.Purge(now)
+		s.streams.Purge()
+	})
 }
 
 func (s *Server) forgetAddresses() {
-	s.sourceLimiter.Reset()
-	s.rangeLimiter.Reset()
-	s.counters.Reset()
+	secretmode.Do(func() {
+		s.sourceLimiter.Reset()
+		s.rangeLimiter.Reset()
+		s.counters.Reset()
+		s.instance.Reset()
+		s.streams.Purge()
+	})
 }
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
