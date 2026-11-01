@@ -1,6 +1,7 @@
 import { decodeBase64url, utf8 } from '@nylzo/core';
 
 import { ApiError, ERROR_KINDS, MESSAGE_STATES, type MessageState, ResponseError } from './api-errors.ts';
+import { readBody } from './object-body.ts';
 
 export type Json = Record<string, unknown>;
 
@@ -39,6 +40,7 @@ export interface ServedPolicy {
 }
 
 const MAX_OPERATOR_FIELD_BYTES = 200;
+const MAX_JSON_BYTES = 64 * 1024;
 const SHA256_HEX = /^[\da-f]{64}$/;
 const RFC_3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const TIMES = [
@@ -157,7 +159,8 @@ export function clientFiles(manifest: Json): readonly ClientFile[] {
 export async function readJson(response: Response): Promise<Json> {
   let body: unknown;
   try {
-    body = await response.json();
+    const bytes = await readBody(response, MAX_JSON_BYTES);
+    body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
   } catch {
     throw new ResponseError();
   }

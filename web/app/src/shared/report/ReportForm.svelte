@@ -8,6 +8,7 @@
   import { formatWait } from '../language/format.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
   import { PAGE_FIELD, PAGE_LABEL, PAGE_PROBLEM, PAGE_STATUS, PAGE_SUBMIT, PAGE_TEXT } from '../ui/page-classes.ts';
+  import { PRIVATE_TEXT } from '../ui/private-fields.ts';
   import { MAX_REASON_BYTES, type ReportOutcome, type ReportSubmission } from './report.ts';
 
   interface Props {
@@ -115,10 +116,7 @@
       rows="3"
       placeholder={translate('report.reason')}
       class="mt-2.5 block w-full resize-none rounded-[8px] px-3 py-2 text-[13px] text-ink well placeholder:text-ink-mute aria-invalid:shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]"
-      autocomplete="off"
-      autocapitalize="off"
-      autocorrect="off"
-      spellcheck="false"
+      {...PRIVATE_TEXT}
       bind:value={reason}
       aria-invalid={reasonProblem !== ''}
       aria-describedby={`${name}-reason-hint ${name}-reason-problem`}></textarea>
@@ -197,10 +195,7 @@
         id={`${name}-link`}
         type="text"
         inputmode="url"
-        autocomplete="off"
-        autocapitalize="off"
-        autocorrect="off"
-        spellcheck="false"
+        {...PRIVATE_TEXT}
         class={PAGE_FIELD}
         bind:value={link}
         aria-invalid={linkProblem !== ''}
@@ -212,10 +207,7 @@
     <label for={`${name}-reason`} class={PAGE_LABEL}>{translate('report.reason')}</label>
     <textarea
       id={`${name}-reason`}
-      autocomplete="off"
-      autocapitalize="off"
-      autocorrect="off"
-      spellcheck="false"
+      {...PRIVATE_TEXT}
       class={[PAGE_FIELD, 'min-h-28']}
       bind:value={reason}
       aria-invalid={reasonProblem !== ''}

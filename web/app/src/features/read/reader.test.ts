@@ -13,8 +13,6 @@ import {
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ResumeStore } from '../../shared/sent-records/resume-store.ts';
-
 import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
 import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
@@ -79,39 +77,12 @@ function memorySession(): SessionStore & { map: Map<string, string>; log: string
 }
 
 interface ReaderOverrides {
-  readonly resume?: ResumeStore;
   readonly session?: ReturnType<typeof memorySession>;
   readonly visible?: boolean;
   readonly prerendering?: boolean;
   readonly scrypt?: Scrypt;
   readonly shown?: () => Promise<void>;
   readonly reloaded?: boolean;
-}
-
-const resumeStores = new WeakMap<SessionStore, ResumeStore>();
-
-function resumeFor(session: SessionStore): ResumeStore {
-  let resume = resumeStores.get(session);
-  if (!resume) {
-    const records = new Map<string, { id: string; fragment: string }>();
-    resume = {
-      put: (id, fragment) => {
-        const token = encodeBase64url(crypto.getRandomValues(new Uint8Array(32)));
-        records.set(token, { id, fragment });
-        return Promise.resolve(token);
-      },
-      get: (id, token) => {
-        const record = records.get(token);
-        return Promise.resolve(record?.id === id ? record.fragment : undefined);
-      },
-      remove: (token) => {
-        records.delete(token);
-        return Promise.resolve();
-      },
-    };
-    resumeStores.set(session, resume);
-  }
-  return resume;
 }
 
 function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
@@ -122,14 +93,17 @@ function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {})
   const instance = createReader(
     {
       api,
-      location: { pathname: url.pathname, hash: overrides.reloaded ? '' : url.hash },
-      session,
-      resume: overrides.resume ?? resumeFor(session),
-      page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
-      dropFragment: () => {
+      location: { pathname: url.pathname },
+      takeFragment: () => {
+        if (overrides.reloaded || dropped > 0) {
+          return '';
+        }
         dropped++;
         api.calls.push('drop-fragment');
+        return url.hash;
       },
+      session,
+      page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
       ...(overrides.shown && { shown: overrides.shown }),
       scrypt: overrides.scrypt ?? scrypt,
       now: () => Date.now(),
@@ -178,31 +152,40 @@ async function storeRaw(
 }
 
 describe('reading a message', () => {
-  it('keeps reading when recovery storage is unavailable, without storing a plaintext fallback', async () => {
+  it('keeps the link secret out of session storage while a lease is pending (W2-01)', async () => {
     const api = fakeApi();
-    const created = await createMessage(input(), createDependencies(api));
-    const session = memorySession();
-    const resume = { ...resumeFor(session), put: () => Promise.reject(new Error('storage refused')) };
-    const reader = openReader(api, created.link, { session, resume });
+    const created = await createMessage(input({ passphrase: 'four random words here' }), createDependencies(api));
+    const display = Promise.withResolvers<undefined>();
+    const reader = openReader(api, created.link, { shown: () => display.promise });
     await reader.load();
-    await reader.reveal();
-    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
-    expect(session.log).not.toContain(`set nylzo:link:${idTextOf(created.link)}`);
+    const revealing = reader.reveal('four random words here');
+    await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
+    const id = idTextOf(created.link);
+    expect(
+      reader.session.map
+        .keys()
+        .toArray()
+        .toSorted((left, right) => left.localeCompare(right)),
+    ).toEqual([`nylzo:dropped:${id}`, `nylzo:lease:${id}`]);
+    const stored = reader.session.map.values().toArray().join(' ');
+    const secret = new URL(created.link).hash.slice(1).split('.').at(-1) ?? '';
+    expect(secret).toHaveLength(43);
+    expect(stored).not.toContain(secret);
+    display.resolve(undefined);
+    await revealing;
   });
 
-  it('rejects and removes an old plaintext session fragment before making a request', async () => {
+  it('asks for the link again after a reload with a pending lease, before any request (W2-01)', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
-    const id = idTextOf(created.link);
-    session.setItem(`nylzo:link:${id}`, new URL(created.link).hash);
-    session.setItem(`nylzo:lease:${id}`, 'old-lease');
+    session.setItem(leaseKeyOf(created.link), 'pending-lease');
     const before = api.calls.length;
     const reader = openReader(api, created.link, { session, reloaded: true });
     await reader.load();
-    expect(reader.last()).toEqual({ view: 'removed' });
-    expect(session.map.size).toBe(0);
-    expect(api.calls.slice(before)).toEqual(['view:loading', 'view:removed']);
+    expect(reader.last()).toEqual({ view: 'reopen' });
+    expect(api.calls.slice(before)).toEqual(['view:loading', 'view:reopen']);
+    expect(session.map.get(leaseKeyOf(created.link))).toBe('pending-lease');
   });
 
   it('drops the fragment before its first request and acknowledges only once the page shows the message (D95)', async () => {
@@ -239,7 +222,7 @@ describe('reading a message', () => {
     expect(damaged.dropped()).toBe(1);
   });
 
-  it('keeps the lease and the link in the session when the page is left before it shows the message', async () => {
+  it('keeps the lease in the session when the page is left before it shows the message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const display = Promise.withResolvers<undefined>();
@@ -252,13 +235,16 @@ describe('reading a message', () => {
     await revealing;
     expect(api.calls).not.toContain('ack');
     expect(reader.last()).toEqual({ view: 'cleared' });
-    expect(reader.session.map.get(`nylzo:link:${idTextOf(created.link)}`)).toMatch(/^[\w-]{43}$/);
-    const again = openReader(api, created.link, { session: reader.session, reloaded: true });
+    expect(reader.session.map.has(leaseKeyOf(created.link))).toBe(true);
+    const reloaded = openReader(api, created.link, { session: reader.session, reloaded: true });
+    await reloaded.load();
+    expect(reloaded.last()).toEqual({ view: 'reopen' });
+    const again = openReader(api, created.link, { session: reader.session });
     await again.load();
     expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
   });
 
-  it('shows the text before it acknowledges the lease and then forgets the lease and the link', async () => {
+  it('shows the text before it acknowledges the lease and then forgets the lease', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     expect(created.link).toMatch(/^https:\/\/nylzo\.test\/m\/[\w-]{22}#1\.0\.[\w-]{43}$/);
@@ -279,9 +265,7 @@ describe('reading a message', () => {
     expect(reader.session.log).toEqual([
       `set nylzo:dropped:${id}`,
       `set nylzo:lease:${id}`,
-      `set nylzo:link:${id}`,
       `remove nylzo:lease:${id}`,
-      `remove nylzo:link:${id}`,
     ]);
   });
 
@@ -333,9 +317,7 @@ describe('reading a message', () => {
       `set nylzo:kdf:${id}`,
       `remove nylzo:kdf:${id}`,
       `set nylzo:lease:${id}`,
-      `set nylzo:link:${id}`,
       `remove nylzo:lease:${id}`,
-      `remove nylzo:link:${id}`,
     ]);
     expect(
       reader.views.filter((readView) => readView.view === 'busy' && readView.step === 'deriving').length,
@@ -803,11 +785,11 @@ describe('leaving the page', () => {
     expect(api.calls).not.toContain('ack');
     expect(session.map.get(leaseKeyOf(created.link))).toBe('lease-1');
     api.claim = claim;
-    const reloaded = openReader(api, created.link, { session, reloaded: true });
-    await reloaded.load();
-    expect(reloaded.last()).toMatchObject({ view: 'ready', resumable: true });
-    await reloaded.reveal();
-    expect(reloaded.last()).toMatchObject({ view: 'revealed', text: 'later' });
+    const reopened = openReader(api, created.link, { session });
+    await reopened.load();
+    expect(reopened.last()).toMatchObject({ view: 'ready', resumable: true });
+    await reopened.reveal();
+    expect(reopened.last()).toMatchObject({ view: 'revealed', text: 'later' });
     expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['claim', 'blob']);
   });
 

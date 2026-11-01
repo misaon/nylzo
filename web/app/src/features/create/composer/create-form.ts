@@ -33,7 +33,7 @@ export function problemKey(problem: CreateProblem): MessageKey {
       return 'problem.text.too_large';
     }
     case 'file': {
-      return 'problem.file.too_large';
+      return `problem.file.${problem.code}`;
     }
     case 'ttl': {
       return 'problem.ttl.out_of_range';
@@ -63,5 +63,9 @@ export async function readAttachment(
   if (file.size > limits.maxFileBytes) {
     return { problem: { field: 'file', code: 'too_large' } };
   }
-  return { file: { name: file.name, mime: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } };
+  try {
+    return { file: { name: file.name, mime: file.type, bytes: new Uint8Array(await file.arrayBuffer()) } };
+  } catch {
+    return { problem: { field: 'file', code: 'unreadable' } };
+  }
 }

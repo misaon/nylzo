@@ -93,7 +93,12 @@ function readerFor(api: FakeApi, link: string) {
   const reader = createReader(
     {
       api,
-      location: { pathname: url.pathname, hash: url.hash },
+      location: { pathname: url.pathname },
+      takeFragment: () => {
+        const fragment = url.hash;
+        url.hash = '';
+        return fragment;
+      },
       session: {
         getItem: (key) => session.get(key) ?? null,
         setItem: (key, value) => {
@@ -104,9 +109,6 @@ function readerFor(api: FakeApi, link: string) {
         },
       },
       page: { visible: () => true, prerendering: () => false },
-      dropFragment: () => {
-        url.hash = '';
-      },
       scrypt: stubScrypt,
       now: () => Date.now(),
     },

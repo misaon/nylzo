@@ -20,6 +20,7 @@ export const czech = {
   'problem.content.missing': 'Napište text nebo přiložte soubor.',
   'problem.text.too_large': 'Text je delší než {size}.',
   'problem.file.too_large': 'Soubor je větší než {size}.',
+  'problem.file.unreadable': 'Soubor nejde přečíst. Složku přiložit nejde, vyberte soubor.',
   'problem.ttl.out_of_range': 'Zvolte platnost z nabídky.',
   'problem.opens.out_of_range': 'Počet otevření musí být 1 až {max}.',
   'problem.passphrase.too_short': 'Passphrase musí mít aspoň {min} znaků.',
@@ -41,6 +42,12 @@ export const czech = {
   'created.link': 'Odkaz na zprávu',
   'created.copy': 'Zkopírovat odkaz',
   'created.copied': 'Odkaz je ve schránce',
+  'created.share': 'Sdílet odkaz',
+  'created.paste_tip':
+    'Požádejte příjemce, ať odkaz neotevírá kliknutím, ale vloží ho na {address} do pole Otevřít odkaz. Odkaz otevřený kliknutím zůstane v\u{A0}historii prohlížeče.',
+  'clipboard.copied': 'Zkopírováno. Kopii může držet historie schránky i\u{A0}synchronizovaná schránka.',
+  'clipboard.clear': 'Vyprázdnit schránku',
+  'clipboard.cleared': 'Schránka je prázdná. Kopie, které už jsou v\u{A0}historii schránky, tam zůstanou.',
   'created.another': 'Nová zpráva',
   'created.remembered': 'Toto zařízení si zprávu zapamatovalo.',
   'created.status_link': 'Stav a zrušení zprávy',
@@ -127,6 +134,20 @@ export const czech = {
   'revealed.confirm.none': 'Soubor nemá příponu.',
   'revealed.confirm.download': 'Přesto stáhnout',
   'revealed.confirm.cancel': 'Nestahovat',
+  'revealed.history':
+    'Zprávu jste otevřeli kliknutím na odkaz, takže v\u{A0}historii tohoto prohlížeče zůstane funkční odkaz až do posledního otevření. Pokud zbývající otevření nikdo jiný nepotřebuje, smažte je.',
+  'revealed.hidden':
+    'Skryté znaky nebo znaky měnící směr textu: {count}. Zobrazujeme je jako kódy, třeba U+202E, protože text na obrazovce s\u{A0}nimi může vypadat jinak, než jaký je po zkopírování.',
+  'revealed.hidden.confirm':
+    'Text obsahuje skryté znaky nebo znaky měnící směr textu. Kopie je zachová přesně tak, jak je odesílatel napsal. Přesto zkopírovat?',
+  'revealed.hidden.copy': 'Přesto zkopírovat',
+  'revealed.hidden.keep': 'Nekopírovat',
+  'paste.title': 'Otevřít odkaz',
+  'paste.hint':
+    'Odkaz z\u{A0}Nylzo sem vložte místo kliknutí a\u{A0}klíč se do historie prohlížeče nedostane. Odkaz otevřený kliknutím zůstane v\u{A0}historii i\u{A0}v\u{A0}synchronizovaných kartách a\u{A0}Chrome ho může s\u{A0}daty o\u{A0}používání poslat Googlu.',
+  'paste.label': 'Odkaz k\u{A0}otevření',
+  'paste.placeholder': 'Vložte celý odkaz',
+  'paste.submit': 'Otevřít',
 
   'report.title': 'Nahlásit zneužití',
   'report.note':
@@ -262,6 +283,8 @@ export const czech = {
   'compose.opens.less': 'Méně otevření',
   'compose.opens.more': 'Více otevření',
   'compose.opens.note': 'Po posledním otevření server šifru smaže. Nejvýš {max}.',
+  'compose.opens.history':
+    'Příjemci, který na odkaz klikne, zůstane funkční odkaz v\u{A0}historii prohlížeče až do posledního otevření. Přidejte passphrase, nebo příjemce požádejte, ať odkaz místo kliknutí vloží.',
   'compose.security': 'Zabezpečení',
   'compose.passphrase.chip': 'Passphrase',
   'compose.passphrase.switch': 'Chránit passphrase',
@@ -269,7 +292,8 @@ export const czech = {
   'compose.passphrase.placeholder': 'např. {words} náhodná slova',
   'compose.passphrase.generate': 'Vygenerovat',
   'compose.remember.switch': 'Zrušení z\u{A0}tohoto zařízení',
-  'compose.remember.note': 'Uloží klíč pro zrušení jen v\u{A0}tomto prohlížeči.',
+  'compose.remember.note':
+    'V\u{A0}tomto prohlížeči uloží klíč, kterým jde zprávu zrušit a\u{A0}zjistit její stav, a\u{A0}to do jednoho dne po jejím konci. Použít ho může i\u{A0}kdokoli, kdo si přečte soubory tohoto prohlížeče.',
   'compose.attach': 'Příloha',
   'compose.attach.limit': ', nejvýš {size}',
   'compose.submit': 'Zašifrovat a\u{A0}vytvořit odkaz',
@@ -293,23 +317,24 @@ export const czech = {
   'step.send.detail.pow': 'služba je vytížená, prohlížeč řeší krátkou úlohu',
   'step.link.label': 'Odkaz',
   'step.link.title': 'Skládáme odkaz',
-  'step.link.detail': 'klíč přidáme za #, kam server nevidí',
+  'step.link.detail': 'klíč přidáme za #, které prohlížeč neodesílá',
 
   'created.sub': 'Zkopírujte ho a\u{A0}pošlete příjemci.',
   'created.sub.passphrase': 'Odkaz a\u{A0}passphrase pošlete příjemci každý jinou cestou.',
-  'created.server.sees': 'Server uvidí',
+  'created.server.sees': 'Server dostane',
   'created.server.sees.what': 'adresu a\u{A0}id zprávy',
-  'created.server.blind': 'Server neuvidí',
-  'created.server.blind.what': 'klíč',
+  'created.server.blind': 'Prohlížeč neodešle',
+  'created.server.blind.what': 'klíč za #',
   'created.chip.expires': 'Platí do {time}',
   'open.title': 'Máte šifrovanou zprávu',
   'open.intro':
-    'Dešifruje se až ve vašem prohlížeči. Klíč je v\u{A0}odkazu za znakem # a\u{A0}server ho nikdy neviděl.',
+    'Dešifruje se až v\u{A0}tomto prohlížeči. Klíč za znakem # prohlížeč serveru neposílá. Jenže i\u{A0}tahle stránka přichází ze serveru, a\u{A0}kdyby server ovládl někdo cizí, mohl by ji změnit.',
   'open.ready.title': 'Zpráva čeká na zobrazení',
   'open.ready.sub': 'Otevření se započítá až tlačítkem Zobrazit zprávu.',
   'open.loading.text': 'Ověřujeme odkaz u\u{A0}serveru.',
   'open.passphrase.placeholder': 'Passphrase od odesílatele',
-  'open.passphrase.hint': 'Passphrase dostanete od odesílatele jinou cestou než odkaz.',
+  'open.passphrase.hint':
+    'Passphrase dostanete od odesílatele jinou cestou než odkaz. Neukládejte ji do správce hesel.',
   'open.passphrase.show': 'Ukázat passphrase',
   'open.passphrase.hide': 'Skrýt passphrase',
   'open.passphrase.empty': 'Zadejte passphrase od odesílatele.',
@@ -358,7 +383,10 @@ export const czech = {
     'Tento způsob ochrany Nylzo už nepodporuje, a\u{A0}tak zprávu otevřít nejde. Stránka ji nespotřebovala. Požádejte odesílatele o\u{A0}nový odkaz.',
   'open.notice.removed': 'Klíč už v\u{A0}adresním řádku není',
   'open.notice.removed.text':
-    'Stránka klíč z\u{A0}adresy kvůli bezpečnosti odstraní hned po načtení. Pro další pokus otevřete původní odkaz znovu.',
+    'Stránka klíč z\u{A0}adresy kvůli bezpečnosti odstraní hned po načtení. Pro další pokus vložte odkaz níže, nebo ho otevřete znovu.',
+  'open.notice.reopen': 'Pro dokončení otevřete odkaz znovu',
+  'open.notice.reopen.text':
+    'Stránka drží klíč jen v\u{A0}paměti, takže ho po obnovení zapomněla. Vložte odkaz níže, nebo ho otevřete znovu. Dokončení další otevření nespotřebuje.',
   'open.notice.tampered': 'Zprávu nejde bezpečně otevřít',
   'open.notice.tampered.text': 'Server nebo spojení vrátilo jiná data, než odesílatel vytvořil.',
   'open.notice.failed': 'Něco se pokazilo',
@@ -390,12 +418,12 @@ export const czech = {
   'open.trust.gone.text': 'Po posledním otevření nebo po konci platnosti server šifru smaže.',
 
   'how.eyebrow': 'Jak to funguje',
-  'how.title': 'Klíč držíte vy. Server hlídá jen šifru.',
+  'how.title': 'Klíč držíte vy. Server ukládá zprávu jen zašifrovanou.',
   'how.step1.title': 'Zašifrujete u\u{A0}sebe',
   'how.step1.text': 'Prohlížeč vytvoří náhodný 256bitový klíč a\u{A0}zprávu jím zašifruje dřív, než cokoli odešle.',
   'how.step2.title': 'Server ji uloží zašifrovanou',
   'how.step2.text':
-    'Uloží šifrovaná data. Nastavení a\u{A0}časy zprávy drží zašifrované a\u{A0}otevře je jen během požadavku od vás nebo příjemce. Klíč nezná, takže zprávu přečíst neumí.',
+    'Uloží šifrovaná data. Nastavení a\u{A0}časy zprávy drží zašifrované a\u{A0}otevře je jen během požadavku od vás nebo příjemce. Klíč mu prohlížeč nikdy nepošle, takže z\u{A0}uložených dat se zpráva přečíst nedá.',
   'how.step3.title': 'Příjemce otevře jednou',
   'how.step3.text':
     'Zpráva se otevře až kliknutím, samotné načtení odkazu nic nespotřebuje. Po posledním otevření server šifru smaže.',
@@ -417,11 +445,11 @@ export const czech = {
   'how.link.key.title': 'Klíč zprávy',
   'how.link.key.meta': '256 bitů, jen v\u{A0}prohlížeči',
   'how.link.key.body':
-    'Všechno za znakem # zůstává v\u{A0}prohlížeči. Prohlížeč tuhle část serveru neposílá, takže ji neznáme my ani hosting. Kdo ji nemá, zprávu nepřečte.',
+    'Všechno za znakem # zůstává v\u{A0}prohlížeči a\u{A0}prohlížeč to neposílá v\u{A0}žádném požadavku, takže se to touto cestou k\u{A0}serveru ani k\u{A0}hostingu nedostane. Kdo klíč nemá, zprávu nepřečte.',
   'how.link.server.body':
-    'Server dostane jen adresu stránky a\u{A0}id zprávy. Všechno za znakem # prohlížeč při načtení stránky neodesílá, takže klíč server nikdy neuvidí, ani když by chtěl.',
+    'Server dostane adresu stránky a\u{A0}id zprávy; nic za znakem # prohlížeč neodešle. Kód stránky ale přichází taky ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho upravit a\u{A0}číst zprávy, které se v\u{A0}něm otevřou. Příkazová řádka nylzo žádný kód ze serveru nespouští.',
   'who.eyebrow': 'Kdo co vidí',
-  'who.title': 'Ze serveru se zpráva přečíst nedá',
+  'who.title': 'Z\u{A0}dat na serveru se zpráva přečíst nedá',
   'who.sub': 'Tatáž zpráva očima tří stran. Přepněte a\u{A0}porovnejte, co kdo ve skutečnosti drží.',
   'who.tabs': 'Pohled',
   'who.you': 'Vy a\u{A0}příjemce',
@@ -668,9 +696,9 @@ export const czech = {
   'limits.save.note': 'Zkopírovat ji nebo vyfotit. Posílejte jen tomu, komu věříte.',
   'limits.link.title': 'Odkaz otevře, kdo ho má první',
   'limits.link.note': 'Passphrase proto pošlete jinou cestou.',
-  'limits.server.title': 'Napadený server může podvrhnout stránku',
+  'limits.server.title': 'Kdo ovládá server, může tento web změnit',
   'limits.server.note':
-    'nylzo verify-client odhalí chybné sestavení, ale ne server, který před ním záměnu schová. Kdo stránce věřit nechce, pošle zprávu přes CLI.',
+    'Vybranému člověku může poslat stránku, která zprávu přečte, a\u{A0}v\u{A0}roce 2026 to žádný prohlížeč nepozná. nylzo verify-client odhalí chybné sestavení, ale ne server, který před ním záměnu schová. Zprávu, která musí zůstat v\u{A0}bezpečí i\u{A0}tehdy, pošlete a\u{A0}přečtěte příkazovou řádkou nylzo.',
   'limits.abuse.title': 'Ne pro podvody a\u{A0}malware',
   'limits.abuse.note': 'Ani pro jiný nezákonný obsah.',
   'limits.liability':
@@ -683,7 +711,7 @@ export const czech = {
   'host.domain': 'vase-domena.cz',
   'host.terminal': 'bash — nylzo',
   'compare.note.dash': '—',
-  'compare.note.verify': 'verify\u{2011}client',
+  'compare.note.verify': 'jen to, co server pošle verify\u{2011}client',
 };
 
 export type MessageKey = keyof typeof czech;

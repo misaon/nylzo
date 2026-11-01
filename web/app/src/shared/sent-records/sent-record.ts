@@ -1,7 +1,7 @@
 import { parseId, PUBLIC_KEY_LENGTH, type RequestKey } from '@nylzo/core';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const RETENTION_DAYS = 7;
+export const RETENTION_DAYS = 1;
 export const RETENTION_MS = RETENTION_DAYS * DAY_MS;
 const MAX_LIFETIME_MS = 31 * DAY_MS;
 const MAX_TIME_MS = 8.64e15;

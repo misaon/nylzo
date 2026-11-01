@@ -5,6 +5,7 @@
 
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Popover from '../../../shared/ui/Popover.svelte';
+  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/private-fields.ts';
   import Switch from '../../../shared/ui/Switch.svelte';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
   import MenuChip from './MenuChip.svelte';
@@ -64,13 +65,8 @@
           bind:value={composer.passphrase}
           type={composer.passphraseVisible ? 'text' : 'password'}
           disabled={!composer.protect}
-          autocomplete="off"
-          autocapitalize="off"
-          spellcheck="false"
-          data-1p-ignore=""
-          data-lpignore="true"
-          data-bwignore="true"
-          data-form-type="other"
+          {...PRIVATE_PASSPHRASE}
+          onkeydown={submitOnEnter}
           placeholder={translate('compose.passphrase.placeholder', { words: WEAK_BELOW_WORDS })}
           aria-invalid={composer.problemOf.passphrase !== undefined}
           aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"

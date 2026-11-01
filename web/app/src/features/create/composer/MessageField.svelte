@@ -5,6 +5,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Pipeline from '../../../shared/pipeline/Pipeline.svelte';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
 
   interface Props {
     readonly composer: Composer;
@@ -31,10 +32,7 @@
     {@attach composer.focus.attach('text')}
     bind:value={composer.text}
     rows="7"
-    spellcheck="false"
-    autocomplete="off"
-    autocapitalize="off"
-    autocorrect="off"
+    {...PRIVATE_TEXT}
     readonly={composer.busy}
     placeholder={translate('compose.placeholder')}
     aria-invalid={composer.problemOf.content !== undefined || composer.problemOf.text !== undefined}

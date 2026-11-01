@@ -18,6 +18,7 @@
 
 <svelte:window
   onpagehide={page.leave}
+  onbeforeunload={page.forgetPassphrase}
   onpageshow={page.returned}
   onhashchange={page.fragmentArrived}
   onclick={page.onWindowClick}

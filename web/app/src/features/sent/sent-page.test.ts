@@ -180,14 +180,14 @@ describe('the sent page', () => {
     expect(sent.items().map((item) => item.state.kind)).toEqual(['failed', 'retry_later', 'retry_later']);
   });
 
-  it('keeps a record until 7 days after the message ended, at the latest after expiry', async () => {
+  it('keeps a record until a day after the message ended, at the latest after expiry (W2-08)', async () => {
     const { record, storedRecord, sent } = await setup({}, 1);
     await sent.load();
     await sent.cancel(record(0).id);
     const ended = storedRecord(record(0).id);
     expect(ended.endedAt).toBe(Date.parse('2026-10-23T11:00:00Z'));
-    expect(isRetained(ended, Date.parse('2026-10-30T10:59:59Z'))).toBe(true);
-    expect(isRetained(ended, Date.parse('2026-10-30T11:00:00Z'))).toBe(false);
+    expect(isRetained(ended, Date.parse('2026-10-24T10:59:59Z'))).toBe(true);
+    expect(isRetained(ended, Date.parse('2026-10-24T11:00:00Z'))).toBe(false);
     expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS - 1)).toBe(true);
     expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS)).toBe(false);
   });

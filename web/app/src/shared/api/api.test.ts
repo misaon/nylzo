@@ -126,6 +126,20 @@ describe('api client', () => {
     await expect(malformed.api.instance()).rejects.toThrow(ResponseError);
   });
 
+  it('refuses a JSON body larger than 64 KiB, with or without Content-Length (A-02)', async () => {
+    const padded = { ...instanceBody, padding: 'x'.repeat(64 * 1024) };
+    const declared = fakeServer(() => json(200, padded));
+    await expect(declared.api.instance()).rejects.toThrow(ResponseError);
+    const streamed = fakeServer(
+      () =>
+        new Response(new Blob([JSON.stringify(padded)]).stream(), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    await expect(streamed.api.instance()).rejects.toThrow(ResponseError);
+  });
+
   it('signs metadata with R over a fresh challenge', async () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(7));

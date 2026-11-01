@@ -31,8 +31,10 @@
   const focus = new FocusTargets<'link' | 'title'>();
   let entered = $state(false);
   let editing = $state(false);
+  let clipboard = $state<'cleared' | 'copied' | 'untouched'>('untouched');
 
   const segments = $derived(linkSegments(created.link));
+  const shareable = $derived(typeof navigator.share === 'function' && navigator.canShare({ url: created.link }));
 
   const enter: Attachment = () => {
     const frame = requestAnimationFrame(() => {
@@ -45,9 +47,27 @@
   async function copy() {
     try {
       await navigator.clipboard.writeText(created.link);
+      clipboard = 'copied';
       copied.show();
     } catch {
       focus.focus('link');
+    }
+  }
+
+  async function share() {
+    try {
+      await navigator.share({ url: created.link });
+    } catch {
+      return;
+    }
+  }
+
+  async function clearClipboard() {
+    try {
+      await navigator.clipboard.writeText('');
+      clipboard = 'cleared';
+    } catch {
+      clipboard = 'copied';
     }
   }
 
@@ -103,6 +123,7 @@
           <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
           <div class="relative min-h-11 min-w-0 flex-1 md:min-h-10">
             <p
+              translate="no"
               class={[
                 'pointer-events-none flex h-full min-h-11 min-w-0 items-center font-mono text-[13px] whitespace-nowrap transition-opacity duration-300 md:min-h-10 md:text-[15px]',
                 editing ? 'opacity-0' : 'opacity-100',
@@ -131,6 +152,8 @@
               {@attach focus.attach('link')}
               type="text"
               readonly
+              translate="no"
+              spellcheck="false"
               value={created.link}
               onfocus={(event) => {
                 editing = true;
@@ -166,6 +189,17 @@
               toTone="text-aegis-200"
             />
           </button>
+          {#if shareable}
+            <button
+              type="button"
+              onclick={share}
+              aria-label={translate('created.share')}
+              title={translate('created.share')}
+              class="grid size-11 shrink-0 place-items-center rounded-[9px] bg-white/4 text-ink-soft ring-1 ring-white/10 hover:bg-white/8 hover:text-ink md:size-9"
+            >
+              <Icon name="upload" class="size-[18px]" />
+            </button>
+          {/if}
           <span class="sr-only" role="status">{copied.shown ? translate('created.copied') : ''}</span>
         </div>
       </div>
@@ -188,6 +222,32 @@
           <span class="mt-2.5 block text-[13px] text-ink md:text-sm">{translate('created.server.blind')}</span>
           <span class="mt-0.5 block font-mono text-[11px] text-ink-mute">{translate('created.server.blind.what')}</span>
         </div>
+      </div>
+      <div class="mt-2.5 stack px-1 text-[12px] leading-relaxed text-ink-mute">
+        <p class={['text-pretty fade-swap', clipboard === 'untouched' ? 'opacity-100' : 'opacity-0']}>
+          {translate('created.paste_tip', { address: new URL(created.link).host })}
+        </p>
+        <p
+          role="status"
+          class={[
+            'flex flex-wrap items-center gap-x-3 gap-y-1 fade-swap',
+            clipboard === 'untouched' ? 'pointer-events-none opacity-0' : 'opacity-100',
+          ]}
+          inert={clipboard === 'untouched'}
+        >
+          {translate(clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied')}
+          <button
+            type="button"
+            onclick={clearClipboard}
+            disabled={clipboard !== 'copied'}
+            class={[
+              'btn-ghost h-11 rounded-[9px] px-3 text-[12px] md:h-7',
+              clipboard === 'copied' ? 'opacity-100' : 'opacity-0',
+            ]}
+          >
+            {translate('clipboard.clear')}
+          </button>
+        </p>
       </div>
     </div>
   </div>

@@ -1,7 +1,10 @@
+import { hydrate, mount } from 'svelte';
+
 import '../app.css';
+import { prepareWorker } from '../shared/kdf/worker-source.ts';
 import { browserPreferences, type Language, savedLanguage, storedLanguage } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
-import { HOME_PATHS, homeLanguage } from './pages.ts';
+import { HOME_PATHS, homeLanguage, screenOf } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
 const PAINT_WAIT_MS = 1000;
@@ -42,6 +45,10 @@ async function contentPainted(): Promise<void> {
 async function boot(): Promise<void> {
   await takeHandoff();
   const path = location.pathname;
+  const screen = screenOf(path);
+  if (screen === 'create' || screen === 'read') {
+    void prepareWorker();
+  }
   const preferences = browserPreferences();
   const homePage = homeLanguage(path);
   const savedChoice = storedLanguage(preferences);
@@ -56,9 +63,17 @@ async function boot(): Promise<void> {
   if (document.body.firstElementChild) {
     await contentPainted();
   }
-  const { start } = await import('./start.ts');
+  const { App, prepare, tidy } = await import('./start.ts');
   await nextTask();
-  start({ path, language });
+  prepare();
+  const options = { target: document.body, props: { start: { path, language } } };
+  if (document.body.firstElementChild) {
+    hydrate(App, options);
+  } else {
+    mount(App, options);
+  }
+  document.documentElement.dataset['ready'] = '';
+  void tidy();
 }
 
 void boot();
