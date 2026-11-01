@@ -8,7 +8,7 @@ import test from "node:test";
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
 const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
 
-test("the host firewall admits only what the cloud firewall admits and limits connections per source", { skip: !available, timeout: 300000 }, () => {
+test("the host firewall admits only what the cloud firewall admits and limits each source to 64 web connections", { skip: !available, timeout: 300000 }, () => {
   const result = spawnSync("docker", ["run", "--interactive", "--rm", "--cap-add", "NET_ADMIN",
     "--mount", `type=bind,source=${resolve("deploy/hetzner-flatcar/host/system/firewall")},target=/firewall,readonly`, image, "bash", "-s"], {
     encoding: "utf8", timeout: 280000, input: String.raw`set -euo pipefail
@@ -23,8 +23,8 @@ has 'type filter hook input priority filter; policy drop;'
 has 'ip saddr @administrators4 tcp dport 22 accept'
 has 'ip6 saddr @administrators6 tcp dport 22 accept'
 has 'ip saddr @administrators4 meta l4proto { 6, 17 } th dport 443 accept'
-has 'ip saddr ct count over 128'
-has 'ip6 saddr & ffff:ffff:ffff:ffff:: ct count over 128'
+has 'ip saddr ct count over 64'
+has 'ip6 saddr & ffff:ffff:ffff:ffff:: ct count over 64'
 if has 'dport 8443'; then exit 1; fi
 if has 'meta nfproto ipv4 meta l4proto { 6, 17 } th dport 443 accept'; then exit 1; fi
 nft list set inet nylzo administrators4 > /tmp/set

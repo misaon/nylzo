@@ -15,12 +15,47 @@ import (
 func main() {
 	address := flag.String("addr", "localhost:443", "host:port of the TLS server")
 	rootFile := flag.String("ca", "", "PEM file with the root certificate to trust")
+	only := flag.Bool("only", false, "also require that TLS 1.2 and classical key exchanges are refused")
 	flag.Parse()
-	if err := check(*address, *rootFile); err != nil {
+	err := check(*address, *rootFile)
+	if err == nil && *only {
+		err = refusesClassical(*address, *rootFile)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "tlscheck:", err)
 		os.Exit(1)
 	}
 	fmt.Fprintln(os.Stdout, "tlscheck: TLS 1.3 with X25519MLKEM768")
+}
+
+func refusesClassical(address, rootFile string) error {
+	pem, err := os.ReadFile(rootFile)
+	if err != nil {
+		return err
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(pem) {
+		return errors.New("no certificate in the root file")
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	for name, config := range map[string]*tls.Config{
+		"TLS 1.2":    {MaxVersion: tls.VersionTLS12},
+		"X25519":     {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.X25519}},
+		"ECDH P-256": {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.CurveP256}},
+	} {
+		config.RootCAs, config.ServerName = roots, host
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		connection, err := (&tls.Dialer{Config: config}).DialContext(ctx, "tcp", address)
+		cancel()
+		if err == nil {
+			_ = connection.Close()
+			return fmt.Errorf("the server accepted a handshake with %s", name)
+		}
+	}
+	return nil
 }
 
 func check(address, rootFile string) error {

@@ -47,8 +47,8 @@ table inet nylzo {
     meta l4proto { 1, 58 } accept
     udp sport 67 udp dport 68 accept
     udp sport 547 udp dport 546 accept
-    meta l4proto { tcp, udp } th dport { 80, 443, 8443 } add @connections4 { ip saddr ct count over 128 } reject
-    meta l4proto { tcp, udp } th dport { 80, 443, 8443 } add @connections6 { ip6 saddr and ffff:ffff:ffff:ffff:: ct count over 128 } reject
+    meta l4proto { tcp, udp } th dport { 80, 443, 8443 } add @connections4 { ip saddr ct count over 64 } reject
+    meta l4proto { tcp, udp } th dport { 80, 443, 8443 } add @connections6 { ip6 saddr and ffff:ffff:ffff:ffff:: ct count over 64 } reject
     tcp dport 80 accept
     $web4 meta l4proto { tcp, udp } th dport 443 accept
     $web6 meta l4proto { tcp, udp } th dport 443 accept
