@@ -24,22 +24,69 @@ trap cleanup EXIT
 download() {
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 180 --max-filesize 134217728 "$1" --output "$2"
 }
-patch() {
-  local previous="$1" next="$2"
-  [[ "$previous" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
-  [[ "$next" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
-  local component
-  for component in ${previous//[v.]/ } ${next//[v.]/ }; do
-    [[ ${#component} -le 9 ]] || return 1
-  done
-  [[ "${previous%.*}" = "${next%.*}" && "${next##*.}" -gt "${previous##*.}" ]]
-}
-latest() {
-  download "https://api.github.com/repos/$1/releases/latest" "$temporary/release.json" || return
-  jq -er 'select(.draft == false and .prerelease == false) | .tag_name' "$temporary/release.json"
-}
 older() {
   [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort --version-sort | head -n 1)" = "$1" ]]
+}
+checksums() {
+  local release="$1"
+  [[ "$(cat "$temporary/checksums.release" 2>/dev/null)" != "$release" ]] || return 0
+  if ! jq -e --arg version "$release" '.tag_name == $version' "$temporary/release.json" >/dev/null 2>&1; then
+    download "https://api.github.com/repos/misaon/nylzo/releases/tags/$release" "$temporary/release.json"
+  fi
+  jq -e --arg version "$release" '.tag_name == $version and .immutable == true and .draft == false and .prerelease == false' "$temporary/release.json" >/dev/null
+  for file in checksums.txt checksums.txt.sigstore.json; do
+    download "https://github.com/misaon/nylzo/releases/download/$release/$file" "$temporary/$file"
+  done
+  cosign verify-blob "$temporary/checksums.txt" --bundle "$temporary/checksums.txt.sigstore.json" \
+    --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$release" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+  printf '%s\n' "$release" > "$temporary/checksums.release"
+}
+provenance() {
+  local file="$1" release="$2" digest
+  digest=$(sha256sum "$file" | cut -d ' ' -f 1)
+  download "https://api.github.com/repos/misaon/nylzo/attestations/sha256:$digest" "$file.provenance.json"
+  jq -ce '.attestations[].bundle' "$file.provenance.json" > "$file.provenance.jsonl"
+  gh attestation verify "$file" --bundle "$file.provenance.jsonl" --repo misaon/nylzo \
+    --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$release" --deny-self-hosted-runners >/dev/null
+}
+listed() {
+  awk -v name="$1" '$2 == name { found++ } END { exit found != 1 }' "$temporary/checksums.txt"
+}
+matches() {
+  (cd "$temporary" && awk -v name="$1" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' checksums.txt | sha256sum --check --strict >/dev/null)
+}
+host() {
+  local release="$1" archive library=/opt/nylzo/host directory current proxy=inactive
+  checksums "$release"
+  archive="nylzo-host_${release#v}.tar"
+  if ! listed "$archive"; then
+    echo "Release $release ships no host bundle; the installed host configuration stays." >&2
+    return 0
+  fi
+  directory="$library/release-$release"
+  current=$(readlink -e "$library/current" 2>/dev/null || true)
+  [[ -n "$current" && -d "$current" ]] || { echo 'Install a host bundle once by hand before automatic host updates; see the Hetzner Flatcar guide.' >&2; return 1; }
+  [[ "$current" != "$directory" ]] || return 0
+  download "https://github.com/misaon/nylzo/releases/download/$release/$archive" "$temporary/$archive"
+  matches "$archive"
+  provenance "$temporary/$archive" "$release"
+  if tar --list --file "$temporary/$archive" | grep --invert-match --extended-regexp --quiet '^(manifest|units|[a-z]+/|[a-z]+/[A-Za-z0-9.-]+)$'; then
+    echo 'The host bundle contains unexpected paths.' >&2
+    return 1
+  fi
+  rm -rf "$directory.staged"
+  mkdir -p "$directory.staged"
+  tar --extract --file "$temporary/$archive" --directory "$directory.staged" --no-same-owner --no-same-permissions
+  rm -rf "$directory"
+  mv "$directory.staged" "$directory"
+  if systemctl is-active --quiet caddy.service; then proxy=active; fi
+  if bash "$directory/update/activate" "$directory" && sleep 2 && /opt/nylzo/runtime/host-policy && { [[ "$proxy" != active ]] || systemctl is-active --quiet caddy.service; }; then
+    return 0
+  fi
+  echo "Host configuration from $release failed its checks; restoring ${current##*/}." >&2
+  bash "$current/update/activate" "$current" || true
+  return 1
 }
 upstream() {
   local version="$1" architecture="$2" base archive
@@ -54,7 +101,7 @@ upstream() {
   tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
 }
 caddy() {
-  local release="$1" previous="" candidate directory architecture archive digest built restart=true
+  local release="$1" previous="" candidate directory architecture archive built restart=true
   [[ "$release" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
   [[ ! -s "$state/caddy.tag" ]] || previous=$(cat "$state/caddy.tag")
   [[ -z "$previous" || "$previous" =~ ^(release-)?v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
@@ -62,27 +109,14 @@ caddy() {
     [[ "$previous" != "release-$release" ]] || { systemctl start caddy.service; return; }
     older "${previous#release-}" "$release" || { echo 'Caddy downgrade refused.' >&2; return 1; }
   fi
-  if ! jq -e --arg version "$release" '.tag_name == $version' "$temporary/release.json" >/dev/null 2>&1; then
-    download "https://api.github.com/repos/misaon/nylzo/releases/tags/$release" "$temporary/release.json"
-  fi
-  jq -e --arg version "$release" '.tag_name == $version and .immutable == true and .draft == false and .prerelease == false' "$temporary/release.json" >/dev/null
-  for file in checksums.txt checksums.txt.sigstore.json; do
-    download "https://github.com/misaon/nylzo/releases/download/$release/$file" "$temporary/$file"
-  done
-  cosign verify-blob "$temporary/checksums.txt" --bundle "$temporary/checksums.txt.sigstore.json" \
-    --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$release" \
-    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
+  checksums "$release"
   architecture=$(jq -r .architecture "$site")
   archive="nylzo-caddy_${release#v}_linux_${architecture}.tar.gz"
-  if awk -v name="$archive" '$2 == name { found++ } END { exit found != 1 }' "$temporary/checksums.txt"; then
+  if listed "$archive"; then
     candidate="release-$release"
     download "https://github.com/misaon/nylzo/releases/download/$release/$archive" "$temporary/$archive"
-    (cd "$temporary" && awk -v name="$archive" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' checksums.txt | sha256sum --check --strict >/dev/null)
-    digest=$(sha256sum "$temporary/$archive" | cut -d ' ' -f 1)
-    download "https://api.github.com/repos/misaon/nylzo/attestations/sha256:$digest" "$temporary/caddy-provenance.json"
-    jq -ce '.attestations[].bundle' "$temporary/caddy-provenance.json" > "$temporary/caddy-provenance.jsonl"
-    gh attestation verify "$temporary/$archive" --bundle "$temporary/caddy-provenance.jsonl" --repo misaon/nylzo \
-      --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$release" --deny-self-hosted-runners >/dev/null
+    matches "$archive"
+    provenance "$temporary/$archive" "$release"
     tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
   else
     [[ -n "$previous" ]] || { echo "Release $release ships no Caddy build; provision from a release that does." >&2; return 1; }
@@ -133,16 +167,10 @@ nylzo() {
   version=$(jq -r .initialRelease "$site")
   if [[ -s "$state/current.json" ]]; then
     previous=$(jq -r .tag "$state/current.json")
-    version=$(latest misaon/nylzo)
-    [[ "$previous" != "$version" ]] || return 0
-    if ! patch "$previous" "$version"; then
-      [[ "$previous" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
-      [[ "$(printf '%s\n%s\n' "$previous" "$version" | sort --version-sort | tail -n 1)" = "$version" ]] || { echo 'Nylzo downgrade refused.' >&2; return 1; }
-      /opt/nylzo/runtime/release-policy "$version" || { echo 'A signed, explicitly approved planned release is required for a minor or major upgrade.' >&2; return 1; }
-    fi
-  else
-    download "https://api.github.com/repos/misaon/nylzo/releases/tags/$version" "$temporary/release.json"
+    version=$(/opt/nylzo/runtime/release-target "$previous")
+    [[ -n "$version" ]] || return 0
   fi
+  download "https://api.github.com/repos/misaon/nylzo/releases/tags/$version" "$temporary/release.json"
   [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
   jq -e --arg version "$version" '.tag_name == $version and .immutable == true and .draft == false and .prerelease == false' "$temporary/release.json" >/dev/null
   image=ghcr.io/misaon/nylzo
@@ -154,7 +182,10 @@ nylzo() {
   jq -ce '.attestations[].bundle' "$temporary/provenance.json" > "$temporary/provenance.jsonl"
   gh attestation verify "oci://$image@$digest" --bundle "$temporary/provenance.jsonl" --repo misaon/nylzo \
     --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$version" --deny-self-hosted-runners >/dev/null
-  if [[ -n "${previous:-}" ]]; then /opt/nylzo/runtime/refresh-tools "$version"; fi
+  if [[ -n "${previous:-}" ]]; then
+    /opt/nylzo/runtime/refresh-tools "$version"
+    host "$version"
+  fi
   caddy "$version"
   docker pull "$image@$digest" >/dev/null
   mkdir "$temporary/data"
@@ -164,7 +195,7 @@ nylzo() {
   chmod 0400 "$temporary/pepper"
   docker run --detach --name nylzo-probe --user 65532:65532 --network none \
     --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-    --memory 1g --cpus 1.5 --pids-limit 128 --env-file /etc/nylzo/service.env \
+    --memory 1g --cpus 1.5 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 --env-file /etc/nylzo/service.env \
     --volume "$temporary/data:/home/nonroot:Z" \
     --volume "$temporary/pepper:/run/nylzo-pepper:ro,Z" "$image@$digest" serve >/dev/null
   local ready=false
@@ -201,6 +232,10 @@ case "${1:-}" in
     [[ -s "$state/current.json" && "${2:-}" = "$(jq -r .tag "$state/current.json")" ]] || { echo 'Caddy comes only from the installed Nylzo release.' >&2; exit 1; }
     caddy "$2"
     ;;
+  host)
+    [[ -s "$state/current.json" && "${2:-}" = "$(jq -r .tag "$state/current.json")" ]] || { echo 'The host configuration comes only from the installed Nylzo release.' >&2; exit 1; }
+    host "$2"
+    ;;
   nylzo) nylzo ;;
-  *) echo 'Usage: update initialize|check|caddy vX.Y.Z|nylzo' >&2; exit 2 ;;
+  *) echo 'Usage: update initialize|check|caddy vX.Y.Z|host vX.Y.Z|nylzo' >&2; exit 2 ;;
 esac

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test, mock } from "node:test";
 import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { privateFile, inputs, client, initialize, prepare, requireCaddyBuild } from "./operator.mts";
+import { privateFile, inputs, client, initialize, prepare, releaseEvidence } from "./operator.mts";
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));
@@ -40,24 +41,33 @@ test("cloud API calls cannot redirect credentials or reach endpoints supplied by
   } finally { fetch.mock.restore(); }
 });
 
-test("provisioning refuses an initial release that ships no Caddy build for the host architecture", async () => {
-  const checksums: Record<string, string> = {
+test("provisioning installs only a signed host bundle and Caddy build of the initial release", async () => {
+  const listing = `${"a".repeat(64)}  nylzo-caddy_0.3.0_linux_amd64.tar.gz\n${"b".repeat(64)}  nylzo-caddy_0.3.0_linux_arm64.tar.gz.sbom.json\n${"c".repeat(64)}  nylzo-host_0.3.0.tar\n`;
+  const assets: Record<string, string> = {
     "https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt": `${"a".repeat(64)}  nylzo_0.1.5_linux_amd64.tar.gz\n`,
-    "https://github.com/misaon/nylzo/releases/download/v0.3.0/checksums.txt": `${"a".repeat(64)}  nylzo-caddy_0.3.0_linux_amd64.tar.gz\n${"b".repeat(64)}  nylzo-caddy_0.3.0_linux_arm64.tar.gz.sbom.json\n`,
+    "https://github.com/misaon/nylzo/releases/download/v0.2.0/checksums.txt": `${"a".repeat(64)}  nylzo-caddy_0.2.0_linux_amd64.tar.gz\n`,
+    "https://github.com/misaon/nylzo/releases/download/v0.3.0/checksums.txt": listing,
+    "https://github.com/misaon/nylzo/releases/download/v0.3.0/checksums.txt.sigstore.json": "{}",
   };
   const fetch = mock.method(globalThis, "fetch", async (url: string) => {
-    const body = checksums[url];
+    const body = assets[url];
     return body === undefined ? new Response("", { status: 404 }) : new Response(body, { status: 200 });
   });
+  const verified: string[] = [];
+  const signed = (release: string, checksums: string) => { verified.push(release); assert.equal(readFileSync(checksums, "utf8"), listing); };
   try {
-    await requireCaddyBuild("v0.3.0", "amd64");
-    await assert.rejects(requireCaddyBuild("v0.3.0", "arm64"), /ships no Caddy build/u);
-    await assert.rejects(requireCaddyBuild("v0.1.5", "amd64"), /ships no Caddy build/u);
-    await assert.rejects(requireCaddyBuild("v9.9.9", "amd64"), /Cannot read the checksums/u);
+    assert.deepEqual(await releaseEvidence("v0.3.0", "amd64", signed), { url: "https://github.com/misaon/nylzo/releases/download/v0.3.0/nylzo-host_0.3.0.tar", sha256: "c".repeat(64) });
+    assert.deepEqual(verified, ["v0.3.0"]);
+    await assert.rejects(releaseEvidence("v0.3.0", "amd64", () => { throw new Error("signature mismatch"); }), /signature mismatch/u);
+    await assert.rejects(releaseEvidence("v0.3.0", "arm64", signed), /ships no Caddy build/u);
+    await assert.rejects(releaseEvidence("v0.2.0", "amd64", signed), /ships no host bundle/u);
+    await assert.rejects(releaseEvidence("v0.1.5", "amd64", signed), /ships no Caddy build/u);
+    await assert.rejects(releaseEvidence("v9.9.9", "amd64", signed), /Cannot read the checksums/u);
+    assert.deepEqual(verified, ["v0.3.0"], "Listing checks come before any signature check");
   } finally { fetch.mock.restore(); }
 });
 
-test("planning the image or server stops before any cloud call when the initial release ships no Caddy build", async () => {
+test("planning stops before any cloud call without a Caddy build, or without a hardware key for a server", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-site-"));
   const seen: string[] = [];
   const fetch = mock.method(globalThis, "fetch", async (url: string) => {
@@ -75,8 +85,9 @@ test("planning the image or server stops before any cloud call when the initial 
       operator: "Test operator", contact: "security@nylzo.test-instance.dev", hosting: "Test provider",
       dailyCreates: 250, initialRelease: "v0.1.5", automaticUpdates: true,
     }));
-    for (const kind of ["image", "server"]) await assert.rejects(prepare(siteFile, kind), /ships no Caddy build/u);
-    assert.deepEqual(seen, Array(2).fill("https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt"));
+    await assert.rejects(prepare(siteFile, "image"), /ships no Caddy build/u);
+    await assert.rejects(prepare(siteFile, "server"), /hardware-backed sk-ssh-ed25519@openssh\.com/u);
+    assert.deepEqual(seen, ["https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt"]);
   } finally {
     fetch.mock.restore();
     await rm(directory, { recursive: true, force: true });

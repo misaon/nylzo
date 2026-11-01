@@ -1,0 +1,9 @@
+[Unit]
+Requires=nylzo-initialize.service
+After=nylzo-initialize.service
+OnFailure=nylzo-recover-os.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=3min
+ExecStart=/opt/nylzo/runtime/health

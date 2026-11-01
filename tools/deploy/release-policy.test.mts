@@ -22,7 +22,7 @@ test("a minor or major upgrade needs valid signed evidence, the exact asset hash
       writeFileSync(join(root, name), bytes);
       writeFileSync(join(root, "nylzo_1.0.0.evidence.sha256"), `${createHash("sha256").update(bytes).digest("hex")}  ./${name}\n`);
       writeFileSync(join(root, "nylzo_1.0.0.evidence.sha256.sigstore.json"), "{}");
-      return spawnSync("bash", ["deploy/hetzner-flatcar/runtime/release-policy", "v1.0.0"], { encoding: "utf8", timeout: 10000,
+      return spawnSync("bash", ["deploy/hetzner-flatcar/host/update/release-policy", "v1.0.0"], { encoding: "utf8", timeout: 10000,
         env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, FIXTURE: root, ...overrides } });
     };
     const good = { format: 1, tag: "v1.0.0", source: "a".repeat(40), kind: "planned", policyCommit: "b".repeat(40) };

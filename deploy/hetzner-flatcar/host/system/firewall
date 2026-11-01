@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+settings=${NYLZO_HOST_SETTINGS:-/etc/nylzo/host.env}
+setting() {
+  sed -n "s/^$1=//p" "$settings"
+}
+fail() {
+  echo "Host firewall refused: $1" >&2
+  exit 1
+}
+public=$(setting PUBLIC_ACCESS)
+[[ "$public" = true || "$public" = false ]] || fail "set PUBLIC_ACCESS to true or false in $settings"
+ipv4=()
+ipv6=()
+IFS=, read -ra networks <<< "$(setting ADMINISTRATOR_NETWORKS)"
+for network in "${networks[@]}"; do
+  if [[ "$network" =~ ^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])/(2[4-9]|3[0-2])$ ]]; then
+    ipv4+=("$network")
+  elif [[ "$network" =~ ^[0-9a-f:]{2,39}/(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-8])$ ]]; then
+    ipv6+=("$network")
+  else
+    fail "every ADMINISTRATOR_NETWORKS entry must be an IPv4 /24 to /32 or an IPv6 /64 to /128 in lowercase"
+  fi
+done
+(( ${#ipv4[@]} + ${#ipv6[@]} > 0 )) || fail "set ADMINISTRATOR_NETWORKS in $settings"
+elements() {
+  local IFS=,
+  if (( $# > 0 )); then printf 'elements = { %s }' "$*"; fi
+}
+web4="ip saddr @administrators4"
+web6="ip6 saddr @administrators6"
+if [[ "$public" = true ]]; then web4="meta nfproto ipv4"; web6="meta nfproto ipv6"; fi
+monitor=""
+if [[ -s /etc/nylzo/monitor-client.pem ]]; then monitor="tcp dport 8443 accept"; fi
+ruleset="table inet nylzo
+delete table inet nylzo
+table inet nylzo {
+  set administrators4 { type ipv4_addr; flags interval; $(elements "${ipv4[@]}") }
+  set administrators6 { type ipv6_addr; flags interval; $(elements "${ipv6[@]}") }
+  chain input {
+    type filter hook input priority filter; policy drop;
+    ct state vmap { established : accept, related : accept, invalid : drop }
+    iif lo accept
+    meta l4proto { 1, 58 } accept
+    udp sport 67 udp dport 68 accept
+    udp sport 547 udp dport 546 accept
+    tcp dport 80 accept
+    $web4 meta l4proto { tcp, udp } th dport 443 accept
+    $web6 meta l4proto { tcp, udp } th dport 443 accept
+    $monitor
+    ip saddr @administrators4 tcp dport 22 accept
+    ip6 saddr @administrators6 tcp dport 22 accept
+  }
+}"
+nft --check --file - <<< "$ruleset"
+nft --file - <<< "$ruleset"
+for family in iptables:32 ip6tables:64; do
+  command=${family%%:*}
+  "$command" --wait --new-chain nylzo-connections 2>/dev/null || "$command" --wait --flush nylzo-connections
+  "$command" --wait --append nylzo-connections --protocol tcp --syn --match multiport --dports 80,443,8443 \
+    --match connlimit --connlimit-above 64 --connlimit-mask "${family#*:}" --jump REJECT --reject-with tcp-reset
+  "$command" --wait --check INPUT --jump nylzo-connections 2>/dev/null || "$command" --wait --insert INPUT 1 --jump nylzo-connections
+done

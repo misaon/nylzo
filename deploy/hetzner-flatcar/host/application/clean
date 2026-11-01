@@ -25,3 +25,10 @@ for directory in /opt/nylzo/tools/*; do
     rm -rf -- "$directory"
   fi
 done
+current_host=$(readlink -f /opt/nylzo/host/current 2>/dev/null || true)
+previous_host=$(readlink -f /opt/nylzo/host/previous 2>/dev/null || true)
+for directory in /opt/nylzo/host/release-v*; do
+  if [[ -d "$directory" && ! -L "$directory" && "$directory" != "$current_host" && "$directory" != "$previous_host" ]]; then
+    rm -rf -- "$directory"
+  fi
+done

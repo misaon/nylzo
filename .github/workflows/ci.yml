@@ -209,11 +209,26 @@ jobs:
       - name: Install the virtual-machine test runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio
+          sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio tang jose
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
+      - name: Two Tang servers for the encrypted data volume
+        id: tang
+        run: |
+          servers='[]'
+          for port in 7500 7501; do
+            sudo mkdir -p "/var/lib/tang-$port"
+            sudo /usr/libexec/tangd-keygen "/var/lib/tang-$port"
+            signing=$(sudo grep -l '"sign"' "/var/lib/tang-$port"/*.jwk)
+            thumbprint=$(sudo jose jwk thp -a S256 -i "$signing")
+            sudo systemd-run --unit "tang-$port" systemd-socket-activate --inetd --accept --listen "0.0.0.0:$port" /usr/libexec/tangd "/var/lib/tang-$port"
+            servers=$(jq -c --arg url "http://10.0.2.2:$port" --arg thumbprint "$thumbprint" '. + [{url: $url, thumbprint: $thumbprint}]' <<< "$servers")
+          done
+          for port in 7500 7501; do curl --fail --silent --retry 5 --retry-connrefused "http://127.0.0.1:$port/adv" > /dev/null; done
+          echo "configuration=$(jq -c '{threshold: 2, servers: .}' <<< "$servers")" >> "$GITHUB_OUTPUT"
       - name: Install from the Hetzner image and boot the runtime twice, in two VMs at once
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          NYLZO_VM_TANG: ${{ steps.tang.outputs.configuration }}
         run: |
           set -o pipefail
           (tools/deploy/image-vm-test 2>&1 | sed -u 's/^/image-vm-test | /') &
@@ -553,7 +568,8 @@ jobs:
     name: Compose with Caddy (AK12, AK17, AK26)
     needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
-    runs-on: ubuntu-latest
+    # Caddy accepts only X25519MLKEM768, so the probes need OpenSSL 3.5 or newer.
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -625,6 +641,10 @@ jobs:
           report_key=$(../../dist/nylzo report-key --key-file "$RUNNER_TEMP/report-key" | cut -d= -f2-)
           printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
           docker compose up -d
+          for service in nylzo caddy; do
+            docker inspect "nylzo-${service}-1" --format '{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.NanoCpus}} {{json .HostConfig.Ulimits}}' | tee "$RUNNER_TEMP/limits"
+            grep -Eq '^[1-9][0-9]* [1-9][0-9]* [1-9][0-9]* .*"Hard":0,"Name":"core","Soft":0' "$RUNNER_TEMP/limits"
+          done
           for _ in $(seq 1 60); do
             docker compose cp caddy:/var/lib/caddy/caddy/pki/authorities/local/root.crt "$RUNNER_TEMP/root.crt" 2> /dev/null && curl -sf --cacert "$RUNNER_TEMP/root.crt" https://localhost/healthz > /dev/null && break
             sleep 1
@@ -639,8 +659,8 @@ jobs:
           out=$(mktemp -d)
           printf '%s' "$link" | dist/nylzo read --out "$out" > /dev/null
           cmp "$RUNNER_TEMP/file.bin" "$out"/nylzo-*/file.bin
-      - name: Caddy negotiates X25519MLKEM768 (AK26)
-        run: dist/tlscheck -addr localhost:443 -ca "$RUNNER_TEMP/root.crt"
+      - name: Caddy accepts only TLS 1.3 with X25519MLKEM768 (AK26)
+        run: dist/tlscheck -only -addr localhost:443 -ca "$RUNNER_TEMP/root.crt"
       - name: The web client arrives through Caddy unchanged
         env:
           SSL_CERT_FILE: ${{ runner.temp }}/root.crt
@@ -755,7 +775,7 @@ jobs:
           if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
           binary=(dist/nylzo_linux_"${architecture}"_*/nylzo)
           "${binary[0]}" version --json | cmp - internal/server/web/dist/assets/build-info.json
-      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip internal/server/web/dist/*.html internal/server/web/dist/assets/* > hashes.txt
+      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip .host-bundle/*.tar internal/server/web/dist/*.html internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.runner }}

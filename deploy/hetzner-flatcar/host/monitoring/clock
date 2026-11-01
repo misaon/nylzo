@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+umask 022
+state=${NYLZO_CLOCK_STATE:-/run/nylzo-clock/verified}
+tolerance=60
+agreed=0
+for source in https://github.com https://rekor.sigstore.dev https://acme-v02.api.letsencrypt.org/directory; do
+  before=$(date +%s)
+  header=$(curl --silent --head --proto '=https' --tlsv1.3 --max-time 10 --output /dev/null --write-out '%header{date}' "$source") || continue
+  after=$(date +%s)
+  remote=$(date --date "$header" +%s 2>/dev/null) || continue
+  [[ "$remote" =~ ^[0-9]{1,12}$ ]] || continue
+  if (( 10#$remote >= before - tolerance && 10#$remote <= after + tolerance )); then agreed=$((agreed + 1)); fi
+done
+if (( agreed < 2 )); then
+  rm -f "$state"
+  echo 'The system clock disagrees with the TLS-authenticated time of its update sources.' >&2
+  exit 1
+fi
+date +%s > "$state.new"
+mv -f "$state.new" "$state"

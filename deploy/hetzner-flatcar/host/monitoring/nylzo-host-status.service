@@ -1,0 +1,33 @@
+[Unit]
+Requires=nylzo-ready.service
+After=nylzo-ready.service nylzo-storage.service
+[Service]
+Type=oneshot
+ExecStart=/opt/nylzo/runtime/host-status
+TimeoutStartSec=45
+Group=caddy
+StateDirectory=nylzo-monitor
+StateDirectoryMode=2750
+UMask=0027
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+IPAddressDeny=any
+LimitCORE=0
+MemoryMax=128M
+TasksMax=64

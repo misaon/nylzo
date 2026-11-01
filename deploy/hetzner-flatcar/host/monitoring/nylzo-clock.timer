@@ -1,0 +1,8 @@
+[Unit]
+Description=Compare the clock with TLS-authenticated time
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=15min
+RandomizedDelaySec=1min
+[Install]
+WantedBy=timers.target

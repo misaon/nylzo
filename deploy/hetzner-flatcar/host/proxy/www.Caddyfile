@@ -1,0 +1,17 @@
+www.{$NYLZO_DOMAIN} {
+    tls {
+        protocols tls1.3
+        curves x25519mlkem768
+        issuer acme {
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+    header -Server
+    redir https://{$NYLZO_DOMAIN}{uri} 308
+}
+
+http://www.{$NYLZO_DOMAIN} {
+    header -Server
+    redir https://{$NYLZO_DOMAIN}{uri} 308
+}

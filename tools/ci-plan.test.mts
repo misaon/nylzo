@@ -85,7 +85,7 @@ test("the required gate rejects failed classification, missing outputs, and ever
 });
 
 test("the isolated Flatcar profile runs provisioning checks without unrelated application suites", () => {
-  for (const file of ["deploy/hetzner-flatcar/runtime/update", "tools/deploy/render.mts", "mise-tasks/deploy"]) {
+  for (const file of ["deploy/hetzner-flatcar/host/update/update", "tools/deploy/render.mts", "mise-tasks/deploy"]) {
     const plan = planChecks([file], "pull_request");
     assert.equal(plan.jobs.deployment, true);
     assert.equal(plan.jobs.repository, true);

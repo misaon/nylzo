@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { gzipSync, gunzipSync } from "node:zlib";
+import { hostSources } from "./bundle.mts";
 import { render } from "./render.mts";
 
-const { installer } = await render(JSON.parse(await readFile(process.argv[2]!, "utf8")));
+const { installer } = await render(JSON.parse(await readFile(process.argv[2]!, "utf8")), await hostSources());
 const script = installer.storage.files.find(file => file.path === "/opt/nylzo-image/install")!;
 const contents = gunzipSync(Buffer.from(script.contents.source.split(",")[1]!, "base64")).toString();
 // Only the cloud metadata identity check is substituted in this isolated VM.

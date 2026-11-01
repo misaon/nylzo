@@ -7,16 +7,60 @@ mkdir -p "$directory"
 [[ "$(sysctl -n kernel.dmesg_restrict)" = 1 ]]
 [[ "$(sysctl -n kernel.kptr_restrict)" = 2 ]]
 [[ "$(sysctl -n net.ipv4.conf.all.rp_filter)" = 2 ]]
+for check in kernel.kexec_load_disabled=1 kernel.io_uring_disabled=2 kernel.sysrq=0 dev.tty.ldisc_autoload=0 fs.suid_dumpable=0; do
+  [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Kernel setting ${check%%=*} is not hardened." >&2; exit 1; }
+done
+[[ "$(readlink -e /opt/nylzo/host/current)" = /opt/nylzo/host/initial ]]
 sshd -t
 ssh_policy=$(sshd -T | tr '[:upper:]' '[:lower:]')
-for setting in pubkeyacceptedalgorithms hostkeyalgorithms casignaturealgorithms; do
-  algorithms=$(awk -v setting="$setting" '$1 == setting { print $2 }' <<< "$ssh_policy")
-  [[ -n "$algorithms" ]]
-  if grep --extended-regexp --quiet '(^|,)ssh-rsa(,|$)|(^|,)ssh-rsa-cert-v01@openssh.com(,|$)' <<< "$algorithms"; then
-    echo 'Legacy RSA/SHA-1 authentication is still enabled.' >&2
-    exit 1
-  fi
-done
+expect() {
+  [[ "$(awk -v setting="$1" '$1 == setting { print $2 }' <<< "$ssh_policy")" = "$2" ]] || { echo "sshd $1 is not $2" >&2; exit 1; }
+}
+expect kexalgorithms mlkem768x25519-sha256,sntrup761x25519-sha512
+expect hostkeyalgorithms ssh-ed25519
+expect pubkeyacceptedalgorithms sk-ssh-ed25519@openssh.com,ssh-ed25519
+expect pubkeyauthoptions verify-required
+expect ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+expect macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+[[ "$(awk '$1 == "hostkey" { print $2 }' <<< "$ssh_policy")" = /etc/ssh/ssh_host_ed25519_key ]]
+echo 'NYLZO_VM_SSH_POLICY_VERIFIED'
+nft list chain inet nylzo input | grep --fixed-strings --quiet 'type filter hook input priority filter; policy drop;'
+ip netns add nylzo-outside
+trap 'ip netns delete nylzo-outside 2>/dev/null || true; ip link delete nylzo-probe 2>/dev/null || true' EXIT
+ip link add nylzo-probe type veth peer name nylzo-peer netns nylzo-outside
+ip address add 198.51.100.1/24 dev nylzo-probe
+ip link set nylzo-probe up
+ip -n nylzo-outside address add 198.51.100.2/24 dev nylzo-peer
+ip -n nylzo-outside link set nylzo-peer up
+ip -n nylzo-outside link set lo up
+connect() {
+  local status=0
+  ip netns exec nylzo-outside curl --silent --output /dev/null --connect-timeout 5 --max-time 10 "http://198.51.100.1:$1/" || status=$?
+  echo "$status"
+}
+[[ "$(connect 22)" = 28 ]] || { echo 'SSH answered a source outside the administrator networks.' >&2; exit 1; }
+[[ "$(connect 80)" = 0 ]] || { echo 'HTTP did not answer a public source.' >&2; exit 1; }
+ip netns delete nylzo-outside
+ip link delete nylzo-probe 2>/dev/null || true
+trap - EXIT
+echo 'NYLZO_VM_HOST_FIREWALL_VERIFIED'
+if [[ -s /etc/nylzo/tang.json ]]; then
+  for target in /var/lib/nylzo /var/lib/nylzo-secrets /var/lib/caddy /var/log/journal; do
+    [[ "$(findmnt --noheadings --output SOURCE --mountpoint "$target")" = "/dev/mapper/nylzo-storage[/${target##*/}]" ]]
+  done
+  [[ "$(lsblk --noheadings --output TYPE /dev/mapper/nylzo-storage)" = crypt ]]
+  loop=$(losetup --noheadings --output NAME --associated /var/lib/nylzo-storage.luks)
+  cryptsetup luksDump "$loop" > "$directory/luks"
+  [[ "$(grep --count --extended-regexp '^  [0-9]+: luks2$' "$directory/luks")" = 1 ]]
+  grep --quiet --extended-regexp '^  [0-9]+: clevis$' "$directory/luks"
+  echo 'NYLZO_VM_ENCRYPTED_STORAGE_VERIFIED'
+fi
+systemd-analyze cat-config systemd/coredump.conf | grep --quiet '^Storage=none$'
+[[ "$(systemctl show caddy.service --property LimitCORE --value)" = 0 ]]
+systemd-analyze security --no-pager caddy.service | tail -n 1
+systemd-analyze security --no-pager --threshold=20 caddy.service > /dev/null
+systemd-analyze security --no-pager nylzo-update.service | tail -n 1
+echo 'NYLZO_VM_SANDBOX_VERIFIED'
 systemctl is-active --quiet nylzo-bandwidth.service
 interface=$(ip -json -4 route show default | /opt/nylzo/bin/jq --exit-status --raw-output '.[0].dev')
 [[ "$(sysctl -n "net.ipv4.conf.$interface.rp_filter")" = 2 ]]
@@ -26,7 +70,9 @@ sleep 2
 tc -json qdisc show dev "$interface" | /opt/nylzo/bin/jq --exit-status \
   'any(.[]; .root == true and .kind == "tbf" and .options.rate == 5000000)' > /dev/null
 echo 'NYLZO_VM_TRAFFIC_CEILING_VERIFIED'
-docker cp nylzo:/ko-app/nylzo "$directory/nylzo"
+unstarted=$(docker create "$(docker inspect nylzo --format '{{.Config.Image}}')")
+docker cp "$unstarted:/ko-app/nylzo" "$directory/nylzo"
+docker rm "$unstarted" > /dev/null
 chmod 0755 "$directory/nylzo"
 "$directory/nylzo" verify-client --server http://127.0.0.1
 probe=$(mktemp -d /var/tmp/nylzo-selinux.XXXXXXXX)
@@ -51,6 +97,17 @@ if [[ "$status" != 1 ]] || ! grep --fixed-strings --quiet 'permission denied' "$
 fi
 echo 'NYLZO_VM_SELINUX_ISOLATION_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
+  rm -rf /opt/nylzo/host/release-v0.0.1
+  cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.1
+  sed -i 's/^OnUnitActiveSec=15min$/OnUnitActiveSec=14min/' /opt/nylzo/host/release-v0.0.1/monitoring/nylzo-clock.timer
+  bash /opt/nylzo/host/release-v0.0.1/update/activate /opt/nylzo/host/release-v0.0.1
+  systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=14min$'
+  [[ "$(readlink -e /opt/nylzo/host/previous)" = /opt/nylzo/host/initial ]]
+  bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
+  systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=15min$'
+  systemctl is-active --quiet nylzo-firewall.service nylzo-clock.timer nylzo-host-status.timer caddy.service nylzo.service
+  /opt/nylzo/runtime/host-policy
+  echo 'NYLZO_VM_HOST_BUNDLE_ROLLBACK_VERIFIED'
   printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/burned-link"

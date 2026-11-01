@@ -1,0 +1,11 @@
+[Unit]
+Description=Unlock the encrypted data volume through the operator's Tang servers
+ConditionPathExists=/etc/nylzo/tang.json
+Wants=network-online.target
+After=network-online.target nylzo-firewall.service
+Before=nylzo-initialize.service nylzo.service caddy.service nylzo-host-status.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=10min
+ExecStart=/opt/nylzo/runtime/storage

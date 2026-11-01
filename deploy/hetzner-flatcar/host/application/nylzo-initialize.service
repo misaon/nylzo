@@ -1,0 +1,11 @@
+[Unit]
+Requires=nylzo-tools.service nylzo-bandwidth.service docker.service nylzo-storage.service
+After=nylzo-tools.service nylzo-bandwidth.service docker.service network-online.target nylzo-storage.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=15min
+ExecStart=+/opt/nylzo/runtime/prepare
+ExecStart=/opt/nylzo/runtime/update initialize
+[Install]
+WantedBy=multi-user.target

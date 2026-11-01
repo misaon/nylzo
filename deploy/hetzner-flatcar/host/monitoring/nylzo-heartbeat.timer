@@ -1,0 +1,8 @@
+[Unit]
+Description=Report host readiness to the operator's heartbeat monitor
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=10s
+[Install]
+WantedBy=timers.target

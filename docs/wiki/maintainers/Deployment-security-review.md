@@ -25,11 +25,24 @@ Live reboot testing then found that Flatcar's vendor sysctl file overrode two ea
 
 The host's containerd version is 2.2.5. Its unused CRI and transfer plugins are disabled and boot readiness checks reject their activation. The [CRI checkpoint advisory](https://github.com/containerd/containerd/security/advisories/GHSA-p7v4-vr35-mj6f) affects checkpoint restore through CRI; this deployment does not expose that interface or use checkpoint restore. This is an applicability restriction, not a claim that the installed version contains the upstream fix. Continue reviewing Flatcar's runtime security updates.
 
+## Audit of 31 October 2026
+
+An infrastructure audit of the live profile and nylzo.com found 20 issues (I5-01 to I5-20) and three from the adversarial audit (F5, F9, F10). [PR #202](https://github.com/misaon/nylzo/pull/202) fixes them in code:
+
+- Host configuration ships as a signed release bundle and updates with rollback, instead of being written once by Ignition.
+- A host that missed a planned release reaches the approved line through its signed planned base.
+- TLS 1.3 with X25519MLKEM768 only, no 0-RTT, short-lived certificates, request timeouts and size limits, and security headers on Caddy's own errors.
+- Post-quantum-only SSH with FIDO2 keys, a host nftables firewall with per-source connection limits, systemd sandboxes, hardened kernel settings and no core dumps.
+- An optional LUKS2 data volume unlocked through Tang, a TLS-authenticated clock check, a certificate check, an outbound heartbeat, and a domain monitor for CAA, mail records, registrar locks and Certificate Transparency.
+- DNS code for CAA bound to the ACME account and HTTP-01, null MX, SPF, DMARC, `www`, and Universal SSL off.
+
+What the owner still applies by hand is listed in the [Hetzner Flatcar guide](../guides/Hetzner-Flatcar.md): the one-time host bundle installation on the existing server, a hardware SSH key, the DNS apply and CAA check, the registrar lock, the heartbeat and Tang servers, and revocation of the two Cloudflare-held wildcard certificates (Let's Encrypt through an account holding valid authorizations for both names, Sectigo through Sectigo).
+
 ## Outstanding acceptance
 
-- **DNSSEC:** Cloudflare signs the zone, but the registrar has not yet published the matching parent DS record. Complete the delegation-cache migration and verify the entire chain before public approval.
+- **DNSSEC:** The DS record is published at `.com` and the chain validates (checked 31 October 2026). Keep the domain monitor enabled to catch drift.
 - **OS recovery:** An ordinary reboot passed. A real update between two Flatcar versions and recovery from a failed new A/B slot have not been exercised on this VPS. The current installation already matches the reviewed Stable release; downgrading the live host solely to create a test is not an acceptance result.
-- **Monitoring:** Enable the repository's external client/lifecycle monitor after public HTTPS opens. Local disk and updater-failure alert delivery still need an external monitoring arrangement and an observed failure notification. A green service status does not establish successful alert delivery.
+- **Monitoring:** Configure the heartbeat and observe one failure notification. Enable the client and domain monitors after public HTTPS opens. A green service status does not establish alert delivery.
 - **Operator recovery:** Keep an encrypted copy of the operator keys and state away from the workstation and VPS. Off-device recovery has not yet been accepted. Do not use a message-database rollback as a substitute: it can restore consumed capabilities.
 
 This profile has restart windows and a single host. The provider and administrator remain trusted. It does not provide hardware-attested boot, protection from a malicious host, or high availability. Read the [security model](../guides/Security-model.md) for browser-delivery and recipient-device limits. The [assessment](Security-assessment.md) also records why one maintainer cannot satisfy independent human approval on every primary-branch change.
