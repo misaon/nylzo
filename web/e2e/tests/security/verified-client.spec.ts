@@ -5,10 +5,21 @@ import { createServer, request as forward, type IncomingMessage, type Server, ty
 import { createInterface } from 'node:readline';
 
 import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
 import { createMessageInPage, expectMessageShown, showMessage } from '../support/pages.ts';
 import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 const PASSPHRASE = 'orbit maple velvet thunder';
+const SESSION = /^http:\/\/[a-z2-7]{26}\.localhost:\d+$/;
+const HANDOFF = /^http:\/\/[a-z2-7]{26}\.localhost:\d+\/open#[A-Z2-7]{26}$/;
+const PLANTED_PAGE = `<!doctype html><title>port owner</title><script>navigator.serviceWorker.register('/planted.js').then(() => navigator.serviceWorker.ready).then(() => { document.title = 'planted'; });</script>`;
+const PLANTED_WORKER = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode === 'navigate') {
+    event.respondWith(new Response('<!doctype html><title>stale</title><script>fetch("/open", { method: "POST", body: location.hash.slice(1) }).then(async (answer) => { document.title = "taken " + answer.status + " " + (await answer.text()); });</script>', { headers: { 'Content-Type': 'text/html' } }));
+  }
+});`;
 const STEAL = `<script>fetch('/exfil',{method:'POST',body:location.hash});addEventListener('input',(event)=>fetch('/exfil',{method:'POST',body:String(event.target.value)}),true)</script>`;
 
 interface HostileServer {
@@ -135,7 +146,7 @@ test(
       running.push(web);
       const address = await web.firstLine;
       const local = address.replace(/\/$/, '');
-      expect(local).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(local).toMatch(SESSION);
       const sender = await newPage();
       const link = await createMessageInPage(
         sender,
@@ -143,11 +154,13 @@ test(
         local,
       );
       expect(link.startsWith(`${hostile.origin}/m/`), 'links from the verified client name the instance').toBe(true);
+      await expect(sender.getByRole('switch', { name: /^Cancel from this device/ })).toHaveCount(0);
+      expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 
       const open = runNylzo(['open', '--no-browser', '--server', hostile.origin], link);
       running.push(open);
       const handoff = await open.firstLine;
-      expect(handoff).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/open#[A-Z2-7]{26}$/);
+      expect(handoff).toMatch(HANDOFF);
       expect(handoff).not.toContain(link.slice(link.indexOf('#') + 1));
       const reader = await newPage();
       await reader.goto(handoff);
@@ -171,3 +184,37 @@ test(
     }
   },
 );
+
+test('a service worker planted on the port before nylzo open starts cannot take the link (H1)', async ({ newPage }) => {
+  test.setTimeout(60_000);
+  const created = await createMessageThroughApi({ text: 'past a planted worker' });
+  const open = runNylzo(['open', '--no-browser', '--server', BASE_URL], created.link);
+  try {
+    const handoff = new URL(await open.firstLine);
+    expect(handoff.href).toMatch(HANDOFF);
+    const attacker = await newPage();
+    const planted = [`http://127.0.0.1:${handoff.port}`, `http://localhost:${handoff.port}`];
+    for (const origin of planted) {
+      await attacker.context().route(`${origin}/**`, async (route) => {
+        const worker = new URL(route.request().url()).pathname === '/planted.js';
+        await route.fulfill({
+          body: worker ? PLANTED_WORKER : PLANTED_PAGE,
+          contentType: worker ? 'text/javascript' : 'text/html',
+        });
+      });
+      await attacker.goto(`${origin}/`);
+      await expect(attacker).toHaveTitle('planted');
+    }
+    await attacker.context().unrouteAll();
+    for (const origin of planted) {
+      await attacker.goto(`${origin}/open${handoff.hash}`);
+      await expect(attacker).toHaveTitle(/^taken 421 /);
+    }
+    await attacker.goto(handoff.href);
+    await attacker.getByRole('button', { name: 'Show message' }).click();
+    await expectMessageShown(attacker);
+    await expect(attacker.locator('pre')).toHaveText('past a planted worker');
+  } finally {
+    open.process.kill('SIGTERM');
+  }
+});

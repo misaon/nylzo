@@ -1,9 +1,9 @@
 package localclient
 
 import (
-	"errors"
+	"io"
+	"maps"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"slices"
 	"strings"
@@ -19,44 +19,66 @@ const (
 var (
 	relayedRequestHeaders  = []string{"Authorization", "Content-Type", "Accept", "X-Requested-With"}
 	relayedResponseHeaders = []string{"Content-Length", "Retry-After"}
-	errRelayedRedirect     = errors.New("localclient: the instance answered with a redirect")
+	errUnavailable         = apiError{Error: "unavailable"}
 )
 
-// newRelay forwards an API call as a native client would: no cookie, origin, referrer or browser metadata leaves this
-// machine, and nothing the instance answers can run as code in the local origin.
-func newRelay(instance *url.URL, transport http.RoundTripper) http.Handler {
-	proxy := &httputil.ReverseProxy{
-		Rewrite: func(request *httputil.ProxyRequest) {
-			request.SetURL(instance)
-			request.Out.Header = kept(request.In.Header, relayedRequestHeaders)
-			request.Out.Header.Set("User-Agent", client.UserAgent)
-		},
-		Transport:      transport,
-		ModifyResponse: relayedResponse,
-		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-			writeJSON(w, http.StatusBadGateway, apiError{Error: "unavailable"})
-		},
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || strings.Contains(r.URL.Path, "..") {
-			writeJSON(w, http.StatusNotFound, apiError{Error: "not_found"})
-			return
-		}
-		proxy.ServeHTTP(w, r)
-	})
+// relay sends an API call as a native client would, and passes back only a final answer whose headers cannot make
+// the local origin run anything: no informational answer, upgrade, redirect, trailer, cookie or policy.
+type relay struct {
+	instance  *url.URL
+	transport http.RoundTripper
 }
 
-func relayedResponse(response *http.Response) error {
-	if response.StatusCode >= http.StatusMultipleChoices && response.StatusCode < http.StatusBadRequest {
-		return errRelayedRedirect
+func newRelay(instance *url.URL, transport http.RoundTripper) http.Handler {
+	return relay{instance: instance, transport: transport}
+}
+
+func (rl relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || strings.Contains(r.URL.Path, "..") {
+		writeJSON(w, http.StatusNotFound, apiError{Error: "not_found"})
+		return
 	}
+	response, ok := rl.forward(r)
+	if !ok {
+		writeJSON(w, http.StatusBadGateway, errUnavailable)
+		return
+	}
+	defer response.Body.Close()
 	contentType := octetStream
 	if response.Header.Get("Content-Type") == jsonContentType {
 		contentType = jsonContentType
 	}
-	response.Header = kept(response.Header, relayedResponseHeaders)
-	response.Header.Set("Content-Type", contentType)
-	return nil
+	maps.Copy(w.Header(), kept(response.Header, relayedResponseHeaders))
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(response.StatusCode)
+	_, _ = io.Copy(w, response.Body)
+}
+
+func (rl relay) forward(r *http.Request) (*http.Response, bool) {
+	body := r.Body
+	if r.ContentLength == 0 {
+		body = http.NoBody
+	}
+	target := *rl.instance
+	target.Path = r.URL.Path
+	outgoing, err := http.NewRequestWithContext(r.Context(), r.Method, target.String(), body)
+	if err != nil {
+		return nil, false
+	}
+	outgoing.ContentLength = r.ContentLength
+	outgoing.Header = kept(r.Header, relayedRequestHeaders)
+	outgoing.Header.Set("User-Agent", client.UserAgent)
+	response, err := rl.transport.RoundTrip(outgoing)
+	if err != nil {
+		return nil, false
+	}
+	final := response.StatusCode >= http.StatusOK &&
+		(response.StatusCode < http.StatusMultipleChoices || response.StatusCode >= http.StatusBadRequest)
+	if !final {
+		response.Body.Close()
+		return nil, false
+	}
+	return response, true
 }
 
 func kept(header http.Header, names []string) http.Header {

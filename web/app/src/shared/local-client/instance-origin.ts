@@ -7,3 +7,8 @@ export function instanceOrigin(): string {
   const configured = document.querySelector<HTMLMetaElement>(INSTANCE)?.content ?? '';
   return ORIGIN.test(configured) ? configured : location.origin;
 }
+
+// Each session of the local client has a new origin that nobody purges later, so it keeps no key in the browser.
+export function servedByLocalClient(): boolean {
+  return instanceOrigin() !== location.origin;
+}
