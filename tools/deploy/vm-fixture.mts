@@ -36,9 +36,10 @@ for (const [name, contents] of sources) {
     unit += "\n[Unit]\nOnFailure=\nOnFailure=nylzo-vm-failure.service\n";
     if (name.endsWith("/nylzo-initialize.service") && build !== undefined) unit += "Requires=nylzo-vm-caddy.service\nAfter=nylzo-vm-caddy.service\n";
   }
-  // Keep the production journal output for sandboxed services. Giving the
-  // capability-free Docker client a serial TTY would fail before ExecStart.
-  if (!["proxy/caddy.service", "application/nylzo.service"].includes(name)) {
+  // Keep the production journal output for sandboxed services. A service
+  // with private devices cannot open the serial TTY and fails before ExecStart.
+  const sandboxed = unit.includes("PrivateDevices=true\n") || unit.includes("DynamicUser=true\n") || ["application/nylzo-initialize.service", "update/nylzo-update.service"].includes(name);
+  if (!sandboxed) {
     unit = unit.replace(/^Standard(?:Output|Error)=.*\n/gmu, "").replace("[Service]\n", "[Service]\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n");
   }
   sources.set(name, unit);
