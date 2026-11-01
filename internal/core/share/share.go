@@ -20,6 +20,18 @@ const (
 
 var ErrShareKey = errors.New("core: the share key is not a usable X25519 public key")
 
+// lowOrderProbe finds a key of small order: a clamped scalar is a multiple of 8, so it maps every such point to
+// zero, which ECDH refuses. The scalar is public and needs no secrecy.
+var lowOrderProbe = mustPrivateKey([KeyLen]byte{1})
+
+func mustPrivateKey(scalar [KeyLen]byte) *ecdh.PrivateKey {
+	key, err := ecdh.X25519().NewPrivateKey(scalar[:])
+	if err != nil {
+		panic(err)
+	}
+	return key
+}
+
 // NewKey draws the one-time key pair a client sends with a request that returns a share.
 func NewKey() *ecdh.PrivateKey {
 	key, err := ecdh.X25519().GenerateKey(rand.Reader)
@@ -35,6 +47,11 @@ func ParseKey(text string) (*ecdh.PublicKey, error) {
 		return nil, ErrShareKey
 	}
 	key, err := ecdh.X25519().NewPublicKey(decoded)
+	if err != nil {
+		return nil, ErrShareKey
+	}
+	secret, err := lowOrderProbe.ECDH(key)
+	clear(secret)
 	if err != nil {
 		return nil, ErrShareKey
 	}

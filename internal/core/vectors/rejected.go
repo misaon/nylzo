@@ -13,28 +13,42 @@ import (
 )
 
 // Rejected is an object a reader of the link of envelope case Base must refuse with Error. The reader
-// receives the object of ObjectFrom (default Base) or Object, with FlipByte flipped and cut to TruncateTo.
+// receives the object of ObjectFrom (default Base) or Object, with FlipByte flipped, SetByte set and cut to
+// TruncateTo. ReaderID, OpensMax and TTLSeconds replace what the reader expects: a link to another id, or a
+// policy that the server reports differently.
 type Rejected struct {
-	Name       string  `json:"name"`
-	Base       string  `json:"base"`
-	ObjectFrom string  `json:"object_from,omitempty"`
-	Object     *string `json:"object_b64,omitempty"`
-	FlipByte   *int    `json:"flip_byte,omitempty"`
-	TruncateTo *int    `json:"truncate_to,omitempty"`
-	ObjectHash string  `json:"h"`
-	E          string  `json:"e_hex"`
-	KDFID      int     `json:"kdf_id"`
-	Passphrase *string `json:"passphrase,omitempty"`
-	Error      string  `json:"error"`
+	Name       string   `json:"name"`
+	Base       string   `json:"base"`
+	ObjectFrom string   `json:"object_from,omitempty"`
+	Object     *string  `json:"object_b64,omitempty"`
+	FlipByte   *int     `json:"flip_byte,omitempty"`
+	SetByte    *SetByte `json:"set_byte,omitempty"`
+	TruncateTo *int     `json:"truncate_to,omitempty"`
+	ReaderID   *string  `json:"reader_id,omitempty"`
+	OpensMax   *int     `json:"opens_max,omitempty"`
+	TTLSeconds *int     `json:"ttl_s,omitempty"`
+	ObjectHash string   `json:"h"`
+	E          string   `json:"e_hex"`
+	KDFID      int      `json:"kdf_id"`
+	Passphrase *string  `json:"passphrase,omitempty"`
+	Error      string   `json:"error"`
+}
+
+type SetByte struct {
+	Offset int  `json:"offset"`
+	Value  byte `json:"value"`
 }
 
 const (
 	rejectedBase     = "text-ascii"
+	scryptBase       = "scrypt-text"
 	errorIntegrity   = "integrity"
 	errorPlaintext   = "plaintext"
 	errorVersion     = "version"
 	errorFlags       = "flags"
 	errorKDFMismatch = "kdf_mismatch"
+	errorKDF         = "kdf"
+	errorHeader      = "header"
 )
 
 type rejection struct {
@@ -47,7 +61,7 @@ type rejection struct {
 func (f *File) rejected() error {
 	sealed := map[string]sealedCase{}
 	for _, vector := range envelopeCases {
-		if vector.name == rejectedBase || vector.name == "text-escapes" {
+		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase {
 			sealedVector, err := sealCase(vector)
 			if err != nil {
 				return err
@@ -67,11 +81,28 @@ func (f *File) rejected() error {
 	if err != nil {
 		return err
 	}
+	cases := rejectedCases(&base, twoKey, secondShare, sealed["text-escapes"].object)
+	for index := range cases {
+		vector, checkErr := rejectedVector(sealed, &cases[index])
+		if checkErr != nil {
+			return checkErr
+		}
+		f.Rejected = append(f.Rejected, vector)
+	}
+	return nil
+}
+
+func rejectedCases(
+	base *sealedCase,
+	twoKey []byte,
+	secondShare *[core.ShareLen]byte,
+	otherObject []byte,
+) []rejection {
 	prefix := envelope.PrefixLen
-	cases := []rejection{
+	return []rejection{
 		{
 			vector: Rejected{Name: "hash-of-another-object", Error: errorIntegrity},
-			hash:   hashOf(sealed["text-escapes"].object),
+			hash:   hashOf(otherObject),
 		},
 		{vector: Rejected{Name: "wrong-share", Error: errorIntegrity}, share: secondShare},
 		{vector: Rejected{Name: "flipped-commitment", FlipByte: new(envelope.HeaderLen), Error: errorIntegrity}},
@@ -94,6 +125,46 @@ func (f *File) rejected() error {
 				Error:      errorKDFMismatch,
 			},
 		},
+		{
+			vector: Rejected{
+				Name:     "wrong-id",
+				ReaderID: new(deterministicID("rejected/other-id").String()),
+				Error:    errorIntegrity,
+			},
+		},
+		{
+			vector: Rejected{
+				Name:     "changed-opens-max",
+				OpensMax: new(int(base.policy.OpensMax) + 1),
+				Error:    errorIntegrity,
+			},
+		},
+		{
+			vector: Rejected{
+				Name:       "changed-ttl",
+				TTLSeconds: new(int(base.policy.TTLSeconds) - 60),
+				Error:      errorIntegrity,
+			},
+		},
+		{
+			vector: Rejected{
+				Name:       "wrong-passphrase",
+				Base:       scryptBase,
+				KDFID:      int(core.KDFScrypt),
+				Passphrase: new("a wrong passphrase for this link"),
+				Error:      errorIntegrity,
+			},
+		},
+		{vector: Rejected{Name: "envelope-kdf-1", SetByte: &SetByte{Offset: 1, Value: 1}, Error: errorKDF}},
+		{vector: Rejected{Name: "envelope-kdf-2", SetByte: &SetByte{Offset: 1, Value: 2}, Error: errorKDF}},
+		{vector: Rejected{Name: "envelope-kdf-4", SetByte: &SetByte{Offset: 1, Value: 4}, Error: errorKDF}},
+		{
+			vector: Rejected{
+				Name:       "shorter-than-the-header",
+				TruncateTo: new(envelope.HeaderLen - 1),
+				Error:      errorHeader,
+			},
+		},
 		{vector: Rejected{Name: "two-key-object-first-share", Error: errorPlaintext}, object: twoKey},
 		{
 			vector: Rejected{Name: "two-key-object-second-share", Error: errorIntegrity},
@@ -101,20 +172,14 @@ func (f *File) rejected() error {
 			share:  secondShare,
 		},
 	}
-	for index := range cases {
-		vector, checkErr := rejectedVector(sealed, &cases[index])
-		if checkErr != nil {
-			return checkErr
-		}
-		f.Rejected = append(f.Rejected, vector)
-	}
-	return nil
 }
 
 func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected, error) {
-	base := sealed[rejectedBase]
 	vector := rejected.vector
-	vector.Base = rejectedBase
+	if vector.Base == "" {
+		vector.Base = rejectedBase
+	}
+	base := sealed[vector.Base]
 	object := rejected.object
 	switch {
 	case object != nil:
@@ -124,13 +189,7 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 	default:
 		object = base.object
 	}
-	object = bytes.Clone(object)
-	if vector.FlipByte != nil {
-		object[*vector.FlipByte] ^= 1
-	}
-	if vector.TruncateTo != nil {
-		object = object[:*vector.TruncateTo]
-	}
+	object = mutated(object, &vector)
 	hash := rejected.hash
 	if hash == nil {
 		hash = hashOf(object)
@@ -143,11 +202,15 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 		return Rejected{}, fmt.Errorf("vectors: kdf id %d out of range", vector.KDFID)
 	}
 	kdf := core.KDF(vector.KDFID)
-	derived, err := keys.DeriveAll(base.id, base.secret, kdf, valueOr(vector.Passphrase), share)
+	id, policy, err := readerOf(&base, &vector)
 	if err != nil {
 		return Rejected{}, err
 	}
-	expected := envelope.Expected{ID: base.id, Policy: base.policy, KDF: kdf, ObjectHash: hash}
+	derived, err := keys.DeriveAll(id, base.secret, kdf, valueOr(vector.Passphrase), share)
+	if err != nil {
+		return Rejected{}, err
+	}
+	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: hash}
 	_, _, openErr := envelope.Open(&derived.Content, &expected, object)
 	if got := errorName(openErr); got != vector.Error {
 		return Rejected{}, fmt.Errorf(
@@ -162,6 +225,38 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 	return vector, nil
 }
 
+func mutated(object []byte, vector *Rejected) []byte {
+	object = bytes.Clone(object)
+	if vector.FlipByte != nil {
+		object[*vector.FlipByte] ^= 1
+	}
+	if vector.SetByte != nil {
+		object[vector.SetByte.Offset] = vector.SetByte.Value
+	}
+	if vector.TruncateTo != nil {
+		object = object[:*vector.TruncateTo]
+	}
+	return object
+}
+
+// readerOf is the id and the policy the reader expects: those of the base case unless the vector replaces them.
+func readerOf(base *sealedCase, vector *Rejected) (core.ID, envelope.Policy, error) {
+	id, policy := base.id, base.policy
+	if vector.ReaderID != nil {
+		var err error
+		if id, err = core.ParseID(*vector.ReaderID); err != nil {
+			return id, policy, err
+		}
+	}
+	if vector.OpensMax != nil {
+		policy.OpensMax = uint16(*vector.OpensMax) //nolint:gosec // G115: a generated case near the base policy
+	}
+	if vector.TTLSeconds != nil {
+		policy.TTLSeconds = uint32(*vector.TTLSeconds) //nolint:gosec // G115: a generated case near the base policy
+	}
+	return id, policy, nil
+}
+
 func errorName(err error) string {
 	switch {
 	case errors.Is(err, envelope.ErrIntegrity):
@@ -174,6 +269,10 @@ func errorName(err error) string {
 		return errorFlags
 	case errors.Is(err, core.ErrKDFMismatch):
 		return errorKDFMismatch
+	case errors.Is(err, core.ErrKDF):
+		return errorKDF
+	case errors.Is(err, envelope.ErrHeader):
+		return errorHeader
 	case err == nil:
 		return "accepted"
 	default:

@@ -27,7 +27,8 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-// A lost seed ends the live messages, which nobody can open any more, and the server goes on with a new one.
+// L3: a lost seed ends the live messages and the server goes on with a new one; a damaged seed or a missing
+// directory, which may be a volume that failed to mount, stops it.
 func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -63,6 +64,10 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		}
 		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrCorrupt) {
 			t.Fatalf("a damaged seed must stop the server: %v", err)
+		}
+		harness.settings.EpochDir = filepath.Join(t.TempDir(), "unmounted")
+		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrNoDirectory) {
+			t.Fatalf("a missing epoch directory must stop the server: %v", err)
 		}
 	})
 }

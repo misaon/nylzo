@@ -113,7 +113,7 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		oldSeed := liveSeed[len(liveSeed)-epoch.SeedLen:]
+		oldSeed := liveSeed[epoch.SeedOffset : epoch.SeedOffset+epoch.SeedLen]
 		if bytes.Contains(currentSeed, oldSeed) {
 			t.Fatal("the seed file still holds the seed of the hour that has passed")
 		}

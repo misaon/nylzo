@@ -73,12 +73,16 @@ interface RejectedVector {
   readonly object_from?: string;
   readonly object_b64?: string;
   readonly flip_byte?: number;
+  readonly set_byte?: { readonly offset: number; readonly value: number };
   readonly truncate_to?: number;
+  readonly reader_id?: string;
+  readonly opens_max?: number;
+  readonly ttl_s?: number;
   readonly h: string;
   readonly e_hex: string;
   readonly kdf_id: number;
   readonly passphrase?: string;
-  readonly error: 'flags' | 'integrity' | 'kdf_mismatch' | 'plaintext' | 'version';
+  readonly error: 'flags' | 'header' | 'integrity' | 'kdf' | 'kdf_mismatch' | 'plaintext' | 'version';
 }
 
 interface CompressedLengthVector {

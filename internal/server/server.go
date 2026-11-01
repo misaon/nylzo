@@ -36,6 +36,7 @@ const (
 	h2cStreamBuffer     = 64 << 10
 	h2cConnectionBuffer = 1 << 20
 	h2cMaxFrame         = 16 << 10
+	ratchetCheck        = time.Minute
 )
 
 type Option func(*Server)
@@ -137,18 +138,18 @@ func (s *Server) Close() {
 	s.epochs.Close()
 }
 
-// RunRatchet erases the epoch key of every hour that has passed as soon as the next one begins.
+// RunRatchet erases the epoch key of every hour that has passed within a minute of the next one. It reads the wall
+// clock every minute instead of sleeping until the hour, which a suspend or a clock step would delay.
 func (s *Server) RunRatchet(ctx context.Context) {
+	ticker := time.NewTicker(ratchetCheck)
+	defer ticker.Stop()
 	for {
-		next := epoch.End(epoch.Hour(time.Now()))
-		timer := time.NewTimer(time.Until(next))
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return
-		case <-timer.C:
+		case <-ticker.C:
 		}
-		if err := s.epochs.Advance(time.Now()); err != nil {
+		if err := s.advanceRatchet(time.Now()); err != nil {
 			s.logger.ErrorContext(ctx, "epoch-advance", "err", logging.ErrorText(err))
 		}
 	}
@@ -226,6 +227,13 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 	}
 }
 
+// advanceRatchet runs in secret mode, so the derivation leaves no copy of the passed seed in memory.
+func (s *Server) advanceRatchet(now time.Time) error {
+	var err error
+	secretmode.Do(func() { err = s.epochs.Advance(now) })
+	return err
+}
+
 // eraseUnreachableSecrets runs a collection, which is when secret mode erases what an ended request allocated; an
 // idle server would otherwise wait up to two minutes for the runtime's forced collection.
 func eraseUnreachableSecrets() {
@@ -256,7 +264,7 @@ func (s *Server) forgetAddresses() {
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
 	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, now)
-	return report, errors.Join(err, s.epochs.Advance(now))
+	return report, errors.Join(err, s.advanceRatchet(now))
 }
 
 func (s *Server) setUpLimits() {
@@ -273,18 +281,39 @@ func (s *Server) setUpLimits() {
 	s.streams = ratelimit.NewStreams(s.settings.MaxStreams)
 }
 
-// openRatchet starts a new ratchet only when the seed file is missing, which ends every live message.
+// openRatchet starts a new ratchet only in a directory without a seed, which ends every live message.
 func (s *Server) openRatchet() error {
+	if err := PrepareEpochDirectory(&s.settings); err != nil {
+		return err
+	}
 	options := epoch.Options{Create: true, CheckFileSystem: s.requireErasableEpochDirectory}
-	ratchet, created, err := epoch.Open(s.settings.EpochDirectory(), time.Now(), options)
+	var (
+		ratchet *epoch.Ratchet
+		created bool
+		err     error
+	)
+	secretmode.Do(func() { ratchet, created, err = epoch.Open(s.settings.EpochDirectory(), time.Now(), options) })
 	if err != nil {
 		return err
 	}
 	if created {
-		s.logger.Warn("epoch-seed-created")
+		s.logger.Warn(
+			"epoch-seed-created",
+			"notice",
+			"a new seed: messages created under an earlier one can no longer be opened and end at their next open",
+		)
 	}
 	s.epochs = ratchet
 	return nil
+}
+
+// PrepareEpochDirectory creates the default epoch directory inside the data directory. A directory that the
+// operator names must exist already, so a volume that failed to mount stops the server instead of a new seed.
+func PrepareEpochDirectory(settings *config.Server) error {
+	if settings.EpochDir != "" {
+		return nil
+	}
+	return os.MkdirAll(settings.EpochDirectory(), 0o700)
 }
 
 func (s *Server) requireErasableEpochDirectory(directory string) error {

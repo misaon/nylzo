@@ -1,9 +1,11 @@
 package vectors
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"encoding/hex"
 	"errors"
+	"fmt"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
@@ -18,6 +20,48 @@ type ShareCase struct {
 	E             *string `json:"e_hex,omitempty"`
 	Wrapped       string  `json:"wrapped"`
 	Valid         bool    `json:"valid"`
+}
+
+// ShareKeyRejected is a client share key a server must refuse as malformed: a point of small order, whose every
+// shared secret is zero, in its canonical encoding or with the top bit set (RFC 7748 section 5).
+type ShareKeyRejected struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
+var smallOrderPoints = []struct {
+	name string
+	hex  string
+}{
+	{"zero", "0000000000000000000000000000000000000000000000000000000000000000"},
+	{"one", "0100000000000000000000000000000000000000000000000000000000000000"},
+	{"order-8-first", "e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800"},
+	{"order-8-second", "5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157"},
+	{"p-minus-one", "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"},
+	{"p", "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"},
+	{"p-plus-one", "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"},
+}
+
+func (f *File) shareKeyRejected() error {
+	for _, point := range smallOrderPoints {
+		canonical, err := hex.DecodeString(point.hex)
+		if err != nil {
+			return err
+		}
+		topBit := bytes.Clone(canonical)
+		topBit[share.KeyLen-1] |= 0x80
+		for _, encoded := range []struct {
+			name  string
+			bytes []byte
+		}{{point.name, canonical}, {point.name + "-top-bit", topBit}} {
+			key := core.Encode(encoded.bytes)
+			if _, err = share.ParseKey(key); err == nil {
+				return fmt.Errorf("vectors: the share key %s is accepted", encoded.name)
+			}
+			f.ShareKeyRejected = append(f.ShareKeyRejected, ShareKeyRejected{Name: encoded.name, Key: key})
+		}
+	}
+	return nil
 }
 
 type CompressedLength struct {

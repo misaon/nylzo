@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"reflect"
 	"slices"
 	"strconv"
@@ -26,8 +27,10 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/vectors"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -51,7 +54,7 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 			}
 		}
 		message := harness.issueMessage(core.KDFScrypt, "issued passphrase", 2, 7200, "issued")
-		latest := time.Now().Add(10*time.Minute + 5*time.Second + 336*time.Second + time.Minute + 7200*time.Second)
+		latest := time.Now().Add(10*time.Minute + 5*time.Second + 336*time.Second + 2*time.Minute + 7200*time.Second)
 		if message.epoch != epoch.Hour(latest) {
 			t.Fatalf("epoch %d, want the hour %d of the latest expiry", message.epoch, epoch.Hour(latest))
 		}
@@ -1400,4 +1403,91 @@ func TestDailyCreateLimitsCountSourcesAndRanges(t *testing.T) {
 			})
 		})
 	}
+}
+
+// L4: on an instance whose upload limit takes less than the create body timeout, the share still covers an upload
+// that uses the whole timeout, plus the minute that rounds expires_at and the write of the upload.
+func TestShareEpochBudgetsTheWholeCreateBody(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Limits.MaxFileBytes = 64 << 10
+		settings.Limits.MaxObjectBytes = envelope.ObjectLimit(settings.Limits.MaxFileBytes)
+		harness := newHarness(t, settings)
+		base := time.Now().Add(proof.IDTokenTTL())
+		boundary := epoch.End(epoch.Hour(base.Add(time.Hour)))
+		ttl := boundary.Sub(base) - 120*time.Second - 120*time.Second
+		message := harness.issueMessage(core.KDFNone, "", 1, uint32(ttl/time.Second), "budget")
+		if message.epoch != epoch.Hour(boundary) {
+			t.Fatalf(
+				"epoch %d, want %d: the share would end before a slow upload's message",
+				message.epoch,
+				epoch.Hour(boundary),
+			)
+		}
+	})
+}
+
+// L5: a share key of small order would make every share zero, so it is malformed, not an internal error.
+func TestASmallOrderShareKeyIsMalformed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		for _, key := range smallOrderKeys(t) {
+			response, body := harness.do(&testRequest{
+				method:  http.MethodGet,
+				path:    "/api/v1/instance",
+				headers: map[string]string{ttlHeaderName: "3600", shareKeyHeaderName: key},
+			})
+			if response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("instance with the share key %s: %d %s", key, response.StatusCode, body)
+			}
+		}
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "small order")
+		harness.mustCreate(message)
+		for _, key := range smallOrderKeys(t) {
+			if response, body := harness.claimWithShareKey(message, key); response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("claim with the share key %s: %d %s", key, response.StatusCode, body)
+			}
+		}
+		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
+			t.Fatalf("the refused claims spent the open: %d", response.StatusCode)
+		}
+		if strings.Contains(harness.logs.String(), `"level":"ERROR"`) {
+			t.Fatalf("a malformed share key logged an error: %s", harness.logs.String())
+		}
+	})
+}
+
+func smallOrderKeys(t *testing.T) []string {
+	t.Helper()
+	file := loadSpecVectors(t)
+	if len(file.ShareKeyRejected) == 0 {
+		t.Fatal("the vectors hold no rejected share keys")
+	}
+	keys := make([]string, 0, len(file.ShareKeyRejected))
+	for _, vector := range file.ShareKeyRejected {
+		keys = append(keys, vector.Key)
+	}
+	return keys
+}
+
+func (h *testHarness) claimWithShareKey(message *testMessage, key string) (testResponse, responseBody) {
+	h.t.Helper()
+	request := claimRequestFor(message, message.verifier, "")
+	request.headers = map[string]string{shareKeyHeaderName: key}
+	return h.do(request)
+}
+
+func loadSpecVectors(t *testing.T) vectors.File {
+	t.Helper()
+	data, err := os.ReadFile("../../spec/vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file vectors.File
+	if err = json.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	return file
 }

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -81,7 +82,7 @@ func TestF3ShareOfAPassedHourIsGone(t *testing.T) {
 	}
 }
 
-// The seed file must hold nothing that makes the share of an hour that has passed.
+// The seed file must hold nothing that makes the share of an hour that has passed, and it fills one block (L2).
 func TestF3AdvanceOverwritesTheSeedInPlace(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
@@ -106,8 +107,8 @@ func TestF3AdvanceOverwritesTheSeedInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldSeed := before[len(before)-epoch.SeedLen:]
-	if len(after) != len(before) || bytes.Contains(after, oldSeed) || !os.SameFile(info, afterInfo) {
+	oldSeed := before[epoch.SeedOffset : epoch.SeedOffset+epoch.SeedLen]
+	if len(after) != 4096 || bytes.Contains(after, oldSeed) || !os.SameFile(info, afterInfo) {
 		t.Fatal("the old seed is still in the file, or the file was replaced instead of overwritten")
 	}
 	if info.Mode().Perm() != 0o600 {
@@ -135,12 +136,32 @@ func TestRatchetsSharingAFileAgree(t *testing.T) {
 	}
 }
 
-func TestSeedFileLossAndDamage(t *testing.T) {
+// L3: a missing directory may be a volume that failed to mount, so only an empty one gets a new ratchet.
+func TestStartUpRefusesAMissingDirectoryAndADamagedSeedAndReplacesALostOne(t *testing.T) {
 	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "unmounted")
+	for _, create := range []bool{true, false} {
+		if _, _, err := epoch.Open(
+			missing,
+			start,
+			epoch.Options{Create: create},
+		); !errors.Is(
+			err,
+			epoch.ErrNoDirectory,
+		) {
+			t.Fatalf("a missing directory with Create %v: %v", create, err)
+		}
+	}
+	if _, err := epoch.Inspect(missing); !errors.Is(err, epoch.ErrNoDirectory) {
+		t.Fatalf("inspecting a missing directory: %v", err)
+	}
 	directory := t.TempDir()
 	path := filepath.Join(directory, epoch.FileName)
 	if ratchet, created, err := epoch.Open(directory, start, epoch.Options{}); ratchet != nil || created || err != nil {
 		t.Fatalf("without Create a missing seed must start nothing: %v", err)
+	}
+	if state, err := epoch.Inspect(directory); state != epoch.StateNoSeed || err != nil {
+		t.Fatalf("an empty directory: %v %v", state, err)
 	}
 	first := open(t, directory, start)
 	if err := os.Remove(path); err != nil {
@@ -151,11 +172,17 @@ func TestSeedFileLossAndDamage(t *testing.T) {
 		t.Fatalf("a lost seed must start a new ratchet: %v", err)
 	}
 	ratchet.Close()
+	if state, inspectErr := epoch.Inspect(directory); state != epoch.StateSeed || inspectErr != nil {
+		t.Fatalf("a directory with a seed: %v %v", state, inspectErr)
+	}
 	if err = os.WriteFile(path, []byte("damaged"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err = epoch.Open(directory, start, epoch.Options{Create: true}); !errors.Is(err, epoch.ErrCorrupt) {
 		t.Fatalf("a damaged seed: %v", err)
+	}
+	if _, err = epoch.Inspect(directory); !errors.Is(err, epoch.ErrCorrupt) {
+		t.Fatalf("inspecting a damaged seed: %v", err)
 	}
 	refuse := errors.New("refused")
 	_, _, err = epoch.Open(t.TempDir(), start, epoch.Options{
@@ -164,6 +191,81 @@ func TestSeedFileLossAndDamage(t *testing.T) {
 	})
 	if !errors.Is(err, refuse) {
 		t.Fatalf("the file system check did not run: %v", err)
+	}
+}
+
+// L1: the seed opens every message that expires later, so it gets the protection of the pepper.
+func TestSeedAndDirectoryMustBePrivate(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no POSIX modes")
+	}
+	for _, testCase := range []struct {
+		name    string
+		prepare func(t *testing.T, directory string) string
+		want    error
+	}{
+		{"a seed others can read", func(t *testing.T, directory string) string {
+			t.Helper()
+			chmod(t, filepath.Join(directory, epoch.FileName), 0o644)
+			return directory
+		}, epoch.ErrExposed},
+		{"a seed that is a link", func(t *testing.T, directory string) string {
+			t.Helper()
+			path := filepath.Join(directory, epoch.FileName)
+			moved := filepath.Join(t.TempDir(), "seed")
+			if err := os.Rename(path, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, path); err != nil {
+				t.Fatal(err)
+			}
+			return directory
+		}, epoch.ErrSymlink},
+		{"a directory that is a link", func(t *testing.T, directory string) string {
+			t.Helper()
+			link := filepath.Join(t.TempDir(), "epoch")
+			if err := os.Symlink(directory, link); err != nil {
+				t.Fatal(err)
+			}
+			return link
+		}, epoch.ErrSymlink},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			directory := t.TempDir()
+			open(t, directory, start)
+			target := testCase.prepare(t, directory)
+			if _, _, err := epoch.Open(target, start, epoch.Options{Create: true}); !errors.Is(err, testCase.want) {
+				t.Fatalf("open: %v, want %v", err, testCase.want)
+			}
+			if _, err := epoch.Inspect(target); !errors.Is(err, testCase.want) {
+				t.Fatalf("inspect: %v, want %v", err, testCase.want)
+			}
+		})
+	}
+}
+
+func TestOpenNarrowsADirectoryOthersCanList(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no POSIX modes")
+	}
+	directory := t.TempDir()
+	chmod(t, directory, 0o755)
+	if _, err := epoch.Inspect(directory); err != nil {
+		t.Fatalf("inspect changes nothing and refuses nothing serve would narrow: %v", err)
+	}
+	open(t, directory, start)
+	if info, err := os.Stat(directory); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("the epoch directory keeps mode %v: %v", info.Mode().Perm(), err)
+	}
+}
+
+func chmod(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
 	}
 }
 

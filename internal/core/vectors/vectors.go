@@ -28,6 +28,7 @@ type File struct {
 	Rejected         []Rejected         `json:"envelope_rejected"`
 	CompressedLength []CompressedLength `json:"compressed_length"`
 	Share            []ShareCase        `json:"share"`
+	ShareKeyRejected []ShareKeyRejected `json:"share_key_rejected"`
 	Link             []Link             `json:"link"`
 	Meta             []MetaCase         `json:"meta"`
 	Strength         []Strength         `json:"passphrase_strength"`
@@ -49,6 +50,7 @@ func Generate() (*File, error) {
 		file.rejected,
 		file.compressedLength,
 		file.share,
+		file.shareKeyRejected,
 		file.link,
 		file.meta,
 		file.strength,

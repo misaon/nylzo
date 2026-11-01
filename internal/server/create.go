@@ -38,6 +38,8 @@ const (
 	diskFullRetry    = 60 * time.Second
 	workBusyRetry    = 5 * time.Second
 	capPendingRetry  = time.Minute
+	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
+	storeSlack = 2 * time.Minute
 )
 
 type createHeader struct {
@@ -640,8 +642,8 @@ func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
 // issueID hands out an id with the share of the hour in which a message made with it can expire at the latest.
 func (s *Server) issueID(creation *creationRequest, now time.Time) (instanceCreate, error) {
 	id := core.NewID()
-	upload := max(readTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
-	latestExpiry := now.Add(proof.IDTokenTTL() + upload + time.Minute + creation.ttl)
+	upload := max(createBodyTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
+	latestExpiry := now.Add(proof.IDTokenTTL() + upload + storeSlack + creation.ttl)
 	shareEpoch := epoch.Hour(latestExpiry)
 	token, expires := s.idTokens.Issue(id, shareEpoch, now)
 	expiryShare, err := s.epochs.Share(s.epochs.ID(), shareEpoch, seal.LocatorOf(id[:]), now)

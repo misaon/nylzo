@@ -21,6 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -140,12 +141,7 @@ func erasablePaths(dataDir string) ([]string, error) {
 	databasePath := filepath.Join(dataDir, databaseFile)
 	blobDirectory := filepath.Join(dataDir, disk.Directory)
 	temporaryDirectory := filepath.Join(blobDirectory, "tmp")
-	paths := []string{dataDir, blobDirectory, temporaryDirectory}
-	for _, path := range []string{databasePath, databasePath + "-wal", databasePath + "-shm"} {
-		if _, err := os.Lstat(path); err == nil {
-			paths = append(paths, path)
-		}
-	}
+	paths := append([]string{dataDir, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
 	for _, directory := range []string{blobDirectory, temporaryDirectory} {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
@@ -158,6 +154,17 @@ func erasablePaths(dataDir string) ([]string, error) {
 		}
 	}
 	return paths, nil
+}
+
+// databaseFiles lists the files of the database that exist; the store checks them again once it has opened.
+func databaseFiles(databasePath string) []string {
+	var paths []string
+	for _, path := range []string{databasePath, databasePath + "-wal", databasePath + "-shm"} {
+		if _, err := os.Lstat(path); err == nil {
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 func openStore(
@@ -184,10 +191,6 @@ func openStore(
 	if err != nil {
 		return nil, nil, err
 	}
-	database, err := open(context.Background(), databasePath)
-	if err != nil {
-		return nil, nil, err
-	}
 	blobs, err := disk.New(dataDir)
 	var paths []string
 	if err == nil {
@@ -197,10 +200,29 @@ func openStore(
 		err = requireErasable(paths, development, logger)
 	}
 	if err != nil {
+		return nil, nil, err
+	}
+	database, err := open(context.Background(), databasePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = requireErasable(databaseFiles(databasePath), development, logger); err != nil {
 		database.Close()
 		return nil, nil, err
 	}
 	return database, blobs, nil
+}
+
+// prepareEpoch checks the epoch directory before the store opens, so a refusal comes before an upgrade erases.
+func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
+	if err := server.PrepareEpochDirectory(settings); err != nil {
+		return err
+	}
+	directory := settings.EpochDirectory()
+	if _, err := epoch.Inspect(directory); err != nil {
+		return err
+	}
+	return requireErasable([]string{directory}, settings.Development, logger)
 }
 
 // upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
@@ -259,6 +281,9 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	}
 	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
 		return lockErr
+	}
+	if epochErr := prepareEpoch(&settings, logger); epochErr != nil {
+		return epochErr
 	}
 	database, blobs, err := openStore(
 		settings.DataDir,
@@ -372,14 +397,20 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	return nil
 }
 
-// advanceRatchet erases the epoch keys of the hours that have passed while serve does not run; it starts no ratchet.
+// advanceRatchet erases the epoch keys of the hours that have passed while serve does not run; it starts no ratchet,
+// and only a directory the operator named must exist.
 func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger) error {
 	options := epoch.Options{CheckFileSystem: func(directory string) error {
 		return requireErasable([]string{directory}, settings.Development, logger)
 	}}
-	ratchet, _, err := epoch.Open(settings.EpochDirectory(), now, options)
+	var ratchet *epoch.Ratchet
+	var err error
+	secretmode.Do(func() { ratchet, _, err = epoch.Open(settings.EpochDirectory(), now, options) })
 	if ratchet != nil {
 		ratchet.Close()
+	}
+	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDir == "" {
+		return nil
 	}
 	return err
 }

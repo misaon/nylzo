@@ -368,12 +368,26 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if vector.FlipByte != nil {
 		object[*vector.FlipByte] ^= 1
 	}
+	if vector.SetByte != nil {
+		object[vector.SetByte.Offset] = vector.SetByte.Value
+	}
 	if vector.TruncateTo != nil {
 		object = object[:*vector.TruncateTo]
 	}
 	hash, err := core.Decode32(vector.ObjectHash)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if vector.ReaderID != nil {
+		if id, err = core.ParseID(*vector.ReaderID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if vector.OpensMax != nil {
+		policy.OpensMax = uint16(*vector.OpensMax)
+	}
+	if vector.TTLSeconds != nil {
+		policy.TTLSeconds = uint32(*vector.TTLSeconds)
 	}
 	kdf := core.KDF(vector.KDFID)
 	derived, err := keys.DeriveAll(
@@ -429,10 +443,23 @@ func rejectionName(err error) string {
 		return "flags"
 	case errors.Is(err, core.ErrKDFMismatch):
 		return "kdf_mismatch"
+	case errors.Is(err, core.ErrKDF):
+		return "kdf"
+	case errors.Is(err, envelope.ErrHeader):
+		return "header"
 	case err == nil:
 		return "accepted"
 	default:
 		return err.Error()
+	}
+}
+
+func TestShareKeysOfSmallOrderAreRefused(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).ShareKeyRejected {
+		if _, err := share.ParseKey(vector.Key); err == nil {
+			t.Fatalf("%s: a share key of small order is accepted", vector.Name)
+		}
 	}
 }
 

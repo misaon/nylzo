@@ -130,7 +130,9 @@ describe('AK9: envelope vectors', () => {
 
 const rejections = {
   flags: FlagsError,
+  header: HeaderError,
   integrity: IntegrityError,
+  kdf: KdfError,
   kdf_mismatch: KdfMismatchError,
   plaintext: PlaintextError,
   version: VersionError,
@@ -158,10 +160,14 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
     if (vector.flip_byte !== undefined) {
       object = flipped(object, vector.flip_byte);
     }
+    if (vector.set_byte !== undefined) {
+      object = new Uint8Array(object);
+      object[vector.set_byte.offset] = vector.set_byte.value;
+    }
     if (vector.truncate_to !== undefined) {
       object = object.slice(0, vector.truncate_to);
     }
-    const id = parseId(base.id);
+    const id = parseId(vector.reader_id ?? base.id);
     const kdfId = kdfIdOf(vector.kdf_id);
     const { content } = await deriveAll(
       id,
@@ -172,7 +178,7 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
     );
     const expected: Expected = {
       id,
-      policy: { opensMax: base.opens_max, ttlSeconds: base.ttl_s },
+      policy: { opensMax: vector.opens_max ?? base.opens_max, ttlSeconds: vector.ttl_s ?? base.ttl_s },
       kdfId,
       objectHash: decodeBase64url(vector.h),
     };
