@@ -58,7 +58,7 @@ nylzo web --server https://nylzo.example
 nylzo open --server https://nylzo.example < link.txt
 ```
 
-`web` serves the composer on `http://127.0.0.1` at a random port and opens it in the default browser. The links it creates point to the instance. `open` reads a link the way `read` does (stdin, a hidden prompt, `--link-file` or `NYLZO_LINK`), refuses a link of another instance than `--server` or `NYLZO_SERVER`, and opens it through a one-time address that carries no part of the link. It writes that address into a private file and opens the file, so no process argument holds it. `--no-browser` prints the address instead. Both commands run until Ctrl-C; `open` stops with an error when no browser takes the link within two minutes and warns when something asks for it a second time.
+`web` serves the composer under a new random `http://….localhost` address at a random port for every session and opens it in the default browser; on macOS before 26 it prints the address for Chrome, Edge or Firefox instead, because Safari would ask the network for that name. The links it creates point to the instance. `open` reads a link the way `read` does (stdin, a hidden prompt, `--link-file` or `NYLZO_LINK`), refuses a link of another instance than `--server` or `NYLZO_SERVER`, and opens it through a one-time address that carries no part of the link. It writes that address into a private file and opens the file, so no process argument holds it. `--no-browser` prints the address instead, and so does `open` when no browser has taken the link after ten seconds. Both commands run until Ctrl-C; `open` stops with an error when no browser takes the link within two minutes and warns when something asks for it a second time.
 
 ## Verify an instance's web client
 

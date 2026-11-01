@@ -35,7 +35,7 @@ To write a message:
 nylzo web --server https://nylzo.example
 ```
 
-Your browser opens the familiar page at a random address such as `http://127.0.0.1:53211/`. The link it creates points to `https://nylzo.example`, so the reader can open it with any client. Press Ctrl-C in the terminal when you are done. The address changes every time, so the browser does not keep the list of remembered messages between sessions.
+Your browser opens the familiar page at a new random address such as `http://k7q2m9x4w8r3t6y1u5i0o2p4a6.localhost:53211/`. The link it creates points to `https://nylzo.example`, so the reader can open it with any client. Press Ctrl-C in the terminal when you are done. The local client keeps no key in the browser, so it does not offer to remember a message for cancelling it later. To keep that option, create the message with `nylzo create --manage-token-file`.
 
 To read a message, copy the link and run:
 
@@ -50,7 +50,8 @@ Paste the link at the hidden prompt and press Enter. You can also pipe it in (`p
 ## What the local client does
 
 - It serves the web client embedded in the binary, with the same security headers and Content-Security-Policy as the instance.
-- It listens only on `127.0.0.1`, on a random port, and answers only requests for that exact address, so a web page that rebinds its DNS name to your computer reaches nothing.
+- It listens on `127.0.0.1` and `[::1]` on a random port, under a new random name ending in `.localhost` for every session, and answers only requests for that exact name. A program that held the port earlier, and left a page or a service worker in the browser for it, cannot take the link, and a web page that rebinds its DNS name to your computer reaches nothing.
+- Chrome, Edge and Firefox keep names under `localhost` on your computer. Safari does so from macOS 26; on an older macOS the commands open no browser and ask you to use one of the others.
 - It sends only API calls to the instance, the way the command line does: without cookies, the page address or browser details. It accepts them only from its own pages.
 - Nothing the instance answers can run as code in the local page.
 
