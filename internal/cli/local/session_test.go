@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,21 @@ const (
 	linkFragment = "1.0.QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVphYmNkZWY"
 )
 
-var handoffAddress = regexp.MustCompile(`url=(http://127\.0\.0\.1:\d+/open#[A-Z2-7]{26})"`)
+const session = `http://[a-z2-7]{26}\.localhost:\d+`
+
+var (
+	handoffAddress = regexp.MustCompile(`url=(` + session + `/open#[A-Z2-7]{26})"`)
+	loopbackClient = &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			_, port, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, err
+			}
+			var dialer net.Dialer
+			return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", port))
+		},
+	}}
+)
 
 type lockedBuffer struct {
 	mutex  sync.Mutex
@@ -125,7 +140,7 @@ func redeem(t *testing.T, address string) *http.Response {
 	}
 	request.Header.Set("Origin", origin)
 	request.Header.Set("Sec-Fetch-Site", "same-origin")
-	response, err := http.DefaultClient.Do(request)
+	response, err := loopbackClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +151,7 @@ func TestWebServesTheComposerForTheInstance(t *testing.T) {
 	t.Parallel()
 	current := start(t, local.Options{OpenBrowser: true})
 	address := current.target(t)
-	if !regexp.MustCompile(`^http://127\.0\.0\.1:\d+/$`).MatchString(address) ||
+	if !regexp.MustCompile(`^`+session+`/$`).MatchString(address) ||
 		current.stdout.String() != address+"\n" {
 		t.Fatalf("the composer must open on a random loopback port: %q, stdout %q", address, current.stdout.String())
 	}
@@ -144,7 +159,7 @@ func TestWebServesTheComposerForTheInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := http.DefaultClient.Do(request)
+	response, err := loopbackClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,12 +246,55 @@ func TestOpenWithoutABrowserPrintsTheHandoffAddressAndGivesUpInTime(t *testing.T
 		t.Fatal("an untaken handoff must end the command")
 	}
 	printed := strings.TrimSpace(current.stdout.String())
-	if !regexp.MustCompile(`^http://127\.0\.0\.1:\d+/open#[A-Z2-7]{26}$`).MatchString(printed) {
+	if !regexp.MustCompile(`^` + session + `/open#[A-Z2-7]{26}$`).MatchString(printed) {
 		t.Fatalf("stdout %q", printed)
 	}
 	select {
 	case target := <-current.opened:
 		t.Fatalf("--no-browser opened %q", target)
 	default:
+	}
+}
+
+func TestOpenGivesTheAddressWhenNoBrowserTakesTheLinkSoon(t *testing.T) {
+	t.Parallel()
+	current := start(t, local.Options{
+		OpenBrowser: true,
+		Link:        &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: 1200 * time.Millisecond},
+	})
+	current.target(t)
+	deadline := time.Now().Add(10 * time.Second)
+	for !strings.Contains(current.stderr.String(), "no browser has taken the link yet") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	printed := strings.TrimSpace(current.stdout.String())
+	if !regexp.MustCompile(`^` + session + `/open#[A-Z2-7]{26}$`).MatchString(printed) {
+		t.Fatalf("a confined browser cannot read the handoff file, so the address must follow: %q %s",
+			printed, current.stderr.String())
+	}
+	current.stop(t)
+}
+
+func TestNoBrowserOpensWhereSafariWouldAskTheNetworkForTheName(t *testing.T) {
+	t.Parallel()
+	for name, options := range map[string]local.Options{
+		"web":  {OpenBrowser: true, ResolvesLocalhost: func() bool { return false }},
+		"open": {OpenBrowser: true, ResolvesLocalhost: func() bool { return false }, Link: &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: time.Minute}},
+	} {
+		current := start(t, options)
+		deadline := time.Now().Add(10 * time.Second)
+		for current.stdout.String() == "" && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		select {
+		case target := <-current.opened:
+			t.Fatalf("%s opened %q in the default browser", name, target)
+		default:
+		}
+		if !regexp.MustCompile(`^`+session+`/`).MatchString(current.stdout.String()) ||
+			!strings.Contains(current.stderr.String(), "Chrome, Edge or Firefox") {
+			t.Fatalf("%s: stdout %q, stderr %q", name, current.stdout.String(), current.stderr.String())
+		}
+		current.stop(t)
 	}
 }

@@ -1,12 +1,14 @@
 package localclient_test
 
 import (
-	"errors"
+	"bufio"
 	"io"
 	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,8 +20,7 @@ import (
 )
 
 const (
-	localHost = "127.0.0.1:54321"
-	local     = "http://" + localHost
+	local     = "{local}"
 	pageIndex = `<!doctype html><html><head><script type="importmap">{"integrity":{}}</script>` +
 		`<!--nylzo:public--><meta name="nylzo-instance" content="__NYLZO_PUBLIC_URL__"><!--/nylzo:public-->` +
 		`<script type="module" src="/assets/index-a1.js"></script></head><body></body></html>`
@@ -73,8 +74,12 @@ func webBuild(t *testing.T) webclient.Build {
 
 func newLocal(t *testing.T, upstream *instance, notify func(localclient.Notice)) *localclient.Server {
 	t.Helper()
-	address := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 54321}
-	server, err := localclient.New(address, &localclient.Config{
+	listeners, err := localclient.Listen(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(listeners.Close)
+	server, err := localclient.New(listeners, &localclient.Config{
 		Instance: upstream.server.URL,
 		Build:    webBuild(t),
 		Version:  "test",
@@ -118,10 +123,11 @@ func do(t *testing.T, server *localclient.Server, request call) *httptest.Respon
 	outgoing := httptest.NewRequestWithContext(
 		t.Context(),
 		request.method,
-		local+request.path,
+		server.Origin()+request.path,
 		strings.NewReader(request.body),
 	)
 	for name, value := range request.headers {
+		value = strings.ReplaceAll(value, local, server.Origin())
 		if name == "Host" {
 			outgoing.Host = value
 			continue
@@ -133,52 +139,47 @@ func do(t *testing.T, server *localclient.Server, request call) *httptest.Respon
 	return recorder
 }
 
-func TestListenOnlyOnALoopbackAddress(t *testing.T) {
+func TestListenHoldsOnePortOnBothLoopbackAddresses(t *testing.T) {
 	t.Parallel()
-	listener, err := localclient.Listen(t.Context(), localclient.DefaultAddress)
+	listeners, err := localclient.Listen(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
-	if address, ok := listener.Addr().(*net.TCPAddr); !ok || !address.IP.IsLoopback() || address.Port == 0 {
-		t.Fatalf("the default address must be a random loopback port, got %v", listener.Addr())
+	defer listeners.Close()
+	var config net.ListenConfig
+	port := strconv.Itoa(listeners.Port())
+	addresses := []string{net.JoinHostPort("127.0.0.1", port)}
+	if probe, probeErr := config.Listen(t.Context(), "tcp6", "[::1]:0"); probeErr == nil {
+		probe.Close()
+		addresses = append(addresses, net.JoinHostPort("::1", port))
 	}
-	for _, address := range []string{
-		"0.0.0.0:0", ":0", "[::]:0", "localhost:0", "192.0.2.1:0", "[::ffff:127.0.0.1]:0", "[fe80::1%lo0]:0", "nylzo",
-	} {
-		if refused, listenErr := localclient.Listen(
-			t.Context(),
-			address,
-		); !errors.Is(
-			listenErr,
-			localclient.ErrNotLoopback,
-		) {
-			if refused != nil {
-				refused.Close()
-			}
-			t.Errorf("%s: %v", address, listenErr)
-		}
-	}
-	upstream := newInstance(t, answerJSON)
-	for _, address := range []net.Addr{
-		&net.TCPAddr{IP: net.IPv4zero, Port: 54321},
-		&net.TCPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 54321},
-		&net.UnixAddr{Name: "/tmp/nylzo.sock", Net: "unix"},
-	} {
-		_, newErr := localclient.New(address, &localclient.Config{Instance: upstream.server.URL, Build: webBuild(t)})
-		if !errors.Is(newErr, localclient.ErrNotLoopback) {
-			t.Errorf("%v: %v", address, newErr)
+	for _, address := range addresses {
+		if squatter, squatErr := config.Listen(t.Context(), "tcp", address); squatErr == nil {
+			squatter.Close()
+			t.Fatalf("another program could listen on %s beside the verified client", address)
 		}
 	}
 }
 
-func TestOnlyTheListenAddressIsServed(t *testing.T) {
+func TestEachSessionHasItsOwnOriginAndAnswersOnlyIt(t *testing.T) {
 	t.Parallel()
 	upstream := newInstance(t, answerJSON)
-	server := newLocal(t, upstream, nil)
+	server, other := newLocal(t, upstream, nil), newLocal(t, upstream, nil)
+	session := regexp.MustCompile(`^http://([a-z2-7]{26})\.localhost:(\d+)$`)
+	match, otherMatch := session.FindStringSubmatch(server.Origin()), session.FindStringSubmatch(other.Origin())
+	if match == nil || otherMatch == nil || match[1] == otherMatch[1] {
+		t.Fatalf("each session needs a fresh name with 130 random bits: %s %s", server.Origin(), other.Origin())
+	}
+	label, port := match[1], match[2]
+	next, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, host := range []string{
-		"rebind.attacker.example", "rebind.attacker.example:54321", "localhost:54321",
-		"127.0.0.1:54322", "127.0.0.2:54321", "[::1]:54321", "127.0.0.1",
+		"127.0.0.1:" + port, "localhost:" + port, "[::1]:" + port, otherMatch[1] + ".localhost:" + port,
+		label + ".localhost:" + strconv.Itoa(next+1), label + ".localhost", strings.ToUpper(label) + ".localhost:" + port,
+		"x." + label + ".localhost:" + port, label + ".localhost.:" + port, "rebind.attacker.example:" + port,
+		label + ".attacker.example:" + port,
 	} {
 		for _, request := range []call{{method: http.MethodGet, path: "/"}, fetchFromPage(http.MethodGet, "/api/v1/instance")} {
 			response := do(t, server, request.with("Host", host))
@@ -213,16 +214,21 @@ func TestRelayAdmitsOnlyFetchCallsFromItsOwnPages(t *testing.T) {
 		"mutation without origin": post.with("Origin", ""),
 		"opaque origin":           post.with("Origin", "null"),
 		"origin of the instance":  post.with("Origin", upstream.server.URL),
-		"localhost origin":        post.with("Origin", "http://localhost:54321"),
+		"loopback origin":         post.with("Origin", "http://127.0.0.1:54321"),
 		"transparency elsewhere":  {method: http.MethodGet, path: "/.well-known/nylzo/transparency.json"},
 	} {
 		if response := do(t, server, request); response.Code != http.StatusForbidden {
 			t.Errorf("%s: %d", name, response.Code)
 		}
 	}
-	duplicated := httptest.NewRequestWithContext(t.Context(), http.MethodPost, local+"/api/v1/messages", http.NoBody)
+	duplicated := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		server.Origin()+"/api/v1/messages",
+		http.NoBody,
+	)
 	duplicated.Header["Sec-Fetch-Site"] = []string{"same-origin", "cross-site"}
-	duplicated.Header.Set("Origin", local)
+	duplicated.Header.Set("Origin", server.Origin())
 	recorder := httptest.NewRecorder()
 	server.Handler().ServeHTTP(recorder, duplicated)
 	if recorder.Code != http.StatusForbidden {
@@ -409,5 +415,40 @@ func TestHandoffIsSingleUse(t *testing.T) {
 		"secret",
 	) {
 		t.Fatal("the handoff page must not carry the link")
+	}
+}
+
+func TestRelayPassesNoInformationalAnswerOrUpgrade(t *testing.T) {
+	t.Parallel()
+	upstream := newInstance(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/hints":
+			w.Header().Set("Link", "</assets/evil.js>; rel=preload; as=script")
+			w.Header().Set("Set-Cookie", "tracked=1")
+			w.WriteHeader(http.StatusEarlyHints)
+			w.Header().Del("Link")
+			w.Header().Del("Set-Cookie")
+			answerJSON(w, r)
+		default:
+			connection, _, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer connection.Close()
+			writer := bufio.NewWriter(connection)
+			writer.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+			writer.Flush()
+		}
+	})
+	server := newLocal(t, upstream, nil)
+	hints := do(t, server, fetchFromPage(http.MethodGet, "/api/v1/hints"))
+	if hints.Code != http.StatusOK || hints.Header().Get("Link") != "" || hints.Header().Get("Set-Cookie") != "" ||
+		hints.Body.String() != `{"ok":true}` {
+		t.Fatalf("an informational answer must not reach the browser: %d %v", hints.Code, hints.Header())
+	}
+	upgrade := do(t, server, fetchFromPage(http.MethodGet, "/api/v1/upgrade"))
+	if upgrade.Code != http.StatusBadGateway || upgrade.Header().Get("Upgrade") != "" {
+		t.Fatalf("an upgrade must not reach the browser: %d %v", upgrade.Code, upgrade.Header())
 	}
 }

@@ -1,39 +1,34 @@
 package localclient
 
 import (
-	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/loopback"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const (
-	DefaultAddress    = "127.0.0.1:0"
 	HandoffPath       = "/open"
+	sessionDomain     = ".localhost"
 	readHeaderTimeout = 5 * time.Second
 	idleTimeout       = time.Minute
 	maxHeaderBytes    = 16 << 10
 	jsonContentType   = "application/json; charset=utf-8"
 )
 
-var (
-	ErrNotLoopback = errors.New("localclient: the verified client listens only on 127.0.0.1 or [::1]")
-	errNoClient    = errors.New("localclient: this nylzo carries no web client; use a release build")
-)
+var errNoClient = errors.New("localclient: this nylzo carries no web client; use a release build")
 
 type Notice int
 
@@ -64,28 +59,8 @@ type Server struct {
 	handler  http.Handler
 }
 
-// Listen accepts only a literal loopback address, so no name lookup can move the client off this machine.
-func Listen(ctx context.Context, address string) (net.Listener, error) {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return nil, ErrNotLoopback
-	}
-	if ip, parseErr := netip.ParseAddr(host); parseErr != nil || !loopback.Address(ip) {
-		return nil, ErrNotLoopback
-	}
-	var config net.ListenConfig
-	return config.Listen(ctx, "tcp", address)
-}
-
-func New(address net.Addr, config *Config) (*Server, error) {
-	listening, ok := address.(*net.TCPAddr)
-	if !ok {
-		return nil, ErrNotLoopback
-	}
-	bound := netip.AddrPortFrom(listening.AddrPort().Addr().Unmap(), listening.AddrPort().Port())
-	if !loopback.Address(bound.Addr()) {
-		return nil, ErrNotLoopback
-	}
+// New names the session with 130 random bits, so no page, worker or cache from an earlier owner of the port matches.
+func New(listeners *Listeners, config *Config) (*Server, error) {
 	instance, err := client.Origin(config.Instance)
 	if err != nil {
 		return nil, err
@@ -105,7 +80,7 @@ func New(address net.Addr, config *Config) (*Server, error) {
 	if transport == nil {
 		transport = client.NewTransport(instance)
 	}
-	host := bound.String()
+	host := strings.ToLower(rand.Text()) + sessionDomain + ":" + strconv.Itoa(listeners.Port())
 	local := &Server{
 		host:     host,
 		origin:   "http://" + host,

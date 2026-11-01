@@ -17,6 +17,7 @@ const (
 	HandoffLifetime = 2 * time.Minute
 	shutdownTimeout = 5 * time.Second
 	noticeBuffer    = 8
+	reminderShare   = 12
 )
 
 type Link struct {
@@ -26,75 +27,126 @@ type Link struct {
 }
 
 type Options struct {
-	Instance    string
-	Build       webclient.Build
-	OpenBrowser bool
-	Link        *Link
+	Instance          string
+	Build             webclient.Build
+	OpenBrowser       bool
+	Link              *Link
+	ResolvesLocalhost func() bool
 }
 
 type session struct {
 	environment *command.Environment
 	server      *localclient.Server
 	options     Options
+	notices     chan localclient.Notice
 	cleanup     func()
+	address     string
 	taken       bool
 }
 
+type deadlines struct {
+	expired <-chan time.Time
+	remind  <-chan time.Time
+	stop    func()
+}
+
 func Serve(ctx context.Context, environment *command.Environment, options Options) int {
-	listener, err := localclient.Listen(ctx, localclient.DefaultAddress)
+	listeners, err := localclient.Listen(ctx)
 	if err != nil {
 		return command.Failf(environment, "the verified client could not listen on a loopback port: %s", err)
 	}
-	notices := make(chan localclient.Notice, noticeBuffer)
-	information := environment.BuildInformation()
-	server, err := localclient.New(listener.Addr(), &localclient.Config{
-		Instance:  options.Instance,
-		Build:     options.Build,
+	current := &session{
+		environment: environment,
+		options:     options,
+		notices:     make(chan localclient.Notice, noticeBuffer),
+		cleanup:     func() {},
+	}
+	if current.server, err = localclient.New(listeners, current.config()); err != nil {
+		listeners.Close()
+		return command.Failf(environment, "%s", err)
+	}
+	httpServer := current.server.HTTPServer()
+	served := make(chan error, 1)
+	go func() { served <- listeners.Serve(httpServer) }()
+	defer shutdown(httpServer)
+	defer func() { current.cleanup() }()
+	current.keepNameLocal()
+	timers, err := current.announce()
+	if err != nil {
+		return command.Failf(environment, "%s", err)
+	}
+	defer timers.stop()
+	return current.run(ctx, served, timers)
+}
+
+func (s *session) config() *localclient.Config {
+	information := s.environment.BuildInformation()
+	return &localclient.Config{
+		Instance:  s.options.Instance,
+		Build:     s.options.Build,
 		Version:   information.Version,
 		BuildInfo: information,
 		Notify: func(notice localclient.Notice) {
 			select {
-			case notices <- notice:
+			case s.notices <- notice:
 			default:
 			}
 		},
-	})
+	}
+}
+
+func (s *session) keepNameLocal() {
+	resolves := s.options.ResolvesLocalhost
+	if resolves == nil {
+		resolves = systemResolvesLocalhost
+	}
+	if s.options.OpenBrowser && !resolves() {
+		s.options.OpenBrowser = false
+		s.note("Safari on macOS before 26 asks the network for names under localhost, so open the address below " +
+			"in Chrome, Edge or Firefox, which keep them on this computer")
+	}
+}
+
+func (s *session) announce() (deadlines, error) {
+	timers := deadlines{stop: func() {}}
+	if s.options.Link == nil {
+		s.compose()
+		return timers, nil
+	}
+	opened, err := s.handOver()
 	if err != nil {
-		listener.Close()
-		return command.Failf(environment, "%s", err)
+		return timers, err
 	}
-	httpServer := server.HTTPServer()
-	served := make(chan error, 1)
-	go func() { served <- httpServer.Serve(listener) }()
-	defer shutdown(httpServer)
-	current := &session{environment: environment, server: server, options: options, cleanup: func() {}}
-	defer func() { current.cleanup() }()
-	var expired <-chan time.Time
-	if options.Link == nil {
-		current.compose()
-	} else {
-		if err = current.handOver(); err != nil {
-			return command.Failf(environment, "%s", err)
-		}
-		timer := time.NewTimer(options.Link.Lifetime)
-		defer timer.Stop()
-		expired = timer.C
+	expiry := time.NewTimer(s.options.Link.Lifetime)
+	reminder := time.NewTimer(s.options.Link.Lifetime / reminderShare)
+	timers.expired, timers.stop = expiry.C, func() {
+		expiry.Stop()
+		reminder.Stop()
 	}
+	if opened {
+		timers.remind = reminder.C
+	}
+	return timers, nil
+}
+
+func (s *session) run(ctx context.Context, served <-chan error, timers deadlines) int {
 	for {
 		select {
 		case <-ctx.Done():
 			return command.ExitOK
-		case err = <-served:
-			return command.Failf(environment, "the verified client stopped: %s", err)
-		case notice := <-notices:
-			current.report(notice)
-			if current.taken {
-				expired = nil
+		case err := <-served:
+			return command.Failf(s.environment, "the verified client stopped: %s", err)
+		case notice := <-s.notices:
+			s.report(notice)
+			if s.taken {
+				timers.expired, timers.remind = nil, nil
 			}
-		case <-expired:
-			server.Withdraw()
-			return command.Failf(environment, "no browser took the link within %s; run %s open again",
-				options.Link.Lifetime, command.Program)
+		case <-timers.remind:
+			s.remind()
+		case <-timers.expired:
+			s.server.Withdraw()
+			return command.Failf(s.environment, "no browser took the link within %s; run %s open again",
+				s.options.Link.Lifetime, command.Program)
 		}
 	}
 }
@@ -111,27 +163,34 @@ func (s *session) compose() {
 	}
 }
 
-func (s *session) handOver() error {
+func (s *session) handOver() (bool, error) {
 	token, err := s.server.Offer(s.options.Link.Path, s.options.Link.Fragment, s.options.Link.Lifetime)
 	if err != nil {
-		return err
+		return false, err
 	}
-	address := s.server.Origin() + localclient.HandoffPath + "#" + token
+	s.address = s.server.Origin() + localclient.HandoffPath + "#" + token
 	if s.options.OpenBrowser {
-		page, writeErr := writeHandoffFile(address)
+		page, writeErr := writeHandoffFile(s.address)
 		if writeErr == nil {
 			s.cleanup = sync.OnceFunc(page.remove)
 			if openErr := browser(s.environment)(page.path); openErr == nil {
 				s.note("opening the message in your browser through the verified client at %s", s.server.Origin())
-				return nil
+				return true, nil
 			}
 			s.cleanup()
 		}
 	}
-	fmt.Fprintln(s.environment.Stdout, address)
+	fmt.Fprintln(s.environment.Stdout, s.address)
 	s.note("open this address in your browser within %s; it works once and carries no part of the link",
 		s.options.Link.Lifetime)
-	return nil
+	return false, nil
+}
+
+// remind gives the address to a user whose browser could not read the handoff file, such as a confined one.
+func (s *session) remind() {
+	fmt.Fprintln(s.environment.Stdout, s.address)
+	s.note("no browser has taken the link yet. If none opened the message, open this address in your browser; " +
+		"it works once and carries no part of the link")
 }
 
 func (s *session) report(notice localclient.Notice) {
