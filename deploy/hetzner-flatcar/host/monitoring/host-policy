@@ -2,6 +2,8 @@
 set -euo pipefail
 export LC_ALL=C
 [[ "$(getenforce)" = Enforcing ]] || { echo 'SELinux enforcement is required.' >&2; exit 1; }
+swaps=$(swapon --noheadings --show)
+[[ -z "$swaps" ]] || { echo 'Swap must stay off: the epoch seed lives on tmpfs, whose pages could reach the disk.' >&2; exit 1; }
 for check in kernel.dmesg_restrict=1 kernel.kptr_restrict=2 kernel.kexec_load_disabled=1 kernel.io_uring_disabled=2 kernel.sysrq=0 dev.tty.ldisc_autoload=0 fs.suid_dumpable=0 net.ipv4.conf.all.rp_filter=2; do
   [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Host policy failed: ${check%%=*}" >&2; exit 1; }
 done

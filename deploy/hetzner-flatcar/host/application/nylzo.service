@@ -4,6 +4,9 @@ After=docker.service nylzo-bandwidth.service nylzo-storage.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 [Service]
+ExecStartPre=+/usr/bin/mkdir -p /run/nylzo-epoch
+ExecStartPre=+/usr/bin/chown 165532:165532 /run/nylzo-epoch
+ExecStartPre=+/usr/bin/chmod 0700 /run/nylzo-epoch
 ExecStart=/opt/nylzo/runtime/run
 ExecStop=/usr/bin/docker stop --time 30 nylzo
 Restart=on-failure
