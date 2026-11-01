@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	driver "modernc.org/sqlite"
@@ -40,6 +41,7 @@ type Store struct {
 	scrubs      chan struct{}
 	stopScrubs  context.CancelFunc
 	scrubbersUp sync.WaitGroup
+	scrubFailed atomic.Pointer[func(error)]
 }
 
 var _ store.Store = (*Store)(nil)

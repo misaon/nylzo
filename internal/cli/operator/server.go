@@ -245,6 +245,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		return err
 	}
 	defer database.Close()
+	database.OnScrubFailure(func(err error) { logger.ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err)) })
 	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
 	if err != nil {
 		return err
