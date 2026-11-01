@@ -102,6 +102,8 @@ jobs:
     # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
@@ -172,3 +174,47 @@ jobs:
         env:
           URL: ${{ vars.NYLZO_MONITOR_URL }}
         run: node tools/security/monitor-instance.mts
+
+  browser:
+    name: A browser receives the signed web client (A3-07)
+    needs: [web-client]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.node-version
+          package-manager-cache: false
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign
+          cosign-release: v3.1.4
+      - name: Install locked dependencies without lifecycle scripts
+        run: node automation/web-install/main.ts
+      - name: Signed checksums of the release the server runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.web-client.outputs.tag }}
+        run: |
+          gh release download "${TAG}" -R "${GITHUB_REPOSITORY}" -p checksums.txt -p checksums.txt.sigstore.json
+          cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}" > /dev/null 2>&1
+      - name: Google Chrome in a window creates and reads a message and receives only signed assets
+        env:
+          NYLZO_MONITOR_URL: ${{ vars.NYLZO_MONITOR_URL }}
+        run: |
+          export NYLZO_MONITOR_CHECKSUMS="${GITHUB_WORKSPACE}/checksums.txt"
+          if ! xvfb-run --auto-servernum pnpm --dir web/e2e exec playwright test -c playwright.monitor.config.ts --reporter=dot > /dev/null 2>&1; then
+            echo "The browser check failed."
+            exit 1
+          fi

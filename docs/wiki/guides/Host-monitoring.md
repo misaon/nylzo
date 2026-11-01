@@ -2,8 +2,8 @@
 
 Every Hetzner/Flatcar host writes a coarse readiness report every two minutes. It holds seven booleans and the observation time, and no message data, capabilities, identifiers, peppers, keys, logs, versions or host inventory. Two channels carry it out:
 
-- **Heartbeat (primary).** The host posts to an independent dead-man's switch every five minutes. Only up or down leaves the host, and missing beats raise the alert, so it works when GitHub's schedule lags.
-- **mTLS listener (secondary).** Caddy serves the report on TCP **8443** to one pinned client certificate. GitHub Actions reads it about every 15 minutes, when its best-effort schedule runs.
+- The primary channel is a heartbeat: the host posts to an independent dead-man's switch every five minutes. Only up or down leaves the host, and missing beats raise the alert, so it works when GitHub's schedule lags.
+- The secondary channel is an mTLS listener: Caddy serves the report on TCP **8443** to one pinned client certificate. GitHub Actions reads it about every 15 minutes, when its best-effort schedule runs.
 
 ## Checks
 
@@ -61,9 +61,9 @@ Delete the old repository variables `NYLZO_HOST_MONITOR_URL` and `NYLZO_HOST_MON
 
 `monitor.yml` also runs hourly:
 
-- **Released web client and lifecycle**, with `NYLZO_MONITOR_URL`: verifies that the instance serves the signed release's web client and creates, decrypts and consumes a five-minute synthetic message, about 24 creations a day. It prints only pass or fail. It runs the CLI, which a hostile server can recognise ([security model](Security-model.md#the-client-is-part-of-the-trust-boundary)), so it detects careless blanket changes only.
-- **Domain**, with `NYLZO_MONITOR_DOMAIN` (and optionally `NYLZO_ACME_ACCOUNT` and `NYLZO_CT_REVIEWED_UNTIL`): the CAA set over a DNSSEC-validating resolver, null MX, SPF and DMARC, the registrar locks and an expiry more than 180 days away, and every certificate issued in the last eight days for the domain or its subdomains in Certificate Transparency, which must come from Let's Encrypt for the apex or `www` only. Set `NYLZO_CT_REVIEWED_UNTIL` to an ISO date to acknowledge certificates you reviewed. Enable it after the DNS stack and registrar lock are applied.
-- **Maintenance publication**: a merged maintenance fix still unpublished after an hour.
+- With `NYLZO_MONITOR_URL`, the client check verifies that the instance serves the signed release's web client and creates, decrypts and consumes a five-minute synthetic message, about 24 creations a day. It prints only pass or fail. It runs the CLI, which a hostile server can recognise ([security model](Security-model.md#the-client-is-part-of-the-trust-boundary)). The browser job then has Google Chrome, in a window under xvfb rather than headless, create and read a message through the web client, and requires every asset Chrome receives to match the signed `checksums.txt`. The server sees an ordinary Chrome; only GitHub's address ranges set it apart. It costs another 24 creations a day. Both detect changes served to everyone, not changes aimed at one visitor.
+- With `NYLZO_MONITOR_DOMAIN` (and optionally `NYLZO_ACME_ACCOUNT` and `NYLZO_CT_REVIEWED_UNTIL`), the domain check reads the CAA set over a DNSSEC-validating resolver, null MX, SPF and DMARC, the registrar locks and an expiry more than 180 days away, and every certificate issued in the last eight days for the domain or its subdomains in Certificate Transparency, which must come from Let's Encrypt for the apex or `www` only. Set `NYLZO_CT_REVIEWED_UNTIL` to an ISO date to acknowledge certificates you reviewed. Enable it after the DNS stack and registrar lock are applied.
+- The maintenance watchdog fails when a merged maintenance fix is still unpublished after an hour.
 
 GitHub schedules are [best effort](https://docs.github.com/en/actions/how-tos/troubleshoot-workflows); rely on the heartbeat for timely alerts. Test notification delivery for each channel; a failed run alone does not prove that a message reached anyone.
 

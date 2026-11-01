@@ -5,5 +5,5 @@
     "lib": ["es2025", "dom"],
     "types": ["node"]
   },
-  "include": ["serve.ts", "playwright.config.ts", "tests"]
+  "include": ["serve.ts", "playwright.config.ts", "playwright.monitor.config.ts", "tests", "monitor"]
 }

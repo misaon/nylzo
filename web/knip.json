@@ -11,6 +11,11 @@
         "@fontsource-variable/geist-mono",
         "@fontsource-variable/sora"
       ]
+    },
+    "e2e": {
+      "playwright": {
+        "config": ["playwright.config.ts", "playwright.monitor.config.ts"]
+      }
     }
   }
 }
