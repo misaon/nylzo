@@ -1,5 +1,5 @@
 package local
 
-func systemOpener(target string) (string, []string) {
-	return "rundll32", []string{"url.dll,FileProtocolHandler", target}
+func systemOpener(target string) []string {
+	return []string{"rundll32", "url.dll,FileProtocolHandler", target}
 }

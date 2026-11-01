@@ -1477,7 +1477,8 @@ func TestOpenRefusesALinkItCannotHandOver(t *testing.T) {
 		"newer link":       {strings.Replace(link, "#1.", "#7.", 1), nil, "newer version"},
 		"no link":          {"", nil, "empty"},
 	} {
-		result := runWith(t, testCase.stdin, nil, nil, append([]string{"open", "--no-browser"}, testCase.arguments...)...)
+		arguments := append([]string{"open", "--no-browser"}, testCase.arguments...)
+		result := runWith(t, testCase.stdin, nil, nil, arguments...)
 		if result.code != command.ExitError || !strings.Contains(result.stderr, testCase.want) || result.stdout != "" {
 			t.Fatalf("%s: %+v", name, result)
 		}

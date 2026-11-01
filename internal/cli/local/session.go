@@ -47,7 +47,7 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 	}
 	notices := make(chan localclient.Notice, noticeBuffer)
 	information := environment.BuildInformation()
-	server, err := localclient.New(listener.Addr(), localclient.Config{
+	server, err := localclient.New(listener.Addr(), &localclient.Config{
 		Instance:  options.Instance,
 		Build:     options.Build,
 		Version:   information.Version,
@@ -118,10 +118,10 @@ func (s *session) handOver() error {
 	}
 	address := s.server.Origin() + localclient.HandoffPath + "#" + token
 	if s.options.OpenBrowser {
-		page, remove, writeErr := writeHandoffPage(address)
+		page, writeErr := writeHandoffFile(address)
 		if writeErr == nil {
-			s.cleanup = sync.OnceFunc(remove)
-			if openErr := browser(s.environment)(page); openErr == nil {
+			s.cleanup = sync.OnceFunc(page.remove)
+			if openErr := browser(s.environment)(page.path); openErr == nil {
 				s.note("opening the message in your browser through the verified client at %s", s.server.Origin())
 				return nil
 			}

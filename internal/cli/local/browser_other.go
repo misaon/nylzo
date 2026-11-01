@@ -2,6 +2,6 @@
 
 package local
 
-func systemOpener(target string) (string, []string) {
-	return "xdg-open", []string{target}
+func systemOpener(target string) []string {
+	return []string{"xdg-open", target}
 }

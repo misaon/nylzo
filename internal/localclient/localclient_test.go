@@ -3,6 +3,7 @@ package localclient_test
 import (
 	"errors"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +74,7 @@ func webBuild(t *testing.T) webclient.Build {
 func newLocal(t *testing.T, upstream *instance, notify func(localclient.Notice)) *localclient.Server {
 	t.Helper()
 	address := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 54321}
-	server, err := localclient.New(address, localclient.Config{
+	server, err := localclient.New(address, &localclient.Config{
 		Instance: upstream.server.URL,
 		Build:    webBuild(t),
 		Version:  "test",
@@ -102,9 +103,7 @@ func fetchFromPage(method, path string) call {
 
 func (c call) with(name, value string) call {
 	headers := map[string]string{}
-	for key, existing := range c.headers {
-		headers[key] = existing
-	}
+	maps.Copy(headers, c.headers)
 	if value == "" {
 		delete(headers, name)
 	} else {
@@ -147,11 +146,17 @@ func TestListenOnlyOnALoopbackAddress(t *testing.T) {
 	for _, address := range []string{
 		"0.0.0.0:0", ":0", "[::]:0", "localhost:0", "192.0.2.1:0", "[::ffff:127.0.0.1]:0", "[fe80::1%lo0]:0", "nylzo",
 	} {
-		if listener, err := localclient.Listen(t.Context(), address); !errors.Is(err, localclient.ErrNotLoopback) {
-			if listener != nil {
-				listener.Close()
+		if refused, listenErr := localclient.Listen(
+			t.Context(),
+			address,
+		); !errors.Is(
+			listenErr,
+			localclient.ErrNotLoopback,
+		) {
+			if refused != nil {
+				refused.Close()
 			}
-			t.Errorf("%s: %v", address, err)
+			t.Errorf("%s: %v", address, listenErr)
 		}
 	}
 	upstream := newInstance(t, answerJSON)
@@ -160,9 +165,9 @@ func TestListenOnlyOnALoopbackAddress(t *testing.T) {
 		&net.TCPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 54321},
 		&net.UnixAddr{Name: "/tmp/nylzo.sock", Net: "unix"},
 	} {
-		_, err := localclient.New(address, localclient.Config{Instance: upstream.server.URL, Build: webBuild(t)})
-		if !errors.Is(err, localclient.ErrNotLoopback) {
-			t.Errorf("%v: %v", address, err)
+		_, newErr := localclient.New(address, &localclient.Config{Instance: upstream.server.URL, Build: webBuild(t)})
+		if !errors.Is(newErr, localclient.ErrNotLoopback) {
+			t.Errorf("%v: %v", address, newErr)
 		}
 	}
 }
@@ -171,8 +176,10 @@ func TestOnlyTheListenAddressIsServed(t *testing.T) {
 	t.Parallel()
 	upstream := newInstance(t, answerJSON)
 	server := newLocal(t, upstream, nil)
-	for _, host := range []string{"rebind.attacker.example", "rebind.attacker.example:54321", "localhost:54321",
-		"127.0.0.1:54322", "127.0.0.2:54321", "[::1]:54321", "127.0.0.1"} {
+	for _, host := range []string{
+		"rebind.attacker.example", "rebind.attacker.example:54321", "localhost:54321",
+		"127.0.0.1:54322", "127.0.0.2:54321", "[::1]:54321", "127.0.0.1",
+	} {
 		for _, request := range []call{{method: http.MethodGet, path: "/"}, fetchFromPage(http.MethodGet, "/api/v1/instance")} {
 			response := do(t, server, request.with("Host", host))
 			if response.Code != http.StatusMisdirectedRequest || strings.Contains(response.Body.String(), "html") {
@@ -207,7 +214,7 @@ func TestRelayAdmitsOnlyFetchCallsFromItsOwnPages(t *testing.T) {
 		"opaque origin":           post.with("Origin", "null"),
 		"origin of the instance":  post.with("Origin", upstream.server.URL),
 		"localhost origin":        post.with("Origin", "http://localhost:54321"),
-		"transparency elsewhere":  call{method: http.MethodGet, path: "/.well-known/nylzo/transparency.json"},
+		"transparency elsewhere":  {method: http.MethodGet, path: "/.well-known/nylzo/transparency.json"},
 	} {
 		if response := do(t, server, request); response.Code != http.StatusForbidden {
 			t.Errorf("%s: %d", name, response.Code)
@@ -270,8 +277,8 @@ func TestRelayCarriesOnlyTheAPIAsANativeClient(t *testing.T) {
 	if seen[0].UserAgent() != "nylzo-cli" || seen[0].Header.Get("Authorization") != "Nylzo-Sig signed" {
 		t.Fatalf("the relay must look like the command line client: %v", seen[0].Header)
 	}
-	if redirect := do(t, server, fetchFromPage(http.MethodGet, "/api/v1/challenge")); redirect.Code != http.StatusBadGateway ||
-		redirect.Header().Get("Location") != "" {
+	redirect := do(t, server, fetchFromPage(http.MethodGet, "/api/v1/challenge"))
+	if redirect.Code != http.StatusBadGateway || redirect.Header().Get("Location") != "" {
 		t.Fatalf("a redirect from the instance must not reach the browser: %d %v", redirect.Code, redirect.Header())
 	}
 	before := len(upstream.seen())
@@ -283,8 +290,8 @@ func TestRelayCarriesOnlyTheAPIAsANativeClient(t *testing.T) {
 		do(t, server, fetchFromPage(http.MethodGet, path))
 		do(t, server, call{method: http.MethodGet, path: path})
 	}
-	if seen := upstream.seen(); len(seen) != before {
-		t.Fatalf("a page, asset or non-API path reached the instance: %s", seen[before].URL)
+	if after := upstream.seen(); len(after) != before {
+		t.Fatalf("a page, asset or non-API path reached the instance: %s", after[before].URL)
 	}
 }
 
@@ -309,7 +316,11 @@ func TestPagesAreTheEmbeddedClientWithTheInstanceAddress(t *testing.T) {
 			t.Fatalf("%s: %d %v %s", path, response.Code, response.Header(), response.Body)
 		}
 	}
-	if response := do(t, server, call{method: http.MethodGet, path: "/m/not-an-id"}); response.Code != http.StatusNotFound {
+	if response := do(
+		t,
+		server,
+		call{method: http.MethodGet, path: "/m/not-an-id"},
+	); response.Code != http.StatusNotFound {
 		t.Fatalf("an invalid id: %d", response.Code)
 	}
 	if asset := do(t, server, call{method: http.MethodGet, path: "/assets/index-a1.js"}); asset.Body.String() != appJS {
@@ -352,11 +363,17 @@ func TestHandoffIsSingleUse(t *testing.T) {
 		t.Fatalf("a wrong token: %d", response.Code)
 	}
 	first := do(t, server, redeem(token))
-	if first.Code != http.StatusOK || first.Body.String() != `{"path":"/m/AAAAAAAAAAAAAAAAAAAAAA","fragment":"1.0.secret"}` ||
+	if first.Code != http.StatusOK ||
+		first.Body.String() != `{"path":"/m/AAAAAAAAAAAAAAAAAAAAAA","fragment":"1.0.secret"}` ||
 		first.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("first redemption: %d %s", first.Code, first.Body)
 	}
-	if second := do(t, server, redeem(token)); second.Code != http.StatusNotFound || strings.Contains(second.Body.String(), "secret") {
+	if second := do(
+		t,
+		server,
+		redeem(token),
+	); second.Code != http.StatusNotFound ||
+		strings.Contains(second.Body.String(), "secret") {
 		t.Fatalf("second redemption: %d %s", second.Code, second.Body)
 	}
 	mutex.Lock()
@@ -385,7 +402,12 @@ func TestHandoffIsSingleUse(t *testing.T) {
 	if seen := upstream.seen(); len(seen) != 0 {
 		t.Fatalf("the handoff reached the instance: %v", seen[0].URL)
 	}
-	if body, _ := io.ReadAll(do(t, server, call{method: http.MethodGet, path: "/open"}).Body); strings.Contains(string(body), "secret") {
+	if body, _ := io.ReadAll(
+		do(t, server, call{method: http.MethodGet, path: "/open"}).Body,
+	); strings.Contains(
+		string(body),
+		"secret",
+	) {
 		t.Fatal("the handoff page must not carry the link")
 	}
 }

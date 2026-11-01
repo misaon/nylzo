@@ -77,7 +77,7 @@ func Listen(ctx context.Context, address string) (net.Listener, error) {
 	return config.Listen(ctx, "tcp", address)
 }
 
-func New(address net.Addr, config Config) (*Server, error) {
+func New(address net.Addr, config *Config) (*Server, error) {
 	listening, ok := address.(*net.TCPAddr)
 	if !ok {
 		return nil, ErrNotLoopback

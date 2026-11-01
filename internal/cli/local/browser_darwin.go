@@ -1,5 +1,5 @@
 package local
 
-func systemOpener(target string) (string, []string) {
-	return "open", []string{target}
+func systemOpener(target string) []string {
+	return []string{"open", target}
 }

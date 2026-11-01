@@ -114,7 +114,12 @@ func (r *run) stop(t *testing.T) int {
 func redeem(t *testing.T, address string) *http.Response {
 	t.Helper()
 	origin, token, _ := strings.Cut(address, localclient.HandoffPath+"#")
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, origin+localclient.HandoffPath, strings.NewReader(token))
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		origin+localclient.HandoffPath,
+		strings.NewReader(token),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +136,8 @@ func TestWebServesTheComposerForTheInstance(t *testing.T) {
 	t.Parallel()
 	current := start(t, local.Options{OpenBrowser: true})
 	address := current.target(t)
-	if !regexp.MustCompile(`^http://127\.0\.0\.1:\d+/$`).MatchString(address) || current.stdout.String() != address+"\n" {
+	if !regexp.MustCompile(`^http://127\.0\.0\.1:\d+/$`).MatchString(address) ||
+		current.stdout.String() != address+"\n" {
 		t.Fatalf("the composer must open on a random loopback port: %q, stdout %q", address, current.stdout.String())
 	}
 	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, address, http.NoBody)
