@@ -118,12 +118,16 @@ test(
       const website = await newPage();
       const control = await createMessageInPage(website, { text: 'read on the website', passphrase: PASSPHRASE });
       const fragment = control.slice(control.indexOf('#'));
+      const victim = await newPage();
       await showMessage(
-        await newPage(),
+        victim,
         control.replace(BASE_URL, () => hostile.origin),
         PASSPHRASE,
       );
+      await expectMessageShown(victim);
       await expect.poll(() => hostile.loot).toContain(fragment);
+      await victim.close();
+      await website.close();
 
       hostile.requests.length = 0;
       hostile.loot.length = 0;
