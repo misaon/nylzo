@@ -52,7 +52,7 @@ References: [CryptoKey extraction rules](https://developer.mozilla.org/en-US/doc
 
 ## A link grants capabilities
 
-Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data can guess a weak passphrase offline. If you add a passphrase, use a generated one and send it through a different channel.
+Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data taken while the message was live can guess a weak passphrase offline. If you add a passphrase, use a generated one and send it through a different channel.
 
 Expiry and open limits control access to the server's copy. They cannot erase a recipient's screenshot, saved file, clipboard, backup, or memory. Encryption also cannot protect a compromised sender or recipient device.
 
@@ -67,6 +67,10 @@ Fields for secrets and the revealed message ask the browser not to spell-check, 
 Copying puts the link or the message on the system clipboard. Windows clipboard history and cloud clipboard and Apple's Universal Clipboard can keep or sync it, and no web API lets a page keep an item out of them. Where the system offers a share sheet, the sender can hand the link straight to an app without the clipboard. After copying, the page offers to clear the clipboard; that empties the current clipboard but not copies already in clipboard history.
 
 Revealed text shows bidirectional controls and invisible characters, such as U+202E or a zero-width space, as visible codes, because they can make the text on screen differ from the text a copy contains. Copying such a text needs a second confirmation.
+
+## Deletion on the server
+
+When a message ends, the server overwrites the 4 KiB block at the start of its blob file where it lies, syncs it and only then deletes the file. That block holds the salt of the key that encrypts the stored object, and no other copy of the salt exists, so a disk image taken afterwards opens nothing, even together with the link: neither the content nor a passphrase guess, because the verifier mac also covers the salt. The database rewrites older row versions in place, and after every deletion the server overwrites its write-ahead log with zero pages. This needs a file system that overwrites in place, so the server refuses to start on anything other than ext4, XFS or tmpfs on Linux. Layers below the file system, such as SSD block remapping or a provider's snapshots, can still keep an old block; an encrypted volume keeps those copies unreadable. A copy of the server taken while a message was live still opens with its link. The [protocol](../reference/Protocol.md#13-what-a-stolen-server-reveals) lists what a stolen server holds.
 
 ## Metadata still exists
 
