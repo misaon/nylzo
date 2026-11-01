@@ -10,6 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -92,9 +93,23 @@ func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Reco
 	if purpose == seal.Manage {
 		wrapped = row.ManageWrap
 	}
-	key, unwrapErr := seal.Unwrap(seal.KeyFor(publicKey, row.Locator, purpose), wrapped, row.Locator, purpose)
-	record, openErr := store.OpenRecord(row, key)
-	return record, errors.Join(unwrapErr, openErr)
+	var record store.Record
+	var err error
+	secretmode.Do(func() {
+		wrapping := seal.KeyFor(publicKey, row.Locator, purpose)
+		key, unwrapErr := seal.Unwrap(wrapping, wrapped, row.Locator, purpose)
+		var openErr error
+		record, openErr = store.OpenRecord(row, key)
+		clear(wrapping[:])
+		clear(key[:])
+		err = errors.Join(unwrapErr, openErr)
+	})
+	return record, err
+}
+
+// forget clears the record key when the request ends, so a later memory image does not hold it (A4-2).
+func (a *access) forget() {
+	clear(a.record.Key[:])
 }
 
 // verifierInput binds the verifier mac to the erase salt, so once the blob is erased no copy of a record tests a passphrase.

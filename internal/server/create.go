@@ -18,6 +18,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -399,7 +400,11 @@ func (s *Server) storeMessage(
 ) bool {
 	message := s.newMessage(request, envelopeHeader, time.Now(), blob.salt)
 	locator := seal.LocatorOf(request.id[:])
-	record := store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
+	var record store.Record
+	secretmode.Do(func() {
+		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
+	})
+	defer clear(record.Key[:])
 	err := s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
 	if err == nil {
 		writeJSON(

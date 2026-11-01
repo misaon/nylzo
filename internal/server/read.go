@@ -14,6 +14,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -53,6 +54,7 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	granted, ok := s.authorized(w, r, seal.Read)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -107,6 +109,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	granted, ok := s.authorizedLive(w, r, seal.Read)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -189,6 +192,8 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 	s.leaseTimers.after(time.Until(leaseExpires.Add(store.LeaseTimerSlack)), func() {
 		ctx := context.Background()
 		kept := store.Record{Row: store.Row{Locator: locator}, Key: key}
+		defer clear(kept.Key[:])
+		defer clear(key[:])
 		err := s.reload(ctx, &kept)
 		if err == nil {
 			_, err = store.Finish(ctx, s.store, s.blobs, &kept, time.Now())
@@ -206,6 +211,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	leased, ok := s.activeLease(w, r)
+	defer clear(leased.record.Key[:])
 	if !ok {
 		return
 	}
@@ -228,6 +234,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	leased, ok := s.activeLease(w, r)
+	defer clear(leased.record.Key[:])
 	if !ok {
 		return
 	}
@@ -262,6 +269,7 @@ type leaseAccess struct {
 
 func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAccess, bool) {
 	granted, ok := s.authorizedLive(w, r, seal.Read)
+	defer granted.forget()
 	if !ok {
 		return leaseAccess{}, false
 	}
@@ -306,7 +314,9 @@ type openedBlob struct {
 
 // openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
 func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (openedBlob, bool) {
-	key, err := record.BlobKey()
+	var key seal.Key
+	var err error
+	secretmode.Do(func() { key, err = record.BlobKey() })
 	defer clear(key[:])
 	if errors.Is(err, store.ErrBlobMissing) {
 		writeGone(w, string(record.State(time.Now())))
@@ -328,7 +338,9 @@ func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.
 		s.writeInternal(w, r, err)
 		return openedBlob{}, false
 	}
-	plain := cipher.StreamReader{S: seal.BlobStream(key, salt), R: file}
+	var stream cipher.Stream
+	secretmode.Do(func() { stream = seal.BlobStream(key, salt) })
+	plain := cipher.StreamReader{S: stream, R: file}
 	content := decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}
 	return openedBlob{content: content, salt: salt}, true
 }

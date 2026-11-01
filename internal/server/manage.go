@@ -11,6 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
@@ -55,6 +56,7 @@ func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpos
 		return
 	}
 	granted, ok := s.authorizedLive(w, r, purpose)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -76,6 +78,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	granted, ok := s.authorized(w, r, seal.Manage)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -103,12 +106,18 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 // handleAbuse answers the same 202 for unknown, ended and malformed ids and stores reports only for live messages.
 func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
+	secretmode.Do(func() { s.receiveAbuse(w, r) })
+}
+
+// receiveAbuse runs in secret mode, since the reason and contact arrive as strings that no code can clear.
+func (s *Server) receiveAbuse(w http.ResponseWriter, r *http.Request) {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAbuseBody))
+	defer clear(raw)
 	var submitted abuseRequest
 	if err != nil || json.Unmarshal(raw, &submitted) != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
@@ -128,6 +137,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	granted, ok, err := s.authorize(r.Context(), r, submitted.ID, seal.Read, raw)
+	defer granted.forget()
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return

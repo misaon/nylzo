@@ -62,6 +62,7 @@ run = [
   "go test -race -count=1 -run '^TestAK21UniformNotFoundAndConflict$' ./internal/server/",
   "go test -race -count=1 -run '^TestAK22SlowConnectionsAndLyingContentLength$' ./internal/server/",
   "go test -race -count=1 -run '^TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck$' ./internal/server/",
+  "GOEXPERIMENT=runtimesecret GOOS=linux go vet ./internal/secretmode/ ./internal/server/",
 ]
 
 [tasks."test:web"]
