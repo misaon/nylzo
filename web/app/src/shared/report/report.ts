@@ -27,7 +27,7 @@ const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
 const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'g');
 const HEX_DIGIT = /^[\da-f]$/i;
 const WHITE_SPACE_AT_ENDS = /^\p{White_Space}+|\p{White_Space}+$/gu;
-const CONTACT = /^[A-Za-z0-9_%+-]+(?:\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/;
+const CONTACT = /^[\w%+-]+(?:\.[\w%+-]+)*@[\da-z-]+(?:\.[\da-z-]+)+$/i;
 const CONTACT_KEY_LIKE_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`);
 
 type ReportProblem =
@@ -103,7 +103,7 @@ export function parseContact(raw: string): string | undefined {
   if (contact === '') {
     return '';
   }
-  const [localPart = ''] = contact.split('@');
+  const [localPart = ''] = contact.split('@', 1);
   const plausible =
     contact.length <= MAX_CONTACT_BYTES && CONTACT.test(contact) && !CONTACT_KEY_LIKE_RUN.test(localPart);
   return plausible ? contact : undefined;
