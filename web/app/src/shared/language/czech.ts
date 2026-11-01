@@ -205,8 +205,7 @@ export const czech = {
   'transparency.client.commit': 'Commit webového klienta',
   'transparency.server.title': 'Údaje hlášené serverem',
   'transparency.server.version': 'Hlášená verze serveru',
-  'transparency.client.files':
-    'SHA-256 souborů webového klienta. U stránky jde o šablonu, do které server vkládá nonce.',
+  'transparency.client.files': 'SHA-256 souborů webového klienta přesně v té podobě, v jaké je posílá tento server.',
   'transparency.client.verify':
     'Příkaz z vydání nylzo stejné verze ověří, že server posílá právě tyto soubory se stejnými hlavičkami:',
   'transparency.client.limit':

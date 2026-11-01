@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
 	"embed"
 	"io/fs"
 	"net/http"
@@ -47,15 +46,12 @@ func (s *Server) loadWebClient() error {
 	s.logger.Info("web-client", "built", s.webBuild.Built, "assets", len(s.webBuild.Assets), "public_url", publicURL)
 	s.robots = webclient.Robots(publicURL)
 	s.sitemap = webclient.Sitemap(publicURL)
-	s.manifest = s.webBuild.Manifest(s.settings.Version, publicURL, s.buildInformation())
+	s.manifest = s.webBuild.Manifest(s.settings.Version, publicURL, s.pages, s.buildInformation())
 	return nil
 }
 
 func (s *Server) pageHandler(path string) http.HandlerFunc {
-	page := s.pages.For(path)
-	return func(w http.ResponseWriter, r *http.Request) {
-		writePage(w, r, page, startPage(w))
-	}
+	return s.pages.For(path).Serve
 }
 
 // handleMessagePage serves link previews a page without script; loading the page consumes nothing.
@@ -64,30 +60,14 @@ func (s *Server) handleMessagePage(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	nonce := startPage(w)
+	page := s.pages.For(messagePagePath)
 	if webclient.IsPreviewAgent(r.UserAgent()) {
+		w.Header().Set("Content-Security-Policy", page.Policy())
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(webclient.PreviewHTML))
 		return
 	}
-	writePage(w, r, s.pages.For(messagePagePath), nonce)
-}
-
-func startPage(w http.ResponseWriter) string {
-	nonce := rand.Text()
-	header := w.Header()
-	header.Set("Content-Security-Policy", webclient.PageCSP(nonce))
-	header.Set("Content-Type", "text/html; charset=utf-8")
-	header.Set("Vary", "Accept-Encoding")
-	return nonce
-}
-
-func writePage(w http.ResponseWriter, r *http.Request, page webclient.Page, nonce string) {
-	if webclient.AcceptsGzip(r.Header.Get("Accept-Encoding")) {
-		w.Header().Set("Content-Encoding", webclient.EncodingGzip)
-		w.Write(page.Gzip(nonce))
-		return
-	}
-	w.Write(page.Plain(nonce))
+	page.Serve(w, r)
 }
 
 func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
@@ -96,15 +76,7 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	header := w.Header()
-	header.Set("Content-Type", asset.ContentType)
-	header.Set("Vary", "Accept-Encoding")
-	if len(asset.Gzip) > 0 && webclient.AcceptsGzip(r.Header.Get("Accept-Encoding")) {
-		header.Set("Content-Encoding", webclient.EncodingGzip)
-		w.Write(asset.Gzip)
-		return
-	}
-	w.Write(asset.Body)
+	asset.Serve(w, r)
 }
 
 func (s *Server) handleRobots(w http.ResponseWriter, _ *http.Request) {

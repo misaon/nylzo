@@ -716,6 +716,12 @@ jobs:
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
           version: v2.19.0
           args: release --snapshot --skip=publish,sign,sbom --clean
+      - name: The checksums list every embedded web client file
+        run: |
+          find internal/server/web/dist -type f -exec sha256sum {} + | sed 's|  .*/|  |' | sort > "${RUNNER_TEMP}/embedded.txt"
+          test -s "${RUNNER_TEMP}/embedded.txt"
+          missing=$(sort dist/checksums.txt | comm -23 "${RUNNER_TEMP}/embedded.txt" -)
+          if [ -n "$missing" ]; then printf 'checksums.txt misses:\n%s\n' "$missing"; exit 1; fi
       - name: Archive ownership is independent of the build host
         run: |
           python3 - <<'PY'
@@ -749,7 +755,7 @@ jobs:
           if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
           binary=(dist/nylzo_linux_"${architecture}"_*/nylzo)
           "${binary[0]}" version --json | cmp - internal/server/web/dist/assets/build-info.json
-      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip internal/server/web/dist/index.html internal/server/web/dist/assets/* > hashes.txt
+      - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip internal/server/web/dist/*.html internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: hashes-${{ matrix.runner }}

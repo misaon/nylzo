@@ -1,6 +1,6 @@
 # Nylzo CLI
 
-The same `nylzo` binary creates and reads messages, checks an instance's web client, and runs the server. Build it with `mise run build`, or use a [verified release](Verify-a-release.md). Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
+The same `nylzo` binary creates and reads messages, serves a verified web client on your computer, checks an instance's web client, and runs the server. Build it with `mise run build`, or use a [verified release](Verify-a-release.md). Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
 
 ## Keep secrets out of arguments
 
@@ -49,13 +49,24 @@ For passphrase-protected messages, `read` prompts without echo or uses `--passph
 
 Downloaded files contain plaintext. Delete them when no longer needed, while recognizing that SSDs and backups may retain copies. On Windows, POSIX modes 0700 and 0600 do not restrict access: files inherit directory permissions, so choose a private destination. The CLI makes a best effort to clear keys from its own memory, but Go strings, libraries, garbage collection, terminals, and pipes may retain copies.
 
+## Use the web client without trusting the server
+
+`nylzo web` and `nylzo open` run the web client embedded in the binary in your own browser, so the instance sends no code to it. [Verified clients](Verified-clients.md) explains the guarantee.
+
+```sh
+nylzo web --server https://nylzo.example
+nylzo open --server https://nylzo.example < link.txt
+```
+
+`web` serves the composer on `http://127.0.0.1` at a random port and opens it in the default browser. The links it creates point to the instance. `open` reads a link the way `read` does (stdin, a hidden prompt, `--link-file` or `NYLZO_LINK`), refuses a link of another instance than `--server` or `NYLZO_SERVER`, and opens it through a one-time address that carries no part of the link. It writes that address into a private file and opens the file, so no process argument holds it. `--no-browser` prints the address instead. Both commands run until Ctrl-C; `open` stops with an error when no browser takes the link within two minutes and warns when something asks for it a second time.
+
 ## Verify an instance's web client
 
 ```sh
 nylzo verify-client --server https://nylzo.example
 ```
 
-This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, nonce-bearing CSP, security headers, and `/.well-known/nylzo/client.json`.
+This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, the static CSP, security headers, and `/.well-known/nylzo/client.json`.
 
 Unexpected headers are mismatches. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
 

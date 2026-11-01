@@ -19,6 +19,14 @@ func TestBrowserMutationProtection(t *testing.T) {
 		{"same origin metadata", http.Header{"Sec-Fetch-Site": {"same-origin"}, "X-Requested-With": {requestedWith}}, true},
 		{"referer fallback", http.Header{"Referer": {"https://nylzo.example/m/id?query=ignored"}, "X-Requested-With": {requestedWith}}, true},
 		{"native client", http.Header{"X-Requested-With": {requestedWith}}, true},
+		{"verified local client relay", http.Header{
+			"Authorization": {"Nylzo-Sig signed-request"}, "Content-Type": {"application/octet-stream"},
+			"User-Agent": {"nylzo-cli"}, "X-Requested-With": {requestedWith}, "X-Nylzo-Lease": {"lease"},
+		}, true},
+		{"browser extension, not yet admitted", http.Header{
+			"Origin": {"chrome-extension://jipnmcbmakammenkcefmmoodonlpmeij"}, "Sec-Fetch-Site": {"none"},
+			"X-Requested-With": {requestedWith},
+		}, false},
 		{"legacy signed client", http.Header{"Authorization": {"Nylzo-Sig signed-request"}}, true},
 		{"legacy create", http.Header{"X-Nylzo-Create": {"create-metadata"}}, true},
 		{"missing marker", http.Header{"Origin": {"https://nylzo.example"}}, false},

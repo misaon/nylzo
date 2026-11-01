@@ -7,10 +7,6 @@ import { type DefaultTreeAdapterMap, parse, serialize } from 'parse5';
 type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
-// This policy intersects with the server's nonce policy. Inline CSS still
-// needs the server nonce; the second policy only adds the origin restriction.
-const NONCE = '__NYLZO_CSP_NONCE__';
-
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/.test(url) || /[?#%\\]/.test(url)) {
     throw new Error(`resource integrity: nonlocal resource ${url} in ${from}`);
@@ -147,30 +143,14 @@ export function secureHtml(html: string, assets: Assets): string {
     nodeName: 'script',
     tagName: 'script',
     namespaceURI: head.namespaceURI,
-    attrs: [
-      { name: 'type', value: 'importmap' },
-      { name: 'nonce', value: NONCE },
-    ],
+    attrs: [{ name: 'type', value: 'importmap' }],
     childNodes: [],
     parentNode: head,
   };
   importMap.childNodes.push({ nodeName: '#text', value: contents, parentNode: importMap });
-  head.childNodes.unshift(
-    {
-      nodeName: 'meta',
-      tagName: 'meta',
-      namespaceURI: head.namespaceURI,
-      attrs: [
-        { name: 'http-equiv', value: 'Content-Security-Policy' },
-        {
-          name: 'content',
-          value: `script-src 'self' '${integrity(Buffer.from(contents))}'; style-src 'self' 'unsafe-inline'`,
-        },
-      ],
-      childNodes: [],
-      parentNode: head,
-    },
-    importMap,
+  const charset = head.childNodes.findIndex(
+    (node) => 'tagName' in node && node.tagName === 'meta' && node.attrs.some(({ name }) => name === 'charset'),
   );
+  head.childNodes.splice(charset + 1, 0, importMap);
   return serialize(document, { scriptingEnabled: false });
 }

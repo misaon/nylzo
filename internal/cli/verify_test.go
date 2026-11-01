@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	webIndex = `<!doctype html><html><head><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script><link rel="stylesheet" href="/assets/style-b2.css" nonce="__NYLZO_CSP_NONCE__"></head><body></body></html>`
-	webHome  = `<!doctype html><html><head><!--nylzo:public--><link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><script type="application/ld+json" nonce="__NYLZO_CSP_NONCE__">{"url":"__NYLZO_PUBLIC_URL__/"}</script><!--/nylzo:public--><script type="module" src="/assets/index-a1.js" nonce="__NYLZO_CSP_NONCE__"></script></head><body><h1>Nylzo</h1></body></html>`
+	webIndex = `<!doctype html><html><head><script type="importmap">{"integrity":{}}</script><script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body></body></html>`
+	webHome  = `<!doctype html><html><head><script type="importmap">{"integrity":{}}</script><!--nylzo:public--><link rel="canonical" href="__NYLZO_PUBLIC_URL__/"><script type="application/ld+json">{"url":"__NYLZO_PUBLIC_URL__/"}</script><!--/nylzo:public--><script type="module" src="/assets/index-a1.js"></script><style>h1{color:white}</style></head><body><h1>Nylzo</h1></body></html>`
 	webJS    = "console.log('nylzo')"
 	webIcon  = `<svg xmlns="http://www.w3.org/2000/svg"/>`
 )
@@ -229,7 +229,7 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		}), "names a public URL that this nylzo would refuse"},
 		{"public URL in the manifest that the pages do not use", rewrite(pathIs(webclient.ManifestPath), func(response *served) {
 			response.body = bytes.Replace(response.body, []byte(`"public_url":""`), []byte(`"public_url":"https://evil.example"`), 1)
-		}), "/: the page "},
+		}), "the server's client manifest differs"},
 		{"weaker referrer policy", rewrite(pathIs("/assets/style-b2.css"), func(response *served) {
 			response.header.Set("Referrer-Policy", "unsafe-url")
 		}), "the Referrer-Policy header differs"},
@@ -242,14 +242,13 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"second CSP header", rewrite(pathIs("/sent"), func(response *served) {
 			response.header.Add("Content-Security-Policy", "script-src *")
 		}), "/sent: the Content-Security-Policy header differs"},
-		{"short nonce", rewrite(pathIs("/report"), func(response *served) {
-			old := pageNonce.FindStringSubmatch(response.header.Get("Content-Security-Policy"))[1]
-			response.header.Set("Content-Security-Policy", webclient.PageCSP("abc"))
-			response.body = bytes.ReplaceAll(response.body, []byte(old), []byte("abc"))
+		{"policy that admits another inline script", rewrite(pathIs("/report"), func(response *served) {
+			policy := response.header.Get("Content-Security-Policy")
+			response.header.Set("Content-Security-Policy", strings.Replace(policy, "script-src 'self'", "script-src 'self' 'sha384-AAAA'", 1))
 		}), "/report: the Content-Security-Policy differs"},
-		{"nonce that the page does not use", rewrite(pathIs("/transparency"), func(response *served) {
-			response.header.Set("Content-Security-Policy", webclient.PageCSP("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
-		}), "/transparency: the page does not use the nonce"},
+		{"inline style that the release does not have", rewrite(pathIs("/"), func(response *served) {
+			response.body = bytes.Replace(response.body, []byte("color:white"), []byte("background:url(https://evil.example/)"), 1)
+		}), "/: the page differs"},
 		{"missing nosniff", rewrite(pathIs("/assets/kdf-worker-c3.js"), func(response *served) {
 			response.header.Del("X-Content-Type-Options")
 		}), "the X-Content-Type-Options header differs"},
@@ -280,16 +279,6 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			response.body = gzipBytes(t, response.body)
 			response.header.Set("Content-Encoding", "gzip")
 		}), "/sent: the server compressed a response that was asked for without compression"},
-		{"fixed nonce", rewrite(func(r *http.Request) bool { return r.URL.Path == "/" || r.URL.Path == "/sent" }, func(response *served) {
-			old := pageNonce.FindStringSubmatch(response.header.Get("Content-Security-Policy"))[1]
-			fixed := "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-			response.header.Set("Content-Security-Policy", webclient.PageCSP(fixed))
-			response.body = bytes.ReplaceAll(response.body, []byte(old), []byte(fixed))
-		}), "the server sent the same nonce twice"},
-		{"style without nonce", rewrite(pathIs("/report"), func(response *served) {
-			old := pageNonce.FindStringSubmatch(response.header.Get("Content-Security-Policy"))[1]
-			response.body = bytes.Replace(response.body, []byte(`nonce="`+old+`"></head>`), []byte(`nonce="__NYLZO_CSP_NONCE__"></head>`), 1)
-		}), "/report: the page does not use the nonce of its Content-Security-Policy everywhere"},
 		{"manifest", rewrite(pathIs(webclient.ManifestPath), func(response *served) {
 			response.body = bytes.Replace(response.body, []byte(`"sha256":"`), []byte(`"sha256":"0`), 1)
 		}), "the server's client manifest differs"},

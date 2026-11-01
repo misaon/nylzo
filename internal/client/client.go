@@ -27,7 +27,7 @@ const (
 	minTransferBytesPerSecond = 16000
 	maxJSONBytes              = 64 << 10
 	MaxFetchBytes             = 8 << 20
-	userAgent                 = "nylzo-cli"
+	UserAgent                 = "nylzo-cli"
 )
 
 var (
@@ -71,22 +71,27 @@ func New(server string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return &Client{base: base, http: &http.Client{
+		Transport: NewTransport(base),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return ErrRedirect
+		},
+	}}, nil
+}
+
+// NewTransport connects to an origin from Origin: plain http only reaches a loopback address and skips proxies.
+func NewTransport(origin string) *http.Transport {
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		ForceAttemptHTTP2:     true,
 		ResponseHeaderTimeout: minTransfer + transferMargin,
 	}
-	if strings.HasPrefix(base, "http://") {
+	if strings.HasPrefix(origin, "http://") {
 		transport.Proxy = nil
 		dialer := &net.Dialer{Timeout: shortTimeout, Control: loopbackOnly}
 		transport.DialContext = dialer.DialContext
 	}
-	return &Client{base: base, http: &http.Client{
-		Transport: transport,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return ErrRedirect
-		},
-	}}, nil
+	return transport
 }
 
 func Origin(server string) (string, error) {
@@ -154,7 +159,7 @@ func (c *Client) do(
 		cancel()
 		return nil, err
 	}
-	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("User-Agent", UserAgent)
 	for name, value := range headers {
 		request.Header.Set(name, value)
 	}

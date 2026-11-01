@@ -22,12 +22,11 @@ export interface HomeAssets {
   readonly styles: HomeStyles;
 }
 
-const NONCE_PLACEHOLDER = '__NYLZO_CSP_NONCE__';
 const PUBLIC_URL_PLACEHOLDER = '__NYLZO_PUBLIC_URL__';
 const PUBLIC_START = '<!--nylzo:public-->';
 const PUBLIC_END = '<!--/nylzo:public-->';
 const OG_LOCALES: Readonly<Record<Language, string>> = { en: 'en_US', cs: 'cs_CZ' };
-const REVEAL_WITHOUT_SCRIPT = `<noscript><style nonce="${NONCE_PLACEHOLDER}">html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
+const REVEAL_WITHOUT_SCRIPT = `<noscript><style>html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
 const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/g;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/g;
@@ -115,7 +114,7 @@ function seoHead(language: Language, image: OgImage): string {
     meta('og:image:width', String(image.width)),
     meta('og:image:height', String(image.height)),
     meta('og:image:alt', translate('seo.image')),
-    `<script type="application/ld+json" nonce="${NONCE_PLACEHOLDER}">${jsonScript(structuredData(language, translate('seo.description')))}</script>`,
+    `<script type="application/ld+json">${jsonScript(structuredData(language, translate('seo.description')))}</script>`,
   ];
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
 }
@@ -135,7 +134,7 @@ function inlineStyles(page: string, { stylesheet, fontStylesheet, inline }: Home
   return replaceOnce(
     page,
     STYLESHEET,
-    `<link rel="stylesheet" crossorigin href="${fontStylesheet}" nonce="${NONCE_PLACEHOLDER}">\n<style nonce="${NONCE_PLACEHOLDER}">${inline}</style>`,
+    `<link rel="stylesheet" crossorigin href="${fontStylesheet}">\n<style>${inline}</style>`,
   );
 }
 
@@ -148,10 +147,7 @@ function fontPreloads(page: string, language: Language): string {
 }
 
 export function homeTemplate(index: string, language: Language, { image, styles }: HomeAssets): string {
-  const { head, body } = render(App, {
-    props: { start: { path: HOME_PATHS[language], language } },
-    csp: { nonce: NONCE_PLACEHOLDER },
-  });
+  const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language } } });
   let page = replaceOnce(index, /<html lang="[a-z]+">/, `<html lang="${language}">`);
   page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/, '');
   page = replaceOnce(page, /<title>[^<]*<\/title>/, `${head.trim()}\n${seoHead(language, image)}`);

@@ -12,7 +12,6 @@ import (
 	"maps"
 	"net/http"
 	"net/textproto"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -26,14 +25,12 @@ import (
 const (
 	maxManifestBytes = 64 << 10
 	maxPageBytes     = 1 << 20
-	minNonceLength   = 22
 	maxVersionShown  = 64
 	identity         = "identity"
 	browserEncodings = "gzip, deflate, br, zstd"
 )
 
 var (
-	pageNonce        = regexp.MustCompile(`'nonce-([A-Za-z0-9+/=_-]+)'`)
 	errNoLocalClient = errors.New("this nylzo carries no web client to compare with; use a release build")
 	transportHeaders = []string{"Date", "Content-Length", "Server", "Via", "Alt-Svc", "Connection", "Keep-Alive"}
 	neverAllowed     = []string{
@@ -52,10 +49,9 @@ type verifier struct {
 	information buildinfo.Info
 	api         *client.Client
 	local       webclient.Build
+	pages       webclient.Pages
 	version     string
-	publicURL   string
 	allowed     map[string]bool
-	nonces      map[string]bool
 }
 
 type verifyOptions struct {
@@ -108,7 +104,6 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 		local:       local,
 		version:     buildVersion(environment.Version),
 		allowed:     options.allowed,
-		nonces:      map[string]bool{},
 	}
 	result, err := check.run(ctx)
 	if err != nil {
@@ -176,22 +171,21 @@ func (v *verifier) manifest(ctx context.Context) error {
 			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %w", err)
 		}
 	}
-	v.publicURL = served.PublicURL
+	if v.pages, err = v.local.Render(served.PublicURL); err != nil {
+		return err
+	}
 	servedJSON, _ := json.Marshal(served)
-	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, v.publicURL, v.information))
+	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, served.PublicURL, v.pages, v.information))
 	if !bytes.Equal(servedJSON, expectedJSON) {
 		return errors.New("the server's client manifest differs from the web client of this nylzo")
 	}
 	return nil
 }
 
-// page checks the served page against the local template with a fresh nonce in every place it belongs.
+// page checks that the served page and its policy are byte for byte the ones this nylzo renders.
 func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	where := describe(path, encoding)
-	expected, err := v.local.Page(path, v.publicURL)
-	if err != nil {
-		return fmt.Errorf("%s: %w", where, err)
-	}
+	expected := v.pages.For(path)
 	fetched, err := v.api.Fetch(ctx, path, encoding, maxPageBytes)
 	if err != nil {
 		return fmt.Errorf("%s: %s", where, explain(err))
@@ -199,34 +193,17 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if headersErr := v.headers(fetched.Header, "text/html; charset=utf-8", path, where); headersErr != nil {
 		return headersErr
 	}
-	nonce, err := v.freshNonce(fetched.Header.Get("Content-Security-Policy"), where)
+	if fetched.Header.Get("Content-Security-Policy") != expected.Policy() {
+		return fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
+	}
+	body, err := decoded(&fetched, encoding, int64(len(expected.Body())), where)
 	if err != nil {
 		return err
 	}
-	body, err := decoded(&fetched, encoding, int64(len(expected))+maxPageBytes, where)
-	if err != nil {
-		return err
-	}
-	if strings.Count(string(body), nonce) != strings.Count(expected, webclient.NoncePlaceholder) {
-		return fmt.Errorf("%s: the page does not use the nonce of its Content-Security-Policy everywhere", where)
-	}
-	if strings.ReplaceAll(string(body), nonce, webclient.NoncePlaceholder) != expected {
+	if !bytes.Equal(body, expected.Body()) {
 		return fmt.Errorf("%s: the page differs from the web client of this nylzo", where)
 	}
 	return nil
-}
-
-func (v *verifier) freshNonce(policy, where string) (string, error) {
-	match := pageNonce.FindStringSubmatch(policy)
-	if len(match) < 2 || len(match[1]) < minNonceLength || policy != webclient.PageCSP(match[1]) {
-		return "", fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
-	}
-	nonce := match[1]
-	if v.nonces[nonce] {
-		return "", fmt.Errorf("%s: the server sent the same nonce twice", where)
-	}
-	v.nonces[nonce] = true
-	return nonce, nil
 }
 
 func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asset, encoding string) error {

@@ -581,6 +581,9 @@ func TestSecretsNeverTravelInArguments(t *testing.T) {
 	head, fragment, _ := strings.Cut(link, "#")
 	for _, arguments := range [][]string{
 		{"read", link},
+		{"open", link},
+		{"open", head},
+		{"web", "--server", link},
 		{"read", "--out", link},
 		{"burn", "--link-file=" + link},
 		{"create", "--server", link},
@@ -624,6 +627,7 @@ func TestNoFlagTakesASecret(t *testing.T) {
 		"contact":                  true,
 		"good-faith":               true,
 		"key-file":                 true,
+		"no-browser":               true,
 	}
 	for _, subcommand := range commands() {
 		result := runWith(t, "", nil, nil, subcommand.name, "-h")
@@ -1455,5 +1459,57 @@ func TestUsageAlignsEverySummary(t *testing.T) {
 		if len(listed) != len(names) {
 			t.Fatalf("usage lists %v, want %v", listed, names)
 		}
+	}
+}
+
+func TestOpenRefusesALinkItCannotHandOver(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t, nil)
+	link, _ := createText(t, instance, "opened elsewhere")
+	before := instance.requests.Load()
+	for name, testCase := range map[string]struct {
+		stdin  string
+		server string
+		want   string
+	}{
+		"another instance": {link, "https://nylzo.example", "belongs to another instance"},
+		"damaged link":     {strings.Replace(link, "#1.", "#1.9", 1), instance.url, "incomplete or damaged"},
+		"newer link":       {strings.Replace(link, "#1.", "#7.", 1), instance.url, "newer version"},
+		"no link":          {"", instance.url, "empty"},
+	} {
+		result := runWith(t, testCase.stdin, nil, nil, "open", "--no-browser", "--server", testCase.server)
+		if result.code != command.ExitError || !strings.Contains(result.stderr, testCase.want) || result.stdout != "" {
+			t.Fatalf("%s: %+v", name, result)
+		}
+	}
+	for _, name := range []string{"web", "open"} {
+		if result := runWith(
+			t,
+			link,
+			nil,
+			nil,
+			name,
+			"--no-browser",
+		); result.code != command.ExitUsage ||
+			result.stdout != "" {
+			t.Fatalf("%s without an instance: %+v", name, result)
+		}
+	}
+	if instance.requests.Load() != before {
+		t.Fatal("a refused open talked to the instance")
+	}
+}
+
+func TestOpenHandsOverAValidLinkOfItsInstance(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t, nil)
+	link, _ := createText(t, instance, "handed over")
+	handed, err := handedOverLink(link, instance.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, fragment, _ := strings.Cut(link, "#")
+	if !strings.HasSuffix(head, handed.path) || handed.fragment != fragment {
+		t.Fatalf("%+v from %s", handed, link)
 	}
 }

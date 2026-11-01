@@ -37,6 +37,7 @@ import {
 import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
+import { HANDOFF_PATH } from '../../shared/local-client/handoff.ts';
 import { type ReportOutcome, sendReport } from '../../shared/report/report.ts';
 import { browserResumeStore, type ResumeStore } from '../../shared/sent-records/resume-store.ts';
 
@@ -277,6 +278,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   async function takeFragment(): Promise<string | ReadView> {
     const { hash, pathname } = dependencies.location;
+    if (pathname === HANDOFF_PATH) {
+      return { view: 'removed' };
+    }
     const pathId = safely(() => idToString(parsePath(pathname)), undefined);
     if (hash !== '') {
       dependencies.dropFragment();

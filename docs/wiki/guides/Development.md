@@ -18,7 +18,7 @@ For hot reload, run this in a second terminal:
 mise run dev:web
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api` to the local development server; `NYLZO_DEV_API` overrides that address. Test production CSP and nonces through the embedded client or browser tests, because Vite does not serve the production CSP. A plain HTTP LAN address does not provide the secure context Web Crypto requires; use HTTPS or localhost.
+Open `http://localhost:5173`. Vite proxies `/api` to the local development server; `NYLZO_DEV_API` overrides that address. Test the production CSP through the embedded client or browser tests, because Vite does not serve the production CSP. A plain HTTP LAN address does not provide the secure context Web Crypto requires; use HTTPS or localhost.
 
 `mise run dev:reset` **deletes** local messages and keys in `.dev/`.
 

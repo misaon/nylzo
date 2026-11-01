@@ -44,7 +44,7 @@ for (const mutation of mutations) {
 }
 
 test(
-  'blocks foreign scripts and styles even with the real nonce and valid SRI',
+  'blocks foreign and injected inline scripts and styles even with valid SRI',
   { tag: '@cross-browser' },
   async ({ newPage }) => {
     const page = await newPage();
@@ -75,9 +75,7 @@ test(
           headers: { ...route.request().headers(), 'accept-encoding': 'identity' },
         });
         const original = await response.text();
-        const nonce = /nonce="([^"]+)"/.exec(original)?.[1] ?? '';
-        expect(nonce).not.toBe('');
-        const injected = `<script nonce="${nonce}" src="${foreign}/probe.js" integrity="${digest(script)}" crossorigin="anonymous"></script><link nonce="${nonce}" rel="stylesheet" href="${foreign}/probe.css" integrity="${digest(css)}" crossorigin="anonymous">`;
+        const injected = `<script src="${foreign}/probe.js" integrity="${digest(script)}" crossorigin="anonymous"></script><link rel="stylesheet" href="${foreign}/probe.css" integrity="${digest(css)}" crossorigin="anonymous"><script>${script}</script><style>${css}</style>`;
         await route.fulfill({ response, body: original.replace('</head>', () => `${injected}</head>`) });
       },
     );
@@ -111,8 +109,7 @@ test('requires SRI metadata before a same-origin script request can leave the br
     async (route) => {
       const response = await route.fetch({ headers: { ...route.request().headers(), 'accept-encoding': 'identity' } });
       const original = await response.text();
-      const nonce = /nonce="([^"]+)"/.exec(original)?.[1] ?? '';
-      const injected = `<script nonce="${nonce}" crossorigin="anonymous" src="/assets/integrity-probe.js"></script>`;
+      const injected = `<script crossorigin="anonymous" src="/assets/integrity-probe.js"></script>`;
       await route.fulfill({ response, body: original.replace('</head>', () => `${injected}</head>`) });
     },
   );
