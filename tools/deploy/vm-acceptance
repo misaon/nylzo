@@ -33,11 +33,13 @@ ip link set nylzo-probe up
 ip -n nylzo-outside address add 198.51.100.2/24 dev nylzo-peer
 ip -n nylzo-outside link set nylzo-peer up
 ip -n nylzo-outside link set lo up
-if ip netns exec nylzo-outside timeout 5 bash -c '</dev/tcp/198.51.100.1/22' 2>/dev/null; then
-  echo 'SSH answered a source outside the administrator networks.' >&2
-  exit 1
-fi
-ip netns exec nylzo-outside timeout 5 bash -c '</dev/tcp/198.51.100.1/80'
+connect() {
+  local status=0
+  ip netns exec nylzo-outside curl --silent --output /dev/null --connect-timeout 5 --max-time 10 "http://198.51.100.1:$1/" || status=$?
+  echo "$status"
+}
+[[ "$(connect 22)" = 28 ]] || { echo 'SSH answered a source outside the administrator networks.' >&2; exit 1; }
+[[ "$(connect 80)" = 0 ]] || { echo 'HTTP did not answer a public source.' >&2; exit 1; }
 ip netns delete nylzo-outside
 ip link delete nylzo-probe 2>/dev/null || true
 trap - EXIT
