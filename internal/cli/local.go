@@ -11,12 +11,10 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
-	"github.com/misaon/nylzo/internal/localclient"
 )
 
 type localOptions struct {
 	server    string
-	listen    string
 	noBrowser bool
 }
 
@@ -24,12 +22,6 @@ func localFlags(environment *command.Environment, name string) (*flag.FlagSet, *
 	options := &localOptions{}
 	flags := command.NewFlags(environment, name)
 	flags.StringVar(&options.server, "server", "", "the instance, such as https://nylzo.example (or "+envServer+")")
-	flags.StringVar(
-		&options.listen,
-		"listen",
-		localclient.DefaultAddress,
-		"loopback address and port to serve on; the default port is random",
-	)
 	flags.BoolVar(&options.noBrowser, "no-browser", false, "print the address instead of opening a browser")
 	return flags, options
 }
@@ -56,7 +48,6 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 	}
 	return local.Serve(ctx, environment, local.Options{
 		Instance:    instance,
-		Listen:      options.listen,
 		Build:       build,
 		OpenBrowser: !options.noBrowser,
 	})
@@ -86,7 +77,6 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 	}
 	return local.Serve(ctx, environment, local.Options{
 		Instance:    link.instance,
-		Listen:      options.listen,
 		Build:       build,
 		OpenBrowser: !options.noBrowser,
 		Link:        &local.Link{Path: link.path, Fragment: link.fragment, Lifetime: local.HandoffLifetime},

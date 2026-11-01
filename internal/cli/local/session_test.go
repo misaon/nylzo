@@ -69,7 +69,7 @@ func start(t *testing.T, options local.Options) *run {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options.Instance, options.Build, options.Listen = instance.URL, build, localclient.DefaultAddress
+	options.Instance, options.Build = instance.URL, build
 	ctx, cancel := context.WithCancel(t.Context())
 	current := &run{opened: make(chan string, 1), done: make(chan int, 1), cancel: cancel}
 	environment := &command.Environment{

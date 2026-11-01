@@ -627,7 +627,6 @@ func TestNoFlagTakesASecret(t *testing.T) {
 		"contact":                  true,
 		"good-faith":               true,
 		"key-file":                 true,
-		"listen":                   true,
 		"no-browser":               true,
 	}
 	for _, subcommand := range commands() {

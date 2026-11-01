@@ -27,7 +27,6 @@ type Link struct {
 
 type Options struct {
 	Instance    string
-	Listen      string
 	Build       webclient.Build
 	OpenBrowser bool
 	Link        *Link
@@ -42,9 +41,9 @@ type session struct {
 }
 
 func Serve(ctx context.Context, environment *command.Environment, options Options) int {
-	listener, err := localclient.Listen(ctx, options.Listen)
+	listener, err := localclient.Listen(ctx, localclient.DefaultAddress)
 	if err != nil {
-		return command.Failf(environment, "the verified client could not listen on %s: %s", options.Listen, err)
+		return command.Failf(environment, "the verified client could not listen on a loopback port: %s", err)
 	}
 	notices := make(chan localclient.Notice, noticeBuffer)
 	information := environment.BuildInformation()
