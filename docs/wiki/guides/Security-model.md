@@ -6,7 +6,7 @@ Nylzo is early software and has not had an independent security audit. Automated
 
 ## The client is part of the trust boundary
 
-Someone who controls an instance or its hosting can serve modified JavaScript that reads secrets in the browser. Use a CLI from a [verified release](Verify-a-release.md) when you need to avoid trusting the served web client.
+Your browser does not send the key after `#` to the server. The page that handles the key, though, also comes from the server. If the server, its hosting or a valid certificate for its name is in someone else's hands, they can send you a page that reads your message, and neither you nor your browser can notice. No browser in October 2026 can check the code of an ordinary website before running it. A [verified client](Verified-clients.md) runs code from a signed, publicly logged release instead, so the server receives only encrypted data: `nylzo web` and `nylzo open` in your browser, the `nylzo` command line, and later a browser extension. The sender and the reader both need one. The [protocol, section 14](../reference/Protocol.md#14-client-code-integrity), lists the rules and what stays impossible.
 
 `nylzo verify-client` compares an instance's client bytes, build identity, and security headers with the client embedded in the binary. It establishes what the server sent to that check. A hostile server can recognize the CLI and send different code to a browser. The [CLI guide](CLI.md#verify-an-instances-web-client) describes this limit.
 

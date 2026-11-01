@@ -11,6 +11,7 @@ Nylzo shares text and files through links with an expiry and an open limit. The 
 | Work from a terminal        | [CLI guide](guides/CLI.md)                                                         |
 | Run your own instance       | [Self-hosting](guides/Self-hosting.md), then [operations](guides/Operations.md)    |
 | Understand the limits       | [Security model](guides/Security-model.md)                                         |
+| Keep the server out         | [Verified clients](guides/Verified-clients.md)                                     |
 | Change the code             | [Development](guides/Development.md) and [contributing](community/Contributing.md) |
 
 ## Reference

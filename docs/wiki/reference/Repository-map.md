@@ -9,7 +9,8 @@
 | [internal/seal](../../../internal/seal)                                                                             | Sealing of stored records: per-purpose keys, locators and padding                        |
 | [internal/store](../../../internal/store)                                                                           | SQLite and file-storage adapters and shared storage tests                                |
 | [internal/server](../../../internal/server)                                                                         | HTTP endpoints, limits, proof of work, headers, cleanup, and embedded client             |
-| [cmd/nylzo](../../../cmd/nylzo), [internal/cli](../../../internal/cli), [internal/client](../../../internal/client) | CLI, operator commands in `cli/operator`, and HTTP client                                |
+| [cmd/nylzo](../../../cmd/nylzo), [internal/cli](../../../internal/cli), [internal/client](../../../internal/client) | CLI, operator commands in `cli/operator`, `web` and `open` in `cli/local`, HTTP client   |
+| [internal/localclient](../../../internal/localclient)                                                               | Verified local client: embedded web client on loopback, API relay and link handoff       |
 | [internal/buildinfo](../../../internal/buildinfo)                                                                   | Version and commit data reported by the CLI and the server                               |
 | [web/app](../../../web/app)                                                                                         | Svelte web client with English and Czech interfaces                                      |
 | [web/e2e](../../../web/e2e)                                                                                         | Playwright tests, including CLI/browser interoperability                                 |
