@@ -66,7 +66,8 @@ if (build !== undefined) {
 ignition.storage.files.push({ path: "/opt/nylzo-vm-test", mode: 0o700, overwrite: true, contents: { compression: "gzip", source: "data:;base64," + gzipSync(await readFile(new URL("vm-acceptance", import.meta.url))).toString("base64") } });
 ignition.systemd.units.push({ name: "nylzo-vm-debug.service", enabled: false, contents: "[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -n 150 -u nylzo* -u caddy -u docker\nExecStart=/usr/bin/systemctl list-jobs --no-pager\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n" });
 ignition.systemd.units.push({ name: "nylzo-vm-debug.timer", enabled: true, contents: "[Timer]\nOnBootSec=2min\nOnUnitActiveSec=2min\nUnit=nylzo-vm-debug.service\n[Install]\nWantedBy=timers.target\n" });
-ignition.systemd.units.push({ name: "nylzo-vm-failure.service", enabled: false, contents: "[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -n 150 -u nylzo* -u caddy -u docker\nExecStart=/usr/bin/systemctl poweroff\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n" });
+// Without default dependencies a failure before sysinit.target cannot pull that target, and with it the failed unit, back in.
+ignition.systemd.units.push({ name: "nylzo-vm-failure.service", enabled: false, contents: "[Unit]\nDefaultDependencies=no\n[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -n 150 -u nylzo* -u caddy -u docker\nExecStart=/usr/bin/systemctl --no-block poweroff\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n" });
 const host = ignition.systemd.units.find(unit => unit.name === "nylzo-host.service")!;
 host.contents = host.contents.replace("[Service]\n", "[Service]\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n") + "\n[Unit]\nOnFailure=nylzo-vm-failure.service\n";
 await writeFile(process.argv[3]!, JSON.stringify(ignition));

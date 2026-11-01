@@ -104,7 +104,10 @@ for target in "${changed[@]}"; do
     /etc/systemd/system/*.timer) restart+=("${target##*/}") ;;
   esac
 done
-systemctl restart nylzo-firewall.service
+if ! systemctl restart nylzo-firewall.service; then
+  systemctl status --no-pager --lines=20 nylzo-firewall.service >&2 || true
+  fail 'the host firewall did not load'
+fi
 if [[ "$first_boot" = false && ${#restart[@]} -gt 0 ]]; then
   mapfile -t restart < <(printf '%s\n' "${restart[@]}" | sort --unique)
   systemctl try-restart "${restart[@]}"
