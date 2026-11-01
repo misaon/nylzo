@@ -1,6 +1,6 @@
 [Unit]
-Requires=nylzo-bandwidth.service
-After=network-online.target nylzo-bandwidth.service
+Requires=nylzo-bandwidth.service nylzo-storage.service
+After=network-online.target nylzo-bandwidth.service nylzo-storage.service
 Wants=network-online.target
 [Service]
 User=caddy

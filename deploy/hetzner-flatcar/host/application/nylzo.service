@@ -1,6 +1,6 @@
 [Unit]
-Requires=docker.service nylzo-bandwidth.service
-After=docker.service nylzo-bandwidth.service
+Requires=docker.service nylzo-bandwidth.service nylzo-storage.service
+After=docker.service nylzo-bandwidth.service nylzo-storage.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 [Service]

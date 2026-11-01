@@ -5,6 +5,9 @@ directory="${1:-.deploy/vm}"
 mkdir -p "$directory"
 directory=$(realpath "$directory")
 node tools/deploy/check.mts "$directory"
+if [[ -n "${NYLZO_VM_TANG:-}" ]]; then
+  node -e 'const fs = require("node:fs"); const site = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); site.tang = JSON.parse(process.argv[2]); fs.writeFileSync(process.argv[1], JSON.stringify(site));' "$directory/site.json" "$NYLZO_VM_TANG"
+fi
 mkdir -p "$directory/serve"
 release=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).initialRelease' "$directory/site.json")
 github() {

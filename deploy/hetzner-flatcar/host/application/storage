@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+umask 077
+tang=/etc/nylzo/tang.json
+image=/var/lib/nylzo-storage.luks
+name=nylzo-storage
+volume=/var/lib/nylzo-storage
+directories=(nylzo nylzo-secrets caddy)
+fail() {
+  echo "Encrypted storage refused: $1" >&2
+  exit 1
+}
+[[ -s "$tang" ]] || fail "$tang is missing"
+unlock() {
+  local loop="$1" attempt
+  for ((attempt = 0; attempt < 30; attempt++)); do
+    if clevis luks unlock -d "$loop" -n "$name"; then return 0; fi
+    sleep 10
+  done
+  fail 'the Tang servers did not unlock the data volume'
+}
+if [[ ! -e "/dev/mapper/$name" ]]; then
+  if [[ -e "$image" ]]; then
+    loop=$(losetup --noheadings --output NAME --associated "$image" | head -n 1)
+    [[ -n "$loop" ]] || loop=$(losetup --find --show "$image")
+    unlock "$loop"
+  else
+    for directory in "${directories[@]}"; do
+      [[ -z "$(find "/var/lib/$directory" -mindepth 1 -print -quit 2>/dev/null)" ]] || fail "/var/lib/$directory already holds data; migrate it into the encrypted volume by hand"
+    done
+    available=$(df --output=avail --block-size=1 /var/lib | tail -n 1 | tr -d ' ')
+    [[ "$available" =~ ^[0-9]{1,15}$ ]] || fail 'cannot read the free space'
+    size=$(( (available - 8 * 1024 ** 3) / 1024 ** 2 * 1024 ** 2 ))
+    (( size >= 8 * 1024 ** 3 )) || fail 'less than 16 GiB is free'
+    rm -f "$image.new"
+    fallocate --length "$size" "$image.new"
+    loop=$(losetup --find --show "$image.new")
+    key=$(mktemp /run/nylzo-storage-key.XXXXXXXX)
+    trap 'rm -f "$key"' EXIT
+    head -c 64 /dev/urandom > "$key"
+    cryptsetup luksFormat --batch-mode --type luks2 --cipher aes-xts-plain64 --key-size 512 --pbkdf argon2id --key-file "$key" "$loop"
+    clevis luks bind -y -k "$key" -d "$loop" sss "$(cat "$tang")"
+    cryptsetup luksRemoveKey --batch-mode "$loop" "$key"
+    rm -f "$key"
+    unlock "$loop"
+    mkfs.ext4 -q -L "$name" "/dev/mapper/$name"
+    sync
+    mv -f "$image.new" "$image"
+  fi
+fi
+mkdir -p "$volume"
+mountpoint --quiet "$volume" || mount -o nodev,nosuid,noexec "/dev/mapper/$name" "$volume"
+for directory in "${directories[@]}" journal; do
+  mkdir -p "$volume/$directory"
+done
+for directory in "${directories[@]}"; do
+  mkdir -p "/var/lib/$directory"
+  mountpoint --quiet "/var/lib/$directory" || mount --bind "$volume/$directory" "/var/lib/$directory"
+done
+if ! mountpoint --quiet /var/log/journal; then
+  journalctl --relinquish-var
+  find /var/log/journal -mindepth 1 -delete
+  mount --bind "$volume/journal" /var/log/journal
+  journalctl --flush
+fi

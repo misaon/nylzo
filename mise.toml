@@ -130,7 +130,7 @@ run = [
   "node tools/wiki.mts",
   "actionlint",
   "zizmor --persona pedantic .github/workflows",
-  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/host/application/{run,prepare,health,recover-os,clean} deploy/hetzner-flatcar/host/update/{update,release-target,release-policy,refresh-tools,install-tools,activate} deploy/hetzner-flatcar/host/system/{bandwidth,firewall} deploy/hetzner-flatcar/host/monitoring/{host-policy,host-status,clock,heartbeat} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test} tools/verify-go-toolchain",
+  "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/host/application/{run,prepare,health,recover-os,clean,storage} deploy/hetzner-flatcar/host/update/{update,release-target,release-policy,refresh-tools,install-tools,activate} deploy/hetzner-flatcar/host/system/{bandwidth,firewall} deploy/hetzner-flatcar/host/monitoring/{host-policy,host-status,clock,heartbeat} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test} tools/verify-go-toolchain",
 ]
 
 [tasks.lint]

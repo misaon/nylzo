@@ -1,6 +1,6 @@
 [Unit]
 Requires=nylzo-ready.service
-After=nylzo-ready.service
+After=nylzo-ready.service nylzo-storage.service
 [Service]
 Type=oneshot
 ExecStart=/opt/nylzo/runtime/host-status

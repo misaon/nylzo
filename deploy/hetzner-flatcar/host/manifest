@@ -4,6 +4,8 @@ format 1
 /opt/nylzo/runtime/health application/health
 /opt/nylzo/runtime/recover-os application/recover-os
 /opt/nylzo/runtime/clean application/clean
+/opt/nylzo/runtime/storage application/storage
+/etc/systemd/system/nylzo-storage.service application/nylzo-storage.service
 /etc/systemd/system/nylzo.service application/nylzo.service
 /etc/systemd/system/nylzo-initialize.service application/nylzo-initialize.service
 /etc/systemd/system/nylzo-ready.service application/nylzo-ready.service

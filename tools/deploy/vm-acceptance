@@ -42,6 +42,17 @@ ip netns delete nylzo-outside
 ip link delete nylzo-probe 2>/dev/null || true
 trap - EXIT
 echo 'NYLZO_VM_HOST_FIREWALL_VERIFIED'
+if [[ -s /etc/nylzo/tang.json ]]; then
+  for target in /var/lib/nylzo /var/lib/nylzo-secrets /var/lib/caddy /var/log/journal; do
+    [[ "$(findmnt --noheadings --output SOURCE --mountpoint "$target")" = "/dev/mapper/nylzo-storage[/${target##*/}]" ]]
+  done
+  [[ "$(lsblk --noheadings --output TYPE /dev/mapper/nylzo-storage)" = crypt ]]
+  loop=$(losetup --noheadings --output NAME --associated /var/lib/nylzo-storage.luks)
+  cryptsetup luksDump "$loop" > "$directory/luks"
+  [[ "$(grep --count --extended-regexp '^  [0-9]+: luks2$' "$directory/luks")" = 1 ]]
+  grep --quiet --extended-regexp '^  [0-9]+: clevis$' "$directory/luks"
+  echo 'NYLZO_VM_ENCRYPTED_STORAGE_VERIFIED'
+fi
 systemd-analyze cat-config systemd/coredump.conf | grep --quiet '^Storage=none$'
 [[ "$(systemctl show caddy.service --property LimitCORE --value)" = 0 ]]
 systemd-analyze security --no-pager caddy.service | tail -n 1

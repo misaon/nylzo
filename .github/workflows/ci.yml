@@ -209,11 +209,25 @@ jobs:
       - name: Install the virtual-machine test runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio
+          sudo apt-get install --yes --no-install-recommends qemu-system-x86 qemu-utils bzip2 gnupg cpio tang jose
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
+      - name: Two Tang servers for the encrypted data volume
+        id: tang
+        run: |
+          servers='[]'
+          for port in 7500 7501; do
+            sudo /usr/libexec/tangd-keygen "/var/lib/tang-$port"
+            signing=$(sudo grep -l '"sign"' "/var/lib/tang-$port"/*.jwk)
+            thumbprint=$(sudo jose jwk thp -a S256 -i "$signing")
+            sudo systemd-run --unit "tang-$port" systemd-socket-activate --inetd --accept --listen "0.0.0.0:$port" /usr/libexec/tangd "/var/lib/tang-$port"
+            servers=$(jq -c --arg url "http://10.0.2.2:$port" --arg thumbprint "$thumbprint" '. + [{url: $url, thumbprint: $thumbprint}]' <<< "$servers")
+          done
+          for port in 7500 7501; do curl --fail --silent --retry 5 --retry-connrefused "http://127.0.0.1:$port/adv" > /dev/null; done
+          echo "configuration=$(jq -c '{threshold: 2, servers: .}' <<< "$servers")" >> "$GITHUB_OUTPUT"
       - name: Install from the Hetzner image and boot the runtime twice, in two VMs at once
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          NYLZO_VM_TANG: ${{ steps.tang.outputs.configuration }}
         run: |
           set -o pipefail
           (tools/deploy/image-vm-test 2>&1 | sed -u 's/^/image-vm-test | /') &
