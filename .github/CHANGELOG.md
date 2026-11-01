@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.3.0](https://github.com/misaon/nylzo/compare/v0.2.0...v0.3.0) (2026-11-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **protocol:** version 2 links, committed envelopes and expiring key shares ([#206](https://github.com/misaon/nylzo/issues/206))
+* **deploy:** both deployment profiles accept only TLS 1.3 with X25519MLKEM768. Safari and iOS before 26, Firefox ESR 128, clients on OpenSSL before 3.5, and many link-preview bots and uptime monitors cannot connect.
+* **cli:** serve each local client session from its own origin ([#207](https://github.com/misaon/nylzo/issues/207))
+* **security:** build Caddy from source and ship it in each release ([#181](https://github.com/misaon/nylzo/issues/181))
+
+### Features
+
+* **cli:** verified local web client with nylzo web and nylzo open ([#201](https://github.com/misaon/nylzo/issues/201)) ([95618c8](https://github.com/misaon/nylzo/commit/95618c80d3034a0790799485cc27a2370e4351d8))
+* **protocol:** version 2 links, committed envelopes and expiring key shares ([#206](https://github.com/misaon/nylzo/issues/206)) ([f91b125](https://github.com/misaon/nylzo/commit/f91b1251f935b93aa6684d6a9be60429c273c031))
+
+
+### Fixes
+
+* **ci:** request only the App permissions Renovate is granted ([#184](https://github.com/misaon/nylzo/issues/184)) ([a744685](https://github.com/misaon/nylzo/commit/a744685eed5bbd13a433ac86886ea7ba9f62a32b))
+* **cli:** serve each local client session from its own origin ([#207](https://github.com/misaon/nylzo/issues/207)) ([446b865](https://github.com/misaon/nylzo/commit/446b8654608bb5fc2ca987401acad91daa4037c5))
+* **deploy:** accept older SSH clients and name who the TLS policy shuts out ([#208](https://github.com/misaon/nylzo/issues/208)) ([6dd9990](https://github.com/misaon/nylzo/commit/6dd9990576c44d34272739b8546cb393cd6bc370))
+* **deploy:** harden hosts, TLS and the update path ([#202](https://github.com/misaon/nylzo/issues/202)) ([792fa1b](https://github.com/misaon/nylzo/commit/792fa1b17ab0fa03b1684a3d76884922d6a56c56))
+* **erase:** refuse ext4 journalled data from superblock defaults and close the server Low items ([#209](https://github.com/misaon/nylzo/issues/209)) ([4cad6df](https://github.com/misaon/nylzo/commit/4cad6df3e3ced85eb57d5b7ca2a0bb19cf6996f8))
+* **security:** build Caddy from source and ship it in each release ([#181](https://github.com/misaon/nylzo/issues/181)) ([66789a0](https://github.com/misaon/nylzo/commit/66789a0c1de979a554dd9ff9533b232575b70648))
+* **server:** erase deleted messages on disk and keep secrets out of memory and logs ([#204](https://github.com/misaon/nylzo/issues/204)) ([a068cd9](https://github.com/misaon/nylzo/commit/a068cd90a43dcf4e0101bb913c11c7d93147a933))
+* **web:** correct the Czech copy of the link and verified-client texts ([#205](https://github.com/misaon/nylzo/issues/205)) ([7d75643](https://github.com/misaon/nylzo/commit/7d75643a37151357cdebd177c168de7ded8059ba))
+* **web:** keep link secrets off disk and out of browser history ([#203](https://github.com/misaon/nylzo/issues/203)) ([9ad33f6](https://github.com/misaon/nylzo/commit/9ad33f65da6659e9bc5f6629449dcd3b2d5c9cb5))
+
+
+### Refactoring
+
+* **automation:** move the SCA gate and web install into the automation workspace ([#185](https://github.com/misaon/nylzo/issues/185)) ([bae0503](https://github.com/misaon/nylzo/commit/bae05033752d0dc9660f19e4148326dae36c65de))
+* **go:** remove dead code and pre-release migrations ([#196](https://github.com/misaon/nylzo/issues/196)) ([e211e61](https://github.com/misaon/nylzo/commit/e211e61947e881c4c04f43a163fd03269473c795))
+* **go:** split oversized packages and move server tests to synctest ([#200](https://github.com/misaon/nylzo/issues/200)) ([de966d3](https://github.com/misaon/nylzo/commit/de966d33abe18ce7bd911903af77e7883f1a190e))
+* remove dead TypeScript exports, obsolete browser fallbacks and duplicate parsers ([#197](https://github.com/misaon/nylzo/issues/197)) ([80f4abe](https://github.com/misaon/nylzo/commit/80f4abe4ed77917896380d80ed74f791da88e1ae))
+* **web:** style the sent, report and transparency screens with utilities ([#199](https://github.com/misaon/nylzo/issues/199)) ([594d435](https://github.com/misaon/nylzo/commit/594d435d633670e37c08df80f4b08f6b9a0dcc7c))
+
+
+### Build
+
+* move the toolchain to Node.js 26 LTS ([#182](https://github.com/misaon/nylzo/issues/182)) ([8e616e8](https://github.com/misaon/nylzo/commit/8e616e8d405e50a17f6d5efe1f458f9b60448d47))
+
+
+### CI
+
+* pin Go from mise.lock and cut queueing in the pipeline ([#198](https://github.com/misaon/nylzo/issues/198)) ([49df0d5](https://github.com/misaon/nylzo/commit/49df0d56d5bd60a6d3f152c2f4c4d19588eb5c5d))
+* run the Flatcar acceptance job on Ubuntu 26.04 ([#183](https://github.com/misaon/nylzo/issues/183)) ([5315b24](https://github.com/misaon/nylzo/commit/5315b24a50b7d6ec03af096468284983f04dc254))
+
+
+### Maintenance
+
+* **deps:** update caddy:2.11.7 docker digest to 36c24ad (main) ([#186](https://github.com/misaon/nylzo/issues/186)) ([dab0f2f](https://github.com/misaon/nylzo/commit/dab0f2fc73f6c4f5019abcb487056ddb69389928))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.198.3 (main) ([#188](https://github.com/misaon/nylzo/issues/188)) ([4025fd1](https://github.com/misaon/nylzo/commit/4025fd127a6b02727d4b8c3d4ea7ee1da301705d))
+* **deps:** update goreleaser to v2.19.0 (main) ([#189](https://github.com/misaon/nylzo/issues/189)) ([3f29aa6](https://github.com/misaon/nylzo/commit/3f29aa6a339fc77b2ce04d816766e26136a61f50))
+* drop unused configuration and document repository tooling ([#195](https://github.com/misaon/nylzo/issues/195)) ([e4064a5](https://github.com/misaon/nylzo/commit/e4064a55a8d467b46d5bac7cfd030d9f7d84e5c4))
+
 ## [0.2.0](https://github.com/misaon/nylzo/compare/v0.1.8...v0.2.0) (2026-10-31)
 
 
