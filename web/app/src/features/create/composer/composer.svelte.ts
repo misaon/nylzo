@@ -11,7 +11,7 @@ import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
 import { createApi } from '../../../shared/api/api.ts';
 import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
 import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
-import { instanceOrigin } from '../../../shared/local-client/instance-origin.ts';
+import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
 import { PacedTimeline, type TimelineSettings } from '../../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../../shared/pipeline/random-text.ts';
 import { browserSentStore, rememberSent, type SentStore } from '../../../shared/sent-records/sent-store.ts';
@@ -97,6 +97,7 @@ export class Composer {
   passphrase = $state('');
   passphraseVisible = $state(false);
   remember = $state(false);
+  canRemember = $state(true);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
   failure = $state.raw<CreateFailure>();
@@ -202,6 +203,10 @@ export class Composer {
   readonly stepTitle = $derived(this.phase === 'encrypting' ? (this.nodes[this.timeline.paced.step]?.title ?? '') : '');
 
   readonly start: Attachment = () => {
+    if (servedByLocalClient()) {
+      this.canRemember = false;
+      this.remember = false;
+    }
     void this.loadLimits();
     return () => this.timeline.stop();
   };
@@ -441,7 +446,7 @@ export class Composer {
       if (stale()) {
         return;
       }
-      const saved = this.remember ? this.#rememberMessage(created) : undefined;
+      const saved = this.remember && this.canRemember ? this.#rememberMessage(created) : undefined;
       this.text = '';
       this.passphrase = '';
       this.passphraseVisible = false;

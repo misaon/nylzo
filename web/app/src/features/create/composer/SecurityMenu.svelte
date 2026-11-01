@@ -97,19 +97,23 @@
         {composer.passphraseMessage}
       </p>
     </div>
-    <div class="mx-2 h-px bg-white/8"></div>
-    <button
-      type="button"
-      role="switch"
-      aria-checked={composer.remember}
-      onclick={() => (composer.remember = !composer.remember)}
-      class="flex w-full items-start gap-3 rounded-[7px] p-2 text-left hover:bg-white/4"
-    >
-      <span class="mt-px"><Switch on={composer.remember} /></span>
-      <span>
-        <span class="block text-[13px] text-ink">{translate('compose.remember.switch')}</span>
-        <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute">{translate('compose.remember.note')}</span>
-      </span>
-    </button>
+    {#if composer.canRemember}
+      <div class="mx-2 h-px bg-white/8"></div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={composer.remember}
+        onclick={() => (composer.remember = !composer.remember)}
+        class="flex w-full items-start gap-3 rounded-[7px] p-2 text-left hover:bg-white/4"
+      >
+        <span class="mt-px"><Switch on={composer.remember} /></span>
+        <span>
+          <span class="block text-[13px] text-ink">{translate('compose.remember.switch')}</span>
+          <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
+            >{translate('compose.remember.note')}</span
+          >
+        </span>
+      </button>
+    {/if}
   </Popover>
 </div>
