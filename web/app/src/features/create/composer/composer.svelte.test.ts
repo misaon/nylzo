@@ -209,18 +209,17 @@ describe('message composer interactions', () => {
     });
     const sending = submit(form);
     await vi.waitFor(() => expect(createMessage).toHaveBeenCalledOnce());
-    expect(createMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ text: 'synthetic message', passphrase: 'correct horse battery staple', opensMax: 3 }),
-      expect.objectContaining({ origin: 'https://nylzo.test' }),
-      expect.any(Function),
-    );
     expect(form.phase).toBe('encrypting');
     expect(form.usesPassphrase).toBe(true);
     expect(form.proving).toBe(true);
     expect(form.timeline.fraction).toBe(0.25);
     expect(form.nodes[3]?.title).toBe(new Translator('en').translate('step.send.title.pow'));
     await submit(form);
-    expect(createMessage).toHaveBeenCalledOnce();
+    expect(createMessage).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ text: 'synthetic message', passphrase: 'correct horse battery staple', opensMax: 3 }),
+      expect.objectContaining({ origin: 'https://nylzo.test' }),
+      expect.any(Function),
+    );
     gate.resolve(created);
     await sending;
     expect(form.text).toBe('');
