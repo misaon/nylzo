@@ -16,10 +16,13 @@ ssh_policy=$(sshd -T | tr '[:upper:]' '[:lower:]')
 expect() {
   [[ "$(awk -v setting="$1" '$1 == setting { print $2 }' <<< "$ssh_policy")" = "$2" ]] || { echo "sshd $1 is not $2" >&2; exit 1; }
 }
-expect kexalgorithms mlkem768x25519-sha256,sntrup761x25519-sha512
+expect kexalgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com
 expect hostkeyalgorithms ssh-ed25519
-expect pubkeyacceptedalgorithms sk-ssh-ed25519@openssh.com,ssh-ed25519
+expect pubkeyacceptedalgorithms sk-ssh-ed25519@openssh.com
 expect pubkeyauthoptions verify-required
+echo "NYLZO_VM_DIAGNOSTIC $(grep -E '^(authorizedkeysfile|authorizedkeyscommand) ' <<< "$ssh_policy" | tr '\n' ' ')"
+find /home/core/.ssh -printf 'NYLZO_VM_DIAGNOSTIC %p %m %s\n'
+command -v update-ssh-keys && sudo -u core update-ssh-keys -l 2>&1 | sed 's/^/NYLZO_VM_DIAGNOSTIC /' || true
 expect ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
 expect macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 [[ "$(awk '$1 == "hostkey" { print $2 }' <<< "$ssh_policy")" = /etc/ssh/ssh_host_ed25519_key ]]

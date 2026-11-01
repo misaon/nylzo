@@ -20,7 +20,7 @@ test("the host bundle is reproducible and every file has one place and one role 
     assert.match(target, pattern, `activate refuses ${target}`);
     assert(sources.has(source), `missing ${source}`);
   }
-  const composed = ["proxy/Caddyfile", "proxy/www.Caddyfile", "proxy/monitor.Caddyfile"];
+  const composed = ["proxy/Caddyfile", "proxy/www.Caddyfile", "proxy/monitor.Caddyfile", "system/sshd-hardware-keys.conf"];
   for (const name of sources.keys()) assert(["manifest", "units", ...composed].includes(name) || entries.some(entry => entry.source === name), `${name} is never installed`);
   for (const line of sources.get("units")!.trimEnd().split("\n")) {
     const [action, , unit] = line.split(" ");
@@ -74,7 +74,7 @@ stage initial.tar initial
 bash /opt/nylzo/host/initial/update/activate --first-boot /opt/nylzo/host/initial
 [[ "$(readlink /opt/nylzo/host/current)" = /opt/nylzo/host/initial && ! -e /opt/nylzo/host/previous ]]
 [[ "$(stat -c %a /opt/nylzo/runtime/update)" = 755 && "$(stat -c %a /etc/systemd/system/nylzo.service)" = 644 ]]
-grep -q '^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512$' /etc/ssh/sshd_config.d/20-nylzo.conf
+grep -q '^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh\.com$' /etc/ssh/sshd_config.d/20-nylzo.conf
 grep -q '^www\.{\$NYLZO_DOMAIN} {$' /etc/caddy/Caddyfile
 grep -q '^https://{\$NYLZO_DOMAIN}:8443 {$' /etc/caddy/Caddyfile
 [[ -s /etc/systemd/system/nylzo-update.service.d/20-sandbox.conf && -s /etc/systemd/system/nylzo-initialize.service.d/20-sandbox.conf ]]
@@ -110,6 +110,19 @@ bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
 [[ "$(readlink /opt/nylzo/host/current)" = /opt/nylzo/host/initial && "$(readlink /opt/nylzo/host/previous)" = /opt/nylzo/host/release-v0.3.0 ]]
 [[ -x /opt/nylzo/runtime/heartbeat && -s /etc/systemd/system/nylzo-heartbeat.timer ]]
 if grep -q ClientAliveInterval /etc/ssh/sshd_config.d/20-nylzo.conf; then exit 1; fi
+hardware=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
+[[ ! -e "$hardware" ]]
+mkdir -p /home/core/.ssh/authorized_keys.d
+printf 'ssh-ed25519 AAAA old@laptop\n' > /home/core/.ssh/authorized_keys
+printf 'HARDWARE_KEYS_ONLY=true\n' >> /etc/nylzo/host.env
+if bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3.0 2>/dev/null; then exit 1; fi
+[[ "$(readlink /opt/nylzo/host/current)" = /opt/nylzo/host/initial && ! -e "$hardware" ]]
+printf 'verify-required sk-ssh-ed25519@openssh.com AAAA operator@laptop\n' > /home/core/.ssh/authorized_keys.d/ignition
+bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3.0
+grep -qx 'PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com' "$hardware"
+sed -i 's/^HARDWARE_KEYS_ONLY=true$/HARDWARE_KEYS_ONLY=false/' /etc/nylzo/host.env
+bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
+[[ ! -e "$hardware" ]]
 echo HOST_BUNDLE_VERIFIED
 ` });
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
