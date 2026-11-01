@@ -234,7 +234,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	defer stop()
 	var sweeper sync.WaitGroup
 	sweeper.Go(func() { instance.RunSweeper(ctx) })
-	sweeper.Go(func() { instance.RunRequestLog(ctx) })
+	sweeper.Go(func() { instance.RunHousekeeping(ctx) })
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
 	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()

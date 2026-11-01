@@ -11,6 +11,7 @@ const (
 	trimDivisor     = 8
 )
 
+// Limiter keeps a token bucket per key; it records the last refill to the second only (A4-3).
 type Limiter struct {
 	mutex      sync.Mutex
 	rate       float64
@@ -38,18 +39,15 @@ func NewLimiter(rate, burst float64) *Limiter {
 func (l *Limiter) Allow(key Bucket, now time.Time) bool {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	sinceBase := int64(now.Sub(l.base))
+	second := l.second(now)
 	bucket, ok := l.buckets[key]
 	if !ok {
 		if len(l.buckets) >= l.maxEntries {
-			l.trim(sinceBase)
+			l.trim(second)
 		}
-		bucket = tokenBucket{tokens: l.burst, last: sinceBase}
+		bucket = tokenBucket{tokens: l.burst, last: second}
 	}
-	if elapsed := time.Duration(sinceBase - bucket.last).Seconds(); elapsed > 0 {
-		bucket.tokens = min(l.burst, bucket.tokens+elapsed*l.rate)
-		bucket.last = sinceBase
-	}
+	bucket = l.refilled(bucket, second)
 	allowed := bucket.tokens >= 1
 	if allowed {
 		bucket.tokens--
@@ -58,9 +56,36 @@ func (l *Limiter) Allow(key Bucket, now time.Time) bool {
 	return allowed
 }
 
-func (l *Limiter) trim(sinceBase int64) {
-	refill := l.burst / l.rate * float64(time.Second)
-	Trim(l.buckets, l.maxEntries, func(bucket tokenBucket) bool { return float64(sinceBase-bucket.last) >= refill })
+// Purge drops every bucket that has refilled to its burst, since an absent bucket allows the same.
+func (l *Limiter) Purge(now time.Time) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	second := l.second(now)
+	maps.DeleteFunc(l.buckets, func(_ Bucket, bucket tokenBucket) bool {
+		return l.refilled(bucket, second).tokens >= l.burst
+	})
+}
+
+func (l *Limiter) Reset() {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	clear(l.buckets)
+}
+
+func (l *Limiter) second(now time.Time) int64 {
+	return int64(now.Sub(l.base) / time.Second)
+}
+
+func (l *Limiter) refilled(bucket tokenBucket, second int64) tokenBucket {
+	if elapsed := second - bucket.last; elapsed > 0 {
+		bucket.tokens = min(l.burst, bucket.tokens+float64(elapsed)*l.rate)
+		bucket.last = second
+	}
+	return bucket
+}
+
+func (l *Limiter) trim(second int64) {
+	Trim(l.buckets, l.maxEntries, func(bucket tokenBucket) bool { return l.refilled(bucket, second).tokens >= l.burst })
 }
 
 func Trim[K comparable, V any](table map[K]V, limit int, expired func(V) bool) {

@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"maps"
 	"math"
 	"sync"
 	"time"
@@ -70,6 +71,24 @@ func (c *Counters) Count(hits []Hit, now time.Time) time.Duration {
 		}
 	}
 	return 0
+}
+
+// Purge drops every counter whose window has ended, so the table holds only the current windows (A4-3).
+func (c *Counters) Purge(now time.Time) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	nowSeconds := now.Unix()
+	for _, table := range c.tables {
+		maps.DeleteFunc(table.entries, func(_ Bucket, entry counter) bool {
+			return nowSeconds >= entry.start+table.windowSeconds
+		})
+	}
+}
+
+func (c *Counters) Reset() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	clear(c.tables)
 }
 
 func (c *Counters) add(hit *Hit, now time.Time) counter {

@@ -716,6 +716,35 @@ func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
 	})
 }
 
+// TestAFewRangesCannotFillTheGlobalCap covers F11: each /48 takes at most a twentieth of the day.
+func TestAFewRangesCannotFillTheGlobalCap(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.GlobalDailyCreates = 250
+		harness := newHarness(t, settings)
+		for _, prefix := range []string{"2001:db8:a", "2001:db8:b", "2001:db8:c"} {
+			created := 0
+			for source := 1; ; source++ {
+				message := newMessage(t, core.KDFNone, "", 1, 3600, "flood")
+				message.address = fmt.Sprintf("%s:%x::1", prefix, source)
+				if response, _ := harness.create(message); response.StatusCode != http.StatusCreated {
+					break
+				}
+				created++
+			}
+			if created != 250/rangeCapShare {
+				t.Fatalf("%s::/48 created %d messages, want its share of %d", prefix, created, 250/rangeCapShare)
+			}
+		}
+		bystander := newMessage(t, core.KDFNone, "", 1, 3600, "bystander")
+		bystander.address = "2001:db8:d::1"
+		if response, body := harness.create(bystander); response.StatusCode != http.StatusCreated {
+			t.Fatalf("a fourth /48 after three filled their shares: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
 func TestAK12GlobalCap(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -875,8 +904,10 @@ func TestRetryAfterPointsToTheRefusingWindow(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
 		settings.Rates.CreatePerHour = 1
 		harness := newHarness(t, settings)
-		harness.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "a"))
-		response, body := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "b"))
+		first, second := newMessage(t, core.KDFNone, "", 1, 3600, "a"), newMessage(t, core.KDFNone, "", 1, 3600, "b")
+		first.address, second.address = "203.0.113.30", "203.0.113.30"
+		harness.mustCreate(first)
+		response, body := harness.create(second)
 		if response.StatusCode != http.StatusTooManyRequests || response.Header.Get("Retry-After") != "3600" ||
 			decodeJSON(t, body)["retry_after"] != float64(3600) {
 			t.Fatalf(

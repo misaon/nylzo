@@ -684,12 +684,18 @@ func (m *testMessage) createHeader(sizeOverride int64) string {
 	return core.Encode(data)
 }
 
+// createRequestFor sends a create without an address of its own from a /16 of its own, since the global cap gives
+// each /24 and /16 only a share of the day (F11).
 func createRequestFor(message *testMessage) *testRequest {
+	address := message.address
+	if address == "" {
+		address = fmt.Sprintf("10.%d.%d.%d", message.id[0], message.id[1], message.id[2])
+	}
 	return &testRequest{
 		method:  http.MethodPost,
 		path:    "/api/v1/messages",
 		body:    message.object,
-		address: message.address,
+		address: address,
 		headers: map[string]string{
 			"Content-Type":   "application/octet-stream",
 			"X-Nylzo-Create": message.createHeader(0),

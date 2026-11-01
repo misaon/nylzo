@@ -819,7 +819,7 @@ func TestAbuseReportsRefuseAnImplausibleContactAndStoreAValidOneAsGiven(t *testi
 				}
 			}
 		}
-		contact := "abcdefghijklmnopqrstuvwxyz@example.cz"
+		contact := "jana.novakova+abuse@example.cz"
 		report := map[string]any{
 			"id":         message.id.String(),
 			"reason":     "spam",

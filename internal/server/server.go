@@ -51,7 +51,7 @@ type Server struct {
 	ring            *pepper.Ring
 	leaseTimers     *timers
 	logger          *slog.Logger
-	instanceLimiter *ratelimit.Limiter
+	instance        *ratelimit.Fair
 	sourceLimiter   *ratelimit.Limiter
 	rangeLimiter    *ratelimit.Limiter
 	addressKey      *ratelimit.AddressKey
@@ -170,9 +170,40 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	}
 }
 
-// RunRequestLog writes the request counts of each minute at its end and the last counts when ctx ends.
-func (s *Server) RunRequestLog(ctx context.Context) {
-	s.requestCounts.RunFlusher(ctx)
+// RunHousekeeping works at every minute boundary: it writes the request counts of the minute, drops rate-limit
+// entries that no longer limit anything and draws a new address key when a UTC day begins (spec §5.3, §10).
+func (s *Server) RunHousekeeping(ctx context.Context) {
+	day := ratelimit.Day(time.Now()).Start
+	for {
+		now := time.Now()
+		select {
+		case <-ctx.Done():
+			s.requestCounts.Flush()
+			return
+		case <-time.After(now.Truncate(time.Minute).Add(time.Minute).Sub(now)):
+		}
+		now = time.Now()
+		s.requestCounts.Flush()
+		if today := ratelimit.Day(now).Start; !today.Equal(day) {
+			day = today
+			s.addressKey.Rotate()
+			s.forgetAddresses()
+			continue
+		}
+		s.purgeRateTables(now)
+	}
+}
+
+func (s *Server) purgeRateTables(now time.Time) {
+	s.sourceLimiter.Purge(now)
+	s.rangeLimiter.Purge(now)
+	s.counters.Purge(now)
+}
+
+func (s *Server) forgetAddresses() {
+	s.sourceLimiter.Reset()
+	s.rangeLimiter.Reset()
+	s.counters.Reset()
 }
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
@@ -181,7 +212,7 @@ func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 
 func (s *Server) setUpLimits() {
 	rates := s.settings.Rates
-	s.instanceLimiter = ratelimit.NewLimiter(rates.BucketPerSecond, rates.BucketBurst)
+	s.instance = ratelimit.NewFair(rates.BucketPerSecond, rates.BucketBurst)
 	s.sourceLimiter = ratelimit.NewLimiter(rates.SourcePerSecond, rates.SourceBurst)
 	s.rangeLimiter = ratelimit.NewLimiter(rates.BucketPerSecond*rangeShare, max(1, rates.BucketBurst*rangeShare))
 	s.addressKey = ratelimit.NewAddressKey()

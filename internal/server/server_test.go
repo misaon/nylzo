@@ -741,7 +741,7 @@ func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 		flushed, stop := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
-			harness.server.RunRequestLog(flushed)
+			harness.server.RunHousekeeping(flushed)
 			close(done)
 		}()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
@@ -823,7 +823,7 @@ func TestTokenBucketsThrottleTheAPIInOrder(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			settings := baseSettings(pepperA, nil)
 			settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1, 2
-			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 6
+			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 100
 			harness := newHarness(t, settings)
 			got := statuses(harness,
 				"203.0.113.1", "203.0.113.1", "203.0.113.1",

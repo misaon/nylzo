@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"sync"
-	"time"
 )
 
 const otherMethod = "OTHER"
@@ -50,21 +49,6 @@ func (c *RequestCounts) Requests(next http.Handler) http.Handler {
 		c.counts[requestKind{method: method, route: *route, status: recorder.status}]++
 		c.mutex.Unlock()
 	})
-}
-
-// RunFlusher writes the counts at every minute boundary and once more when ctx ends.
-func (c *RequestCounts) RunFlusher(ctx context.Context) {
-	for {
-		now := time.Now()
-		next := now.Truncate(time.Minute).Add(time.Minute)
-		select {
-		case <-ctx.Done():
-			c.Flush()
-			return
-		case <-time.After(next.Sub(now)):
-			c.Flush()
-		}
-	}
 }
 
 func (c *RequestCounts) Flush() {
