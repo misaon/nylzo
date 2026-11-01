@@ -13,9 +13,25 @@ test(
     expect(headers['cross-origin-embedder-policy']).toBe('require-corp');
     expect(headers['cross-origin-resource-policy']).toBe('same-origin');
     expect(headers['strict-transport-security']).toBe('max-age=63072000; includeSubDomains; preload');
-    for (const feature of ['camera', 'microphone', 'geolocation', 'display-capture', 'payment']) {
-      expect(headers['permissions-policy']).toContain(`${feature}=()`);
+    const features = headers['permissions-policy']?.split(', ') ?? [];
+    for (const feature of [
+      'camera',
+      'microphone',
+      'geolocation',
+      'display-capture',
+      'payment',
+      'clipboard-read',
+      'local-network',
+      'loopback-network',
+      'language-model',
+      'publickey-credentials-get',
+      'usb',
+      'unload',
+    ]) {
+      expect(features).toContain(`${feature}=()`);
     }
+    expect(features).toContain('clipboard-write=(self)');
+    expect(features).toContain('web-share=(self)');
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
   },
 );
@@ -99,7 +115,9 @@ test(
   },
 );
 
-test('native Trusted Types reject string sinks and unapproved policies, and CSP rejects eval', async ({ page }) => {
+test("native Trusted Types reject string sinks, unapproved policies and the app's own policy names, and CSP rejects eval (W2-10)", async ({
+  page,
+}) => {
   await openApp(page, '/');
   const outcome = await page.evaluate(() => {
     const element = document.createElement('div');
@@ -126,6 +144,8 @@ test('native Trusted Types reject string sinks and unapproved policies, and CSP 
         document.write(html);
       }),
       policy: blocked(() => policy.createPolicy('unapproved', { createHTML: (input) => input })),
+      kdfPolicy: blocked(() => policy.createPolicy('nylzo-kdf', { createHTML: (input) => input })),
+      sveltePolicy: blocked(() => policy.createPolicy('svelte-trusted-html', { createHTML: (input) => input })),
       defaultPolicy: policy.defaultPolicy,
     };
     element.remove();
@@ -143,6 +163,8 @@ test('native Trusted Types reject string sinks and unapproved policies, and CSP 
     outer: 'TypeError',
     write: 'TypeError',
     policy: 'TypeError',
+    kdfPolicy: 'TypeError',
+    sveltePolicy: 'TypeError',
     defaultPolicy: null,
   });
   const probe = page.getByRole('button', { name: 'Probe eval' });

@@ -149,6 +149,8 @@ test('the reader acknowledges the open only once the message is on the screen, a
   expect(acknowledgements).toEqual([]);
 
   await page.reload();
+  await expect(page.getByText('Open the link again to finish')).toBeVisible();
+  await page.goto(message.link);
   await expect(page.getByText('You already opened the message on this page')).toBeVisible();
   const acknowledged = page.waitForResponse((response) => response.url().endsWith('/ack'));
   await page.getByRole('button', { name: 'Show message' }).click();
@@ -172,8 +174,8 @@ test('a second submit while the message opens claims only once', async ({ page }
   const field = page.getByLabel('Passphrase', { exact: true });
   await field.fill(PASSPHRASE);
   await field.evaluate((input: HTMLInputElement) => {
-    input.form?.requestSubmit();
-    input.form?.requestSubmit();
+    input.closest('form')?.requestSubmit();
+    input.closest('form')?.requestSubmit();
   });
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('once');
@@ -291,3 +293,49 @@ test('the reader stops without a verifier when the server reports another passph
   expect(sensitive).toEqual([]);
   expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
 });
+
+test(
+  'marks hidden and direction-changing characters and asks before copying them (W2-12)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createMessageThroughApi({ text: 'pay \u{202E}0001 tnuocca' });
+    await showMessage(page, message.link);
+    await expectMessageShown(page);
+    await expect(page.locator('pre mark')).toHaveText('U+202E');
+    await expect(page.getByText('Hidden or direction-changing characters in the text: 1.')).toBeVisible();
+    expect(await page.locator('pre').textContent()).not.toContain('\u{202E}');
+    await page.getByRole('button', { name: 'Copy text' }).click();
+    const confirm = page.getByRole('dialog', { name: /hidden or direction-changing characters/ });
+    await expect(confirm.getByText(/A copy keeps them exactly as the sender wrote them/)).toBeVisible();
+    await confirm.getByRole('button', { name: 'Do not copy' }).click();
+    await expect(confirm).toHaveCount(0);
+  },
+);
+
+test(
+  'a link pasted on the home page opens without its key entering the address, and Back returns home (W2-02)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createMessageThroughApi({ text: 'pasted on the home page' });
+    const addresses: string[] = [];
+    page.on('framenavigated', (frame) => {
+      addresses.push(frame.url());
+    });
+    await openApp(page, '/');
+    const field = page.getByLabel('Link to open');
+    const open = page.getByRole('button', { name: 'Open', exact: true });
+    await field.fill(`https://elsewhere.example/m/${message.id}${new URL(message.link).hash}`);
+    await open.click();
+    await expect(page.getByText('The link belongs to another service.')).toBeVisible();
+    await field.fill(message.link);
+    await open.click();
+    await expect(page).toHaveURL(`${BASE_URL}/m/${message.id}`);
+    await page.getByRole('button', { name: 'Show message' }).click();
+    await expectMessageShown(page);
+    await expect(page.locator('pre')).toHaveText('pasted on the home page');
+    expect(addresses.filter((address) => address.includes('#'))).toEqual([]);
+    await page.goBack();
+    await expect(page).toHaveURL(`${BASE_URL}/`);
+    await expect(page.getByLabel('Message text')).toBeVisible();
+  },
+);

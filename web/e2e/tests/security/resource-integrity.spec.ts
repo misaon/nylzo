@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
 import { expect, test } from '../support/fixtures.ts';
+import { createMessageThroughApi } from '../support/messages.ts';
+import { showMessage } from '../support/pages.ts';
 
 function digest(body: string): string {
   return `sha384-${createHash('sha384').update(body).digest('base64')}`;
@@ -118,3 +120,32 @@ test('requires SRI metadata before a same-origin script request can leave the br
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   expect(outbound).toEqual([]);
 });
+
+test(
+  'runs only a key derivation worker whose bytes match the import map, fetched before any request names the message (A3-03)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const passphrase = 'four random words here';
+    const message = await createMessageThroughApi({ passphrase });
+    const order: string[] = [];
+    page.on('request', (request) => {
+      order.push(new URL(request.url()).pathname);
+    });
+    await page.route('**/worker-ran', async (route) => {
+      await route.fulfill({ body: '' });
+    });
+    await page.route(/\/assets\/kdf-worker-[^/]+\.js$/, async (route) => {
+      const response = await route.fetch({ headers: { ...route.request().headers(), 'accept-encoding': 'identity' } });
+      await route.fulfill({ response, body: `fetch('/worker-ran');\n${await response.text()}` });
+    });
+    await showMessage(page, message.link, passphrase);
+    await expect(page.getByText('Something went wrong')).toBeVisible();
+    const worker = order.findIndex((path) => path.startsWith('/assets/kdf-worker-'));
+    const firstNamingRequest = order.findIndex((path) => path.startsWith('/api/v1/messages/'));
+    expect(worker).toBeGreaterThan(-1);
+    expect(worker).toBeLessThan(firstNamingRequest);
+    expect(order).not.toContain('/worker-ran');
+    expect(order.filter((path) => path.endsWith('/claim'))).toEqual([]);
+    expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0 });
+  },
+);

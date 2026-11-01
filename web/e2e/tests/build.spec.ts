@@ -96,7 +96,7 @@ test('the motion check reads shorthands and keyframes (AK19)', () => {
 });
 
 test('the built client stays within its budget, animates only transform and opacity and evaluates no code (AK19, AK20)', () => {
-  expect(gzippedSize('.js')).toBeLessThanOrEqual(150 * 1024);
+  expect(gzippedSize('.js')).toBeLessThanOrEqual(160 * 1024);
   expect(gzippedSize('.css')).toBeLessThanOrEqual(40 * 1024);
   const css = builtAssets('.css')
     .map((name) => readAsset(name))

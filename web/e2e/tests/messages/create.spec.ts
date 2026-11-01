@@ -133,16 +133,15 @@ async function watchCreateAnswer(page: Page): Promise<() => Promise<CreateAnswer
         return Reflect.apply(open as IDBFactory['open'], this, parameters);
       },
     });
-    const json: unknown = Object.getOwnPropertyDescriptor(Response.prototype, 'json')?.value;
-    Object.defineProperty(Response.prototype, 'json', {
-      async value(this: Response): Promise<unknown> {
-        const body: unknown = await Reflect.apply(json as Response['json'], this, []);
+    const body = Object.getOwnPropertyDescriptor(Response.prototype, 'body')?.get;
+    Object.defineProperty(Response.prototype, 'body', {
+      get(this: Response): ReadableStream<Uint8Array> | null {
         if (this.url.endsWith('/api/v1/messages')) {
           setTimeout(() => {
             handled = true;
           }, 0);
         }
-        return body;
+        return Reflect.apply(body as () => ReadableStream<Uint8Array> | null, this, []);
       },
     });
   });
@@ -208,4 +207,40 @@ test('the client solves the proof of work the instance asks for (D19)', async ({
   await showMessage(recipient, link);
   await expectMessageShown(recipient);
   await expect(recipient.locator('pre')).toHaveText('pow');
+});
+
+test('the sender can hand the link to the share sheet and clear the clipboard after copying (W2-07)', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const calls: string[] = [];
+    Object.defineProperty(globalThis, 'nylzoClipboard', { value: calls });
+    Object.defineProperties(navigator, {
+      canShare: { configurable: true, value: () => true },
+      share: {
+        configurable: true,
+        value: (data: ShareData) => {
+          calls.push(`share ${data.url ?? ''}`);
+          return Promise.resolve();
+        },
+      },
+    });
+    Object.defineProperty(navigator.clipboard, 'writeText', {
+      configurable: true,
+      value: (text: string) => {
+        calls.push(`copy ${text}`);
+        return Promise.resolve();
+      },
+    });
+  });
+  const link = await createMessageInPage(page, { text: 'share me' });
+  await page.getByRole('button', { name: 'Share link' }).click();
+  await page.getByRole('button', { name: 'Copy link' }).click();
+  await page.getByRole('button', { name: 'Clear clipboard' }).click();
+  await expect(page.getByText('The clipboard is empty.', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoClipboard') as unknown)).toEqual([
+    `share ${link}`,
+    `copy ${link}`,
+    'copy ',
+  ]);
 });
