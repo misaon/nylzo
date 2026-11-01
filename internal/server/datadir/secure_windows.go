@@ -6,3 +6,7 @@ package datadir
 func Secure(Layout) (int, error) {
 	return 0, nil
 }
+
+func Check(Layout) error {
+	return nil
+}

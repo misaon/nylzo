@@ -55,6 +55,11 @@ func commands() []subcommand {
 		{"burn", "delete the remaining opens of a message from its link", runBurn},
 		{"serve", "run the server with the embedded web client", operator.RunServe},
 		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce},
+		{
+			"store-check",
+			"tell, without writing, whether this build can open the data directory",
+			operator.RunStoreCheck,
+		},
 		{"takedown", "remove reported messages by id from stdin, on the server host", operator.RunTakedown},
 		{"report-key", "create the key pair that seals abuse reports for the operator", operator.RunReportKey},
 		{"reports", "open sealed abuse reports from stdin with the operator's private key", operator.RunReports},
