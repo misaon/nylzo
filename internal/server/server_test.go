@@ -716,10 +716,17 @@ func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
 	}
 }
 
-func TestRequestLinesLogNoSize(t *testing.T) {
+// TestRequestsAreLoggedAsCountsPerMinute covers A4-5 and A4-8: no line per request, no latency, no client method.
+func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
+		flushed, stop := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		go func() {
+			harness.server.RunRequestLog(flushed)
+			close(done)
+		}()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
 		harness.mustCreate(message)
 		response, _ := harness.claim(message, "", "")
@@ -730,33 +737,34 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 			t.Fatalf("blob: %d", blobResponse.StatusCode)
 		}
 		harness.metadata(message)
-		harness.status(message)
-		seen := map[string]bool{}
+		harness.metadata(message)
+		harness.statusFrom(&testRequest{method: "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", path: "/api/v1/instance"})
+		if strings.Contains(harness.logs.String(), `"msg":"requests"`) {
+			t.Fatalf("a request was logged before the minute ended: %s", harness.logs.String())
+		}
+		time.Sleep(time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)))
+		synctest.Wait()
+		stop()
+		<-done
+		counts := map[string]float64{}
 		for line := range strings.SplitSeq(strings.TrimSpace(harness.logs.String()), "\n") {
 			var entry map[string]any
-			if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "request" {
+			if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "requests" {
 				continue
 			}
+			for _, leak := range []string{"duration_ms", "bytes", "id", "addr"} {
+				if _, found := entry[leak]; found {
+					t.Fatalf("a request count carries %s: %s", leak, line)
+				}
+			}
+			method, _ := entry["method"].(string)
 			route, _ := entry["route"].(string)
-			_, size := entry["bytes"]
-			_, latency := entry["duration_ms"]
-			object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") ||
-				strings.HasSuffix(route, "/blob")
-			if size {
-				t.Fatalf("%s logs its response size: %s", route, line)
-			}
-			if object && latency {
-				t.Fatalf("%s logs its latency: %s", route, line)
-			}
-			if !object && route != "" && !latency {
-				t.Fatalf("%s lost its latency: %s", route, line)
-			}
-			seen[route] = true
+			count, _ := entry["count"].(float64)
+			counts[method+" "+route] += count
 		}
-		for _, requestLine := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
-			if !seen[requestLine] {
-				t.Fatalf("no request line for %s", requestLine)
-			}
+		if counts["GET GET /api/v1/messages/{id}"] != 2 || counts["POST POST /api/v1/messages/{id}/claim"] != 1 ||
+			counts["OTHER /api/"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") {
+			t.Fatalf("counts per method, route and status, and OTHER for a method nylzo does not route: %v", counts)
 		}
 	})
 }
@@ -865,4 +873,29 @@ type unreadableBody struct{ t *testing.T }
 func (body *unreadableBody) Read([]byte) (int, error) {
 	body.t.Error("the rejected cross-origin request body was read")
 	return 0, io.EOF
+}
+
+// TestHeadersOver8KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
+func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	address := harness.listen()
+	for padding, want := range map[int]int{7 << 10: http.StatusOK, 9 << 10: http.StatusRequestHeaderFieldsTooLarge} {
+		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(connection, "GET /healthz HTTP/1.1\r\nHost: nylzo.test\r\nX-Padding: %s\r\n\r\n", strings.Repeat("a", padding))
+		response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+		connection.Close()
+		if err != nil || response.StatusCode != want {
+			t.Fatalf("a %d-byte header: %v %v, want %d", padding, response, err, want)
+		}
+		response.Body.Close()
+		if response.Header.Get("X-Content-Type-Options") != "nosniff" ||
+			response.Header.Get("Content-Security-Policy") == "" ||
+			response.Header.Get("Strict-Transport-Security") == "" {
+			t.Fatalf("a %d-byte header got a response without the security headers: %v", padding, response.Header)
+		}
+	}
 }

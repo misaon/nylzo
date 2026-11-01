@@ -201,7 +201,7 @@ func (h *testHarness) listen() string {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	go httpServer.Serve(listener)
+	go httpServer.Serve(SecureEarlyErrors(listener))
 	h.t.Cleanup(func() { httpServer.Close() })
 	return listener.Addr().String()
 }

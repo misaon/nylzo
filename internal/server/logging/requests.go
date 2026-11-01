@@ -1,35 +1,93 @@
 package logging
 
 import (
+	"cmp"
 	"context"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
+	"sync"
 	"time"
 )
 
-// objectRoutes take as long as their object is large, so their latency would tie a log line to a message size.
-var objectRoutes = map[string]bool{
-	"POST /api/v1/messages":            true,
-	"POST /api/v1/messages/{id}/claim": true,
-	"GET /api/v1/messages/{id}/blob":   true,
-}
+const otherMethod = "OTHER"
+
+var routedMethods = map[string]bool{http.MethodGet: true, http.MethodHead: true, http.MethodPost: true}
 
 type routeKey struct{}
 
-// Requests logs one line per request; the mux must be wrapped in Route so the line can name its pattern.
-func Requests(logger *slog.Logger, next http.Handler) http.Handler {
+type requestKind struct {
+	method string
+	route  string
+	status int
+}
+
+// RequestCounts logs no line per request: it counts requests by method, route and status and writes the counts
+// once a minute, sorted, so neither the time nor the order of a line tells when one request ended (spec §10).
+type RequestCounts struct {
+	logger *slog.Logger
+	mutex  sync.Mutex
+	counts map[requestKind]int
+}
+
+func NewRequestCounts(logger *slog.Logger) *RequestCounts {
+	return &RequestCounts{logger: logger, counts: map[requestKind]int{}}
+}
+
+// Requests counts every request; the mux must be wrapped in Route so the count can name its pattern.
+func (c *RequestCounts) Requests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
 		recorder := &statusRecorder{ResponseWriter: w}
 		route := new(string)
 		next.ServeHTTP(recorder, r.WithContext(context.WithValue(r.Context(), routeKey{}, route)))
-		attributes := []any{"method", r.Method, "route", *route, "status", recorder.status}
-		if *route != "" && !objectRoutes[*route] {
-			attributes = append(attributes, "duration_ms", float64(time.Since(start).Microseconds())/1000)
+		method := r.Method
+		if !routedMethods[method] {
+			method = otherMethod
 		}
-		logger.InfoContext(r.Context(), "request", attributes...)
+		c.mutex.Lock()
+		c.counts[requestKind{method: method, route: *route, status: recorder.status}]++
+		c.mutex.Unlock()
 	})
+}
+
+// RunFlusher writes the counts at every minute boundary and once more when ctx ends.
+func (c *RequestCounts) RunFlusher(ctx context.Context) {
+	for {
+		now := time.Now()
+		next := now.Truncate(time.Minute).Add(time.Minute)
+		select {
+		case <-ctx.Done():
+			c.Flush()
+			return
+		case <-time.After(next.Sub(now)):
+			c.Flush()
+		}
+	}
+}
+
+func (c *RequestCounts) Flush() {
+	c.mutex.Lock()
+	counts := c.counts
+	c.counts = map[requestKind]int{}
+	c.mutex.Unlock()
+	kinds := slices.SortedFunc(maps.Keys(counts), func(first, second requestKind) int {
+		return cmp.Or(
+			cmp.Compare(first.route, second.route),
+			cmp.Compare(first.method, second.method),
+			cmp.Compare(first.status, second.status),
+		)
+	})
+	for _, kind := range kinds {
+		c.logger.Info(
+			"requests",
+			"method", kind.method,
+			"route", kind.route,
+			"status", kind.status,
+			"count", counts[kind],
+		)
+	}
 }
 
 func Route(mux http.Handler) http.Handler {

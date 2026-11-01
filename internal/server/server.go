@@ -27,7 +27,7 @@ const (
 	readTimeout         = 120 * time.Second
 	writeTimeout        = 120 * time.Second
 	idleTimeout         = 30 * time.Second
-	maxHeaderBytes      = 8 << 10
+	maxHeaderBytes      = 4 << 10
 	h2cStreamBuffer     = 64 << 10
 	h2cConnectionBuffer = 1 << 20
 	h2cMaxFrame         = 16 << 10
@@ -70,6 +70,7 @@ type Server struct {
 	robots          []byte
 	sitemap         []byte
 	manifest        webclient.Manifest
+	requestCounts   *logging.RequestCounts
 	handler         http.Handler
 }
 
@@ -104,6 +105,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if loadErr := server.loadWebClient(); loadErr != nil {
 		return nil, loadErr
 	}
+	server.requestCounts = logging.NewRequestCounts(server.logger)
 	server.setUpLimits()
 	server.challenges = proof.NewChallenges(ring, storage)
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
@@ -163,6 +165,11 @@ func (s *Server) RunSweeper(ctx context.Context) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// RunRequestLog writes the request counts of each minute at its end and the last counts when ctx ends.
+func (s *Server) RunRequestLog(ctx context.Context) {
+	s.requestCounts.RunFlusher(ctx)
 }
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
