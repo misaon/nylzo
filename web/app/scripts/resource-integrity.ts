@@ -7,6 +7,10 @@ import { type DefaultTreeAdapterMap, parse, serialize } from 'parse5';
 type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
+// Runs before any other resource loads, so the link secret leaves the address bar at once (Protocol §4).
+export const FRAGMENT_GUARD =
+  "(()=>{const{pathname:p,search:s,hash:h}=location;if(h===''||!p.startsWith('/m/'))return;history.replaceState(null,'',p+s);try{sessionStorage.setItem('nylzo:dropped:'+p.slice(3),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()";
+
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/.test(url) || /[?#%\\]/.test(url)) {
     throw new Error(`resource integrity: nonlocal resource ${url} in ${from}`);
@@ -151,6 +155,15 @@ export function secureHtml(html: string, assets: Assets): string {
   const charset = head.childNodes.findIndex(
     (node) => 'tagName' in node && node.tagName === 'meta' && node.attrs.some(({ name }) => name === 'charset'),
   );
-  head.childNodes.splice(charset + 1, 0, importMap);
+  const guard: DefaultTreeAdapterMap['element'] = {
+    nodeName: 'script',
+    tagName: 'script',
+    namespaceURI: head.namespaceURI,
+    attrs: [],
+    childNodes: [],
+    parentNode: head,
+  };
+  guard.childNodes.push({ nodeName: '#text', value: FRAGMENT_GUARD, parentNode: guard });
+  head.childNodes.splice(charset + 1, 0, importMap, guard);
   return serialize(document, { scriptingEnabled: false });
 }

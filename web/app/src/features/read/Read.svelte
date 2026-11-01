@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { VERIFIED_CLIENTS_URL } from '../../shared/shell/repository.ts';
   import CardBars from './CardBars.svelte';
   import MessageActions from './MessageActions.svelte';
   import NoticePanel from './NoticePanel.svelte';
@@ -18,6 +19,7 @@
 
 <svelte:window
   onpagehide={page.leave}
+  onbeforeunload={page.forgetPassphrase}
   onpageshow={page.returned}
   onhashchange={page.fragmentArrived}
   onclick={page.onWindowClick}
@@ -37,6 +39,12 @@
     >
       {translate('open.intro')}
     </p>
+    <a
+      href={VERIFIED_CLIENTS_URL}
+      rel="noreferrer"
+      class="mt-2 inline-flex min-h-11 animate-rise items-center text-[15px] text-aegis-300 underline-offset-4 [animation-delay:200ms] hover:text-aegis-200 hover:underline"
+      >{translate('open.verified')}</a
+    >
   </div>
 
   <div class="relative z-20 mx-auto mt-14 max-w-[860px] animate-rise [animation-delay:240ms]">

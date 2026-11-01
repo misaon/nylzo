@@ -38,6 +38,7 @@ test(
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(text);
     await expect(recipient.locator('bdi')).toHaveText(file.name);
+    await expect(recipient.locator('bdi')).toHaveAttribute('translate', 'no');
     expect(new URL(recipient.url()).hash).toBe('');
     await expect(
       notInert(recipient, recipient.getByRole('button', { name: 'Delete the remaining opens' })),
@@ -76,35 +77,73 @@ test(
   },
 );
 
-test('no field for a secret offers it to spell checkers, autocomplete or password managers (D38, D41)', async ({
-  page,
-}) => {
-  const message = await createMessageThroughApi({ passphrase: PASSPHRASE, opensMax: 2 });
-  const quiet = { spellcheck: 'false', autocorrect: 'off', autocapitalize: 'off', autocomplete: 'off' };
-  const ignoredByPasswordManagers = {
-    autocomplete: 'off',
-    spellcheck: 'false',
-    'data-1p-ignore': '',
-    'data-lpignore': 'true',
-    'data-bwignore': 'true',
-  };
-  const passwordFields = page.locator('[autocomplete*="password"], [autocomplete="username"]');
+test(
+  'no field for a secret offers it to spell checkers, translators, writing assistants or password managers (D38, D41, W2-03, W2-05)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createMessageThroughApi({ passphrase: PASSPHRASE, opensMax: 2 });
+    const quiet = {
+      spellcheck: 'false',
+      autocorrect: 'off',
+      autocapitalize: 'off',
+      autocomplete: 'off',
+      translate: 'no',
+      writingsuggestions: 'false',
+    };
+    const passphrase = {
+      ...quiet,
+      autocomplete: 'one-time-code',
+      'data-1p-ignore': '',
+      'data-lpignore': 'true',
+      'data-bwignore': 'true',
+      'data-protonpass-ignore': 'true',
+    };
+    const passwordFields = page.locator('[autocomplete*="password"], [autocomplete="username"]');
 
-  await openApp(page, '/');
-  await expectAttributes(page.getByLabel('Message text'), quiet);
-  await expectAttributes(page.getByLabel('Passphrase, optional'), ignoredByPasswordManagers);
-  await expect(passwordFields).toHaveCount(0);
+    await openApp(page, '/');
+    await expectAttributes(page.getByLabel('Message text'), quiet);
+    await expectAttributes(page.getByLabel('Passphrase, optional'), passphrase);
+    await expectAttributes(page.getByLabel('Link to open'), quiet);
+    expect(await formOwner(page.getByLabel('Passphrase, optional'))).toBeNull();
+    await expect(passwordFields).toHaveCount(0);
 
-  await page.goto(message.link);
-  await expectAttributes(page.getByLabel('Passphrase', { exact: true }), ignoredByPasswordManagers);
-  await page.getByRole('button', { name: 'Report', exact: true }).click();
-  await expectAttributes(page.getByLabel('Reason, optional'), quiet);
-  await expect(passwordFields).toHaveCount(0);
+    await page.goto(message.link);
+    const field = page.getByLabel('Passphrase', { exact: true });
+    await expectAttributes(field, passphrase);
+    expect(await formOwner(field)).toBeNull();
+    await page.getByRole('button', { name: 'Report', exact: true }).click();
+    await expectAttributes(page.getByLabel('Reason, optional'), quiet);
+    await expect(passwordFields).toHaveCount(0);
+    await page.getByRole('button', { name: 'Report', exact: true }).click();
 
-  await page.goto('/report');
-  await expectAttributes(page.getByLabel('Link to the message'), quiet);
-  await expectAttributes(page.getByLabel('Reason, optional'), quiet);
-});
+    const filled: string[] = [];
+    await page.route('**/api/v1/messages/*/claim', async (route) => {
+      filled.push(
+        ...(await page.evaluate(() =>
+          [...document.querySelectorAll('input')]
+            .filter((input) => ['password', 'text'].includes(input.type) && input.value !== '')
+            .map((input) => input.type),
+        )),
+      );
+      await route.continue();
+    });
+    await field.fill(PASSPHRASE);
+    await field.press('Enter');
+    await expectMessageShown(page);
+    expect(filled).toEqual([]);
+    await expect(page.locator('pre')).toHaveAttribute('translate', 'no');
+
+    await page.goto('/report');
+    await expectAttributes(page.getByLabel('Link to the message'), quiet);
+    await expectAttributes(page.getByLabel('Reason, optional'), quiet);
+  },
+);
+
+async function formOwner(field: Locator): Promise<string | null> {
+  return field.evaluate((element) =>
+    element instanceof HTMLInputElement ? (element.form?.id ?? null) : 'not an input field',
+  );
+}
 
 async function expectAttributes(field: Locator, attributes: Record<string, string>): Promise<void> {
   for (const [name, value] of Object.entries(attributes)) {

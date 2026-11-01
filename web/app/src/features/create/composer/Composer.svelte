@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import OpenLinkForm from '../../../shared/link/OpenLinkForm.svelte';
   import CreatedPanel from '../created/CreatedPanel.svelte';
   import { Composer } from './composer.svelte.ts';
   import ComposerBar from './ComposerBar.svelte';
@@ -13,7 +14,12 @@
   const noticeId = `${id}-notice`;
 </script>
 
-<svelte:window onclick={composer.onWindowClick} onpagehide={composer.leave} onpageshow={composer.returned} />
+<svelte:window
+  onclick={composer.onWindowClick}
+  onpagehide={composer.leave}
+  onpageshow={composer.returned}
+  onbeforeunload={composer.forgetPassphrase}
+/>
 
 <span id="napsat" class="block" aria-hidden="true"></span>
 
@@ -70,4 +76,10 @@
 
   <ComposerNotes {composer} {noticeId} />
   <p class="sr-only" role="status" aria-live="polite">{composer.stepTitle}</p>
+
+  <div id="open-link" class="relative z-10 mx-auto mt-12 max-w-[860px] animate-rise [animation-delay:320ms]">
+    <div class="glass rounded-card px-5 pt-5 pb-3 sm:px-7 sm:pt-6">
+      <OpenLinkForm heading />
+    </div>
+  </div>
 </section>

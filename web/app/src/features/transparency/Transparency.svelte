@@ -4,7 +4,7 @@
   import { formatBytes, formatDays, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
-  import { REPOSITORY_URL } from '../../shared/shell/repository.ts';
+  import { REPOSITORY_URL, VERIFIED_CLIENTS_URL } from '../../shared/shell/repository.ts';
   import {
     PAGE_ALERT,
     PAGE_BUTTON,
@@ -176,7 +176,10 @@
     <p class={PAGE_TEXT}>{translate('transparency.client.verify')}</p>
     <p class={PAGE_TEXT}><code class={CODE}>{verifyCommand()}</code></p>
     <p class={PAGE_TEXT}>{translate('transparency.client.limit')}</p>
-    <p class={PAGE_TEXT}>{translate('transparency.client.independent')}</p>
+    <p class={PAGE_TEXT}>
+      {translate('transparency.client.independent')}
+      <a href={VERIFIED_CLIENTS_URL} rel="noreferrer" class={PAGE_LINK}>{translate('limits.server.link')}</a>
+    </p>
     <p class={PAGE_TEXT}>
       <a href={REPOSITORY_URL} rel="noreferrer" class={PAGE_LINK}>{translate('transparency.source')}</a>
     </p>

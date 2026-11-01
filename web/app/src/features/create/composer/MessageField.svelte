@@ -5,6 +5,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Pipeline from '../../../shared/pipeline/Pipeline.svelte';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
 
   interface Props {
     readonly composer: Composer;
@@ -31,10 +32,7 @@
     {@attach composer.focus.attach('text')}
     bind:value={composer.text}
     rows="7"
-    spellcheck="false"
-    autocomplete="off"
-    autocapitalize="off"
-    autocorrect="off"
+    {...PRIVATE_TEXT}
     readonly={composer.busy}
     placeholder={translate('compose.placeholder')}
     aria-invalid={composer.problemOf.content !== undefined || composer.problemOf.text !== undefined}
@@ -55,7 +53,7 @@
       inert={!composer.file || composer.phase !== 'compose'}
     >
       <Icon name="file" class="size-4 shrink-0 text-nebula-300" />
-      <span class="truncate text-ink">{composer.file?.name ?? ''}</span>
+      <span translate="no" class="truncate text-ink">{composer.file?.name ?? ''}</span>
       <span class="shrink-0 font-mono text-[11px] text-ink-mute"
         >{composer.file ? formatBytes(composer.file.size, translator.language) : ''}</span
       >

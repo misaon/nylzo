@@ -4,6 +4,7 @@
   import { formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Icon from '../../shared/ui/Icon.svelte';
+  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../shared/ui/private-fields.ts';
   import SwapIcon from '../../shared/ui/SwapIcon.svelte';
   import { PANEL_HIDDEN, PANEL_SHOWN } from './read-page.svelte.ts';
 
@@ -97,18 +98,12 @@
               {@attach page.focus.attach('passphrase')}
               bind:value={page.passphrase}
               type={page.showPassphrase ? 'text' : 'password'}
-              autocomplete="off"
-              autocapitalize="off"
-              autocorrect="off"
-              spellcheck="false"
-              data-1p-ignore=""
-              data-lpignore="true"
-              data-bwignore="true"
-              data-form-type="other"
+              {...PRIVATE_PASSPHRASE}
               placeholder={translate('open.passphrase.placeholder')}
               aria-invalid={passphraseAlert !== ''}
               aria-describedby="{id}-passphrase-hint {id}-passphrase-alert"
               oninput={page.typed}
+              onkeydown={submitOnEnter}
               class="h-11 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-mute md:h-10"
             />
             <button

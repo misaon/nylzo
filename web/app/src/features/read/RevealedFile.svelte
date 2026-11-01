@@ -36,7 +36,7 @@
       <Icon name="file" stroke={1.7} class="size-[18px]" />
     </span>
     <span class="min-w-0 flex-1">
-      <bdi class="flex min-w-0 text-sm text-ink"
+      <bdi translate="no" class="flex min-w-0 text-sm text-ink"
         ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
       >
       <span class="block font-mono text-[11px] text-ink-mute"

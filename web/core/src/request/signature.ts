@@ -1,4 +1,6 @@
+import { eddsa } from '@noble/curves/abstract/edwards.js';
 import { ed25519 } from '@noble/curves/ed25519.js';
+import { sha512 } from '@noble/hashes/sha2.js';
 
 import { SEED_LENGTH } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
@@ -26,6 +28,45 @@ export interface RequestKey {
 
 const revokedKeys = new WeakSet<CryptoKey>();
 
+const seedDigests: Uint8Array[] = [];
+
+function recordedSha512(message: Uint8Array): Uint8Array {
+  const digest = sha512(message);
+  seedDigests.push(digest);
+  return digest;
+}
+
+function clampScalar(bytes: Uint8Array): Uint8Array {
+  bytes[0] = (bytes[0] ?? 0) & 248;
+  bytes[31] = ((bytes[31] ?? 0) & 127) | 64;
+  return bytes;
+}
+
+type WipingCurve = ReturnType<typeof eddsa>;
+
+const wiping: { curve?: WipingCurve } = {};
+
+function wipingEd25519(): WipingCurve {
+  wiping.curve ??= eddsa(ed25519.Point, Object.assign(recordedSha512, { outputLen: 64, blockLen: 128 }), {
+    adjustScalarBytes: clampScalar,
+  });
+  return wiping.curve;
+}
+
+function publicKeyOf(seed: Uint8Array): Uint8Array<ArrayBuffer> {
+  let extended: ReturnType<WipingCurve['utils']['getExtendedPublicKey']> | undefined;
+  try {
+    extended = wipingEd25519().utils.getExtendedPublicKey(seed);
+    return arrayBufferBacked(extended.pointBytes);
+  } finally {
+    extended?.head.fill(0);
+    extended?.prefix.fill(0);
+    for (const digest of seedDigests.splice(0)) {
+      digest.fill(0);
+    }
+  }
+}
+
 export interface RequestSignature {
   readonly publicKey: Uint8Array<ArrayBuffer>;
   readonly challenge: Uint8Array<ArrayBuffer>;
@@ -37,7 +78,7 @@ export async function requestKey(seed: Uint8Array): Promise<RequestKey> {
   const pkcs8 = concatenate(PKCS8_ED25519_PREFIX, seed);
   try {
     // Web Crypto has no interoperable public-key derivation from an imported private key.
-    const publicKey = arrayBufferBacked(ed25519.getPublicKey(pkcs8.subarray(PKCS8_ED25519_PREFIX.length)));
+    const publicKey = publicKeyOf(pkcs8.subarray(PKCS8_ED25519_PREFIX.length));
     const privateKey = await importSigningKey(pkcs8, publicKey);
     return { privateKey, publicKey };
   } finally {

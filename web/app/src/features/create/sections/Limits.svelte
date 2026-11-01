@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { VERIFIED_CLIENTS_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
 
   const { translate } = getTranslator();
@@ -7,7 +8,7 @@
   const limits = [
     { key: 'limits.save', icon: 'camera' },
     { key: 'limits.link', icon: 'link' },
-    { key: 'limits.server', icon: 'shield' },
+    { key: 'limits.server', icon: 'shield', link: VERIFIED_CLIENTS_URL },
     { key: 'limits.abuse', icon: 'ban' },
   ] as const;
 </script>
@@ -95,6 +96,14 @@
           <span class="min-w-0">
             <span class="block text-[15px] text-ink">{translate(`${limit.key}.title`)}</span>
             <span class="mt-0.5 block text-[13px] leading-relaxed text-ink-mute">{translate(`${limit.key}.note`)}</span>
+            {#if 'link' in limit}
+              <a
+                href={limit.link}
+                rel="noreferrer"
+                class="inline-flex min-h-11 items-center text-[13px] text-aegis-300 underline-offset-4 hover:text-aegis-200 hover:underline"
+                >{translate('limits.server.link')}</a
+              >
+            {/if}
           </span>
         </li>
       {/each}

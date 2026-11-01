@@ -1,7 +1,7 @@
 import type { Attachment } from 'svelte/attachments';
 
 import { generatePassphrase, MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
-import { tick } from 'svelte';
+import { flushSync, tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
@@ -216,6 +216,12 @@ export class Composer {
     this.focus.focus(trigger);
   };
 
+  readonly forgetPassphrase = (): void => {
+    this.passphrase = '';
+    this.passphraseVisible = false;
+    flushSync();
+  };
+
   readonly leave = (): void => {
     this.#run++;
     this.timeline.stop();
@@ -260,8 +266,12 @@ export class Composer {
     }
     event.preventDefault();
     this.dragging = false;
-    if (!this.busy) {
-      this.pickFile(event.dataTransfer.files[0]);
+    if (this.busy) {
+      return;
+    }
+    this.pickFile(event.dataTransfer.files[0]);
+    if (event.dataTransfer.items[0]?.webkitGetAsEntry()?.isDirectory === true) {
+      this.problems = [...this.problems, { field: 'file', code: 'unreadable' }];
     }
   };
 

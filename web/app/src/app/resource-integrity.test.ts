@@ -1,7 +1,8 @@
+import { runInNewContext } from 'node:vm';
 import { parse } from 'parse5';
 import { describe, expect, it } from 'vitest';
 
-import { checkScript, checkStyles, integrity, secureHtml } from '../../scripts/resource-integrity.ts';
+import { checkScript, checkStyles, FRAGMENT_GUARD, integrity, secureHtml } from '../../scripts/resource-integrity.ts';
 
 const assets = new Map([
   ['/assets/app.js', Buffer.from('import("./start.js")')],
@@ -26,6 +27,8 @@ describe('final frontend resource policy', () => {
     expect(output).not.toContain('nonce');
     expect(output).not.toContain('http-equiv');
     expect(output).toContain('<head><meta charset="utf-8"><script type="importmap">');
+    expect(output).toContain(`</script><script>${FRAGMENT_GUARD}</script>`);
+    expect(output.indexOf(FRAGMENT_GUARD)).toBeLessThan(output.indexOf('src="/assets/app.js"'));
   });
 
   it.each([
@@ -108,6 +111,45 @@ describe('final frontend resource policy', () => {
           assets,
         ),
       ).toThrow(/resource integrity/);
+    }
+  });
+});
+
+function runGuard(href: string) {
+  const url = new URL(href);
+  const session = new Map<string, string>();
+  const replaced: string[] = [];
+  const context = {
+    location: { pathname: url.pathname, search: url.search, hash: url.hash },
+    history: {
+      replaceState: (_state: unknown, _title: string, address: string) => {
+        replaced.push(address);
+      },
+    },
+    sessionStorage: { setItem: (key: string, value: string) => session.set(key, value) },
+  };
+  Object.assign(context, { globalThis: context });
+  runInNewContext(FRAGMENT_GUARD, context);
+  const take = Reflect.get(context, 'nylzoFragment') as (() => string) | undefined;
+  return { replaced, session, take, context };
+}
+
+describe('the fragment guard at the start of every page (W2-04)', () => {
+  it('takes the fragment off a read page before anything else loads and hands it over once', () => {
+    const { replaced, session, take, context } = runGuard('https://nylzo.test/m/AAAAAAAAAAAAAAAAAAAAAA?x=1#1.0.secret');
+    expect(replaced).toEqual(['/m/AAAAAAAAAAAAAAAAAAAAAA?x=1']);
+    expect(session).toEqual(new Map([['nylzo:dropped:AAAAAAAAAAAAAAAAAAAAAA', '1']]));
+    expect(take?.()).toBe('#1.0.secret');
+    expect(Reflect.get(context, 'nylzoFragment')).toBeUndefined();
+    expect(take?.()).toBe('');
+  });
+
+  it('leaves other pages and read pages without a fragment alone', () => {
+    for (const href of ['https://nylzo.test/#how', 'https://nylzo.test/m/AAAAAAAAAAAAAAAAAAAAAA']) {
+      const { replaced, session, take } = runGuard(href);
+      expect(replaced).toEqual([]);
+      expect(session.size).toBe(0);
+      expect(take).toBeUndefined();
     }
   });
 });

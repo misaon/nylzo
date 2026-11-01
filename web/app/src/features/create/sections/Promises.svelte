@@ -1,7 +1,6 @@
 <script lang="ts">
   import { formatDays } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import { RETENTION_DAYS } from '../../../shared/sent-records/sent-record.ts';
   import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import { TTL_CHOICES } from '../composer/create-form.ts';
@@ -9,9 +8,10 @@
   const translator = getTranslator();
   const { translate } = translator;
   const SECONDS_PER_DAY = 86_400;
+  const TOMBSTONE_DAYS = 7;
 
   const longest = $derived(formatDays(Math.max(...TTL_CHOICES) / SECONDS_PER_DAY, translator.language));
-  const forgotten = $derived(formatDays(RETENTION_DAYS, translator.language));
+  const forgotten = $derived(formatDays(TOMBSTONE_DAYS, translator.language));
 
   const small = [
     { key: 'promise.preview', icon: 'eye', reveal: 'reveal-up reveal-step-1' },

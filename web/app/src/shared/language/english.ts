@@ -23,6 +23,7 @@ export const english: Record<MessageKey, string> = {
   'problem.content.missing': 'Write a text or attach a file.',
   'problem.text.too_large': 'The text is longer than {size}.',
   'problem.file.too_large': 'The file is larger than {size}.',
+  'problem.file.unreadable': 'This file cannot be read. A folder cannot be attached, so choose a file.',
   'problem.ttl.out_of_range': 'Choose an expiry from the list.',
   'problem.opens.out_of_range': 'The number of opens must be 1 to {max}.',
   'problem.passphrase.too_short': 'The passphrase needs at least {min} characters.',
@@ -44,6 +45,12 @@ export const english: Record<MessageKey, string> = {
   'created.link': 'Link to the message',
   'created.copy': 'Copy link',
   'created.copied': 'The link is on the clipboard',
+  'created.share': 'Share link',
+  'created.paste_tip':
+    'Ask the recipient to paste the link under Open a link at {address} instead of clicking it. A clicked link stays in the browser history.',
+  'clipboard.copied': 'Copied. Clipboard history and a synced clipboard can keep a copy.',
+  'clipboard.clear': 'Clear clipboard',
+  'clipboard.cleared': 'The clipboard is empty. Copies already in clipboard history stay there.',
   'created.another': 'New message',
   'created.remembered': 'This device remembered the message.',
   'created.status_link': 'Status and cancelling',
@@ -129,6 +136,20 @@ export const english: Record<MessageKey, string> = {
   'revealed.confirm.none': 'The file has no extension.',
   'revealed.confirm.download': 'Download anyway',
   'revealed.confirm.cancel': 'Do not download',
+  'revealed.history':
+    "You opened this message by clicking its link, so this browser's history keeps a working link until the last open. Delete the remaining opens if nobody else needs them.",
+  'revealed.hidden':
+    'Hidden or direction-changing characters in the text: {count}. They are shown as codes such as U+202E, because they can make the text look different from what a copy contains.',
+  'revealed.hidden.confirm':
+    'The text contains hidden or direction-changing characters. A copy keeps them exactly as the sender wrote them. Copy it anyway?',
+  'revealed.hidden.copy': 'Copy anyway',
+  'revealed.hidden.keep': 'Do not copy',
+  'paste.title': 'Open a link',
+  'paste.hint':
+    'Paste a Nylzo link here instead of clicking it, and the key stays out of your browser history. A clicked link stays in the history and in synced tabs, and Chrome can send it to Google with its usage statistics.',
+  'paste.label': 'Link to open',
+  'paste.placeholder': 'Paste the whole link',
+  'paste.submit': 'Open',
 
   'report.title': 'Report abuse',
   'report.note':
@@ -192,7 +213,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.others.hosting':
     'The hosting provider and the proxy that terminates HTTPS see IP addresses, request times and sizes, and log by their own rules. They do not see the content of a message.',
   'transparency.others.client':
-    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. The CLI from a signed release protects against this. The check below finds such a swap only when the server does not avoid it.',
+    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. The local client (nylzo web and nylzo open) and the nylzo command line run code from a signed release, so the server cannot change them. The check below finds such a swap only when the server does not avoid it.',
   'transparency.limits.title': 'Limits of this instance',
   'transparency.limits.file': 'Largest attachment',
   'transparency.limits.ttl': 'Longest expiry',
@@ -215,7 +236,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.client.limit':
     'It checks only what the server sent to this command. A server can recognise the command and send browsers other code, so the check finds a broken build or deployment, not a swap the server hides on purpose.',
   'transparency.client.independent':
-    "The web client comes from this server, so a server in someone else's hands could change it. For the highest assurance use the signed nylzo command line tool, which runs no code from the server.",
+    "The website trusts this server: the web client comes from it, so a server in someone else's hands could change it. nylzo web, nylzo open and the nylzo command line run code from a signed release and trust only the encryption.",
   'transparency.source': 'Source code, protocol specification and threat model',
 
   'nav.top': 'Nylzo, back to the top',
@@ -266,6 +287,8 @@ export const english: Record<MessageKey, string> = {
   'compose.opens.less': 'Fewer opens',
   'compose.opens.more': 'More opens',
   'compose.opens.note': 'After the last open the server deletes the encrypted message. At most {max}.',
+  'compose.opens.history':
+    'A reader who clicks the link keeps a working link in their browser history until the last open. Add a passphrase, or ask readers to paste the link instead.',
   'compose.security': 'Security',
   'compose.passphrase.chip': 'Passphrase',
   'compose.passphrase.switch': 'Protect with a passphrase',
@@ -273,7 +296,8 @@ export const english: Record<MessageKey, string> = {
   'compose.passphrase.placeholder': 'e.g. {words} random words',
   'compose.passphrase.generate': 'Generate',
   'compose.remember.switch': 'Cancel from this device',
-  'compose.remember.note': 'Saves the key for cancelling in this browser only.',
+  'compose.remember.note':
+    "Keeps a key in this browser that can cancel the message and show its status until a day after it ends. Anyone who can read this browser's files can use it too.",
   'compose.attach': 'Attachment',
   'compose.attach.limit': ', up to {size}',
   'compose.submit': 'Encrypt and create link',
@@ -297,23 +321,25 @@ export const english: Record<MessageKey, string> = {
   'step.send.detail.pow': 'the service is busy, so the browser solves a short puzzle',
   'step.link.label': 'Link',
   'step.link.title': 'Putting the link together',
-  'step.link.detail': 'the key goes after the #, where the server cannot see it',
+  'step.link.detail': 'the key goes after the #, which the browser does not send',
 
   'created.sub': 'Copy it and send it to the recipient.',
   'created.sub.passphrase': 'Send the link and the passphrase to the recipient through different channels.',
-  'created.server.sees': 'The server sees',
+  'created.server.sees': 'The server gets',
   'created.server.sees.what': 'the address and the message id',
-  'created.server.blind': 'The server never sees',
-  'created.server.blind.what': 'the key',
+  'created.server.blind': 'Your browser does not send',
+  'created.server.blind.what': 'the key after #',
   'created.chip.expires': 'Valid until {time}',
   'open.title': 'You have an encrypted message',
   'open.intro':
-    'It is decrypted only in your browser. The key is in the link after the # sign, and the server has never seen it.',
+    "It is decrypted in this browser. Your browser does not send the key after the # sign to the server. This page also comes from the server, though, and a server in someone else's hands could change it.",
+  'open.verified': 'Read it without trusting the server',
   'open.ready.title': 'The message is waiting for you',
   'open.ready.sub': 'An open counts only when you press Show message.',
   'open.loading.text': 'Checking the link with the server.',
   'open.passphrase.placeholder': 'Passphrase from the sender',
-  'open.passphrase.hint': 'The sender gives you the passphrase through another channel than the link.',
+  'open.passphrase.hint':
+    'The sender gives you the passphrase through another channel than the link. Do not save it in a password manager.',
   'open.passphrase.show': 'Show passphrase',
   'open.passphrase.hide': 'Hide passphrase',
   'open.passphrase.empty': 'Enter the passphrase from the sender.',
@@ -361,7 +387,10 @@ export const english: Record<MessageKey, string> = {
     'Nylzo no longer supports this protection, so the message cannot be opened. This page did not use it up. Ask the sender for a new link.',
   'open.notice.removed': 'The key is no longer in the address bar',
   'open.notice.removed.text':
-    'For safety this page removes the key from the address as soon as it reads it. To try again, open the original link.',
+    'For safety this page removes the key from the address as soon as it reads it. To try again, paste the link below or open it again.',
+  'open.notice.reopen': 'Open the link again to finish',
+  'open.notice.reopen.text':
+    'This page keeps the key only in memory, so the reload forgot it. Paste the link below or open it again. Finishing does not use another open.',
   'open.notice.tampered': 'The message cannot be opened safely',
   'open.notice.tampered.text': 'The server or the connection returned other data than the sender created.',
   'open.notice.failed': 'Something went wrong',
@@ -394,13 +423,13 @@ export const english: Record<MessageKey, string> = {
   'open.trust.gone.text': 'After the last open or once it expires, the server deletes the encrypted data.',
 
   'how.eyebrow': 'How it works',
-  'how.title': 'You hold the key. The server only ever sees the message encrypted.',
+  'how.title': 'You hold the key. The server stores the message only encrypted.',
   'how.step1.title': 'You encrypt on your side',
   'how.step1.text':
     'The browser creates a random 256-bit key and encrypts the message with it before it sends anything.',
   'how.step2.title': 'The server stores it encrypted',
   'how.step2.text':
-    'It stores the encrypted data. It keeps the settings and times of the message encrypted and opens them only during a request from you or the recipient. It does not know the key, so it cannot read the message.',
+    'It stores the encrypted data. It keeps the settings and times of the message encrypted and opens them only during a request from you or the recipient. Your browser never sends it the key, so the stored data does not reveal the message.',
   'how.step3.title': 'The recipient opens it once',
   'how.step3.text':
     'The message opens only with a click; loading the link alone uses nothing up. After the last open the server deletes the encrypted data.',
@@ -422,11 +451,11 @@ export const english: Record<MessageKey, string> = {
   'how.link.key.title': 'Message key',
   'how.link.key.meta': '256 bits, only in the browser',
   'how.link.key.body':
-    'Everything after the # sign stays in the browser. The browser does not send this part to the server, so neither we nor the hosting know it. Without it, nobody can read the message.',
+    'Everything after the # sign stays in the browser, which sends it in no request, so it never reaches the server or the hosting that way. Without it, nobody can read the message.',
   'how.link.server.body':
-    'The server only gets the page address and the message id. The browser does not send anything after the # sign when it loads the page, so the server never sees the key, even if it wanted to.',
+    "The server gets the page address and the message id; your browser sends nothing after the # sign. The page's code comes from the server too, though, so a server in someone else's hands could change it to read the messages opened in it. The local client (nylzo web, nylzo open) and the nylzo command line run no code from the server.",
   'who.eyebrow': 'Who sees what',
-  'who.title': 'Nobody can read the message from the server',
+  'who.title': 'The data on the server does not reveal the message',
   'who.sub':
     'The same message through the eyes of three parties. Switch between them and compare what each one actually holds.',
   'who.tabs': 'Point of view',
@@ -675,9 +704,10 @@ export const english: Record<MessageKey, string> = {
   'limits.save.note': 'Copy it or take a photo. Send it only to someone you trust.',
   'limits.link.title': 'Whoever has the link first opens it',
   'limits.link.note': 'That is why the passphrase goes another way.',
-  'limits.server.title': 'A compromised server could serve a fake page',
+  'limits.server.title': 'Whoever controls the server can change this website',
   'limits.server.note':
-    'nylzo verify-client catches a wrong build, but not a server that hides the swap from it. If you would rather not trust the page, send the message from the CLI.',
+    'They could send one chosen person a page that reads the message, and in 2026 no browser can tell. nylzo verify-client catches a wrong build, but not a server that hides the swap from it. When a message must stay safe even then, the sender and the reader both use nylzo web, nylzo open or the nylzo command line, which run code from a signed release.',
+  'limits.server.link': 'Verified clients',
   'limits.abuse.title': 'Not for scams or malware',
   'limits.abuse.note': 'Nor for any other illegal content.',
   'limits.liability':
@@ -690,5 +720,5 @@ export const english: Record<MessageKey, string> = {
   'host.domain': 'your-domain.example',
   'host.terminal': 'bash — nylzo',
   'compare.note.dash': '—',
-  'compare.note.verify': 'verify\u{2011}client',
+  'compare.note.verify': 'only what the server sends to verify\u{2011}client',
 };

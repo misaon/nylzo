@@ -10,12 +10,14 @@ import type { IconName } from '../../shared/ui/icons.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
 import { scryptInWorker } from '../../shared/kdf/kdf.ts';
+import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import { formatWait } from '../../shared/language/format.ts';
-import { takeHandedOverFragment } from '../../shared/local-client/handoff.ts';
+import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
 import { Flash } from '../../shared/ui/flash.svelte.ts';
 import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
+import { type MarkedText, markHiddenCharacters } from './hidden-characters.ts';
 import { type Burned, type Notice, noticeOf } from './read-notice.ts';
 import {
   type BurnOutcome,
@@ -108,6 +110,10 @@ export class ReadPage {
   burned = $state.raw<Burned>();
   opening = $state(false);
   revealText = $state<string>();
+  marked = $state.raw<MarkedText>();
+  confirmingCopy = $state(false);
+  clipboard = $state<'cleared' | 'copied' | 'untouched'>('untouched');
+  linkInHistory = $state(false);
   noise = $state('');
   readonly copied = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
@@ -263,16 +269,45 @@ export class ReadPage {
     await this.focus.focusAfterUpdate(() => 'download');
   };
 
+  readonly askCopy = async (): Promise<void> => {
+    if ((this.marked?.hidden ?? 0) === 0) {
+      await this.copyText();
+      return;
+    }
+    this.confirmingCopy = true;
+  };
+
+  readonly cancelCopy = (): void => {
+    this.confirmingCopy = false;
+  };
+
+  readonly clearClipboard = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText('');
+      this.clipboard = 'cleared';
+    } catch {
+      this.clipboard = 'copied';
+    }
+  };
+
   readonly copyText = async (): Promise<void> => {
+    this.confirmingCopy = false;
     if (!this.revealed?.text) {
       return;
     }
     try {
       await navigator.clipboard.writeText(this.revealed.text);
+      this.clipboard = 'copied';
       this.copied.show();
     } catch {
       this.copied.hide();
     }
+  };
+
+  readonly forgetPassphrase = (): void => {
+    this.passphrase = '';
+    this.showPassphrase = false;
+    flushSync();
   };
 
   readonly leave = (): void => {
@@ -285,6 +320,8 @@ export class ReadPage {
     this.passphrase = '';
     this.#pending = undefined;
     this.revealText = undefined;
+    this.marked = undefined;
+    this.confirmingCopy = false;
     clearInterval(this.#revealTimer);
     this.#stopTimeline();
     this.#reader.clear();
@@ -371,13 +408,11 @@ export class ReadPage {
     this.#reader = createReader(
       {
         api: createApi(),
-        location: {
-          get pathname() {
-            return location.pathname;
-          },
-          get hash() {
-            return takeHandedOverFragment() ?? location.hash;
-          },
+        location,
+        takeFragment: () => {
+          const taken = takeFragment(location.pathname);
+          this.linkInHistory = taken.fragment !== '' && !taken.pasted;
+          return taken.fragment;
         },
         session: {
           getItem: (key) => sessionStorage.getItem(key),
@@ -388,7 +423,7 @@ export class ReadPage {
           visible: () => document.visibilityState === 'visible',
           prerendering: () => (document as Document & { prerendering?: boolean }).prerendering === true,
         },
-        dropFragment: () => history.replaceState(null, '', location.pathname),
+        prepared: prepareWorker,
         shown: async () => this.#displayed(),
         scrypt: scryptInWorker,
         now: () => Date.now(),
@@ -398,6 +433,7 @@ export class ReadPage {
     onDestroy(() => {
       this.timeline.stop();
       clearInterval(this.#revealTimer);
+      this.#reader.clear();
     });
     void this.#reader.load();
   }
@@ -489,6 +525,7 @@ export class ReadPage {
     this.shown = next;
     if (next.view !== 'revealed') {
       this.revealText = undefined;
+      this.marked = undefined;
       return;
     }
     this.#settleShown();
@@ -501,8 +538,10 @@ export class ReadPage {
     void this.#startReveal(next.text);
   }
 
-  async #startReveal(text: string | undefined): Promise<void> {
+  async #startReveal(revealed: string | undefined): Promise<void> {
     clearInterval(this.#revealTimer);
+    this.marked = revealed === undefined ? undefined : markHiddenCharacters(revealed);
+    const text = this.marked?.shown;
     this.revealText = text;
     if (text !== undefined && !prefersReducedMotion.current) {
       const started = performance.now();

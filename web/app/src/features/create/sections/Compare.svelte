@@ -50,7 +50,7 @@
     },
     {
       label: 'compare.row.verify',
-      cells: [yes('compare.note.verify'), no('compare.note.signed_releases'), no(), no(), no()],
+      cells: [part('compare.note.verify'), no('compare.note.signed_releases'), no(), no(), no()],
     },
     {
       label: 'compare.row.length',

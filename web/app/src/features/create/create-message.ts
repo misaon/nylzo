@@ -51,6 +51,7 @@ export interface CreateInput {
 export type CreateProblem =
   | { readonly field: 'content'; readonly code: 'missing' }
   | { readonly field: 'file' | 'text'; readonly code: 'too_large' }
+  | { readonly field: 'file'; readonly code: 'unreadable' }
   | { readonly field: 'opens' | 'ttl'; readonly code: 'out_of_range' }
   | {
       readonly field: 'passphrase';

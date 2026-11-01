@@ -56,5 +56,8 @@
     <p class="mt-1.5 px-1 pb-0.5 text-[11px] leading-relaxed text-ink-mute">
       {translate('compose.opens.note', { max: composer.maxOpens })}
     </p>
+    {#if composer.opensMax > 1 && !composer.usesPassphrase}
+      <p class="px-1 pb-0.5 text-[11px] leading-relaxed text-nebula-300">{translate('compose.opens.history')}</p>
+    {/if}
   </Popover>
 </div>

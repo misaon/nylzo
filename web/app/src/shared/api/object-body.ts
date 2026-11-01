@@ -7,44 +7,52 @@ export type DownloadProgress = (received: number, total: number | undefined) => 
 const INITIAL_BYTES = 64 * 1024;
 
 function tooLarge(): ResponseError {
-  return new ResponseError('the object is larger than the protocol allows');
+  return new ResponseError('the response is larger than the protocol allows');
 }
 
-function grown(buffer: Uint8Array<ArrayBuffer>, used: number, needed: number): Uint8Array<ArrayBuffer> {
+function grown(buffer: Uint8Array<ArrayBuffer>, used: number, needed: number, limit: number): Uint8Array<ArrayBuffer> {
   if (needed <= buffer.length) {
     return buffer;
   }
-  const larger = new Uint8Array(Math.min(MAX_OBJECT_BYTES, Math.max(needed, buffer.length * 2)));
+  const larger = new Uint8Array(Math.min(limit, Math.max(needed, buffer.length * 2)));
   larger.set(buffer.subarray(0, used));
   return larger;
 }
 
-export async function readObject(response: Response, onProgress?: DownloadProgress): Promise<Uint8Array<ArrayBuffer>> {
+export async function readBody(
+  response: Response,
+  limit: number,
+  onProgress?: DownloadProgress,
+): Promise<Uint8Array<ArrayBuffer>> {
   const declared = Number(response.headers.get('Content-Length'));
   const total = Number.isSafeInteger(declared) && declared > 0 ? declared : undefined;
-  if (total !== undefined && total > MAX_OBJECT_BYTES) {
+  if (total !== undefined && total > limit) {
     await response.body?.cancel();
     throw tooLarge();
   }
   if (!response.body) {
     const whole = new Uint8Array(await response.arrayBuffer());
-    if (whole.length > MAX_OBJECT_BYTES) {
+    if (whole.length > limit) {
       throw tooLarge();
     }
     return whole;
   }
-  let object = new Uint8Array(total ?? INITIAL_BYTES);
+  let object = new Uint8Array(total ?? Math.min(INITIAL_BYTES, limit));
   let received = 0;
   const reader = response.body.getReader();
   for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-    if (received + chunk.value.length > MAX_OBJECT_BYTES) {
+    if (received + chunk.value.length > limit) {
       await reader.cancel();
       throw tooLarge();
     }
-    object = grown(object, received, received + chunk.value.length);
+    object = grown(object, received, received + chunk.value.length, limit);
     object.set(chunk.value, received);
     received += chunk.value.length;
     onProgress?.(received, total);
   }
   return received === object.length ? object : object.slice(0, received);
+}
+
+export async function readObject(response: Response, onProgress?: DownloadProgress): Promise<Uint8Array<ArrayBuffer>> {
+  return readBody(response, MAX_OBJECT_BYTES, onProgress);
 }

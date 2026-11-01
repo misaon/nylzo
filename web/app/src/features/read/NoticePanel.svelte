@@ -3,13 +3,16 @@
 
   import { formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import OpenLinkForm from '../../shared/link/OpenLinkForm.svelte';
   import Icon from '../../shared/ui/Icon.svelte';
-  import { isAlarming, NOTICE_ICONS } from './read-notice.ts';
+  import { isAlarming, type Notice, NOTICE_ICONS } from './read-notice.ts';
   import { PANEL_HIDDEN, PANEL_SHOWN } from './read-page.svelte.ts';
 
   interface Props {
     readonly page: ReadPage;
   }
+
+  const PASTE_NOTICES: ReadonlySet<Notice> = new Set(['invalid', 'removed', 'reopen']);
 
   const { page }: Props = $props();
   const translator = getTranslator();
@@ -51,4 +54,9 @@
     <h3 class="font-display text-2xl font-light tracking-[-0.02em] md:text-[28px]">{title}</h3>
     <p class="mx-auto mt-2 max-w-[460px] text-[15px] leading-relaxed text-pretty text-ink-mute">{text}</p>
   </div>
+  {#if PASTE_NOTICES.has(page.notice)}
+    <div class="w-full max-w-[460px]">
+      <OpenLinkForm />
+    </div>
+  {/if}
 </div>

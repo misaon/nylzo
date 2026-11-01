@@ -1,35 +1,19 @@
 import { PowTimeoutError } from '@nylzo/core';
 
 import { type KdfRequest, type KdfResponse, KdfWorkerError } from './kdf-protocol.ts';
-import kdfWorkerUrl from './kdf-worker.ts?worker&url';
+import { startWorker } from './worker-source.ts';
 
 export type Progress = (fraction: number) => void;
 
 const SILENCE_LIMIT_MS = 30_000;
 
-let kdfPolicy: TrustedTypePolicy | undefined;
-
-function workerScriptUrl(): string {
-  // eslint-disable-next-line unicorn/no-top-level-assignment-in-function -- Trusted Types refuses a second policy named nylzo-kdf, so later workers reuse the first.
-  kdfPolicy ??= trustedTypes.createPolicy('nylzo-kdf', {
-    createScriptURL(input) {
-      if (input !== kdfWorkerUrl) {
-        throw new TypeError('unexpected worker url');
-      }
-      return input;
-    },
-  });
-  // Worker accepts a TrustedScriptURL; the DOM typings only know strings.
-  return kdfPolicy.createScriptURL(kdfWorkerUrl) as unknown as string;
-}
-
 async function runWorker(request: KdfRequest, onProgress: Progress): Promise<KdfResponse> {
-  const worker = new Worker(workerScriptUrl(), { type: 'module', name: 'nylzo-kdf' });
+  const { worker, stop } = await startWorker();
   return new Promise((resolve, reject) => {
     let silenceTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (settle: () => void) => {
       clearTimeout(silenceTimer);
-      worker.terminate();
+      stop();
       settle();
     };
     const fail = (error: Error) => finish(() => reject(error));
