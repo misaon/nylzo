@@ -49,7 +49,7 @@ func FromEnv(getenv func(string) string, needPepper bool) (Server, error) {
 	}
 	if len(settings.Pepper) == 0 {
 		return settings, fmt.Errorf(
-			"%w: NYLZO_PEPPER or NYLZO_PEPPER_FILE is required (32 bytes, hex or base64url)",
+			"%w: NYLZO_PEPPER_FILE is required, a file with 32 bytes in hex or base64url",
 			ErrInvalid,
 		)
 	}
@@ -103,6 +103,8 @@ func (s *Server) variables() []variable {
 		{"NYLZO_OPERATOR", text(&s.Operator.Name)},
 		{"NYLZO_CONTACT", text(&s.Operator.Contact)},
 		{"NYLZO_HOSTING", text(&s.Operator.Hosting)},
+		{"NYLZO_ALLOW_SWAP", boolInto(&s.Development.AllowSwap)},
+		{"NYLZO_ALLOW_UNERASABLE_STORAGE", boolInto(&s.Development.AllowUnerasableStorage)},
 		{"NYLZO_REPORT_KEY", func(value string) error {
 			key, err := abuse.ParsePublicKey(value)
 			s.ReportKey = key
@@ -160,26 +162,35 @@ func (s *Server) parseProxyMode(value string) error {
 	return nil
 }
 
+// secretFromEnv reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.
 func secretFromEnv(getenv func(string) string, key string) ([]byte, error) {
-	value := strings.TrimSpace(getenv(key))
+	if getenv(key) != "" {
+		return nil, fmt.Errorf(
+			"%s is not read from the environment, where docker inspect and /proc show it; "+
+				"put the secret in a file with mode 600 or 400 and name it in %s_FILE",
+			key,
+			key,
+		)
+	}
 	path := strings.TrimSpace(getenv(key + "_FILE"))
-	switch {
-	case value != "" && path != "":
-		return nil, fmt.Errorf("%s and %s_FILE are both set", key, key)
-	case path != "":
-		secret, err := readSecretFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("%s_FILE: %w", key, err)
-		}
-		return secret, nil
-	case value != "":
-		secret, err := pepper.ParseSecret(value)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", key, err)
-		}
-		return secret, nil
-	default:
+	if path == "" {
 		return nil, nil
+	}
+	secret, err := readSecretFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("%s_FILE: %w", key, err)
+	}
+	return secret, nil
+}
+
+func boolInto(target *bool) func(string) error {
+	return func(value string) error {
+		parsed, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("want 1 or 0, got %q", value)
+		}
+		*target = parsed
+		return nil
 	}
 }
 

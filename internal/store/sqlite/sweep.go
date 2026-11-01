@@ -3,18 +3,11 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	sqldriver "database/sql/driver"
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
-
-const checkpointTimeoutMilliseconds = 250
-
-var ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish because a reader held the log")
 
 func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator, limit int) ([]store.DueBlob, error) {
 	rows, err := s.reader.QueryContext(
@@ -45,12 +38,17 @@ func (s *Store) ShredBlobs(ctx context.Context, due []store.DueBlob) error {
 	return s.eachDue(ctx, `UPDATE messages SET blob_wrap = NULL WHERE locator = ? AND blob_ref = ?`, due)
 }
 
+// ForgetBlobs asks for a scrub of the log, so no older version of these rows stays in a frame of the WAL.
 func (s *Store) ForgetBlobs(ctx context.Context, due []store.DueBlob) error {
-	return s.eachDue(
+	err := s.eachDue(
 		ctx,
 		`UPDATE messages SET blob_ref = NULL, blob_wrap = NULL, blob_purge_at = NULL WHERE locator = ? AND blob_ref = ?`,
 		due,
 	)
+	if err == nil {
+		s.requestScrub()
+	}
+	return err
 }
 
 func (s *Store) eachDue(ctx context.Context, query string, due []store.DueBlob) error {
@@ -85,35 +83,6 @@ func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) 
 	return known, nil
 }
 
-func (s *Store) Checkpoint(ctx context.Context) error {
-	connection, err := s.writer.Conn(ctx)
-	if err != nil {
-		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
-	}
-	defer connection.Close()
-	if _, err = connection.ExecContext(
-		ctx,
-		fmt.Sprintf(`PRAGMA busy_timeout = %d`, checkpointTimeoutMilliseconds),
-	); err != nil {
-		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
-	}
-	var blocked, frames, moved int
-	err = connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&blocked, &frames, &moved)
-	switch {
-	case err != nil:
-		err = fmt.Errorf("sqlite: wal checkpoint: %w", err)
-	case blocked != 0:
-		err = ErrCheckpointBusy
-	default:
-	}
-	restore := fmt.Sprintf(`PRAGMA busy_timeout = %d`, busyTimeoutMilliseconds)
-	if _, restoreErr := connection.ExecContext(context.WithoutCancel(ctx), restore); restoreErr != nil {
-		discarded := connection.Raw(func(any) error { return sqldriver.ErrBadConn })
-		return errors.Join(err, fmt.Errorf("sqlite: wal checkpoint: %w", restoreErr), ignoreBadConn(discarded))
-	}
-	return err
-}
-
 func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {
 	result, err := s.writer.ExecContext(ctx, query, milliseconds(now), limit)
 	if err != nil {
@@ -138,11 +107,4 @@ func (s *Store) strings(ctx context.Context, query string, arguments ...any) ([]
 		values = append(values, value)
 	}
 	return values, rows.Err()
-}
-
-func ignoreBadConn(err error) error {
-	if errors.Is(err, sqldriver.ErrBadConn) {
-		return nil
-	}
-	return err
 }

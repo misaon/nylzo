@@ -27,8 +27,8 @@ const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
 const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'g');
 const HEX_DIGIT = /^[\da-f]$/i;
 const WHITE_SPACE_AT_ENDS = /^\p{White_Space}+|\p{White_Space}+$/gu;
-const CONTACT_LOCAL_PART = /^[^\p{Cc}\p{Cf}\p{White_Space}#@]+$/u;
-const CONTACT_DOMAIN = /^[\p{L}\p{M}\p{Nd}-]+(?:\.[\p{L}\p{M}\p{Nd}-]+)+$/u;
+const CONTACT = /^[\w%+-]+(?:\.[\w%+-]+)*@[\da-z-]+(?:\.[\da-z-]+)+$/i;
+const CONTACT_KEY_LIKE_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`);
 
 type ReportProblem =
   | 'contact_invalid'
@@ -103,13 +103,9 @@ export function parseContact(raw: string): string | undefined {
   if (contact === '') {
     return '';
   }
-  const [localPart = '', domain = '', ...rest] = contact.split('@');
+  const [localPart = ''] = contact.split('@', 1);
   const plausible =
-    rest.length === 0 &&
-    contact.isWellFormed() &&
-    utf8(contact).length <= MAX_CONTACT_BYTES &&
-    CONTACT_LOCAL_PART.test(localPart) &&
-    CONTACT_DOMAIN.test(domain);
+    contact.length <= MAX_CONTACT_BYTES && CONTACT.test(contact) && !CONTACT_KEY_LIKE_RUN.test(localPart);
   return plausible ? contact : undefined;
 }
 

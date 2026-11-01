@@ -28,16 +28,21 @@ const (
 	MaxFailedAttempts = 100
 	FreeAttempts      = 5
 	MaxBackoff        = time.Hour
-	SweepBatch        = 1000
+	SweepBatch        = 100
 	BlobGrace         = 15 * time.Minute
 	MinTransferRate   = 16000
 	BlobPurgeStep     = 15 * time.Minute
 	RowPurgeStep      = time.Hour
-	ReportsPerDay     = 3
+	ReportsPerMessage = 3
+	MaxActiveLeases   = 9
 )
 
 func CeilMinute(moment time.Time) time.Time {
 	return ceil(moment, time.Minute)
+}
+
+func CeilQuarterHour(moment time.Time) time.Time {
+	return ceil(moment, BlobPurgeStep)
 }
 
 func ceil(moment time.Time, step time.Duration) time.Time {
@@ -70,6 +75,15 @@ type GoneError struct {
 
 func (e *GoneError) Error() string {
 	return fmt.Sprintf("store: message is gone (%s)", e.State)
+}
+
+// BusyError refuses a claim while MaxActiveLeases leases are active, before any open is spent.
+type BusyError struct {
+	RetryAfter time.Duration
+}
+
+func (e *BusyError) Error() string {
+	return fmt.Sprintf("store: every lease slot of the message is in use (retry after %s)", e.RetryAfter)
 }
 
 type PassphraseError struct {
@@ -163,6 +177,7 @@ type RateCount struct {
 type Messages interface {
 	Create(ctx context.Context, row *Row, counters ...RateHit) error
 	Load(ctx context.Context, locator seal.Locator) (Row, error)
+	Lookup(ctx context.Context, locator seal.Locator) (Row, bool, error)
 	Update(ctx context.Context, locator seal.Locator, change func(row *Row) error) error
 	DueBlobs(ctx context.Context, now time.Time, after seal.Locator, limit int) ([]DueBlob, error)
 	ShredBlobs(ctx context.Context, due []DueBlob) error
@@ -198,4 +213,5 @@ type Blobs interface {
 	DeleteBatch(ctx context.Context, refs []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)
 	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
+	Restamp(ctx context.Context, now time.Time) error
 }

@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -28,6 +28,9 @@ const reportKey = execFileSync(binary, ['report-key', '--key-file', path.join(ke
   .trim()
   .replace(/^NYLZO_REPORT_KEY=/, '');
 
+const pepperFile = path.join(keyDirectory, 'pepper');
+writeFileSync(pepperFile, randomBytes(32).toString('hex'), { mode: 0o400 });
+
 const server = spawn(binary, ['serve'], {
   stdio: 'inherit',
   env: {
@@ -35,7 +38,9 @@ const server = spawn(binary, ['serve'], {
     NYLZO_LISTEN: `127.0.0.1:${port}`,
     NYLZO_PUBLIC_URL: `http://127.0.0.1:${port}`,
     NYLZO_DATA_DIR: dataDirectory,
-    NYLZO_PEPPER: randomBytes(32).toString('hex'),
+    NYLZO_PEPPER_FILE: pepperFile,
+    NYLZO_ALLOW_SWAP: '1',
+    NYLZO_ALLOW_UNERASABLE_STORAGE: process.platform === 'linux' ? '0' : '1',
     NYLZO_REPORT_KEY: reportKey,
     NYLZO_RATE_CREATE_HOUR: '0',
     NYLZO_RATE_CREATE_DAY: '0',

@@ -10,6 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -36,13 +37,11 @@ func (s *Server) authorize(
 	granted := access{id: id, signature: signature}
 	row := s.dummyRow
 	if idErr == nil {
-		found, known, err := s.lookUp(ctx, id)
+		found, known, err := s.store.Lookup(ctx, seal.LocatorOf(id[:]))
 		if err != nil {
 			return granted, false, err
 		}
-		if known {
-			row, granted.known = found, true
-		}
+		row, granted.known = found, known
 	}
 	opened := openWithSignature(r, &granted, &row, purpose, body)
 	if !granted.known || !parsed || !fresh || !opened {
@@ -52,23 +51,22 @@ func (s *Server) authorize(
 	return granted, true, nil
 }
 
+// refusalFloor is above the p99 of the work of a refused request, so its answer time says nothing about the id.
+const refusalFloor = 5 * time.Millisecond
+
+func waitForTheFloor(r *http.Request, arrived time.Time) {
+	select {
+	case <-r.Context().Done():
+	case <-time.After(time.Until(arrived.Add(refusalFloor))):
+	}
+}
+
 func parseSignature(r *http.Request) (signing.Signature, bool) {
 	signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
 	if err != nil {
 		return signing.Signature{PublicKey: dummyPublicKey}, false
 	}
 	return signature, true
-}
-
-func (s *Server) lookUp(ctx context.Context, id core.ID) (store.Row, bool, error) {
-	row, err := s.store.Load(ctx, seal.LocatorOf(id[:]))
-	if err == nil {
-		return row, true, nil
-	}
-	if errors.Is(err, store.ErrNotFound) {
-		return store.Row{}, false, nil
-	}
-	return store.Row{}, false, err
 }
 
 func openWithSignature(
@@ -95,9 +93,28 @@ func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Reco
 	if purpose == seal.Manage {
 		wrapped = row.ManageWrap
 	}
-	key, unwrapErr := seal.Unwrap(seal.KeyFor(publicKey, row.Locator, purpose), wrapped, row.Locator, purpose)
-	record, openErr := store.OpenRecord(row, key)
-	return record, errors.Join(unwrapErr, openErr)
+	var record store.Record
+	var err error
+	secretmode.Do(func() {
+		wrapping := seal.KeyFor(publicKey, row.Locator, purpose)
+		key, unwrapErr := seal.Unwrap(wrapping, wrapped, row.Locator, purpose)
+		var openErr error
+		record, openErr = store.OpenRecord(row, key)
+		clear(wrapping[:])
+		clear(key[:])
+		err = errors.Join(unwrapErr, openErr)
+	})
+	return record, err
+}
+
+// forget clears the record key when the request ends, so a later memory image does not hold it (A4-2).
+func (a *access) forget() {
+	clear(a.record.Key[:])
+}
+
+// verifierInput binds the verifier mac to the erase salt, so once the blob is erased no copy of a record tests a passphrase.
+func verifierInput(salt seal.EraseSalt, verifierKey []byte) []byte {
+	return append(salt[:len(salt):len(salt)], verifierKey...)
 }
 
 func signedPurpose(purpose seal.Purpose) string {
@@ -110,6 +127,9 @@ func signedPurpose(purpose seal.Purpose) string {
 // settle finishes what only an authorized request may finish: an ending, or the release after the last lease.
 func (s *Server) settle(ctx context.Context, record *store.Record, now time.Time) {
 	finished, err := store.Finish(ctx, s.store, s.blobs, record, now)
+	if finished {
+		s.leaseTimers.cancel(record.Row.Locator)
+	}
 	if err == nil && finished {
 		err = s.reload(ctx, record)
 	}
@@ -136,12 +156,14 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose seal
 	if !emptyBody(w, r) {
 		return access{}, false
 	}
+	arrived := time.Now()
 	granted, ok, err := s.authorize(r.Context(), r, r.PathValue("id"), purpose, nil)
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return granted, false
 	}
 	if !ok {
+		waitForTheFloor(r, arrived)
 		writeNotFound(w)
 		return granted, false
 	}
@@ -160,7 +182,12 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	return granted, true
 }
 
+// emptyBody answers a declared body at once, so the server never waits for bytes a signed request must not have.
 func emptyBody(w http.ResponseWriter, r *http.Request) bool {
+	if r.ContentLength > 0 {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return false
+	}
 	var one [1]byte
 	if extraBytes, err := io.ReadFull(r.Body, one[:]); extraBytes != 0 || !errors.Is(err, io.EOF) {
 		writeError(w, http.StatusBadRequest, errBadRequest)

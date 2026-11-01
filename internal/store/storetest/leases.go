@@ -43,28 +43,26 @@ func (f *fixture) leasesAndAcks() {
 	}
 }
 
-// aGrownRecordShrinks keeps the length of a sealed record from telling how many leases were once active.
-func (f *fixture) aGrownRecordShrinks() {
-	t, ctx := f.t, f.t.Context()
+// aRecordNeverGrows caps the active leases, so the length of a sealed record never tells how many were active (A4-4).
+func (f *fixture) aRecordNeverGrows() {
+	t := f.t
 	created := f.create(20, oneDay, false)
-	for seed := range 12 {
+	for seed := range store.MaxActiveLeases {
 		if _, err := f.claim(created, baseTime, seed); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if length := len(f.get(created).Row.Record); length <= seal.RecordBlock {
-		t.Fatalf("twelve active leases must not fit in %d bytes, got %d", seal.RecordBlock, length)
-	}
-	later := baseTime.Add(time.Hour)
-	if _, err := store.CountReport(ctx, f.store, f.get(created), later); err != nil {
-		t.Fatal(err)
+	opensBefore := f.get(created).Message.OpensRemaining
+	_, err := f.claim(created, baseTime, store.MaxActiveLeases)
+	busy, isBusy := errors.AsType[*store.BusyError](err)
+	if !isBusy || busy.RetryAfter <= 0 || f.get(created).Message.OpensRemaining != opensBefore {
+		t.Fatalf("a claim beyond %d active leases must wait and spend no open: %v", store.MaxActiveLeases, err)
 	}
 	if length := len(f.get(created).Row.Record); length != seal.RecordBlock {
-		t.Fatalf(
-			"a change after the leases expired must shrink the record to %d bytes, got %d",
-			seal.RecordBlock,
-			length,
-		)
+		t.Fatalf("%d active leases must fit in %d bytes, got %d", store.MaxActiveLeases, seal.RecordBlock, length)
+	}
+	if _, err = f.claim(created, baseTime.Add(store.LeaseDuration+time.Minute), 99); err != nil {
+		t.Fatalf("a claim after the leases ended: %v", err)
 	}
 }
 

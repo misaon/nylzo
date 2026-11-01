@@ -25,6 +25,8 @@ echo "nylzo: http://localhost:$port (Ctrl-C stops it, mise run dev:reset deletes
 exec env \
   NYLZO_LISTEN="127.0.0.1:$port" \
   NYLZO_PEPPER_FILE=.dev/pepper \
+  NYLZO_ALLOW_SWAP=1 \
+  NYLZO_ALLOW_UNERASABLE_STORAGE=1 \
   NYLZO_REPORT_KEY="$(cat .dev/report-key.pub)" \
   NYLZO_DATA_DIR=.dev/data \
   NYLZO_RATE_CREATE_HOUR=0 \

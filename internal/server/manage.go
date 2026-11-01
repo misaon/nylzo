@@ -51,11 +51,16 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 
 // end answers 204 to the request that recorded the first ending, even when a concurrent release finishes it.
 func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpose, state store.State) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
+		return
+	}
 	granted, ok := s.authorizedLive(w, r, purpose)
+	defer granted.forget()
 	if !ok {
 		return
 	}
 	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, time.Now())
+	s.leaseTimers.cancel(granted.record.Row.Locator)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.writeCurrentGone(w, r, &granted.record)
@@ -69,7 +74,11 @@ func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpos
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
+		return
+	}
 	granted, ok := s.authorized(w, r, seal.Manage)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -103,6 +112,7 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAbuseBody))
+	defer clear(raw)
 	var submitted abuseRequest
 	if err != nil || json.Unmarshal(raw, &submitted) != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
@@ -122,11 +132,13 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	granted, ok, err := s.authorize(r.Context(), r, submitted.ID, seal.Read, raw)
+	defer granted.forget()
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return
 	}
 	if !ok || granted.record.Ended(now) {
+		waitForTheFloor(r, now)
 		writeAbuseStatus(w, abuseAccepted)
 		return
 	}

@@ -75,10 +75,10 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 	}{{"", defaultMemoryLimit}, {"300MiB", math.MaxInt64}} {
 		debug.SetMemoryLimit(math.MaxInt64)
 		variables := map[string]string{
-			"NYLZO_PEPPER":     testPepper,
-			"NYLZO_REPORT_KEY": testReportKeyText,
-			"NYLZO_DATA_DIR":   t.TempDir(),
-			"GOMEMLIMIT":       testCase.operatorLimit,
+			"NYLZO_PEPPER_FILE": pepperFile(t),
+			"NYLZO_REPORT_KEY":  testReportKeyText,
+			"NYLZO_DATA_DIR":    t.TempDir(),
+			"GOMEMLIMIT":        testCase.operatorLimit,
 		}
 		if _, err := serveSettings(
 			&command.Environment{Getenv: func(name string) string { return variables[name] }},
@@ -93,7 +93,7 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 
 func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 
 func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,10 +163,10 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 		t,
 		"",
 		map[string]string{
-			"NYLZO_DATA_DIR":   t.TempDir(),
-			"NYLZO_PEPPER":     testPepper,
-			"NYLZO_REPORT_KEY": testReportKeyText,
-			"NYLZO_LISTEN":     taken.Addr().String(),
+			"NYLZO_DATA_DIR":    t.TempDir(),
+			"NYLZO_PEPPER_FILE": pepperFile(t),
+			"NYLZO_REPORT_KEY":  testReportKeyText,
+			"NYLZO_LISTEN":      taken.Addr().String(),
 		},
 		nil,
 		RunServe,
@@ -200,7 +200,7 @@ func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 func TestOpenCreatesPrivateDirectories(t *testing.T) {
 	settings := config.Defaults()
 	settings.DataDir = filepath.Join(t.TempDir(), "data")
-	storage, _, err := openStore(settings.DataDir, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(settings.DataDir, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 
 func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	if err = database.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("sweep-once changed the version of a database it refused: version %d %v", version, err)
 	}
-	if _, err = database.Exec(`PRAGMA user_version = 6`); err != nil {
+	if _, err = database.Exec(`PRAGMA user_version = 7`); err != nil {
 		t.Fatal(err)
 	}
 	if result = run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce); result.code != 1 ||

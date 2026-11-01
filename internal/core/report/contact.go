@@ -2,41 +2,29 @@ package report
 
 import (
 	"errors"
-	"slices"
+	"regexp"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 const MaxContactBytes = 254
 
 var ErrContact = errors.New("core: the contact is not a plausible email address")
 
+var (
+	contactPattern = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+	keyLikeRun     = regexp.MustCompile(`[A-Za-z0-9_-]{22,}`)
+)
+
+// ParseContact admits only ASCII addresses without shell or HTML metacharacters, with IDNs as A-labels, and refuses
+// a local part that holds a run of 22 or more base64url characters, which could be an id or a link key (F8).
 func ParseContact(raw string) (string, error) {
 	contact := strings.TrimSpace(raw)
 	if contact == "" {
 		return "", nil
 	}
-	local, domain, _ := strings.Cut(contact, "@")
-	if len(contact) > MaxContactBytes || !utf8.ValidString(contact) || strings.Count(contact, "@") != 1 ||
-		local == "" || strings.ContainsFunc(local, forbiddenInLocalPart) || !plausibleDomain(domain) {
+	local, _, _ := strings.Cut(contact, "@")
+	if len(contact) > MaxContactBytes || !contactPattern.MatchString(contact) || keyLikeRun.MatchString(local) {
 		return "", ErrContact
 	}
 	return contact, nil
-}
-
-func forbiddenInLocalPart(character rune) bool {
-	return character == '#' || unicode.IsSpace(character) || unicode.IsControl(character) ||
-		unicode.Is(unicode.Cf, character)
-}
-
-func plausibleDomain(domain string) bool {
-	labels := strings.Split(domain, ".")
-	return len(labels) >= 2 && !slices.ContainsFunc(labels, func(label string) bool {
-		return label == "" || strings.ContainsFunc(label, outsideDomainLabel)
-	})
-}
-
-func outsideDomainLabel(character rune) bool {
-	return character != '-' && !unicode.In(character, unicode.L, unicode.M, unicode.Nd)
 }

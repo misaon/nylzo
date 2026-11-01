@@ -14,6 +14,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -53,6 +54,7 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	granted, ok := s.authorized(w, r, seal.Read)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -107,6 +109,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	granted, ok := s.authorizedLive(w, r, seal.Read)
+	defer granted.forget()
 	if !ok {
 		return
 	}
@@ -120,14 +123,16 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer blob.Close()
+	defer blob.content.Close()
+	defer clear(blob.salt[:])
 	lease := core.NewSecret()
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
 	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
 		Clock:        time.Now,
 		VerifierSent: verifierSent,
 		VerifyMAC: func(pepperID byte, stored []byte) bool {
-			macOK := s.ring.Verify(pepper.Verifier, verifier.PublicKey[:], stored, pepperID)
+			input := verifierInput(blob.salt, verifier.PublicKey[:])
+			macOK := s.ring.Verify(pepper.Verifier, input, stored, pepperID)
 			return macOK && verifierSigned
 		},
 		LeaseMAC:      leaseTag.MAC[:],
@@ -140,7 +145,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if result.Message.OpensRemaining == 0 {
 		s.releaseAtLeaseEnd(&granted.record, result.Lease.ExpiresAt)
 	}
-	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob)
+	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob.content)
 }
 
 func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
@@ -169,6 +174,11 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 		})
 		return
 	}
+	if busyErr, isBusy := errors.AsType[*store.BusyError](err); isBusy {
+		setRetryAfter(w, busyErr.RetryAfter)
+		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeNotFound(w)
 		return
@@ -178,10 +188,12 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 
 // releaseAtLeaseEnd keeps the record key in memory until the last lease ends, so the blob goes at once.
 func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
-	locator, key := record.Row.Locator, record.Key
-	s.leaseTimers.after(time.Until(leaseExpires.Add(store.LeaseTimerSlack)), func() {
+	locator := record.Row.Locator
+	delay := time.Until(leaseExpires.Add(store.LeaseTimerSlack))
+	s.leaseTimers.schedule(locator, record.Key, delay, func(key seal.Key) {
 		ctx := context.Background()
 		kept := store.Record{Row: store.Row{Locator: locator}, Key: key}
+		defer clear(kept.Key[:])
 		err := s.reload(ctx, &kept)
 		if err == nil {
 			_, err = store.Finish(ctx, s.store, s.blobs, &kept, time.Now())
@@ -199,6 +211,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	leased, ok := s.activeLease(w, r)
+	defer clear(leased.record.Key[:])
 	if !ok {
 		return
 	}
@@ -211,12 +224,17 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	defer blob.Close()
-	s.serveBlob(w, r, leased.record.Message, "", blob)
+	defer blob.content.Close()
+	clear(blob.salt[:])
+	s.serveBlob(w, r, leased.record.Message, "", blob.content)
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
+		return
+	}
 	leased, ok := s.activeLease(w, r)
+	defer clear(leased.record.Key[:])
 	if !ok {
 		return
 	}
@@ -224,6 +242,9 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeLeaseFailure(w, r, &leased, err)
 		return
+	}
+	if !leased.record.HasBlob() {
+		s.leaseTimers.cancel(leased.record.Row.Locator)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -251,6 +272,7 @@ type leaseAccess struct {
 
 func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAccess, bool) {
 	granted, ok := s.authorizedLive(w, r, seal.Read)
+	defer granted.forget()
 	if !ok {
 		return leaseAccess{}, false
 	}
@@ -288,35 +310,65 @@ type decryptedBlob struct {
 	io.Closer
 }
 
+type openedBlob struct {
+	content io.ReadCloser
+	salt    seal.EraseSalt
+}
+
 // openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
-func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (io.ReadCloser, bool) {
-	key, err := record.BlobKey()
+func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (openedBlob, bool) {
+	var key seal.Key
+	var err error
+	secretmode.Do(func() { key, err = record.BlobKey() })
+	defer clear(key[:])
 	if errors.Is(err, store.ErrBlobMissing) {
 		writeGone(w, string(record.State(time.Now())))
-		return nil, false
+		return openedBlob{}, false
 	}
 	var file io.ReadCloser
-	var size int64
+	var salt seal.EraseSalt
 	if err == nil {
-		file, size, err = s.blobs.Open(r.Context(), record.Row.BlobRef)
+		file, salt, err = s.openStoredBlob(r.Context(), record)
 	}
 	if errors.Is(err, store.ErrBlobMissing) {
 		var state store.State
 		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
 			writeGone(w, string(state))
-			return nil, false
+			return openedBlob{}, false
 		}
-	}
-	if err == nil && size != seal.PaddedSize(record.Message.Size) {
-		file.Close()
-		err = errBlobSize
 	}
 	if err != nil {
 		s.writeInternal(w, r, err)
-		return nil, false
+		return openedBlob{}, false
 	}
-	plain := cipher.StreamReader{S: seal.BlobStream(key), R: file}
-	return decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}, true
+	var stream cipher.Stream
+	secretmode.Do(func() { stream = seal.BlobStream(key, salt) })
+	plain := cipher.StreamReader{S: stream, R: file}
+	content := decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}
+	return openedBlob{content: content, salt: salt}, true
+}
+
+// openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
+func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadCloser, seal.EraseSalt, error) {
+	file, size, err := s.blobs.Open(ctx, record.Row.BlobRef)
+	if err != nil {
+		return nil, seal.EraseSalt{}, err
+	}
+	if size != seal.StoredBlobSize(record.Message.Size) {
+		file.Close()
+		return nil, seal.EraseSalt{}, errBlobSize
+	}
+	salt, err := seal.ReadEraseBlock(file)
+	switch {
+	case errors.Is(err, seal.ErrErased):
+		file.Close()
+		return nil, salt, store.ErrBlobMissing
+	case err != nil:
+		file.Close()
+		return nil, salt, err
+	default:
+		return file, salt, nil
+	}
 }
 
 // serveBlob gives the response as long as a lease, so a recipient on a 128 kbit/s link receives the largest object.
@@ -328,7 +380,8 @@ func (s *Server) serveBlob(
 	blob io.Reader,
 ) {
 	size := message.Size
-	s.setWriteDeadline(w, time.Now().Add(max(writeTimeout, store.TransferTime(size))))
+	overall := time.Now().Add(max(writeTimeout, store.TransferTime(size)))
+	s.setWriteDeadline(w, overall)
 	header := w.Header()
 	if lease != "" {
 		header.Set(leaseHeaderName, lease)
@@ -337,7 +390,8 @@ func (s *Server) serveBlob(
 	header.Set("Content-Type", octetStream)
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	if copied, err := io.Copy(w, blob); (err != nil || copied != size) && r.Context().Err() == nil {
+	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
+	if copied, err := io.Copy(paced, blob); (err != nil || copied != size) && r.Context().Err() == nil {
 		s.logger.WarnContext(r.Context(), "blob-stream")
 	}
 }

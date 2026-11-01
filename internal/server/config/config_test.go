@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"net/netip"
 	"os"
@@ -32,6 +33,23 @@ var reportKey = func() string {
 	return core.Encode(key.PublicKey().Bytes())
 }()
 
+var currentPepperFile, previousPepperFile string
+
+func TestMain(m *testing.M) {
+	directory, err := os.MkdirTemp("", "nylzo-config-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(directory)
+	currentPepperFile, previousPepperFile = filepath.Join(directory, "pepper"), filepath.Join(directory, "previous")
+	for path, pepper := range map[string]string{currentPepperFile: currentPepper, previousPepperFile: previousPepper} {
+		if err = os.WriteFile(path, []byte(pepper), 0o400); err != nil {
+			panic(err)
+		}
+	}
+	m.Run()
+}
+
 // environment gives every configuration the operator's report key unless the test sets the variable itself.
 func environment(variables map[string]string) func(string) string {
 	return func(name string) string {
@@ -46,7 +64,7 @@ func TestServeNeedsAValidReportKey(t *testing.T) {
 	t.Parallel()
 	for name, value := range map[string]string{"missing": "", "not a key": "AAAA", "an Ed25519 key": core.Encode(make([]byte, 32))} {
 		_, err := config.FromEnv(
-			environment(map[string]string{"NYLZO_PEPPER": currentPepper, "NYLZO_REPORT_KEY": value}),
+			environment(map[string]string{"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_REPORT_KEY": value}),
 			true,
 		)
 		if !errors.Is(err, config.ErrInvalid) || !strings.Contains(err.Error(), "NYLZO_REPORT_KEY") {
@@ -59,14 +77,14 @@ func TestServeNeedsAValidReportKey(t *testing.T) {
 }
 
 func withPepper(name, value string) func(string) string {
-	return environment(map[string]string{"NYLZO_PEPPER": currentPepper, name: value})
+	return environment(map[string]string{"NYLZO_PEPPER_FILE": currentPepperFile, name: value})
 }
 
 func TestFromEnvReadsEveryVariable(t *testing.T) {
 	t.Parallel()
 	settings, err := config.FromEnv(environment(map[string]string{
-		"NYLZO_PEPPER":               currentPepper,
-		"NYLZO_PEPPER_PREVIOUS":      previousPepper,
+		"NYLZO_PEPPER_FILE":          currentPepperFile,
+		"NYLZO_PEPPER_PREVIOUS_FILE": previousPepperFile,
 		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1, ::ffff:172.17.0.1, ::ffff:10.0.0.0/104",
 		"NYLZO_PROXY_MODE":           "scaleway",
 		"NYLZO_SWEEP_INTERVAL":       "15m",
@@ -110,8 +128,8 @@ func TestFromEnvRefusesInvalidValues(t *testing.T) {
 	for _, testCase := range []struct {
 		name, value string
 	}{
-		{"NYLZO_PEPPER", "short"},
-		{"NYLZO_PEPPER", strings.Repeat("ab", 32)},
+		{"NYLZO_PEPPER", currentPepper},
+		{"NYLZO_PEPPER_PREVIOUS", previousPepper},
 		{"NYLZO_PROXY_MODE", "cloudflare"},
 		{"NYLZO_TRUSTED_PROXIES", "10.0.0.0/33"},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", "on"},
@@ -182,13 +200,6 @@ func TestPepperFromFile(t *testing.T) {
 		}
 		return path
 	}
-	fromVariable, err := config.FromEnv(
-		environment(map[string]string{"NYLZO_PEPPER": currentPepper, "NYLZO_PEPPER_PREVIOUS": previousPepper}),
-		true,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	fromFile, err := config.FromEnv(environment(map[string]string{
 		"NYLZO_PEPPER_FILE":          write("pepper", currentPepper+"\n"),
 		"NYLZO_PEPPER_PREVIOUS_FILE": write("previous", "  "+previousPepper+"\r\n"),
@@ -196,9 +207,10 @@ func TestPepperFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(fromFile.Pepper, fromVariable.Pepper) || len(fromFile.Pepper) != 32 ||
-		!bytes.Equal(fromFile.PepperPrevious, fromVariable.PepperPrevious) {
-		t.Fatal("a pepper from a file differs from the same pepper in a variable")
+	current, _ := hex.DecodeString(currentPepper)
+	previous, _ := hex.DecodeString(previousPepper)
+	if !bytes.Equal(fromFile.Pepper, current) || !bytes.Equal(fromFile.PepperPrevious, previous) {
+		t.Fatal("the peppers read from their files differ from the files")
 	}
 	for name, variables := range map[string]map[string]string{
 		"both set":       {"NYLZO_PEPPER": currentPepper, "NYLZO_PEPPER_FILE": write("both", currentPepper)},
@@ -206,8 +218,8 @@ func TestPepperFromFile(t *testing.T) {
 		"empty file":     {"NYLZO_PEPPER_FILE": write("empty", "\n")},
 		"bad content":    {"NYLZO_PEPPER_FILE": write("bad", "not a pepper")},
 		"too large":      {"NYLZO_PEPPER_FILE": write("large", currentPepper+strings.Repeat(" ", 4097))},
-		"bad previous":   {"NYLZO_PEPPER": currentPepper, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
-		"previous twice": {"NYLZO_PEPPER": currentPepper, "NYLZO_PEPPER_PREVIOUS": previousPepper, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previousPepper)},
+		"bad previous":   {"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
+		"previous twice": {"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_PEPPER_PREVIOUS": previousPepper, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previousPepper)},
 	} {
 		_, refused := config.FromEnv(environment(variables), true)
 		if !errors.Is(refused, config.ErrInvalid) || !strings.Contains(refused.Error(), "_FILE") {

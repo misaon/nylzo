@@ -1,6 +1,8 @@
 package disk_test
 
 import (
+	"bytes"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -8,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/erase"
+	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 )
 
@@ -31,7 +35,7 @@ func writeAged(t *testing.T, path string, age time.Duration) {
 	}
 }
 
-func TestBlobFilesAreLowerHexWithMinuteTimes(t *testing.T) {
+func TestBlobFilesAreLowerHexWithQuarterHourTimes(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
@@ -69,9 +73,9 @@ func TestBlobFilesAreLowerHexWithMinuteTimes(t *testing.T) {
 		if infoErr != nil || !lowerHex.MatchString(entry.Name()) {
 			t.Fatalf("blob file %q is not named in lowercase hex: %v", entry.Name(), infoErr)
 		}
-		if modified := info.ModTime(); !modified.Equal(modified.Truncate(time.Minute)) || modified.After(before) ||
-			before.Sub(modified) > time.Minute+time.Second {
-			t.Fatalf("a blob file carries the time of its upload: %v", modified)
+		if modified := info.ModTime(); !modified.Equal(modified.Truncate(store.BlobPurgeStep)) ||
+			modified.Sub(before) > store.BlobPurgeStep || before.Sub(modified) > time.Second {
+			t.Fatalf("a blob file must carry the end of the quarter hour of its upload: %v", modified)
 		}
 	}
 	if files != 3 {
@@ -129,5 +133,52 @@ func TestDeleteBatchFailsEveryRefWhenTheSyncFails(t *testing.T) {
 	}
 	if errs := blobs.DeleteBatch(t.Context(), []string{"a", "b"}); len(errs) != 2 || errs[0] == nil || errs[1] == nil {
 		t.Fatalf("a delete that could not be synced must not count as done: %v", errs)
+	}
+}
+
+// The test keeps each file open, so it reads the inode's own blocks after the name is gone.
+func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	blobs := newBlobs(t, directory)
+	root := filepath.Join(directory, disk.Directory)
+	content := bytes.Repeat([]byte{0xA5}, 2*erase.BlockLen)
+	opened := map[string]*os.File{}
+	for _, ref := range []string{"deleted", "batched", "stale-upload"} {
+		if err := blobs.Put(t.Context(), ref, bytes.NewReader(content), int64(len(content))); err != nil {
+			t.Fatal(err)
+		}
+		file, err := os.Open(filepath.Join(root, hex.EncodeToString([]byte(ref))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { file.Close() })
+		opened[ref] = file
+	}
+	stale := filepath.Join(root, "tmp", "blob-stale")
+	if err := os.Rename(filepath.Join(root, hex.EncodeToString([]byte("stale-upload"))), stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(stale, time.Now().Add(-time.Hour), time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := blobs.Delete(t.Context(), "deleted"); err != nil {
+		t.Fatal(err)
+	}
+	if errs := blobs.DeleteBatch(t.Context(), []string{"batched"}); errs[0] != nil {
+		t.Fatal(errs[0])
+	}
+	if _, err := blobs.PurgeTemp(t.Context(), time.Now().Add(-store.BlobGrace)); err != nil {
+		t.Fatal(err)
+	}
+	for ref, file := range opened {
+		left := make([]byte, len(content))
+		if _, err := file.ReadAt(
+			left,
+			0,
+		); err != nil ||
+			!bytes.Equal(left[:erase.BlockLen], make([]byte, erase.BlockLen)) {
+			t.Errorf("%s: the erase block survived the deletion in the file's own blocks: %v", ref, err)
+		}
 	}
 }

@@ -64,6 +64,9 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 		if state := current.State(now); state != StateAvailable {
 			return &GoneError{State: state}
 		}
+		if wait, busy := leasesFull(current.Message, now); busy {
+			return &BusyError{RetryAfter: wait}
+		}
 		if current.Message.PassphraseRequired() {
 			if refusal, refused = checkPassphrase(current.Message, &parameters, now); refused {
 				return nil
@@ -101,6 +104,20 @@ func checkPassphrase(message *Message, parameters *ClaimParameters, now time.Tim
 		wait = message.NextAttemptAt.Sub(now)
 	}
 	return PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}, true
+}
+
+// leasesFull caps the active leases, so every record fits one RecordBlock and its length says nothing (A4-4).
+func leasesFull(message *Message, now time.Time) (time.Duration, bool) {
+	var active []time.Time
+	for _, lease := range message.Leases {
+		if lease.Active(now) {
+			active = append(active, lease.ExpiresAt)
+		}
+	}
+	if len(active) < MaxActiveLeases {
+		return 0, false
+	}
+	return slices.MinFunc(active, time.Time.Compare).Sub(now), true
 }
 
 func consumeOpen(record *Record, parameters *ClaimParameters, now time.Time) Lease {
@@ -256,7 +273,8 @@ func forgetBlob(ctx context.Context, messages Messages, blobs Blobs, locator sea
 	return messages.ForgetBlobs(ctx, []DueBlob{{Locator: locator, Ref: ref}})
 }
 
-// CountReport takes one of the reports a message may get on a UTC day and reports false when they are used up.
+// CountReport takes one of the reports a message may get over its life and reports false when they are used up, so
+// the sender of many messages cannot fill the report files with reports about them (F6).
 func CountReport(ctx context.Context, messages Messages, record *Record, now time.Time) (bool, error) {
 	counted := false
 	err := record.update(ctx, messages, now, func(current *Record) error {
@@ -265,10 +283,7 @@ func CountReport(ctx context.Context, messages Messages, record *Record, now tim
 			return &GoneError{State: current.State(now)}
 		}
 		message := current.Message
-		if today := reportDay(now); message.ReportDay != today {
-			message.ReportDay, message.Reports = today, 0
-		}
-		if message.Reports >= ReportsPerDay {
+		if message.Reports >= ReportsPerMessage {
 			return nil
 		}
 		message.Reports++
@@ -280,7 +295,7 @@ func CountReport(ctx context.Context, messages Messages, record *Record, now tim
 
 func UncountReport(ctx context.Context, messages Messages, record *Record, now time.Time) error {
 	return record.update(context.WithoutCancel(ctx), messages, now, func(current *Record) error {
-		if message := current.Message; message.ReportDay == reportDay(now) && message.Reports > 0 {
+		if message := current.Message; message.Reports > 0 {
 			message.Reports--
 		}
 		return nil

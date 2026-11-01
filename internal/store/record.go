@@ -1,6 +1,9 @@
 package store
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -15,10 +18,25 @@ const (
 	macLen       = 32
 	fieldsLen    = 103
 	leaseLen     = 42
-	day          = 24 * time.Hour
+	blobRefLen   = 16
 )
 
 var endings = []State{"", StateDeleted, StateCancelled}
+
+// DummyLocator keys the row that a lookup of an unknown id reads; finding an id that hashes to it is a preimage.
+var DummyLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/dummy-row"))
+
+// NewDummyRow has the shape of a live row and random keys, so no public key opens it.
+func NewDummyRow() Row {
+	var readKey, manageKey, ref [seal.KeyLen]byte
+	rand.Read(readKey[:])
+	rand.Read(manageKey[:])
+	rand.Read(ref[:])
+	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
+	message := &Message{Version: 1, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
+	blobRef := base64.RawURLEncoding.EncodeToString(ref[:blobRefLen])
+	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobRef, seal.NewKey()).Row
+}
 
 // Record is a row opened with its record key, for the length of one request.
 type Record struct {
@@ -341,8 +359,4 @@ func boolByte(value bool) byte {
 		return 1
 	}
 	return 0
-}
-
-func reportDay(now time.Time) int64 {
-	return now.UTC().Unix() / int64(day/time.Second)
 }

@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/hpke"
+	"maps"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,9 +15,22 @@ import (
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/abuse"
+	"github.com/misaon/nylzo/internal/server/config"
 )
 
 var testPepper = strings.Repeat("0123456789abcdef", 4)
+
+// testDevelopment keeps the storage check on Linux, where CI runs, and allows swap, since tests do not lock memory.
+var testDevelopment = config.Development{AllowSwap: true, AllowUnerasableStorage: runtime.GOOS != "linux"}
+
+func pepperFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "pepper")
+	if err := os.WriteFile(path, []byte(testPepper), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 var testReportKey = func() hpke.PrivateKey {
 	key, err := abuse.NewKeyPair()
@@ -55,6 +72,18 @@ func run(
 	var stdout, stderr bytes.Buffer
 	if terminal == nil {
 		terminal = noTerminal{}
+	}
+	variables = maps.Clone(variables)
+	if variables == nil {
+		variables = map[string]string{}
+	}
+	for name, allowed := range map[string]bool{
+		"NYLZO_ALLOW_SWAP":               testDevelopment.AllowSwap,
+		"NYLZO_ALLOW_UNERASABLE_STORAGE": testDevelopment.AllowUnerasableStorage,
+	} {
+		if _, set := variables[name]; !set && allowed {
+			variables[name] = "1"
+		}
 	}
 	code := operatorCommand(t.Context(), &command.Environment{
 		Stdin:    strings.NewReader(stdin),

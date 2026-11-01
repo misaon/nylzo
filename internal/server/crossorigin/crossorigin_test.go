@@ -82,6 +82,34 @@ func TestBrowserMutationProtection(t *testing.T) {
 	}
 }
 
+// TestCrossSiteReadsSpendNoBudget covers F2: an image on another site must not reach the API.
+func TestCrossSiteReadsSpendNoBudget(t *testing.T) {
+	t.Parallel()
+	refuse := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) })
+	handler := Guard("https://nylzo.example", refuse, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	for site, want := range map[string]int{
+		"":            http.StatusOK,
+		"same-origin": http.StatusOK,
+		"none":        http.StatusOK,
+		"same-site":   http.StatusForbidden,
+		"cross-site":  http.StatusForbidden,
+	} {
+		for _, path := range []string{"/api/v1/messages/AAAAAAAAAAAAAAAAAAAAAA", "/m/AAAAAAAAAAAAAAAAAAAAAA"} {
+			request := httptest.NewRequest(http.MethodGet, "https://nylzo.example"+path, http.NoBody)
+			if site != "" {
+				request.Header.Set("Sec-Fetch-Site", site)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if expected := map[bool]int{true: want, false: http.StatusOK}[path[1] == 'a']; response.Code != expected {
+				t.Errorf("GET %s with Sec-Fetch-Site %q: %d, want %d", path, site, response.Code, expected)
+			}
+		}
+	}
+}
+
 func TestUnconfiguredBrowserMutationTarget(t *testing.T) {
 	t.Parallel()
 	for _, host := range []string{"localhost:8080", "127.0.0.1:8080", "[::1]:8080", "rebind.attacker.example:8080"} {

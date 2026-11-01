@@ -19,6 +19,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
@@ -44,6 +45,11 @@ const (
 )
 
 var (
+	errMemoryLock = errors.New(
+		"the server must lock its memory so no key reaches swap: raise the memlock limit " +
+			"(systemd LimitMEMLOCK=infinity, docker run --ulimit memlock=-1:-1, Compose ulimits memlock -1) " +
+			"or grant CAP_IPC_LOCK; NYLZO_ALLOW_SWAP=1 serves without the lock",
+	)
 	errSweepFailed       = errors.New("sweep failed; see the sweep-once log line")
 	errNoStore           = errors.New("found no store in NYLZO_DATA_DIR")
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
@@ -89,7 +95,8 @@ func runServer(environment *command.Environment, arguments []string, name string
 	case err == nil:
 		return command.ExitOK
 	case errors.Is(err, errSweepFailed):
-	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported):
+	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported), errors.Is(err, errMemoryLock),
+		errors.Is(err, erase.ErrNotInPlace):
 		logger.Error(failureMessage, "err", err.Error())
 	default:
 		logger.Error(failureMessage, "err", logging.ErrorText(err))
@@ -97,12 +104,45 @@ func runServer(environment *command.Environment, arguments []string, name string
 	return command.ExitError
 }
 
+// requireMemoryLock refuses to serve with pages that the kernel may write to swap, unless swap is explicitly allowed.
+func requireMemoryLock(development config.Development, logger *slog.Logger) error {
+	if development.AllowSwap {
+		logger.Warn("memory-not-locked", "reason", "NYLZO_ALLOW_SWAP")
+		return nil
+	}
+	if err := lockMemory(); err != nil {
+		return fmt.Errorf("%w: %w", errMemoryLock, err)
+	}
+	return nil
+}
+
+// requireErasable refuses a data directory on a file system that keeps old blocks, which would undo every deletion.
+func requireErasable(directories []string, development config.Development, logger *slog.Logger) error {
+	for _, directory := range directories {
+		err := erase.RequireInPlace(directory)
+		switch {
+		case err == nil:
+		case errors.Is(err, erase.ErrNotInPlace) && development.AllowUnerasableStorage:
+			logger.Warn("storage-not-erasable", "reason", err.Error())
+		case errors.Is(err, erase.ErrNotInPlace):
+			return fmt.Errorf("%w (set NYLZO_ALLOW_UNERASABLE_STORAGE=1 only on a development machine)", err)
+		default:
+			return err
+		}
+	}
+	return nil
+}
+
 func openStore(
 	dataDir string,
+	development config.Development,
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, nil, err
+	}
+	if err := requireErasable([]string{dataDir}, development, logger); err != nil {
 		return nil, nil, err
 	}
 	databasePath := filepath.Join(dataDir, databaseFile)
@@ -122,6 +162,13 @@ func openStore(
 		return nil, nil, err
 	}
 	blobs, err := disk.New(dataDir)
+	if err == nil {
+		err = requireErasable(
+			[]string{filepath.Join(dataDir, disk.Directory), filepath.Join(dataDir, disk.Directory, "tmp")},
+			development,
+			logger,
+		)
+	}
 	if err != nil {
 		database.Close()
 		return nil, nil, err
@@ -164,7 +211,10 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
-	database, blobs, err := openStore(settings.DataDir, sqlite.Open, logger)
+	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
+		return lockErr
+	}
+	database, blobs, err := openStore(settings.DataDir, settings.Development, sqlite.Open, logger)
 	if err != nil {
 		return err
 	}
@@ -184,9 +234,10 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	defer stop()
 	var sweeper sync.WaitGroup
 	sweeper.Go(func() { instance.RunSweeper(ctx) })
+	sweeper.Go(func() { instance.RunHousekeeping(ctx) })
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
-	go func() { served <- httpServer.Serve(listener) }()
+	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()
 	logger.InfoContext(
 		ctx,
 		"listening",
@@ -252,7 +303,7 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	if storeErr := requireStore(settings.DataDir); storeErr != nil {
 		return storeErr
 	}
-	database, blobs, err := openStore(settings.DataDir, sqlite.OpenCurrent, logger)
+	database, blobs, err := openStore(settings.DataDir, settings.Development, sqlite.OpenCurrent, logger)
 	if err != nil {
 		return err
 	}
@@ -305,6 +356,7 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 	}
 	database, blobs, err := openStore(
 		settings.DataDir,
+		settings.Development,
 		sqlite.OpenCurrent,
 		slog.New(slog.NewTextHandler(environment.Stderr, nil)),
 	)

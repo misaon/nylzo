@@ -8,6 +8,8 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    ulimits:
+      memlock: -1
     environment:
       NYLZO_LISTEN: ":8080"
       NYLZO_DATA_DIR: /home/nonroot

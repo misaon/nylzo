@@ -14,6 +14,9 @@ import (
 const (
 	rangeShare       = 0.5
 	streamBusyRetry  = 5 * time.Second
+	rangeCapShare    = 20
+	minimumCapShare  = 10
+	wideCapShare     = 5
 	globalCreatesKey = "global:d"
 	globalStoredKey  = "global:stored:d"
 )
@@ -26,9 +29,10 @@ func (s *Server) clientAddress(r *http.Request) netip.Addr {
 func (s *Server) allowAPI(r *http.Request) bool {
 	now := time.Now()
 	address := s.clientAddress(r)
+	addressRange := s.addressKey.Range(address)
 	return s.sourceLimiter.Allow(s.addressKey.Source(address), now) &&
-		s.rangeLimiter.Allow(s.addressKey.Range(address), now) &&
-		s.instanceLimiter.Allow(ratelimit.Bucket{}, now)
+		s.rangeLimiter.Allow(addressRange, now) &&
+		s.instance.Allow(addressRange, now)
 }
 
 func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
@@ -72,7 +76,7 @@ func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time
 	hour, day := ratelimit.Hour(now), ratelimit.Day(now)
 	rates := s.settings.Rates
 	coarse := rates.CoarseMultiplier
-	return s.counters.Count([]ratelimit.Hit{
+	hits := []ratelimit.Hit{
 		{Kind: "create:h", Bucket: source, Window: hour, Limit: rates.CreatePerHour},
 		{
 			Kind:       "create:d",
@@ -91,7 +95,25 @@ func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time
 			Limit:      rates.CreatePerDay * coarse,
 			BytesLimit: rates.CreateBytesPerDay * coarse,
 		},
-	}, now)
+	}
+	if daily := rates.GlobalDailyCreates; daily > 0 {
+		hits = append(
+			hits,
+			ratelimit.Hit{
+				Kind:   "create:d:share",
+				Bucket: addressRange,
+				Window: day,
+				Limit:  max(minimumCapShare, daily/rangeCapShare),
+			},
+			ratelimit.Hit{
+				Kind:   "create:d:wide",
+				Bucket: s.addressKey.Wide(address),
+				Window: day,
+				Limit:  max(minimumCapShare, daily/wideCapShare),
+			},
+		)
+	}
+	return s.counters.Count(hits, now)
 }
 
 type globalGate struct {

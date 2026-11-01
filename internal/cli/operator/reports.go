@@ -99,20 +99,18 @@ func RunReports(_ context.Context, environment *command.Environment, arguments [
 	return printReports(environment, key, sealed)
 }
 
+// printReports prints every report that opens and then names the ones that did not, so one damaged report hides none.
 func printReports(environment *command.Environment, key hpke.PrivateKey, sealed []byte) int {
-	reports, err := abuse.Open(key, sealed)
-	if err != nil {
-		return command.Failf(
-			environment,
-			"the reports could not be opened with this key, or the input holds a partial report",
-		)
-	}
+	reports, openErr := abuse.Open(key, sealed)
 	encoder := json.NewEncoder(environment.Stdout)
 	encoder.SetEscapeHTML(false)
 	for i := range reports {
-		if err = encoder.Encode(&reports[i]); err != nil {
+		if err := encoder.Encode(&reports[i]); err != nil {
 			return command.Failf(environment, "%s", err)
 		}
+	}
+	if openErr != nil {
+		return command.Failf(environment, "%d reports opened; %s", len(reports), openErr)
 	}
 	return command.ExitOK
 }

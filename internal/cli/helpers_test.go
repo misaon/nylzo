@@ -2,7 +2,6 @@ package cli
 
 import (
 	"crypto/hpke"
-	"strings"
 
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/server/abuse"
@@ -15,8 +14,6 @@ func (noTerminal) StdinIsTerminal() bool { return false }
 func (noTerminal) StdoutIsTerminal() bool { return false }
 
 func (noTerminal) ReadSecret(string) ([]byte, error) { return nil, console.ErrNoTerminal }
-
-var testPepper = strings.Repeat("0123456789abcdef", 4)
 
 var testReportKey = func() hpke.PrivateKey {
 	key, err := abuse.NewKeyPair()

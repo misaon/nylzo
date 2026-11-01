@@ -12,6 +12,7 @@ builds:
     binary: nylzo
     env: &env
       - CGO_ENABLED=0
+      - GOEXPERIMENT=runtimesecret
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     flags: &flags
@@ -23,7 +24,8 @@ builds:
     dir: deploy/caddy
     main: &caddy_main .
     binary: caddy
-    env: *env
+    env: &caddy_env
+      - CGO_ENABLED=0
     goos: [linux]
     goarch: [amd64, arm64]
     flags: &caddy_flags
@@ -117,7 +119,7 @@ kos:
     sbom: spdx
     creation_time: "{{ .CommitTimestamp }}"
     ko_data_creation_time: "{{ .CommitTimestamp }}"
-    env: *env
+    env: *caddy_env
     flags: *caddy_flags
     ldflags: *caddy_ldflags
     labels:

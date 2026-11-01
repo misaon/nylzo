@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"slices"
@@ -15,12 +16,19 @@ import (
 
 const (
 	rowColumns = `locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at`
-	rowQuery   = `SELECT ` + rowColumns + ` FROM messages WHERE locator = ?`
-	updateRow  = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
+	rowQuery   = `SELECT locator, read_wrap, manage_wrap, record,
+		ifnull(blob_ref, '0000000000000000000000'), blob_ref IS NULL,
+		ifnull(blob_wrap, zeroblob(60)), blob_wrap IS NULL,
+		ifnull(blob_purge_at, 0), blob_purge_at IS NULL, purge_at
+		FROM messages WHERE locator = ?`
+	updateRow = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ? WHERE locator = ?`
 	updateRowAndPurge = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ?, purge_at = ? WHERE locator = ?`
 )
+
+// absentLocator is never stored: finding an id that hashes to it is a preimage.
+var absentLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/absent-row"))
 
 func (s *Store) Create(ctx context.Context, row *store.Row, counters ...store.RateHit) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
@@ -47,6 +55,36 @@ func (s *Store) Create(ctx context.Context, row *store.Row, counters ...store.Ra
 
 func (s *Store) Load(ctx context.Context, locator seal.Locator) (store.Row, error) {
 	return scanRow(s.statements.loadRow.QueryRowContext(ctx, locator[:]))
+}
+
+// Lookup makes one lookup that finds a row and one that finds none, whether or not the locator is known: an unknown
+// locator gets the stored dummy row, a known one a miss on an absent locator (AK21, F1).
+func (s *Store) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bool, error) {
+	row, err := s.Load(ctx, locator)
+	switch {
+	case err == nil:
+		_, missErr := s.Load(ctx, absentLocator)
+		if !errors.Is(missErr, store.ErrNotFound) {
+			return store.Row{}, false, cmp.Or(missErr, store.ErrCorrupt)
+		}
+		return row, true, nil
+	case errors.Is(err, store.ErrNotFound):
+		dummy, dummyErr := s.Load(ctx, store.DummyLocator)
+		return dummy, false, dummyErr
+	default:
+		return store.Row{}, false, err
+	}
+}
+
+// ensureDummyRow stores the row that Lookup reads for an unknown locator; random keys seal it, so nothing opens it.
+func ensureDummyRow(ctx context.Context, database *sql.DB) error {
+	row := store.NewDummyRow()
+	_, err := database.ExecContext(
+		ctx,
+		`INSERT INTO messages (`+rowColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(locator) DO NOTHING`,
+		rowValues(&row)...,
+	)
+	return err
 }
 
 // Update hands the row to change inside one write transaction and stores what change replaced.
@@ -106,20 +144,25 @@ func rowValues(row *store.Row) []any {
 	}
 }
 
+// scanRow reads every row in one shape, with fillers for its NULLs, so a live, an ended and the dummy row cost the
+// same work (AK21, F1).
 func scanRow(scanner *sql.Row) (store.Row, error) {
 	var row store.Row
 	var locator []byte
-	var blobRef sql.NullString
-	var blobPurgeAt sql.NullInt64
-	var purgeAt int64
+	var blobRef string
+	var blobRefMissing, blobWrapMissing, blobPurgeMissing bool
+	var blobPurgeAt, purgeAt int64
 	err := scanner.Scan(
 		&locator,
 		&row.ReadWrap,
 		&row.ManageWrap,
 		&row.Record,
 		&blobRef,
+		&blobRefMissing,
 		&row.BlobWrap,
+		&blobWrapMissing,
 		&blobPurgeAt,
+		&blobPurgeMissing,
 		&purgeAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -132,9 +175,14 @@ func scanRow(scanner *sql.Row) (store.Row, error) {
 		return store.Row{}, store.ErrCorrupt
 	}
 	row.Locator = seal.Locator(locator)
-	row.BlobRef = blobRef.String
-	if blobPurgeAt.Valid {
-		row.BlobPurgeAt = fromMilliseconds(blobPurgeAt.Int64)
+	if !blobRefMissing {
+		row.BlobRef = blobRef
+	}
+	if blobWrapMissing {
+		row.BlobWrap = nil
+	}
+	if !blobPurgeMissing {
+		row.BlobPurgeAt = fromMilliseconds(blobPurgeAt)
 	}
 	row.PurgeAt = fromMilliseconds(purgeAt)
 	return row, nil

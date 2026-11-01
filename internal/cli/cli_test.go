@@ -32,6 +32,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/signing"
 
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -355,8 +356,13 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	salt, err := seal.ReadEraseBlock(bytes.NewReader(stored))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted := stored[erase.BlockLen:]
 	object := make([]byte, record.Message.Size)
-	seal.BlobStream(blobKey).XORKeyStream(object, stored[:record.Message.Size])
+	seal.BlobStream(blobKey, salt).XORKeyStream(object, encrypted[:record.Message.Size])
 	return object
 }
 
@@ -1418,7 +1424,10 @@ func TestRunAnswersUsageErrorsWithoutRunning(t *testing.T) {
 		t.Fatalf("serve --help: exit %d, stdout %q, stderr %q", result.code, result.stdout, result.stderr)
 	}
 	for _, arguments := range [][]string{nil, {"sweep-once", "--dry-run"}, {"serve", "extra"}, {"bogus"}, {"version", "extra"}} {
-		variables := map[string]string{"NYLZO_DATA_DIR": directory, "NYLZO_PEPPER": testPepper}
+		variables := map[string]string{
+			"NYLZO_DATA_DIR":    directory,
+			"NYLZO_PEPPER_FILE": filepath.Join(directory, "pepper"),
+		}
 		result := runWith(t, "", variables, nil, arguments...)
 		if result.code != 2 || result.stdout != "" || !strings.Contains(result.stderr, "nylzo") {
 			t.Fatalf("%v: exit %d, stdout %q, stderr %q", arguments, result.code, result.stdout, result.stderr)

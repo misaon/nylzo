@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -107,6 +110,45 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	}
 	if err = rows.Err(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestLookupDoesTheSameWorkForEveryLocator covers AK21 and F1; it runs alone because allocations are counted per
+// process.
+func TestLookupDoesTheSameWorkForEveryLocator(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	storage := openStore(t, path)
+	live, ended := newRecord(1, false), newRecord(1, false)
+	create(t, storage, live)
+	create(t, storage, ended)
+	if _, err := openRaw(t, path).Exec(
+		`UPDATE messages SET blob_ref = NULL, blob_wrap = NULL, blob_purge_at = NULL WHERE locator = ?`,
+		ended.Row.Locator[:],
+	); err != nil {
+		t.Fatal(err)
+	}
+	unknown := seal.LocatorOf([]byte("never created"))
+	work := map[string]float64{}
+	lengths := map[string]int{}
+	for name, locator := range map[string]seal.Locator{
+		"live":    live.Row.Locator,
+		"ended":   ended.Row.Locator,
+		"unknown": unknown,
+	} {
+		row, known, err := storage.Lookup(t.Context(), locator)
+		if err != nil || known == (name == "unknown") {
+			t.Fatalf("%s: known %v, %v", name, known, err)
+		}
+		lengths[name] = len(row.ReadWrap) + len(row.ManageWrap) + len(row.Record)
+		work[name] = math.MaxFloat64
+		for range 20 {
+			work[name] = min(work[name], testing.AllocsPerRun(20, func() { storage.Lookup(t.Context(), locator) }))
+		}
+	}
+	const driverNoise = 5
+	spread := max(work["live"], work["ended"], work["unknown"]) - min(work["live"], work["ended"], work["unknown"])
+	if spread > driverNoise || lengths["live"] != lengths["unknown"] || lengths["ended"] != lengths["unknown"] {
+		t.Fatalf("a lookup must do the same work for every locator: allocations %v, sealed bytes %v", work, lengths)
 	}
 }
 
@@ -214,7 +256,63 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	if err = storage.Checkpoint(ctx); err != nil {
 		t.Fatalf("a prepared statement kept a read open: %v", err)
 	}
-	if info, statErr := os.Stat(path + "-wal"); statErr != nil || info.Size() != 0 {
-		t.Fatalf("the log was not truncated: %v %v", info, statErr)
+}
+
+// TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion covers A4-1: a truncated log leaves its frames in freed blocks.
+func TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	storage := openStore(t, path)
+	var largest int64
+	checkLog := func(step string) {
+		info, err := os.Stat(path + "-wal")
+		if err != nil || info.Size() < largest {
+			t.Fatalf(
+				"%s: the log shrank from %d bytes, which frees blocks that hold its frames: %v",
+				step,
+				largest,
+				err,
+			)
+		}
+		largest = info.Size()
 	}
+	hits := make([]store.RateHit, 0, 300)
+	for i := range cap(hits) {
+		hits = append(hits, store.RateHit{Key: fmt.Sprintf("spend:%03d", i), PurgeAt: testNow.Add(time.Hour)})
+	}
+	if _, err := storage.RateHit(t.Context(), hits); err != nil {
+		t.Fatal(err)
+	}
+	for range 30 {
+		create(t, storage, newRecord(1, false))
+	}
+	if err := storage.Checkpoint(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	record := newRecord(2, false)
+	create(t, storage, record, hits...)
+	checkLog("create")
+	older := slices.Clone(record.Row.Record)
+	claim(t, storage, record, testNow)
+	checkLog("claim")
+	if before, err := os.ReadFile(path + "-wal"); err != nil || !bytes.Contains(before, older[:64]) {
+		t.Fatalf("the test needs a stale frame with the older record before the scrub: %v", err)
+	}
+	if err := storage.Checkpoint(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	checkLog("checkpoint")
+	for _, name := range []string{path, path + "-wal"} {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, older[:64]) {
+			t.Fatalf("%s still holds the record before the claim after the scrub", filepath.Base(name))
+		}
+	}
+	if err := storage.Close(); err != nil {
+		t.Fatal(err)
+	}
+	checkLog("close")
 }

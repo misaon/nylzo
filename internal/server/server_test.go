@@ -27,6 +27,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -269,16 +270,23 @@ func (s *signalReader) Read(data []byte) (int, error) {
 type deadlineWriter struct {
 	http.ResponseWriter
 
-	read, write time.Time
+	read, write   time.Time
+	reads, writes []time.Time
 }
 
 func (w *deadlineWriter) SetReadDeadline(deadline time.Time) error {
-	w.read = deadline
+	if w.reads == nil {
+		w.read = deadline
+	}
+	w.reads = append(w.reads, deadline)
 	return nil
 }
 
 func (w *deadlineWriter) SetWriteDeadline(deadline time.Time) error {
-	w.write = deadline
+	if w.writes == nil {
+		w.write = deadline
+	}
+	w.writes = append(w.writes, deadline)
 	return nil
 }
 
@@ -293,9 +301,16 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	blobWriter := &deadlineWriter{ResponseWriter: httptest.NewRecorder()}
 	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	start := time.Now()
-	server.serveBlob(blobWriter, r, &store.Message{Size: size}, "", strings.NewReader("x"))
+	server.serveBlob(blobWriter, r, &store.Message{Size: size}, "", bytes.NewReader(make([]byte, size)))
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
+	}
+	window := defaultPace().window
+	if chunks := len(blobWriter.writes) - 1; chunks < size/paceChunk ||
+		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
+			return time.Until(deadline) > window
+		}) {
+		t.Fatalf("F3: every 64 KiB of a response must go out within %v, so a reader that stops frees its slot", window)
 	}
 
 	id := core.NewID()
@@ -355,8 +370,11 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if record.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", record.Code, record.Body)
 	}
-	if got := writer.write.Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
+	if got := writer.writes[len(writer.writes)-1].Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
+	}
+	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > defaultPace().window {
+		t.Fatalf("F7: the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
 	}
 }
 
@@ -426,11 +444,11 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	if got := claim("198.51.100.1"); got != http.StatusNotFound {
 		t.Fatalf("another address while the first holds its share: %d, want 404 after the slot", got)
 	}
-	for i := 2; i <= 7; i++ {
+	for i := 2; i <= 3; i++ {
 		hold(fmt.Sprintf("203.0.113.%d", i))
 	}
 	if got := claim("203.0.113.9"); got != http.StatusServiceUnavailable {
-		t.Fatalf("a ninth stream from one /24: %d, want 503", got)
+		t.Fatalf("F3: a fifth stream from one /24: %d, want 503", got)
 	}
 	if got := claim("2001:db8:1:2::1"); got != http.StatusNotFound {
 		t.Fatalf("an IPv6 source while one /24 holds its share: %d, want 404 after the slot", got)
@@ -559,14 +577,22 @@ func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
 func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		pending := &timers{}
+		pending := newReleases()
 		var ran atomic.Int32
-		pending.after(time.Hour, func() { ran.Add(1) })
+		locator := func(name string) seal.Locator { return seal.LocatorOf([]byte(name)) }
+		pending.schedule(locator("hour"), seal.NewKey(), time.Hour, func(seal.Key) { ran.Add(1) })
 		release := make(chan struct{})
-		pending.after(time.Second, func() {
+		pending.schedule(locator("second"), seal.NewKey(), time.Second, func(seal.Key) {
 			<-release
 			ran.Add(10)
 		})
+		cancelled := pending.pending[locator("hour")]
+		pending.schedule(locator("ended"), seal.NewKey(), time.Second, func(seal.Key) { ran.Add(1000) })
+		ended := pending.pending[locator("ended")]
+		pending.cancel(locator("ended"))
+		if ended.key != (seal.Key{}) {
+			t.Fatal("A4-2: a release cancelled by an ending must clear its record key at once")
+		}
 		time.Sleep(time.Second)
 		synctest.Wait()
 		stopped := make(chan struct{})
@@ -582,11 +608,11 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 		}
 		close(release)
 		<-stopped
-		pending.after(0, func() { ran.Add(100) })
+		pending.schedule(locator("late"), seal.NewKey(), 0, func(seal.Key) { ran.Add(100) })
 		time.Sleep(2 * time.Hour)
 		synctest.Wait()
-		if got := ran.Load(); got != 10 {
-			t.Fatalf("timers that ran: %d, want only the one already running", got)
+		if got := ran.Load(); got != 10 || cancelled.key != (seal.Key{}) {
+			t.Fatalf("timers that ran: %d, want only the one already running, and stop clears the keys", got)
 		}
 	})
 }
@@ -716,10 +742,17 @@ func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
 	}
 }
 
-func TestRequestLinesLogNoSize(t *testing.T) {
+// TestRequestsAreLoggedAsCountsPerMinute covers A4-5 and A4-8: no line per request, no latency, no client method.
+func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
+		flushed, stop := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		go func() {
+			harness.server.RunHousekeeping(flushed)
+			close(done)
+		}()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
 		harness.mustCreate(message)
 		response, _ := harness.claim(message, "", "")
@@ -730,33 +763,34 @@ func TestRequestLinesLogNoSize(t *testing.T) {
 			t.Fatalf("blob: %d", blobResponse.StatusCode)
 		}
 		harness.metadata(message)
-		harness.status(message)
-		seen := map[string]bool{}
+		harness.metadata(message)
+		harness.statusFrom(&testRequest{method: "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", path: "/api/v1/instance"})
+		if strings.Contains(harness.logs.String(), `"msg":"requests"`) {
+			t.Fatalf("a request was logged before the minute ended: %s", harness.logs.String())
+		}
+		time.Sleep(time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)))
+		synctest.Wait()
+		stop()
+		<-done
+		counts := map[string]float64{}
 		for line := range strings.SplitSeq(strings.TrimSpace(harness.logs.String()), "\n") {
 			var entry map[string]any
-			if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "request" {
+			if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "requests" {
 				continue
 			}
+			for _, leak := range []string{"duration_ms", "bytes", "id", "addr"} {
+				if _, found := entry[leak]; found {
+					t.Fatalf("a request count carries %s: %s", leak, line)
+				}
+			}
+			method, _ := entry["method"].(string)
 			route, _ := entry["route"].(string)
-			_, size := entry["bytes"]
-			_, latency := entry["duration_ms"]
-			object := route == "POST /api/v1/messages" || strings.HasSuffix(route, "/claim") ||
-				strings.HasSuffix(route, "/blob")
-			if size {
-				t.Fatalf("%s logs its response size: %s", route, line)
-			}
-			if object && latency {
-				t.Fatalf("%s logs its latency: %s", route, line)
-			}
-			if !object && route != "" && !latency {
-				t.Fatalf("%s lost its latency: %s", route, line)
-			}
-			seen[route] = true
+			count, _ := entry["count"].(float64)
+			counts[method+" "+route] += count
 		}
-		for _, requestLine := range []string{"POST /api/v1/messages", "POST /api/v1/messages/{id}/claim", "GET /api/v1/messages/{id}/blob", "GET /api/v1/messages/{id}", "GET /api/v1/messages/{id}/status"} {
-			if !seen[requestLine] {
-				t.Fatalf("no request line for %s", requestLine)
-			}
+		if counts["GET GET /api/v1/messages/{id}"] != 2 || counts["POST POST /api/v1/messages/{id}/claim"] != 1 ||
+			counts["OTHER /api/"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") {
+			t.Fatalf("counts per method, route and status, and OTHER for a method nylzo does not route: %v", counts)
 		}
 	})
 }
@@ -798,7 +832,7 @@ func TestTokenBucketsThrottleTheAPIInOrder(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			settings := baseSettings(pepperA, nil)
 			settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1, 2
-			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 6
+			settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1, 100
 			harness := newHarness(t, settings)
 			got := statuses(harness,
 				"203.0.113.1", "203.0.113.1", "203.0.113.1",
@@ -865,4 +899,73 @@ type unreadableBody struct{ t *testing.T }
 func (body *unreadableBody) Read([]byte) (int, error) {
 	body.t.Error("the rejected cross-origin request body was read")
 	return 0, io.EOF
+}
+
+// TestABodyThatNeverArrivesIsAnsweredAtOnce covers F5: an early answer closes instead of waiting for the body.
+func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	address := harness.listen()
+	id := core.NewID().String()
+	for _, request := range []string{
+		"POST /api/v1/abuse HTTP/1.1\r\nContent-Type: text/plain\r\n",
+		"POST /api/v1/messages/" + id + "/burn HTTP/1.1\r\n",
+	} {
+		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		fmt.Fprintf(
+			connection,
+			"%sHost: nylzo.test\r\nX-Requested-With: XMLHttpRequest\r\nContent-Length: 4000\r\n\r\n",
+			request,
+		)
+		connection.SetReadDeadline(start.Add(5 * time.Second))
+		reader := bufio.NewReader(connection)
+		response, err := http.ReadResponse(reader, nil)
+		if err != nil || response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%q: %v %v", request, response, err)
+		}
+		io.Copy(io.Discard, response.Body)
+		response.Body.Close()
+		if _, err = reader.ReadByte(); !errors.Is(err, io.EOF) || time.Since(start) > time.Second {
+			t.Fatalf(
+				"%q: the connection must close at once, not wait for the body: %v after %v",
+				request,
+				err,
+				time.Since(start),
+			)
+		}
+		connection.Close()
+	}
+}
+
+// TestHeadersOver8KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
+func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	address := harness.listen()
+	for padding, want := range map[int]int{7 << 10: http.StatusOK, 9 << 10: http.StatusRequestHeaderFieldsTooLarge} {
+		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(
+			connection,
+			"GET /healthz HTTP/1.1\r\nHost: nylzo.test\r\nX-Padding: %s\r\n\r\n",
+			strings.Repeat("a", padding),
+		)
+		response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+		connection.Close()
+		if err != nil || response.StatusCode != want {
+			t.Fatalf("a %d-byte header: %v %v, want %d", padding, response, err, want)
+		}
+		response.Body.Close()
+		if response.Header.Get("X-Content-Type-Options") != "nosniff" ||
+			response.Header.Get("Content-Security-Policy") == "" ||
+			response.Header.Get("Strict-Transport-Security") == "" {
+			t.Fatalf("a %d-byte header got a response without the security headers: %v", padding, response.Header)
+		}
+	}
 }
