@@ -18,7 +18,7 @@ Every Hetzner/Flatcar host writes a coarse readiness report every two minutes. I
 ## Heartbeat
 
 1. Create a check at a dead-man's-switch service, for example [healthchecks.io](https://healthchecks.io/): period 5 minutes, grace 10 minutes, notifications to a channel you read. Healthchecks.io accepts `POST` to the check URL for success and to `URL/fail` for failure.
-2. Set `heartbeatUrl` in `site.json` to the HTTPS check URL before provisioning. On an existing host, write it to `/etc/nylzo/heartbeat.url` (root, `0600`) and re-apply the host bundle with `sudo /opt/nylzo/runtime/update host vX.Y.Z`.
+2. Set `heartbeatUrl` in `site.json` to the HTTPS check URL before provisioning. On an existing host, write it to `/etc/nylzo/heartbeat.url` (root, `0600`) and re-apply the host bundle with `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`.
 3. Stop `nylzo-host-status.timer` for 15 minutes and confirm that the alert arrives, then start it again.
 
 The heartbeat service runs without capabilities and cannot read Caddy's, Nylzo's or the deployment's state directories. The monitoring service learns the server's address and when it is up.
