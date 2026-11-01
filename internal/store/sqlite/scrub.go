@@ -59,7 +59,7 @@ func (s *Store) scrub(ctx context.Context, connection *sql.Conn) error {
 		}
 		var slots int
 		if err = connection.QueryRowContext(ctx, `SELECT COUNT(*) FROM wal_scrub`).Scan(&slots); err != nil {
-			return fmt.Errorf("sqlite: wal scrub: %w", err)
+			return wrapScrub(err)
 		}
 		if slots >= frames {
 			_, err = connection.ExecContext(ctx, `UPDATE wal_scrub SET generation = 1 - generation`)
@@ -77,6 +77,8 @@ func restartLog(ctx context.Context, connection *sql.Conn) error {
 	var blocked, frames, moved int
 	err := connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(RESTART)`).Scan(&blocked, &frames, &moved)
 	switch {
+	case busy(err):
+		return errors.Join(ErrCheckpointBusy, err)
 	case err != nil:
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	case blocked != 0:
@@ -98,11 +100,16 @@ func growScrub(ctx context.Context, connection *sql.Conn, missing int) error {
 	return wrapScrub(err)
 }
 
+// wrapScrub reports a write lock that another connection holds as a busy checkpoint, which the next sweep retries.
 func wrapScrub(err error) error {
-	if err != nil {
+	switch {
+	case err == nil:
+		return nil
+	case busy(err):
+		return errors.Join(ErrCheckpointBusy, err)
+	default:
 		return fmt.Errorf("sqlite: wal scrub: %w", err)
 	}
-	return nil
 }
 
 func (s *Store) walFrames() (int, error) {
