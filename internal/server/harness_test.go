@@ -17,7 +17,9 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -27,11 +29,13 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -120,6 +124,7 @@ func baseSettings(pepper, previous []byte) *config.Server {
 	settings.Rates.BucketBurst = 1 << 20
 	settings.Rates.SourcePerSecond = 1 << 20
 	settings.Rates.SourceBurst = 1 << 20
+	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	return &settings
 }
 
@@ -215,9 +220,14 @@ func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 	return challenge
 }
 
-func (h *testHarness) idToken(id core.ID) string {
-	token, _ := h.server.idTokens.Issue(id, time.Now())
+func (h *testHarness) idToken(id core.ID, shareEpoch uint32) string {
+	token, _ := h.server.idTokens.Issue(id, shareEpoch, time.Now())
 	return token
+}
+
+// shareEpochFor is the epoch a client gets for a TTL from the instance; a test upload takes far less than its slack.
+func shareEpochFor(ttlSeconds float64) uint32 {
+	return epoch.Hour(time.Now().Add(time.Duration(ttlSeconds)*time.Second + 2*time.Minute))
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
@@ -244,6 +254,10 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 	}
 	for name, value := range request.headers {
 		r.Header.Set(name, value)
+	}
+	streams := strings.HasSuffix(request.path, "/claim") || strings.HasSuffix(request.path, "/blob")
+	if _, set := request.headers[shareKeyHeaderName]; streams && !set {
+		r.Header.Set(shareKeyHeaderName, testShareKeyHeader)
 	}
 	if request.address != "" {
 		r.Header.Set("X-Forwarded-For", request.address)
@@ -487,7 +501,14 @@ func (h *testHarness) openObject(message *testMessage, object []byte, policy str
 	if err != nil {
 		return envelope.Payload{}, err
 	}
-	_, payload, err := envelope.Open(&message.content.K, message.id, decoded, message.kdf, object)
+	hash := envelope.ObjectHash(message.object)
+	expected := envelope.Expected{
+		ID:         message.id,
+		Policy:     decoded,
+		KDF:        message.kdf,
+		ObjectHash: &hash,
+	}
+	_, payload, err := envelope.Open(&message.content, &expected, object)
 	return payload, err
 }
 
@@ -517,14 +538,23 @@ func (h *testHarness) withIDToken(header string) string {
 		return header
 	}
 	var rawID string
-	if json.Unmarshal(fields["id"], &rawID) != nil {
+	var ttl float64
+	if json.Unmarshal(fields["id"], &rawID) != nil || json.Unmarshal(fields["ttl_s"], &ttl) != nil {
 		return header
 	}
 	id, err := core.ParseID(rawID)
 	if err != nil {
 		return header
 	}
-	fields["id_token"], _ = json.Marshal(h.idToken(id))
+	shareEpoch := shareEpochFor(ttl)
+	if raw, ok := fields["epoch"]; ok {
+		if json.Unmarshal(raw, &shareEpoch) != nil {
+			return header
+		}
+	} else {
+		fields["epoch"], _ = json.Marshal(shareEpoch)
+	}
+	fields["id_token"], _ = json.Marshal(h.idToken(id, shareEpoch))
 	encoded, err := json.Marshal(fields)
 	if err != nil {
 		return header
@@ -596,6 +626,10 @@ type testMessage struct {
 	kdf         core.KDF
 	link        keys.LinkKeys
 	content     keys.ContentKeys
+	share       *[core.ShareLen]byte
+	verifierKey *[core.SeedLen]byte
+	idToken     string
+	epoch       uint32
 	policy      envelope.Policy
 	object      []byte
 	text        string
@@ -632,12 +666,73 @@ func buildMessageWithID(
 	ttl uint32,
 	text string,
 ) (*testMessage, error) {
-	message := &testMessage{id: id, secret: core.NewSecret(), manage: core.NewSecret(), kdf: kdf, text: text}
+	return buildMessage(id, core.NewSecret(), kdf, passphrase, opens, ttl, text)
+}
+
+// issueMessage creates a message as a client does: the id and its share come from the instance.
+func (h *testHarness) issueMessage(
+	kdf core.KDF,
+	passphrase string,
+	opens uint16,
+	ttl uint32,
+	text string,
+) *testMessage {
+	h.t.Helper()
+	response, body := h.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
+		ttlHeaderName:      strconv.FormatUint(uint64(ttl), 10),
+		shareKeyHeaderName: testShareKeyHeader,
+	}})
+	create, ok := decodeJSON(h.t, body)["create"].(map[string]any)
+	if response.StatusCode != http.StatusOK || !ok {
+		h.t.Fatalf("instance: %d %s", response.StatusCode, body)
+	}
+	id, err := core.ParseID(create["id"].(string))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	wrapped, err := core.DecodeExact(create["share"].(string), share.WrappedLen)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	expiryShare, err := share.Unwrap(testShareKey, (*[share.WrappedLen]byte)(wrapped))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	message, err := buildMessage(id, &expiryShare, kdf, passphrase, opens, ttl, text)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	message.idToken, message.epoch = create["id_token"].(string), uint32(create["epoch"].(float64))
+	return message
+}
+
+func buildMessage(
+	id core.ID,
+	expiryShare *[core.ShareLen]byte,
+	kdf core.KDF,
+	passphrase string,
+	opens uint16,
+	ttl uint32,
+	text string,
+) (*testMessage, error) {
+	message := &testMessage{
+		id:     id,
+		secret: core.NewSecret(),
+		manage: core.NewSecret(),
+		share:  expiryShare,
+		kdf:    kdf,
+		text:   text,
+	}
 	link, err := keys.DeriveLink(id, message.secret)
 	if err != nil {
 		return nil, err
 	}
-	content, err := keys.DeriveContent(id, message.secret, testPassphraseKey(kdf, passphrase, &link.PassphraseSalt))
+	passphraseKey := testPassphraseKey(kdf, passphrase, &link.PassphraseSalt)
+	content, err := keys.DeriveContent(id, message.secret, passphraseKey, message.share)
+	if err != nil {
+		return nil, err
+	}
+	verifier, err := keys.DeriveVerifier(id, message.secret, passphraseKey)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +740,7 @@ func buildMessageWithID(
 	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl}
 	payload := envelope.Payload{Meta: envelope.Meta{Text: &text}}
 	if message.object, err = envelope.Seal(
-		&content.K,
+		&content,
 		envelope.NewHeader(kdf),
 		id,
 		message.policy,
@@ -655,8 +750,14 @@ func buildMessageWithID(
 	}
 	message.readToken = core.Encode(link.R[:])
 	message.manageToken = core.Encode(message.manage[:])
-	message.verifier = core.Encode(content.V[:])
+	message.verifier = core.Encode(verifier[:])
+	message.verifierKey = &verifier
 	return message, nil
+}
+
+func (m *testMessage) linkText() string {
+	hash := envelope.ObjectHash(m.object)
+	return core.FormatLink("https://nylzo.example", m.id, m.kdf, m.secret, &hash)
 }
 
 func publicKey(seed *[core.SeedLen]byte) string {
@@ -672,14 +773,17 @@ func (m *testMessage) createHeader(sizeOverride int64) string {
 		"kdf_id":     int(m.kdf),
 		"opens_max":  int(m.policy.OpensMax),
 		"ttl_s":      int(m.policy.TTLSeconds),
+		"epoch":      cmp.Or(m.epoch, shareEpochFor(float64(m.policy.TTLSeconds))),
 		"size":       len(m.object),
 	}
 	if sizeOverride > 0 {
 		fields["size"] = sizeOverride
 	}
-	if m.kdf != core.KDFNone {
-		fields["verifier_key"] = publicKey(&m.content.V)
+	if m.idToken != "" {
+		fields["id_token"] = m.idToken
 	}
+	verifierSeed, _ := core.Decode32(m.verifier)
+	fields["verifier_key"] = publicKey(verifierSeed)
 	data, _ := json.Marshal(fields)
 	return core.Encode(data)
 }
@@ -711,6 +815,25 @@ func claimRequestFor(message *testMessage, verifier, address string) *testReques
 		token:    message.readToken,
 		verifier: verifier,
 	}
+}
+
+var (
+	testShareKey       = share.NewKey()
+	testShareKeyHeader = core.Encode(testShareKey.PublicKey().Bytes())
+)
+
+// unwrapShare reads the share a claim or download carried, as a client does.
+func unwrapShare(t *testing.T, response testResponse) [core.ShareLen]byte {
+	t.Helper()
+	wrapped, err := core.DecodeExact(response.Header.Get(shareHeaderName), share.WrappedLen)
+	if err != nil {
+		t.Fatalf("no share in the response: %v", err)
+	}
+	expiryShare, err := share.Unwrap(testShareKey, (*[share.WrappedLen]byte)(wrapped))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return expiryShare
 }
 
 func mutateHeader(t *testing.T, message *testMessage, change func(map[string]any)) string {

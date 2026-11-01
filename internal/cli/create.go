@@ -20,6 +20,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
 
@@ -47,6 +48,7 @@ type createOptions struct {
 	generate    string
 	manageFile  string
 	printManage bool
+	compress    bool
 }
 
 type content struct {
@@ -95,6 +97,12 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		"write the manage token for status and cancel to this new file (mode 0600)",
 	)
 	flags.BoolVar(&options.printManage, "print-manage-token", false, "print the manage token after the link")
+	flags.BoolVar(
+		&options.compress,
+		"compress",
+		false,
+		"gzip the attachment when that halves its stored size; the server then sees roughly how well it compresses",
+	)
 	return flags, options
 }
 
@@ -128,7 +136,12 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 		generated.discard()
 		return command.Failf(environment, "--manage-token-file: the file already exists or cannot be created")
 	}
-	created, err := createMessage(ctx, environment, api, options, passphrase, &message)
+	created, err := createMessage(
+		ctx,
+		environment,
+		api,
+		createInput{options: options, passphrase: passphrase, message: &message},
+	)
 	if err != nil {
 		manage.discard()
 		generated.discard()
@@ -293,19 +306,33 @@ func (m *createdMessage) wipe() {
 	m.link = ""
 }
 
+type createInput struct {
+	options    *createOptions
+	passphrase string
+	message    *content
+	policy     envelope.Policy
+	maxObject  int64
+}
+
 // createMessage retries with a fresh id when the server refused the id or the proof of work.
 func createMessage(
 	ctx context.Context,
 	environment *command.Environment,
 	api *client.Client,
-	options *createOptions,
-	passphrase string,
-	message *content,
+	input createInput,
 ) (createdMessage, error) {
+	instance, err := api.Instance(ctx, nil)
+	if err != nil {
+		return createdMessage{}, err
+	}
+	if input.policy, err = createPolicy(input.options, instance.Limits, input.message); err != nil {
+		return createdMessage{}, err
+	}
+	input.maxObject = instance.Limits.MaxObjectBytes
 	for attempt := 1; ; attempt++ {
-		created, err := createOnce(ctx, environment, api, options, passphrase, message)
-		if attempt == createAttempts || !retryWithNewID(err) {
-			return created, err
+		created, createErr := createOnce(ctx, environment, api, &input)
+		if attempt == createAttempts || !retryWithNewID(createErr) {
+			return created, createErr
 		}
 	}
 }
@@ -318,108 +345,102 @@ func createOnce(
 	ctx context.Context,
 	environment *command.Environment,
 	api *client.Client,
-	options *createOptions,
-	passphrase string,
-	message *content,
+	input *createInput,
 ) (createdMessage, error) {
-	instance, err := api.Instance(ctx)
-	if err != nil {
-		return createdMessage{}, err
-	}
-	policy, err := createPolicy(options, instance.Limits, message)
-	if err != nil {
-		return createdMessage{}, err
-	}
-	kdf := core.KDFNone
-	if passphrase != "" {
-		kdf = core.KDFScrypt
-	}
-	id := instance.Create.ID
-	secret, manage := core.NewSecret(), core.NewSecret()
-	defer clear(secret[:])
-	defer clear(manage[:])
-	request, err := sealMessage(
-		id,
-		secret,
-		manage,
-		kdf,
-		passphrase,
-		policy,
-		message,
-		instance.FileCompression == "gzip",
+	shareKey := share.NewKey()
+	instance, err := api.Instance(
+		ctx,
+		&client.Creation{TTLSeconds: input.policy.TTLSeconds, ShareKey: shareKey.PublicKey()},
 	)
 	if err != nil {
 		return createdMessage{}, err
 	}
-	if int64(len(request.Object)) > instance.Limits.MaxObjectBytes {
+	issued := instance.Create
+	expiryShare, err := share.Unwrap(shareKey, &issued.Share)
+	if err != nil {
+		return createdMessage{}, err
+	}
+	defer clear(expiryShare[:])
+	kdf := core.KDFNone
+	if input.passphrase != "" {
+		kdf = core.KDFScrypt
+	}
+	secret, manage := core.NewSecret(), core.NewSecret()
+	defer clear(secret[:])
+	defer clear(manage[:])
+	request, err := sealMessage(&sealInput{
+		id:         issued.ID,
+		secret:     secret,
+		manage:     manage,
+		share:      &expiryShare,
+		kdf:        kdf,
+		passphrase: input.passphrase,
+		policy:     input.policy,
+		message:    input.message,
+		compress:   input.options.compress,
+	})
+	if err != nil {
+		return createdMessage{}, err
+	}
+	if int64(len(request.Object)) > input.maxObject {
 		return createdMessage{}, errTooLargeForInstance
 	}
-	request.IDToken = instance.Create.IDToken
+	request.IDToken, request.Epoch = issued.IDToken, issued.Epoch
 	if instance.PoW.Required {
-		if request.PoWToken, err = prove(ctx, environment, api, id); err != nil {
+		if request.PoWToken, err = prove(ctx, environment, api, issued.ID); err != nil {
 			return createdMessage{}, err
 		}
 	}
+	objectHash := envelope.ObjectHash(request.Object)
 	expires, err := api.Create(ctx, &request)
 	if err != nil {
 		return createdMessage{}, err
 	}
 	return createdMessage{
-		link:    core.FormatLink(api.Origin(), id, kdf, secret),
-		id:      id,
+		link:    core.FormatLink(api.Origin(), issued.ID, kdf, secret, &objectHash),
+		id:      issued.ID,
 		manage:  *manage,
 		expires: expires,
 	}, nil
 }
 
-func sealMessage(
-	id core.ID,
-	secret, manage *[core.SecretLen]byte,
-	kdf core.KDF,
-	passphrase string,
-	policy envelope.Policy,
-	message *content,
-	compress bool,
-) (client.CreateRequest, error) {
-	link, err := keys.DeriveLink(id, secret)
+type sealInput struct {
+	id         core.ID
+	secret     *[core.SecretLen]byte
+	manage     *[core.SecretLen]byte
+	share      *[core.ShareLen]byte
+	kdf        core.KDF
+	passphrase string
+	policy     envelope.Policy
+	message    *content
+	compress   bool
+}
+
+func sealMessage(input *sealInput) (client.CreateRequest, error) {
+	derived, err := keys.DeriveAll(input.id, input.secret, input.kdf, input.passphrase, input.share)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
-	defer clear(link.R[:])
-	defer clear(link.PassphraseSalt[:])
-	passphraseKey, err := keys.DerivePassphraseKey(kdf, passphrase, &link.PassphraseSalt)
-	if err != nil {
-		return client.CreateRequest{}, err
-	}
-	contentKeys, err := keys.DeriveContent(id, secret, passphraseKey)
-	clear(passphraseKey)
-	if err != nil {
-		return client.CreateRequest{}, err
-	}
-	defer clear(contentKeys.K[:])
-	defer clear(contentKeys.V[:])
-	payload := envelope.Payload{Meta: message.meta, File: message.file}
+	defer derived.Wipe()
+	payload := envelope.Payload{Meta: input.message.meta, File: input.message.file}
 	encode := envelope.Seal
-	if compress {
+	if input.compress {
 		encode = envelope.SealWithCompression
 	}
-	object, err := encode(&contentKeys.K, envelope.NewHeader(kdf), id, policy, payload)
+	object, err := encode(&derived.Content, envelope.NewHeader(input.kdf), input.id, input.policy, payload)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
-	request := client.CreateRequest{
-		ID:         id,
-		ReadKey:    signing.PublicKey(&link.R),
-		ManageKey:  signing.PublicKey(manage),
-		KDF:        kdf,
-		OpensMax:   policy.OpensMax,
-		TTLSeconds: policy.TTLSeconds,
+	return client.CreateRequest{
+		ID:         input.id,
+		ReadKey:    signing.PublicKey(&derived.Link.R),
+		Verifier:   signing.PublicKey(&derived.Verifier),
+		ManageKey:  signing.PublicKey(input.manage),
+		KDF:        input.kdf,
+		OpensMax:   input.policy.OpensMax,
+		TTLSeconds: input.policy.TTLSeconds,
 		Object:     object,
-	}
-	if kdf != core.KDFNone {
-		request.Verifier = new(signing.PublicKey(&contentKeys.V))
-	}
-	return request, nil
+	}, nil
 }
 
 func createPolicy(options *createOptions, limits client.Limits, message *content) (envelope.Policy, error) {
@@ -453,7 +474,7 @@ func createPolicy(options *createOptions, limits client.Limits, message *content
 // prove solves the proof of work and fetches a new challenge once if the first one runs out of time.
 func prove(ctx context.Context, environment *command.Environment, api *client.Client, id core.ID) (string, error) {
 	for round := 1; ; round++ {
-		instance, err := api.Instance(ctx)
+		instance, err := api.Instance(ctx, nil)
 		if err != nil {
 			return "", err
 		}

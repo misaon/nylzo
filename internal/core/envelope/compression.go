@@ -6,18 +6,20 @@ import (
 	"io"
 )
 
-const minCompressBytes = 128 * 1024
+const (
+	gzipHeaderLen     = 10
+	gzipFlagsOffset   = 3
+	gzipReservedFlags = 0xe0
+)
 
 type encodedAttachment struct {
-	meta []byte
-	file []byte
+	meta      []byte
+	file      []byte
+	objectLen int
 }
 
-// Each attachment has a fresh compression context, separate from text and metadata.
+// compressAttachment gives a fresh compression context to this file alone and reports objectLen 0 when it keeps the original.
 func compressAttachment(meta Meta, metadata, file []byte) encodedAttachment {
-	if len(file) < minCompressBytes {
-		return encodedAttachment{metadata, file}
-	}
 	var buffer bytes.Buffer
 	writer := gzip.NewWriter(&buffer)
 	_, writeErr := writer.Write(file)
@@ -25,22 +27,47 @@ func compressAttachment(meta Meta, metadata, file []byte) encodedAttachment {
 	compressed := buffer.Bytes()
 	if writeErr != nil || closeErr != nil || len(compressed) >= len(file) {
 		clear(compressed)
-		return encodedAttachment{metadata, file}
+		return encodedAttachment{}
 	}
 	encodedMeta, err := encodeStoredMeta(meta, int64(len(compressed)))
-	originalSize := PaddedLen(HeaderLen+MetaLenPrefix+len(metadata)+len(file)+TagLen, true)
-	encodedSize := PaddedLen(HeaderLen+MetaLenPrefix+len(encodedMeta)+len(compressed)+TagLen, true)
-	if err != nil || originalSize-encodedSize < PadFile || encodedSize*10 > originalSize*9 {
+	if err != nil {
+		clear(compressed)
+		return encodedAttachment{}
+	}
+	overhead := PrefixLen + MetaLenPrefix + TagLen
+	original := padded(overhead + len(metadata) + len(file))
+	needed := padded(overhead + len(encodedMeta) + len(compressed))
+	objectLen := CompressedLength(original, needed)
+	if objectLen == 0 {
 		clear(compressed)
 		clear(encodedMeta)
-		return encodedAttachment{metadata, file}
+		return encodedAttachment{}
 	}
-	return encodedAttachment{encodedMeta, compressed}
+	return encodedAttachment{meta: encodedMeta, file: compressed, objectLen: objectLen}
+}
+
+// CompressedLength is the smallest halving class of the original length that holds needed bytes, or 0 when
+// none is shorter than the original (spec section 3.2), so the length shows only a factor of two.
+func CompressedLength(original, needed int) int {
+	chosen := 0
+	for divisor := 2; ; divisor *= 2 {
+		class := padded((original + divisor - 1) / divisor)
+		if class < needed || class >= original {
+			return chosen
+		}
+		chosen = class
+		if class == Pad {
+			return chosen
+		}
+	}
 }
 
 // Authenticate the envelope before calling this. The claimed size never grants more than the protocol limit.
 func decompressAttachment(compressed []byte, size int64) ([]byte, error) {
 	if size < 0 || size > MaxFileBytes {
+		return nil, ErrPlaintext
+	}
+	if len(compressed) < gzipHeaderLen || compressed[gzipFlagsOffset]&gzipReservedFlags != 0 {
 		return nil, ErrPlaintext
 	}
 	source := bytes.NewReader(compressed)

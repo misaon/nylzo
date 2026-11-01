@@ -67,7 +67,7 @@ test(
   async ({ page }) => {
     try {
       const message = await createMessageThroughApi({ text: 'only once in this tab', opensMax: 2 });
-      const readPage = `${BASE_URL}/m/${message.id}`;
+      const readPage = `${BASE_URL}/r`;
       const removed = page.getByText(REMOVED);
       await openApp(page, '/');
       await showMessage(page, message.link);
@@ -207,7 +207,7 @@ test('a prefetch or prerender reaches the read page and the API only as a refuse
   request,
 }) => {
   const message = await createMessageThroughApi();
-  const readPath = `/m/${message.id}`;
+  const readPath = '/r';
   for (const path of [readPath, '/api/v1/instance']) {
     for (const purpose of ['prefetch', 'prefetch;prerender']) {
       const response = await request.get(path, { headers: { 'Sec-Purpose': purpose } });
@@ -324,12 +324,12 @@ test(
     await openApp(page, '/');
     const field = page.getByLabel('Link to open');
     const open = page.getByRole('button', { name: 'Open', exact: true });
-    await field.fill(`https://elsewhere.example/m/${message.id}${new URL(message.link).hash}`);
+    await field.fill(`https://elsewhere.example/r${new URL(message.link).hash}`);
     await open.click();
     await expect(page.getByText('The link belongs to another service.')).toBeVisible();
     await field.fill(message.link);
     await open.click();
-    await expect(page).toHaveURL(`${BASE_URL}/m/${message.id}`);
+    await expect(page).toHaveURL(`${BASE_URL}/r`);
     await page.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(page);
     await expect(page.locator('pre')).toHaveText('pasted on the home page');

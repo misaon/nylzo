@@ -184,7 +184,7 @@ func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 		Server:    "v1.2.3",
 		Built:     true,
 		PublicURL: "https://nylzo.example",
-		Pages:     []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/{id}"},
+		Pages:     []string{"/", "/cs/", "/sent", "/report", "/transparency", "/r", "/m/{id}"},
 		Files: []webclient.ManifestFile{
 			{Path: "/", SHA256: served("/")},
 			{Path: "/cs/", SHA256: served("/cs/")},

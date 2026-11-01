@@ -3,34 +3,36 @@ import { describe, expect, it } from 'vitest';
 import { linkSegments } from './link-segments.ts';
 
 describe('linkSegments', () => {
-  it('marks the host and the id as seen by the server and the fragment as browser-only', () => {
+  it('marks the host and the id as seen by the server and the rest of the fragment as browser-only', () => {
     const key = 'k'.repeat(43);
-    const segments = linkSegments(`https://nylzo.example/m/AbCdEfGhIjKlMnOpQrStUv#1.1.${key}`);
+    const hash = 'h'.repeat(43);
+    const segments = linkSegments(`https://nylzo.example/r#2.3.AbCdEfGhIjKlMnOpQrStUv.${key}.${hash}`);
     expect(segments.map(({ id, server }) => [id, server])).toEqual([
       ['host', true],
-      ['id', true],
       ['meta', false],
+      ['id', true],
       ['key', false],
     ]);
     expect(segments.map(({ text }) => text)).toEqual([
-      'https://nylzo.example/m/',
+      'https://nylzo.example/r',
+      '#2.3.',
       'AbCdEfGhIjKlMnOpQrStUv',
-      '#1.1.',
-      `${'k'.repeat(14)}…${'k'.repeat(6)}`,
+      `.${'k'.repeat(13)}…${'h'.repeat(6)}`,
     ]);
     expect(segments.map(({ short }) => short)).toEqual([
-      'nylzo.example/m/',
+      'nylzo.example/r',
+      '#2.3.',
       'AbCdEf…',
-      '#1.1.',
-      `${'k'.repeat(8)}…${'k'.repeat(5)}`,
+      `.${'k'.repeat(7)}…${'h'.repeat(5)}`,
     ]);
   });
 
   it('keeps a link it cannot split in one server-side segment', () => {
     for (const link of [
       'https://nylzo.example/other#x',
-      'https://nylzo.example/m/abc',
-      'https://nylzo.example/#/m/abc',
+      'https://nylzo.example/r',
+      'https://nylzo.example/r#2.3.a.b',
+      'https://nylzo.example/m/abc#1.0.x',
     ]) {
       expect(linkSegments(link)).toEqual([expect.objectContaining({ id: 'host', text: link, server: true })]);
     }

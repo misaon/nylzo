@@ -4,6 +4,7 @@ import {
   ID_LENGTH,
   type Link,
   type LinkKeys,
+  LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
   parseLink,
@@ -36,6 +37,7 @@ type ReportProblem =
   | 'link_foreign'
   | 'link_invalid'
   | 'link_newer'
+  | 'link_released'
   | 'link_retired'
   | 'reason_too_long';
 
@@ -148,6 +150,9 @@ export async function sendReport(
 function linkProblem(error: unknown): ReportProblem {
   if (error instanceof LinkVersionError) {
     return 'link_newer';
+  }
+  if (error instanceof LinkReleasedError) {
+    return 'link_released';
   }
   return error instanceof LinkRetiredKdfError ? 'link_retired' : 'link_invalid';
 }

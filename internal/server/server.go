@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -10,11 +11,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -50,6 +53,7 @@ type Server struct {
 	store         store.Store
 	blobs         store.Blobs
 	ring          *pepper.Ring
+	epochs        *epoch.Ratchet
 	leaseTimers   *releases
 	logger        *slog.Logger
 	instance      *ratelimit.Fair
@@ -110,6 +114,9 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		return nil, loadErr
 	}
 	server.requestCounts = logging.NewRequestCounts(server.logger)
+	if ratchetErr := server.openRatchet(); ratchetErr != nil {
+		return nil, ratchetErr
+	}
 	server.setUpLimits()
 	server.challenges = proof.NewChallenges(ring, storage)
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
@@ -127,6 +134,24 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 
 func (s *Server) Close() {
 	s.leaseTimers.stop()
+	s.epochs.Close()
+}
+
+// RunRatchet erases the epoch key of every hour that has passed as soon as the next one begins.
+func (s *Server) RunRatchet(ctx context.Context) {
+	for {
+		next := epoch.End(epoch.Hour(time.Now()))
+		timer := time.NewTimer(time.Until(next))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		if err := s.epochs.Advance(time.Now()); err != nil {
+			s.logger.ErrorContext(ctx, "epoch-advance", "err", logging.ErrorText(err))
+		}
+	}
 }
 
 func (s *Server) HTTPServer() *http.Server {
@@ -229,7 +254,9 @@ func (s *Server) forgetAddresses() {
 }
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
-	return sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, time.Now())
+	now := time.Now()
+	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, now)
+	return report, errors.Join(err, s.epochs.Advance(now))
 }
 
 func (s *Server) setUpLimits() {
@@ -244,4 +271,27 @@ func (s *Server) setUpLimits() {
 	}
 	s.counters = ratelimit.NewCounters()
 	s.streams = ratelimit.NewStreams(s.settings.MaxStreams)
+}
+
+// openRatchet starts a new ratchet only when the seed file is missing, which ends every live message.
+func (s *Server) openRatchet() error {
+	options := epoch.Options{Create: true, CheckFileSystem: s.requireErasableEpochDirectory}
+	ratchet, created, err := epoch.Open(s.settings.EpochDirectory(), time.Now(), options)
+	if err != nil {
+		return err
+	}
+	if created {
+		s.logger.Warn("epoch-seed-created")
+	}
+	s.epochs = ratchet
+	return nil
+}
+
+func (s *Server) requireErasableEpochDirectory(directory string) error {
+	err := erase.RequireInPlace(directory)
+	if errors.Is(err, erase.ErrNotInPlace) && s.settings.Development.AllowUnerasableStorage {
+		s.logger.Warn("storage-not-erasable", "directory", "epoch")
+		return nil
+	}
+	return err
 }

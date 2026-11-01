@@ -1,7 +1,6 @@
 import { scrypt } from '@noble/hashes/scrypt.js';
 
-import { KdfError } from './errors.ts';
-import { deriveContent, type DerivedKeys, deriveLink } from './keys/derive.ts';
+import { deriveContent, type DerivedKeys, deriveLink, deriveVerifier } from './keys/derive.ts';
 import {
   assertWellFormedPassphrase,
   KDF_NONE,
@@ -35,17 +34,7 @@ export function derivePassphraseKey(
   passphrase: string,
   passphraseSalt: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
-  switch (kdfId) {
-    case KDF_NONE: {
-      return new Uint8Array(0);
-    }
-    case KDF_SCRYPT: {
-      return scryptPassphraseKey(passphrase, passphraseSalt);
-    }
-    default: {
-      throw new KdfError();
-    }
-  }
+  return kdfId === KDF_NONE ? new Uint8Array(0) : scryptPassphraseKey(passphrase, passphraseSalt);
 }
 
 export async function deriveAll(
@@ -53,14 +42,16 @@ export async function deriveAll(
   secret: Uint8Array,
   kdfId: KdfId,
   passphrase: string,
+  share: Uint8Array,
 ): Promise<DerivedKeys> {
   assertWellFormedPassphrase(kdfId, passphrase);
   const link = await deriveLink(id, secret);
   let passphraseKey: Uint8Array | undefined;
   try {
     passphraseKey = derivePassphraseKey(kdfId, passphrase, link.passphraseSalt);
-    const content = await deriveContent(id, secret, passphraseKey);
-    return { link, content };
+    const verifierSeed = await deriveVerifier(id, secret, passphraseKey);
+    const content = await deriveContent(id, secret, passphraseKey, share);
+    return { link, verifierSeed, content };
   } catch (error) {
     link.readSeed.fill(0);
     link.passphraseSalt.fill(0);

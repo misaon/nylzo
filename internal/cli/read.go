@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/ecdh"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/share"
 )
 
 const (
@@ -41,8 +43,9 @@ var (
 		"read needs --stdout, which prints the text and writes nothing to disk, " +
 			"or --out DIR, which writes the text and any attachment into a new private directory inside DIR",
 	)
-	errAttachmentNeedsOut = errors.New(
-		"this message can carry an attachment, which --stdout cannot deliver; add --out DIR (nothing was opened)",
+	errAttachmentDiscarded = errors.New(
+		"the message carries an attachment, which --stdout cannot deliver, so it was not saved; " +
+			"a link does not show this before it is opened, so read links that may carry a file with --out DIR",
 	)
 )
 
@@ -54,11 +57,12 @@ type readOptions struct {
 }
 
 type openLink struct {
-	origin string
-	id     core.ID
-	kdf    core.KDF
-	secret [core.SecretLen]byte
-	keys   keys.LinkKeys
+	origin     string
+	id         core.ID
+	kdf        core.KDF
+	secret     [core.SecretLen]byte
+	objectHash [core.ObjectHashLen]byte
+	keys       keys.LinkKeys
 }
 
 func (l *openLink) wipe() {
@@ -72,6 +76,11 @@ func parseOpenLink(raw string) (openLink, error) {
 	switch {
 	case errors.Is(err, core.ErrLinkVersion):
 		return openLink{}, errors.New("the link was made by a newer version of nylzo; update nylzo from " + releasesURL)
+	case errors.Is(err, core.ErrLinkReleased):
+		return openLink{}, errors.New(
+			"the link is from before this instance's security upgrade, which deleted every message it held; " +
+				"ask the sender for a new link",
+		)
 	case errors.Is(err, core.ErrLinkRetiredKDF):
 		return openLink{}, errors.New(
 			"the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link",
@@ -85,8 +94,14 @@ func parseOpenLink(raw string) (openLink, error) {
 		clear(parsed.Secret[:])
 		return openLink{}, err
 	}
-	link := openLink{origin: origin, id: parsed.ID, kdf: parsed.KDF, secret: parsed.Secret}
-	clear(parsed.Secret[:])
+	link := openLink{
+		origin:     origin,
+		id:         parsed.ID,
+		kdf:        parsed.KDF,
+		secret:     parsed.Secret,
+		objectHash: parsed.ObjectHash,
+	}
+	parsed.Wipe()
 	if link.keys, err = keys.DeriveLink(link.id, &link.secret); err != nil {
 		link.wipe()
 		return openLink{}, err
@@ -154,7 +169,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 		}
 		defer removeIfEmpty(directory)
 	}
-	opened, err := readMessage(ctx, environment, api, &link, options.passphrase, directory != "")
+	opened, err := readMessage(ctx, environment, api, &link, options.passphrase)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -194,50 +209,83 @@ func readMessage(
 	api *client.Client,
 	link *openLink,
 	source passphraseSource,
-	attachmentsAllowed bool,
 ) (openedMessage, error) {
 	metadata, err := api.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
 		return openedMessage{}, err
 	}
-	if metadata.State != "available" {
-		return openedMessage{}, &client.APIError{Status: 410, Kind: "gone", State: metadata.State}
-	}
-	if !attachmentsAllowed && envelope.MayHoldFile(metadata.Size) {
-		return openedMessage{}, errAttachmentNeedsOut
-	}
-	if err = core.AssertProfile(link.kdf, metadata.KDF); err != nil {
-		return openedMessage{}, errors.New("the link does not match the message on the server")
+	if checkErr := checkMetadata(link, &metadata); checkErr != nil {
+		return openedMessage{}, checkErr
 	}
 	passphraseKey, err := passphraseKey(environment, link, source)
 	if err != nil {
 		return openedMessage{}, err
 	}
-	contentKeys, err := keys.DeriveContent(link.id, &link.secret, passphraseKey)
-	clear(passphraseKey)
+	defer clear(passphraseKey)
+	verifier, err := keys.DeriveVerifier(link.id, &link.secret, passphraseKey)
 	if err != nil {
 		return openedMessage{}, err
 	}
-	defer clear(contentKeys.K[:])
-	defer clear(contentKeys.V[:])
-	var verifier *[core.SeedLen]byte
-	if link.kdf != core.KDFNone {
-		verifier = &contentKeys.V
-	}
-	fetched, lease, err := fetchEnvelope(ctx, api, link, verifier, metadata.Size)
+	defer clear(verifier[:])
+	shareKey := share.NewKey()
+	fetched, lease, err := fetchEnvelope(ctx, api, link, &verifier, shareKey, metadata.Size)
 	if err != nil {
 		return openedMessage{}, err
 	}
-	if fetched.Flags != 0 || fetched.KDF != link.kdf || int(fetched.Policy.OpensMax) != metadata.OpensMax ||
-		int64(fetched.Policy.TTLSeconds) != metadata.TTLSeconds {
+	defer clear(fetched.Object)
+	if !headerMatches(&fetched, link, &metadata) {
 		return openedMessage{}, errPolicyChanged
 	}
-	_, payload, err := envelope.Open(&contentKeys.K, link.id, fetched.Policy, link.kdf, fetched.Object)
-	clear(fetched.Object)
+	contentKeys, err := contentKeysOf(link, passphraseKey, shareKey, fetched.Share)
+	if err != nil {
+		return openedMessage{}, errTampered
+	}
+	defer contentKeys.Wipe()
+	expected := envelope.Expected{
+		ID:         link.id,
+		Policy:     fetched.Policy,
+		KDF:        link.kdf,
+		ObjectHash: &link.objectHash,
+	}
+	_, payload, err := envelope.Open(&contentKeys, &expected, fetched.Object)
 	if err != nil {
 		return openedMessage{}, errTampered
 	}
 	return openedMessage{payload: payload, lease: lease}, nil
+}
+
+// checkMetadata refuses before anything is spent: an ended message and a link of another profile.
+func checkMetadata(link *openLink, metadata *client.Metadata) error {
+	if metadata.State != "available" {
+		return &client.APIError{Status: 410, Kind: "gone", State: metadata.State}
+	}
+	if err := core.AssertProfile(link.kdf, metadata.KDF); err != nil {
+		return errors.New("the link does not match the message on the server")
+	}
+	return nil
+}
+
+func headerMatches(fetched *client.Envelope, link *openLink, metadata *client.Metadata) bool {
+	return fetched.Flags == 0 && fetched.KDF == link.kdf && int(fetched.Policy.OpensMax) == metadata.OpensMax &&
+		int64(fetched.Policy.TTLSeconds) == metadata.TTLSeconds
+}
+
+// contentKeysOf unwraps the share, which the server sends only with the object.
+func contentKeysOf(
+	link *openLink,
+	passphraseKey []byte,
+	shareKey *ecdh.PrivateKey,
+	wrapped *[share.WrappedLen]byte,
+) (keys.ContentKeys, error) {
+	if wrapped == nil {
+		return keys.ContentKeys{}, errTampered
+	}
+	expiryShare, err := share.Unwrap(shareKey, wrapped)
+	if err != nil {
+		return keys.ContentKeys{}, err
+	}
+	defer clear(expiryShare[:])
+	return keys.DeriveContent(link.id, &link.secret, passphraseKey, &expiryShare)
 }
 
 func passphraseKey(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
@@ -265,9 +313,10 @@ func fetchEnvelope(
 	api *client.Client,
 	link *openLink,
 	verifier *[core.SeedLen]byte,
+	shareKey *ecdh.PrivateKey,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
+	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, shareKey.PublicKey(), size, nil)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}
@@ -275,7 +324,7 @@ func fetchEnvelope(
 		return client.Envelope{}, "", err
 	}
 	for range blobRetries {
-		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
+		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, shareKey.PublicKey(), claimed.Lease, size)
 		if blobErr == nil {
 			return fetched, claimed.Lease, nil
 		}
@@ -321,7 +370,7 @@ func saveMessage(
 		return nil, nil
 	}
 	if directory == "" {
-		return nil, errAttachmentNeedsOut
+		return nil, errAttachmentDiscarded
 	}
 	defer wipeOutputFiles(files)
 	paths, err := writeWithFallback(environment, directory, base, files)

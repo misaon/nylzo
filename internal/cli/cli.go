@@ -27,7 +27,11 @@ type subcommand struct {
 
 var (
 	fragmentLike = regexp.MustCompile(
-		fmt.Sprintf(`#[0-9]+\.[0-9]+\.[A-Za-z0-9_-]{%d}`, base64.RawURLEncoding.EncodedLen(core.SecretLen)),
+		fmt.Sprintf(
+			`#[0-9]+\.[0-9]+\.(?:[A-Za-z0-9_-]{%d}\.)?[A-Za-z0-9_-]{%d}`,
+			base64.RawURLEncoding.EncodedLen(core.IDLen),
+			base64.RawURLEncoding.EncodedLen(core.SecretLen),
+		),
 	)
 	commandLike = regexp.MustCompile(`^[a-z][a-z-]{0,19}$`)
 )

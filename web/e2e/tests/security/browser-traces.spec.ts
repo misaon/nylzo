@@ -74,8 +74,8 @@ test(
     await expect(page.getByText('The message cannot be opened safely')).toBeVisible();
     const stored = await browserStorage(page);
     expect(Object.keys(stored.session).toSorted((left, right) => left.localeCompare(right))).toEqual([
-      `nylzo:dropped:${message.id}`,
-      `nylzo:lease:${message.id}`,
+      'nylzo:dropped:r',
+      'nylzo:lease:r',
     ]);
     expect(JSON.stringify(stored)).not.toContain(message.secret);
     expect(stored.databases).toEqual([]);
@@ -176,7 +176,9 @@ test('Chromium offers to save neither passphrase (W2-03)', async () => {
     await sender.getByLabel('Message text').fill('saved nowhere');
     await sender.getByRole('button', { name: 'Passphrase', exact: true }).click();
     await sender.getByRole('switch', { name: /^Protect with a passphrase/ }).click();
-    await sender.getByLabel('Passphrase, optional').pressSequentially(PASSPHRASE);
+    const chosen = sender.getByLabel('Passphrase, optional');
+    await chosen.clear();
+    await chosen.pressSequentially(PASSPHRASE);
     await sender.getByRole('button', { name: 'Create link' }).click();
     const link = await sender.getByLabel('Link to the message').inputValue({ timeout: 45_000 });
     const recipient = await context.newPage();

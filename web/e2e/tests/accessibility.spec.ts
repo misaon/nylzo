@@ -150,7 +150,7 @@ test('the read page in every state, with its report form and its delete and down
   await expect(page.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 
-  await openFresh(page, `${BASE_URL}/m/${message.id}#0.0.${message.secret}`);
+  await openFresh(page, `${BASE_URL}/r#0.0.${message.id}.${message.secret}`);
   await expect(page.getByText(/The link is incomplete or damaged/)).toBeVisible();
   await expectAccessible(page, 'damaged link');
 });

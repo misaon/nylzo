@@ -4,14 +4,26 @@ import (
 	"encoding/hex"
 
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/server/epoch"
 )
 
 type Server struct {
-	Pepper           string    `json:"pepper_hex"`
-	PepperID         int       `json:"pepper_id"`
-	PreviousPepper   string    `json:"previous_pepper_hex"`
-	PreviousPepperID int       `json:"previous_pepper_id"`
-	MACs             []MACCase `json:"macs"`
+	Pepper           string      `json:"pepper_hex"`
+	PepperID         int         `json:"pepper_id"`
+	PreviousPepper   string      `json:"previous_pepper_hex"`
+	PreviousPepperID int         `json:"previous_pepper_id"`
+	MACs             []MACCase   `json:"macs"`
+	Epochs           []EpochCase `json:"epochs"`
+}
+
+// EpochCase is one hour of the share ratchet of spec section 5.6, starting from a fixed seed.
+type EpochCase struct {
+	Hour     uint32 `json:"hour"`
+	Seed     string `json:"seed_hex"`
+	EpochKey string `json:"epoch_key_hex"`
+	Locator  string `json:"locator_hex"`
+	Share    string `json:"e_hex"`
 }
 
 type MACCase struct {
@@ -55,6 +67,22 @@ func (f *File) server() error {
 			Input:   hex.EncodeToString(input),
 			MAC:     hex.EncodeToString(mac[:]),
 		})
+	}
+	seed := epoch.Seed(*deterministic32("epoch/seed"))
+	epochID := deterministicID("epoch")
+	locator := seal.LocatorOf(epochID[:])
+	const firstHour = 493_000
+	for hour := uint32(firstHour); hour < firstHour+3; hour++ {
+		key := epoch.Key(&seed)
+		share := epoch.ShareOf(&key, locator)
+		f.Server.Epochs = append(f.Server.Epochs, EpochCase{
+			Hour:     hour,
+			Seed:     hex.EncodeToString(seed[:]),
+			EpochKey: hex.EncodeToString(key[:]),
+			Locator:  hex.EncodeToString(locator[:]),
+			Share:    hex.EncodeToString(share[:]),
+		})
+		seed = epoch.Next(&seed)
 	}
 	return nil
 }

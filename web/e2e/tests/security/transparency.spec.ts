@@ -21,7 +21,7 @@ test('nylzo verify-client finds the embedded web client unchanged on the server 
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 6 pages and \d+ files checked\n$/);
+  expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 7 pages and \d+ files checked\n$/);
 });
 
 test('the transparency page shows its embedded client build, reported server version and file hashes (D61)', async ({

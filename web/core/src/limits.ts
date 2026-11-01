@@ -1,23 +1,26 @@
-export const VERSION = 1;
-export const FRAGMENT_VERSION = 1;
+export const VERSION = 2;
+export const FRAGMENT_VERSION = 2;
 
 export const ID_LENGTH = 16;
 export const SECRET_LENGTH = 32;
 export const KEY_LENGTH = 32;
 export const SEED_LENGTH = 32;
+export const SHARE_LENGTH = 32;
+export const OBJECT_HASH_LENGTH = 32;
 export const IV_LENGTH = 12;
 export const TAG_LENGTH = 16;
 export const HEADER_LENGTH = 15;
+export const COMMITMENT_LENGTH = 32;
+export const PREFIX_LENGTH = HEADER_LENGTH + COMMITMENT_LENGTH;
 export const POLICY_LENGTH = 6;
 
 export const MAX_TEXT_BYTES = 100 * 1024;
 export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_META_BYTES = 102 * 1024;
 export const META_LEN_PREFIX = 4;
-export const PAD_TEXT = 4096;
-export const PAD_FILE = 65_536;
+export const PAD = 65_536;
 const OBJECT_SLACK = 64;
-export const MAX_OBJECT_BYTES = MAX_FILE_BYTES + MAX_TEXT_BYTES + PAD_FILE + OBJECT_SLACK;
+export const MAX_OBJECT_BYTES = MAX_FILE_BYTES + MAX_TEXT_BYTES + PAD + OBJECT_SLACK;
 export const MAX_FILE_NAME = 255;
 export const MAX_MIME_BYTES = 255;
 export const MAX_JSON_DEPTH = 32;

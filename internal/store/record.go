@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	recordFormat = 1
+	recordFormat = 2
 	macLen       = 32
-	fieldsLen    = 103
+	fieldsLen    = 123
 	leaseLen     = 42
 	blobRefLen   = 16
 )
@@ -33,7 +33,7 @@ func NewDummyRow() Row {
 	rand.Read(manageKey[:])
 	rand.Read(ref[:])
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
-	message := &Message{Version: 1, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
+	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
 	blobRef := base64.RawURLEncoding.EncodeToString(ref[:blobRefLen])
 	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobRef, seal.NewKey()).Row
 }
@@ -205,7 +205,10 @@ func encodeMessage(message *Message) []byte {
 	data = append(data, narrow8(slices.Index(endings, message.Ending)))
 	data = appendTime(data, message.EndedAt)
 	data = binary.BigEndian.AppendUint32(data, narrow32(message.ReportDay))
-	data = append(data, narrow8(message.Reports), narrow8(len(message.Leases)))
+	data = append(data, narrow8(message.Reports))
+	data = binary.BigEndian.AppendUint32(data, message.Epoch)
+	data = append(data, message.RatchetID[:]...)
+	data = append(data, narrow8(len(message.Leases)))
 	for _, lease := range message.Leases {
 		data = append(data, lease.PepperID)
 		data = append(data, fixedMAC(lease.MAC)...)
@@ -241,7 +244,8 @@ func (d *decoder) remaining(length int) bool { return len(d.data) >= length }
 
 func decodeMessage(data []byte) (*Message, error) {
 	fields := &decoder{data: data}
-	if fields.readByte() != recordFormat {
+	format := fields.readByte()
+	if format != recordFormat {
 		return nil, fmt.Errorf("%w: unknown record format", ErrCorrupt)
 	}
 	message := &Message{Version: fields.readByte(), KDF: fields.readByte(), Flags: fields.readByte()}
@@ -265,6 +269,8 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.EndedAt = fields.readTime()
 	message.ReportDay = int64(fields.readUint32())
 	message.Reports = int(fields.readByte())
+	message.Epoch = fields.readUint32()
+	copy(message.RatchetID[:], fields.next(RatchetIDLen))
 	leases := int(fields.readByte())
 	if fields.truncated() || ending >= len(endings) || hasVerifier > 1 || !fields.remaining(leases*leaseLen) {
 		return nil, fmt.Errorf("%w: truncated or unknown field", ErrCorrupt)

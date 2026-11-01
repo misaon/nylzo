@@ -22,16 +22,17 @@ interface DeriveVector {
   readonly s: string;
   readonly kdf_id: number;
   readonly passphrase?: string;
+  readonly e_hex: string;
   readonly hsalt_hex: string;
   readonly r_hex: string;
   readonly salt_pw_hex: string;
   readonly p_hex: string;
   readonly k_hex: string;
+  readonly kc_hex: string;
   readonly v_hex: string;
   readonly m_hex: string;
-  readonly fragment: string;
   readonly read_key: string;
-  readonly verifier_key?: string;
+  readonly verifier_key: string;
   readonly manage_key: string;
 }
 
@@ -48,6 +49,7 @@ interface EnvelopeVector {
   readonly s: string;
   readonly kdf_id: number;
   readonly passphrase?: string;
+  readonly e_hex: string;
   readonly flags: number;
   readonly iv_hex: string;
   readonly opens_max: number;
@@ -56,10 +58,42 @@ interface EnvelopeVector {
   readonly file?: FileVector;
   readonly meta_json: string;
   readonly plaintext_len: number;
+  readonly commitment_hex: string;
   readonly aad_hex: string;
   readonly object_len: number;
   readonly object_sha256: string;
+  readonly h: string;
+  readonly link: string;
   readonly object_b64?: string;
+}
+
+interface RejectedVector {
+  readonly name: string;
+  readonly base: string;
+  readonly object_from?: string;
+  readonly object_b64?: string;
+  readonly flip_byte?: number;
+  readonly truncate_to?: number;
+  readonly h: string;
+  readonly e_hex: string;
+  readonly kdf_id: number;
+  readonly passphrase?: string;
+  readonly error: 'flags' | 'integrity' | 'kdf_mismatch' | 'plaintext' | 'version';
+}
+
+interface CompressedLengthVector {
+  readonly original_len: number;
+  readonly needed_len: number;
+  readonly object_len: number;
+}
+
+interface ShareVector {
+  readonly name: string;
+  readonly client_private_hex: string;
+  readonly client_public: string;
+  readonly e_hex?: string;
+  readonly wrapped: string;
+  readonly valid: boolean;
 }
 
 interface LinkVector {
@@ -70,8 +104,10 @@ interface LinkVector {
   readonly id?: string;
   readonly kdf_id?: number;
   readonly s_hex?: string;
+  readonly h_hex?: string;
   readonly newer_version?: boolean;
   readonly retired_kdf?: boolean;
+  readonly released?: boolean;
 }
 
 interface MetaVector {
@@ -123,10 +159,15 @@ interface VectorFile {
   readonly scrypt_rfc7914: readonly ScryptVector[];
   readonly derive: readonly DeriveVector[];
   readonly envelope: readonly EnvelopeVector[];
+  readonly envelope_rejected: readonly RejectedVector[];
+  readonly compressed_length: readonly CompressedLengthVector[];
+  readonly share: readonly ShareVector[];
   readonly link: readonly LinkVector[];
   readonly meta: readonly MetaVector[];
   readonly passphrase_strength: readonly StrengthVector[];
   readonly passphrase_list_sha256: string;
+  readonly unicode_assigned_sha256: string;
+  readonly unicode_assigned_version: string;
   readonly request: readonly RequestVector[];
   readonly pow: readonly PowVector[];
 }
@@ -135,14 +176,25 @@ export const vectors = loadVectors();
 
 function loadVectors(): VectorFile {
   const file = JSON.parse(readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8')) as VectorFile;
-  const sections = [file.derive, file.envelope, file.link, file.meta, file.passphrase_strength, file.request, file.pow];
+  const sections = [
+    file.derive,
+    file.envelope,
+    file.envelope_rejected,
+    file.compressed_length,
+    file.share,
+    file.link,
+    file.meta,
+    file.passphrase_strength,
+    file.request,
+    file.pow,
+  ];
   const complete =
-    file.spec === 'nylzo/v1' &&
+    file.spec === 'nylzo/v2' &&
     file.scrypt_rfc7914.length === 4 &&
     sections.every((section) => section.length > 0) &&
     file.link.some((vector) => vector.canonical === true);
   if (!complete) {
-    throw new Error('spec/vectors.json lacks the nylzo/v1 cases these tests check');
+    throw new Error('spec/vectors.json lacks the nylzo/v2 cases these tests check');
   }
   return file;
 }

@@ -75,6 +75,7 @@ func (s *Server) variables() []variable {
 	return []variable{
 		{"NYLZO_LISTEN", text(&s.Listen)},
 		{"NYLZO_DATA_DIR", text(&s.DataDir)},
+		{"NYLZO_EPOCH_DIR", text(&s.EpochDir)},
 		{"NYLZO_TRUSTED_PROXIES", s.parseTrustedProxies},
 		{"NYLZO_PROXY_MODE", s.parseProxyMode},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", func(string) error {

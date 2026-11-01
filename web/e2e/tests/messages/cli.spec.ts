@@ -22,13 +22,13 @@ function passphraseFile(): string {
 
 test('messages from the CLI, with and without a passphrase, open in the browser', async ({ page }) => {
   const plain = runCli(['create', '--server', BASE_URL], 'z příkazové řádky').trim();
-  expect(plain).toContain('#1.0.');
+  expect(plain).toContain('#2.0.');
   await showMessage(page, plain);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('z příkazové řádky');
 
   const guarded = runCli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile()], 'chráněno').trim();
-  expect(guarded).toContain('#1.1.');
+  expect(guarded).toContain('#2.3.');
   await showMessage(page, guarded, PASSPHRASE);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('chráněno');
@@ -53,14 +53,14 @@ test('the CLI reads messages and files created in the browser', async ({ page })
 });
 
 test(
-  'a compressed CLI attachment opens and downloads unchanged in every browser',
+  'an attachment the CLI sender chose to compress opens and downloads unchanged in every browser (W2-06, F6)',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-compressed-'));
     const file = path.join(directory, 'rows.csv');
     const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
     writeFileSync(file, bytes, { mode: 0o600 });
-    const link = runCli(['create', '--server', BASE_URL, '--from-file', file], '').trim();
+    const link = runCli(['create', '--server', BASE_URL, '--compress', '--from-file', file], '').trim();
     await showMessage(page, link);
     await expectMessageShown(page);
     const downloading = page.waitForEvent('download');
@@ -74,7 +74,7 @@ test(
 );
 
 test(
-  'the browser compresses an attachment before upload and the CLI restores its bytes',
+  'the browser never compresses an attachment on its own and the CLI restores its bytes (W2-06, F6)',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
@@ -86,37 +86,12 @@ test(
       file: { name: 'rows.csv', mimeType: 'text/csv', buffer: bytes },
     });
     const request = await upload;
-    expect(request.postDataBuffer()?.length).toBe(65_536);
-    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-compressed-out-'));
+    expect(request.postDataBuffer()?.length).toBe(262_144);
+    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-uncompressed-out-'));
     const lines = runCli(['read', '--out', directory], link).trim().split('\n');
     const text = lines.find((file) => path.basename(file) === 'message.txt') ?? '';
     expect(readFileSync(text, 'utf8')).toBe('separate uncompressed message');
     const saved = lines.find((file) => path.basename(file) === 'rows.csv') ?? '';
-    expect(path.basename(saved)).toBe('rows.csv');
-    expect(readFileSync(saved).equals(bytes)).toBe(true);
-  },
-);
-
-test(
-  'an older instance without compression support receives the original attachment format',
-  { tag: '@cross-browser' },
-  async ({ page }) => {
-    await page.route('**/api/v1/instance', async (route) => {
-      const response = await route.fetch();
-      const body = (await response.json()) as Record<string, unknown>;
-      delete body['file_compression'];
-      await route.fulfill({ response, json: body });
-    });
-    const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));
-    const upload = page.waitForRequest(
-      (request) => request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/messages',
-    );
-    const link = await createMessageInPage(page, { file: { name: 'rows.csv', mimeType: 'text/csv', buffer: bytes } });
-    const request = await upload;
-    expect(request.postDataBuffer()?.length).toBe(262_144);
-    const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-legacy-out-'));
-    const saved = runCli(['read', '--out', directory], link).trim();
-    expect(path.basename(saved)).toBe('rows.csv');
     expect(readFileSync(saved).equals(bytes)).toBe(true);
   },
 );

@@ -9,7 +9,7 @@ type HtmlNode = DefaultTreeAdapterMap['node'];
 
 // Runs before any other resource loads, so the link secret leaves the address bar at once (Protocol §4).
 export const FRAGMENT_GUARD =
-  "(()=>{const{pathname:p,search:s,hash:h}=location;if(h===''||!p.startsWith('/m/'))return;history.replaceState(null,'',p+s);try{sessionStorage.setItem('nylzo:dropped:'+p.slice(3),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()";
+  "(()=>{const{pathname:p,search:s,hash:h}=location;if(h===''||(p!=='/r'&&!p.startsWith('/m/')))return;history.replaceState(null,'',p+s);try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()";
 
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/.test(url) || /[?#%\\]/.test(url)) {

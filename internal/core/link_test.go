@@ -8,48 +8,65 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 )
 
-func TestParseLinkNamesNewerVersionsAndRetiredProfiles(t *testing.T) {
+func TestParseLinkNamesNewerVersionsRetiredProfilesAndReleasedLinks(t *testing.T) {
 	t.Parallel()
 	secret := core.Encode(make([]byte, core.SecretLen))
+	id := "AAAAAAAAAAAAAAAAAAAAAA"
 	const (
 		valid = iota
 		invalid
 		newer
 		retired
+		released
 	)
-	for fragment, want := range map[string]int{
-		"1.1." + secret:        valid,
-		"1.0." + secret:        valid,
-		"2.1." + secret:        newer,
-		"2":                    newer,
-		"7.a.b.c":              newer,
-		"1.9." + secret:        invalid,
-		"0.1." + secret:        invalid,
-		"02.1.":                invalid,
-		"-2.1.":                invalid,
-		"":                     invalid,
-		"1.2." + secret:        retired,
-		"1.2." + secret[:42]:   invalid,
-		"1.2." + secret + "A":  invalid,
-		"1.02." + secret:       invalid,
-		"1.2":                  invalid,
-		"1.2." + secret + ".x": invalid,
+	v1 := "https://nylzo.example/m/" + id + "#"
+	v2 := "https://nylzo.example/r#"
+	fields := "." + id + "." + secret + "." + secret
+	for link, want := range map[string]int{
+		v1 + "1.1." + secret:            released,
+		v1 + "1.0." + secret:            released,
+		v1 + "1.3." + secret:            invalid,
+		v1 + "3.1." + secret:            newer,
+		v1 + "2":                        invalid,
+		v2 + "2.0" + fields:             valid,
+		v2 + "2.3" + fields:             valid,
+		v2 + "2.1" + fields:             invalid,
+		v2 + "2.2" + fields:             retired,
+		v2 + "2.02" + fields:            invalid,
+		v2 + "2.3" + fields + ".x":      invalid,
+		v2 + "2.3." + id + "." + secret: invalid,
+		v2 + "3":                        newer,
+		v2 + "7.a.b.c":                  newer,
+		v2 + "0.3" + fields:             invalid,
+		v2 + "02.3":                     invalid,
+		v2 + "-2.3":                     invalid,
+		v2:                              invalid,
+		v1 + "1.2." + secret:            released,
+		v1 + "1.2." + secret[:42]:       invalid,
+		v1 + "1.2." + secret + "A":      invalid,
+		v1 + "1.02." + secret:           invalid,
+		v1 + "1.2":                      invalid,
+		v1 + "1.2." + secret + ".x":     invalid,
+		"https://nylzo.example/m/" + id + "#2.3" + fields: invalid,
+		"https://nylzo.example/r#1.1." + secret:           invalid,
 	} {
-		link, err := core.ParseLink("https://nylzo.example/m/AAAAAAAAAAAAAAAAAAAAAA#" + fragment)
+		parsed, err := core.ParseLink(link)
 		got := valid
 		switch {
 		case errors.Is(err, core.ErrLinkVersion):
 			got = newer
 		case errors.Is(err, core.ErrLinkRetiredKDF):
 			got = retired
+		case errors.Is(err, core.ErrLinkReleased):
+			got = released
 		case errors.Is(err, core.ErrLink):
 			got = invalid
 		case err != nil:
-			t.Fatalf("%q: an error outside ErrLink: %v", fragment, err)
+			t.Fatalf("%q: an error outside ErrLink: %v", link, err)
 		default:
 		}
-		if got != want || (err != nil && link != (core.Link{})) {
-			t.Errorf("%q: got class %d (%v), want %d", fragment, got, err, want)
+		if got != want || (err != nil && parsed != (core.Link{})) {
+			t.Errorf("%q: got class %d (%v), want %d", link, got, err, want)
 		}
 	}
 }
@@ -83,15 +100,16 @@ func TestDecodeExactAcceptsOnlyTheCanonicalEncoding(t *testing.T) {
 
 func FuzzParseLink(f *testing.F) {
 	id := core.NewID()
-	f.Add(core.FormatLink("https://nylzo.example", id, core.KDFScrypt, core.NewSecret()))
-	f.Add("https://nylzo.example/m/" + id.String())
-	f.Add("#1.0.")
+	f.Add(core.FormatLink("https://nylzo.example", id, core.KDFScrypt, core.NewSecret(), new([core.ObjectHashLen]byte)))
+	f.Add("https://nylzo.example/m/" + id.String() + "#1.0." + core.Encode(make([]byte, core.SecretLen)))
+	f.Add("#2.0.")
 	f.Fuzz(func(t *testing.T, raw string) {
 		link, err := core.ParseLink(raw)
 		if err != nil {
 			return
 		}
-		again, err := core.ParseLink(core.FormatLink("https://nylzo.example", link.ID, link.KDF, &link.Secret))
+		formatted := core.FormatLink("https://nylzo.example", link.ID, link.KDF, &link.Secret, &link.ObjectHash)
+		again, err := core.ParseLink(formatted)
 		if err != nil || again != link {
 			t.Fatal("a parsed link does not round trip")
 		}

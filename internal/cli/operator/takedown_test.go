@@ -95,7 +95,7 @@ func TestTakedownChecksEveryLineFirst(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	id := storeMessage(t, directory)
-	link := core.FormatLink("https://nylzo.example", id, core.KDFNone, core.NewSecret())
+	link := core.FormatLink("https://nylzo.example", id, core.KDFNone, core.NewSecret(), core.NewSecret())
 	variables := map[string]string{"NYLZO_DATA_DIR": directory}
 	for _, input := range []string{
 		id.String() + "\n" + link + "\n",

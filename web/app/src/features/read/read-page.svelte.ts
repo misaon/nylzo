@@ -1,3 +1,4 @@
+import { KDF_NONE } from '@nylzo/core';
 import { flushSync, onDestroy, tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
@@ -182,7 +183,7 @@ export class ReadPage {
       });
     }
     chips.push({ icon: 'eye', text: this.opensLeft(this.metadata.opensRemaining) });
-    if (this.metadata.passphraseRequired) {
+    if (this.metadata.kdfId !== KDF_NONE) {
       chips.push({ icon: 'key', text: translate('compose.passphrase.chip'), accent: true });
     }
     return chips;
@@ -476,7 +477,7 @@ export class ReadPage {
     const wasOpening = this.opening;
     this.view = next;
     if (next.view === 'ready') {
-      this.passphraseRequired = next.metadata.passphraseRequired;
+      this.passphraseRequired = next.metadata.kdfId !== KDF_NONE;
       this.metadata = next.metadata;
       this.typedAgain = false;
       this.emptyPassphrase = false;

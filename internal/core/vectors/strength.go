@@ -21,34 +21,44 @@ const face = "\U0001F600"
 
 var strengthCases = []Strength{
 	{"empty", "", false, keys.PassphraseShort},
-	{"eleven ASCII characters", "eleven char", false, keys.PassphraseShort},
-	{"twelve ASCII characters", "twelve chars", true, ""},
-	{"eleven characters after NFC, twelve code points before", "café au lai", false, keys.PassphraseShort},
-	{"twelve characters after NFC", "café au lait", true, ""},
-	{"eleven astral characters", strings.Repeat(face, 11), false, keys.PassphraseShort},
-	{"twelve equal astral characters", strings.Repeat(face, 12), false, keys.PassphraseRepetitive},
+	{"twelve ASCII characters", "twelve chars", false, keys.PassphraseShort},
+	{"fourteen ASCII characters", "fourteen chars", false, keys.PassphraseShort},
+	{"fifteen ASCII characters", "fifteen chars x", true, ""},
+	{"fourteen characters after NFC, fifteen code points before", "cafe\u0301 au laitxy", false, keys.PassphraseShort},
+	{"fifteen characters after NFC", "cafe\u0301 au laitxyz", true, ""},
+	{"fourteen astral characters", strings.Repeat(face, 14), false, keys.PassphraseShort},
+	{"fifteen equal astral characters", strings.Repeat(face, 15), false, keys.PassphraseRepetitive},
 	{
-		"twelve distinct astral characters",
-		"\U0001F600\U0001F601\U0001F602\U0001F603\U0001F604\U0001F605\U0001F606\U0001F607\U0001F608\U0001F609\U0001F60A\U0001F60B",
+		"fifteen distinct astral characters",
+		"\U0001F600\U0001F601\U0001F602\U0001F603\U0001F604\U0001F605\U0001F606\U0001F607\U0001F608\U0001F609\U0001F60A\U0001F60B\U0001F60C\U0001F60D\U0001F60E",
 		true,
 		"",
 	},
-	{"one character twelve times", "aaaaaaaaaaaa", false, keys.PassphraseRepetitive},
-	{"two characters in turn", "abababababab", false, keys.PassphraseRepetitive},
-	{"six distinct characters twice", "abcdefabcdef", false, keys.PassphraseRepetitive},
-	{"repetition hidden by letter case", "ABCDEFabcdef", false, keys.PassphraseRepetitive},
-	{"part of a repetition", "abcdefgabcdefga", false, keys.PassphraseRepetitive},
-	{"alphabet", "abcdefghijkl", false, keys.PassphraseSequential},
-	{"alphabet backwards", "lkjihgfedcba", false, keys.PassphraseSequential},
-	{"digits across zero", "7890123456789", false, keys.PassphraseSequential},
-	{"QWERTY row", "qwertyuiopas", false, keys.PassphraseSequential},
-	{"QWERTZ row in capitals", "QWERTZUIOPASDF", false, keys.PassphraseSequential},
-	{"alphabet with separators", "a-b c_d.e-f g_h", false, keys.PassphraseSequential},
-	{"service name twice", "nylzonylzo12", false, keys.PassphraseContext},
-	{"service name with a short word", "NylzoPassword", false, keys.PassphraseContext},
-	{"common password", "password1234", false, keys.PassphraseCommon},
-	{"common password in capitals", "IloveYou1234", false, keys.PassphraseCommon},
-	{"common keyboard walk outside the sequences", "1qaz2wsx3edc", false, keys.PassphraseCommon},
+	{"one character fifteen times", "aaaaaaaaaaaaaaa", false, keys.PassphraseRepetitive},
+	{"two characters in turn", "abababababababab", false, keys.PassphraseRepetitive},
+	{"six distinct characters repeated", "abcdefabcdefabc", false, keys.PassphraseRepetitive},
+	{"repetition hidden by letter case", "ABCDEFabcdefABC", false, keys.PassphraseRepetitive},
+	{"part of a repetition", "abcdefgabcdefgab", false, keys.PassphraseRepetitive},
+	{"alphabet", "abcdefghijklmno", false, keys.PassphraseSequential},
+	{"alphabet backwards", "onmlkjihgfedcba", false, keys.PassphraseSequential},
+	{"digits across zero", "567890123456789", false, keys.PassphraseSequential},
+	{"QWERTY row", "qwertyuiopasdfg", false, keys.PassphraseSequential},
+	{"QWERTZ row in capitals", "QWERTZUIOPASDFGH", false, keys.PassphraseSequential},
+	{"alphabet with separators", "a-b c_d.e-f g_h.i j", false, keys.PassphraseSequential},
+	{"service name twice", "nylzonylzo12345", false, keys.PassphraseContext},
+	{"service name with a short word", "NylzoPassword12", false, keys.PassphraseContext},
+	{"common password", "polniypizdec0211", false, keys.PassphraseCommon},
+	{"common password in capitals", "PolniyPizdec0211", false, keys.PassphraseCommon},
+	{"common keyboard walk outside the sequences", "1q2w3e4r5t6y7u8i9o0p", false, keys.PassphraseCommon},
+	{"code point never assigned", "a passphrase \u0378 with a gap", false, keys.PassphraseUnassigned},
+	{
+		"Kirat Rai pair that Unicode 16 composes",
+		"kirat rai \U00016D63\U00016D67 composes",
+		false,
+		keys.PassphraseUnassigned,
+	},
+	{"emoji of Unicode 16", "tired face \U0001FAE9 is new", false, keys.PassphraseUnassigned},
+	{"ideograph of Unicode 15.1", "ideograph \U0002EBF0 from 15.1", true, ""},
 	{"generated passphrase", "k7m2-x9pz-b4tf-hq3w", true, ""},
 	{"four words", "correct horse battery staple", true, ""},
 }
@@ -71,5 +81,8 @@ func (f *File) strength() error {
 	}
 	sum := sha256.Sum256([]byte(keys.CommonPassphraseList))
 	f.ListHash = hex.EncodeToString(sum[:])
+	assigned := sha256.Sum256([]byte(keys.AssignedCodePointList))
+	f.AssignedHash = hex.EncodeToString(assigned[:])
+	f.AssignedVersion = keys.AssignedUnicodeVersion
 	return nil
 }

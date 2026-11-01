@@ -32,6 +32,8 @@ export const english: Record<MessageKey, string> = {
   'problem.passphrase.sequential': 'The passphrase is a run of letters, digits or keyboard keys.',
   'problem.passphrase.context': 'The passphrase is mostly the word Nylzo.',
   'problem.passphrase.common': 'This passphrase is on a list of commonly used passwords.',
+  'problem.passphrase.unassigned':
+    'The passphrase has a character newer than Unicode 15.1, which another device could read differently.',
 
   'failure.instance': 'The service settings could not be loaded.',
   'failure.rate_limited': 'Too many messages in a short time. Try again in {time}.',
@@ -171,6 +173,7 @@ export const english: Record<MessageKey, string> = {
   'report.failed': 'The report could not be sent. Try again.',
   'report.problem.link_invalid': 'The link is incomplete or damaged.',
   'report.problem.link_newer': 'The link needs a newer version of Nylzo.',
+  'report.problem.link_released': 'A security upgrade of this server deleted the message of this link.',
   'report.problem.link_retired': 'The link uses a retired passphrase method.',
   'report.problem.link_foreign': 'The link belongs to another service.',
   'report.problem.reason_too_long': 'The reason is longer than {bytes} bytes.',
@@ -385,6 +388,9 @@ export const english: Record<MessageKey, string> = {
   'open.notice.retired': 'This link uses a retired passphrase method',
   'open.notice.retired.text':
     'Nylzo no longer supports this protection, so the message cannot be opened. This page did not use it up. Ask the sender for a new link.',
+  'open.notice.released': 'A security upgrade deleted this message',
+  'open.notice.released.text':
+    'The link was created before this server upgraded, and the upgrade deleted every message from before it. Nobody can open it now. Ask the sender to send it again.',
   'open.notice.removed': 'The key is no longer in the address bar',
   'open.notice.removed.text':
     'For safety this page removes the key from the address as soon as it reads it. To try again, paste the link below or open it again.',
@@ -439,21 +445,21 @@ export const english: Record<MessageKey, string> = {
   'how.link.host.title': 'Server address',
   'how.link.host.meta': 'seen by the server and the network',
   'how.link.host.body':
-    'The domain and the path to the message. The server gets this part when you open the page, and the network you use sees the domain too.',
+    'The domain and a page path that is the same for every message. The server gets this part when you open the page, and the network you use sees the domain too.',
   'how.link.id.title': 'Message id',
   'how.link.id.meta': '128 bits, seen by the server',
   'how.link.id.body':
-    'A random number the server uses to find the encrypted data. On its own it opens nothing: that takes the key, which comes after the # sign.',
+    'A random number the server uses to find the encrypted data. The browser sends it only when it asks the server for the message. On its own it opens nothing: that takes the key right after it.',
   'how.link.meta.title': 'Version and profile',
   'how.link.meta.meta': 'after the #, known to the server anyway',
   'how.link.meta.body':
-    'The 1 is the link format version, the 0 means a message without a passphrase. From the version, an older Nylzo recognises a link from a newer one and says so instead of calling it damaged. The server stores both values with the message too, so this part tells it nothing new.',
+    'The 2 is the link format version, the 0 means a message without a passphrase. From the version, an older Nylzo recognises a link from a newer one and says so instead of calling it damaged. The server stores both values with the message too, so this part tells it nothing new.',
   'how.link.key.title': 'Message key',
   'how.link.key.meta': '256 bits, only in the browser',
   'how.link.key.body':
-    'Everything after the # sign stays in the browser, which sends it in no request, so it never reaches the server or the hosting that way. Without it, nobody can read the message.',
+    'The message key and a fingerprint of the encrypted data. The browser sends them in no request, so they never reach the server or the hosting that way. Without the key, nobody can read the message; the fingerprint lets the browser check that it got exactly the message the sender sent.',
   'how.link.server.body':
-    "The server gets the page address and the message id; your browser sends nothing after the # sign. The page's code comes from the server too, though, so a server in someone else's hands could change it to read the messages opened in it. The local client (nylzo web, nylzo open) and the nylzo command line run no code from the server.",
+    "The server gets the page address, which is the same for every message, and the message id when the browser asks for the message; your browser sends nothing else after the # sign. The page's code comes from the server too, though, so a server in someone else's hands could change it to read the messages opened in it. The local client (nylzo web, nylzo open) and the nylzo command line run no code from the server.",
   'who.eyebrow': 'Who sees what',
   'who.title': 'The data on the server does not reveal the message',
   'who.sub':

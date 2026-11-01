@@ -66,14 +66,14 @@
           <p
             class="flex items-center justify-between gap-3 rounded-[10px] bg-white/3 px-3.5 py-2.5 ring-1 ring-white/6"
           >
-            <span class="truncate font-mono text-[13px] text-ink-mute">…/m/Q3tN0xvR8kLp</span>
+            <span class="truncate font-mono text-[13px] text-ink-mute">…/r#2.0.Q3tN0xvR8kLp</span>
             <span class="shrink-0 text-xs text-rose-300">{translate('extra.signed.denied')}</span>
           </p>
           <p
             class="flex items-center justify-between gap-3 rounded-[10px] bg-aegis-500/10 px-3.5 py-2.5 ring-1 ring-aegis-400/25"
           >
             <span class="truncate font-mono text-[13px] text-ink-soft"
-              >…/m/Q3tN…<span class="text-aegis-200">#1.0.Vh2s</span></span
+              >…/r#2.0.Q3tN…<span class="text-aegis-200">.Vh2s</span></span
             >
             <span class="shrink-0 text-xs text-aegis-200">{translate('extra.signed.opens')}</span>
           </p>

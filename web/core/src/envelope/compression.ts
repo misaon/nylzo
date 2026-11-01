@@ -1,12 +1,14 @@
 import { PlaintextError } from '../errors.ts';
-import { MAX_FILE_BYTES } from '../limits.ts';
+import { MAX_FILE_BYTES, PAD } from '../limits.ts';
 import { arrayBufferBacked } from '../primitives/bytes.ts';
 
-const MIN_COMPRESS_BYTES = 128 * 1024;
 const DECOMPRESS_CHUNK_BYTES = 1024;
+const GZIP_HEADER_LENGTH = 10;
+const GZIP_FLAGS_OFFSET = 3;
+const GZIP_RESERVED_FLAGS = 0xe0;
 
 export async function compressAttachment(file: Uint8Array): Promise<Uint8Array<ArrayBuffer> | undefined> {
-  if (typeof CompressionStream === 'undefined' || file.length < MIN_COMPRESS_BYTES) {
+  if (typeof CompressionStream === 'undefined') {
     return undefined;
   }
   const source = new Blob([arrayBufferBacked(file)]).stream();
@@ -15,8 +17,29 @@ export async function compressAttachment(file: Uint8Array): Promise<Uint8Array<A
   return readBounded(compressed, file.length);
 }
 
+// The object length of a compressed attachment, or 0 to keep the original (spec 3.2).
+export function compressedLength(original: number, needed: number): number {
+  let chosen = 0;
+  for (let divisor = 2; ; divisor *= 2) {
+    const halving = Math.ceil(Math.ceil(original / divisor) / PAD) * PAD;
+    if (halving < needed || halving >= original) {
+      return chosen;
+    }
+    chosen = halving;
+    if (halving === PAD) {
+      return chosen;
+    }
+  }
+}
+
 export async function decompressAttachment(file: Uint8Array, size: number): Promise<Uint8Array<ArrayBuffer>> {
-  if (!Number.isSafeInteger(size) || size < 0 || size > MAX_FILE_BYTES) {
+  if (
+    !Number.isSafeInteger(size) ||
+    size < 0 ||
+    size > MAX_FILE_BYTES ||
+    file.length < GZIP_HEADER_LENGTH ||
+    ((file[GZIP_FLAGS_OFFSET] ?? 0) & GZIP_RESERVED_FLAGS) !== 0
+  ) {
     throw new PlaintextError();
   }
   // WebKit buffers a whole input chunk's expansion before handing it back.

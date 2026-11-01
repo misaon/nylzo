@@ -1,4 +1,12 @@
-import { encodeBase64url, HEADER_LENGTH, PowTimeoutError, solvePow, TooLargeError } from '@nylzo/core';
+import {
+  encodeBase64url,
+  HEADER_LENGTH,
+  objectHash,
+  parseLink,
+  PowTimeoutError,
+  solvePow,
+  TooLargeError,
+} from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
@@ -52,27 +60,38 @@ function input(overrides: Partial<CreateInput> = {}): CreateInput {
 }
 
 describe('creating a message', () => {
-  it.each([false, true])('compresses attachments only when the instance advertises support: %s', async (supported) => {
-    const api = fakeApi({ fileCompression: supported });
+  it.each([false, true])('W2-06, F6: compresses an attachment only when the sender asks: %s', async (asked) => {
+    const api = fakeApi();
     const bytes = new Uint8Array(256 * 1024).fill(65);
-    await createMessage(input({ file: { name: 'rows.csv', mime: 'text/csv', bytes } }), createDependencies(api));
+    const file = { name: 'rows.csv', mime: 'text/csv', bytes };
+    await createMessage(input({ file, compress: asked }), createDependencies(api));
     const [message] = api.stored.values();
-    expect(message?.request.object.length).toBe(supported ? 65_536 : 327_680);
+    expect(message?.request.object.length).toBe(asked ? 65_536 : 327_680);
+  });
+
+  it('F1, F7: pins the object in the link and sends a verifier also without a passphrase', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const [message] = api.stored.values();
+    const link = parseLink(created.link);
+    expect(link.objectHash).toEqual(await objectHash(message?.request.object ?? new Uint8Array()));
+    expect(message?.request.verifierKey).toHaveLength(32);
+    expect(message?.request.object).toHaveLength(65_536);
   });
 
   it('fetches a new id when the token expired or the id is taken', async () => {
     const api = fakeApi({ failCreate: [new ApiError(403, 'id_token'), new ApiError(409, 'conflict')] });
     const created = await createMessage(input(), createDependencies(api));
-    expect(api.calls).toEqual(['instance', 'create', 'instance', 'create', 'instance', 'create']);
-    expect(created.link).toContain(`/m/${encodeBase64url(api.issuedIds[2] ?? new Uint8Array(16))}#`);
+    expect(api.calls).toEqual(['instance+id', 'create', 'instance+id', 'create', 'instance+id', 'create']);
+    expect(created.link).toContain(`/r#2.0.${encodeBase64url(api.issuedIds[2] ?? new Uint8Array(16))}.`);
   });
 
   it('solves a challenge fetched after the key derivation and stops near the window', async () => {
     const api = fakeApi({ pow: { required: true, difficulty: 2 } });
     const dependencies = createDependencies(api);
     await createMessage(input({ passphrase: 'correct horse battery staple' }), dependencies);
-    expect(api.calls.filter((call) => ['instance', 'solve', 'create'].includes(call))).toEqual([
-      'instance',
+    expect(api.calls.filter((call) => ['instance', 'instance+id', 'solve', 'create'].includes(call))).toEqual([
+      'instance+id',
       'instance',
       'solve',
       'create',
@@ -113,6 +132,8 @@ describe('creating a message', () => {
     await createMessage(input(), createDependencies(api));
     await createMessage(input(), createDependencies(api));
     const ivs = Array.from(api.stored.values(), (message) => message.request.object.slice(3, HEADER_LENGTH));
+    const commitments = Array.from(api.stored.values(), (message) => message.request.object.slice(HEADER_LENGTH, 47));
+    expect(commitments[0]).not.toEqual(commitments[1]);
     expect(ivs).toHaveLength(2);
     expect(ivs[0]).not.toEqual(ivs[1]);
   });
@@ -137,7 +158,7 @@ describe('creating a message', () => {
         { field: 'passphrase', code: 'too_short' },
       ],
     });
-    expect(api.calls).toEqual(['instance']);
+    expect(api.calls).toEqual(['instance+id']);
   });
 
   it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
@@ -169,10 +190,12 @@ describe('creating a message', () => {
       { field: 'passphrase', code: 'malformed' },
     ]);
     for (const [passphrase, code] of [
-      ['aaaaaaaaaaaa', 'repetitive'],
-      ['qwertyuiopas', 'sequential'],
-      ['nylzonylzo12', 'context'],
-      ['Password1234', 'common'],
+      ['twelve chars', 'too_short'],
+      ['aaaaaaaaaaaaaaa', 'repetitive'],
+      ['qwertyuiopasdfg', 'sequential'],
+      ['nylzonylzo12345', 'context'],
+      ['Polniypizdec0211', 'common'],
+      ['tired face \u{1FAE9} is new', 'unassigned'],
     ] as const) {
       expect(validateCreate(input({ passphrase }), limits)).toEqual([{ field: 'passphrase', code }]);
     }

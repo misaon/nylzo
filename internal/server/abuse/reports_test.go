@@ -3,6 +3,7 @@ package abuse_test
 import (
 	"bytes"
 	"crypto/hpke"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -24,6 +25,41 @@ var operatorKey = func() hpke.PrivateKey {
 	return key
 }()
 
+// F8: the hybrid KEM follows draft-ietf-hpke-pq; a Go release that changes its encoding fails here first.
+func TestSealedReportKnownAnswer(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join("testdata", "mlkem768-x25519-report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var known struct {
+		PrivateKey string `json:"private_key"`
+		Sealed     string `json:"sealed"`
+	}
+	if err = json.Unmarshal(data, &known); err != nil {
+		t.Fatal(err)
+	}
+	key, err := abuse.ParsePrivateKey(known.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed, err := core.DecodeExact(known.Sealed, abuse.SealedLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reports, err := abuse.Open(key, sealed)
+	want := abuse.Stored{
+		Date:      "2026-10-31",
+		ID:        "AAAAAAAAAAAAAAAAAAAAAA",
+		Reason:    "known answer",
+		GoodFaith: true,
+		Contact:   "kat@example.cz",
+	}
+	if err != nil || len(reports) != 1 || reports[0] != want {
+		t.Fatalf("the report sealed by an earlier build does not open: %+v %v", reports, err)
+	}
+}
+
 func newReports(dataDir string) *abuse.Reports {
 	return abuse.NewReports(dataDir, operatorKey.PublicKey(), slog.New(slog.DiscardHandler), abuse.FilesBytes(0, 3))
 }
@@ -44,7 +80,7 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 	now := time.Date(2026, 10, 22, 13, 17, 5, 0, time.UTC)
 	id, other := core.NewID().String(), core.NewID().String()
 	secret := core.NewSecret()
-	link := core.FormatLink("https://nylzo.example", core.NewID(), core.KDFNone, secret)
+	link := core.FormatLink("https://nylzo.example", core.NewID(), core.KDFNone, secret, core.NewSecret())
 	contact := "abcdefghijklmnopqrstuvwxyz@example.cz"
 	report := abuse.Report{ID: id, Reason: "malware at " + link, Contact: contact, GoodFaith: true}
 	if err := reports.Record(now, &report); err != nil {

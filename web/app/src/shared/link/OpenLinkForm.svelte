@@ -15,6 +15,7 @@
     foreign: 'report.problem.link_foreign',
     invalid: 'report.problem.link_invalid',
     newer: 'report.problem.link_newer',
+    released: 'report.problem.link_released',
     retired: 'report.problem.link_retired',
   };
 

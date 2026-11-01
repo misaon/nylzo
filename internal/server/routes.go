@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/crossorigin"
@@ -43,6 +44,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
 	mux.HandleFunc("/api/", handleAPINotFound)
 	mux.HandleFunc("GET "+messagePagePath, s.handleMessagePage)
+	mux.HandleFunc("GET "+core.LinkPath, s.handleReadPage)
 	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
 	mux.HandleFunc("GET /{$}", s.pageHandler("/"))
 	mux.HandleFunc("GET /cs/{$}", s.pageHandler("/cs/"))
@@ -142,7 +144,8 @@ func spentBy(r *http.Request, challenge [signing.ChallengeLen]byte) bool {
 
 func prefetchGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		guarded := strings.HasPrefix(r.URL.Path, "/m/") || strings.HasPrefix(r.URL.Path, "/api/")
+		guarded := r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/") ||
+			strings.HasPrefix(r.URL.Path, "/api/")
 		if guarded && r.Header.Get("Sec-Purpose") != "" {
 			setRetryAfter(w, prefetchRetry)
 			writeError(w, http.StatusServiceUnavailable, errUnavailable)
@@ -186,6 +189,7 @@ type gone struct {
 
 var (
 	errBadRequest     = apiError{Error: "bad_request"}
+	errClientOutdated = apiError{Error: "client_outdated"}
 	errContact        = apiError{Error: "contact"}
 	errNotFound       = apiError{Error: "not_found"}
 	errConflict       = apiError{Error: "conflict"}

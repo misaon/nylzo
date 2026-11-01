@@ -161,13 +161,18 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 	tokens := NewIDTokens(testRing(t))
 	now := time.Now()
 	id := core.NewID()
-	ahead, _ := tokens.Issue(id, now.Add(5*time.Second))
-	if !tokens.Valid(id, ahead, now) {
+	const epoch = 493_000
+	ahead, _ := tokens.Issue(id, epoch, now.Add(5*time.Second))
+	if !tokens.Valid(id, epoch, ahead, now) {
 		t.Fatal("a token from an instance 5 s ahead must pass")
 	}
-	future, _ := tokens.Issue(id, now.Add(time.Minute))
-	expired, _ := tokens.Issue(id, now.Add(-idTokenTTL-time.Second))
-	if tokens.Valid(id, future, now) || tokens.Valid(id, expired, now) || tokens.Valid(core.NewID(), ahead, now) {
+	future, _ := tokens.Issue(id, epoch, now.Add(time.Minute))
+	expired, _ := tokens.Issue(id, epoch, now.Add(-idTokenTTL-time.Second))
+	if tokens.Valid(id, epoch, future, now) || tokens.Valid(id, epoch, expired, now) ||
+		tokens.Valid(core.NewID(), epoch, ahead, now) {
 		t.Fatal("a token outside its window or for another id was accepted")
+	}
+	if tokens.Valid(id, epoch+1, ahead, now) {
+		t.Fatal("F3: a token was accepted for another epoch than its share")
 	}
 }

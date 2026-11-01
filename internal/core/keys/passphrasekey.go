@@ -11,12 +11,15 @@ import (
 )
 
 const (
-	ScryptN = 1 << 17
+	ScryptN = 1 << 18
 	ScryptR = 8
 	ScryptP = 1
 )
 
 var ErrMalformedPassphrase = errors.New("core: passphrase is not well-formed Unicode")
+
+// derivations admits one scrypt at a time: each one holds 256 MiB, and no caller gains from two at once.
+var derivations = make(chan struct{}, 1)
 
 func NormalizePassphrase(passphrase string) []byte {
 	return []byte(norm.NFC.String(passphrase))
@@ -26,18 +29,17 @@ func DerivePassphraseKey(kdf core.KDF, passphrase string, salt *[32]byte) ([]byt
 	if err := checkPassphrase(kdf, passphrase); err != nil {
 		return nil, err
 	}
-	switch kdf {
-	case core.KDFNone:
+	if kdf == core.KDFNone {
 		return nil, nil
-	case core.KDFScrypt:
-		normalized := NormalizePassphrase(passphrase)
-		defer clear(normalized)
-		return scrypt.Key(normalized, salt[:], ScryptN, ScryptR, ScryptP, core.KeyLen)
-	case core.KDFRetired:
-		return nil, core.ErrKDF
-	default:
+	}
+	if kdf != core.KDFScrypt {
 		return nil, core.ErrKDF
 	}
+	normalized := NormalizePassphrase(passphrase)
+	defer clear(normalized)
+	derivations <- struct{}{}
+	defer func() { <-derivations }()
+	return scrypt.Key(normalized, salt[:], ScryptN, ScryptR, ScryptP, core.KeyLen)
 }
 
 func checkPassphrase(kdf core.KDF, passphrase string) error {

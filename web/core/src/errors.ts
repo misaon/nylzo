@@ -12,7 +12,7 @@ export class KdfError extends Error {
   }
 }
 
-export type PassphraseProblem = 'common' | 'context' | 'repetitive' | 'sequential' | 'short';
+export type PassphraseProblem = 'common' | 'context' | 'repetitive' | 'sequential' | 'short' | 'unassigned';
 
 export class WeakPassphraseError extends Error {
   override readonly name = 'WeakPassphraseError';
@@ -100,6 +100,13 @@ export class LinkRetiredKdfError extends LinkError {
   }
 }
 
+export class LinkReleasedError extends LinkError {
+  override readonly name = 'LinkReleasedError';
+  constructor() {
+    super('invalid link: a link from before protocol version 2, whose message the upgrade erased');
+  }
+}
+
 export class PolicyError extends Error {
   override readonly name = 'PolicyError';
   constructor(message = 'invalid policy') {
@@ -110,6 +117,13 @@ export class PolicyError extends Error {
 export class TooLargeError extends Error {
   override readonly name = 'TooLargeError';
   constructor(message = 'content exceeds limits') {
+    super(message);
+  }
+}
+
+export class ShareError extends Error {
+  override readonly name = 'ShareError';
+  constructor(message = 'the content key needs the expiry share') {
     super(message);
   }
 }

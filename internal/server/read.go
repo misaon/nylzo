@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -23,23 +25,25 @@ const (
 	leaseHeaderName    = "X-Nylzo-Lease"
 	policyHeaderName   = "X-Nylzo-Policy"
 	verifierHeaderName = "X-Nylzo-Verifier"
+	shareKeyHeaderName = "X-Nylzo-Share-Key"
+	ttlHeaderName      = "X-Nylzo-Ttl"
+	shareHeaderName    = "X-Nylzo-Share"
 	octetStream        = "application/octet-stream"
 )
 
 var errBlobSize = errors.New("server: blob size differs from the stored message size")
 
 type metadataResponse struct {
-	State              string `json:"state"`
-	CreatedAt          string `json:"created_at,omitempty"`
-	ExpiresAt          string `json:"expires_at,omitempty"`
-	OpensMax           int    `json:"opens_max"`
-	OpensRemaining     int    `json:"opens_remaining"`
-	TTLSeconds         int    `json:"ttl_s"`
-	PassphraseRequired bool   `json:"passphrase_required"`
-	KDFID              int    `json:"kdf_id"`
-	Size               int64  `json:"size"`
-	FirstOpenedAt      string `json:"first_opened_at,omitempty"`
-	EndedAt            string `json:"ended_at,omitempty"`
+	State          string `json:"state"`
+	CreatedAt      string `json:"created_at,omitempty"`
+	ExpiresAt      string `json:"expires_at,omitempty"`
+	OpensMax       int    `json:"opens_max"`
+	OpensRemaining int    `json:"opens_remaining"`
+	TTLSeconds     int    `json:"ttl_s"`
+	KDFID          int    `json:"kdf_id"`
+	Size           int64  `json:"size"`
+	FirstOpenedAt  string `json:"first_opened_at,omitempty"`
+	EndedAt        string `json:"ended_at,omitempty"`
 }
 
 type policyHeader struct {
@@ -70,16 +74,15 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, metadataResponse{
-		State:              string(record.State(now)),
-		CreatedAt:          formatTime(message.CreatedAt),
-		ExpiresAt:          formatTime(message.ExpiresAt),
-		OpensMax:           int(message.OpensMax),
-		OpensRemaining:     int(message.OpensRemaining),
-		TTLSeconds:         int(message.TTLSeconds),
-		PassphraseRequired: message.PassphraseRequired(),
-		KDFID:              int(message.KDF),
-		Size:               message.Size,
-		FirstOpenedAt:      formatOptionalTime(message.FirstOpenedAt),
+		State:          string(record.State(now)),
+		CreatedAt:      formatTime(message.CreatedAt),
+		ExpiresAt:      formatTime(message.ExpiresAt),
+		OpensMax:       int(message.OpensMax),
+		OpensRemaining: int(message.OpensRemaining),
+		TTLSeconds:     int(message.TTLSeconds),
+		KDFID:          int(message.KDF),
+		Size:           message.Size,
+		FirstOpenedAt:  formatOptionalTime(message.FirstOpenedAt),
 	})
 }
 
@@ -119,6 +122,10 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		verifier.PublicKey = dummyPublicKey
 	}
 	verifierSigned := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
+	wrappedShare, ok := s.wrappedShare(w, r, &granted.record)
+	if !ok {
+		return
+	}
 	blob, ok := s.openBlob(w, r, &granted.record)
 	if !ok {
 		return
@@ -145,7 +152,44 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if result.Message.OpensRemaining == 0 {
 		s.releaseAtLeaseEnd(&granted.record, result.Lease.ExpiresAt)
 	}
-	s.serveBlob(w, r, result.Message, core.Encode(lease[:]), blob.content)
+	s.serveBlob(w, r, result.Message, servedHeaders{lease: core.Encode(lease[:]), share: wrappedShare}, blob.content)
+}
+
+// wrappedShare recomputes E for a message and wraps it to the client's one-time key (spec section 5.6).
+func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *store.Record) (string, bool) {
+	message := record.Message
+	clientKey, err := share.ParseKey(r.Header.Get(shareKeyHeaderName))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return "", false
+	}
+	now := time.Now()
+	expiryShare, err := s.epochs.Share(epoch.RatchetID(message.RatchetID), message.Epoch, record.Row.Locator, now)
+	if errors.Is(err, epoch.ErrShareGone) {
+		s.endLostShare(w, r, record, now)
+		return "", false
+	}
+	if err != nil {
+		s.writeInternal(w, r, err)
+		return "", false
+	}
+	defer clear(expiryShare[:])
+	wrapped, err := share.Wrap(&expiryShare, clientKey)
+	if err != nil {
+		s.writeInternal(w, r, err)
+		return "", false
+	}
+	return core.Encode(wrapped[:]), true
+}
+
+// endLostShare ends a message nobody can open any more, because the seed that made its share is gone.
+func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *store.Record, now time.Time) {
+	final, err := store.End(r.Context(), s.store, s.blobs, record, store.StateDeleted, now)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
+		final = store.StateDeleted
+	}
+	writeGone(w, string(final))
 }
 
 func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
@@ -215,6 +259,10 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	wrapped, ok := s.wrappedShare(w, r, &leased.record)
+	if !ok {
+		return
+	}
 	err := store.RecordDownload(r.Context(), s.store, &leased.record, leased.lease.MAC, leased.now)
 	if err != nil {
 		s.writeLeaseFailure(w, r, &leased, err)
@@ -226,7 +274,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer blob.content.Close()
 	clear(blob.salt[:])
-	s.serveBlob(w, r, leased.record.Message, "", blob.content)
+	s.serveBlob(w, r, leased.record.Message, servedHeaders{share: wrapped}, blob.content)
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
@@ -371,20 +419,28 @@ func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.R
 	}
 }
 
+type servedHeaders struct {
+	lease string
+	share string
+}
+
 // serveBlob gives the response as long as a lease, so a recipient on a 128 kbit/s link receives the largest object.
 func (s *Server) serveBlob(
 	w http.ResponseWriter,
 	r *http.Request,
 	message *store.Message,
-	lease string,
+	served servedHeaders,
 	blob io.Reader,
 ) {
 	size := message.Size
 	overall := time.Now().Add(max(writeTimeout, store.TransferTime(size)))
 	s.setWriteDeadline(w, overall)
 	header := w.Header()
-	if lease != "" {
-		header.Set(leaseHeaderName, lease)
+	if served.lease != "" {
+		header.Set(leaseHeaderName, served.lease)
+	}
+	if served.share != "" {
+		header.Set(shareHeaderName, served.share)
 	}
 	header.Set(policyHeaderName, encodePolicy(message))
 	header.Set("Content-Type", octetStream)

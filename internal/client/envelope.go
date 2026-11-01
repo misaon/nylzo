@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/ecdh"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -10,14 +11,19 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
 
+const shareKeyHeader = "X-Nylzo-Share-Key"
+
+// Envelope is a served object with the expiry share, still wrapped to the client's one-time key.
 type Envelope struct {
 	Policy envelope.Policy
 	KDF    core.KDF
 	Flags  int
 	Object []byte
+	Share  *[share.WrappedLen]byte
 }
 
 type Claimed struct {
@@ -26,10 +32,12 @@ type Claimed struct {
 	Lease string
 }
 
+// Claim always sends a verifier and a share key, so its headers do not show whether the message has a passphrase.
 func (c *Client) Claim(
 	ctx context.Context,
 	id core.ID,
 	read, verifier *[core.SeedLen]byte,
+	shareKey *ecdh.PublicKey,
 	size int64,
 	onLease func(string),
 ) (Claimed, error) {
@@ -39,6 +47,7 @@ func (c *Client) Claim(
 		purpose:  signing.PurposeRead,
 		seed:     read,
 		verifier: verifier,
+		headers:  map[string]string{shareKeyHeader: core.Encode(shareKey.Bytes())},
 	}
 	response, err := c.signed(ctx, &request, transferTime(size))
 	if err != nil {
@@ -63,6 +72,7 @@ func (c *Client) Blob(
 	ctx context.Context,
 	id core.ID,
 	read *[core.SeedLen]byte,
+	shareKey *ecdh.PublicKey,
 	lease string,
 	size int64,
 ) (Envelope, error) {
@@ -71,7 +81,7 @@ func (c *Client) Blob(
 		path:    messagePath(id) + "/blob",
 		purpose: signing.PurposeRead,
 		seed:    read,
-		headers: map[string]string{"X-Nylzo-Lease": lease},
+		headers: map[string]string{"X-Nylzo-Lease": lease, shareKeyHeader: core.Encode(shareKey.Bytes())},
 	}
 	response, err := c.signed(ctx, &request, transferTime(size))
 	if err != nil {
@@ -100,6 +110,13 @@ func readEnvelope(response *http.Response) (Envelope, error) {
 	received, err := decodePolicy(response.Header.Get("X-Nylzo-Policy"))
 	if err != nil {
 		return Envelope{}, err
+	}
+	if wrapped := response.Header.Get("X-Nylzo-Share"); wrapped != "" {
+		decoded, shareErr := core.DecodeExact(wrapped, share.WrappedLen)
+		if shareErr != nil {
+			return Envelope{}, ErrResponse
+		}
+		received.Share = (*[share.WrappedLen]byte)(decoded)
 	}
 	limit := envelope.ObjectLimit(envelope.MaxFileBytes)
 	if response.ContentLength > limit {

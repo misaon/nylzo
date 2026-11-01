@@ -25,6 +25,8 @@ const (
 	labelLocator = "nylzo/v1/locator"
 	infoRecord   = "nylzo/v1/record/"
 	infoBlob     = "nylzo/v1/blob"
+	infoFields   = "nylzo/v2/record/fields"
+	infoBlobWrap = "nylzo/v2/record/blob"
 )
 
 type (
@@ -80,11 +82,11 @@ func Unwrap(wrapping Key, wrapped []byte, locator Locator, purpose Purpose) (Key
 }
 
 func WrapBlobKey(recordKey, blobKey Key, locator Locator) []byte {
-	return seal(recordKey, blobKey[:], locator, labelBlob)
+	return seal(subkey(recordKey, locator, infoBlobWrap), blobKey[:], locator, labelBlob)
 }
 
 func UnwrapBlobKey(recordKey Key, wrapped []byte, locator Locator) (Key, error) {
-	opened, err := open(recordKey, wrapped, locator, labelBlob)
+	opened, err := open(subkey(recordKey, locator, infoBlobWrap), wrapped, locator, labelBlob)
 	if err != nil || len(opened) != KeyLen {
 		return Key{}, ErrOpen
 	}
@@ -96,11 +98,20 @@ func Record(key Key, locator Locator, fields []byte) []byte {
 	padded := RecordBlock * ((len(fields) + nonceLen + tagLen + RecordBlock - 1) / RecordBlock)
 	plaintext := make([]byte, padded-nonceLen-tagLen)
 	copy(plaintext, fields)
-	return seal(key, plaintext, locator, labelRecord)
+	return seal(subkey(key, locator, infoFields), plaintext, locator, labelRecord)
 }
 
 func OpenRecord(key Key, locator Locator, sealed []byte) ([]byte, error) {
-	return open(key, sealed, locator, labelRecord)
+	return open(subkey(key, locator, infoFields), sealed, locator, labelRecord)
+}
+
+// subkey gives each use of the record key its own key (spec section 5.2).
+func subkey(recordKey Key, locator Locator, info string) Key {
+	derived, err := hkdf.Key(sha256.New, recordKey[:], locator[:], info, KeyLen)
+	if err != nil {
+		panic(err)
+	}
+	return Key(derived)
 }
 
 func NewEraseSalt() EraseSalt {

@@ -4,8 +4,10 @@ import {
   idToString,
   type KdfId,
   MAX_OBJECT_BYTES,
+  MAX_POW_DIFFICULTY,
   parseChallenge,
   parseId,
+  parseWrappedShare,
   type Purpose,
   PURPOSE_MANAGE,
   PURPOSE_READ,
@@ -62,18 +64,31 @@ export interface Transparency {
   readonly files: readonly ClientFile[];
 }
 
+// An id the instance issued, with the expiry share still wrapped to the client's one-time key.
+export interface Issued {
+  readonly id: Uint8Array<ArrayBuffer>;
+  readonly idToken: string;
+  readonly epoch: number;
+  readonly share: Uint8Array<ArrayBuffer>;
+}
+
 export interface Instance {
-  readonly fileCompression?: 'gzip';
   readonly limits: InstanceLimits;
   readonly pow: { readonly required: boolean; readonly difficulty: number; readonly challenge?: string };
-  readonly create: { readonly id: Uint8Array<ArrayBuffer>; readonly idToken: string };
+  readonly create?: Issued | undefined;
+}
+
+interface Creation {
+  readonly ttlSeconds: number;
+  readonly shareKey: Uint8Array;
 }
 
 export interface CreateRequest {
   readonly id: Uint8Array;
   readonly idToken: string;
+  readonly epoch: number;
   readonly readKey: Uint8Array;
-  readonly verifierKey?: Uint8Array;
+  readonly verifierKey: Uint8Array;
   readonly manageKey: Uint8Array;
   readonly kdfId: KdfId;
   readonly opensMax: number;
@@ -87,7 +102,6 @@ export interface Metadata extends MessageTimes {
   readonly opensMax: number;
   readonly opensRemaining: number;
   readonly ttlSeconds: number;
-  readonly passphraseRequired: boolean;
   readonly kdfId: number;
   readonly size: number;
 }
@@ -102,6 +116,7 @@ export interface Status extends MessageTimes {
 export interface Envelope {
   readonly policy: ServedPolicy;
   readonly object: Uint8Array<ArrayBuffer>;
+  readonly share?: Uint8Array<ArrayBuffer> | undefined;
 }
 
 interface Claimed extends Envelope {
@@ -109,7 +124,8 @@ interface Claimed extends Envelope {
 }
 
 interface ClaimOptions {
-  readonly verifierKey?: RequestKey | undefined;
+  readonly verifierKey: RequestKey;
+  readonly shareKey: Uint8Array;
   readonly onLease?: (lease: string) => void;
   readonly onProgress?: DownloadProgress;
   readonly proceed?: () => boolean;
@@ -129,12 +145,18 @@ export interface ApiOptions {
 }
 
 export interface Api {
-  instance: () => Promise<Instance>;
+  instance: (creation?: Creation) => Promise<Instance>;
   transparency: () => Promise<Transparency>;
   create: (request: CreateRequest) => Promise<{ readonly expiresAt: string }>;
   metadata: (id: Uint8Array, readKey: RequestKey) => Promise<Metadata>;
-  claim: (id: Uint8Array, readKey: RequestKey, options?: ClaimOptions) => Promise<Claimed>;
-  blob: (id: Uint8Array, readKey: RequestKey, lease: string, onProgress?: DownloadProgress) => Promise<Envelope>;
+  claim: (id: Uint8Array, readKey: RequestKey, options: ClaimOptions) => Promise<Claimed>;
+  blob: (
+    id: Uint8Array,
+    readKey: RequestKey,
+    lease: string,
+    shareKey: Uint8Array,
+    onProgress?: DownloadProgress,
+  ) => Promise<Envelope>;
   ack: (id: Uint8Array, readKey: RequestKey, lease: string) => Promise<void>;
   burn: (id: Uint8Array, readKey: RequestKey) => Promise<void>;
   cancel: (id: Uint8Array, manageKey: RequestKey) => Promise<void>;
@@ -161,8 +183,9 @@ function createHeader(request: CreateRequest): string {
   const header = {
     id: idToString(request.id),
     id_token: request.idToken,
+    epoch: request.epoch,
     read_key: encodeBase64url(request.readKey),
-    ...(request.verifierKey && { verifier_key: encodeBase64url(request.verifierKey) }),
+    verifier_key: encodeBase64url(request.verifierKey),
     manage_key: encodeBase64url(request.manageKey),
     kdf_id: request.kdfId,
     opens_max: request.opensMax,
@@ -181,6 +204,27 @@ async function ensureOk(response: Response): Promise<Response> {
     throw await apiError(response);
   }
   return response;
+}
+
+function shareOf(response: Response): Uint8Array<ArrayBuffer> | undefined {
+  const share = response.headers.get('X-Nylzo-Share');
+  if (share === null) {
+    return undefined;
+  }
+  try {
+    return parseWrappedShare(share);
+  } catch {
+    throw new ResponseError('a malformed share');
+  }
+}
+
+function issuedOf(create: Json): Issued {
+  return {
+    id: parseId(text(create, 'id')),
+    idToken: text(create, 'id_token'),
+    epoch: integer(create, 'epoch'),
+    share: parseWrappedShare(text(create, 'share')),
+  };
 }
 
 function leaseOf(response: Response): string {
@@ -245,25 +289,32 @@ export function createApi(options: ApiOptions = {}): Api {
     return ensureOk(await signedOnce(request, timeoutMs));
   }
 
-  async function fetchJson(path: string): Promise<Json> {
-    return readJson(await ensureOk(await call(path, { method: 'GET' })));
+  async function fetchJson(path: string, headers?: Record<string, string>): Promise<Json> {
+    return readJson(await ensureOk(await call(path, { method: 'GET', ...(headers && { headers }) })));
   }
 
   return {
-    async instance() {
-      const { limits, pow, create, file_compression: fileCompression } = await fetchJson('/api/v1/instance');
-      if (!isObject(limits) || !isObject(pow) || !isObject(create) || typeof pow['required'] !== 'boolean') {
+    async instance(creation) {
+      const headers =
+        creation === undefined
+          ? undefined
+          : { 'X-Nylzo-Ttl': String(creation.ttlSeconds), 'X-Nylzo-Share-Key': encodeBase64url(creation.shareKey) };
+      const { limits, pow, create } = await fetchJson('/api/v1/instance', headers);
+      if (!isObject(limits) || !isObject(pow) || typeof pow['required'] !== 'boolean') {
         throw new ResponseError();
       }
+      const difficulty = integer(pow, 'difficulty');
+      if (difficulty > MAX_POW_DIFFICULTY || (creation !== undefined && !isObject(create))) {
+        throw new ResponseError('the instance asks for more than the spec allows');
+      }
       return {
-        ...(fileCompression === 'gzip' && { fileCompression }),
         limits: instanceLimits(limits),
         pow: {
           required: pow['required'],
-          difficulty: integer(pow, 'difficulty'),
+          difficulty,
           ...(pow['challenge'] !== undefined && { challenge: text(pow, 'challenge') }),
         },
-        create: { id: parseId(text(create, 'id')), idToken: text(create, 'id_token') },
+        ...(isObject(create) && creation !== undefined && { create: issuedOf(create) }),
       };
     },
 
@@ -321,22 +372,18 @@ export function createApi(options: ApiOptions = {}): Api {
     async metadata(id, readKey) {
       const response = await signed({ method: 'GET', path: messagePath(id), purpose: PURPOSE_READ, key: readKey });
       const json = await readJson(response);
-      if (typeof json['passphrase_required'] !== 'boolean') {
-        throw new ResponseError();
-      }
       return {
         state: messageState(json),
         opensMax: integer(json, 'opens_max'),
         opensRemaining: integer(json, 'opens_remaining'),
         ttlSeconds: integer(json, 'ttl_s'),
-        passphraseRequired: json['passphrase_required'],
         kdfId: integer(json, 'kdf_id'),
         size: integer(json, 'size'),
         ...messageTimes(json),
       };
     },
 
-    async claim(id, readKey, claimOptions = {}) {
+    async claim(id, readKey, claimOptions) {
       const response = await signed(
         {
           method: 'POST',
@@ -344,6 +391,7 @@ export function createApi(options: ApiOptions = {}): Api {
           purpose: PURPOSE_READ,
           key: readKey,
           verifier: claimOptions.verifierKey,
+          headers: { 'X-Nylzo-Share-Key': encodeBase64url(claimOptions.shareKey) },
           proceed: claimOptions.proceed,
         },
         TRANSFER_TIMEOUT_MS,
@@ -351,22 +399,24 @@ export function createApi(options: ApiOptions = {}): Api {
       const lease = leaseOf(response);
       claimOptions.onLease?.(lease);
       const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
-      return { lease, policy, object: await readObject(response, claimOptions.onProgress) };
+      const share = shareOf(response);
+      return { lease, policy, share, object: await readObject(response, claimOptions.onProgress) };
     },
 
-    async blob(id, readKey, lease, onProgress) {
+    async blob(id, readKey, lease, shareKey, onProgress) {
       const response = await signed(
         {
           method: 'GET',
           path: `${messagePath(id)}/blob`,
           purpose: PURPOSE_READ,
           key: readKey,
-          headers: { 'X-Nylzo-Lease': lease },
+          headers: { 'X-Nylzo-Lease': lease, 'X-Nylzo-Share-Key': encodeBase64url(shareKey) },
         },
         TRANSFER_TIMEOUT_MS,
       );
       const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
-      return { policy, object: await readObject(response, onProgress) };
+      const share = shareOf(response);
+      return { policy, share, object: await readObject(response, onProgress) };
     },
 
     async ack(id, readKey, lease) {

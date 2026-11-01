@@ -19,6 +19,7 @@ const (
 	envManageToken   = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
 	envServer        = "NYLZO_SERVER"
 	manageTokenLines = 2
+	manageTokenPath  = "/m/"
 )
 
 var (
@@ -126,7 +127,7 @@ func (m *manageToken) wipe() {
 }
 
 func formatManageToken(origin string, id core.ID, seed *[core.SeedLen]byte) string {
-	return fmt.Sprintf("%s/m/%s\n%s\n", origin, id, core.Encode(seed[:]))
+	return fmt.Sprintf("%s%s%s\n%s\n", origin, manageTokenPath, id, core.Encode(seed[:]))
 }
 
 func readManageToken(environment *command.Environment, file string) (manageToken, error) {
@@ -172,8 +173,9 @@ func parseManageToken(raw string) (manageToken, error) {
 	if err != nil {
 		return manageToken{}, err
 	}
-	id, err := core.ParsePath(address.EscapedPath())
-	if err != nil {
+	encodedID, ok := strings.CutPrefix(address.EscapedPath(), manageTokenPath)
+	id, err := core.ParseID(encodedID)
+	if !ok || err != nil {
 		return manageToken{}, errManageToken
 	}
 	seed, err := core.Decode32(lines[1])

@@ -84,6 +84,12 @@ func weakPassphraseText(err error) string {
 		return "the passphrase is mostly the word nylzo" + hint
 	case keys.PassphraseCommon:
 		return "the passphrase is on the list of commonly used passwords" + hint
+	case keys.PassphraseUnassigned:
+		return fmt.Sprintf(
+			"the passphrase has a character that Unicode %s does not know, so another device could read it differently%s",
+			keys.AssignedUnicodeVersion,
+			hint,
+		)
 	default:
 		return "the passphrase is too weak" + hint
 	}

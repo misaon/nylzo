@@ -441,21 +441,21 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 		harness.mustCreate(message)
 		path := "/api/v1/messages/" + message.id.String() + "/claim"
 		stranger := core.NewSecret()
-		pkV := signing.PublicKey(&message.content.V)
+		pkV := signing.PublicKey(message.verifierKey)
 		cases := []struct {
 			name   string
 			header func(challenge [signing.ChallengeLen]byte) string
 		}{
 			{"other challenge", func([signing.ChallengeLen]byte) string {
-				return signing.SignRequest(&message.content.V, signing.PurposeVerifier, "POST", path, harness.challenge(), nil).
+				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, harness.challenge(), nil).
 					VerifierHeader()
 			}},
 			{"read purpose", func(challenge [signing.ChallengeLen]byte) string {
-				return signing.SignRequest(&message.content.V, signing.PurposeRead, "POST", path, challenge, nil).
+				return signing.SignRequest(message.verifierKey, signing.PurposeRead, "POST", path, challenge, nil).
 					VerifierHeader()
 			}},
 			{"other path", func(challenge [signing.ChallengeLen]byte) string {
-				return signing.SignRequest(&message.content.V, signing.PurposeVerifier, "POST", path+"x", challenge, nil).
+				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path+"x", challenge, nil).
 					VerifierHeader()
 			}},
 			{"right key, foreign signature", func(challenge [signing.ChallengeLen]byte) string {
@@ -479,7 +479,7 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 		}
 		challenge := harness.challenge()
 		request := signedRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil)
-		request.headers["X-Nylzo-Verifier"] = signing.SignRequest(&message.content.V, signing.PurposeVerifier, "POST", path, challenge, nil).
+		request.headers["X-Nylzo-Verifier"] = signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, challenge, nil).
 			VerifierHeader()
 		if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
 			t.Fatalf("correct verifier: %d", response.StatusCode)

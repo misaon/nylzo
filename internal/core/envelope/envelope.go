@@ -3,33 +3,40 @@ package envelope
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/keys"
 )
 
 const (
-	Version = 1
+	Version = 2
 
 	IVLen         = 12
 	TagLen        = 16
 	HeaderLen     = 15
+	CommitmentLen = 32
 	PolicyLen     = 6
-	AADLen        = HeaderLen + core.IDLen + PolicyLen
 	MetaLenPrefix = 4
 	ObjectSlack   = 64
+	PrefixLen     = HeaderLen + CommitmentLen
 
 	MaxTextBytes   = 100 * 1024
 	MaxFileBytes   = 5 * 1024 * 1024
 	MaxMetaBytes   = 102 * 1024
-	MaxObjectBytes = MaxFileBytes + MaxTextBytes + PadFile + ObjectSlack
+	MaxObjectBytes = MaxFileBytes + MaxTextBytes + Pad + ObjectSlack
 
-	PadText = 4096
-	PadFile = 65536
+	Pad = 65536
 
 	MinTTLSeconds = 60
+
+	labelCommitment = "nylzo/v2/commitment"
+	labelObjectHash = "nylzo/v2/object"
 )
 
 var (
@@ -57,6 +64,14 @@ type Policy struct {
 type Payload struct {
 	Meta Meta
 	File []byte
+}
+
+// Expected is what a reader knows before it opens an object: the link, and the policy the server reported.
+type Expected struct {
+	ID         core.ID
+	Policy     Policy
+	KDF        core.KDF
+	ObjectHash *[core.ObjectHashLen]byte
 }
 
 func NewHeader(kdf core.KDF) Header {
@@ -105,45 +120,65 @@ func (p Policy) Bytes() []byte {
 	return binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
 }
 
-func AAD(header Header, id core.ID, policy Policy) []byte {
-	aad := make([]byte, 0, AADLen)
+// AAD binds the header, the commitment, the id and the policy.
+func AAD(header Header, commitment []byte, id core.ID, policy Policy) []byte {
+	aad := make([]byte, 0, HeaderLen+len(commitment)+core.IDLen+PolicyLen)
 	aad = append(aad, header.Bytes()...)
+	aad = append(aad, commitment...)
 	aad = append(aad, id[:]...)
 	return append(aad, policy.Bytes()...)
 }
 
-func ObjectLimit(maxFileBytes int64) int64 {
-	return min(MaxObjectBytes, int64(PaddedLen(HeaderLen+MetaLenPrefix+MaxMetaBytes+int(maxFileBytes)+TagLen, true)))
+// Commitment binds the commitment key, and through it the content key, to the header, the id and the policy.
+func Commitment(key *[core.KeyLen]byte, header Header, id core.ID, policy Policy) [CommitmentLen]byte {
+	mac := hmac.New(sha256.New, key[:])
+	mac.Write([]byte(labelCommitment))
+	mac.Write(header.Bytes())
+	mac.Write(id[:])
+	mac.Write(policy.Bytes())
+	return [CommitmentLen]byte(mac.Sum(nil))
 }
 
-func PaddedLen(length int, hasFile bool) int {
-	unit := PadText
-	if hasFile {
-		unit = PadFile
-	}
-	if length%unit == 0 {
+// ObjectHash is the H of a link, which pins the object the sender made.
+func ObjectHash(object []byte) [core.ObjectHashLen]byte {
+	digest := sha256.New()
+	digest.Write([]byte(labelObjectHash))
+	digest.Write(object)
+	return [core.ObjectHashLen]byte(digest.Sum(nil))
+}
+
+func ObjectLimit(maxFileBytes int64) int64 {
+	return min(
+		MaxObjectBytes,
+		int64(padded(PrefixLen+MetaLenPrefix+MaxMetaBytes+int(maxFileBytes)+TagLen)),
+	)
+}
+
+// padded is the length of an object that holds length bytes: whole blocks of Pad (spec section 3).
+func padded(length int) int {
+	if length%Pad == 0 {
 		return length
 	}
-	return length + unit - length%unit
+	return length + Pad - length%Pad
 }
 
-func Seal(key *[core.KeyLen]byte, header Header, id core.ID, policy Policy, payload Payload) ([]byte, error) {
-	return sealEnvelope(key, header, id, policy, payload, false)
+func Seal(content *keys.ContentKeys, header Header, id core.ID, policy Policy, payload Payload) ([]byte, error) {
+	return sealEnvelope(content, header, id, policy, payload, false)
 }
 
-// SealWithCompression compresses a large attachment only when it reduces the padded object size.
+// SealWithCompression compresses the attachment, which the sender has asked for, when that shrinks its size class.
 func SealWithCompression(
-	key *[core.KeyLen]byte,
+	content *keys.ContentKeys,
 	header Header,
 	id core.ID,
 	policy Policy,
 	payload Payload,
 ) ([]byte, error) {
-	return sealEnvelope(key, header, id, policy, payload, true)
+	return sealEnvelope(content, header, id, policy, payload, true)
 }
 
 func sealEnvelope(
-	key *[core.KeyLen]byte,
+	content *keys.ContentKeys,
 	header Header,
 	id core.ID,
 	policy Policy,
@@ -160,43 +195,61 @@ func sealEnvelope(
 	if err != nil {
 		return nil, err
 	}
-	aead, err := newAEAD(key)
+	defer clear(plaintext)
+	aead, err := newAEAD(&content.K)
 	if err != nil {
 		return nil, err
 	}
-	defer clear(plaintext)
-	object := make([]byte, 0, HeaderLen+len(plaintext)+TagLen)
-	object = append(object, header.Bytes()...)
-	return aead.Seal(object, header.IV[:], plaintext, AAD(header, id, policy)), nil
+	commitment := Commitment(&content.Commitment, header, id, policy)
+	object := make([]byte, 0, PrefixLen+len(plaintext)+TagLen)
+	object = append(append(object, header.Bytes()...), commitment[:]...)
+	return aead.Seal(object, header.IV[:], plaintext, AAD(header, commitment[:], id, policy)), nil
 }
 
-// MayHoldFile tells from an object length whether the envelope can carry a file (spec section 3, D16).
-func MayHoldFile(objectBytes int64) bool {
-	return objectBytes > 0 && objectBytes%PadFile == 0
-}
-
-func Open(key *[core.KeyLen]byte, id core.ID, policy Policy, kdf core.KDF, object []byte) (Header, Payload, error) {
+// Open checks the object hash, the header, the length and the commitment before it decrypts (spec section 3).
+func Open(content *keys.ContentKeys, expected *Expected, object []byte) (Header, Payload, error) {
+	if !hashMatches(expected.ObjectHash, object) {
+		return Header{}, Payload{}, ErrIntegrity
+	}
 	header, err := ParseHeader(object)
 	if err != nil {
 		return header, Payload{}, err
 	}
-	if header.KDF != kdf {
+	if header.KDF != expected.KDF {
 		return header, Payload{}, core.ErrKDFMismatch
 	}
-	if len(object) > MaxObjectBytes || len(object) < HeaderLen+TagLen {
+	if len(object) > MaxObjectBytes || len(object) < PrefixLen+TagLen || len(object)%Pad != 0 {
 		return header, Payload{}, ErrIntegrity
 	}
-	aead, err := newAEAD(key)
+	commitment := object[HeaderLen:PrefixLen]
+	want := Commitment(&content.Commitment, header, expected.ID, expected.Policy)
+	if !hmac.Equal(commitment, want[:]) {
+		return header, Payload{}, ErrIntegrity
+	}
+	aead, err := newAEAD(&content.K)
 	if err != nil {
 		return header, Payload{}, err
 	}
-	plaintext, err := aead.Open(nil, header.IV[:], object[HeaderLen:], AAD(header, id, policy))
+	plaintext, err := aead.Open(
+		nil,
+		header.IV[:],
+		object[PrefixLen:],
+		AAD(header, commitment, expected.ID, expected.Policy),
+	)
 	if err != nil {
 		return header, Payload{}, ErrIntegrity
 	}
 	defer clear(plaintext)
 	payload, err := parsePlaintext(plaintext)
 	return header, payload, err
+}
+
+func hashMatches(expected *[core.ObjectHashLen]byte, object []byte) bool {
+	if expected == nil {
+		return false
+	}
+	actual := ObjectHash(object)
+	return subtle.ConstantTimeCompare(actual[:], expected[:]) == 1
 }
 
 func padPlaintext(payload Payload, compress bool) ([]byte, error) {
@@ -212,24 +265,24 @@ func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 	if !hasFile && len(payload.File) != 0 {
 		return nil, ErrMeta
 	}
-	file := payload.File
+	overhead := PrefixLen + MetaLenPrefix + TagLen
+	file, objectLen := payload.File, padded(overhead+len(meta)+len(payload.File))
 	if compress && hasFile {
 		encoded := compressAttachment(payload.Meta, meta, file)
-		meta, file = encoded.meta, encoded.file
-		if len(file) != len(payload.File) {
-			defer clear(file)
-			defer clear(meta)
+		if encoded.objectLen != 0 {
+			defer clear(encoded.file)
+			defer clear(encoded.meta)
+			meta, file, objectLen = encoded.meta, encoded.file, encoded.objectLen
 		}
 	}
 	metaLength := uint(len(meta))
 	if metaLength > MaxMetaBytes {
 		return nil, ErrMeta
 	}
-	total := PaddedLen(HeaderLen+MetaLenPrefix+len(meta)+len(file)+TagLen, hasFile) - HeaderLen - TagLen
-	if HeaderLen+total+TagLen > MaxObjectBytes {
+	if objectLen > MaxObjectBytes {
 		return nil, ErrTooLarge
 	}
-	plaintext := make([]byte, total)
+	plaintext := make([]byte, objectLen-PrefixLen-TagLen)
 	binary.BigEndian.PutUint32(plaintext, uint32(metaLength))
 	copy(plaintext[MetaLenPrefix:], meta)
 	copy(plaintext[MetaLenPrefix+len(meta):], file)

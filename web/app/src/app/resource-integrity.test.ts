@@ -135,17 +135,28 @@ function runGuard(href: string) {
 }
 
 describe('the fragment guard at the start of every page (W2-04)', () => {
-  it('takes the fragment off a read page before anything else loads and hands it over once', () => {
-    const { replaced, session, take, context } = runGuard('https://nylzo.test/m/AAAAAAAAAAAAAAAAAAAAAA?x=1#1.0.secret');
-    expect(replaced).toEqual(['/m/AAAAAAAAAAAAAAAAAAAAAA?x=1']);
-    expect(session).toEqual(new Map([['nylzo:dropped:AAAAAAAAAAAAAAAAAAAAAA', '1']]));
-    expect(take?.()).toBe('#1.0.secret');
-    expect(Reflect.get(context, 'nylzoFragment')).toBeUndefined();
-    expect(take?.()).toBe('');
-  });
+  it.each([
+    ['/r?x=1', '#2.0.id.secret.hash', 'r'],
+    ['/m/AAAAAAAAAAAAAAAAAAAAAA?x=1', '#1.0.secret', 'AAAAAAAAAAAAAAAAAAAAAA'],
+  ])(
+    'takes the fragment off the read page %s before anything else loads and hands it over once',
+    (page, fragment, key) => {
+      const { replaced, session, take, context } = runGuard(`https://nylzo.test${page}${fragment}`);
+      expect(replaced).toEqual([page]);
+      expect(session).toEqual(new Map([[`nylzo:dropped:${key}`, '1']]));
+      expect(take?.()).toBe(fragment);
+      expect(Reflect.get(context, 'nylzoFragment')).toBeUndefined();
+      expect(take?.()).toBe('');
+    },
+  );
 
   it('leaves other pages and read pages without a fragment alone', () => {
-    for (const href of ['https://nylzo.test/#how', 'https://nylzo.test/m/AAAAAAAAAAAAAAAAAAAAAA']) {
+    for (const href of [
+      'https://nylzo.test/#how',
+      'https://nylzo.test/report#2.0.x',
+      'https://nylzo.test/r',
+      'https://nylzo.test/m/AAAAAAAAAAAAAAAAAAAAAA',
+    ]) {
       const { replaced, session, take } = runGuard(href);
       expect(replaced).toEqual([]);
       expect(session.size).toBe(0);

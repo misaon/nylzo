@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -90,6 +91,7 @@ func newPublicWebTestServer(
 	settings.DataDir = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
 	settings.ReportKey = testReportKey.PublicKey()
+	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Version = version
 	settings.PublicURL = publicURL
 	storage, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
@@ -175,7 +177,7 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	files := webFiles(t)
 	result := runVerify(t, newWebTestServer(t, files, "test", nil), files)
 	if result.code != command.ExitOK ||
-		result.stdout != "the server sends the web client of nylzo test unchanged: 6 pages and 5 files checked\n" {
+		result.stdout != "the server sends the web client of nylzo test unchanged: 7 pages and 5 files checked\n" {
 		t.Fatalf("%+v", result)
 	}
 	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)

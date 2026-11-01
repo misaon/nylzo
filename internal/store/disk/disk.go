@@ -148,6 +148,33 @@ func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
 	return blobs, nil
 }
 
+// EraseAll overwrites every stored and temporary blob file in full before it unlinks it, for blobs that predate the
+// erase block; a missing blob directory holds nothing to erase.
+func EraseAll(dataDirectory string) error {
+	root := filepath.Join(dataDirectory, Directory)
+	for _, directory := range []string{filepath.Join(root, temporaryDirectory), root} {
+		entries, err := os.ReadDir(directory)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			if shredErr := erase.Shred(filepath.Join(directory, entry.Name()), erase.WholeFile); shredErr != nil {
+				return shredErr
+			}
+		}
+		if syncErr := erase.SyncDirectory(directory); syncErr != nil {
+			return syncErr
+		}
+	}
+	return nil
+}
+
 func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
 	temporary := filepath.Join(b.root, temporaryDirectory)
 	entries, err := os.ReadDir(temporary)

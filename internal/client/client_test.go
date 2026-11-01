@@ -10,6 +10,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
 
@@ -112,27 +113,34 @@ func TestPlainHTTPDialsOnlyLoopback(t *testing.T) {
 func TestRedirectIsAnError(t *testing.T) {
 	t.Parallel()
 	client := serve(t, http.RedirectHandler("https://elsewhere.example/", http.StatusTemporaryRedirect).ServeHTTP)
-	if _, err := client.Instance(t.Context()); !errors.Is(err, ErrRedirect) {
+	if _, err := client.Instance(t.Context(), nil); !errors.Is(err, ErrRedirect) {
 		t.Fatalf("redirect: %v", err)
 	}
 }
 
-func TestOptionalFileCompressionCapability(t *testing.T) {
+// A-04: a difficulty above the spec maximum fails before any key is derived, not after minutes of solving.
+func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 	t.Parallel()
-	for _, encoding := range []string{"", "gzip", "future"} {
-		t.Run(encoding, func(t *testing.T) {
-			t.Parallel()
-			body := `{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t"}`
-			if encoding != "" {
-				body += `,"file_compression":"` + encoding + `"`
-			}
-			body += `}`
-			api := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(body)) })
-			instance, err := api.Instance(t.Context())
-			if err != nil || instance.FileCompression != encoding {
-				t.Fatalf("capability %q: %+v %v", encoding, instance, err)
-			}
-		})
+	creation := &Creation{TTLSeconds: 3600, ShareKey: share.NewKey().PublicKey()}
+	wrapped := core.Encode(make([]byte, share.WrappedLen))
+	issued := `"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","epoch":1,"share":"` + wrapped + `"}`
+	for name, test := range map[string]struct {
+		body     string
+		creation *Creation
+		valid    bool
+	}{
+		"limits only":            {`{"limits":{},"pow":{"difficulty":8}}`, nil, true},
+		"an issued id":           {`{"limits":{},"pow":{},` + issued + `}`, creation, true},
+		"difficulty above 8":     {`{"limits":{},"pow":{"difficulty":9}}`, nil, false},
+		"difficulty below 0":     {`{"limits":{},"pow":{"difficulty":-1}}`, nil, false},
+		"no id when asked":       {`{"limits":{},"pow":{}}`, creation, false},
+		"an id without an epoch": {`{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","share":"` + wrapped + `"}}`, creation, false},
+		"a short share":          {`{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","epoch":1,"share":"AAAA"}}`, creation, false},
+	} {
+		api := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(test.body)) })
+		if _, err := api.Instance(t.Context(), test.creation); (err == nil) != test.valid {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
@@ -143,7 +151,7 @@ func TestErrorsCarryTheServerReason(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(`{"error":"passphrase","retry_after":0,"attempts_left":3}`))
 	})
-	_, err := client.Instance(t.Context())
+	_, err := client.Instance(t.Context(), nil)
 	apiErr, ok := errors.AsType[*APIError](err)
 	if !ok || apiErr.Kind != "passphrase" || apiErr.AttemptsLeft != 3 || apiErr.RetryAfter.Seconds() != 7 {
 		t.Fatalf("%+v", err)

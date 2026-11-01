@@ -25,6 +25,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
+	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/sweep"
 	"github.com/misaon/nylzo/internal/store"
@@ -202,6 +203,25 @@ func openStore(
 	return database, blobs, nil
 }
 
+// upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
+// none of its messages; an interrupted upgrade finishes on the next start.
+func upgradingOpen(dataDir string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
+	return func(ctx context.Context, path string) (*sqlite.Store, error) {
+		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDir) })
+		if err != nil {
+			return nil, err
+		}
+		if upgraded {
+			logger.WarnContext(
+				ctx,
+				"store-upgraded",
+				"notice", "protocol version 2: every message stored before this upgrade was erased",
+			)
+		}
+		return sqlite.Open(ctx, path)
+	}
+}
+
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
 func requireStore(dataDir string) error {
 	directory, err := filepath.Abs(dataDir)
@@ -240,7 +260,12 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
 		return lockErr
 	}
-	database, blobs, err := openStore(settings.DataDir, settings.Development, sqlite.Open, logger)
+	database, blobs, err := openStore(
+		settings.DataDir,
+		settings.Development,
+		upgradingOpen(settings.DataDir, logger),
+		logger,
+	)
 	if err != nil {
 		return err
 	}
@@ -262,6 +287,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	var sweeper sync.WaitGroup
 	sweeper.Go(func() { instance.RunSweeper(ctx) })
 	sweeper.Go(func() { instance.RunHousekeeping(ctx) })
+	sweeper.Go(func() { instance.RunRatchet(ctx) })
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
 	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()
@@ -335,13 +361,27 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 		return err
 	}
 	defer database.Close()
-	report, err := sweep.Run(context.Background(), database, blobs, settings.DataDir, time.Now())
+	now := time.Now()
+	report, err := sweep.Run(context.Background(), database, blobs, settings.DataDir, now)
+	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
 		logger.Error("sweep-once", sweep.LogAttributes(report, err)...)
 		return errSweepFailed
 	}
 	logger.Info("sweep-once", report.LogAttrs()...)
 	return nil
+}
+
+// advanceRatchet erases the epoch keys of the hours that have passed while serve does not run; it starts no ratchet.
+func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger) error {
+	options := epoch.Options{CheckFileSystem: func(directory string) error {
+		return requireErasable([]string{directory}, settings.Development, logger)
+	}}
+	ratchet, _, err := epoch.Open(settings.EpochDirectory(), now, options)
+	if ratchet != nil {
+		ratchet.Close()
+	}
+	return err
 }
 
 func RunTakedown(ctx context.Context, environment *command.Environment, arguments []string) int {

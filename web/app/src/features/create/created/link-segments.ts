@@ -13,16 +13,14 @@ function middle(text: string, head: number, tail: number): string {
 
 export function linkSegments(link: string): LinkSegment[] {
   const hash = link.indexOf('#');
-  const path = link.indexOf('/m/');
-  if (hash === -1 || path === -1 || path > hash) {
+  const fields = hash === -1 ? [] : link.slice(hash + 1).split('.');
+  const [version = '', kdfId = '', id = '', ...keys] = fields;
+  if (!link.slice(0, hash).endsWith('/r') || fields.length !== 5) {
     return [{ id: 'host', text: link, short: link, server: true, tone: 'text-ink-soft', bar: 'bg-ink-mute' }];
   }
-  const host = link.slice(0, path + 3);
-  const id = link.slice(path + 3, hash);
-  const fragment = link.slice(hash);
-  const keyStart = fragment.indexOf('.', fragment.indexOf('.') + 1) + 1;
-  const meta = keyStart > 0 ? fragment.slice(0, keyStart) : fragment;
-  const key = keyStart > 0 ? fragment.slice(keyStart) : '';
+  const host = link.slice(0, hash);
+  const meta = `#${version}.${kdfId}.`;
+  const key = `.${keys.join('.')}`;
   return [
     {
       id: 'host',
@@ -32,6 +30,7 @@ export function linkSegments(link: string): LinkSegment[] {
       tone: 'text-ink-soft',
       bar: 'bg-ink-mute',
     },
+    { id: 'meta', text: meta, short: meta, server: false, tone: 'text-rose-300', bar: 'bg-rose-300' },
     {
       id: 'id',
       text: id,
@@ -40,7 +39,6 @@ export function linkSegments(link: string): LinkSegment[] {
       tone: 'text-nebula-300',
       bar: 'bg-nebula-300',
     },
-    { id: 'meta', text: meta, short: meta, server: false, tone: 'text-rose-300', bar: 'bg-rose-300' },
     {
       id: 'key',
       text: middle(key, 14, 6),
