@@ -27,6 +27,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -307,7 +308,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	window := defaultPace().window
 	if chunks := len(blobWriter.writes) - 1; chunks < size/paceChunk ||
 		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
-			return deadline.Sub(time.Now()) > window
+			return time.Until(deadline) > window
 		}) {
 		t.Fatalf("F3: every 64 KiB of a response must go out within %v, so a reader that stops frees its slot", window)
 	}
@@ -576,14 +577,22 @@ func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
 func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		pending := &timers{}
+		pending := newReleases()
 		var ran atomic.Int32
-		pending.after(time.Hour, func() { ran.Add(1) })
+		locator := func(name string) seal.Locator { return seal.LocatorOf([]byte(name)) }
+		pending.schedule(locator("hour"), seal.NewKey(), time.Hour, func(seal.Key) { ran.Add(1) })
 		release := make(chan struct{})
-		pending.after(time.Second, func() {
+		pending.schedule(locator("second"), seal.NewKey(), time.Second, func(seal.Key) {
 			<-release
 			ran.Add(10)
 		})
+		cancelled := pending.pending[locator("hour")]
+		pending.schedule(locator("ended"), seal.NewKey(), time.Second, func(seal.Key) { ran.Add(1000) })
+		ended := pending.pending[locator("ended")]
+		pending.cancel(locator("ended"))
+		if ended.key != (seal.Key{}) {
+			t.Fatal("A4-2: a release cancelled by an ending must clear its record key at once")
+		}
 		time.Sleep(time.Second)
 		synctest.Wait()
 		stopped := make(chan struct{})
@@ -599,11 +608,11 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 		}
 		close(release)
 		<-stopped
-		pending.after(0, func() { ran.Add(100) })
+		pending.schedule(locator("late"), seal.NewKey(), 0, func(seal.Key) { ran.Add(100) })
 		time.Sleep(2 * time.Hour)
 		synctest.Wait()
-		if got := ran.Load(); got != 10 {
-			t.Fatalf("timers that ran: %d, want only the one already running", got)
+		if got := ran.Load(); got != 10 || cancelled.key != (seal.Key{}) {
+			t.Fatalf("timers that ran: %d, want only the one already running, and stop clears the keys", got)
 		}
 	})
 }
@@ -919,8 +928,14 @@ func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
 			t.Fatalf("%q: %v %v", request, response, err)
 		}
 		io.Copy(io.Discard, response.Body)
+		response.Body.Close()
 		if _, err = reader.ReadByte(); !errors.Is(err, io.EOF) || time.Since(start) > time.Second {
-			t.Fatalf("%q: the connection must close at once, not wait for the body: %v after %v", request, err, time.Since(start))
+			t.Fatalf(
+				"%q: the connection must close at once, not wait for the body: %v after %v",
+				request,
+				err,
+				time.Since(start),
+			)
 		}
 		connection.Close()
 	}
@@ -936,7 +951,11 @@ func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(connection, "GET /healthz HTTP/1.1\r\nHost: nylzo.test\r\nX-Padding: %s\r\n\r\n", strings.Repeat("a", padding))
+		fmt.Fprintf(
+			connection,
+			"GET /healthz HTTP/1.1\r\nHost: nylzo.test\r\nX-Padding: %s\r\n\r\n",
+			strings.Repeat("a", padding),
+		)
 		response, err := http.ReadResponse(bufio.NewReader(connection), nil)
 		connection.Close()
 		if err != nil || response.StatusCode != want {

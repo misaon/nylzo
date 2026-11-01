@@ -94,7 +94,10 @@ func (e *DamagedError) Error() string {
 		for i, position := range e.Unreadable {
 			positions[i] = strconv.Itoa(position)
 		}
-		text += fmt.Sprintf("the sealed reports at positions %s do not open with this key", strings.Join(positions, ", "))
+		text += fmt.Sprintf(
+			"the sealed reports at positions %s do not open with this key",
+			strings.Join(positions, ", "),
+		)
 	}
 	if e.TailBytes > 0 {
 		if len(e.Unreadable) > 0 {

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"sync"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -49,7 +49,7 @@ type Server struct {
 	store         store.Store
 	blobs         store.Blobs
 	ring          *pepper.Ring
-	leaseTimers   *timers
+	leaseTimers   *releases
 	logger        *slog.Logger
 	instance      *ratelimit.Fair
 	sourceLimiter *ratelimit.Limiter
@@ -96,7 +96,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		store:       storage,
 		blobs:       blobs,
 		ring:        ring,
-		leaseTimers: &timers{},
+		leaseTimers: newReleases(),
 		logger:      logging.New(os.Stderr),
 		webFiles:    webFiles,
 		dummyRow:    newDummyRow(),
@@ -193,10 +193,17 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 			day = today
 			s.addressKey.Rotate()
 			s.forgetAddresses()
-			continue
+		} else {
+			s.purgeRateTables(now)
 		}
-		s.purgeRateTables(now)
+		eraseUnreachableSecrets()
 	}
+}
+
+// eraseUnreachableSecrets runs a collection, which is when secret mode erases what an ended request allocated; an
+// idle server would otherwise wait up to two minutes for the runtime's forced collection.
+func eraseUnreachableSecrets() {
+	runtime.GC()
 }
 
 func (s *Server) purgeRateTables(now time.Time) {
@@ -227,32 +234,4 @@ func (s *Server) setUpLimits() {
 	}
 	s.counters = ratelimit.NewCounters()
 	s.streams = ratelimit.NewStreams(s.settings.MaxStreams)
-}
-
-// timers runs the releases at lease end; stop refuses new ones and waits for those already running.
-type timers struct {
-	mutex   sync.Mutex
-	running sync.WaitGroup
-	closed  bool
-}
-
-func (t *timers) after(delay time.Duration, run func()) {
-	time.AfterFunc(delay, func() {
-		t.mutex.Lock()
-		if t.closed {
-			t.mutex.Unlock()
-			return
-		}
-		t.running.Add(1)
-		t.mutex.Unlock()
-		defer t.running.Done()
-		run()
-	})
-}
-
-func (t *timers) stop() {
-	t.mutex.Lock()
-	t.closed = true
-	t.mutex.Unlock()
-	t.running.Wait()
 }

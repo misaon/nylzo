@@ -173,7 +173,11 @@ func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 	}
 	for ref, file := range opened {
 		left := make([]byte, len(content))
-		if _, err := file.ReadAt(left, 0); err != nil || !bytes.Equal(left[:erase.BlockLen], make([]byte, erase.BlockLen)) {
+		if _, err := file.ReadAt(
+			left,
+			0,
+		); err != nil ||
+			!bytes.Equal(left[:erase.BlockLen], make([]byte, erase.BlockLen)) {
 			t.Errorf("%s: the erase block survived the deletion in the file's own blocks: %v", ref, err)
 		}
 	}

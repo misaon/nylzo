@@ -64,19 +64,19 @@ func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64
 		return err
 	}
 	if err = b.syncDirectory(); err != nil {
-		erase.Shred(final, erase.BlockLen)
-		return err
+		return errors.Join(err, erase.Shred(final, erase.BlockLen))
 	}
 	return nil
 }
 
-// dropTemporary unlinks the temporary name of a published blob, whose final name keeps the data, and shreds any other.
+// dropTemporary unlinks the temporary name of a published blob, whose final name keeps the data, and shreds any other;
+// a temporary file it cannot drop is left to PurgeTemp.
 func dropTemporary(temporary string, published bool) {
 	if published {
 		os.Remove(temporary)
 		return
 	}
-	erase.Shred(temporary, erase.BlockLen)
+	_ = erase.Shred(temporary, erase.BlockLen)
 }
 
 func (b *Blobs) Open(_ context.Context, ref string) (io.ReadCloser, int64, error) {
@@ -166,6 +166,28 @@ func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
 	return purged, errors.Join(errs...)
 }
 
+// Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload.
+func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
+	var errs []error
+	for _, directory := range []string{b.root, filepath.Join(b.root, temporaryDirectory)} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
+			}
+		}
+	}
+	quarter := now.Truncate(store.BlobPurgeStep)
+	for _, directory := range []string{filepath.Join(b.root, temporaryDirectory), b.root} {
+		errs = append(errs, os.Chtimes(directory, quarter, quarter))
+	}
+	return errors.Join(errs...)
+}
+
 func (b *Blobs) probe() error {
 	file, err := os.CreateTemp(filepath.Join(b.root, temporaryDirectory), "probe-*")
 	if err != nil {
@@ -199,6 +221,7 @@ func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
 	}
 	buffer, _ := copyBuffers.Get().(*[copyBufferLen]byte)
 	written, err := io.CopyBuffer(struct{ io.Writer }{file}, content, buffer[:])
+	clear(buffer[:])
 	copyBuffers.Put(buffer)
 	if err == nil && written != size {
 		err = io.ErrUnexpectedEOF
@@ -214,28 +237,6 @@ func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
 		err = os.Chtimes(file.Name(), quarter, quarter)
 	}
 	return file.Name(), err
-}
-
-// Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload.
-func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
-	var errs []error
-	for _, directory := range []string{b.root, filepath.Join(b.root, temporaryDirectory)} {
-		entries, err := os.ReadDir(directory)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
-			}
-		}
-	}
-	quarter := now.Truncate(store.BlobPurgeStep)
-	for _, directory := range []string{filepath.Join(b.root, temporaryDirectory), b.root} {
-		errs = append(errs, os.Chtimes(directory, quarter, quarter))
-	}
-	return errors.Join(errs...)
 }
 
 func restampFile(path string, entry os.DirEntry) error {

@@ -74,7 +74,7 @@ func (r *Reports) Record(now time.Time, report *Report) error {
 	if mkdirErr := os.MkdirAll(r.directory, 0o700); mkdirErr != nil {
 		return mkdirErr
 	}
-	used, err := filesBytes(r.directory)
+	used, err := usedBytes(r.directory)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,14 @@ func Restamp(dataDir string, now time.Time) error {
 		if parseErr != nil {
 			continue
 		}
-		if chtimesErr := os.Chtimes(filepath.Join(directory, entry.Name()), start, start); !errors.Is(chtimesErr, fs.ErrNotExist) {
+		if chtimesErr := os.Chtimes(
+			filepath.Join(directory, entry.Name()),
+			start,
+			start,
+		); !errors.Is(
+			chtimesErr,
+			fs.ErrNotExist,
+		) {
 			errs = append(errs, chtimesErr)
 		}
 	}
@@ -195,7 +202,7 @@ func pruneDirectory(directory string, now time.Time) error {
 	return errors.Join(errs...)
 }
 
-func filesBytes(directory string) (int64, error) {
+func usedBytes(directory string) (int64, error) {
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return 0, err

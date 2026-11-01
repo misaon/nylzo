@@ -51,7 +51,8 @@ func TestRestampHidesWhenEachBlobWasUploaded(t *testing.T) {
 	}
 	coarseClock := 20 * time.Millisecond
 	for _, path := range append(paths, filepath.Join(directory, disk.Directory)) {
-		if changed := time.Unix(fileTimes(t, path).Ctim.Unix()); changed.Before(restamped.Add(-coarseClock)) {
+		status := fileTimes(t, path)
+		if changed := time.Unix(status.Ctim.Unix()); changed.Before(restamped.Add(-coarseClock)) {
 			t.Fatalf("%s keeps the ctime of its upload: %v", filepath.Base(path), changed)
 		}
 	}

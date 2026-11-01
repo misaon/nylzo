@@ -34,7 +34,7 @@ func TestLockMemoryKeepsThePagesOutOfSwap(t *testing.T) {
 		t.Fatalf("the child could not lock its memory: %v %s", err, output)
 	}
 	locked := regexp.MustCompile(`(?m)^VmLck:\s+(\d+) kB$`).FindSubmatch(output)
-	if locked == nil || string(locked[1]) == "0" {
+	if len(locked) < 2 || string(locked[1]) == "0" {
 		t.Fatalf("the process locked no memory: %s", output)
 	}
 }

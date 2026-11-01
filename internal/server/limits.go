@@ -97,8 +97,14 @@ func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time
 		},
 	}
 	if daily := rates.GlobalDailyCreates; daily > 0 {
-		hits = append(hits,
-			ratelimit.Hit{Kind: "create:d:share", Bucket: addressRange, Window: day, Limit: max(minimumCapShare, daily/rangeCapShare)},
+		hits = append(
+			hits,
+			ratelimit.Hit{
+				Kind:   "create:d:share",
+				Bucket: addressRange,
+				Window: day,
+				Limit:  max(minimumCapShare, daily/rangeCapShare),
+			},
 			ratelimit.Hit{
 				Kind:   "create:d:wide",
 				Bucket: s.addressKey.Wide(address),

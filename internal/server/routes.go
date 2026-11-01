@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/crossorigin"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -55,13 +56,26 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", handleHealth)
 	routed := logging.Route(mux)
-	return s.requestCounts.Requests(closeUnreadBodies(
+	return s.requestCounts.Requests(inSecretMode(closeUnreadBodies(
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
 			s.settings.PublicURL,
 			http.HandlerFunc(refuseCrossOrigin),
 			s.spendChallenges(prefetchGuard(s.throttle(routed))),
-		)))),
+		))),
+	)),
 	)
+}
+
+// inSecretMode runs every API request, which may carry public keys and open record keys, blob keys and erase salts,
+// in secret mode: its registers and stack are erased when it returns, its heap allocations once unreachable (A4-2).
+func inSecretMode(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		secretmode.Do(func() { next.ServeHTTP(w, r) })
+	})
 }
 
 func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {

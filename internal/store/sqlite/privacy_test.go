@@ -267,7 +267,12 @@ func TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion(t *testing.T) {
 	checkLog := func(step string) {
 		info, err := os.Stat(path + "-wal")
 		if err != nil || info.Size() < largest {
-			t.Fatalf("%s: the log shrank from %d bytes, which frees blocks that hold its frames: %v", step, largest, err)
+			t.Fatalf(
+				"%s: the log shrank from %d bytes, which frees blocks that hold its frames: %v",
+				step,
+				largest,
+				err,
+			)
 		}
 		largest = info.Size()
 	}

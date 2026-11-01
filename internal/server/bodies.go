@@ -19,7 +19,7 @@ func closeUnreadBodies(next http.Handler) http.Handler {
 		r.Body = body
 		next.ServeHTTP(&closingWriter{ResponseWriter: w, request: r, body: body}, r)
 		if body.unread(r.ContentLength) {
-			http.NewResponseController(w).SetReadDeadline(time.Now())
+			_ = http.NewResponseController(w).SetReadDeadline(time.Now())
 		}
 	})
 }

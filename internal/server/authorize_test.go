@@ -1123,11 +1123,20 @@ func TestARefusalTakesTheFloorAndSpendsTheReadBudget(t *testing.T) {
 		request.address = "198.51.100.40"
 		if response, _ := harness.do(request); response.StatusCode != http.StatusNotFound ||
 			time.Since(start) < refusalFloor {
-			t.Fatalf("%s: %d after %v, want 404 after at least %v", name, response.StatusCode, time.Since(start), refusalFloor)
+			t.Fatalf(
+				"%s: %d after %v, want 404 after at least %v",
+				name,
+				response.StatusCode,
+				time.Since(start),
+				refusalFloor,
+			)
 		}
 	}
 	for _, action := range []string{"burn", "cancel"} {
-		request := &testRequest{method: http.MethodPost, path: "/api/v1/messages/" + core.NewID().String() + "/" + action}
+		request := &testRequest{
+			method: http.MethodPost,
+			path:   "/api/v1/messages/" + core.NewID().String() + "/" + action,
+		}
 		request.address = "198.51.100.40"
 		harness.do(request)
 	}

@@ -211,8 +211,8 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
-	if err = requireMemoryLock(settings.Development, logger); err != nil {
-		return err
+	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
+		return lockErr
 	}
 	database, blobs, err := openStore(settings.DataDir, settings.Development, sqlite.Open, logger)
 	if err != nil {

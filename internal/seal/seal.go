@@ -119,6 +119,7 @@ func EraseBlock(salt EraseSalt) []byte {
 // ReadEraseBlock reads the salt from the erase block and reports ErrErased for a block the server has overwritten.
 func ReadEraseBlock(stored io.Reader) (EraseSalt, error) {
 	block := make([]byte, erase.BlockLen)
+	defer clear(block)
 	if _, err := io.ReadFull(stored, block); err != nil {
 		return EraseSalt{}, err
 	}

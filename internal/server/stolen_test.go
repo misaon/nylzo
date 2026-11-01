@@ -104,15 +104,22 @@ func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer stored.Close()
+		t.Cleanup(func() { stored.Close() })
 		switch ending {
 		case "burn":
-			if response, _ := harness.post(message, "burn", message.readToken); response.StatusCode != http.StatusNoContent {
+			if response, _ := harness.post(
+				message,
+				"burn",
+				message.readToken,
+			); response.StatusCode != http.StatusNoContent {
 				t.Fatalf("burn: %d", response.StatusCode)
 			}
 		default:
 			claimed, _ := harness.claim(message, "", message.address)
-			if response := harness.ack(message, claimed.Header.Get("X-Nylzo-Lease")); response.StatusCode != http.StatusNoContent {
+			if response := harness.ack(
+				message,
+				claimed.Header.Get("X-Nylzo-Lease"),
+			); response.StatusCode != http.StatusNoContent {
 				t.Fatalf("ack: %d", response.StatusCode)
 			}
 		}

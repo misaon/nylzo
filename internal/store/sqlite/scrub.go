@@ -65,8 +65,8 @@ func (s *Store) scrub(ctx context.Context, connection *sql.Conn) error {
 			_, err = connection.ExecContext(ctx, `UPDATE wal_scrub SET generation = 1 - generation`)
 			return wrapScrub(err)
 		}
-		if err = growScrub(ctx, connection, frames-slots); err != nil {
-			return err
+		if growErr := growScrub(ctx, connection, frames-slots); growErr != nil {
+			return growErr
 		}
 	}
 	return errScrubShort

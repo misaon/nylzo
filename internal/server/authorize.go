@@ -127,6 +127,9 @@ func signedPurpose(purpose seal.Purpose) string {
 // settle finishes what only an authorized request may finish: an ending, or the release after the last lease.
 func (s *Server) settle(ctx context.Context, record *store.Record, now time.Time) {
 	finished, err := store.Finish(ctx, s.store, s.blobs, record, now)
+	if finished {
+		s.leaseTimers.cancel(record.Row.Locator)
+	}
 	if err == nil && finished {
 		err = s.reload(ctx, record)
 	}
