@@ -25,7 +25,7 @@ var operatorKey = func() hpke.PrivateKey {
 }()
 
 func newReports(dataDir string) *abuse.Reports {
-	return abuse.NewReports(dataDir, operatorKey.PublicKey(), slog.New(slog.DiscardHandler))
+	return abuse.NewReports(dataDir, operatorKey.PublicKey(), slog.New(slog.DiscardHandler), abuse.FilesBytes(0, 3))
 }
 
 func spam(id string) *abuse.Report {
@@ -169,6 +169,9 @@ func TestReportFilesHaveACap(t *testing.T) {
 	}
 	if err := reports.Record(now, spam(core.NewID().String())); !errors.Is(err, abuse.ErrFull) {
 		t.Fatalf("a report that would pass 64 MiB: %v", err)
+	}
+	if room := abuse.FilesBytes(2000, 3); room < 3*2000*8*abuse.SealedLen {
+		t.Fatalf("F6: the files must hold every report that 8 days of capped creates allow, got %d bytes", room)
 	}
 }
 

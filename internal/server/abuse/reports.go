@@ -23,6 +23,7 @@ const (
 	legacyExtension = ".jsonl"
 	legacyFile      = "abuse-reports.jsonl"
 	maxFilesBytes   = 64 << 20
+	keptDays        = 8
 )
 
 var (
@@ -37,11 +38,22 @@ type Reports struct {
 	directory string
 	key       hpke.PublicKey
 	logger    *slog.Logger
+	maxBytes  int64
+	warnedOn  string
 	mutex     sync.Mutex
 }
 
-func NewReports(dataDir string, key hpke.PublicKey, logger *slog.Logger) *Reports {
-	return &Reports{directory: Directory(dataDir), key: key, logger: logger}
+// FilesBytes is room for every report the global cap admits, 3 per message for 8 days of creates, so the reports
+// about one sender's own messages cannot crowd out a notice; without a cap the files hold 64 MiB (F6).
+func FilesBytes(dailyCreates, reportsPerMessage int64) int64 {
+	if dailyCreates <= 0 {
+		return maxFilesBytes
+	}
+	return max(maxFilesBytes, reportsPerMessage*dailyCreates*keptDays*SealedLen)
+}
+
+func NewReports(dataDir string, key hpke.PublicKey, logger *slog.Logger, maxBytes int64) *Reports {
+	return &Reports{directory: Directory(dataDir), key: key, logger: logger, maxBytes: maxBytes}
 }
 
 func Directory(dataDir string) string {
@@ -66,8 +78,12 @@ func (r *Reports) Record(now time.Time, report *Report) error {
 	if err != nil {
 		return err
 	}
-	if used+int64(len(sealed)) > maxFilesBytes {
+	if used+int64(len(sealed)) > r.maxBytes {
 		return ErrFull
+	}
+	if today := reportDate(now); 2*(used+int64(len(sealed))) > r.maxBytes && r.warnedOn != today {
+		r.warnedOn = today
+		r.logger.Warn("abuse-files-half-full", "bytes", used, "limit", r.maxBytes)
 	}
 	return r.appendToDay(reportDate(now), sealed)
 }

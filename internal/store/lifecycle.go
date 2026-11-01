@@ -273,7 +273,8 @@ func forgetBlob(ctx context.Context, messages Messages, blobs Blobs, locator sea
 	return messages.ForgetBlobs(ctx, []DueBlob{{Locator: locator, Ref: ref}})
 }
 
-// CountReport takes one of the reports a message may get on a UTC day and reports false when they are used up.
+// CountReport takes one of the reports a message may get over its life and reports false when they are used up, so
+// the sender of many messages cannot fill the report files with reports about them (F6).
 func CountReport(ctx context.Context, messages Messages, record *Record, now time.Time) (bool, error) {
 	counted := false
 	err := record.update(ctx, messages, now, func(current *Record) error {
@@ -282,10 +283,7 @@ func CountReport(ctx context.Context, messages Messages, record *Record, now tim
 			return &GoneError{State: current.State(now)}
 		}
 		message := current.Message
-		if today := reportDay(now); message.ReportDay != today {
-			message.ReportDay, message.Reports = today, 0
-		}
-		if message.Reports >= ReportsPerDay {
+		if message.Reports >= ReportsPerMessage {
 			return nil
 		}
 		message.Reports++
@@ -297,7 +295,7 @@ func CountReport(ctx context.Context, messages Messages, record *Record, now tim
 
 func UncountReport(ctx context.Context, messages Messages, record *Record, now time.Time) error {
 	return record.update(context.WithoutCancel(ctx), messages, now, func(current *Record) error {
-		if message := current.Message; message.ReportDay == reportDay(now) && message.Reports > 0 {
+		if message := current.Message; message.Reports > 0 {
 			message.Reports--
 		}
 		return nil

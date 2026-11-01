@@ -18,7 +18,6 @@ const (
 	macLen       = 32
 	fieldsLen    = 103
 	leaseLen     = 42
-	day          = 24 * time.Hour
 	blobRefLen   = 16
 )
 
@@ -360,8 +359,4 @@ func boolByte(value bool) byte {
 		return 1
 	}
 	return 0
-}
-
-func reportDay(now time.Time) int64 {
-	return now.UTC().Unix() / int64(day/time.Second)
 }

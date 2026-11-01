@@ -369,17 +369,17 @@ func (f *fixture) takeDownFinishesThroughTheSweep() {
 	}
 }
 
-func (f *fixture) reportsPerMessageAndDay() {
+func (f *fixture) reportsPerMessage() {
 	t, ctx := f.t, f.t.Context()
 	created := f.create(1, oneWeek, false)
 	record := f.get(created)
-	for report := 1; report <= store.ReportsPerDay; report++ {
+	for report := 1; report <= store.ReportsPerMessage; report++ {
 		if counted, err := store.CountReport(ctx, f.store, record, baseTime); err != nil || !counted {
 			t.Fatalf("report %d: %v %v", report, counted, err)
 		}
 	}
 	if counted, err := store.CountReport(ctx, f.store, record, baseTime); err != nil || counted {
-		t.Fatalf("a fourth report on one day: %v %v", counted, err)
+		t.Fatalf("a fourth report: %v %v", counted, err)
 	}
 	if err := store.UncountReport(ctx, f.store, record, baseTime); err != nil {
 		t.Fatal(err)
@@ -387,8 +387,8 @@ func (f *fixture) reportsPerMessageAndDay() {
 	if counted, err := store.CountReport(ctx, f.store, record, baseTime); err != nil || !counted {
 		t.Fatalf("a report after a count was taken back: %v %v", counted, err)
 	}
-	if counted, err := store.CountReport(ctx, f.store, record, baseTime.Add(24*time.Hour)); err != nil || !counted {
-		t.Fatalf("a report on the next day: %v %v", counted, err)
+	if counted, err := store.CountReport(ctx, f.store, record, baseTime.Add(24*time.Hour)); err != nil || counted {
+		t.Fatalf("F6: the cap holds over the whole life of the message, not per day: %v %v", counted, err)
 	}
 	if _, err := f.end(created, store.StateDeleted, baseTime.Add(25*time.Hour), f.blobs); err != nil {
 		t.Fatal(err)

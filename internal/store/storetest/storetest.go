@@ -39,7 +39,7 @@ var contracts = []contract{
 	{"ReleaseAfterExpiryRecordsNothing", (*fixture).releaseAfterExpiryRecordsNothing},
 	{"BurnAndCancel", (*fixture).burnAndCancel},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
-	{"ReportsPerMessageAndDay", (*fixture).reportsPerMessageAndDay},
+	{"ReportsPerMessage", (*fixture).reportsPerMessage},
 	{"AK7Expiry", (*fixture).expiry},
 	{"SweepSurvivesBlobErrors", (*fixture).sweepSurvivesBlobErrors},
 	{"SweepPagesPastFailures", (*fixture).sweepPagesPastFailures},

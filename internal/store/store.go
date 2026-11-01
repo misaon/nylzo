@@ -33,7 +33,7 @@ const (
 	MinTransferRate   = 16000
 	BlobPurgeStep     = 15 * time.Minute
 	RowPurgeStep      = time.Hour
-	ReportsPerDay     = 3
+	ReportsPerMessage = 3
 	MaxActiveLeases   = 9
 )
 
