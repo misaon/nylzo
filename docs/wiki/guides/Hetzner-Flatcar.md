@@ -141,7 +141,11 @@ What follows:
 - Back up nothing first. The release cannot read those messages, and a copy would let them outlive their opens and expiry.
 - If the release does not become healthy, the updater stops Nylzo and writes `failed.json`, and Caddy answers 502. Read `sudo journalctl -u nylzo`. If the release refused the database without changing it, go back: copy `/var/lib/nylzo-deploy/previous.json` over `current.json`, delete `failed.json` and run `sudo systemctl start nylzo`. The previous release opens the untouched database.
 
-Then move SSH to the hardware key. Add its public key to `~core/.ssh/authorized_keys`, log in with it from a second terminal, and remove the old Ed25519 key. Set `HARDWARE_KEYS_ONLY=true` in `/etc/nylzo/host.env` and run `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`. Activation refuses the setting while no `sk-ssh-ed25519@openssh.com` key is authorized. sshd applies it to the next connection, so confirm one more login before you close the old session.
+Then move SSH to the hardware key. On Hetzner, Flatcar rebuilds `~core/.ssh/authorized_keys` from the files in `~core/.ssh/authorized_keys.d` at every boot, so an edit of `authorized_keys` itself is undone at the next reboot. Use `update-ssh-keys` as `core`:
+
+1. Copy the public key to the server and add it with `update-ssh-keys -a hardware hardware.pub`. Log in with it from a second terminal.
+2. `update-ssh-keys -l` lists the key sets. Remove the one with the old Ed25519 key, `ignition` on a server that Ignition provisioned, with `update-ssh-keys -d ignition`.
+3. Set `HARDWARE_KEYS_ONLY=true` in `/etc/nylzo/host.env` and run `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`. Activation refuses the setting while `authorized_keys.d` holds no `sk-ssh-ed25519@openssh.com` key. sshd applies it to the next connection, so confirm one more login before you close the old session.
 
 ## Encrypted data volume
 
