@@ -102,27 +102,46 @@ Any release signed by the release workflow reaches production within one timer p
 
 ### One-time step for servers provisioned before the host bundle
 
-A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe and `run` start the container without `--ulimit memlock=-1:-1`, which Nylzo now needs for `mlockall`, so they refuse every new release and the server stays on its current version. The bundle's `run` and updater pass that limit, and its containerd drop-in sets `LimitMEMLOCK=infinity`. Install the bundle once by hand, with the tag of the first release that ships `nylzo-host_*.tar`, and keep the Hetzner console open:
+A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe and `run` start the container without `--ulimit memlock=-1:-1`, which Nylzo now needs for `mlockall`. Until you install the bundle, the old updater tries each new release and stops at its probe, before it touches the service: the server stays on 0.2.x and `nylzo-update.service` fails every ten minutes. If the running container already has no memory-lock limit (`sudo grep 'locked memory' "/proc/$(docker inspect -f '{{.State.Pid}}' nylzo)/limits"` shows `unlimited`), the old probe passes instead and the old updater installs the release by itself.
+
+Install the bundle once by hand, after the release:
+
+1. Wait for a release that ships `nylzo-host_X.Y.Z.tar` and opens 0.2.x data: the [Operations guide](Operations.md#logging-and-upgrades) of that release says that `serve` upgrades a schema 5 database. A release that refuses schema 5 fails on the real data, and Caddy answers 502 until you recover as below.
+2. To choose the moment of the upgrade, write `AUTOMATIC_UPDATES=false` in the block below and tell your users that their open messages will be deleted. When you are ready, run `sudo systemctl start nylzo-update.service`, then set the value back to `true` and apply it as described under [Updates](#updates).
+3. Keep the Hetzner console open and run the block with that release's tag and your real `host.env` values. `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. The block stops at the first failed check.
 
 ```sh
+bash -euo pipefail <<'STEP'
 tag=vX.Y.Z
-work=$(mktemp -d) && cd "$work"
+bundle="nylzo-host_${tag#v}.tar"
+cd "$(mktemp -d)"
 base="https://github.com/misaon/nylzo/releases/download/$tag"
-curl -fsSLO "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json" -O "$base/nylzo-host_${tag#v}.tar"
+curl -fsSLO "$base/checksums.txt" -O "$base/checksums.txt.sigstore.json" -O "$base/$bundle"
 /opt/nylzo/bin/cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/$tag"
-grep " nylzo-host_${tag#v}.tar\$" checksums.txt | sha256sum --check --strict
-/opt/nylzo/bin/gh attestation verify "nylzo-host_${tag#v}.tar" --repo misaon/nylzo \
+grep " $bundle\$" checksums.txt | sha256sum --check --strict
+digest=$(sha256sum "$bundle" | cut -d ' ' -f 1)
+curl -fsSL "https://api.github.com/repos/misaon/nylzo/attestations/sha256:$digest" | /opt/nylzo/bin/jq -ce '.attestations[].bundle' > provenance.jsonl
+/opt/nylzo/bin/gh attestation verify "$bundle" --bundle provenance.jsonl --repo misaon/nylzo \
   --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$tag" --deny-self-hosted-runners
-printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=203.0.113.7/32\n' | sudo tee /etc/nylzo/host.env
+printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=203.0.113.7/32\nHARDWARE_KEYS_ONLY=false\n' | sudo tee /etc/nylzo/host.env
 sudo mkdir -p "/opt/nylzo/host/release-$tag"
-sudo tar --extract --file "nylzo-host_${tag#v}.tar" --directory "/opt/nylzo/host/release-$tag" --no-same-owner
+sudo tar --extract --file "$bundle" --directory "/opt/nylzo/host/release-$tag" --no-same-owner
 sudo bash "/opt/nylzo/host/release-$tag/update/activate" "/opt/nylzo/host/release-$tag"
-sudo /opt/nylzo/runtime/host-policy && sudo systemctl is-active nylzo caddy nylzo-firewall
+sudo /opt/nylzo/runtime/host-policy
+sudo systemctl is-active nylzo caddy nylzo-firewall
+STEP
 ```
 
-Put the real values into `host.env`: `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. The next update check, within ten minutes, installs the release itself. Then replace the old Ed25519 key in `~core/.ssh/authorized_keys` with the hardware key, confirm a new login, and close the old session.
+What follows:
+
+- Activation restarts the firewall, containerd, Docker and Caddy, and Nylzo 0.2.x restarts on the new `run`.
+- Within ten minutes, or when you start `nylzo-update.service`, the updater installs the release. It switches to the release's Caddy, probes the image on empty data, stops Nylzo and starts the release on the real data. That first start deletes every message stored before it and logs `store-upgraded`, so every link sent earlier stops working.
+- Back up nothing first. The release cannot read those messages, and a copy would let them outlive their opens and expiry.
+- If the release does not become healthy, the updater stops Nylzo and writes `failed.json`, and Caddy answers 502. Read `sudo journalctl -u nylzo`. If the release refused the database without changing it, go back: copy `/var/lib/nylzo-deploy/previous.json` over `current.json`, delete `failed.json` and run `sudo systemctl start nylzo`. The previous release opens the untouched database.
+
+Then move SSH to the hardware key. Add its public key to `~core/.ssh/authorized_keys`, log in with it from a second terminal, and remove the old Ed25519 key. Set `HARDWARE_KEYS_ONLY=true` in `/etc/nylzo/host.env` and run `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`. Activation refuses the setting while no `sk-ssh-ed25519@openssh.com` key is authorized. sshd applies it to the next connection, so confirm one more login before you close the old session.
 
 ## Encrypted data volume
 
