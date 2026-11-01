@@ -112,16 +112,23 @@ bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
 if grep -q ClientAliveInterval /etc/ssh/sshd_config.d/20-nylzo.conf; then exit 1; fi
 hardware=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
 [[ ! -e "$hardware" ]]
-mkdir -p /home/core/.ssh/authorized_keys.d
+reapply() { bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial; }
+refused() { if reapply 2>/dev/null; then exit 1; fi; [[ ! -e "$hardware" ]]; }
+installed() { reapply; grep -qx 'PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com' "$hardware"; }
+mkdir -p /home/core/.ssh
 printf 'ssh-ed25519 AAAA old@laptop\n' > /home/core/.ssh/authorized_keys
 printf 'HARDWARE_KEYS_ONLY=true\n' >> /etc/nylzo/host.env
-if bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3.0 2>/dev/null; then exit 1; fi
-[[ "$(readlink /opt/nylzo/host/current)" = /opt/nylzo/host/initial && ! -e "$hardware" ]]
-printf 'verify-required sk-ssh-ed25519@openssh.com AAAA operator@laptop\n' > /home/core/.ssh/authorized_keys.d/ignition
-bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3.0
-grep -qx 'PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com' "$hardware"
+refused
+printf 'verify-required sk-ssh-ed25519@openssh.com AAAA operator@laptop\n' >> /home/core/.ssh/authorized_keys
+installed
+rm "$hardware"
+mkdir /home/core/.ssh/authorized_keys.d
+printf 'ssh-ed25519 AAAA old@laptop\n' > /home/core/.ssh/authorized_keys.d/ignition
+refused
+printf 'verify-required sk-ssh-ed25519@openssh.com AAAA operator@laptop\n' > /home/core/.ssh/authorized_keys.d/hardware
+installed
 sed -i 's/^HARDWARE_KEYS_ONLY=true$/HARDWARE_KEYS_ONLY=false/' /etc/nylzo/host.env
-bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
+reapply
 [[ ! -e "$hardware" ]]
 echo HOST_BUNDLE_VERIFIED
 ` });

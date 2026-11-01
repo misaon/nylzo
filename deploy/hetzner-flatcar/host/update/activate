@@ -64,9 +64,12 @@ case "$(setting HARDWARE_KEYS_ONLY)" in
   true)
     hardware_only=true
     [[ -f "$generation/system/sshd-hardware-keys.conf" ]] || fail 'missing system/sshd-hardware-keys.conf'
+    authorized=(/home/core/.ssh/authorized_keys)
+    # Flatcar rebuilds authorized_keys from authorized_keys.d at boot.
+    if [[ -d /home/core/.ssh/authorized_keys.d ]]; then authorized=(/home/core/.ssh/authorized_keys.d/*); fi
     if ! cmp --silent "$generation/system/sshd-hardware-keys.conf" "$hardware_keys" &&
-      ! grep --quiet --no-messages --extended-regexp '(^|[[:space:]])sk-ssh-ed25519@openssh\.com[[:space:]]' /home/core/.ssh/authorized_keys /home/core/.ssh/authorized_keys.d/*; then
-      fail 'HARDWARE_KEYS_ONLY=true needs an authorized sk-ssh-ed25519@openssh.com key for core; add one, then run activate with sudo'
+      ! grep --quiet --no-messages --extended-regexp '(^|[[:space:]])sk-ssh-ed25519@openssh\.com[[:space:]]' "${authorized[@]}"; then
+      fail 'HARDWARE_KEYS_ONLY=true needs an sk-ssh-ed25519@openssh.com key for core, added with update-ssh-keys; then run activate with sudo'
     fi
     ;;
   false | '') hardware_only=false ;;
