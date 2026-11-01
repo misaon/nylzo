@@ -38,6 +38,7 @@ test(
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(text);
     await expect(recipient.locator('bdi')).toHaveText(file.name);
+    await expect(recipient.locator('bdi')).toHaveAttribute('translate', 'no');
     expect(new URL(recipient.url()).hash).toBe('');
     await expect(
       notInert(recipient, recipient.getByRole('button', { name: 'Delete the remaining opens' })),

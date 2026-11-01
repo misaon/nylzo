@@ -53,7 +53,7 @@
       inert={!composer.file || composer.phase !== 'compose'}
     >
       <Icon name="file" class="size-4 shrink-0 text-nebula-300" />
-      <span class="truncate text-ink">{composer.file?.name ?? ''}</span>
+      <span translate="no" class="truncate text-ink">{composer.file?.name ?? ''}</span>
       <span class="shrink-0 font-mono text-[11px] text-ink-mute"
         >{composer.file ? formatBytes(composer.file.size, translator.language) : ''}</span
       >
