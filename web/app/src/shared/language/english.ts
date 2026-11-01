@@ -213,7 +213,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.others.hosting':
     'The hosting provider and the proxy that terminates HTTPS see IP addresses, request times and sizes, and log by their own rules. They do not see the content of a message.',
   'transparency.others.client':
-    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. The CLI from a signed release protects against this. The check below finds such a swap only when the server does not avoid it.',
+    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. The local client (nylzo web and nylzo open) and the nylzo command line run code from a signed release, so the server cannot change them. The check below finds such a swap only when the server does not avoid it.',
   'transparency.limits.title': 'Limits of this instance',
   'transparency.limits.file': 'Largest attachment',
   'transparency.limits.ttl': 'Longest expiry',
@@ -236,7 +236,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.client.limit':
     'It checks only what the server sent to this command. A server can recognise the command and send browsers other code, so the check finds a broken build or deployment, not a swap the server hides on purpose.',
   'transparency.client.independent':
-    "The web client comes from this server, so a server in someone else's hands could change it. For the highest assurance use the signed nylzo command line tool, which runs no code from the server.",
+    "The website trusts this server: the web client comes from it, so a server in someone else's hands could change it. nylzo web, nylzo open and the nylzo command line run code from a signed release and trust only the encryption.",
   'transparency.source': 'Source code, protocol specification and threat model',
 
   'nav.top': 'Nylzo, back to the top',
@@ -333,6 +333,7 @@ export const english: Record<MessageKey, string> = {
   'open.title': 'You have an encrypted message',
   'open.intro':
     "It is decrypted in this browser. Your browser does not send the key after the # sign to the server. This page also comes from the server, though, and a server in someone else's hands could change it.",
+  'open.verified': 'Read it without trusting the server',
   'open.ready.title': 'The message is waiting for you',
   'open.ready.sub': 'An open counts only when you press Show message.',
   'open.loading.text': 'Checking the link with the server.',
@@ -452,7 +453,7 @@ export const english: Record<MessageKey, string> = {
   'how.link.key.body':
     'Everything after the # sign stays in the browser, which sends it in no request, so it never reaches the server or the hosting that way. Without it, nobody can read the message.',
   'how.link.server.body':
-    "The server gets the page address and the message id; your browser sends nothing after the # sign. The page's code comes from the server too, though, so a server in someone else's hands could change it to read the messages opened in it. The nylzo command line runs no code from the server.",
+    "The server gets the page address and the message id; your browser sends nothing after the # sign. The page's code comes from the server too, though, so a server in someone else's hands could change it to read the messages opened in it. The local client (nylzo web, nylzo open) and the nylzo command line run no code from the server.",
   'who.eyebrow': 'Who sees what',
   'who.title': 'The data on the server does not reveal the message',
   'who.sub':
@@ -705,7 +706,8 @@ export const english: Record<MessageKey, string> = {
   'limits.link.note': 'That is why the passphrase goes another way.',
   'limits.server.title': 'Whoever controls the server can change this website',
   'limits.server.note':
-    'They could send one chosen person a page that reads the message, and in 2026 no browser can tell. nylzo verify-client catches a wrong build, but not a server that hides the swap from it. When a message must stay safe even then, send and read it with the nylzo command line.',
+    'They could send one chosen person a page that reads the message, and in 2026 no browser can tell. nylzo verify-client catches a wrong build, but not a server that hides the swap from it. When a message must stay safe even then, the sender and the reader both use nylzo web, nylzo open or the nylzo command line, which run code from a signed release.',
+  'limits.server.link': 'Verified clients',
   'limits.abuse.title': 'Not for scams or malware',
   'limits.abuse.note': 'Nor for any other illegal content.',
   'limits.liability':

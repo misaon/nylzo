@@ -173,3 +173,32 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
   expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoXss') as unknown)).toBeUndefined();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 });
+
+test(
+  'the entry module claims both Trusted Types policy names before the rest of the client loads (W2-10)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const message = await createMessageThroughApi();
+    const held: string[] = [];
+    await page.route(/\/assets\/start-[\w-]+\.js$/, (route) => {
+      held.push(route.request().url());
+    });
+    await page.goto(message.link, { waitUntil: 'commit' });
+    await expect.poll(() => held.length).toBe(1);
+    const claimed = await page.evaluate(() => {
+      const factory = Reflect.get(globalThis, 'trustedTypes') as {
+        createPolicy: (name: string, rules: Record<string, never>) => unknown;
+      };
+      return ['nylzo-kdf', 'svelte-trusted-html'].map((name) => {
+        try {
+          factory.createPolicy(name, {});
+          return `${name} free`;
+        } catch {
+          return `${name} taken`;
+        }
+      });
+    });
+    expect(claimed).toEqual(['nylzo-kdf taken', 'svelte-trusted-html taken']);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  },
+);

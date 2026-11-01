@@ -403,7 +403,7 @@ jobs:
         include:
           - browser: chromium
             runner: ubuntu-latest
-            install: --only-shell chromium
+            install: chromium
           - browser: firefox
             runner: ubuntu-latest
             install: firefox

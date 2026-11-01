@@ -133,7 +133,7 @@ async function watchCreateAnswer(page: Page): Promise<() => Promise<CreateAnswer
         return Reflect.apply(open as IDBFactory['open'], this, parameters);
       },
     });
-    const body = Object.getOwnPropertyDescriptor(Response.prototype, 'body')?.get;
+    const body: unknown = Reflect.get(Object.getOwnPropertyDescriptor(Response.prototype, 'body') ?? {}, 'get');
     Object.defineProperty(Response.prototype, 'body', {
       get(this: Response): ReadableStream<Uint8Array> | null {
         if (this.url.endsWith('/api/v1/messages')) {

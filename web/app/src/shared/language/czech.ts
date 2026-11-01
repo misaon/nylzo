@@ -209,7 +209,7 @@ export const czech = {
   'transparency.others.hosting':
     'Poskytovatel hostingu a proxy, která ukončuje HTTPS, vidí IP adresy, časy a velikosti požadavků a logují podle svých pravidel. Obsah zprávy nevidí.',
   'transparency.others.client':
-    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které mezitím někdo otevře nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Proti tomu chrání CLI z\u{A0}podepsaného vydání. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
+    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které mezitím někdo otevře nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Lokální klient (nylzo web a\u{A0}nylzo open) a\u{A0}příkazová řádka nylzo spouštějí kód z\u{A0}podepsaného vydání, takže je server změnit nemůže. Kontrola níže takovou záměnu odhalí, jen když se jí server nevyhýbá.',
   'transparency.limits.title': 'Limity této instance',
   'transparency.limits.file': 'Největší příloha',
   'transparency.limits.ttl': 'Nejdelší platnost',
@@ -232,7 +232,7 @@ export const czech = {
   'transparency.client.limit':
     'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
   'transparency.client.independent':
-    'Webový klient přichází z\u{A0}tohoto serveru, takže server v\u{A0}cizích rukou by ho mohl změnit. Nejvyšší jistotu dává podepsaný nástroj nylzo pro příkazovou řádku, který ze serveru žádný kód nespouští.',
+    'Web tomuto serveru důvěřuje: webový klient přichází z\u{A0}něj, takže server v\u{A0}cizích rukou by ho mohl změnit. nylzo web, nylzo open a\u{A0}příkazová řádka nylzo spouštějí kód z\u{A0}podepsaného vydání a\u{A0}spoléhají jen na šifrování.',
   'transparency.source': 'Zdrojový kód, specifikace protokolu a model hrozeb',
 
   'nav.top': 'Nylzo, na začátek',
@@ -329,6 +329,7 @@ export const czech = {
   'open.title': 'Máte šifrovanou zprávu',
   'open.intro':
     'Dešifruje se až v\u{A0}tomto prohlížeči. Klíč za znakem # prohlížeč serveru neposílá. Jenže i\u{A0}tahle stránka přichází ze serveru, a\u{A0}kdyby server ovládl někdo cizí, mohl by ji změnit.',
+  'open.verified': 'Jak zprávu přečíst bez důvěry v\u{A0}server',
   'open.ready.title': 'Zpráva čeká na zobrazení',
   'open.ready.sub': 'Otevření se započítá až tlačítkem Zobrazit zprávu.',
   'open.loading.text': 'Ověřujeme odkaz u\u{A0}serveru.',
@@ -447,7 +448,7 @@ export const czech = {
   'how.link.key.body':
     'Všechno za znakem # zůstává v\u{A0}prohlížeči a\u{A0}prohlížeč to neposílá v\u{A0}žádném požadavku, takže se to touto cestou k\u{A0}serveru ani k\u{A0}hostingu nedostane. Kdo klíč nemá, zprávu nepřečte.',
   'how.link.server.body':
-    'Server dostane adresu stránky a\u{A0}id zprávy; nic za znakem # prohlížeč neodešle. Kód stránky ale přichází taky ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho upravit a\u{A0}číst zprávy, které se v\u{A0}něm otevřou. Příkazová řádka nylzo žádný kód ze serveru nespouští.',
+    'Server dostane adresu stránky a\u{A0}id zprávy; nic za znakem # prohlížeč neodešle. Kód stránky ale přichází taky ze serveru, takže kdyby server ovládl někdo cizí, mohl by ho upravit a\u{A0}číst zprávy, které se v\u{A0}něm otevřou. Lokální klient (nylzo web, nylzo open) a\u{A0}příkazová řádka nylzo žádný kód ze serveru nespouštějí.',
   'who.eyebrow': 'Kdo co vidí',
   'who.title': 'Z\u{A0}dat na serveru se zpráva přečíst nedá',
   'who.sub': 'Tatáž zpráva očima tří stran. Přepněte a\u{A0}porovnejte, co kdo ve skutečnosti drží.',
@@ -698,7 +699,8 @@ export const czech = {
   'limits.link.note': 'Passphrase proto pošlete jinou cestou.',
   'limits.server.title': 'Kdo ovládá server, může tento web změnit',
   'limits.server.note':
-    'Vybranému člověku může poslat stránku, která zprávu přečte, a\u{A0}v\u{A0}roce 2026 to žádný prohlížeč nepozná. nylzo verify-client odhalí chybné sestavení, ale ne server, který před ním záměnu schová. Zprávu, která musí zůstat v\u{A0}bezpečí i\u{A0}tehdy, pošlete a\u{A0}přečtěte příkazovou řádkou nylzo.',
+    'Vybranému člověku může poslat stránku, která zprávu přečte, a\u{A0}v\u{A0}roce 2026 to žádný prohlížeč nepozná. nylzo verify-client odhalí chybné sestavení, ale ne server, který před ním záměnu schová. Zprávu, která musí zůstat v\u{A0}bezpečí i\u{A0}tehdy, pošlete i\u{A0}přečtěte přes nylzo web, nylzo open nebo příkazovou řádku nylzo, které spouštějí kód z\u{A0}podepsaného vydání.',
+  'limits.server.link': 'Ověření klienti',
   'limits.abuse.title': 'Ne pro podvody a\u{A0}malware',
   'limits.abuse.note': 'Ani pro jiný nezákonný obsah.',
   'limits.liability':
