@@ -116,21 +116,47 @@ func requireMemoryLock(development config.Development, logger *slog.Logger) erro
 	return nil
 }
 
-// requireErasable refuses a data directory on a file system that keeps old blocks, which would undo every deletion.
-func requireErasable(directories []string, development config.Development, logger *slog.Logger) error {
-	for _, directory := range directories {
-		err := erase.RequireInPlace(directory)
-		switch {
-		case err == nil:
-		case errors.Is(err, erase.ErrNotInPlace) && development.AllowUnerasableStorage:
-			logger.Warn("storage-not-erasable", "reason", err.Error())
-		case errors.Is(err, erase.ErrNotInPlace):
-			return fmt.Errorf("%w (set NYLZO_ALLOW_UNERASABLE_STORAGE=1 only on a development machine)", err)
-		default:
-			return err
+// requireErasable refuses storage that keeps old blocks, which would undo every deletion: a file system, a mount
+// default or a chattr +j on a directory or file.
+func requireErasable(paths []string, development config.Development, logger *slog.Logger) error {
+	err := erase.RequireInPlace(paths...)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, erase.ErrNotInPlace) && development.AllowUnerasableStorage:
+		logger.Warn("storage-not-erasable", "reason", err.Error())
+		return nil
+	case errors.Is(err, erase.ErrNotInPlace):
+		return fmt.Errorf("%w (set NYLZO_ALLOW_UNERASABLE_STORAGE=1 only on a development machine)", err)
+	default:
+		return err
+	}
+}
+
+// erasablePaths lists the directories and files whose overwrites must land in place: the data directory, the
+// database files and every blob and temporary upload.
+func erasablePaths(dataDir string) ([]string, error) {
+	databasePath := filepath.Join(dataDir, databaseFile)
+	blobDirectory := filepath.Join(dataDir, disk.Directory)
+	temporaryDirectory := filepath.Join(blobDirectory, "tmp")
+	paths := []string{dataDir, blobDirectory, temporaryDirectory}
+	for _, path := range []string{databasePath, databasePath + "-wal", databasePath + "-shm"} {
+		if _, err := os.Lstat(path); err == nil {
+			paths = append(paths, path)
 		}
 	}
-	return nil
+	for _, directory := range []string{blobDirectory, temporaryDirectory} {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.Type().IsRegular() {
+				paths = append(paths, filepath.Join(directory, entry.Name()))
+			}
+		}
+	}
+	return paths, nil
 }
 
 func openStore(
@@ -162,12 +188,12 @@ func openStore(
 		return nil, nil, err
 	}
 	blobs, err := disk.New(dataDir)
+	var paths []string
 	if err == nil {
-		err = requireErasable(
-			[]string{filepath.Join(dataDir, disk.Directory), filepath.Join(dataDir, disk.Directory, "tmp")},
-			development,
-			logger,
-		)
+		paths, err = erasablePaths(dataDir)
+	}
+	if err == nil {
+		err = requireErasable(paths, development, logger)
 	}
 	if err != nil {
 		database.Close()
