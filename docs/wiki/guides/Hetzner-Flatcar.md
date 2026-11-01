@@ -102,7 +102,7 @@ Any release signed by the release workflow reaches production within one timer p
 
 ### One-time step for servers provisioned before the host bundle
 
-A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe lacks the memory-lock limit that Nylzo now needs, so they refuse every new release and the server stays on its current version. Install the bundle once by hand, with the tag of the first release that ships `nylzo-host_*.tar`, and keep the Hetzner console open:
+A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe and `run` start the container without `--ulimit memlock=-1:-1`, which Nylzo now needs for `mlockall`, so they refuse every new release and the server stays on its current version. The bundle's `run` and updater pass that limit, and its containerd drop-in sets `LimitMEMLOCK=infinity`. Install the bundle once by hand, with the tag of the first release that ships `nylzo-host_*.tar`, and keep the Hetzner console open:
 
 ```sh
 tag=vX.Y.Z
