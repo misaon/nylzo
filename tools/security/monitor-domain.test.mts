@@ -57,7 +57,6 @@ test("the domain check reads DNS through a validating resolver, RDAP and every C
     "https://dns.google/resolve?name=nylzo.com&type=MX&do=true": { Status: 0, AD: true, Answer: [{ type: 15, data: "0 ." }] },
     "https://dns.google/resolve?name=nylzo.com&type=TXT&do=true": txt('"v=spf1 -all"'),
     "https://dns.google/resolve?name=_dmarc.nylzo.com&type=TXT&do=true": txt('"v=DMARC1; p=reject; sp=reject"'),
-    "https://data.iana.org/rdap/dns.json": { services: [[["net", "com"], ["https://rdap.verisign.com/com/v1/"]]] },
     "https://rdap.verisign.com/com/v1/domain/nylzo.com": { status: ["client transfer prohibited", "client update prohibited", "client delete prohibited"], events: [{ eventAction: "expiration", eventDate: "2030-10-25T12:25:04Z" }] },
     "https://api.certspotter.com/v1/issuances?domain=nylzo.com&include_subdomains=true&expand=dns_names&expand=issuer": [{ id: "7", dns_names: ["nylzo.com"], issuer: { friendly_name: "Let's Encrypt" }, not_before: "2026-10-31T00:00:00Z" }],
     "https://api.certspotter.com/v1/issuances?domain=nylzo.com&include_subdomains=true&expand=dns_names&expand=issuer&after=7": [{ id: "8", dns_names: ["*.nylzo.com"], issuer: { friendly_name: "Let's Encrypt" }, not_before: "2026-10-31T01:00:00Z" }],

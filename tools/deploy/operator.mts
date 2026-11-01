@@ -11,11 +11,8 @@ import { privateFile } from "../security/private-file.mts";
 export { privateFile };
 
 export async function credential(name: string) {
-  const command = process.env[`${name}_COMMAND`];
-  const value = process.env[name] ?? (command
-    ? execFileSync("/bin/sh", ["-c", command], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], timeout: 120000 }).trim()
-    : process.env[`${name}_FILE`] ? await privateFile(process.env[`${name}_FILE`]!) : "");
-  assert.match(value, /^[!-~]{20,512}$/u, `Set ${name}_COMMAND to read it from a password manager, or set ${name} or its private ${name}_FILE; never paste it into chat`);
+  const value = process.env[name] ?? (process.env[`${name}_FILE`] ? await privateFile(process.env[`${name}_FILE`]!) : "");
+  assert.match(value, /^[!-~]{20,512}$/u, `Set ${name}, for example from a password manager, or its private ${name}_FILE; never paste it into chat`);
   return value;
 }
 

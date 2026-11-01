@@ -8,7 +8,7 @@ This is a single-server deployment with brief restart windows, not a highly avai
 
 ## Before provisioning
 
-- Create a dedicated Hetzner Cloud project. Hetzner tokens have no expiry, IP filter or narrower scope, and a Read & Write token is root on the server. Create one for a plan/apply session and delete it afterwards, or keep it in a password manager and let the operator tool read it with `HCLOUD_TOKEN_COMMAND`, for example `op read op://nylzo/hetzner/token`. `HCLOUD_TOKEN_FILE` still works for a private `0600` file.
+- Create a dedicated Hetzner Cloud project. Hetzner tokens have no expiry, IP filter or narrower scope, and a Read & Write token is root on the server. Create one for a plan/apply session and delete it afterwards, or keep it in a password manager and pass it only to that command, for example `HCLOUD_TOKEN="$(op read op://nylzo/hetzner/token)" mise run deploy plan server …`. `HCLOUD_TOKEN_FILE` still works for a private `0600` file.
 - Enable the strongest 2FA each provider offers on the hosting, DNS, registrar, and GitHub accounts, and keep recovery codes offline.
 - Choose administrator networks: IPv4 /24 or narrower, IPv6 /64 or narrower. A single /32 or /128, or a WireGuard exit you control, is better than a shared VPN range.
 - Create a hardware-backed SSH key: `ssh-keygen -t ed25519-sk -O verify-required -O resident`. A production server accepts only `sk-ssh-ed25519@openssh.com` keys, and sshd requires the PIN (`PubkeyAuthOptions verify-required`).
@@ -51,7 +51,7 @@ Keep `publicAccess: false` during acceptance: HTTPS then answers only the admini
 
 Create the zone, copy existing records, and keep the registrar. The registrar of record for nylzo.com is Tucows, reached through a reseller.
 
-Give the token Zone read, DNS edit and SSL and Certificates edit for this zone only, a short TTL and a client IP filter for your address ([Cloudflare: restrict tokens](https://developers.cloudflare.com/fundamentals/api/how-to/restrict-tokens/)). Read it with `CLOUDFLARE_API_TOKEN_COMMAND` or `CLOUDFLARE_API_TOKEN_FILE`.
+Give the token Zone read, DNS edit and SSL and Certificates edit for this zone only, a short TTL and a client IP filter for your address ([Cloudflare: restrict tokens](https://developers.cloudflare.com/fundamentals/api/how-to/restrict-tokens/)). Pass it the same way, as `CLOUDFLARE_API_TOKEN` from a password manager or `CLOUDFLARE_API_TOKEN_FILE`.
 
 ```sh
 mise run deploy plan dns .deploy/production/site.json
@@ -73,16 +73,16 @@ At the registrar, turn on the transfer, update and delete locks, ask for the `.c
 
 ## Runtime
 
-- **Firewalls.** The cloud firewall admits 80/tcp, 443/tcp and 443/udp, ICMP, SSH from the administrator networks, and 8443/tcp when host monitoring is on. An nftables policy on the host admits exactly the same with input policy drop, and limits each IPv4 address and IPv6 /64 to 64 web connections, so a detached or edited cloud firewall exposes nothing new. New connections from the container bridge are rejected over IPv4 and IPv6.
-- **TLS.** Caddy accepts only TLS 1.3 with X25519MLKEM768. Every target in `web/.browserslistrc` supports it (Chrome and Edge 131+, Firefox 132+, Firefox for Android 145+, Safari and iOS 26+), as do the CLI (Go 1.24+) and Node 26. Clients with OpenSSL older than 3.5, such as curl on Ubuntu 24.04, cannot connect, and neither can link-preview bots. HTTP/3 0-RTT is off, so every request comes from a validated client address. Caddy removes client-sent `X-Real-IP`, `Forwarded` and similar headers and sets `X-Forwarded-For` itself; Nylzo trusts only the bridge gateway.
-- **Certificates.** Caddy requests Let's Encrypt `shortlived` certificates (160 hours) and renews them with ACME Renewal Info. A stolen TLS key stays valid for days, not months. A Let's Encrypt outage of about two days triggers the certificate alert; one of about a week stops HTTPS.
-- **Request limits.** Caddy limits headers to 16 KB, bodies to 6 MiB, and sets `read_header 10s`, `read_body 6m`, `read_body_idle 20s`, `write 6m` and `idle 2m`. Its own error pages carry CSP, `nosniff`, HSTS and `no-store`.
-- **SSH.** Key exchange is `mlkem768x25519-sha256` or `sntrup761x25519-sha512` only, with an Ed25519 host key, AEAD ciphers and ETM MACs. A client that prefers ECDH, such as the macOS 27 client, still negotiates ML-KEM because the server offers nothing else.
-- **Sandboxes.** Caddy, the updater, the clock check, the heartbeat, the firewall and the Docker client each run in a systemd sandbox with a system-call filter, no user namespaces, no core dumps and no metadata-service access. Core dumps are not stored anywhere (`Storage=none`, `fs.suid_dumpable=0`).
-- **Kernel.** `90-nylzo.conf` disables kexec, io_uring, SysRq and line-discipline autoloading, hides kernel pointers and logs, and rejects redirects and source routing. Host policy checks the effective values on every boot.
-- **Clock.** Flatcar has no NTS client: systemd-timesyncd lacks NTS and the image ships no chrony. Every 15 minutes the host compares its clock with the TLS-authenticated `Date` of GitHub, Sigstore and Let's Encrypt. If two of three disagree by more than a minute, the host reports `clock: false`, so an NTP attacker can shift message expiry by about a minute without an alert.
-- **Docker.** Flatcar Stable 4757.2.x ships Docker 28.2.2, which carries GHSA-rg2x-37c3-w2rh, GHSA-vp62-88p7-qqf5 and GHSA-x86f-5xw2-fm2r. The first two need `docker cp` into a container or the archive API; no host script uses either, and operators must never `docker cp` into the Nylzo container. The third needs a trojaned image; images are verified by signature and provenance. Flatcar Beta 4820.1 ships Docker 29.8.0, and Stable updates arrive automatically.
-- **Memory.** The container may lock up to 1 GiB (`--ulimit memlock`), its memory limit, so Nylzo can keep secrets out of swap and core files.
+- The cloud firewall admits 80/tcp, 443/tcp and 443/udp, ICMP, SSH from the administrator networks, and 8443/tcp when host monitoring is on. An nftables policy on the host admits exactly the same with input policy drop, and limits each IPv4 address and IPv6 /64 to 64 web connections, so a detached or edited cloud firewall exposes nothing new. New connections from the container bridge are rejected over IPv4 and IPv6.
+- Caddy accepts only TLS 1.3 with X25519MLKEM768. Every target in `web/.browserslistrc` supports it (Chrome and Edge 131+, Firefox 132+, Firefox for Android 145+, Safari and iOS 26+), as do the CLI (Go 1.24+) and Node 26. Clients with OpenSSL older than 3.5, such as curl on Ubuntu 24.04, cannot connect, and neither can link-preview bots. HTTP/3 0-RTT is off, so every request comes from a validated client address. Caddy removes client-sent `X-Real-IP`, `Forwarded` and similar headers and sets `X-Forwarded-For` itself; Nylzo trusts only the bridge gateway.
+- Caddy requests Let's Encrypt `shortlived` certificates (160 hours) and renews them with ACME Renewal Info. A stolen TLS key stays valid for days, not months. A Let's Encrypt outage of about two days triggers the certificate alert; one of about a week stops HTTPS.
+- Caddy limits headers to 16 KB, bodies to 6 MiB, and sets `read_header 10s`, `read_body 6m`, `read_body_idle 20s`, `write 6m` and `idle 2m`. Its own error pages carry CSP, `nosniff`, HSTS and `no-store`.
+- SSH key exchange is `mlkem768x25519-sha256` or `sntrup761x25519-sha512` only, with an Ed25519 host key, AEAD ciphers and ETM MACs. A client that prefers ECDH, such as the macOS 27 client, still negotiates ML-KEM because the server offers nothing else.
+- Caddy, the updater, the clock check, the heartbeat, the firewall and the Docker client each run in a systemd sandbox with a system-call filter, no user namespaces, no core dumps and no metadata-service access. Core dumps are not stored anywhere (`Storage=none`, `fs.suid_dumpable=0`).
+- `90-nylzo.conf` disables kexec, io_uring, SysRq and line-discipline autoloading, hides kernel pointers and logs, and rejects redirects and source routing. Host policy checks the effective values on every boot.
+- Flatcar has no NTS client: systemd-timesyncd lacks NTS and the image ships no chrony. Every 15 minutes the host compares its clock with the TLS-authenticated `Date` of GitHub, Sigstore and Let's Encrypt. If two of three disagree by more than a minute, the host reports `clock: false`, so an NTP attacker can shift message expiry by about a minute without an alert.
+- Flatcar Stable 4757.2.x ships Docker 28.2.2, which carries GHSA-rg2x-37c3-w2rh, GHSA-vp62-88p7-qqf5 and GHSA-x86f-5xw2-fm2r. The first two need `docker cp` into a container or the archive API; no host script uses either, and operators must never `docker cp` into the Nylzo container. The third needs a trojaned image; images are verified by signature and provenance. Flatcar Beta 4820.1 ships Docker 29.8.0, and Stable updates arrive automatically.
+- The container may lock up to 1 GiB (`--ulimit memlock`), its memory limit, so Nylzo can keep secrets out of swap and core files.
 
 SELinux runs enforcing, the pepper and data mounts get a private container label, and containerd's unused CRI and transfer plugins stay disabled. The public interface has a shared 40 Mbit/s ceiling: 13.4 TB in 31 days, below the 20 TB allowance of the reviewed plans.
 
@@ -90,11 +90,11 @@ SELinux runs enforcing, the pepper and data mounts get a private container label
 
 With `automaticUpdates: true`, a timer checks every ten minutes.
 
-- **Which release.** A patch of the installed line installs directly. A newer minor or major installs only when its `vX.Y.0` carries signed `kind: planned` evidence, and then the host goes straight to the newest patch of that line. A host that missed a planned release window, for example v0.1.12 while v0.2.3 is a security patch of planned v0.2.0, therefore still reaches the patched line. If the newest line is not approved, the host takes the newest patch of its own line. Downgrades are refused.
-- **Image.** An immutable release, the release workflow's Sigstore identity for that tag, GitHub provenance, and a digest-pinned image. A probe runs on disposable data without network before persistent state is touched.
-- **Host bundle.** `nylzo-host_X.Y.Z.tar` holds every script, unit, drop-in and configuration file of this page. The updater verifies it like the Caddy build (signed `checksums.txt`, SHA-256, provenance for the tag), rejects unexpected paths, and stages it under `/opt/nylzo/host/release-vX.Y.Z`. Activation installs each file atomically, reloads systemd, and restarts only what changed: sysctl, journald, the firewall, Caddy after `caddy validate`, timers, and Docker only if its configuration changed. If host policy or Caddy fails afterwards, the previous generation is activated again. Site values stay in `/etc/nylzo/*.env` and `site.json`. `sudo /opt/nylzo/runtime/update host vX.Y.Z` re-applies the bundle of the installed release.
-- **Caddy and tools.** Caddy comes from the release being installed; host tools from its signed `host-tools.json`. Both refuse downgrades and keep the previous verified version.
-- **OS.** Flatcar's signed Stable updates reboot between 03:00 and 04:00 UTC. The application health gate runs before update-engine confirms a new boot slot.
+- A patch of the installed line installs directly. A newer minor or major installs only when its `vX.Y.0` carries signed `kind: planned` evidence, and then the host goes straight to the newest patch of that line. A host that missed a planned release window, for example v0.1.12 while v0.2.3 is a security patch of planned v0.2.0, therefore still reaches the patched line. If the newest line is not approved, the host takes the newest patch of its own line. Downgrades are refused.
+- The image needs an immutable release, the release workflow's Sigstore identity for that tag, GitHub provenance, and a pinned digest. A probe runs on disposable data without network before persistent state is touched.
+- `nylzo-host_X.Y.Z.tar` holds every script, unit, drop-in and configuration file of this page. The updater verifies it like the Caddy build (signed `checksums.txt`, SHA-256, provenance for the tag), rejects unexpected paths, and stages it under `/opt/nylzo/host/release-vX.Y.Z`. Activation installs each file atomically, reloads systemd, and restarts only what changed: sysctl, journald, the firewall, Caddy after `caddy validate`, timers, and Docker only if its configuration changed. If host policy or Caddy fails afterwards, the previous generation is activated again. Site values stay in `/etc/nylzo/*.env` and `site.json`. `sudo /opt/nylzo/runtime/update host vX.Y.Z` re-applies the bundle of the installed release.
+- Caddy comes from the release being installed; host tools from its signed `host-tools.json`. Both refuse downgrades and keep the previous verified version.
+- Flatcar's signed Stable updates reboot between 03:00 and 04:00 UTC. The application health gate runs before update-engine confirms a new boot slot.
 
 If a candidate fails after opening persistent state, the updater stops Nylzo and writes `failed.json`. It never restores an old database, which could resurrect consumed messages.
 
@@ -142,9 +142,9 @@ The volume is created only on an empty host. On an existing server, stop Nylzo a
 
 ## Monitoring
 
-- **Heartbeat.** With `heartbeatUrl` (or `/etc/nylzo/heartbeat.url` on an existing host), the host posts to an independent dead-man's switch such as [healthchecks.io](https://healthchecks.io/) every five minutes: the URL when every check passes, `URL/fail` otherwise. Only up or down leaves the host. Missing beats raise the alert, so it does not depend on GitHub's best-effort schedule.
-- **mTLS listener.** The optional [host monitor](Host-monitoring.md) on 8443 serves the same coarse report to a pinned client certificate; GitHub reads it as a secondary check.
-- **Domain.** The `domain` job of `monitor.yml` checks the CAA set, mail records, registrar locks, expiry, and every new certificate in Certificate Transparency.
+- With `heartbeatUrl` (or `/etc/nylzo/heartbeat.url` on an existing host), the host posts to an independent dead-man's switch such as [healthchecks.io](https://healthchecks.io/) every five minutes: the URL when every check passes, `URL/fail` otherwise. Only up or down leaves the host. Missing beats raise the alert, so it does not depend on GitHub's best-effort schedule.
+- The optional [host monitor](Host-monitoring.md) on 8443 serves the same coarse report to a pinned client certificate; GitHub reads it as a secondary check.
+- The `domain` job of `monitor.yml` checks the CAA set, mail records, registrar locks, expiry, and every new certificate in Certificate Transparency.
 
 ## Acceptance and operation
 

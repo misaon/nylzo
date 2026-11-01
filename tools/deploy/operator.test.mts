@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { privateFile, inputs, client, credential, initialize, prepare, releaseEvidence } from "./operator.mts";
+import { privateFile, inputs, client, initialize, prepare, releaseEvidence } from "./operator.mts";
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));
@@ -65,17 +65,6 @@ test("provisioning installs only a signed host bundle and Caddy build of the ini
     await assert.rejects(releaseEvidence("v9.9.9", "amd64", signed), /Cannot read the checksums/u);
     assert.deepEqual(verified, ["v0.3.0"], "Listing checks come before any signature check");
   } finally { fetch.mock.restore(); }
-});
-
-test("cloud credentials can come from a password manager command instead of a file", async () => {
-  const saved = { ...process.env };
-  try {
-    delete process.env.HCLOUD_TOKEN;
-    process.env.HCLOUD_TOKEN_COMMAND = "printf '%s\\n' synthetic-test-credential-from-a-command";
-    assert.equal(await credential("HCLOUD_TOKEN"), "synthetic-test-credential-from-a-command");
-    process.env.HCLOUD_TOKEN_COMMAND = "exit 3";
-    await assert.rejects(credential("HCLOUD_TOKEN"));
-  } finally { process.env = saved; }
 });
 
 test("planning stops before any cloud call without a Caddy build, or without a hardware key for a server", async () => {

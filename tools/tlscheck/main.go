@@ -48,7 +48,8 @@ func refusesClassical(address, rootFile string) error {
 	} {
 		config.RootCAs, config.ServerName = roots, host
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		connection, err := (&tls.Dialer{Config: config}).DialContext(ctx, "tcp", address)
+		var connection net.Conn
+		connection, err = (&tls.Dialer{Config: config}).DialContext(ctx, "tcp", address)
 		cancel()
 		if err == nil {
 			_ = connection.Close()

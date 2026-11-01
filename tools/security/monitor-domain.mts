@@ -68,12 +68,15 @@ async function json(url: string, headers: Record<string, string> = {}) {
   return response.json();
 }
 
-async function registry(domain: string) {
-  const bootstrap = await json("https://data.iana.org/rdap/dns.json") as { services: [string[], string[]][] };
-  const label = domain.slice(domain.lastIndexOf(".") + 1);
-  const base = bootstrap.services.find(([labels]) => labels.includes(label))?.[1].find(url => url.startsWith("https://"));
-  assert(base, `IANA lists no RDAP service for .${label}`);
-  return base.endsWith("/") ? base : `${base}/`;
+const registries: Record<string, string> = {
+  com: "https://rdap.verisign.com/com/v1/domain/",
+  net: "https://rdap.verisign.com/net/v1/domain/",
+};
+
+function registration(domain: string) {
+  const base = registries[domain.slice(domain.lastIndexOf(".") + 1)];
+  assert(base, "Add the RDAP service of this top-level domain to the monitor");
+  return json(base + domain) as Promise<Registration>;
 }
 
 export async function domainProblems(domain: string, options: { accountUri?: string; reviewedUntil?: string; token?: string; now?: number } = {}) {
@@ -83,7 +86,7 @@ export async function domainProblems(domain: string, options: { accountUri?: str
   const problems = [
     ...caaProblems(await resolve(domain, "CAA"), options.accountUri),
     ...mailProblems(await resolve(domain, "MX"), await resolve(domain, "TXT"), await resolve(`_dmarc.${domain}`, "TXT")),
-    ...registrationProblems(await json(`${await registry(domain)}domain/${domain}`) as Registration, now),
+    ...registrationProblems(await registration(domain), now),
   ];
   const issuances: Issuance[] = [];
   for (let after = "", page = 0; page < 50; page++) {

@@ -20,7 +20,7 @@ for (const read of [
   if (updater.split(read).length !== 2) throw new Error("The updater's GitHub API reads changed; review the VM fixture");
   updater = updater.replace(read, read.replace('download "https://api.github.com/', `served "${server}/api/`));
 }
-if (updater.includes("api.github.com")) throw new Error("The updater reads another GitHub API resource; review the VM fixture");
+if (updater.split("https://api.github.com/").length !== 1) throw new Error("The updater reads another GitHub API resource; review the VM fixture");
 updater = updater.replace("checksums() {\n", 'served() {\n  curl --fail --silent --show-error --retry 5 --retry-connrefused --max-time 60 "$1" --output "$2"\n}\nchecksums() {\n');
 sources.set("update/update", updater);
 sources.set("monitoring/nylzo-vm-test.service", "[Unit]\nRequires=nylzo-ready.service\nAfter=nylzo-ready.service\n[Service]\nType=oneshot\nExecStart=/opt/nylzo-vm-test\nStandardOutput=journal+console\nStandardError=journal+console\nTimeoutStartSec=10min\n[Install]\nWantedBy=multi-user.target\n");
