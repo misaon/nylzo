@@ -16,6 +16,8 @@ format 1
 /opt/nylzo/runtime/refresh-tools update/refresh-tools
 /opt/nylzo/runtime/install-tools update/install-tools
 /opt/nylzo/runtime/activate update/activate
+/opt/nylzo/runtime/runtime-stage update/runtime-stage
+/opt/nylzo/runtime/runtime-profile system/runtime.json
 /etc/systemd/system/nylzo-update.service update/nylzo-update.service
 /etc/systemd/system/nylzo-update.timer update/nylzo-update.timer
 /etc/systemd/system/nylzo-tools.service update/nylzo-tools.service

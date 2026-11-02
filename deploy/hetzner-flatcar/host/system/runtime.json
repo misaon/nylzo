@@ -1,0 +1,7 @@
+{
+  "docker": "29.9.2",
+  "containerd": "2.4.2",
+  "runc": "1.5.2",
+  "amd64": "b78247e3f845f41e2326ea02a376310381b97dcde1113d8aa706a9ebd149ad24",
+  "arm64": "08b01ddd9aa3a50bd6abdbb791ac347718d717218c34bf347c571abfcd3ec56b"
+}

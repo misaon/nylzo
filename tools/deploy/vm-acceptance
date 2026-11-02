@@ -97,20 +97,41 @@ chown 165532:165532 "$probe/data"
 image=$(docker inspect nylzo --format '{{.Config.Image}}')
 level=s0:c0,c1
 if [[ "$(docker inspect nylzo --format '{{.ProcessLabel}}')" = *":$level" ]]; then level=s0:c2,c3; fi
-set +e
-timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
+if timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true --security-opt "label=level:$level" \
   --memory 1g --cpus 1 --pids-limit 128 --env-file /etc/nylzo/service.env \
   --volume "$probe/data:/home/nonroot:Z" \
-  --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro "$image" serve > "$probe/result" 2>&1
-status=$?
-set -e
+  --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro "$image" serve > "$probe/result" 2>&1; then
+  status=0
+else
+  status=$?
+fi
 docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true
 if [[ "$status" != 1 ]] || ! grep --fixed-strings --quiet 'permission denied' "$probe/result"; then
   echo 'The isolated container did not fail with the expected access denial.' >&2
   exit 1
 fi
 echo 'NYLZO_VM_SELINUX_ISOLATION_VERIFIED'
+/opt/nylzo/runtime/runtime-stage
+runtime_target=$(readlink /etc/extensions/docker.raw)
+[[ "$runtime_target" = /opt/nylzo/extensions/docker-*-x86-64.raw ]]
+[[ "$(readlink /etc/extensions/docker-flatcar.raw)" = /dev/null ]]
+[[ "$(readlink /etc/extensions/containerd-flatcar.raw)" = /dev/null ]]
+bad_runtime="$directory/bad-runtime.json"
+/opt/nylzo/bin/jq '.amd64 = ("0" * 64)' /opt/nylzo/runtime/runtime-profile > "$bad_runtime"
+if /opt/nylzo/runtime/runtime-stage "$bad_runtime"; then
+  echo 'A runtime image with the wrong checksum was accepted.' >&2
+  exit 1
+fi
+[[ "$(readlink /etc/extensions/docker.raw)" = "$runtime_target" ]]
+ln --symbolic --force --no-dereference --no-target-directory /tmp/unmanaged-docker.raw /etc/extensions/docker.raw
+if /opt/nylzo/runtime/runtime-stage; then
+  echo 'An unmanaged Docker extension override was replaced.' >&2
+  exit 1
+fi
+[[ "$(readlink /etc/extensions/docker.raw)" = /tmp/unmanaged-docker.raw ]]
+ln --symbolic --force --no-dereference --no-target-directory "$runtime_target" /etc/extensions/docker.raw
+echo 'NYLZO_VM_RUNTIME_INTEGRITY_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
   rm -rf /opt/nylzo/host/release-v0.0.1
   cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.1

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+export PATH="/opt/nylzo/bin:$PATH"
+umask 022
+[[ "$EUID" = 0 ]] || { echo 'Run runtime-stage as root.' >&2; exit 1; }
+profile=${1:-/opt/nylzo/runtime/runtime-profile}
+version=$(jq -er '.docker | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' "$profile")
+case "$(uname -m)" in
+  x86_64) architecture=amd64; asset=x86-64 ;;
+  aarch64) architecture=arm64; asset=arm64 ;;
+  *) echo 'Unsupported runtime architecture.' >&2; exit 1 ;;
+esac
+digest=$(jq -er --arg architecture "$architecture" '.[$architecture] | select(test("^[a-f0-9]{64}$"))' "$profile")
+directory=/opt/nylzo/extensions
+mkdir -p "$directory" /etc/extensions
+[[ ! -L "$directory" && ! -L /etc/extensions ]]
+exec 9> "$directory/.stage.lock"
+flock --exclusive --nonblock 9
+destination="$directory/docker-$version-$asset.raw"
+for name in docker-flatcar containerd-flatcar docker; do
+  link="/etc/extensions/$name.raw"
+  if [[ -e "$link" && ! -L "$link" ]]; then
+    echo "Refusing to replace the unmanaged extension $link." >&2
+    exit 1
+  fi
+  if [[ "$name" != docker && -L "$link" && "$(readlink "$link")" != /dev/null ]]; then
+    vendor="/usr/share/flatcar/etc/extensions/$name.raw"
+    [[ -L "$vendor" && "$(readlink "$link")" = "$(readlink "$vendor")" ]] || {
+      echo "Refusing to replace the unmanaged extension override $link." >&2; exit 1;
+    }
+  fi
+done
+if [[ -L /etc/extensions/docker.raw ]]; then
+  previous=$(readlink /etc/extensions/docker.raw)
+  [[ "$previous" =~ ^/opt/nylzo/extensions/docker-[0-9]+\.[0-9]+\.[0-9]+-(x86-64|arm64)\.raw$ ]] || {
+    echo 'Refusing to replace an unmanaged Docker extension.' >&2; exit 1;
+  }
+fi
+verify() { printf '%s  %s\n' "$digest" "$1" | sha256sum --check --strict --status; }
+if [[ -L "$destination" ]]; then echo 'Refusing a symlink at the runtime image path.' >&2; exit 1; fi
+if [[ -e "$destination" ]]; then
+  verify "$destination" || { echo 'The staged runtime image has a different checksum.' >&2; exit 1; }
+else
+  temporary=$(mktemp "$directory/.docker.XXXXXXXX")
+  trap 'rm -f "$temporary"' EXIT
+  curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+    --retry 3 --connect-timeout 15 --max-time 300 \
+    "https://github.com/flatcar/sysext-bakery/releases/download/docker-$version/docker-$version-$asset.raw" \
+    --output "$temporary"
+  verify "$temporary" || { echo 'The downloaded runtime image has a different checksum.' >&2; exit 1; }
+  chmod 0644 "$temporary"
+  sync "$temporary"
+  mv --no-target-directory "$temporary" "$destination"
+fi
+# Keep the OEM extension and the currently running processes untouched. The
+# links take effect during the next systemd-sysext merge.
+for name in docker-flatcar containerd-flatcar; do
+  ln --symbolic --force --no-dereference --no-target-directory /dev/null "/etc/extensions/$name.raw"
+done
+ln --symbolic --force --no-dereference --no-target-directory "$destination" /etc/extensions/docker.raw
+sync "$directory" /etc/extensions
+printf 'Docker %s is staged for the next boot; arrange a controlled reboot before activating the new host bundle.\n' "$version"

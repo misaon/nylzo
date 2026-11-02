@@ -66,6 +66,21 @@ test("server user data stays small, carries no secret, and installs only the sig
   assert.match(gunzipSync(Buffer.from(bootstrap.content, "base64")).toString(), /cd \/var\/tmp\/nylzo-image/u);
   const remote = ignition.storage.files.find(file => file.path === "/opt/nylzo/host/initial.tar")!;
   assert.deepEqual(remote.contents, { source: "https://github.com/misaon/nylzo/releases/download/v0.1.2/nylzo-host_0.1.2.tar", verification: { hash: `sha256-${"c".repeat(64)}` } });
+  for (const architecture of ["amd64", "arm64"]) {
+    const rendered = (await render({ ...site, architecture, serverType: architecture === "amd64" ? "cx23" : "cax11" }, bundle)).ignition;
+    const runtime = JSON.parse((await hostSources()).get("system/runtime.json")!);
+    const asset = architecture === "amd64" ? "x86-64" : "arm64";
+    const image = rendered.storage.files.find(file => file.path.endsWith(`docker-${runtime.docker}-${asset}.raw`))!;
+    assert.deepEqual(image.contents, {
+      source: `https://github.com/flatcar/sysext-bakery/releases/download/docker-${runtime.docker}/docker-${runtime.docker}-${asset}.raw`,
+      verification: { hash: `sha256-${runtime[architecture]}` },
+    });
+    assert.deepEqual(rendered.storage.links, [
+      { path: "/etc/extensions/docker-flatcar.raw", target: "/dev/null", overwrite: true },
+      { path: "/etc/extensions/containerd-flatcar.raw", target: "/dev/null", overwrite: true },
+      { path: "/etc/extensions/docker.raw", target: image.path, overwrite: true },
+    ]);
+  }
   const files = decode(ignition);
   assert(!JSON.stringify(ignition).includes("HCLOUD_TOKEN"));
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));

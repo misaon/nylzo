@@ -60,7 +60,7 @@ if (build !== undefined) {
   const digest = createHash("sha256").update(await readFile(build)).digest("hex");
   ignition.storage.files.push({ path: "/var/lib/nylzo-deploy/caddy.tag", mode: 0o600, overwrite: true, contents: { source: "data:,v0.0.0%0A" } } as any);
   ignition.storage.files.push({ path: "/var/lib/nylzo-deploy/caddy.approved.tag", mode: 0o600, overwrite: true, contents: { source: `data:,v${approved}%0A` } } as any);
-  (ignition.storage as any).links = [{ path: "/opt/nylzo/bin/caddy", target: caddy, overwrite: true }];
+  ignition.storage.links.push({ path: "/opt/nylzo/bin/caddy", target: caddy, overwrite: true });
   ignition.systemd.units.push({ name: "nylzo-vm-caddy.service", enabled: false, contents: `[Unit]\nWants=network-online.target\nAfter=network-online.target\nConditionPathExists=!${caddy}\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/mkdir -p /opt/nylzo/caddy/v0.0.0\nExecStart=/usr/bin/curl --fail --silent --show-error --retry 10 --retry-connrefused --max-time 300 --output ${caddy}.download ${server}/caddy\nExecStart=/usr/bin/bash -c "echo '${digest}  ${caddy}.download' | sha256sum --check --strict"\nExecStart=/usr/bin/chmod 0755 ${caddy}.download\nExecStart=/usr/bin/mv -T ${caddy}.download ${caddy}\n` });
 }
 ignition.storage.files.push({ path: "/opt/nylzo-vm-test", mode: 0o700, overwrite: true, contents: { compression: "gzip", source: "data:;base64," + gzipSync(await readFile(new URL("vm-acceptance", import.meta.url))).toString("base64") } });
