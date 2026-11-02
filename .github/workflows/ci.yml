@@ -79,7 +79,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go golangci-lint
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -142,7 +142,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go node pnpm osv-scanner
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -173,7 +173,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: actionlint zizmor shellcheck node go pnpm
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -201,7 +201,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go node opentofu
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -263,7 +263,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -309,7 +309,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: node pnpm
           cache_save: ${{ github.event_name == 'push' }}
       - name: Supply-chain policy, audit, Prettier, ESLint, knip, type checks and svelte-autofixer
@@ -435,7 +435,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go node pnpm
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -519,7 +519,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
       - name: Block updates that add high or critical vulnerabilities; pushes also inventory unchanged tools
@@ -583,7 +583,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go node pnpm grype
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
@@ -718,7 +718,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go
           cache: false
       - run: tools/verify-go-toolchain
@@ -802,7 +802,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go
           cache_save: ${{ github.event_name == 'push' }}
       - run: tools/verify-go-toolchain
