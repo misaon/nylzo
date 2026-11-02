@@ -32,9 +32,9 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     const productionConfiguration = mainConfiguration + "\n" + readFileSync(resolve("deploy/hetzner-flatcar/host/proxy/www.Caddyfile"), "utf8") + "\n" + monitorConfiguration;
     writeFileSync(join(fixtureDirectory, "nylzo-caddyfile.12345678"), productionConfiguration.replaceAll("/etc/nylzo/monitor-client.pem", "/fixture/client.pem").replaceAll("/var/lib/nylzo-monitor", "/status"));
     writeFileSync(join(fixtureDirectory, "nylzo-caddyfile.invalid"), "{\ninvalid_validation_global_option\n}\n");
-    configuration = configuration.replace(/\n *issuer acme \{\n[^}]*\}/gu, "");
-    configuration = configuration.replace("    admin off", "    admin off\n    local_certs\n    skip_install_trust\n    https_port 14443\n    http_port 18080");
-    configuration = configuration.replace(/    reverse_proxy 172\.30\.81\.2:8080 \{\n[\s\S]*?\n    \}/u, '    respond "public application"');
+    configuration = configuration.replace(/\n[\t ]*issuer acme \{\n[^}]*\}/gu, "");
+    configuration = configuration.replace(/^([\t ]*)admin off$/mu, "$1admin off\n$1local_certs\n$1skip_install_trust\n$1https_port 14443\n$1http_port 18080");
+    configuration = configuration.replace(/^([\t ]*)reverse_proxy 172\.30\.81\.2:8080 \{\n[\s\S]*?^\1\}/mu, '$1respond "public application"');
     configuration = configuration.replaceAll("/etc/nylzo/monitor-client.pem", "/fixture/client.pem").replaceAll("/var/lib/nylzo-monitor", "/status");
     writeFileSync(join(fixtureDirectory, "Caddyfile"), configuration);
     chmodSync(fixtureDirectory, 0o755);
@@ -47,6 +47,7 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(runtimeTest)?.[1];
     assert(image, "The integration test runs the release Caddy build in the pinned Ubuntu image of the runtime tests");
     const runtime = ["--read-only", "--user", "2001:2001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--memory", "128m", "--pids-limit", "64", "--tmpfs", "/data:mode=1777", "--tmpfs", "/config:mode=1777", "--tmpfs", "/status:mode=1777", "--env", "HOME=/unwritable-home", "--env", "NYLZO_DOMAIN=nylzo.test", "--mount", `type=bind,source=${fixtureDirectory},target=/fixture,readonly`, "--mount", `type=bind,source=${binaryDirectory},target=/opt/nylzo/bin,readonly`];
+    assert.equal(docker("run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "fmt", "/fixture/nylzo-caddyfile.12345678"), readFileSync(join(fixtureDirectory, "nylzo-caddyfile.12345678"), "utf8"), "The composed production Caddyfile must use canonical formatting");
     docker("run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "validate", "--config", "/fixture/nylzo-caddyfile.12345678", "--adapter", "caddyfile");
     const rejected = spawnSync("docker", ["run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "validate", "--config", "/fixture/nylzo-caddyfile.invalid", "--adapter", "caddyfile"], { encoding: "utf8", timeout: 30000 });
     assert.notEqual(rejected.status, 0);
