@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/misaon/nylzo/compare/v0.4.0...v0.5.0) (2026-11-02)
+
+
+### Fixes
+
+* **deploy:** validate host Caddyfiles and the served certificate ([#230](https://github.com/misaon/nylzo/issues/230)) ([5285a71](https://github.com/misaon/nylzo/commit/5285a7191e0fef22abe1c8b1a86c378253f89e7e))
+
 ## [0.4.0](https://github.com/misaon/nylzo/compare/v0.3.0...v0.4.0) (2026-11-02)
 
 
