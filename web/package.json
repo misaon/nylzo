@@ -13,7 +13,8 @@
     "lint": "oxfmt --check . && oxlint --deny-warnings --report-unused-disable-directives && knip",
     "lint:fix": "oxlint --fix && bun run format",
     "test": "bun run --parallel --filter @nylzo/core --filter @nylzo/web test",
-    "typecheck": "bun run --parallel --filter \"*\" typecheck"
+    "typecheck": "bun run --parallel --filter \"*\" typecheck",
+    "test:coverage": "bun run --parallel --filter @nylzo/core --filter @nylzo/web test:coverage"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",

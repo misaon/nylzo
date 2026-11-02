@@ -9,8 +9,9 @@
     "./scrypt": "./src/scrypt.ts"
   },
   "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc -p ."
+    "test": "bun run --bun vitest run",
+    "typecheck": "bun run --bun tsc -p .",
+    "test:coverage": "bun run --bun vitest run --coverage"
   },
   "dependencies": {
     "@noble/curves": "2.4.0",

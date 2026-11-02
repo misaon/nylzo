@@ -10,7 +10,8 @@
         "@fontsource-variable/geist",
         "@fontsource-variable/geist-mono",
         "@fontsource-variable/sora",
-        "@typescript/native"
+        "@typescript/native",
+        "svelte-check"
       ]
     },
     "e2e": {

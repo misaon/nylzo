@@ -79,4 +79,5 @@ async function boot(): Promise<void> {
   void tidy();
 }
 
-await boot();
+// oxlint-disable-next-line unicorn/prefer-top-level-await -- WebKit font readiness must not wait for this module to finish evaluating.
+void boot();

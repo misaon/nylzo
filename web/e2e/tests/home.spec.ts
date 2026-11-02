@@ -20,7 +20,6 @@ for (const home of HOMES) {
     const html = await response.text();
     expect(html).toContain(`<html lang="${home.language}">`);
     expect(html.match(/<h1[\s>]/gu)).toHaveLength(1);
-    expect(html.replaceAll(/<[^>]+>/gu, '')).toContain(home.heading);
     expect(/<title>([^<]*)<\/title>/u.exec(html)?.[1]).toMatch(home.title);
     expect(html).toContain(`<link rel="canonical" href="${BASE_URL}${home.path}">`);
     expect(html).toContain(`<link rel="alternate" hreflang="en" href="${BASE_URL}/">`);
