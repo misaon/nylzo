@@ -11,6 +11,6 @@
   "syft-arm64": {"package": "anchore/syft", "version": "v1.55.0", "sha256": "929bd163db2d7cd2255d3bcb8967208079813d7b46b0c952f7b794d8e2c7d304"},
   "mise-amd64": {"package": "jdx/mise", "version": "v2026.10.9", "sha256": "7af2e3d798e9ddec142f5a968a18c3f33aa68d19aa8a4111302d4c7d04feb6fa"},
   "mise-arm64": {"package": "jdx/mise", "version": "v2026.10.9", "sha256": "9a58b5b72e58ed66f38d6d2550c2f6279d8c39884574c389a39a9c441a5580b9"},
-  "codecov-amd64": {"package": "codecov/codecov-cli", "version": "v11.3.1", "sha256": "ca1d64196d2d34771084afe76ea657d581bf628e31d993ff8e52ea09cc88a56d"},
-  "codecov-arm64": {"package": "codecov/codecov-cli", "version": "v11.3.1", "sha256": "baff0923257c20b8594154c9651e7a6848f9783dc4392c6ce71791fec11a5913"}
+  "codecov-amd64": {"package": "codecov/codecov-cli", "version": "v11.3.2", "sha256": "8e1bfb71661378530f6ea21e82b414095899e565cbb4cf555c613064be17b973"},
+  "codecov-arm64": {"package": "codecov/codecov-cli", "version": "v11.3.2", "sha256": "a4b71cac685742e272e7cfd4a390cafc3736f57ebc3cf7ba2e24010f19c7f23f"}
 }
