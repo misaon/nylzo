@@ -56,10 +56,13 @@ const client = createGitHubClient(z.string().min(1).parse(process.env['GITHUB_TO
 const latest = await client.rest.repos.getLatestRelease(repository);
 const maintenance = await existingBranch(client, maintenanceBranch(parseVersion(latest.data.tag_name)));
 const fastPath = affectedPackages(values.affected);
+const manifestText = readFileSync(new URL('../package.json', import.meta.url), 'utf8');
+const runtime = z.object({ packageManager: z.string().regex(/^bun@\d+\.\d+\.\d+$/u) }).parse(JSON.parse(manifestText));
 const settings = globalSettings({
   affectedPackages: fastPath,
   maintenanceBranch: maintenance,
   miseVersion: pinnedMiseVersion(),
+  bunVersion: runtime.packageManager.slice(4),
 });
 writeFileSync(values.output, `${JSON.stringify(settings, undefined, 2)}\n`);
 console.log(

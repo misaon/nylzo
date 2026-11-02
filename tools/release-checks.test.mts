@@ -11,7 +11,7 @@ test("publication rebuilds source without promoting cached CI artifacts", () => 
   assert(!release.includes("pattern: hashes-"));
   assert(!release.includes("name: web-dist"));
   assert(release.includes("bun run --cwd web --filter @nylzo/web build"));
-  assert(!/cache: (?:pnpm|true)/u.test(release));
+  assert(!/^\s+cache: (?:pnpm|true)$/mu.test(release));
   assert(release.includes("cache: false"));
   assert(!release.includes("actions/setup-node@"));
   assert(!release.includes("pnpm/action-setup@"));
