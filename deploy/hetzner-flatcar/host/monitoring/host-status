@@ -18,10 +18,12 @@ if timeout 20 host-policy >/dev/null 2>&1; then host_policy=true; fi
 verified=$(cat "${NYLZO_CLOCK_STATE:-/run/nylzo-clock/verified}" 2>/dev/null || true)
 if [[ "$verified" =~ ^[0-9]{1,12}$ ]] && (( now >= 10#$verified && now - 10#$verified <= 3600 )); then clock=true; fi
 domain=$(sed -n 's/^NYLZO_DOMAIN=//p' "${NYLZO_CADDY_ENV:-/etc/nylzo/caddy.env}")
-if [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ ]]; then
-  for file in "${NYLZO_CERTIFICATES:-/var/lib/caddy/caddy/certificates}"/*/"$domain/$domain.crt"; do
-    if [[ -f "$file" ]] && openssl x509 -noout -checkend 129600 -in "$file" >/dev/null 2>&1; then certificate=true; fi
-  done
+endpoint=${NYLZO_CERTIFICATE_ENDPOINT:-127.0.0.1:443}
+if [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ && "$endpoint" =~ ^127\.0\.0\.1:[0-9]{1,5}$ ]]; then
+  # Inspect the certificate actually served, without access to Caddy's private storage.
+  if timeout 5 openssl s_client -connect "$endpoint" -servername "$domain" \
+    -verify_hostname "$domain" -verify_return_error </dev/null 2>/dev/null |
+    openssl x509 -noout -checkend 129600 >/dev/null 2>&1; then certificate=true; fi
 fi
 services=true
 for unit in nylzo.service caddy.service nylzo-ready.service nylzo-firewall.service update-engine.service locksmithd.service nylzo-update.timer; do
