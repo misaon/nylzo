@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
-
-import { isKdfId, type KdfId } from '../src/keys/kdf.ts';
+import protocolFixture from '../../../spec/vectors.json' with { type: 'json' };
+import { isKdfId } from '../src/keys/kdf.ts';
+import type { KdfId } from '../src/keys/kdf.ts';
 import { ID_LENGTH } from '../src/limits.ts';
 import { hash } from '../src/primitives/identifiers.ts';
 
@@ -179,7 +179,8 @@ interface VectorFile {
 export const vectors = loadVectors();
 
 function loadVectors(): VectorFile {
-  const file = JSON.parse(readFileSync(new URL('../../../spec/vectors.json', import.meta.url), 'utf8')) as VectorFile;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The committed JSON fixture is validated below, including its discriminants and cryptographic fields.
+  const file = protocolFixture as VectorFile;
   const sections = [
     file.derive,
     file.envelope,
@@ -211,7 +212,7 @@ export function kdfIdOf(value: number): KdfId {
 }
 
 export function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
-  if (hex.length % 2 !== 0 || !/^[\da-f]*$/.test(hex)) {
+  if (hex.length % 2 !== 0 || !/^[\da-f]*$/u.test(hex)) {
     throw new Error(`not lowercase hex: ${hex}`);
   }
   return Uint8Array.from({ length: hex.length / 2 }, (_, index) =>

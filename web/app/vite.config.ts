@@ -1,11 +1,11 @@
-import type { Plugin } from 'vite';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import browserslist from 'browserslist';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-import { gzipSync } from 'node:zlib';
+import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 import { buildInfo } from '../../tools/build-info.mts';
@@ -16,8 +16,8 @@ const outputDirectory = path.resolve(import.meta.dirname, '../../internal/server
 const developmentApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
 const GZIP_OS_UNKNOWN = 255;
 const PRELOADED_FONTS =
-  /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/;
-const PRECOMPRESSED = /\.(?:js|css)$/;
+  /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/u;
+const PRECOMPRESSED = /\.(?:js|css)$/u;
 const VITE_BROWSER_NAMES = new Map([
   ['and_chr', 'chrome'],
   ['and_ff', 'firefox'],
@@ -52,7 +52,6 @@ function buildMetadata(): Plugin {
     name: 'nylzo-build-metadata',
     apply: 'build',
     generateBundle() {
-      // eslint-disable-next-line unicorn/no-this-outside-of-class -- Rollup exposes asset emission through the plugin hook context.
       this.emitFile({ type: 'asset', fileName: 'assets/build-info.json', source: `${JSON.stringify(information)}\n` });
     },
   };
@@ -119,7 +118,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     projects: [
       {
         test: {
-          name: 'node',
+          name: 'bun',
           include: ['src/**/*.test.ts'],
           exclude: ['src/**/*.svelte.test.ts'],
           testTimeout: 30_000,

@@ -1,12 +1,12 @@
 import { createContext } from 'svelte';
 
+import { czech } from './czech.ts';
+import type { MessageKey } from './czech.ts';
+import { english } from './english.ts';
 import type { Language } from './language.ts';
 
-import { czech, type MessageKey } from './czech.ts';
-import { english } from './english.ts';
-
 const MESSAGES: Readonly<Record<Language, Readonly<Record<MessageKey, string>>>> = { cs: czech, en: english };
-const PLACEHOLDER = /\{(\w+)\}/g;
+const PLACEHOLDER = /\{(\w+)\}/gu;
 
 export type Translate = (key: MessageKey, values?: Readonly<Record<string, number | string>>) => string;
 

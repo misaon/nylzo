@@ -3,15 +3,15 @@ set -euo pipefail
 umask 077
 directory=$(mktemp -d)
 trap 'rm -rf "$directory"' EXIT
-node --test tools/deploy/*.test.mts
-node tools/deploy/check.mts "$directory"
+bun test --parallel --timeout 300000 tools/deploy/*.test.mts
+bun tools/deploy/check.mts "$directory"
 architecture=$(uname -m)
 case "$architecture" in
   x86_64) asset_architecture=amd64 ;;
   aarch64) asset_architecture=arm64 ;;
   *) echo 'Validation requires Linux x86_64 or aarch64.' >&2; exit 1 ;;
 esac
-mapfile -t asset < <(node tools/dependencies/asset.mts ignition "$asset_architecture")
+mapfile -t asset < <(bun tools/dependencies/asset.mts ignition "$asset_architecture")
 [[ ${#asset[@]} = 2 && "${asset[0]}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ && "${asset[1]}" =~ ^[a-f0-9]{64}$ ]]
 checksum="${asset[1]}"
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --max-time 180 \

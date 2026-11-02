@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { fileExtension, isKnownSafeFile, sanitizeFileName, splitFileName } from './file-name.ts';
@@ -23,7 +24,7 @@ describe('file names', () => {
   it.each([
     ['report.pdf', 'report.pdf'],
     ['../../etc/passwd', '_.._etc_passwd'],
-    ['C:\\Windows\\evil.exe', 'C__Windows_evil.exe'],
+    [String.raw`C:\Windows\evil.exe`, 'C__Windows_evil.exe'],
     ['invoice\u{202E}fdp.exe', 'invoicefdp.exe'],
     ['bidi\u{2066}isolate\u{2069}.txt', 'bidiisolate.txt'],
     ['zero\u{200B}width.txt', 'zerowidth.txt'],

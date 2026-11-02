@@ -1,7 +1,6 @@
-import type { Locator } from '@playwright/test';
-
 import { deriveLink, deriveVerifier, encodeBase64url, parseLink, requestKey } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
+import type { Locator } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
@@ -31,10 +30,10 @@ test(
     };
     const link = await createMessageInPage(sender, { text, file, passphrase: PASSPHRASE });
     expect(link.startsWith(`${BASE_URL}/r#`)).toBe(true);
-    expect(new URL(link).hash).toMatch(/^#2\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/);
+    expect(new URL(link).hash).toMatch(/^#2\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
 
     await showMessage(recipient, link, WRONG_PASSPHRASE);
-    await expect(recipient.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
     await recipient.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(recipient);

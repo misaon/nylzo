@@ -76,31 +76,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-        with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.node-version
-          package-manager-cache: false
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: go osv-scanner
+          install_args: go bun osv-scanner
           cache: false
       - run: tools/verify-go-toolchain
       - name: Install locked dependencies without lifecycle scripts
-        run: node automation/web-install/main.ts
+        run: bun automation/web-install/main.ts
       - name: Check source dependencies and generate the release SBOM and VEX
         env:
           NYLZO_VERSION: ${{ github.ref_name }}
-        run: node automation/source-dependency-gate/main.ts "$RUNNER_TEMP/release-evidence" --sbom
+        run: bun automation/source-dependency-gate/main.ts "$RUNNER_TEMP/release-evidence" --sbom
       - name: Build the web client for the exact release tag
         env:
           NYLZO_VERSION: ${{ github.ref_name }}
         run: |
-          pnpm --dir web --filter @nylzo/web build
+          bun run --cwd web --filter @nylzo/web build
           jq -e --arg version "${GITHUB_REF_NAME#v}" --arg commit "${GITHUB_SHA}" \
             '.version == $version and .commit == $commit and .dirty == false' internal/server/web/dist/assets/build-info.json
       - name: SHA-256 manifest of the build
@@ -111,7 +104,7 @@ jobs:
           cp "$RUNNER_TEMP/release-evidence/source.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.dependency-report.json"
           cp "$RUNNER_TEMP/release-evidence/go-imports.json" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.go-imports.json"
           cp deploy/hetzner-flatcar/toolchain.json "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.host-tools.json"
-          node automation/release-tag/release-policy.ts "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.release-policy.json"
+          bun automation/release-tag/release-policy.ts "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.release-policy.json"
           cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.source.spdx.json" "$RUNNER_TEMP/web-client/evidence/"
           if [ -f "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" ]; then
             cp "$RUNNER_TEMP/release-evidence/nylzo_${version}.openvex.json" "$RUNNER_TEMP/web-client/evidence/"
@@ -179,11 +172,11 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: go grype node
+          install_args: go grype bun
           cache: false
       - run: tools/verify-go-toolchain
       - name: Host configuration bundle for Hetzner Flatcar servers
-        run: node tools/deploy/bundle.mts ".host-bundle/nylzo-host_${GITHUB_REF_NAME#v}.tar"
+        run: bun tools/deploy/bundle.mts ".host-bundle/nylzo-host_${GITHUB_REF_NAME#v}.tar"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign

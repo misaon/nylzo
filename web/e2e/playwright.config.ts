@@ -3,11 +3,11 @@ import { defineConfig, devices } from '@playwright/test';
 import { BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
 
 const ci = Boolean(process.env['CI']);
-const crossBrowser = /@cross-browser/;
+const crossBrowser = /@cross-browser/u;
 
 function server(baseUrl: string, profile: string) {
   return {
-    command: `node serve.ts ${new URL(baseUrl).port} ${profile}`,
+    command: `bun serve.ts ${new URL(baseUrl).port} ${profile}`,
     url: `${baseUrl}/healthz`,
     reuseExistingServer: !ci,
     timeout: 180_000,

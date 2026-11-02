@@ -39,7 +39,7 @@ describe('AK9: proof-of-work vectors', () => {
 });
 
 describe('proof of work (spec 8.1)', () => {
-  it.each([-1, MAX_POW_DIFFICULTY + 1, 1.5, NaN])(
+  it.each([-1, MAX_POW_DIFFICULTY + 1, 1.5, Number.NaN])(
     'refuses the difficulty %d, which no server may ask for',
     (difficulty) => {
       expect(() => solvePow(challenge, id, difficulty)).toThrow(PowError);

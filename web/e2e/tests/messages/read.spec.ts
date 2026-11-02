@@ -19,7 +19,7 @@ declare global {
 
 const PASSPHRASE = 'four random words here';
 const LEFT = 'You left the page, so it no longer shows the message.';
-const REMOVED = /^The key is no longer in the address bar$/;
+const REMOVED = /^The key is no longer in the address bar$/u;
 
 test(
   'pagehide removes decrypted text before the browser can freeze the document (D95)',
@@ -92,8 +92,8 @@ test(
         );
         const ancestors = [];
         for (let element: Element | null = heading ?? null; element; element = element.parentElement) {
-          const style = getComputedStyle(element),
-            box = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          const box = element.getBoundingClientRect();
           ancestors.push({
             tag: element.tagName,
             classes: element.className,
@@ -231,7 +231,7 @@ test('a prefetch or prerender reaches the read page and the API only as a refuse
   }, message.link);
   const response = await speculative;
   const headers = await response.request().allHeaders();
-  expect(headers['sec-purpose']).toMatch(/^prefetch/);
+  expect(headers['sec-purpose']).toMatch(/^prefetch/u);
   expect(response.status()).toBe(503);
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0 });
 });
@@ -288,7 +288,7 @@ test('the reader stops without a verifier when the server reports another passph
     await route.fulfill({ response, json: { ...json, kdf_id: KDF_NONE } });
   });
   await page.goto(message.link);
-  await expect(page.getByText(/cannot be opened safely/)).toBeVisible();
+  await expect(page.getByText(/cannot be opened safely/u)).toBeVisible();
   await expect(notInert(page, page.getByRole('button', { name: 'Show message' }))).toHaveCount(0);
   expect(sensitive).toEqual([]);
   expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
@@ -305,8 +305,8 @@ test(
     await expect(page.getByText('Hidden or direction-changing characters in the text: 1.')).toBeVisible();
     expect(await page.locator('pre').textContent()).not.toContain('\u{202E}');
     await page.getByRole('button', { name: 'Copy text' }).click();
-    const confirm = page.getByRole('dialog', { name: /hidden or direction-changing characters/ });
-    await expect(confirm.getByText(/A copy keeps them exactly as the sender wrote them/)).toBeVisible();
+    const confirm = page.getByRole('dialog', { name: /hidden or direction-changing characters/u });
+    await expect(confirm.getByText(/A copy keeps them exactly as the sender wrote them/u)).toBeVisible();
     await confirm.getByRole('button', { name: 'Do not copy' }).click();
     await expect(confirm).toHaveCount(0);
   },

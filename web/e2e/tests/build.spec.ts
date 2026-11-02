@@ -1,6 +1,8 @@
-import { type Declaration, transform } from 'lightningcss';
 import { readdirSync, readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
+
+import { transform } from 'lightningcss';
+import type { Declaration } from 'lightningcss';
 
 import { expect, test } from './support/fixtures.ts';
 
@@ -67,7 +69,7 @@ function motionProblems(css: string): { readonly problems: string[]; readonly an
           }
         } else if (
           declaration.property === 'unparsed' &&
-          /^transition(?:-property)?$/.test(declaration.value.propertyId.property)
+          /^transition(?:-property)?$/u.test(declaration.value.propertyId.property)
         ) {
           problems.push(`${declaration.value.propertyId.property} has a value the check cannot read`);
         }
@@ -108,10 +110,10 @@ test('the built client stays within its budget, animates only transform and opac
   const scripts = builtAssets('.js')
     .map((name) => readAsset(name))
     .join('\n');
-  expect(scripts).not.toMatch(/\bnew Function\b|\beval\(|svelte\/compiler/);
+  expect(scripts).not.toMatch(/\bnew Function\b|\beval\(|svelte\/compiler/u);
   const index = readAsset('../index.html');
   const preloadedFonts = Array.from(
-    index.matchAll(/<link rel="preload" href="\/assets\/([^"]+)" as="font" type="font\/woff2" crossorigin(?:="")?>/g),
+    index.matchAll(/<link rel="preload" href="\/assets\/([^"]+)" as="font" type="font\/woff2" crossorigin(?:="")?>/gu),
     (match) => match[1],
   );
   const fonts = builtAssets('.woff2');
@@ -121,5 +123,5 @@ test('the built client stays within its budget, animates only transform and opac
 
 test('noble scrypt ships only in the key derivation worker (P5)', () => {
   const withScrypt = builtAssets('.js').filter((name) => readAsset(name).includes(NOBLE_SCRYPT_MARKER));
-  expect(withScrypt).toEqual([expect.stringMatching(/^kdf-worker-[\w-]+\.js$/)]);
+  expect(withScrypt).toEqual([expect.stringMatching(/^kdf-worker-[\w-]+\.js$/u)]);
 });

@@ -24,7 +24,7 @@ class FakeIntersectionObserver {
   }
 
   disconnect(): void {
-    return;
+    // This synchronous observer fake owns no native observer to disconnect.
   }
 }
 
@@ -37,6 +37,7 @@ class FakeElement extends FakeNode {
 export default {
   name: 'svelte-client',
   viteEnvironment: 'client',
+  // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- The test environment installs and removes browser globals.
   setup(global: typeof globalThis) {
     const queries = new Map<string, FakeMediaQueryList>();
     const matchMedia = (media: string): FakeMediaQueryList => {

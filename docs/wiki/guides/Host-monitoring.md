@@ -39,7 +39,7 @@ Verify the listener locally without putting secrets in arguments or history:
 URL=https://your-domain:8443/healthz \
 MONITOR_CERT_FILE=.deploy/production/monitoring/client.pem \
 MONITOR_KEY_FILE=.deploy/production/monitoring/client-key.pem \
-node tools/security/monitor-host.mts
+bun tools/security/monitor-host.mts
 ```
 
 `MONITOR_ADDRESS` can pin the connection to the server's address; TLS still verifies the hostname.

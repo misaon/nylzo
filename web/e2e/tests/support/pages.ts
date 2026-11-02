@@ -1,8 +1,7 @@
 import type { Locator, Page, Response } from '@playwright/test';
 
-import type { MessageFile } from './messages.ts';
-
 import { expect } from './fixtures.ts';
+import type { MessageFile } from './messages.ts';
 import { BASE_URL } from './servers.ts';
 
 export interface ComposedMessage {
@@ -22,7 +21,7 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
   await openApp(page, `${base}/`);
   await page.getByLabel('Message text').fill(message.text ?? '');
   if (message.file) {
-    await page.getByLabel(/Attachment, up to/).setInputFiles(message.file);
+    await page.getByLabel(/Attachment, up to/u).setInputFiles(message.file);
   }
   if (message.passphrase) {
     await choosePassphrase(page, message.passphrase);
@@ -49,7 +48,7 @@ async function openSecurityMenu(page: Page): Promise<void> {
 
 export async function chooseRemember(page: Page): Promise<void> {
   await openSecurityMenu(page);
-  const remember = page.getByRole('switch', { name: /^Cancel from this device/ });
+  const remember = page.getByRole('switch', { name: /^Cancel from this device/u });
   if ((await remember.getAttribute('aria-checked')) !== 'true') {
     await remember.click();
   }
@@ -58,7 +57,7 @@ export async function chooseRemember(page: Page): Promise<void> {
 
 export async function choosePassphrase(page: Page, passphrase: string): Promise<void> {
   await openSecurityMenu(page);
-  const protect = page.getByRole('switch', { name: /^Protect with a passphrase/ });
+  const protect = page.getByRole('switch', { name: /^Protect with a passphrase/u });
   if ((await protect.getAttribute('aria-checked')) !== 'true') {
     await protect.click();
   }
@@ -89,8 +88,12 @@ export async function returnFromBackForwardCache(page: Page): Promise<void> {
 
 export async function nextFrames(page: Page): Promise<void> {
   await page.evaluate(async () => {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => {
+      requestAnimationFrame(resolve);
+    });
+    await new Promise((resolve) => {
+      requestAnimationFrame(resolve);
+    });
   });
 }
 

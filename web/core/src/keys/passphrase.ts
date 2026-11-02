@@ -1,4 +1,5 @@
-import { MalformedPassphraseError, type PassphraseProblem, WeakPassphraseError } from '../errors.ts';
+import { MalformedPassphraseError, WeakPassphraseError } from '../errors.ts';
+import type { PassphraseProblem } from '../errors.ts';
 import { COMMON_PASSPHRASES } from './common-passphrases.ts';
 import { ASSIGNED_RANGE_DELTAS } from './unicode-assigned.ts';
 

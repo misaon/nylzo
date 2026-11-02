@@ -1,7 +1,8 @@
+import { spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createServer, request as forward } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { createServer, request as forward, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { createInterface } from 'node:readline';
 
 import { expect, test } from '../support/fixtures.ts';
@@ -10,8 +11,8 @@ import { createMessageInPage, expectMessageShown, showMessage } from '../support
 import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 const PASSPHRASE = 'orbit maple velvet thunder';
-const SESSION = /^http:\/\/[a-z2-7]{26}\.localhost:\d+$/;
-const HANDOFF = /^http:\/\/[a-z2-7]{26}\.localhost:\d+\/open#[A-Z2-7]{26}$/;
+const SESSION = /^http:\/\/[a-z2-7]{26}\.localhost:\d+$/u;
+const HANDOFF = /^http:\/\/[a-z2-7]{26}\.localhost:\d+\/open#[A-Z2-7]{26}$/u;
 const PLANTED_PAGE = `<!doctype html><title>port owner</title><script>navigator.serviceWorker.register('/planted.js').then(() => navigator.serviceWorker.ready).then(() => { document.title = 'planted'; });</script>`;
 const PLANTED_WORKER = `self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -41,7 +42,7 @@ function relayed(incoming: IncomingMessage, outgoing: ServerResponse, origin: st
   const target = {
     hostname: instance.hostname,
     port: instance.port,
-    path: `/${(incoming.url ?? '/').replace(/^\/+/, '')}`,
+    path: `/${(incoming.url ?? '/').replace(/^\/+/u, '')}`,
     method: incoming.method ?? 'GET',
     headers,
   };
@@ -62,7 +63,9 @@ function relayed(incoming: IncomingMessage, outgoing: ServerResponse, origin: st
       outgoing.end(body);
     });
   });
-  upstream.on('error', () => outgoing.writeHead(502).end());
+  upstream.on('error', () => {
+    outgoing.writeHead(502).end();
+  });
   incoming.pipe(upstream);
   hostile.requests.push(`${incoming.method} ${incoming.url}`);
 }
@@ -97,7 +100,9 @@ async function startHostileServer(): Promise<HostileServer> {
     }
     relayed(incoming, outgoing, origin, hostile);
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   return hostile;
 }
@@ -145,7 +150,7 @@ test(
       const web = runNylzo(['web', '--no-browser', '--server', hostile.origin]);
       running.push(web);
       const address = await web.firstLine;
-      const local = address.replace(/\/$/, '');
+      const local = address.replace(/\/$/u, '');
       expect(local).toMatch(SESSION);
       const sender = await newPage();
       const link = await createMessageInPage(
@@ -154,7 +159,7 @@ test(
         local,
       );
       expect(link.startsWith(`${hostile.origin}/r#`), 'links from the verified client name the instance').toBe(true);
-      await expect(sender.getByRole('switch', { name: /^Cancel from this device/ })).toHaveCount(0);
+      await expect(sender.getByRole('switch', { name: /^Cancel from this device/u })).toHaveCount(0);
       expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 
       const open = runNylzo(['open', '--no-browser', '--server', hostile.origin], link);
@@ -173,7 +178,7 @@ test(
       expect(hostile.loot).toEqual([]);
       expect(hostile.requests.length).toBeGreaterThan(0);
       for (const seen of hostile.requests) {
-        expect(seen, 'the instance received something other than an API call').toMatch(/^(?:GET|POST) \/api\/v1\//);
+        expect(seen, 'the instance received something other than an API call').toMatch(/^(?:GET|POST) \/api\/v1\//u);
         expect(seen).not.toContain(link.slice(link.indexOf('#') + 1));
       }
     } finally {
@@ -208,7 +213,7 @@ test('a service worker planted on the port before nylzo open starts cannot take 
     await attacker.context().unrouteAll();
     for (const origin of planted) {
       await attacker.goto(`${origin}/open${handoff.hash}`);
-      await expect(attacker).toHaveTitle(/^taken 421 /);
+      await expect(attacker).toHaveTitle(/^taken 421 /u);
     }
     await attacker.goto(handoff.href);
     await attacker.getByRole('button', { name: 'Show message' }).click();

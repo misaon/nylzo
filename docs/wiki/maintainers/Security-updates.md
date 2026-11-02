@@ -7,7 +7,7 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 - `renovate.yml` runs every six hours (`17 */6 * * *`, UTC), after every CI run on `main`, a maintenance branch or a `renovate/` branch that was not cancelled, and on manual dispatch. Only one Renovate run is active at a time. GitHub schedules are best effort.
 - Security fixes are proposed in any run. They come from GitHub advisories (Dependabot alerts read through the App), from OSV for direct Go and npm dependencies, and from the vulnerability inventory below.
 - Ordinary updates are proposed only on Monday before 08:00 UTC and only for versions at least three days old (`minimumReleaseAge`, strict). Registries that publish no release time, such as GHCR, therefore get ordinary updates only through the inventory's fast path.
-- pnpm keeps its own 24-hour minimum release age for every package, including security fixes. A fresh npm fix fails its lockfile update until it is a day old; a later Renovate run retries it.
+- Bun keeps its own 24-hour minimum release age for every package, including security fixes. A fresh npm fix fails its lockfile update until it is a day old; a later Renovate run retries it.
 
 ## What merges automatically
 

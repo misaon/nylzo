@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { type CheckRun, socketResult } from './socket-result.ts';
+import { socketResult } from './socket-result.ts';
+import type { CheckRun } from './socket-result.ts';
 
 const head = 'a'.repeat(40);
 const passed: CheckRun = {

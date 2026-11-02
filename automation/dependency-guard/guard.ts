@@ -1,7 +1,10 @@
-import { type BotIdentity, isBot } from '../github/identity.ts';
+import { isBot } from '../github/identity.ts';
+import type { BotIdentity } from '../github/identity.ts';
 import { appUpdateProblems } from './app-update.ts';
-import { approvingCodeOwner, type CodeOwners, isCodeOwner, parseCodeOwners } from './code-owners.ts';
-import { type Commit, type GuardSource, type PullRequest, readFileAt, webFlow } from './source.ts';
+import { approvingCodeOwner, isCodeOwner, parseCodeOwners } from './code-owners.ts';
+import type { CodeOwners } from './code-owners.ts';
+import { readFileAt, webFlow } from './source.ts';
+import type { Commit, GuardSource, PullRequest } from './source.ts';
 
 export interface Verdict {
   readonly passed: boolean;

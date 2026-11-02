@@ -1,31 +1,43 @@
 {
   "name": "nylzo-web",
   "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "core",
+    "app",
+    "e2e"
+  ],
   "type": "module",
-  "packageManager": "pnpm@12.16.1",
   "scripts": {
-    "format": "prettier --write .",
-    "lint": "prettier --check . && eslint . && knip",
-    "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "format": "oxfmt --write .",
+    "lint": "oxfmt --check . && oxlint --deny-warnings --report-unused-disable-directives && knip",
+    "lint:fix": "oxlint --fix && bun run format",
+    "test": "bun run --parallel --filter @nylzo/core --filter @nylzo/web test",
+    "typecheck": "bun run --parallel --filter \"*\" typecheck",
+    "test:coverage": "bun run --parallel --filter @nylzo/core --filter @nylzo/web test:coverage"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
-    "@eslint/js": "10.0.1",
     "@sveltejs/mcp": "0.1.28",
-    "@vitest/eslint-plugin": "1.6.28",
-    "eslint": "10.13.0",
+    "@types/bun": "1.4.4",
     "eslint-plugin-perfectionist": "5.13.0",
     "eslint-plugin-playwright": "2.12.1",
     "eslint-plugin-regexp": "3.3.1",
-    "eslint-plugin-svelte": "3.23.1",
-    "eslint-plugin-unicorn": "79.0.0",
-    "globals": "17.13.0",
     "knip": "6.42.0",
-    "prettier": "3.9.10",
-    "prettier-plugin-svelte": "4.1.1",
-    "prettier-plugin-tailwindcss": "0.8.1",
-    "typescript": "6.0.3",
-    "typescript-eslint": "8.72.1"
-  }
+    "oxfmt": "0.75.0",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005"
+  },
+  "overrides": {
+    "eslint": "10.13.0",
+    "minimatch": "11.0.1"
+  },
+  "engines": {
+    "bun": "1.4.4"
+  },
+  "packageManager": "bun@1.4.4",
+  "patchedDependencies": {
+    "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch"
+  },
+  "trustedDependencies": []
 }

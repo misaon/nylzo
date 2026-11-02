@@ -4,12 +4,12 @@ umask 077
 directory="${1:-.deploy/vm}"
 mkdir -p "$directory"
 directory=$(realpath "$directory")
-node tools/deploy/check.mts "$directory"
+bun tools/deploy/check.mts "$directory"
 if [[ -n "${NYLZO_VM_TANG:-}" ]]; then
-  node -e 'const fs = require("node:fs"); const site = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); site.tang = JSON.parse(process.argv[2]); fs.writeFileSync(process.argv[1], JSON.stringify(site));' "$directory/site.json" "$NYLZO_VM_TANG"
+  bun -e 'const fs = require("node:fs"); const site = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); site.tang = JSON.parse(process.argv[2]); fs.writeFileSync(process.argv[1], JSON.stringify(site));' "$directory/site.json" "$NYLZO_VM_TANG"
 fi
 mkdir -p "$directory/serve"
-release=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).initialRelease' "$directory/site.json")
+release=$(bun -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).initialRelease' "$directory/site.json")
 github() {
   mkdir -p "$(dirname "$directory/serve/api/$1")"
   printf 'header = "Authorization: Bearer %s"\n' "${GITHUB_TOKEN:?set GITHUB_TOKEN to a read-only token for the GitHub API}" |
@@ -34,8 +34,8 @@ port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0));
 python3 -m http.server --bind 127.0.0.1 --directory "$directory/serve" "$port" > "$directory/serve.log" 2>&1 &
 server=$!
 trap 'kill "$server" 2>/dev/null || true' EXIT
-node tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign" "http://10.0.2.2:$port" "${build[@]}"
-version=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
+bun tools/deploy/vm-fixture.mts "$directory/site.json" "$directory/vm.ign" "http://10.0.2.2:$port" "${build[@]}"
+version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-flatcar/toolchain.json")).flatcar')
 base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
 image=flatcar_production_qemu_image.img.bz2
 mkdir -p "$directory/gnupg"

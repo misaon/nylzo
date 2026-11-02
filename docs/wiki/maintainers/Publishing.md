@@ -5,7 +5,7 @@ The [public Wiki](https://github.com/misaon/nylzo/wiki) is the documentation sou
 From a clean, reviewed checkout of `main`, generate the Wiki:
 
 ```sh
-mise exec -- node tools/wiki.mts
+mise exec -- bun tools/wiki.mts
 ```
 
 The renderer writes `dist/wiki`, rewrites repository-relative links for the Wiki, validates linked local files and Wiki page names, and adds links back to reviewed source files. It does not contact GitHub or publish anything.

@@ -2,10 +2,11 @@
   "name": "@nylzo/e2e",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
-    "e2e": "playwright test",
-    "typecheck": "tsc -p ."
+    "e2e": "bun run --bun playwright test",
+    "typecheck": "bun run --bun tsc -p ."
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

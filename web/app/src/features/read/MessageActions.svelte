@@ -1,11 +1,10 @@
 <script lang="ts">
   import type { MessageKey } from '../../shared/language/czech.ts';
-  import type { FocusTarget, ReadPage } from './read-page.svelte.ts';
-
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import ReportForm from '../../shared/report/ReportForm.svelte';
   import Icon from '../../shared/ui/Icon.svelte';
   import Popover from '../../shared/ui/Popover.svelte';
+  import type { FocusTarget, ReadPage } from './read-page.svelte.ts';
 
   interface Props {
     readonly page: ReadPage;

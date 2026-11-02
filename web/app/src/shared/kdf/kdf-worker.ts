@@ -1,8 +1,10 @@
 import { PowTimeoutError, solvePow } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 
-import { type KdfRequest, type KdfResponse, throttledProgress } from './kdf-protocol.ts';
+import { throttledProgress } from './kdf-protocol.ts';
+import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- postMessage requires a mutable transfer list in the platform API.
 function reply(message: KdfResponse, transfer: Transferable[] = []): void {
   postMessage(message, { transfer });
 }

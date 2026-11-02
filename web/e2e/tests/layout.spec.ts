@@ -40,6 +40,7 @@ async function watchLayout(page: Page): Promise<void> {
     }
     const shifts: string[] = [];
     const resizes: string[] = [];
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- Playwright serializes this closure into the browser, where module helpers are unavailable.
     const rectangle = (box: DOMRectReadOnly) =>
       `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
     const recordShifts = (entries: PerformanceEntry[]) => {
@@ -122,7 +123,7 @@ for (const viewport of VIEWPORTS) {
     await expectNothingMoved(recipient, 'read loaded');
     await passphrase.fill('definitely the wrong one');
     await show.click();
-    await expect(recipient.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
     await expectNothingMoved(recipient, 'rejected');
     await passphrase.fill(PASSPHRASE);
     await show.click();
@@ -155,7 +156,7 @@ for (const viewport of VIEWPORTS) {
     await reporter.goto('/report');
     await expect(link).toBeVisible();
     await expectNothingMoved(reporter, 'report loaded');
-    await reporter.getByRole('checkbox', { name: /^I believe in good faith/ }).check();
+    await reporter.getByRole('checkbox', { name: /^I believe in good faith/u }).check();
     const answers = [
       { link: 'not a link', answer: 'The link is incomplete or damaged.' },
       { link: message.link.replace('#2.', '#3.'), answer: 'The link needs a newer version of Nylzo.' },

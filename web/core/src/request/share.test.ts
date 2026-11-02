@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { bytesToHex, hexToBytes, vectors } from '../../test/vectors.ts';
 import { IntegrityError } from '../errors.ts';
 import { decodeBase64url, encodeBase64url } from '../primitives/base64url.ts';
-import { newShareKey, parseWrappedShare, type ShareKey, unwrapShare } from './share.ts';
+import { newShareKey, parseWrappedShare, unwrapShare } from './share.ts';
+import type { ShareKey } from './share.ts';
 
 async function vectorKey(privateHex: string, publicText: string): Promise<ShareKey> {
   const jwk: JsonWebKey = {
@@ -36,6 +37,6 @@ describe('share keys', () => {
     expect(first.privateKey.extractable).toBe(false);
     expect(first.publicKey).toHaveLength(32);
     expect(first.publicKey).not.toEqual(second.publicKey);
-    await expect(crypto.subtle.exportKey('pkcs8', first.privateKey)).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('pkcs8', first.privateKey)).rejects.toBeInstanceOf(Error);
   });
 });

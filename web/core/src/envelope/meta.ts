@@ -8,7 +8,8 @@ import {
   MAX_TEXT_BYTES,
 } from '../limits.ts';
 import { utf8 } from '../primitives/bytes.ts';
-import { isIntegerLiteral, type JsonValue, parseJson } from './json.ts';
+import { isIntegerLiteral, parseJson } from './json.ts';
+import type { JsonValue } from './json.ts';
 
 interface FileMeta {
   readonly name: string;

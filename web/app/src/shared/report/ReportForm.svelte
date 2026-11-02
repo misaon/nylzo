@@ -1,15 +1,14 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
 
-  import { tick } from 'svelte';
-
   import type { ReportStatus } from '../api/api.ts';
-
   import { formatWait } from '../language/format.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
   import { PAGE_FIELD, PAGE_LABEL, PAGE_PROBLEM, PAGE_STATUS, PAGE_SUBMIT, PAGE_TEXT } from '../ui/page-classes.ts';
   import { PRIVATE_TEXT } from '../ui/private-fields.ts';
-  import { MAX_REASON_BYTES, type ReportOutcome, type ReportSubmission } from './report.ts';
+  import { MAX_REASON_BYTES } from './report.ts';
+  import type { ReportOutcome, ReportSubmission } from './report.ts';
 
   interface Props {
     readonly name: string;
@@ -34,7 +33,7 @@
 
   const problems = $derived(outcome?.outcome === 'invalid' ? outcome.problems : []);
   const linkProblem = $derived.by(() => {
-    const problem = problems.find((problem) => problem.startsWith('link_'));
+    const problem = problems.find((candidate) => candidate.startsWith('link_'));
     return problem ? translate(`report.problem.${problem}`) : '';
   });
   const reasonProblem = $derived(

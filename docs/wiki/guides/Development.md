@@ -78,7 +78,7 @@ go run ./cmd/nylzo-vectors -out spec/vectors.json
 
 The Go generator and TypeScript implementation must agree with the committed vectors. The largest RFC 7914 scrypt vector needs 1 GiB of memory. TypeScript runs it with `NYLZO_HEAVY_TESTS=1`, enabled in CI. `go test -short` skips its recalculation in the core; the vector generator still computes it.
 
-The web app and ESLint use the TypeScript version in [web/package.json](../../../web/package.json) for tool compatibility; the core and browser tests pin theirs separately. Use the checked-in package manager and lockfile rather than updating tools implicitly.
+Bun runs all project JavaScript and TypeScript tools. Oxlint provides type-aware linting; Oxfmt formats the web and automation workspaces, including Svelte and Tailwind classes. Native TypeScript 7 checks the core, browser tests, automation, and the Svelte app through `svelte-check --tsgo`. Svelte still requires TypeScript 6 alongside its native TypeScript 7 alias for the compiler API. See [the Bun toolchain](Bun-toolchain.md) for the compatibility boundaries and lint policy.
 
 ## Section links
 

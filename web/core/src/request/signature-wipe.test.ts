@@ -1,6 +1,5 @@
-import type * as Sha2 from '@noble/hashes/sha2.js';
-
 import { ed25519 } from '@noble/curves/ed25519.js';
+import type * as Sha2 from '@noble/hashes/sha2.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SEED_LENGTH } from '../limits.ts';

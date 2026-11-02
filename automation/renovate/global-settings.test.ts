@@ -7,6 +7,7 @@ test('the maintenance branch disables ordinary updates before the fast path enab
   const settings = globalSettings({
     affectedPackages: ['goreleaser/goreleaser'],
     maintenanceBranch: 'release/v0.2',
+    bunVersion: '1.4.4',
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main', 'release/v0.2'] });
@@ -32,6 +33,7 @@ test('without a maintenance branch Renovate processes only main', () => {
   const settings = globalSettings({
     affectedPackages: [],
     maintenanceBranch: null,
+    bunVersion: '1.4.4',
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main'] });

@@ -1,15 +1,17 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
+import compressionFixture from '../../../../spec/compression-vectors.json' with { type: 'json' };
 import { bytesToHex, hexToBytes, vectors as protocolVectors, randomId } from '../../test/vectors.ts';
 import { IntegrityError, MetaError, PlaintextError } from '../errors.ts';
-import { type ContentKeys, deriveContent } from '../keys/derive.ts';
+import { deriveContent } from '../keys/derive.ts';
+import type { ContentKeys } from '../keys/derive.ts';
 import { KDF_NONE } from '../keys/kdf.ts';
 import { MAX_FILE_BYTES, PAD, PREFIX_LENGTH, TAG_LENGTH } from '../limits.ts';
 import { arrayBufferBacked, concatenate, utf8 } from '../primitives/bytes.ts';
 import { newSecret } from '../primitives/identifiers.ts';
 import { compressedLength } from './compression.ts';
-import { commitment, type Expected, objectHash, open, type Payload, seal, sealWithCompression } from './envelope.ts';
+import { commitment as envelopeCommitment, objectHash, open, seal, sealWithCompression } from './envelope.ts';
+import type { Expected, Payload } from './envelope.ts';
 import { aad, headerBytes, newHeader } from './header.ts';
 import { decodeMeta, encodeMeta } from './meta.ts';
 
@@ -60,7 +62,7 @@ async function envelope(
   new DataView(plaintext.buffer).setUint32(0, metadata.length);
   plaintext.set(metadata, 4);
   plaintext.set(file, 4 + metadata.length);
-  const committed = await commitment(keys.commitmentKey, header, id, policy);
+  const committed = await envelopeCommitment(keys.commitmentKey, header, id, policy);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: arrayBufferBacked(header.iv), additionalData: aad(header, committed, id, policy) },
     keys.contentKey,
@@ -149,9 +151,7 @@ interface CompressionVectors {
   readonly rejected_frames: readonly { readonly name: string; readonly gzip_hex: string }[];
 }
 
-const vectors = JSON.parse(
-  readFileSync(new URL('../../../../spec/compression-vectors.json', import.meta.url), 'utf8'),
-) as CompressionVectors;
+const vectors = compressionFixture satisfies CompressionVectors;
 
 describe('cross-language compression vectors', () => {
   const expectedFile = utf8(vectors.pattern.repeat(vectors.repetitions));

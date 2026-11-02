@@ -1,11 +1,13 @@
 {
   "name": "@nylzo/automation",
   "private": true,
+  "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@12.16.1",
   "scripts": {
-    "lint": "prettier --check . && eslint .",
-    "test": "node --test",
+    "format": "oxfmt --write .",
+    "lint": "oxfmt --check . && oxlint --deny-warnings --report-unused-disable-directives",
+    "lint:fix": "oxlint --fix && bun run format",
+    "test": "bun test --parallel",
     "typecheck": "tsc -p ."
   },
   "dependencies": {
@@ -16,15 +18,21 @@
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
-    "@eslint/js": "10.0.1",
+    "@types/bun": "1.4.4",
     "@types/node": "26.6.6",
-    "eslint": "10.13.0",
     "eslint-plugin-perfectionist": "5.13.0",
     "eslint-plugin-regexp": "3.3.1",
-    "eslint-plugin-unicorn": "79.0.0",
-    "globals": "17.13.0",
-    "prettier": "3.9.10",
-    "typescript": "6.0.3",
-    "typescript-eslint": "8.72.1"
-  }
+    "oxfmt": "0.75.0",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "minimatch": "11.0.1"
+  },
+  "engines": {
+    "bun": "1.4.4"
+  },
+  "packageManager": "bun@1.4.4",
+  "trustedDependencies": []
 }

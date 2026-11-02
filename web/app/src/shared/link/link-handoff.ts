@@ -10,7 +10,7 @@ declare global {
   var nylzoFragment: (() => string) | undefined;
 }
 
-const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/i;
+const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/iu;
 const LINK_PATH = '/r';
 
 const pasted: { link?: { readonly path: string; readonly fragment: string } } = {};

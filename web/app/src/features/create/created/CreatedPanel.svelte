@@ -1,8 +1,6 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import type { Created } from '../create-message.ts';
-
   import { formatTime } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Chip from '../../../shared/ui/Chip.svelte';
@@ -10,6 +8,7 @@
   import { FocusTargets } from '../../../shared/ui/focus.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import SwapIcon from '../../../shared/ui/SwapIcon.svelte';
+  import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
 
   interface Props {
@@ -57,9 +56,7 @@
   async function share() {
     try {
       await navigator.share({ url: created.link });
-    } catch {
-      return;
-    }
+    } catch {}
   }
 
   async function clearClipboard() {

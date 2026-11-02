@@ -8,7 +8,8 @@ import { verifyDeepmergePatch } from '../web-install/deepmerge-patch.ts';
 import { assessSourceDependencies, scannedLockfiles } from './assessment.ts';
 import { collectGoImports } from './go-imports.ts';
 import { arrayAt, objectAt } from './json-values.ts';
-import { openVexDocument, openVexFileName, type Release } from './openvex.ts';
+import { openVexDocument, openVexFileName } from './openvex.ts';
+import type { Release } from './openvex.ts';
 import { lockedPackageCount, parseDependencyReport } from './osv-report.ts';
 import { parseScaPolicy } from './sca-policy.ts';
 
@@ -48,7 +49,7 @@ const statements = assessSourceDependencies(report, policy, imports, now, patchE
 writeJson(path.join(reportDirectory, 'patch-evidence.json'), patchEvidence);
 
 const commit = git('rev-parse', 'HEAD');
-assert.match(commit, /^[\da-f]{40}$/, 'HEAD must be a full commit hash');
+assert.match(commit, /^[\da-f]{40}$/u, 'HEAD must be a full commit hash');
 if (statements.length > 0 && isCleanCheckout()) {
   writeJson(
     path.join(reportDirectory, openVexFileName(release)),
@@ -65,9 +66,9 @@ function requestedRelease(): Release | undefined {
   if (requestedVersion === undefined || requestedVersion === '') {
     return undefined;
   }
-  assert.match(requestedVersion, /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, 'NYLZO_VERSION must be X.Y.Z');
+  assert.match(requestedVersion, /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u, 'NYLZO_VERSION must be X.Y.Z');
   assert.ok(isCleanCheckout(), 'Release evidence requires a clean checkout');
-  const version = requestedVersion.replace(/^v/, '');
+  const version = requestedVersion.replace(/^v/u, '');
   if (process.env['GITHUB_ACTIONS'] === 'true') {
     assert.equal(process.env['GITHUB_REF_NAME'], `v${version}`, 'NYLZO_VERSION must name the pushed tag');
   }
@@ -97,7 +98,7 @@ function isCleanCheckout(): boolean {
   return git('status', '--porcelain', '--untracked-files=no') === '';
 }
 
-function git(...gitArguments: string[]): string {
+function git(...gitArguments: readonly string[]): string {
   return execFileSync('git', gitArguments, { cwd: repositoryRoot, encoding: 'utf8' }).trim();
 }
 

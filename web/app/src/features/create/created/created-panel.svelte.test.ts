@@ -3,14 +3,12 @@ import { requestKey } from '@nylzo/core';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Created } from '../create-message.ts';
-
 import { getTranslator, Translator } from '../../../shared/language/translator.svelte.ts';
+import type { Created } from '../create-message.ts';
 import CreatedPanel from './CreatedPanel.svelte';
 
 vi.mock(import('../../../shared/language/translator.svelte.ts'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Svelte instruments awaits before hoisted imports initialize.
-  original().then((actual) => ({ ...actual, getTranslator: vi.fn() })),
+  original().then((actual) => ({ ...actual, getTranslator: vi.fn<typeof actual.getTranslator>() })),
 );
 
 describe('created message panel', () => {
@@ -18,7 +16,7 @@ describe('created message panel', () => {
   let component: ReturnType<typeof mount>;
   let created: Created;
   const translator = new Translator('en');
-  const another = vi.fn();
+  const another = vi.fn<(...arguments_: unknown[]) => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();

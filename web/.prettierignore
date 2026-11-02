@@ -1,5 +1,0 @@
-pnpm-lock.yaml
-app/.prerender/
-e2e/test-results/
-e2e/.bin/
-**/coverage/

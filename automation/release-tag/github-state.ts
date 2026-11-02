@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { type GitHubClient, repository } from '../github/client.ts';
+import { repository } from '../github/client.ts';
+import type { GitHubClient } from '../github/client.ts';
 import { peelTag } from '../github/tags.ts';
 
 const latestRelease = z.object({ draft: z.literal(false), immutable: z.literal(true), tag_name: z.string() });

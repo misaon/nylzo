@@ -3,16 +3,14 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Transparency as TransparencyData } from '../../shared/api/api.ts';
-
 import { createApi } from '../../shared/api/api.ts';
 import { fakeApi } from '../../shared/api/fake-api.ts';
 import { getTranslator, Translator } from '../../shared/language/translator.svelte.ts';
 import Transparency from './Transparency.svelte';
 
-vi.mock('../../shared/api/api.ts', () => ({ createApi: vi.fn() }));
+vi.mock('../../shared/api/api.ts', () => ({ createApi: vi.fn<typeof import('../../shared/api/api.ts').createApi>() }));
 vi.mock(import('../../shared/language/translator.svelte.ts'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Svelte instruments awaits before hoisted imports initialize.
-  original().then((actual) => ({ ...actual, getTranslator: vi.fn() })),
+  original().then((actual) => ({ ...actual, getTranslator: vi.fn<typeof actual.getTranslator>() })),
 );
 
 describe('transparency page', () => {

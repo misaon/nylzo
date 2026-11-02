@@ -27,7 +27,7 @@ export function browserPreferences(): PreferenceStore | undefined {
   try {
     return localStorage;
   } catch {
-    return;
+    return undefined;
   }
 }
 
@@ -48,7 +48,5 @@ export function savedLanguage(store: PreferenceStore | undefined, preferred: rea
 export function saveLanguage(store: PreferenceStore | undefined, language: Language): void {
   try {
     store?.setItem(LANGUAGE_KEY, language);
-  } catch {
-    return;
-  }
+  } catch {}
 }

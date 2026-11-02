@@ -2,45 +2,40 @@ import {
   authorizationHeader,
   encodeBase64url,
   idToString,
-  type KdfId,
   MAX_OBJECT_BYTES,
   MAX_POW_DIFFICULTY,
   parseChallenge,
   parseId,
   parseWrappedShare,
-  type Purpose,
   PURPOSE_MANAGE,
   PURPOSE_READ,
   PURPOSE_VERIFIER,
-  type RequestKey,
   signRequest,
   transferSeconds,
   utf8,
   verifierHeader,
 } from '@nylzo/core';
+import type { KdfId, Purpose, RequestKey } from '@nylzo/core';
 
-import { type MessageState, ResponseError, StoppedError } from './api-errors.ts';
-import { type DownloadProgress, readObject } from './object-body.ts';
+import { ResponseError, StoppedError } from './api-errors.ts';
+import type { MessageState } from './api-errors.ts';
+import { readObject } from './object-body.ts';
+import type { DownloadProgress } from './object-body.ts';
 import {
   apiError,
-  type ClientFile,
   clientFiles,
   instanceLimits,
-  type InstanceLimits,
   integer,
   isObject,
-  type Json,
   messageState,
   messageTimes,
-  type MessageTimes,
-  type Operator,
   operatorOf,
   readJson,
   servedPolicy,
-  type ServedPolicy,
   text,
   timestamp,
 } from './responses.ts';
+import type { ClientFile, InstanceLimits, Json, MessageTimes, Operator, ServedPolicy } from './responses.ts';
 
 export interface Transparency {
   readonly server: string;
@@ -170,7 +165,7 @@ interface SignedRequest {
   readonly purpose: Purpose;
   readonly key: RequestKey;
   readonly verifier?: RequestKey | undefined;
-  readonly headers?: Record<string, string>;
+  readonly headers?: Readonly<Record<string, string>>;
   readonly json?: Json;
   readonly proceed?: (() => boolean) | undefined;
 }
@@ -289,7 +284,7 @@ export function createApi(options: ApiOptions = {}): Api {
     return ensureOk(await signedOnce(request, timeoutMs));
   }
 
-  async function fetchJson(path: string, headers?: Record<string, string>): Promise<Json> {
+  async function fetchJson(path: string, headers?: Readonly<Record<string, string>>): Promise<Json> {
     return readJson(await ensureOk(await call(path, { method: 'GET', ...(headers && { headers }) })));
   }
 

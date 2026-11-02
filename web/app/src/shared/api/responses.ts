@@ -1,9 +1,10 @@
 import { decodeBase64url, utf8 } from '@nylzo/core';
 
-import { ApiError, ERROR_KINDS, MESSAGE_STATES, type MessageState, ResponseError } from './api-errors.ts';
+import { ApiError, ERROR_KINDS, MESSAGE_STATES, ResponseError } from './api-errors.ts';
+import type { MessageState } from './api-errors.ts';
 import { readBody } from './object-body.ts';
 
-export type Json = Record<string, unknown>;
+export type Json = Readonly<Record<string, unknown>>;
 
 export interface InstanceLimits {
   readonly maxFileBytes: number;
@@ -41,8 +42,8 @@ export interface ServedPolicy {
 
 const MAX_OPERATOR_FIELD_BYTES = 200;
 const MAX_JSON_BYTES = 64 * 1024;
-const SHA256_HEX = /^[\da-f]{64}$/;
-const RFC_3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+const SHA256_HEX = /^[\da-f]{64}$/u;
+const RFC_3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
 const TIMES = [
   ['created_at', 'createdAt'],
   ['expires_at', 'expiresAt'],
@@ -172,7 +173,7 @@ export async function readJson(response: Response): Promise<Json> {
 
 function retryAfterHeader(response: Response): number | undefined {
   const header = response.headers.get('Retry-After');
-  const value = header === null || header.trim() === '' ? NaN : Number(header);
+  const value = header === null || header.trim() === '' ? Number.NaN : Number(header);
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 

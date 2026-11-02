@@ -1,5 +1,4 @@
 import type { Language } from '../../../shared/language/language.ts';
-
 import { TTL_CHOICES } from '../composer/create-form.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
@@ -114,7 +113,7 @@ function changedDigits(after: string, before: string): number {
 }
 
 function grouped(value: bigint): string {
-  return value.toString().replaceAll(/\B(?=(?:\d{3})+(?!\d))/g, ' ');
+  return value.toString().replaceAll(/\B(?=(?:\d{3})+(?!\d))/gu, ' ');
 }
 
 export function countdown(attacker: Attacker, quantum: boolean, elapsedMs: number): Countdown {

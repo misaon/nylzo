@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { browserDatabases, committed, databaseExists, openDatabase, requestResult } from './indexed-database.ts';
 
 function opening() {
-  const close = vi.fn();
+  const close = vi.fn<(...arguments_: unknown[]) => void>();
   const database = { close } as unknown as IDBDatabase;
   const request = Object.assign(new EventTarget(), { result: database, error: null as DOMException | null });
-  const open = vi.fn(() => request);
+  const open = vi.fn<() => typeof request>(() => request);
   const factory = { open } as unknown as IDBFactory;
   return { close, database, request, open, factory };
 }
@@ -29,18 +29,20 @@ describe('IndexedDB lifecycle', () => {
     vi.stubGlobal('indexedDB', undefined);
     expect(browserDatabases()).toBeUndefined();
     await expect(databaseExists(undefined, 'nylzo')).resolves.toBe(false);
-    const databases = vi.fn().mockResolvedValue([{ name: 'nylzo' }]);
+    const databases = vi.fn<() => Promise<{ name: string }[]>>().mockResolvedValue([{ name: 'nylzo' }]);
     const factory = { databases } as unknown as IDBFactory;
     vi.stubGlobal('indexedDB', factory);
     expect(browserDatabases()).toBe(factory);
     await expect(databaseExists(factory, 'nylzo')).resolves.toBe(true);
     await expect(databaseExists(factory, 'other')).resolves.toBe(false);
-    await expect(openDatabase(undefined, 'nylzo', vi.fn())).rejects.toMatchObject({ name: 'StorageUnavailableError' });
+    await expect(openDatabase(undefined, 'nylzo', vi.fn<(...arguments_: unknown[]) => void>())).rejects.toMatchObject({
+      name: 'StorageUnavailableError',
+    });
   });
 
   it('creates stores only during upgrade and resolves after a successful open', async () => {
     const { request, database, factory, open } = opening();
-    const upgrade = vi.fn();
+    const upgrade = vi.fn<(...arguments_: unknown[]) => void>();
     const pending = openDatabase(factory, 'nylzo', upgrade);
     expect(open).toHaveBeenCalledExactlyOnceWith('nylzo', 1);
     expect(upgrade).not.toHaveBeenCalled();
@@ -55,7 +57,7 @@ describe('IndexedDB lifecycle', () => {
     async (failure) => {
       vi.useFakeTimers();
       const { request, factory, close } = opening();
-      const pending = openDatabase(factory, 'nylzo', vi.fn());
+      const pending = openDatabase(factory, 'nylzo', vi.fn<(...arguments_: unknown[]) => void>());
       const rejected = settled(pending);
       if (failure === 'timeout') {
         await vi.advanceTimersByTimeAsync(2000);
@@ -72,7 +74,7 @@ describe('IndexedDB lifecycle', () => {
   it('preserves the underlying database error', async () => {
     const { request, factory } = opening();
     request.error = new DOMException('storage denied', 'SecurityError');
-    const pending = openDatabase(factory, 'nylzo', vi.fn());
+    const pending = openDatabase(factory, 'nylzo', vi.fn<(...arguments_: unknown[]) => void>());
     request.dispatchEvent(new Event('error'));
     await expect(pending).rejects.toBe(request.error);
   });

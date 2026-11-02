@@ -63,9 +63,9 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: node pnpm cosign grype osv-scanner
+          install_args: bun cosign grype osv-scanner
           cache: false
-      - run: pnpm --dir automation install --frozen-lockfile
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Scan those releases, every source tree and every pinned tool
         env:
           GH_TOKEN: ${{ github.token }}
@@ -73,7 +73,7 @@ jobs:
         run: |
           arguments=()
           for tag in $TAGS; do arguments+=(--published "published/${tag}" --release-tag "$tag"); done
-          node automation/vulnerability-scan/inventory.ts "${arguments[@]}" --main . --reports "$RUNNER_TEMP/vulnerability-inventory"
+          bun automation/vulnerability-scan/inventory.ts "${arguments[@]}" --main . --reports "$RUNNER_TEMP/vulnerability-inventory"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -116,9 +116,9 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: node pnpm
+          install_args: bun
           cache: false
-      - run: pnpm --dir automation install --frozen-lockfile
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/vulnerability-inventory/affected.json
@@ -128,7 +128,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
-          node automation/renovate/main.ts --affected "$RUNNER_TEMP/vulnerability-inventory/affected.json"
+          bun automation/renovate/main.ts --affected "$RUNNER_TEMP/vulnerability-inventory/affected.json"
           --output "$RUNNER_TEMP/renovate-global.json"
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: metadata-cache

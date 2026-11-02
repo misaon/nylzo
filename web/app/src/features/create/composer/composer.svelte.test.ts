@@ -1,25 +1,26 @@
 import { requestKey } from '@nylzo/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { InstanceLimits } from '../../../shared/api/responses.ts';
-
 import { createApi } from '../../../shared/api/api.ts';
 import { fakeApi } from '../../../shared/api/fake-api.ts';
+import type { InstanceLimits } from '../../../shared/api/responses.ts';
 import { Translator } from '../../../shared/language/translator.svelte.ts';
 import { memoryStore } from '../../../shared/sent-records/memory-sent-store.ts';
 import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
-import { type Created, CreateError, type CreateFailure, createMessage } from '../create-message.ts';
+import { CreateError, createMessage } from '../create-message.ts';
+import type { Created, CreateFailure } from '../create-message.ts';
 import { Composer } from './composer.svelte.ts';
 
-vi.mock('../../../shared/api/api.ts', () => ({ createApi: vi.fn() }));
+vi.mock('../../../shared/api/api.ts', () => ({
+  createApi: vi.fn<typeof import('../../../shared/api/api.ts').createApi>(),
+}));
 vi.mock('../../../shared/sent-records/sent-store.ts', () => ({
-  browserSentStore: vi.fn(),
-  rememberSent: vi.fn(),
+  browserSentStore: vi.fn<(...arguments_: unknown[]) => void>(),
+  rememberSent: vi.fn<(...arguments_: unknown[]) => void>(),
 }));
 // Keep validation real; only replace the encryption/upload boundary.
 vi.mock(import('../create-message.ts'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Await instrumentation cannot run before imports initialize.
-  original().then((actual) => ({ ...actual, createMessage: vi.fn() })),
+  original().then((actual) => ({ ...actual, createMessage: vi.fn<typeof actual.createMessage>() })),
 );
 
 const limits: InstanceLimits = {
@@ -46,18 +47,8 @@ describe('message composer interactions', () => {
     return form;
   }
 
-  function submit(form: Composer): Promise<void> {
-    return form.submit(new Event('submit', { cancelable: true }) as SubmitEvent);
-  }
-
-  function focusTarget(form: Composer, target: Parameters<typeof form.focus.attach>[0]): ReturnType<typeof vi.fn> {
-    const focus = vi.fn();
-    form.focus.attach(target)({ focus } as unknown as HTMLElement);
-    return focus;
-  }
-
-  const querySelector = vi.fn();
-  const reload = vi.fn();
+  const querySelector = vi.fn<() => { content: string } | null>();
+  const reload = vi.fn<(...arguments_: unknown[]) => void>();
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -387,3 +378,13 @@ describe('message composer interactions', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 });
+
+function submit(form: Composer): Promise<void> {
+  return form.submit(new Event('submit', { cancelable: true }) as SubmitEvent);
+}
+
+function focusTarget(form: Composer, target: Parameters<typeof form.focus.attach>[0]): ReturnType<typeof vi.fn> {
+  const focus = vi.fn<(...arguments_: unknown[]) => void>();
+  form.focus.attach(target)({ focus } as unknown as HTMLElement);
+  return focus;
+}

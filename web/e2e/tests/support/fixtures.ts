@@ -1,4 +1,5 @@
-import { test as base, type BrowserContext, type BrowserContextOptions, type Page } from '@playwright/test';
+import { test as base } from '@playwright/test';
+import type { BrowserContext, BrowserContextOptions, Page } from '@playwright/test';
 
 export { expect } from '@playwright/test';
 

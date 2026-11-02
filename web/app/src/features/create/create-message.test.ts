@@ -11,17 +11,11 @@ import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
-import { fakeApi, type FakeApi } from '../../shared/api/fake-api.ts';
+import { fakeApi } from '../../shared/api/fake-api.ts';
+import type { FakeApi } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import {
-  type CreateDependencies,
-  CreateError,
-  type CreateInput,
-  createMessage,
-  passphraseIsWeak,
-  POW_BUDGET_MS,
-  validateCreate,
-} from './create-message.ts';
+import { CreateError, createMessage, passphraseIsWeak, POW_BUDGET_MS, validateCreate } from './create-message.ts';
+import type { CreateDependencies, CreateInput } from './create-message.ts';
 
 type Scrypt = CreateDependencies['scrypt'];
 
@@ -100,7 +94,7 @@ describe('creating a message', () => {
       { challenge: api.challenges[1], difficulty: 2, deadline: 1000 + POW_BUDGET_MS },
     ]);
     const [message] = api.stored.values();
-    expect(message?.request.powToken).toMatch(new RegExp(String.raw`^${api.challenges[1]}\.[0-9a-f]{16}$`));
+    expect(message?.request.powToken).toMatch(new RegExp(String.raw`^${api.challenges[1]}\.[0-9a-f]{16}$`, 'u'));
   });
 
   it('takes a fresh challenge when the first one runs out and fails as PoW after that', async () => {
@@ -214,7 +208,7 @@ describe('remembering the manage key (D39)', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     expect(created.manageKey.privateKey.extractable).toBe(false);
-    await expect(crypto.subtle.exportKey('pkcs8', created.manageKey.privateKey)).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('pkcs8', created.manageKey.privateKey)).rejects.toBeInstanceOf(Error);
     const status = await api.status(new Uint8Array(Buffer.from(created.id, 'base64url')), created.manageKey);
     expect(status).toMatchObject({ state: 'available', opensUsed: 0, opensMax: 1 });
   });

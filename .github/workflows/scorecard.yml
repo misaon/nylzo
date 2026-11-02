@@ -10,7 +10,7 @@ on:
       - go.mod
       - go.sum
       - web/**/package.json
-      - web/pnpm-lock.yaml
+      - web/bun.lock
       - .goreleaser.yaml
       - mise.toml
       - mise.lock

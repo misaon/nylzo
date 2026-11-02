@@ -2,14 +2,12 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ReportOutcome } from './report.ts';
-
 import { getTranslator, Translator } from '../language/translator.svelte.ts';
+import type { ReportOutcome } from './report.ts';
 import ReportForm from './ReportForm.svelte';
 
 vi.mock(import('../language/translator.svelte.ts'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Svelte instruments awaits before hoisted imports initialize.
-  original().then((actual) => ({ ...actual, getTranslator: vi.fn() })),
+  original().then((actual) => ({ ...actual, getTranslator: vi.fn<typeof actual.getTranslator>() })),
 );
 
 describe('report form', () => {
@@ -17,7 +15,7 @@ describe('report form', () => {
   let component: ReturnType<typeof mount>;
   const translator = new Translator('en');
   const send = vi.fn<(submission: unknown) => Promise<ReportOutcome>>();
-  const sent = vi.fn();
+  const sent = vi.fn<(...arguments_: unknown[]) => void>();
 
   function show(compact = false): void {
     component = mount(ReportForm, {

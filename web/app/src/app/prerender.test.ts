@@ -29,11 +29,11 @@ const STYLES = {
 const ASSETS = { image: IMAGE, styles: STYLES };
 
 function count(page: string, pattern: RegExp): number {
-  return page.match(new RegExp(pattern, 'g'))?.length ?? 0;
+  return page.match(new RegExp(pattern, 'gu'))?.length ?? 0;
 }
 
 function publicBlock(page: string): string {
-  const [, block = ''] = /<!--nylzo:public-->([\s\S]*?)<!--\/nylzo:public-->/.exec(page) ?? [];
+  const [, block = ''] = /<!--nylzo:public-->([\s\S]*?)<!--\/nylzo:public-->/u.exec(page) ?? [];
   return block;
 }
 
@@ -42,13 +42,13 @@ describe('homeTemplate', () => {
     const page = homeTemplate(INDEX, language, ASSETS);
     const home = language === 'en' ? '/' : '/cs/';
     expect(page).toContain(`<html lang="${language}">`);
-    expect(count(page, /<title>/)).toBe(1);
-    expect(count(page, /<meta name="description"/)).toBe(1);
+    expect(count(page, /<title>/u)).toBe(1);
+    expect(count(page, /<meta name="description"/u)).toBe(1);
     expect(page).not.toContain('<title>Nylzo</title>');
-    expect(count(page, /<h1[\s>]/)).toBe(1);
+    expect(count(page, /<h1[\s>]/u)).toBe(1);
     expect(page).not.toContain('<body></body>');
-    expect(count(page, /<!--nylzo:public-->/)).toBe(1);
-    expect(count(page, /<!--\/nylzo:public-->/)).toBe(1);
+    expect(count(page, /<!--nylzo:public-->/u)).toBe(1);
+    expect(count(page, /<!--\/nylzo:public-->/u)).toBe(1);
     const block = publicBlock(page);
     expect(block).toContain(`<link rel="canonical" href="__NYLZO_PUBLIC_URL__${home}">`);
     expect(block).toContain('<link rel="alternate" hreflang="en" href="__NYLZO_PUBLIC_URL__/">');
@@ -61,34 +61,34 @@ describe('homeTemplate', () => {
     expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/fonts-f7.css">');
     expect(page).toContain('<style>body{color:#fff}h1{margin:0}</style>');
     expect(page).not.toContain('style-b2.css');
-    expect(count(page, /-czech-[\w-]+\.woff2" as="font"/)).toBe(language === 'cs' ? 2 : 0);
+    expect(count(page, /-czech-[\w-]+\.woff2" as="font"/u)).toBe(language === 'cs' ? 2 : 0);
     expect(page).not.toContain('latin-ext');
     expect(page).toContain('geist-latin-wght-normal-d4.woff2" as="font"');
   });
 
   it('writes structured data that parses and matches the visible description', () => {
     const page = homeTemplate(INDEX, 'cs', ASSETS);
-    const [, json = ''] = /<script type="application\/ld\+json">([^<]*)<\/script>/.exec(page) ?? [];
+    const [, json = ''] = /<script type="application\/ld\+json">([^<]*)<\/script>/u.exec(page) ?? [];
     const data = JSON.parse(json) as { '@graph': { '@type': string; url: string; description?: string }[] };
     const types = data['@graph'].map((node) => node['@type']);
     expect(types).toEqual(['WebSite', 'WebApplication']);
-    const description = /<meta name="description" content="([^"]*)"/.exec(page)?.[1];
+    const description = /<meta name="description" content="([^"]*)"/u.exec(page)?.[1];
     expect(data['@graph'][1]?.description).toBe(description);
     expect(data['@graph'][1]?.url).toBe('__NYLZO_PUBLIC_URL__/cs/');
   });
 
   it('refuses an index it cannot place the page in', () => {
     expect(() => homeTemplate(INDEX.replace('<body></body>', '<body><p></p></body>'), 'en', ASSETS)).toThrow(
-      /<body><\/body>/,
+      /<body><\/body>/u,
     );
-    expect(() => homeTemplate(INDEX.replace('<title>Nylzo</title>', ''), 'en', ASSETS)).toThrow(/title/);
+    expect(() => homeTemplate(INDEX.replace('<title>Nylzo</title>', ''), 'en', ASSETS)).toThrow(/title/u);
     expect(() =>
       homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, stylesheet: '/assets/other.css' } }),
-    ).toThrow(/stylesheet/);
+    ).toThrow(/stylesheet/u);
     expect(() =>
       homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, inline: 'a{}</style><script>' } }),
-    ).toThrow(/stylesheet/);
-    expect(() => homeTemplate(INDEX.replaceAll('-czech-', '-other-'), 'cs', ASSETS)).toThrow(/Czech/);
-    expect(() => splitFontFaces('body{}')).toThrow(/fonts/);
+    ).toThrow(/stylesheet/u);
+    expect(() => homeTemplate(INDEX.replaceAll('-czech-', '-other-'), 'cs', ASSETS)).toThrow(/Czech/u);
+    expect(() => splitFontFaces('body{}')).toThrow(/fonts/u);
   });
 });

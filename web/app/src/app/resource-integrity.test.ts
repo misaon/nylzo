@@ -1,4 +1,5 @@
 import { runInNewContext } from 'node:vm';
+
 import { parse } from 'parse5';
 import { describe, expect, it } from 'vitest';
 
@@ -44,7 +45,7 @@ describe('final frontend resource policy', () => {
         html.replace('/assets/app.js', () => url),
         assets,
       ),
-    ).toThrow(/resource integrity/);
+    ).toThrow(/resource integrity/u);
   });
 
   it('rejects executable inline scripts and import maps but preserves inert JSON-LD', () => {
@@ -54,7 +55,7 @@ describe('final frontend resource policy', () => {
           html.replace('</head>', () => `${script}</head>`),
           assets,
         ),
-      ).toThrow(/inline scripts/);
+      ).toThrow(/inline scripts/u);
     }
     expect(
       secureHtml(
@@ -69,9 +70,9 @@ describe('final frontend resource policy', () => {
       '</head>',
       () => `<noscript><link rel="stylesheet" href="/assets/style.css"></noscript></head>`,
     );
-    expect(secureHtml(page, assets).match(/integrity="sha384-/g)).toHaveLength(3);
+    expect(secureHtml(page, assets).match(/integrity="sha384-/gu)).toHaveLength(3);
     expect(() => secureHtml(page.replaceAll('/assets/style.css', 'https://evil.invalid/style.css'), assets)).toThrow(
-      /resource integrity/,
+      /resource integrity/u,
     );
   });
 
@@ -91,7 +92,7 @@ describe('final frontend resource policy', () => {
       'export * from "missing-package"',
       'import("./missing.js")',
     ]) {
-      expect(() => checkScript(code, '/assets/app.js', assets)).toThrow(/resource integrity/);
+      expect(() => checkScript(code, '/assets/app.js', assets)).toThrow(/resource integrity/u);
     }
     expect(() => checkScript('const example = "import(location.hash)"', '/assets/app.js', assets)).not.toThrow();
   });
@@ -104,13 +105,13 @@ describe('final frontend resource policy', () => {
       'body{background:url(//evil.invalid/x)}',
       String.raw`body{background:url(h\74tps://evil.invalid/x)}`,
     ]) {
-      expect(() => checkStyles(css, '/assets/style.css', assets)).toThrow(/resource integrity/);
+      expect(() => checkStyles(css, '/assets/style.css', assets)).toThrow(/resource integrity/u);
       expect(() =>
         secureHtml(
           html.replace('</head>', () => `<style>${css}</style></head>`),
           assets,
         ),
-      ).toThrow(/resource integrity/);
+      ).toThrow(/resource integrity/u);
     }
   });
 });

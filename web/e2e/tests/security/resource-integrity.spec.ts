@@ -9,9 +9,9 @@ function digest(body: string): string {
 }
 
 const mutations = [
-  { name: 'index', pattern: /\/index-[^/]+\.js$/, extra: '\nglobalThis.nylzoTampered = true' },
-  { name: 'start', pattern: /\/start-[^/]+\.js$/, extra: '\nglobalThis.nylzoTampered = true' },
-  { name: 'style', pattern: /\/style-[^/]+\.css$/, extra: '\nbody{--nylzo-tampered:yes}' },
+  { name: 'index', pattern: /\/index-[^/]+\.js$/u, extra: '\nglobalThis.nylzoTampered = true' },
+  { name: 'start', pattern: /\/start-[^/]+\.js$/u, extra: '\nglobalThis.nylzoTampered = true' },
+  { name: 'style', pattern: /\/style-[^/]+\.css$/u, extra: '\nbody{--nylzo-tampered:yes}' },
 ];
 for (const mutation of mutations) {
   const matches = (url: string) => mutation.pattern.test(new URL(url).pathname);
@@ -35,7 +35,7 @@ for (const mutation of mutations) {
       }
     });
     await page.goto('/sent');
-    await expect.poll(() => errors.join('\n')).toMatch(/integrity|digest|hash/i);
+    await expect.poll(() => errors.join('\n')).toMatch(/integrity|digest|hash/iu);
     const state = await page.evaluate(() => ({
       script: Reflect.get(globalThis, 'nylzoTampered') as unknown,
       style: getComputedStyle(document.body).getPropertyValue('--nylzo-tampered'),
@@ -134,7 +134,7 @@ test(
     await page.route('**/worker-ran', async (route) => {
       await route.fulfill({ body: '' });
     });
-    await page.route(/\/assets\/kdf-worker-[^/]+\.js$/, async (route) => {
+    await page.route(/\/assets\/kdf-worker-[^/]+\.js$/u, async (route) => {
       const response = await route.fetch({ headers: { ...route.request().headers(), 'accept-encoding': 'identity' } });
       await route.fulfill({ response, body: `fetch('/worker-ran');\n${await response.text()}` });
     });

@@ -5,14 +5,14 @@ import { openApp } from '../support/pages.ts';
 import { watchViolations } from '../support/watchers.ts';
 
 const spec = readFileSync(new URL('../../../../docs/wiki/reference/Protocol.md', import.meta.url), 'utf8');
-const htmlPolicy = /^- HTML responses carry `Content-Security-Policy: ([^`]+)`/m.exec(spec)?.[1] ?? '';
+const htmlPolicy = /^- HTML responses carry `Content-Security-Policy: ([^`]+)`/mu.exec(spec)?.[1] ?? '';
 const PAGES = ['/', '/cs/', '/sent', '/report', '/transparency', '/r', '/m/AAAAAAAAAAAAAAAAAAAAAA'];
-const HASHES = / 'sha384-[A-Za-z0-9+/]+={0,2}'/g;
+const HASHES = / 'sha384-[A-Za-z0-9+/]+={0,2}'/gu;
 
 function withHashPlaceholders(policy: string): string {
   return policy
-    .replace(/(script-src 'self')(?: 'sha384-[^']+')*/, '$1 {script hashes}')
-    .replace(/(style-src 'self')(?: 'sha384-[^']+')*/, '$1 {style hashes}');
+    .replace(/(script-src 'self')(?: 'sha384-[^']+')*/u, '$1 {script hashes}')
+    .replace(/(style-src 'self')(?: 'sha384-[^']+')*/u, '$1 {style hashes}');
 }
 
 for (const path of PAGES) {
@@ -29,7 +29,7 @@ for (const path of PAGES) {
       const policy = response?.headers()['content-security-policy'] ?? '';
       expect(withHashPlaceholders(policy), path).toBe(htmlPolicy);
       expect(policy.includes("script-src 'self' 'sha384-"), `${path} admits its import map by hash`).toBe(true);
-      expect(policy.replaceAll(HASHES, ''), path).not.toMatch(/'nonce-|'strict-dynamic'|'unsafe-/);
+      expect(policy.replaceAll(HASHES, ''), path).not.toMatch(/'nonce-|'strict-dynamic'|'unsafe-/u);
       await expect(page.getByRole('heading', { level: 1 }), path).toBeVisible();
       expect(await violations(), path).toEqual([]);
     },

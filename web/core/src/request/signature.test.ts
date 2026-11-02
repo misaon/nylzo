@@ -12,13 +12,13 @@ import {
   PURPOSE_MANAGE,
   PURPOSE_READ,
   PURPOSE_VERIFIER,
-  type RequestKey,
   requestKey,
   requestMessage,
   signRequest,
   verifierHeader,
   wipeRequestKey,
 } from './signature.ts';
+import type { RequestKey } from './signature.ts';
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
 
@@ -48,9 +48,9 @@ describe('AK9: request vectors', () => {
 
 describe('request signatures (spec 5.5)', () => {
   it('rejects a seed or challenge of the wrong length', async () => {
-    await expect(requestKey(new Uint8Array(SEED_LENGTH - 1))).rejects.toThrow();
+    await expect(requestKey(new Uint8Array(SEED_LENGTH - 1))).rejects.toBeInstanceOf(Error);
     const short = new Uint8Array(CHALLENGE_LENGTH - 1);
-    await expect(requestMessage(PURPOSE_READ, 'GET', path, short, new Uint8Array(0))).rejects.toThrow();
+    await expect(requestMessage(PURPOSE_READ, 'GET', path, short, new Uint8Array(0))).rejects.toBeInstanceOf(Error);
   });
 
   it('generates a manage key whose private half never leaves Web Crypto (D39)', async () => {
@@ -58,7 +58,7 @@ describe('request signatures (spec 5.5)', () => {
     expect(key.privateKey.extractable).toBe(false);
     expect(key.privateKey.usages).toEqual(['sign']);
     expect(key.publicKey).toHaveLength(32);
-    await expect(crypto.subtle.exportKey('jwk', key.privateKey)).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('jwk', key.privateKey)).rejects.toBeInstanceOf(Error);
     const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
     const signature = await signRequest(key, PURPOSE_MANAGE, 'POST', path, challenge);
     const verifier = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);

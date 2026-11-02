@@ -56,7 +56,7 @@ function buildTags(build: GoBuild, repositoryRoot: string): string {
     return '';
   }
   const tags = readFileSync(path.join(repositoryRoot, build.tagsFile), 'utf8').trim();
-  if (!/^\w+(?:,\w+)*$/.test(tags)) {
+  if (!/^\w+(?:,\w+)*$/u.test(tags)) {
     throw new Error(`${build.tagsFile} must list comma-separated build tags`);
   }
   return tags;

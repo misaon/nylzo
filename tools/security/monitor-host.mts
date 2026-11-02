@@ -69,8 +69,9 @@ export async function requireClientAuthentication(url: URL, connection: Pick<Req
     const deadline = setTimeout(() => outgoing.destroy(new Error("TLS denial probe timed out")), 20_000);
     outgoing.on("error", (error: NodeJS.ErrnoException) => {
       clearTimeout(deadline);
-      if (error.code === "ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED") resolve();
-      else reject(new Error("The expected TLS client-certificate denial was not observed"));
+      // Both TLS backends report the certificate_required alert (116), under different symbolic names.
+      if (error.code === "ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED" || error.code === "ERR_SSL_TLSV1_ALERT_CERTIFICATE_REQUIRED") resolve();
+      else reject(new Error("The expected TLS client-certificate denial was not observed", { cause: error }));
     });
     outgoing.end();
   });

@@ -1,9 +1,11 @@
 import { utf8 } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { type CreateDependencies, createMessage } from '../../features/create/create-message.ts';
+import { createMessage } from '../../features/create/create-message.ts';
+import type { CreateDependencies } from '../../features/create/create-message.ts';
 import { ApiError } from '../api/api-errors.ts';
-import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../api/fake-api.ts';
+import { abuseReport, fakeApi } from '../api/fake-api.ts';
+import type { FakeApi, FakeOptions } from '../api/fake-api.ts';
 import { parseContact, reasonTooLong, redactReason, reportLink } from './report.ts';
 
 const ORIGIN = 'https://nylzo.test';

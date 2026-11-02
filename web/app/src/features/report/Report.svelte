@@ -2,7 +2,8 @@
   import { createApi } from '../../shared/api/api.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
-  import { reportLink, type ReportOutcome, type ReportSubmission } from '../../shared/report/report.ts';
+  import { reportLink } from '../../shared/report/report.ts';
+  import type { ReportOutcome, ReportSubmission } from '../../shared/report/report.ts';
   import ReportForm from '../../shared/report/ReportForm.svelte';
   import { PAGE_TEXT, PAGE_TITLE } from '../../shared/ui/page-classes.ts';
 

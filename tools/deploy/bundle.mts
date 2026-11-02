@@ -70,7 +70,7 @@ export function archive(sources: Map<string, string>) {
 
 if (import.meta.main) {
   const output = process.argv[2];
-  assert(output?.endsWith(".tar"), "Usage: node tools/deploy/bundle.mts OUTPUT.tar");
+  assert(output?.endsWith(".tar"), "Usage: bun tools/deploy/bundle.mts OUTPUT.tar");
   await mkdir(path.dirname(path.resolve(output)), { recursive: true });
   await writeFile(output, archive(await hostSources()));
   console.log(`Wrote the host bundle to ${output}`);

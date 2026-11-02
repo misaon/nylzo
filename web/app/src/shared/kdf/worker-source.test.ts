@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// oxlint-disable-next-line import/default -- Vite generates the default URL export for this worker asset query.
 import kdfWorkerUrl from './kdf-worker.ts?worker&url';
 
 describe('verified worker source', () => {
   const fetchSource = vi.fn<typeof fetch>();
-  const terminate = vi.fn();
+  const terminate = vi.fn<(...arguments_: unknown[]) => void>();
   const createObjectURL = vi.fn<() => string>();
-  const revokeObjectURL = vi.fn();
-  const construct = vi.fn();
+  const revokeObjectURL = vi.fn<(...arguments_: unknown[]) => void>();
+  const construct = vi.fn<(url: string, options: WorkerOptions) => void>();
 
   beforeEach(() => {
     vi.resetModules();

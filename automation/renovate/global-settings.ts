@@ -2,6 +2,7 @@ export interface GlobalSettingsInput {
   readonly affectedPackages: readonly string[];
   readonly maintenanceBranch: string | null;
   readonly miseVersion: string;
+  readonly bunVersion: string;
 }
 
 export function globalSettings(input: GlobalSettingsInput): Record<string, unknown> {
@@ -40,12 +41,12 @@ export function globalSettings(input: GlobalSettingsInput): Record<string, unkno
     allowPlugins: false,
     exposeAllEnv: false,
     allowedUnsafeExecutions: [],
-    allowedCommands: [String.raw`^node /opt/nylzo-dependency-sync\.ts$`],
+    allowedCommands: [String.raw`^(?:bun|node) /opt/nylzo-dependency-sync\.ts$`],
     allowShellExecutorForPostUpgradeCommands: false,
     cacheDir: '/tmp/renovate-cache',
     baseDir: '/tmp/renovate-work',
     persistRepoData: false,
-    constraints: { mise: input.miseVersion },
+    constraints: { mise: input.miseVersion, bun: input.bunVersion },
     packageRules: [...maintenanceRules, ...fastPathRules],
     force: {
       baseBranchPatterns: input.maintenanceBranch === null ? ['main'] : ['main', input.maintenanceBranch],

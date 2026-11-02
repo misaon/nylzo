@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 
+import { deepmergePatch, isSamePatch } from '../web-install/deepmerge-patch.ts';
+import type { PatchAssessment } from '../web-install/deepmerge-patch.ts';
+import { localWorkspaces } from '../web-install/policy.ts';
+import { goBuilds } from './go-imports.ts';
+import type { GoImports } from './go-imports.ts';
 import type { Component, DependencyReport, LockedPackage, LockfileReport, Vulnerability } from './osv-report.ts';
 import type { Assessment, FixedAssessment, NotAffectedAssessment, ScaPolicy } from './sca-policy.ts';
-
-import { deepmergePatch, isSamePatch, type PatchAssessment } from '../web-install/deepmerge-patch.ts';
-import { goBuilds, type GoImports } from './go-imports.ts';
 
 export type VexStatement = FixedStatement | NotAffectedStatement;
 
@@ -25,17 +27,12 @@ interface NotAffectedStatement {
   readonly vulnerability: { readonly name: string };
 }
 
-export const scannedLockfiles = [
-  'go.mod',
-  'web/pnpm-lock.yaml',
-  'automation/pnpm-lock.yaml',
-  'deploy/caddy/go.mod',
-] as const;
+export const scannedLockfiles = ['go.mod', 'web/bun.lock', 'automation/bun.lock', 'deploy/caddy/go.mod'] as const;
 
 type ScannedLockfile = (typeof scannedLockfiles)[number];
 
-export const patchedLockfile: ScannedLockfile = 'web/pnpm-lock.yaml';
-const toolingLockfile: ScannedLockfile = 'automation/pnpm-lock.yaml';
+export const patchedLockfile: ScannedLockfile = 'web/bun.lock';
+const toolingLockfile: ScannedLockfile = 'automation/bun.lock';
 const reviewedForbiddenImport = 'golang.org/x/crypto/openpgp';
 const reviewedJustification = 'vulnerable_code_not_present';
 
@@ -78,7 +75,15 @@ export function assessSourceDependencies(
       if (shipped !== undefined && !shipped.has(component.name)) {
         continue;
       }
-      if (!hasAllowedLicenses(locked, allowedLicenses)) {
+      // Bun inventories local links as workspace:<directory>; these are this repository's MIT source, not registry packages.
+      const localDirectory = localWorkspaces[component.name];
+      const licensedLocalWorkspace =
+        lockfile === 'web/bun.lock' &&
+        component.ecosystem === 'npm' &&
+        localDirectory !== undefined &&
+        component.version === `workspace:${localDirectory}` &&
+        allowedLicenses.has('MIT');
+      if (!licensedLocalWorkspace && !hasAllowedLicenses(locked, allowedLicenses)) {
         findings.push(`License review required: ${component.name}@${component.version}`);
       }
       for (const vulnerability of locked.vulnerabilities) {

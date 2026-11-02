@@ -22,7 +22,7 @@ interface Deepmerge {
   (
     target: object,
     source: object,
-    options?: { arrayMerge: (target: unknown[], source: unknown[]) => unknown[] },
+    options?: { readonly arrayMerge: (target: readonly unknown[], source: readonly unknown[]) => readonly unknown[] },
   ): MergedObject;
   all(objects: readonly object[]): MergedObject;
 }
@@ -55,25 +55,25 @@ export function isSamePatch(first: PatchAssessment, second: PatchAssessment): bo
 
 export function checkPatchBinding(patch: Buffer, workspaceManifest: string, lockfile: string): void {
   assert.equal(sha256(patch), deepmergePatch.sha256, 'Unreviewed deepmerge patch');
-  const workspace = workspaceManifest.replaceAll('\r\n', '\n');
-  const lock = lockfile.replaceAll('\r\n', '\n');
-  assert.match(
-    workspace,
-    /^patchedDependencies:\n {2}deepmerge@4\.3\.1: patches\/deepmerge@4\.3\.1\.patch$/m,
-    'web/pnpm-workspace.yaml must apply the reviewed deepmerge patch',
+  const manifest: unknown = JSON.parse(workspaceManifest);
+  const lock: unknown = Bun.JSON5.parse(lockfile);
+  assert.ok(typeof manifest === 'object' && manifest !== null, 'Invalid web/package.json');
+  assert.ok(typeof lock === 'object' && lock !== null, 'Invalid web/bun.lock');
+  const patches = { 'deepmerge@4.3.1': 'patches/deepmerge@4.3.1.patch' };
+  assert.deepEqual(Reflect.get(manifest, 'patchedDependencies'), patches, 'Manifest must apply the reviewed patch');
+  assert.deepEqual(Reflect.get(lock, 'patchedDependencies'), patches, 'Lockfile must bind the reviewed patch');
+  const packages: unknown = Reflect.get(lock, 'packages');
+  assert.ok(typeof packages === 'object' && packages !== null, 'Missing locked packages');
+  const consumers = Object.entries(packages).filter(
+    ([name, entry]) =>
+      name.split('/').at(-1) === 'deepmerge' || (Array.isArray(entry) && String(entry[0]).startsWith('deepmerge@')),
   );
-  assert.match(
-    lock,
-    new RegExp(String.raw`^patchedDependencies:\n {2}deepmerge@4\.3\.1: ${deepmergePatch.sha256}$`, 'm'),
-    'web/pnpm-lock.yaml must record the reviewed deepmerge patch',
-  );
-  const consumers = Array.from(lock.matchAll(/^\s+deepmerge: (.+)$/gm), (match) => match[1]);
-  assert.deepEqual(
-    consumers,
-    [`4.3.1(patch_hash=${deepmergePatch.sha256})`],
-    'Every deepmerge consumer must use the reviewed patch',
-  );
-  assert.doesNotMatch(lock, /^ {2}deepmerge@4\.3\.1: \{\}$/m, 'Unpatched deepmerge snapshot');
+  assert.ok(consumers.length > 0, 'No deepmerge package is locked');
+  for (const [, entry] of consumers) {
+    assert.ok(Array.isArray(entry), 'Invalid deepmerge lock entry');
+    assert.equal(entry[0], 'deepmerge@4.3.1', 'Every deepmerge consumer must use the patched version');
+    assert.equal(entry[1], '', 'Deepmerge must come from the registry');
+  }
 }
 
 function checkMerge(merge: Deepmerge): void {
@@ -99,8 +99,8 @@ export function verifyDeepmergePatch(root = repositoryRoot): PatchEvidence {
   const web = path.join(root, 'web');
   checkPatchBinding(
     readFileSync(path.join(web, 'patches/deepmerge@4.3.1.patch')),
-    readFileSync(path.join(web, 'pnpm-workspace.yaml'), 'utf8'),
-    readFileSync(path.join(web, 'pnpm-lock.yaml'), 'utf8'),
+    readFileSync(path.join(web, 'package.json'), 'utf8'),
+    readFileSync(path.join(web, 'bun.lock'), 'utf8'),
   );
   const pluginRequire = requireFromSveltePlugin(web);
   const entry = pluginRequire.resolve('deepmerge');
@@ -112,8 +112,11 @@ export function verifyDeepmergePatch(root = repositoryRoot): PatchEvidence {
     assert.equal(sha256(content), hash, `Unpatched or changed deepmerge ${file}`);
   }
   const universalBuild = path.join(packageDirectory, 'dist/umd.js');
-  checkMerge(pluginRequire('deepmerge') as Deepmerge);
-  checkMerge(pluginRequire(universalBuild) as Deepmerge);
+  const common: unknown = pluginRequire('deepmerge');
+  const universal: unknown = pluginRequire(universalBuild);
+  assert.ok(isDeepmerge(common) && isDeepmerge(universal), 'Invalid deepmerge API');
+  checkMerge(common);
+  checkMerge(universal);
   return { ...deepmergePatch, files: patchedFileHashes };
 }
 
@@ -129,15 +132,15 @@ function installedVersion(packageDirectory: string): unknown {
 
 function poisoningTargets(): object[] {
   return [
-    Object.create(null) as object,
+    objectValue(Object.create(null)),
     { nested: null },
     { nested: undefined },
-    JSON.parse('{"__proto__":{}}') as object,
+    objectValue(JSON.parse('{"__proto__":{}}')),
   ];
 }
 
 function poisonedPayload(): object {
-  return JSON.parse('{"__proto__":{"nylzoPoisoned":true},"safe":1}') as object;
+  return objectValue(JSON.parse('{"__proto__":{"nylzoPoisoned":true},"safe":1}'));
 }
 
 function assertNotPoisoned(value: object, description: string): void {
@@ -151,7 +154,7 @@ function checkSvelteOptionMerging(merge: Deepmerge): void {
     nested: { a: 1 },
     list: [1],
     callback: identity,
-    pattern: /svelte/,
+    pattern: /svelte/u,
     date: new Date(0),
     [symbol]: true,
   };
@@ -171,4 +174,13 @@ function identity<Value>(value: Value): Value {
 
 function sha256(content: Buffer): string {
   return createHash('sha256').update(content).digest('hex');
+}
+
+function objectValue(value: unknown): object {
+  assert.ok(typeof value === 'object' && value !== null, 'Expected a merge target object');
+  return value;
+}
+
+function isDeepmerge(value: unknown): value is Deepmerge {
+  return typeof value === 'function' && typeof Reflect.get(value, 'all') === 'function';
 }

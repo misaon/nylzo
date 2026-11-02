@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { FakeRepository, FileChange } from './fake-source.ts';
-import type { Commit, Review } from './source.ts';
-
 import {
   appAccount,
   appCommit,
@@ -18,6 +16,7 @@ import {
   stranger,
 } from './fake-source.ts';
 import { decide } from './guard.ts';
+import type { Commit, Review } from './source.ts';
 
 const oldAction = '1'.repeat(40);
 const newAction = '2'.repeat(40);
@@ -113,19 +112,19 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'a verified, safe App update',
     passed: true,
-    reason: /verified, safe dependency update/,
+    reason: /verified, safe dependency update/u,
     repository: safeUpdate(),
   },
   {
     name: 'a safe App update to a maintenance branch',
     passed: true,
-    reason: /verified, safe/,
+    reason: /verified, safe/u,
     repository: withPull({ baseBranch: 'release/v0.2' }, safeUpdate({ branches: { 'release/v0.2': baseCommit } })),
   },
   {
     name: 'an Action SHA that belongs to another tag',
     passed: false,
-    reason: /is not the commit of its tag v5\.2\.5/,
+    reason: /is not the commit of its tag v5\.2\.5/u,
     repository: dependencyUpdate(
       [
         {
@@ -140,13 +139,13 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'an Action tag missing upstream',
     passed: false,
-    reason: /tag not found/,
+    reason: /tag not found/u,
     repository: safeUpdate({ tags: {} }),
   },
   {
     name: 'a checksum that differs from the upstream digest',
     passed: false,
-    reason: /is not the release asset digest/,
+    reason: /is not the release asset digest/u,
     repository: safeUpdate({
       releaseAssets: { 'jdx/mise@v2026.10.21/mise-v2026.10.21-linux-x64.tar.gz': `sha256:${'9'.repeat(64)}` },
     }),
@@ -154,47 +153,47 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'an unsigned App commit',
     passed: false,
-    reason: /no verified signature/,
+    reason: /no verified signature/u,
     repository: safeUpdate({ commits: [appCommit({ verified: false })] }),
   },
   {
     name: 'an App commit pushed by someone else',
     passed: false,
-    reason: /not authored and committed by the automation App/,
+    reason: /not authored and committed by the automation App/u,
     repository: safeUpdate({ commits: [appCommit({ committer: stranger })] }),
   },
   {
     name: 'a non-App commit in an App pull request without approval',
     passed: false,
-    reason: /approve .* and then re-run/,
+    reason: /approve .* and then re-run/u,
     repository: safeUpdate({ commits: [strangerCommit] }),
   },
   {
     name: 'a non-App commit in an App pull request with approval on the head',
     passed: true,
-    reason: /Code owner @misaon approved/,
+    reason: /Code owner @misaon approved/u,
     repository: safeUpdate({ commits: [strangerCommit], reviews: [approval] }),
   },
   {
     name: 'an App update on an outdated base',
     passed: false,
-    reason: /Rebase required/,
+    reason: /Rebase required/u,
     repository: safeUpdate({
       branches: { main: otherBase },
       snapshots: { ...safeUpdate().snapshots, [otherBase]: { '.github/CODEOWNERS': codeOwnersFile } },
     }),
   },
-  { name: 'a draft App update', passed: false, reason: /draft/, repository: withPull({ draft: true }) },
+  { name: 'a draft App update', passed: false, reason: /draft/u, repository: withPull({ draft: true }) },
   {
     name: 'an App update from a fork',
     passed: false,
-    reason: /comes from attacker\/nylzo/,
+    reason: /comes from attacker\/nylzo/u,
     repository: withPull({ headRepository: 'attacker/nylzo' }),
   },
   {
     name: 'an App update to a legacy release branch',
     passed: false,
-    reason: /targets release\/v0\.1\.12/,
+    reason: /targets release\/v0\.1\.12/u,
     repository: withPull(
       { baseBranch: 'release/v0.1.12' },
       safeUpdate({ branches: { 'release/v0.1.12': baseCommit } }),
@@ -203,31 +202,31 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'an App update with two commits',
     passed: false,
-    reason: /has 2 commits/,
+    reason: /has 2 commits/u,
     repository: withPull({ commitCount: 2 }, safeUpdate({ commits: [appCommit({ sha: otherBase }), appCommit()] })),
   },
   {
     name: 'an App update of more than 80 files',
     passed: false,
-    reason: /more than 80 files/,
+    reason: /more than 80 files/u,
     repository: dependencyUpdate(tooManyFiles, upstream),
   },
   {
     name: 'an App update that adds a file',
     passed: false,
-    reason: /Adds web\/app\/src\/evil\.ts/,
+    reason: /Adds web\/app\/src\/evil\.ts/u,
     repository: dependencyUpdate([...safeChanges, { after: 'export {}', path: 'web/app/src/evil.ts' }], upstream),
   },
   {
     name: 'an App update that removes a file',
     passed: false,
-    reason: /Removes SECURITY\.md/,
+    reason: /Removes SECURITY\.md/u,
     repository: dependencyUpdate([...safeChanges, { before: '# Security', path: 'SECURITY.md' }], upstream),
   },
   {
     name: 'an App update that makes a file executable',
     passed: false,
-    reason: /type or mode of mise\.toml/,
+    reason: /type or mode of mise\.toml/u,
     repository: dependencyUpdate(
       [
         ...safeChanges,
@@ -239,7 +238,7 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'an App update that changes source code',
     passed: false,
-    reason: /internal\/server\/server\.go is not a dependency file/,
+    reason: /internal\/server\/server\.go is not a dependency file/u,
     repository: dependencyUpdate(
       [...safeChanges, { after: 'package b', before: 'package a', path: 'internal/server/server.go' }],
       upstream,
@@ -248,7 +247,7 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'an App update whose host toolchain differs from the verified assets',
     passed: false,
-    reason: /host toolchain jq amd64 differs/,
+    reason: /host toolchain jq amd64 differs/u,
     repository: dependencyUpdate(
       [
         { after: toolchain(newDigest), before: toolchain(oldDigest), path: 'deploy/hetzner-flatcar/toolchain.json' },
@@ -260,7 +259,7 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'an App update whose host toolchain matches the verified assets',
     passed: true,
-    reason: /verified, safe/,
+    reason: /verified, safe/u,
     repository: dependencyUpdate(
       [
         { after: toolchain(oldDigest), before: toolchain(newDigest), path: 'deploy/hetzner-flatcar/toolchain.json' },
@@ -272,79 +271,79 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'a major App update without approval',
     passed: false,
-    reason: /changes the major version/,
+    reason: /changes the major version/u,
     repository: dependencyUpdate(majorUpdate, majorUpstream),
   },
   {
     name: 'a major App update approved on the head',
     passed: true,
-    reason: /Code owner @misaon approved/,
+    reason: /Code owner @misaon approved/u,
     repository: dependencyUpdate(majorUpdate, { ...majorUpstream, reviews: [approval] }),
   },
   {
     name: 'a major App update approved on an older head',
     passed: false,
-    reason: /approve/,
+    reason: /approve/u,
     repository: dependencyUpdate(majorUpdate, { ...majorUpstream, reviews: [review(owner, 'APPROVED', otherBase)] }),
   },
   {
     name: 'a major App update whose approval was dismissed',
     passed: false,
-    reason: /approve/,
+    reason: /approve/u,
     repository: dependencyUpdate(majorUpdate, { ...majorUpstream, reviews: [approval, review(owner, 'DISMISSED')] }),
   },
   {
     name: 'a major App update whose approval was followed by a comment',
     passed: true,
-    reason: /approved/,
+    reason: /approved/u,
     repository: dependencyUpdate(majorUpdate, { ...majorUpstream, reviews: [approval, review(owner, 'COMMENTED')] }),
   },
   {
     name: 'a major App update approved by someone who is not a code owner',
     passed: false,
-    reason: /approve/,
+    reason: /approve/u,
     repository: dependencyUpdate(majorUpdate, { ...majorUpstream, reviews: [review(stranger, 'APPROVED')] }),
   },
   {
     name: 'a pull request by a code owner',
     passed: true,
-    reason: /Authored by code owner @misaon/,
+    reason: /Authored by code owner @misaon/u,
     repository: withPull({ author: owner }, safeUpdate({ commits: [ownerCommit] })),
   },
   {
     name: 'a pull request by a code owner with a commit pushed by the App',
     passed: false,
-    reason: /not a signed commit of a code owner/,
+    reason: /not a signed commit of a code owner/u,
     repository: withPull({ author: owner, commitCount: 2 }, safeUpdate({ commits: [ownerCommit, appCommit()] })),
   },
   {
     name: 'a pull request by a code owner with an unsigned commit',
     passed: false,
-    reason: /not a signed commit of a code owner/,
+    reason: /not a signed commit of a code owner/u,
     repository: withPull({ author: owner }, safeUpdate({ commits: [{ ...ownerCommit, verified: false }] })),
   },
   {
     name: 'a pull request by a code owner with a commit made on GitHub',
     passed: true,
-    reason: /Authored by code owner/,
+    reason: /Authored by code owner/u,
     repository: withPull({ author: owner }, safeUpdate({ commits: [{ ...ownerCommit, committer: gitHubWebFlow }] })),
   },
   {
     name: 'a pull request by another author without approval',
     passed: false,
-    reason: /@octocat is neither a code owner nor the automation App/,
+    reason: /@octocat is neither a code owner nor the automation App/u,
     repository: withPull({ author: stranger }, safeUpdate({ commits: [strangerCommit] })),
   },
   {
     name: 'a pull request by another author with approval on the head',
     passed: true,
-    reason: /Code owner @misaon approved/,
+    reason: /Code owner @misaon approved/u,
     repository: withPull({ author: stranger }, safeUpdate({ commits: [strangerCommit], reviews: [approval] })),
   },
   {
     name: 'a pull request by another author whose approval faces requested changes',
     passed: false,
-    reason: /approve/,
+    reason: /approve/u,
     repository: withPull(
       { author: stranger },
       safeUpdate({
@@ -356,7 +355,7 @@ const scenarios: readonly Scenario[] = [
   {
     name: 'a pull request approved by one code owner while another requested changes',
     passed: false,
-    reason: /approve/,
+    reason: /approve/u,
     repository: withPull(
       { author: stranger },
       safeUpdate({
@@ -370,13 +369,13 @@ const scenarios: readonly Scenario[] = [
     name: 'a pull request that moved after the event',
     head: otherBase,
     passed: false,
-    reason: /the run for the new head decides/,
+    reason: /the run for the new head decides/u,
     repository: safeUpdate(),
   },
   {
     name: 'an App account impersonated by a user',
     passed: false,
-    reason: /neither a code owner nor the automation App/,
+    reason: /neither a code owner nor the automation App/u,
     repository: withPull({ author: { ...appAccount, id: 1 } }),
   },
 ];

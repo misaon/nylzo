@@ -10,16 +10,12 @@ function forgetPointers(session: () => Storage): void {
         storage.removeItem(name);
       }
     }
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 export function forgetRetiredRecovery(session: () => Storage, databases: IDBFactory | undefined): void {
   forgetPointers(session);
   try {
     databases?.deleteDatabase(RETIRED_DATABASE);
-  } catch {
-    return;
-  }
+  } catch {}
 }

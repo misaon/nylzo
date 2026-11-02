@@ -3,8 +3,10 @@ import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { committed, openDatabase, requestResult } from './indexed-database.ts';
-import { RETENTION_MS, type SentRecord } from './sent-record.ts';
-import { browserSentStore, purgeSentRecords, type SentStore } from './sent-store.ts';
+import { RETENTION_MS } from './sent-record.ts';
+import type { SentRecord } from './sent-record.ts';
+import { browserSentStore, purgeSentRecords } from './sent-store.ts';
+import type { SentStore } from './sent-store.ts';
 
 const NOW = Date.parse('2026-11-01T12:00:00Z');
 

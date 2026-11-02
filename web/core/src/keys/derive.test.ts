@@ -58,10 +58,10 @@ describe('key derivation (spec 2)', () => {
     expect(commitmentKey.extractable).toBe(false);
     expect(commitmentKey.algorithm).toMatchObject({ name: 'HMAC', hash: { name: 'SHA-256' } });
     expect(commitmentKey.usages.toSorted((left, right) => left.localeCompare(right))).toEqual(['sign', 'verify']);
-    await expect(crypto.subtle.exportKey('raw', contentKey)).rejects.toThrow();
-    await expect(crypto.subtle.exportKey('jwk', contentKey)).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('raw', contentKey)).rejects.toBeInstanceOf(Error);
+    await expect(crypto.subtle.exportKey('jwk', contentKey)).rejects.toBeInstanceOf(Error);
     const wrappingKey = await crypto.subtle.generateKey({ name: 'AES-KW', length: 256 }, false, ['wrapKey']);
-    await expect(crypto.subtle.wrapKey('raw', contentKey, wrappingKey, 'AES-KW')).rejects.toThrow();
+    await expect(crypto.subtle.wrapKey('raw', contentKey, wrappingKey, 'AES-KW')).rejects.toBeInstanceOf(Error);
   });
 
   it('F3: needs the share', async () => {
@@ -71,9 +71,11 @@ describe('key derivation (spec 2)', () => {
   });
 
   it('rejects an id or a secret of the wrong length', async () => {
-    await expect(hsalt(new Uint8Array(15))).rejects.toThrow();
-    await expect(deriveLink(randomId(), new Uint8Array(31))).rejects.toThrow();
-    await expect(deriveContent(new Uint8Array(17), newSecret(), new Uint8Array(0), newSecret())).rejects.toThrow();
+    await expect(hsalt(new Uint8Array(15))).rejects.toBeInstanceOf(Error);
+    await expect(deriveLink(randomId(), new Uint8Array(31))).rejects.toBeInstanceOf(Error);
+    await expect(deriveContent(new Uint8Array(17), newSecret(), new Uint8Array(0), newSecret())).rejects.toBeInstanceOf(
+      Error,
+    );
   });
 
   it('wipes the copy of S, P and E it feeds into HKDF', async () => {

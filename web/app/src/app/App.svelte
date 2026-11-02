@@ -6,7 +6,8 @@
   import Report from '../features/report/Report.svelte';
   import Sent from '../features/sent/Sent.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
-  import { browserPreferences, type Language, saveLanguage } from '../shared/language/language.ts';
+  import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
+  import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
   import { handOverLink } from '../shared/link/link-handoff.ts';
   import { setLinkOpener } from '../shared/link/link-opener.ts';
@@ -14,7 +15,8 @@
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
-  import { HOME_PATHS, type Screen, screenOf } from './pages.ts';
+  import { HOME_PATHS, screenOf } from './pages.ts';
+  import type { Screen } from './pages.ts';
 
   interface Props {
     readonly start: { readonly path: string; readonly language: Language };
@@ -49,6 +51,7 @@
     path = handed.path;
     visit++;
     scrollTo({ top: 0 });
+    // oxlint-disable-next-line no-useless-return -- noImplicitReturns requires an explicit success return for this callback.
     return;
   });
 

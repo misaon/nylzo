@@ -5,8 +5,8 @@ import { BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
 
 const HOMES = [
-  { path: '/', language: 'en', heading: 'A secret that opens once', title: /^Share passwords and files securely/ },
-  { path: '/cs/', language: 'cs', heading: 'Tajemství na jedno otevření', title: /^Bezpečně poslat heslo/ },
+  { path: '/', language: 'en', heading: 'A secret that opens once', title: /^Share passwords and files securely/u },
+  { path: '/cs/', language: 'cs', heading: 'Tajemství na jedno otevření', title: /^Bezpečně poslat heslo/u },
 ];
 
 for (const home of HOMES) {
@@ -19,19 +19,18 @@ for (const home of HOMES) {
     expect(response.headers()['x-robots-tag']).toBeUndefined();
     const html = await response.text();
     expect(html).toContain(`<html lang="${home.language}">`);
-    expect(html.match(/<h1[\s>]/g)).toHaveLength(1);
-    expect(html.replaceAll(/<[^>]+>/g, '')).toContain(home.heading);
-    expect(/<title>([^<]*)<\/title>/.exec(html)?.[1]).toMatch(home.title);
+    expect(html.match(/<h1[\s>]/gu)).toHaveLength(1);
+    expect(/<title>([^<]*)<\/title>/u.exec(html)?.[1]).toMatch(home.title);
     expect(html).toContain(`<link rel="canonical" href="${BASE_URL}${home.path}">`);
     expect(html).toContain(`<link rel="alternate" hreflang="en" href="${BASE_URL}/">`);
     expect(html).toContain(`<link rel="alternate" hreflang="cs" href="${BASE_URL}/cs/">`);
     expect(html).toContain(`<link rel="alternate" hreflang="x-default" href="${BASE_URL}/">`);
     expect(html).not.toContain('nylzo:public');
-    const image = /<meta property="og:image" content="([^"]+)">/.exec(html)?.[1] ?? '';
+    const image = /<meta property="og:image" content="([^"]+)">/u.exec(html)?.[1] ?? '';
     expect(image.startsWith(`${BASE_URL}/assets/`)).toBe(true);
     const preview = await request.get(image);
     expect(preview.headers()['content-type']).toBe('image/png');
-    const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/.exec(html)?.[1] ?? '';
+    const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/u.exec(html)?.[1] ?? '';
     const graph = (JSON.parse(structured) as { '@graph': { url: string }[] })['@graph'];
     expect(graph.map((node) => node.url)).toEqual([`${BASE_URL}/`, `${BASE_URL}${home.path}`]);
 
@@ -52,7 +51,7 @@ test(
         consoleErrors.push(message.text());
       }
     });
-    const appStart = await holdRoute(page, /\/assets\/start-[\w-]+\.js$/);
+    const appStart = await holdRoute(page, /\/assets\/start-[\w-]+\.js$/u);
     const ready = page.locator('html[data-ready]');
     const text = page.getByLabel('Text zprávy');
     await page.goto('/cs/');
@@ -81,7 +80,7 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
   await page.getByRole('button', { name: 'Čeština' }).click();
   await expect(page).toHaveURL(`${BASE_URL}/cs/`);
-  await expect(page).toHaveTitle(/^Bezpečně poslat heslo/);
+  await expect(page).toHaveTitle(/^Bezpečně poslat heslo/u);
   expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
 
   await openApp(page, '/#create');

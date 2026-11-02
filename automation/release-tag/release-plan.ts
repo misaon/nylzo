@@ -1,10 +1,5 @@
-import {
-  compareVersions,
-  formatTag,
-  maintenanceBranch,
-  parseVersion,
-  type SemanticVersion,
-} from '../versions/semantic-version.ts';
+import { compareVersions, formatTag, maintenanceBranch, parseVersion } from '../versions/semantic-version.ts';
+import type { SemanticVersion } from '../versions/semantic-version.ts';
 
 type ReleaseKind = 'planned' | 'security';
 

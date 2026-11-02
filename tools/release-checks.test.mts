@@ -10,9 +10,11 @@ test("publication rebuilds source without promoting cached CI artifacts", () => 
   assert(!release.includes("actions/cache/"));
   assert(!release.includes("pattern: hashes-"));
   assert(!release.includes("name: web-dist"));
-  assert(release.includes("pnpm --dir web --filter @nylzo/web build"));
-  assert(!/cache: (?:pnpm|true)/u.test(release));
-  assert(release.includes("package-manager-cache: false"));
+  assert(release.includes("bun run --cwd web --filter @nylzo/web build"));
+  assert(!/^\s+cache: (?:pnpm|true)$/mu.test(release));
+  assert(release.includes("cache: false"));
+  assert(!release.includes("actions/setup-node@"));
+  assert(!release.includes("pnpm/action-setup@"));
 });
 
 test("a release requires full verification and successful security checks from the same run", () => {

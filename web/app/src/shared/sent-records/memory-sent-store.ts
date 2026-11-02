@@ -1,9 +1,9 @@
+import { storedForm } from './sent-record.ts';
+import type { SentRecord } from './sent-record.ts';
 import type { SentStore } from './sent-store.ts';
 
-import { type SentRecord, storedForm } from './sent-record.ts';
-
 export function memoryStore(
-  initial: SentRecord[] = [],
+  initial: readonly SentRecord[] = [],
   broken = false,
 ): SentStore & { readonly records: Map<string, SentRecord> } {
   const records = new Map(initial.map((record) => [record.id, record]));
@@ -12,7 +12,7 @@ export function memoryStore(
       throw new Error('storage disabled');
     }
   };
-  /* eslint-disable @typescript-eslint/require-await -- the fake keeps the async methods of SentStore, so a refused write rejects the promise as with IndexedDB */
+  /* oxlint-disable typescript/require-await -- the fake keeps the async methods of SentStore, so a refused write rejects the promise as with IndexedDB */
   return {
     records,
     async list() {
@@ -43,5 +43,5 @@ export function memoryStore(
       records.clear();
     },
   };
-  /* eslint-enable @typescript-eslint/require-await -- only the fake methods above */
+  /* oxlint-enable typescript/require-await -- only the fake methods above */
 }

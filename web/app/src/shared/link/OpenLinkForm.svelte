@@ -1,10 +1,9 @@
 <script lang="ts">
   import type { MessageKey } from '../language/czech.ts';
-  import type { LinkProblem } from './link-handoff.ts';
-
   import { getTranslator } from '../language/translator.svelte.ts';
   import Icon from '../ui/Icon.svelte';
   import { PRIVATE_TEXT } from '../ui/private-fields.ts';
+  import type { LinkProblem } from './link-handoff.ts';
   import { getLinkOpener } from './link-opener.ts';
 
   interface Props {

@@ -4,7 +4,8 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import Switch from '../../../shared/ui/Switch.svelte';
-  import { type Attacker, ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
+  import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
+  import type { Attacker } from './brute-force.ts';
 
   const translator = getTranslator();
   const { translate } = translator;

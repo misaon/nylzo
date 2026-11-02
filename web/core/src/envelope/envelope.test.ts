@@ -12,8 +12,10 @@ import {
   PolicyError,
   VersionError,
 } from '../errors.ts';
-import { type ContentKeys, deriveContent } from '../keys/derive.ts';
-import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId } from '../keys/kdf.ts';
+import { deriveContent } from '../keys/derive.ts';
+import type { ContentKeys } from '../keys/derive.ts';
+import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT } from '../keys/kdf.ts';
+import type { KdfId } from '../keys/kdf.ts';
 import {
   HEADER_LENGTH,
   IV_LENGTH,
@@ -27,9 +29,12 @@ import {
 import { decodeBase64url, encodeBase64url } from '../primitives/base64url.ts';
 import { newSecret, parseId } from '../primitives/identifiers.ts';
 import { deriveAll } from '../scrypt.ts';
-import { type Expected, objectHash, open, type Payload, seal } from './envelope.ts';
-import { aad, type Header, newHeader, type Policy } from './header.ts';
-import { encodeMeta, type Meta } from './meta.ts';
+import { objectHash, open, seal } from './envelope.ts';
+import type { Expected, Payload } from './envelope.ts';
+import { aad, newHeader } from './header.ts';
+import type { Header, Policy } from './header.ts';
+import { encodeMeta } from './meta.ts';
+import type { Meta } from './meta.ts';
 
 interface Sealed {
   readonly id: Uint8Array<ArrayBuffer>;

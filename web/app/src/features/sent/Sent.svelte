@@ -2,9 +2,8 @@
   import { tick } from 'svelte';
 
   import type { Status } from '../../shared/api/api.ts';
-  import type { MessageKey } from '../../shared/language/czech.ts';
-
   import { createApi } from '../../shared/api/api.ts';
+  import type { MessageKey } from '../../shared/language/czech.ts';
   import { formatDays, formatTime, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
@@ -24,7 +23,8 @@
     PAGE_TEXT,
     PAGE_TITLE,
   } from '../../shared/ui/page-classes.ts';
-  import { type CancelOutcome, createSentPage, type ItemState, type SentItem, type SentView } from './sent-page.ts';
+  import { createSentPage } from './sent-page.ts';
+  import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 
   type Confirming = { readonly kind: 'cancel' | 'forget'; readonly id: string } | { readonly kind: 'forget_all' };
 
@@ -94,9 +94,9 @@
   }
 
   function timeText(item: SentItem): string {
-    const status = item.state.kind === 'loaded' ? item.state.status : undefined;
-    if (status?.endedAt) {
-      return translate('sent.ended_at', { time: time(status.endedAt) });
+    const messageStatus = item.state.kind === 'loaded' ? item.state.status : undefined;
+    if (messageStatus?.endedAt) {
+      return translate('sent.ended_at', { time: time(messageStatus.endedAt) });
     }
     return item.ended ? translate('sent.ending') : translate('sent.until', { time: time(item.expiresAt) });
   }

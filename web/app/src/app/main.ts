@@ -2,7 +2,8 @@ import { hydrate, mount } from 'svelte';
 
 import '../app.css';
 import { prepareWorker } from '../shared/kdf/worker-source.ts';
-import { browserPreferences, type Language, savedLanguage, storedLanguage } from '../shared/language/language.ts';
+import { browserPreferences, savedLanguage, storedLanguage } from '../shared/language/language.ts';
+import type { Language } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
 import { HOME_PATHS, homeLanguage, screenOf } from './pages.ts';
 
@@ -15,18 +16,20 @@ const ANY_TEXT_SAMPLE = 'Aáčřł';
 async function loadFonts(sample: string): Promise<void> {
   try {
     await Promise.all(FONTS.map(async (font) => document.fonts.load(font, sample)));
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 async function fontsLoaded(sample: string): Promise<void> {
-  const timeout = new Promise<void>((resolve) => setTimeout(resolve, FONT_WAIT_MS));
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(resolve, FONT_WAIT_MS);
+  });
   await Promise.race([loadFonts(sample), timeout]);
 }
 
 async function nextTask(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
 }
 
 async function contentPainted(): Promise<void> {
@@ -76,4 +79,5 @@ async function boot(): Promise<void> {
   void tidy();
 }
 
+// oxlint-disable-next-line unicorn/prefer-top-level-await -- WebKit font readiness must not wait for this module to finish evaluating.
 void boot();

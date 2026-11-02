@@ -1,7 +1,9 @@
-import { type BrowserContext, chromium, type Page } from '@playwright/test';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+
+import { chromium } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
@@ -175,7 +177,7 @@ test('Chromium offers to save neither passphrase (W2-03)', async () => {
     await openApp(sender, `${BASE_URL}/`);
     await sender.getByLabel('Message text').fill('saved nowhere');
     await sender.getByRole('button', { name: 'Passphrase', exact: true }).click();
-    await sender.getByRole('switch', { name: /^Protect with a passphrase/ }).click();
+    await sender.getByRole('switch', { name: /^Protect with a passphrase/u }).click();
     const chosen = sender.getByLabel('Passphrase, optional');
     await chosen.clear();
     await chosen.pressSequentially(PASSPHRASE);
@@ -189,6 +191,6 @@ test('Chromium offers to save neither passphrase (W2-03)', async () => {
     await recipient.waitForTimeout(2000);
     const log = await internals.evaluate(() => document.body.textContent);
     expect(log).toContain('PasswordManager');
-    expect(log).not.toMatch(/Show password prompt|Decision: ASK/);
+    expect(log).not.toMatch(/Show password prompt|Decision: ASK/u);
   });
 });

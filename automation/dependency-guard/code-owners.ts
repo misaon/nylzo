@@ -2,11 +2,11 @@ import type { Account, Review } from './source.ts';
 
 export type CodeOwners = ReadonlySet<string>;
 
-const userOwner = /^@(?<login>[\dA-Z](?:[\dA-Z-]*[\dA-Z])?)$/i;
+const userOwner = /^@(?<login>[\dA-Z](?:[\dA-Z-]*[\dA-Z])?)$/iu;
 const deciding = new Set(['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED']);
 
 function lineOwners(line: string): string[] {
-  const [pattern, ...entries] = line.trim().split(/\s+/);
+  const [pattern, ...entries] = line.trim().split(/\s+/u);
   if (pattern === undefined || pattern === '' || pattern.startsWith('#')) {
     return [];
   }

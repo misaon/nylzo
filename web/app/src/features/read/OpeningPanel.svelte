@@ -1,9 +1,8 @@
 <script lang="ts">
-  import type { PipelineNode } from '../../shared/pipeline/pipeline.ts';
-  import type { ReadPage } from './read-page.svelte.ts';
-
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Pipeline from '../../shared/pipeline/Pipeline.svelte';
+  import type { PipelineNode } from '../../shared/pipeline/pipeline.ts';
+  import type { ReadPage } from './read-page.svelte.ts';
   import { PANEL_HIDDEN, PANEL_SHOWN } from './read-page.svelte.ts';
 
   interface Props {
