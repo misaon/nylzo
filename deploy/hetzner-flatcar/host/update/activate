@@ -57,7 +57,7 @@ domain=$(sed -n 's/^NYLZO_DOMAIN=//p' /etc/nylzo/caddy.env)
 [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ ]] || fail 'NYLZO_DOMAIN in /etc/nylzo/caddy.env is invalid'
 if [[ "$first_boot" = false && -x /opt/nylzo/bin/caddy ]] && ! cmp --silent "$composed" /etc/caddy/Caddyfile; then
   systemd-run --wait --pipe --collect --quiet --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$domain" \
-    /opt/nylzo/bin/caddy validate --config "$composed" >/dev/null || fail 'Caddy rejects the new Caddyfile'
+    /opt/nylzo/bin/caddy validate --config "$composed" --adapter caddyfile >/dev/null || fail 'Caddy rejects the new Caddyfile'
 fi
 hardware_keys=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
 case "$(setting HARDWARE_KEYS_ONLY)" in
