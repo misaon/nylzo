@@ -5,7 +5,7 @@
     {
       "id": "GHSA-gcqx-w48m-w2h4",
       "ecosystem": "npm",
-      "lockfile": "web/pnpm-lock.yaml",
+      "lockfile": "web/bun.lock",
       "package": "deepmerge",
       "version": "4.3.1",
       "patchSha256": "c2cb33d5ff7ad8e752bdd9ec3a8e8e7520ad9b4da374307a6633372158ece14e",

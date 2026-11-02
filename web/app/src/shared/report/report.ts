@@ -2,34 +2,31 @@ import {
   deriveLink,
   encodedLength,
   ID_LENGTH,
-  type Link,
-  type LinkKeys,
   LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
   parseLink,
   requestKey,
-  type RequestKey,
   utf8,
   wipeRequestKey,
 } from '@nylzo/core';
-
-import type { AbuseReport, Api, ReportStatus } from '../api/api.ts';
+import type { Link, LinkKeys, RequestKey } from '@nylzo/core';
 
 import { isApiError, shouldRetryLater } from '../api/api-errors.ts';
+import type { AbuseReport, Api, ReportStatus } from '../api/api.ts';
 
 export const MAX_REASON_BYTES = 1000;
 const MAX_REPORT_BODY_BYTES = 4096;
 const MAX_CONTACT_BYTES = 254;
 const DECODE_PASSES = 3;
 const PERCENT = 0x25;
-const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/i;
-const LINK_FRAGMENT = /#[^\t\n\f\r ]*/g;
-const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'g');
-const HEX_DIGIT = /^[\da-f]$/i;
+const LINK_ORIGIN = /^(https?:\/\/[^/?#]+)/iu;
+const LINK_FRAGMENT = /#[^\t\n\f\r ]*/gu;
+const TOKEN_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'gu');
+const HEX_DIGIT = /^[\da-f]$/iu;
 const WHITE_SPACE_AT_ENDS = /^\p{White_Space}+|\p{White_Space}+$/gu;
-const CONTACT = /^[\w%+-]+(?:\.[\w%+-]+)*@[\da-z-]+(?:\.[\da-z-]+)+$/i;
-const CONTACT_KEY_LIKE_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`);
+const CONTACT = /^[\w%+-]+(?:\.[\w%+-]+)*@[\da-z-]+(?:\.[\da-z-]+)+$/iu;
+const CONTACT_KEY_LIKE_RUN = new RegExp(String.raw`[\w-]{${encodedLength(ID_LENGTH)},}`, 'u');
 
 type ReportProblem =
   | 'contact_invalid'

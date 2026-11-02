@@ -2,7 +2,8 @@ import { MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import { WEAK_BELOW_CHARACTERS, WEAK_BELOW_WORDS } from '../features/create/create-message.ts';
-import { czech, type MessageKey } from '../shared/language/czech.ts';
+import { czech } from '../shared/language/czech.ts';
+import type { MessageKey } from '../shared/language/czech.ts';
 import { english } from '../shared/language/english.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
 import { MAX_REASON_BYTES } from '../shared/report/report.ts';
@@ -28,7 +29,7 @@ describe('messages', () => {
         }
         expect(text, `${language} ${key}`).not.toMatch(/\b(?:12|16|1000)\b|\b7 (?:days|dní|dnů)\b/u);
         expect(translate(key as MessageKey, limits), `${language} ${key}`).not.toMatch(
-          /\{(?:min|words|characters|bytes|days)\}/,
+          /\{(?:min|words|characters|bytes|days)\}/u,
         );
       }
     }

@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { Composer } from './composer.svelte.ts';
-
   import { formatBytes, formatSize } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Pipeline from '../../../shared/pipeline/Pipeline.svelte';
   import Icon from '../../../shared/ui/Icon.svelte';
   import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
+  import type { Composer } from './composer.svelte.ts';
 
   interface Props {
     readonly composer: Composer;

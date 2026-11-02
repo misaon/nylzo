@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+
 import { z } from 'zod';
 
 import { createGitHubClient, repository, repositoryName } from '../github/client.ts';

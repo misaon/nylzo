@@ -58,15 +58,16 @@ export function markHiddenCharacters(text: string): MarkedText {
     pieces.push({ key: pieces.length, text: visible.join(''), hidden: false });
     visible = [];
   };
+  const appendPiece = (piece: string, hidden: boolean): void => {
+    if (!hidden) {
+      visible.push(piece);
+      return;
+    }
+    flush();
+    pieces.push({ key: pieces.length, text: piece, hidden: true });
+  };
   for (const { segment } of segmenter.segment(text)) {
-    splitGrapheme(segment, (piece, hidden) => {
-      if (!hidden) {
-        visible.push(piece);
-        return;
-      }
-      flush();
-      pieces.push({ key: pieces.length, text: piece, hidden: true });
-    });
+    splitGrapheme(segment, appendPiece);
   }
   flush();
   const hidden = pieces.filter((piece) => piece.hidden).length;

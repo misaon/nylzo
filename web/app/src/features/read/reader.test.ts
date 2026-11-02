@@ -19,11 +19,15 @@ import {
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiError, type MessageState } from '../../shared/api/api-errors.ts';
-import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
+import { ApiError } from '../../shared/api/api-errors.ts';
+import type { MessageState } from '../../shared/api/api-errors.ts';
+import { abuseReport, fakeApi } from '../../shared/api/fake-api.ts';
+import type { FakeApi, FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import { type CreateDependencies, type CreateInput, createMessage } from '../create/create-message.ts';
-import { createReader, type ReaderDependencies, type ReadView, type SessionStore } from './reader.ts';
+import { createMessage } from '../create/create-message.ts';
+import type { CreateDependencies, CreateInput } from '../create/create-message.ts';
+import { createReader } from './reader.ts';
+import type { ReaderDependencies, ReadView, SessionStore } from './reader.ts';
 
 type Scrypt = ReaderDependencies['scrypt'];
 
@@ -263,7 +267,7 @@ describe('reading a message', () => {
   it('shows the text before it acknowledges the lease and then forgets the lease', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/r#2\.0\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/);
+    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/r#2\.0\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
     const reader = openReader(api, created.link);
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
@@ -504,7 +508,7 @@ describe('reading a message', () => {
     expect(brokenPath.last()).toEqual({ view: 'invalid' });
     for (const newerLink of [
       created.link.replace('#2.', '#3.'),
-      created.link.replace('/r#', '/rx#').replace(/#.*$/, '#10.a.b.c'),
+      created.link.replace('/r#', '/rx#').replace(/#.*$/u, '#10.a.b.c'),
     ]) {
       const newer = openReader(api, newerLink);
       await newer.load();
@@ -524,7 +528,7 @@ describe('reading a message', () => {
     const other = encodeBase64url(new Uint8Array(32).fill(5));
     const unknown = openReader(
       api,
-      created.link.replace(/#2\.0\.([^.]+)\..*$/, (_, id: string) => `#2.0.${id}.${other}.${other}`),
+      created.link.replace(/#2\.0\.([^.]+)\..*$/u, (_, id: string) => `#2.0.${id}.${other}.${other}`),
     );
     await unknown.load();
     expect(unknown.last()).toEqual({ view: 'unknown' });
@@ -664,7 +668,9 @@ describe('reading through the lease and claim edge cases', () => {
     await reader.load();
     const claim = api.claim.bind(api);
     api.claim = async (...parameters: Parameters<typeof claim>) => {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise((resolve) => {
+        setTimeout(resolve, 50);
+      });
       return claim(...parameters);
     };
     await Promise.all([reader.reveal(), reader.reveal()]);

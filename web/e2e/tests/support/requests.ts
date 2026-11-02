@@ -29,7 +29,7 @@ export function recordRequests(page: Page): () => Promise<RecordedRequest[]> {
 export function encodedForms(bytes: Uint8Array): string[] {
   const buffer = Buffer.from(bytes);
   const base64 = buffer.toString('base64');
-  return [buffer.toString('hex'), base64, base64.replace(/=+$/, ''), buffer.toString('base64url')];
+  return [buffer.toString('hex'), base64, base64.replace(/=+$/u, ''), buffer.toString('base64url')];
 }
 
 export function textForms(text: string): string[] {

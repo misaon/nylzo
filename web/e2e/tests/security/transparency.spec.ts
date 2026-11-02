@@ -21,7 +21,7 @@ test('nylzo verify-client finds the embedded web client unchanged on the server 
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 7 pages and \d+ files checked\n$/);
+  expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 7 pages and \d+ files checked\n$/u);
 });
 
 test('the transparency page shows its embedded client build, reported server version and file hashes (D61)', async ({
@@ -58,9 +58,9 @@ test('the client version stays independent of server reports', async ({ page, re
   const build = (await response.json()) as ClientBuild;
   const reportedVersion = '99.98.97-server';
   await page.route('**/.well-known/nylzo/*.json', async (route) => {
-    const response = await route.fetch();
-    const report = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...report, server: reportedVersion } });
+    const upstream = await route.fetch();
+    const report = (await upstream.json()) as Record<string, unknown>;
+    await route.fulfill({ response: upstream, json: { ...report, server: reportedVersion } });
   });
   await page.goto('/transparency');
   await expect(page.getByTestId('client-version')).toHaveText(build.version);

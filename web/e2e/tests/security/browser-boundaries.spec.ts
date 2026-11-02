@@ -169,7 +169,7 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
   });
   const probe = page.getByRole('button', { name: 'Probe eval' });
   await probe.click();
-  await expect(probe).toHaveAttribute('data-result', /^(?:TypeError|EvalError)$/);
+  await expect(probe).toHaveAttribute('data-result', /^(?:TypeError|EvalError)$/u);
   expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoXss') as unknown)).toBeUndefined();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 });
@@ -180,7 +180,7 @@ test(
   async ({ page }) => {
     const message = await createMessageThroughApi();
     const held: string[] = [];
-    await page.route(/\/assets\/start-[\w-]+\.js$/, (route) => {
+    await page.route(/\/assets\/start-[\w-]+\.js$/u, (route) => {
       held.push(route.request().url());
     });
     await page.goto(message.link, { waitUntil: 'commit' });

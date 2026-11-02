@@ -1,7 +1,7 @@
-import type { Page } from '@playwright/test';
-
 import { createHash, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+
+import type { Page } from '@playwright/test';
 
 import { expect, test } from '../tests/support/fixtures.ts';
 import { createMessageInPage, expectMessageShown, showMessage } from '../tests/support/pages.ts';

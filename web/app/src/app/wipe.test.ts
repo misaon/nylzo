@@ -1,12 +1,14 @@
 import type * as Core from '@nylzo/core';
-
-import { KDF_SCRYPT, type KdfId } from '@nylzo/core';
+import { KDF_SCRYPT } from '@nylzo/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { type CreateDependencies, createMessage } from '../features/create/create-message.ts';
-import { createReader, type ReadView } from '../features/read/reader.ts';
+import { createMessage } from '../features/create/create-message.ts';
+import type { CreateDependencies } from '../features/create/create-message.ts';
+import { createReader } from '../features/read/reader.ts';
+import type { ReadView } from '../features/read/reader.ts';
 import { ApiError } from '../shared/api/api-errors.ts';
-import { abuseReport, fakeApi, type FakeApi, type FakeOptions } from '../shared/api/fake-api.ts';
+import { abuseReport, fakeApi } from '../shared/api/fake-api.ts';
+import type { FakeApi, FakeOptions } from '../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
 import { reportLink } from '../shared/report/report.ts';
 
@@ -18,10 +20,6 @@ const { captured, passphraseKeys, failing } = vi.hoisted(() => ({
 
 vi.mock('@nylzo/core', async (importOriginal) => {
   const core = await importOriginal<typeof Core>();
-  const keep = <Bytes extends Uint8Array>(bytes: Bytes): Bytes => {
-    captured.push(bytes);
-    return bytes;
-  };
   return {
     ...core,
     newSecret: () => keep(core.newSecret()),
@@ -73,7 +71,7 @@ function createDependencies(api: FakeApi, scrypt = stubScrypt): CreateDependenci
   return { api, origin: ORIGIN, scrypt, solvePow: () => Promise.resolve('') };
 }
 
-async function created(api: FakeApi, opensMax = 1, kdfId: KdfId = 0): Promise<string> {
+async function created(api: FakeApi, opensMax = 1, kdfId: Core.KdfId = 0): Promise<string> {
   const passphrase = kdfId === 0 ? '' : PASSPHRASE;
   const message = await createMessage(
     { text: 'ahoj', ttlSeconds: 3600, opensMax, passphrase },
@@ -149,7 +147,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     const api = fakeApi(options);
     await expect(
       createMessage({ text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: PASSPHRASE }, createDependencies(api)),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(Error);
     expect(captured.length).toBe(5 * api.calls.filter((call) => call === 'create').length);
     expect(zeroed().every(Boolean)).toBe(true);
     expect(passphraseKeys.length).toBeGreaterThan(0);
@@ -263,3 +261,8 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
   });
 });
+
+function keep<Bytes extends Uint8Array>(bytes: Bytes): Bytes {
+  captured.push(bytes);
+  return bytes;
+}

@@ -10,10 +10,10 @@ export interface BuildInfo {
 export const BUILD_INFO: BuildInfo = __NYLZO_BUILD_INFO__;
 
 export function buildSourceHref(build: BuildInfo): string | undefined {
-  if (!build.dirty && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(build.version)) {
+  if (!build.dirty && /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u.test(build.version)) {
     return `${REPOSITORY_URL}/releases/tag/v${build.version}`;
   }
-  if (/^[\da-f]{7,40}$/i.test(build.commit)) {
+  if (/^[\da-f]{7,40}$/iu.test(build.commit)) {
     return `${REPOSITORY_URL}/commit/${build.commit}`;
   }
   return undefined;

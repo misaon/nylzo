@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
+
 import { z } from 'zod';
 
 import { createGitHubClient, repository } from '../github/client.ts';
@@ -9,7 +10,7 @@ const pollInMilliseconds = 5000;
 
 const head = z
   .string()
-  .regex(/^[\da-f]{40}$/)
+  .regex(/^[\da-f]{40}$/u)
   .parse(process.env['SOCKET_HEAD_SHA']);
 const client = createGitHubClient(z.string().min(1).parse(process.env['GITHUB_TOKEN']));
 const deadline = Date.now() + waitInMilliseconds;

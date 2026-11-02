@@ -2,6 +2,7 @@
   "name": "@nylzo/e2e",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "e2e": "playwright test",

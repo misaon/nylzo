@@ -12,7 +12,7 @@ Read the [code of conduct](../../../CODE_OF_CONDUCT.md). Use English for issues,
 
 ## Set up a development environment
 
-Use Linux, macOS, or WSL with a C compiler for Go's race detector. The exact versions of Go, Node.js, pnpm, and the CI tools are pinned in [mise.toml](../../../mise.toml) and [mise.lock](../../../mise.lock).
+Use Linux, macOS, or WSL with a C compiler for Go's race detector. The exact versions of Go, Bun, and the CI tools are pinned in [mise.toml](../../../mise.toml) and [mise.lock](../../../mise.lock).
 
 1. Fork this repository and create a branch from `main`.
 2. Install [mise](https://mise.jdx.dev/getting-started.html).
@@ -44,7 +44,7 @@ mise run e2e:browsers
 mise run e2e
 ```
 
-On Linux, Playwright may also need system libraries (`pnpm --dir web/e2e exec playwright install-deps`, with the privileges your package manager requires). Include the commands you ran and any limitations in the pull request. CI runs additional fuzz, reproducibility, and deployment checks.
+On Linux, Playwright may also need system libraries (`bun run --cwd web/e2e --bun playwright install-deps`, with the privileges your package manager requires). Include the commands you ran and any limitations in the pull request. CI runs additional fuzz, reproducibility, and deployment checks.
 
 Do not hand-edit generated protocol vectors or dependency lockfiles. Regenerate vectors with `go run ./cmd/nylzo-vectors -out spec/vectors.json`; change dependencies deliberately with the pinned package manager and review the resulting lockfile diff. Do not relax dependency build-script restrictions or security checks to make a change pass.
 

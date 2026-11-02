@@ -1,6 +1,7 @@
 import { render } from 'svelte/server';
 
-import { type Language, LANGUAGES } from '../shared/language/language.ts';
+import { LANGUAGES } from '../shared/language/language.ts';
+import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
 import App from './App.svelte';
 import { HOME_PATHS } from './pages.ts';
@@ -27,10 +28,10 @@ const PUBLIC_START = '<!--nylzo:public-->';
 const PUBLIC_END = '<!--/nylzo:public-->';
 const OG_LOCALES: Readonly<Record<Language, string>> = { en: 'en_US', cs: 'cs_CZ' };
 const REVEAL_WITHOUT_SCRIPT = `<noscript><style>html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
-const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/;
-const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/g;
-const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/g;
-const FONT_FACE = /@font-face\{[^}]*\}/g;
+const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/u;
+const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
+const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
+const FONT_FACE = /@font-face\{[^}]*\}/gu;
 
 function escapeAttribute(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -52,7 +53,7 @@ function absolute(path: string): string {
 }
 
 function matchCount(source: string, pattern: RegExp): number {
-  return source.match(new RegExp(pattern, 'g'))?.length ?? 0;
+  return source.match(new RegExp(pattern, 'gu'))?.length ?? 0;
 }
 
 function replaceOnce(source: string, pattern: RegExp | string, replacement: string): string {
@@ -148,9 +149,9 @@ function fontPreloads(page: string, language: Language): string {
 
 export function homeTemplate(index: string, language: Language, { image, styles }: HomeAssets): string {
   const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language } } });
-  let page = replaceOnce(index, /<html lang="[a-z]+">/, `<html lang="${language}">`);
-  page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/, '');
-  page = replaceOnce(page, /<title>[^<]*<\/title>/, `${head.trim()}\n${seoHead(language, image)}`);
+  let page = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}">`);
+  page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/u, '');
+  page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}\n${seoHead(language, image)}`);
   page = replaceOnce(page, '</head>', `${REVEAL_WITHOUT_SCRIPT}\n</head>`);
   page = fontPreloads(inlineStyles(page, styles), language);
   return replaceOnce(page, '<body></body>', `<body>${body}</body>`);

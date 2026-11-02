@@ -40,7 +40,7 @@ test('the composer forgets the text, the passphrase and the file once the link e
 }) => {
   const text = page.getByLabel('Message text');
   const passphrase = page.getByLabel('Passphrase, optional');
-  const attachment = page.getByLabel(/Attachment, up to/);
+  const attachment = page.getByLabel(/Attachment, up to/u);
   const attachedFiles = () => attachment.evaluate((input: HTMLInputElement) => input.files?.length ?? 0);
 
   await openApp(page, '/');
@@ -83,7 +83,7 @@ test('a refused create keeps the message and hands focus back to Create link', a
   const submit = page.getByRole('button', { name: 'Create link' });
   await submit.click();
   await expect(
-    page.getByRole('alert').filter({ hasText: /^Too many messages in a short time\. Try again in / }),
+    page.getByRole('alert').filter({ hasText: /^Too many messages in a short time\. Try again in /u }),
   ).toBeVisible({ timeout: 45_000 });
   await expect(submit).toBeEnabled();
   await expect(submit).toBeFocused();
@@ -105,7 +105,7 @@ test('a double click on Create link with an attachment creates one message', asy
   });
   await page.getByLabel('Message text').fill('double');
   await page
-    .getByLabel(/Attachment, up to/)
+    .getByLabel(/Attachment, up to/u)
     .setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
   await page.getByRole('button', { name: 'Create link' }).dblclick();
   await createdLink(page);
@@ -200,7 +200,7 @@ test('the client solves the proof of work the instance asks for (D19)', async ({
   const created = sender.waitForRequest(isCreate);
   const link = await createMessageInPage(sender, { text: 'pow' }, POW_BASE_URL);
   const request = await created;
-  expect(request.headers()['x-nylzo-pow']).toMatch(/^[\w-]{48}\.[\da-f]{16}$/);
+  expect(request.headers()['x-nylzo-pow']).toMatch(/^[\w-]{48}\.[\da-f]{16}$/u);
   expect(await violations()).toEqual([]);
 
   const recipient = await newPage();

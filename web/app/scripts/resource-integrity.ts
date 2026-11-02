@@ -1,8 +1,14 @@
-import { parse as parseScript } from 'acorn';
-import { transform } from 'lightningcss';
+function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { type DefaultTreeAdapterMap, parse, serialize } from 'parse5';
+
+import { parse as parseScript } from 'acorn';
+import { transform } from 'lightningcss';
+import { parse, serialize } from 'parse5';
+import type { DefaultTreeAdapterMap } from 'parse5';
 
 type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
@@ -12,7 +18,7 @@ export const FRAGMENT_GUARD =
   "(()=>{const{pathname:p,search:s,hash:h}=location;if(h===''||(p!=='/r'&&!p.startsWith('/m/')))return;history.replaceState(null,'',p+s);try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()";
 
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
-  if (!/^(?:\/assets\/|\.\.?\/)/.test(url) || /[?#%\\]/.test(url)) {
+  if (!/^(?:\/assets\/|\.\.?\/)/u.test(url) || /[?#%\\]/u.test(url)) {
     throw new Error(`resource integrity: nonlocal resource ${url} in ${from}`);
   }
   const resolved = path.posix.resolve(path.posix.dirname(from), url);
@@ -27,8 +33,8 @@ export function integrity(data: Uint8Array): string {
   return `sha384-${createHash('sha384').update(data).digest('base64')}`;
 }
 
-function visitScript(value: unknown, visit: (node: Record<string, unknown>) => void): void {
-  if (!value || typeof value !== 'object') {
+function visitScript(value: unknown, visit: (node: Readonly<Record<string, unknown>>) => void): void {
+  if (typeof value !== 'object' || value === null) {
     return;
   }
   if (Array.isArray(value)) {
@@ -37,7 +43,10 @@ function visitScript(value: unknown, visit: (node: Record<string, unknown>) => v
     }
     return;
   }
-  const node = value as Record<string, unknown>;
+  if (!isObject(value)) {
+    return;
+  }
+  const node = value;
   if (typeof node['type'] === 'string') {
     visit(node);
   }
@@ -55,17 +64,22 @@ export function checkScript(code: string, from: string, assets: Assets): void {
     ) {
       return;
     }
-    const source = node['source'] as
-      | { type?: string; value?: unknown; expressions?: unknown[]; quasis?: { value: { cooked: string | null } }[] }
-      | undefined;
-    if (!source) {
+    const source = node['source'];
+    if (!isObject(source)) {
       return;
     }
     let url: unknown;
-    if (source.type === 'Literal') {
-      url = source.value;
-    } else if (source.type === 'TemplateLiteral' && source.expressions?.length === 0) {
-      url = source.quasis?.[0]?.value.cooked;
+    if (source['type'] === 'Literal') {
+      url = source['value'];
+    } else if (
+      source['type'] === 'TemplateLiteral' &&
+      Array.isArray(source['expressions']) &&
+      source['expressions'].length === 0
+    ) {
+      const quasis: unknown = source['quasis'];
+      const first: unknown = Array.isArray(quasis) ? quasis[0] : undefined;
+      const value: unknown = isObject(first) ? first['value'] : undefined;
+      url = isObject(value) ? value['cooked'] : undefined;
     }
     if (typeof url !== 'string') {
       throw new TypeError(`resource integrity: computed module import in ${from}`);
@@ -107,7 +121,7 @@ export function secureHtml(html: string, assets: Assets): string {
     const attributes = new Map(element.attrs.map(({ name, value }) => [name, value]));
     const script = element.tagName === 'script';
     const link = element.tagName === 'link';
-    const relationships = attributes.get('rel')?.toLowerCase().split(/\s+/) ?? [];
+    const relationships = attributes.get('rel')?.toLowerCase().split(/\s+/u) ?? [];
     const resource = attributes.get(script ? 'src' : 'href');
     const executableLink =
       link &&
@@ -127,8 +141,8 @@ export function secureHtml(html: string, assets: Assets): string {
       }
     } else if (element.tagName === 'style') {
       const css = element.childNodes
-        .filter((child) => child.nodeName === '#text')
-        .map((child) => (child as DefaultTreeAdapterMap['textNode']).value)
+        .filter((child): child is DefaultTreeAdapterMap['textNode'] => child.nodeName === '#text')
+        .map((child) => child.value)
         .join('');
       checkStyles(css, '/index.html', assets);
     }

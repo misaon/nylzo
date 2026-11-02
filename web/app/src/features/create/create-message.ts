@@ -6,11 +6,8 @@ import {
   idToString,
   KDF_NONE,
   KDF_SCRYPT,
-  type KdfId,
-  type LinkKeys,
   MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
-  type Meta,
   MIN_TTL_SECONDS,
   newHeader,
   newRequestKey,
@@ -19,7 +16,6 @@ import {
   objectHash,
   passphraseProblem,
   PowTimeoutError,
-  type RequestKey,
   requestKey,
   seal,
   sealWithCompression,
@@ -28,14 +24,14 @@ import {
   utf8,
   wipeRequestKey,
 } from '@nylzo/core';
-
-import type { Api, Issued } from '../../shared/api/api.ts';
-import type { InstanceLimits } from '../../shared/api/responses.ts';
-import type { Progress } from '../../shared/kdf/kdf.ts';
+import type { KdfId, LinkKeys, Meta, RequestKey } from '@nylzo/core';
 
 import { ApiError, isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
+import type { Api, Issued } from '../../shared/api/api.ts';
+import type { InstanceLimits } from '../../shared/api/responses.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
+import type { Progress } from '../../shared/kdf/kdf.ts';
 
 export interface FileInput {
   readonly name: string;

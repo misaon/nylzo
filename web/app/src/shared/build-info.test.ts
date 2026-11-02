@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { type BuildInfo, buildSourceHref } from './build-info.ts';
+import { buildSourceHref } from './build-info.ts';
+import type { BuildInfo } from './build-info.ts';
 import { REPOSITORY_URL } from './shell/repository.ts';
 
 const BUILD: BuildInfo = {

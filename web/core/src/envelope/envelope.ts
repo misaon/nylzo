@@ -1,7 +1,6 @@
+import { IntegrityError, KdfMismatchError, MetaError, PlaintextError, TooLargeError } from '../errors.ts';
 import type { ContentKeys } from '../keys/derive.ts';
 import type { KdfId } from '../keys/kdf.ts';
-
-import { IntegrityError, KdfMismatchError, MetaError, PlaintextError, TooLargeError } from '../errors.ts';
 import {
   COMMITMENT_LENGTH,
   HEADER_LENGTH,
@@ -16,17 +15,10 @@ import {
 import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 import { compressAttachment, compressedLength, decompressAttachment } from './compression.ts';
-import {
-  aad,
-  type Header,
-  headerBytes,
-  parseHeader,
-  type Policy,
-  policyBytes,
-  validateHeader,
-  validatePolicy,
-} from './header.ts';
-import { decodeStoredMeta, encodeMeta, encodeStoredMeta, type Meta } from './meta.ts';
+import { aad, headerBytes, parseHeader, policyBytes, validateHeader, validatePolicy } from './header.ts';
+import type { Header, Policy } from './header.ts';
+import { decodeStoredMeta, encodeMeta, encodeStoredMeta } from './meta.ts';
+import type { Meta } from './meta.ts';
 
 const COMMITMENT_LABEL = 'nylzo/v2/commitment';
 const OBJECT_HASH_LABEL = 'nylzo/v2/object';

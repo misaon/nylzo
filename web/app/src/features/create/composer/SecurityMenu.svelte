@@ -1,13 +1,12 @@
 <script lang="ts">
   import { MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 
-  import type { Composer } from './composer.svelte.ts';
-
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Popover from '../../../shared/ui/Popover.svelte';
   import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/private-fields.ts';
   import Switch from '../../../shared/ui/Switch.svelte';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
+  import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';
 
   interface Props {

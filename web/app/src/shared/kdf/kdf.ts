@@ -1,6 +1,7 @@
 import { PowTimeoutError } from '@nylzo/core';
 
-import { type KdfRequest, type KdfResponse, KdfWorkerError } from './kdf-protocol.ts';
+import { KdfWorkerError } from './kdf-protocol.ts';
+import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 import { startWorker } from './worker-source.ts';
 
 export type Progress = (fraction: number) => void;
@@ -37,7 +38,7 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
     worker.addEventListener('error', () => fail(new KdfWorkerError()));
     worker.addEventListener('messageerror', () => fail(new KdfWorkerError()));
     restartSilenceTimer();
-    worker.postMessage(request);
+    worker.postMessage(request, []);
   });
 }
 

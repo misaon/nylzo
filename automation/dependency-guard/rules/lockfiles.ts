@@ -1,24 +1,19 @@
-import {
-  compareSnapshots,
-  type DependencyValue,
-  emptyReview,
-  type FileReview,
-  type FileRule,
-  placeholder,
-  quote,
-  type Snapshot,
-  snapshot,
-} from './file-review.ts';
+import { isDeepStrictEqual } from 'node:util';
 
-const deprecation = /^ +deprecated: /;
-const integrityResolution = /^ +resolution: \{integrity: sha(?:256|384|512)-[\d+/A-Za-z]+=*\}$/;
-const escapedOrAliased = /\\|[&*][\w-]/;
-const customSourceKey = /(?:^|[\s,{])["']?(?:commit|repo|tarball)["']?\s*:/;
-const externalSource = /\b(?:[a-z][\d+.a-z-]*:\/\/|git\+|git@|file:|link:|github:|gitlab:|bitbucket:)/i;
-const workspaceLink = /\blink:(?<target>[^\s"',}]*)/g;
+import { objectAt } from '../../source-dependency-gate/json-values.ts';
+import { compareSnapshots, emptyReview, placeholder, quote, snapshot } from './file-review.ts';
+import type { DependencyValue, FileReview, FileRule, Snapshot } from './file-review.ts';
+import { packageManifest } from './manifests.ts';
+
+const deprecation = /^ +deprecated: /u;
+const integrityResolution = /^ +resolution: \{integrity: sha(?:256|384|512)-[\d+/A-Za-z]+=*\}$/u;
+const escapedOrAliased = /\\|[&*][\w-]/u;
+const customSourceKey = /(?:^|[\s,{])["']?(?:commit|repo|tarball)["']?\s*:/u;
+const externalSource = /\b(?:[a-z][\d+.a-z-]*:\/\/|git\+|git@|file:|link:|github:|gitlab:|bitbucket:)/iu;
+const workspaceLink = /\blink:(?<target>[^\s"',}]*)/gu;
 
 function documentHeaders(lockfile: string): string[] {
-  return lockfile.split(/^---$/m).map((document) => document.split(/^(?:importers|packages):$/m, 1)[0] ?? '');
+  return lockfile.split(/^---$/mu).map((document) => document.split(/^(?:importers|packages):$/mu, 1)[0] ?? '');
 }
 
 function lockfileLineProblem(line: string, allowedLinks: readonly string[]): string | undefined {
@@ -63,7 +58,77 @@ export function pnpmLock(allowedLinks: readonly string[]): FileRule {
   };
 }
 
-const goChecksumLine = /^[\w.~+!/-]+ v\S+ h1:[\d+/A-Za-z]{43}=$/;
+// Bun's text lockfile is JSON with trailing commas. Never evaluate it as JavaScript.
+export function bunLock(allowedWorkspaces: readonly string[]): FileRule {
+  return (path, before, after) => {
+    const review = emptyReview();
+    try {
+      const previous = lockObject(Bun.JSON5.parse(before));
+      const next = lockObject(Bun.JSON5.parse(after));
+      const { packages: oldPackages, workspaces: oldWorkspaces, ...oldPolicy } = previous;
+      const { packages, workspaces, ...policy } = next;
+      if (!isDeepStrictEqual(oldPolicy, policy)) {
+        review.findings.push(`${path}: lockfile settings, overrides, trust or patches changed`);
+      }
+      if (![2, 3].includes(Number(next['lockfileVersion'])) || next['configVersion'] !== 1) {
+        review.findings.push(`${path}: unsupported Bun lockfile format`);
+      }
+      const oldRoots = lockObject(oldWorkspaces);
+      const roots = lockObject(workspaces);
+      if (!isDeepStrictEqual(Object.keys(oldRoots).toSorted(), Object.keys(roots).toSorted())) {
+        review.findings.push(`${path}: workspace list changed`);
+      }
+      for (const [name, manifest] of Object.entries(roots)) {
+        const result = packageManifest(
+          `${path} workspace ${name}`,
+          JSON.stringify(oldRoots[name]),
+          JSON.stringify(manifest),
+        );
+        review.findings.push(...result.findings);
+        review.updates.push(...result.updates);
+      }
+      const entries = Object.entries(lockObject(packages));
+      if (entries.length === 0 || Object.keys(lockObject(oldPackages)).length === 0) {
+        review.findings.push(`${path}: empty dependency inventory`);
+      }
+      for (const [name, entry] of entries) {
+        if (!Array.isArray(entry) || typeof entry[0] !== 'string') {
+          review.findings.push(`${path}: invalid package ${name}`);
+          continue;
+        }
+        const resolved = entry[0];
+        if (resolved.includes('@workspace:')) {
+          if (entry.length !== 1 || !allowedWorkspaces.includes(resolved)) {
+            review.findings.push(`${path}: unapproved workspace ${resolved}`);
+          }
+          continue;
+        }
+        const match = /^(?:@[\w.-]+\/)?[\w.-]+@\d+\.\d+\.\d+(?:-[\da-z.-]+)?(?:\+[\da-z.-]+)?$/iu.exec(resolved);
+        if (
+          !match ||
+          entry.length !== 4 ||
+          entry[1] !== '' ||
+          typeof entry[3] !== 'string' ||
+          !/^sha(?:256|384|512)-[\d+/A-Za-z]+=*$/u.test(entry[3])
+        ) {
+          review.findings.push(`${path}: ${name} must resolve to a registry package with integrity`);
+        }
+        if (externalSource.test(JSON.stringify(entry[2]))) {
+          review.findings.push(`${path}: ${name} has a dependency outside the registry`);
+        }
+      }
+    } catch {
+      review.findings.push(`${path}: invalid Bun lockfile`);
+    }
+    return review;
+  };
+}
+
+function lockObject(value: unknown): Readonly<Record<string, unknown>> {
+  return objectAt(value, 'Bun lockfile');
+}
+
+const goChecksumLine = /^[\w.~+!/-]+ v\S+ h1:[\d+/A-Za-z]{43}=$/u;
 
 export const goChecksums: FileRule = (path, _before, after) => {
   const review = emptyReview();
@@ -75,14 +140,15 @@ export const goChecksums: FileRule = (path, _before, after) => {
   return review;
 };
 
-const miseSection = /^\[\[tools\.(?<tool>[\w-]+)\]\]$/;
-const miseEntry = /^(?<key>backend|checksum|url|url_api|version) = "(?<value>[^"\\]*)"$/;
-const miseSpecifiers = /^specifiers = \["(?<value>[^"\\]*)"\]$/;
-const miseChecksum = /^sha256:[a-f\d]{64}$/;
+const miseSection = /^\[\[tools\.(?<tool>[\w-]+)\]\]$/u;
+const miseEntry = /^(?<key>backend|checksum|url|url_api|version) = "(?<value>[^"\\]*)"$/u;
+const miseSpecifiers = /^specifiers = \["(?<value>[^"\\]*)"\]$/u;
+const miseChecksum = /^sha256:[a-f\d]{64}$/u;
 
 const coreDownloads = new Map([
   ['core:go', 'https://dl.google.com/go/'],
   ['core:node', 'https://nodejs.org/dist/'],
+  ['core:bun', 'https://github.com/oven-sh/bun/releases/download/'],
 ]);
 
 function officialDownloadPrefix(key: string, backend: string): string | undefined {
@@ -103,6 +169,7 @@ function downloadProblem(key: string, value: string, backend: string): string | 
   return official ? undefined : `${value} is not an official download of ${backend || 'an unknown backend'}`;
 }
 
+// oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Findings are the caller-owned output accumulator.
 function miseLockSnapshot(text: string, findings: string[]): Snapshot {
   const values: DependencyValue[] = [];
   let tool = '';
@@ -167,13 +234,13 @@ export const miseLock: FileRule = (path, before, after) => {
 };
 
 const providerHashes =
-  /^ +"(?:h1:[\d+/A-Za-z]{43}=|zh:[a-f\d]{64})",\n(?: +"(?:h1:[\d+/A-Za-z]{43}=|zh:[a-f\d]{64})",\n)*/gm;
+  /^ +"(?:h1:[\d+/A-Za-z]{43}=|zh:[a-f\d]{64})",\n(?: +"(?:h1:[\d+/A-Za-z]{43}=|zh:[a-f\d]{64})",\n)*/gmu;
 
 const providerVersions = [
   {
     name: 'provider',
     pattern:
-      /^provider "(?<provider>[^"]+)" \{\n +version += "(?<version>\d+\.\d+\.\d+)"\n +constraints += "(?:= )?(?<constraint>\d+\.\d+\.\d+)"$/dgm,
+      /^provider "(?<provider>[^"]+)" \{\n +version += "(?<version>\d+\.\d+\.\d+)"\n +constraints += "(?:= )?(?<constraint>\d+\.\d+\.\d+)"$/dgmu,
     values: { constraint: 'version', version: 'version' },
   },
 ] as const;

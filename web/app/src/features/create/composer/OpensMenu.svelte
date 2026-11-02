@@ -1,9 +1,8 @@
 <script lang="ts">
-  import type { Composer } from './composer.svelte.ts';
-
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
   import Popover from '../../../shared/ui/Popover.svelte';
+  import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';
 
   interface Props {

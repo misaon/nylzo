@@ -1,18 +1,14 @@
 import { repositoryName } from '../github/client.ts';
-import { type BotIdentity, isBot } from '../github/identity.ts';
-import { compareVersions, isSafeUpgrade, parseVersion, type SemanticVersion } from '../versions/semantic-version.ts';
+import { isBot } from '../github/identity.ts';
+import type { BotIdentity } from '../github/identity.ts';
+import { compareVersions, isSafeUpgrade, parseVersion } from '../versions/semantic-version.ts';
+import type { SemanticVersion } from '../versions/semantic-version.ts';
 import { binaryAssetsPath, hostToolchainPath, ruleFor } from './rules/dependency-files.ts';
-import { type FileReview, mergeReviews, type VersionUpdate } from './rules/file-review.ts';
+import { mergeReviews } from './rules/file-review.ts';
+import type { FileReview, VersionUpdate } from './rules/file-review.ts';
 import { toolchainMismatches } from './rules/manifests.ts';
-import {
-  type Commit,
-  type GuardSource,
-  isRegularFile,
-  type PullRequest,
-  readFileAt,
-  type Tree,
-  webFlow,
-} from './source.ts';
+import { isRegularFile, readFileAt, webFlow } from './source.ts';
+import type { Commit, GuardSource, PullRequest, Tree } from './source.ts';
 import { upstreamProblems } from './upstream.ts';
 
 export interface AppUpdate {
@@ -24,7 +20,7 @@ export interface AppUpdate {
 }
 
 const maximumChangedFiles = 80;
-const supportedBase = /^(?:main|release\/v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/;
+const supportedBase = /^(?:main|release\/v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/u;
 
 function stableVersion(value: string): SemanticVersion | undefined {
   try {

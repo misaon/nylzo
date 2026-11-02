@@ -6,7 +6,7 @@ declare global {
 
 export interface SentRecord {
   readonly id: string;
-  readonly endedAt?: number;
+  readonly endedAt?: number | undefined;
   readonly fields: string[];
   readonly publicKeyLength: number;
   readonly privateKey: {
@@ -79,6 +79,7 @@ async function readSentRecords(): Promise<SentRecord[]> {
       });
     });
     const records = stored as { id: string; endedAt?: number; privateKey: CryptoKey; publicKey: Uint8Array }[];
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- Playwright serializes this closure into the browser; module-scope helpers are unavailable there.
     const exportable = async (key: CryptoKey) => {
       try {
         await crypto.subtle.exportKey('pkcs8', key);
@@ -90,7 +91,7 @@ async function readSentRecords(): Promise<SentRecord[]> {
     return await Promise.all(
       records.map(async (record) => ({
         id: record.id,
-        ...(record.endedAt !== undefined && { endedAt: record.endedAt }),
+        endedAt: record.endedAt,
         fields: Object.keys(record).toSorted((left, right) => left.localeCompare(right)),
         publicKeyLength: record.publicKey.length,
         privateKey: {

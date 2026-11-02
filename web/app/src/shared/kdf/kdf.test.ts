@@ -2,12 +2,11 @@ import { PowTimeoutError } from '@nylzo/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KdfResponse } from './kdf-protocol.ts';
-
 import { KdfWorkerError } from './kdf-protocol.ts';
 import { scryptInWorker, solvePowInWorker } from './kdf.ts';
 import { startWorker } from './worker-source.ts';
 
-vi.mock('./worker-source.ts', () => ({ startWorker: vi.fn() }));
+vi.mock('./worker-source.ts', () => ({ startWorker: vi.fn<typeof import('./worker-source.ts').startWorker>() }));
 
 async function settled(promise: Promise<unknown>): Promise<unknown> {
   try {
@@ -19,8 +18,8 @@ async function settled(promise: Promise<unknown>): Promise<unknown> {
 
 describe('worker lifecycle', () => {
   let worker: EventTarget & { postMessage: ReturnType<typeof vi.fn> };
-  const stop = vi.fn();
-  const progress = vi.fn();
+  const stop = vi.fn<(...arguments_: unknown[]) => void>();
+  const progress = vi.fn<(...arguments_: unknown[]) => void>();
   const salt = new Uint8Array(16).fill(1);
 
   function reply(data: KdfResponse): void {
@@ -30,7 +29,7 @@ describe('worker lifecycle', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetAllMocks();
-    worker = Object.assign(new EventTarget(), { postMessage: vi.fn() });
+    worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
     vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
   });
   afterEach(() => vi.useRealTimers());
@@ -39,11 +38,14 @@ describe('worker lifecycle', () => {
     const key = new Uint8Array(32).fill(7);
     const result = scryptInWorker('synthetic passphrase', salt, progress);
     await Promise.resolve();
-    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({
-      kind: 'scrypt',
-      passphrase: 'synthetic passphrase',
-      passphraseSalt: salt,
-    });
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith(
+      {
+        kind: 'scrypt',
+        passphrase: 'synthetic passphrase',
+        passphraseSalt: salt,
+      },
+      [],
+    );
     reply({ kind: 'progress', fraction: 0.5 });
     expect(progress).toHaveBeenCalledExactlyOnceWith(0.5);
     reply({ kind: 'key', key });
@@ -56,13 +58,16 @@ describe('worker lifecycle', () => {
     const id = new Uint8Array(16).fill(2);
     const result = solvePowInWorker('challenge', id, 4, 1234, progress);
     await Promise.resolve();
-    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({
-      kind: 'pow',
-      challenge: 'challenge',
-      id,
-      difficulty: 4,
-      deadline: 1234,
-    });
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith(
+      {
+        kind: 'pow',
+        challenge: 'challenge',
+        id,
+        difficulty: 4,
+        deadline: 1234,
+      },
+      [],
+    );
     reply({ kind: 'token', token: 'synthetic-token' });
     await expect(result).resolves.toBe('synthetic-token');
     expect(stop).toHaveBeenCalledOnce();
@@ -107,7 +112,7 @@ describe('worker lifecycle', () => {
     await Promise.resolve();
     reply({ kind: 'token', token: 'wrong-kind' });
     expect(await rejectedKey).toBeInstanceOf(KdfWorkerError);
-    worker = Object.assign(new EventTarget(), { postMessage: vi.fn() });
+    worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
     vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
     const token = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
     const rejectedToken = settled(token);

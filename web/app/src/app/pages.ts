@@ -1,6 +1,7 @@
 import { isReadPath } from '@nylzo/core';
 
-import { type Language, LANGUAGES } from '../shared/language/language.ts';
+import { LANGUAGES } from '../shared/language/language.ts';
+import type { Language } from '../shared/language/language.ts';
 import { HANDOFF_PATH } from '../shared/local-client/handoff.ts';
 
 export type Screen = 'create' | 'read' | 'report' | 'sent' | 'transparency';

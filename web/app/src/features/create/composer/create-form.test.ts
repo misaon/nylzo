@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
-
 import { readAttachment, ttlChoices } from './create-form.ts';
 
 const limits: InstanceLimits = {
@@ -26,7 +25,7 @@ describe('create form', () => {
     expect(await readAttachment(tooLarge, limits)).toEqual({ problem: { field: 'file', code: 'too_large' } });
     const small = new File([new Uint8Array([1, 2])], 'small.txt', { type: 'text/plain' });
     expect(await readAttachment(small, limits)).toEqual({
-      file: { name: 'small.txt', mime: 'text/plain', bytes: new Uint8Array([1, 2]) },
+      file: { name: 'small.txt', mime: small.type, bytes: new Uint8Array([1, 2]) },
     });
     expect(await readAttachment(undefined, limits)).toEqual({ file: undefined });
   });

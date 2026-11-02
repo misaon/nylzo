@@ -1,6 +1,5 @@
-import type { Attachment } from 'svelte/attachments';
-
 import { tick } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 
 export function keepFocus(fallback: HTMLElement | undefined): void {
   const active = document.activeElement;

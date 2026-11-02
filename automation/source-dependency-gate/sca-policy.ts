@@ -1,4 +1,5 @@
-import { arrayAt, type JsonObject, objectAt, optionalArrayAt, textAt, textsAt } from './json-values.ts';
+import { arrayAt, objectAt, optionalArrayAt, textAt, textsAt } from './json-values.ts';
+import type { JsonObject } from './json-values.ts';
 
 export interface Assessment {
   readonly ecosystem: string;

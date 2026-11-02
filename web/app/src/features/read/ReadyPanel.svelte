@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { ReadPage } from './read-page.svelte.ts';
-
   import { formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Icon from '../../shared/ui/Icon.svelte';
   import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../shared/ui/private-fields.ts';
   import SwapIcon from '../../shared/ui/SwapIcon.svelte';
+  import type { ReadPage } from './read-page.svelte.ts';
   import { PANEL_HIDDEN, PANEL_SHOWN } from './read-page.svelte.ts';
 
   interface Props {

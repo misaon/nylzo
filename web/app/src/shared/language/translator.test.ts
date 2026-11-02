@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { czech } from './czech.ts';
 import { english } from './english.ts';
-import { pickLanguage, type PreferenceStore, savedLanguage, saveLanguage } from './language.ts';
+import { pickLanguage, savedLanguage, saveLanguage } from './language.ts';
+import type { PreferenceStore } from './language.ts';
 
 function placeholders(messages: Readonly<Record<string, string>>): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(messages).map(([key, text]) => [
       key,
-      Array.from(text.matchAll(/\{(\w+)\}/g), (match) => match[1] ?? '').toSorted((first, second) =>
+      Array.from(text.matchAll(/\{(\w+)\}/gu), (match) => match[1] ?? '').toSorted((first, second) =>
         first.localeCompare(second),
       ),
     ]),

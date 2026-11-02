@@ -1,7 +1,6 @@
 <script lang="ts">
-  import type { PipelineNode } from './pipeline.ts';
-
   import Icon from '../ui/Icon.svelte';
+  import type { PipelineNode } from './pipeline.ts';
 
   interface Props {
     readonly nodes: readonly PipelineNode[];

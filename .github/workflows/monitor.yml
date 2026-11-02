@@ -37,13 +37,13 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: node pnpm
+          install_args: bun
           cache: false
-      - run: pnpm --dir automation install --frozen-lockfile
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Detect an unpublished maintenance commit older than one hour
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node automation/release-tag/stalled.ts
+        run: bun automation/release-tag/stalled.ts
 
   host:
     name: Authenticated host readiness
@@ -58,9 +58,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          node-version-file: web/.node-version
+          bun-version-file: web/package.json
       - name: Read coarse host status over mutual TLS
         env:
           URL: ${{ secrets.NYLZO_HOST_MONITOR_URL }}
@@ -69,7 +69,7 @@ jobs:
           MONITOR_KEY: ${{ secrets.NYLZO_MONITOR_KEY }}
         run: |
           for attempt in 1 2 3; do
-            if node tools/security/monitor-host.mts; then exit 0; fi
+            if bun tools/security/monitor-host.mts; then exit 0; fi
             if [[ "$attempt" != 3 ]]; then sleep 75; fi
           done
           exit 1
@@ -86,15 +86,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          node-version-file: web/.node-version
+          bun-version-file: web/package.json
       - name: CAA, mail records, registrar lock and every new certificate match the expected state
         env:
           DOMAIN: ${{ vars.NYLZO_MONITOR_DOMAIN }}
           ACME_ACCOUNT: ${{ vars.NYLZO_ACME_ACCOUNT }}
           CT_REVIEWED_UNTIL: ${{ vars.NYLZO_CT_REVIEWED_UNTIL }}
-        run: node tools/security/monitor-domain.mts
+        run: bun tools/security/monitor-domain.mts
 
   web-client:
     name: Released web client and message lifecycle (AK25)
@@ -111,9 +111,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          node-version-file: web/.node-version
+          bun-version-file: web/package.json
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign
@@ -173,7 +173,7 @@ jobs:
       - name: Create, decrypt, and consume a short-lived synthetic message
         env:
           URL: ${{ vars.NYLZO_MONITOR_URL }}
-        run: node tools/security/monitor-instance.mts
+        run: bun tools/security/monitor-instance.mts
 
   browser:
     name: A browser receives the signed web client (A3-07)
@@ -187,19 +187,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          package_json_file: web/package.json
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.node-version
-          package-manager-cache: false
+          bun-version-file: web/package.json
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign
           cosign-release: v3.1.4
       - name: Install locked dependencies without lifecycle scripts
-        run: node automation/web-install/main.ts
+        run: bun automation/web-install/main.ts
       - name: Signed checksums of the release the server runs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -214,7 +210,7 @@ jobs:
           NYLZO_MONITOR_URL: ${{ vars.NYLZO_MONITOR_URL }}
         run: |
           export NYLZO_MONITOR_CHECKSUMS="${GITHUB_WORKSPACE}/checksums.txt"
-          if ! xvfb-run --auto-servernum pnpm --dir web/e2e exec playwright test -c playwright.monitor.config.ts --reporter=dot > /dev/null 2>&1; then
+          if ! xvfb-run --auto-servernum bun run --cwd web/e2e --bun playwright test -c playwright.monitor.config.ts --reporter=dot > /dev/null 2>&1; then
             echo "The browser check failed."
             exit 1
           fi

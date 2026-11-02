@@ -1,10 +1,10 @@
 import { parseId } from '@nylzo/core';
 
+import { isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
 import type { Api, Status } from '../../shared/api/api.ts';
 import type { SentRecord } from '../../shared/sent-records/sent-record.ts';
-
-import { isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
-import { retainedRecords, type SentStore } from '../../shared/sent-records/sent-store.ts';
+import { retainedRecords } from '../../shared/sent-records/sent-store.ts';
+import type { SentStore } from '../../shared/sent-records/sent-store.ts';
 
 export type ItemState =
   | { readonly kind: 'loading' }
@@ -126,8 +126,8 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
   }
 
   async function stored(id: string): Promise<SentRecord | undefined> {
-    const records = await dependencies.store.list();
-    const found = records.find((record) => record.id === id);
+    const saved = await dependencies.store.list();
+    const found = saved.find((record) => record.id === id);
     if (!found) {
       drop(id);
     }

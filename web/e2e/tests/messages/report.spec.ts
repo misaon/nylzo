@@ -8,7 +8,7 @@ import { BASE_URL } from '../support/servers.ts';
 import { watchViolations } from '../support/watchers.ts';
 
 function goodFaith(page: Page) {
-  return page.getByRole('checkbox', { name: /^I believe in good faith/ });
+  return page.getByRole('checkbox', { name: /^I believe in good faith/u });
 }
 
 test('an abuse report from the read page or from /report spends no open and sends only the id, the reason, the contact, the statement and a signature (AK2, D41)', async ({
@@ -76,7 +76,7 @@ test('an abuse report from the read page or from /report spends no open and send
     { id: message.id, good_faith: true },
   ]);
   for (const sent of reports) {
-    expect(sent.headers['authorization']).toMatch(/^Nylzo-Sig /);
+    expect(sent.headers['authorization']).toMatch(/^Nylzo-Sig /u);
     expect(sent.headers['content-type']).toBe('application/json');
   }
 

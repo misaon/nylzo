@@ -3,7 +3,8 @@
   "compilerOptions": {
     "module": "nodenext",
     "lib": ["es2025", "dom"],
-    "types": []
+    "types": [],
+    "resolveJsonModule": true
   },
   "include": ["src", "test"]
 }

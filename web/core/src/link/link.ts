@@ -1,5 +1,6 @@
 import { KdfMismatchError, LinkError, LinkReleasedError, LinkRetiredKdfError, LinkVersionError } from '../errors.ts';
-import { KDF_RETIRED, type KdfId, parseKdfId } from '../keys/kdf.ts';
+import { KDF_RETIRED, parseKdfId } from '../keys/kdf.ts';
+import type { KdfId } from '../keys/kdf.ts';
 import { FRAGMENT_VERSION, OBJECT_HASH_LENGTH, SECRET_LENGTH } from '../limits.ts';
 import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
 import { assertLength } from '../primitives/bytes.ts';
@@ -7,8 +8,8 @@ import { idToString, parseId } from '../primitives/identifiers.ts';
 
 const LINK_PATH = '/r';
 const RELEASED_PATH_PREFIX = '/m/';
-const VERSION_LABEL = /^[1-9]\d{0,8}$/;
-const TEXT_BEFORE_FRAGMENT = /^https?:\/\/[\d.:[\]a-z-]+(\/[^?#]*)(?:\?[^#]*)?$/i;
+const VERSION_LABEL = /^[1-9]\d{0,8}$/u;
+const TEXT_BEFORE_FRAGMENT = /^https?:\/\/[\d.:[\]a-z-]+(\/[^?#]*)(?:\?[^#]*)?$/iu;
 const LABEL = String(FRAGMENT_VERSION);
 const RELEASED_PROFILES: ReadonlySet<string> = new Set(['0', '1', '2']);
 

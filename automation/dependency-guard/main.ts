@@ -1,10 +1,12 @@
 import { appendFile, readFile } from 'node:fs/promises';
+
 import { z } from 'zod';
 
 import { createGitHubClient, repositoryName } from '../github/client.ts';
 import { automationBot } from '../github/identity.ts';
 import { createGitHubSource } from './github-source.ts';
-import { decide, type Verdict } from './guard.ts';
+import { decide } from './guard.ts';
+import type { Verdict } from './guard.ts';
 
 const environment = z.object({
   GITHUB_EVENT_NAME: z.literal('pull_request_target'),
@@ -14,7 +16,7 @@ const environment = z.object({
   GITHUB_TOKEN: z.string().min(1),
 });
 
-const commitSha = z.string().regex(/^[a-f\d]{40}$/);
+const commitSha = z.string().regex(/^[a-f\d]{40}$/u);
 const eventPullRequest = z.object({ head: z.object({ sha: commitSha }), number: z.number().int().positive() });
 const pullRequestEvent = z.object({ pull_request: eventPullRequest });
 

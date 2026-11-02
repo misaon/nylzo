@@ -3,22 +3,22 @@ import { flushSync, onDestroy } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Metadata } from '../../shared/api/api.ts';
-import type { BurnOutcome, ReaderDependencies, ReadView } from './reader.ts';
-
 import { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { ReadPage } from './read-page.svelte.ts';
+import type { BurnOutcome, ReaderDependencies, ReadView } from './reader.ts';
 import { createReader } from './reader.ts';
 import { saveFile } from './save-file.ts';
 
 // Avoid an await in this hoisted factory: Svelte instruments awaits with a runtime import.
 vi.mock(import('svelte'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Await instrumentation cannot run before imports initialize.
-  original().then((actual) => ({ ...actual, onDestroy: vi.fn() })),
+  original().then((actual) => ({ ...actual, onDestroy: vi.fn<typeof actual.onDestroy>() })),
 );
-vi.mock('./reader.ts', () => ({ createReader: vi.fn() }));
-vi.mock('./save-file.ts', () => ({ saveFile: vi.fn() }));
-vi.mock('../../shared/link/link-handoff.ts', () => ({ takeFragment: vi.fn() }));
+vi.mock('./reader.ts', () => ({ createReader: vi.fn<typeof import('./reader.ts').createReader>() }));
+vi.mock('./save-file.ts', () => ({ saveFile: vi.fn<typeof import('./save-file.ts').saveFile>() }));
+vi.mock('../../shared/link/link-handoff.ts', () => ({
+  takeFragment: vi.fn<typeof import('../../shared/link/link-handoff.ts').takeFragment>(),
+}));
 
 const metadata: Metadata = {
   state: 'available',
@@ -53,21 +53,17 @@ describe('read page interactions', () => {
     notify({ view: 'ready', metadata: { ...metadata, ...overrides }, resumable: false, deviceFailed: false });
   }
 
-  function focusTarget(page: ReadPage, target: Parameters<typeof page.focus.attach>[0]): ReturnType<typeof vi.fn> {
-    const focus = vi.fn();
-    page.focus.attach(target)({ focus } as unknown as HTMLElement);
-    return focus;
-  }
-
   const writeText = vi.fn<(text: string) => Promise<void>>();
-  const reload = vi.fn();
+  const reload = vi.fn<(...arguments_: unknown[]) => void>();
 
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetAllMocks();
     destroy = [];
     vi.mocked(onDestroy).mockImplementation((callback) => {
-      destroy.push(callback);
+      destroy.push(() => {
+        callback();
+      });
     });
     vi.mocked(takeFragment).mockReturnValue({ fragment: '#secret', pasted: false });
     reader.load.mockResolvedValue();
@@ -82,7 +78,11 @@ describe('read page interactions', () => {
     });
     vi.stubGlobal('document', { activeElement: null, body: {}, visibilityState: 'visible' });
     vi.stubGlobal('location', { pathname: '/m/example', hash: '', reload });
-    vi.stubGlobal('sessionStorage', { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() });
+    vi.stubGlobal('sessionStorage', {
+      getItem: vi.fn<(...arguments_: unknown[]) => void>(),
+      setItem: vi.fn<(...arguments_: unknown[]) => void>(),
+      removeItem: vi.fn<(...arguments_: unknown[]) => void>(),
+    });
     writeText.mockResolvedValue();
     vi.stubGlobal('navigator', { clipboard: { writeText } });
   });
@@ -147,7 +147,7 @@ describe('read page interactions', () => {
     expect(page.timeline.fraction).toBe(0.5);
     expect(page.status).toBe(new Translator('en').translate('busy.downloading'));
     notify({ view: 'revealed', text: 'Hello 🌍\nworld', burnable: true });
-    const displayed = vi.fn();
+    const displayed = vi.fn<(...arguments_: unknown[]) => void>();
     const shown = (async () => {
       await dependencies.shown?.();
       displayed();
@@ -301,7 +301,7 @@ describe('read page interactions', () => {
     const other = new Event('keydown');
     page.onConfirmKeydown(other as KeyboardEvent);
     expect(page.askingDelete).toBe(true);
-    const escape = { key: 'Escape', stopPropagation: vi.fn() };
+    const escape = { key: 'Escape', stopPropagation: vi.fn<(...arguments_: unknown[]) => void>() };
     page.onConfirmKeydown(escape as unknown as KeyboardEvent);
     await Promise.resolve();
     expect(escape.stopPropagation).toHaveBeenCalledOnce();
@@ -408,3 +408,9 @@ describe('read page interactions', () => {
     expect(reload).toHaveBeenCalledTimes(3);
   });
 });
+
+function focusTarget(page: ReadPage, target: Parameters<typeof page.focus.attach>[0]): ReturnType<typeof vi.fn> {
+  const focus = vi.fn<(...arguments_: unknown[]) => void>();
+  page.focus.attach(target)({ focus } as unknown as HTMLElement);
+  return focus;
+}

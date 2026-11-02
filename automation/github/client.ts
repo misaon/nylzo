@@ -1,7 +1,8 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+
 import { Octokit } from '@octokit/core';
 import { paginateRest } from '@octokit/plugin-paginate-rest';
 import { restEndpointMethods } from '@octokit/plugin-rest-endpoint-methods';
-import { setTimeout as sleep } from 'node:timers/promises';
 
 const GitHub = Octokit.plugin(paginateRest, restEndpointMethods);
 

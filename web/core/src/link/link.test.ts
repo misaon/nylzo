@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { bytesToHex, randomId, thrownBy, vectors } from '../../test/vectors.ts';
 import { KdfMismatchError, LinkError, LinkReleasedError, LinkRetiredKdfError, LinkVersionError } from '../errors.ts';
-import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT, type KdfId } from '../keys/kdf.ts';
+import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT } from '../keys/kdf.ts';
+import type { KdfId } from '../keys/kdf.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { idToString, newSecret } from '../primitives/identifiers.ts';
 import { assertProfile, formatLink, parseFragment, parseLink } from './link.ts';

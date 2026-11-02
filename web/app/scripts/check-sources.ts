@@ -4,28 +4,36 @@ import { availableParallelism } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { sveltePolicy } from './svelte-policy.ts';
+
+// oxlint-disable-next-line typescript/strict-void-return -- execFile has callback and ChildProcess overloads; promisify intentionally discards the child return value.
 const run = promisify(execFile);
 const appDirectory = path.join(import.meta.dirname, '..');
 const webDirectory = path.join(appDirectory, '..');
 const sourceDirectory = path.join(appDirectory, 'src');
-// ESLint has no rule for this binding, which writes markup like innerHTML.
-const MARKUP_BINDING = /\bbind:innerHTML\b/;
 
-const { version } = JSON.parse(await readFile(path.join(appDirectory, 'node_modules/svelte/package.json'), 'utf8')) as {
-  version: string;
-};
+function packageVersion(manifest: unknown): string {
+  const value: unknown =
+    typeof manifest === 'object' && manifest !== null ? Reflect.get(manifest, 'version') : undefined;
+  if (typeof value !== 'string') {
+    throw new TypeError('Svelte has no package version');
+  }
+  return value;
+}
+const svelteManifestPath = path.join(appDirectory, 'node_modules/svelte/package.json');
+const svelteManifest: unknown = JSON.parse(await readFile(svelteManifestPath, 'utf8'));
+const version = packageVersion(svelteManifest);
 const names = await readdir(sourceDirectory, { recursive: true });
 const files = names
-  .filter((name) => /\.svelte(?:\.ts)?$/.test(name))
+  .filter((name) => /\.svelte(?:\.ts)?$/u.test(name))
   .map((name) => path.relative(webDirectory, path.join(sourceDirectory, name)));
 
 async function problemsOf(file: string): Promise<string[]> {
-  const problems = MARKUP_BINDING.test(await readFile(path.join(webDirectory, file), 'utf8'))
-    ? [`${file}: bind:innerHTML parses markup`]
-    : [];
+  const source = await readFile(path.join(webDirectory, file), 'utf8');
+  const problems = file.endsWith('.svelte') ? sveltePolicy(source).map((problem) => `${file}: ${problem}`) : [];
   const { stdout } = await run(
-    'pnpm',
-    ['--dir', webDirectory, 'exec', 'svelte-mcp', 'svelte-autofixer', file, '--svelte-version', version],
+    'bun',
+    ['run', '--cwd', webDirectory, '--bun', 'svelte-mcp', 'svelte-autofixer', file, '--svelte-version', version],
     { cwd: webDirectory, encoding: 'utf8' },
   );
   if (!stdout.includes('issues: []') || !stdout.includes('suggestions: []')) {

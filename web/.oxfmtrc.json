@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "singleQuote": true,
+  "sortImports": {},
+  "sortPackageJson": true,
+  "ignorePatterns": [
+    "bun.lock",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "app/.prerender/**",
+    "e2e/test-results/**",
+    "e2e/.bin/**",
+    "**/.svelte-check/**"
+  ],
+  "svelte": true,
+  "sortTailwindcss": {
+    "stylesheet": "./app/src/app.css"
+  }
+}

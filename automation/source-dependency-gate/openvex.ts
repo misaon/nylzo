@@ -1,5 +1,4 @@
 import type { VexStatement } from './assessment.ts';
-
 import { goBuilds } from './go-imports.ts';
 
 export interface EvidenceSubject {

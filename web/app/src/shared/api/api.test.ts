@@ -3,15 +3,16 @@ import {
   encodeBase64url,
   idToString,
   MAX_OBJECT_BYTES,
-  type Purpose,
   requestKey,
   requestMessage,
   transferSeconds,
   utf8,
 } from '@nylzo/core';
+import type { Purpose } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { type ApiError, ResponseError, StoppedError } from './api-errors.ts';
+import { ResponseError, StoppedError } from './api-errors.ts';
+import type { ApiError } from './api-errors.ts';
 import { createApi, TRANSFER_TIMEOUT_MS } from './api.ts';
 import { abuseReport } from './fake-api.ts';
 import { servedPolicy } from './responses.ts';
@@ -26,12 +27,14 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
 
 function fakeServer(handler: Handler) {
   const seen: Request[] = [];
+  const seenOptions: (RequestInit & { readonly url: string })[] = [];
   let issued = 0;
   const fetch = async (input: RequestInfo | URL, requestInit?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input, 'http://nylzo.test');
     const request = new Request(url, requestInit);
     expect(request.headers.get('X-Requested-With')).toBe(request.method === 'POST' ? 'XMLHttpRequest' : null);
     seen.push(request);
+    seenOptions.push({ ...requestInit, url: request.url });
     if (new URL(request.url).pathname === '/api/v1/challenge') {
       issued++;
       const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(issued);
@@ -39,12 +42,12 @@ function fakeServer(handler: Handler) {
     }
     return handler(request);
   };
-  const last = () => seen.at(-1) ?? expect.unreachable('the client sent no request');
-  return { api: createApi({ fetch }), seen, last, issued: () => issued };
+  const last = () => seen.at(-1) ?? missing('the client sent no request');
+  return { api: createApi({ fetch }), seen, seenOptions, last, issued: () => issued };
 }
 
 function requestAt(requests: readonly Request[], index: number): Request {
-  return requests[index] ?? expect.unreachable(`the client sent no request ${index}`);
+  return requests[index] ?? missing(`the client sent no request ${index}`);
 }
 
 function decode(encoded: string): Uint8Array<ArrayBuffer> {
@@ -66,7 +69,7 @@ async function verifies(
 }
 
 function authorizationParts(header: string): [string, string, string] {
-  const [publicKey = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /, '').split('.', 3);
+  const [publicKey = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /u, '').split('.', 3);
   return [publicKey, challenge, signature];
 }
 
@@ -500,7 +503,7 @@ describe('api client', () => {
     await server.api.report(id, readKey, abuseReport('spam'));
     expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(8);
     expect(
-      server.seen.map((request) => ({
+      server.seenOptions.map((request) => ({
         url: request.url,
         redirect: request.redirect,
         referrerPolicy: request.referrerPolicy,
@@ -653,3 +656,7 @@ describe('transparency', () => {
     }
   });
 });
+
+function missing(message: string): never {
+  throw new Error(message);
+}

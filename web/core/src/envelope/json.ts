@@ -9,9 +9,9 @@ export type JsonValue =
   | { readonly kind: 'object'; readonly members: ReadonlyMap<string, JsonValue> };
 
 const WHITESPACE = new Set([' ', '\t', '\n', '\r']);
-const NUMBER_LITERAL = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?/iy;
-const INTEGER_LITERAL = /^-?(?:0|[1-9]\d*)$/;
-const FOUR_HEX_DIGITS = /^[\da-f]{4}$/i;
+const NUMBER_LITERAL = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:e[+-]?\d+)?/iuy;
+const INTEGER_LITERAL = /^-?(?:0|[1-9]\d*)$/u;
+const FOUR_HEX_DIGITS = /^[\da-f]{4}$/iu;
 const REPLACEMENT_CHARACTER = '�';
 const LITERALS: ReadonlyMap<string, JsonValue> = new Map([
   ['true', { kind: 'boolean', value: true }],
@@ -149,7 +149,7 @@ class JsonReader {
   }
 
   #peekUnicodeEscape(): string | undefined {
-    if (!this.#text.startsWith('\\u', this.#position)) {
+    if (!this.#text.startsWith(String.raw`\u`, this.#position)) {
       return undefined;
     }
     const hex = this.#text.slice(this.#position + 2, this.#position + 6);

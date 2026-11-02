@@ -5,14 +5,14 @@
   ],
   "dependencyDashboard": false,
   "enabledManagers": [
-    "npm",
     "gomod",
     "github-actions",
     "docker-compose",
     "mise",
     "terraform",
-    "nodenv",
-    "custom.regex"
+    "custom.regex",
+    "bun",
+    "bun-version"
   ],
   "platformCommit": "enabled",
   "pinDigests": true,
@@ -74,7 +74,7 @@
   ],
   "postUpgradeTasks": {
     "commands": [
-      "node /opt/nylzo-dependency-sync.ts"
+      "bun /opt/nylzo-dependency-sync.ts"
     ],
     "fileFilters": [
       "deploy/hetzner-flatcar/toolchain.json",
@@ -248,13 +248,6 @@
     },
     {
       "matchPackageNames": [
-        "node",
-        "nodejs/node"
-      ],
-      "groupName": "Node.js"
-    },
-    {
-      "matchPackageNames": [
         "goreleaser/goreleaser"
       ],
       "groupName": "GoReleaser"
@@ -277,27 +270,6 @@
         "golang/go"
       ],
       "groupName": "Go toolchain"
-    },
-    {
-      "matchPackageNames": [
-        "pnpm"
-      ],
-      "groupName": "pnpm"
-    },
-    {
-      "description": "Review Node and its TypeScript declarations as one planned migration.",
-      "matchBaseBranches": [
-        "main"
-      ],
-      "matchPackageNames": [
-        "node",
-        "nodejs/node",
-        "@types/node"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "groupName": "Node.js migration"
     },
     {
       "description": "Breaking upgrades need a planned migration and a code owner approval.",
@@ -360,6 +332,14 @@
         ".github/workflows/scorecard.yml"
       ],
       "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "bun",
+        "oven-sh/bun",
+        "@types/bun"
+      ],
+      "groupName": "Bun toolchain"
     }
   ],
   "customManagers": [

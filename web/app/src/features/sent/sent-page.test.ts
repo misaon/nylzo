@@ -1,13 +1,15 @@
 import { idToString, KDF_NONE, newRequestKey, parseId } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import type { SentStore } from '../../shared/sent-records/sent-store.ts';
-
 import { ApiError } from '../../shared/api/api-errors.ts';
-import { fakeApi, type FakeApi, type FakeOptions } from '../../shared/api/fake-api.ts';
+import { fakeApi } from '../../shared/api/fake-api.ts';
+import type { FakeApi, FakeOptions } from '../../shared/api/fake-api.ts';
 import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
-import { isRetained, RETENTION_MS, type SentRecord } from '../../shared/sent-records/sent-record.ts';
-import { assess, createSentPage, type SentPage, type SentView } from './sent-page.ts';
+import { isRetained, RETENTION_MS } from '../../shared/sent-records/sent-record.ts';
+import type { SentRecord } from '../../shared/sent-records/sent-record.ts';
+import type { SentStore } from '../../shared/sent-records/sent-store.ts';
+import { assess, createSentPage } from './sent-page.ts';
+import type { SentPage, SentView } from './sent-page.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 
@@ -51,8 +53,8 @@ async function setup(options: FakeOptions = {}, count = 2) {
     records.push(await remembered(api, NOW - (count - index) * 1000, 2));
   }
   const store = memoryStore(records);
-  const record = (index: number): SentRecord => records[index] ?? expect.unreachable(`no record ${index}`);
-  const storedRecord = (id: string): SentRecord => store.records.get(id) ?? expect.unreachable(`${id} is not stored`);
+  const record = (index: number): SentRecord => records[index] ?? missing(`no record ${index}`);
+  const storedRecord = (id: string): SentRecord => store.records.get(id) ?? missing(`${id} is not stored`);
   return { api, records, record, storedRecord, store, sent: page(api, store) };
 }
 
@@ -224,3 +226,7 @@ describe('the sent page', () => {
     expect(sent.items()).toEqual([]);
   });
 });
+
+function missing(message: string): never {
+  throw new Error(message);
+}

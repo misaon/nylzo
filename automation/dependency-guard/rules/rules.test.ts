@@ -186,7 +186,7 @@ require (
 
 const runtimeTest = `spawn("docker", ["run", "ubuntu:24.04@sha256:${'a'.repeat(64)}", "bash", "-s"]);\n`;
 const goreleaser = `dockers_v2:\n  - base_image: gcr.io/distroless/static-debian13:nonroot@sha256:${'a'.repeat(64)}\n`;
-const deployTask = 'set -euo pipefail\nexec mise exec opentofu@1.13.2 -- node tools/deploy/hetzner.mts "$@"\n';
+const deployTask = 'set -euo pipefail\nexec mise exec opentofu@1.13.2 -- bun tools/deploy/hetzner.mts "$@"\n';
 
 const openTofuModule = `terraform {
   required_version = "= 1.13.2"
@@ -342,7 +342,7 @@ const cases: readonly Case[] = [
   },
   {
     after: lockfileUpdate.replace(
-      /resolution: \{integrity: [^}]+\}/,
+      /resolution: \{integrity: [^}]+\}/u,
       'resolution: {tarball: https://attacker.invalid/svelte.tgz}',
     ),
     before: lockfile,
@@ -352,7 +352,7 @@ const cases: readonly Case[] = [
   },
   {
     after: lockfileUpdate.replace(
-      /resolution: \{integrity: [^}]+\}/,
+      /resolution: \{integrity: [^}]+\}/u,
       'resolution: {type: git, repo: https://github.com/attacker/svelte.git, commit: 0123abc}',
     ),
     before: lockfile,
@@ -362,7 +362,7 @@ const cases: readonly Case[] = [
   },
   {
     after: lockfileUpdate.replace(
-      /resolution: \{integrity: [^}]+\}/,
+      /resolution: \{integrity: [^}]+\}/u,
       'resolution: {"tarball": "//attacker.invalid/svelte.tgz"}',
     ),
     before: lockfile,
@@ -423,7 +423,7 @@ const cases: readonly Case[] = [
     path: 'web/pnpm-lock.yaml',
   },
   {
-    after: lockfileUpdate.replace(/resolution: \{integrity: [^}]+\}/, 'resolution: {}'),
+    after: lockfileUpdate.replace(/resolution: \{integrity: [^}]+\}/u, 'resolution: {}'),
     before: lockfile,
     expected: 'rejected',
     name: 'pnpm lockfile without integrity',

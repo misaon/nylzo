@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { ReadPage } from './read-page.svelte.ts';
-
   import { formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import OpenLinkForm from '../../shared/link/OpenLinkForm.svelte';
   import Icon from '../../shared/ui/Icon.svelte';
-  import { isAlarming, type Notice, NOTICE_ICONS } from './read-notice.ts';
+  import { isAlarming, NOTICE_ICONS } from './read-notice.ts';
+  import type { Notice } from './read-notice.ts';
+  import type { ReadPage } from './read-page.svelte.ts';
   import { PANEL_HIDDEN, PANEL_SHOWN } from './read-page.svelte.ts';
 
   interface Props {

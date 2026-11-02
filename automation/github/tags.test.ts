@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { type GitObject, peelTag, type TagReader } from './tags.ts';
+import { peelTag } from './tags.ts';
+import type { GitObject, TagReader } from './tags.ts';
 
 const repository = { owner: 'actions', repo: 'checkout' };
 const commit: GitObject = { sha: 'c'.repeat(40), type: 'commit' };

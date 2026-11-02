@@ -2,16 +2,14 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
-
 import { getTranslator, Translator } from '../../shared/language/translator.svelte.ts';
+import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 import { createSentPage } from './sent-page.ts';
 import Sent from './Sent.svelte';
 
-vi.mock('./sent-page.ts', () => ({ createSentPage: vi.fn() }));
+vi.mock('./sent-page.ts', () => ({ createSentPage: vi.fn<typeof import('./sent-page.ts').createSentPage>() }));
 vi.mock(import('../../shared/language/translator.svelte.ts'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Svelte instruments awaits before hoisted imports initialize.
-  original().then((actual) => ({ ...actual, getTranslator: vi.fn() })),
+  original().then((actual) => ({ ...actual, getTranslator: vi.fn<typeof actual.getTranslator>() })),
 );
 
 const NOW = Date.parse('2026-11-01T12:00:00Z');
@@ -40,16 +38,6 @@ describe('sent messages interface', () => {
       throw new Error(`missing button ${label}`);
     }
     return element;
-  }
-  function item(state: ItemState = initialState): SentItem {
-    return {
-      id: 'AAAAAAAAAAAAAAAAAAAAAA',
-      createdAt: NOW,
-      expiresAt: NOW + 3_600_000,
-      state,
-      ended: false,
-      cancellable: true,
-    };
   }
   function show(items?: readonly SentItem[]): void {
     component = mount(Sent, { target });
@@ -193,3 +181,14 @@ describe('sent messages interface', () => {
     expect(document.activeElement).toBe(target.querySelector('h2'));
   });
 });
+
+function item(state: ItemState = initialState): SentItem {
+  return {
+    id: 'AAAAAAAAAAAAAAAAAAAAAA',
+    createdAt: NOW,
+    expiresAt: NOW + 3_600_000,
+    state,
+    ended: false,
+    cancellable: true,
+  };
+}

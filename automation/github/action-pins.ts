@@ -5,7 +5,7 @@ export interface ActionPin {
 }
 
 export const actionPinPattern =
-  /^ *(?:- )?uses: (?<action>[\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@(?<commit>[a-f\d]{40}) # (?<version>v?\d+\.\d+\.\d+)$/dgm;
+  /^ *(?:- )?uses: (?<action>[\w.-]+\/[\w.-]+)(?:\/[\w./-]+)?@(?<commit>[a-f\d]{40}) # (?<version>v?\d+\.\d+\.\d+)$/dgmu;
 
 export function actionPins(workflow: string): ActionPin[] {
   return Array.from(workflow.matchAll(actionPinPattern), ({ groups }) => {

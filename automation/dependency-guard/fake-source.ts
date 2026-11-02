@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 
+import { repositoryName } from '../github/client.ts';
 import type { BotIdentity } from '../github/identity.ts';
 import type { Account, Commit, GuardSource, PullRequest, Review, TreeEntry } from './source.ts';
-
-import { repositoryName } from '../github/client.ts';
 import { webFlow } from './source.ts';
 
 interface FileVersion {
@@ -38,8 +37,8 @@ export const baseCommit = 'b'.repeat(40);
 export const headCommit = 'c'.repeat(40);
 export const codeOwnersFile = '* @misaon\n/.github/ @misaon\n';
 
-function blobSha(content: string): string {
-  return createHash('sha1').update(content).digest('hex');
+function blobSha(text: string): string {
+  return createHash('sha1').update(text).digest('hex');
 }
 
 function content(version: FileVersion | string): FileVersion {
@@ -55,8 +54,8 @@ export function fakeSource(repository: FakeRepository): GuardSource {
   }
   return {
     blob(sha) {
-      const text = blobs.get(sha);
-      return text === undefined ? Promise.reject(new Error(`No blob ${sha}`)) : Promise.resolve(text);
+      const blob = blobs.get(sha);
+      return blob === undefined ? Promise.reject(new Error(`No blob ${sha}`)) : Promise.resolve(blob);
     },
     branchHead(branch) {
       const head = repository.branches[branch];

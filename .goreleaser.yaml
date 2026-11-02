@@ -3,9 +3,9 @@ project_name: nylzo
 
 before:
   hooks:
-    - node automation/web-install/main.ts
-    - env NYLZO_VERSION={{ .Version }} pnpm --dir web --filter @nylzo/web build
-    - node tools/deploy/bundle.mts .host-bundle/nylzo-host_{{ .Version }}.tar
+    - bun automation/web-install/main.ts
+    - env NYLZO_VERSION={{ .Version }} bun run --cwd web --filter @nylzo/web build
+    - bun tools/deploy/bundle.mts .host-bundle/nylzo-host_{{ .Version }}.tar
 
 builds:
   - id: nylzo

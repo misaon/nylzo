@@ -1,4 +1,5 @@
-import { parseId, PUBLIC_KEY_LENGTH, type RequestKey } from '@nylzo/core';
+import { parseId, PUBLIC_KEY_LENGTH } from '@nylzo/core';
+import type { RequestKey } from '@nylzo/core';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const RETENTION_DAYS = 1;

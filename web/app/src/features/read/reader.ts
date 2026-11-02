@@ -1,7 +1,6 @@
 import {
   assertProfile,
   assertWellFormedPassphrase,
-  type ContentKeys,
   deriveContent,
   deriveLink,
   deriveVerifier,
@@ -9,10 +8,7 @@ import {
   IntegrityError,
   isReadPath,
   KDF_NONE,
-  type KdfId,
   KdfMismatchError,
-  type Link,
-  type LinkKeys,
   LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
@@ -21,30 +17,22 @@ import {
   open,
   parseFragment,
   requestKey,
-  type RequestKey,
-  type ShareKey,
   unwrapShare,
   wipeRequestKey,
 } from '@nylzo/core';
+import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey, ShareKey } from '@nylzo/core';
 
+import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../shared/api/api-errors.ts';
+import type { ApiError, EndedState, MessageState } from '../../shared/api/api-errors.ts';
 import type { AbuseReport, Api, Envelope, Metadata } from '../../shared/api/api.ts';
 import type { DownloadProgress } from '../../shared/api/object-body.ts';
-import type { Progress } from '../../shared/kdf/kdf.ts';
-
-import {
-  type ApiError,
-  type EndedState,
-  endedStateOf,
-  isApiError,
-  type MessageState,
-  shouldRetryLater,
-  StoppedError,
-} from '../../shared/api/api-errors.ts';
 import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
+import type { Progress } from '../../shared/kdf/kdf.ts';
 import { HANDOFF_PATH } from '../../shared/local-client/handoff.ts';
-import { type ReportOutcome, sendReport } from '../../shared/report/report.ts';
+import { sendReport } from '../../shared/report/report.ts';
+import type { ReportOutcome } from '../../shared/report/report.ts';
 
 export type BusyStep = 'claiming' | 'decrypting' | 'deriving' | 'downloading';
 
@@ -443,7 +431,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   function rejection(error: ApiError): PassphraseRejection {
     const retryAfter = error.retryAfter ?? 0;
     const attemptsLeft = error.attemptsLeft ?? 0;
-    const expiresAt = metadata?.expiresAt ? Date.parse(metadata.expiresAt) : NaN;
+    const expiresAt = metadata?.expiresAt ? Date.parse(metadata.expiresAt) : Number.NaN;
     const locked =
       attemptsLeft === 0 && Number.isFinite(expiresAt) && dependencies.now() + retryAfter * 1000 >= expiresAt;
     return { reason: 'wrong', attemptsLeft, retryAfter, locked };

@@ -26,7 +26,7 @@ const reportKey = execFileSync(binary, ['report-key', '--key-file', path.join(ke
   encoding: 'utf8',
 })
   .trim()
-  .replace(/^NYLZO_REPORT_KEY=/, '');
+  .replace(/^NYLZO_REPORT_KEY=/u, '');
 
 const pepperFile = path.join(keyDirectory, 'pepper');
 writeFileSync(pepperFile, randomBytes(32).toString('hex'), { mode: 0o400 });
@@ -59,7 +59,9 @@ const server = spawn(binary, ['serve'], {
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(signal, () => server.kill(signal));
+  process.on(signal, () => {
+    server.kill(signal);
+  });
 }
 server.on('exit', (code) => {
   process.exitCode = code ?? 1;

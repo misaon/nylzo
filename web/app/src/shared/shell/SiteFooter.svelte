@@ -1,8 +1,7 @@
 <script lang="ts">
+  import { BUILD_INFO, buildSourceHref } from '../build-info.ts';
   import type { MessageKey } from '../language/czech.ts';
   import type { Language } from '../language/language.ts';
-
-  import { BUILD_INFO, buildSourceHref } from '../build-info.ts';
   import { getTranslator } from '../language/translator.svelte.ts';
   import Logo from './Logo.svelte';
   import { REPOSITORY_URL } from './repository.ts';

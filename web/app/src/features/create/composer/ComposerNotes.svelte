@@ -1,8 +1,7 @@
 <script lang="ts">
-  import type { Composer } from './composer.svelte.ts';
-
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/Icon.svelte';
+  import type { Composer } from './composer.svelte.ts';
 
   interface Props {
     readonly composer: Composer;

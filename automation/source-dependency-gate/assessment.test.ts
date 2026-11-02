@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-import { deepmergePatch, type PatchAssessment } from '../web-install/deepmerge-patch.ts';
-import { assessSourceDependencies, type VexStatement } from './assessment.ts';
+import { deepmergePatch } from '../web-install/deepmerge-patch.ts';
+import type { PatchAssessment } from '../web-install/deepmerge-patch.ts';
+import { assessSourceDependencies } from './assessment.ts';
+import type { VexStatement } from './assessment.ts';
 import { goBuilds } from './go-imports.ts';
 import { parseDependencyReport } from './osv-report.ts';
-import { parseScaPolicy, type ScaPolicy } from './sca-policy.ts';
+import { parseScaPolicy } from './sca-policy.ts';
+import type { ScaPolicy } from './sca-policy.ts';
 
 interface PackageEntry {
   licenses: string[];
@@ -42,8 +45,8 @@ function fixture() {
     licenses: ['UNKNOWN'],
     package: { ecosystem: 'Go', name: 'github.com/dgraph-io/badger', version: '1.6.2' },
   };
-  const web = { packages: [svelte], source: { path: '/project/web/pnpm-lock.yaml' } };
-  const automation = { packages: [zod], source: { path: '/project/automation/pnpm-lock.yaml' } };
+  const web = { packages: [svelte], source: { path: '/project/web/bun.lock' } };
+  const automation = { packages: [zod], source: { path: '/project/automation/bun.lock' } };
   const caddy = { packages: [caddyServer, badger], source: { path: '/project/deploy/caddy/go.mod' } };
   const report = {
     results: [{ packages: [crypto], source: { path: '/project/go.mod' } }, web, automation, caddy],
@@ -124,22 +127,42 @@ test('VEX cannot hide new versions, advisories, reachable code, missing platform
   const date = new Date('2026-10-27T00:00:00Z');
   assert.equal(assess(fixture(), date).length, 1);
   const mutations: ((data: Fixture) => void)[] = [
-    (data) => (data.crypto.package.version = '0.58.1'),
-    (data) => (data.cryptoVulnerability.id = 'GO-another'),
-    (data) => (data.cryptoVulnerability.id = 'MAL-2026-123'),
+    (data) => {
+      data.crypto.package.version = '0.58.1';
+    },
+    (data) => {
+      data.cryptoVulnerability.id = 'GO-another';
+    },
+    (data) => {
+      data.cryptoVulnerability.id = 'MAL-2026-123';
+    },
     (data) => {
       data.imports['go.mod']?.['linux/amd64']?.packages.push('golang.org/x/crypto/openpgp/packet');
     },
-    (data) => delete data.imports['go.mod']?.['windows/arm64'],
-    (data) => delete data.imports['deploy/caddy/go.mod']?.['linux/arm64'],
-    (data) => (data.caddyServer.licenses = ['UNKNOWN']),
+    (data) => {
+      delete data.imports['go.mod']?.['windows/arm64'];
+    },
+    (data) => {
+      delete data.imports['deploy/caddy/go.mod']?.['linux/arm64'];
+    },
+    (data) => {
+      data.caddyServer.licenses = ['UNKNOWN'];
+    },
     (data) => {
       data.imports['deploy/caddy/go.mod']?.['linux/amd64']?.modules.push('github.com/dgraph-io/badger');
     },
-    (data) => (data.cryptoAssessment.reviewUntil = '2026-10-26T00:00:00Z'),
-    (data) => data.report.results.pop(),
-    (data) => (data.svelte.licenses = []),
-    (data) => (data.svelte.licenses = ['LicenseRef-Unknown']),
+    (data) => {
+      data.cryptoAssessment.reviewUntil = '2026-10-26T00:00:00Z';
+    },
+    (data) => {
+      data.report.results.pop();
+    },
+    (data) => {
+      data.svelte.licenses = [];
+    },
+    (data) => {
+      data.svelte.licenses = ['LicenseRef-Unknown'];
+    },
   ];
   for (const mutate of mutations) {
     const data = fixture();
@@ -190,17 +213,17 @@ test('a malware alias cannot be excused as a patched vulnerability or a VEX exce
   const date = new Date('2026-10-28T00:00:00Z');
   const data = fixture();
   data.cryptoVulnerability.aliases = ['MAL-2026-123'];
-  assert.throws(() => assess(data, date), /Known malware/);
+  assert.throws(() => assess(data, date), /Known malware/u);
   const patched = fixture();
   withDeepmerge(patched, { aliases: ['MAL-2026-456'], id: deepmergePatch.id });
-  assert.throws(() => assess(patched, date, repositoryPolicy, [deepmergePatch]), /Known malware/);
+  assert.throws(() => assess(patched, date, repositoryPolicy, [deepmergePatch]), /Known malware/u);
 });
 
 test('an assessment covers only the lockfile it names, so a Nylzo claim cannot hide Caddy code', () => {
   const date = new Date('2026-10-28T00:00:00Z');
   const data = fixture();
   withCaddyCrypto(data);
-  assert.throws(() => assess(data, date), /Vulnerability: golang.org\/x\/crypto@0.58.0 GO-2026-5932/);
+  assert.throws(() => assess(data, date), /Vulnerability: golang.org\/x\/crypto@0.58.0 GO-2026-5932/u);
   data.policy.notAffected.push({ ...data.cryptoAssessment, lockfile: 'deploy/caddy/go.mod' });
   const statements = assess(data, date);
   assert.deepEqual(
@@ -208,16 +231,16 @@ test('an assessment covers only the lockfile it names, so a Nylzo claim cannot h
     ['go.mod', 'deploy/caddy/go.mod'],
   );
   data.imports['deploy/caddy/go.mod']?.['linux/arm64']?.packages.push('golang.org/x/crypto/openpgp');
-  assert.throws(() => assess(data, date), /Vulnerable OpenPGP code is present for linux\/arm64/);
+  assert.throws(() => assess(data, date), /Vulnerable OpenPGP code is present for linux\/arm64/u);
 });
 
 test('known malware blocks even in a Caddy module that the release build leaves out', () => {
   const date = new Date('2026-10-28T00:00:00Z');
   const data = fixture();
   data.badger.vulnerabilities = [{ id: 'MAL-2026-777' }];
-  assert.throws(() => assess(data, date), /Known malware: github.com\/dgraph-io\/badger MAL-2026-777/);
+  assert.throws(() => assess(data, date), /Known malware: github.com\/dgraph-io\/badger MAL-2026-777/u);
   data.badger.vulnerabilities = [{ aliases: ['MAL-2026-778'], id: 'GHSA-xxxx-xxxx-xxxx' }];
-  assert.throws(() => assess(data, date), /Known malware: github.com\/dgraph-io\/badger GHSA-xxxx-xxxx-xxxx/);
+  assert.throws(() => assess(data, date), /Known malware: github.com\/dgraph-io\/badger GHSA-xxxx-xxxx-xxxx/u);
 });
 
 test('modules the Caddy release build leaves out need no license or vulnerability review', () => {
@@ -227,7 +250,7 @@ test('modules the Caddy release build leaves out need no license or vulnerabilit
   assert.equal(assess(data, date).length, 1);
   data.crypto.licenses = ['UNKNOWN'];
   data.crypto.vulnerabilities = [];
-  assert.throws(() => assess(data, date), /License review required: golang.org\/x\/crypto/);
+  assert.throws(() => assess(data, date), /License review required: golang.org\/x\/crypto/u);
 });
 
 test('an assessment that names no lockfile is refused', () => {
@@ -235,5 +258,23 @@ test('an assessment that names no lockfile is refused', () => {
   const { lockfile, ...unscoped } = data.cryptoAssessment;
   assert.equal(lockfile, 'go.mod');
   const policy = parseScaPolicy({ ...data.policy, notAffected: [unscoped] });
-  assert.throws(() => assess(data, new Date('2026-10-28T00:00:00Z'), policy), /must name the lockfile/);
+  assert.throws(() => assess(data, new Date('2026-10-28T00:00:00Z'), policy), /must name the lockfile/u);
+});
+
+test('local Bun workspace licensing never exempts registry packages, other locks or malware', () => {
+  const data = fixture();
+  data.svelte.package = { ecosystem: 'npm', name: '@nylzo/core', version: 'workspace:core' };
+  data.svelte.licenses = [];
+  const now = new Date('2026-10-27T00:00:00Z');
+  assert.doesNotThrow(() => assess(data, now));
+  data.svelte.package.version = '1.0.0';
+  assert.throws(() => assess(data, now), /License review required/u);
+  data.svelte.package.version = 'workspace:outside';
+  assert.throws(() => assess(data, now), /License review required/u);
+  data.svelte.package.version = 'workspace:core';
+  data.svelte.vulnerabilities = [{ id: 'MAL-2026-local' }];
+  assert.throws(() => assess(data, now), /Known malware/u);
+  data.svelte.vulnerabilities = [];
+  data.automation.packages.push(structuredClone(data.svelte));
+  assert.throws(() => assess(data, now), /License review required/u);
 });

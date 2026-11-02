@@ -1,34 +1,36 @@
-import type { Attachment } from 'svelte/attachments';
-
 import { generatePassphrase, MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 import { flushSync, tick } from 'svelte';
+import type { Attachment } from 'svelte/attachments';
 import { prefersReducedMotion } from 'svelte/motion';
 
-import type { InstanceLimits } from '../../../shared/api/responses.ts';
-import type { Translator } from '../../../shared/language/translator.svelte.ts';
-import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
-
 import { createApi } from '../../../shared/api/api.ts';
+import type { InstanceLimits } from '../../../shared/api/responses.ts';
 import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
 import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
+import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
-import { PacedTimeline, type TimelineSettings } from '../../../shared/pipeline/paced-timeline.svelte.ts';
+import { PacedTimeline } from '../../../shared/pipeline/paced-timeline.svelte.ts';
+import type { TimelineSettings } from '../../../shared/pipeline/paced-timeline.svelte.ts';
+import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
 import { randomCharacter, randomText } from '../../../shared/pipeline/random-text.ts';
-import { browserSentStore, rememberSent, type SentStore } from '../../../shared/sent-records/sent-store.ts';
+import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
+import type { SentStore } from '../../../shared/sent-records/sent-store.ts';
 import { FocusTargets } from '../../../shared/ui/focus.ts';
 import {
-  type Created,
   CreateError,
-  type CreateFailure,
-  type CreateField,
-  type CreateInput,
   createMessage,
-  type CreateProblem,
-  type CreateProgress,
   passphraseIsWeak,
   validateCreate,
   WEAK_BELOW_CHARACTERS,
   WEAK_BELOW_WORDS,
+} from '../create-message.ts';
+import type {
+  Created,
+  CreateFailure,
+  CreateField,
+  CreateInput,
+  CreateProblem,
+  CreateProgress,
 } from '../create-message.ts';
 import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
 
@@ -493,7 +495,7 @@ export class Composer {
   }
 
   #startTimeline(source: string): void {
-    const plain = source.replaceAll(/\s+/g, ' ').slice(0, CIPHER_SOURCE_CHARACTERS);
+    const plain = source.replaceAll(/\s+/gu, ' ').slice(0, CIPHER_SOURCE_CHARACTERS);
     this.proving = false;
     this.cipher = cipherText(plain, 0);
     this.phase = 'encrypting';

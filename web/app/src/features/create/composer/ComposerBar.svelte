@@ -1,11 +1,10 @@
 <script lang="ts">
-  import type { Composer } from './composer.svelte.ts';
-
   import { formatBytes } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import WorkingStatus from '../../../shared/pipeline/WorkingStatus.svelte';
   import Icon from '../../../shared/ui/Icon.svelte';
   import { CHIP_BASE, CHIP_IDLE, CHIP_PROBLEM } from './chip-classes.ts';
+  import type { Composer } from './composer.svelte.ts';
   import OpensMenu from './OpensMenu.svelte';
   import SecurityMenu from './SecurityMenu.svelte';
   import TtlMenu from './TtlMenu.svelte';

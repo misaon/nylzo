@@ -9,7 +9,8 @@
       "ignoreDependencies": [
         "@fontsource-variable/geist",
         "@fontsource-variable/geist-mono",
-        "@fontsource-variable/sora"
+        "@fontsource-variable/sora",
+        "@typescript/native"
       ]
     },
     "e2e": {

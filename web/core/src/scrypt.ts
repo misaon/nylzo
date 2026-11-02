@@ -1,16 +1,17 @@
 import { scrypt } from '@noble/hashes/scrypt.js';
 
-import { deriveContent, type DerivedKeys, deriveLink, deriveVerifier } from './keys/derive.ts';
+import { deriveContent, deriveLink, deriveVerifier } from './keys/derive.ts';
+import type { DerivedKeys } from './keys/derive.ts';
 import {
   assertWellFormedPassphrase,
   KDF_NONE,
   KDF_SCRYPT,
-  type KdfId,
   normalizePassphrase,
   SCRYPT_N,
   SCRYPT_P,
   SCRYPT_R,
 } from './keys/kdf.ts';
+import type { KdfId } from './keys/kdf.ts';
 import { KEY_LENGTH } from './limits.ts';
 import { arrayBufferBacked } from './primitives/bytes.ts';
 

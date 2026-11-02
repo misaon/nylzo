@@ -98,7 +98,7 @@ for (const file of RISKY_FILES) {
       const readPage = page.url();
       const download = page.getByRole('button', { name: 'Download attachment' });
       const cancel = page.getByRole('button', { name: 'Do not download' });
-      const warning = notInert(page, page.getByRole('alert')).filter({ hasText: /can run code/ });
+      const warning = notInert(page, page.getByRole('alert')).filter({ hasText: /can run code/u });
 
       await download.dblclick();
       await expect(warning).toHaveCount(1);
@@ -149,7 +149,7 @@ test(
     await page.getByRole('button', { name: 'Download attachment' }).dblclick();
     const saved = await saving;
     expect(saved.suggestedFilename()).toBe('report.pdf');
-    await expect(page.getByText(/can run code/)).toHaveCount(0);
+    await expect(page.getByText(/can run code/u)).toHaveCount(0);
     expect(await downloads.blobTypes()).toEqual(['application/octet-stream']);
     expect(downloads.names).toEqual(['report.pdf']);
     expect(page.url()).toBe(readPage);

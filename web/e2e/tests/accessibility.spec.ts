@@ -1,6 +1,5 @@
+import { AxeBuilder } from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
-
-import AxeBuilder from '@axe-core/playwright';
 
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
@@ -98,7 +97,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   }
 
   await page
-    .getByLabel(/Attachment, up to/)
+    .getByLabel(/Attachment, up to/u)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
   await expectAccessible(page, 'attachment', '#create');
@@ -147,11 +146,11 @@ test('the read page in every state, with its report form and its delete and down
 
   const guarded = await createMessageThroughApi({ passphrase: 'four random words here' });
   await showMessage(page, guarded.link, 'definitely the wrong one');
-  await expect(page.getByText(/The passphrase does not match/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 
   await openFresh(page, `${BASE_URL}/r#0.0.${message.id}.${message.secret}`);
-  await expect(page.getByText(/The link is incomplete or damaged/)).toBeVisible();
+  await expect(page.getByText(/The link is incomplete or damaged/u)).toBeVisible();
   await expectAccessible(page, 'damaged link');
 });
 

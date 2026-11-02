@@ -1,3 +1,4 @@
+// oxlint-disable-next-line import/default -- Vite generates the default URL export for this worker asset query.
 import kdfWorkerUrl from './kdf-worker.ts?worker&url';
 
 class WorkerSourceError extends Error {
@@ -67,9 +68,7 @@ async function loadWorkerSource(): Promise<Blob> {
 export async function prepareWorker(): Promise<void> {
   try {
     await loadWorkerSource();
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 export interface StartedWorker {
@@ -89,6 +88,7 @@ export async function startWorker(): Promise<StartedWorker> {
   const stop = () => URL.revokeObjectURL(url);
   try {
     // Worker accepts a TrustedScriptURL; the DOM typings only know strings.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Keep the actual TrustedScriptURL object; the standard DOM Worker declaration currently accepts only string or URL.
     const scriptUrl = (workerPolicy?.createScriptURL(url) ?? url) as unknown as string;
     const worker = new Worker(scriptUrl, { type: 'module', name: 'nylzo-kdf' });
     return {

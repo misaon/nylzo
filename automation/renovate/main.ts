@@ -1,14 +1,16 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+
 import { z } from 'zod';
 
-import { createGitHubClient, type GitHubClient, repository } from '../github/client.ts';
+import { createGitHubClient, repository } from '../github/client.ts';
+import type { GitHubClient } from '../github/client.ts';
 import { maintenanceBranch, parseVersion } from '../versions/semantic-version.ts';
 import { globalSettings } from './global-settings.ts';
 
 const inventory = z.object({
   format: z.literal(1),
-  packages: z.array(z.string().regex(/^[\w@./+-]+$/)),
+  packages: z.array(z.string().regex(/^[\w@./+-]+$/u)),
 });
 
 const assets = z.record(z.string(), z.object({ version: z.string() }));
@@ -39,7 +41,7 @@ function pinnedMiseVersion(): string {
   if (mise === undefined) {
     throw new Error('tools/dependencies/assets.json pins no mise-amd64 release');
   }
-  return mise.version.replace(/^v/, '');
+  return mise.version.replace(/^v/u, '');
 }
 
 const { values } = parseArgs({

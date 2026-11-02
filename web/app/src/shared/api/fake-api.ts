@@ -1,8 +1,9 @@
-import { encodeBase64url, idToString, type RequestKey, utf8 } from '@nylzo/core';
+import { encodeBase64url, idToString, utf8 } from '@nylzo/core';
+import type { RequestKey } from '@nylzo/core';
 
+import { ApiError, StoppedError } from './api-errors.ts';
+import type { MessageState } from './api-errors.ts';
 import type { AbuseReport, Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
-
-import { ApiError, type MessageState, StoppedError } from './api-errors.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -134,7 +135,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     };
   }
 
-  /* eslint-disable @typescript-eslint/require-await -- the fake keeps the async methods of Api, so a thrown ApiError rejects the promise as in the real client */
+  /* oxlint-disable typescript/require-await -- the fake keeps the async methods of Api, so a thrown ApiError rejects the promise as in the real client */
   const api: Api = {
     async instance(creation): Promise<Instance> {
       calls.push(creation === undefined ? 'instance' : 'instance+id');
@@ -304,6 +305,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       };
     },
   };
-  /* eslint-enable @typescript-eslint/require-await -- only the fake methods above */
+  /* oxlint-enable typescript/require-await -- only the fake methods above */
   return Object.assign(api, { calls, challenges, stored, issuedIds, reports });
 }

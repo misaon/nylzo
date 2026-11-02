@@ -43,16 +43,16 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: node pnpm gitsign
+          install_args: bun gitsign
           cache: false
-      - run: pnpm --dir automation install --frozen-lockfile
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Decide the release for the commit whose CI completed
         id: plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
           DEPENDENCY_BOT_ID: ${{ vars.DEPENDENCY_BOT_ID }}
-        run: node automation/release-tag/main.ts
+        run: bun automation/release-tag/main.ts
       - name: The release commit passed full CI and every CodeQL analysis
         if: steps.plan.outputs.tag != ''
         env:
@@ -121,9 +121,9 @@ jobs:
         with:
           # renovate: datasource=github-releases depName=jdx/mise
           version: 2026.10.23
-          install_args: node pnpm
+          install_args: bun
           cache: false
-      - run: pnpm --dir automation install --frozen-lockfile
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
         with:
@@ -136,7 +136,7 @@ jobs:
           permission-workflows: write # create a ref at a commit containing workflows
       - env:
           GITHUB_TOKEN: ${{ steps.app.outputs.token }}
-        run: node automation/release-tag/published.ts
+        run: bun automation/release-tag/published.ts
 
   signing-probe:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'

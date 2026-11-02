@@ -32,9 +32,10 @@ const image = {
   height: imageFile.readUInt32BE(20),
 };
 
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- This module was generated from our typed prerender entry point by the preceding Vite SSR build.
 const prerender = (await import(pathToFileURL(path.join(root, '.prerender/prerender.js')).href)) as Prerender;
 const index = readFileSync(path.join(distribution, 'index.html'), 'utf8');
-const stylesheet = /<link rel="stylesheet"[^>]* href="(\/assets\/[^"]+\.css)"/.exec(index)?.[1] ?? '';
+const stylesheet = /<link rel="stylesheet"[^>]* href="(\/assets\/[^"]+\.css)"/u.exec(index)?.[1] ?? '';
 const { fontFaces, inline } = prerender.splitFontFaces(readFileSync(path.join(distribution, stylesheet), 'utf8'));
 const fontStylesheet = hashedName('fonts', 'css', fontFaces);
 writeFileSync(path.join(assets, fontStylesheet), fontFaces);

@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
+import { repository } from '../github/client.ts';
+import type { GitHubClient } from '../github/client.ts';
+import { peelTag } from '../github/tags.ts';
 import type { Commit, GuardSource, PullRequest, Review, Tree, TreeEntry } from './source.ts';
 
-import { type GitHubClient, repository } from '../github/client.ts';
-import { peelTag } from '../github/tags.ts';
-
 const account = z.object({ id: z.number(), login: z.string(), type: z.string() });
-const sha = z.string().regex(/^[a-f\d]{40}$/);
+const sha = z.string().regex(/^[a-f\d]{40}$/u);
 const repositoryReference = z.object({ full_name: z.string() });
 const gitObject = z.object({ sha, type: z.string() });
 const verification = z.object({ verified: z.boolean() });

@@ -1,4 +1,5 @@
-import { type Pace, pace } from './pipeline.ts';
+import { pace } from './pipeline.ts';
+import type { Pace } from './pipeline.ts';
 
 const TICK_MS = 60;
 

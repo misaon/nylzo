@@ -9,15 +9,15 @@ export interface TagReader {
   readonly rest: {
     readonly git: {
       getTag(parameters: {
-        owner: string;
-        repo: string;
-        tag_sha: string;
+        readonly owner: string;
+        readonly repo: string;
+        readonly tag_sha: string;
       }): Promise<{ readonly data: { object: unknown } }>;
     };
   };
 }
 
-const gitObjectSchema = z.object({ sha: z.string().regex(/^[a-f\d]{40}$/), type: z.string() });
+const gitObjectSchema = z.object({ sha: z.string().regex(/^[a-f\d]{40}$/u), type: z.string() });
 const nestedTagLimit = 3;
 
 export async function peelTag(

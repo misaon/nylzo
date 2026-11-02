@@ -1,34 +1,27 @@
-import {
-  compareSnapshots,
-  type DependencyValue,
-  type Extraction,
-  type FileRule,
-  placeholder,
-  type Snapshot,
-  snapshot,
-} from './file-review.ts';
+import { compareSnapshots, placeholder, snapshot } from './file-review.ts';
+import type { DependencyValue, Extraction, FileRule, Snapshot } from './file-review.ts';
 
 function pinRule(extractions: readonly Extraction[]): FileRule {
   return (path, before, after) => compareSnapshots(path, snapshot(before, extractions), snapshot(after, extractions));
 }
 
 export const miseToolVersions = pinRule([
-  { name: 'name', pattern: /^(?<name>[\w-]+) = "(?<version>v?\d+\.\d+\.\d+)"$/dgm, values: { version: 'version' } },
-  { name: 'govulncheck', pattern: /govulncheck@(?<version>v\d+\.\d+\.\d+) /dg, values: { version: 'version' } },
+  { name: 'name', pattern: /^(?<name>[\w-]+) = "(?<version>v?\d+\.\d+\.\d+)"$/dgmu, values: { version: 'version' } },
+  { name: 'govulncheck', pattern: /govulncheck@(?<version>v\d+\.\d+\.\d+) /dgu, values: { version: 'version' } },
 ]);
 
 export const nodeVersion = pinRule([
-  { name: 'node', pattern: /^(?<version>\d+\.\d+\.\d+)$/dgm, values: { version: 'version' } },
+  { name: 'node', pattern: /^(?<version>\d+\.\d+\.\d+)$/dgmu, values: { version: 'version' } },
 ]);
 
 export const deployTask = pinRule([
-  { name: 'opentofu', pattern: /mise exec opentofu@(?<version>\d+\.\d+\.\d+) /dg, values: { version: 'version' } },
+  { name: 'opentofu', pattern: /mise exec opentofu@(?<version>\d+\.\d+\.\d+) /dgu, values: { version: 'version' } },
 ]);
 
 export const openTofuVersions = pinRule([
   {
     name: 'setting',
-    pattern: /^ +(?<setting>required_version|version) += "= (?<version>\d+\.\d+\.\d+)"$/dgm,
+    pattern: /^ +(?<setting>required_version|version) += "= (?<version>\d+\.\d+\.\d+)"$/dgmu,
     values: { version: 'version' },
   },
 ]);
@@ -36,7 +29,7 @@ export const openTofuVersions = pinRule([
 export const releaseBaseImage = pinRule([
   {
     name: 'distroless',
-    pattern: /base_image: gcr\.io\/distroless\/static-debian13:nonroot@sha256:(?<digest>[a-f\d]{64})$/dgm,
+    pattern: /base_image: gcr\.io\/distroless\/static-debian13:nonroot@sha256:(?<digest>[a-f\d]{64})$/dgmu,
     values: { digest: 'opaque' },
   },
 ]);
@@ -44,7 +37,7 @@ export const releaseBaseImage = pinRule([
 export const composeFile = pinRule([
   {
     name: 'caddy',
-    pattern: /^ {4}image: caddy:(?<version>\d+\.\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})$/dgm,
+    pattern: /^ {4}image: caddy:(?<version>\d+\.\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})$/dgmu,
     values: { digest: 'opaque', version: 'version' },
   },
 ]);
@@ -52,23 +45,23 @@ export const composeFile = pinRule([
 export const runtimeTest = pinRule([
   {
     name: 'ubuntu',
-    pattern: /"ubuntu:(?<tag>\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})"/dg,
+    pattern: /"ubuntu:(?<tag>\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})"/dgu,
     values: { digest: 'opaque', tag: 'fixed' },
   },
 ]);
 
 const goDirectives = [
-  { block: '', name: 'go', pattern: /^go (?<version>\d+\.\d+(?:\.\d+)?)$/d },
-  { block: '', name: 'toolchain', pattern: /^toolchain go(?<version>\d+\.\d+\.\d+)$/d },
+  { block: '', name: 'go', pattern: /^go (?<version>\d+\.\d+(?:\.\d+)?)$/du },
+  { block: '', name: 'toolchain', pattern: /^toolchain go(?<version>\d+\.\d+\.\d+)$/du },
   {
     block: '',
     name: 'module',
-    pattern: /^require (?<module>[^\s()]+) (?<version>v\d+\.\d+\.\d+(?:[-+][\w+.-]*)?)(?: \/\/ indirect)?$/d,
+    pattern: /^require (?<module>[^\s()]+) (?<version>v\d+\.\d+\.\d+(?:[-+][\w+.-]*)?)(?: \/\/ indirect)?$/du,
   },
   {
     block: 'require',
     name: 'module',
-    pattern: /^\t(?<module>[^\s()]+) (?<version>v\d+\.\d+\.\d+(?:[-+][\w+.-]*)?)(?: \/\/ indirect)?$/d,
+    pattern: /^\t(?<module>[^\s()]+) (?<version>v\d+\.\d+\.\d+(?:[-+][\w+.-]*)?)(?: \/\/ indirect)?$/du,
   },
 ];
 
@@ -76,7 +69,7 @@ function goModuleSnapshot(text: string): Snapshot {
   const values: DependencyValue[] = [];
   let block = '';
   const lines = text.split('\n').map((line) => {
-    const opening = /^(?<keyword>[a-z]+) \($/.exec(line);
+    const opening = /^(?<keyword>[a-z]+) \($/u.exec(line);
     if (opening) {
       block = opening.groups?.['keyword'] ?? '';
       return line;

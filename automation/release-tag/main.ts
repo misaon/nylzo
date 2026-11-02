@@ -1,21 +1,19 @@
 import { appendFileSync, readFileSync } from 'node:fs';
+
 import { z } from 'zod';
 
-import { createGitHubClient, type GitHubClient, repository, repositoryName } from '../github/client.ts';
+import { createGitHubClient, repository, repositoryName } from '../github/client.ts';
+import type { GitHubClient } from '../github/client.ts';
 import { automationBot, isBot } from '../github/identity.ts';
-import {
-  branchTip,
-  latestPublishedRelease,
-  mergedPullRequest,
-  type PublishedRelease,
-  tagExists,
-} from './github-state.ts';
-import { maintenanceRelease, plannedRelease, type ReleasePlan } from './release-plan.ts';
+import { branchTip, latestPublishedRelease, mergedPullRequest, tagExists } from './github-state.ts';
+import type { PublishedRelease } from './github-state.ts';
+import { maintenanceRelease, plannedRelease } from './release-plan.ts';
+import type { ReleasePlan } from './release-plan.ts';
 
 const releasePullRequestBranch = 'release-please--branches--main';
 const releasePullRequestFiles = new Set(['.github/CHANGELOG.md', '.release-please-manifest.json']);
 
-const commitHash = z.string().regex(/^[\da-f]{40}$/);
+const commitHash = z.string().regex(/^[\da-f]{40}$/u);
 const thisRepository = z.object({ full_name: z.literal(repositoryName) });
 
 const completedRun = z.object({

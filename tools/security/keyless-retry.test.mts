@@ -9,11 +9,11 @@ test("fresh transparency entries can be retried while all identity claims and th
   const root = mkdtempSync(join(tmpdir(), "nylzo-keyless-retry-"));
   try {
     mkdirSync(join(root, "bin"));
-    writeFileSync(join(root, "bin/git"), `#!/usr/bin/env node
+    writeFileSync(join(root, "bin/git"), `#!/usr/bin/env bun
 if(process.argv[2]==='rev-parse')console.log('a'.repeat(40));
 if(process.argv[2]==='cat-file')console.log('tag v0.1.8\\n\\nPolicy-Commit: '+'b'.repeat(40));
 `);
-    writeFileSync(join(root, "bin/gitsign"), `#!/usr/bin/env node
+    writeFileSync(join(root, "bin/gitsign"), `#!/usr/bin/env bun
 const fs=require('node:fs'),args=process.argv;
 const expected={'--certificate-identity':'https://github.com/misaon/nylzo/.github/workflows/release-tag.yml@refs/heads/main','--certificate-oidc-issuer':'https://token.actions.githubusercontent.com','--certificate-github-workflow-sha':'b'.repeat(40),'--certificate-github-workflow-trigger':'workflow_run'};
 for(const [key,value]of Object.entries(expected))if(args[args.indexOf(key)+1]!==value)process.exit(3);

@@ -4,7 +4,8 @@ import { vectors } from '../../test/vectors.ts';
 import { MetaError } from '../errors.ts';
 import { MAX_FILE_BYTES, MAX_META_BYTES, MAX_TEXT_BYTES } from '../limits.ts';
 import { concatenate, utf8 } from '../primitives/bytes.ts';
-import { decodeMeta, encodeMeta, type Meta } from './meta.ts';
+import { decodeMeta, encodeMeta } from './meta.ts';
+import type { Meta } from './meta.ts';
 
 function decodeText(json: string): Meta {
   return decodeMeta(utf8(json));
@@ -57,7 +58,7 @@ describe('meta encoding (spec 3.1)', () => {
     ['a lone surrogate in the file name', fileMeta('\u{DC00}')],
     ['a lone surrogate in the mime type', fileMeta('a', '\u{D800}')],
     ['a fractional size', fileMeta('a', '', 1.5)],
-    ['a size that is not a number', fileMeta('a', '', NaN)],
+    ['a size that is not a number', fileMeta('a', '', Number.NaN)],
   ])('rejects %s', (_, meta) => {
     expect(() => encodeMeta(meta)).toThrow(MetaError);
   });

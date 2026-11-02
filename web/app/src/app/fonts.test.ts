@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { brotliDecompressSync } from 'node:zlib';
+
 import { describe, expect, it } from 'vitest';
 
 const KNOWN_TAGS = [
@@ -162,7 +163,7 @@ function mappedCodePoints(path: string): number[] {
 
 function codePoints(range: string): number[] {
   return range.split(',').flatMap((part) => {
-    const [from = '', to = from] = part.trim().replace(/^U\+/, '').split('-', 2);
+    const [from = '', to = from] = part.trim().replace(/^U\+/u, '').split('-', 2);
     const first = Number.parseInt(from, 16);
     return Array.from({ length: Number.parseInt(to, 16) - first + 1 }, (_, offset) => first + offset);
   });
@@ -170,10 +171,10 @@ function codePoints(range: string): number[] {
 
 function faceRanges(css: string, family: string): Map<string, number[]> {
   const faces = new Map<string, number[]>();
-  for (const [, body = ''] of css.matchAll(/@font-face\s*\{([^}]*)\}/g)) {
-    const source = /src:\s*url\(['"]([^'"]+)['"]\)/.exec(body)?.[1] ?? '';
-    const range = /unicode-range:\s*([^\s;][^;]*);/.exec(body)?.[1] ?? '';
-    if (new RegExp(String.raw`font-family:\s*['"]${family}['"];`).test(body)) {
+  for (const [, body = ''] of css.matchAll(/@font-face\s*\{([^}]*)\}/gu)) {
+    const source = /src:\s*url\(['"]([^'"]+)['"]\)/u.exec(body)?.[1] ?? '';
+    const range = /unicode-range:\s*([^\s;][^;]*);/u.exec(body)?.[1] ?? '';
+    if (new RegExp(String.raw`font-family:\s*['"]${family}['"];`, 'u').test(body)) {
       faces.set(source, codePoints(range));
     }
   }

@@ -1,5 +1,6 @@
 import { browserDatabases, committed, databaseExists, openDatabase, requestResult } from './indexed-database.ts';
-import { isRetained, recordFrom, type SentRecord, storedForm } from './sent-record.ts';
+import { isRetained, recordFrom, storedForm } from './sent-record.ts';
+import type { SentRecord } from './sent-record.ts';
 
 const DATABASE = 'nylzo';
 const RECORDS = 'sent';
@@ -37,16 +38,6 @@ export function browserSentStore(factory = browserDatabases()): SentStore {
     const result = action(transaction.objectStore(RECORDS));
     await Promise.all([result, done]);
     return result;
-  }
-
-  async function endIfStored(records: IDBObjectStore, id: string, endedAt: number): Promise<SentRecord | undefined> {
-    const record = recordFrom(await requestResult(records.get(id)));
-    if (!record || record.endedAt !== undefined) {
-      return record;
-    }
-    const ended = { ...record, endedAt };
-    await requestResult(records.put(storedForm(ended)));
-    return ended;
   }
 
   return {
@@ -107,9 +98,7 @@ async function removeLateRecord(store: SentStore, id: string, saving: Promise<bo
     if (await saving) {
       await store.remove(id);
     }
-  } catch {
-    return;
-  }
+  } catch {}
 }
 
 export async function rememberSent(store: SentStore, record: SentRecord, timeoutMs: number): Promise<boolean> {
@@ -132,7 +121,15 @@ export async function purgeSentRecords(factory: IDBFactory | undefined, now: num
     if (await databaseExists(factory, DATABASE)) {
       await retainedRecords(browserSentStore(factory), now);
     }
-  } catch {
-    return;
+  } catch {}
+}
+
+async function endIfStored(records: IDBObjectStore, id: string, endedAt: number): Promise<SentRecord | undefined> {
+  const record = recordFrom(await requestResult(records.get(id)));
+  if (!record || record.endedAt !== undefined) {
+    return record;
   }
+  const ended = { ...record, endedAt };
+  await requestResult(records.put(storedForm(ended)));
+  return ended;
 }

@@ -4,19 +4,19 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Metadata } from '../../shared/api/api.ts';
-import type { BurnOutcome, Reader, ReadView } from './reader.ts';
-
 import { getTranslator, Translator } from '../../shared/language/translator.svelte.ts';
 import Read from './Read.svelte';
+import type { BurnOutcome, Reader, ReadView } from './reader.ts';
 import { createReader } from './reader.ts';
 import { saveFile } from './save-file.ts';
 
-vi.mock('./reader.ts', () => ({ createReader: vi.fn() }));
-vi.mock('./save-file.ts', () => ({ saveFile: vi.fn() }));
-vi.mock('../../shared/link/link-opener.ts', () => ({ getLinkOpener: () => vi.fn() }));
+vi.mock('./reader.ts', () => ({ createReader: vi.fn<typeof import('./reader.ts').createReader>() }));
+vi.mock('./save-file.ts', () => ({ saveFile: vi.fn<typeof import('./save-file.ts').saveFile>() }));
+vi.mock('../../shared/link/link-opener.ts', () => ({
+  getLinkOpener: () => vi.fn<(...arguments_: unknown[]) => void>(),
+}));
 vi.mock(import('../../shared/language/translator.svelte.ts'), (original) =>
-  // eslint-disable-next-line unicorn/prefer-await -- Svelte instruments awaits before hoisted imports initialize.
-  original().then((actual) => ({ ...actual, getTranslator: vi.fn() })),
+  original().then((actual) => ({ ...actual, getTranslator: vi.fn<typeof actual.getTranslator>() })),
 );
 
 const metadata: Metadata = {

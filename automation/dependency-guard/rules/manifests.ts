@@ -1,14 +1,16 @@
 import { isDeepStrictEqual } from 'node:util';
+
 import { z } from 'zod';
 
-import { emptyReview, type FileReview, type FileRule, type ValueKind } from './file-review.ts';
+import { emptyReview } from './file-review.ts';
+import type { FileReview, FileRule, ValueKind } from './file-review.ts';
 
 type JsonObject = Record<string, unknown>;
 
 const dependencySections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
-const pnpmRelease = /^pnpm@(?<version>\d+\.\d+\.\d+)$/;
-const sha256 = /^[a-f\d]{64}$/;
-const versionPrefix = /^(?<prefix>jq-|v)?(?<version>.*)$/;
+const packageManagerRelease = /^(?<manager>pnpm|bun)@(?<version>\d+\.\d+\.\d+)$/u;
+const sha256 = /^[a-f\d]{64}$/u;
+const versionPrefix = /^(?<prefix>jq-|v)?(?<version>.*)$/u;
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -31,7 +33,7 @@ function parseObject(path: string, text: string, review: FileReview): JsonObject
   return undefined;
 }
 
-function sameKeys(left: JsonObject, right: JsonObject): boolean {
+function sameKeys(left: Readonly<JsonObject>, right: Readonly<JsonObject>): boolean {
   const keys = Object.keys(left);
   return keys.length === Object.keys(right).length && keys.every((key) => Object.hasOwn(right, key));
 }
@@ -54,14 +56,38 @@ export const packageManifest: FileRule = (path, before, after) => {
       if (typeof value !== 'string' || typeof updated !== 'string' || value === updated) {
         continue;
       }
-      review.updates.push({ after: updated, before: value, name: `${path} ${section}.${name}` });
+      const alias = /^npm:(?<target>(?:@[\w.-]+\/)?[\w.-]+)@(?<version>\d+\.\d+\.\d+)$/u;
+      const fromAlias = alias.exec(value)?.groups;
+      const toAlias = alias.exec(updated)?.groups;
+      if ((fromAlias !== undefined || toAlias !== undefined) && fromAlias?.['target'] !== toAlias?.['target']) {
+        review.findings.push(`${path}: dependency alias ${name} changed its package source`);
+      }
+      review.updates.push({
+        after: toAlias?.['version'] ?? updated,
+        before: fromAlias?.['version'] ?? value,
+        name: `${path} ${section}.${name}`,
+      });
       newDependencies[name] = value;
     }
   }
   if (old['packageManager'] !== next['packageManager']) {
-    const from = pnpmRelease.exec(String(old['packageManager']))?.groups?.['version'];
-    const to = pnpmRelease.exec(String(next['packageManager']))?.groups?.['version'];
-    if (from !== undefined && to !== undefined) {
+    const previous = packageManagerRelease.exec(String(old['packageManager']))?.groups;
+    const updated = packageManagerRelease.exec(String(next['packageManager']))?.groups;
+    const from = previous?.['version'];
+    const to = updated?.['version'];
+    if (from !== undefined && to !== undefined && previous?.['manager'] === updated?.['manager']) {
+      const oldEngines = old['engines'];
+      const nextEngines = next['engines'];
+      if (
+        previous?.['manager'] === 'bun' &&
+        isObject(oldEngines) &&
+        isObject(nextEngines) &&
+        oldEngines['bun'] === from &&
+        nextEngines['bun'] === to
+      ) {
+        review.updates.push({ after: to, before: from, name: `${path} engines.bun` });
+        nextEngines['bun'] = oldEngines['bun'];
+      }
       review.updates.push({ after: to, before: from, name: `${path} packageManager` });
       next['packageManager'] = old['packageManager'];
     }
@@ -136,11 +162,11 @@ const binaryAssets = z.record(z.string(), binaryAsset);
 type BinaryAsset = z.infer<typeof binaryAsset>;
 
 function plainVersion(version: string): string {
-  return version.replace(/^(?:jq-|v)/, '');
+  return version.replace(/^(?:jq-|v)/u, '');
 }
 
 function releaseAssetName(key: string, asset: BinaryAsset): string | undefined {
-  const { architecture = '', tool = '' } = /^(?<tool>[a-z]+)-(?<architecture>amd64|arm64)$/.exec(key)?.groups ?? {};
+  const { architecture = '', tool = '' } = /^(?<tool>[a-z]+)-(?<architecture>amd64|arm64)$/u.exec(key)?.groups ?? {};
   const version = plainVersion(asset.version);
   const amd64 = architecture === 'amd64';
   switch (tool) {

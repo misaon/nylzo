@@ -1,15 +1,10 @@
-import { newSecret, type RequestKey, requestKey } from '@nylzo/core';
+import { newSecret, requestKey } from '@nylzo/core';
+import type { RequestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { memoryStore } from './memory-sent-store.ts';
-import {
-  ExtractableKeyError,
-  InvalidRecordError,
-  recordFrom,
-  RETENTION_MS,
-  type SentRecord,
-  storedForm,
-} from './sent-record.ts';
+import { ExtractableKeyError, InvalidRecordError, recordFrom, RETENTION_MS, storedForm } from './sent-record.ts';
+import type { SentRecord } from './sent-record.ts';
 import { purgeSentRecords, rememberSent, retainedRecords } from './sent-store.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
@@ -93,7 +88,7 @@ describe('stored records of sent messages (D39)', () => {
       { ...good, publicKey: good.publicKey.slice(1) },
       { ...good, id: 'not an id' },
       { ...good, id: `${ID.slice(0, 21)}B` },
-      { ...good, createdAt: NaN },
+      { ...good, createdAt: Number.NaN },
       { ...good, expiresAt: '2026-10-23' },
       { ...good, createdAt: 1e300, expiresAt: 1e300 },
       { ...good, expiresAt: NOW - 1 },
@@ -121,7 +116,7 @@ describe('stored records of sent messages (D39)', () => {
 
 describe('cleaning up on page load', () => {
   it('neither opens nor creates the database when it does not exist', async () => {
-    const open = vi.fn(openNothing);
+    const open = vi.fn<typeof openNothing>(openNothing);
     const factory = { databases: () => Promise.resolve([{ name: 'other', version: 1 }]), open };
     await purgeSentRecords(factory as unknown as IDBFactory, NOW);
     await purgeSentRecords(undefined, NOW);

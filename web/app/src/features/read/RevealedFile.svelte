@@ -1,12 +1,11 @@
 <script lang="ts">
-  import type { ReadPage } from './read-page.svelte.ts';
-  import type { RevealedFile } from './reader.ts';
-
   import { fileExtension, splitFileName } from '../../shared/files/file-name.ts';
   import { formatBytes } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Icon from '../../shared/ui/Icon.svelte';
   import SwapIcon from '../../shared/ui/SwapIcon.svelte';
+  import type { ReadPage } from './read-page.svelte.ts';
+  import type { RevealedFile } from './reader.ts';
 
   interface Props {
     readonly page: ReadPage;

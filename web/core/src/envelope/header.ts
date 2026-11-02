@@ -1,5 +1,6 @@
 import { FlagsError, HeaderError, KdfError, PolicyError, VersionError } from '../errors.ts';
-import { isKdfId, type KdfId } from '../keys/kdf.ts';
+import { isKdfId } from '../keys/kdf.ts';
+import type { KdfId } from '../keys/kdf.ts';
 import {
   HEADER_LENGTH,
   ID_LENGTH,

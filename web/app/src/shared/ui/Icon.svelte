@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { ClassValue } from 'svelte/elements';
 
-  import { type IconName, ICONS, type Shape } from './icons.ts';
+  import { ICONS } from './icons.ts';
+  import type { IconName, Shape } from './icons.ts';
 
   interface Props {
     readonly name: IconName;

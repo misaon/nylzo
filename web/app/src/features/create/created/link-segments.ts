@@ -25,7 +25,7 @@ export function linkSegments(link: string): LinkSegment[] {
     {
       id: 'host',
       text: host,
-      short: host.replace(/^https?:\/\//, ''),
+      short: host.replace(/^https?:\/\//u, ''),
       server: true,
       tone: 'text-ink-soft',
       bar: 'bg-ink-mute',

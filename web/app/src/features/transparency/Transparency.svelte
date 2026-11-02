@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { createApi, type Transparency } from '../../shared/api/api.ts';
+  import { createApi } from '../../shared/api/api.ts';
+  import type { Transparency } from '../../shared/api/api.ts';
   import { BUILD_INFO } from '../../shared/build-info.ts';
   import { formatBytes, formatDays, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';

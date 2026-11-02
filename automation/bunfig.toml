@@ -1,0 +1,8 @@
+[install]
+# Keep pnpm's existing 24-hour supply-chain quarantine, expressed in seconds.
+minimumReleaseAge = 86400
+linker = "isolated"
+exact = true
+
+[run]
+bun = true

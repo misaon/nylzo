@@ -1,23 +1,24 @@
 import { actionPinPattern, actionPins } from '../../github/action-pins.ts';
-import { compareSnapshots, type Extraction, type FileRule, snapshot, type UpstreamClaim } from './file-review.ts';
+import { compareSnapshots, snapshot } from './file-review.ts';
+import type { Extraction, FileRule, UpstreamClaim } from './file-review.ts';
 
 const workflowValues: readonly Extraction[] = [
   { name: 'action', pattern: actionPinPattern, values: { commit: 'opaque', version: 'version' } },
   {
     name: 'dependency',
     pattern:
-      /^ *# renovate: datasource=[a-z-]+ depName=(?<dependency>[\w./-]+)\n *[a-z-]+: (?<version>v?\d+\.\d+\.\d+)$/dgm,
+      /^ *# renovate: datasource=[a-z-]+ depName=(?<dependency>[\w./-]+)\n *[a-z-]+: (?<version>v?\d+\.\d+\.\d+)$/dgmu,
     values: { version: 'version' },
   },
   {
     name: 'govulncheck',
-    pattern: /go run golang\.org\/x\/vuln\/cmd\/govulncheck@(?<version>v\d+\.\d+\.\d+) /dg,
+    pattern: /go run golang\.org\/x\/vuln\/cmd\/govulncheck@(?<version>v\d+\.\d+\.\d+) /dgu,
     values: { version: 'version' },
   },
   {
     name: 'renovate',
     pattern:
-      /^ *renovate-image: ghcr\.io\/renovatebot\/renovate:(?<version>\d+\.\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})$/dgm,
+      /^ *renovate-image: ghcr\.io\/renovatebot\/renovate:(?<version>\d+\.\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})$/dgmu,
     values: { digest: 'opaque', version: 'version' },
   },
 ];

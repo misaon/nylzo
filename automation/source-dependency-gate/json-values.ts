@@ -1,10 +1,14 @@
 export type JsonObject = Readonly<Record<string, unknown>>;
 
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function objectAt(value: unknown, location: string): JsonObject {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isObject(value)) {
     throw new TypeError(`${location} must be an object`);
   }
-  return value as JsonObject;
+  return value;
 }
 
 export function arrayAt(value: unknown, location: string): readonly unknown[] {

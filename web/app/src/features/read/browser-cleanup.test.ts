@@ -14,8 +14,8 @@ describe('browser data cleanup', () => {
 
   it('downloads only sanitized filenames, removes the temporary anchor and revokes its blob URL', () => {
     vi.useFakeTimers();
-    const createObjectURL = vi.fn().mockReturnValue('blob:synthetic');
-    const revokeObjectURL = vi.fn();
+    const createObjectURL = vi.fn<typeof URL.createObjectURL>().mockReturnValue('blob:synthetic');
+    const revokeObjectURL = vi.fn<(...arguments_: unknown[]) => void>();
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
     let downloaded: { name: string; rel: string; connected: boolean } | undefined;
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
@@ -36,7 +36,7 @@ describe('browser data cleanup', () => {
     sessionStorage.setItem('nylzo:link:first', 'synthetic');
     sessionStorage.setItem('unrelated', 'keep');
     sessionStorage.setItem('nylzo:link:second', 'synthetic');
-    const deleteDatabase = vi.fn();
+    const deleteDatabase = vi.fn<(...arguments_: unknown[]) => void>();
     forgetRetiredRecovery(() => sessionStorage, { deleteDatabase } as unknown as IDBFactory);
     expect(sessionStorage.length).toBe(1);
     expect(sessionStorage.getItem('unrelated')).toBe('keep');
@@ -44,7 +44,7 @@ describe('browser data cleanup', () => {
   });
 
   it('continues startup when storage access or legacy deletion is refused', () => {
-    const deleteDatabase = vi.fn(() => {
+    const deleteDatabase = vi.fn<(...arguments_: unknown[]) => never>(() => {
       throw new Error('blocked');
     });
     expect(() =>
