@@ -137,10 +137,22 @@ echo 'NYLZO_VM_RUNTIME_INTEGRITY_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
   printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/restart-link"
+  cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.2
+  printf '\n{ invalid_vm_global_option }\n' >> /opt/nylzo/host/release-v0.0.2/proxy/Caddyfile
+  previous_caddy=$(sha256sum /etc/caddy/Caddyfile)
+  if bash /opt/nylzo/host/release-v0.0.2/update/activate /opt/nylzo/host/release-v0.0.2; then
+    echo 'An invalid Caddyfile was activated.' >&2
+    exit 1
+  fi
+  [[ "$(sha256sum /etc/caddy/Caddyfile)" = "$previous_caddy" ]]
+  [[ "$(readlink -e /opt/nylzo/host/current)" = /opt/nylzo/host/initial ]]
+  verify_client
+  echo 'NYLZO_VM_INVALID_CADDY_CONFIGURATION_REJECTED'
   rm -rf /opt/nylzo/host/release-v0.0.1
   cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.1
   sed -i 's/^OnUnitActiveSec=15min$/OnUnitActiveSec=14min/' /opt/nylzo/host/release-v0.0.1/monitoring/nylzo-clock.timer
   printf '\n# Exercise a live containerd configuration update.\n' >> /opt/nylzo/host/release-v0.0.1/system/containerd.toml
+  printf '\n# Exercise validation of a changed Caddyfile.\n' >> /opt/nylzo/host/release-v0.0.1/proxy/Caddyfile
   bash /opt/nylzo/host/release-v0.0.1/update/activate /opt/nylzo/host/release-v0.0.1
   systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=14min$'
   for unit in containerd.service docker.service nylzo.service caddy.service update-engine.service locksmithd.service; do
