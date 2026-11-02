@@ -133,6 +133,8 @@ fi
 ln --symbolic --force --no-dereference --no-target-directory "$runtime_target" /etc/extensions/docker.raw
 echo 'NYLZO_VM_RUNTIME_INTEGRITY_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
+  printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/restart-link"
   rm -rf /opt/nylzo/host/release-v0.0.1
   cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.1
   sed -i 's/^OnUnitActiveSec=15min$/OnUnitActiveSec=14min/' /opt/nylzo/host/release-v0.0.1/monitoring/nylzo-clock.timer
@@ -152,8 +154,9 @@ if [[ ! -e "$directory/rebooted" ]]; then
   done
   /opt/nylzo/runtime/host-policy
   verify_client
+  "$directory/nylzo" read --stdout < "$directory/restart-link" > "$directory/received"
+  cmp "$directory/message" "$directory/received"
   echo 'NYLZO_VM_HOST_BUNDLE_ROLLBACK_VERIFIED'
-  printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/burned-link"
   "$directory/nylzo" burn < "$directory/burned-link"
@@ -164,12 +167,18 @@ if [[ ! -e "$directory/rebooted" ]]; then
   systemctl reboot
 else
   sha256sum --check "$directory/pepper.sha256"
-  "$directory/nylzo" read --stdout < "$directory/live-link" > "$directory/received"
-  cmp "$directory/message" "$directory/received"
+  if "$directory/nylzo" read --stdout < "$directory/live-link" > /dev/null 2>&1; then
+    echo 'A message survived destruction of the volatile epoch seed during reboot.' >&2
+    exit 1
+  fi
   if "$directory/nylzo" read --stdout < "$directory/burned-link" > /dev/null 2>&1; then
     echo 'Burned message was resurrected.' >&2
     exit 1
   fi
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/new-link"
+  "$directory/nylzo" read --stdout < "$directory/new-link" > "$directory/received"
+  cmp "$directory/message" "$directory/received"
+  echo 'NYLZO_VM_EPOCH_REBOOT_VERIFIED'
   echo 'NYLZO_VM_ACCEPTANCE_PASSED'
   systemctl poweroff
 fi
