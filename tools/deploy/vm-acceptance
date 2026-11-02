@@ -153,7 +153,20 @@ if [[ ! -e "$directory/rebooted" ]]; then
   sed -i 's/^OnUnitActiveSec=15min$/OnUnitActiveSec=14min/' /opt/nylzo/host/release-v0.0.1/monitoring/nylzo-clock.timer
   printf '\n# Exercise a live containerd configuration update.\n' >> /opt/nylzo/host/release-v0.0.1/system/containerd.toml
   printf '\n# Exercise validation of a changed Caddyfile.\n' >> /opt/nylzo/host/release-v0.0.1/proxy/Caddyfile
+  # Existing hosts may still have the unused vendor reboot timer running.
+  mkdir -p /run/systemd/system/systemd-sysupdate-reboot.timer.d
+  printf '[Timer]\nOnCalendar=\nOnActiveSec=1d\nRandomizedDelaySec=0\n' > /run/systemd/system/systemd-sysupdate-reboot.timer.d/99-nylzo-acceptance.conf
+  systemctl unmask --quiet systemd-sysupdate-reboot.timer
+  systemctl daemon-reload
+  systemctl start systemd-sysupdate-reboot.timer
+  systemctl is-active --quiet systemd-sysupdate-reboot.timer
   bash /opt/nylzo/host/release-v0.0.1/update/activate /opt/nylzo/host/release-v0.0.1
+  [[ "$(systemctl show systemd-sysupdate-reboot.timer --property=LoadState --value)" = masked ]]
+  [[ "$(systemctl show systemd-sysupdate-reboot.timer --property=ActiveState --value)" = inactive ]]
+  [[ "$(systemctl show systemd-sysupdate-reboot.timer --property=Result --value)" = success ]]
+  rm /run/systemd/system/systemd-sysupdate-reboot.timer.d/99-nylzo-acceptance.conf
+  systemctl daemon-reload
+  echo 'NYLZO_VM_RUNNING_TIMER_MASKED_CLEANLY'
   systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=14min$'
   for unit in containerd.service docker.service nylzo.service caddy.service update-engine.service locksmithd.service; do
     systemctl is-active --quiet "$unit"

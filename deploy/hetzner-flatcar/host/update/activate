@@ -111,8 +111,9 @@ while read -r action condition unit; do
       ;;
     enable:false) systemctl disable --quiet --now "$unit" ;;
     mask:true)
-      systemctl mask --quiet "$unit"
+      # Masking reloads unit definitions; stop a live timer before its trigger disappears.
       if [[ "$unit" = *.timer ]]; then systemctl stop "$unit"; fi
+      systemctl mask --quiet "$unit"
       ;;
     *) fail "unknown action $action" ;;
   esac
