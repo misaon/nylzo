@@ -116,6 +116,7 @@ if [[ ! -e "$directory/rebooted" ]]; then
     systemctl is-active --quiet "$unit"
   done
   /opt/nylzo/runtime/host-policy
+  "$directory/nylzo" verify-client --server http://127.0.0.1
   echo 'NYLZO_VM_HOST_BUNDLE_ROLLBACK_VERIFIED'
   printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
