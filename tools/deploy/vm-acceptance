@@ -92,15 +92,17 @@ verify_client() {
 verify_client
 probe=$(mktemp -d /var/tmp/nylzo-selinux.XXXXXXXX)
 trap 'docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true; rm -rf "$probe"' EXIT
-mkdir "$probe/data"
-chown 165532:165532 "$probe/data"
+mkdir "$probe/data" "$probe/epoch"
+chown 165532:165532 "$probe/data" "$probe/epoch"
 image=$(docker inspect nylzo --format '{{.Config.Image}}')
 level=s0:c0,c1
 if [[ "$(docker inspect nylzo --format '{{.ProcessLabel}}')" = *":$level" ]]; then level=s0:c2,c3; fi
 if timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true --security-opt "label=level:$level" \
-  --memory 1g --cpus 1 --pids-limit 128 --env-file /etc/nylzo/service.env \
+  --memory 1g --cpus 1 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 \
+  --env-file /etc/nylzo/service.env --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
   --volume "$probe/data:/home/nonroot:Z" \
+  --volume "$probe/epoch:/run/nylzo-epoch:Z" \
   --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro "$image" serve > "$probe/result" 2>&1; then
   status=0
 else
