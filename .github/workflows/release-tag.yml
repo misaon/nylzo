@@ -42,7 +42,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: node pnpm gitsign
           cache: false
       - run: pnpm --dir automation install --frozen-lockfile
@@ -120,7 +120,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: node pnpm
           cache: false
       - run: pnpm --dir automation install --frozen-lockfile
@@ -161,7 +161,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: gitsign
           cache: false
       - name: Sign and verify a local tag; do not push it

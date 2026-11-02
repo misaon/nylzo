@@ -37,7 +37,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: gitsign
           cache: false
       - name: Verify the tag name, source, and authorized signing identity
@@ -86,7 +86,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go osv-scanner
           cache: false
       - run: tools/verify-go-toolchain
@@ -178,7 +178,7 @@ jobs:
       - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
         with:
           # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.9
+          version: 2026.10.23
           install_args: go grype node
           cache: false
       - run: tools/verify-go-toolchain
