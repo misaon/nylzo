@@ -6,5 +6,6 @@ enable always nylzo-host-status.timer
 enable always nylzo-clock.timer
 enable automatic-updates nylzo-update.timer
 enable heartbeat nylzo-heartbeat.timer
+mask always systemd-sysupdate-reboot.timer
 mask always serial-getty@ttyS0.service
 mask always getty@tty1.service

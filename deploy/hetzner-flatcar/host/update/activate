@@ -110,7 +110,10 @@ while read -r action condition unit; do
       if [[ "$first_boot" = false && "$unit" = *.timer ]]; then systemctl start "$unit"; fi
       ;;
     enable:false) systemctl disable --quiet --now "$unit" ;;
-    mask:true) systemctl mask --quiet "$unit" ;;
+    mask:true)
+      systemctl mask --quiet "$unit"
+      if [[ "$unit" = *.timer ]]; then systemctl stop "$unit"; fi
+      ;;
     *) fail "unknown action $action" ;;
   esac
 done < "$generation/units"

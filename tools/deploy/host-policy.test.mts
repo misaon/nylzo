@@ -36,6 +36,11 @@ test("boot health rejects missing host isolation, kernel policy, host firewall o
       (data: any) => data.plugins += "\nio.containerd.grpc.v1 cri - ok",
       (data: any) => data.plugins += "\nio.containerd.cri.v1 runtime linux/amd64 ok",
       (data: any) => data.plugins += "\nio.containerd.transfer.v1 local - ok",
+      (data: any) => data.plugins += "\nio.containerd.cri.v1 runtime linux/amd64 error",
+      (data: any) => data.plugins += "\nio.containerd.podsandbox.controller.v1 podsandbox - error",
+      (data: any) => data.plugins += "\nio.containerd.monitor.container.v1 restart - error",
+      (data: any) => data.plugins += "\nio.containerd.podsandbox.controller.v1 podsandbox - ok",
+      (data: any) => data.plugins += "\nio.containerd.monitor.container.v1 restart - ok",
       ...state.options.map(option => (data: any) => data.options = data.options.filter((value: string) => value !== option)),
     ];
     for (const mutate of changes) { const data = structuredClone(state); mutate(data); assert.notEqual(run(data).status, 0); }

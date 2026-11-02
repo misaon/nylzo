@@ -11,6 +11,7 @@ for check in kernel.kexec_load_disabled=1 kernel.io_uring_disabled=2 kernel.sysr
   [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Kernel setting ${check%%=*} is not hardened." >&2; exit 1; }
 done
 [[ "$(readlink -e /opt/nylzo/host/current)" = /opt/nylzo/host/initial ]]
+[[ "$(systemctl show systemd-sysupdate-reboot.timer --property=LoadState --value)" = masked ]]
 sshd -t
 ssh_policy=$(sshd -T | tr '[:upper:]' '[:lower:]')
 expect() {
@@ -100,12 +101,20 @@ if [[ ! -e "$directory/rebooted" ]]; then
   rm -rf /opt/nylzo/host/release-v0.0.1
   cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.1
   sed -i 's/^OnUnitActiveSec=15min$/OnUnitActiveSec=14min/' /opt/nylzo/host/release-v0.0.1/monitoring/nylzo-clock.timer
+  printf '\n# Exercise a live containerd configuration update.\n' >> /opt/nylzo/host/release-v0.0.1/system/containerd.toml
   bash /opt/nylzo/host/release-v0.0.1/update/activate /opt/nylzo/host/release-v0.0.1
   systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=14min$'
+  for unit in containerd.service docker.service nylzo.service caddy.service update-engine.service locksmithd.service; do
+    systemctl is-active --quiet "$unit"
+  done
+  /opt/nylzo/runtime/host-policy
+  "$directory/nylzo" verify-client --server http://127.0.0.1
   [[ "$(readlink -e /opt/nylzo/host/previous)" = /opt/nylzo/host/initial ]]
   bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
   systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=15min$'
-  systemctl is-active --quiet nylzo-firewall.service nylzo-clock.timer nylzo-host-status.timer caddy.service nylzo.service
+  for unit in nylzo-firewall.service nylzo-clock.timer nylzo-host-status.timer caddy.service nylzo.service; do
+    systemctl is-active --quiet "$unit"
+  done
   /opt/nylzo/runtime/host-policy
   echo 'NYLZO_VM_HOST_BUNDLE_ROLLBACK_VERIFIED'
   printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"

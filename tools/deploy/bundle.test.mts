@@ -81,6 +81,9 @@ grep -q '^https://{\$NYLZO_DOMAIN}:8443 {$' /etc/caddy/Caddyfile
 grep -qx 'enable --quiet nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
 grep -qx 'mask --quiet getty@tty1.service' /tmp/systemctl
+grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl
+grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
+if grep -Eq '^(stop|disable|mask) .* (update-engine|locksmithd)\.service$' /tmp/systemctl; then exit 1; fi
 grep -qx 'restart nylzo-firewall.service' /tmp/systemctl
 grep -q '^start --no-block nylzo-firewall.service .*nylzo-initialize.service' /tmp/systemctl
 if grep -q try-restart /tmp/systemctl || [[ -e /tmp/systemd-run ]]; then exit 1; fi
@@ -95,6 +98,8 @@ if grep -q '^www\.' /etc/caddy/Caddyfile; then exit 1; fi
 grep -q 'caddy validate --config /run/nylzo-caddyfile\.' /tmp/systemd-run
 grep -qx 'disable --quiet --now nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
+grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl
+grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
 grep -qx 'try-restart caddy.service nylzo-clock.timer' /tmp/systemctl
 for refused in foreign.tar format.tar; do
   stage "$refused" release-v9.9.9

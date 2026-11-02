@@ -106,6 +106,11 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   assert.match(sources.get("update/update-engine.conf")!, /Requires=nylzo-ready\.service/u);
   assert.match(sources.get("system/daemon.json")!, /"userns-remap":"dockremap"/u);
   assert.match(sources.get("system/containerd.toml")!, /disabled_plugins = \["io\.containerd\.grpc\.v1\.cri"/u);
+  const containerd = Bun.TOML.parse(sources.get("system/containerd.toml")!) as { disabled_plugins: string[] };
+  for (const plugin of ["io.containerd.podsandbox.controller.v1.podsandbox", "io.containerd.monitor.container.v1.restart"]) {
+    assert(containerd.disabled_plugins.includes(plugin), `${plugin} must not initialize without the disabled CRI or transfer services`);
+  }
+  assert.match(sources.get("application/nylzo.service")!, /^Restart=on-failure$/mu);
   const identity = sources.get("system/nylzo-ssh-identity.service")!;
   for (const expected of ["Requires=sshd-keygen.service", "-f /etc/ssh/ssh_host_ed25519_key.pub", "TTYPath=/dev/tty1"]) assert(identity.includes(expected));
   const ssh = sources.get("system/sshd.conf")!;
