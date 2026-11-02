@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.0](https://github.com/misaon/nylzo/compare/v0.3.0...v0.4.0) (2026-11-02)
+
+
+### Fixes
+
+* **deploy:** verify host readiness and pin patched container runtimes ([#229](https://github.com/misaon/nylzo/issues/229)) ([a5d6d55](https://github.com/misaon/nylzo/commit/a5d6d550773e24d005155082d8530a723c22d10c))
+
+
+### Build
+
+* migrate project tooling to Bun and Oxc ([#227](https://github.com/misaon/nylzo/issues/227)) ([66364fa](https://github.com/misaon/nylzo/commit/66364fa326d74fbbef3fd6cdc98080560895b65c))
+
+
+### Tests
+
+* expand browser, storage and Go command coverage ([#213](https://github.com/misaon/nylzo/issues/213)) ([2c05f9d](https://github.com/misaon/nylzo/commit/2c05f9ddb8a7e9151e073216ba4ba8cbd096b2a9))
+* **web:** increase composer and read page coverage ([#211](https://github.com/misaon/nylzo/issues/211)) ([699624d](https://github.com/misaon/nylzo/commit/699624dcdcfe7e5e801c531cc8e81878816b1c97))
+
+
+### Maintenance
+
+* **deps:** update dependency codecov/codecov-cli to v11.3.2 (main) ([#215](https://github.com/misaon/nylzo/issues/215)) ([4f458ec](https://github.com/misaon/nylzo/commit/4f458ec9ad490917017149563a5fb7d05a04c2bd))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.199.0 (main) ([#210](https://github.com/misaon/nylzo/issues/210)) ([85d459e](https://github.com/misaon/nylzo/commit/85d459eb7924d52bcf49c2484dbd3dfe9a8c9dde))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.199.2 (main) ([#214](https://github.com/misaon/nylzo/issues/214)) ([767e735](https://github.com/misaon/nylzo/commit/767e7354f5fa4225cf8bdc008624057ed116c4c6))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.200.0 (main) ([#226](https://github.com/misaon/nylzo/issues/226)) ([135fda9](https://github.com/misaon/nylzo/commit/135fda9c96e311ae22deb54856ea6df89485f5df))
+* **deps:** update pnpm to v12.16.1 (main) ([#219](https://github.com/misaon/nylzo/issues/219)) ([0559183](https://github.com/misaon/nylzo/commit/055918361f288105abd3b6c08c2c4748933c76dd))
+* **deps:** update step-security/harden-runner action to v2.22.3 (main) ([#217](https://github.com/misaon/nylzo/issues/217)) ([dd745c0](https://github.com/misaon/nylzo/commit/dd745c0a67699d5ad46e4a5ae0b9da5af057aeab))
+
 ## [0.3.0](https://github.com/misaon/nylzo/compare/v0.2.0...v0.3.0) (2026-11-01)
 
 ### Upgrade notes
