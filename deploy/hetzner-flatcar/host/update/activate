@@ -122,7 +122,7 @@ for target in "${changed[@]}"; do
   case "$target" in
     /etc/sysctl.d/*) restart+=(systemd-sysctl.service) ;;
     /etc/systemd/journald.conf.d/*) restart+=(systemd-journald.service) ;;
-    /etc/docker/* | /etc/containerd/* | /etc/systemd/system/containerd.service.d/*) restart+=(containerd.service docker.service) ;;
+    /etc/docker/* | /etc/containerd/* | /etc/systemd/system/containerd.service.d/*) restart+=(containerd.service docker.service nylzo.service) ;;
     /etc/flatcar/* | /etc/systemd/system/update-engine.service.d/*) restart+=(update-engine.service) ;;
     /etc/caddy/Caddyfile | /etc/systemd/system/caddy.service) restart+=(caddy.service) ;;
     /etc/systemd/system/*.timer) restart+=("${target##*/}") ;;

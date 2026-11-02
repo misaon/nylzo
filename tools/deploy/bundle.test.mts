@@ -45,6 +45,7 @@ test("hosts install a bundle atomically, apply only what changed, and roll back 
     writeFileSync(join(directory, "initial.tar"), archive(sources));
     const next = new Map(sources);
     next.set("system/sshd.conf", sources.get("system/sshd.conf")! + "ClientAliveInterval 60\n");
+    next.set("system/containerd.toml", sources.get("system/containerd.toml")! + "\n# Updated runtime configuration.\n");
     next.set("monitoring/nylzo-clock.timer", sources.get("monitoring/nylzo-clock.timer")!.replace("OnUnitActiveSec=15min", "OnUnitActiveSec=10min"));
     next.set("manifest", sources.get("manifest")!.split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
     next.set("units", sources.get("units")!.split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
@@ -100,7 +101,7 @@ grep -qx 'disable --quiet --now nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
 grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl
 grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
-grep -qx 'try-restart caddy.service nylzo-clock.timer' /tmp/systemctl
+grep -qx 'try-restart caddy.service containerd.service docker.service nylzo-clock.timer nylzo.service' /tmp/systemctl
 for refused in foreign.tar format.tar; do
   stage "$refused" release-v9.9.9
   if bash /opt/nylzo/host/release-v9.9.9/update/activate /opt/nylzo/host/release-v9.9.9 2>/dev/null; then exit 1; fi
