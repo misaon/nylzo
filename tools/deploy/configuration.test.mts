@@ -66,6 +66,21 @@ test("server user data stays small, carries no secret, and installs only the sig
   assert.match(gunzipSync(Buffer.from(bootstrap.content, "base64")).toString(), /cd \/var\/tmp\/nylzo-image/u);
   const remote = ignition.storage.files.find(file => file.path === "/opt/nylzo/host/initial.tar")!;
   assert.deepEqual(remote.contents, { source: "https://github.com/misaon/nylzo/releases/download/v0.1.2/nylzo-host_0.1.2.tar", verification: { hash: `sha256-${"c".repeat(64)}` } });
+  for (const architecture of ["amd64", "arm64"]) {
+    const rendered = (await render({ ...site, architecture, serverType: architecture === "amd64" ? "cx23" : "cax11" }, bundle)).ignition;
+    const runtime = JSON.parse((await hostSources()).get("system/runtime.json")!);
+    const asset = architecture === "amd64" ? "x86-64" : "arm64";
+    const image = rendered.storage.files.find(file => file.path.endsWith(`docker-${runtime.docker}-${asset}.raw`))!;
+    assert.deepEqual(image.contents, {
+      source: `https://github.com/flatcar/sysext-bakery/releases/download/docker-${runtime.docker}/docker-${runtime.docker}-${asset}.raw`,
+      verification: { hash: `sha256-${runtime[architecture]}` },
+    });
+    assert.deepEqual(rendered.storage.links, [
+      { path: "/etc/extensions/docker-flatcar.raw", target: "/dev/null", overwrite: true },
+      { path: "/etc/extensions/containerd-flatcar.raw", target: "/dev/null", overwrite: true },
+      { path: "/etc/extensions/docker.raw", target: image.path, overwrite: true },
+    ]);
+  }
   const files = decode(ignition);
   assert(!JSON.stringify(ignition).includes("HCLOUD_TOKEN"));
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
@@ -106,6 +121,11 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   assert.match(sources.get("update/update-engine.conf")!, /Requires=nylzo-ready\.service/u);
   assert.match(sources.get("system/daemon.json")!, /"userns-remap":"dockremap"/u);
   assert.match(sources.get("system/containerd.toml")!, /disabled_plugins = \["io\.containerd\.grpc\.v1\.cri"/u);
+  const containerd = Bun.TOML.parse(sources.get("system/containerd.toml")!) as { disabled_plugins: string[] };
+  for (const plugin of ["io.containerd.podsandbox.controller.v1.podsandbox", "io.containerd.monitor.container.v1.restart"]) {
+    assert(containerd.disabled_plugins.includes(plugin), `${plugin} must not initialize without the disabled CRI or transfer services`);
+  }
+  assert.match(sources.get("application/nylzo.service")!, /^Restart=on-failure$/mu);
   const identity = sources.get("system/nylzo-ssh-identity.service")!;
   for (const expected of ["Requires=sshd-keygen.service", "-f /etc/ssh/ssh_host_ed25519_key.pub", "TTYPath=/dev/tty1"]) assert(identity.includes(expected));
   const ssh = sources.get("system/sshd.conf")!;

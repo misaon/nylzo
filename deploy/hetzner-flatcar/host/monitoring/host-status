@@ -23,7 +23,13 @@ if [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ ]]; then
     if [[ -f "$file" ]] && openssl x509 -noout -checkend 129600 -in "$file" >/dev/null 2>&1; then certificate=true; fi
   done
 fi
-if systemctl is-active --quiet nylzo.service caddy.service nylzo-ready.service nylzo-firewall.service update-engine.service nylzo-update.timer; then services=true; fi
+services=true
+for unit in nylzo.service caddy.service nylzo-ready.service nylzo-firewall.service update-engine.service locksmithd.service nylzo-update.timer; do
+  if ! systemctl is-active --quiet "$unit"; then
+    services=false
+    break
+  fi
+done
 available=$(df -Pk /var/lib/nylzo | awk 'NR == 2 { print $4 }')
 if [[ "$available" =~ ^[0-9]{1,14}$ ]] && (( 10#$available >= 8 * 1024 * 1024 )); then disk_reserve=true; fi
 limit=1800

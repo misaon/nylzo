@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export LC_ALL=C
+export PATH="/opt/nylzo/bin:$PATH"
 [[ "$(getenforce)" = Enforcing ]] || { echo 'SELinux enforcement is required.' >&2; exit 1; }
 swaps=$(swapon --noheadings --show)
 [[ -z "$swaps" ]] || { echo 'Swap must stay off: the epoch seed lives on tmpfs, whose pages could reach the disk.' >&2; exit 1; }
@@ -25,9 +26,20 @@ for required in name=selinux name=userns name=no-new-privileges; do
   grep --fixed-strings --line-regexp --quiet "$required" <<< "$options"
 done
 grep --extended-regexp --quiet '^name=seccomp,profile=' <<< "$options"
+[[ "$(docker info --format '{{.Driver}}')" = overlay2 ]] || { echo 'The approved Docker storage driver is not active.' >&2; exit 1; }
+versions=$(docker version --format '{{range .Server.Components}}{{printf "%s=%s\n" .Name .Version}}{{end}}')
+for component in Engine containerd runc; do
+  minimum=$(jq -er --arg component "$component" '.[if $component == "Engine" then "docker" else $component end] | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' "${NYLZO_RUNTIME_PROFILE:-/opt/nylzo/runtime/runtime-profile}")
+  installed=$(awk -F= -v component="$component" '$1 == component { count++; value=$2 } END { if (count != 1) exit 1; print value }' <<< "$versions")
+  installed=${installed#v}
+  if [[ ! "$installed" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$(printf '%s\n' "$minimum" "$installed" | sort --version-sort | head -n 1)" != "$minimum" ]]; then
+    echo "The running $component version is below the approved runtime baseline $minimum." >&2
+    exit 1
+  fi
+done
 plugins=$(ctr plugins ls)
 awk '$1 == "io.containerd.runtime.v2" && $2 == "task" && $NF == "ok" { found=1 } END { exit !found }' <<< "$plugins"
-if awk '$NF == "ok" && ($1 ~ /\.cri\./ || ($1 == "io.containerd.grpc.v1" && ($2 == "cri" || $2 == "transfer")) || $1 == "io.containerd.transfer.v1") { found=1 } END { exit !found }' <<< "$plugins"; then
-  echo 'Unused containerd CRI or transfer interfaces are active.' >&2
+if awk '$1 ~ /\.cri\./ || ($1 == "io.containerd.grpc.v1" && ($2 == "cri" || $2 == "transfer")) || $1 == "io.containerd.transfer.v1" || ($1 == "io.containerd.podsandbox.controller.v1" && $2 == "podsandbox") || ($1 == "io.containerd.monitor.container.v1" && $2 == "restart") { found=1 } END { exit !found }' <<< "$plugins"; then
+  echo 'Unused containerd CRI, transfer, podsandbox or restart plugins are registered.' >&2
   exit 1
 fi

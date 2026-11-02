@@ -81,7 +81,7 @@ At the registrar, turn on the transfer, update and delete locks, ask for the `.c
 - Caddy, the updater, the clock check, the heartbeat, the firewall and the Docker client each run in a systemd sandbox with a system-call filter, no user namespaces, no core dumps and no metadata-service access. Core dumps are not stored anywhere (`Storage=none`, `fs.suid_dumpable=0`).
 - `90-nylzo.conf` disables kexec, io_uring, SysRq and line-discipline autoloading, hides kernel pointers and logs, and rejects redirects and source routing. Host policy checks the effective values on every boot.
 - Flatcar has no NTS client: systemd-timesyncd lacks NTS and the image ships no chrony. Every 15 minutes the host compares its clock with the TLS-authenticated `Date` of GitHub, Sigstore and Let's Encrypt. If two of three disagree by more than a minute, the host reports `clock: false`, so an NTP attacker can shift message expiry by about a minute without an alert.
-- Flatcar Stable 4757.2.x ships Docker 28.2.2, which carries GHSA-rg2x-37c3-w2rh, GHSA-vp62-88p7-qqf5 and GHSA-x86f-5xw2-fm2r. The first two need `docker cp` into a container or the archive API; no host script uses either, and operators must never `docker cp` into the Nylzo container. The third needs a trojaned image; images are verified by signature and provenance. Flatcar Beta 4820.1 ships Docker 29.8.0, and Stable updates arrive automatically.
+- Docker **29.9.2**, containerd **2.4.2**, and runc **1.5.2** come from a versioned, SHA-256-pinned `flatcar/sysext-bakery` image. Flatcar calls these images [community supported](https://www.flatcar.org/docs/latest/sys-ext/); they are outside Flatcar's official extension CI. Our VM acceptance checks retain SELinux, user namespaces, seccomp, the firewall, classic `overlay2`, and reboot persistence. The signed Nylzo host bundle approves the image digest; this is not an upstream Sigstore attestation. The OEM extension stays enabled. Runtime updates require a reviewed Nylzo release and a controlled reboot; OS updates do not refresh this pinned image. Host readiness rejects runtime components older than the release's approved baseline. Never use `docker cp` into the running application.
 - The epoch seed lives in `/run/nylzo-epoch`, a directory on the host's tmpfs that `nylzo.service` creates for the container's user before each start, so no disk image, provider snapshot or backup contains it. A host reboot, including Flatcar's automatic one, therefore ends every live message: its next open answers that it was deleted. Restarting the container and installing a new release keep live messages. Host policy refuses active swap, so tmpfs pages of the seed never reach a disk ([Expiry keys](Operations.md#expiry-keys)).
 - The container has no memory-lock limit (`--ulimit memlock=-1:-1`, and `LimitMEMLOCK=infinity` for containerd so the user-namespaced container may raise it), so Nylzo can lock its memory and keep secrets out of swap. The 1 GiB memory limit still caps what it uses.
 
@@ -96,6 +96,7 @@ With `automaticUpdates: true`, a timer checks every ten minutes.
 - `nylzo-host_X.Y.Z.tar` holds every script, unit, drop-in and configuration file of this page. The updater verifies it like the Caddy build (signed `checksums.txt`, SHA-256, provenance for the tag), rejects unexpected paths, and stages it under `/opt/nylzo/host/release-vX.Y.Z`. Activation installs each file atomically, reloads systemd, and restarts only what changed: sysctl, journald, the firewall, Caddy after `caddy validate`, timers, and Docker only if its configuration changed. If host policy or Caddy fails afterwards, the previous generation is activated again. Site values stay in `/etc/nylzo/*.env` and `site.json`. After a change to `host.env`, `heartbeat.url` or `monitor-client.pem`, re-apply the current bundle with `sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"`.
 - Caddy comes from the release being installed; host tools from its signed `host-tools.json`. Both refuse downgrades and keep the previous verified version.
 - Flatcar's signed Stable updates reboot between 03:00 and 04:00 UTC. The application health gate runs before update-engine confirms a new boot slot.
+- The profile uses update-engine and locksmithd for OS updates and reboots. Host activation masks and stops the unused `systemd-sysupdate-reboot.timer`; it does not disable either Flatcar update service. This avoids scheduling a second reboot mechanism against Flatcar's placeholder sysupdate transfer definition.
 
 If a candidate fails after opening persistent state, the updater stops Nylzo and writes `failed.json`. It never restores an old database, which could resurrect consumed messages.
 
@@ -105,10 +106,10 @@ Any release signed by the release workflow reaches production within one timer p
 
 A server provisioned before host bundles existed, including nylzo.com, still runs the scripts its Ignition wrote. They never install a bundle, and their probe and `run` start the container without `--ulimit memlock=-1:-1`, which Nylzo now needs for `mlockall`. Until you install the bundle, the old updater tries each new release and stops at its probe, before it touches the service: the server stays on 0.2.x and `nylzo-update.service` fails every ten minutes. If the running container already has no memory-lock limit (`sudo grep 'locked memory' "/proc/$(docker inspect -f '{{.State.Pid}}' nylzo)/limits"` shows `unlimited`), the old probe passes instead and the old updater installs the release by itself.
 
-Install the bundle once by hand, after the release:
+Install the bundle once by hand, after a release containing `runtime-stage` and `system/runtime.json`:
 
 1. Wait for a release that ships `nylzo-host_X.Y.Z.tar` and opens 0.2.x data: the [Operations guide](Operations.md#logging-and-upgrades) of that release says that `serve` upgrades a schema 5 database. A release that refuses schema 5 fails on the real data, and Caddy answers 502 until you recover as below.
-2. To choose the moment of the upgrade, write `AUTOMATIC_UPDATES=false` in the block below and tell your users that their open messages will be deleted. When you are ready, run `sudo systemctl start nylzo-update.service`, then set the value back to `true` and apply it as described under [Updates](#updates).
+2. Set `AUTOMATIC_UPDATES=false` in the root-owned, mode-600 `/etc/nylzo/host.env`, stop `nylzo-update.timer`, and tell your users that their open messages will be deleted. Preserve your real administrator networks, `PUBLIC_ACCESS=false`, and `HARDWARE_KEYS_ONLY=false` unless a hardware key has already been tested.
 3. Keep the Hetzner console open and run the block with that release's tag and your real `host.env` values. `PUBLIC_ACCESS` and `ADMINISTRATOR_NETWORKS` must match the cloud firewall, or the host firewall closes SSH for you too. The block stops at the first failed check.
 
 ```sh
@@ -126,21 +127,33 @@ digest=$(sha256sum "$bundle" | cut -d ' ' -f 1)
 curl -fsSL "https://api.github.com/repos/misaon/nylzo/attestations/sha256:$digest" | /opt/nylzo/bin/jq -ce '.attestations[].bundle' > provenance.jsonl
 /opt/nylzo/bin/gh attestation verify "$bundle" --bundle provenance.jsonl --repo misaon/nylzo \
   --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$tag" --deny-self-hosted-runners
-printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=203.0.113.7/32\nHARDWARE_KEYS_ONLY=false\n' | sudo tee /etc/nylzo/host.env
+sudo grep -qx 'AUTOMATIC_UPDATES=false' /etc/nylzo/host.env
+sudo systemctl stop nylzo-update.timer
 sudo mkdir -p "/opt/nylzo/host/release-$tag"
 sudo tar --extract --file "$bundle" --directory "/opt/nylzo/host/release-$tag" --no-same-owner
+sudo bash "/opt/nylzo/host/release-$tag/update/runtime-stage" "/opt/nylzo/host/release-$tag/system/runtime.json"
+STEP
+```
+
+Keep provider-console access available, arrange the interruption, then run `sudo systemctl reboot`. This loads the verified runtime image without replacing binaries underneath running daemons. Reconnect and activate the same verified host generation:
+
+```sh
+bash -euo pipefail <<'STEP'
+tag=vX.Y.Z
 sudo bash "/opt/nylzo/host/release-$tag/update/activate" "/opt/nylzo/host/release-$tag"
 sudo /opt/nylzo/runtime/host-policy
-sudo systemctl is-active nylzo caddy nylzo-firewall
+for unit in nylzo.service caddy.service nylzo-firewall.service; do sudo systemctl is-active --quiet "$unit"; done
 STEP
 ```
 
 What follows:
 
 - Activation restarts the firewall, containerd, Docker and Caddy, and Nylzo 0.2.x restarts on the new `run`.
-- Within ten minutes, or when you start `nylzo-update.service`, the updater installs the release. It switches to the release's Caddy, probes the image on empty data, stops Nylzo and starts the release on the real data. That first start deletes every message stored before it and logs `store-upgraded`, so every link sent earlier stops working.
+- With automatic updates paused, explicitly start `nylzo-update.service` when ready. The updater installs the release. It switches to the release's Caddy, probes the image on empty data, stops Nylzo and starts the release on the real data. That first start deletes every message stored before it and logs `store-upgraded`, so every link sent earlier stops working.
 - Back up nothing first. The release cannot read those messages, and a copy would let them outlive their opens and expiry.
 - If the release does not become healthy, the updater stops Nylzo and writes `failed.json`, and Caddy answers 502. Read `sudo journalctl -u nylzo`. If the release refused the database without changing it, go back: copy `/var/lib/nylzo-deploy/previous.json` over `current.json`, delete `failed.json` and run `sudo systemctl start nylzo`. The previous release opens the untouched database.
+
+After health and the application release are verified, set `AUTOMATIC_UPDATES=true` and reapply the current bundle to restore the updater timer. Host-bundle rollback does not downgrade the runtime image or restore Docker metadata. If the runtime fails to boot, use the provider console and the preserved previous image or Flatcar's original extension links under `/usr/share/flatcar/etc/extensions/`; do not silently return to a runtime with known vulnerabilities.
 
 Then move SSH to the hardware key. On Hetzner, Flatcar rebuilds `~core/.ssh/authorized_keys` from the files in `~core/.ssh/authorized_keys.d` at every boot, so an edit of `authorized_keys` itself is undone at the next reboot. Use `update-ssh-keys` as `core`:
 

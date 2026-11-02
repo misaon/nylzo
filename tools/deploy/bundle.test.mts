@@ -45,6 +45,7 @@ test("hosts install a bundle atomically, apply only what changed, and roll back 
     writeFileSync(join(directory, "initial.tar"), archive(sources));
     const next = new Map(sources);
     next.set("system/sshd.conf", sources.get("system/sshd.conf")! + "ClientAliveInterval 60\n");
+    next.set("system/containerd.toml", sources.get("system/containerd.toml")! + "\n# Updated runtime configuration.\n");
     next.set("monitoring/nylzo-clock.timer", sources.get("monitoring/nylzo-clock.timer")!.replace("OnUnitActiveSec=15min", "OnUnitActiveSec=10min"));
     next.set("manifest", sources.get("manifest")!.split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
     next.set("units", sources.get("units")!.split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
@@ -58,11 +59,16 @@ test("hosts install a bundle atomically, apply only what changed, and roll back 
       "--mount", `type=bind,source=${directory},target=/bundles,readonly`, image, "bash", "-s"], { encoding: "utf8", timeout: 100000, input: String.raw`set -euo pipefail
 trap 'echo "failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 mkdir -p /fake /etc/nylzo /opt/nylzo/host /opt/nylzo/bin
-printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> /tmp/systemctl\n' > /fake/systemctl
+cat > /fake/systemctl <<'SYSTEMCTL'
+#!/bin/bash
+printf '%s\n' "$*" >> /tmp/systemctl
+if [[ "$*" = 'is-active --quiet nylzo.service' && "$NYLZO_TEST_APPLICATION_ACTIVE" = false ]]; then exit 3; fi
+SYSTEMCTL
 printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> /tmp/systemd-run\n' > /fake/systemd-run
 printf '#!/bin/bash\nexit 0\n' > /opt/nylzo/bin/caddy
 chmod 0755 /fake/* /opt/nylzo/bin/caddy
 export PATH="/fake:$PATH"
+export NYLZO_TEST_APPLICATION_ACTIVE=true
 printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=192.0.2.1/32\n' > /etc/nylzo/host.env
 printf 'NYLZO_DOMAIN=nylzo.example.org\n' > /etc/nylzo/caddy.env
 printf 'certificate\n' > /etc/nylzo/monitor-client.pem
@@ -81,6 +87,9 @@ grep -q '^https://{\$NYLZO_DOMAIN}:8443 {$' /etc/caddy/Caddyfile
 grep -qx 'enable --quiet nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
 grep -qx 'mask --quiet getty@tty1.service' /tmp/systemctl
+grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl
+grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
+if grep -Eq '^(stop|disable|mask) .* (update-engine|locksmithd)\.service$' /tmp/systemctl; then exit 1; fi
 grep -qx 'restart nylzo-firewall.service' /tmp/systemctl
 grep -q '^start --no-block nylzo-firewall.service .*nylzo-initialize.service' /tmp/systemctl
 if grep -q try-restart /tmp/systemctl || [[ -e /tmp/systemd-run ]]; then exit 1; fi
@@ -95,7 +104,10 @@ if grep -q '^www\.' /etc/caddy/Caddyfile; then exit 1; fi
 grep -q 'caddy validate --config /run/nylzo-caddyfile\.' /tmp/systemd-run
 grep -qx 'disable --quiet --now nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
-grep -qx 'try-restart caddy.service nylzo-clock.timer' /tmp/systemctl
+grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl
+grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
+grep -qx 'try-restart caddy.service containerd.service docker.service nylzo-clock.timer' /tmp/systemctl
+grep -qx 'start nylzo.service' /tmp/systemctl
 for refused in foreign.tar format.tar; do
   stage "$refused" release-v9.9.9
   if bash /opt/nylzo/host/release-v9.9.9/update/activate /opt/nylzo/host/release-v9.9.9 2>/dev/null; then exit 1; fi
@@ -110,6 +122,13 @@ bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
 [[ "$(readlink /opt/nylzo/host/current)" = /opt/nylzo/host/initial && "$(readlink /opt/nylzo/host/previous)" = /opt/nylzo/host/release-v0.3.0 ]]
 [[ -x /opt/nylzo/runtime/heartbeat && -s /etc/systemd/system/nylzo-heartbeat.timer ]]
 if grep -q ClientAliveInterval /etc/ssh/sshd_config.d/20-nylzo.conf; then exit 1; fi
+: > /tmp/systemctl
+export NYLZO_TEST_APPLICATION_ACTIVE=false
+printf '\n# Runtime update during application maintenance.\n' >> /opt/nylzo/host/initial/system/containerd.toml
+bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
+grep -qx 'try-restart containerd.service docker.service' /tmp/systemctl
+if grep -qx 'start nylzo.service' /tmp/systemctl; then exit 1; fi
+export NYLZO_TEST_APPLICATION_ACTIVE=true
 hardware=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
 [[ ! -e "$hardware" ]]
 reapply() { bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial; }

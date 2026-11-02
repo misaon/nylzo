@@ -60,7 +60,17 @@ export async function render(input: unknown, bundle: HostBundle) {
     HARDWARE_KEYS_ONLY: administratorKeyIsHardware(site.administratorPublicKey),
   }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
   const manifest = new Map(host.get("manifest")!.trimEnd().split("\n").slice(1).map(line => line.split(" ") as [string, string]));
+  const runtime = JSON.parse(host.get("system/runtime.json")!);
+  assert.match(runtime.docker, /^[0-9]+\.[0-9]+\.[0-9]+$/u);
+  const runtimeDigest = runtime[site.architecture];
+  assert.match(runtimeDigest, /^[a-f0-9]{64}$/u);
+  const runtimeAsset = site.architecture === "amd64" ? "x86-64" : "arm64";
+  const runtimePath = `/opt/nylzo/extensions/docker-${runtime.docker}-${runtimeAsset}.raw`;
   const files: any[] = [
+    { path: runtimePath, mode: 0o644, overwrite: true, contents: {
+      source: `https://github.com/flatcar/sysext-bakery/releases/download/docker-${runtime.docker}/docker-${runtime.docker}-${runtimeAsset}.raw`,
+      verification: { hash: `sha256-${runtimeDigest}` },
+    } },
     embedded("/etc/nylzo/tools.env", tools),
     embedded("/etc/nylzo/site.json", JSON.stringify({ architecture: site.architecture, domain: site.domain, initialRelease: site.initialRelease })),
     embedded("/etc/nylzo/service.env", environment),
@@ -81,7 +91,11 @@ export async function render(input: unknown, bundle: HostBundle) {
       { name: "root", passwordHash: "*" }, { name: "core", passwordHash: "*", sshAuthorizedKeys: [site.administratorPublicKey] },
       { name: "dockremap", uid: 2000, primaryGroup: "dockremap", noCreateHome: true, shell: "/sbin/nologin" },
       { name: "caddy", uid: 2001, primaryGroup: "caddy", noCreateHome: true, shell: "/sbin/nologin" },
-    ] }, storage: { files }, systemd: { units: [
+    ] }, storage: { files, links: [
+      { path: "/etc/extensions/docker-flatcar.raw", target: "/dev/null", overwrite: true },
+      { path: "/etc/extensions/containerd-flatcar.raw", target: "/dev/null", overwrite: true },
+      { path: "/etc/extensions/docker.raw", target: runtimePath, overwrite: true },
+    ] }, systemd: { units: [
       { name: "serial-getty@ttyS0.service", mask: true }, { name: "getty@tty1.service", mask: true }, service("nylzo-host.service", firstBoot, true),
     ] as any[] },
   };

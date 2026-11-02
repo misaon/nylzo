@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "VM acceptance failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 umask 077
 directory=/var/lib/nylzo-vm-test
 mkdir -p "$directory"
@@ -11,6 +12,7 @@ for check in kernel.kexec_load_disabled=1 kernel.io_uring_disabled=2 kernel.sysr
   [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Kernel setting ${check%%=*} is not hardened." >&2; exit 1; }
 done
 [[ "$(readlink -e /opt/nylzo/host/current)" = /opt/nylzo/host/initial ]]
+[[ "$(systemctl show systemd-sysupdate-reboot.timer --property=LoadState --value)" = masked ]]
 sshd -t
 ssh_policy=$(sshd -T | tr '[:upper:]' '[:lower:]')
 expect() {
@@ -74,41 +76,89 @@ unstarted=$(docker create "$(docker inspect nylzo --format '{{.Config.Image}}')"
 docker cp "$unstarted:/ko-app/nylzo" "$directory/nylzo"
 docker rm "$unstarted" > /dev/null
 chmod 0755 "$directory/nylzo"
-"$directory/nylzo" verify-client --server http://127.0.0.1
+verify_client() {
+  local attempt
+  # Type=simple reports a started process before the container serves HTTP.
+  for ((attempt = 0; attempt < 60; attempt++)); do
+    if curl --fail --silent --max-time 3 http://127.0.0.1/healthz > /dev/null; then
+      "$directory/nylzo" verify-client --server http://127.0.0.1
+      return
+    fi
+    sleep 1
+  done
+  echo 'The application did not become ready through Caddy.' >&2
+  return 1
+}
+verify_client
 probe=$(mktemp -d /var/tmp/nylzo-selinux.XXXXXXXX)
 trap 'docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true; rm -rf "$probe"' EXIT
-mkdir "$probe/data"
-chown 165532:165532 "$probe/data"
+mkdir "$probe/data" "$probe/epoch"
+chown 165532:165532 "$probe/data" "$probe/epoch"
 image=$(docker inspect nylzo --format '{{.Config.Image}}')
 level=s0:c0,c1
 if [[ "$(docker inspect nylzo --format '{{.ProcessLabel}}')" = *":$level" ]]; then level=s0:c2,c3; fi
-set +e
-timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
+if timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true --security-opt "label=level:$level" \
-  --memory 1g --cpus 1 --pids-limit 128 --env-file /etc/nylzo/service.env \
+  --memory 1g --cpus 1 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 \
+  --env-file /etc/nylzo/service.env --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
   --volume "$probe/data:/home/nonroot:Z" \
-  --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro "$image" serve > "$probe/result" 2>&1
-status=$?
-set -e
+  --volume "$probe/epoch:/run/nylzo-epoch:Z" \
+  --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro "$image" serve > "$probe/result" 2>&1; then
+  status=0
+else
+  status=$?
+fi
 docker rm --force nylzo-selinux-test >/dev/null 2>&1 || true
 if [[ "$status" != 1 ]] || ! grep --fixed-strings --quiet 'permission denied' "$probe/result"; then
   echo 'The isolated container did not fail with the expected access denial.' >&2
   exit 1
 fi
 echo 'NYLZO_VM_SELINUX_ISOLATION_VERIFIED'
+/opt/nylzo/runtime/runtime-stage
+runtime_target=$(readlink /etc/extensions/docker.raw)
+[[ "$runtime_target" = /opt/nylzo/extensions/docker-*-x86-64.raw ]]
+[[ "$(readlink /etc/extensions/docker-flatcar.raw)" = /dev/null ]]
+[[ "$(readlink /etc/extensions/containerd-flatcar.raw)" = /dev/null ]]
+bad_runtime="$directory/bad-runtime.json"
+/opt/nylzo/bin/jq '.amd64 = ("0" * 64)' /opt/nylzo/runtime/runtime-profile > "$bad_runtime"
+if /opt/nylzo/runtime/runtime-stage "$bad_runtime"; then
+  echo 'A runtime image with the wrong checksum was accepted.' >&2
+  exit 1
+fi
+[[ "$(readlink /etc/extensions/docker.raw)" = "$runtime_target" ]]
+ln --symbolic --force --no-dereference --no-target-directory /tmp/unmanaged-docker.raw /etc/extensions/docker.raw
+if /opt/nylzo/runtime/runtime-stage; then
+  echo 'An unmanaged Docker extension override was replaced.' >&2
+  exit 1
+fi
+[[ "$(readlink /etc/extensions/docker.raw)" = /tmp/unmanaged-docker.raw ]]
+ln --symbolic --force --no-dereference --no-target-directory "$runtime_target" /etc/extensions/docker.raw
+echo 'NYLZO_VM_RUNTIME_INTEGRITY_VERIFIED'
 if [[ ! -e "$directory/rebooted" ]]; then
+  printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/restart-link"
   rm -rf /opt/nylzo/host/release-v0.0.1
   cp -a /opt/nylzo/host/initial /opt/nylzo/host/release-v0.0.1
   sed -i 's/^OnUnitActiveSec=15min$/OnUnitActiveSec=14min/' /opt/nylzo/host/release-v0.0.1/monitoring/nylzo-clock.timer
+  printf '\n# Exercise a live containerd configuration update.\n' >> /opt/nylzo/host/release-v0.0.1/system/containerd.toml
   bash /opt/nylzo/host/release-v0.0.1/update/activate /opt/nylzo/host/release-v0.0.1
   systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=14min$'
+  for unit in containerd.service docker.service nylzo.service caddy.service update-engine.service locksmithd.service; do
+    systemctl is-active --quiet "$unit"
+  done
+  /opt/nylzo/runtime/host-policy
+  verify_client
   [[ "$(readlink -e /opt/nylzo/host/previous)" = /opt/nylzo/host/initial ]]
   bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial
   systemctl cat nylzo-clock.timer | grep --quiet '^OnUnitActiveSec=15min$'
-  systemctl is-active --quiet nylzo-firewall.service nylzo-clock.timer nylzo-host-status.timer caddy.service nylzo.service
+  for unit in nylzo-firewall.service nylzo-clock.timer nylzo-host-status.timer caddy.service nylzo.service; do
+    systemctl is-active --quiet "$unit"
+  done
   /opt/nylzo/runtime/host-policy
+  verify_client
+  "$directory/nylzo" read --stdout < "$directory/restart-link" > "$directory/received"
+  cmp "$directory/message" "$directory/received"
   echo 'NYLZO_VM_HOST_BUNDLE_ROLLBACK_VERIFIED'
-  printf 'Synthetic deployment acceptance payload.\n' > "$directory/message"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/burned-link"
   "$directory/nylzo" burn < "$directory/burned-link"
@@ -119,12 +169,18 @@ if [[ ! -e "$directory/rebooted" ]]; then
   systemctl reboot
 else
   sha256sum --check "$directory/pepper.sha256"
-  "$directory/nylzo" read --stdout < "$directory/live-link" > "$directory/received"
-  cmp "$directory/message" "$directory/received"
+  if "$directory/nylzo" read --stdout < "$directory/live-link" > /dev/null 2>&1; then
+    echo 'A message survived destruction of the volatile epoch seed during reboot.' >&2
+    exit 1
+  fi
   if "$directory/nylzo" read --stdout < "$directory/burned-link" > /dev/null 2>&1; then
     echo 'Burned message was resurrected.' >&2
     exit 1
   fi
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/new-link"
+  "$directory/nylzo" read --stdout < "$directory/new-link" > "$directory/received"
+  cmp "$directory/message" "$directory/received"
+  echo 'NYLZO_VM_EPOCH_REBOOT_VERIFIED'
   echo 'NYLZO_VM_ACCEPTANCE_PASSED'
   systemctl poweroff
 fi

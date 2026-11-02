@@ -8,7 +8,7 @@ Every Hetzner/Flatcar host writes a coarse readiness report every two minutes. I
 ## Checks
 
 - `hostPolicy`: SELinux enforcement, effective kernel settings, the host firewall with input policy drop, Docker isolation, disabled CRI and transfer plugins, the traffic ceiling, and the encrypted volume when Tang is configured.
-- `services`: Nylzo, Caddy, OS readiness, the host firewall, update-engine and the update timer are active.
+- `services`: Nylzo, Caddy, OS readiness, the host firewall, update-engine, locksmithd and the application update timer are each active. One active unit cannot hide another inactive, failed or missing unit.
 - `diskReserve`: at least **8 GiB** available, before Nylzo's 4 GiB creation cutoff.
 - `applicationUpdates`: no deployment-failure marker and a successful update check within 30 minutes, or one still running within 15 minutes.
 - `osUpdates`: update-engine reports a known non-error state and checked within 24 hours. This does not prove that every upstream patch is installed.

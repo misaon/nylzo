@@ -10,7 +10,8 @@ test("host reports keep every failure visible without exporting operational deta
   try {
     const bin = join(directory, "bin"), output = join(directory, "status");
     mkdirSync(bin); mkdirSync(output);
-    const fixture = { now: 2_000_000, lastCheck: 1_999_900, checked: 1_999_800, operation: "UPDATE_STATUS_IDLE", policy: true, services: true, active: false, result: "success", available: "16777216", clock: "1999000", certificate: true };
+    const requiredUnits = ["nylzo.service", "caddy.service", "nylzo-ready.service", "nylzo-firewall.service", "update-engine.service", "locksmithd.service", "nylzo-update.timer"];
+    const fixture = { now: 2_000_000, lastCheck: 1_999_900, checked: 1_999_800, operation: "UPDATE_STATUS_IDLE", policy: true, services: Object.fromEntries(requiredUnits.map(unit => [unit, "active"])), active: false, result: "success", available: "16777216", clock: "1999000", certificate: true };
     const certificates = join(directory, "certificates", "acme-v02.api.letsencrypt.org-directory", "nylzo.example.org");
     mkdirSync(certificates, { recursive: true });
     writeFileSync(join(certificates, "nylzo.example.org.crt"), "certificate");
@@ -21,7 +22,10 @@ const state=JSON.parse(process.env.STATUS_FIXTURE),args=process.argv.slice(2),na
 if(name==='timeout'){process.exit(spawnSync(args[1],args.slice(2),{stdio:'inherit'}).status??1)}
 if(name==='host-policy')process.exit(state.policy?0:1);
 if(name==='systemctl'){
- if(args[0]==='is-active')process.exit(args.at(-1)==='nylzo-update.service'?(state.active?0:3):(state.services?0:3));
+ if(args[0]==='is-active'){
+  const units=args.slice(1).filter(arg=>!arg.startsWith('-'));
+  process.exit(units.some(unit=>unit==='nylzo-update.service'?state.active:state.services[unit]==='active')?0:3);
+ }
  console.log(args.includes('Result')?state.result:'LAST_CHECK');
 }else if(name==='df')console.log('Filesystem 1024-blocks Used Available Capacity Mounted on\\n/dev/test 40000000 1000000 '+state.available+' 10% /var/lib');
 else if(name==='date')console.log(args[0]==='+%s'?state.now:state.lastCheck);
@@ -39,7 +43,7 @@ else if(name==='openssl')process.exit(state.certificate&&args.join(' ').includes
     };
     assert(Object.values(run(fixture).checks).every(value => value === true));
     for (const [component, mutate] of [
-      ["hostPolicy", (s: any) => s.policy = false], ["services", (s: any) => s.services = false],
+      ["hostPolicy", (s: any) => s.policy = false], ["services", (s: any) => s.services = {}],
       ["diskReserve", (s: any) => s.available = "8388607"], ["diskReserve", (s: any) => s.available = "invalid"],
       ["applicationUpdates", (s: any) => s.result = "exit-code"], ["applicationUpdates", (s: any) => s.lastCheck -= 1801],
       ["applicationUpdates", (s: any) => s.lastCheck = s.now + 1],
@@ -53,6 +57,15 @@ else if(name==='openssl')process.exit(state.certificate&&args.join(' ').includes
       const report = run(state);
       assert.equal(report.checks[component], false, component);
       assert.deepEqual(Object.keys(report).sort(), ["checks", "observedAt", "version"]);
+    }
+    for (const unit of requiredUnits) {
+      for (const unitState of ["inactive", "failed", "activating", "not-found"]) {
+        const state = structuredClone(fixture);
+        state.services[unit] = unitState;
+        const report = run(state);
+        assert.equal(report.checks.services, false, `${unit}: ${unitState} while all other required units are active`);
+        assert.equal(report.checks.applicationUpdates, true, "Service readiness is independent of the last successful application update");
+      }
     }
     writeFileSync(join(directory, "failed.json"), "private deployment diagnostic");
     const report = run(fixture);

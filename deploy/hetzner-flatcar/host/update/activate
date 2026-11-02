@@ -110,16 +110,23 @@ while read -r action condition unit; do
       if [[ "$first_boot" = false && "$unit" = *.timer ]]; then systemctl start "$unit"; fi
       ;;
     enable:false) systemctl disable --quiet --now "$unit" ;;
-    mask:true) systemctl mask --quiet "$unit" ;;
+    mask:true)
+      systemctl mask --quiet "$unit"
+      if [[ "$unit" = *.timer ]]; then systemctl stop "$unit"; fi
+      ;;
     *) fail "unknown action $action" ;;
   esac
 done < "$generation/units"
 restart=()
+resume_application=false
 for target in "${changed[@]}"; do
   case "$target" in
     /etc/sysctl.d/*) restart+=(systemd-sysctl.service) ;;
     /etc/systemd/journald.conf.d/*) restart+=(systemd-journald.service) ;;
-    /etc/docker/* | /etc/containerd/* | /etc/systemd/system/containerd.service.d/*) restart+=(containerd.service docker.service) ;;
+    /etc/docker/* | /etc/containerd/* | /etc/systemd/system/containerd.service.d/*)
+      restart+=(containerd.service docker.service)
+      if [[ "$first_boot" = false ]] && systemctl is-active --quiet nylzo.service; then resume_application=true; fi
+      ;;
     /etc/flatcar/* | /etc/systemd/system/update-engine.service.d/*) restart+=(update-engine.service) ;;
     /etc/caddy/Caddyfile | /etc/systemd/system/caddy.service) restart+=(caddy.service) ;;
     /etc/systemd/system/*.timer) restart+=("${target##*/}") ;;
@@ -132,6 +139,7 @@ fi
 if [[ "$first_boot" = false && ${#restart[@]} -gt 0 ]]; then
   mapfile -t restart < <(printf '%s\n' "${restart[@]}" | sort --unique)
   systemctl try-restart "${restart[@]}"
+  if [[ "$resume_application" = true ]]; then systemctl start nylzo.service; fi
 fi
 ln --symbolic --force --no-dereference --no-target-directory "$generation" "$library/current.next"
 if [[ -n "$current" && "$current" != "$generation" ]]; then
