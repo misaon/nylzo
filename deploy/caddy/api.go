@@ -1,12 +1,60 @@
 package main
 
 import (
+	"errors"
 	"mime"
 	"net/http"
 	"strings"
 
+	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
+
+const badGatewayBody = `{"error":"bad_gateway"}`
+
+var errRefusedResponse = errors.New("untrusted upstream response")
+
+func init() {
+	caddy.RegisterModule(Data{})
+	httpcaddyfile.RegisterHandlerDirective("nylzo_data", func(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
+		helper.Next()
+		if helper.NextArg() || helper.NextBlock(0) {
+			return nil, helper.ArgErr()
+		}
+		return Data{}, nil
+	})
+}
+
+type Data struct{}
+
+func (Data) CaddyModule() caddy.ModuleInfo {
+	return caddy.ModuleInfo{ID: "http.handlers.nylzo_data", New: func() caddy.Module { return new(Data) }}
+}
+
+func (Data) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	replacer := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
+	value, _ := replacer.Get("http.reverse_proxy.status_code")
+	status, ok := value.(int)
+	if !ok {
+		return caddyhttp.Error(http.StatusInternalServerError, errors.New("nylzo_data requires a proxy response"))
+	}
+	header := make(http.Header)
+	for _, name := range []string{"Content-Type", "Content-Encoding"} {
+		if value, ok := replacer.Get("http.reverse_proxy.header." + name); ok {
+			header.Set(name, value.(string))
+		}
+	}
+	if !safeDataResponse(status, responseContentType(r.URL.Path, status), header) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadGateway)
+		_, err := w.Write([]byte(badGatewayBody))
+		return err
+	}
+	return next.ServeHTTP(w, r)
+}
 
 // Unwrap would let an upstream protocol upgrade bypass this response boundary.
 type dataResponse struct {
@@ -39,7 +87,13 @@ func (d *dataResponse) WriteHeader(status int) {
 	if d.refused {
 		header.Set("Content-Type", "application/json; charset=utf-8")
 		d.ResponseWriter.WriteHeader(http.StatusBadGateway)
-		_, _ = d.ResponseWriter.Write([]byte(`{"error":"bad_gateway"}`))
+		_, _ = d.ResponseWriter.Write([]byte(badGatewayBody))
+		return
+	}
+	if status == http.StatusNoContent {
+		// HTTP/3 otherwise adds Content-Length: 0 when the handler finishes.
+		header["Content-Length"] = nil
+		d.ResponseWriter.WriteHeader(status)
 		return
 	}
 	for _, name := range []string{"Content-Length", "Retry-After", "X-Nylzo-Lease", "X-Nylzo-Share", "X-Nylzo-Policy"} {
@@ -66,6 +120,9 @@ func responseContentType(path string, status int) string {
 }
 
 func safeDataResponse(status int, contentType string, header http.Header) bool {
+	if status == http.StatusNoContent {
+		return header.Get("Content-Encoding") == ""
+	}
 	receivedType, _, err := mime.ParseMediaType(header.Get("Content-Type"))
 	return !(status >= 300 && status < 400) && status != http.StatusSwitchingProtocols &&
 		err == nil && receivedType == contentType && len(header.Values("Content-Type")) == 1 &&
@@ -77,7 +134,7 @@ func (d *dataResponse) Write(body []byte) (int, error) {
 		d.WriteHeader(http.StatusOK)
 	}
 	if d.refused {
-		return len(body), nil
+		return 0, errRefusedResponse
 	}
 	return d.ResponseWriter.Write(body)
 }
