@@ -45,7 +45,7 @@ else
   temporary=$(mktemp "$directory/.docker.XXXXXXXX")
   trap 'rm -f "$temporary"' EXIT
   curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-    --retry 3 --connect-timeout 15 --max-time 300 \
+    --retry 3 --connect-timeout 15 --max-time 300 --max-filesize 536870912 \
     "https://github.com/flatcar/sysext-bakery/releases/download/docker-$version/docker-$version-$asset.raw" \
     --output "$temporary"
   verify "$temporary" || { echo 'The downloaded runtime image has a different checksum.' >&2; exit 1; }

@@ -6,6 +6,8 @@ type Issuance = { id: string; dns_names: string[]; not_before: string; issuer?: 
 type Registration = { status?: string[]; events?: { eventAction: string; eventDate: string }[] };
 
 const day = 86400000;
+const maxJsonBytes = 1 << 20;
+const maxCertificatePages = 50;
 const unquote = (data: string) => data.replace(/^"|"$/gu, "").replace(/"\s*"/gu, "");
 const parameters = (value: string) => value.split(";").map(part => part.trim()).filter(Boolean).sort().join("; ");
 
@@ -62,10 +64,30 @@ export function registrationProblems(registration: Registration, now = Date.now(
   return problems;
 }
 
-async function json(url: string, headers: Record<string, string> = {}) {
-  const response = await fetch(url, { headers: { accept: "application/json", ...headers }, redirect: "follow", signal: AbortSignal.timeout(30000) });
-  assert(response.ok, `${new URL(url).host} answered HTTP ${response.status}`);
-  return response.json();
+async function json(url: string, headers: Record<string, string> = {}): Promise<unknown> {
+  const response = await fetch(url, { headers: { accept: "application/json", ...headers }, redirect: "error", signal: AbortSignal.timeout(30000) });
+  const reader = response.body?.getReader();
+  assert(reader, "The monitor API returned an empty body");
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    assert(response.ok, `${new URL(url).host} answered HTTP ${response.status}`);
+    const declared = response.headers.get("content-length");
+    assert(declared === null || Number(declared) <= maxJsonBytes, "The monitor API response exceeds 1 MiB");
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      assert(length <= maxJsonBytes, "The monitor API response exceeds 1 MiB");
+      chunks.push(value);
+    }
+    return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks, length)));
+  } catch (error) {
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 const registries: Record<string, string> = {
@@ -88,16 +110,15 @@ export async function domainProblems(domain: string, options: { accountUri?: str
     ...mailProblems(await resolve(domain, "MX"), await resolve(domain, "TXT"), await resolve(`_dmarc.${domain}`, "TXT")),
     ...registrationProblems(await registration(domain), now),
   ];
-  const issuances: Issuance[] = [];
-  for (let after = "", page = 0; page < 50; page++) {
-    const batch = await json(`https://api.certspotter.com/v1/issuances?domain=${domain}&include_subdomains=true&expand=dns_names&expand=issuer${after ? `&after=${after}` : ""}`,
+  const since = new Date(Math.max(now - 8 * day, options.reviewedUntil ? new Date(options.reviewedUntil).getTime() : 0));
+  for (let after = "", page = 0; page < maxCertificatePages; page++) {
+    const batch = await json(`https://api.certspotter.com/v1/issuances?domain=${domain}&include_subdomains=true&expand=dns_names&expand=issuer${after ? `&after=${encodeURIComponent(after)}` : ""}`,
       options.token ? { authorization: `Bearer ${options.token}` } : {}) as Issuance[];
-    if (batch.length === 0) break;
-    issuances.push(...batch);
+    if (batch.length === 0) return problems;
+    for (const problem of issuanceProblems(batch, domain, since)) problems.push(problem);
     after = batch.at(-1)!.id;
   }
-  const since = new Date(Math.max(now - 8 * day, options.reviewedUntil ? new Date(options.reviewedUntil).getTime() : 0));
-  return [...problems, ...issuanceProblems(issuances, domain, since)];
+  throw new Error(`Certificate Transparency check is incomplete after ${maxCertificatePages} pages`);
 }
 
 if (import.meta.main) {
