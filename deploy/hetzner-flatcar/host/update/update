@@ -199,9 +199,9 @@ nylzo() {
     --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$version" --deny-self-hosted-runners >/dev/null
   if [[ -n "${previous:-}" ]]; then
     /opt/nylzo/runtime/refresh-tools "$version"
-    host "$version"
   fi
   caddy "$version"
+  if [[ -n "${previous:-}" ]]; then host "$version"; fi
   docker pull "$image@$digest" >/dev/null
   mkdir "$temporary/data" "$temporary/epoch"
   chown 165532:165532 "$temporary/data" "$temporary/epoch"

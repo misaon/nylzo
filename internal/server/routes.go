@@ -43,20 +43,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
 	mux.HandleFunc("/api/", handleAPINotFound)
-	mux.HandleFunc("GET "+messagePagePath, s.handleMessagePage)
-	mux.HandleFunc("GET "+core.LinkPath, s.handleReadPage)
-	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
-	mux.HandleFunc("GET /{$}", s.pageHandler("/"))
-	mux.HandleFunc("GET /cs/{$}", s.pageHandler("/cs/"))
-	mux.HandleFunc("GET /cs", handleCzechHome)
-	mux.HandleFunc("GET /robots.txt", s.handleRobots)
-	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
-	for _, path := range []string{"/sent", "/report", "/transparency"} {
-		mux.HandleFunc("GET "+path, s.pageHandler(path))
-	}
-	mux.HandleFunc("GET "+webclient.ManifestPath, s.handleClientManifest)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.Handle("/", s.frontend)
 	routed := logging.Route(mux)
 	return s.requestCounts.Requests(inSecretMode(closeUnreadBodies(
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
