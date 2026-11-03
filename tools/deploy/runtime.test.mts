@@ -4,6 +4,66 @@ import path from "node:path";
 import { test } from "node:test";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
+
+test("runtime staging bounds downloads and preserves the active extension on size or checksum failure", { skip: !available }, () => {
+  for (const failure of ["", "size", "checksum"]) {
+    const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
+      "--tmpfs", "/opt:exec", "--tmpfs", "/etc/extensions", "--tmpfs", "/tmp:exec",
+      "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/host/update/runtime-stage")},target=/test-runtime-stage,readonly`,
+      "ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852", "bash", "-s"], {
+      encoding: "utf8", timeout: 60000, input: `set -euo pipefail
+mkdir -p /opt/nylzo/bin /opt/nylzo/extensions
+case "$(uname -m)" in x86_64) asset=x86-64 ;; aarch64) asset=arm64 ;; *) exit 1 ;; esac
+previous="/opt/nylzo/extensions/docker-29.9.1-$asset.raw"
+candidate="/opt/nylzo/extensions/docker-29.9.2-$asset.raw"
+printf 'previous verified extension\\n' > "$previous"
+ln -s "$previous" /etc/extensions/docker.raw
+for name in docker-flatcar containerd-flatcar; do ln -s /dev/null "/etc/extensions/$name.raw"; done
+printf 'candidate verified extension\\n' > /tmp/extension.raw
+sha256sum /tmp/extension.raw | cut -d ' ' -f 1 > /tmp/digest
+touch /tmp/profile
+cat > /opt/nylzo/bin/jq <<'JQ'
+#!/bin/bash
+case "$*" in *architecture*) cat /tmp/digest ;; *) echo 29.9.2 ;; esac
+JQ
+cat > /opt/nylzo/bin/curl <<'CURL'
+#!/bin/bash
+set -euo pipefail
+maximum=0
+output=''
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --max-filesize) maximum="$2"; shift 2 ;;
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '%s\\n' "$maximum" > /tmp/download-limit
+if [[ "${failure}" = size && "$maximum" -gt 0 ]]; then
+  printf 'partial download\\n' > "$output"
+  exit 63
+fi
+cp /tmp/extension.raw "$output"
+if [[ "${failure}" = checksum ]]; then printf 'tampered\\n' >> "$output"; fi
+CURL
+chmod 0755 /opt/nylzo/bin/{jq,curl}
+set +e
+bash /test-runtime-stage /tmp/profile
+status=$?
+set -e
+[[ "$(cat /tmp/download-limit)" = 536870912 ]]
+[[ -z "$(find /opt/nylzo/extensions -name '.docker.*' -print -quit)" ]]
+[[ "$(cat "$previous")" = 'previous verified extension' ]]
+${failure ? `[[ "$status" = ${failure === "size" ? 63 : 1} && ! -e "$candidate" && "$(readlink /etc/extensions/docker.raw)" = "$previous" ]]` : `[[ "$status" = 0 && "$(readlink /etc/extensions/docker.raw)" = "$candidate" && "$(stat -c %a "$candidate")" = 644 ]]
+cmp /tmp/extension.raw "$candidate"`}
+echo RUNTIME_DOWNLOAD_BOUND_VERIFIED
+`,
+    });
+    assert.equal(result.status, 0, `${failure || "valid image"}\n${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /RUNTIME_DOWNLOAD_BOUND_VERIFIED/u);
+  }
+});
+
 test("a failed OS health-marker flush preserves the previous recovery target", { skip: !available }, () => {
   for (const fail of [false, true]) {
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",

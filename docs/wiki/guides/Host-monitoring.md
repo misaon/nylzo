@@ -65,6 +65,8 @@ Delete the old repository variables `NYLZO_HOST_MONITOR_URL` and `NYLZO_HOST_MON
 - With `NYLZO_MONITOR_DOMAIN` (and optionally `NYLZO_ACME_ACCOUNT` and `NYLZO_CT_REVIEWED_UNTIL`), the domain check reads the CAA set over a DNSSEC-validating resolver, null MX, SPF and DMARC, the registrar locks and an expiry more than 180 days away, and every certificate issued in the last eight days for the domain or its subdomains in Certificate Transparency, which must come from Let's Encrypt for the apex or `www` only. Set `NYLZO_CT_REVIEWED_UNTIL` to an ISO date to acknowledge certificates you reviewed. Enable it after the DNS stack and registrar lock are applied.
 - The maintenance watchdog fails when a merged maintenance fix is still unpublished after an hour.
 
+The domain monitor rejects redirects and API bodies larger than 1 MiB, including streamed responses without a declared length. It evaluates Certificate Transparency results one page at a time and requires an empty final page. If 50 pages do not finish the listing, the check fails as incomplete; review the backlog before changing that bound.
+
 GitHub schedules are [best effort](https://docs.github.com/en/actions/how-tos/troubleshoot-workflows); rely on the heartbeat for timely alerts. Test notification delivery for each channel; a failed run alone does not prove that a message reached anyone.
 
 References: [Caddy client authentication](https://caddyserver.com/docs/caddyfile/directives/tls#client_auth), [healthchecks.io HTTP API](https://healthchecks.io/docs/http_api/), [Cert Spotter API](https://sslmate.com/help/reference/ct_search_api_v1), [Flatcar update states](https://www.flatcar.org/docs/latest/updates-releases/releases/update-strategies/).
