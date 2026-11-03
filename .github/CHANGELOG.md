@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.0](https://github.com/misaon/nylzo/compare/v0.5.0...v0.6.0) (2026-11-03)
+
+
+### Fixes
+
+* **deploy:** stop live timers before masking their units ([#233](https://github.com/misaon/nylzo/issues/233)) ([5fd99bb](https://github.com/misaon/nylzo/commit/5fd99bbf9dc9e16308f16867e9e3f7d2cf7b50a0))
+* **security:** bound domain monitoring and runtime downloads ([#236](https://github.com/misaon/nylzo/issues/236)) ([ba743e9](https://github.com/misaon/nylzo/commit/ba743e987e27160ef648f311cf4f68fcd11dafa8))
+
+
+### Security
+
+* **deploy:** isolate frontend delivery from the API process ([#238](https://github.com/misaon/nylzo/issues/238)) ([3de2bf5](https://github.com/misaon/nylzo/commit/3de2bf5ca798d5acf32dc5421971ae68e062df2b))
+
+
+### Maintenance
+
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.206.2 (main) ([#228](https://github.com/misaon/nylzo/issues/228)) ([23ce86b](https://github.com/misaon/nylzo/commit/23ce86bbbc5e3d736374179a5dbafa1638dbabfb))
+
 ## [0.5.0](https://github.com/misaon/nylzo/compare/v0.4.0...v0.5.0) (2026-11-02)
 
 
