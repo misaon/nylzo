@@ -42,7 +42,8 @@ func (u *upstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unread body", http.StatusBadRequest)
 		return
 	}
-	_, _ = io.WriteString(w, "ok")
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, `{"ok":true}`)
 }
 
 func (u *upstream) last(t *testing.T) http.Header {
@@ -182,7 +183,7 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			_ = connection.Close()
 
 			client := &http.Client{Transport: &http.Transport{TLSClientConfig: base.Clone(), ForceAttemptHTTP2: true}, Timeout: 10 * time.Second}
-			request, _ := http.NewRequest(http.MethodGet, "https://"+address+"/check", nil)
+			request, _ := http.NewRequest(http.MethodGet, "https://"+address+"/api/v1/instance", http.NoBody)
 			for header, value := range map[string]string{"X-Real-IP": "7.7.7.7", "Forwarded": "for=8.8.8.8", "X-Forwarded-For": "9.9.9.9", "True-Client-IP": "6.6.6.6", "X-Client-IP": "5.5.5.5"} {
 				request.Header.Set(header, value)
 			}
@@ -214,7 +215,7 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			quicConfig := base.Clone()
 			quicConfig.ClientSessionCache = sessions
 			first := &http3.Transport{TLSClientConfig: quicConfig}
-			response, err = (&http.Client{Transport: first, Timeout: 10 * time.Second}).Get("https://" + address + "/first")
+			response, err = (&http.Client{Transport: first, Timeout: 10 * time.Second}).Get("https://" + address + "/api/first")
 			if err != nil {
 				t.Fatalf("HTTP/3: %v", err)
 			}
@@ -229,7 +230,7 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 				return connection, err
 			}}
 			defer second.Close()
-			request, _ = http.NewRequest(http3.MethodGet0RTT, "https://"+address+"/early", nil)
+			request, _ = http.NewRequest(http3.MethodGet0RTT, "https://"+address+"/api/early", http.NoBody)
 			response, err = (&http.Client{Transport: second, Timeout: 10 * time.Second}).Do(request)
 			if err != nil {
 				t.Fatalf("HTTP/3 resumption: %v", err)
@@ -246,7 +247,7 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			}
 
 			backend.Close()
-			response, err = client.Get("https://" + address + "/unavailable")
+			response, err = client.Get("https://" + address + "/api/unavailable")
 			if err != nil {
 				t.Fatal(err)
 			}

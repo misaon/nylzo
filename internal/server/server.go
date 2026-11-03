@@ -22,7 +22,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/sweep"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -72,11 +72,7 @@ type Server struct {
 	reports       *abuse.Reports
 	dummyRow      store.Row
 	webFiles      fs.FS
-	webBuild      webclient.Build
-	pages         webclient.Pages
-	robots        []byte
-	sitemap       []byte
-	manifest      webclient.Manifest
+	frontend      http.Handler
 	requestCounts *logging.RequestCounts
 	pace          pace
 	handler       http.Handler
@@ -93,10 +89,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err != nil {
 		return nil, err
 	}
-	webFiles, err := embeddedWebFiles()
-	if err != nil {
-		return nil, err
-	}
 	server := &Server{
 		settings:    *settings,
 		store:       storage,
@@ -104,7 +96,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		ring:        ring,
 		leaseTimers: newReleases(),
 		logger:      logging.New(os.Stderr),
-		webFiles:    webFiles,
+		webFiles:    web.Files(),
 		dummyRow:    newDummyRow(),
 		pace:        defaultPace(),
 	}

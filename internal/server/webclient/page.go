@@ -17,6 +17,7 @@ const (
 	publicEnd            = "<!--/nylzo:public-->"
 	englishHome          = "/"
 	czechHome            = "/cs/"
+	sentPath             = "/sent"
 	htmlContentType      = "text/html; charset=utf-8"
 )
 

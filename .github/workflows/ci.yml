@@ -604,7 +604,7 @@ jobs:
         run: mise run build:web
       - name: Build nylzo, Caddy and images laid out like the release images
         run: |
-          CGO_ENABLED=0 go build -trimpath -o dist/nylzo ./cmd/nylzo
+          bun tools/build.mts dist/nylzo
           CGO_ENABLED=0 go -C deploy/caddy build -trimpath -buildvcs=false -tags="$(cat deploy/caddy/build-tags)" -ldflags='-s -w' -o ../../dist/caddy .
           go build -o dist/tlscheck ./tools/tlscheck
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
@@ -673,12 +673,13 @@ jobs:
         working-directory: deploy/compose
         run: |
           docker compose stop nylzo
+          test "$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" https://localhost/r)" = 200
           id=$(head -c 16 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')
-          code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" -H 'X-Nylzo-Lease: lease-that-must-not-be-logged' "https://localhost/m/$id")
+          code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" -H 'X-Nylzo-Lease: lease-that-must-not-be-logged' "https://localhost/api/v1/messages/$id/blob")
           test "$code" = 502
           sleep 2
           docker compose logs caddy > "$RUNNER_TEMP/caddy.log" 2>&1
-          if grep -F -e "$id" -e '/m/' -e 'lease-that-must-not-be-logged' "$RUNNER_TEMP/caddy.log"; then exit 1; fi
+          if grep -F -e "$id" -e '/api/v1/messages/' -e 'lease-that-must-not-be-logged' "$RUNNER_TEMP/caddy.log"; then exit 1; fi
           docker compose start nylzo
       - name: A spoofed X-Forwarded-For gets no bucket of its own (AK12)
         working-directory: deploy/compose

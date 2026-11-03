@@ -199,9 +199,7 @@ nylzo() {
     --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/$version" --deny-self-hosted-runners >/dev/null
   if [[ -n "${previous:-}" ]]; then
     /opt/nylzo/runtime/refresh-tools "$version"
-    host "$version"
   fi
-  caddy "$version"
   docker pull "$image@$digest" >/dev/null
   mkdir "$temporary/data" "$temporary/epoch"
   chown 165532:165532 "$temporary/data" "$temporary/epoch"
@@ -226,6 +224,8 @@ nylzo() {
     echo "Nylzo $version cannot open the data directory; the running release stays." >&2
     return 1
   fi
+  caddy "$version"
+  if [[ -n "${previous:-}" ]]; then host "$version"; fi
   systemctl stop nylzo.service
   [[ ! -s "$state/current.json" ]] || cp "$state/current.json" "$state/previous.json"
   jq -n --arg tag "$version" --arg digest "$digest" '{tag:$tag,digest:$digest}' > "$state/current.json.new"

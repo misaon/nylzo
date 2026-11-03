@@ -10,9 +10,9 @@ import (
 
 const ManifestPath = "/.well-known/nylzo/client.json"
 
-var PagePaths = []string{englishHome, czechHome, "/sent", "/report", "/transparency", core.LinkPath, "/m/{id}"}
+var PagePaths = []string{englishHome, czechHome, sentPath, "/report", "/transparency", core.LinkPath, "/m/{id}"}
 
-var manifestPages = []string{englishHome, czechHome, "/sent"}
+var manifestPages = []string{englishHome, czechHome, sentPath}
 
 type ManifestFile struct {
 	Path   string `json:"path"`

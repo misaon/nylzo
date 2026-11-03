@@ -4,7 +4,7 @@ Deployment profiles live under [`deploy/`](../../../deploy). The Compose example
 
 The [Compose example](../../../deploy/compose) runs Nylzo behind Caddy with TLS. Use a Linux server with Docker Engine, Docker Compose v2, a domain pointing to the server, and ports 80/tcp, 443/tcp, and 443/udp open.
 
-Caddy comes from the same release as Nylzo. The release workflow builds `ghcr.io/misaon/nylzo-caddy` from [deploy/caddy](../../../deploy/caddy) with the repository's pinned Go toolchain and dependency versions, so a Go or dependency fix does not wait for an upstream image rebuild.
+Caddy comes from the same release as Nylzo and embeds the same static web client. It serves pages, assets and the client manifest itself; only API requests, the transparency JSON and health checks reach the backend. The release workflow builds `ghcr.io/misaon/nylzo-caddy` from [deploy/caddy](../../../deploy/caddy) with the repository's pinned Go toolchain and dependency versions, so a Go or dependency fix does not wait for an upstream image rebuild.
 
 The TLS endpoint sees ciphertext, request signatures, and leases, and can replace the web client. Terminate TLS on infrastructure you trust with the server itself. Read the [security model](Security-model.md) and [operations guide](Operations.md) before deployment.
 
@@ -63,7 +63,9 @@ Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client 
 - The global daily cap defaults to 2,000 creations. Proof of work starts at 1,000; at the cap, creation returns 503 while reading continues. Address limits reset with the process, so the global cap protects disk capacity against clients rotating addresses.
 - A maximum-size message is about 5.4 MB and may live for seven days. Budget up to eight daily caps of stored messages: about 86 GB at 2,000 creations per day. Adjust the cap for your disk. Below the 1 GiB free-space reserve, creation stops while reading, cancellation, and deletion continue.
 - Both containers use the `local` log driver with at most three 10 MB files. Caddy's access logging and error loggers containing request details are disabled, preventing proxy failures from logging addresses, message paths, or `X-Nylzo-*` headers. Startup and certificate logs remain.
-- Caddy reuses idle upstream connections for at most 25 seconds, below Nylzo's 30-second idle timeout. It removes `Server` and `Via` headers, including on errors and HTTP redirects, and closes requests for other hosts without an HTTP response. Nylzo supplies CSP and the remaining security headers.
+- Caddy reuses idle upstream connections for at most 25 seconds, below Nylzo's 30-second idle timeout. It removes `Server` and `Via` headers, including on errors and HTTP redirects, and closes requests for other hosts without an HTTP response. Caddy supplies the frontend's CSP and security headers. Backend responses pass through a data-only boundary: only JSON, encrypted blob bytes and plain-text health responses are accepted; redirects, unexpected content types and encoded bodies are rejected. Rejected upstream replies are closed before their bodies are read, and successful bodyless acknowledgements remain HTTP 204. Only content length, retry timing and the three protocol headers are forwarded. Cookies, refreshes, resource hints, service-worker permissions and backend security policies are discarded.
+
+The frontend is part of Caddy's read-only executable, outside the backend process and its writable data volume. Compromising the backend alone cannot replace frontend pages or assets through this deployment. The host, Caddy, the release process and browser/device security remain trusted; a client-side injection vulnerability would still require its own fix.
 
 ## Process abuse reports
 
@@ -89,7 +91,7 @@ Takedown deletes the server's message blob without reading its content. Use an o
 
 ## Upgrade and rotate keys
 
-Verify both new images against their exact tag, update the digest-pinned `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE`, and run `docker compose up -d`. Do not overwrite the pepper or reporting key. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
+Keep both images and the Caddyfile from the same release: the `nylzo_frontend` directive requires Nylzo's Caddy build. An older or upstream-only Caddy rejects it. Verify both new images against their exact tag, update the digest-pinned `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE`, and run `docker compose up -d`. Do not overwrite the pepper or reporting key. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
 
 A deployment that still runs the official `caddy` image must also take the new `compose.yaml` and create `caddy-state` as shown above. Caddy then runs as UID 65533, keeps its state in that directory and requests a new certificate on first start. Once HTTPS works, remove the old volumes with `docker volume rm nylzo_caddy-data nylzo_caddy-config`.
 

@@ -115,6 +115,8 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   assert(!sources.get("update/update")!.includes("gh api"));
   assert.match(sources.get("update/update")!, /--network none/u);
   const update = sources.get("update/update")!;
+  assert(update.indexOf('caddy "$version"') < update.indexOf('host "$version"'), "the compatible Caddy binary must be installed before a host bundle can introduce new directives");
+  assert(update.indexOf('store_check "$image@$digest"') < update.indexOf('caddy "$version"'), "frontend activation must wait until the candidate passes the preflight checks");
   assert(update.indexOf('store_check "$image@$digest"') < update.indexOf("systemctl stop nylzo.service"), "the store check runs before the running release stops");
   assert.match(sources.get("application/run")!, /--volume \/run\/nylzo-epoch:\/run\/nylzo-epoch:Z/u);
   assert.match(sources.get("application/nylzo.service")!, /^ExecStartPre=\+\/usr\/bin\/chmod 0700 \/run\/nylzo-epoch$/mu);

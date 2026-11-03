@@ -30,17 +30,26 @@
 		-Server
 		-Via
 	}
-	reverse_proxy nylzo:8080 {
-		header_up -X-Real-IP
-		header_up -Forwarded
-		header_up -X-Client-IP
-		header_up -True-Client-IP
-		header_up -CF-Connecting-IP
-		header_up -Fastly-Client-IP
-		header_up -X-Cluster-Client-IP
-		header_up -Client-IP
-		transport http {
-			keepalive 25s
+	route {
+		nylzo_frontend https://{$NYLZO_DOMAIN}
+		reverse_proxy nylzo:8080 {
+			handle_response {
+				route {
+					nylzo_data
+					copy_response
+				}
+			}
+			header_up -X-Real-IP
+			header_up -Forwarded
+			header_up -X-Client-IP
+			header_up -True-Client-IP
+			header_up -CF-Connecting-IP
+			header_up -Fastly-Client-IP
+			header_up -X-Cluster-Client-IP
+			header_up -Client-IP
+			transport http {
+				keepalive 25s
+			}
 		}
 	}
 	handle_errors {
