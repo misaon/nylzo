@@ -40,24 +40,42 @@ function parseLockfileReport(value: unknown, location: string): LockfileReport {
   const result = objectAt(value, location);
   const source = objectAt(result['source'], `${location}.source`);
   const packages = arrayAt(result['packages'], `${location}.packages`);
+  const path = textAt(source['path'], `${location}.source.path`).replaceAll('\\', '/');
   return {
-    packages: packages.map((entry, index) => parseLockedPackage(entry, `${location}.packages[${index}]`)),
-    path: textAt(source['path'], `${location}.source.path`).replaceAll('\\', '/'),
+    packages: packages.flatMap((entry, index) => {
+      const parsed = parseLockedPackage(entry, `${location}.packages[${index}]`, path);
+      return parsed === undefined ? [] : [parsed];
+    }),
+    path,
   };
 }
 
-function parseLockedPackage(value: unknown, location: string): LockedPackage {
+function parseLockedPackage(value: unknown, location: string, lockfile: string): LockedPackage | undefined {
   const entry = objectAt(value, location);
   const component = objectAt(entry['package'], `${location}.package`);
   const vulnerabilities = optionalArrayAt(entry['vulnerabilities'], `${location}.vulnerabilities`);
+  const licenseViolations = optionalArrayAt(entry['license_violations'], `${location}.license_violations`);
+  const licenses = textsAt(optionalArrayAt(entry['licenses'], `${location}.licenses`), `${location}.licenses`);
+  if (
+    lockfile.endsWith('/deploy/caddy/go.mod') &&
+    component['ecosystem'] === 'Go' &&
+    component['name'] === '../..' &&
+    component['version'] === ''
+  ) {
+    // This exact replacement is the repository root; its external dependencies are scanned through go.mod.
+    if (vulnerabilities.length > 0 || licenseViolations.length > 0) {
+      throw new TypeError(`${location}: repository source reference has security or license findings`);
+    }
+    return undefined;
+  }
   return {
     component: {
       ecosystem: textAt(component['ecosystem'], `${location}.package.ecosystem`),
       name: textAt(component['name'], `${location}.package.name`),
       version: textAt(component['version'], `${location}.package.version`),
     },
-    licenses: textsAt(optionalArrayAt(entry['licenses'], `${location}.licenses`), `${location}.licenses`),
-    licenseViolations: optionalArrayAt(entry['license_violations'], `${location}.license_violations`).length,
+    licenses,
+    licenseViolations: licenseViolations.length,
     vulnerabilities: vulnerabilities.map((vulnerability, index) =>
       parseVulnerability(vulnerability, `${location}.vulnerabilities[${index}]`),
     ),
