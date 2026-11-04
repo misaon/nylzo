@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/misaon/nylzo/compare/v0.6.0...v0.7.0) (2026-11-04)
+
+
+### Fixes
+
+* **release:** paginate source verification checks ([#239](https://github.com/misaon/nylzo/issues/239)) ([0567089](https://github.com/misaon/nylzo/commit/0567089f20cdb7d9dbb8e688e7375e3ae1281edf))
+
 ## [0.6.0](https://github.com/misaon/nylzo/compare/v0.5.0...v0.6.0) (2026-11-03)
 
 
