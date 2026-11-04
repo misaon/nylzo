@@ -21,7 +21,15 @@ test("a release requires full verification and successful security checks from t
   const directory = mkdtempSync(join(tmpdir(), "nylzo-release-checks-"));
   try {
     const executable = join(directory, "gh");
-    writeFileSync(executable, '#!/bin/sh\nprintf "%s" "$CHECKS"\n');
+    writeFileSync(executable, `#!/bin/sh
+printf '%s\\n' "$CHECKS"
+for argument; do
+  if [ "$argument" = --paginate ]; then
+    printf '%s\\n' "$LATER_PAGES"
+  fi
+done
+exit "\${GH_EXIT_STATUS:-0}"
+`);
     chmodSync(executable, 0o700);
     const names = [
       "Release verification",
@@ -36,24 +44,46 @@ test("a release requires full verification and successful security checks from t
       conclusion: "success",
       check_suite: { id: 1 },
     }));
-    const verify = (checkRuns: typeof checks) =>
+    const verify = (checkRuns: typeof checks, laterPages: (typeof checks)[] = [], exitStatus = 0) =>
       spawnSync("bash", ["mise-tasks/release/checks", "a".repeat(40)], {
         env: {
           ...process.env,
           PATH: `${directory}:${process.env.PATH}`,
           CHECKS: JSON.stringify({ check_runs: checkRuns }),
+          LATER_PAGES: laterPages.map(page => JSON.stringify({ check_runs: page })).join("\n"),
+          GH_EXIT_STATUS: String(exitStatus),
         },
         encoding: "utf8",
       });
     assert.equal(verify(checks).status, 0);
+    const unrelated = Array.from({ length: 100 }, (_, index) => ({
+      ...checks[0],
+      name: `Unrelated check ${index}`,
+    }));
+    assert.notEqual(verify(unrelated).status, 0);
+    assert.equal(verify(unrelated, [checks.slice(0, 2), checks.slice(2)]).status, 0);
+    assert.notEqual(verify(unrelated, [checks.slice(0, -1)]).status, 0);
+    assert.notEqual(verify(unrelated, [checks.slice(0, 2), checks.slice(2)], 1).status, 0);
     for (let index = 0; index < checks.length; index++) {
       assert.notEqual(verify(checks.filter((_, position) => position !== index)).status, 0);
       for (const conclusion of ["skipped", "cancelled", "failure"]) {
+        assert.notEqual(
+          verify(unrelated, [
+            checks.map((check, position) => (position === index ? { ...check, conclusion } : check)),
+          ]).status,
+          0,
+        );
         assert.notEqual(
           verify(checks.map((check, position) => (position === index ? { ...check, conclusion } : check))).status,
           0,
         );
       }
+      assert.notEqual(
+        verify(unrelated, [
+          checks.map((check, position) => (position === index ? { ...check, check_suite: { id: 2 } } : check)),
+        ]).status,
+        0,
+      );
       assert.notEqual(
         verify(checks.map((check, position) => (position === index ? { ...check, check_suite: { id: 2 } } : check)))
           .status,

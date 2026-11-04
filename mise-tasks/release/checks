@@ -9,9 +9,9 @@ commit="${1:-$(git rev-parse HEAD)}"
   echo 'Expected a full commit hash.' >&2
   exit 1
 }
-gh api "repos/misaon/nylzo/commits/${commit}/check-runs?per_page=100" | jq -e --argjson required "$required_checks" '
+gh api --paginate "repos/misaon/nylzo/commits/${commit}/check-runs?per_page=100" | jq -se --argjson required "$required_checks" '
   def passed: .app.slug == "github-actions" and .conclusion == "success";
-  .check_runs as $checks
+  [.[].check_runs[]] as $checks
   | any($checks[] | select(.name == "Release verification" and passed);
       .check_suite.id as $suite
       | all($required[]; . as $name | any($checks[]; .name == $name and .check_suite.id == $suite and passed)))
