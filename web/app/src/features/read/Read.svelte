@@ -18,6 +18,10 @@
   const ended = $derived(page.phase === 'notice' && isEnded(page.notice));
 </script>
 
+<svelte:head>
+  <title>{translate('title.read')}</title>
+</svelte:head>
+
 <svelte:window
   onpagehide={page.leave}
   onbeforeunload={page.forgetPassphrase}

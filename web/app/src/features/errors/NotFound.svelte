@@ -10,7 +10,7 @@
 </script>
 
 <svelte:head>
-  <title>{translate('error.notFound.pageTitle')}</title>
+  <title>{translate('title.notFound')}</title>
 </svelte:head>
 
 <section class="px-4 pt-14 pb-20 sm:px-6 md:pt-20 md:pb-28" aria-labelledby="{id}-title">

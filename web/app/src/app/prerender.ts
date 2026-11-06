@@ -1,12 +1,17 @@
 import { render } from 'svelte/server';
 
 import { agentsGuide } from '../features/agents/agents-content.ts';
+import { LONGEST_TTL_DAYS } from '../features/create/composer/create-form.ts';
+import { FAQ_KEYS } from '../features/create/sections/faq-entries.ts';
 import { STATUS_PAGES } from '../features/errors/status-page.ts';
 import type { StatusPage } from '../features/errors/status-page.ts';
 import StatusDocument from '../features/errors/StatusDocument.svelte';
+import { formatDays } from '../shared/language/format.ts';
 import { LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
+import type { Translate } from '../shared/language/translator.svelte.ts';
+import { REPOSITORY_URL } from '../shared/shell/repository.ts';
 import App from './App.svelte';
 import { HOME_PATHS } from './pages.ts';
 
@@ -36,6 +41,7 @@ const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/u;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
 const FONT_FACE = /@font-face\{[^}]*\}/gu;
+const APPLE_TOUCH_ICON = /<link rel="apple-touch-icon" href="([^"]+)"/u;
 const MODULE_SCRIPT = /<script type="module"[^>]*><\/script>\s*/u;
 const MODULE_PRELOAD = /<link rel="modulepreload"[^>]*>\s*/gu;
 const MONO_FONT_PRELOAD = /<link rel="preload" href="\/assets\/geist-mono-[\w-]+\.woff2"[^>]*>\n?/gu;
@@ -75,35 +81,59 @@ function replaceOnce(source: string, pattern: RegExp | string, replacement: stri
   return source.replace(pattern, () => replacement);
 }
 
-function structuredData(language: Language, description: string): unknown {
+function structuredData(language: Language, translate: Translate, logo: string): unknown {
+  const organization = { '@id': `${absolute('/')}#organization` };
+  const days = formatDays(LONGEST_TTL_DAYS, language);
   return {
     '@context': 'https://schema.org',
     '@graph': [
+      {
+        '@type': 'Organization',
+        ...organization,
+        name: 'Nylzo',
+        url: REPOSITORY_URL,
+        logo: absolute(logo),
+        sameAs: [REPOSITORY_URL],
+      },
       {
         '@type': 'WebSite',
         '@id': `${absolute('/')}#website`,
         name: 'Nylzo',
         url: absolute('/'),
         inLanguage: LANGUAGES,
+        publisher: organization,
       },
       {
         '@type': 'WebApplication',
         '@id': `${absolute('/')}#app`,
         name: 'Nylzo',
         url: absolute(HOME_PATHS[language]),
-        description,
+        description: translate('seo.description'),
         inLanguage: language,
         applicationCategory: 'SecurityApplication',
         operatingSystem: 'Any',
         browserRequirements: 'Requires JavaScript and the Web Crypto API',
         license: 'https://opensource.org/license/mit',
+        isAccessibleForFree: true,
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+        publisher: organization,
         isPartOf: { '@id': `${absolute('/')}#website` },
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${absolute(HOME_PATHS[language])}#faq`,
+        inLanguage: language,
+        mainEntity: FAQ_KEYS.map((key) => ({
+          '@type': 'Question',
+          name: translate(`${key}.question`),
+          acceptedAnswer: { '@type': 'Answer', text: translate(`${key}.answer`, { days }) },
+        })),
       },
     ],
   };
 }
 
-function seoHead(language: Language, image: OgImage): string {
+function seoHead(language: Language, image: OgImage, logo: string): string {
   const { translate } = new Translator(language);
   const shared = [
     meta('og:type', 'website'),
@@ -126,7 +156,7 @@ function seoHead(language: Language, image: OgImage): string {
     meta('og:image:width', String(image.width)),
     meta('og:image:height', String(image.height)),
     meta('og:image:alt', translate('seo.image')),
-    `<script type="application/ld+json">${jsonScript(structuredData(language, translate('seo.description')))}</script>`,
+    `<script type="application/ld+json">${jsonScript(structuredData(language, translate, logo))}</script>`,
   ];
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
 }
@@ -162,7 +192,11 @@ export function homeTemplate(index: string, language: Language, { image, styles 
   const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language } } });
   let page = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}">`);
   page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/u, '');
-  page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}\n${seoHead(language, image)}`);
+  const logo = APPLE_TOUCH_ICON.exec(index)?.[1];
+  if (logo === undefined) {
+    throw new Error('prerender: the index has no apple touch icon for the organization logo');
+  }
+  page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}\n${seoHead(language, image, logo)}`);
   page = replaceOnce(page, '</head>', `${REVEAL_WITHOUT_SCRIPT}\n</head>`);
   page = fontPreloads(inlineStyles(page, styles), language);
   return replaceOnce(page, '<body></body>', `<body>${body}</body>`);

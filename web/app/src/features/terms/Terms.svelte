@@ -43,6 +43,10 @@
   const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
 </script>
 
+<svelte:head>
+  <title>{translate('title.terms')}</title>
+</svelte:head>
+
 <article aria-labelledby="legal-title">
   <p class="text-eyebrow text-aegis-300 uppercase">{translate('terms.eyebrow')}</p>
   <h1 id="legal-title" class="mt-3 font-display text-page font-light text-ink md:text-page-lg">

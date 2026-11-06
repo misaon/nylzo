@@ -4,25 +4,13 @@
   import Accordion from '../../../shared/ui/accordion/Accordion.svelte';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import { LONGEST_TTL_DAYS } from '../composer/create-form.ts';
+  import { FAQ_COLUMNS } from './faq-entries.ts';
 
   const translator = getTranslator();
   const { translate } = translator;
   const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
 
-  const columns = [
-    [
-      { key: 'faq.unopened', order: 'max-md:order-1' },
-      { key: 'faq.passphrase', order: 'max-md:order-3' },
-      { key: 'faq.save', order: 'max-md:order-5' },
-      { key: 'faq.operator', order: 'max-md:order-7' },
-    ],
-    [
-      { key: 'faq.opened', order: 'max-md:order-2' },
-      { key: 'faq.intercepted', order: 'max-md:order-4' },
-      { key: 'faq.free', order: 'max-md:order-6' },
-      { key: 'faq.audit', order: 'max-md:order-8' },
-    ],
-  ] as const;
+  const columns = FAQ_COLUMNS;
   const COLUMN_DELAYS = ['md:[--rv-delay:0ms]', 'md:[--rv-delay:110ms]'] as const;
 </script>
 

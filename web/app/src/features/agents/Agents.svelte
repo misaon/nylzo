@@ -8,6 +8,10 @@
   const { translate } = getTranslator();
 </script>
 
+<svelte:head>
+  <title>{translate('title.agents')}</title>
+</svelte:head>
+
 {#snippet link({ label, href }: AgentLink, placement: string)}
   <a {href} class={[placement, 'text-caption', TEXT_LINK]}>{translate(label)}</a>
 {/snippet}

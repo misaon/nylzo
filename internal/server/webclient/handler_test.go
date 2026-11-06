@@ -54,7 +54,7 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 		"Slackbot",
 		"",
 	); response.Code != http.StatusOK ||
-		response.Body.String() != webclient.PreviewHTML {
+		response.Body.String() != webclient.PreviewHTML("https://nylzo.example", "") {
 		t.Fatalf("link preview received executable application content: %s", response.Body.String())
 	}
 	if response := request(

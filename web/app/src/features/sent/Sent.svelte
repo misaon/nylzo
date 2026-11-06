@@ -169,6 +169,10 @@
   }
 </script>
 
+<svelte:head>
+  <title>{translate('title.sent')}</title>
+</svelte:head>
+
 {#snippet emptyCard(icon: 'inbox' | 'alert', title: string, text: string, tone: string)}
   <span class={['grid size-14 place-items-center rounded-full', tone]} aria-hidden="true">
     <Icon name={icon} class="size-6" stroke={1.6} />

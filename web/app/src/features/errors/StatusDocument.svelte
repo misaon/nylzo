@@ -20,7 +20,7 @@
 </script>
 
 <svelte:head>
-  <title>{translate(page === 'error' ? 'error.server.pageTitle' : 'maintenance.pageTitle')}</title>
+  <title>{translate(page === 'error' ? 'title.serverError' : 'title.maintenance')}</title>
   {#if page === 'maintenance'}
     <meta http-equiv="refresh" content={String(MAINTENANCE_RELOAD_SECONDS)} />
   {/if}

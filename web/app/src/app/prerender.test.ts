@@ -10,6 +10,7 @@ const INDEX = `<!doctype html>
 <meta name="description" content="Nylzo">
 <title>Nylzo</title>
 <script type="module" crossorigin src="/assets/index-a1.js"></script>
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon-a7.png">
 <link rel="stylesheet" crossorigin href="/assets/style-b2.css">
 <link rel="preload" href="/assets/geist-czech-c3.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/geist-latin-ext-wght-normal-f6.woff2" as="font" type="font/woff2" crossorigin>
@@ -66,15 +67,31 @@ describe('homeTemplate', () => {
     expect(page).toContain('geist-latin-wght-normal-d4.woff2" as="font"');
   });
 
-  it('writes structured data that parses and matches the visible description', () => {
+  it('writes structured data that parses and matches the visible description and FAQ (TX12)', () => {
     const page = homeTemplate(INDEX, 'cs', ASSETS);
     const [, json = ''] = /<script type="application\/ld\+json">([^<]*)<\/script>/u.exec(page) ?? [];
-    const data = JSON.parse(json) as { '@graph': { '@type': string; url: string; description?: string }[] };
+    const data = JSON.parse(json) as {
+      '@graph': {
+        '@type': string;
+        url?: string;
+        description?: string;
+        logo?: string;
+        mainEntity?: { name: string; acceptedAnswer: { text: string } }[];
+      }[];
+    };
     const types = data['@graph'].map((node) => node['@type']);
-    expect(types).toEqual(['WebSite', 'WebApplication']);
+    expect(types).toEqual(['Organization', 'WebSite', 'WebApplication', 'FAQPage']);
+    expect(data['@graph'][0]?.logo).toBe('__NYLZO_PUBLIC_URL__/assets/apple-touch-icon-a7.png');
     const description = /<meta name="description" content="([^"]*)"/u.exec(page)?.[1];
-    expect(data['@graph'][1]?.description).toBe(description);
-    expect(data['@graph'][1]?.url).toBe('__NYLZO_PUBLIC_URL__/cs/');
+    expect(data['@graph'][2]?.description).toBe(description);
+    expect(data['@graph'][2]?.url).toBe('__NYLZO_PUBLIC_URL__/cs/');
+    const questions = data['@graph'][3]?.mainEntity ?? [];
+    expect(questions).toHaveLength(8);
+    const visible = (text: string) => page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text);
+    for (const { name, acceptedAnswer } of questions) {
+      expect(visible(name), name).toBe(true);
+      expect(visible(acceptedAnswer.text), acceptedAnswer.text).toBe(true);
+    }
   });
 
   it('refuses an index it cannot place the page in', () => {

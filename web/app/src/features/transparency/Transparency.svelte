@@ -146,6 +146,10 @@
   void load();
 </script>
 
+<svelte:head>
+  <title>{translate('title.transparency')}</title>
+</svelte:head>
+
 {#snippet heading(id: string, icon: IconName, title: string)}
   <div class="flex items-center gap-3">
     <IconTile {icon} tone="current" size="medium" />
