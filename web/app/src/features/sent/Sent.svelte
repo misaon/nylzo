@@ -1,5 +1,8 @@
 <script lang="ts">
   import { tick } from 'svelte';
+  import { flip } from 'svelte/animate';
+  import { cubicOut } from 'svelte/easing';
+  import { fade } from 'svelte/transition';
 
   import type { MessageState } from '../../shared/api/api-errors.ts';
   import { createApi } from '../../shared/api/api.ts';
@@ -12,6 +15,7 @@
   import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
   import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
+  import { motionMs } from '../../shared/ui/motion.ts';
   import StateCard from '../../shared/ui/notice/StateCard.svelte';
   import { createSentPage } from './sent-page.ts';
   import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
@@ -219,7 +223,11 @@
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
         {const live = $derived(pending || (item.state.kind === 'loaded' && !item.ended))}
-        <li class="rounded-pane bg-white/4 p-4 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 sm:p-6">
+        <li
+          class="rounded-pane bg-white/4 p-4 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 sm:p-6"
+          animate:flip={{ duration: motionMs(500), easing: cubicOut }}
+          out:fade={{ duration: motionMs(300) }}
+        >
           <div
             class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
           >
@@ -243,7 +251,7 @@
               </h3>
               <span
                 class={[
-                  'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1',
+                  'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow] duration-300 ease-silk',
                   pending ? 'inline-grid' : 'inline-flex',
                   badge.tone === 'live' && 'bg-aegis-500/12 text-aegis-200 ring-aegis-400/35',
                   badge.tone === 'quiet' && 'bg-white/6 text-ink-soft ring-white/12',

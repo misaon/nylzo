@@ -388,6 +388,6 @@ function submit(form: Composer): Promise<void> {
 
 function focusTarget(form: Composer, target: Parameters<typeof form.focus.attach>[0]): ReturnType<typeof vi.fn> {
   const focus = vi.fn<(...arguments_: unknown[]) => void>();
-  form.focus.attach(target)({ focus } as unknown as HTMLElement);
+  form.focus.attach(target)({ focus, scrollIntoView: vi.fn<() => void>() } as unknown as HTMLElement);
   return focus;
 }

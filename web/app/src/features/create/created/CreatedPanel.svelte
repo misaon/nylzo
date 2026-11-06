@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
+  import { fade } from 'svelte/transition';
 
   import { formatMoment } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
@@ -9,6 +10,7 @@
   import { FocusTargets } from '../../../shared/ui/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
+  import { motionMs } from '../../../shared/ui/motion.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
   import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
@@ -126,6 +128,7 @@
     entered ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
   ]}
   {@attach enter}
+  out:fade={{ duration: motionMs(400) }}
 >
   <div
     class="relative flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-9 text-center sm:px-10 md:py-12"

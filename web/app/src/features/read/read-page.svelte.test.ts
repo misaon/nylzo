@@ -382,6 +382,6 @@ describe('read page interactions', () => {
 
 function focusTarget(page: ReadPage, target: Parameters<typeof page.focus.attach>[0]): ReturnType<typeof vi.fn> {
   const focus = vi.fn<(...arguments_: unknown[]) => void>();
-  page.focus.attach(target)({ focus } as unknown as HTMLElement);
+  page.focus.attach(target)({ focus, scrollIntoView: vi.fn<() => void>() } as unknown as HTMLElement);
   return focus;
 }

@@ -177,6 +177,18 @@
     &::backdrop {
       background: oklch(0.08 0.02 275 / 0.7);
       backdrop-filter: blur(6px);
+      transition:
+        opacity 0.3s var(--ease-silk),
+        display 0.3s allow-discrete,
+        overlay 0.3s allow-discrete;
+    }
+    &:not([open])::backdrop {
+      opacity: 0;
+    }
+    @starting-style {
+      &[open]::backdrop {
+        opacity: 0;
+      }
     }
   }
 }

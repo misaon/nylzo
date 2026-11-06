@@ -3,6 +3,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import PipelineRing from '../../../shared/pipeline/PipelineRing.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { lingering } from '../../../shared/ui/lingering.ts';
   import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
   import type { Composer } from './composer.svelte.ts';
 
@@ -17,14 +18,19 @@
   const id = $props.id();
   const COUNTER_FROM = 0.8;
 
+  const keepName = lingering();
+  const keepSize = lingering();
+  const fileName = $derived(keepName(composer.file?.name ?? ''));
   const fileSize = $derived.by(() => {
     if (!composer.file) {
-      return '';
+      return keepSize('');
     }
     const size = formatBytes(composer.file.size, translator.language);
-    return composer.problemOf.file === undefined
-      ? size
-      : translate('compose.file.over', { size, limit: formatBytes(composer.fileLimit, translator.language) });
+    return keepSize(
+      composer.problemOf.file === undefined
+        ? size
+        : translate('compose.file.over', { size, limit: formatBytes(composer.fileLimit, translator.language) }),
+    );
   });
 </script>
 
@@ -54,7 +60,7 @@
   <div class="pointer-events-none absolute inset-x-4 bottom-3 flex items-center justify-between gap-3">
     <span
       class={[
-        'flex h-9 min-w-0 origin-left items-center gap-2.5 rounded-control pr-1 pl-1.5 text-caption transition-[opacity,translate,scale] duration-500 ease-silk',
+        'flex h-9 min-w-0 origin-left items-center gap-2.5 rounded-control pr-1 pl-1.5 text-caption transition-[opacity,translate,scale,background-color,box-shadow] duration-500 ease-silk',
         composer.problemOf.file
           ? 'bg-[rgb(244_63_94/0.14)] shadow-[inset_0_0_0_1px_rgb(251_113_133/0.65),0_4px_14px_-6px_rgb(0_0_0/0.5)]'
           : 'bg-nebula-400/10 shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_4px_14px_-6px_rgb(0_0_0/0.5)] ring-1 ring-nebula-300/30',
@@ -72,7 +78,7 @@
       <span
         translate="no"
         class={['truncate font-medium md:max-w-[220px]', composer.problemOf.file ? 'text-[#ffe4e6]' : 'text-ink']}
-        >{composer.file?.name ?? ''}</span
+        >{fileName}</span
       >
       <span
         class={[

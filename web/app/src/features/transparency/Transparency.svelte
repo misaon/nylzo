@@ -201,7 +201,7 @@
     <p class="mt-2 max-w-[560px] text-body text-pretty text-ink-soft">{translate('transparency.intro')}</p>
     {#if data}
       <ul
-        class="mt-5 grid gap-2.5 rounded-pane bg-aegis-500/6 p-4 text-body-sm text-ink ring-1 ring-aegis-400/20 sm:p-5"
+        class="mt-5 grid animate-appear gap-2.5 rounded-pane bg-aegis-500/6 p-4 text-body-sm text-ink ring-1 ring-aegis-400/20 sm:p-5"
       >
         {#each SUMMARY as item (item)}
           <li class="flex items-start gap-2.5">
@@ -210,11 +210,11 @@
           </li>
         {/each}
       </ul>
-      <p class="mt-3 flex max-w-[600px] items-center gap-2 text-caption text-pretty text-ink-mute">
+      <p class="mt-3 flex max-w-[600px] animate-appear items-center gap-2 text-caption text-pretty text-ink-mute">
         <Icon name="info" class="size-4 shrink-0" />
         <span>{translate('transparency.configured')}</span>
       </p>
-      <nav aria-label={translate('transparency.contents')} class="mt-6">
+      <nav aria-label={translate('transparency.contents')} class="mt-6 animate-appear">
         <ul class="flex flex-wrap gap-2">
           {#each SECTIONS as section (section.id)}
             <li>
@@ -244,7 +244,7 @@
     </StateCard>
   {:else if data}
     {const operator = $derived(data.operator)}
-    <section aria-labelledby="transparency-operator" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-operator" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-operator', 'rack', translate('transparency.operator.title'))}
       {#if operator && (operator.name || operator.contact || operator.hosting)}
         <dl class="mt-5 grid gap-3 sm:grid-cols-2">
@@ -279,13 +279,13 @@
       {/if}
     </section>
 
-    <section aria-labelledby="transparency-stores" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-stores" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-stores', 'storage', translate('transparency.stores.title'))}
       {@render entries(stored(data))}
       {@render caution(translate('transparency.stores.enforced.title'), translate('transparency.stores.enforced'))}
     </section>
 
-    <section aria-labelledby="transparency-logs" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-logs" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-logs', 'list', translate('transparency.logs.title'))}
       <div class="mt-6 grid gap-3 sm:grid-cols-2">
         <div class={[CARD, 'p-4 sm:p-5']}>
@@ -298,7 +298,7 @@
       </div>
     </section>
 
-    <section aria-labelledby="transparency-checks" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-checks" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-checks', 'list', translate('transparency.checks.title'))}
       <p class="mt-4 max-w-[720px] text-body-sm text-pretty text-ink-soft">{translate('transparency.checks.note')}</p>
       <dl class="mt-4">
@@ -313,7 +313,7 @@
       </dl>
     </section>
 
-    <section aria-labelledby="transparency-others" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-others" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-others', 'eye', translate('transparency.others.title'))}
       {@render entries([
         {
@@ -324,7 +324,7 @@
       {@render caution(translate('transparency.others.client.title'), translate('transparency.others.client'))}
     </section>
 
-    <section aria-labelledby="transparency-personal" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-personal" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-personal', 'person', translate('transparency.personal.title'))}
       {@render entries(
         PERSONAL.map((name) => ({
@@ -334,7 +334,7 @@
       )}
     </section>
 
-    <section aria-labelledby="transparency-limits" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-limits" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-limits', 'gauge', translate('transparency.limits.title'))}
       <dl class="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
         {#each stats(data) as stat (stat.key)}
@@ -356,7 +356,7 @@
       </dl>
     </section>
 
-    <section aria-labelledby="transparency-verify" class="border-t border-white/8 pt-8">
+    <section aria-labelledby="transparency-verify" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-verify', 'shieldCheck', translate('transparency.verify.title'))}
       <dl class="mt-6 grid gap-3 sm:grid-cols-2">
         {@render fact(translate('transparency.client.version'), BUILD_INFO.version, 'client-version')}

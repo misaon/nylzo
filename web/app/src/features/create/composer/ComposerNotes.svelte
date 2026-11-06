@@ -2,6 +2,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { lingering } from '../../../shared/ui/lingering.ts';
   import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
   import ServiceCallout from '../../../shared/ui/notice/ServiceCallout.svelte';
   import type { Composer } from './composer.svelte.ts';
@@ -15,6 +16,8 @@
   const { translate } = getTranslator();
 
   const failed = $derived(composer.failureNotice !== '');
+  const keepProblem = lingering();
+  const problemNotice = $derived(keepProblem(composer.problemNotice));
   const quiet = $derived(composer.notice === '' && composer.phase !== 'done');
   const rememberedShown = $derived(composer.remembered === 'remembered' || composer.remembered === 'failed');
   const rememberedText = $derived.by(() => {
@@ -54,10 +57,10 @@
   <div
     class={[
       'absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center text-center fade-swap',
-      composer.problemNotice === '' ? 'pointer-events-none opacity-0' : 'opacity-100',
+      composer.problemNotice === '' ? 'pointer-events-none invisible opacity-0' : 'opacity-100',
     ]}
   >
-    <p id={noticeId} role="alert" class="font-medium text-[#fda4af]">{composer.problemNotice}</p>
+    <p id={noticeId} role="alert" class="font-medium text-[#fda4af]">{problemNotice}</p>
   </div>
   <div
     class={[

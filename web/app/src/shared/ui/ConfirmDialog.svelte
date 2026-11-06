@@ -30,12 +30,18 @@
     };
   };
 
-  function report(confirmed: boolean) {
+  // The parent unmounts the dialog when told, so the closing transition must finish first.
+  async function report(confirmed: boolean) {
     if (reported) {
       return;
     }
     reported = true;
-    dialog?.close();
+    const closing = dialog;
+    closing?.close();
+    const animations = closing?.getAnimations() ?? [];
+    if (animations.length > 0) {
+      await Promise.allSettled(animations.map(async (animation) => animation.finished));
+    }
     if (confirmed) {
       onconfirm();
     } else {
@@ -48,8 +54,8 @@
   class="confirm w-[min(26rem,calc(100vw-2rem))] max-w-none rounded-card p-6 text-center glass-pop"
   aria-labelledby={id}
   {@attach modal}
-  oncancel={() => report(false)}
-  onclose={() => report(false)}
+  oncancel={() => void report(false)}
+  onclose={() => void report(false)}
 >
   <span
     class={[
@@ -65,8 +71,8 @@
     <p class="mt-1.5 text-body text-pretty text-ink-soft">{message}</p>
   {/if}
   <div class="mt-6 grid grid-cols-2 gap-2">
-    <Button variant="ghost" onclick={() => report(false)}>{dismiss}</Button>
-    <Button variant={tone === 'danger' ? 'danger' : 'primary'} onclick={() => report(true)}>
+    <Button variant="ghost" onclick={() => void report(false)}>{dismiss}</Button>
+    <Button variant={tone === 'danger' ? 'danger' : 'primary'} onclick={() => void report(true)}>
       {#if tone === 'danger'}
         <Icon name={icon} class="size-4 shrink-0" animated />
       {/if}

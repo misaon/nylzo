@@ -1,6 +1,12 @@
 import { tick } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 
+// A plain focus() jumps the page to the element; this scrolls only when needed, with the page's smooth scrolling.
+function focusGently(element: HTMLElement | undefined): void {
+  element?.focus({ preventScroll: true });
+  element?.scrollIntoView({ block: 'nearest' });
+}
+
 export function keepFocus(fallback: HTMLElement | undefined): void {
   const active = document.activeElement;
   const lost =
@@ -9,7 +15,7 @@ export function keepFocus(fallback: HTMLElement | undefined): void {
     !active.isConnected ||
     (active instanceof HTMLButtonElement && active.disabled);
   if (lost) {
-    fallback?.focus();
+    focusGently(fallback);
   }
 }
 
@@ -33,7 +39,7 @@ export class FocusTargets<Target extends string> {
   }
 
   focus(target: Target): void {
-    this.#elements[target]?.focus();
+    focusGently(this.#elements[target]);
   }
 
   get(target: Target): HTMLElement | undefined {

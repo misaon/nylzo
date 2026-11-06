@@ -64,7 +64,9 @@
   {/if}
 {/snippet}
 
-<footer class="relative z-10 px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6">
+<footer
+  class="relative z-10 animate-appear px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] [animation-delay:240ms] sm:px-6"
+>
   {#if compact}
     <div
       class="glass-soft mx-auto flex max-w-[1160px] flex-col gap-5 rounded-card p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:flex-row sm:items-center sm:justify-between md:px-8"

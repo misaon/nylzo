@@ -12,7 +12,7 @@
   <a {href} class={[placement, 'text-caption', TEXT_LINK]}>{translate(label)}</a>
 {/snippet}
 
-<div class="mx-auto max-w-[1040px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+<div class="mx-auto max-w-[1040px] animate-rise px-4 pt-16 pb-24 [animation-delay:80ms] sm:px-6 md:pt-24">
   <div class="max-w-[680px]">
     <p class="text-eyebrow text-aegis-300 uppercase">{translate('agents.eyebrow')}</p>
     <h1 class="mt-3 font-display text-page font-light text-balance text-ink md:text-page-lg">

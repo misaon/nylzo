@@ -2,6 +2,7 @@
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
+  import { lingering } from '../../shared/ui/lingering.ts';
   import type { ReadPage } from './read-page.svelte.ts';
 
   interface Props {
@@ -10,6 +11,8 @@
 
   const { page }: Props = $props();
   const { translate } = getTranslator();
+  const keepBurnNote = lingering();
+  const burnNote = $derived(keepBurnNote(page.burnNote));
 
   const ACTION_STATES = {
     on: 'opacity-100',
@@ -38,11 +41,11 @@
       class={[
         'flex items-center justify-center gap-2 text-center fade-swap max-sm:block max-sm:text-balance',
         page.burnFailed ? 'text-rose-300' : 'text-ink-soft',
-        page.burnNote ? 'opacity-100' : 'opacity-0',
+        page.burnNote ? 'opacity-100' : 'invisible opacity-0',
       ]}
     >
       <Icon name={page.burnFailed ? 'alert' : 'check'} stroke={1.7} class={NOTE_ICON} />
-      {page.burnNote}
+      {burnNote}
     </p>
   </div>
   <div

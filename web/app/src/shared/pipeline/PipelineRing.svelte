@@ -85,7 +85,7 @@
           class="transition-[stroke-dasharray] duration-500 ease-silk"
         ></circle>
       </g>
-      <g transform="rotate({progress * 360} 60 60)">
+      <g transform="rotate({progress * 360} 60 60)" class="transition-transform duration-500 ease-silk">
         <circle
           cx="114"
           cy="60"

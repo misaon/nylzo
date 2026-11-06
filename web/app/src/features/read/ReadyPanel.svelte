@@ -4,6 +4,7 @@
   import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
+  import { lingering } from '../../shared/ui/lingering.ts';
   import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../shared/ui/private-fields.ts';
   import type { ReadPage } from './read-page.svelte.ts';
   import { panelClasses } from './read-page.svelte.ts';
@@ -50,6 +51,8 @@
     return page.ready?.leaseEnded ? translate('read.lease_ended') : '';
   });
   const passphraseAlert = $derived(passphraseError || alert);
+  const keepAlert = lingering();
+  const shownAlert = $derived(keepAlert(passphraseAlert));
   const subtitle = $derived.by(() => {
     if (loading) {
       return translate('open.loading.text');
@@ -152,7 +155,10 @@
         <div class="mt-3 stack px-2 text-caption">
           <p
             id="{id}-passphrase-hint"
-            class={['flex items-center gap-2 text-ink-mute fade-swap', passphraseAlert ? 'opacity-0' : 'opacity-100']}
+            class={[
+              'flex items-center gap-2 text-ink-mute fade-swap',
+              passphraseAlert ? 'invisible opacity-0' : 'opacity-100',
+            ]}
           >
             <Icon name="info" class="size-4 shrink-0" />
             {translate('open.passphrase.hint')}
@@ -160,10 +166,13 @@
           <p
             id="{id}-passphrase-alert"
             role="alert"
-            class={['flex items-center gap-2 text-rose-300 fade-swap', passphraseAlert ? 'opacity-100' : 'opacity-0']}
+            class={[
+              'flex items-center gap-2 text-rose-300 fade-swap',
+              passphraseAlert ? 'opacity-100' : 'invisible opacity-0',
+            ]}
           >
             <Icon name="alert" class="size-4 shrink-0" />
-            {passphraseAlert}
+            {shownAlert}
           </p>
         </div>
       </div>

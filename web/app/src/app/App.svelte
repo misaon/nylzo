@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import { prefersReducedMotion } from 'svelte/motion';
 
   import Agents from '../features/agents/Agents.svelte';
   import Create from '../features/create/Create.svelte';
@@ -49,8 +50,16 @@
     if (translator.language === language) {
       return;
     }
-    translator.language = language;
-    document.documentElement.lang = language;
+    const applyLanguage = async () => {
+      translator.language = language;
+      document.documentElement.lang = language;
+      await tick();
+    };
+    if (prefersReducedMotion.current || typeof document.startViewTransition !== 'function') {
+      void applyLanguage();
+    } else {
+      document.startViewTransition(applyLanguage);
+    }
     saveLanguage(browserPreferences(), language);
     if (screen === 'create') {
       history.replaceState(history.state, '', `${HOME_PATHS[language]}${location.hash}`);
@@ -78,7 +87,7 @@
           <NotFound />
         {:else}
           <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
-            <div class="glass rounded-card p-6 md:p-10">
+            <div class="glass animate-rise rounded-card p-6 [animation-delay:80ms] md:p-10">
               {#if screen === 'sent'}
                 <Sent />
               {:else if screen === 'terms'}
