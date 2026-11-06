@@ -91,16 +91,20 @@
         <span
           class="pointer-events-none absolute top-[calc(50%-14px)] right-[calc(50%+30px)] -left-5 hidden h-px bg-linear-to-r from-white/6 to-white/24 md:block"
         >
-          <span
-            class="absolute top-1/2 left-0 h-[3px] w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-r from-transparent via-ink to-transparent opacity-0 blur-[0.5px] motion-safe:animate-who-flow-in"
-          ></span>
+          <span class="absolute inset-0 opacity-0 motion-safe:animate-who-flow-in">
+            <span
+              class="absolute top-1/2 left-0 h-[3px] w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-r from-transparent via-ink to-transparent blur-[0.5px]"
+            ></span>
+          </span>
         </span>
         <span
           class="pointer-events-none absolute top-[calc(50%-14px)] -right-5 left-[calc(50%+30px)] hidden h-px bg-linear-to-r from-aegis-400/60 to-aegis-400/15 md:block"
         >
-          <span
-            class="absolute top-1/2 left-0 h-[3px] w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-r from-transparent via-aegis-200 to-transparent opacity-0 blur-[0.5px] motion-safe:animate-who-flow-out"
-          ></span>
+          <span class="absolute inset-0 opacity-0 motion-safe:animate-who-flow-out">
+            <span
+              class="absolute top-1/2 left-0 h-[3px] w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-r from-transparent via-aegis-200 to-transparent blur-[0.5px]"
+            ></span>
+          </span>
         </span>
         <div class="flex flex-row items-center gap-3 md:flex-col">
           <span class="relative grid size-11 shrink-0 place-items-center">
