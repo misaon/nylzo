@@ -167,7 +167,7 @@ test('a visitor and a sender who keeps the default leave no database, and every 
     return new Set(records.map(({ id }) => id));
   };
   expect(await storedIds()).toEqual(new Set([EXPIRED_RECORD_ID, kept]));
-  await sender.goto('/report');
+  await sender.goto('/terms');
   await expect.poll(storedIds).toEqual(new Set([kept]));
 });
 

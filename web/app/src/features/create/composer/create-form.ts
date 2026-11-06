@@ -6,6 +6,10 @@ import type { CreateFailure, CreateProblem, FileInput } from '../create-message.
 
 export const TTL_CHOICES = [3600, 86_400, 259_200, 604_800] as const;
 
+const SECONDS_PER_DAY = 86_400;
+
+export const LONGEST_TTL_DAYS = Math.max(...TTL_CHOICES) / SECONDS_PER_DAY;
+
 type TtlChoice = (typeof TTL_CHOICES)[number];
 
 function isTtlChoice(seconds: number): seconds is TtlChoice {

@@ -63,7 +63,7 @@
 </script>
 
 <section aria-labelledby="transparency-title">
-  <h2 id="transparency-title" class={PAGE_TITLE}>{translate('transparency.title')}</h2>
+  <h1 id="transparency-title" class={PAGE_TITLE}>{translate('transparency.title')}</h1>
   <p class={PAGE_TEXT}>{translate('transparency.intro')}</p>
 
   <h3 class={HEADING}>{translate('transparency.client.title')}</h3>

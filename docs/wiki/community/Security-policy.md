@@ -12,7 +12,7 @@ Include:
 
 Do not send real message links, passphrases or other people's data. A link made on a local test server is enough.
 
-To report a message on a public instance that carries fraud, malware or illegal content, use the instance's `/report` page instead. This policy covers flaws in Nylzo itself.
+To report a message on a public instance that carries fraud, malware or illegal content, write to the operator contact on the instance's `/transparency` page instead, if it lists one. This policy covers flaws in Nylzo itself.
 
 ## Scope
 

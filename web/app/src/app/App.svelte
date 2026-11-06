@@ -1,10 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
+  import Agents from '../features/agents/Agents.svelte';
   import Create from '../features/create/Create.svelte';
   import Read from '../features/read/Read.svelte';
-  import Report from '../features/report/Report.svelte';
   import Sent from '../features/sent/Sent.svelte';
+  import Terms from '../features/terms/Terms.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
@@ -20,10 +21,11 @@
   }
 
   const HEADER_VARIANTS = {
+    agents: 'page',
     create: 'home',
     read: 'read',
-    report: 'page',
     sent: 'page',
+    terms: 'page',
     transparency: 'page',
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
@@ -68,13 +70,15 @@
           {/key}
         {:else if screen === 'create'}
           <Create />
+        {:else if screen === 'agents'}
+          <Agents />
         {:else}
           <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
             <div class="glass rounded-card p-6 md:p-10">
               {#if screen === 'sent'}
                 <Sent />
-              {:else if screen === 'report'}
-                <Report />
+              {:else if screen === 'terms'}
+                <Terms />
               {:else}
                 <Transparency />
               {/if}

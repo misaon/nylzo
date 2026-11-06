@@ -116,7 +116,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   await expectAccessible(page, 'refused passphrase', '#create');
 });
 
-test('the read page in every state, with its report form and its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({
+test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -176,18 +176,15 @@ test('the sent list, empty and with a message, and its cancel dialog pass axe wi
   await expectAccessible(page, 'cancel dialog');
 });
 
-test('the report page with and without problems and the transparency page pass axe with 44 px targets on a phone (AK20)', async ({
-  newPage,
-}) => {
+test('the transparency, terms and agents pages pass axe with 44 px targets on a phone (AK20)', async ({ newPage }) => {
   const page = await newPage(PHONE);
-  await page.goto('/report');
-  await expectAccessible(page, 'report');
-  await page.getByLabel('Link to the message').fill('not a link');
-  await page.getByLabel('Reason, optional').fill('x'.repeat(1001));
-  await page.getByRole('button', { name: 'Send report' }).click();
-  await expect(page.getByLabel('Link to the message')).toBeFocused();
-  await expectAccessible(page, 'report with problems');
   await page.goto('/transparency');
   await expect(page.getByText('Nylzo e2e')).toBeVisible();
   await expectAccessible(page, 'transparency');
+  await page.goto('/terms');
+  await expect(page.getByRole('heading', { name: 'Terms of use', level: 1 })).toBeVisible();
+  await expectAccessible(page, 'terms');
+  await page.goto('/agents');
+  await expect(page.getByRole('heading', { name: 'Nylzo for AI agents', level: 1 })).toBeVisible();
+  await expectAccessible(page, 'agents');
 });

@@ -36,9 +36,9 @@ The signed `checksums.txt` also lists every file of the web client that the bina
 | --- | --- |
 | `home.en.html` | `/` |
 | `home.cs.html` | `/cs/` |
-| `index.html` | `/sent`, `/report`, `/transparency`, `/r` and `/m/{id}` |
+| `index.html` | `/sent`, `/transparency`, `/terms`, `/agents`, `/r` and `/m/{id}` |
 
-An instance fills its public URL into the marked blocks of a template and serves the result unchanged on every response. Its `/.well-known/nylzo/client.json` lists the template hashes under `templates`, which match `checksums.txt`, and the hashes of the pages as it sends them under `files`. [`nylzo web`](Verified-clients.md) serves the same files from the binary.
+`agents.md` is served unchanged on `/agents.md`. An instance fills its public URL into the marked blocks of a template and serves the result unchanged on every response. Its `/.well-known/nylzo/client.json` lists the template hashes under `templates`, which match `checksums.txt`, and the hashes of the pages as it sends them under `files`. [`nylzo web`](Verified-clients.md) serves the same files from the binary.
 
 Releases up to `v0.2.3` list `index.html` and the assets but not the two home templates; for those, extract the templates from a rebuild with `mise run release:verify`.
 

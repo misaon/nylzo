@@ -6,7 +6,6 @@ import { czech } from '../shared/language/czech.ts';
 import type { MessageKey } from '../shared/language/czech.ts';
 import { english } from '../shared/language/english.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
-import { MAX_REASON_BYTES } from '../shared/report/report.ts';
 import { RETENTION_DAYS } from '../shared/sent-records/sent-record.ts';
 
 describe('messages', () => {
@@ -15,7 +14,6 @@ describe('messages', () => {
       min: MIN_PASSPHRASE_CHARACTERS,
       words: WEAK_BELOW_WORDS,
       characters: WEAK_BELOW_CHARACTERS,
-      bytes: MAX_REASON_BYTES,
       days: RETENTION_DAYS,
     };
     for (const [language, messages] of [
@@ -38,6 +36,5 @@ describe('messages', () => {
     expect(translate('create.passphrase.weak', limits)).toContain(
       `${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARACTERS} characters`,
     );
-    expect(translate('report.problem.reason_too_long', limits)).toContain(`${MAX_REASON_BYTES} bytes`);
   });
 });

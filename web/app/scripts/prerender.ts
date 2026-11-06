@@ -13,6 +13,7 @@ interface HomeAssets {
 interface Prerender {
   readonly splitFontFaces: (css: string) => { readonly fontFaces: string; readonly inline: string };
   readonly homeTemplates: (index: string, assets: HomeAssets) => ReadonlyMap<string, string>;
+  readonly agentsMarkdown: () => string;
 }
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -44,6 +45,7 @@ const pages = prerender.homeTemplates(index, { image, styles });
 for (const [language, page] of pages) {
   writeFileSync(path.join(distribution, `home.${language}.html`), page);
 }
+writeFileSync(path.join(distribution, 'agents.md'), prerender.agentsMarkdown());
 
 // Seal every final template, including the font stylesheet created above.
 const bundled = new Map(

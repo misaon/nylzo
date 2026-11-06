@@ -177,7 +177,7 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	files := webFiles(t)
 	result := runVerify(t, newWebTestServer(t, files, "test", nil), files)
 	if result.code != command.ExitOK ||
-		result.stdout != "the server sends the web client of nylzo test unchanged: 7 pages and 5 files checked\n" {
+		result.stdout != "the server sends the web client of nylzo test unchanged: 8 pages and 5 files checked\n" {
 		t.Fatalf("%+v", result)
 	}
 	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)
@@ -244,10 +244,10 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"second CSP header", rewrite(pathIs("/sent"), func(response *served) {
 			response.header.Add("Content-Security-Policy", "script-src *")
 		}), "/sent: the Content-Security-Policy header differs"},
-		{"policy that admits another inline script", rewrite(pathIs("/report"), func(response *served) {
+		{"policy that admits another inline script", rewrite(pathIs("/terms"), func(response *served) {
 			policy := response.header.Get("Content-Security-Policy")
 			response.header.Set("Content-Security-Policy", strings.Replace(policy, "script-src 'self'", "script-src 'self' 'sha384-AAAA'", 1))
-		}), "/report: the Content-Security-Policy differs"},
+		}), "/terms: the Content-Security-Policy differs"},
 		{"inline style that the release does not have", rewrite(pathIs("/"), func(response *served) {
 			response.body = bytes.Replace(response.body, []byte("color:white"), []byte("background:url(https://evil.example/)"), 1)
 		}), "/: the page differs"},
@@ -272,9 +272,9 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"cookie on a file", rewrite(pathIs("/assets/style-b2.css"), func(response *served) {
 			response.header.Set("Set-Cookie", "tracked=1")
 		}), "/assets/style-b2.css: the server sent the Set-Cookie header"},
-		{"second content type", rewrite(pathIs("/report"), func(response *served) {
+		{"second content type", rewrite(pathIs("/terms"), func(response *served) {
 			response.header.Add("Content-Type", "text/plain")
-		}), "/report: the Content-Type header differs"},
+		}), "/terms: the Content-Type header differs"},
 		{"compressed page to a request without compression", rewrite(func(r *http.Request) bool {
 			return r.URL.Path == "/sent" && r.Header.Get("Accept-Encoding") == "identity"
 		}, func(response *served) {

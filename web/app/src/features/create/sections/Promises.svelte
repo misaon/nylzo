@@ -8,15 +8,14 @@
   import { TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
-  import { TTL_CHOICES } from '../composer/create-form.ts';
+  import { LONGEST_TTL_DAYS } from '../composer/create-form.ts';
   import { PROMISES } from './promises.ts';
 
   const translator = getTranslator();
   const { translate } = translator;
-  const SECONDS_PER_DAY = 86_400;
   const TOMBSTONE_DAYS = 7;
 
-  const longest = $derived(formatDays(Math.max(...TTL_CHOICES) / SECONDS_PER_DAY, translator.language));
+  const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
   const forgotten = $derived(formatDays(TOMBSTONE_DAYS, translator.language));
   const CARD =
     'glow-on-hover glass rv-rise hover-lift rounded-card p-6 [--rv-s:0.96] [--rv-step:120ms] [--rv-time:1.1s]';

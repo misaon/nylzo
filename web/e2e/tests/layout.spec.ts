@@ -154,7 +154,7 @@ for (const viewport of VIEWPORTS) {
     await expectNothingMoved(recipient, 'revealed and unscrambled');
   });
 
-  test(`nothing shifts or resizes on the sent list, the report page and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
+  test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
     newPage,
   }) => {
     const sender = await newPage({ viewport });
@@ -176,28 +176,7 @@ for (const viewport of VIEWPORTS) {
     await settle(sender);
     expect(await pagePosition(firstItem), 'cancelled').toEqual(before);
 
-    const reporter = await newPage({ viewport, ...FULL_MOTION });
-    await watchLayout(reporter);
     const message = await createMessageThroughApi({ text: 'layout', opensMax: 2 });
-    const link = reporter.getByLabel('Link to the message');
-    const send = reporter.getByRole('button', { name: 'Send report' });
-    await reporter.goto('/report');
-    await expect(link).toBeVisible();
-    await expectNothingMoved(reporter, 'report loaded');
-    await reporter.getByRole('checkbox', { name: /^I believe in good faith/u }).check();
-    const answers = [
-      { link: 'not a link', answer: 'The link is incomplete or damaged.' },
-      { link: message.link.replace('#2.', '#3.'), answer: 'The link needs a newer version of Nylzo.' },
-      { link: message.link.replace('#2.0.', '#2.2.'), answer: 'The link uses a retired passphrase method.' },
-      { link: message.link, answer: 'We received the report.' },
-    ];
-    for (const { link: pasted, answer } of answers) {
-      await link.fill(pasted);
-      await send.click();
-      await expect(reporter.getByText(answer)).toBeVisible();
-      await expectNothingMoved(reporter, answer);
-    }
-
     const recipient = await newPage({ viewport, ...FULL_MOTION });
     await watchLayout(recipient);
     await recipient.goto(message.link);

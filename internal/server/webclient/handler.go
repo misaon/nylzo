@@ -25,7 +25,7 @@ func NewHandler(build Build, publicURL string, information buildinfo.Info) (http
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	for _, path := range []string{"/{$}", "/cs/{$}", sentPath, "/report", "/transparency"} {
+	for _, path := range []string{"/{$}", "/cs/{$}", sentPath, "/transparency", "/terms", "/agents"} {
 		mux.HandleFunc("GET "+path, pages.For(strings.TrimSuffix(path, "{$}")).Serve)
 	}
 	mux.HandleFunc("GET /cs", func(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +57,7 @@ func NewHandler(build Build, publicURL string, information buildinfo.Info) (http
 		}
 		asset.Serve(w, r)
 	})
+	mux.HandleFunc("GET /"+agentsGuideFile, serveIfBuilt(build.AgentsGuide))
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write(robots)
@@ -74,6 +75,16 @@ func NewHandler(build Build, publicURL string, information buildinfo.Info) (http
 		_, _ = w.Write(manifest)
 	})
 	return frontendHeaders(mux), nil
+}
+
+func serveIfBuilt(asset *Asset) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if asset == nil {
+			http.NotFound(w, r)
+			return
+		}
+		asset.Serve(w, r)
+	}
 }
 
 func frontendHeaders(next http.Handler) http.Handler {

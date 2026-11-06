@@ -189,14 +189,14 @@
 <section aria-labelledby="sent-title">
   <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
     <div class="min-w-0">
-      <h2
+      <h1
         id="sent-title"
         tabindex="-1"
         class="font-display text-page font-light text-ink outline-none md:text-page-lg"
         {@attach focus.attach('title')}
       >
         {translate('sent.title')}
-      </h2>
+      </h1>
       <p class="mt-2 max-w-[540px] text-body text-pretty text-ink-soft">
         {translate('sent.note', { days: retention })}
       </p>

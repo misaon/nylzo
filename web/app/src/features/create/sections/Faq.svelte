@@ -3,12 +3,11 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Accordion from '../../../shared/ui/accordion/Accordion.svelte';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
-  import { TTL_CHOICES } from '../composer/create-form.ts';
+  import { LONGEST_TTL_DAYS } from '../composer/create-form.ts';
 
   const translator = getTranslator();
   const { translate } = translator;
-  const SECONDS_PER_DAY = 86_400;
-  const longest = $derived(formatDays(Math.max(...TTL_CHOICES) / SECONDS_PER_DAY, translator.language));
+  const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
 
   const columns = [
     [

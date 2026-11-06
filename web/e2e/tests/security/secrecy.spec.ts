@@ -126,10 +126,6 @@ test(
     await expectMessageShown(page);
     expect(filled).toEqual([]);
     await expect(page.locator('pre')).toHaveAttribute('translate', 'no');
-
-    await page.goto('/report');
-    await expectAttributes(page.getByLabel('Link to the message'), quiet);
-    await expectAttributes(page.getByLabel('Reason, optional'), quiet);
   },
 );
 

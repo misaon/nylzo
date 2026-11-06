@@ -10,6 +10,81 @@ export const english: Record<MessageKey, string> = {
   'hero.step.write': 'Write a message',
   'hero.step.send': 'Send the link',
   'hero.step.vanish': 'Gone once opened',
+  'terms.eyebrow': 'Legal',
+  'terms.title': 'Terms of use',
+  'terms.effective':
+    'Effective from 11 November 2026. The Czech version is binding; the English text is a translation.',
+  'terms.summary.title': 'In short',
+  'terms.summary.1': 'Nylzo is free, comes without warranty, and you use it voluntarily.',
+  'terms.summary.2':
+    'Your browser encrypts the message. We do not have the key, so we cannot read or recover the message.',
+  'terms.summary.3': 'Whoever sends a message is responsible for its content.',
+  'terms.summary.4': 'Fraud, malware and illegal content are not allowed.',
+  'terms.summary.note': 'This summary is for quick orientation. The full text below is binding.',
+  'terms.operator.title': 'Operator',
+  'terms.operator.1':
+    'The service at nylzo.com is run by a private individual (the “operator”) free of charge, without ads and outside any business.',
+  'terms.operator.2': 'The Nylzo software is open source under the MIT license. These terms apply only to nylzo.com.',
+  'terms.agreement.title': 'Agreement',
+  'terms.agreement.1': 'By creating or opening a message you agree to these terms.',
+  'terms.service.title': 'How the service works',
+  'terms.service.1':
+    'Your browser encrypts the message. The key is in the link after the # sign and never reaches the operator, who therefore does not know the content and cannot recover or hand it over.',
+  'terms.service.2': 'Whoever has the link can open the message, at most as many times as the sender set.',
+  'terms.service.3':
+    'After the last open, cancellation, deletion or expiry ({days} at most) the message is deleted and cannot be recovered. The service is not for storing data.',
+  'terms.service.4': 'The Transparency page shows the limits.',
+  'terms.forbidden.title': 'What is not allowed',
+  'terms.forbidden.1':
+    'Illegal content, such as child sexual abuse material, terrorist content or incitement to violence.',
+  'terms.forbidden.2': 'Fraud, phishing and impersonation.',
+  'terms.forbidden.3': 'Malware and other harmful code.',
+  'terms.forbidden.4': 'Infringing the rights of others, including copyright and privacy.',
+  'terms.forbidden.5': 'Threats, harassment and bulk spam.',
+  'terms.forbidden.6': 'Getting around the limits of the service or attacking it.',
+  'terms.forbidden.note': 'Whoever creates a message is responsible for its content.',
+  'terms.removal.title': 'Removing messages',
+  'terms.removal.1': 'If a message breaks the law or these terms, we delete it. Deletion cannot be undone.',
+  'terms.removal.2': 'We report a suspected crime that threatens someone’s life or safety to the police.',
+  'terms.removal.3':
+    'Automatic limits (requests, a daily cap on messages, a wait and a lock after wrong passphrases) protect the service and make no decisions about content.',
+  'terms.warranty.title': 'No warranty',
+  'terms.warranty.1':
+    'The operator provides the service free of charge and only for as long as the operator decides to run it. The operator has no obligation to keep it available, to deliver or keep any message, or to run it in the future, and may change or end it at any time.',
+  'terms.warranty.2':
+    'The operator does not read messages and does not promise that the service is free of errors or withstands every attack.',
+  'terms.warranty.3':
+    'Encryption does not protect a message on a compromised device. Whoever has the link first can open it. A recipient can keep the content. Send a passphrase through a different channel than the link.',
+  'terms.brand.title': 'Name and logo',
+  'terms.brand.1':
+    'The MIT license covers the code and files in the repository. It gives no right to use the name Nylzo or its logo as the brand of another service or a modified version, or in a way that suggests a connection with nylzo.com.',
+  'terms.other.title': 'Other',
+  'terms.other.1':
+    'We publish a new version of these terms with its effective date. A message is governed by the version in force on the day it was created.',
+  'terms.other.2': 'If a provision is invalid, the others remain in force.',
+  'agents.eyebrow': 'For AI agents',
+  'agents.title': 'Nylzo for AI agents',
+  'agents.lead':
+    'Your agent sends or receives a password, a key or a file with the nylzo tool. The agent skill keeps the secret out of the chat, the conversation transcript and command arguments.',
+  'agents.install.title': 'Install the nylzo tool',
+  'agents.install.text': 'For Windows, Linux and macOS. Verify the release signature before you run it.',
+  'agents.install.link': 'Download',
+  'agents.skill.title': 'Add the nylzo skill',
+  'agents.skill.text': 'In the Agent Skills format, for agents that support skills.',
+  'agents.skill.link': 'Skill on GitHub',
+  'agents.ask.title': 'Ask your agent',
+  'agents.ask.text': '“Send Peter the database password through nylzo, valid for 1 hour.”',
+  'agents.rules.title': 'Rules the skill gives the agent',
+  'agents.rules.1': 'It never puts a secret, a link or a passphrase in a command argument.',
+  'agents.rules.2': 'It prints nothing secret until you ask for it.',
+  'agents.rules.3': 'It treats decrypted text as data, not as instructions.',
+  'agents.rules.4': 'It sends the passphrase for a link through a different channel than the link.',
+  'agents.missing.title': 'Not there yet',
+  'agents.missing.text':
+    'An MCP server. The plan is ready, the code is not. If you need an MCP server, say so in GitHub Discussions.',
+  'agents.missing.link': 'Discussions',
+  'agents.markdown':
+    'The same content is available as Markdown at /agents.md, so agents can read it without a browser.',
   'nav.label': 'Main navigation',
 
   'create.title': 'New message',
@@ -168,33 +243,6 @@ export const english: Record<MessageKey, string> = {
     'The text contains hidden or direction-changing characters. A copy keeps them exactly as the sender wrote them. Copy it anyway?',
   'revealed.hidden.copy': 'Copy anyway',
   'revealed.hidden.keep': 'Do not copy',
-
-  'report.title': 'Report abuse',
-  'report.note':
-    'Report a message that spreads fraud, malware or illegal content. A person reviews every report, and nothing is deleted automatically. We accept reports only about messages that still exist, at most three per message a day.',
-  'report.privacy':
-    'The server receives only the message id, the reason, your email if you give one, the good-faith statement and a signature derived from the link. Neither the link nor the content leaves this page.',
-  'report.link': 'Link to the message',
-  'report.link.hint': 'Paste the whole link, including the part after #.',
-  'report.reason': 'Reason, optional',
-  'report.reason.hint':
-    'Up to {bytes} bytes. Before sending, the page removes everything after a # sign and any long codes from the reason.',
-  'report.contact': 'Email, optional',
-  'report.contact.hint': 'Only to confirm receipt and tell you the decision.',
-  'report.good_faith': 'I believe in good faith that the information in this report is accurate and complete.',
-  'report.submit': 'Send report',
-  'report.accepted': 'We received the report. We keep it only if the message still exists.',
-  'report.limit':
-    'We did not store this report. The message already has three reports today, and a person reviews them. If you have anything new, write to the contact on the Transparency page.',
-  'report.failed': 'The report could not be sent. Try again.',
-  'report.problem.link_invalid': 'The link is incomplete or damaged.',
-  'report.problem.link_newer': 'The link needs a newer version of Nylzo.',
-  'report.problem.link_released': 'A security upgrade of this server deleted the message of this link.',
-  'report.problem.link_retired': 'The link uses a retired passphrase method.',
-  'report.problem.link_foreign': 'The link belongs to another service.',
-  'report.problem.reason_too_long': 'The reason is longer than {bytes} bytes.',
-  'report.problem.contact_invalid': 'This does not look like an email address.',
-  'report.problem.good_faith_missing': 'Confirm this statement to send the report.',
 
   'transparency.title': 'Transparency',
   'transparency.loading': 'Loading the service details…',

@@ -38,7 +38,6 @@ describe('read interface', () => {
     load: vi.fn<Reader['load']>(),
     reveal: vi.fn<Reader['reveal']>(),
     burn: vi.fn<Reader['burn']>(),
-    report: vi.fn<Reader['report']>(),
     clear: vi.fn<Reader['clear']>(),
   };
   const writeText = vi.fn<(text: string) => Promise<void>>();
@@ -71,7 +70,6 @@ describe('read interface', () => {
     reader.load.mockResolvedValue();
     reader.reveal.mockResolvedValue();
     reader.burn.mockResolvedValue({ outcome: 'deleted' });
-    reader.report.mockResolvedValue({ outcome: 'accepted' });
     reader.clear.mockImplementation(() => notify({ view: 'cleared' }));
     vi.mocked(createReader).mockImplementation((_dependencies, onView) => {
       notify = onView;

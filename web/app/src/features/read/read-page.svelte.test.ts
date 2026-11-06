@@ -42,7 +42,6 @@ describe('read page interactions', () => {
     load: vi.fn<() => Promise<void>>(),
     reveal: vi.fn<(passphrase?: string) => Promise<void>>(),
     burn: vi.fn<() => Promise<BurnOutcome>>(),
-    report: vi.fn<() => Promise<{ outcome: 'accepted' }>>(),
     clear: vi.fn<() => void>(),
   };
   let notify: (view: ReadView) => void;
@@ -69,7 +68,6 @@ describe('read page interactions', () => {
     reader.load.mockResolvedValue();
     reader.reveal.mockResolvedValue();
     reader.burn.mockResolvedValue({ outcome: 'deleted' });
-    reader.report.mockResolvedValue({ outcome: 'accepted' });
     reader.clear.mockImplementation(() => notify({ view: 'cleared' }));
     vi.mocked(createReader).mockImplementation((options, onView) => {
       dependencies = options;

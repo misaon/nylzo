@@ -1,5 +1,6 @@
 import { render } from 'svelte/server';
 
+import { agentsGuide } from '../features/agents/agents-content.ts';
 import { LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
@@ -32,6 +33,10 @@ const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/u;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
 const FONT_FACE = /@font-face\{[^}]*\}/gu;
+
+export function agentsMarkdown(): string {
+  return agentsGuide(new Translator('en').translate);
+}
 
 function escapeAttribute(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');

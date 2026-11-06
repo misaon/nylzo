@@ -180,7 +180,7 @@ describe('sent messages interface', () => {
     await vi.waitFor(() =>
       expect(target.querySelector('[role="status"]')?.textContent).toBe(translator.translate('sent.unavailable')),
     );
-    expect(document.activeElement).toBe(target.querySelector('h2'));
+    expect(document.activeElement).toBe(target.querySelector('h1'));
   });
 });
 

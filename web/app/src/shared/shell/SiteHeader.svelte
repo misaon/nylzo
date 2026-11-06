@@ -31,21 +31,13 @@
     class="glass-soft mx-auto flex h-14 max-w-[1160px] animate-rise items-center justify-between gap-3 rounded-card pr-2 pl-4 sm:gap-4"
     aria-label={translate('nav.label')}
   >
-    {#if variant === 'page'}
-      <h1 class="m-0 flex">
-        <a href="/" class="flex items-center rounded-control py-1">
-          <Logo class="h-7 w-[105px]" label={translate('nav.home')} />
-        </a>
-      </h1>
-    {:else}
-      <a
-        href={variant === 'home' ? '#create' : '/'}
-        class="flex items-center rounded-control py-1"
-        aria-label={translate('nav.home')}
-      >
-        <Logo class="h-7 w-[105px]" />
-      </a>
-    {/if}
+    <a
+      href={variant === 'home' ? '#create' : '/'}
+      class="flex items-center rounded-control py-1"
+      aria-label={translate('nav.home')}
+    >
+      <Logo class="h-7 w-[105px]" />
+    </a>
 
     {#if variant === 'home'}
       <div class="hidden items-center gap-0.5 lg:flex">
