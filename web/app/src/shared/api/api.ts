@@ -46,14 +46,13 @@ export interface Transparency {
     readonly createPerDay: number;
     readonly createBytesPerDay: number;
     readonly readPerHour: number;
-    readonly abusePerHour: number;
     readonly coarseMultiplier: number;
     readonly globalDailyCreates: number;
     readonly powDifficulty: number;
   };
   readonly retention: {
     readonly tombstoneSeconds: number;
-    readonly abuseReportSeconds: number;
+    readonly abuseReportSeconds?: number;
     readonly dailyCounterSeconds: number;
   };
   readonly files: readonly ClientFile[];
@@ -327,14 +326,15 @@ export function createApi(options: ApiOptions = {}): Api {
           createPerDay: integer(rates, 'create_per_day'),
           createBytesPerDay: integer(rates, 'create_bytes_per_day'),
           readPerHour: integer(rates, 'read_per_hour'),
-          abusePerHour: integer(rates, 'abuse_per_hour'),
           coarseMultiplier: integer(rates, 'coarse_multiplier'),
           globalDailyCreates: integer(rates, 'global_daily_creates'),
           powDifficulty: integer(rates, 'pow_difficulty'),
         },
         retention: {
           tombstoneSeconds: integer(retention, 'tombstone_s'),
-          abuseReportSeconds: integer(retention, 'abuse_report_s'),
+          ...(retention['abuse_report_s'] !== undefined && {
+            abuseReportSeconds: integer(retention, 'abuse_report_s'),
+          }),
           dailyCounterSeconds: integer(retention, 'daily_counter_s'),
         },
         files: clientFiles(manifest),

@@ -59,6 +59,10 @@ const UNIT_FORMS = {
     cs: pluralForms('znak', 'znaky', 'znaku', 'znaků'),
     en: pluralForms('character', 'characters', 'characters', 'characters'),
   },
+  file: {
+    cs: pluralForms('soubor', 'soubory', 'souboru', 'souborů'),
+    en: pluralForms('file', 'files', 'files', 'files'),
+  },
 } as const satisfies Readonly<Record<string, Readonly<Record<Language, PluralForms>>>>;
 
 export function formatCount(count: number, unit: keyof typeof UNIT_FORMS, language: Language): string {

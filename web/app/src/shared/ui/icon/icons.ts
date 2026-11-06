@@ -39,6 +39,7 @@ export const ICONS = {
   close: [{ path: 'M6 6l12 12M18 6L6 18' }],
   code: [{ path: 'M8.5 7L3.5 12l5 5M15.5 7l5 5-5 5' }],
   copy: [{ rect: [8, 8, 12, 12, 2.5] }, { path: 'M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2' }],
+  cross: [{ path: 'M7 7l10 10M17 7L7 17' }],
   datacenter: [
     { rect: [4, 3, 16, 18, 1.5] },
     { path: 'M4 9h16M4 15h16M7.5 6h.01M7.5 12h.01M7.5 18h.01M11.5 6h5M11.5 12h5M11.5 18h5' },
@@ -86,6 +87,7 @@ export const ICONS = {
     { circle: [18, 19, 2.2] },
     { path: 'M12 7.2v3.3M12 10.5c-3 0-6 1.6-6 4.5v1.8M12 10.5c3 0 6 1.6 6 4.5v1.8' },
   ],
+  gauge: [{ path: 'M4.5 16.5a8 8 0 1 1 15 0' }, { path: 'M12 13.5l3.5-3.5' }, { circle: [12, 13.5, 1.2] }],
   globe: [
     clockFace,
     { path: 'M3.5 12h17M12 3.5c2.4 2.3 3.5 5.2 3.5 8.5s-1.1 6.2-3.5 8.5c-2.4-2.3-3.5-5.2-3.5-8.5s1.1-6.2 3.5-8.5z' },
@@ -111,6 +113,7 @@ export const ICONS = {
     { path: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1' },
     { path: 'M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1' },
   ],
+  list: [{ path: 'M9 6.5h11M9 12h11M9 17.5h11' }, { path: 'M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01' }],
   lock: [lockBody, { path: 'M8 10.5V7.5a4 4 0 0 1 8 0v3' }],
   minus: [{ path: 'M6 12h12' }],
   paperclip: [
@@ -119,7 +122,9 @@ export const ICONS = {
     },
   ],
   pen: [{ path: 'M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z' }, { path: 'M14.5 7.5l3 3' }],
+  rack: [{ rect: [4, 4.5, 16, 6, 2] }, { rect: [4, 13.5, 16, 6, 2] }, { path: 'M8 7.5h.01M8 16.5h.01' }],
   refresh: [{ path: 'M4 12a8 8 0 1 0 2.5-5.8' }, { path: 'M4 4v4h4' }],
+  person: [{ circle: [12, 8, 3.5] }, { path: 'M5 19.5c1.2-3.4 3.8-5 7-5s5.8 1.6 7 5' }],
   phone: [{ rect: [7, 3, 10, 18, 2.5] }, { path: 'M11 17.5h2' }],
   plus: [{ path: 'M12 5v14M5 12h14' }],
   search: [{ circle: [11, 11, 6] }, { path: 'M20 20l-4.5-4.5' }],
@@ -130,6 +135,12 @@ export const ICONS = {
   ],
   shield: [{ path: 'M12 3l8 3.5v5c0 4.5-3.4 8.4-8 9.5-4.6-1.1-8-5-8-9.5v-5z' }, { path: 'M12 8v5M12 16h.01' }],
   shieldCheck: [{ path: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z' }, { path: 'M9 12l2 2 4-4' }],
+  storage: [
+    { ellipse: [12, 6, 7, 2.5] },
+    { path: 'M5 6v12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6' },
+    { path: 'M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5' },
+  ],
+  terminal: [{ rect: [3.5, 4.5, 17, 15, 2.5] }, { path: 'M7.5 9.5l3 2.5-3 2.5M12.5 15h4' }],
   trash: [trashLid, { path: 'M10 11v5M14 11v5' }],
   unlock: [lockBody, { path: 'M8 10.5V7.5a4 4 0 0 1 7.6-1.7' }],
   update: [clockFace, { path: 'M12 16V8M8.5 11.5L12 8l3.5 3.5' }],

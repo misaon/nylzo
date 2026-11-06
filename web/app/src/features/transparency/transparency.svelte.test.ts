@@ -7,6 +7,7 @@ import { createApi } from '../../shared/api/api.ts';
 import { fakeApi } from '../../shared/api/fake-api.ts';
 import { getTranslator, Translator } from '../../shared/language/translator.svelte.ts';
 import Transparency from './Transparency.svelte';
+import { contactLabel } from './transparency.ts';
 
 vi.mock('../../shared/api/api.ts', () => ({ createApi: vi.fn<typeof import('../../shared/api/api.ts').createApi>() }));
 vi.mock(import('../../shared/language/translator.svelte.ts'), (original) =>
@@ -45,7 +46,6 @@ describe('transparency page', () => {
         createPerDay: 20,
         createBytesPerDay: 1024,
         readPerHour: 30,
-        abusePerHour: 5,
         coarseMultiplier: 2,
         globalDailyCreates: 0,
         powDifficulty: 4,
@@ -81,7 +81,8 @@ describe('transparency page', () => {
     expect(target.textContent).toContain('a'.repeat(64));
     expect(target.querySelector('[data-testid="server-version"]')?.textContent).toBe(data.server);
     expect(target.textContent).toContain('nylzo verify-client --server');
-    expect(target.querySelector('[role="status"]')).toBeNull();
+    expect(target.textContent).toContain(translator.translate('transparency.stores.reports.title'));
+    expect(target.textContent).not.toContain(translator.translate('transparency.loading'));
   });
 
   it('offers retry after failure and recovers without reloading the document', async () => {
@@ -99,17 +100,21 @@ describe('transparency page', () => {
   });
 
   it.each([undefined, { contact: 'javascript:alert(1)' }, { contact: 'https://example.test/contact' }])(
-    'renders optional operator information without unsafe links: %j',
+    'renders optional operator information without unsafe links, and no report retention the server does not report: %j',
     async (operator) => {
       load.mockResolvedValue({
         ...data,
         operator,
+        retention: { tombstoneSeconds: 86_400, dailyCounterSeconds: 86_400 },
         limits: { ...data.limits, maxTtlSeconds: 3600 },
         rates: { ...data.rates, createPerHour: 0, createPerDay: 0, readPerHour: 0, globalDailyCreates: 5 },
       });
       show();
       await vi.waitFor(() => expect(target.querySelector('[data-testid="server-version"]')).not.toBeNull());
-      expect(target.textContent).toContain(operator?.contact ?? translator.translate('transparency.operator.missing'));
+      expect(target.textContent).toContain(
+        operator === undefined ? translator.translate('transparency.operator.missing') : contactLabel(operator.contact),
+      );
+      expect(target.textContent).not.toContain(translator.translate('transparency.stores.reports.title'));
       expect(target.querySelector('a[href="https://example.test/contact"]') !== null).toBe(
         operator?.contact === 'https://example.test/contact',
       );

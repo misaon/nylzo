@@ -2,7 +2,7 @@
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../../../shared/shell/repository.ts';
   import Button from '../../../../shared/ui/button/Button.svelte';
-  import { Flash } from '../../../../shared/ui/flash.svelte.ts';
+  import CopyButton from '../../../../shared/ui/button/CopyButton.svelte';
   import { FocusTargets } from '../../../../shared/ui/focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
@@ -22,19 +22,9 @@
   ] as const;
 
   let tab = $state<InstallTab>('compose');
-  const copied = new Flash(2000);
   const focus = new FocusTargets<InstallTab>();
   const index = $derived(tabs.indexOf(tab));
   const domain = $derived(translate('host.domain'));
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(installText(tab, domain));
-      copied.show();
-    } catch {
-      copied.hide();
-    }
-  }
 
   function onkeydown(event: KeyboardEvent) {
     const next = arrowTarget(event.key, index, tabs.length);
@@ -120,35 +110,7 @@
             </button>
           {/each}
         </div>
-        <Button
-          variant="tint"
-          size="compact"
-          class="max-sm:hidden"
-          aria-label={translate('host.copy.label')}
-          onclick={copy}
-        >
-          <span class="stack justify-items-center">
-            <span
-              class={[
-                'flex items-center gap-2 fade-swap',
-                copied.shown ? 'pointer-events-none opacity-0' : 'opacity-100',
-              ]}
-            >
-              <Icon name="copy" animated />
-              {translate('host.copy')}
-            </span>
-            <span
-              class={[
-                'flex items-center gap-2 text-aegis-200 fade-swap',
-                copied.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
-              ]}
-            >
-              <Icon name="check" stroke={2.2} />
-              {translate('host.copied')}
-            </span>
-          </span>
-        </Button>
-        <span class="sr-only" role="status">{copied.shown ? translate('host.copied') : ''}</span>
+        <CopyButton text={() => installText(tab, domain)} label={translate('host.copy.label')} class="max-sm:hidden" />
       </div>
       <div
         class="mt-2.5 overflow-hidden rounded-pane bg-void-950/85 shadow-[0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] ring-1 ring-white/12"

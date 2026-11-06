@@ -79,6 +79,8 @@ export const czech = {
   'agents.missing.link': 'Diskuze',
   'agents.markdown':
     'Stejný obsah je k\u{A0}dispozici i\u{A0}v\u{A0}Markdownu na /agents.md, aby ho agenti přečetli bez prohlížeče.',
+  'action.copy': 'Zkopírovat',
+  'action.copied': 'Zkopírováno',
   'nav.label': 'Hlavní navigace',
 
   'create.title': 'Nová zpráva',
@@ -239,64 +241,120 @@ export const czech = {
   'revealed.hidden.keep': 'Nekopírovat',
 
   'transparency.title': 'Transparentnost',
-  'transparency.loading': 'Načítám údaje o službě…',
-  'transparency.failed': 'Údaje o službě se nepodařilo načíst.',
-  'transparency.intro':
-    'Co server této instance o zprávách ví, co ukládá a jak dlouho. Verzi, limity, provozovatele a otisky souborů posílá server ze své konfigurace. Popis toho, co ukládá a loguje, platí pro nezměněný server nylzo.',
+  'transparency.loading': 'Načítám údaje o\u{A0}službě…',
+  'transparency.failed': 'Údaje o\u{A0}službě se nepodařilo načíst.',
+  'transparency.intro': 'Co server této instance o\u{A0}zprávách ví, co ukládá a\u{A0}jak dlouho.',
+  'transparency.summary.content': 'Obsah zpráv server nepřečte, klíč zůstává v\u{A0}odkazu.',
+  'transparency.summary.addresses': 'IP adresy neukládá a\u{A0}do logu nepíše ID zpráv.',
+  'transparency.summary.ended': 'Po skončení zprávy smaže její obsah a\u{A0}záznam o\u{A0}ní uchovává nejdéle {days}.',
+  'transparency.configured':
+    'Verzi, limity, provozovatele a\u{A0}otisky souborů posílá server ze své konfigurace. Popis toho, co ukládá a\u{A0}loguje, platí pro nezměněný server Nylzo.',
+  'transparency.contents': 'Obsah stránky',
   'transparency.operator.title': 'Provozovatel',
   'transparency.operator.name': 'Provozovatel',
   'transparency.operator.contact': 'Kontakt',
   'transparency.operator.hosting': 'Hosting',
   'transparency.operator.missing': 'Provozovatel tyto údaje neuvedl.',
   'transparency.stores.title': 'Co server ukládá',
+  'transparency.stores.content.title': 'Zpráva',
   'transparency.stores.content':
-    'Zašifrovanou zprávu, ještě jednou zašifrovanou vlastním klíčem a\u{A0}doplněnou tak, aby uložená délka prozradila jen přibližnou velikost. Klíč k\u{A0}obsahu je jen v\u{A0}části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
+    'Zašifrovanou zprávu, ještě jednou zašifrovanou samostatným klíčem uložené zprávy a\u{A0}doplněnou tak, aby uložená délka prozradila jen přibližnou velikost. Klíč k\u{A0}obsahu je jen v\u{A0}části odkazu za #, kterou prohlížeč na server nikdy neposílá, takže server obsah ani název přílohy nepřečte.',
+  'transparency.stores.metadata.title': 'Záznam o\u{A0}zprávě',
   'transparency.stores.metadata':
-    'U\u{A0}každé zprávy zapečetěný záznam s\u{A0}jejím nastavením, počty a\u{A0}časy zaokrouhlenými na minutu. Server ho otevře jen během požadavku s\u{A0}odkazem nebo správcovským klíčem, takže kopie serveru z\u{A0}něj nic neukáže. Čitelně drží jen hash ID zprávy a\u{A0}čas úklidu zaokrouhlený nahoru na čtvrthodinu nebo hodinu.',
+    'U\u{A0}každé zprávy zapečetěný záznam s\u{A0}jejím nastavením, počty a\u{A0}časy zaokrouhlenými na minutu. Server ho otevře jen během požadavku s\u{A0}odkazem nebo správcovským klíčem, takže kopie serveru z\u{A0}něj nic neukáže. V\u{A0}čitelné podobě uchovává jen hash ID zprávy a\u{A0}čas plánovaného smazání zaokrouhlený nahoru na čtvrthodinu nebo hodinu.',
+  'transparency.stores.keys.title': 'Klíče',
   'transparency.stores.keys':
-    'Žádné klíče ani veřejné klíče. Co server potřebuje k\u{A0}otevření záznamu, dostane jen v\u{A0}požadavku s\u{A0}odkazem nebo správcovským klíčem.',
+    'Žádné tajné ani veřejné klíče. Co server potřebuje k\u{A0}otevření záznamu, dostane jen v\u{A0}požadavku s\u{A0}odkazem nebo správcovským klíčem.',
+  'transparency.stores.ended.title': 'Po skončení zprávy',
   'transparency.stores.ended':
-    'Zprávu smaže po posledním otevření, smazání příjemcem, zrušení, vypršení nebo odstranění provozovatelem po hlášení. Nejdřív zahodí klíč uložené zprávy, takže nejde přečíst ani její zbytek na disku. Zapečetěný záznam skončené zprávy drží nejdéle {days}: jak a\u{A0}kdy skončila a\u{A0}kdy byla poprvé otevřena.',
-  'transparency.stores.abuse':
-    'Hlášení zneužití, zapečetěná veřejným klíčem provozovatele, takže je server sám nepřečte: datum, ID zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel sám uvedl, nejdéle {days}.',
+    'Zpráva končí posledním otevřením, smazáním příjemcem, zrušením, skončením platnosti nebo odstraněním provozovatelem. Server pak nejdřív zahodí klíč uložené zprávy, takže nejde přečíst ani její zbytek na disku. Zapečetěný záznam skončené zprávy uchovává nejdéle {days}: jak a\u{A0}kdy skončila a\u{A0}kdy byla poprvé otevřena.',
+  'transparency.stores.reports.title': 'Hlášení zneužití',
+  'transparency.stores.reports':
+    'Hlášení zapečetěná veřejným klíčem provozovatele, takže je server sám nepřečte: datum, ID zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel uvedl, nejdéle {days}. Počet hlášení na zprávu drží v\u{A0}jejím zapečetěném záznamu.',
+  'transparency.stores.counters.title': 'Počítadla bez adres',
   'transparency.stores.counters':
-    'Počítadla bez adres: denní počty vytvořených zpráv drží ještě {days} po konci dne, použité jednorázové výzvy jen několik minut. Hlášení na zprávu počítá v\u{A0}jejím zapečetěném záznamu.',
-  'transparency.stores.addresses': 'IP adresy neukládá. Limity na adresu drží jen v paměti a po restartu je zapomene.',
+    'Denní počty vytvořených zpráv uchovává ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
+  'transparency.stores.addresses.title': 'IP adresy',
+  'transparency.stores.addresses':
+    'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti a\u{A0}po restartu je zapomene.',
+  'transparency.stores.enforced.title': 'Platnost a\u{A0}počet otevření hlídá server',
   'transparency.stores.enforced':
-    'Platnost a\u{A0}počet otevření jsou pravidla, která vynucuje tento server, ne šifrování. Server v\u{A0}cizích rukou by mohl šifrovanou zprávu ponechat, a\u{A0}pak ji chrání jen utajení odkazu a\u{A0}passphrase.',
+    'Platnost a\u{A0}počet otevření jsou pravidla, která vynucuje tento server, ne šifrování. Server v\u{A0}cizích rukou by mohl šifrovanou zprávu ponechat, a\u{A0}pak ji chrání jen utajení odkazu a\u{A0}hesla.',
   'transparency.logs.title': 'Co server loguje',
-  'transparency.logs.what':
-    'Čas zkrácený na minutu, metodu, typ cesty, stav odpovědi a dobu vyřízení. U vytvoření, otevření a stažení zprávy dobu vyřízení vynechá, protože by prozradila velikost zprávy.',
-  'transparency.logs.never': 'Nikdy ID zprávy, IP adresu, klíče, podpisy, těla požadavků ani velikost zprávy.',
+  'transparency.logs.written': 'Zapisuje',
+  'transparency.logs.written.time': 'Čas zkrácený na minutu',
+  'transparency.logs.written.method': 'Metoda',
+  'transparency.logs.written.route': 'Typ cesty',
+  'transparency.logs.written.status': 'Stav odpovědi',
+  'transparency.logs.written.count': 'Počet požadavků',
+  'transparency.logs.written.note':
+    'Nepíše řádek za každý požadavek. Jednou za minutu zapíše jen počty požadavků podle metody, typu cesty a\u{A0}stavu.',
+  'transparency.logs.never': 'Nikdy nezapisuje',
+  'transparency.logs.never.id': 'ID zprávy',
+  'transparency.logs.never.address': 'IP adresa',
+  'transparency.logs.never.keys': 'Klíče',
+  'transparency.logs.never.signatures': 'Podpisy',
+  'transparency.logs.never.bodies': 'Těla požadavků',
+  'transparency.logs.never.size': 'Velikost zprávy',
+  'transparency.logs.never.duration': 'Doba vyřízení',
+  'transparency.checks.title': 'Bezpečnostní kontroly',
+  'transparency.checks.note': 'Kdo a\u{A0}jak Nylzo kontroluje. Platí pro software, ne jen pro tuto instanci.',
+  'transparency.checks.audit.title': 'Nezávislý audit',
+  'transparency.checks.audit': 'Zatím neproběhl.',
+  'transparency.checks.changes.title': 'Při každé změně kódu',
+  'transparency.checks.changes':
+    'Testy protokolu a\u{A0}toho, co slibujeme, statická analýza, kontrola závislostí a\u{A0}test dat z\u{A0}ukradeného serveru.',
+  'transparency.checks.ai.title': 'Kontroly s\u{A0}nástroji AI',
+  'transparency.checks.ai':
+    'Nástroje AI pravidelně prověřují bezpečnost kódu, naposledy 25.\u{A0}10. a\u{A0}1.\u{A0}11.\u{A0}2026. Nálezy jsou opravené a\u{A0}popsané na GitHubu.',
+  'transparency.checks.ratings.title': 'Hodnocení projektu',
+  'transparency.checks.ratings':
+    'OpenSSF Scorecard (automatické hodnocení) a\u{A0}OpenSSF Best Practices (vlastní hodnocení), odkazy v\u{A0}README.',
   'transparency.others.title': 'Co vidí ostatní',
+  'transparency.others.hosting.title': 'Hosting a\u{A0}proxy',
   'transparency.others.hosting':
-    'Poskytovatel hostingu a proxy, která ukončuje HTTPS, vidí IP adresy, časy a velikosti požadavků a logují podle svých pravidel. Obsah zprávy nevidí.',
+    'Poskytovatel hostingu a\u{A0}proxy, která ukončuje HTTPS, vidí IP adresy, časy a\u{A0}velikosti požadavků a\u{A0}logují podle svých pravidel. Obsah zprávy nevidí.',
+  'transparency.others.client.title': 'Kdo ovládá server nebo hosting',
   'transparency.others.client':
-    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které někdo právě otevírá nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku spouštějí kód z\u{A0}podepsaného vydání, takže ho server změnit nemůže. Kontrola níže takovou záměnu odhalí, jen když server kontrolu neobchází.',
+    'Kdo ovládá běžící server nebo hosting, vidí záznamy zpráv, které někdo právě otevírá nebo spravuje, a\u{A0}může poslat upravený webový klient a\u{A0}přečíst zprávy, které v\u{A0}něm vytvoříte nebo otevřete. Ověřené aplikace, tedy lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku, spouštějí kód z\u{A0}podepsaného vydání, takže ho server změnit nemůže. Kontrola níže takovou záměnu odhalí, jen když server kontrolu neobchází.',
+  'transparency.personal.title': 'Osobní údaje',
+  'transparency.personal.controller.title': 'Správce',
+  'transparency.personal.controller': 'Správcem údajů je provozovatel uvedený nahoře na této stránce.',
+  'transparency.personal.basis.title': 'Proč a\u{A0}na jakém základě',
+  'transparency.personal.basis':
+    'Zprávu uložíme, předáme příjemci a\u{A0}smažeme, protože o\u{A0}to odesílatel požádal. Limity a\u{A0}logy potřebujeme kvůli bezpečnosti služby (čl.\u{A0}6\u{A0}odst.\u{A0}1\u{A0}písm.\u{A0}b\u{A0}a\u{A0}f\u{A0}GDPR).',
+  'transparency.personal.browser.title': 'Ve vašem prohlížeči',
+  'transparency.personal.browser':
+    'Zvolený jazyk, dočasný údaj během otevírání zprávy a\u{A0}seznam Odeslaných, pokud zprávu sledujete. Je to nutné pro funkce, o\u{A0}které žádáte, a\u{A0}proto to nevyžaduje souhlas.',
   'transparency.limits.title': 'Limity této instance',
+  'transparency.limits.short': 'Limity',
   'transparency.limits.file': 'Největší příloha',
   'transparency.limits.ttl': 'Nejdelší platnost',
   'transparency.limits.opens': 'Nejvíc otevření',
-  'transparency.limits.create': 'Nové zprávy z jedné adresy',
+  'transparency.limits.create': 'Nové zprávy z\u{A0}jedné adresy',
   'transparency.limits.create.value': '{hour} za hodinu, {day} za den',
-  'transparency.limits.read': 'Čtení z jedné adresy',
+  'transparency.limits.read': 'Čtení z\u{A0}jedné adresy',
   'transparency.limits.read.value': '{hour} požadavků za hodinu',
   'transparency.limits.global': 'Nové zprávy celkem za den',
-  'transparency.limits.global.value': '{max}, od poloviny s výpočtem proti zahlcení služby',
+  'transparency.limits.global.value': '{max}, od poloviny s\u{A0}výpočtem proti zahlcení služby',
   'transparency.limits.none': 'bez limitu',
-  'transparency.client.title': 'Webový klient v prohlížeči',
+  'transparency.verify.title': 'Ověření webového klienta',
+  'transparency.verify.short': 'Ověření klienta',
   'transparency.client.version': 'Verze webového klienta',
   'transparency.client.commit': 'Commit webového klienta',
-  'transparency.server.title': 'Údaje hlášené serverem',
   'transparency.server.version': 'Hlášená verze serveru',
-  'transparency.client.files': 'SHA-256 souborů webového klienta přesně v té podobě, v jaké je posílá tento server.',
-  'transparency.client.verify':
-    'Příkaz z vydání nylzo stejné verze ověří, že server posílá právě tyto soubory se stejnými hlavičkami:',
-  'transparency.client.limit':
-    'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
-  'transparency.client.independent':
-    'Web musí tomuto serveru věřit: webový klient přichází z\u{A0}něj, takže server v\u{A0}cizích rukou by ho mohl změnit. Lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku spouštějí kód z\u{A0}podepsaného vydání a\u{A0}spoléhají jen na šifrování.',
-  'transparency.source': 'Zdrojový kód, specifikace protokolu a model hrozeb',
+  'transparency.files.title': 'Otisky souborů',
+  'transparency.files':
+    'SHA-256\u{A0}souborů webového klienta přesně v\u{A0}té podobě, v\u{A0}jaké je posílá tento server.',
+  'transparency.verify.command':
+    'Příkaz z\u{A0}vydání nylzo stejné verze ověří, že server posílá právě tyto soubory se stejnými hlavičkami:',
+  'transparency.verify.limit.title': 'Co kontrola neodhalí',
+  'transparency.verify.limit':
+    'Ověří jen to, co server poslal tomuto příkazu. Server ho může poznat a\u{A0}prohlížečům posílat jiný kód, takže kontrola odhalí chybné sestavení nebo nasazení, ne záměnu, kterou server úmyslně skrývá.',
+  'transparency.verify.apps.title': 'Ověřená aplikace',
+  'transparency.verify.apps':
+    'Kdo používá webového klienta, musí tomuto serveru věřit: webový klient přichází z\u{A0}něj, takže server v\u{A0}cizích rukou by ho mohl změnit. Ověřené aplikace, tedy lokální klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pro příkazovou řádku, spouštějí kód z\u{A0}podepsaného vydání a\u{A0}spoléhají jen na šifrování.',
+  'transparency.source': 'Zdrojový kód, specifikace protokolu a\u{A0}model hrozeb',
 
   'nav.home': 'Nylzo, úvodní stránka',
   'trust.label': 'Na čem Nylzo stojí',
@@ -667,8 +725,6 @@ export const czech = {
   'host.compose': 'Compose',
   'host.binary': 'Binárka',
   'host.verify': 'Ověření',
-  'host.copy': 'Zkopírovat',
-  'host.copied': 'Zkopírováno',
   'host.copy.label': 'Zkopírovat příkazy',
 
   'compare.eyebrow': 'Srovnání',

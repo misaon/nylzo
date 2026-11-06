@@ -85,6 +85,8 @@ export const english: Record<MessageKey, string> = {
   'agents.missing.link': 'Discussions',
   'agents.markdown':
     'The same content is available as Markdown at /agents.md, so agents can read it without a browser.',
+  'action.copy': 'Copy',
+  'action.copied': 'Copied',
   'nav.label': 'Main navigation',
 
   'create.title': 'New message',
@@ -247,41 +249,92 @@ export const english: Record<MessageKey, string> = {
   'transparency.title': 'Transparency',
   'transparency.loading': 'Loading the service details…',
   'transparency.failed': 'The service details could not be loaded.',
-  'transparency.intro':
-    'What the server of this instance knows about messages, what it stores and for how long. The version, limits, operator and file fingerprints come from the server configuration. The description of what it stores and logs holds for an unmodified nylzo server.',
+  'transparency.intro': 'What the server of this instance knows about messages, what it stores and for how long.',
+  'transparency.summary.content': 'The server cannot read messages; the key stays in the link.',
+  'transparency.summary.addresses': 'It stores no IP addresses and writes no message ids to its log.',
+  'transparency.summary.ended':
+    'When a message ends, it deletes the content and keeps a record of it for at most {days}.',
+  'transparency.configured':
+    'The version, limits, operator and file fingerprints come from the server configuration. What it stores and logs is described for an unmodified Nylzo server.',
+  'transparency.contents': 'On this page',
   'transparency.operator.title': 'Operator',
   'transparency.operator.name': 'Operator',
   'transparency.operator.contact': 'Contact',
   'transparency.operator.hosting': 'Hosting',
   'transparency.operator.missing': 'The operator has not provided these details.',
   'transparency.stores.title': 'What the server stores',
+  'transparency.stores.content.title': 'The message',
   'transparency.stores.content':
-    'The encrypted message, encrypted once more with a key of its own and padded, so its stored length shows only a rough size. The content key is only in the part of the link after #, which the browser never sends to the server, so the server cannot read the content or the name of an attachment.',
+    'The encrypted message, encrypted once more with a separate key of the stored message and padded, so its stored length shows only a rough size. The content key is only in the part of the link after #, which the browser never sends to the server, so the server cannot read the content or the name of an attachment.',
+  'transparency.stores.metadata.title': 'Record of the message',
   'transparency.stores.metadata':
-    'For each message a sealed record with its settings, counters and times rounded to the minute. The server can open it only while a request brings the link or the manage key, so a copy of the server shows none of it. In the clear it keeps a hash of the message id and when its cleanup is due, rounded up to the quarter hour or the hour.',
+    'For each message a sealed record with its settings, counters and times rounded to the minute. The server can open it only while a request brings the link or the manage key, so a copy of the server shows none of it. In readable form it keeps only a hash of the message id and the time of its scheduled deletion, rounded up to the quarter hour or the hour.',
+  'transparency.stores.keys.title': 'Keys',
   'transparency.stores.keys':
-    'No keys and no public keys. Only a request with the link or the manage key gives the server what it needs to open the record.',
+    'No secret keys and no public keys. Only a request with the link or the manage key gives the server what it needs to open the record.',
+  'transparency.stores.ended.title': 'After a message ends',
   'transparency.stores.ended':
-    'It deletes a message after the last open, deletion by a recipient, cancellation, expiry or removal by the operator after a report. It drops the key of the stored message first, so not even a leftover copy on the disk can be read. The sealed record of the ended message stays for at most {days}: how and when it ended and when it was first opened.',
-  'transparency.stores.abuse':
-    "Abuse reports, sealed with the operator's public key so the server cannot read them back: the date, the message id, the reason without link keys or long codes, the good-faith statement and an email address if the reporter chose to give one, for at most {days}.",
+    'A message ends with its last open, deletion by a recipient, cancellation, expiry or removal by the operator. The server then drops the key of the stored message first, so not even a leftover copy on the disk can be read. It keeps the sealed record of the ended message for at most {days}: how and when it ended and when it was first opened.',
+  'transparency.stores.reports.title': 'Abuse reports',
+  'transparency.stores.reports':
+    "Reports sealed with the operator's public key, so the server cannot read them back: the date, the message id, the reason without link keys or long codes, the good-faith statement and an email address if the reporter gave one, for at most {days}. The number of reports per message stays in the sealed record of the message.",
+  'transparency.stores.counters.title': 'Counters without addresses',
   'transparency.stores.counters':
-    'Counters without addresses: daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes. Reports per message are counted in the sealed record.',
+    'Daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes.',
+  'transparency.stores.addresses.title': 'IP addresses',
   'transparency.stores.addresses':
-    'It does not store IP addresses. Per-address limits live only in memory and are forgotten on restart.',
+    'It does not store them. Per-address limits live only in memory and are forgotten on restart.',
+  'transparency.stores.enforced.title': 'The server enforces expiry and opens',
   'transparency.stores.enforced':
     "Expiry and the number of opens are rules this server enforces, not something the encryption guarantees. A server in someone else's hands could keep the encrypted message, and then only the secrecy of the link and of the passphrase protect it.",
   'transparency.logs.title': 'What the server logs',
-  'transparency.logs.what':
-    'The time truncated to the minute, the method, the kind of path, the response status and how long the request took. For creating, opening and downloading a message it leaves out the duration, because it would reveal the size of the message.',
-  'transparency.logs.never':
-    'Never a message id, an IP address, keys, signatures, request bodies or the size of a message.',
+  'transparency.logs.written': 'Writes',
+  'transparency.logs.written.time': 'Time to the minute',
+  'transparency.logs.written.method': 'Method',
+  'transparency.logs.written.route': 'Kind of path',
+  'transparency.logs.written.status': 'Response status',
+  'transparency.logs.written.count': 'Number of requests',
+  'transparency.logs.written.note':
+    'It writes no line per request. Once a minute it writes only how many requests there were per method, kind of path and status.',
+  'transparency.logs.never': 'Never writes',
+  'transparency.logs.never.id': 'Message id',
+  'transparency.logs.never.address': 'IP address',
+  'transparency.logs.never.keys': 'Keys',
+  'transparency.logs.never.signatures': 'Signatures',
+  'transparency.logs.never.bodies': 'Request bodies',
+  'transparency.logs.never.size': 'Message size',
+  'transparency.logs.never.duration': 'Response time',
+  'transparency.checks.title': 'Security checks',
+  'transparency.checks.note': 'Who checks Nylzo and how. This covers the software, not just this instance.',
+  'transparency.checks.audit.title': 'Independent audit',
+  'transparency.checks.audit': 'None so far.',
+  'transparency.checks.changes.title': 'On every code change',
+  'transparency.checks.changes':
+    'Tests of the protocol and of what we promise, static analysis, a dependency check and a test of the data on a stolen server.',
+  'transparency.checks.ai.title': 'Checks with AI tools',
+  'transparency.checks.ai':
+    'AI tools review the security of the code regularly, most recently on 25 October and 1 November 2026. The findings are fixed and described on GitHub.',
+  'transparency.checks.ratings.title': 'Project ratings',
+  'transparency.checks.ratings':
+    'OpenSSF Scorecard (automatic rating) and OpenSSF Best Practices (self-assessment), linked in the README.',
   'transparency.others.title': 'What others see',
+  'transparency.others.hosting.title': 'Hosting and proxy',
   'transparency.others.hosting':
     'The hosting provider and the proxy that terminates HTTPS see IP addresses, request times and sizes, and log by their own rules. They do not see the content of a message.',
+  'transparency.others.client.title': 'Whoever controls the server or the hosting',
   'transparency.others.client':
-    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. The local client (nylzo web and nylzo open) and the nylzo command line run code from a signed release, so the server cannot change them. The check below finds such a swap only when the server does not avoid it.',
+    'Whoever controls the running server or the hosting sees the records of messages that someone opens or manages meanwhile, and can send a modified web client to read the messages you create or open in it. Verified apps, that is the local client (nylzo web, nylzo open) and the nylzo command line, run code from a signed release, so the server cannot change them. The check below finds such a swap only when the server does not avoid it.',
+  'transparency.personal.title': 'Personal data',
+  'transparency.personal.controller.title': 'Controller',
+  'transparency.personal.controller': 'The controller is the operator named at the top of this page.',
+  'transparency.personal.basis.title': 'Why and on what basis',
+  'transparency.personal.basis':
+    'We store a message, hand it to the recipient and delete it because the sender asked for that. We need the limits and logs to keep the service secure (Art. 6(1)(b) and (f) GDPR).',
+  'transparency.personal.browser.title': 'In your browser',
+  'transparency.personal.browser':
+    'The language you chose, a temporary item while a message opens, and the Sent list if you track a message. They are needed for features you ask for, so they need no consent.',
   'transparency.limits.title': 'Limits of this instance',
+  'transparency.limits.short': 'Limits',
   'transparency.limits.file': 'Largest attachment',
   'transparency.limits.ttl': 'Longest expiry',
   'transparency.limits.opens': 'Most opens',
@@ -292,18 +345,21 @@ export const english: Record<MessageKey, string> = {
   'transparency.limits.global': 'New messages in total per day',
   'transparency.limits.global.value': '{max}, from half of that with an anti-flooding check in the browser',
   'transparency.limits.none': 'no limit',
-  'transparency.client.title': 'Web client in this browser',
+  'transparency.verify.title': 'Web client verification',
+  'transparency.verify.short': 'Client check',
   'transparency.client.version': 'Web client version',
   'transparency.client.commit': 'Web client commit',
-  'transparency.server.title': 'Information reported by the server',
   'transparency.server.version': 'Reported server version',
-  'transparency.client.files': 'SHA-256 of the web client files exactly as this server sends them.',
-  'transparency.client.verify':
+  'transparency.files.title': 'File fingerprints',
+  'transparency.files': 'SHA-256 of the web client files exactly as this server sends them.',
+  'transparency.verify.command':
     'This command, from the nylzo release of the same version, checks that the server sends exactly these files with the same headers:',
-  'transparency.client.limit':
+  'transparency.verify.limit.title': 'What the check cannot find',
+  'transparency.verify.limit':
     'It checks only what the server sent to this command. A server can recognise the command and send browsers other code, so the check finds a broken build or deployment, not a swap the server hides on purpose.',
-  'transparency.client.independent':
-    "The website trusts this server: the web client comes from it, so a server in someone else's hands could change it. nylzo web, nylzo open and the nylzo command line run code from a signed release and trust only the encryption.",
+  'transparency.verify.apps.title': 'Verified apps',
+  'transparency.verify.apps':
+    "Whoever uses the web client has to trust this server: the web client comes from it, so a server in someone else's hands could change it. Verified apps, that is the local client (nylzo web, nylzo open) and the nylzo command line, run code from a signed release and rely only on the encryption.",
   'transparency.source': 'Source code, protocol specification and threat model',
 
   'nav.home': 'Nylzo, home page',
@@ -675,8 +731,6 @@ export const english: Record<MessageKey, string> = {
   'host.compose': 'Compose',
   'host.binary': 'Binary',
   'host.verify': 'Verify',
-  'host.copy': 'Copy',
-  'host.copied': 'Copied',
   'host.copy.label': 'Copy the commands',
 
   'compare.eyebrow': 'Comparison',

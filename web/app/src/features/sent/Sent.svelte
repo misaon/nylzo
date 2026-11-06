@@ -12,6 +12,7 @@
   import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
   import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
+  import StateCard from '../../shared/ui/notice/StateCard.svelte';
   import { createSentPage } from './sent-page.ts';
   import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 
@@ -347,26 +348,11 @@
         </li>
       {/each}
     </ul>
+  {:else if view.view === 'loading'}
+    <StateCard class="mt-8" loading={translate('sent.loading')} />
   {:else}
-    <div
-      class="mt-8 flex flex-col items-center rounded-pane bg-white/4 px-6 py-12 text-center shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 md:py-14"
-    >
-      {#if view.view === 'loading'}
-        <span class="grid size-14 place-items-center text-aegis-300" aria-hidden="true">
-          <svg
-            class="size-8 motion-safe:animate-spin"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-          >
-            <circle cx="12" cy="12" r="9" stroke-opacity="0.2"></circle>
-            <path d="M21 12a9 9 0 0 0-9-9"></path>
-          </svg>
-        </span>
-        <p role="status" class="mt-5 text-body text-ink-soft">{translate('sent.loading')}</p>
-      {:else if view.view === 'unavailable'}
+    <StateCard class="mt-8">
+      {#if view.view === 'unavailable'}
         {@render emptyCard(
           'alert',
           translate('sent.unavailable.title'),
@@ -381,7 +367,7 @@
           'tile-neutral text-ink-soft',
         )}
       {/if}
-    </div>
+    </StateCard>
   {/if}
 </section>
 
