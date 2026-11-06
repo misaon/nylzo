@@ -164,12 +164,12 @@ test('the sent list, empty and with a message, and its cancel dialog pass axe wi
 }) => {
   const page = await newPage(PHONE);
   await page.goto('/sent');
-  await expect(page.getByText('This device remembers no messages.')).toBeVisible();
+  await expect(page.getByText('Nothing here yet')).toBeVisible();
   await expectAccessible(page, 'sent empty');
   await createMessageInPage(page, { text: 'axe', remember: true });
   await expectAccessible(page, 'created and remembered');
   await page.goto('/sent');
-  await expect(page.getByText('Waiting to be opened.')).toBeVisible();
+  await expect(page.getByText('Waiting to be opened')).toBeVisible();
   await expectAccessible(page, 'sent list');
   await page.getByRole('button', { name: 'Cancel message' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

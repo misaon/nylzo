@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
@@ -93,6 +93,13 @@ async function layoutChanges(page: Page): Promise<LayoutChanges | undefined> {
   return page.evaluate(() => globalThis.nylzoLayoutChanges?.());
 }
 
+async function pagePosition(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return `${Math.round(box.x + scrollX)},${Math.round(box.y + scrollY)} ${Math.round(box.width)}x${Math.round(box.height)}`;
+  });
+}
+
 // The card grows into the created panel and shrinks to the revealed message by design (owner decision R11).
 async function settle(page: Page): Promise<void> {
   await expect
@@ -156,12 +163,18 @@ for (const viewport of VIEWPORTS) {
     await sender.emulateMedia(FULL_MOTION);
     await watchLayout(sender);
     await sender.goto('/sent');
-    await expect(sender.getByText('Waiting to be opened.')).toHaveCount(2);
+    await expect(sender.getByText('Waiting to be opened').filter({ visible: true })).toHaveCount(2);
     await expectNothingMoved(sender, 'sent loaded');
-    await sender.getByRole('button', { name: 'Cancel message' }).first().click();
+    // A cancelled item takes its ended form by design (R26), so only the items above it must stay in place.
+    const cancel = sender.getByRole('button', { name: 'Cancel message' }).last();
+    await cancel.scrollIntoViewIfNeeded();
+    const firstItem = sender.getByRole('listitem').first();
+    const before = await pagePosition(firstItem);
+    await cancel.click();
     await sender.getByRole('dialog').getByRole('button', { name: 'Yes, cancel' }).click();
-    await expect(sender.getByText('Cancelled.', { exact: true })).toBeVisible();
-    await expectNothingMoved(sender, 'cancelled');
+    await expect(sender.getByText('Cancelled', { exact: true })).toBeVisible();
+    await settle(sender);
+    expect(await pagePosition(firstItem), 'cancelled').toEqual(before);
 
     const reporter = await newPage({ viewport, ...FULL_MOTION });
     await watchLayout(reporter);

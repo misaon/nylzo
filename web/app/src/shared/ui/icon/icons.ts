@@ -98,6 +98,10 @@ export const ICONS = {
   ],
   heart: [{ path: 'M12 20s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.2 4.3 4.3 0 0 1 19.5 10c0 5.6-7.5 10-7.5 10z' }],
   hash: [{ path: 'M5 9h14M5 15h14M10 4 8 20M16 4l-2 16' }],
+  inbox: [
+    { path: 'M3.5 13.5 6 5.5h12l2.5 8v5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z' },
+    { path: 'M3.5 13.5h5l1.5 2.5h4l1.5-2.5h5' },
+  ],
   info: [clockFace, { path: 'M12 11v5M12 8h.01' }],
   keyhole: [{ rect: [5, 11, 14, 9, 2] }, { path: 'M8 11V8a4 4 0 0 1 8 0v3M12 15v1.5' }],
   key: [{ circle: [8, 15, 4] }, { path: 'M11 12l8-8M16 7l2 2M14 9l2 2' }],

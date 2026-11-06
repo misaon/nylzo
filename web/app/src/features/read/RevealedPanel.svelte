@@ -71,7 +71,9 @@
       {#if page.confirmingCopy}
         <ConfirmDialog
           id="{id}-copy"
-          message={translate('revealed.hidden.confirm')}
+          title={translate('revealed.hidden.confirm')}
+          tone="warning"
+          icon="alert"
           confirm={translate('revealed.hidden.copy')}
           dismiss={translate('revealed.hidden.keep')}
           onconfirm={page.copyText}

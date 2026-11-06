@@ -15,10 +15,6 @@ function durationParts(seconds: number): readonly [value: number, unit: string] 
   return [Math.ceil(seconds / HOUR), 'hour'];
 }
 
-export function formatTime(timestamp: string, language: Language): string {
-  return new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(timestamp));
-}
-
 const CZECH_HOURS_WITH_VE = new Set([2, 3, 4, 12, 13, 14, 20, 21, 22, 23]);
 
 export function formatMoment(timestamp: string, language: Language): string {

@@ -15,6 +15,7 @@ export type ItemState =
 
 export interface SentItem {
   readonly id: string;
+  readonly label?: string | undefined;
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly state: ItemState;
@@ -50,6 +51,9 @@ export interface SentPage {
 }
 
 export function assess(state: ItemState, expiresAt: number, now: number): Pick<SentItem, 'ended' | 'cancellable'> {
+  if (state.kind === 'failed' || state.kind === 'retry_later') {
+    return { ended: false, cancellable: expiresAt > now };
+  }
   if (state.kind !== 'loaded') {
     return { ended: false, cancellable: false };
   }
@@ -97,6 +101,7 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
         const state = states.get(record.id) ?? { kind: 'loading' };
         return {
           id: record.id,
+          label: record.label,
           createdAt: record.createdAt,
           expiresAt: record.expiresAt,
           state,

@@ -137,7 +137,7 @@ describe('the sent page', () => {
     expect(sent.last()).toEqual({ view: 'unavailable' });
   });
 
-  it('treats only a live, unexpired message without an end as cancellable', () => {
+  it('treats a live, unexpired message without an end, or one whose status did not load, as cancellable', () => {
     const withoutExpiry = { state: 'available' as const, opensUsed: 0, opensMax: 1, failedPassphraseAttempts: 0 };
     const status = { ...withoutExpiry, expiresAt: '2026-10-23T13:00:00Z' };
     const later = NOW + 3_600_000;
@@ -158,6 +158,9 @@ describe('the sent page', () => {
     );
     expect(assess({ kind: 'loaded', status: withoutExpiry }, NOW, NOW)).toEqual({ ended: true, cancellable: false });
     expect(assess({ kind: 'unknown' }, later, NOW)).toEqual({ ended: false, cancellable: false });
+    expect(assess({ kind: 'failed' }, later, NOW)).toEqual({ ended: false, cancellable: true });
+    expect(assess({ kind: 'retry_later', retryAfter: 30 }, later, NOW)).toEqual({ ended: false, cancellable: true });
+    expect(assess({ kind: 'failed' }, NOW, NOW)).toEqual({ ended: false, cancellable: false });
   });
 
   it('never signs with a key that another tab forgot', async () => {
