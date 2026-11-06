@@ -2,6 +2,8 @@
   import { MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import Button from '../../../shared/ui/button/Button.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
   import Popover from '../../../shared/ui/Popover.svelte';
   import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/private-fields.ts';
   import Switch from '../../../shared/ui/Switch.svelte';
@@ -24,7 +26,8 @@
     menu="security"
     popoverId="{id}-security"
     icon="key"
-    label={translate('compose.passphrase.chip')}
+    label={translate(composer.protect ? 'compose.passphrase.chip' : 'compose.passphrase.chip.off')}
+    reserve={translate(composer.protect ? 'compose.passphrase.chip.off' : 'compose.passphrase.chip')}
     problem={composer.problemOf.passphrase !== undefined}
     accent={composer.protect}
   />
@@ -33,86 +36,65 @@
     label={translate('compose.security')}
     open={composer.menu === 'security'}
     onclose={() => composer.closeMenu('security')}
-    class="inset-x-0 top-full mt-2 p-1 sm:inset-x-auto sm:left-0 sm:w-72"
+    class="inset-x-0 top-full mt-2 p-1.5 sm:inset-x-auto sm:left-0 sm:w-96"
   >
     <button
       type="button"
       role="switch"
       aria-checked={composer.protect}
       onclick={composer.toggleProtect}
-      class="flex w-full items-start gap-3 rounded-[7px] p-2 text-left hover:bg-white/4"
+      class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control p-2.5 text-left transition duration-300 ease-silk hover:bg-white/4"
     >
-      <span class="mt-px"><Switch on={composer.protect} /></span>
-      <span>
-        <span class="block text-[13px] text-ink">{translate('compose.passphrase.switch')}</span>
-        <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
-          >{translate('compose.passphrase.switch.note')}</span
-        >
-      </span>
+      <span class="text-ui font-medium text-ink">{translate('compose.passphrase.switch')}</span>
+      <span class="shrink-0"><Switch on={composer.protect} /></span>
+      <span class="col-span-2 mt-1 text-caption text-pretty text-ink-mute"
+        >{translate('compose.passphrase.switch.note')}</span
+      >
     </button>
-    <div
-      class={[
-        'flex flex-col gap-1.5 px-2 pt-0.5 pb-2 transition-opacity duration-500',
-        composer.protect ? 'opacity-100' : 'opacity-40',
-      ]}
-    >
+    <div class={['px-2.5 pb-2.5 transition-opacity duration-500 ease-silk', !composer.protect && 'opacity-40']}>
       <label for="{id}-passphrase" class="sr-only">{translate('create.passphrase')}</label>
-      <div class="flex gap-1.5">
-        <input
-          id="{id}-passphrase"
-          {@attach composer.focus.attach('passphrase')}
-          bind:value={composer.passphrase}
-          type={composer.passphraseVisible ? 'text' : 'password'}
-          disabled={!composer.protect}
-          {...PRIVATE_PASSPHRASE}
-          onkeydown={submitOnEnter}
-          placeholder={translate('compose.passphrase.placeholder', { words: WEAK_BELOW_WORDS })}
-          aria-invalid={composer.problemOf.passphrase !== undefined}
-          aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"
+      <div class="flex items-center gap-2">
+        <div
           class={[
-            'h-11 w-full min-w-0 rounded-[7px] px-3 text-[13px] text-ink well placeholder:text-ink-mute md:h-8',
-            composer.problemOf.passphrase && 'shadow-[inset_0_0_0_1px_oklch(0.8_0.08_350/0.7)]',
+            'flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-3.5 well transition duration-300 ease-silk md:h-10',
+            composer.problemOf.passphrase &&
+              'shadow-[0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] outline-1 -outline-offset-1 outline-rose-300/70',
           ]}
-        />
-        <button
-          type="button"
-          disabled={!composer.protect}
-          onclick={composer.generatePassphrase}
-          class="h-11 shrink-0 rounded-[7px] px-3 text-[12px] text-nebula-300 well hover:text-ink md:h-8"
         >
+          <Icon name="key" class="size-4 shrink-0 text-aegis-300" />
+          <input
+            id="{id}-passphrase"
+            {@attach composer.focus.attach('passphrase')}
+            bind:value={composer.passphrase}
+            type="text"
+            disabled={!composer.protect}
+            {...PRIVATE_PASSPHRASE}
+            onkeydown={submitOnEnter}
+            placeholder={translate('compose.passphrase.placeholder', {
+              min: MIN_PASSPHRASE_CHARACTERS,
+              words: WEAK_BELOW_WORDS,
+            })}
+            aria-invalid={composer.problemOf.passphrase !== undefined}
+            aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"
+            class="h-full min-w-0 flex-1 bg-transparent text-ui text-ink outline-none placeholder:text-ink-mute"
+          />
+        </div>
+        <Button variant="tint" size="compact" disabled={!composer.protect} onclick={composer.generatePassphrase}>
+          <Icon name="refresh" animated />
           {translate('compose.passphrase.generate')}
-        </button>
+        </Button>
       </div>
-      <p id="{id}-passphrase-hint" class="text-[11px] leading-relaxed text-ink-mute">
-        {translate('create.passphrase.hint', { min: MIN_PASSPHRASE_CHARACTERS })}
-      </p>
-      <p
-        id="{id}-passphrase-problem"
-        class={[
-          'min-h-[1lh] text-[11px] leading-relaxed',
-          composer.problemOf.passphrase ? 'text-rose-300' : 'text-nebula-300',
-        ]}
-      >
-        {composer.passphraseMessage}
-      </p>
+      <div class="mt-2 grid *:col-start-1 *:row-start-1">
+        <p
+          id="{id}-passphrase-hint"
+          class={['text-micro text-pretty text-ink-mute', composer.problemOf.passphrase !== undefined && 'invisible']}
+        >
+          {translate('create.passphrase.hint')}
+        </p>
+        <p id="{id}-passphrase-problem" class="flex items-start gap-1.5 text-caption text-rose-300 empty:invisible">
+          {composer.problemOf.passphrase === undefined ? '' : composer.passphraseMessage}
+        </p>
+      </div>
     </div>
-    {#if composer.canRemember}
-      <div class="mx-2 h-px bg-white/8"></div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={composer.remember}
-        onclick={() => (composer.remember = !composer.remember)}
-        class="flex w-full items-start gap-3 rounded-[7px] p-2 text-left hover:bg-white/4"
-      >
-        <span class="mt-px"><Switch on={composer.remember} /></span>
-        <span>
-          <span class="block text-[13px] text-ink">{translate('compose.remember.switch')}</span>
-          <span class="mt-0.5 block text-[11px] leading-relaxed text-ink-mute"
-            >{translate('compose.remember.note')}</span
-          >
-        </span>
-      </button>
-    {/if}
   </Popover>
 </div>

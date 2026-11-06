@@ -8,13 +8,13 @@ import {
 } from '../support/indexed-database.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
 import {
-  chooseRemember,
   createdLink,
   createMessageInPage,
   expectMessageShown,
   notInert,
   openApp,
   showMessage,
+  trackInSent,
 } from '../support/pages.ts';
 import { holdRoute } from '../support/routes.ts';
 import { watchViolations } from '../support/watchers.ts';
@@ -33,7 +33,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   const violations = await watchViolations(page);
   const link = await createMessageInPage(page, { text: 'cancel me', remember: true });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
-  await page.getByRole('link', { name: 'Status and cancelling' }).click();
+  await page.getByRole('link', { name: 'Open Sent' }).click();
   await expect(page.getByRole('heading', { name: 'Sent messages' })).toBeVisible();
   const item = page.getByRole('listitem');
   await expect(item).toHaveCount(1);
@@ -77,22 +77,19 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   expect(await violations()).toEqual([]);
 });
 
-test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({
-  newPage,
+test('this device remembers a new message only when the sender saves it in the created panel (UX13)', async ({
+  page,
 }) => {
-  const page = await newPage({ reducedMotion: 'no-preference' });
   const completedWrites = await countCompletedWrites(page);
   await openApp(page, '/');
-  await page.getByLabel('Message text').fill('remember early');
-  await chooseRemember(page);
-  const created = page.waitForResponse(
-    (response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST',
-  );
+  await page.getByLabel('Message text').fill('remember on request');
   await page.getByRole('button', { name: 'Create link' }).click();
-  const response = await created;
-  expect(response.ok()).toBe(true);
+  await createdLink(page);
+  expect(await completedWrites()).toBe(0);
+  expect(await databaseNames(page)).toEqual([]);
+  await trackInSent(page, 'Password for Peter');
+  await expect(page.getByText(REMEMBERED)).toBeVisible();
   await expect.poll(completedWrites).toBeGreaterThan(0);
-  await expect(notInert(page, page.getByLabel('Link to the message'))).toHaveCount(0);
   await page.goto('/sent');
   await expect(page.getByRole('listitem')).toHaveCount(1);
   await expect(page.getByText('Waiting to be opened.')).toBeVisible();
@@ -155,11 +152,6 @@ test('a visitor and a sender who keeps the default leave no database, and every 
   await page.goto(message.link);
   await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
   await openApp(page, '/');
-  await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
-  await expect(page.getByRole('switch', { name: /^Cancel from this device/u })).toHaveAttribute(
-    'aria-checked',
-    'false',
-  );
   await page.getByLabel('Message text').fill('not remembered');
   await page.getByRole('button', { name: 'Create link' }).click();
   await createdLink(page);

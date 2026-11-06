@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import OpenLinkForm from '../../../shared/link/OpenLinkForm.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
   import CreatedPanel from '../created/CreatedPanel.svelte';
   import { Composer } from './composer.svelte.ts';
   import ComposerBar from './ComposerBar.svelte';
@@ -12,6 +12,23 @@
   const composer = new Composer(translator);
   const id = $props.id();
   const noticeId = `${id}-notice`;
+  const HERO_STEPS = [
+    { key: 'hero.step.write', icon: 'write', badge: 'text-aegis-200 ring-1 ring-aegis-300/30', line: '', before: '' },
+    {
+      key: 'hero.step.send',
+      icon: 'share',
+      badge: 'text-aegis-200 ring-1 ring-aegis-300/30',
+      line: 'bg-aegis-300/40',
+      before: 'before:bg-aegis-300/40',
+    },
+    {
+      key: 'hero.step.vanish',
+      icon: 'burst',
+      badge: 'border border-dashed border-nebula-300/55 text-nebula-300',
+      line: 'bg-gradient-to-r from-aegis-300/45 to-nebula-300/10',
+      before: 'before:bg-gradient-to-r before:from-aegis-300/45 before:to-nebula-300/10',
+    },
+  ] as const;
 </script>
 
 <svelte:window
@@ -23,26 +40,46 @@
 
 <span id="napsat" class="block" aria-hidden="true"></span>
 
-<section
-  id="create"
-  class="px-4 pt-20 pb-32 sm:px-6 md:pt-28 md:pb-40"
-  aria-labelledby="{id}-title"
-  {@attach composer.start}
->
+<section id="create" class="px-4 pt-10 sm:px-6 md:pt-16" aria-labelledby="{id}-title" {@attach composer.start}>
   <div class="mx-auto max-w-[860px] text-center">
-    <h1
-      class="animate-rise-visible font-display text-[36px] leading-[1.12] font-light tracking-[-0.025em] text-balance sm:text-[50px] lg:text-[62px]"
-    >
+    <p data-eyebrow class="mb-3 text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
+    <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
       {translate('hero.title.lead')} <span class="text-aegis-300">{translate('hero.title.accent')}</span>
     </h1>
-    <p
-      class="mx-auto mt-6 max-w-[640px] animate-rise-visible text-base leading-[1.75] text-balance text-ink-soft [animation-delay:120ms] sm:text-[17px]"
+    <div
+      class={[
+        'transition-[opacity,height,padding] duration-500 ease-silk [interpolate-size:allow-keywords]',
+        composer.phase === 'done' ? 'h-0 overflow-y-clip pt-0 opacity-0' : 'h-auto pt-6 opacity-100',
+      ]}
+      inert={composer.phase === 'done'}
     >
-      {translate('hero.intro')}
-    </p>
+      <ol
+        class="mx-auto grid w-full max-w-[360px] animate-rise grid-cols-3 [animation-delay:160ms] sm:flex sm:w-fit sm:max-w-none sm:items-center"
+        aria-label={translate('hero.steps')}
+      >
+        {#each HERO_STEPS as step, index (step.key)}
+          {#if index > 0}
+            <li aria-hidden="true" class={['hidden h-px w-10 sm:mx-3 sm:block', step.line]}></li>
+          {/if}
+          <li
+            class={[
+              'relative flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-2.5 sm:text-left',
+              index > 0 &&
+                "before:absolute before:top-4 before:right-1/2 before:h-px before:w-full before:content-[''] sm:before:hidden",
+              index > 0 && step.before,
+            ]}
+          >
+            <span class={['glass-soft relative z-10 grid size-8 shrink-0 place-items-center rounded-full', step.badge]}>
+              <Icon name={step.icon} />
+            </span>
+            <span class="text-caption text-ink-soft sm:text-ui">{translate(step.key)}</span>
+          </li>
+        {/each}
+      </ol>
+    </div>
   </div>
 
-  <div class="relative z-20 mx-auto mt-14 max-w-[860px] animate-rise [animation-delay:240ms]">
+  <div class="relative z-20 mx-auto mt-8 max-w-[860px] animate-rise [animation-delay:240ms]">
     <div class="glow-under" aria-hidden="true"></div>
     <div class="glass rounded-card">
       <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
@@ -67,6 +104,9 @@
             created={composer.sealed.created}
             opensMax={composer.sealed.opensMax}
             passphrase={composer.sealed.passphrase}
+            canTrack={composer.canRemember}
+            tracking={composer.remembered}
+            ontrack={(label) => void composer.track(label)}
             onanother={composer.another}
           />
         {/if}
@@ -77,9 +117,21 @@
   <ComposerNotes {composer} {noticeId} />
   <p class="sr-only" role="status" aria-live="polite">{composer.stepTitle}</p>
 
-  <div id="open-link" class="relative z-10 mx-auto mt-12 max-w-[860px] animate-rise [animation-delay:320ms]">
-    <div class="glass rounded-card px-5 pt-5 pb-3 sm:px-7 sm:pt-6">
-      <OpenLinkForm heading />
-    </div>
-  </div>
+  <a
+    href="#how-it-works"
+    aria-label={translate('nav.how')}
+    class="group mx-auto mt-12 flex w-fit animate-rise rounded-control p-3 [animation-delay:320ms]"
+  >
+    <span
+      class="hidden h-10 w-6 justify-center rounded-full border border-ink-mute/60 pt-2 transition-colors duration-300 ease-silk group-hover:border-ink-soft md:flex"
+      aria-hidden="true"
+    >
+      <span class="h-2 w-0.5 rounded-full bg-aegis-300 motion-safe:animate-wheel"></span>
+    </span>
+    <Icon
+      name="chevronDown"
+      class="size-5 text-ink-mute transition-colors duration-300 ease-silk group-hover:text-ink motion-safe:animate-bounce md:hidden"
+      stroke={1.7}
+    />
+  </a>
 </section>

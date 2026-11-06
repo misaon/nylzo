@@ -6,7 +6,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 import { createApi } from '../../../shared/api/api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
 import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
-import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
+import { formatBytes, formatCount, formatDuration, formatWait } from '../../../shared/language/format.ts';
 import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
 import { PacedTimeline } from '../../../shared/pipeline/paced-timeline.svelte.ts';
@@ -47,8 +47,11 @@ type Remembered = 'failed' | 'off' | 'remembered' | 'saving';
 interface SealedMessage {
   readonly created: Created;
   readonly opensMax: number;
-  readonly passphrase: boolean;
-  readonly saved?: Promise<boolean> | undefined;
+  readonly passphrase: string;
+}
+
+function characterCount(text: string): number {
+  return text.normalize('NFC').match(/./gsu)?.length ?? 0;
 }
 
 const REACHED: Readonly<Record<CreateProgress['step'], number>> = {
@@ -98,7 +101,6 @@ export class Composer {
   protect = $state(false);
   passphrase = $state('');
   passphraseVisible = $state(false);
-  remember = $state(false);
   canRemember = $state(true);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
@@ -124,6 +126,7 @@ export class Composer {
   readonly fileLimit = $derived(this.limits?.maxFileBytes ?? MAX_FILE_BYTES);
   readonly ttlOptions = $derived(this.limits ? ttlChoices(this.limits) : [this.ttlSeconds]);
   readonly maxOpens = $derived(this.limits?.maxOpens ?? 1);
+  readonly missingCharacters = $derived(Math.max(1, MIN_PASSPHRASE_CHARACTERS - characterCount(this.passphrase)));
   readonly weak = $derived(this.protect && this.passphrase !== '' && passphraseIsWeak(this.passphrase));
 
   readonly nodes: readonly PipelineNode[] = $derived.by(() => {
@@ -175,6 +178,7 @@ export class Composer {
         size: formatBytes(problem.field === 'text' ? this.textLimit : this.fileLimit, language),
         max: this.maxOpens,
         min: MIN_PASSPHRASE_CHARACTERS,
+        missing: formatCount(this.missingCharacters, 'character', language),
       });
     }
     return messages;
@@ -190,27 +194,40 @@ export class Composer {
       : '';
   });
 
-  readonly notice = $derived.by(() => {
-    const { translate } = this.#translator;
+  readonly failureNotice = $derived.by(() => {
     if (this.loadFailed) {
-      return translate('failure.instance');
+      return this.#translator.translate('failure.instance');
     }
-    if (this.failure) {
-      return this.#failureText(this.failure);
-    }
-    const { content, text, file, ttl, opens, passphrase } = this.problemOf;
-    return content ?? text ?? file ?? ttl ?? opens ?? passphrase ?? '';
+    return this.failure ? this.#failureText(this.failure) : '';
   });
+
+  readonly problemNotice = $derived.by(() => {
+    const { content, text, file, ttl, opens } = this.problemOf;
+    return content ?? text ?? file ?? ttl ?? opens ?? '';
+  });
+
+  readonly notice = $derived(this.failureNotice || this.problemNotice);
 
   readonly stepTitle = $derived(this.phase === 'encrypting' ? (this.nodes[this.timeline.paced.step]?.title ?? '') : '');
 
   readonly start: Attachment = () => {
     if (servedByLocalClient()) {
       this.canRemember = false;
-      this.remember = false;
     }
     void this.loadLimits();
     return () => this.timeline.stop();
+  };
+
+  readonly track = async (label: string): Promise<void> => {
+    const sealed = this.sealed;
+    if (!sealed || !this.canRemember || this.remembered === 'saving' || this.remembered === 'remembered') {
+      return;
+    }
+    this.remembered = 'saving';
+    const stored = await this.#rememberMessage(sealed.created, label);
+    if (this.sealed === sealed) {
+      this.remembered = stored ? 'remembered' : 'failed';
+    }
   };
 
   readonly another = async (): Promise<void> => {
@@ -363,10 +380,7 @@ export class Composer {
     this.#pending = undefined;
     this.sealed = result;
     this.phase = 'done';
-    this.remembered = result.saved ? 'saving' : 'off';
-    if (result.saved) {
-      void this.#showRemembered(result, result.saved);
-    }
+    this.remembered = 'off';
   }
 
   #onProgress(progress: CreateProgress): void {
@@ -375,12 +389,13 @@ export class Composer {
     this.timeline.fraction = 'fraction' in progress ? progress.fraction : undefined;
   }
 
-  async #rememberMessage(created: Created): Promise<boolean> {
+  async #rememberMessage(created: Created, label: string): Promise<boolean> {
     const expiresAt = Date.parse(created.expiresAt);
     const record = {
       id: created.id,
       createdAt: Math.min(Date.now(), expiresAt),
       expiresAt,
+      label: label.trim(),
       manageKey: created.manageKey,
     };
     this.#sentStore ??= browserSentStore();
@@ -451,13 +466,11 @@ export class Composer {
       if (stale()) {
         return;
       }
-      const saved = this.remember && this.canRemember ? this.#rememberMessage(created) : undefined;
       this.text = '';
       this.passphrase = '';
       this.passphraseVisible = false;
-      this.passphraseVisible = false;
       this.removeFile();
-      this.#pending = { created, opensMax: this.opensMax, passphrase: input.passphrase !== '', saved };
+      this.#pending = { created, opensMax: this.opensMax, passphrase: input.passphrase };
       this.timeline.complete();
     } catch (error) {
       if (stale()) {
@@ -484,13 +497,6 @@ export class Composer {
       this.focus.focus('text');
     } else if (problems.some((problem) => problem.field === 'file')) {
       this.focus.focus('file');
-    }
-  }
-
-  async #showRemembered(result: SealedMessage, saved: Promise<boolean>): Promise<void> {
-    const stored = await saved;
-    if (this.sealed === result) {
-      this.remembered = stored ? 'remembered' : 'failed';
     }
   }
 

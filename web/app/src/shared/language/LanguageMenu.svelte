@@ -26,6 +26,7 @@
   const id = $props.id();
   let open = $state(false);
   const current = $derived(translator.language);
+  const currentLabel = $derived(translate('language.current', { language: translate(SPOKEN_NAMES[current]) }));
 
   function choose(language: Language) {
     open = false;
@@ -67,7 +68,7 @@
     aria-haspopup="dialog"
     aria-expanded={open}
     aria-controls={id}
-    aria-label={translate('language.current', { language: translate(SPOKEN_NAMES[current]) })}
+    aria-label={placement === 'footer' ? currentLabel : `${current.toUpperCase()}, ${currentLabel}`}
     onclick={() => (open = !open)}
   >
     {#if placement === 'footer'}

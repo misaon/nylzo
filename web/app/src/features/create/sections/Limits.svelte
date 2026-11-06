@@ -2,7 +2,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { VERIFIED_CLIENTS_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { ARROW_LINK, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
@@ -121,7 +121,7 @@
       >
         <p class="max-w-[760px] text-caption text-ink-mute">
           {translate('limits.liability')}
-          <a href="/terms" class={TEXT_LINK}>{translate('limits.terms')}</a>.
+          <a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('limits.terms')}</a>.
         </p>
       </div>
     </div>

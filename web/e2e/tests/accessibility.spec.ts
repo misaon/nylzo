@@ -3,7 +3,14 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
-import { choosePassphrase, createMessageInPage, expectMessageShown, openApp, showMessage } from './support/pages.ts';
+import {
+  chooseLanguage,
+  choosePassphrase,
+  createMessageInPage,
+  expectMessageShown,
+  openApp,
+  showMessage,
+} from './support/pages.ts';
 import { BASE_URL } from './support/servers.ts';
 
 const PHONE = { viewport: { width: 430, height: 932 }, bypassCSP: true };
@@ -97,7 +104,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   }
 
   await page
-    .getByLabel(/Attachment, up to/u)
+    .getByLabel(/Attachment up to/u)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
   await expectAccessible(page, 'attachment', '#create');
@@ -105,7 +112,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   await page.getByLabel('Message text').fill('axe');
   await choosePassphrase(page, 'short');
   await page.getByRole('button', { name: 'Create link' }).click();
-  await expect(page.getByLabel('Passphrase, optional')).toBeFocused();
+  await expect(page.getByLabel('Passphrase', { exact: true })).toBeFocused();
   await expectAccessible(page, 'refused passphrase', '#create');
 });
 
@@ -126,10 +133,10 @@ test('the read page in every state, with its report form and its delete and down
   await show.click();
   await expectMessageShown(page);
   await expectAccessible(page, 'revealed with actions');
-  await page.getByRole('button', { name: 'Čeština' }).click();
+  await chooseLanguage(page, 'Čeština');
   await expect(page.getByRole('heading', { name: 'Obsah zprávy' })).toBeVisible();
   await expectAccessible(page, 'revealed in Czech');
-  await page.getByRole('button', { name: 'English' }).click();
+  await chooseLanguage(page, 'English');
 
   const risky = await createMessageThroughApi({
     file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') },

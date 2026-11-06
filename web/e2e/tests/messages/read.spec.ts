@@ -311,31 +311,3 @@ test(
     await expect(confirm).toHaveCount(0);
   },
 );
-
-test(
-  'a link pasted on the home page opens without its key entering the address, and Back returns home (W2-02)',
-  { tag: '@cross-browser' },
-  async ({ page }) => {
-    const message = await createMessageThroughApi({ text: 'pasted on the home page' });
-    const addresses: string[] = [];
-    page.on('framenavigated', (frame) => {
-      addresses.push(frame.url());
-    });
-    await openApp(page, '/');
-    const field = page.getByLabel('Link to open');
-    const open = page.getByRole('button', { name: 'Open', exact: true });
-    await field.fill(`https://elsewhere.example/r${new URL(message.link).hash}`);
-    await open.click();
-    await expect(page.getByText('The link belongs to another service.')).toBeVisible();
-    await field.fill(message.link);
-    await open.click();
-    await expect(page).toHaveURL(`${BASE_URL}/r`);
-    await page.getByRole('button', { name: 'Show message' }).click();
-    await expectMessageShown(page);
-    await expect(page.locator('pre')).toHaveText('pasted on the home page');
-    expect(addresses.filter((address) => address.includes('#'))).toEqual([]);
-    await page.goBack();
-    await expect(page).toHaveURL(`${BASE_URL}/`);
-    await expect(page.getByLabel('Message text')).toBeVisible();
-  },
-);

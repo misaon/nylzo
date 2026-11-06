@@ -34,7 +34,7 @@ describe('messages', () => {
       }
     }
     const { translate } = new Translator('en');
-    expect(translate('create.passphrase.hint', limits)).toContain(`${MIN_PASSPHRASE_CHARACTERS} characters`);
+    expect(translate('compose.passphrase.placeholder', limits)).toContain(`${MIN_PASSPHRASE_CHARACTERS} characters`);
     expect(translate('create.passphrase.weak', limits)).toContain(
       `${WEAK_BELOW_WORDS} random words and ${WEAK_BELOW_CHARACTERS} characters`,
     );

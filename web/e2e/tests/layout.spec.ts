@@ -111,6 +111,16 @@ for (const viewport of VIEWPORTS) {
     await layoutChanges(sender);
     await sender.getByRole('button', { name: 'Create link' }).click();
     await createdLink(sender);
+    // The card grows into the taller created panel by design (owner decision R11, 6 Nov 2026).
+    await expect
+      .poll(
+        async () => {
+          const changes = await layoutChanges(sender);
+          return changes?.shifts;
+        },
+        { intervals: [1000] },
+      )
+      .toEqual([]);
     await expectNothingMoved(sender, 'created');
 
     const recipient = await newPage({ viewport, ...FULL_MOTION });

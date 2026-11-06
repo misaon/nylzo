@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
-import { expectMessageShown, leavePage, notInert, showMessage } from '../support/pages.ts';
+import { chooseLanguage, expectMessageShown, leavePage, notInert, showMessage } from '../support/pages.ts';
 import { holdRoute } from '../support/routes.ts';
 import { watchViolations } from '../support/watchers.ts';
 
@@ -78,14 +78,13 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
   await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
   await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
   await expect(page.locator('pre')).toHaveText('three opens');
-  await page.getByRole('button', { name: 'Čeština' }).click();
+  await chooseLanguage(page, 'Čeština');
   await expect(page.getByRole('heading', { name: 'Obsah zprávy' })).toBeVisible();
   await expect(page.getByRole('status').first()).toHaveText('Zbývající otevření jsou smazaná.');
   await expect(page.locator('pre')).toHaveText('three opens');
   await expect(page.locator('html')).toHaveAttribute('lang', 'cs');
-  await expect(page.getByRole('button', { name: 'English' })).toHaveAttribute('lang', 'en');
   expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
-  await page.getByRole('button', { name: 'English' }).click();
+  await chooseLanguage(page, 'English');
   await expect(rest).toBeDisabled();
 
   const late = await newPage();

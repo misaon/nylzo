@@ -1,5 +1,5 @@
 import { expect, test } from './support/fixtures.ts';
-import { openApp } from './support/pages.ts';
+import { chooseLanguage, openApp } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
 import { BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
@@ -78,7 +78,7 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await expect(page.getByRole('heading', { level: 1, name: 'A secret that opens once' })).toBeVisible();
   await expect(page).toHaveURL(`${BASE_URL}/`);
   await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
-  await page.getByRole('button', { name: 'Čeština' }).click();
+  await chooseLanguage(page, 'Čeština');
   await expect(page).toHaveURL(`${BASE_URL}/cs/`);
   await expect(page).toHaveTitle(/^Bezpečně poslat heslo/u);
   expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
@@ -86,7 +86,7 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await openApp(page, '/#create');
   await expect(page).toHaveURL(`${BASE_URL}/cs/#create`);
   await expect(page.getByRole('heading', { level: 1, name: 'Tajemství na jedno otevření' })).toBeVisible();
-  await page.getByRole('button', { name: 'English' }).click();
+  await chooseLanguage(page, 'English');
   await expect(page).toHaveURL(`${BASE_URL}/#create`);
   await openApp(page, '/cs/');
   await expect(page).toHaveURL(`${BASE_URL}/`);

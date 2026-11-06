@@ -103,9 +103,8 @@ test(
 
     await openApp(page, '/');
     await expectAttributes(page.getByLabel('Message text'), quiet);
-    await expectAttributes(page.getByLabel('Passphrase, optional'), passphrase);
-    await expectAttributes(page.getByLabel('Link to open'), quiet);
-    expect(await formOwner(page.getByLabel('Passphrase, optional'))).toBeNull();
+    await expectAttributes(page.getByLabel('Passphrase', { exact: true }), passphrase);
+    expect(await formOwner(page.getByLabel('Passphrase', { exact: true }))).toBeNull();
     await expect(passwordFields).toHaveCount(0);
 
     await page.goto(message.link);

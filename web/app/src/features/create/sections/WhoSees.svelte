@@ -145,7 +145,10 @@
             class="mt-2 h-[4.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_16%,black_50%,transparent)] text-caption break-all text-ink-mute/60 motion-safe:animate-who-arrive-message"
             aria-hidden="true"
           >
-            <span class="block motion-safe:animate-who-drift">{CIPHER_TEXT}</span>
+            <span
+              class="block before:content-[attr(data-cipher)] motion-safe:animate-who-drift"
+              data-cipher={CIPHER_TEXT}
+            ></span>
           </p>
           <p class="sr-only">{translate('who.server.badge')}</p>
         </div>

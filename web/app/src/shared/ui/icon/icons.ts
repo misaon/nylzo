@@ -24,12 +24,14 @@ export const ICONS = {
     { path: 'M14.5 9.5l1-1a3.5 3.5 0 0 1 5 5l-2 2' },
     { path: 'M8 3.5v2M3.5 8h2M16 20.5v-2M20.5 16h-2' },
   ],
+  burst: [{ path: 'M12 4v3M12 17v3M4 12h3M17 12h3M6.5 6.5l2 2M15.5 15.5l2 2M6.5 17.5l2-2M15.5 8.5l2-2' }],
   camera: [
     { path: 'M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z' },
     { circle: [12, 13, 3.5] },
   ],
   cancel: [clockFace, { path: 'M9 9l6 6M15 9l-6 6' }],
   caretDown: [{ path: 'M7 10l5 5 5-5' }],
+  caution: [{ path: 'M12 4.5 3 19.5h18z' }, { path: 'M12 10v4M12 16.8h.01' }],
   check: [{ path: 'M5 12.5l4.5 4.5L19 7.5' }],
   chevronsUpDown: [{ path: 'M8 9.5l4-4 4 4M8 14.5l4 4 4-4' }],
   chevronDown: [{ path: 'M6 9l6 6 6-6' }],
@@ -118,6 +120,10 @@ export const ICONS = {
   plus: [{ path: 'M12 5v14M5 12h14' }],
   search: [{ circle: [11, 11, 6] }, { path: 'M20 20l-4.5-4.5' }],
   server: [{ rect: [4, 4, 16, 7, 2] }, { rect: [4, 13, 16, 7, 2] }, { path: 'M8 7.5h.01M8 16.5h.01' }],
+  share: [
+    { path: 'M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1' },
+    { path: 'M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1' },
+  ],
   shield: [{ path: 'M12 3l8 3.5v5c0 4.5-3.4 8.4-8 9.5-4.6-1.1-8-5-8-9.5v-5z' }, { path: 'M12 8v5M12 16h.01' }],
   shieldCheck: [{ path: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z' }, { path: 'M9 12l2 2 4-4' }],
   trash: [trashLid, { path: 'M10 11v5M14 11v5' }],
@@ -125,6 +131,11 @@ export const ICONS = {
   update: [clockFace, { path: 'M12 16V8M8.5 11.5L12 8l3.5 3.5' }],
   upload: [{ path: 'M12 15V4.5M7.5 9L12 4.5 16.5 9' }, { path: 'M5 14.5v3.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3.5' }],
   userOff: [{ circle: [12, 8, 3.5] }, { path: 'M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5' }, { path: 'M3 3l18 18' }],
+  write: [{ path: 'M4 20h4L19 9l-4-4L4 16v4z' }, { path: 'M14 6l4 4' }],
+  warning: [
+    { path: 'M10.3 3.9L2.4 17.6a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z' },
+    { path: 'M12 9.5v4M12 17h.01' },
+  ],
   world: [
     { circle: [12, 12, 9] },
     { path: 'M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9M12 3C9.5 5.6 8.2 8.6 8.2 12s1.3 6.4 3.8 9' },

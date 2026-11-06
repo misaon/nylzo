@@ -16,13 +16,18 @@ describe('created message panel', () => {
   let component: ReturnType<typeof mount>;
   let created: Created;
   const translator = new Translator('en');
-  const another = vi.fn<(...arguments_: unknown[]) => void>();
+  const another = vi.fn<() => void>();
+  const track = vi.fn<(label: string) => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();
+  const coarsePointer = vi.fn<() => boolean>();
 
-  function show(passphrase = false, opensMax = 1): void {
-    component = mount(CreatedPanel, { target, props: { created, opensMax, passphrase, onanother: another } });
+  function show({ passphrase = '', opensMax = 1, canTrack = true } = {}): void {
+    component = mount(CreatedPanel, {
+      target,
+      props: { created, opensMax, passphrase, canTrack, tracking: 'off', ontrack: track, onanother: another },
+    });
     flushSync();
   }
   function button(key: Parameters<typeof translator.translate>[0]): HTMLButtonElement {
@@ -34,6 +39,9 @@ describe('created message panel', () => {
       throw new Error(`missing button ${label}`);
     }
     return found;
+  }
+  function status(): string {
+    return target.querySelector('[role="status"]')?.textContent.trim() ?? '';
   }
 
   beforeEach(async () => {
@@ -49,7 +57,9 @@ describe('created message panel', () => {
     writeText.mockResolvedValue();
     share.mockResolvedValue();
     canShare.mockReturnValue(true);
+    coarsePointer.mockReturnValue(true);
     vi.stubGlobal('navigator', { clipboard: { writeText }, share, canShare });
+    vi.stubGlobal('matchMedia', () => ({ matches: coarsePointer() }));
     target = document.createElement('div');
     document.body.append(target);
   });
@@ -61,7 +71,7 @@ describe('created message panel', () => {
   });
 
   it('focuses the success title, preserves the exact link and offers another message', async () => {
-    show(true, 3);
+    show({ opensMax: 3 });
     await vi.advanceTimersByTimeAsync(30);
     expect(document.activeElement).toBe(target.querySelector('h2'));
     const input = target.querySelector('input');
@@ -73,7 +83,6 @@ describe('created message panel', () => {
     expect(input?.selectionEnd).toBe(created.link.length);
     input?.blur();
     flushSync();
-    expect(target.textContent).toContain(translator.translate('created.sub.passphrase'));
     expect(target.textContent).toContain(translator.translate('compose.opens.other', { count: 3 }));
     button('created.another').click();
     expect(another).toHaveBeenCalledOnce();
@@ -84,13 +93,12 @@ describe('created message panel', () => {
     button('created.copy').click();
     await tick();
     expect(writeText).toHaveBeenCalledExactlyOnceWith(created.link);
-    expect(target.textContent).toContain(translator.translate('created.copied'));
+    expect(status()).toContain(translator.translate('clipboard.copied'));
     button('clipboard.clear').click();
     await tick();
     expect(writeText).toHaveBeenLastCalledWith('');
     expect(button('clipboard.clear').disabled).toBe(true);
-    await vi.advanceTimersByTimeAsync(2500);
-    expect(target.querySelector('[role="status"]')?.textContent).toBe('');
+    expect(status()).toContain(translator.translate('clipboard.cleared'));
   });
 
   it('selects the link for manual copy if the clipboard API refuses', async () => {
@@ -99,7 +107,7 @@ describe('created message panel', () => {
     button('created.copy').click();
     await tick();
     expect(document.activeElement).toBe(target.querySelector('input'));
-    expect(target.querySelector('[role="status"]')?.textContent).toBe('');
+    expect(status()).toBe(translator.translate('created.copy_failed'));
   });
 
   it('keeps clearing available if the clipboard refuses to clear', async () => {
@@ -110,6 +118,36 @@ describe('created message panel', () => {
     button('clipboard.clear').click();
     await tick();
     expect(button('clipboard.clear').disabled).toBe(false);
+  });
+
+  it('masks the passphrase until asked and copies it exactly', async () => {
+    const passphrase = 'sova-lampa-reka-kamen';
+    show({ passphrase });
+    expect(target.textContent).not.toContain(passphrase);
+    button('created.passphrase.show').click();
+    flushSync();
+    expect(target.textContent).toContain(passphrase);
+    button('created.passphrase.copy').click();
+    await tick();
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(passphrase);
+  });
+
+  it('saves to Sent only when asked, with the typed label, and never in the local client', async () => {
+    show();
+    const label = target.querySelector<HTMLInputElement>(
+      `input[placeholder="${CSS.escape(translator.translate('created.track.placeholder'))}"]`,
+    );
+    if (!label) {
+      throw new Error('missing label field');
+    }
+    expect(track).not.toHaveBeenCalled();
+    label.value = 'Password for Peter';
+    label.dispatchEvent(new Event('input', { bubbles: true }));
+    target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
+    expect(track).toHaveBeenCalledExactlyOnceWith('Password for Peter');
+    await unmount(component);
+    show({ canTrack: false });
+    expect(target.textContent).not.toContain(translator.translate('created.track.title'));
   });
 
   it.each([false, true])('handles native sharing and cancellation: cancelled=%s', async (cancelled) => {
@@ -123,10 +161,14 @@ describe('created message panel', () => {
     expect(target.querySelector('input')?.value).toBe(created.link);
   });
 
-  it('hides native sharing when the browser cannot share a link', () => {
-    canShare.mockReturnValue(false);
+  it.each([
+    ['cannot share a link', () => canShare.mockReturnValue(false)],
+    ['has a fine pointer', () => coarsePointer.mockReturnValue(false)],
+  ])('hides native sharing when the browser %s', (_reason, arrange) => {
+    arrange();
     show();
-    const label = translator.translate('created.share');
-    expect(target.querySelector(`button[aria-label="${CSS.escape(label)}"]`)).toBeNull();
+    expect([...target.querySelectorAll('button')].map((element) => element.textContent.trim())).not.toContain(
+      translator.translate('created.share'),
+    );
   });
 });

@@ -106,32 +106,6 @@
   }
 }
 
-@utility progress-fill {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: transparent;
-  &::-webkit-progress-bar {
-    background: transparent;
-  }
-  &::-webkit-progress-value {
-    background: linear-gradient(
-      90deg,
-      oklch(0.48 0.19 262 / 0.9),
-      oklch(0.56 0.19 258 / 0.8),
-      oklch(0.67 0.16 252 / 0.75)
-    );
-  }
-  &::-moz-progress-bar {
-    background: linear-gradient(
-      90deg,
-      oklch(0.48 0.19 262 / 0.9),
-      oklch(0.56 0.19 258 / 0.8),
-      oklch(0.67 0.16 252 / 0.75)
-    );
-  }
-}
-
 @utility progress-cycle {
   appearance: none;
   border: 0;

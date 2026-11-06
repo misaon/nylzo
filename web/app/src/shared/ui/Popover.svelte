@@ -43,10 +43,13 @@
   {@attach focusFirst}
   {@attach attachment}
   class={[
-    'absolute z-30 rounded-pane glass-pop transition-[opacity,translate] duration-300 ease-silk',
+    'absolute z-30 rounded-pane glass-pop duration-300 ease-silk',
     open
-      ? 'translate-y-0 opacity-100'
-      : ['pointer-events-none opacity-0', from === 'above' ? '-translate-y-1' : 'translate-y-1'],
+      ? 'visible translate-y-0 opacity-100 transition-[opacity,translate]'
+      : [
+          'pointer-events-none invisible opacity-0 transition-[opacity,translate,visibility]',
+          from === 'above' ? '-translate-y-1' : 'translate-y-1',
+        ],
     className,
   ]}
 >

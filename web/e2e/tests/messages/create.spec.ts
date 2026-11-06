@@ -39,8 +39,8 @@ test('the composer forgets the text, the passphrase and the file once the link e
   page,
 }) => {
   const text = page.getByLabel('Message text');
-  const passphrase = page.getByLabel('Passphrase, optional');
-  const attachment = page.getByLabel(/Attachment, up to/u);
+  const passphrase = page.getByLabel('Passphrase', { exact: true });
+  const attachment = page.getByLabel(/Attachment up to/u);
   const attachedFiles = () => attachment.evaluate((input: HTMLInputElement) => input.files?.length ?? 0);
 
   await openApp(page, '/');
@@ -83,7 +83,7 @@ test('a refused create keeps the message and hands focus back to Create link', a
   const submit = page.getByRole('button', { name: 'Create link' });
   await submit.click();
   await expect(
-    page.getByRole('alert').filter({ hasText: /^Too many messages in a short time\. Try again in /u }),
+    page.getByRole('alert').filter({ hasText: /^Too many messages were created in a short time\. Try again in /u }),
   ).toBeVisible({ timeout: 45_000 });
   await expect(submit).toBeEnabled();
   await expect(submit).toBeFocused();
@@ -105,7 +105,7 @@ test('a double click on Create link with an attachment creates one message', asy
   });
   await page.getByLabel('Message text').fill('double');
   await page
-    .getByLabel(/Attachment, up to/u)
+    .getByLabel(/Attachment up to/u)
     .setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
   await page.getByRole('button', { name: 'Create link' }).dblclick();
   await createdLink(page);
@@ -215,6 +215,11 @@ test('the sender can hand the link to the share sheet and clear the clipboard af
   await page.addInitScript(() => {
     const calls: string[] = [];
     Object.defineProperty(globalThis, 'nylzoClipboard', { value: calls });
+    const media = globalThis.matchMedia.bind(globalThis);
+    Object.defineProperty(globalThis, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => (query === '(pointer: coarse)' ? { matches: true } : media(query)),
+    });
     Object.defineProperties(navigator, {
       canShare: { configurable: true, value: () => true },
       share: {
@@ -234,7 +239,7 @@ test('the sender can hand the link to the share sheet and clear the clipboard af
     });
   });
   const link = await createMessageInPage(page, { text: 'share me' });
-  await page.getByRole('button', { name: 'Share link' }).click();
+  await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('button', { name: 'Copy link' }).click();
   await page.getByRole('button', { name: 'Clear clipboard' }).click();
   await expect(page.getByText('The clipboard is empty.', { exact: false })).toBeVisible();

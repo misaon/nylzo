@@ -14,7 +14,7 @@
   ></span>
   <span
     class={[
-      'absolute inset-0 rounded-full bg-aegis-500/45 shadow-[inset_0_0_0_1px_oklch(0.77_0.115_249/0.55),0_0_18px_oklch(0.56_0.19_258/0.45)] transition-opacity duration-500 ease-silk',
+      'absolute inset-0 rounded-full bg-aegis-500/20 shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)] ring-1 ring-aegis-300/50 transition-opacity duration-500 ease-silk',
       on ? 'opacity-100' : 'opacity-0',
     ]}
   ></span>

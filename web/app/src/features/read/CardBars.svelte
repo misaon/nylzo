@@ -61,6 +61,7 @@
           </button>
           <WorkingStatus
             label={translate('open.opening')}
+            icon="unlock"
             {progress}
             fill={page.phase === 'opening' ? progress : 0}
             shown={page.phase === 'opening'}

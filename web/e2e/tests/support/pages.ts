@@ -21,16 +21,17 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
   await openApp(page, `${base}/`);
   await page.getByLabel('Message text').fill(message.text ?? '');
   if (message.file) {
-    await page.getByLabel(/Attachment, up to/u).setInputFiles(message.file);
+    await page.getByLabel(/Attachment up to/u).setInputFiles(message.file);
   }
   if (message.passphrase) {
     await choosePassphrase(page, message.passphrase);
   }
-  if (message.remember) {
-    await chooseRemember(page);
-  }
   await page.getByRole('button', { name: 'Create link' }).click();
-  return createdLink(page);
+  const link = await createdLink(page);
+  if (message.remember) {
+    await trackInSent(page);
+  }
+  return link;
 }
 
 export async function createdLink(page: Page): Promise<string> {
@@ -40,19 +41,26 @@ export async function createdLink(page: Page): Promise<string> {
 }
 
 async function openSecurityMenu(page: Page): Promise<void> {
-  const menu = page.getByRole('button', { name: 'Passphrase', exact: true });
+  const menu = page.getByRole('button', { name: /^(?:No|With) passphrase$/u });
   if ((await menu.getAttribute('aria-expanded')) !== 'true') {
     await menu.click();
   }
 }
 
-export async function chooseRemember(page: Page): Promise<void> {
-  await openSecurityMenu(page);
-  const remember = page.getByRole('switch', { name: /^Cancel from this device/u });
-  if ((await remember.getAttribute('aria-checked')) !== 'true') {
-    await remember.click();
-  }
-  await expect(remember).toHaveAttribute('aria-checked', 'true');
+export async function trackInSent(page: Page, label = ''): Promise<void> {
+  await page.getByLabel('Label, only you see it').fill(label);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(/This device (?:remembered|could not remember) the message/u)).toBeVisible();
+}
+
+export async function chooseLanguage(page: Page, name: 'Čeština' | 'English'): Promise<void> {
+  await page
+    .getByRole('button', { name: /(?:Language|Jazyk): /u })
+    .first()
+    .click();
+  const option = page.getByRole('option', { name });
+  await expect(option).toHaveAttribute('lang', name === 'English' ? 'en' : 'cs');
+  await option.click();
 }
 
 export async function choosePassphrase(page: Page, passphrase: string): Promise<void> {
@@ -61,7 +69,7 @@ export async function choosePassphrase(page: Page, passphrase: string): Promise<
   if ((await protect.getAttribute('aria-checked')) !== 'true') {
     await protect.click();
   }
-  await page.getByLabel('Passphrase, optional').fill(passphrase);
+  await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
 }
 
 export async function showMessage(page: Page, link: string, passphrase?: string): Promise<void> {

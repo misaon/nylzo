@@ -159,7 +159,7 @@ test(
         local,
       );
       expect(link.startsWith(`${hostile.origin}/r#`), 'links from the verified client name the instance').toBe(true);
-      await expect(sender.getByRole('switch', { name: /^Cancel from this device/u })).toHaveCount(0);
+      await expect(sender.getByText('Track in Sent')).toHaveCount(0);
       expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 
       const open = runNylzo(['open', '--no-browser', '--server', hostile.origin], link);

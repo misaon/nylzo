@@ -2,9 +2,7 @@ export interface LinkSegment {
   readonly id: 'host' | 'id' | 'meta' | 'key';
   readonly text: string;
   readonly short: string;
-  readonly server: boolean;
-  readonly tone: string;
-  readonly bar: string;
+  readonly secret: boolean;
 }
 
 function middle(text: string, head: number, tail: number): string {
@@ -16,36 +14,15 @@ export function linkSegments(link: string): LinkSegment[] {
   const fields = hash === -1 ? [] : link.slice(hash + 1).split('.');
   const [version = '', kdfId = '', id = '', ...keys] = fields;
   if (!link.slice(0, hash).endsWith('/r') || fields.length !== 5) {
-    return [{ id: 'host', text: link, short: link, server: true, tone: 'text-ink-soft', bar: 'bg-ink-mute' }];
+    return [{ id: 'host', text: link, short: link, secret: false }];
   }
-  const host = link.slice(0, hash);
+  const host = link.slice(0, hash).replace(/^https?:\/\//u, '');
   const meta = `#${version}.${kdfId}.`;
   const key = `.${keys.join('.')}`;
   return [
-    {
-      id: 'host',
-      text: host,
-      short: host.replace(/^https?:\/\//u, ''),
-      server: true,
-      tone: 'text-ink-soft',
-      bar: 'bg-ink-mute',
-    },
-    { id: 'meta', text: meta, short: meta, server: false, tone: 'text-rose-300', bar: 'bg-rose-300' },
-    {
-      id: 'id',
-      text: id,
-      short: id.length > 6 ? `${id.slice(0, 6)}…` : id,
-      server: true,
-      tone: 'text-nebula-300',
-      bar: 'bg-nebula-300',
-    },
-    {
-      id: 'key',
-      text: middle(key, 14, 6),
-      short: middle(key, 8, 5),
-      server: false,
-      tone: 'text-aegis-300',
-      bar: 'bg-aegis-400',
-    },
+    { id: 'host', text: host, short: host, secret: false },
+    { id: 'meta', text: meta, short: meta, secret: false },
+    { id: 'id', text: middle(id, 4, 3), short: middle(id, 2, 2), secret: false },
+    { id: 'key', text: middle(key, 14, 6), short: middle(key, 5, 3), secret: true },
   ];
 }

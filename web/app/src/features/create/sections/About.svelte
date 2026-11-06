@@ -2,7 +2,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { ARROW_LINK, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
@@ -62,7 +62,7 @@
     </dl>
     <p class="rv-focus text-caption text-pretty text-ink-mute [--rv-blur:4px] md:col-span-2" {@attach reveal}>
       {translate('about.terms')}
-      <a href="/terms" class={TEXT_LINK}>{translate('about.terms.link')}</a>.
+      <a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('about.terms.link')}</a>.
     </p>
   </div>
 </section>

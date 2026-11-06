@@ -12,6 +12,7 @@
   const { composer }: Props = $props();
   const { translate } = getTranslator();
   const id = $props.id();
+  const LENGTHS = ['w-1/4', 'w-1/2', 'w-3/4', 'w-full'] as const;
 
   function choose(seconds: number): void {
     composer.ttlSeconds = seconds;
@@ -25,8 +26,7 @@
     menu="ttl"
     popoverId="{id}-ttl"
     icon="clock"
-    label={composer.ttlLabel(composer.ttlSeconds)}
-    ariaLabel={translate('compose.ttl.label', { ttl: composer.ttlLabel(composer.ttlSeconds) })}
+    label={translate('compose.ttl.label', { ttl: composer.ttlLabel(composer.ttlSeconds) })}
     problem={composer.problemOf.ttl !== undefined}
   />
   <Popover
@@ -34,32 +34,42 @@
     label={translate('compose.ttl.title')}
     open={composer.menu === 'ttl'}
     onclose={() => composer.closeMenu('ttl')}
-    class="inset-x-0 top-full mt-2 p-1 sm:inset-x-auto sm:left-0 sm:w-56"
+    class="inset-x-0 top-full mt-2 p-1.5 sm:inset-x-auto sm:left-0 sm:w-64"
   >
-    <p class="px-2.5 pt-1.5 pb-1 text-[11px] text-ink-mute">{translate('compose.ttl.title')}</p>
-    {#each composer.ttlOptions as seconds (seconds)}
-      <button
-        type="button"
-        aria-pressed={composer.ttlSeconds === seconds}
-        onclick={() => choose(seconds)}
-        class={[
-          'flex h-11 w-full items-center justify-between rounded-[7px] px-2.5 text-[13px] hover:bg-white/6 md:h-8',
-          composer.ttlSeconds === seconds ? 'text-ink' : 'text-ink-soft',
-        ]}
-      >
-        {composer.ttlLabel(seconds)}
-        <Icon
-          name="check"
-          stroke={2.2}
+    <p class="px-3 pt-1.5 pb-1 text-caption text-ink-mute">{translate('compose.ttl.title')}</p>
+    <div class="grid gap-0.5">
+      {#each composer.ttlOptions as seconds, index (seconds)}
+        {const selected = $derived(composer.ttlSeconds === seconds)}
+        <button
+          type="button"
+          aria-pressed={selected}
+          onclick={() => choose(seconds)}
           class={[
-            'size-3.5 text-aegis-300 transition-opacity duration-300',
-            composer.ttlSeconds === seconds ? 'opacity-100' : 'opacity-0',
+            'flex h-11 w-full items-center gap-3 rounded-control px-3 text-ui transition duration-300 ease-silk md:h-10',
+            selected
+              ? 'bg-aegis-500/12 text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-aegis-400/35'
+              : 'text-ink-soft hover:bg-white/6 hover:text-ink',
           ]}
-        />
-      </button>
-    {/each}
-    <p class="px-2.5 pt-1.5 pb-1.5 text-[11px] leading-relaxed text-ink-mute">
-      {translate('compose.ttl.note')}
-    </p>
+        >
+          <span class="flex-1 text-left">{composer.ttlLabel(seconds)}</span>
+          <span class="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
+            <span
+              class={[
+                'block h-full rounded-full',
+                LENGTHS[index],
+                selected
+                  ? 'bg-linear-to-r from-aegis-500 to-aegis-300 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]'
+                  : 'bg-white/25',
+              ]}
+            ></span>
+          </span>
+          {#if selected}
+            <Icon name="check" class="size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)]" />
+          {:else}
+            <span class="size-4 shrink-0" aria-hidden="true"></span>
+          {/if}
+        </button>
+      {/each}
+    </div>
   </Popover>
 </div>
