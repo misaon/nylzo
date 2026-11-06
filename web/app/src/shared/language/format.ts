@@ -55,6 +55,10 @@ function pluralForms(one: string, few: string, many: string, other: string): Plu
 
 const UNIT_FORMS = {
   day: { cs: pluralForms('den', 'dny', 'dne', 'dní'), en: pluralForms('day', 'days', 'days', 'days') },
+  attempt: {
+    cs: pluralForms('pokus', 'pokusy', 'pokusu', 'pokusů'),
+    en: pluralForms('attempt', 'attempts', 'attempts', 'attempts'),
+  },
   character: {
     cs: pluralForms('znak', 'znaky', 'znaku', 'znaků'),
     en: pluralForms('character', 'characters', 'characters', 'characters'),

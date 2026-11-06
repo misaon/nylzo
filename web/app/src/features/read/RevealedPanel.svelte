@@ -1,10 +1,11 @@
 <script lang="ts">
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import Button from '../../shared/ui/button/Button.svelte';
   import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
+  import Tooltip from '../../shared/ui/tooltip/Tooltip.svelte';
   import type { ReadPage } from './read-page.svelte.ts';
-  import { PANEL_HIDDEN, PANEL_SHOWN } from './read-page.svelte.ts';
   import RevealedFile from './RevealedFile.svelte';
 
   interface Props {
@@ -15,58 +16,56 @@
   const { translate } = getTranslator();
   const id = $props.id();
 
+  const FRAME_LINE =
+    'bg-[linear-gradient(135deg,var(--color-aegis-200),var(--color-aegis-300)_45%,var(--color-nebula-300))] [mask-image:linear-gradient(#000_0_0),linear-gradient(#000_0_0)] [mask-clip:content-box,border-box] [mask-composite:exclude]';
+
+  const shown = $derived(page.phase === 'revealed');
   const hiddenCount = $derived(page.marked?.hidden ?? 0);
   const settled = $derived(page.marked !== undefined && page.revealText === page.marked.shown);
+  const lastOpen = $derived(page.revealed !== undefined && !page.revealed.burnable && !page.restDeleted);
   const historyNoted = $derived(page.linkInHistory && ((page.revealed?.burnable ?? false) || page.restDeleted));
-  const footer = $derived.by(() => {
-    if (page.clipboard !== 'untouched') {
-      return 'clipboard';
-    }
-    return historyNoted && !page.restDeleted ? 'history' : 'note';
-  });
 </script>
 
 <div
   class={[
-    'absolute inset-0 flex flex-col justify-center gap-5 px-5 py-6 text-left fade-swap sm:px-8 sm:py-8',
-    page.phase === 'revealed' ? PANEL_SHOWN : PANEL_HIDDEN,
+    'flex flex-col justify-center gap-10 px-5 pt-6 pb-12 text-left fade-swap max-sm:pb-8 sm:gap-12 sm:px-8 sm:pt-7 sm:pb-14',
+    shown ? 'relative translate-y-0 opacity-100' : 'pointer-events-none absolute inset-0 translate-y-3 opacity-0',
   ]}
-  inert={page.phase !== 'revealed'}
+  inert={!shown}
 >
   {#if page.revealed}
     <div class="flex items-center justify-between gap-3">
       <div class="flex min-w-0 items-center gap-3">
-        <span
-          class="grid size-10 shrink-0 place-items-center rounded-control bg-aegis-500/15 text-aegis-200 shadow-[0_0_28px_-6px_oklch(0.56_0.19_258/0.75)] ring-1 ring-aegis-400/35"
-          aria-hidden="true"
-        >
-          <Icon name="unlock" stroke={1.7} class="size-5" />
+        <span class="grid size-10 shrink-0 place-items-center rounded-full text-white step-current" aria-hidden="true">
+          <Icon name="unlock" class="size-5" />
         </span>
         <div class="min-w-0">
-          <h3 {@attach page.focus.attach('revealedTitle')} tabindex="-1" class="text-[15px] text-ink outline-none">
+          <h3
+            {@attach page.focus.attach('revealedTitle')}
+            tabindex="-1"
+            class="text-title-sm font-medium text-ink outline-none"
+          >
             {translate('revealed.title')}
           </h3>
-          <p class="truncate text-[13px] text-ink-mute">{translate('open.revealed.sub')}</p>
+          <p class="truncate text-caption text-ink-mute">{translate('open.revealed.sub')}</p>
         </div>
       </div>
       {#if page.revealed.text !== undefined}
-        <button
-          type="button"
+        <Button
+          variant="tint"
           onclick={page.askCopy}
           aria-label={translate('open.copy.text')}
-          title={translate('open.copy.text')}
-          class="relative grid size-11 shrink-0 place-items-center rounded-[9px] bg-white/4 text-ink-soft ring-1 ring-white/10 hover:bg-white/8 hover:text-ink md:size-9"
+          class="max-sm:w-11 max-sm:px-0"
         >
           <span
             class={[
-              'absolute inset-0 rounded-[9px] bg-aegis-500/20 shadow-[0_0_18px_-4px_oklch(0.56_0.19_258/0.8)] ring-1 ring-aegis-400/50 transition-opacity duration-500 ease-silk',
+              'absolute inset-0 rounded-control bg-aegis-500/20 shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)] ring-1 ring-aegis-300/50 transition-opacity duration-500 ease-silk',
               page.copied.shown ? 'opacity-100' : 'opacity-0',
             ]}
           ></span>
-          <span class="relative">
-            <SwapIcon from="copy" to="check" swapped={page.copied.shown} toStroke={2.2} toTone="text-aegis-200" />
-          </span>
-        </button>
+          <SwapIcon class="relative" from="copy" to="check" swapped={page.copied.shown} toTone="text-aegis-200" />
+          <span class="relative hidden sm:inline">{translate('open.copy.text')}</span>
+        </Button>
         <span class="sr-only" role="status">{page.copied.shown ? translate('open.copied.text') : ''}</span>
       {/if}
       {#if page.confirmingCopy}
@@ -80,55 +79,81 @@
         />
       {/if}
     </div>
-    {#if page.revealText !== undefined}
-      <pre
-        translate="no"
-        class="max-h-[220px] min-h-0 [scrollbar-width:thin] overflow-auto rounded-pane px-5 py-4 font-sans text-[15px] leading-[1.75] break-words whitespace-pre-wrap text-ink well">{#if settled && page.marked}{#each page.marked.pieces as piece (piece.key)}{#if piece.hidden}<mark
-                class="mx-px rounded-[4px] bg-rose-500/15 px-1 font-mono text-[12px] text-rose-200 ring-1 ring-rose-300/40"
-                >{piece.text}</mark
-              >{:else}{piece.text}{/if}{/each}{:else}{page.revealText}{/if}</pre>
-    {/if}
-    {#if hiddenCount > 0}
-      <p role="alert" class="flex shrink-0 items-center gap-2 px-1 text-[13px] text-rose-300">
-        <Icon name="alert" class="size-4 shrink-0" />
-        {translate('revealed.hidden', { count: hiddenCount })}
-      </p>
-    {/if}
-    {#if page.revealed.file}
-      <RevealedFile {page} file={page.revealed.file} />
-    {/if}
-    <div class="stack shrink-0 px-1 text-[13px] text-ink-mute">
-      <p class={['flex items-center gap-2 fade-swap', footer === 'note' ? 'opacity-100' : 'opacity-0']}>
-        <Icon name="eyeOff" class="size-4 shrink-0 text-nebula-300" />
-        {translate('revealed.note')}
-      </p>
-      {#if historyNoted}
-        <p class={['flex items-center gap-2 fade-swap', footer === 'history' ? 'opacity-100' : 'opacity-0']}>
-          <Icon name="alert" class="size-4 shrink-0 text-nebula-300" />
-          {translate('revealed.history')}
-        </p>
-      {/if}
-      <p
-        role="status"
-        class={[
-          'flex flex-wrap items-center gap-x-3 gap-y-1 fade-swap',
-          footer === 'clipboard' ? 'opacity-100' : 'pointer-events-none opacity-0',
-        ]}
-        inert={footer !== 'clipboard'}
-      >
-        {translate(page.clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied')}
-        <button
-          type="button"
-          onclick={page.clearClipboard}
-          disabled={page.clipboard !== 'copied'}
+
+    <div class="flex flex-col gap-8 sm:gap-10">
+      <div class="flex flex-col gap-3">
+        {#if page.revealText !== undefined}
+          <div class="relative">
+            <span class="pointer-events-none absolute -inset-1 opacity-20 blur-[6px]" aria-hidden="true">
+              <span class={['absolute inset-1 rounded-pane p-[2px]', FRAME_LINE]}></span>
+            </span>
+            <pre
+              translate="no"
+              class="max-h-[320px] min-h-[136px] [scrollbar-width:thin] overflow-auto rounded-pane bg-[linear-gradient(180deg,oklch(1_0_0/0.06),oklch(1_0_0/0.025))] px-5 py-4 font-sans text-lead break-words whitespace-pre-wrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06),0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] sm:min-h-[160px] sm:px-6 sm:py-5 md:max-h-[360px] md:text-lead-lg">{#if settled && page.marked}{#each page.marked.pieces as piece (piece.key)}{#if piece.hidden}<mark
+                      class="mx-px rounded-[4px] bg-rose-500/15 px-1 text-micro text-rose-200 ring-1 ring-rose-300/40"
+                      >{piece.text}</mark
+                    >{:else}{piece.text}{/if}{/each}{:else}{page.revealText}{/if}</pre>
+            <span
+              class={['pointer-events-none absolute inset-0 rounded-pane p-px opacity-45', FRAME_LINE]}
+              aria-hidden="true"
+            ></span>
+          </div>
+        {/if}
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-caption text-ink-mute">
+          {#if hiddenCount > 0}
+            <span role="alert" class="inline-flex items-center gap-1.5 text-rose-300">
+              <Icon name="alert" class="size-3.5 shrink-0" stroke={2} />
+              {translate('revealed.hidden', { count: hiddenCount })}
+            </span>
+          {/if}
+          {#if lastOpen}
+            <span class="inline-flex items-center gap-1.5">
+              <Icon name="clock" class="size-3.5 shrink-0 text-[oklch(0.82_0.12_80)]" stroke={2} />
+              {translate('revealed.note')}
+            </span>
+          {/if}
+          {#if historyNoted}
+            <span
+              class={[
+                'inline-flex items-center gap-1.5 transition-opacity duration-500 ease-silk',
+                page.restDeleted && 'opacity-0',
+              ]}
+              aria-hidden={page.restDeleted}
+            >
+              <Icon name="alert" class="size-3.5 shrink-0 text-[oklch(0.82_0.12_80)]" stroke={2} />
+              {translate('revealed.history')}
+            </span>
+          {/if}
+          <Tooltip
+            label={translate('revealed.sender')}
+            title={translate('revealed.sender.title')}
+            text={translate('revealed.sender.text')}
+          />
+        </div>
+        <div
           class={[
-            'btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-8',
-            page.clipboard === 'copied' ? 'opacity-100' : 'opacity-0',
+            'text-caption text-ink-mute transition-[opacity,height,margin] duration-300 ease-silk [interpolate-size:allow-keywords]',
+            page.clipboard === 'untouched' ? '-mt-3 h-0 overflow-y-clip opacity-0' : 'mt-0 h-auto opacity-100',
           ]}
+          inert={page.clipboard === 'untouched'}
         >
-          {translate('clipboard.clear')}
-        </button>
-      </p>
+          <p role="status" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+            {translate(page.clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied')}
+            <Button
+              variant="ghost"
+              size="compact"
+              onclick={page.clearClipboard}
+              disabled={page.clipboard !== 'copied'}
+              class={page.clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
+            >
+              {translate('clipboard.clear')}
+            </Button>
+          </p>
+        </div>
+      </div>
+      {#if page.revealed.file}
+        <RevealedFile {page} file={page.revealed.file} />
+      {/if}
     </div>
   {/if}
 </div>

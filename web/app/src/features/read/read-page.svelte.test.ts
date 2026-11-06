@@ -65,7 +65,7 @@ describe('read page interactions', () => {
         callback();
       });
     });
-    vi.mocked(takeFragment).mockReturnValue({ fragment: '#secret', pasted: false });
+    vi.mocked(takeFragment).mockReturnValue({ fragment: '#secret', handedOver: false });
     reader.load.mockResolvedValue();
     reader.reveal.mockResolvedValue();
     reader.burn.mockResolvedValue({ outcome: 'deleted' });
@@ -101,9 +101,9 @@ describe('read page interactions', () => {
     expect(reader.load).toHaveBeenCalledExactlyOnceWith();
     expect(page.status).toBe(new Translator('en').translate('read.loading'));
     expect(dependencies.takeFragment()).toBe('#secret');
-    expect(takeFragment).toHaveBeenCalledWith('/m/example');
+    expect(takeFragment).toHaveBeenCalledOnce();
     expect(page.linkInHistory).toBe(true);
-    vi.mocked(takeFragment).mockReturnValue({ fragment: '#pasted', pasted: true });
+    vi.mocked(takeFragment).mockReturnValue({ fragment: '#handed', handedOver: true });
     dependencies.takeFragment();
     expect(page.linkInHistory).toBe(false);
     page.retry();
@@ -146,7 +146,7 @@ describe('read page interactions', () => {
     notify({ view: 'busy', step: 'downloading', fraction: 0.5 });
     expect(page.timeline.fraction).toBe(0.5);
     expect(page.status).toBe(new Translator('en').translate('busy.downloading'));
-    notify({ view: 'revealed', text: 'Hello 🌍\nworld', burnable: true });
+    notify({ view: 'revealed', text: 'Hello 🌍\nworld', burnable: true, opensRemaining: 1 });
     const displayed = vi.fn<(...arguments_: unknown[]) => void>();
     const shown = (async () => {
       await dependencies.shown?.();
@@ -160,8 +160,6 @@ describe('read page interactions', () => {
     expect(page.phase).toBe('revealed');
     expect(page.revealText).toBe('Hello 🌍\nworld');
     expect(focused).toHaveBeenCalledOnce();
-    expect(page.reportRound).toBe(1);
-    expect(page.reportable).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -171,11 +169,10 @@ describe('read page interactions', () => {
     ready({ kdfId: KDF_SCRYPT });
     expect(page.steps).toHaveLength(4);
     notify({ view: 'busy', step: 'deriving' });
-    notify({ view: 'revealed', text: 'Private text', burnable: false });
+    notify({ view: 'revealed', text: 'Private text', burnable: false, opensRemaining: 0 });
     await vi.advanceTimersByTimeAsync(1100);
     expect(page.revealText).toBe('Private text');
     expect(page.phase).toBe('revealed');
-    expect(page.reportable).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
     await expect(dependencies.shown?.()).resolves.toBeUndefined();
   });
@@ -234,7 +231,7 @@ describe('read page interactions', () => {
   it('warns before copying hidden characters and copies the original text only after confirmation', async () => {
     reducedMotion(true);
     const page = new ReadPage(new Translator('en'));
-    notify({ view: 'revealed', text: 'hello\u{200B}world', burnable: false });
+    notify({ view: 'revealed', text: 'hello\u{200B}world', burnable: false, opensRemaining: 0 });
     await page.askCopy();
     expect(page.confirmingCopy).toBe(true);
     expect(writeText).not.toHaveBeenCalled();
@@ -254,7 +251,7 @@ describe('read page interactions', () => {
     const page = new ReadPage(new Translator('en'));
     await page.copyText();
     expect(writeText).not.toHaveBeenCalled();
-    notify({ view: 'revealed', text: 'hello', burnable: false });
+    notify({ view: 'revealed', text: 'hello', burnable: false, opensRemaining: 0 });
     await page.askCopy();
     expect(page.copied.shown).toBe(true);
     vi.mocked(writeText).mockRejectedValue(new Error('clipboard denied'));
@@ -273,7 +270,7 @@ describe('read page interactions', () => {
     { outcome: 'ignored' },
   ])('preserves the content and reports the result of deleting remaining opens: $outcome', async (outcome) => {
     const page = new ReadPage(new Translator('en'));
-    notify({ view: 'revealed', text: 'keep on screen', burnable: true });
+    notify({ view: 'revealed', text: 'keep on screen', burnable: true, opensRemaining: 1 });
     const gate = Promise.withResolvers<BurnOutcome>();
     reader.burn.mockReturnValueOnce(gate.promise);
     const burning = page.burn();
@@ -293,9 +290,7 @@ describe('read page interactions', () => {
     ready();
     const keep = focusTarget(page, 'keepMessage');
     const remove = focusTarget(page, 'deleteMessage');
-    page.reporting = true;
     await page.askDelete();
-    expect(page.reporting).toBe(false);
     expect(page.actions).toBe('off');
     expect(keep).toHaveBeenCalledOnce();
     const other = new Event('keydown');
@@ -310,69 +305,36 @@ describe('read page interactions', () => {
     expect(remove).toHaveBeenCalledOnce();
   });
 
-  it('submits reports, announces their status and keeps clicks inside the report menu open', async () => {
-    const translator = new Translator('en');
-    const page = new ReadPage(translator);
-    ready();
-    const popover = focusTarget(page, 'reportPopover');
-    page.toggleReport();
-    const menu = Object.assign(new Element(), { closest: () => ({}) });
-    page.onWindowClick({ target: menu } as unknown as MouseEvent);
-    expect(page.reporting).toBe(true);
-    const report = {
-      link: 'https://nylzo.test/m/example#secret',
-      reason: 'synthetic report',
-      contact: '',
-      goodFaith: true,
-    };
-    await expect(page.report(report)).resolves.toEqual({ outcome: 'accepted' });
-    expect(reader.report).toHaveBeenCalledExactlyOnceWith({
-      reason: report.reason,
-      contact: report.contact,
-      goodFaith: report.goodFaith,
-    });
-    await page.reportFinished('accepted');
-    expect(popover).toHaveBeenCalledOnce();
-    expect(page.status).toBe(translator.translate('open.report.sent'));
-    await page.reportFinished('limit');
-    expect(page.status).toBe(translator.translate('open.report.limit'));
-    page.onWindowClick({ target: null } as MouseEvent);
-    expect(page.reporting).toBe(false);
-    await page.closeReport();
-    expect(page.reporting).toBe(false);
-  });
-
-  it('shows metadata and end-state chips in the selected language', () => {
+  it('shows metadata and end-state facts in the selected language', () => {
     const translator = new Translator('cs');
     const page = new ReadPage(translator);
-    expect(page.readyChips).toEqual([]);
+    expect(page.readyFacts).toEqual([]);
     ready({ kdfId: KDF_SCRYPT });
-    expect(page.readyChips.map((chip) => chip.icon)).toEqual(['clock', 'eye', 'key']);
+    expect(page.readyFacts.map((fact) => fact.icon)).toEqual(['clock', 'eye', 'key']);
     expect(page.opensLeft(1)).toBe(translator.translate('open.chip.opens.one', { count: 1 }));
     expect(page.opensLeft(2)).toBe(translator.translate('open.chip.opens.few', { count: 2 }));
     expect(page.opensLeft(5)).toBe(translator.translate('open.chip.opens.other', { count: 5 }));
     notify({ view: 'ended', state: 'opened', firstOpenedAt: metadata.expiresAt });
-    expect(page.afterChips[0]?.icon).toBe('eye');
+    expect(page.afterFacts[0]?.icon).toBe('eye');
     notify({ view: 'ended', state: 'expired', endedAt: metadata.expiresAt });
-    expect(page.afterChips[0]?.icon).toBe('clock');
+    expect(page.afterFacts[0]?.icon).toBe('clock');
     notify({ view: 'ended', state: 'deleted' });
     page.burned = { outcome: { outcome: 'deleted' }, afterReveal: false };
     expect(page.notice).toBe('burned');
-    expect(page.afterChips[0]?.text).toBe(translator.translate('open.chip.burned'));
+    expect(page.afterFacts[0]?.text).toBe(translator.translate('open.chip.burned'));
   });
 
   it('wipes page state on leave, settles an outstanding display wait, and stops all animation', async () => {
     const page = new ReadPage(new Translator('en'));
     ready();
     notify({ view: 'busy', step: 'claiming' });
-    notify({ view: 'revealed', text: 'must not reappear', burnable: true });
+    notify({ view: 'revealed', text: 'must not reappear', burnable: true, opensRemaining: 1 });
     const displayed = dependencies.shown?.();
     page.passphrase = 'secret';
     page.showPassphrase = true;
     page.confirmingCopy = true;
     page.confirmingDownload = true;
     page.askingDelete = true;
-    page.reporting = true;
     page.leave();
     await displayed;
     vi.advanceTimersByTime(10_000);
@@ -383,7 +345,6 @@ describe('read page interactions', () => {
     expect(page.confirmingCopy).toBe(false);
     expect(page.confirmingDownload).toBe(false);
     expect(page.askingDelete).toBe(false);
-    expect(page.reporting).toBe(false);
     expect(page.revealText).toBeUndefined();
     expect(page.marked).toBeUndefined();
     expect(page.opening).toBe(false);

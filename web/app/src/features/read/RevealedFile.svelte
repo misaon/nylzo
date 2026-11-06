@@ -1,7 +1,8 @@
 <script lang="ts">
   import { fileExtension, splitFileName } from '../../shared/files/file-name.ts';
-  import { formatBytes } from '../../shared/language/format.ts';
+  import { formatSize } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
   import type { ReadPage } from './read-page.svelte.ts';
@@ -15,86 +16,103 @@
   const { page, file }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
+  const id = $props.id();
 
   const extension = $derived(fileExtension(file.name));
+  const kind = $derived(extension.toUpperCase());
   const parts = $derived(splitFileName(file.name));
+  const size = $derived(formatSize(file.bytes.length, translator.language));
 </script>
 
-<div class="stack shrink-0 rounded-pane bg-white/3 py-2.5 pr-2.5 pl-3 ring-1 ring-white/8">
+<section aria-labelledby="{id}-title" class="flex flex-col gap-2.5">
+  <p id="{id}-title" class="text-eyebrow text-ink-mute uppercase">{translate('revealed.file')}</p>
   <div
-    class={[
-      'flex items-center gap-3.5 fade-swap',
-      page.confirmingDownload ? 'pointer-events-none opacity-0' : 'opacity-100',
-    ]}
-    inert={page.confirmingDownload}
+    class="overflow-hidden rounded-pane bg-[linear-gradient(135deg,oklch(0.72_0.14_305/0.08),oklch(1_0_0/0.02)_55%)] shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-nebula-300/20"
   >
-    <span
-      class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30"
-      aria-hidden="true"
-    >
-      <Icon name="file" stroke={1.7} class="size-[18px]" />
-    </span>
-    <span class="min-w-0 flex-1">
-      <bdi translate="no" class="flex min-w-0 text-sm text-ink"
-        ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
+    <div class="stack shrink-0 p-3 sm:p-3.5">
+      <div
+        class={[
+          'flex items-center gap-3.5 fade-swap',
+          page.confirmingDownload ? 'pointer-events-none opacity-0' : 'opacity-100',
+        ]}
+        inert={page.confirmingDownload}
       >
-      <span class="block font-mono text-[11px] text-ink-mute"
-        >{formatBytes(file.bytes.length, translator.language)}</span
-      >
-    </span>
-    <button
-      {@attach page.focus.attach('download')}
-      type="button"
-      disabled={page.confirmingDownload}
-      onclick={(event) => page.askDownload(event, file)}
-      class="btn-ghost flex h-11 shrink-0 hover-lift items-center gap-2 rounded-[9px] px-3 text-[13px] md:h-9"
-    >
-      <SwapIcon from="download" to="check" swapped={page.downloaded.shown} toStroke={2.2} toTone="text-aegis-200" />
-      {translate('open.download')}<span class="sr-only">{translate('open.download.suffix')}</span>
-    </button>
-  </div>
-  <div
-    class={[
-      'flex flex-col gap-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between',
-      page.confirmingDownload ? 'opacity-100' : 'pointer-events-none opacity-0',
-    ]}
-    inert={!page.confirmingDownload}
-  >
-    <div class="flex min-w-0 items-center gap-3.5">
-      <span
-        class="grid size-9 shrink-0 place-items-center rounded-[9px] bg-rose-500/12 text-rose-300 ring-1 ring-rose-300/35"
-        aria-hidden="true"
-      >
-        <Icon name="alert" stroke={1.7} class="size-[18px]" />
-      </span>
-      <span class="min-w-0">
-        <span role="alert" class="block text-sm text-ink"
-          >{page.confirmingDownload ? translate('revealed.confirm.title') : ''}</span
+        <span
+          class="relative grid size-12 shrink-0 place-items-center rounded-pane text-white step-current"
+          aria-hidden="true"
         >
-        <span class="block text-[11px] text-ink-mute"
-          >{extension
-            ? translate('revealed.confirm.extension', { extension })
-            : translate('revealed.confirm.none')}</span
+          <Icon name="file" class="size-5" />
+          {#if kind}
+            <span
+              class="absolute -bottom-1.5 left-1/2 inline-flex h-5 -translate-x-1/2 items-center rounded-xs bg-void-900 px-1.5 text-micro font-medium tracking-[0.06em] text-nebula-300 uppercase ring-1 ring-nebula-300/35"
+              >{kind}</span
+            >
+          {/if}
+        </span>
+        <span class="min-w-0 flex-1">
+          <bdi translate="no" class="flex min-w-0 text-title-sm font-medium text-ink"
+            ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
+          >
+          <span class="mt-1 block text-caption text-ink-mute tabular-nums">{kind ? `${kind} · ${size}` : size}</span>
+        </span>
+        <Button
+          {@attach page.focus.attach('download')}
+          variant="tint"
+          disabled={page.confirmingDownload}
+          onclick={(event: MouseEvent) => page.askDownload(event, file)}
+          class="max-sm:w-11 max-sm:px-0"
         >
-      </span>
-    </div>
-    <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
-      <button
-        type="button"
-        disabled={!page.confirmingDownload}
-        onclick={(event) => page.confirmDownload(event, file)}
-        class="h-11 rounded-[9px] bg-rose-500/20 px-3 text-[13px] font-medium text-rose-100 ring-1 ring-rose-300/45 hover:bg-rose-500/30 md:h-9"
+          <SwapIcon from="download" to="check" swapped={page.downloaded.shown} toTone="text-aegis-200" animated />
+          <span class="max-sm:sr-only">{translate('open.download')}</span><span class="sr-only"
+            >{translate('open.download.suffix')}</span
+          >
+        </Button>
+      </div>
+      <div
+        class={[
+          'flex flex-col gap-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between',
+          page.confirmingDownload ? 'opacity-100' : 'pointer-events-none opacity-0',
+        ]}
+        inert={!page.confirmingDownload}
       >
-        {translate('revealed.confirm.download')}
-      </button>
-      <button
-        {@attach page.focus.attach('keepFile')}
-        type="button"
-        onclick={page.cancelDownload}
-        class="btn-ghost h-11 rounded-[9px] px-3 text-[13px] md:h-9"
-      >
-        {translate('revealed.confirm.cancel')}
-      </button>
+        <div class="flex min-w-0 items-center gap-3.5">
+          <span
+            class="grid size-10 shrink-0 place-items-center rounded-control text-white tile-danger"
+            aria-hidden="true"
+          >
+            <Icon name="alert" class="size-5" />
+          </span>
+          <span class="min-w-0">
+            <span role="alert" class="block text-ui text-ink"
+              >{page.confirmingDownload ? translate('revealed.confirm.title') : ''}</span
+            >
+            <span class="block text-micro text-ink-mute"
+              >{extension
+                ? translate('revealed.confirm.extension', { extension })
+                : translate('revealed.confirm.none')}</span
+            >
+          </span>
+        </div>
+        <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
+          <Button {@attach page.focus.attach('keepFile')} variant="ghost" onclick={page.cancelDownload}>
+            {translate('revealed.confirm.cancel')}
+          </Button>
+          <Button
+            variant="danger"
+            disabled={!page.confirmingDownload}
+            onclick={(event: MouseEvent) => page.confirmDownload(event, file)}
+          >
+            <Icon name="download" class="size-4 shrink-0" animated />
+            {translate('revealed.confirm.download')}
+          </Button>
+        </div>
+      </div>
     </div>
+    <p
+      class="flex items-center gap-2 border-t border-white/8 bg-white/3 px-3.5 py-2.5 text-caption text-pretty text-ink-mute"
+    >
+      <Icon name="shield" class="size-3.5 shrink-0" stroke={2} />
+      <span>{translate('revealed.file.unchecked')}</span>
+    </p>
   </div>
-</div>
+</section>

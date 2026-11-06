@@ -11,23 +11,14 @@ function goodFaith(page: Page) {
   return page.getByRole('checkbox', { name: /^I believe in good faith/u });
 }
 
-test('an abuse report from the read page or from /report spends no open and sends only the id, the reason, the contact, the statement and a signature (AK2, D41)', async ({
+test('an abuse report from /report spends no open and sends only the id, the contact, the statement and a signature (AK2, D41)', async ({
   page,
   newPage,
 }) => {
   const message = await createMessageThroughApi({ text: 'reported', opensMax: 2 });
   const readerRequests = recordRequests(page);
   const violations = await watchViolations(page);
-  const report = page.getByRole('button', { name: 'Report', exact: true });
-  const reason = page.getByLabel('Reason, optional');
   await page.goto(message.link);
-  await report.click();
-  await reason.fill('looks like phishing');
-  await page.getByLabel('Email, optional').fill('reader@example.cz');
-  await goodFaith(page).check();
-  await page.getByRole('button', { name: 'Send report' }).click();
-  await expect(page.getByRole('status').first()).toHaveText('Report sent');
-  await expect(reason).toHaveValue('');
 
   const reporter = await newPage();
   const reporterRequests = recordRequests(reporter);
@@ -51,17 +42,12 @@ test('an abuse report from the read page or from /report spends no open and send
   await page.getByRole('button', { name: 'Show message' }).click();
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('reported');
-  await report.click();
-  await reason.fill('after reading');
-  await goodFaith(page).check();
-  await page.getByRole('button', { name: 'Send report' }).click();
-  await expect(page.getByRole('status').first()).toHaveText('Report sent');
   expect(await violations()).toEqual([]);
 
   await link.fill(message.link);
   await goodFaith(reporter).check();
   await reporter.getByRole('button', { name: 'Send report' }).click();
-  await expect(reporter.getByRole('status').filter({ hasText: 'We did not store this report.' })).toBeVisible();
+  await expect(reporter.getByText('We received the report.')).toBeVisible();
 
   const requests = [...(await readerRequests()), ...(await reporterRequests())];
   expectNoSecretSent(requests, [
@@ -70,8 +56,6 @@ test('an abuse report from the read page or from /report spends no open and send
   ]);
   const reports = requests.filter((request) => request.url.endsWith('/api/v1/abuse'));
   expect(reports.map((sent) => JSON.parse(sent.body) as unknown)).toEqual([
-    { id: message.id, reason: 'looks like phishing', contact: 'reader@example.cz', good_faith: true },
-    { id: message.id, reason: 'after reading', good_faith: true },
     { id: message.id, contact: 'jana@example.cz', good_faith: true },
     { id: message.id, good_faith: true },
   ]);
@@ -79,18 +63,10 @@ test('an abuse report from the read page or from /report spends no open and send
     expect(sent.headers['authorization']).toMatch(/^Nylzo-Sig /u);
     expect(sent.headers['content-type']).toBe('application/json');
   }
-
-  const late = await newPage();
-  await late.goto(message.link);
-  await late.getByRole('button', { name: 'Report', exact: true }).click();
-  await goodFaith(late).check();
-  await late.getByRole('button', { name: 'Send report' }).click();
-  await expect(late.getByRole('status').first()).toHaveText('Report not stored');
-  await expect(late.getByText('The message already has three reports today')).toBeVisible();
 });
 
 test(
-  'a link whose read key starts with a zero byte opens and can be reported from the read page and from /report (D66)',
+  'a link whose read key starts with a zero byte opens and can be reported from /report (D66)',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({
@@ -101,11 +77,6 @@ test(
     await showMessage(page, message.link);
     await expectMessageShown(page);
     await expect(page.locator('pre')).toHaveText('nula na začátku');
-    await page.getByRole('button', { name: 'Report', exact: true }).click();
-    await page.getByLabel('Reason, optional').fill('zero byte');
-    await goodFaith(page).check();
-    await page.getByRole('button', { name: 'Send report' }).click();
-    await expect(page.getByRole('status').first()).toHaveText('Report sent');
 
     await page.goto('/report');
     await page.getByLabel('Link to the message').fill(message.link);

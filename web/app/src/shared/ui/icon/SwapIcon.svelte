@@ -12,14 +12,16 @@
     readonly toStroke?: number;
     readonly toTone?: ClassValue;
     readonly class?: ClassValue;
+    readonly animated?: boolean;
   }
 
-  const { from, to, swapped, size = 'size-4', toStroke, toTone, class: className }: Props = $props();
+  const { from, to, swapped, size = 'size-4', toStroke, toTone, class: className, animated = false }: Props = $props();
 </script>
 
 <span class={[className, 'stack place-items-center']}>
   <Icon
     name={from}
+    {animated}
     class={[
       size,
       'transition-[opacity,scale] duration-300 ease-silk',
@@ -28,6 +30,7 @@
   />
   <Icon
     name={to}
+    {animated}
     stroke={toStroke}
     class={[
       size,

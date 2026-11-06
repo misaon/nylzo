@@ -24,7 +24,7 @@ test('the recipient deletes a message without showing it, and a dismissed confir
   const message = await createMessageThroughApi({ text: 'never shown' });
   const violations = await watchViolations(page);
   await page.goto(message.link);
-  const remove = page.getByRole('button', { name: 'Delete without showing' });
+  const remove = page.getByRole('button', { name: 'Delete without opening' });
   const show = page.getByRole('button', { name: 'Show message' });
   await remove.click();
   await expect(confirmation(page)).toBeVisible();
@@ -62,7 +62,7 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
   await showMessage(page, message.link);
   await expectMessageShown(page);
   await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
-  const rest = page.getByRole('button', { name: 'Delete the remaining opens' });
+  const rest = page.getByRole('button', { name: 'Delete message' });
   await rest.click();
   await expect(confirmation(page)).toBeVisible();
   await page.keyboard.press('Escape');
@@ -96,7 +96,7 @@ test('a refused deletion says so where the reader can see it and lets them try a
   const message = await createMessageThroughApi({ text: 'refused' });
   await page.route(DELETION, (route) => route.fulfill({ status: 500, body: 'boom' }));
   await page.goto(message.link);
-  const remove = page.getByRole('button', { name: 'Delete without showing' });
+  const remove = page.getByRole('button', { name: 'Delete without opening' });
   await remove.click();
   await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
   const note = page.getByRole('paragraph').filter({ hasText: 'The message could not be deleted. Try again.' });
@@ -125,7 +125,7 @@ test('a deletion that answers after the page was left never shows the message ag
   await showMessage(page, message.link);
   await expectMessageShown(page);
   const deletion = await holdRoute(page, DELETION);
-  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await page.getByRole('button', { name: 'Delete message' }).click();
   await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
   await deletion.requested;
   await leavePage(page);

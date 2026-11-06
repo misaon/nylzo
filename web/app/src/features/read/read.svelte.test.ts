@@ -153,7 +153,7 @@ describe('read interface', () => {
     view({ view: 'busy', step: 'claiming' });
     expect(button(translator.translate('read.reveal')).disabled).toBe(true);
     view({ view: 'busy', step: 'downloading', fraction: 0.5 });
-    view({ view: 'revealed', text: 'hello\u{200B}world', burnable: true });
+    view({ view: 'revealed', text: 'hello\u{200B}world', burnable: true, opensRemaining: 1 });
     await vi.advanceTimersByTimeAsync(4000);
     flushSync();
     expect(target.querySelector('mark')).not.toBeNull();
@@ -180,6 +180,7 @@ describe('read interface', () => {
       view: 'revealed',
       file: { name: 'script.sh', mime: 'text/plain', bytes: new Uint8Array([1]) },
       burnable: false,
+      opensRemaining: 0,
     });
     const download = [...target.querySelectorAll('button')].find((element) =>
       element.textContent.includes(translator.translate('open.download.suffix')),
@@ -237,6 +238,5 @@ describe('read interface', () => {
     expect(retry !== undefined).toBe(retryable);
     retry?.click();
     expect(reader.load).toHaveBeenCalledTimes(retryable ? 2 : 1);
-    expect(target.querySelector('input[type="text"]') !== null).toBe(state.view === 'invalid');
   });
 });

@@ -9,9 +9,6 @@
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
-  import { handOverLink } from '../shared/link/link-handoff.ts';
-  import { setLinkOpener } from '../shared/link/link-opener.ts';
-  import { instanceOrigin } from '../shared/local-client/instance-origin.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
@@ -37,23 +34,6 @@
   const translator = setTranslator(new Translator(untrack(() => start.language)));
   const { translate } = translator;
   const variant = $derived(HEADER_VARIANTS[screen]);
-
-  setLinkOpener((link) => {
-    const handed = handOverLink(link, instanceOrigin());
-    if ('problem' in handed) {
-      return handed.problem;
-    }
-    if (location.pathname === handed.path) {
-      history.replaceState(null, '', handed.path);
-    } else {
-      history.pushState(null, '', handed.path);
-    }
-    path = handed.path;
-    visit++;
-    scrollTo({ top: 0 });
-    // oxlint-disable-next-line no-useless-return -- noImplicitReturns requires an explicit success return for this callback.
-    return;
-  });
 
   function returned() {
     if (location.pathname !== path) {

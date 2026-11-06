@@ -272,7 +272,13 @@ describe('reading a message', () => {
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
     await reader.reveal();
-    expect(reader.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
+    expect(reader.last()).toEqual({
+      view: 'revealed',
+      text: 'ahoj',
+      file: undefined,
+      burnable: false,
+      opensRemaining: 0,
+    });
     expect(api.calls.slice(api.calls.indexOf('claim'))).toEqual([
       'claim',
       'view:busy',
@@ -876,7 +882,13 @@ describe('deleting and reporting from the read page (D40, D41)', () => {
     await reader.reveal();
     expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
     expect(await reader.burn()).toEqual({ outcome: 'deleted' });
-    expect(reader.last()).toEqual({ view: 'revealed', text: 'ahoj', file: undefined, burnable: false });
+    expect(reader.last()).toEqual({
+      view: 'revealed',
+      text: 'ahoj',
+      file: undefined,
+      burnable: false,
+      opensRemaining: 0,
+    });
     expect(storedOf(api, created.link).state).toBe('deleted');
     expect(await reader.burn()).toEqual({ outcome: 'ignored' });
   });

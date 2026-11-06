@@ -70,9 +70,8 @@ test(
     await page.unrouteAll();
     await page.reload();
     await expect(page.getByText('Open the link again to finish')).toBeVisible();
-    await page.getByLabel('Link to open').fill(message.link);
-    await page.getByRole('button', { name: 'Open', exact: true }).click();
-    await expect(page.getByText('You already opened the message on this page')).toBeVisible();
+    await page.goto(message.link);
+    await expect(page.getByText('You already opened the message here')).toBeVisible();
     await page.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(page);
     await expect(page.locator('pre')).toHaveText('finish from the lease');

@@ -93,6 +93,19 @@ async function layoutChanges(page: Page): Promise<LayoutChanges | undefined> {
   return page.evaluate(() => globalThis.nylzoLayoutChanges?.());
 }
 
+// The card grows into the created panel and shrinks to the revealed message by design (owner decision R11).
+async function settle(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const changes = await layoutChanges(page);
+        return changes?.shifts;
+      },
+      { intervals: [1000] },
+    )
+    .toEqual([]);
+}
+
 async function expectNothingMoved(page: Page, screen: string): Promise<void> {
   expect(await layoutChanges(page), screen).toEqual({ shifts: [], resizes: [] });
 }
@@ -111,16 +124,7 @@ for (const viewport of VIEWPORTS) {
     await layoutChanges(sender);
     await sender.getByRole('button', { name: 'Create link' }).click();
     await createdLink(sender);
-    // The card grows into the taller created panel by design (owner decision R11, 6 Nov 2026).
-    await expect
-      .poll(
-        async () => {
-          const changes = await layoutChanges(sender);
-          return changes?.shifts;
-        },
-        { intervals: [1000] },
-      )
-      .toEqual([]);
+    await settle(sender);
     await expectNothingMoved(sender, 'created');
 
     const recipient = await newPage({ viewport, ...FULL_MOTION });
@@ -133,12 +137,13 @@ for (const viewport of VIEWPORTS) {
     await expectNothingMoved(recipient, 'read loaded');
     await passphrase.fill('definitely the wrong one');
     await show.click();
-    await expect(recipient.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
     await expectNothingMoved(recipient, 'rejected');
     await passphrase.fill(PASSPHRASE);
     await show.click();
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(LONG_TEXT);
+    await settle(recipient);
     await expectNothingMoved(recipient, 'revealed and unscrambled');
   });
 
@@ -185,18 +190,16 @@ for (const viewport of VIEWPORTS) {
     await recipient.goto(message.link);
     await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
     await expectNothingMoved(recipient, 'read loaded');
-    await recipient.getByRole('button', { name: 'Report', exact: true }).click();
-    await expect(recipient.getByLabel('Reason, optional')).toBeFocused();
-    await expectNothingMoved(recipient, 'report form open');
-    await recipient.getByRole('button', { name: 'Delete without showing' }).click();
+    await recipient.getByRole('button', { name: 'Delete without opening' }).click();
     await recipient.getByRole('alertdialog').getByRole('button', { name: 'Do not delete' }).click();
     await expectNothingMoved(recipient, 'delete dismissed');
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(recipient);
+    await settle(recipient);
     await expectNothingMoved(recipient, 'revealed with actions');
-    await recipient.getByRole('button', { name: 'Delete the remaining opens' }).click();
+    await recipient.getByRole('button', { name: 'Delete message' }).click();
     await recipient.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
-    await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toBeDisabled();
+    await expect(recipient.getByRole('button', { name: 'Delete message' })).toBeDisabled();
     await expectNothingMoved(recipient, 'rest deleted');
   });
 }

@@ -125,9 +125,7 @@ test('the read page in every state, with its report form and its delete and down
   await page.goto(message.link);
   await expect(show).toBeVisible();
   await expectAccessible(page, 'ready');
-  await page.getByRole('button', { name: 'Report', exact: true }).click();
-  await expectAccessible(page, 'report form');
-  await page.getByRole('button', { name: 'Delete without showing' }).click();
+  await page.getByRole('button', { name: 'Delete without opening' }).click();
   await expectAccessible(page, 'delete confirmation');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Do not delete' }).click();
   await show.click();
@@ -153,7 +151,7 @@ test('the read page in every state, with its report form and its delete and down
 
   const guarded = await createMessageThroughApi({ passphrase: 'four random words here' });
   await showMessage(page, guarded.link, 'definitely the wrong one');
-  await expect(page.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 
   await openFresh(page, `${BASE_URL}/r#0.0.${message.id}.${message.secret}`);

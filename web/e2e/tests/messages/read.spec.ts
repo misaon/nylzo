@@ -151,7 +151,7 @@ test('the reader acknowledges the open only once the message is on the screen, a
   await page.reload();
   await expect(page.getByText('Open the link again to finish')).toBeVisible();
   await page.goto(message.link);
-  await expect(page.getByText('You already opened the message on this page')).toBeVisible();
+  await expect(page.getByText('You already opened the message here')).toBeVisible();
   const acknowledged = page.waitForResponse((response) => response.url().endsWith('/ack'));
   await page.getByRole('button', { name: 'Show message' }).click();
   await expectMessageShown(page);
@@ -188,17 +188,14 @@ test('leaving the page wipes the shown message and closes its dialogs without de
   await showMessage(page, message.link);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('gone after leaving');
-  await page.getByRole('button', { name: 'Report', exact: true }).click();
-  await expect(notInert(page, page.getByRole('dialog'))).toBeVisible();
-  await page.getByRole('button', { name: 'Delete the remaining opens' }).click();
+  await page.getByRole('button', { name: 'Delete message' }).click();
   await expect(notInert(page, page.getByRole('alertdialog'))).toBeVisible();
   await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
   const dialogs = page.getByRole('dialog').or(page.getByRole('alertdialog'));
   await expect(notInert(page, dialogs)).toHaveCount(0);
-  await expect(notInert(page, page.getByRole('button', { name: 'Delete the remaining opens' }))).toHaveCount(0);
-  await expect(notInert(page, page.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
+  await expect(notInert(page, page.getByRole('button', { name: 'Delete message' }))).toHaveCount(0);
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
 });
 
@@ -304,7 +301,7 @@ test(
     await expect(page.locator('pre mark')).toHaveText('U+202E');
     await expect(page.getByText('Hidden or direction-changing characters in the text: 1.')).toBeVisible();
     expect(await page.locator('pre').textContent()).not.toContain('\u{202E}');
-    await page.getByRole('button', { name: 'Copy text' }).click();
+    await page.getByRole('button', { name: 'Copy message' }).click();
     const confirm = page.getByRole('dialog', { name: /hidden or direction-changing characters/u });
     await expect(confirm.getByText(/A copy keeps them exactly as the sender wrote them/u)).toBeVisible();
     await confirm.getByRole('button', { name: 'Do not copy' }).click();

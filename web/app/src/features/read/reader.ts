@@ -58,7 +58,7 @@ export type ReadView =
     }
   | { readonly view: 'failed' }
   | { readonly view: 'invalid' }
-  | { readonly view: 'loading' }
+  | { readonly view: 'loading'; readonly kdfId?: KdfId | undefined }
   | { readonly view: 'newer' }
   | {
       readonly view: 'ready';
@@ -78,6 +78,7 @@ export type ReadView =
       readonly text?: string | undefined;
       readonly file?: RevealedFile | undefined;
       readonly burnable: boolean;
+      readonly opensRemaining: number;
     }
   | { readonly view: 'tampered' }
   | { readonly view: 'unknown' };
@@ -388,6 +389,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return;
     }
     messageId = idToString(link.id);
+    show({ view: 'loading', kdfId: link.kdfId });
     if (safely(() => session.getItem(kdfKey()), null) !== null) {
       deviceFailed = true;
       safely(() => session.removeItem(kdfKey()), undefined);
@@ -602,6 +604,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
           ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file }
           : undefined,
       burnable: remaining > 0,
+      opensRemaining: Math.max(0, remaining),
     });
     await dependencies.shown?.();
     if (pageLeft()) {
@@ -634,7 +637,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   function showBurnOutcome(outcome: BurnOutcome, shown: RevealedView | undefined): void {
     if (shown) {
       if (revealedView === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
-        show({ ...shown, burnable: false });
+        show({ ...shown, burnable: false, opensRemaining: 0 });
       }
       return;
     }

@@ -8,21 +8,48 @@
     readonly current: number;
     readonly progress: number;
     readonly active: boolean;
+    readonly size?: 'compact' | 'large';
   }
 
   const STEP_GAP = 2.4;
+  const SIZES = {
+    compact: {
+      column: 'gap-4 md:gap-5',
+      ring: 'size-24 md:size-28',
+      glow: '-inset-6',
+      dot: 'md:[r:4.3px]',
+      dotRadius: 5,
+      center: 'size-[58px] md:size-[66px]',
+      halo: '-inset-1.5',
+      icon: 'size-6',
+    },
+    large: {
+      column: 'gap-9 md:gap-10',
+      ring: 'size-36 md:size-40',
+      glow: '-inset-10',
+      dot: 'md:[r:3.75px]',
+      dotRadius: 4.17,
+      center: 'size-[88px] md:size-24',
+      halo: '-inset-2',
+      icon: 'size-9',
+    },
+  } as const;
 
-  const { nodes, current, progress, active }: Props = $props();
+  const { nodes, current, progress, active, size = 'compact' }: Props = $props();
+  const look = $derived(SIZES[size]);
   const { translate } = getTranslator();
   const id = $props.id();
   const segment = $derived(100 / Math.max(1, nodes.length));
   const shown = $derived(Math.min(current, nodes.length - 1));
 </script>
 
-<div class="flex w-full flex-col items-center gap-4 md:gap-5">
-  <div class="relative grid size-24 shrink-0 place-items-center md:size-28" aria-hidden="true">
+<div class={['flex w-full flex-col items-center', look.column]}>
+  <div class={['relative grid shrink-0 place-items-center', look.ring]} aria-hidden="true">
     <span
-      class="absolute -inset-6 rounded-full bg-[radial-gradient(closest-side,oklch(0.67_0.16_252/0.26),oklch(0.72_0.14_305/0.08)_62%,transparent)] motion-safe:animate-pulse-core"
+      class={[
+        'absolute rounded-full bg-[radial-gradient(closest-side,oklch(0.67_0.16_252/0.26),oklch(0.72_0.14_305/0.08)_62%,transparent)] motion-safe:animate-pulse-core',
+        look.glow,
+      ]}
     ></span>
     <svg class="absolute inset-0 size-full -rotate-90 overflow-visible" viewBox="0 0 120 120" fill="none">
       <defs>
@@ -62,19 +89,23 @@
         <circle
           cx="114"
           cy="60"
-          r="5"
-          class="origin-center fill-white drop-shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)] [transform-box:fill-box] motion-safe:animate-pulse-core md:[r:4.3px]"
+          r={look.dotRadius}
+          class={[
+            'origin-center fill-white drop-shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)] [transform-box:fill-box] motion-safe:animate-pulse-core',
+            look.dot,
+          ]}
         ></circle>
       </g>
     </svg>
-    <span class="relative grid size-[58px] place-items-center rounded-full step-current md:size-[66px]">
-      <span class="absolute -inset-1.5 rounded-full ring-1 ring-aegis-300/25"></span>
+    <span class={['relative grid place-items-center rounded-full step-current', look.center]}>
+      <span class={['absolute rounded-full ring-1 ring-aegis-300/25', look.halo]}></span>
       <span class="grid">
         {#each nodes as node, index (node.id)}
           <Icon
             name={node.icon}
             class={[
-              'col-start-1 row-start-1 size-6 text-white transition-[opacity,scale] duration-500 ease-silk',
+              'col-start-1 row-start-1 text-white transition-[opacity,scale] duration-500 ease-silk',
+              look.icon,
               index === shown ? 'scale-100 opacity-100' : 'scale-75 opacity-0',
             ]}
           />
