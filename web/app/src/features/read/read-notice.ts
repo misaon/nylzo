@@ -1,4 +1,4 @@
-import type { IconName } from '../../shared/ui/icons.ts';
+import type { IconName } from '../../shared/ui/icon/icons.ts';
 import type { BurnOutcome, ReadView } from './reader.ts';
 
 export type Notice =

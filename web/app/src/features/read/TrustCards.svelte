@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import Icon from '../../shared/ui/Icon.svelte';
+  import Icon from '../../shared/ui/icon/Icon.svelte';
 
   const CARDS = [
     { key: 'open.trust.key', icon: 'key', reveal: 'reveal-up' },

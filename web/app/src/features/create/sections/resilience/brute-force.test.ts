@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { Translator } from '../../../shared/language/translator.svelte.ts';
+import { Translator } from '../../../../shared/language/translator.svelte.ts';
 import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
 
 function words(yearsLog10: number, language: 'cs' | 'en'): string {

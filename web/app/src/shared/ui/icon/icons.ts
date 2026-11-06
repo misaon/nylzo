@@ -29,7 +29,9 @@ export const ICONS = {
     { circle: [12, 13, 3.5] },
   ],
   cancel: [clockFace, { path: 'M9 9l6 6M15 9l-6 6' }],
+  caretDown: [{ path: 'M7 10l5 5 5-5' }],
   check: [{ path: 'M5 12.5l4.5 4.5L19 7.5' }],
+  chevronsUpDown: [{ path: 'M8 9.5l4-4 4 4M8 14.5l4 4 4-4' }],
   chevronDown: [{ path: 'M6 9l6 6 6-6' }],
   clock: [clockFace, { path: 'M12 7.5V12l3 2' }],
   close: [{ path: 'M6 6l12 12M18 6L6 18' }],
@@ -44,10 +46,15 @@ export const ICONS = {
     { path: 'M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6' },
     { path: 'M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6' },
   ],
+  document: [
+    { path: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z' },
+    { path: 'M14 3v5h5M9 13h6M9 17h4' },
+  ],
   download: [
     { path: 'M12 4.5V15M7.5 10.5L12 15l4.5-4.5' },
     { path: 'M5 14.5v3.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3.5' },
   ],
+  external: [{ path: 'M7 17L17 7M9 7h8v8' }],
   envelope: [{ rect: [3, 5.5, 18, 13, 2.5] }, { path: 'M3.5 7.5l8.5 6 8.5-6' }],
   envelopeOpen: [
     { path: 'M3.5 10.5L12 4l8.5 6.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19z' },
@@ -77,17 +84,23 @@ export const ICONS = {
     { circle: [18, 19, 2.2] },
     { path: 'M12 7.2v3.3M12 10.5c-3 0-6 1.6-6 4.5v1.8M12 10.5c3 0 6 1.6 6 4.5v1.8' },
   ],
+  globe: [
+    clockFace,
+    { path: 'M3.5 12h17M12 3.5c2.4 2.3 3.5 5.2 3.5 8.5s-1.1 6.2-3.5 8.5c-2.4-2.3-3.5-5.2-3.5-8.5s1.1-6.2 3.5-8.5z' },
+  ],
   gpu: [
     { rect: [2.5, 4, 13, 10, 1.5] },
     { path: 'M6.5 18.5h5M9 14v4.5' },
     { rect: [18, 4, 3.5, 14.5, 1] },
     { path: 'M19.75 7.5h.01' },
   ],
+  heart: [{ path: 'M12 20s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.2 4.3 4.3 0 0 1 19.5 10c0 5.6-7.5 10-7.5 10z' }],
   hash: [{ path: 'M5 9h14M5 15h14M10 4 8 20M16 4l-2 16' }],
   info: [clockFace, { path: 'M12 11v5M12 8h.01' }],
   keyhole: [{ rect: [5, 11, 14, 9, 2] }, { path: 'M8 11V8a4 4 0 0 1 8 0v3M12 15v1.5' }],
   key: [{ circle: [8, 15, 4] }, { path: 'M11 12l8-8M16 7l2 2M14 9l2 2' }],
   laptop: [{ rect: [4.5, 5, 15, 10.5, 1.5] }, { path: 'M2.5 19h19' }],
+  message: [{ path: 'M20 14.5a2 2 0 0 1-2 2H8.5L4 20V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z' }],
   link: [
     { path: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1' },
     { path: 'M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1' },
@@ -120,3 +133,87 @@ export const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 export type { Shape };
+
+interface IconMotion {
+  readonly shape?: number;
+  readonly classes: string;
+}
+
+const fillBox = '[transform-box:fill-box] origin-center';
+
+export const ICON_MOTION: Partial<Record<IconName, IconMotion>> = {
+  arrowRight: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:translate-x-[3px] motion-safe:group-focus-visible/act:translate-x-[3px]',
+  },
+  clock: {
+    shape: 1,
+    classes:
+      'transition-transform duration-500 ease-silk [transform-box:view-box] origin-[12px_12px] motion-safe:group-hover/act:rotate-[120deg] motion-safe:group-focus-visible/act:rotate-[120deg]',
+  },
+  close: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:rotate-90 motion-safe:group-focus-visible/act:rotate-90',
+  },
+  copy: {
+    shape: 0,
+    classes: `transition-transform duration-300 ease-silk ${fillBox} motion-safe:group-hover/act:translate-x-[1.5px] motion-safe:group-focus-visible/act:translate-x-[1.5px] motion-safe:group-hover/act:translate-y-[1.5px] motion-safe:group-focus-visible/act:translate-y-[1.5px]`,
+  },
+  download: {
+    classes: 'motion-safe:group-hover/act:animate-icon-hop motion-safe:group-focus-visible/act:animate-icon-hop',
+  },
+  eye: {
+    classes: 'motion-safe:group-hover/act:animate-icon-blink motion-safe:group-focus-visible/act:animate-icon-blink',
+  },
+  external: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:translate-x-[2px] motion-safe:group-focus-visible/act:translate-x-[2px] motion-safe:group-hover/act:-translate-y-[2px] motion-safe:group-focus-visible/act:-translate-y-[2px]',
+  },
+  eyeOff: {
+    classes: 'motion-safe:group-hover/act:animate-icon-blink motion-safe:group-focus-visible/act:animate-icon-blink',
+  },
+  flag: {
+    classes:
+      'transition-transform duration-300 ease-silk origin-bottom-left motion-safe:group-hover/act:-rotate-6 motion-safe:group-focus-visible/act:-rotate-6',
+  },
+  globe: {
+    classes:
+      'transition-transform duration-500 ease-silk motion-safe:group-hover/act:rotate-[20deg] motion-safe:group-focus-visible/act:rotate-[20deg]',
+  },
+  key: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:rotate-[20deg] motion-safe:group-focus-visible/act:rotate-[20deg]',
+  },
+  lock: {
+    shape: 1,
+    classes: `transition-transform duration-300 ease-silk ${fillBox} motion-safe:group-hover/act:-translate-y-[1.5px] motion-safe:group-focus-visible/act:-translate-y-[1.5px]`,
+  },
+  minus: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:scale-x-75 motion-safe:group-focus-visible/act:scale-x-75',
+  },
+  paperclip: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:-rotate-12 motion-safe:group-focus-visible/act:-rotate-12',
+  },
+  pen: {
+    classes:
+      'transition-transform duration-300 ease-silk origin-bottom-left motion-safe:group-hover/act:-rotate-12 motion-safe:group-focus-visible/act:-rotate-12',
+  },
+  plus: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:rotate-90 motion-safe:group-focus-visible/act:rotate-90',
+  },
+  refresh: {
+    classes:
+      'transition-transform duration-500 ease-silk motion-safe:group-hover/act:rotate-180 motion-safe:group-focus-visible/act:rotate-180',
+  },
+  shieldCheck: {
+    classes:
+      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:scale-110 motion-safe:group-focus-visible/act:scale-110',
+  },
+  trash: {
+    classes:
+      'transition-transform duration-300 ease-silk origin-bottom motion-safe:group-hover/act:-rotate-6 motion-safe:group-focus-visible/act:-rotate-6',
+  },
+};

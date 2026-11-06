@@ -29,7 +29,19 @@ export function formatWait(seconds: number | undefined, language: Language): str
   return language === 'cs' ? duration.replace(/^1(\s)(minut|hodin|sekund)a$/u, '1$1$2u') : duration;
 }
 
+const CZECH_DAYS: Readonly<Record<Intl.LDMLPluralRule, string>> = {
+  zero: 'dní',
+  one: 'den',
+  two: 'dny',
+  few: 'dny',
+  many: 'dne',
+  other: 'dní',
+};
+
 export function formatDays(days: number, language: Language): string {
+  if (language === 'cs') {
+    return `${new Intl.NumberFormat('cs').format(days)}\u{A0}${CZECH_DAYS[new Intl.PluralRules('cs').select(days)]}`;
+  }
   return new Intl.NumberFormat(language, { style: 'unit', unit: 'day', unitDisplay: 'long' }).format(days);
 }
 

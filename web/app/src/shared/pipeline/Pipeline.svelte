@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from '../ui/Icon.svelte';
+  import Icon from '../ui/icon/Icon.svelte';
   import type { PipelineNode } from './pipeline.ts';
 
   interface Props {

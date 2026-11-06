@@ -2,6 +2,7 @@
   import { BUILD_INFO, buildSourceHref } from '../build-info.ts';
   import type { MessageKey } from '../language/czech.ts';
   import type { Language } from '../language/language.ts';
+  import LanguageMenu from '../language/LanguageMenu.svelte';
   import { getTranslator } from '../language/translator.svelte.ts';
   import Logo from './Logo.svelte';
   import { REPOSITORY_URL } from './repository.ts';
@@ -12,16 +13,16 @@
     readonly onlanguage: (language: Language) => void;
   }
 
-  const { compact = false, current, onlanguage }: Props = $props();
-  const translator = getTranslator();
-  const { translate } = translator;
-  const versionHref = buildSourceHref(BUILD_INFO);
-
   interface FooterLink {
     readonly href: string;
     readonly key: MessageKey;
     readonly page?: string;
   }
+
+  const { compact = false, current, onlanguage }: Props = $props();
+  const { translate } = getTranslator();
+  const versionHref = buildSourceHref(BUILD_INFO);
+  const LINK = 'transition duration-300 ease-silk hover:text-ink';
 
   const groups: readonly { readonly key: MessageKey; readonly links: readonly FooterLink[] }[] = [
     {
@@ -36,7 +37,6 @@
       key: 'footer.security',
       links: [
         { href: '/#how-it-works', key: 'footer.how' },
-        { href: '/report', key: 'footer.report', page: 'report' },
         { href: `${REPOSITORY_URL}/blob/main/SECURITY.md`, key: 'footer.vulnerabilities' },
       ],
     },
@@ -45,99 +45,82 @@
       links: [
         { href: REPOSITORY_URL, key: 'footer.github' },
         { href: '/#self-host', key: 'footer.selfhost' },
-        { href: `${REPOSITORY_URL}/tree/main/skills/nylzo`, key: 'footer.skill' },
+        { href: '/agents', key: 'footer.agents', page: 'agents' },
+        { href: '/#about', key: 'footer.about' },
       ],
     },
   ];
-
-  const languages = [
-    { code: 'cs', short: 'CS', label: 'Čeština' },
-    { code: 'en', short: 'EN', label: 'English' },
-  ] as const;
 </script>
 
-{#snippet version()}
+{#snippet version(extra: string)}
   {#if versionHref}
     <a
       href={versionHref}
       aria-label={translate('footer.version', { version: BUILD_INFO.version })}
-      class="font-mono text-xs text-ink-mute hover:text-ink">{BUILD_INFO.version}</a
+      class={['inline-flex items-center text-micro text-ink-mute tabular-nums', LINK, extra]}>{BUILD_INFO.version}</a
     >
   {:else}
-    <span class="font-mono text-xs text-ink-mute">{BUILD_INFO.version}</span>
+    <span class={['inline-flex items-center text-micro text-ink-mute tabular-nums', extra]}>{BUILD_INFO.version}</span>
   {/if}
-{/snippet}
-
-{#snippet languageSwitch()}
-  <div
-    class="relative grid w-fit grid-cols-2 rounded-control p-0.5 well"
-    role="group"
-    aria-label={translate('language.label')}
-  >
-    {#each languages as language (language.code)}
-      {const active = $derived(translator.language === language.code)}
-      <button
-        type="button"
-        lang={language.code}
-        aria-pressed={active}
-        onclick={() => onlanguage(language.code)}
-        class={[
-          'h-11 rounded-[8px] px-4 font-mono text-xs md:h-9',
-          active ? 'bg-aegis-500/25 text-aegis-200 ring-1 ring-aegis-400/50' : 'text-ink-soft hover:text-ink',
-        ]}
-      >
-        {language.short}<span class="sr-only"> {language.label}</span>
-      </button>
-    {/each}
-  </div>
 {/snippet}
 
 <footer class="relative z-10 px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6">
   {#if compact}
     <div
-      class="glass-soft mx-auto flex max-w-[1160px] flex-col gap-5 rounded-card p-6 sm:flex-row sm:items-center sm:justify-between md:px-8"
+      class="glass-soft mx-auto flex max-w-[1160px] flex-col gap-5 rounded-card p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:flex-row sm:items-center sm:justify-between md:px-8"
     >
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <Logo class="h-7 w-[105px] shrink-0" label="Nylzo" />
-        <p class="text-sm text-ink-mute">{translate('footer.tagline')}</p>
+        <p class="text-body-sm text-ink-mute">{translate('footer.tagline')}</p>
       </div>
-      <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
-        <a href="/#how-it-works" class="text-ink-soft hover:text-ink">{translate('footer.how')}</a>
-        <a href={REPOSITORY_URL} class="text-ink-soft hover:text-ink">{translate('footer.github')}</a>
-        {@render version()}
-        {@render languageSwitch()}
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-body-sm">
+        <a href="/#how-it-works" class={['text-ink-soft', LINK]}>{translate('footer.how')}</a>
+        <a href={REPOSITORY_URL} class={['text-ink-soft', LINK]}>{translate('footer.github')}</a>
+        <div class="flex w-full items-center justify-between gap-4 sm:contents">
+          {@render version('')}
+          <LanguageMenu placement="footer" {onlanguage} />
+        </div>
       </div>
     </div>
   {:else}
     <div class="glass-soft mx-auto max-w-[1160px] rounded-card p-6 md:p-10">
-      <div class="grid gap-10 sm:grid-cols-2 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))]">
-        <div>
+      <div
+        class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))] md:gap-10"
+        data-footer-mobile
+      >
+        <div class="col-span-2 md:col-span-1">
           <Logo class="h-8 w-[120px]" label="Nylzo" />
-          <p class="mt-4 max-w-[280px] text-sm leading-relaxed text-ink-mute">{translate('footer.tagline')}</p>
+          <p class="mt-4 max-w-[280px] text-body-sm text-ink-mute">{translate('footer.tagline')}</p>
         </div>
         {#each groups as group (group.key)}
-          <nav aria-label={translate(group.key)} class="flex flex-col gap-2.5 text-sm">
-            <p class="text-xs text-ink-mute">{translate(group.key)}</p>
+          <nav aria-label={translate(group.key)} class="flex flex-col text-ui max-md:gap-0 md:gap-2.5">
+            <p class="text-micro text-ink-mute max-md:mb-1">{translate(group.key)}</p>
             {#each group.links as link (link.key)}
               <a
                 href={link.href}
                 aria-current={link.page !== undefined && link.page === current ? 'page' : undefined}
-                class="w-fit text-ink-soft hover:text-ink"
+                class={['w-fit text-ui text-ink-soft max-md:inline-flex max-md:items-center', LINK]}
+                >{translate(link.key)}</a
               >
-                {translate(link.key)}
-              </a>
             {/each}
           </nav>
         {/each}
       </div>
       <div
-        class="mt-10 flex flex-col gap-4 border-t border-white/8 pt-6 text-xs text-ink-mute sm:flex-row sm:items-center sm:justify-between"
+        class="mt-10 flex flex-col gap-3 border-t border-white/8 pt-6 text-caption text-ink-mute sm:flex-row sm:items-center sm:justify-between md:gap-4"
       >
-        <div class="flex flex-wrap items-center gap-x-5 gap-y-3">
-          <p>{translate('footer.note')}</p>
-          {@render version()}
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-0 md:gap-y-3">
+          <p class="max-md:order-3 max-md:inline-flex max-md:min-h-11 max-md:items-center">
+            {translate('footer.note')}
+          </p>
+          <a
+            href="/terms"
+            aria-current={current === 'terms' ? 'page' : undefined}
+            class={['text-ink-soft max-md:inline-flex max-md:items-center', LINK]}>{translate('footer.terms')}</a
+          >
+          {@render version('max-md:order-4')}
         </div>
-        {@render languageSwitch()}
+        <LanguageMenu placement="footer" {onlanguage} />
       </div>
     </div>
   {/if}

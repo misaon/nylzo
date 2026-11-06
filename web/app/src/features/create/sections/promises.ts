@@ -1,0 +1,59 @@
+import type { IconName } from '../../../shared/ui/icon/icons.ts';
+
+interface PromiseCard {
+  readonly key: 'promise.account' | 'promise.preview' | 'promise.logs' | 'promise.ttl' | 'promise.cancel';
+  readonly icon: IconName;
+  readonly verify: string;
+  readonly wide: boolean;
+  readonly layout: string;
+  readonly motion: string;
+  readonly order: string;
+}
+
+export const PROMISES: readonly PromiseCard[] = [
+  {
+    key: 'promise.account',
+    icon: 'userOff',
+    verify: '/transparency#transparency-stores',
+    wide: true,
+    layout: 'md:col-span-4 md:p-8',
+    motion: 'md:[--rv-i:0] md:[--rv-x:28px] md:[--rv-y:28px]',
+    order: 'md:[--rv-i:0]',
+  },
+  {
+    key: 'promise.preview',
+    icon: 'eye',
+    verify: 'https://github.com/misaon/nylzo/blob/main/spec/protocol.md',
+    wide: false,
+    layout: 'md:col-span-2 md:p-7',
+    motion: 'md:[--rv-i:1] md:[--rv-x:-28px] md:[--rv-y:28px]',
+    order: 'md:[--rv-i:1]',
+  },
+  {
+    key: 'promise.logs',
+    icon: 'server',
+    verify: '/transparency#transparency-logs',
+    wide: false,
+    layout: 'md:col-span-2 md:p-7',
+    motion: 'md:[--rv-i:1] md:[--rv-x:28px] md:[--rv-y:0px]',
+    order: 'md:[--rv-i:1]',
+  },
+  {
+    key: 'promise.ttl',
+    icon: 'clock',
+    verify: '/transparency#transparency-limits',
+    wide: false,
+    layout: 'md:col-span-2 md:p-7',
+    motion: 'md:[--rv-i:0] md:[--rv-x:0px] md:[--rv-y:0px]',
+    order: 'md:[--rv-i:0]',
+  },
+  {
+    key: 'promise.cancel',
+    icon: 'refresh',
+    verify: '/sent',
+    wide: false,
+    layout: 'md:col-span-2 md:p-7',
+    motion: 'md:[--rv-i:1] md:[--rv-x:-28px] md:[--rv-y:0px]',
+    order: 'md:[--rv-i:1]',
+  },
+];

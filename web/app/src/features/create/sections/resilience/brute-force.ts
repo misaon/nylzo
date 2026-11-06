@@ -1,5 +1,5 @@
-import type { Language } from '../../../shared/language/language.ts';
-import { TTL_CHOICES } from '../composer/create-form.ts';
+import type { Language } from '../../../../shared/language/language.ts';
+import { TTL_CHOICES } from '../../composer/create-form.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
 

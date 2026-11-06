@@ -16,7 +16,7 @@ import { randomCharacter, randomText } from '../../shared/pipeline/random-text.t
 import type { ReportOutcome, ReportSubmission } from '../../shared/report/report.ts';
 import { Flash } from '../../shared/ui/flash.svelte.ts';
 import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
-import type { IconName } from '../../shared/ui/icons.ts';
+import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { markHiddenCharacters } from './hidden-characters.ts';
 import type { MarkedText } from './hidden-characters.ts';
 import { noticeOf } from './read-notice.ts';

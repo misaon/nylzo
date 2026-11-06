@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Icon from '../../../shared/ui/Icon.svelte';
-  import type { IconName } from '../../../shared/ui/icons.ts';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import type { IconName } from '../../../shared/ui/icon/icons.ts';
   import { CHIP_ACCENT, CHIP_BASE, CHIP_IDLE, CHIP_OPEN, CHIP_PROBLEM } from './chip-classes.ts';
   import type { Composer, Menu } from './composer.svelte.ts';
 

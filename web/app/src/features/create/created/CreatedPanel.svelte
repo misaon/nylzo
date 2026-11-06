@@ -6,8 +6,8 @@
   import Chip from '../../../shared/ui/Chip.svelte';
   import { Flash } from '../../../shared/ui/flash.svelte.ts';
   import { FocusTargets } from '../../../shared/ui/focus.ts';
-  import Icon from '../../../shared/ui/Icon.svelte';
-  import SwapIcon from '../../../shared/ui/SwapIcon.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
   import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
 

@@ -2,7 +2,7 @@
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import WorkingStatus from '../../shared/pipeline/WorkingStatus.svelte';
   import Chip from '../../shared/ui/Chip.svelte';
-  import Icon from '../../shared/ui/Icon.svelte';
+  import Icon from '../../shared/ui/icon/Icon.svelte';
   import type { ChipData, ReadPage } from './read-page.svelte.ts';
 
   interface Props {

@@ -1,4 +1,4 @@
-import type { IconName } from '../ui/icons.ts';
+import type { IconName } from '../ui/icon/icons.ts';
 
 export interface PipelineNode {
   readonly id: string;

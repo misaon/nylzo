@@ -1,344 +1,198 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import { FocusTargets } from '../../../shared/ui/focus.ts';
-  import Icon from '../../../shared/ui/Icon.svelte';
-  import { arrowTarget } from '../../../shared/ui/tabs.ts';
-  import { AutoCycle } from './auto-cycle.svelte.ts';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
-
-  const VIEW_MS = 7000;
-  const views = ['you', 'server', 'thief'] as const;
-  const focus = new FocusTargets<(typeof views)[number]>();
-  const cycle = new AutoCycle(
-    () => views.length,
-    () => VIEW_MS,
-  );
-  const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]'] as const;
-  const delays = ['delay-[160ms]', 'delay-[220ms]', 'delay-[280ms]', 'delay-[340ms]'] as const;
-
-  const facts = [
-    { key: 'who.server.id', value: '14887c2dafc401c9925e4dc33993d763c01fcc8cd2b739cf02519c6d273efa28' },
-    { key: 'who.server.size' },
-    { key: 'who.server.cleanup' },
-    { key: 'who.server.record' },
-  ] as const;
-  const lacks = [
-    'who.server.lacks.text',
-    'who.server.lacks.name',
-    'who.server.lacks.key',
-    'who.server.lacks.ip',
-  ] as const;
-  const finds = ['who.thief.key', 'who.thief.text', 'who.thief.ip', 'who.thief.meta'] as const;
-  const cipherText =
+  const CIPHER_TEXT =
     'AQEAPtYgjmUhBel31iEl2hpChYgCfrL1spNxnyVmihA_2O76UMFxFkM_R5Kjp1vRt-1fjORS_6ilI8ihN5KXSc7Tvo_hBKqFYY_kv5ZJr3J1TWDtkwtDDb-xHKas1VOqg6YYZYn9ZhyiA4uoRgnatmUdjAWtGSU8po-799NksnRH9ucAUsdMlHUvTCQCyEZDz_TddJ8HyS5SUkCnD8zRA9a9SkpXz9w3QlY7Zkuvqdt7s8Stqcbnr3yBdGBLEPH1qhT61qtc4xatws8phP9nhFyJfm5di4PzJ59FHz5r1pY4OjE2jBMptUsGr7CmY-uCu3ZR1zTOlUcR64cXQLioDnkHIfxIq2HZt_PlJhx2jIclHkCiHp6bR1IqfEouHgxzNNAL5wIScGebcy8F5n3_YNBDRzrZSgqbjG3uhkWKFLf6xuI5aHUQPFeNBTxaQWk8JzFalHlsZfYcMMDktXP_tKsf2rcDkdfrUnW5gcF';
-
-  function panel(index: number): string {
-    return cycle.index === index
-      ? 'opacity-100 delay-[160ms] duration-300 ease-out'
-      : 'pointer-events-none opacity-0 duration-200 ease-in';
-  }
-
-  function item(index: number, step: number): string[] {
-    return cycle.index === index
-      ? ['translate-y-0 opacity-100 duration-500 ease-silk', delays[step] ?? '']
-      : ['translate-y-1.5 opacity-0 duration-150 ease-in'];
-  }
-
-  function onkeydown(event: KeyboardEvent) {
-    const next = arrowTarget(event.key, cycle.index, views.length);
-    if (next === undefined) {
-      return;
-    }
-    event.preventDefault();
-    cycle.select(next);
-    focus.focus(views[next] ?? 'you');
-  }
+  const ARTICLE =
+    'flex min-w-0 flex-col gap-3 p-4 md:row-span-5 md:grid md:grid-cols-[minmax(0,1fr)] md:grid-rows-subgrid md:p-5';
+  const LABEL = 'text-eyebrow font-medium text-ink-mute uppercase';
 </script>
 
-<span id="bezpecnost" class="block" aria-hidden="true"></span>
-
 <section id="security" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="who-title">
-  <div
-    class="mx-auto grid max-w-[1160px] items-start gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16"
-  >
-    <div class="reveal-left lg:sticky lg:top-28">
-      <p class="text-sm font-medium text-aegis-300">{translate('who.eyebrow')}</p>
+  <div class="mx-auto max-w-[1160px]">
+    <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
+      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('who.eyebrow')}</p>
       <h2
         id="who-title"
-        class="mt-3 font-display text-[28px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[40px]"
+        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
       >
         {translate('who.title')}
       </h2>
-      <p class="mt-5 max-w-[440px] leading-relaxed text-pretty text-ink-soft">{translate('who.sub')}</p>
+      <p
+        class="mx-auto mt-5 max-w-[540px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
+      >
+        {translate('who.lead')}
+      </p>
     </div>
-
     <div
-      class="glass reveal-right rounded-card p-2.5 md:p-3"
-      role="group"
-      aria-labelledby="who-title"
-      {@attach cycle.observe}
-      {@attach cycle.advance}
-      onmouseenter={cycle.pointerEnter}
-      onmouseleave={cycle.pointerLeave}
-      onfocusin={cycle.focusIn}
-      onfocusout={cycle.focusOut}
+      class="mt-14 grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:grid-rows-[repeat(5,auto)] md:gap-x-5"
     >
+      <article
+        class={[
+          'glass rv-rise rounded-card [--rv-delay:180ms] [--rv-time:1.1s] md:[--rv-x:40px] md:[--rv-y:0px]',
+          ARTICLE,
+        ]}
+        aria-labelledby="who-you"
+        {@attach reveal}
+      >
+        <div class="flex items-center justify-between gap-3 px-1">
+          <h3 id="who-you" class="flex items-center gap-3 text-title-sm font-medium text-ink">
+            <IconTile icon="unlock" tone="current" size="small" />
+            {translate('who.you.title')}
+          </h3>
+          <span
+            class="rounded-full bg-aegis-500/12 px-2.5 py-1 text-micro font-medium whitespace-nowrap text-aegis-200 ring-1 ring-aegis-400/35"
+            >{translate('who.you.badge')}</span
+          >
+        </div>
+        <div class="rounded-pane p-4 well motion-safe:animate-who-read-message">
+          <p class={LABEL}>{translate('who.label.message')}</p>
+          <p class="mt-2 text-body text-ink">
+            {translate('who.you.message')}
+            <span class="rounded-xs bg-aegis-500/12 px-1 text-caption whitespace-nowrap text-aegis-200"
+              >Lr7!vQ2-mT9#kd</span
+            >
+          </p>
+          <p class="mt-1 text-body text-ink-soft">{translate('who.you.message.note')}</p>
+        </div>
+        <div class="rounded-pane p-4 well motion-safe:animate-who-read-file">
+          <p class={LABEL}>{translate('who.label.file')}</p>
+          <div class="mt-2 flex items-center gap-3">
+            <IconTile icon="file" tone="current" size="medium" />
+            <div class="min-w-0">
+              <p class="truncate text-body text-ink">smlouva-final.pdf</p>
+              <p class="text-caption text-ink-mute tabular-nums">{translate('who.you.file.size')}</p>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-pane p-4 well motion-safe:animate-who-read-key">
+          <p class={LABEL}>{translate('who.label.key')}</p>
+          <p class="mt-2 text-body text-ink">{translate('who.you.key')}</p>
+          <p class="mt-1 truncate text-caption text-ink-mute">
+            nylzo.example/r#2.0.Q3tN0xvR8kLp2WcY5aHf1g<span class="rounded-xs bg-aegis-500/12 px-1 text-aegis-200"
+              >.Vh2sXq9LmB4tRk7PzW1eNc…</span
+            >
+          </p>
+        </div>
+        <p class="flex items-center gap-2 px-1 text-caption text-ink-mute">
+          <Icon name="check" class="size-4 shrink-0 text-aegis-300" />
+          {translate('how.deleted')}
+        </p>
+      </article>
       <div
-        class="relative grid grid-cols-3 rounded-control p-0.5 well"
-        role="tablist"
-        aria-label={translate('who.tabs')}
+        class="relative flex rv-pop items-center justify-center py-1 [--rv-time:0.8s] md:row-span-5 md:w-36 md:py-0"
+        aria-hidden="true"
+        {@attach reveal}
       >
         <span
-          class={[
-            'absolute inset-y-0.5 left-0.5 w-[calc((100%-0.25rem)/3)] overflow-hidden rounded-[8px] bg-aegis-500/25 ring-1 ring-aegis-400/50 transition-transform duration-500 ease-silk',
-            indicator[cycle.index],
-          ]}
-          aria-hidden="true"
+          class="pointer-events-none absolute top-[calc(50%-14px)] right-[calc(50%+30px)] -left-5 hidden h-px bg-linear-to-r from-white/6 to-white/24 md:block"
         >
-          <progress
-            class={[
-              'absolute inset-0 h-full w-full progress-tab transition-opacity duration-300',
-              cycle.running ? 'opacity-100' : 'opacity-0',
-            ]}
-            max="1"
-            value={cycle.progress}
-          ></progress>
+          <span
+            class="absolute top-1/2 left-0 h-[3px] w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-r from-transparent via-ink to-transparent opacity-0 blur-[0.5px] motion-safe:animate-who-flow-in"
+          ></span>
         </span>
-        {#each views as view, index (view)}
-          <button
-            {@attach focus.attach(view)}
-            id="who-tab-{view}"
-            type="button"
-            role="tab"
-            aria-selected={cycle.index === index}
-            aria-controls="who-panel-{view}"
-            tabindex={cycle.index === index ? 0 : -1}
-            onclick={() => cycle.select(index)}
-            {onkeydown}
-            class={[
-              'relative z-10 h-11 rounded-[8px] px-2 text-[13px] sm:text-sm md:h-10',
-              cycle.index === index ? 'text-ink' : 'text-ink-soft hover:text-ink',
-            ]}
-          >
-            {translate(`who.${view}`)}
-          </button>
-        {/each}
-      </div>
-
-      <div class="mt-3 stack">
-        <div
-          id="who-panel-you"
-          role="tabpanel"
-          aria-labelledby="who-tab-you"
-          inert={cycle.index !== 0}
-          class={['flex flex-col gap-3 p-2 transition-opacity md:p-3', panel(0)]}
+        <span
+          class="pointer-events-none absolute top-[calc(50%-14px)] -right-5 left-[calc(50%+30px)] hidden h-px bg-linear-to-r from-aegis-400/60 to-aegis-400/15 md:block"
         >
-          <div class={['flex items-center justify-between gap-3 transition-[opacity,translate]', item(0, 0)]}>
-            <p class="flex items-center gap-3 text-[15px] font-medium text-ink">
-              <span
-                class="grid size-8 shrink-0 place-items-center rounded-[8px] bg-aegis-500/15 text-aegis-300 ring-1 ring-aegis-400/30"
-              >
-                <Icon name="unlock" class="size-4" />
-              </span>
-              {translate('who.you.title')}
-            </p>
-            <span
-              class="flex items-center gap-1.5 rounded-full bg-aegis-500/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-aegis-200 uppercase ring-1 ring-aegis-400/25"
-            >
-              <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300" aria-hidden="true"></span>{translate(
-                'who.you.badge',
-              )}
-            </span>
-          </div>
-          <div
-            class={[
-              'relative flex grow flex-col overflow-hidden rounded-pane p-4 well transition-[opacity,translate]',
-              item(0, 1),
-            ]}
-          >
-            <span
-              class="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-aegis-300/70 to-transparent"
-              aria-hidden="true"
+          <span
+            class="absolute top-1/2 left-0 h-[3px] w-12 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-r from-transparent via-aegis-200 to-transparent opacity-0 blur-[0.5px] motion-safe:animate-who-flow-out"
+          ></span>
+        </span>
+        <div class="flex flex-row items-center gap-3 md:flex-col">
+          <span class="relative grid size-11 shrink-0 place-items-center">
+            <span class="absolute inset-0 rounded-full bg-aegis-500/20 opacity-30 blur-lg motion-safe:animate-who-halo"
             ></span>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
-              {translate('who.you.message')}
-            </p>
-            <p class="mt-3 text-[15px] leading-relaxed text-ink">
-              {translate('who.you.line1')}
-              <span
-                class="rounded-[6px] bg-aegis-500/12 px-1.5 py-0.5 font-mono text-[13px] whitespace-nowrap text-aegis-200 ring-1 ring-aegis-400/30"
-                >Lr7!vQ2-mT9#kd</span
-              >
-            </p>
-            <p class="mt-1 text-[15px] leading-relaxed text-ink-soft">{translate('who.you.line2')}</p>
-            <p class="mt-auto flex items-center gap-2 border-t border-white/6 pt-3 text-[13px] text-ink-mute">
-              <Icon name="check" class="size-4 shrink-0 text-aegis-300" />
-              {translate('who.you.deleted')}
-            </p>
-          </div>
-          <div class={['rounded-pane p-4 well transition-[opacity,translate]', item(0, 2)]}>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
-              {translate('who.you.attachment')}
-            </p>
-            <div class="mt-3 flex items-center gap-3">
-              <span
-                class="grid size-10 shrink-0 place-items-center rounded-control bg-nebula-400/12 text-nebula-300 ring-1 ring-nebula-300/30"
-              >
-                <Icon name="file" stroke={1.7} class="size-5" />
-              </span>
-              <div class="min-w-0 flex-1">
-                <p class="truncate text-[15px] text-ink">{translate('who.you.file')}</p>
-                <p class="font-mono text-[13px] text-ink-mute">{translate('who.you.filemeta')}</p>
-              </div>
-              <span
-                class="grid size-9 shrink-0 place-items-center rounded-control bg-white/5 text-ink-soft ring-1 ring-white/10"
-                aria-hidden="true"
-              >
-                <Icon name="download" class="size-4" />
-              </span>
-            </div>
-          </div>
-          <div class={['rounded-pane p-4 well transition-[opacity,translate]', item(0, 3)]}>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{translate('who.you.key')}</p>
-            <p class="mt-3 text-[13px] leading-relaxed text-ink-soft">{translate('who.you.keynote')}</p>
-            <p class="mt-1.5 font-mono text-[13px] break-all text-ink-mute">
-              nylzo.example/r#2.0.Q3tN0xvR8kLp2WcY5aHf1g<span
-                class="rounded-[4px] bg-aegis-500/15 px-0.5 text-aegis-200">.Vh2sXq9LmB4tRk7PzW1eNc…</span
-              >
-            </p>
-          </div>
+            <span
+              class="absolute inset-0 rounded-full opacity-0 ring-1 ring-aegis-300/50 motion-safe:animate-who-ripple"
+            ></span>
+            <span
+              class="relative grid size-11 place-items-center rounded-full text-white step-current motion-safe:animate-who-lock"
+            >
+              <Icon name="lock" class="size-5" stroke={1.7} />
+            </span>
+          </span>
+          <span class="text-micro whitespace-nowrap text-ink-mute">{translate('who.encrypts')}</span>
         </div>
-
-        <div
-          id="who-panel-server"
-          role="tabpanel"
-          aria-labelledby="who-tab-server"
-          inert={cycle.index !== 1}
-          class={['flex flex-col gap-3 p-2 transition-opacity md:p-3', panel(1)]}
-        >
-          <div class={['flex items-center justify-between gap-3 transition-[opacity,translate]', item(1, 0)]}>
-            <p class="flex items-center gap-3 text-[15px] font-medium text-ink">
-              <span
-                class="grid size-8 shrink-0 place-items-center rounded-[8px] bg-white/5 text-ink-soft ring-1 ring-white/12"
-              >
-                <Icon name="database" stroke={1.7} class="size-4" />
-              </span>
+      </div>
+      <article
+        class={[
+          'rv-focus rounded-pane bg-white/4 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 [--rv-blur:14px] [--rv-delay:440ms] [--rv-time:1.3s] [--rv-y:16px] md:[--rv-x:-40px] md:[--rv-y:0px]',
+          ARTICLE,
+        ]}
+        aria-labelledby="who-server"
+        {@attach reveal}
+      >
+        <div class="flex items-center justify-between gap-3 px-1">
+          <h3 id="who-server" class="flex items-center gap-3 text-title-sm font-medium text-ink">
+            <IconTile icon="database" tone="neutral" size="small" />
+            <span>
               {translate('who.server.title')}
-            </p>
-            <span
-              class="rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-ink-soft uppercase ring-1 ring-white/10"
-            >
-              {translate('who.server.badge')}
+              <span class="block text-micro font-normal text-ink-mute">{translate('who.server.subtitle')}</span>
             </span>
-          </div>
-          <div
-            class={[
-              'relative flex grow flex-col overflow-hidden rounded-pane p-4 well transition-[opacity,translate]',
-              item(1, 1),
-            ]}
+          </h3>
+          <span
+            class="rounded-full bg-white/6 px-2.5 py-1 text-micro font-medium whitespace-nowrap text-ink-soft ring-1 ring-white/12"
+            >{translate('who.server.badge')}</span
           >
-            <div class="flex items-center justify-between gap-3">
-              <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
-                {translate('who.server.data')}
-              </p>
-              <p class="font-mono text-[11px] text-aegis-300">AES-256-GCM</p>
-            </div>
-            <p
-              class="mt-3 h-[44px] grow overflow-hidden [mask-image:linear-gradient(to_bottom,black_35%,transparent)] font-mono text-[11px] leading-[1.6] break-all text-ink-mute/60"
-              aria-hidden="true"
-            >
-              {cipherText}
-            </p>
-            <span
-              class="pointer-events-none absolute inset-x-0 top-0 h-20 animate-scan bg-linear-to-b from-transparent via-aegis-400/10 to-transparent [animation-duration:5s]"
-              aria-hidden="true"
-            ></span>
-          </div>
-          <dl class={['grid grid-cols-2 gap-3 transition-[opacity,translate]', item(1, 2)]}>
-            {#each facts as fact (fact.key)}
-              <div class="min-w-0 rounded-pane px-4 py-3 well">
-                <dt class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">{translate(fact.key)}</dt>
-                <dd class="mt-1 truncate font-mono text-[13px] text-ink">
-                  {'value' in fact ? fact.value : translate(`${fact.key}.value`)}
-                </dd>
-                <dd class="mt-0.5 text-[13px] text-ink-mute">{translate(`${fact.key}.note`)}</dd>
-              </div>
-            {/each}
-          </dl>
-          <div class={['flex items-start gap-4 rounded-pane p-4 well transition-[opacity,translate]', item(1, 3)]}>
-            <p class="w-12 shrink-0 pt-0.5 text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
-              {translate('who.server.lacks')}
-            </p>
-            <ul class="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 text-[13px] text-ink-soft">
-              {#each lacks as lack (lack)}
-                <li class="flex items-center gap-2">
-                  <Icon name="ban" class="size-4 shrink-0 text-aegis-300" />{translate(lack)}
-                </li>
-              {/each}
-            </ul>
-          </div>
         </div>
-
-        <div
-          id="who-panel-thief"
-          role="tabpanel"
-          aria-labelledby="who-tab-thief"
-          inert={cycle.index !== 2}
-          class={['flex flex-col gap-3 p-2 transition-opacity md:p-3', panel(2)]}
-        >
-          <div class={['flex items-center justify-between gap-3 transition-[opacity,translate]', item(2, 0)]}>
-            <p class="flex items-center gap-3 text-[15px] font-medium text-ink">
+        <div class="rounded-pane p-4 well motion-safe:animate-who-store-message">
+          <p class={LABEL}>{translate('who.label.message')}</p>
+          <p
+            class="mt-2 h-[4.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_16%,black_50%,transparent)] text-caption break-all text-ink-mute/60 motion-safe:animate-who-arrive-message"
+            aria-hidden="true"
+          >
+            <span class="block motion-safe:animate-who-drift">{CIPHER_TEXT}</span>
+          </p>
+          <p class="sr-only">{translate('who.server.badge')}</p>
+        </div>
+        <div class="rounded-pane p-4 well motion-safe:animate-who-store-file">
+          <p class={LABEL}>{translate('who.label.file')}</p>
+          <div class="mt-2 flex items-center gap-3 motion-safe:animate-who-arrive-file">
+            <span class="relative grid size-10 shrink-0 place-items-center rounded-control text-ink-soft tile-neutral">
+              <Icon name="file" class="size-5" stroke={1.7} />
               <span
-                class="grid size-8 shrink-0 place-items-center rounded-[8px] bg-nebula-400/12 text-nebula-300 ring-1 ring-nebula-300/30"
+                class="absolute -right-1.5 -bottom-1.5 grid size-[18px] place-items-center rounded-full bg-void-900 text-aegis-300 ring-1 ring-aegis-300/50"
               >
-                <Icon name="copy" stroke={1.7} class="size-4" />
+                <Icon name="lock" class="size-3" stroke={2.2} />
               </span>
-              {translate('who.thief.title')}
-            </p>
-            <span
-              class="rounded-full bg-nebula-400/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-nebula-300 uppercase ring-1 ring-nebula-300/25"
-            >
-              {translate('who.thief.badge')}
             </span>
-          </div>
-          <div class={['flex grow flex-col rounded-pane p-4 well transition-[opacity,translate]', item(2, 1)]}>
-            <p class="text-[11px] font-medium tracking-[0.12em] text-ink-mute uppercase">
-              {translate('who.thief.finds')}
-            </p>
-            <ul class="mt-1 grid grow divide-y divide-white/6">
-              {#each finds as find (find)}
-                <li class="flex items-center gap-3 py-3 last:pb-0">
-                  <div class="min-w-0 flex-1">
-                    <p class="text-[15px] text-ink">{translate(find)}</p>
-                    <p class="text-[13px] text-ink-mute">{translate(`${find}.note`)}</p>
-                  </div>
-                  <span
-                    class="shrink-0 rounded-full bg-aegis-500/10 px-2.5 py-1 text-[11px] font-medium tracking-[0.08em] text-aegis-200 uppercase ring-1 ring-aegis-400/25"
-                  >
-                    {translate(`${find}.result`)}
-                  </span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-          <div class={['transition-[opacity,translate]', item(2, 2)]}>
-            <a
-              href="#resilience"
-              class="group flex items-center justify-between gap-3 rounded-pane bg-linear-to-r from-aegis-500/20 via-aegis-500/10 to-nebula-400/10 p-4 ring-1 ring-aegis-400/30 hover:ring-aegis-300/60"
-            >
-              <span>
-                <span class="block text-[15px] text-ink">{translate('who.thief.cta')}</span>
-                <span class="mt-0.5 block text-[13px] text-ink-soft">{translate('who.thief.cta.sub')}</span>
-              </span>
-              <Icon
-                name="arrowRight"
-                class="size-5 shrink-0 text-aegis-300 transition-transform duration-300 ease-silk group-hover:translate-x-0.5"
-              />
-            </a>
+            <div class="min-w-0">
+              <p class="truncate text-body text-ink-soft">{translate('who.server.file')}</p>
+              <p class="text-caption text-solar-300 tabular-nums">{translate('who.server.file.size')}</p>
+            </div>
           </div>
         </div>
-      </div>
+        <div class="flex flex-col rounded-pane border border-dashed border-white/20 p-4 motion-safe:animate-who-deny">
+          <p class={LABEL}>{translate('who.label.key')}</p>
+          <p class="mt-2 flex items-center gap-2 text-body text-ink-soft">
+            <Icon name="ban" class="size-4 shrink-0 text-aegis-300" />
+            {translate('who.server.key')}
+          </p>
+        </div>
+        <p class="flex items-center gap-2 px-1 text-caption text-ink-mute">
+          <Icon name="eye" class="size-4 shrink-0 text-solar-300" />
+          {translate('who.server.sees')}
+        </p>
+      </article>
+    </div>
+    <div class="mt-8 flex justify-center" {@attach reveal}>
+      <a
+        href="#resilience"
+        class="group inline-block min-h-11 rv-focus rounded-control px-3 py-2.5 text-center text-body text-balance text-aegis-300 transition duration-300 ease-silk hover:text-aegis-200"
+      >
+        {translate('who.try')}
+        <span class="whitespace-nowrap"
+          >{translate('who.try.last')}<Icon
+            name="caretDown"
+            class="ml-1.5 inline-block size-3.5 align-[-2px] transition duration-300 ease-silk group-hover:translate-y-0.5"
+            stroke={2}
+          /></span
+        >
+      </a>
     </div>
   </div>
 </section>

@@ -79,7 +79,7 @@
 <div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
-    <SiteHeader {variant} />
+    <SiteHeader {variant} current={screen} onlanguage={switchLanguage} />
     <main class="min-h-svh flex-1">
       <svelte:boundary>
         {#if screen === 'read'}

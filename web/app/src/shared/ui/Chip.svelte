@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  import Icon from './Icon.svelte';
-  import type { IconName } from './icons.ts';
+  import Icon from './icon/Icon.svelte';
+  import type { IconName } from './icon/icons.ts';
 
   interface Props {
     readonly icon: IconName;
