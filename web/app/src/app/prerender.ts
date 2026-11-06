@@ -1,6 +1,9 @@
 import { render } from 'svelte/server';
 
 import { agentsGuide } from '../features/agents/agents-content.ts';
+import { STATUS_PAGES } from '../features/errors/status-page.ts';
+import type { StatusPage } from '../features/errors/status-page.ts';
+import StatusDocument from '../features/errors/StatusDocument.svelte';
 import { LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
@@ -33,6 +36,9 @@ const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/u;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
 const FONT_FACE = /@font-face\{[^}]*\}/gu;
+const MODULE_SCRIPT = /<script type="module"[^>]*><\/script>\s*/u;
+const MODULE_PRELOAD = /<link rel="modulepreload"[^>]*>\s*/gu;
+const MONO_FONT_PRELOAD = /<link rel="preload" href="\/assets\/geist-mono-[\w-]+\.woff2"[^>]*>\n?/gu;
 
 export function agentsMarkdown(): string {
   return agentsGuide(new Translator('en').translate);
@@ -164,4 +170,22 @@ export function homeTemplate(index: string, language: Language, { image, styles 
 
 export function homeTemplates(index: string, assets: HomeAssets): ReadonlyMap<Language, string> {
   return new Map(LANGUAGES.map((language) => [language, homeTemplate(index, language, assets)]));
+}
+
+// Caddy answers these without the app, so they load only styles and fonts.
+function statusTemplate(index: string, page: StatusPage, language: Language): string {
+  const { head, body } = render(StatusDocument, { props: { page, language } });
+  let html = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}" data-fonts>`);
+  html = replaceOnce(html, /<meta\s+name="description"[^>]*>\s*/u, '');
+  html = replaceOnce(html, /<title>[^<]*<\/title>/u, head.trim());
+  html = replaceOnce(html, MODULE_SCRIPT, '').replaceAll(MODULE_PRELOAD, '').replaceAll(MONO_FONT_PRELOAD, '');
+  return replaceOnce(html, '<body></body>', `<body>${body}</body>`);
+}
+
+export function statusTemplates(index: string): ReadonlyMap<string, string> {
+  return new Map(
+    STATUS_PAGES.flatMap((page) =>
+      LANGUAGES.map((language) => [`${page}.${language}.html`, statusTemplate(index, page, language)] as const),
+    ),
+  );
 }

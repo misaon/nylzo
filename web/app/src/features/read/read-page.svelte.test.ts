@@ -134,6 +134,18 @@ describe('read page interactions', () => {
     await gate.promise;
   });
 
+  it('reveals once when the passphrase was submitted while the message was still loading', () => {
+    const page = new ReadPage(new Translator('en'));
+    notify({ view: 'loading', kdfId: KDF_SCRYPT });
+    page.passphrase = 'correct horse battery staple';
+    const event = new Event('submit', { cancelable: true }) as SubmitEvent;
+    page.reveal(event);
+    page.reveal(event);
+    expect(reader.reveal).not.toHaveBeenCalled();
+    ready({ kdfId: KDF_SCRYPT });
+    expect(reader.reveal).toHaveBeenCalledExactlyOnceWith('correct horse battery staple');
+  });
+
   it('holds the revealed content until the opening timeline finishes, then unscrambles it', async () => {
     const page = new ReadPage(new Translator('en'));
     ready();

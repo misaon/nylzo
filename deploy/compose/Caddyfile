@@ -31,7 +31,9 @@
 		-Via
 	}
 	route {
-		nylzo_frontend https://{$NYLZO_DOMAIN}
+		nylzo_frontend https://{$NYLZO_DOMAIN} {
+			maintenance /var/lib/caddy/maintenance
+		}
 		reverse_proxy nylzo:8080 {
 			handle_response {
 				route {
@@ -53,16 +55,10 @@
 		}
 	}
 	handle_errors {
-		header {
-			-Server
-			Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
-			X-Content-Type-Options nosniff
-			Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-			Cache-Control no-store
-			Referrer-Policy no-referrer
-			Cross-Origin-Resource-Policy same-origin
+		header -Server
+		route {
+			nylzo_error
 		}
-		respond {err.status_code}
 	}
 }
 

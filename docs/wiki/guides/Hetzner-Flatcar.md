@@ -206,6 +206,8 @@ sudo journalctl -u nylzo-host -u nylzo-initialize -u nylzo-update -u nylzo-ready
 sudo cat /var/lib/nylzo-deploy/current.json; readlink /opt/nylzo/host/current
 ```
 
+For planned work, `sudo touch /var/lib/caddy/maintenance` shows the maintenance page and `sudo rm /var/lib/caddy/maintenance` ends it, without a restart. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
+
 Hetzner backups stay off: restoring a snapshot can resurrect consumed messages. Cleanup keeps the current and previous image, Caddy, tools and host generation.
 
 Hetzner and administrator accounts remain trusted. The profile has no Secure Boot, vTPM, confidential computing or DDoS immunity, and does not stop a malicious host operator from serving altered browser code.

@@ -86,6 +86,7 @@ export class ReadPage {
   #left = false;
   #pending: ReadView | undefined;
   #revealing = false;
+  #revealWhenReady = false;
   #markShown: (() => void) | undefined;
   #revealTimer: ReturnType<typeof setInterval> | undefined;
   readonly #reader: Reader;
@@ -343,6 +344,14 @@ export class ReadPage {
 
   readonly reveal = (event: SubmitEvent): void => {
     event.preventDefault();
+    if (this.shown.view === 'loading') {
+      this.#revealWhenReady = true;
+      return;
+    }
+    this.#submit();
+  };
+
+  #submit(): void {
     if (this.#revealing || this.phase !== 'ready' || this.shown.view !== 'ready' || this.deleting) {
       return;
     }
@@ -359,7 +368,7 @@ export class ReadPage {
     this.passphrase = '';
     this.#revealing = true;
     void this.#revealWith(entered);
-  };
+  }
 
   readonly typed = (): void => {
     this.emptyPassphrase = false;
@@ -462,6 +471,14 @@ export class ReadPage {
     this.#pending = undefined;
     this.#stopTimeline();
     this.#show(next);
+    const submitted = this.#revealWhenReady && next.view === 'ready';
+    if (next.view !== 'loading') {
+      this.#revealWhenReady = false;
+    }
+    if (submitted) {
+      this.#submit();
+      return;
+    }
     if (wasOpening && next.view === 'ready' && this.passphraseRequired) {
       void this.focus.focusAfterUpdate(() => 'passphrase');
     }

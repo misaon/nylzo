@@ -9,9 +9,9 @@
   import { REPOSITORY_URL } from './repository.ts';
 
   interface Props {
-    readonly variant: 'home' | 'read' | 'page';
-    readonly current: string;
-    readonly onlanguage: (language: Language) => void;
+    readonly variant: 'home' | 'read' | 'page' | 'status';
+    readonly current?: string;
+    readonly onlanguage?: (language: Language) => void;
   }
 
   const { variant, current, onlanguage }: Props = $props();
@@ -52,7 +52,7 @@
     {/if}
 
     <div class="flex shrink-0 items-center gap-1.5">
-      {#if variant !== 'read'}
+      {#if variant === 'home' || variant === 'page'}
         <Button
           variant="tint"
           href="/sent"
@@ -64,7 +64,7 @@
           <span>{translate('nav.sent')}</span>
         </Button>
       {/if}
-      {#if variant !== 'home'}
+      {#if variant === 'read' || variant === 'page'}
         <Button variant="ghost" href="/" class="max-[379px]:w-11 max-[379px]:px-0 max-sm:px-3">
           <Icon name="pen" animated />
           <span class="max-[379px]:sr-only sm:hidden">{translate('nav.write.short')}</span>
@@ -75,7 +75,9 @@
         <GithubMark animated />
         <span class="max-sm:sr-only">{translate('footer.github')}</span>
       </Button>
-      <LanguageMenu placement="header" {onlanguage} class={variant === 'page' ? 'max-sm:hidden' : undefined} />
+      {#if onlanguage}
+        <LanguageMenu placement="header" {onlanguage} class={variant === 'page' ? 'max-sm:hidden' : undefined} />
+      {/if}
     </div>
   </nav>
 </header>

@@ -43,8 +43,8 @@ type Pages map[string]Page
 
 func (b Build) Render(publicURL string) (Pages, error) {
 	pages := Pages{}
-	for _, name := range templateNames {
-		html, err := render(b.Templates[name], publicURL)
+	for name, template := range b.Templates {
+		html, err := render(template, publicURL)
 		if err != nil {
 			return nil, fmt.Errorf("server: web client %s: %w", name, err)
 		}
@@ -122,16 +122,21 @@ func (p Page) SHA256() string {
 
 // Serve writes the page; the caller has set the headers shared with every other response.
 func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
+	p.ServeStatus(w, r, http.StatusOK)
+}
+
+func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header := w.Header()
 	header.Set("Content-Security-Policy", p.policy)
 	header.Set("Content-Type", htmlContentType)
-	header.Set("Vary", "Accept-Encoding")
+	header.Add("Vary", "Accept-Encoding")
+	body := p.body
 	if AcceptsGzip(r.Header.Get("Accept-Encoding")) {
 		header.Set("Content-Encoding", EncodingGzip)
-		w.Write(p.gzip)
-		return
+		body = p.gzip
 	}
-	w.Write(p.body)
+	w.WriteHeader(status)
+	w.Write(body)
 }
 
 func (a Asset) Serve(w http.ResponseWriter, r *http.Request) {

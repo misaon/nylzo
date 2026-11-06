@@ -15,7 +15,8 @@
   const { label, icon, progress, fill = progress, shown, announced = false }: Props = $props();
   const translator = getTranslator();
   const format = $derived(new Intl.NumberFormat(translator.language, { style: 'percent', maximumFractionDigits: 0 }));
-  const percent = $derived(format.format(progress).padStart(format.format(1).length, '\u{2007}'));
+  const percent = $derived(format.format(progress));
+  const widest = $derived(format.format(1));
 </script>
 
 <div
@@ -34,5 +35,8 @@
     <Icon name={icon} class="size-4 shrink-0 text-aegis-200" />
     {label}
   </span>
-  <span class="relative text-caption text-ink-soft tabular-nums">{percent}</span>
+  <span class="relative stack justify-items-end text-caption text-ink-soft tabular-nums">
+    <span class="invisible" aria-hidden="true">{widest}</span>
+    <span>{percent}</span>
+  </span>
 </div>

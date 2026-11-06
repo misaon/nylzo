@@ -24,6 +24,13 @@ const (
 
 var templateNames = []string{indexTemplate, "home.en.html", "home.cs.html"}
 
+var statusTemplateNames = []string{
+	serverErrorPage + ".en.html",
+	serverErrorPage + ".cs.html",
+	maintenancePage + ".en.html",
+	maintenancePage + ".cs.html",
+}
+
 var assetTypes = map[string]string{
 	".json":  "application/json; charset=utf-8",
 	".js":    "text/javascript; charset=utf-8",
@@ -62,6 +69,14 @@ func Load(files fs.FS) (Build, error) {
 		return Build{}, err
 	}
 	for _, name := range templateNames {
+		if build.Templates[name], err = loadTemplate(files, name, build.Assets); err != nil {
+			return Build{}, err
+		}
+	}
+	for _, name := range statusTemplateNames {
+		if _, statErr := fs.Stat(files, path.Join(distDirectory, name)); errors.Is(statErr, fs.ErrNotExist) {
+			continue
+		}
 		if build.Templates[name], err = loadTemplate(files, name, build.Assets); err != nil {
 			return Build{}, err
 		}

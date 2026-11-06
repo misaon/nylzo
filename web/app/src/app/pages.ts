@@ -4,7 +4,7 @@ import { LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { HANDOFF_PATH } from '../shared/local-client/handoff.ts';
 
-export type Screen = 'agents' | 'create' | 'read' | 'sent' | 'terms' | 'transparency';
+export type Screen = 'agents' | 'create' | 'notFound' | 'read' | 'sent' | 'terms' | 'transparency';
 
 export const HOME_PATHS: Readonly<Record<Language, string>> = { en: '/', cs: '/cs/' };
 
@@ -21,5 +21,8 @@ export function homeLanguage(path: string): Language | undefined {
 }
 
 export function screenOf(path: string): Screen {
-  return PAGES.get(path) ?? (isReadPath(path) ? 'read' : 'create');
+  if (homeLanguage(path)) {
+    return 'create';
+  }
+  return PAGES.get(path) ?? (isReadPath(path) ? 'read' : 'notFound');
 }

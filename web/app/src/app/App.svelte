@@ -3,6 +3,7 @@
 
   import Agents from '../features/agents/Agents.svelte';
   import Create from '../features/create/Create.svelte';
+  import NotFound from '../features/errors/NotFound.svelte';
   import Read from '../features/read/Read.svelte';
   import Sent from '../features/sent/Sent.svelte';
   import Terms from '../features/terms/Terms.svelte';
@@ -23,6 +24,7 @@
   const HEADER_VARIANTS = {
     agents: 'page',
     create: 'home',
+    notFound: 'page',
     read: 'read',
     sent: 'page',
     terms: 'page',
@@ -62,7 +64,7 @@
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
     <SiteHeader {variant} current={screen} onlanguage={switchLanguage} />
-    <main class="min-h-svh flex-1">
+    <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
           {#key visit}
@@ -72,6 +74,8 @@
           <Create />
         {:else if screen === 'agents'}
           <Agents />
+        {:else if screen === 'notFound'}
+          <NotFound />
         {:else}
           <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
             <div class="glass rounded-card p-6 md:p-10">

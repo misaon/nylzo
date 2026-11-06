@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -20,7 +21,43 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+
+	"github.com/misaon/nylzo/internal/server/web"
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
+
+func embeddedPages(t *testing.T, publicURL string) webclient.Pages {
+	t.Helper()
+	build, err := webclient.Load(web.Files())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := build.Render(publicURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pages
+}
+
+// expectSameResponse compares what Caddy sent with what the frontend writes, whether the build has the page or not.
+func expectSameResponse(t *testing.T, response *http.Response, status int, write func(http.ResponseWriter)) {
+	t.Helper()
+	body, err := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := httptest.NewRecorder()
+	write(expected)
+	if response.StatusCode != status || expected.Code != status || !bytes.Equal(body, expected.Body.Bytes()) {
+		t.Fatalf("status %d with %d bytes, want %d with %d bytes", response.StatusCode, len(body), status, expected.Body.Len())
+	}
+	for _, name := range []string{"Content-Security-Policy", "Content-Type", "Retry-After", "Vary"} {
+		if got, want := response.Header.Get(name), expected.Header().Get(name); got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+}
 
 type zeros struct{}
 
@@ -91,6 +128,11 @@ func rewrite(value any, apply func(key string, value any) any) any {
 
 func startCaddy(t *testing.T, caddyfile string, backend string) (address string, roots *x509.CertPool) {
 	t.Helper()
+	return startCaddyWithMaintenance(t, caddyfile, backend, "")
+}
+
+func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance string) (string, *x509.CertPool) {
+	t.Helper()
 	t.Setenv("NYLZO_DOMAIN", "localhost")
 	source, err := os.ReadFile(caddyfile)
 	if err != nil {
@@ -124,6 +166,8 @@ func startCaddy(t *testing.T, caddyfile string, backend string) (address string,
 			}
 		case key == "dial":
 			return backend
+		case key == "maintenance":
+			return maintenance
 		case key == "issuers":
 			return []any{map[string]any{"module": "internal"}}
 		}
@@ -137,8 +181,8 @@ func startCaddy(t *testing.T, caddyfile string, backend string) (address string,
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = caddy.Stop() })
-	address = fmt.Sprintf("localhost:%d", httpsPort)
-	roots = x509.NewCertPool()
+	address := fmt.Sprintf("localhost:%d", httpsPort)
+	roots := x509.NewCertPool()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		if pem, err := os.ReadFile(filepath.Join(storage, "pki", "authorities", "local", "root.crt")); err == nil && roots.AppendCertsFromPEM(pem) {
@@ -256,7 +300,7 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 				t.Fatalf("status %d without an upstream, want 502", response.StatusCode)
 			}
 			for header, want := range map[string]string{
-				"Content-Security-Policy":   "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+				"Content-Security-Policy":   webclient.NonHTMLCSP,
 				"X-Content-Type-Options":    "nosniff",
 				"Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
 				"Cache-Control":             "no-store",
@@ -266,6 +310,16 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 					t.Errorf("Caddy's 502 has %s %q, want %q", header, got, want)
 				}
 			}
+			navigation, _ := http.NewRequest(http.MethodGet, "https://"+address+"/api/unavailable", http.NoBody)
+			navigation.Header.Set("Sec-Fetch-Dest", "document")
+			navigation.Header.Set("Accept-Language", "cs")
+			response, err = client.Do(navigation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectSameResponse(t, response, http.StatusBadGateway, func(w http.ResponseWriter) {
+				embeddedPages(t, "").ServeServerError(w, navigation, http.StatusBadGateway)
+			})
 		})
 	}
 }

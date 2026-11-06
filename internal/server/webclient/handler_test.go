@@ -72,6 +72,18 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 			t.Fatalf("unexpected frontend resource %s: %d", path, response.Code)
 		}
 	}
+	index := request(http.MethodGet, "/sent", "", "")
+	for _, path := range []string{"/m/invalid", "/unknown", "/cs/sent"} {
+		response := request(http.MethodGet, path, "", "")
+		if response.Code != http.StatusNotFound || response.Body.String() != index.Body.String() ||
+			response.Header().Get("Content-Security-Policy") != index.Header().Get("Content-Security-Policy") {
+			t.Fatalf("%s did not answer the client page with 404: %d", path, response.Code)
+		}
+	}
+	if response := request(http.MethodGet, "/assets/missing.js", "", ""); response.Code != http.StatusNotFound ||
+		strings.Contains(response.Header().Get("Content-Type"), "html") {
+		t.Fatal("a missing asset answered a page")
+	}
 	if response := request(http.MethodPost, "/r", "", ""); response.Code != http.StatusMethodNotAllowed {
 		t.Fatal("the frontend accepted a mutation")
 	}

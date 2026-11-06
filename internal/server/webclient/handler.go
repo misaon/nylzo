@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
@@ -41,10 +42,14 @@ func NewHandler(build Build, publicURL string, information buildinfo.Info) (http
 		}
 		page.Serve(w, r)
 	}
+	notFound := func(w http.ResponseWriter, r *http.Request) {
+		pages[indexTemplate].ServeStatus(w, r, http.StatusNotFound)
+	}
+	mux.HandleFunc("GET /", notFound)
 	mux.HandleFunc("GET "+core.LinkPath, readPage)
 	mux.HandleFunc("GET /m/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if _, parseErr := core.ParseID(r.PathValue("id")); parseErr != nil {
-			http.NotFound(w, r)
+			notFound(w, r)
 			return
 		}
 		readPage(w, r)
@@ -94,10 +99,7 @@ func frontendHeaders(next http.Handler) http.Handler {
 			(r.Method == http.MethodGet || r.Method == http.MethodHead) && IsHomePath(r.URL.Path),
 		)
 		if r.Header.Get("Sec-Purpose") != "" && (r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/")) {
-			w.Header().Set("Retry-After", "60")
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+			WriteUnavailable(w, time.Minute)
 			return
 		}
 		next.ServeHTTP(w, r)

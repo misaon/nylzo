@@ -176,7 +176,9 @@ test('the sent list, empty and with a message, and its cancel dialog pass axe wi
   await expectAccessible(page, 'cancel dialog');
 });
 
-test('the transparency, terms and agents pages pass axe with 44 px targets on a phone (AK20)', async ({ newPage }) => {
+test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone (AK20)', async ({
+  newPage,
+}) => {
   const page = await newPage(PHONE);
   await page.goto('/transparency');
   await expect(page.getByText('Nylzo e2e')).toBeVisible();
@@ -187,4 +189,8 @@ test('the transparency, terms and agents pages pass axe with 44 px targets on a 
   await page.goto('/agents');
   await expect(page.getByRole('heading', { name: 'Nylzo for AI agents', level: 1 })).toBeVisible();
   await expectAccessible(page, 'agents');
+  const missing = await page.goto('/m/invalid');
+  expect(missing?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: 'This page does not exist', level: 1 })).toBeVisible();
+  await expectAccessible(page, 'not found');
 });
