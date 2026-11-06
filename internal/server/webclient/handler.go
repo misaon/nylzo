@@ -32,13 +32,14 @@ func NewHandler(build Build, publicURL string, information buildinfo.Info) (http
 	mux.HandleFunc("GET /cs", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/cs/", http.StatusPermanentRedirect)
 	})
-	preview := []byte(PreviewHTML(publicURL, previewImage(build.Assets)))
+	previews := previewPages(publicURL, build.Assets)
 	readPage := func(w http.ResponseWriter, r *http.Request) {
 		page := pages.For(core.LinkPath)
 		if IsPreviewAgent(r.UserAgent()) {
 			w.Header().Set("Content-Security-Policy", page.Policy())
 			w.Header().Set("Content-Type", htmlContentType)
-			_, _ = w.Write(preview)
+			w.Header().Set("Vary", "Accept-Language")
+			_, _ = w.Write(previews[PreferredLanguage(r.Header.Get("Accept-Language"))])
 			return
 		}
 		page.Serve(w, r)
