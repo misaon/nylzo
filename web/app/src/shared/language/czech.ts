@@ -106,6 +106,13 @@ export const czech = {
   'title.notFound': 'Stránka neexistuje | Nylzo',
   'title.serverError': 'Chyba serveru | Nylzo',
   'title.maintenance': 'Probíhá údržba | Nylzo',
+  'terms.liability.title': 'Odpovědnost',
+  'terms.liability.1':
+    'V\u{A0}rozsahu, v\u{A0}jakém to právní předpisy dovolují, provozovatel neodpovídá za újmu vzniklou užíváním služby nebo nemožností ji užívat. To neplatí pro újmu na přirozených právech člověka (například na životě, zdraví nebo soukromí), pro újmu způsobenou úmyslně nebo z\u{A0}hrubé nedbalosti ani v\u{A0}dalších případech, kdy právo nedovoluje odpovědnost předem vyloučit nebo omezit.',
+  'terms.other.privacy': 'Osobní údaje popisuje',
+  'terms.other.privacy.link': 'stránka Transparentnost',
+  'terms.other.law':
+    'Podmínky a\u{A0}užívání služby se řídí českým právem a\u{A0}spory rozhodují příslušné české soudy. Tím nejsou dotčeny kogentní předpisy státu, kde žijete, ani vaše právo žalovat jinde, kde to zákon dovolí.',
   'nav.label': 'Hlavní navigace',
 
   'create.title': 'Nová zpráva',

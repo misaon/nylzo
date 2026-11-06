@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte';
+
   import { createApi } from '../../shared/api/api.ts';
   import type { Transparency } from '../../shared/api/api.ts';
   import { BUILD_INFO } from '../../shared/build-info.ts';
@@ -134,12 +136,19 @@
     ];
   }
 
+  // The sections arrive after the page loads, so a link to one of them scrolls only once it exists.
   async function load() {
     view = { view: 'loading' };
     try {
       view = { view: 'ready', data: await api.transparency() };
     } catch {
       view = { view: 'failed' };
+      return;
+    }
+    await tick();
+    const section = decodeURIComponent(location.hash.slice(1));
+    if (section !== '') {
+      document.querySelector(`#${CSS.escape(section)}`)?.scrollIntoView({ block: 'start' });
     }
   }
 

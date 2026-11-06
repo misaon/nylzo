@@ -3,12 +3,14 @@
   import { formatDays } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
+  import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
   import { LONGEST_TTL_DAYS } from '../create/composer/create-form.ts';
 
   interface TermsSection {
     readonly title: MessageKey;
     readonly items: readonly MessageKey[];
     readonly note?: MessageKey;
+    readonly link?: { readonly lead: MessageKey; readonly label: MessageKey; readonly href: string };
   }
 
   const SUMMARY = ['terms.summary.1', 'terms.summary.2', 'terms.summary.3', 'terms.summary.4'] as const;
@@ -34,8 +36,17 @@
     },
     { title: 'terms.removal.title', items: ['terms.removal.1', 'terms.removal.2', 'terms.removal.3'] },
     { title: 'terms.warranty.title', items: ['terms.warranty.1', 'terms.warranty.2', 'terms.warranty.3'] },
+    { title: 'terms.liability.title', items: ['terms.liability.1'] },
     { title: 'terms.brand.title', items: ['terms.brand.1'] },
-    { title: 'terms.other.title', items: ['terms.other.1', 'terms.other.2'] },
+    {
+      title: 'terms.other.title',
+      link: {
+        lead: 'terms.other.privacy',
+        label: 'terms.other.privacy.link',
+        href: '/transparency#transparency-personal',
+      },
+      items: ['terms.other.1', 'terms.other.law', 'terms.other.2'],
+    },
   ];
 
   const translator = getTranslator();
@@ -68,6 +79,12 @@
   {#each SECTIONS as section (section.title)}
     <h2 class="mt-10 text-title font-medium text-ink">{translate(section.title)}</h2>
     <ul class="mt-3 grid list-disc gap-2 pl-5 text-body text-pretty text-ink-soft">
+      {#if section.link}
+        <li>
+          {translate(section.link.lead)}
+          <a href={section.link.href} class={[TEXT_LINK, INLINE_TARGET]}>{translate(section.link.label)}</a>.
+        </li>
+      {/if}
       {#each section.items as item (item)}
         <li>{translate(item, { days: longest })}</li>
       {/each}

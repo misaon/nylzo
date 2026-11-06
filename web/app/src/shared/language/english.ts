@@ -112,6 +112,13 @@ export const english: Record<MessageKey, string> = {
   'title.notFound': 'Page not found | Nylzo',
   'title.serverError': 'Server error | Nylzo',
   'title.maintenance': 'Maintenance in progress | Nylzo',
+  'terms.liability.title': 'Liability',
+  'terms.liability.1':
+    "To the extent the law allows, the operator is not liable for harm caused by using the service or by being unable to use it. This does not apply to harm to a person's natural rights (such as life, health or privacy), to harm caused intentionally or by gross negligence, or to any other case where the law does not allow liability to be excluded or limited in advance.",
+  'terms.other.privacy': 'How personal data is handled is described on the',
+  'terms.other.privacy.link': 'Transparency page',
+  'terms.other.law':
+    'These terms and the use of the service are governed by Czech law, and the competent Czech courts decide disputes. This does not affect the mandatory law of the country where you live or your right to sue elsewhere where the law allows it.',
   'nav.label': 'Main navigation',
 
   'create.title': 'New message',
