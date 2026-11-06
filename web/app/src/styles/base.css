@@ -1,0 +1,74 @@
+@layer base {
+  :root {
+    color-scheme: dark;
+    background: var(--color-void-950);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  html:not([data-fonts]) body {
+    content-visibility: hidden;
+  }
+  body {
+    background: var(--color-void-950);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: oklch(0.56 0.19 258 / 0.45);
+    color: var(--color-ink);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.67 0.16 252 / 0.4) transparent;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-aegis-300);
+    outline-offset: 3px;
+  }
+  [id] {
+    scroll-margin-top: 6rem;
+  }
+  @media (width < 48rem) {
+    button,
+    a[href],
+    input,
+    select,
+    textarea {
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      transition-delay: 0s !important;
+    }
+    .sheen,
+    .animate-beam,
+    .animate-scan {
+      display: none;
+    }
+  }
+}
+
+@layer base {
+  @media (forced-colors: none) and (prefers-reduced-motion: no-preference) {
+    :where(a[href], button, summary, input, textarea, select, [tabindex]) {
+      outline: 2px solid transparent;
+      outline-offset: 3px;
+      transition:
+        outline-color 0.25s var(--ease-silk),
+        outline-offset 0.25s var(--ease-silk);
+    }
+  }
+}

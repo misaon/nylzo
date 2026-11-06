@@ -1,0 +1,365 @@
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 56px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-64px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-right {
+  from {
+    opacity: 0;
+    transform: translate3d(64px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-zoom {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-tilt {
+  from {
+    opacity: 0;
+    transform: perspective(1200px) rotateX(18deg) translate3d(0, 40px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility reveal-up {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal-up linear both;
+      animation-timing-function: var(--ease-silk);
+      animation-timeline: view();
+      animation-range: entry var(--reveal-start, 4%) cover var(--reveal-end, 30%);
+    }
+  }
+}
+
+@utility reveal-left {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal-left linear both;
+      animation-timing-function: var(--ease-silk);
+      animation-timeline: view();
+      animation-range: entry var(--reveal-start, 4%) cover var(--reveal-end, 30%);
+    }
+  }
+}
+
+@utility reveal-right {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal-right linear both;
+      animation-timing-function: var(--ease-silk);
+      animation-timeline: view();
+      animation-range: entry var(--reveal-start, 4%) cover var(--reveal-end, 30%);
+    }
+  }
+}
+
+@utility reveal-zoom {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal-zoom linear both;
+      animation-timing-function: var(--ease-silk);
+      animation-timeline: view();
+      animation-range: entry var(--reveal-start, 4%) cover var(--reveal-end, 30%);
+    }
+  }
+}
+
+@utility reveal-tilt {
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      animation: reveal-tilt linear both;
+      animation-timing-function: var(--ease-silk);
+      animation-timeline: view();
+      animation-range: entry var(--reveal-start, 4%) cover var(--reveal-end, 34%);
+    }
+  }
+}
+
+@utility reveal-step-1 {
+  --reveal-start: 10%;
+  --reveal-end: 36%;
+}
+
+@utility reveal-step-2 {
+  --reveal-start: 16%;
+  --reveal-end: 42%;
+}
+
+@keyframes rv-focus {
+  from {
+    opacity: 0;
+    filter: blur(var(--rv-blur, 8px));
+    transform: translate3d(var(--rv-x, 0px), var(--rv-y, 12px), 0);
+  }
+}
+
+@keyframes rv-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--rv-x, 0px), var(--rv-y, 24px), 0) scale(var(--rv-s, 0.98));
+  }
+}
+
+@keyframes rv-pop {
+  0% {
+    opacity: 0;
+    scale: 0.55;
+  }
+  60% {
+    opacity: 1;
+    scale: 1.06;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@keyframes rv-draw {
+  from {
+    scale: 0 1;
+    opacity: 0.3;
+  }
+}
+
+@keyframes rv-type {
+  from {
+    clip-path: inset(-0.3em 100% -0.3em -2em);
+  }
+  to {
+    clip-path: inset(-0.3em -1em -0.3em -2em);
+  }
+}
+
+@keyframes rv-part {
+  from {
+    opacity: 0;
+    clip-path: inset(0 50% 0 50%);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes rv-sweep {
+  from {
+    mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    mask-size: 250% 100%;
+    mask-repeat: no-repeat;
+    mask-position: 100% 0;
+  }
+  to {
+    mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
+    mask-size: 250% 100%;
+    mask-repeat: no-repeat;
+    mask-position: 0 0;
+  }
+}
+
+@keyframes rv-check {
+  from {
+    stroke-dashoffset: 26;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes rv-glow {
+  from {
+    opacity: 0;
+    scale: 0.5;
+  }
+}
+
+@keyframes rv-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@utility rv-focus {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-focus var(--rv-time, 0.9s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-rise {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-rise var(--rv-time, 1s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-pop {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-pop var(--rv-time, 0.7s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-draw {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-draw var(--rv-time, 0.9s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-type {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-type var(--rv-time, 0.55s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-part {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-part var(--rv-time, 1.4s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-sweep {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-sweep var(--rv-time, 1.5s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-check {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) & path,
+    &:where([data-reveal='in']) path {
+      stroke-dasharray: 26;
+      animation: rv-check var(--rv-time, 0.6s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) & path,
+    &:where([data-reveal='pending']) path {
+      animation: none;
+      stroke-dasharray: 26;
+      stroke-dashoffset: 26;
+    }
+  }
+}
+
+@utility rv-glow {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-glow var(--rv-time, 1.8s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
+
+@utility rv-fade {
+  @media (prefers-reduced-motion: no-preference) {
+    :where([data-reveal='in']) &,
+    &:where([data-reveal='in']) {
+      animation: rv-fade var(--rv-time, 0.6s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+    }
+    :where([data-reveal='pending']) &,
+    &:where([data-reveal='pending']) {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}
