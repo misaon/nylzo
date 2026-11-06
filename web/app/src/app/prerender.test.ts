@@ -88,10 +88,7 @@ describe('homeTemplate', () => {
     const questions = data['@graph'][3]?.mainEntity ?? [];
     expect(questions).toHaveLength(8);
     const visible = (text: string) => page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text);
-    for (const { name, acceptedAnswer } of questions) {
-      expect(visible(name), name).toBe(true);
-      expect(visible(acceptedAnswer.text), acceptedAnswer.text).toBe(true);
-    }
+    expect(questions.filter(({ name, acceptedAnswer }) => !visible(name) || !visible(acceptedAnswer.text))).toEqual([]);
   });
 
   it('refuses an index it cannot place the page in', () => {
