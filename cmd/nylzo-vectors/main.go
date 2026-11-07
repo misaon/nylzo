@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 var generate = vectors.Generate

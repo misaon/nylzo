@@ -16,9 +16,9 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
-	"github.com/misaon/nylzo/internal/core/vectors"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store/sqlite"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 func testRing(t *testing.T) *pepper.Ring {

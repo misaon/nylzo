@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/vectors"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/epoch"
 )

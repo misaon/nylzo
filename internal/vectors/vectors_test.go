@@ -7,7 +7,7 @@ import (
 )
 
 func TestCommittedVectorsMatchGenerator(t *testing.T) {
-	want, err := os.ReadFile("../../../spec/vectors.json")
+	want, err := os.ReadFile("../../spec/vectors.json")
 	if err != nil {
 		t.Fatalf("spec/vectors.json missing; run `%s`: %v", Generator, err)
 	}
