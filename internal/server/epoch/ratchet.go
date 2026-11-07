@@ -85,6 +85,14 @@ func ShareOf(epochKey *[SeedLen]byte, locator seal.Locator) [core.ShareLen]byte 
 	return share
 }
 
+func advance(seed *Seed, hours uint32) {
+	for range hours {
+		next := Next(seed)
+		*seed = next
+		clear(next[:])
+	}
+}
+
 func expand(seed *Seed, info string) [SeedLen]byte {
 	derived, err := hkdf.Expand(sha256.New, seed[:], info, SeedLen)
 	if err != nil {
@@ -226,11 +234,7 @@ func (r *Ratchet) Share(id RatchetID, hour uint32, locator seal.Locator, now tim
 	if id != ratchetID || hour < current {
 		return [core.ShareLen]byte{}, ErrShareGone
 	}
-	for range hour - current {
-		next := Next(&seed)
-		seed = next
-		clear(next[:])
-	}
+	advance(&seed, hour-current)
 	key := Key(&seed)
 	defer clear(key[:])
 	return ShareOf(&key, locator), nil
@@ -304,11 +308,8 @@ func (r *Ratchet) loadLocked(now time.Time) error {
 		return ErrCorrupt
 	}
 	target := max(Hour(now), hour)
-	for ; hour < target; hour++ {
-		next := Next(&seed)
-		seed = next
-		clear(next[:])
-	}
+	advance(&seed, target-hour)
+	hour = target
 	r.id, r.hour, r.seed = id, hour, seed
 	updated := encode(id, hour, &seed)
 	defer clear(updated)
