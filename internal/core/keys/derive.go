@@ -57,7 +57,6 @@ func DeriveVerifier(id core.ID, secret *[core.SecretLen]byte, passphraseKey []by
 	return verifier, err
 }
 
-// DeriveContent derives K and K_c from S, P and the share.
 func DeriveContent(
 	id core.ID,
 	secret *[core.SecretLen]byte,

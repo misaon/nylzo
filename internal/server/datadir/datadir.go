@@ -8,7 +8,6 @@ var (
 	ErrSymlink      = errors.New("datadir: an entry is a symbolic link; replace it with the file or directory")
 )
 
-// Layout names the parts of the data directory that hold server data.
 type Layout struct {
 	Directory string
 	Files     []string

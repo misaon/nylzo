@@ -58,7 +58,6 @@ var (
 	ErrShareGone    = errors.New("epoch: the share of this message no longer exists")
 )
 
-// Hour is the epoch that contains the moment.
 func Hour(moment time.Time) uint32 {
 	hours := moment.Unix() / hourSeconds
 	return uint32(hours) //nolint:gosec // G115: 32 bits of hours since 1970 last until the year 491970

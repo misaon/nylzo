@@ -121,7 +121,6 @@ func (p Policy) Bytes() []byte {
 	return binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
 }
 
-// AAD binds the header, the commitment, the id and the policy.
 func AAD(header Header, commitment []byte, id core.ID, policy Policy) []byte {
 	aad := make([]byte, 0, HeaderLen+len(commitment)+core.IDLen+PolicyLen)
 	aad = append(aad, header.Bytes()...)
