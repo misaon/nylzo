@@ -344,7 +344,9 @@
         ".github/workflows/scorecard.yml",
         ".github/workflows/watch.yml",
         ".github/workflows/infrastructure.yml",
-        ".github/workflows/infrastructure-stack.yml"
+        ".github/workflows/infrastructure-stack.yml",
+        ".github/actions/deploy-site/action.yml",
+        ".github/actions/released-nylzo/action.yml"
       ],
       "enabled": false
     },
