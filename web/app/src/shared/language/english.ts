@@ -317,7 +317,7 @@ export const english: Record<MessageKey, string> = {
     'It does not store them. Per-address limits live only in memory and are forgotten on restart.',
   'transparency.stores.enforced.title': 'The server enforces expiry and opens',
   'transparency.stores.enforced':
-    "Expiry and the number of opens are rules this server enforces, not something the encryption guarantees. A server in someone else's hands could keep the encrypted message, and then only the secrecy of the link and of the passphrase protect it.",
+    "This server enforces expiry and the number of opens. Within about two hours after expiry, it erases the part of the key the message needs, so a copy taken after that no longer opens it. Until then, a server in someone else's hands could keep the message and that key part, and only the secrecy of the link and of the passphrase protect it.",
   'transparency.logs.title': 'What the server logs',
   'transparency.logs.written': 'Writes',
   'transparency.logs.written.time': 'Time to the minute',

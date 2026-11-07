@@ -311,7 +311,7 @@ export const czech = {
     'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti a\u{A0}po restartu je zapomene.',
   'transparency.stores.enforced.title': 'Platnost a\u{A0}počet otevření hlídá server',
   'transparency.stores.enforced':
-    'Platnost a\u{A0}počet otevření jsou pravidla, která vynucuje tento server, ne šifrování. Server v\u{A0}cizích rukou by mohl šifrovanou zprávu ponechat, a\u{A0}pak ji chrání jen utajení odkazu a\u{A0}hesla.',
+    'Platnost a\u{A0}počet otevření hlídá tento server. Zhruba do dvou hodin po skončení platnosti smaže část klíče, kterou zpráva potřebuje, takže kopie pořízená později už zprávu neotevře. Do té doby by si server v\u{A0}cizích rukou mohl zprávu i\u{A0}tuto část klíče nechat a\u{A0}chránilo by ji jen utajení odkazu a\u{A0}hesla.',
   'transparency.logs.title': 'Co server loguje',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Čas zkrácený na minutu',
