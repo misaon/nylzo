@@ -320,7 +320,7 @@ export const czech = {
   'transparency.logs.written.status': 'Stav odpovědi',
   'transparency.logs.written.count': 'Počet požadavků',
   'transparency.logs.written.note':
-    'Nepíše řádek za každý požadavek. Jednou za minutu zapíše jen počty požadavků podle metody, typu cesty a\u{A0}stavu.',
+    'Nepíše řádek za každý požadavek, jen jednou za jednu až dvě hodiny počty požadavků a\u{A0}chyb. Požadavky na zprávy počítá dohromady, jen podle třídy stavu (2xx, 4xx, 5xx).',
   'transparency.logs.never': 'Nikdy nezapisuje',
   'transparency.logs.never.id': 'ID zprávy',
   'transparency.logs.never.address': 'IP adresa',

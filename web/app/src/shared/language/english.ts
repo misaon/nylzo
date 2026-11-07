@@ -326,7 +326,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.logs.written.status': 'Response status',
   'transparency.logs.written.count': 'Number of requests',
   'transparency.logs.written.note':
-    'It writes no line per request. Once a minute it writes only how many requests there were per method, kind of path and status.',
+    'It writes no line per request, only counts of requests and errors every one to two hours. Message requests count together, by status class only (2xx, 4xx, 5xx).',
   'transparency.logs.never': 'Never writes',
   'transparency.logs.never.id': 'Message id',
   'transparency.logs.never.address': 'IP address',
