@@ -325,6 +325,9 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
+	if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
+		return returnErr
+	}
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", settings.Listen)
 	if err != nil {
 		return err

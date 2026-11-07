@@ -163,6 +163,16 @@ func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
 	}
 }
 
+// ReturnUnstoredCreates gives back the cap slots that a crashed or killed process left taken, by setting the counter
+// of the day to the messages stored. It runs before the server listens, while no upload of this data directory is in
+// flight, since one process serves a data directory at a time.
+func (s *Server) ReturnUnstoredCreates(ctx context.Context) error {
+	if s.settings.Rates.GlobalDailyCreates <= 0 {
+		return nil
+	}
+	return s.store.RateCopy(ctx, globalStoredKey, globalCreatesKey, ratelimit.Day(time.Now()).Start)
+}
+
 func (s *Server) storedCreateCounters(now time.Time) []store.RateHit {
 	if s.settings.Rates.GlobalDailyCreates <= 0 {
 		return nil

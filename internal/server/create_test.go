@@ -32,6 +32,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/proof"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -572,6 +573,28 @@ func (s *slotSignals) RateRelease(ctx context.Context, key string, windowStart t
 		s.released <- struct{}{}
 	}
 	return err
+}
+
+func TestStartupReturnsTheCapSlotsOfUnstoredCreates(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.GlobalDailyCreates = 10
+	harness := newHarness(t, settings)
+	harness.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
+	day := ratelimit.Day(time.Now())
+	leaked := store.RateHit{Key: globalCreatesKey, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: 10}
+	for range 3 {
+		if _, err := harness.store.RateReserve(t.Context(), leaked); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := harness.server.ReturnUnstoredCreates(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	count, err := harness.store.RateGet(t.Context(), globalCreatesKey, day.Start)
+	if err != nil || count.Count != 1 {
+		t.Fatalf("startup kept the slots of unstored creates: %+v %v", count, err)
+	}
 }
 
 func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {

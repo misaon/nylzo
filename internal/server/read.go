@@ -93,24 +93,25 @@ func formatEnd(end time.Time) string {
 	return formatTime(end)
 }
 
-// startStream admits a claim or a download; the stream slot is taken before the signature is checked (D24).
-func (s *Server) startStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return nil, false
-	}
-	return s.takeStream(w, r)
+// admitStream checks what costs no lookup before a claim or a download takes a stream slot, which it does before the
+// signature is checked (D24), so a malformed request never holds one.
+func (s *Server) admitStream(w http.ResponseWriter, r *http.Request) bool {
+	return validPathID(w, r) && s.allowRead(w, r) && emptyBody(w, r)
 }
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
-	release, ok := s.startStream(w, r)
-	if !ok {
+	if !s.admitStream(w, r) {
 		return
 	}
-	defer release()
 	verifier, verifierSent, ok := parseVerifier(w, r)
 	if !ok {
 		return
 	}
+	release, ok := s.takeStream(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
 	if !ok {
@@ -250,7 +251,10 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 }
 
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
-	release, ok := s.startStream(w, r)
+	if !s.admitStream(w, r) {
+		return
+	}
+	release, ok := s.takeStream(w, r)
 	if !ok {
 		return
 	}

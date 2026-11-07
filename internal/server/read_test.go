@@ -508,17 +508,16 @@ func TestClaimBodyVariants(t *testing.T) {
 			status["opens_used"].(float64) != 0 {
 			t.Fatalf("malformed claim bodies changed the message: %v", status)
 		}
-		r, _ := http.NewRequest(
-			http.MethodPost,
-			harness.httpServer.URL+path,
-			io.MultiReader(strings.NewReader(`{"verifier":"`+message.verifier+`"}`)),
-		)
+		unfinished, sender := io.Pipe()
+		defer sender.Close()
+		r, _ := http.NewRequest(http.MethodPost, harness.httpServer.URL+path, unfinished)
 		r.Header.Set(
 			"Authorization",
 			signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, harness.challenge(), nil).
 				Authorization(),
 		)
 		r.Header.Set("X-Forwarded-For", "203.0.113.4")
+		r.Header.Set(shareKeyHeaderName, testShareKeyHeader)
 		response, err := harness.client.Do(r)
 		if err != nil {
 			t.Fatal(err)
