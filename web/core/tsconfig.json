@@ -2,7 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "module": "nodenext",
-    "lib": ["es2025", "dom"],
+    "lib": ["es2025", "esnext.typedarrays", "dom"],
     "types": [],
     "resolveJsonModule": true
   },

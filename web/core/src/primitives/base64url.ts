@@ -1,7 +1,6 @@
 import { EncodingError } from '../errors.ts';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-const SIX_BITS = 0b11_1111;
 const EIGHT_BITS = 0b1111_1111;
 
 export function encodedLength(byteLength: number): number {
@@ -9,21 +8,7 @@ export function encodedLength(byteLength: number): number {
 }
 
 export function encodeBase64url(bytes: Uint8Array): string {
-  let encoded = '';
-  let accumulator = 0;
-  let bits = 0;
-  for (const byte of bytes) {
-    accumulator = ((accumulator & SIX_BITS) << 8) | byte;
-    bits += 8;
-    while (bits >= 6) {
-      bits -= 6;
-      encoded += ALPHABET.charAt((accumulator >> bits) & SIX_BITS);
-    }
-  }
-  if (bits > 0) {
-    encoded += ALPHABET.charAt((accumulator << (6 - bits)) & SIX_BITS);
-  }
-  return encoded;
+  return bytes.toBase64({ alphabet: 'base64url', omitPadding: true });
 }
 
 export function decodeBase64url(text: string): Uint8Array<ArrayBuffer> {

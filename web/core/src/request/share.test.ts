@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bytesToHex, hexToBytes, vectors } from '../../test/vectors.ts';
+import { hexToBytes, vectors } from '../../test/vectors.ts';
 import { IntegrityError } from '../errors.ts';
 import { decodeBase64url, encodeBase64url } from '../primitives/base64url.ts';
 import { newShareKey, parseWrappedShare, unwrapShare } from './share.ts';
@@ -21,7 +21,7 @@ describe('AK9: share vectors (spec 5.6)', () => {
   it.each(vectors.share.filter((vector) => vector.valid))('$name unwraps to E', async (vector) => {
     const key = await vectorKey(vector.client_private_hex, vector.client_public);
     const share = await unwrapShare(key, parseWrappedShare(vector.wrapped));
-    expect(bytesToHex(share)).toBe(vector.e_hex);
+    expect(share.toHex()).toBe(vector.e_hex);
   });
 
   it.each(vectors.share.filter((vector) => !vector.valid))('$name is refused', async (vector) => {

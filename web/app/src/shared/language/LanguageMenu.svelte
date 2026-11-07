@@ -42,7 +42,7 @@
     onlanguage(language);
   }
 
-  function onkeydown(event: KeyboardEvent, language: Language) {
+  function onkeydown(event: KeyboardEvent & { readonly currentTarget: HTMLElement }, language: Language) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       choose(language);
@@ -52,7 +52,7 @@
       return;
     }
     event.preventDefault();
-    const option = event.currentTarget as HTMLElement;
+    const option = event.currentTarget;
     const options = [...(option.parentElement?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
     const index = options.indexOf(option);
     options.at((index + (event.key === 'ArrowDown' ? 1 : -1)) % options.length)?.focus();

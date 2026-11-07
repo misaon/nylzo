@@ -179,7 +179,7 @@ interface VectorFile {
 export const vectors = loadVectors();
 
 function loadVectors(): VectorFile {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The committed JSON fixture is validated below, including its discriminants and cryptographic fields.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The committed fixture is checked below only for its spec label, its section counts and one canonical link vector.
   const file = protocolFixture as VectorFile;
   const sections = [
     file.derive,
@@ -215,17 +215,12 @@ export function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
   if (hex.length % 2 !== 0 || !/^[\da-f]*$/u.test(hex)) {
     throw new Error(`not lowercase hex: ${hex}`);
   }
-  return Uint8Array.from({ length: hex.length / 2 }, (_, index) =>
-    Number.parseInt(hex.slice(2 * index, 2 * index + 2), 16),
-  );
-}
-
-export function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return Uint8Array.fromHex(hex);
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  return bytesToHex(await hash(bytes));
+  const digest = await hash(bytes);
+  return digest.toHex();
 }
 
 export function fileBytes(file: FileVector): Uint8Array<ArrayBuffer> {

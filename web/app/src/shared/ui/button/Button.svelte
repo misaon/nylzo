@@ -30,7 +30,7 @@
 {/snippet}
 
 {#if rest.href === undefined}
-  <button type="button" {...rest as HTMLButtonAttributes} class={classes}>{@render content()}</button>
+  <button type="button" {...rest} class={classes}>{@render content()}</button>
 {:else}
-  <a {...rest as HTMLAnchorAttributes} class={classes}>{@render content()}</a>
+  <a {...rest} class={classes}>{@render content()}</a>
 {/if}

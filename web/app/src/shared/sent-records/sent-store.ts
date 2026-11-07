@@ -110,11 +110,9 @@ async function removeLateRecord(store: SentStore, id: string, saving: Promise<bo
 
 export async function rememberSent(store: SentStore, record: SentRecord, timeoutMs: number): Promise<boolean> {
   const saving = saved(store, record);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(resolve, timeoutMs, 'timeout');
-  });
-  const result = await Promise.race([saving, timedOut]);
+  const timedOut = Promise.withResolvers<'timeout'>();
+  const timer = setTimeout(timedOut.resolve, timeoutMs, 'timeout');
+  const result = await Promise.race([saving, timedOut.promise]);
   clearTimeout(timer);
   if (result !== 'timeout') {
     return result;
