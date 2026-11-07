@@ -246,6 +246,19 @@
       "enabled": true
     },
     {
+      "description": "A new major of an indirect Go module is a different module that only its importer can adopt.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "indirect"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
+    },
+    {
       "description": "Only maintenance branches still pin the official Caddy image in Compose.",
       "matchBaseBranches": [
         "main"

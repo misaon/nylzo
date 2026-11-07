@@ -55,6 +55,8 @@ export function globalSettings(input: GlobalSettingsInput): Record<string, unkno
     baseDir: '/tmp/renovate-work',
     persistRepoData: false,
     repositoryCache: 'enabled',
+    // A repository run that ends in an error state otherwise exits 0 and the job looks green.
+    exitCodeForErrors: true,
     constraints: { mise: input.miseVersion, bun: input.bunVersion },
     // Renovate applies these before the repository's rules, so the fast path must come last to win here too.
     packageRules: [...maintenanceRules, ...fastPathRules],
