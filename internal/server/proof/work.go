@@ -30,14 +30,18 @@ var (
 	ErrWorkBusy = errors.New("server: proof-of-work verifier is saturated")
 )
 
+type HitCounter interface {
+	RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error)
+}
+
 type Work struct {
 	ring     *pepper.Ring
-	counters store.Counters
+	counters HitCounter
 	slots    chan struct{}
 	slotWait time.Duration
 }
 
-func NewWork(ring *pepper.Ring, counters store.Counters, concurrency int) *Work {
+func NewWork(ring *pepper.Ring, counters HitCounter, concurrency int) *Work {
 	return &Work{
 		ring:     ring,
 		counters: counters,
