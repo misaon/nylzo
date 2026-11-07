@@ -69,7 +69,7 @@
     form={formId}
     disabled={!revealable}
     class={[
-      'transition-opacity duration-500 ease-silk',
+      'transition-opacity duration-500',
       className,
       revealable ? 'opacity-100' : 'pointer-events-none opacity-40',
     ]}
@@ -114,14 +114,14 @@
         <label for="{id}-passphrase" class="sr-only">{translate('read.passphrase')}</label>
         <div
           class={[
-            'flex flex-col gap-2.5 transition duration-300 ease-silk sm:flex-row sm:items-center sm:gap-3 sm:rounded-card sm:p-2 sm:pl-4 sm:well',
+            'flex flex-col gap-2.5 transition sm:flex-row sm:items-center sm:gap-3 sm:rounded-card sm:p-2 sm:pl-4 sm:well',
             passphraseAlert &&
               'sm:shadow-[0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] sm:outline-1 sm:-outline-offset-1 sm:outline-rose-300/70',
           ]}
         >
           <div
             class={[
-              'flex min-w-0 flex-1 items-center gap-3 rounded-pane py-1 pr-1 pl-4 outline-2 outline-offset-3 outline-transparent transition duration-300 ease-silk has-[input:focus-visible]:outline-aegis-300 max-sm:well sm:p-0',
+              'flex min-w-0 flex-1 items-center gap-3 rounded-pane py-1 pr-1 pl-4 outline-2 outline-offset-3 outline-transparent transition has-[input:focus-visible]:outline-aegis-300 max-sm:well sm:p-0',
               passphraseAlert &&
                 'max-sm:shadow-[0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] max-sm:outline-1 max-sm:-outline-offset-1 max-sm:outline-rose-300/70',
             ]}
@@ -145,7 +145,7 @@
               onclick={() => (page.showPassphrase = !page.showPassphrase)}
               aria-label={translate(page.showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
               aria-pressed={page.showPassphrase}
-              class="group/act grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition duration-300 ease-silk hover:bg-white/6 hover:text-ink md:size-9"
+              class="group/action grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={page.showPassphrase} size="size-[18px]" animated />
             </button>

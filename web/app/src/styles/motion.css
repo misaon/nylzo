@@ -6,16 +6,53 @@
   --animate-starfall: starfall 260s linear infinite;
   --animate-starfall-slow: starfall 420s linear infinite;
   --animate-twinkle: twinkle 5s ease-in-out infinite;
-  --animate-meteor: meteor 13s cubic-bezier(0.22, 1, 0.36, 1) 4s infinite;
+  --animate-meteor: meteor 13s var(--ease-silk) 4s infinite;
   --animate-spin-slow: spin 26s linear infinite;
   --animate-pulse-core: pulse-core 2.6s ease-in-out infinite;
-  --animate-rise: rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-rise-visible: rise-visible 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-appear: appear 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-rise: rise 1.1s var(--ease-silk) both;
+  --animate-rise-visible: rise-visible 1.1s var(--ease-silk) both;
+  --animate-appear: appear 0.9s var(--ease-silk) both;
   --animate-beam: beam 4.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-scan: scan 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-blink: blink 1.1s steps(1, end) infinite;
-  --animate-wave: wave 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-wave: wave 0.7s var(--ease-silk) both;
+  --animate-wheel: wheel 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  --animate-who-read-message: who-source 10s var(--ease-silk) 0s infinite;
+  --animate-who-read-file: who-source 10s var(--ease-silk) 3s infinite;
+  --animate-who-read-key: who-source 10s var(--ease-silk) 6s infinite;
+  --animate-who-store-message: who-source 10s var(--ease-silk) 2.3s infinite;
+  --animate-who-store-file: who-source 10s var(--ease-silk) 5.3s infinite;
+  --animate-who-flow-in: who-flow-in 10s linear infinite;
+  --animate-who-flow-out: who-flow-out 10s linear infinite;
+  --animate-who-lock: who-lock 10s var(--ease-silk) infinite;
+  --animate-who-halo: who-halo 10s var(--ease-silk) infinite;
+  --animate-who-ripple: who-ripple 10s var(--ease-silk) infinite;
+  --animate-who-arrive-message: who-arrive-message 10s var(--ease-silk) infinite;
+  --animate-who-arrive-file: who-arrive-file 10s var(--ease-silk) infinite;
+  --animate-who-deny: who-deny 10s var(--ease-silk) 6.8s infinite;
+  --animate-who-drift: who-drift 18s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+  --animate-trust-marquee: trust-marquee 40s linear infinite;
+  --animate-burst: burst 1.6s var(--ease-silk) 0.35s both;
+  --animate-icon-blink: icon-blink 0.5s var(--ease-silk);
+  --animate-icon-hop: icon-hop 0.6s var(--ease-silk);
+  --animate-seek: seek 6s var(--ease-silk) infinite;
+  --animate-wrench: wrench 3.2s var(--ease-silk) infinite;
+  --animate-led: led 1.8s ease-in-out infinite;
+  --animate-halo: halo 5s ease-in-out infinite;
+  --animate-orbit: orbit 18s linear infinite;
+  --animate-retry: retry 30s linear infinite;
+  --animate-how4-flow-a: how4-flow-a 7s linear infinite;
+  --animate-how4-flow-b: how4-flow-b 7s linear infinite;
+  --animate-how4-flow-key: how4-flow-key 7s linear infinite;
+  --animate-how4-node-sender: how4-node-sender 7s var(--ease-silk) infinite;
+  --animate-how4-node-server: how4-node-server 7s var(--ease-silk) infinite;
+  --animate-how4-node-recipient: how4-node-recipient 7s var(--ease-silk) infinite;
+  --animate-how4-stored: how4-stored 7s var(--ease-silk) infinite;
+  --animate-how4-opened: how4-opened 7s var(--ease-silk) infinite;
+  --animate-how4-chip-a: how4-chip-cipher 7s var(--ease-silk) 0.8s infinite;
+  --animate-how4-chip-b: how4-chip-cipher 7s var(--ease-silk) 2.2s infinite;
+  --animate-how4-chip-key: how4-chip-key 7s var(--ease-silk) 1.6s infinite;
+
   @keyframes wave {
     from {
       opacity: 0;
@@ -155,43 +192,6 @@
       opacity: 0;
     }
   }
-  --animate-wheel: wheel 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  --animate-who-read-message: who-source 10s cubic-bezier(0.22, 1, 0.36, 1) 0s infinite;
-  --animate-who-read-file: who-source 10s cubic-bezier(0.22, 1, 0.36, 1) 3s infinite;
-  --animate-who-read-key: who-source 10s cubic-bezier(0.22, 1, 0.36, 1) 6s infinite;
-  --animate-who-store-message: who-source 10s cubic-bezier(0.22, 1, 0.36, 1) 2.3s infinite;
-  --animate-who-store-file: who-source 10s cubic-bezier(0.22, 1, 0.36, 1) 5.3s infinite;
-  --animate-who-flow-in: who-flow-in 10s linear infinite;
-  --animate-who-flow-out: who-flow-out 10s linear infinite;
-  --animate-who-lock: who-lock 10s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-who-halo: who-halo 10s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-who-ripple: who-ripple 10s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-who-arrive-message: who-arrive-message 10s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-who-arrive-file: who-arrive-file 10s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-who-deny: who-deny 10s cubic-bezier(0.22, 1, 0.36, 1) 6.8s infinite;
-  --animate-who-drift: who-drift 18s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
-  --animate-trust-marquee: trust-marquee 40s linear infinite;
-  --animate-burst: burst 1.6s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both;
-  --animate-icon-blink: icon-blink 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-icon-hop: icon-hop 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-seek: seek 6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-wrench: wrench 3.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-led: led 1.8s ease-in-out infinite;
-  --animate-halo: halo 5s ease-in-out infinite;
-  --animate-orbit: orbit 18s linear infinite;
-  --animate-retry: retry 30s linear infinite;
-  --animate-how4-flow-a: how4-flow-a 7s linear infinite;
-  --animate-how4-flow-b: how4-flow-b 7s linear infinite;
-  --animate-how4-flow-key: how4-flow-key 7s linear infinite;
-  --animate-how4-node-sender: how4-node-sender 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-how4-node-server: how4-node-server 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-how4-node-recipient: how4-node-recipient 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-how4-stored: how4-stored 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-how4-opened: how4-opened 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  --animate-how4-chip-a: how4-chip-cipher 7s cubic-bezier(0.22, 1, 0.36, 1) 0.8s infinite;
-  --animate-how4-chip-b: how4-chip-cipher 7s cubic-bezier(0.22, 1, 0.36, 1) 2.2s infinite;
-  --animate-how4-chip-key: how4-chip-key 7s cubic-bezier(0.22, 1, 0.36, 1) 1.6s infinite;
-  --animate-how4-march: how4-march 1.4s linear infinite;
   @keyframes wheel {
     0% {
       transform: translate3d(0, 0, 0);
@@ -422,14 +422,6 @@
     40%,
     100% {
       stroke-dashoffset: -100;
-    }
-  }
-  @keyframes how4-march {
-    from {
-      stroke-dashoffset: 0;
-    }
-    to {
-      stroke-dashoffset: -3.2;
     }
   }
   @keyframes how4-node-sender {
@@ -702,6 +694,17 @@
     to {
       translate: -50% 0;
     }
+  }
+}
+
+@custom-variant action {
+  @media (hover: hover) {
+    &:is(:where(.group\/action):hover *) {
+      @slot;
+    }
+  }
+  &:is(:where(.group\/action):focus-visible *) {
+    @slot;
   }
 }
 

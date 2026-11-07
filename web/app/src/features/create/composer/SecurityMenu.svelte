@@ -43,7 +43,7 @@
       role="switch"
       aria-checked={composer.protect}
       onclick={composer.toggleProtect}
-      class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control p-2.5 text-left transition duration-300 ease-silk hover:bg-white/4"
+      class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control p-2.5 text-left transition hover:bg-white/4"
     >
       <span class="text-ui font-medium text-ink">{translate('compose.passphrase.switch')}</span>
       <span class="shrink-0"><Switch on={composer.protect} /></span>
@@ -51,12 +51,12 @@
         >{translate('compose.passphrase.switch.note')}</span
       >
     </button>
-    <div class={['px-2.5 pb-2.5 transition-opacity duration-500 ease-silk', !composer.protect && 'opacity-40']}>
+    <div class={['px-2.5 pb-2.5 transition-opacity duration-500', !composer.protect && 'opacity-40']}>
       <label for="{id}-passphrase" class="sr-only">{translate('create.passphrase')}</label>
       <div class="flex items-center gap-2">
         <div
           class={[
-            'flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-3.5 well transition duration-300 ease-silk md:h-10',
+            'flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-3.5 well transition md:h-10',
             composer.problemOf.passphrase &&
               'shadow-[0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] outline-1 -outline-offset-1 outline-rose-300/70',
           ]}

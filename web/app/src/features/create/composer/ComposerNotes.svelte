@@ -31,7 +31,7 @@
 <div class="relative mt-4 grid text-caption">
   <p
     class={[
-      'col-start-1 row-start-1 flex items-center justify-center gap-2 overflow-y-clip text-ink-mute transition-[opacity,height] duration-500 ease-silk [interpolate-size:allow-keywords]',
+      'col-start-1 row-start-1 flex items-center justify-center gap-2 overflow-y-clip text-ink-mute transition-[opacity,height] duration-500 [interpolate-size:allow-keywords]',
       quiet ? 'opacity-100' : 'pointer-events-none opacity-0',
       failed && 'h-0',
     ]}
@@ -41,12 +41,12 @@
   </p>
   <div
     class={[
-      'col-start-1 row-start-1 -my-px overflow-y-clip transition-[opacity,height,padding] duration-500 ease-silk [interpolate-size:allow-keywords]',
+      'col-start-1 row-start-1 -my-px overflow-y-clip transition-[opacity,height,padding] duration-500 [interpolate-size:allow-keywords]',
       failed ? 'h-auto py-px opacity-100' : 'pointer-events-none h-0 py-0 opacity-0',
     ]}
     inert={!failed}
   >
-    <ServiceCallout id="{noticeId}-failure" message={composer.failureNotice} class="mx-auto max-w-[860px]">
+    <ServiceCallout id="{noticeId}-failure" message={composer.failureNotice} class="mx-auto max-w-column">
       {#snippet action()}
         {#if composer.loadFailed}
           <Button variant="ghost" size="compact" onclick={composer.loadLimits}>{translate('action.retry')}</Button>

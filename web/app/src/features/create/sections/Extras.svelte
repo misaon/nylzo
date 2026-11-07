@@ -2,6 +2,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
@@ -19,15 +20,9 @@
 <span id="algoritmy" class="block" aria-hidden="true"></span>
 
 <section id="algorithms" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="extra-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <div class="max-w-[640px]" {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('extra.eyebrow')}</p>
-      <h2
-        id="extra-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('extra.title')}
-      </h2>
+      <SectionIntro id="extra-title" eyebrow={translate('extra.eyebrow')} title={translate('extra.title')} />
       <p
         class="mt-5 max-w-[520px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
       >
@@ -49,7 +44,7 @@
               tone="current"
               class={['rv-pop [--rv-delay:300ms] [--rv-step:120ms]', extra.order]}
             />
-            <h3 class="text-title font-medium text-balance">{translate(`${extra.key}.title`)}</h3>
+            <h3 class="text-title text-balance">{translate(`${extra.key}.title`)}</h3>
           </div>
           <p class="mt-4 text-body text-pretty text-ink-soft">{translate(`${extra.key}.text`)}</p>
           <p class="mt-auto pt-5">

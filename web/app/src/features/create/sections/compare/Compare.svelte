@@ -3,6 +3,7 @@
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import type { IconName } from '../../../../shared/ui/icon/icons.ts';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import { COMPARE_ROWS, HEAD_FADE } from './compare-rows.ts';
   import type { MarkKind } from './compare-rows.ts';
 
@@ -28,7 +29,7 @@
     strong: {
       icon: 'check',
       tone: 'text-aegis-200',
-      mark: 'bg-aegis-400 text-void-950 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]',
+      mark: 'bg-aegis-400 text-void-950 shadow-glow',
       label: 'compare.yes',
     },
     no: { icon: 'close', tone: 'text-ink-mute', mark: 'bg-white/6 text-ink-mute', label: 'compare.no' },
@@ -39,16 +40,10 @@
 <span id="srovnani" class="block" aria-hidden="true"></span>
 
 <section id="comparison" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="compare-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between" {@attach reveal}>
       <div class="max-w-[600px]">
-        <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('compare.eyebrow')}</p>
-        <h2
-          id="compare-title"
-          class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-        >
-          {translate('compare.title')}
-        </h2>
+        <SectionIntro id="compare-title" eyebrow={translate('compare.eyebrow')} title={translate('compare.title')} />
       </div>
     </div>
     <p class="mt-6 flex rv-focus items-center gap-1.5 text-micro text-ink-mute md:hidden" {@attach reveal}>
@@ -58,18 +53,18 @@
     <div class="glass mt-4 rv-rise overflow-hidden rounded-card md:mt-12" {@attach reveal}>
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
-        class="overflow-x-auto outline-2 outline-offset-[-2px] outline-transparent transition duration-300 ease-silk focus-visible:outline-offset-[-2px]"
+        class="overflow-x-auto outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2"
         role="region"
         aria-labelledby="compare-title"
         tabindex="0"
       >
-        <table class="w-full min-w-[45.5rem] table-fixed border-collapse text-left md:min-w-0">
+        <table class="w-full min-w-182 table-fixed border-collapse text-left md:min-w-0">
           <caption class="sr-only">{translate('compare.caption')}</caption>
           <colgroup>
-            <col class="w-[12rem] md:w-[38%]" />
-            <col class="w-[7.5rem] md:w-[14%]" />
+            <col class="w-48 md:w-[38%]" />
+            <col class="w-30 md:w-[14%]" />
             {#each PRODUCTS as product (product)}
-              <col class="w-[6.5rem] md:w-[12%]" />
+              <col class="w-26 md:w-[12%]" />
             {/each}
           </colgroup>
           <thead>

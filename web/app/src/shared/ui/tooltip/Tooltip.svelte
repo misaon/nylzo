@@ -30,7 +30,7 @@
     }}
     onblur={() => (pinned = false)}
     class={[
-      'inline-flex items-center gap-1.5 underline decoration-white/30 decoration-dotted underline-offset-4 transition duration-300 ease-silk hover:text-ink-soft max-sm:-my-3',
+      'inline-flex items-center gap-1.5 underline decoration-white/30 decoration-dotted underline-offset-4 transition hover:text-ink-soft max-sm:-my-3',
       className,
     ]}
   >
@@ -41,10 +41,10 @@
     role="tooltip"
     id="{id}-tip"
     class={[
-      'pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max max-w-[min(17rem,calc(100vw-3rem))] rounded-pane px-3.5 py-2.5 text-left text-caption text-pretty text-ink-soft glass-pop transition-[opacity,translate] duration-200 ease-silk',
+      'pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-max max-w-[min(17rem,calc(100vw-3rem))] rounded-pane px-3.5 py-2.5 text-left text-caption text-pretty text-ink-soft glass-pop transition-[opacity,translate] duration-200',
       pinned
         ? 'translate-y-0 opacity-100'
-        : 'translate-y-1 opacity-0 group-hover/tip:translate-y-0 group-hover/tip:opacity-100 group-has-[:focus-visible]/tip:translate-y-0 group-has-[:focus-visible]/tip:opacity-100',
+        : 'translate-y-1 opacity-0 group-hover/tip:translate-y-0 group-hover/tip:opacity-100 group-has-focus-visible/tip:translate-y-0 group-has-focus-visible/tip:opacity-100',
     ]}
   >
     <span class="mb-0.5 block font-medium text-ink">{title}</span>{text}

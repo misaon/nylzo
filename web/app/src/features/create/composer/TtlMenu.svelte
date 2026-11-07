@@ -45,9 +45,9 @@
           aria-pressed={selected}
           onclick={() => choose(seconds)}
           class={[
-            'flex h-11 w-full items-center gap-3 rounded-control px-3 text-ui transition duration-300 ease-silk md:h-10',
+            'flex h-11 w-full items-center gap-3 rounded-control px-3 text-ui transition md:h-10',
             selected
-              ? 'bg-aegis-500/12 text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-aegis-400/35'
+              ? 'bg-aegis-500/12 text-ink shadow-rim ring-1 ring-aegis-400/35'
               : 'text-ink-soft hover:bg-white/6 hover:text-ink',
           ]}
         >
@@ -57,9 +57,7 @@
               class={[
                 'block h-full rounded-full',
                 LENGTHS[index],
-                selected
-                  ? 'bg-linear-to-r from-aegis-500 to-aegis-300 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]'
-                  : 'bg-white/25',
+                selected ? 'bg-linear-to-r from-aegis-500 to-aegis-300 shadow-glow' : 'bg-white/25',
               ]}
             ></span>
           </span>

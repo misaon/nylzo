@@ -4,6 +4,7 @@
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import Switch from '../../../../shared/ui/Switch.svelte';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
   import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
@@ -74,15 +75,9 @@
 <span id="odolnost" class="block" aria-hidden="true"></span>
 
 <section id="resilience" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="brute-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('brute.eyebrow')}</p>
-      <h2
-        id="brute-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('brute.title')}
-      </h2>
+      <SectionIntro id="brute-title" eyebrow={translate('brute.eyebrow')} title={translate('brute.title')} />
       <p
         class="mx-auto mt-5 max-w-[520px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
       >
@@ -110,7 +105,7 @@
                     }
                   }}
                   class={[
-                    'flex w-full rv-focus items-center gap-4 rounded-pane px-4 py-3 text-left ring-1 transition duration-300 ease-silk [--rv-blur:4px] [--rv-delay:250ms] [--rv-y:8px]',
+                    'flex w-full rv-focus items-center gap-4 rounded-pane px-4 py-3 text-left ring-1 transition [--rv-blur:4px] [--rv-delay:250ms] [--rv-y:8px]',
                     ATTACKER_ORDER[index],
                     selected ? 'bg-aegis-500/12 ring-aegis-300/50' : 'bg-white/4 ring-white/12 hover:bg-white/6',
                   ]}
@@ -150,7 +145,7 @@
             role="switch"
             aria-checked={quantum}
             onclick={() => restart(() => (quantum = !quantum))}
-            class="flex rv-focus items-center gap-4 rounded-pane p-5 text-left well transition duration-300 ease-silk [--rv-blur:4px] [--rv-delay:250ms] [--rv-i:5] [--rv-y:8px] hover:bg-white/4"
+            class="flex rv-focus items-center gap-4 rounded-pane p-5 text-left well transition [--rv-blur:4px] [--rv-delay:250ms] [--rv-i:5] [--rv-y:8px] hover:bg-white/4"
           >
             <span class="mt-0.5"><Switch on={quantum} size="md" /></span>
             <span>
@@ -161,7 +156,7 @@
         </div>
         <div class="flex flex-col p-6 md:p-10" {@attach reveal}>
           <p class="rv-focus text-ui text-ink-mute [--rv-blur:4px] [--rv-delay:250ms]">{translate('brute.time')}</p>
-          <div class="mt-4 min-h-[9.75rem] rv-focus [--rv-delay:360ms] md:min-h-[8.5rem]" aria-live="polite">
+          <div class="mt-4 min-h-39 rv-focus [--rv-delay:360ms] md:min-h-34" aria-live="polite">
             {#key swap}
               <div class={swap > 0 ? 'animate-wave' : ''}>
                 <p class="font-display text-section font-light text-balance text-aegis-200 md:text-section-lg">
@@ -188,7 +183,7 @@
               {#each cells as cell, index (index)}
                 <span
                   class={[
-                    'rv-focus rounded-xs py-1.5 text-center text-caption tabular-nums ring-1 transition-colors duration-300 ease-silk [--rv-blur:3px] [--rv-time:0.6s] [--rv-y:6px] md:py-2 md:text-lead',
+                    'rv-focus rounded-xs py-1.5 text-center text-caption tabular-nums ring-1 transition-colors [--rv-blur:3px] [--rv-time:0.6s] [--rv-y:6px] md:py-2 md:text-lead',
                     CELL_DELAYS[index],
                     index >= cells.length - live
                       ? 'bg-aegis-500/12 text-aegis-200 ring-aegis-400/35'
@@ -207,7 +202,7 @@
               aria-hidden="true"
               class="mt-3 h-1 rv-focus overflow-hidden rounded-full bg-white/10 [--rv-blur:3px] [--rv-delay:1150ms] [--rv-y:6px]"
             >
-              <div class="h-full w-0.5 rounded-full bg-aegis-300 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]"></div>
+              <div class="h-full w-0.5 rounded-full bg-aegis-300 shadow-glow"></div>
             </div>
           </div>
         </div>

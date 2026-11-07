@@ -28,7 +28,7 @@
 
 <header class="sticky top-0 z-40 px-3 pt-3 sm:px-6">
   <nav
-    class="glass-soft mx-auto flex h-14 max-w-[1160px] animate-rise items-center justify-between gap-3 rounded-card pr-2 pl-4 sm:gap-4"
+    class="glass-soft mx-auto flex h-14 max-w-page animate-rise items-center justify-between gap-3 rounded-card pr-2 pl-4 sm:gap-4"
     aria-label={translate('nav.label')}
   >
     <a
@@ -44,7 +44,7 @@
         {#each sections as section (section.href)}
           <a
             href={section.href}
-            class="rounded-control px-3.5 py-2 text-ui text-ink-soft transition duration-300 ease-silk hover:bg-white/6 hover:text-ink"
+            class="rounded-control px-3.5 py-2 text-ui text-ink-soft transition hover:bg-white/6 hover:text-ink"
             >{translate(section.key)}</a
           >
         {/each}

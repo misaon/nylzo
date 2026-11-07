@@ -14,7 +14,7 @@
 </script>
 
 <section class="px-4 pb-28 sm:px-6 md:pb-36" aria-labelledby="{id}-trust">
-  <div class="mx-auto max-w-[1160px]" {@attach reveal}>
+  <div class="mx-auto max-w-page" {@attach reveal}>
     <h2 id="{id}-trust" class="rv-focus text-center text-eyebrow text-aegis-300 uppercase">
       {translate('open.trust.title')}
     </h2>
@@ -28,7 +28,7 @@
         >
           <IconTile icon={card.icon} tone="current" />
           <div class="min-w-0">
-            <h3 class="text-title font-medium tracking-[-0.01em] md:mt-6">{translate(`${card.key}.title`)}</h3>
+            <h3 class="text-title tracking-[-0.01em] md:mt-6">{translate(`${card.key}.title`)}</h3>
             <p class="mt-1 max-w-[300px] text-body leading-[1.65] text-pretty text-ink-soft md:mx-auto md:mt-2">
               {translate(`${card.key}.text`)}
             </p>

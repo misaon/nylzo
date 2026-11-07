@@ -22,21 +22,12 @@
   <Icon
     name={from}
     {animated}
-    class={[
-      size,
-      'transition-[opacity,scale] duration-300 ease-silk',
-      swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100',
-    ]}
+    class={[size, 'transition-[opacity,scale]', swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100']}
   />
   <Icon
     name={to}
     {animated}
     stroke={toStroke}
-    class={[
-      size,
-      'transition-[opacity,scale] duration-300 ease-silk',
-      toTone,
-      swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
-    ]}
+    class={[size, 'transition-[opacity,scale]', toTone, swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0']}
   />
 </span>

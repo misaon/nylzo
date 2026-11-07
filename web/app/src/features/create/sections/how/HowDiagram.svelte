@@ -135,7 +135,7 @@
       {#if node.badge}
         <span
           class={[
-            'absolute -top-[6%] -right-[6%] grid size-[36%] place-items-center rounded-full text-white opacity-0 step-current outline-[3px] outline-void-950',
+            'absolute -top-[6%] -right-[6%] grid size-[36%] place-items-center rounded-full text-white opacity-0 step-current outline-3 outline-void-950',
             node.badge.animation,
           ]}
         >

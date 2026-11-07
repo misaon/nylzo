@@ -7,6 +7,7 @@
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
   import { LONGEST_TTL_DAYS } from '../composer/create-form.ts';
   import { PROMISES } from './promises.ts';
@@ -24,15 +25,9 @@
 <span id="sliby" class="block" aria-hidden="true"></span>
 
 <section id="promises" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="promise-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <div class="max-w-[640px]" {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('promise.eyebrow')}</p>
-      <h2
-        id="promise-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('promise.title')}
-      </h2>
+      <SectionIntro id="promise-title" eyebrow={translate('promise.eyebrow')} title={translate('promise.title')} />
     </div>
     <div class="mt-14 grid gap-4 md:grid-cols-6 md:gap-5">
       {#each PROMISES as promise (promise.key)}
@@ -42,11 +37,7 @@
             tone="current"
             class={['rv-pop [--rv-delay:320ms] [--rv-step:120ms]', promise.order]}
           />
-          <h3
-            class={promise.wide
-              ? 'mt-6 font-display text-panel font-light md:text-panel-lg'
-              : 'mt-5 text-title font-medium'}
-          >
+          <h3 class={promise.wide ? 'mt-6 font-display text-panel font-light md:text-panel-lg' : 'mt-5 text-title'}>
             {translate(`${promise.key}.title`, { days: longest })}
           </h3>
           <p

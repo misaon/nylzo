@@ -42,7 +42,7 @@
       inert={!readyBarShown}
     >
       {@render facts(page.readyFacts, [
-        'min-h-6 py-0.5 transition-opacity duration-500 ease-silk max-sm:w-full sm:min-h-5 sm:gap-x-4 sm:px-2 sm:py-0',
+        'min-h-6 py-0.5 transition-opacity duration-500 max-sm:w-full sm:min-h-5 sm:gap-x-4 sm:px-2 sm:py-0',
         page.phase === 'opening' ? 'pointer-events-none opacity-40' : 'opacity-100',
       ])}
     </div>

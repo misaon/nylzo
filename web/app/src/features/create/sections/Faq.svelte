@@ -15,7 +15,7 @@
 </script>
 
 <section class="px-4 pt-20 pb-6 sm:px-6 md:pt-28" aria-labelledby="faq-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <p class="rv-focus text-eyebrow text-aegis-300 uppercase" {@attach reveal}>{translate('faq.eyebrow')}</p>
     <h2
       id="faq-title"

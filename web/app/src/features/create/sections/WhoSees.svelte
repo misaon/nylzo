@@ -2,6 +2,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
@@ -9,19 +10,13 @@
     'AQEAPtYgjmUhBel31iEl2hpChYgCfrL1spNxnyVmihA_2O76UMFxFkM_R5Kjp1vRt-1fjORS_6ilI8ihN5KXSc7Tvo_hBKqFYY_kv5ZJr3J1TWDtkwtDDb-xHKas1VOqg6YYZYn9ZhyiA4uoRgnatmUdjAWtGSU8po-799NksnRH9ucAUsdMlHUvTCQCyEZDz_TddJ8HyS5SUkCnD8zRA9a9SkpXz9w3QlY7Zkuvqdt7s8Stqcbnr3yBdGBLEPH1qhT61qtc4xatws8phP9nhFyJfm5di4PzJ59FHz5r1pY4OjE2jBMptUsGr7CmY-uCu3ZR1zTOlUcR64cXQLioDnkHIfxIq2HZt_PlJhx2jIclHkCiHp6bR1IqfEouHgxzNNAL5wIScGebcy8F5n3_YNBDRzrZSgqbjG3uhkWKFLf6xuI5aHUQPFeNBTxaQWk8JzFalHlsZfYcMMDktXP_tKsf2rcDkdfrUnW5gcF';
   const ARTICLE =
     'flex min-w-0 flex-col gap-3 p-4 md:row-span-5 md:grid md:grid-cols-[minmax(0,1fr)] md:grid-rows-subgrid md:p-5';
-  const LABEL = 'text-eyebrow font-medium text-ink-mute uppercase';
+  const LABEL = 'text-eyebrow text-ink-mute uppercase';
 </script>
 
 <section id="security" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="who-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('who.eyebrow')}</p>
-      <h2
-        id="who-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('who.title')}
-      </h2>
+      <SectionIntro id="who-title" eyebrow={translate('who.eyebrow')} title={translate('who.title')} />
       <p
         class="mx-auto mt-5 max-w-[540px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
       >
@@ -40,7 +35,7 @@
         {@attach reveal}
       >
         <div class="flex items-center justify-between gap-3 px-1">
-          <h3 id="who-you" class="flex items-center gap-3 text-title-sm font-medium text-ink">
+          <h3 id="who-you" class="flex items-center gap-3 text-title-sm text-ink">
             <IconTile icon="unlock" tone="current" size="small" />
             {translate('who.you.title')}
           </h3>
@@ -124,14 +119,14 @@
       </div>
       <article
         class={[
-          'rv-focus rounded-pane bg-white/4 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 [--rv-blur:14px] [--rv-delay:440ms] [--rv-time:1.3s] [--rv-y:16px] md:[--rv-x:-40px] md:[--rv-y:0px]',
+          'rv-focus rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8 [--rv-blur:14px] [--rv-delay:440ms] [--rv-time:1.3s] [--rv-y:16px] md:[--rv-x:-40px] md:[--rv-y:0px]',
           ARTICLE,
         ]}
         aria-labelledby="who-server"
         {@attach reveal}
       >
         <div class="flex items-center justify-between gap-3 px-1">
-          <h3 id="who-server" class="flex items-center gap-3 text-title-sm font-medium text-ink">
+          <h3 id="who-server" class="flex items-center gap-3 text-title-sm text-ink">
             <IconTile icon="database" tone="neutral" size="small" />
             <span>
               {translate('who.server.title')}
@@ -146,7 +141,7 @@
         <div class="rounded-pane p-4 well motion-safe:animate-who-store-message">
           <p class={LABEL}>{translate('who.label.message')}</p>
           <p
-            class="mt-2 h-[4.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_16%,black_50%,transparent)] text-caption break-all text-ink-mute/60 motion-safe:animate-who-arrive-message"
+            class="mt-2 h-18 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_16%,black_50%,transparent)] text-caption break-all text-ink-mute/60 motion-safe:animate-who-arrive-message"
             aria-hidden="true"
           >
             <span
@@ -189,13 +184,13 @@
     <div class="mt-8 flex justify-center" {@attach reveal}>
       <a
         href="#resilience"
-        class="group inline-block min-h-11 rv-focus rounded-control px-3 py-2.5 text-center text-body text-balance text-aegis-300 transition duration-300 ease-silk hover:text-aegis-200"
+        class="group inline-block min-h-11 rv-focus rounded-control px-3 py-2.5 text-center text-body text-balance text-aegis-300 transition hover:text-aegis-200"
       >
         {translate('who.try')}
         <span class="whitespace-nowrap"
           >{translate('who.try.last')}<Icon
             name="caretDown"
-            class="ml-1.5 inline-block size-3.5 align-[-2px] transition duration-300 ease-silk group-hover:translate-y-0.5"
+            class="ml-1.5 inline-block size-3.5 align-[-2px] transition group-hover:translate-y-0.5"
             stroke={2}
           /></span
         >

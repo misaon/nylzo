@@ -82,10 +82,10 @@
           stroke-linecap="round"
           pathLength="100"
           stroke-dasharray="{progress * 100} 100"
-          class="transition-[stroke-dasharray] duration-500 ease-silk"
+          class="transition-[stroke-dasharray] duration-500"
         ></circle>
       </g>
-      <g transform="rotate({progress * 360} 60 60)" class="transition-transform duration-500 ease-silk">
+      <g transform="rotate({progress * 360} 60 60)" class="transition-transform duration-500">
         <circle
           cx="114"
           cy="60"
@@ -104,7 +104,7 @@
           <Icon
             name={node.icon}
             class={[
-              'col-start-1 row-start-1 text-white transition-[opacity,scale] duration-500 ease-silk',
+              'col-start-1 row-start-1 text-white transition-[opacity,scale] duration-500',
               look.icon,
               index === shown ? 'scale-100 opacity-100' : 'scale-75 opacity-0',
             ]}
@@ -119,14 +119,14 @@
         class={[
           'transition-[opacity,translate]',
           active && index === current
-            ? 'translate-y-0 opacity-100 delay-[120ms] duration-500 ease-silk'
+            ? 'translate-y-0 opacity-100 delay-120 duration-500'
             : 'translate-y-1.5 opacity-0 duration-150 ease-in',
         ]}
       >
-        <p class="mb-1.5 text-eyebrow font-medium text-ink-mute uppercase">
+        <p class="mb-1.5 text-eyebrow text-ink-mute uppercase">
           {translate('step.counter', { step: index + 1, total: nodes.length })}
         </p>
-        <p class="text-title font-medium text-ink">{node.title}</p>
+        <p class="text-title text-ink">{node.title}</p>
         <p class="mt-1.5 text-body-sm text-pretty text-ink-soft">{node.detail}</p>
       </div>
     {/each}

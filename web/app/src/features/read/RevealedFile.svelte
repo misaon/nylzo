@@ -27,7 +27,7 @@
 <section aria-labelledby="{id}-title" class="flex flex-col gap-2.5">
   <p id="{id}-title" class="text-eyebrow text-ink-mute uppercase">{translate('revealed.file')}</p>
   <div
-    class="overflow-hidden rounded-pane bg-[linear-gradient(135deg,oklch(0.72_0.14_305/0.08),oklch(1_0_0/0.02)_55%)] shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-nebula-300/20"
+    class="overflow-hidden rounded-pane bg-[linear-gradient(135deg,oklch(0.72_0.14_305/0.08),oklch(1_0_0/0.02)_55%)] shadow-rim ring-1 ring-nebula-300/20"
   >
     <div class="stack shrink-0 p-3 sm:p-3.5">
       <div
@@ -50,7 +50,7 @@
           {/if}
         </span>
         <span class="min-w-0 flex-1">
-          <bdi translate="no" class="flex min-w-0 text-title-sm font-medium text-ink"
+          <bdi translate="no" class="flex min-w-0 text-title-sm text-ink"
             ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
           >
           <span class="mt-1 block text-caption text-ink-mute tabular-nums">{kind ? `${kind} · ${size}` : size}</span>

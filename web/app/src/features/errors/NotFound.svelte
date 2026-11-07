@@ -35,7 +35,7 @@
       </Button>
     </div>
     <div
-      class="mt-10 flex w-full max-w-[540px] animate-rise items-center gap-3.5 rounded-pane bg-white/4 px-4 py-3.5 text-left shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/10 [animation-delay:320ms]"
+      class="mt-10 flex w-full max-w-[540px] animate-rise items-center gap-3.5 rounded-pane bg-white/4 px-4 py-3.5 text-left shadow-rim ring-1 ring-white/10 [animation-delay:320ms]"
     >
       <IconTile icon="link" tone="neutral" size="medium" stroke={1.6} />
       <p class="text-body-sm text-pretty text-ink-soft">

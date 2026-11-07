@@ -25,8 +25,8 @@
       key: 'hero.step.vanish',
       icon: 'burst',
       badge: 'border border-dashed border-nebula-300/55 text-nebula-300',
-      line: 'bg-gradient-to-r from-aegis-300/45 to-nebula-300/10',
-      before: 'before:bg-gradient-to-r before:from-aegis-300/45 before:to-nebula-300/10',
+      line: 'bg-linear-to-r from-aegis-300/45 to-nebula-300/10',
+      before: 'before:bg-linear-to-r before:from-aegis-300/45 before:to-nebula-300/10',
     },
   ] as const;
 </script>
@@ -41,14 +41,14 @@
 <span id="napsat" class="block" aria-hidden="true"></span>
 
 <section id="create" class="px-4 pt-10 sm:px-6 md:pt-16" aria-labelledby="{id}-title" {@attach composer.start}>
-  <div class="mx-auto max-w-[860px] text-center">
+  <div class="mx-auto max-w-column text-center">
     <p data-eyebrow class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
       {translate('hero.title.lead')} <span class="text-aegis-300">{translate('hero.title.accent')}</span>
     </h1>
     <div
       class={[
-        'transition-[opacity,height,padding] duration-500 ease-silk [interpolate-size:allow-keywords]',
+        'transition-[opacity,height,padding] duration-500 [interpolate-size:allow-keywords]',
         composer.phase === 'done' ? 'h-0 overflow-y-clip pt-0 opacity-0' : 'h-auto pt-6 opacity-100',
       ]}
       inert={composer.phase === 'done'}
@@ -64,12 +64,11 @@
           <li
             class={[
               'relative flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-2.5 sm:text-left',
-              index > 0 &&
-                "before:absolute before:top-4 before:right-1/2 before:h-px before:w-full before:content-[''] sm:before:hidden",
+              index > 0 && 'before:absolute before:top-4 before:right-1/2 before:h-px before:w-full sm:before:hidden',
               index > 0 && step.before,
             ]}
           >
-            <span class={['glass-soft relative z-10 grid size-8 shrink-0 place-items-center rounded-full', step.badge]}>
+            <span class={['glass-soft z-10 grid size-8 shrink-0 place-items-center rounded-full', step.badge]}>
               <Icon name={step.icon} />
             </span>
             <span class="text-caption text-ink-soft sm:text-ui">{translate(step.key)}</span>
@@ -79,7 +78,7 @@
     </div>
   </div>
 
-  <div class="relative z-20 mx-auto mt-8 max-w-[860px] animate-rise [animation-delay:240ms]">
+  <div class="relative z-20 mx-auto mt-8 max-w-column animate-rise [animation-delay:240ms]">
     <div class="glow-under" aria-hidden="true"></div>
     <div class="glass rounded-card">
       <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
@@ -123,14 +122,14 @@
     class="group mx-auto mt-12 flex w-fit animate-rise rounded-control p-3 [animation-delay:320ms]"
   >
     <span
-      class="hidden h-10 w-6 justify-center rounded-full border border-ink-mute/60 pt-2 transition-colors duration-300 ease-silk group-hover:border-ink-soft md:flex"
+      class="hidden h-10 w-6 justify-center rounded-full border border-ink-mute/60 pt-2 transition-colors group-hover:border-ink-soft md:flex"
       aria-hidden="true"
     >
       <span class="h-2 w-0.5 rounded-full bg-aegis-300 motion-safe:animate-wheel"></span>
     </span>
     <Icon
       name="chevronDown"
-      class="size-5 text-ink-mute transition-colors duration-300 ease-silk group-hover:text-ink motion-safe:animate-bounce md:hidden"
+      class="size-5 text-ink-mute transition-colors group-hover:text-ink motion-safe:animate-bounce md:hidden"
       stroke={1.7}
     />
   </a>

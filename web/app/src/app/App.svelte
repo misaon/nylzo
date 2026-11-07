@@ -86,7 +86,7 @@
         {:else if screen === 'notFound'}
           <NotFound />
         {:else}
-          <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+          <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
             <div class="glass animate-rise rounded-card p-6 [animation-delay:80ms] md:p-10">
               {#if screen === 'sent'}
                 <Sent />
@@ -100,7 +100,7 @@
         {/if}
 
         {#snippet failed()}
-          <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+          <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
             <p role="alert" class="glass rounded-card p-6 text-ink-soft md:p-10">{translate('app.crashed')}</p>
           </div>
         {/snippet}

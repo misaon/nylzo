@@ -92,101 +92,23 @@
   }
 }
 
-@utility rv-focus {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-focus var(--rv-time, 0.9s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
+@theme inline {
+  --reveal-focus: rv-focus var(--rv-time, 0.9s) var(--ease-silk) backwards;
+  --reveal-rise: rv-rise var(--rv-time, 1s) var(--ease-silk) backwards;
+  --reveal-pop: rv-pop var(--rv-time, 0.7s) var(--ease-silk) backwards;
+  --reveal-draw: rv-draw var(--rv-time, 0.9s) var(--ease-silk) backwards;
+  --reveal-type: rv-type var(--rv-time, 0.55s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+  --reveal-part: rv-part var(--rv-time, 1.4s) var(--ease-silk) backwards;
+  --reveal-sweep: rv-sweep var(--rv-time, 1.5s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+  --reveal-glow: rv-glow var(--rv-time, 1.8s) var(--ease-silk) backwards;
+  --reveal-fade: rv-fade var(--rv-time, 0.6s) var(--ease-silk) backwards;
 }
 
-@utility rv-rise {
+@utility rv-* {
   @media (prefers-reduced-motion: no-preference) {
     :where([data-reveal='in']) &,
     &:where([data-reveal='in']) {
-      animation: rv-rise var(--rv-time, 1s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
-}
-
-@utility rv-pop {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-pop var(--rv-time, 0.7s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
-}
-
-@utility rv-draw {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-draw var(--rv-time, 0.9s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
-}
-
-@utility rv-type {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-type var(--rv-time, 0.55s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
-}
-
-@utility rv-part {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-part var(--rv-time, 1.4s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
-}
-
-@utility rv-sweep {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-sweep var(--rv-time, 1.5s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+      animation: --value(--reveal-*);
       animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
     }
     :where([data-reveal='pending']) &,
@@ -210,36 +132,6 @@
       animation: none;
       stroke-dasharray: 26;
       stroke-dashoffset: 26;
-    }
-  }
-}
-
-@utility rv-glow {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-glow var(--rv-time, 1.8s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
-    }
-  }
-}
-
-@utility rv-fade {
-  @media (prefers-reduced-motion: no-preference) {
-    :where([data-reveal='in']) &,
-    &:where([data-reveal='in']) {
-      animation: rv-fade var(--rv-time, 0.6s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
-    }
-    :where([data-reveal='pending']) &,
-    &:where([data-reveal='pending']) {
-      animation: none;
-      opacity: 0;
     }
   }
 }

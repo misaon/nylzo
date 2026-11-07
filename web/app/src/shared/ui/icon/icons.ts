@@ -169,77 +169,64 @@ const fillBox = '[transform-box:fill-box] origin-center';
 
 export const ICON_MOTION: Partial<Record<IconName, IconMotion>> = {
   arrowRight: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:translate-x-[3px] motion-safe:group-focus-visible/act:translate-x-[3px]',
+    classes: 'transition-transform motion-safe:action:translate-x-[3px]',
   },
   clock: {
     shape: 1,
     classes:
-      'transition-transform duration-500 ease-silk [transform-box:view-box] origin-[12px_12px] motion-safe:group-hover/act:rotate-[120deg] motion-safe:group-focus-visible/act:rotate-[120deg]',
+      'transition-transform duration-500 [transform-box:view-box] origin-[12px_12px] motion-safe:action:rotate-[120deg]',
   },
   close: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:rotate-90 motion-safe:group-focus-visible/act:rotate-90',
+    classes: 'transition-transform motion-safe:action:rotate-90',
   },
   copy: {
     shape: 0,
-    classes: `transition-transform duration-300 ease-silk ${fillBox} motion-safe:group-hover/act:translate-x-[1.5px] motion-safe:group-focus-visible/act:translate-x-[1.5px] motion-safe:group-hover/act:translate-y-[1.5px] motion-safe:group-focus-visible/act:translate-y-[1.5px]`,
+    classes: `transition-transform ${fillBox} motion-safe:action:translate-x-[1.5px] motion-safe:action:translate-y-[1.5px]`,
   },
   download: {
-    classes: 'motion-safe:group-hover/act:animate-icon-hop motion-safe:group-focus-visible/act:animate-icon-hop',
+    classes: 'motion-safe:action:animate-icon-hop',
   },
   eye: {
-    classes: 'motion-safe:group-hover/act:animate-icon-blink motion-safe:group-focus-visible/act:animate-icon-blink',
+    classes: 'motion-safe:action:animate-icon-blink',
   },
   external: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:translate-x-[2px] motion-safe:group-focus-visible/act:translate-x-[2px] motion-safe:group-hover/act:-translate-y-[2px] motion-safe:group-focus-visible/act:-translate-y-[2px]',
+    classes: 'transition-transform motion-safe:action:translate-x-[2px] motion-safe:action:-translate-y-[2px]',
   },
   eyeOff: {
-    classes: 'motion-safe:group-hover/act:animate-icon-blink motion-safe:group-focus-visible/act:animate-icon-blink',
+    classes: 'motion-safe:action:animate-icon-blink',
   },
   flag: {
-    classes:
-      'transition-transform duration-300 ease-silk origin-bottom-left motion-safe:group-hover/act:-rotate-6 motion-safe:group-focus-visible/act:-rotate-6',
+    classes: 'transition-transform origin-bottom-left motion-safe:action:-rotate-6',
   },
   globe: {
-    classes:
-      'transition-transform duration-500 ease-silk motion-safe:group-hover/act:rotate-[20deg] motion-safe:group-focus-visible/act:rotate-[20deg]',
+    classes: 'transition-transform duration-500 motion-safe:action:rotate-[20deg]',
   },
   key: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:rotate-[20deg] motion-safe:group-focus-visible/act:rotate-[20deg]',
+    classes: 'transition-transform motion-safe:action:rotate-[20deg]',
   },
   lock: {
     shape: 1,
-    classes: `transition-transform duration-300 ease-silk ${fillBox} motion-safe:group-hover/act:-translate-y-[1.5px] motion-safe:group-focus-visible/act:-translate-y-[1.5px]`,
+    classes: `transition-transform ${fillBox} motion-safe:action:-translate-y-[1.5px]`,
   },
   minus: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:scale-x-75 motion-safe:group-focus-visible/act:scale-x-75',
+    classes: 'transition-transform motion-safe:action:scale-x-75',
   },
   paperclip: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:-rotate-12 motion-safe:group-focus-visible/act:-rotate-12',
+    classes: 'transition-transform motion-safe:action:-rotate-12',
   },
   pen: {
-    classes:
-      'transition-transform duration-300 ease-silk origin-bottom-left motion-safe:group-hover/act:-rotate-12 motion-safe:group-focus-visible/act:-rotate-12',
+    classes: 'transition-transform origin-bottom-left motion-safe:action:-rotate-12',
   },
   plus: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:rotate-90 motion-safe:group-focus-visible/act:rotate-90',
+    classes: 'transition-transform motion-safe:action:rotate-90',
   },
   refresh: {
-    classes:
-      'transition-transform duration-500 ease-silk motion-safe:group-hover/act:rotate-180 motion-safe:group-focus-visible/act:rotate-180',
+    classes: 'transition-transform duration-500 motion-safe:action:rotate-180',
   },
   shieldCheck: {
-    classes:
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:scale-110 motion-safe:group-focus-visible/act:scale-110',
+    classes: 'transition-transform motion-safe:action:scale-110',
   },
   trash: {
-    classes:
-      'transition-transform duration-300 ease-silk origin-bottom motion-safe:group-hover/act:-rotate-6 motion-safe:group-focus-visible/act:-rotate-6',
+    classes: 'transition-transform origin-bottom motion-safe:action:-rotate-6',
   },
 };

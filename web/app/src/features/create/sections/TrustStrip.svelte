@@ -18,7 +18,7 @@
 </script>
 
 {#snippet glyph(item: { readonly icon: IconName; readonly name: string })}
-  <li class="flex items-center gap-3 text-title font-medium whitespace-nowrap text-ink-soft">
+  <li class="flex items-center gap-3 text-title whitespace-nowrap text-ink-soft">
     <Icon name={item.icon} class="size-8 shrink-0" stroke={1.7} paint="url(#trust-tone)" />
     {item.name}
   </li>
@@ -41,7 +41,7 @@
   </svg>
   <p class="rv-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
   <div
-    class="relative mx-auto mt-8 max-w-[1160px] rv-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--rv-delay:200ms] md:mt-10"
+    class="relative mx-auto mt-8 max-w-page rv-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--rv-delay:200ms] md:mt-10"
   >
     <div class="flex w-max motion-safe:animate-trust-marquee">
       {#each [false, true] as copy (copy)}
@@ -50,7 +50,7 @@
             {@render glyph(item)}
           {/each}
           {#each TRUST_LOGOS as logo (logo.name)}
-            <li class="flex items-center gap-3 text-title font-medium whitespace-nowrap text-ink-soft">
+            <li class="flex items-center gap-3 text-title whitespace-nowrap text-ink-soft">
               <svg
                 class={[logo.size, 'shrink-0']}
                 viewBox="0 0 24 24"

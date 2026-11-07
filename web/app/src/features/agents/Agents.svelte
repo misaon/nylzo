@@ -30,7 +30,7 @@
         <span class="grid size-8 place-items-center rounded-full text-caption font-medium text-white step-current">
           {index + 1}
         </span>
-        <p class="mt-4 text-title-sm font-medium text-ink">{translate(step.title)}</p>
+        <p class="mt-4 text-title-sm text-ink">{translate(step.title)}</p>
         <p class="mt-1.5 flex-1 text-body-sm text-pretty text-ink-soft">{translate(step.text)}</p>
         {#if step.link}
           {@render link(step.link, 'mt-3 self-start')}
@@ -40,7 +40,7 @@
   </ol>
   <div class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
     <section class="glass-soft rounded-card p-6">
-      <h2 class="text-title font-medium text-ink">{translate('agents.rules.title')}</h2>
+      <h2 class="text-title text-ink">{translate('agents.rules.title')}</h2>
       <ul class="mt-4 grid gap-2.5 text-body-sm text-pretty text-ink-soft">
         {#each AGENT_RULES as rule (rule)}
           <li class="flex gap-2.5">
@@ -51,7 +51,7 @@
       </ul>
     </section>
     <section class="glass-soft rounded-card p-6">
-      <h2 class="text-title font-medium text-ink">{translate('agents.missing.title')}</h2>
+      <h2 class="text-title text-ink">{translate('agents.missing.title')}</h2>
       <p class="mt-3 text-body-sm text-pretty text-ink-soft">{translate('agents.missing.text')}</p>
       {@render link(DISCUSSIONS, 'mt-3 inline-block')}
     </section>
