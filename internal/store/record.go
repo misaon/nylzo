@@ -201,21 +201,21 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint64(data, narrow64(message.Size))
 	data = append(data, message.VerifierPepperID, boolByte(message.PassphraseRequired()))
 	data = append(data, fixedMAC(message.VerifierMAC)...)
-	data = binary.BigEndian.AppendUint16(data, narrow16(message.FailCountTotal))
+	data = binary.BigEndian.AppendUint16(data, saturate[uint16](int64(message.FailCountTotal)))
 	data = appendTime(data, message.NextAttemptAt)
 	data = appendTime(data, optional(message.FirstOpenedAt))
-	data = append(data, narrow8(slices.Index(endings, message.Ending)))
+	data = append(data, saturate[uint8](int64(slices.Index(endings, message.Ending))))
 	data = appendTime(data, message.EndedAt)
-	data = binary.BigEndian.AppendUint32(data, narrow32(message.ReportDay))
-	data = append(data, narrow8(message.Reports))
+	data = binary.BigEndian.AppendUint32(data, saturate[uint32](message.ReportDay))
+	data = append(data, saturate[uint8](int64(message.Reports)))
 	data = binary.BigEndian.AppendUint32(data, message.Epoch)
 	data = append(data, message.RatchetID[:]...)
-	data = append(data, narrow8(len(message.Leases)))
+	data = append(data, saturate[uint8](int64(len(message.Leases))))
 	for _, lease := range message.Leases {
 		data = append(data, lease.PepperID)
 		data = append(data, fixedMAC(lease.MAC)...)
 		data = appendTime(data, lease.ExpiresAt)
-		data = append(data, narrow8(lease.Downloads))
+		data = append(data, saturate[uint8](int64(lease.Downloads)))
 	}
 	return data
 }
@@ -304,7 +304,7 @@ func appendTime(data []byte, moment time.Time) []byte {
 	return binary.BigEndian.AppendUint64(data, narrow64(moment.UnixMilli()))
 }
 
-// The narrowing helpers store a value the record cannot hold as its nearest bound; decodeMessage then rejects it.
+// narrow64 and saturate store a value the record cannot hold as its nearest bound; decodeMessage then rejects it.
 func narrow64(value int64) uint64 {
 	if value < 0 {
 		return 0
@@ -312,34 +312,15 @@ func narrow64(value int64) uint64 {
 	return uint64(value)
 }
 
-func narrow32(value int64) uint32 {
+//nolint:ireturn // T is always a concrete unsigned integer type, never an interface.
+func saturate[T uint8 | uint16 | uint32](value int64) T {
 	if value < 0 {
 		return 0
 	}
-	if value > math.MaxUint32 {
-		return math.MaxUint32
+	if bound := ^T(0); value > int64(bound) {
+		return bound
 	}
-	return uint32(value)
-}
-
-func narrow16(value int) uint16 {
-	if value < 0 {
-		return 0
-	}
-	if value > math.MaxUint16 {
-		return math.MaxUint16
-	}
-	return uint16(value)
-}
-
-func narrow8(value int) byte {
-	if value < 0 {
-		return 0
-	}
-	if value > math.MaxUint8 {
-		return math.MaxUint8
-	}
-	return byte(value)
+	return T(value)
 }
 
 func signed(value uint64) int64 {
