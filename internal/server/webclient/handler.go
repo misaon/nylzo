@@ -94,12 +94,22 @@ func serveIfBuilt(asset *Asset) http.HandlerFunc {
 	}
 }
 
+// No page or file of the client is a subresource of another site, so from one only a navigation may arrive.
+func fromAnotherSite(r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	return (site == "cross-site" || site == "same-site") && r.Header.Get("Sec-Fetch-Dest") != "document"
+}
+
 func frontendHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		SetSecurityHeaders(
 			w.Header(),
 			(r.Method == http.MethodGet || r.Method == http.MethodHead) && IsHomePath(r.URL.Path),
 		)
+		if fromAnotherSite(r) {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 		if r.Header.Get("Sec-Purpose") != "" && (r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/")) {
 			WriteUnavailable(w, time.Minute)
 			return

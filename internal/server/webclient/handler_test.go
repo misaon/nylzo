@@ -72,6 +72,26 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 			t.Fatalf("unexpected frontend resource %s: %d", path, response.Code)
 		}
 	}
+	for _, fetch := range []struct {
+		site, destination, path string
+		status                  int
+	}{
+		{"cross-site", "script", manifest.Files[len(manifest.Files)-1].Path, http.StatusForbidden},
+		{"same-site", "image", "/", http.StatusForbidden},
+		{"cross-site", "iframe", "/r", http.StatusForbidden},
+		{"cross-site", "document", "/r", http.StatusOK},
+		{"same-origin", "script", manifest.Files[len(manifest.Files)-1].Path, http.StatusOK},
+		{"none", "document", "/", http.StatusOK},
+	} {
+		probe := httptest.NewRequest(http.MethodGet, fetch.path, http.NoBody)
+		probe.Header.Set("Sec-Fetch-Site", fetch.site)
+		probe.Header.Set("Sec-Fetch-Dest", fetch.destination)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, probe)
+		if response.Code != fetch.status || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("a %s %s request for %s answered %d", fetch.site, fetch.destination, fetch.path, response.Code)
+		}
+	}
 	index := request(http.MethodGet, "/sent", "", "")
 	for _, path := range []string{"/m/invalid", "/unknown", "/cs/sent"} {
 		response := request(http.MethodGet, path, "", "")
