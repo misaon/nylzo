@@ -33,12 +33,11 @@
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
   const { start }: Props = $props();
-  let path = $state(untrack(() => start.path));
-  let visit = $state(0);
-  const screen: Screen = $derived(screenOf(path));
+  const path = untrack(() => start.path);
+  const screen: Screen = screenOf(path);
   const translator = setTranslator(new Translator(untrack(() => start.language)));
   const { translate } = translator;
-  const variant = $derived(HEADER_VARIANTS[screen]);
+  const variant = HEADER_VARIANTS[screen];
 
   function returned() {
     if (location.pathname !== path) {
@@ -76,9 +75,7 @@
     <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
-          {#key visit}
-            <Read />
-          {/key}
+          <Read />
         {:else if screen === 'create'}
           <Create />
         {:else if screen === 'agents'}

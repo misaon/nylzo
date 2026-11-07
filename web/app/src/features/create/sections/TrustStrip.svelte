@@ -7,10 +7,10 @@
 
   const { translate } = getTranslator();
 
-  const glyphs: readonly { readonly icon: IconName; readonly name: string }[] = $derived([
+  const glyphs: readonly { readonly icon: IconName; readonly name: string }[] = [
     { icon: 'lock', name: 'AES-256-GCM' },
     { icon: 'key', name: 'HKDF-SHA-256' },
-  ]);
+  ];
   const license: { readonly icon: IconName; readonly name: string } = $derived({
     icon: 'document',
     name: translate('trust.license'),
