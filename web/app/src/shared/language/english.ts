@@ -258,7 +258,7 @@ export const english: Record<MessageKey, string> = {
   'busy.decrypting': 'Decrypting…',
 
   'revealed.title': 'Message content',
-  'revealed.note': 'It will be deleted in a few minutes, save what you need',
+  'revealed.note': 'The server deletes it within minutes, save what you need',
   'revealed.sender': 'The sender is not verified',
   'revealed.sender.title': 'Nylzo does not verify senders',
   'revealed.sender.text': 'Check any request for money, a sign-in or an installation with the sender another way.',
@@ -508,7 +508,7 @@ export const english: Record<MessageKey, string> = {
   'open.title.ended': 'The message can no longer be opened',
   'open.intro': 'The message is decrypted only in this browser.',
   'open.ready.title': 'The message is waiting to be opened',
-  'open.ready.sub': 'It appears only after you click. You see it once, then the server deletes it.',
+  'open.ready.sub': 'It appears only after you click, which uses one open. After the last open, the server deletes it.',
   'open.loading.text': 'Checking the link with the server.',
   'open.passphrase.placeholder': 'Passphrase from the sender',
   'open.passphrase.hint': 'The sender sent you the passphrase separately, for example by text message or phone.',

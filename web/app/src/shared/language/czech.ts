@@ -253,7 +253,7 @@ export const czech = {
   'busy.decrypting': 'Dešifrujeme…',
 
   'revealed.title': 'Obsah zprávy',
-  'revealed.note': 'Za pár minut se smaže, uložte si, co potřebujete',
+  'revealed.note': 'Server ji do pár minut smaže, uložte si, co potřebujete',
   'revealed.sender': 'Odesílatel není ověřený',
   'revealed.sender.title': 'Nylzo neověřuje odesílatele',
   'revealed.sender.text': 'Žádost o\u{A0}peníze, přihlášení nebo instalaci si ověřte u\u{A0}odesílatele jinou cestou.',
@@ -503,7 +503,8 @@ export const czech = {
   'open.title.ended': 'Zprávu už nejde otevřít',
   'open.intro': 'Zpráva se dešifruje až v\u{A0}tomto prohlížeči.',
   'open.ready.title': 'Zpráva čeká na otevření',
-  'open.ready.sub': 'Zobrazí se až po kliknutí. Uvidíte ji jen jednou, pak ji server smaže.',
+  'open.ready.sub':
+    'Zobrazí se až po kliknutí, které spotřebuje jedno otevření. Po posledním otevření ji server smaže.',
   'open.loading.text': 'Ověřujeme odkaz u\u{A0}serveru.',
   'open.passphrase.placeholder': 'Heslo od odesílatele',
   'open.passphrase.hint': 'Heslo vám odesílatel poslal zvlášť, třeba SMS nebo telefonem.',
