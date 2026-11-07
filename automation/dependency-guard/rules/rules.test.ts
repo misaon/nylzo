@@ -466,6 +466,16 @@ const cases: readonly Case[] = [
   },
   { after: miseLockUpdate, before: miseLock, expected: 'safe', name: 'mise lock update', path: 'mise.lock' },
   {
+    after: miseLockUpdate.replace(
+      `checksum = "sha256:${'c'.repeat(64)}"`,
+      `checksum = "sha256:${'c'.repeat(64)}"\nchecksum_source = "mise-versions"`,
+    ),
+    before: miseLock,
+    expected: 'safe',
+    name: 'mise lock update that records where its checksum came from',
+    path: 'mise.lock',
+  },
+  {
     after: miseLockUpdate.replace('https://github.com/rhysd', 'https://attacker.invalid/rhysd'),
     before: miseLock,
     expected: 'rejected',

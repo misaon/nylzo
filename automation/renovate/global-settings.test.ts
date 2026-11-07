@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { globalSettings } from './global-settings.ts';
 
-test('the maintenance branch disables ordinary updates before the fast path enables affected packages', () => {
+test('the maintenance branch joins main and the fast path enables affected packages', () => {
   const settings = globalSettings({
     affectedPackages: ['goreleaser/goreleaser'],
     maintenanceBranch: 'release/v0.2',
@@ -12,12 +12,6 @@ test('the maintenance branch disables ordinary updates before the fast path enab
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main', 'release/v0.2'] });
   assert.deepEqual(settings['packageRules'], [
-    {
-      description: 'The maintenance branch takes only security fixes.',
-      matchBaseBranches: ['release/v0.2'],
-      matchPackageNames: ['*'],
-      enabled: false,
-    },
     {
       description: 'The vulnerability inventory found these dependencies affected; propose their fix at once.',
       matchPackageNames: ['goreleaser/goreleaser'],

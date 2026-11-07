@@ -144,6 +144,8 @@ const miseSection = /^\[\[tools\.(?<tool>[\w-]+)\]\]$/u;
 const miseEntry = /^(?<key>backend|checksum|url|url_api|version) = "(?<value>[^"\\]*)"$/u;
 const miseSpecifiers = /^specifiers = \["(?<value>[^"\\]*)"\]$/u;
 const miseChecksum = /^sha256:[a-f\d]{64}$/u;
+// mise records where a checksum came from; the checksum itself is what the review compares.
+const miseChecksumSource = /^checksum_source = "[a-z][a-z-]*"$/u;
 
 const coreDownloads = new Map([
   ['core:go', 'https://dl.google.com/go/'],
@@ -175,53 +177,56 @@ function miseLockSnapshot(text: string, findings: string[]): Snapshot {
   let tool = '';
   let backend = '';
   let version = '';
-  const lines = text.split('\n').map((line) => {
-    const section = miseSection.exec(line)?.groups?.['tool'];
-    if (section !== undefined) {
-      tool = section;
-      backend = '';
-      version = '';
-      return line;
-    }
-    const specifier = miseSpecifiers.exec(line)?.groups?.['value'];
-    if (specifier !== undefined) {
-      if (specifier !== version) {
-        findings.push(`${tool} specifiers ${specifier} differ from version ${version}`);
-      }
-      return `specifiers = ${placeholder('version')}`;
-    }
-    const { key = '', value = '' } = miseEntry.exec(line)?.groups ?? {};
-    switch (key) {
-      case 'backend': {
-        backend = value;
+  const lines = text
+    .split('\n')
+    .filter((line) => !miseChecksumSource.test(line))
+    .map((line) => {
+      const section = miseSection.exec(line)?.groups?.['tool'];
+      if (section !== undefined) {
+        tool = section;
+        backend = '';
+        version = '';
         return line;
       }
-      case 'checksum': {
-        if (!miseChecksum.test(value)) {
+      const specifier = miseSpecifiers.exec(line)?.groups?.['value'];
+      if (specifier !== undefined) {
+        if (specifier !== version) {
+          findings.push(`${tool} specifiers ${specifier} differ from version ${version}`);
+        }
+        return `specifiers = ${placeholder('version')}`;
+      }
+      const { key = '', value = '' } = miseEntry.exec(line)?.groups ?? {};
+      switch (key) {
+        case 'backend': {
+          backend = value;
           return line;
         }
-        values.push({ kind: 'opaque', name: `${tool} checksum`, value });
-        return `checksum = ${placeholder('opaque')}`;
-      }
-      case 'url':
-      case 'url_api': {
-        const problem = downloadProblem(key, value, backend);
-        if (problem) {
-          findings.push(`${tool}: ${problem}`);
+        case 'checksum': {
+          if (!miseChecksum.test(value)) {
+            return line;
+          }
+          values.push({ kind: 'opaque', name: `${tool} checksum`, value });
+          return `checksum = ${placeholder('opaque')}`;
         }
-        values.push({ kind: 'opaque', name: `${tool} ${key}`, value });
-        return `${key} = ${placeholder('opaque')}`;
+        case 'url':
+        case 'url_api': {
+          const problem = downloadProblem(key, value, backend);
+          if (problem) {
+            findings.push(`${tool}: ${problem}`);
+          }
+          values.push({ kind: 'opaque', name: `${tool} ${key}`, value });
+          return `${key} = ${placeholder('opaque')}`;
+        }
+        case 'version': {
+          version = value;
+          values.push({ kind: 'version', name: tool, value });
+          return `version = ${placeholder('version')}`;
+        }
+        default: {
+          return line;
+        }
       }
-      case 'version': {
-        version = value;
-        values.push({ kind: 'version', name: tool, value });
-        return `version = ${placeholder('version')}`;
-      }
-      default: {
-        return line;
-      }
-    }
-  });
+    });
   return { template: lines.join('\n'), values };
 }
 
