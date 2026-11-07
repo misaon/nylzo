@@ -19,6 +19,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -331,11 +332,11 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			response.body = bytes.Repeat([]byte{'a'}, 2<<20)
 			response.header.Del("Content-Encoding")
 		}), "/terms: client: the server sent a malformed response"},
-		{"malformed transparency document", rewrite(pathIs(server.TransparencyPath), func(response *served) {
+		{"malformed transparency document", rewrite(pathIs(api.TransparencyPath), func(response *served) {
 			response.body = []byte("{")
 			response.header.Del("Content-Encoding")
-		}), server.TransparencyPath + ": the transparency document is not valid JSON"},
-		{"transparency unavailable beside a changed page", unavailable(server.TransparencyPath, rewrite(pathIs("/terms"), func(response *served) {
+		}), api.TransparencyPath + ": the transparency document is not valid JSON"},
+		{"transparency unavailable beside a changed page", unavailable(api.TransparencyPath, rewrite(pathIs("/terms"), func(response *served) {
 			response.body = []byte("<!doctype html><script src=https://evil.example/x.js></script>")
 			response.header.Del("Content-Encoding")
 		})), "/terms: the page differs"},

@@ -530,8 +530,6 @@ func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 	}
 }
 
-const TransparencyPath = "/.well-known/nylzo/transparency.json"
-
 type instanceResponse struct {
 	Limits   api.InstanceLimits  `json:"limits"`
 	Work     api.Work            `json:"pow"`

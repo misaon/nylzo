@@ -16,7 +16,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/operator"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -41,7 +41,7 @@ func webClient(environment *command.Environment) (webclient.Build, error) {
 	if environment.WebClient != nil {
 		return environment.WebClient()
 	}
-	return server.EmbeddedWebClient()
+	return webclient.Load(web.Files())
 }
 
 func serverAddress(environment *command.Environment, name, flagValue string) (string, bool) {

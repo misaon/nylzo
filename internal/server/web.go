@@ -4,13 +4,8 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
-
-func EmbeddedWebClient() (webclient.Build, error) {
-	return webclient.Load(web.Files())
-}
 
 func WithWebFiles(files fs.FS) Option {
 	return func(server *Server) {

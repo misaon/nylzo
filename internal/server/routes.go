@@ -49,7 +49,7 @@ func (s *Server) routes() http.Handler {
 	onMessage("HEAD "+message+api.StatusAction, handleAPINotFound)
 	onMessage("POST "+api.AbusePath, s.handleAbuse)
 	mux.HandleFunc(api.Prefix, handleAPINotFound)
-	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
+	mux.HandleFunc("GET "+api.TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET "+api.HealthPath, handleHealth)
 	mux.Handle("/", s.frontend)
 	routed := logging.Route(mux)

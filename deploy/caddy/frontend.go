@@ -21,8 +21,6 @@ import (
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
-const transparencyPath = "/.well-known/nylzo/transparency.json"
-
 var (
 	errNotAbsolute         = errors.New("is not an absolute path")
 	errBuildWithoutVersion = errors.New("frontend build identity has no version")
@@ -110,7 +108,7 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 	switch {
 	case r.URL.Path == api.HealthPath:
 		return next.ServeHTTP(&dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}, r)
-	case strings.HasPrefix(r.URL.Path, api.Prefix) || r.URL.Path == transparencyPath:
+	case strings.HasPrefix(r.URL.Path, api.Prefix) || r.URL.Path == api.TransparencyPath:
 		response := &dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}
 		if maintenance {
 			webclient.WriteUnavailable(response, webclient.MaintenanceRetry)

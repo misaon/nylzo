@@ -3,13 +3,14 @@ package api
 import "slices"
 
 const (
-	Prefix        = "/api/"
-	VersionPrefix = Prefix + "v1/"
-	InstancePath  = VersionPrefix + "instance"
-	ChallengePath = VersionPrefix + "challenge"
-	MessagesPath  = VersionPrefix + "messages"
-	AbusePath     = VersionPrefix + "abuse"
-	HealthPath    = "/healthz"
+	Prefix           = "/api/"
+	VersionPrefix    = Prefix + "v1/"
+	InstancePath     = VersionPrefix + "instance"
+	ChallengePath    = VersionPrefix + "challenge"
+	MessagesPath     = VersionPrefix + "messages"
+	AbusePath        = VersionPrefix + "abuse"
+	TransparencyPath = "/.well-known/nylzo/transparency.json"
+	HealthPath       = "/healthz"
 )
 
 const (

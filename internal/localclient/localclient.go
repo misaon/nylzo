@@ -16,7 +16,6 @@ import (
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
-	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -126,7 +125,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
 	mux.HandleFunc("GET "+webclient.ManifestPath, s.handleManifest)
 	mux.Handle(api.VersionPrefix, s.fromThisPage(s.relay))
-	mux.Handle("GET "+server.TransparencyPath, s.fromThisPage(s.relay))
+	mux.Handle("GET "+api.TransparencyPath, s.fromThisPage(s.relay))
 	return securityHeaders(s.onlyThisHost(mux))
 }
 
