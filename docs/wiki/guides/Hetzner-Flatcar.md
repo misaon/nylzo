@@ -225,7 +225,7 @@ sudo journalctl -u nylzo-host -u nylzo-initialize -u nylzo-update -u nylzo-ready
 sudo cat /var/lib/nylzo-deploy/current.json; readlink /opt/nylzo/host/current
 ```
 
-For planned work, `gh workflow run watch.yml -f directive=maintenance` publishes a signed maintenance directive, which the host applies within a minute, and `-f directive=normal` ends it, without a restart. The flag is `/var/lib/nylzo-directive/maintenance`, owned by root, so Caddy can read it but not remove it; a newer signed directive overrides a flag set by hand. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
+For planned work, `gh workflow run watch.yml -f directive=maintenance` publishes a signed maintenance directive, which the host applies within about six minutes (GitHub caches the file for five), and `-f directive=normal` ends it, without a restart. The flag is `/var/lib/nylzo-directive/maintenance`, owned by root, so Caddy can read it but not remove it; a newer signed directive overrides a flag set by hand. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
 
 Hetzner backups stay off: restoring a snapshot can resurrect consumed messages. Cleanup keeps the current and previous image, Caddy, tools and host generation.
 

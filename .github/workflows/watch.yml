@@ -18,6 +18,8 @@ permissions: {}
 concurrency:
   group: production-watch
   cancel-in-progress: false
+  # A cron run that meets the chain waits instead of cancelling it; the next run then sees it pending and stops chaining.
+  queue: max
 
 jobs:
   verify:
@@ -178,8 +180,10 @@ jobs:
           NETWORKS: ${{ vars.NYLZO_ADMINISTRATOR_NETWORKS }}
         run: |
           [[ "${FIREWALL}" =~ ^[1-9][0-9]{0,15}$ ]]
+          # Without administrator networks the firewall admits nothing at all.
           rules=$(jq -nc --arg networks "${NETWORKS}" \
-            '{rules: [{direction: "in", protocol: "tcp", port: "22", source_ips: ($networks | split(",") | map(select(length > 0))), description: "kill switch"}]}')
+            '($networks | split(",") | map(select(length > 0))) as $sources
+            | {rules: (if $sources == [] then [] else [{direction: "in", protocol: "tcp", port: "22", source_ips: $sources, description: "kill switch"}] end)}')
           action=$(curl --fail --silent --show-error --proto '=https' --max-time 30 -X POST \
             -H "Authorization: Bearer ${HCLOUD_TOKEN}" -H 'Content-Type: application/json' \
             --data "${rules}" "https://api.hetzner.cloud/v1/firewalls/${FIREWALL}/actions/set_rules" | jq -er '.actions[0].id')
