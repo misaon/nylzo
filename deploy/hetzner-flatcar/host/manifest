@@ -28,8 +28,10 @@ format 1
 /etc/systemd/system/caddy.service proxy/caddy.service
 /opt/nylzo/runtime/bandwidth system/bandwidth
 /opt/nylzo/runtime/firewall system/firewall
+/opt/nylzo/runtime/public-address system/public-address
 /etc/systemd/system/nylzo-bandwidth.service system/nylzo-bandwidth.service
 /etc/systemd/system/nylzo-firewall.service system/nylzo-firewall.service
+/etc/systemd/system/nylzo-ipv6.service system/nylzo-ipv6.service
 /etc/systemd/system/nylzo-ssh-identity.service system/nylzo-ssh-identity.service
 /etc/systemd/system/containerd.service.d/20-nylzo.conf system/containerd.conf
 /etc/containerd/nylzo.toml system/containerd.toml
