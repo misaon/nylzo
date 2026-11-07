@@ -38,8 +38,10 @@ func init() {
 type Frontend struct {
 	PublicURL   string `json:"public_url"`
 	Maintenance string `json:"maintenance,omitempty"`
-	handler     http.Handler
-	pages       webclient.Pages
+	// The operator's contact, the same as NYLZO_CONTACT of the server, so its link is the one the pages may reach.
+	Contact string `json:"contact,omitempty"`
+	handler http.Handler
+	pages   webclient.Pages
 }
 
 func (*Frontend) CaddyModule() caddy.ModuleInfo {
@@ -49,6 +51,9 @@ func (*Frontend) CaddyModule() caddy.ModuleInfo {
 func (f *Frontend) Provision(_ caddy.Context) error {
 	if err := webclient.CheckPublicURL(f.PublicURL); err != nil {
 		return err
+	}
+	if err := webclient.CheckContact(f.Contact); err != nil {
+		return fmt.Errorf("the contact %q: %w", f.Contact, err)
 	}
 	if f.Maintenance != "" && !filepath.IsAbs(f.Maintenance) {
 		return fmt.Errorf("the maintenance file %q is not an absolute path", f.Maintenance)
@@ -66,10 +71,10 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return errors.New("frontend build identity has no version")
 		}
 	}
-	if f.pages, err = build.Render(f.PublicURL); err != nil {
+	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
 		return err
 	}
-	f.handler, err = webclient.NewHandler(build, f.PublicURL, information)
+	f.handler, err = webclient.NewHandler(build, f.PublicURL, f.Contact, information)
 	return err
 }
 
@@ -79,11 +84,20 @@ func (f *Frontend) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 			return dispenser.ArgErr()
 		}
 		for dispenser.NextBlock(0) {
-			if dispenser.Val() != "maintenance" {
+			switch dispenser.Val() {
+			case "maintenance":
+				if !dispenser.AllArgs(&f.Maintenance) {
+					return dispenser.ArgErr()
+				}
+			case "contact":
+				// An empty environment variable leaves the subdirective without a value: no contact.
+				arguments := dispenser.RemainingArgs()
+				if len(arguments) > 1 {
+					return dispenser.ArgErr()
+				}
+				f.Contact = strings.Join(arguments, "")
+			default:
 				return dispenser.Errf("unknown subdirective %q", dispenser.Val())
-			}
-			if !dispenser.AllArgs(&f.Maintenance) {
-				return dispenser.ArgErr()
 			}
 		}
 	}

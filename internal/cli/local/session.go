@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/localclient"
+	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -18,6 +20,7 @@ const (
 	shutdownTimeout = 5 * time.Second
 	noticeBuffer    = 8
 	reminderShare   = 12
+	maxContactBytes = 64 << 10
 )
 
 type Link struct {
@@ -38,6 +41,7 @@ type session struct {
 	environment *command.Environment
 	server      *localclient.Server
 	options     Options
+	contact     string
 	notices     chan localclient.Notice
 	cleanup     func()
 	address     string
@@ -61,6 +65,7 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 		notices:     make(chan localclient.Notice, noticeBuffer),
 		cleanup:     func() {},
 	}
+	current.contact = instanceContact(ctx, options.Instance)
 	if current.server, err = localclient.New(listeners, current.config()); err != nil {
 		listeners.Close()
 		return command.Failf(environment, "%s", err)
@@ -83,6 +88,7 @@ func (s *session) config() *localclient.Config {
 	information := s.environment.BuildInformation()
 	return &localclient.Config{
 		Instance:  s.options.Instance,
+		Contact:   s.contact,
 		Build:     s.options.Build,
 		Version:   information.Version,
 		BuildInfo: information,
@@ -93,6 +99,24 @@ func (s *session) config() *localclient.Config {
 			}
 		},
 	}
+}
+
+// instanceContact reads the operator's contact, the one address outside the client its pages may reach; without it
+// the transparency page still names the contact, and Chromium refuses to follow its link.
+func instanceContact(ctx context.Context, instance string) string {
+	api, err := client.New(instance)
+	if err != nil {
+		return ""
+	}
+	fetched, err := api.Fetch(ctx, server.TransparencyPath, "identity", maxContactBytes)
+	if err != nil {
+		return ""
+	}
+	contact, err := webclient.OperatorContact(fetched.Body)
+	if err != nil {
+		return ""
+	}
+	return contact
 }
 
 func (s *session) keepNameLocal() {

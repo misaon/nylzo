@@ -16,7 +16,7 @@ export const AGENT_STEPS: readonly AgentStep[] = [
   {
     title: 'agents.install.title',
     text: 'agents.install.text',
-    link: { label: 'agents.install.link', href: `${REPOSITORY_URL}/releases/latest` },
+    link: { label: 'agents.install.link', href: `${REPOSITORY_URL}/releases` },
   },
   {
     title: 'agents.skill.title',

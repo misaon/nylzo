@@ -38,7 +38,7 @@ func (e *ErrorPage) Provision(_ caddy.Context) error {
 	if err != nil {
 		return err
 	}
-	e.pages, err = build.Render("")
+	e.pages, err = build.Render("", "")
 	return err
 }
 

@@ -32,7 +32,7 @@ func embeddedPages(t *testing.T, publicURL string) webclient.Pages {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := build.Render(publicURL)
+	pages, err := build.Render(publicURL, "")
 	if err != nil {
 		t.Fatal(err)
 	}

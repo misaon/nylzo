@@ -10,13 +10,13 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 )
 
-func NewHandler(build Build, publicURL string, information buildinfo.Info) (http.Handler, error) {
+func NewHandler(build Build, publicURL, contact string, information buildinfo.Info) (http.Handler, error) {
 	if publicURL != "" {
 		if err := CheckPublicURL(publicURL); err != nil {
 			return nil, err
 		}
 	}
-	pages, err := build.Render(publicURL)
+	pages, err := build.Render(publicURL, contact)
 	if err != nil {
 		return nil, err
 	}

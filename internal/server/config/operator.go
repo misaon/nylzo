@@ -2,20 +2,14 @@ package config
 
 import (
 	"errors"
-	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const maxOperatorField = 200
-
-var (
-	emailContact = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
-	httpsContact = regexp.MustCompile(
-		`^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$`,
-	)
-)
 
 type Operator struct {
 	Name    string `json:"name,omitempty"`
@@ -33,7 +27,7 @@ func (o Operator) validate() error {
 			)
 		}
 	}
-	if o.Contact != "" && !emailContact.MatchString(o.Contact) && !httpsContact.MatchString(o.Contact) {
+	if webclient.CheckContact(o.Contact) != nil {
 		return errors.New("NYLZO_CONTACT must be an email address or an https:// address")
 	}
 	return nil

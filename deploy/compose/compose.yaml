@@ -54,6 +54,7 @@ services:
       net.ipv4.ip_unprivileged_port_start: 80
     environment:
       NYLZO_DOMAIN: ${NYLZO_DOMAIN:?set NYLZO_DOMAIN to the public host name}
+      NYLZO_CONTACT: ${NYLZO_CONTACT:-}
       XDG_DATA_HOME: /var/lib/caddy
       XDG_CONFIG_HOME: /var/lib/caddy/config
     ports:

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -25,7 +26,7 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := build.Render("https://localhost")
+	pages, err := build.Render("https://localhost", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,5 +286,22 @@ func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
 				t.Fatalf("page after the maintenance file was removed: %d", response.StatusCode)
 			}
 		})
+	}
+}
+
+func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
+	for source, want := range map[string]string{
+		"nylzo_frontend https://localhost {\n contact security@example.org\n}": "security@example.org",
+		"nylzo_frontend https://localhost {\n contact\n}":                      "",
+		"nylzo_frontend https://localhost":                                     "",
+	} {
+		var frontend Frontend
+		if err := frontend.UnmarshalCaddyfile(caddyfile.NewTestDispenser(source)); err != nil || frontend.Contact != want {
+			t.Fatalf("%q: contact %q, %v", source, frontend.Contact, err)
+		}
+	}
+	var frontend Frontend
+	if err := frontend.UnmarshalCaddyfile(caddyfile.NewTestDispenser("nylzo_frontend https://localhost {\n contact a@b.example c@d.example\n}")); err == nil {
+		t.Fatal("two contacts were accepted")
 	}
 }

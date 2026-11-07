@@ -41,7 +41,12 @@ func (b Build) Page(path, publicURL string) (string, error) {
 
 type Pages map[string]Page
 
-func (b Build) Render(publicURL string) (Pages, error) {
+// Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names.
+func (b Build) Render(publicURL, contact string) (Pages, error) {
+	if err := CheckContact(contact); err != nil {
+		return nil, fmt.Errorf("server: operator contact: %w", err)
+	}
+	allowlist := ConnectionAllowlist(contact)
 	pages := Pages{}
 	for name, template := range b.Templates {
 		html, err := render(template, publicURL)
@@ -52,7 +57,7 @@ func (b Build) Render(publicURL string) (Pages, error) {
 		if isStatusTemplate(name) {
 			policy = StatusPolicy(html)
 		}
-		if pages[name], err = newPage(html, policy); err != nil {
+		if pages[name], err = newPage(html, policy, allowlist); err != nil {
 			return nil, err
 		}
 	}
@@ -97,13 +102,18 @@ func render(template, publicURL string) (string, error) {
 }
 
 type Page struct {
-	body   []byte
-	gzip   []byte
-	policy string
+	body    []byte
+	gzip    []byte
+	headers *pageHeaders
 }
 
-func newPage(html, policy string) (Page, error) {
-	page := Page{body: []byte(html), policy: policy}
+type pageHeaders struct {
+	policy    string
+	allowlist string
+}
+
+func newPage(html, policy, allowlist string) (Page, error) {
+	page := Page{body: []byte(html), headers: &pageHeaders{policy: policy, allowlist: allowlist}}
 	var buffer bytes.Buffer
 	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
 	if err != nil {
@@ -122,7 +132,11 @@ func (p Page) Body() []byte {
 }
 
 func (p Page) Policy() string {
-	return p.policy
+	return p.headers.policy
+}
+
+func (p Page) Allowlist() string {
+	return p.headers.allowlist
 }
 
 func (p Page) SHA256() string {
@@ -136,10 +150,8 @@ func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
 
 func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header := w.Header()
-	header.Set("Content-Security-Policy", p.policy)
-	if r.URL.Path == transparencyPage {
-		header.Del(connectionAllowlistHeader)
-	}
+	header.Set("Content-Security-Policy", p.headers.policy)
+	header.Set(connectionAllowlistHeader, p.headers.allowlist)
 	header.Set("Content-Type", htmlContentType)
 	header.Add("Vary", "Accept-Encoding")
 	body := p.body

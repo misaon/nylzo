@@ -306,7 +306,7 @@ func TestPagesAreTheEmbeddedClientWithTheInstanceAddress(t *testing.T) {
 	upstream := newInstance(t, answerJSON)
 	server := newLocal(t, upstream, nil)
 	build := webBuild(t)
-	pages, err := build.Render(upstream.server.URL)
+	pages, err := build.Render(upstream.server.URL, "")
 	if err != nil {
 		t.Fatal(err)
 	}

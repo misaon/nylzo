@@ -39,6 +39,7 @@ const (
 
 type Config struct {
 	Instance  string
+	Contact   string
 	Build     webclient.Build
 	Version   string
 	BuildInfo buildinfo.Info
@@ -68,7 +69,7 @@ func New(listeners *Listeners, config *Config) (*Server, error) {
 	if !config.Build.Built {
 		return nil, errNoClient
 	}
-	pages, err := config.Build.Render(instance)
+	pages, err := config.Build.Render(instance, config.Contact)
 	if err != nil {
 		return nil, err
 	}

@@ -25,7 +25,12 @@ func (s *Server) loadWebClient() error {
 	if err != nil {
 		return err
 	}
-	if s.frontend, err = webclient.NewHandler(build, s.settings.PublicURL, s.buildInformation()); err != nil {
+	if s.frontend, err = webclient.NewHandler(
+		build,
+		s.settings.PublicURL,
+		s.settings.Operator.Contact,
+		s.buildInformation(),
+	); err != nil {
 		return err
 	}
 	s.logger.Info("web-client", "built", build.Built, "assets", len(build.Assets), "public_url", s.settings.PublicURL)

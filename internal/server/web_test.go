@@ -34,7 +34,6 @@ const (
 var requiredHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
 	"Integrity-Policy":             "blocked-destinations=(script)",
-	"Connection-Allowlist":         `(response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*" "https://opensource.org/license/mit")`,
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
@@ -107,9 +106,18 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
 			checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
 		}
-		transparency, _ := harness.do(&testRequest{method: http.MethodGet, path: "/transparency"})
-		if allowlist := transparency.Header.Values("Connection-Allowlist"); len(allowlist) != 0 {
-			t.Fatalf("the transparency page may link the operator's contact anywhere, yet carries %q", allowlist)
+		const allowlist = `(response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*")`
+		for path, want := range map[string]string{
+			"/": allowlist, "/transparency": allowlist, "/m/" + core.NewID().String(): allowlist, "/nope": allowlist,
+			"/api/v1/instance": "",
+		} {
+			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
+			if got := response.Header.Values(
+				"Connection-Allowlist",
+			); want == "" && len(got) != 0 ||
+				want != "" && (len(got) != 1 || got[0] != want) {
+				t.Fatalf("%s: Connection-Allowlist %q, want %q; no page may leave it out", path, got, want)
+			}
 		}
 		prefetch := map[string]string{"Sec-Purpose": "prefetch"}
 		for _, testCase := range []struct {
@@ -445,7 +453,7 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := build.Render(settings.PublicURL)
+	pages, err := build.Render(settings.PublicURL, settings.Operator.Contact)
 	if err != nil {
 		t.Fatal(err)
 	}

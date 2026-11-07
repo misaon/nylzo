@@ -16,18 +16,9 @@ const statusPolicyFormat = "default-src 'none'; script-src %s; style-src 'self'%
 
 const robotsTag = "noindex, nofollow"
 
-const (
-	connectionAllowlistHeader = "Connection-Allowlist"
-	// Every address the client links to; Chromium refuses any other connection or navigation, also from injected code.
-	connectionAllowlist = `(response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*" "https://opensource.org/license/mit")`
-	// The operator's contact on this page may be any https address.
-	transparencyPage = "/transparency"
-)
-
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
 	"Integrity-Policy":             "blocked-destinations=(script)",
-	connectionAllowlistHeader:      connectionAllowlist,
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
@@ -48,9 +39,6 @@ func SecurityHeaders(path string) map[string]string {
 	headers := maps.Clone(securityHeaders)
 	if !IsHomePath(path) {
 		headers["X-Robots-Tag"] = robotsTag
-	}
-	if path == transparencyPage {
-		delete(headers, connectionAllowlistHeader)
 	}
 	return headers
 }

@@ -17,7 +17,7 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 	t.Parallel()
 	build := load(t, builtClient(t))
 	information := buildinfo.Info{Version: "0.4.0", Commit: strings.Repeat("a", 40)}
-	handler, err := webclient.NewHandler(build, "https://nylzo.example", information)
+	handler, err := webclient.NewHandler(build, "https://nylzo.example", "", information)
 	if err != nil {
 		t.Fatal(err)
 	}
