@@ -385,27 +385,6 @@
       "addLabels": [
         "requires-attention"
       ]
-    },
-    {
-      "description": "Maintenance lines ship only updates that need no migration.",
-      "matchBaseBranches": [
-        "/^release\\/v/"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "enabled": false
-    },
-    {
-      "description": "Maintenance lines take no pre-1.0 minor either.",
-      "matchBaseBranches": [
-        "/^release\\/v/"
-      ],
-      "matchCurrentVersion": "/^v?0\\./",
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "enabled": false
     }
   ],
   "customManagers": [
