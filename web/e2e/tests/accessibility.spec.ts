@@ -204,6 +204,20 @@ test('keyboard focus on the comparison table and the self-host commands draws th
   }
 });
 
+test('with reduced motion the confirmation backdrop appears without a fade (WCAG 2.3.3)', async ({ page }) => {
+  await createMessageInPage(page, { text: 'still', remember: true });
+  await page.goto('/sent');
+  await page.getByRole('button', { name: 'Cancel message' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  const durations = await dialog.evaluate((element) =>
+    getComputedStyle(element, '::backdrop')
+      .transitionDuration.split(',')
+      .map((duration) => Number(duration.trim().slice(0, -1))),
+  );
+  expect(Math.max(...durations)).toBeLessThan(0.01);
+});
+
 test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone (AK20)', async ({
   newPage,
 }) => {

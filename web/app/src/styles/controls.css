@@ -141,10 +141,14 @@
     &::backdrop {
       background: oklch(0.08 0.02 275 / 0.7);
       backdrop-filter: blur(6px);
-      transition:
-        opacity 0.3s var(--ease-silk),
-        display 0.3s allow-discrete,
-        overlay 0.3s allow-discrete;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      &::backdrop {
+        transition:
+          opacity 0.3s var(--ease-silk),
+          display 0.3s allow-discrete,
+          overlay 0.3s allow-discrete;
+      }
     }
     &:not([open])::backdrop {
       opacity: 0;
@@ -174,7 +178,11 @@
       inset -1px 0 0 oklch(0.9 0.05 246 / 0.85),
       inset 0 -10px 18px -12px oklch(0.8 0.1 305 / 0.45),
       10px 0 20px -8px oklch(0.77 0.115 249 / 0.5);
-    transition: inline-size 0.5s var(--ease-silk);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    &::-webkit-progress-value {
+      transition: inline-size 0.5s var(--ease-silk);
+    }
   }
   &::-moz-progress-bar {
     background:
