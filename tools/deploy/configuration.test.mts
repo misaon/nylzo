@@ -137,7 +137,7 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   const identity = sources.get("system/nylzo-ssh-identity.service")!;
   for (const expected of ["Requires=sshd-keygen.service", "-f /etc/ssh/ssh_host_ed25519_key.pub", "TTYPath=/dev/tty1"]) assert(identity.includes(expected));
   const ssh = sources.get("system/sshd.conf")!;
-  for (const expected of ["PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,ssh-ed25519", "PubkeyAuthOptions verify-required", "HostKeyAlgorithms ssh-ed25519", "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com", "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"]) assert(ssh.includes(`${expected}\n`), expected);
+  for (const expected of ["PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,ssh-ed25519", "PubkeyAuthOptions touch-required", "HostKeyAlgorithms ssh-ed25519", "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com", "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"]) assert(ssh.includes(`${expected}\n`), expected);
 });
 
 test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {
