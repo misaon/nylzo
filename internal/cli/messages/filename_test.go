@@ -1,4 +1,4 @@
-package cli
+package messages
 
 import (
 	"encoding/json"
@@ -57,7 +57,7 @@ func TestAttachmentNamesMatchTheWebClient(t *testing.T) {
 
 func TestFileNamesMatchTheSharedVectors(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../spec/file-name-vectors.json")
+	data, err := os.ReadFile("../../../spec/file-name-vectors.json")
 	if err != nil {
 		t.Fatal(err)
 	}

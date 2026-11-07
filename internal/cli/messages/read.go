@@ -1,4 +1,4 @@
-package cli
+package messages
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,7 +59,10 @@ var (
 	errLinkRetiredProfile = errors.New(
 		"the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link",
 	)
-	errLinkDamaged      = errors.New("the link is incomplete or damaged")
+	errLinkDamaged       = errors.New("the link is incomplete or damaged")
+	errLinkOtherInstance = errors.New(
+		"the link belongs to another instance than --server or " + command.EnvironmentServer,
+	)
 	errLinkMismatch     = errors.New("the link does not match the message on the server")
 	errPassphraseNeeded = errors.New(
 		"this message needs a passphrase: use --passphrase-file, " + command.EnvironmentPassphrase + " or --ask-passphrase",
@@ -123,11 +127,33 @@ func parseOpenLink(raw string) (openLink, error) {
 }
 
 func linkFromInput(environment *command.Environment, linkFile string) (openLink, error) {
-	raw, err := readLink(environment, linkFile)
+	raw, err := ReadLink(environment, linkFile)
 	if err != nil {
 		return openLink{}, err
 	}
 	return parseOpenLink(raw)
+}
+
+type HandedOver struct {
+	Path     string
+	Fragment string
+}
+
+func HandOver(raw, instance string) (HandedOver, error) {
+	parsed, err := parseOpenLink(raw)
+	if err != nil {
+		return HandedOver{}, err
+	}
+	parsed.wipe()
+	if parsed.origin != instance {
+		return HandedOver{}, errLinkOtherInstance
+	}
+	head, fragment, _ := strings.Cut(raw, "#")
+	address, err := url.Parse(head)
+	if err != nil {
+		return HandedOver{}, errLinkDamaged
+	}
+	return HandedOver{Path: address.EscapedPath(), Fragment: fragment}, nil
 }
 
 func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
@@ -161,8 +187,8 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	return flags, options
 }
 
-// runRead creates the output directory before the claim, so a write problem never spends an open.
-func runRead(ctx context.Context, environment *command.Environment, arguments []string) int {
+// RunRead creates the output directory before the claim, so a write problem never spends an open.
+func RunRead(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := readFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code

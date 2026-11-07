@@ -2,20 +2,14 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
-	"net/url"
-	"strings"
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/local"
+	"github.com/misaon/nylzo/internal/cli/messages"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
-)
-
-var errLinkOtherInstance = errors.New(
-	"the link belongs to another instance than --server or " + command.EnvironmentServer,
 )
 
 type localOptions struct {
@@ -75,11 +69,11 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
-	raw, err := readLink(environment, *linkFile)
+	raw, err := messages.ReadLink(environment, *linkFile)
 	if err != nil {
 		return command.Failf(environment, "link: %s", command.Explain(err))
 	}
-	link, err := handedOverLink(raw, instance)
+	link, err := messages.HandOver(raw, instance)
 	if err != nil {
 		return command.Failf(environment, "link: %s", command.Explain(err))
 	}
@@ -91,30 +85,8 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 		Instance:    instance,
 		Build:       build,
 		OpenBrowser: !options.noBrowser,
-		Link:        &local.Link{Path: link.path, Fragment: link.fragment, Lifetime: local.HandoffLifetime},
+		Link:        &local.Link{Path: link.Path, Fragment: link.Fragment, Lifetime: local.HandoffLifetime},
 	})
-}
-
-type handedOver struct {
-	path     string
-	fragment string
-}
-
-func handedOverLink(raw, instance string) (handedOver, error) {
-	parsed, err := parseOpenLink(raw)
-	if err != nil {
-		return handedOver{}, err
-	}
-	parsed.wipe()
-	if parsed.origin != instance {
-		return handedOver{}, errLinkOtherInstance
-	}
-	head, fragment, _ := strings.Cut(raw, "#")
-	address, err := url.Parse(head)
-	if err != nil {
-		return handedOver{}, errLinkDamaged
-	}
-	return handedOver{path: address.EscapedPath(), fragment: fragment}, nil
 }
 
 // localInstance names the instance the local client relays to; its pages carry it, so it follows the rules of a public URL.

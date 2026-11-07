@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/messages"
 	"github.com/misaon/nylzo/internal/cli/operator"
 	"github.com/misaon/nylzo/internal/cli/verifyclient"
 	"github.com/misaon/nylzo/internal/core"
@@ -36,14 +37,14 @@ var (
 
 func commands() []subcommand {
 	return []subcommand{
-		{"create", "encrypt text from stdin or a file and print its link", runCreate},
-		{"read", "read a link from stdin and decrypt the message into private files", runRead},
+		{"create", "encrypt text from stdin or a file and print its link", messages.RunCreate},
+		{"read", "read a link from stdin and decrypt the message into private files", messages.RunRead},
 		{"open", "open a link from stdin in the browser with the verified web client of this nylzo", runOpen},
 		{"web", "serve the verified web client of this nylzo on this computer for an instance", runWeb},
-		{"status", "show the state of a message from its manage token", runStatus},
-		{"cancel", "end a message with its manage token", runCancel},
-		{"report", "report a message for abuse from its link on stdin", runReport},
-		{"burn", "delete the remaining opens of a message from its link", runBurn},
+		{"status", "show the state of a message from its manage token", messages.RunStatus},
+		{"cancel", "end a message with its manage token", messages.RunCancel},
+		{"report", "report a message for abuse from its link on stdin", messages.RunReport},
+		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn},
 		{"serve", "run the server with the embedded web client", operator.RunServe},
 		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce},
 		{

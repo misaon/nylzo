@@ -1,4 +1,4 @@
-package cli
+package messages
 
 import (
 	"context"
@@ -119,7 +119,7 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 	return flags, options
 }
 
-func runCreate(ctx context.Context, environment *command.Environment, arguments []string) int {
+func RunCreate(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := createFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code

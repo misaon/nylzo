@@ -1,4 +1,4 @@
-package cli
+package messages
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 
 const manageTokenFileUsage = "read the manage token from this file (or " + command.EnvironmentManageToken + ", or stdin)"
 
-func runStatus(ctx context.Context, environment *command.Environment, arguments []string) int {
+func RunStatus(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "status")
 	file := flags.String("manage-token-file", "", manageTokenFileUsage)
 	asJSON := flags.Bool("json", false, "print the status as JSON")
@@ -62,7 +62,7 @@ func printStatus(environment *command.Environment, status *api.Status) {
 	fmt.Fprintf(environment.Stdout, "failed passphrase attempts: %d\n", status.FailedPassphraseAttempts)
 }
 
-func runCancel(ctx context.Context, environment *command.Environment, arguments []string) int {
+func RunCancel(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "cancel")
 	file := flags.String("manage-token-file", "", manageTokenFileUsage)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
@@ -93,7 +93,7 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 	return &token, server, nil
 }
 
-func runBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
+func RunBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
 	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
@@ -124,7 +124,7 @@ func linkClient(environment *command.Environment, linkFile string) (*openLink, *
 	return &link, server, nil
 }
 
-func runReport(ctx context.Context, environment *command.Environment, arguments []string) int {
+func RunReport(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "report")
 	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
 	reasonFile := flags.String(

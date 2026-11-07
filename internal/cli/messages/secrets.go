@@ -1,4 +1,4 @@
-package cli
+package messages
 
 import (
 	"bytes"
@@ -34,7 +34,7 @@ func noteSource(environment *command.Environment, what, variable string) {
 	fmt.Fprintf(environment.Stderr, "%s: using the %s named by %s\n", command.Program, what, variable)
 }
 
-func readLink(environment *command.Environment, linkFile string) (string, error) {
+func ReadLink(environment *command.Environment, linkFile string) (string, error) {
 	var raw []byte
 	var err error
 	switch {
