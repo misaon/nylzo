@@ -155,7 +155,7 @@ async function stackWorkspace(site: Awaited<ReturnType<typeof validatedSite>>, s
 
 export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
   const site = await validatedSite(siteFile, kind);
-  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com administrator key; create one with ssh-keygen -t ed25519-sk -O verify-required");
+  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com or sk-ecdsa-sha2-nistp256@openssh.com administrator key: a security key, or a Mac Secure Enclave key as the Hetzner Flatcar guide describes");
   const bundle = kind === "dns" ? undefined : await releaseEvidence(site.initialRelease, site.architecture, verify);
   const prepared = await stackWorkspace(site, siteFile, kind);
   const { root, directory, environment } = prepared;

@@ -9,10 +9,13 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+import { generateKeyPairSync } from "node:crypto";
 
 const ed25519 = "ssh-ed25519 " + Buffer.concat([Buffer.from("0000000b7373682d6564323535313900000020", "hex"), Buffer.alloc(32, 1)]).toString("base64");
 const field = (value: Buffer | string) => { const bytes = Buffer.from(value); const length = Buffer.alloc(4); length.writeUInt32BE(bytes.length); return Buffer.concat([length, bytes]); };
 const securityKey = (application = "ssh:", key = Buffer.alloc(32, 2), type = "sk-ssh-ed25519@openssh.com") => `${type} ${Buffer.concat([field(type), field(key), field(application)]).toString("base64")} operator@laptop`;
+const p256Point = () => { const { x, y } = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }); return Buffer.concat([Buffer.from([4]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]); };
+const enclaveKey = (point = p256Point(), curve = "nistp256", type = "sk-ecdsa-sha2-nistp256@openssh.com") => `${type} ${Buffer.concat([field(type), field(curve), field(point), field("ssh:")]).toString("base64")} ssh:`;
 const site = {
   name: "nylzo-test", domain: "nylzo.example.org", location: "nbg1", serverType: "cx23", architecture: "amd64",
   administratorNetworks: ["192.0.2.1/32", "2001:db8::1/128"],
@@ -33,6 +36,7 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
     { administratorPublicKey: "ssh-ed25519 " + Buffer.alloc(51).toString("base64") },
     { administratorPublicKey: securityKey("web:") }, { administratorPublicKey: securityKey("ssh:", Buffer.alloc(31, 2)) },
     { administratorPublicKey: securityKey("ssh:", Buffer.alloc(32, 2), "sk-ecdsa-sha2-nistp256@openssh.com") },
+    { administratorPublicKey: enclaveKey(Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 2)])) }, { administratorPublicKey: enclaveKey(p256Point(), "nistp384") },
     { administratorPublicKey: securityKey() + "\nssh-ed25519 AAAA" },
     { heartbeatUrl: "http://heartbeat.example.org/ping/x" }, { heartbeatUrl: "https://heartbeat.example.org/ping?x=1" },
     { tang: { threshold: 1, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }] } },
@@ -43,6 +47,7 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
   assert.equal(configuration(site), site);
   assert.equal(administratorKeyIsHardware(securityKey()), true);
   assert.equal(administratorKeyIsHardware(securityKey("ssh:nylzo")), true);
+  assert.equal(administratorKeyIsHardware(enclaveKey()), true);
   assert.equal(administratorKeyIsHardware(ed25519), false);
   configuration({ ...site, administratorPublicKey: securityKey(), heartbeatUrl: "https://hc-ping.com/0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", acmeAccountUri: "https://acme-v02.api.letsencrypt.org/acme/acct/3938438202",
     tang: { threshold: 2, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }, { url: "https://tang.example.net:7500", thumbprint: "B".repeat(43) }] } });
@@ -132,7 +137,7 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   const identity = sources.get("system/nylzo-ssh-identity.service")!;
   for (const expected of ["Requires=sshd-keygen.service", "-f /etc/ssh/ssh_host_ed25519_key.pub", "TTYPath=/dev/tty1"]) assert(identity.includes(expected));
   const ssh = sources.get("system/sshd.conf")!;
-  for (const expected of ["PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,ssh-ed25519", "PubkeyAuthOptions verify-required", "HostKeyAlgorithms ssh-ed25519", "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com", "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"]) assert(ssh.includes(`${expected}\n`), expected);
+  for (const expected of ["PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,ssh-ed25519", "PubkeyAuthOptions verify-required", "HostKeyAlgorithms ssh-ed25519", "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com", "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"]) assert(ssh.includes(`${expected}\n`), expected);
 });
 
 test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {
