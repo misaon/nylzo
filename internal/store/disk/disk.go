@@ -247,7 +247,7 @@ func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
 		return "", err
 	}
 	buffer, _ := copyBuffers.Get().(*[copyBufferLen]byte)
-	written, err := io.CopyBuffer(struct{ io.Writer }{file}, content, buffer[:])
+	written, err := io.CopyBuffer(struct{ io.Writer }{file}, struct{ io.Reader }{content}, buffer[:])
 	clear(buffer[:])
 	copyBuffers.Put(buffer)
 	if err == nil && written != size {
