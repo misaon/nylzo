@@ -119,9 +119,12 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 	size := request.header.Size
 	tokenOK := false
 	if ok {
-		var ratchetID [proof.RatchetIDLen]byte
-		ratchetID, tokenOK = s.idTokens.Valid(request.id, *request.header.Epoch, request.header.IDToken, time.Now())
-		request.ratchetID = epoch.RatchetID(ratchetID)
+		request.ratchetID, tokenOK = s.idTokens.Valid(
+			request.id,
+			*request.header.Epoch,
+			request.header.IDToken,
+			time.Now(),
+		)
 	}
 	switch {
 	case request.outdated:

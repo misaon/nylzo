@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
@@ -279,7 +280,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.ReportDay = int64(fields.readUint32())
 	message.Reports = int(fields.readByte())
 	message.Epoch = fields.readUint32()
-	copy(message.RatchetID[:], fields.next(RatchetIDLen))
+	copy(message.RatchetID[:], fields.next(epoch.RatchetIDLen))
 	leases := int(fields.readByte())
 	if fields.truncated() || ending >= len(endings) || hasVerifier > 1 || !fields.remaining(leases*leaseLen) {
 		return nil, fmt.Errorf("%w: truncated or unknown field", ErrCorrupt)

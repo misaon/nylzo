@@ -166,7 +166,7 @@ func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *st
 		return "", false
 	}
 	now := time.Now()
-	expiryShare, err := s.epochs.Share(epoch.RatchetID(message.RatchetID), message.Epoch, record.Row.Locator, now)
+	expiryShare, err := s.epochs.Share(message.RatchetID, message.Epoch, record.Row.Locator, now)
 	if errors.Is(err, epoch.ErrShareGone) {
 		s.endLostShare(w, r, record, now)
 		return "", false

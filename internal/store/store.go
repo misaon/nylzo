@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
@@ -132,10 +133,8 @@ type Message struct {
 	Reports          int
 	// Epoch and RatchetID name the expiry share of the message (spec section 5.6).
 	Epoch     uint32
-	RatchetID [RatchetIDLen]byte
+	RatchetID epoch.RatchetID
 }
-
-const RatchetIDLen = 16
 
 func (m *Message) PassphraseRequired() bool {
 	return len(m.VerifierMAC) > 0
