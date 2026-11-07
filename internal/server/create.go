@@ -6,7 +6,8 @@ import (
 	"crypto/cipher"
 	"crypto/ecdh"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"math"
@@ -41,19 +42,6 @@ const (
 	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
 	storeSlack = 2 * time.Minute
 )
-
-var createHeaderKeys = map[string]bool{
-	"id":           true,
-	"id_token":     true,
-	"epoch":        true,
-	"read_key":     true,
-	"verifier_key": true,
-	"manage_key":   true,
-	"kdf_id":       true,
-	"opens_max":    true,
-	"ttl_s":        true,
-	"size":         true,
-}
 
 type createRequest struct {
 	header      api.CreateHeader
@@ -141,7 +129,7 @@ func parseCreateHeader(raw string, limits config.Limits) (createRequest, bool) {
 		return request, false
 	}
 	data, err := base64.RawURLEncoding.Strict().DecodeString(raw)
-	if err != nil || !onlyCreateHeaderKeys(data) || json.Unmarshal(data, &request.header) != nil {
+	if err != nil || !decodeCreateHeader(data, &request.header) {
 		return request, false
 	}
 	header := &request.header
@@ -172,17 +160,10 @@ func (c *createRequest) checkPolicy(limits config.Limits) bool {
 	return c.header.Size >= envelope.Pad && c.header.Size%envelope.Pad == 0
 }
 
-func onlyCreateHeaderKeys(data []byte) bool {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
-		return false
-	}
-	for key := range fields {
-		if !createHeaderKeys[key] {
-			return false
-		}
-	}
-	return true
+// decodeCreateHeader relies on json/v2 matching member names case-sensitively and refusing repeated ones.
+func decodeCreateHeader(data []byte, header *api.CreateHeader) bool {
+	return jsontext.Value(data).Kind() == jsontext.KindBeginObject &&
+		json.Unmarshal(data, header, json.RejectUnknownMembers(true)) == nil
 }
 
 // decodeKeys refuses a key that is not a canonical point of full order and two equal keys (D18).

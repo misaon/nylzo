@@ -132,18 +132,6 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("not base64!")
 	settings := config.Defaults()
 	settings.ReportKey = testReportKey.PublicKey()
-	allowed := map[string]bool{
-		"id":           true,
-		"id_token":     true,
-		"epoch":        true,
-		"read_key":     true,
-		"verifier_key": true,
-		"manage_key":   true,
-		"kdf_id":       true,
-		"opens_max":    true,
-		"ttl_s":        true,
-		"size":         true,
-	}
 	f.Fuzz(func(t *testing.T, value string) {
 		if !parsesCreateHeader(settings.Limits, value) {
 			return
@@ -157,7 +145,7 @@ func FuzzCreateHeader(f *testing.F) {
 			t.Fatalf("accepted invalid JSON: %v", unmarshalErr)
 		}
 		for name := range fields {
-			if !allowed[name] {
+			if !createHeaderMembers[name] {
 				t.Fatalf("accepted key %q", name)
 			}
 		}
@@ -179,6 +167,19 @@ func FuzzCreateHeader(f *testing.F) {
 	})
 }
 
+var createHeaderMembers = map[string]bool{
+	"id":           true,
+	"id_token":     true,
+	"epoch":        true,
+	"read_key":     true,
+	"verifier_key": true,
+	"manage_key":   true,
+	"kdf_id":       true,
+	"opens_max":    true,
+	"ttl_s":        true,
+	"size":         true,
+}
+
 func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 	t.Parallel()
 	tags := map[string]bool{}
@@ -186,8 +187,12 @@ func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		tags[tag] = true
 	}
-	if !reflect.DeepEqual(tags, createHeaderKeys) {
-		t.Fatalf("createHeaderKeys %v differ from the createHeader tags %v", createHeaderKeys, tags)
+	if !reflect.DeepEqual(tags, createHeaderMembers) {
+		t.Fatalf(
+			"the create header members of spec §6.2 %v differ from the CreateHeader tags %v",
+			createHeaderMembers,
+			tags,
+		)
 	}
 }
 
@@ -238,6 +243,7 @@ func TestCreateHeaderRules(t *testing.T) {
 		"trailing-brace":  core.Encode(append(append([]byte(nil), raw...), '}')),
 		"trailing-object": core.Encode(append(append([]byte(nil), raw...), []byte(" {}")...)),
 		"not-an-object":   core.Encode([]byte(`[1,2]`)),
+		"repeated-member": core.Encode(append([]byte(`{"opens_max":1,`), raw[1:]...)),
 	}
 	for name, value := range cases {
 		if parsesCreateHeader(settings.Limits, value) {
