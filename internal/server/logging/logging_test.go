@@ -111,3 +111,45 @@ func TestHTTPErrorLogKeepsCategoriesOnlyAndLimitsThem(t *testing.T) {
 		}
 	})
 }
+
+func TestWindowEndsAtTheStartOfAnHourOnceItSpansAnHour(t *testing.T) {
+	t.Parallel()
+	at := func(hour, minute, second int) time.Time {
+		return time.Date(2026, 11, 7, hour, minute, second, 0, time.UTC)
+	}
+	for _, testCase := range []struct {
+		name  string
+		start time.Time
+		ticks []time.Time
+		ended []bool
+	}{
+		{
+			name:  "started late in an hour",
+			start: at(14, 58, 30),
+			ticks: []time.Time{at(15, 0, 0), at(15, 59, 0), at(16, 0, 0), at(16, 1, 0), at(17, 0, 0)},
+			ended: []bool{false, false, true, false, true},
+		},
+		{
+			name:  "started within the first minute of an hour",
+			start: at(15, 0, 40),
+			ticks: []time.Time{at(15, 59, 0), at(16, 0, 1)},
+			ended: []bool{false, true},
+		},
+		{
+			name:  "a late tick",
+			start: at(16, 0, 0),
+			ticks: []time.Time{at(17, 23, 0), at(18, 0, 0), at(19, 0, 0)},
+			ended: []bool{true, false, true},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			window := logging.StartWindow(testCase.start)
+			for i, tick := range testCase.ticks {
+				if got := window.Ended(tick); got != testCase.ended[i] {
+					t.Fatalf("at %s: ended %t, want %t", tick.Format(time.TimeOnly), got, testCase.ended[i])
+				}
+			}
+		})
+	}
+}

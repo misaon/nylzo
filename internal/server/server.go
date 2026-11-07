@@ -194,20 +194,23 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	}
 }
 
-// RunHousekeeping works at every minute boundary: it writes the request counts of the minute, drops rate-limit
-// entries that no longer limit anything and draws a new address key when a UTC day begins (spec §5.3, §10).
+// RunHousekeeping works at every minute boundary: it writes the request counts of a window that ended, drops
+// rate-limit entries that no longer limit anything and draws a new address key when a UTC day begins (spec §5.3,
+// §10). It drops the counts of the last window at shutdown, which would end that window early.
 func (s *Server) RunHousekeeping(ctx context.Context) {
 	day := ratelimit.Day(time.Now()).Start
+	window := logging.StartWindow(time.Now())
 	for {
 		now := time.Now()
 		select {
 		case <-ctx.Done():
-			s.requestCounts.Flush()
 			return
 		case <-time.After(now.Truncate(time.Minute).Add(time.Minute).Sub(now)):
 		}
 		now = time.Now()
-		s.requestCounts.Flush()
+		if window.Ended(now) {
+			s.flushCounts(ctx)
+		}
 		if today := ratelimit.Day(now).Start; !today.Equal(day) {
 			day = today
 			s.addressKey.Rotate()
@@ -217,6 +220,10 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 		}
 		eraseUnreachableSecrets()
 	}
+}
+
+func (s *Server) flushCounts(ctx context.Context) {
+	s.requestCounts.Flush(ctx)
 }
 
 // advanceRatchet runs in secret mode, so the derivation leaves no copy of the passed seed in memory.

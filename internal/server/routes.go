@@ -22,26 +22,30 @@ import (
 const (
 	prefetchRetry = time.Minute
 	throttleRetry = time.Second
+	messageRoutes = "message"
 )
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	onMessage := func(pattern string, handler http.HandlerFunc) {
+		mux.Handle(pattern, logging.InGroup(messageRoutes, handler))
+	}
 	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
 	mux.HandleFunc("HEAD /api/v1/instance", handleAPINotFound)
 	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
 	mux.HandleFunc("HEAD /api/v1/challenge", handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
-	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
-	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/ack", s.handleAck)
-	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
-	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
-	mux.HandleFunc("GET /api/v1/messages/{id}/status", s.handleStatus)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
+	onMessage("GET /api/v1/messages/{id}", s.handleMetadata)
+	onMessage("HEAD /api/v1/messages/{id}", handleAPINotFound)
+	onMessage("POST /api/v1/messages/{id}/claim", s.handleClaim)
+	onMessage("GET /api/v1/messages/{id}/blob", s.handleBlob)
+	onMessage("HEAD /api/v1/messages/{id}/blob", handleAPINotFound)
+	onMessage("POST /api/v1/messages/{id}/ack", s.handleAck)
+	onMessage("POST /api/v1/messages/{id}/burn", s.handleBurn)
+	onMessage("POST /api/v1/messages/{id}/cancel", s.handleCancel)
+	onMessage("GET /api/v1/messages/{id}/status", s.handleStatus)
+	onMessage("HEAD /api/v1/messages/{id}/status", handleAPINotFound)
+	onMessage("POST /api/v1/abuse", s.handleAbuse)
 	mux.HandleFunc("/api/", handleAPINotFound)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", handleHealth)

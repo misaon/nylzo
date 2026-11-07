@@ -763,15 +763,16 @@ func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
 	}
 }
 
-// TestRequestsAreLoggedAsCountsPerMinute covers A4-5 and A4-8: no line per request, no latency, no client method.
-func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
+// TestRequestsAreLoggedAsCountsPerHour covers A4-5, A4-8 and spec §10: no line per request, no latency, no client
+// method, no line before the hour ends, and the routes that act on a message counted together by status class.
+func TestRequestsAreLoggedAsCountsPerHour(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		flushed, stop := context.WithCancel(t.Context())
+		housekeeping, stop := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
-			harness.server.RunHousekeeping(flushed)
+			harness.server.RunHousekeeping(housekeeping)
 			close(done)
 		}()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
@@ -786,11 +787,12 @@ func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 		harness.metadata(message)
 		harness.metadata(message)
 		harness.statusFrom(&testRequest{method: "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", path: "/api/v1/instance"})
+		hourEnd := time.Now().Truncate(time.Hour).Add(time.Hour)
+		synctest.Sleep(time.Until(hourEnd) - time.Minute)
 		if strings.Contains(harness.logs.String(), `"msg":"requests"`) {
-			t.Fatalf("a request was logged before the minute ended: %s", harness.logs.String())
+			t.Fatalf("a request was logged before the hour ended: %s", harness.logs.String())
 		}
-		time.Sleep(time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)))
-		synctest.Wait()
+		synctest.Sleep(time.Minute)
 		stop()
 		<-done
 		counts := map[string]float64{}
@@ -804,14 +806,23 @@ func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 					t.Fatalf("a request count carries %s: %s", leak, line)
 				}
 			}
-			method, _ := entry["method"].(string)
 			route, _ := entry["route"].(string)
 			count, _ := entry["count"].(float64)
-			counts[method+" "+route] += count
+			if class, grouped := entry["status_class"].(string); grouped {
+				if _, found := entry["method"]; found {
+					t.Fatalf("a count of the message routes names a method: %s", line)
+				}
+				counts[route+" "+class] += count
+				continue
+			}
+			method, _ := entry["method"].(string)
+			status, _ := entry["status"].(float64)
+			counts[method+" "+route+" "+strconv.Itoa(int(status))] += count
 		}
-		if counts["GET GET /api/v1/messages/{id}"] != 2 || counts["POST POST /api/v1/messages/{id}/claim"] != 1 ||
-			counts["OTHER /api/"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") {
-			t.Fatalf("counts per method, route and status, and OTHER for a method nylzo does not route: %v", counts)
+		if counts["message 2xx"] != 4 || counts["POST POST /api/v1/messages 201"] != 1 ||
+			counts["OTHER /api/ 404"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") ||
+			strings.Contains(harness.logs.String(), "{id}") {
+			t.Fatalf("counts per method, route and status, the message routes by class only: %v", counts)
 		}
 	})
 }
