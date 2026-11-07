@@ -24,9 +24,9 @@ type checked struct {
 	stderr string
 }
 
-func storeCheck(t *testing.T, dataDir, epochDir string) checked {
+func storeCheck(t *testing.T, dataDirectory, epochDirectory string) checked {
 	t.Helper()
-	variables := map[string]string{"NYLZO_DATA_DIR": dataDir, "NYLZO_EPOCH_DIR": epochDir}
+	variables := map[string]string{"NYLZO_DATA_DIR": dataDirectory, "NYLZO_EPOCH_DIR": epochDirectory}
 	if runtime.GOOS != "linux" {
 		variables["NYLZO_ALLOW_UNERASABLE_STORAGE"] = "1"
 	}
@@ -71,12 +71,12 @@ func snapshot(t *testing.T, directory string) map[string]string {
 
 func TestStoreCheckPassesAReleaseAndWritesNothing(t *testing.T) {
 	directory := unpackFixture(t, releasedFixture)
-	epochDir := filepath.Join(t.TempDir(), "epoch")
-	if err := os.Mkdir(epochDir, 0o700); err != nil {
+	epochDirectory := filepath.Join(t.TempDir(), "epoch")
+	if err := os.Mkdir(epochDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	before := snapshot(t, filepath.Dir(directory))
-	result := storeCheck(t, directory, epochDir)
+	result := storeCheck(t, directory, epochDirectory)
 	if result.code != command.ExitOK || !strings.Contains(result.stdout, "upgrades it") ||
 		!strings.Contains(result.stdout, "no seed") {
 		t.Fatalf("store-check on a schema 5 directory: exit %d %q %s", result.code, result.stdout, result.stderr)
@@ -100,9 +100,9 @@ func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
 			if err = errors.Join(err, database.Close()); err != nil {
 				t.Fatal(err)
 			}
-			epochDir := t.TempDir()
+			epochDirectory := t.TempDir()
 			before := snapshot(t, directory)
-			if result := storeCheck(t, directory, epochDir); result.code != command.ExitError {
+			if result := storeCheck(t, directory, epochDirectory); result.code != command.ExitError {
 				t.Fatalf("store-check accepted schema %d: %q", version, result.stdout)
 			}
 			if after := snapshot(t, directory); !maps.Equal(before, after) {
@@ -110,39 +110,39 @@ func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
 			}
 		})
 	}
-	unreadable := map[string]func(t *testing.T, epochDir string){
-		"a missing epoch directory": func(t *testing.T, epochDir string) {
+	unreadable := map[string]func(t *testing.T, epochDirectory string){
+		"a missing epoch directory": func(t *testing.T, epochDirectory string) {
 			t.Helper()
-			if err := os.Remove(epochDir); err != nil {
+			if err := os.Remove(epochDirectory); err != nil {
 				t.Fatal(err)
 			}
 		},
-		"a seed others can read": func(t *testing.T, epochDir string) {
+		"a seed others can read": func(t *testing.T, epochDirectory string) {
 			t.Helper()
 			if err := os.WriteFile(
-				filepath.Join(epochDir, epoch.FileName),
+				filepath.Join(epochDirectory, epoch.FileName),
 				make([]byte, epoch.FileLen),
 				0o644,
 			); err != nil {
 				t.Fatal(err)
 			}
 		},
-		"an epoch directory nobody can read": func(t *testing.T, epochDir string) {
+		"an epoch directory nobody can read": func(t *testing.T, epochDirectory string) {
 			t.Helper()
 			if os.Getuid() == 0 {
 				t.Skip("root reads every directory")
 			}
 			if err := os.WriteFile(
-				filepath.Join(epochDir, epoch.FileName),
+				filepath.Join(epochDirectory, epoch.FileName),
 				make([]byte, epoch.FileLen),
 				0o600,
 			); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Chmod(epochDir, 0); err != nil {
+			if err := os.Chmod(epochDirectory, 0); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = os.Chmod(epochDir, 0o700) })
+			t.Cleanup(func() { _ = os.Chmod(epochDirectory, 0o700) })
 		},
 	}
 	for name, prepare := range unreadable {
@@ -150,12 +150,12 @@ func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				t.Skip("Windows has no POSIX modes")
 			}
-			epochDir := filepath.Join(t.TempDir(), "epoch")
-			if err := os.Mkdir(epochDir, 0o700); err != nil {
+			epochDirectory := filepath.Join(t.TempDir(), "epoch")
+			if err := os.Mkdir(epochDirectory, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			prepare(t, epochDir)
-			if result := storeCheck(t, t.TempDir(), epochDir); result.code != command.ExitError {
+			prepare(t, epochDirectory)
+			if result := storeCheck(t, t.TempDir(), epochDirectory); result.code != command.ExitError {
 				t.Fatalf("store-check accepted %s: %q", name, result.stdout)
 			}
 		})

@@ -148,11 +148,11 @@ func requireErasable(paths []string, development config.Development, logger *slo
 
 // erasablePaths lists the directories and files whose overwrites must land in place: the data directory, the
 // database files and every blob and temporary upload.
-func erasablePaths(dataDir string) ([]string, error) {
-	databasePath := filepath.Join(dataDir, databaseFile)
-	blobDirectory := filepath.Join(dataDir, disk.Directory)
+func erasablePaths(dataDirectory string) ([]string, error) {
+	databasePath := filepath.Join(dataDirectory, databaseFile)
+	blobDirectory := filepath.Join(dataDirectory, disk.Directory)
 	temporaryDirectory := filepath.Join(blobDirectory, "tmp")
-	paths := append([]string{dataDir, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
+	paths := append([]string{dataDirectory, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
 	for _, directory := range []string{blobDirectory, temporaryDirectory} {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
@@ -180,23 +180,23 @@ func databaseFiles(databasePath string) []string {
 
 func openStore(
 	ctx context.Context,
-	dataDir string,
+	dataDirectory string,
 	development config.Development,
 	pool disk.Pool,
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+	if err := os.MkdirAll(dataDirectory, 0o700); err != nil {
 		return nil, nil, err
 	}
-	if err := requireErasable([]string{dataDir}, development, logger); err != nil {
+	if err := requireErasable([]string{dataDirectory}, development, logger); err != nil {
 		return nil, nil, err
 	}
-	databasePath := filepath.Join(dataDir, databaseFile)
+	databasePath := filepath.Join(dataDirectory, databaseFile)
 	narrowed, err := datadir.Secure(datadir.Layout{
-		Directory: dataDir,
+		Directory: dataDirectory,
 		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDir, disk.Directory), abuse.Directory(dataDir)},
+		Trees:     []string{filepath.Join(dataDirectory, disk.Directory), abuse.Directory(dataDirectory)},
 	})
 	if narrowed > 0 {
 		logger.WarnContext(ctx, "permissions-narrowed", "entries", narrowed)
@@ -204,10 +204,10 @@ func openStore(
 	if err != nil {
 		return nil, nil, err
 	}
-	blobs, err := disk.New(dataDir, disk.WithPool(pool))
+	blobs, err := disk.New(dataDirectory, disk.WithPool(pool))
 	var paths []string
 	if err == nil {
-		paths, err = erasablePaths(dataDir)
+		paths, err = erasablePaths(dataDirectory)
 	}
 	if err == nil {
 		err = requireErasable(paths, development, logger)
@@ -240,9 +240,9 @@ func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
 
 // upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
 // none of its messages; an interrupted upgrade finishes on the next start.
-func upgradingOpen(dataDir string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
+func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
 	return func(ctx context.Context, path string) (*sqlite.Store, error) {
-		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDir) })
+		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDirectory) })
 		if err != nil {
 			return nil, err
 		}
@@ -263,8 +263,8 @@ func blobPool(settings *config.Server) disk.Pool {
 }
 
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
-func requireStore(dataDir string) error {
-	directory, err := filepath.Abs(dataDir)
+func requireStore(dataDirectory string) error {
+	directory, err := filepath.Abs(dataDirectory)
 	if err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ func requireStore(dataDir string) error {
 }
 
 func serveSettings(environment *command.Environment) (config.Server, error) {
-	settings, err := config.FromEnv(environment.Getenv, true)
+	settings, err := config.FromEnvironment(environment.Getenv, true)
 	if err != nil {
 		return settings, err
 	}
@@ -302,10 +302,10 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	}
 	database, blobs, err := openStore(
 		ctx,
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.Development,
 		blobPool(&settings),
-		upgradingOpen(settings.DataDir, logger),
+		upgradingOpen(settings.DataDirectory, logger),
 		logger,
 	)
 	if err != nil {
@@ -427,16 +427,16 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	if !serverSupported {
 		return errServerUnsupported
 	}
-	settings, err := config.FromEnv(getenv, false)
+	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err
 	}
-	if storeErr := requireStore(settings.DataDir); storeErr != nil {
+	if storeErr := requireStore(settings.DataDirectory); storeErr != nil {
 		return storeErr
 	}
 	database, blobs, err := openStore(
 		ctx,
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.Development,
 		blobPool(&settings),
 		sqlite.OpenCurrent,
@@ -447,7 +447,7 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	}
 	defer database.Close()
 	now := time.Now()
-	_, err = sweep.Run(ctx, database, blobs, settings.DataDir, now)
+	_, err = sweep.Run(ctx, database, blobs, settings.DataDirectory, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
 		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))
@@ -468,7 +468,7 @@ func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger)
 	if ratchet != nil {
 		ratchet.Close()
 	}
-	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDir == "" {
+	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDirectoryOverride == "" {
 		return nil
 	}
 	return err

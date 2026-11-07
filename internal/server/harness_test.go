@@ -133,7 +133,7 @@ func baseSettings(pepper, previous []byte) *config.Server {
 func newHarness(t *testing.T, settings *config.Server, options ...Option) *testHarness {
 	t.Helper()
 	directory := t.TempDir()
-	settings.DataDir = directory
+	settings.DataDirectory = directory
 	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func (h *testHarness) capture(r *http.Request) {
 func (h *testHarness) reopen(settings *config.Server) {
 	h.httpServer.Close()
 	h.server.Close()
-	settings.DataDir = h.directory
+	settings.DataDirectory = h.directory
 	h.settings = *settings
 	h.open()
 }

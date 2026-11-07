@@ -45,7 +45,7 @@ func newTestServer(t *testing.T) *testServer {
 		t.Fatal(err)
 	}
 	settings := config.Defaults()
-	settings.DataDir = directory
+	settings.DataDirectory = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
 	settings.ReportKey = reportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"

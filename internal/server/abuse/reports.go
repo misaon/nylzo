@@ -55,12 +55,12 @@ func FilesBytes(dailyCreates, reportsPerMessage int64) int64 {
 	return max(maxFilesBytes, reportsPerMessage*dailyCreates*reportedDays*SealedLen)
 }
 
-func NewReports(dataDir string, key hpke.PublicKey, logger *slog.Logger, maxBytes int64) *Reports {
-	return &Reports{directory: Directory(dataDir), key: key, logger: logger, maxBytes: maxBytes}
+func NewReports(dataDirectory string, key hpke.PublicKey, logger *slog.Logger, maxBytes int64) *Reports {
+	return &Reports{directory: Directory(dataDirectory), key: key, logger: logger, maxBytes: maxBytes}
 }
 
-func Directory(dataDir string) string {
-	return filepath.Join(dataDir, directoryName)
+func Directory(dataDirectory string) string {
+	return filepath.Join(dataDirectory, directoryName)
 }
 
 // Record seals the report to the operator's public key and appends it to the file of its UTC day.
@@ -127,8 +127,8 @@ func (r *Reports) appendToDay(day string, sealed []byte) error {
 
 // Prepare creates the empty day files of today and tomorrow ahead of their reports, so a day file's birth time shows
 // the sweep or start that created it.
-func Prepare(dataDir string, now time.Time) error {
-	directory := Directory(dataDir)
+func Prepare(dataDirectory string, now time.Time) error {
+	directory := Directory(dataDirectory)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
@@ -162,8 +162,8 @@ func stampDay(path, day string) error {
 	return os.Chtimes(path, start, start)
 }
 
-func RefuseLegacyReports(dataDir string) error {
-	_, err := os.Lstat(filepath.Join(dataDir, legacyFile))
+func RefuseLegacyReports(dataDirectory string) error {
+	_, err := os.Lstat(filepath.Join(dataDirectory, legacyFile))
 	switch {
 	case err == nil:
 		return fmt.Errorf("%w: %s", ErrLegacyReports, legacyFile)
@@ -171,7 +171,7 @@ func RefuseLegacyReports(dataDir string) error {
 		return err
 	default:
 	}
-	entries, err := os.ReadDir(Directory(dataDir))
+	entries, err := os.ReadDir(Directory(dataDirectory))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
@@ -184,8 +184,8 @@ func RefuseLegacyReports(dataDir string) error {
 }
 
 // Restamp sets the times of the day files and their directory again, so no ctime shows when a report arrived.
-func Restamp(dataDir string, now time.Time) error {
-	directory := Directory(dataDir)
+func Restamp(dataDirectory string, now time.Time) error {
+	directory := Directory(dataDirectory)
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -220,8 +220,8 @@ func Restamp(dataDir string, now time.Time) error {
 
 // Prune overwrites the day files older than the retention in full before it deletes them, so no freed block keeps a
 // sealed report past it.
-func Prune(dataDir string, now time.Time) error {
-	return pruneDirectory(Directory(dataDir), now)
+func Prune(dataDirectory string, now time.Time) error {
+	return pruneDirectory(Directory(dataDirectory), now)
 }
 
 func pruneDirectory(directory string, now time.Time) error {

@@ -66,7 +66,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrCorrupt) {
 			t.Fatalf("a damaged seed must stop the server: %v", err)
 		}
-		harness.settings.EpochDir = filepath.Join(t.TempDir(), "unmounted")
+		harness.settings.EpochDirectoryOverride = filepath.Join(t.TempDir(), "unmounted")
 		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrNoDirectory) {
 			t.Fatalf("a missing epoch directory must stop the server: %v", err)
 		}

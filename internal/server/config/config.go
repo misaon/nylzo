@@ -53,26 +53,26 @@ type Rates struct {
 }
 
 type Server struct {
-	Listen         string
-	DataDir        string
-	EpochDir       string
-	Pepper         []byte
-	PepperPrevious []byte
-	ReportKey      hpke.PublicKey
-	TrustedProxies []netip.Prefix
-	ProxyMode      string
-	SweepInterval  time.Duration
-	Limits         Limits
-	Rates          Rates
-	PoWDifficulty  int
-	PoWConcurrency int
-	MaxStreams     int
-	MinFreeBytes   int64
-	Operator       Operator
-	PublicURL      string
-	Version        string
-	Build          buildinfo.Info
-	Development    Development
+	Listen                 string
+	DataDirectory          string
+	EpochDirectoryOverride string
+	Pepper                 []byte
+	PepperPrevious         []byte
+	ReportKey              hpke.PublicKey
+	TrustedProxies         []netip.Prefix
+	ProxyMode              string
+	SweepInterval          time.Duration
+	Limits                 Limits
+	Rates                  Rates
+	PoWDifficulty          int
+	PoWConcurrency         int
+	MaxStreams             int
+	MinFreeBytes           int64
+	Operator               Operator
+	PublicURL              string
+	Version                string
+	Build                  buildinfo.Info
+	Development            Development
 }
 
 // Development holds the opt-outs a developer machine needs; each one weakens what a stolen server reveals.
@@ -85,7 +85,7 @@ type Development struct {
 func Defaults() Server {
 	return Server{
 		Listen:        "127.0.0.1:8080",
-		DataDir:       "data",
+		DataDirectory: "data",
 		SweepInterval: 5 * time.Minute,
 		Limits: Limits{
 			MaxFileBytes:   envelope.MaxFileBytes,
@@ -122,10 +122,10 @@ type rule struct {
 
 // EpochDirectory is where the epoch seed lives; keep it out of every backup (spec section 5.6).
 func (s *Server) EpochDirectory() string {
-	if s.EpochDir != "" {
-		return s.EpochDir
+	if s.EpochDirectoryOverride != "" {
+		return s.EpochDirectoryOverride
 	}
-	return filepath.Join(s.DataDir, "epoch")
+	return filepath.Join(s.DataDirectory, "epoch")
 }
 
 // Validate checks a configuration that serves requests, which needs the operator's report key.

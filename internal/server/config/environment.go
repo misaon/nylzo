@@ -45,7 +45,7 @@ type variable struct {
 	apply func(value string) error
 }
 
-func FromEnv(getenv func(string) string, needPepper bool) (Server, error) {
+func FromEnvironment(getenv func(string) string, needPepper bool) (Server, error) {
 	settings := Defaults()
 	if port := strings.TrimSpace(getenv("PORT")); port != "" {
 		settings.Listen = ":" + port
@@ -94,8 +94,8 @@ func (s *Server) variables() []variable {
 	}
 	return []variable{
 		{"NYLZO_LISTEN", text(&s.Listen)},
-		{"NYLZO_DATA_DIR", text(&s.DataDir)},
-		{"NYLZO_EPOCH_DIR", text(&s.EpochDir)},
+		{"NYLZO_DATA_DIR", text(&s.DataDirectory)},
+		{"NYLZO_EPOCH_DIR", text(&s.EpochDirectoryOverride)},
 		{"NYLZO_TRUSTED_PROXIES", s.parseTrustedProxies},
 		{"NYLZO_PROXY_MODE", s.parseProxyMode},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", func(string) error {

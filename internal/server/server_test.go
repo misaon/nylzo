@@ -591,8 +591,8 @@ func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
 	database := openStore(t, t.TempDir())
 	for _, name := range []string{"abuse-reports.jsonl", filepath.Join("abuse", "2026-10-20.jsonl")} {
 		settings := baseSettings(pepperA, nil)
-		settings.DataDir = t.TempDir()
-		path := filepath.Join(settings.DataDir, name)
+		settings.DataDirectory = t.TempDir()
+		path := filepath.Join(settings.DataDirectory, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -1018,7 +1018,7 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
-		settings.EpochDir = t.TempDir()
+		settings.EpochDirectoryOverride = t.TempDir()
 		harness := newHarness(t, settings)
 		message := harness.issueMessage(core.KDFNone, "", 2, 600, "plaintext expiring sentinel")
 		harness.mustCreate(message)
@@ -1031,7 +1031,7 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 			t.Fatal(err)
 		}
 		dataCopy := harness.stolenCopy()
-		seedPath := filepath.Join(settings.EpochDir, epoch.FileName)
+		seedPath := filepath.Join(settings.EpochDirectoryOverride, epoch.FileName)
 		liveSeed, err := os.ReadFile(seedPath)
 		if err != nil {
 			t.Fatal(err)

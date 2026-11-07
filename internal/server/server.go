@@ -95,7 +95,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
-	if err := abuse.RefuseLegacyReports(settings.DataDir); err != nil {
+	if err := abuse.RefuseLegacyReports(settings.DataDirectory); err != nil {
 		return nil, err
 	}
 	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
@@ -131,12 +131,12 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.ReportKey,
 		server.events,
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
-	if prepareErr := abuse.Prepare(settings.DataDir, time.Now()); prepareErr != nil {
+	if prepareErr := abuse.Prepare(settings.DataDirectory, time.Now()); prepareErr != nil {
 		return nil, prepareErr
 	}
 	server.disk = server.newDiskReserver(diskspace.Free)
@@ -267,7 +267,7 @@ func (s *Server) loadWebClient() error {
 }
 
 func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {
-	return diskspace.NewReserver(s.settings.DataDir, s.settings.MinFreeBytes, free, s.events)
+	return diskspace.NewReserver(s.settings.DataDirectory, s.settings.MinFreeBytes, free, s.events)
 }
 
 func (s *Server) flushCounts(ctx context.Context) {
@@ -277,7 +277,7 @@ func (s *Server) flushCounts(ctx context.Context) {
 
 // prepareReportDays keeps the day files ready when no sweep runs in this process or an external one stopped.
 func (s *Server) prepareReportDays(ctx context.Context, now time.Time) {
-	if err := abuse.Prepare(s.settings.DataDir, now); err != nil {
+	if err := abuse.Prepare(s.settings.DataDirectory, now); err != nil {
 		s.events.ErrorContext(ctx, "abuse-prepare", "err", logging.ErrorText(err))
 	}
 }
@@ -318,7 +318,7 @@ func (s *Server) forgetAddresses() {
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
-	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, now)
+	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDirectory, now)
 	return report, errors.Join(err, s.advanceRatchet(now))
 }
 
@@ -365,7 +365,7 @@ func (s *Server) openRatchet() error {
 // PrepareEpochDirectory creates the default epoch directory inside the data directory. A directory that the
 // operator names must exist already, so a volume that failed to mount stops the server instead of a new seed.
 func PrepareEpochDirectory(settings *config.Server) error {
-	if settings.EpochDir != "" {
+	if settings.EpochDirectoryOverride != "" {
 		return nil
 	}
 	return os.MkdirAll(settings.EpochDirectory(), 0o700)

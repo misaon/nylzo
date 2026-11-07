@@ -54,16 +54,16 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 		fmt.Fprintln(environment.Stderr, command.Program+" takedown: "+err.Error())
 		return command.ExitUsage
 	}
-	settings, err := config.FromEnv(environment.Getenv, false)
+	settings, err := config.FromEnvironment(environment.Getenv, false)
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
-	if err = requireStore(settings.DataDir); err != nil {
+	if err = requireStore(settings.DataDirectory); err != nil {
 		return command.Failf(environment, "%s", err)
 	}
 	database, blobs, err := openStore(
 		ctx,
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.Development,
 		blobPool(&settings),
 		sqlite.OpenCurrent,

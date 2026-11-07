@@ -110,7 +110,7 @@ func newPublicWebTestServer(
 	t.Helper()
 	directory := t.TempDir()
 	settings := config.Defaults()
-	settings.DataDir = directory
+	settings.DataDirectory = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
 	reportKey, err := abuse.NewKeyPair()
 	if err != nil {
