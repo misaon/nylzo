@@ -71,6 +71,7 @@ export PATH="/fake:$PATH"
 export NYLZO_TEST_APPLICATION_ACTIVE=true
 printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=192.0.2.1/32\n' > /etc/nylzo/host.env
 printf 'NYLZO_DOMAIN=nylzo.example.org\n' > /etc/nylzo/caddy.env
+printf 'NYLZO_CONTACT=abuse@nylzo.example.org\n' > /etc/nylzo/service.env
 printf 'certificate\n' > /etc/nylzo/monitor-client.pem
 stage() {
   mkdir -p "/opt/nylzo/host/$2"
@@ -83,6 +84,7 @@ bash /opt/nylzo/host/initial/update/activate --first-boot /opt/nylzo/host/initia
 grep -q '^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh\.com$' /etc/ssh/sshd_config.d/20-nylzo.conf
 grep -q '^www\.{\$NYLZO_DOMAIN} {$' /etc/caddy/Caddyfile
 grep -q '^https://{\$NYLZO_DOMAIN}:8443 {$' /etc/caddy/Caddyfile
+[[ "$(cat /etc/nylzo/caddy.env)" = $'NYLZO_DOMAIN=nylzo.example.org\nNYLZO_CONTACT=abuse@nylzo.example.org' ]]
 [[ -s /etc/systemd/system/nylzo-update.service.d/20-sandbox.conf && -s /etc/systemd/system/nylzo-initialize.service.d/20-sandbox.conf ]]
 grep -qx 'enable --quiet nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
@@ -101,7 +103,7 @@ bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3
 [[ ! -e /opt/nylzo/runtime/heartbeat && ! -e /etc/systemd/system/nylzo-heartbeat.timer ]]
 grep -qx 'ClientAliveInterval 60' /etc/ssh/sshd_config.d/20-nylzo.conf
 if grep -q '^www\.' /etc/caddy/Caddyfile; then exit 1; fi
-grep -q 'caddy validate --config /run/nylzo-caddyfile\.[^ ]* --adapter caddyfile$' /tmp/systemd-run
+grep -q -- '--property=EnvironmentFile=/run/nylzo-caddy-env\.[^ ]* /opt/nylzo/bin/caddy validate --config /run/nylzo-caddyfile\.[^ ]* --adapter caddyfile$' /tmp/systemd-run
 grep -qx 'disable --quiet --now nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
 grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl

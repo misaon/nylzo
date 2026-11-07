@@ -74,7 +74,7 @@ export async function render(input: unknown, bundle: HostBundle) {
     embedded("/etc/nylzo/tools.env", tools),
     embedded("/etc/nylzo/site.json", JSON.stringify({ architecture: site.architecture, domain: site.domain, initialRelease: site.initialRelease })),
     embedded("/etc/nylzo/service.env", environment),
-    embedded("/etc/nylzo/caddy.env", `NYLZO_DOMAIN=${site.domain}\n`),
+    embedded("/etc/nylzo/caddy.env", `NYLZO_DOMAIN=${site.domain}\nNYLZO_CONTACT=${site.contact}\n`),
     embedded("/etc/nylzo/host.env", settings),
     embedded("/etc/subuid", "dockremap:100000:65536\n"),
     embedded("/etc/subgid", "dockremap:100000:65536\n"),
