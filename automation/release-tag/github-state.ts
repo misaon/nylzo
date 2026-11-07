@@ -87,8 +87,13 @@ export async function unreleasedPullRequests(
   if (comparison.data.status !== 'ahead') {
     throw new Error(`${branch} at ${tip} does not descend from the latest release ${releaseCommit}`);
   }
+  const { commits, total_commits: total } = comparison.data;
+  if (commits.length < total) {
+    throw new Error(`${branch} has ${total} commits since ${releaseCommit}, more than one comparison lists`);
+  }
   const pulls: LabelledPullRequest[] = [];
-  for (const commit of comparison.data.commits) {
+  // GitHub asks API clients to send requests one at a time.
+  for (const commit of commits) {
     const pull = await mergedPullRequest(client, commit.sha, branch);
     if (pull !== undefined) {
       pulls.push({

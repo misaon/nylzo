@@ -168,24 +168,12 @@
       "semanticCommitScope": "backend"
     },
     {
-      "description": "The Go toolchain moves in mise.toml and both Go modules at once.",
+      "description": "The Go toolchain moves in mise.toml and both Go modules at once, Caddy in its module and Compose.",
       "matchPackageNames": [
         "go",
         "golang/go",
         "golangci/golangci-lint",
-        "golangci-lint"
-      ],
-      "groupName": "backend dependencies",
-      "groupSlug": "backend",
-      "addLabels": [
-        "backend"
-      ],
-      "semanticCommitType": "fix",
-      "semanticCommitScope": "backend"
-    },
-    {
-      "description": "Caddy moves in its module and, on maintenance branches, in Compose at once.",
-      "matchPackageNames": [
+        "golangci-lint",
         "github.com/caddyserver/caddy/v2",
         "caddy"
       ],
@@ -355,7 +343,8 @@
         ".github/workflows/renovate.yml",
         ".github/workflows/scorecard.yml",
         ".github/workflows/watch.yml",
-        ".github/workflows/infrastructure.yml"
+        ".github/workflows/infrastructure.yml",
+        ".github/workflows/infrastructure-stack.yml"
       ],
       "enabled": false
     },

@@ -15,7 +15,6 @@ permissions:
 concurrency:
   group: monitor-${{ github.event_name }}
   cancel-in-progress: false
-  queue: max
 
 jobs:
   maintenance:

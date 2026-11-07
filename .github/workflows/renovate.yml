@@ -1,8 +1,7 @@
 name: Renovate
 
 on:
-  schedule:
-    - cron: "17 */6 * * *"
+  # The production watch starts the regular runs every six hours (automation/watch/due.ts).
   workflow_run: # zizmor: ignore[dangerous-triggers] -- Runs main's definition to wake Renovate after CI; never downloads or executes PR artifacts.
     workflows: [ci]
     types: [completed]
@@ -20,7 +19,7 @@ jobs:
     if: >-
       github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
       vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      github.event_name == 'workflow_dispatch'
     name: Vulnerability inventory of the maintained releases and main
     runs-on: ubuntu-26.04
     timeout-minutes: 35
@@ -100,7 +99,6 @@ jobs:
     concurrency:
       group: renovate
       cancel-in-progress: false
-      queue: max
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
@@ -165,7 +163,7 @@ jobs:
           renovate-image: ghcr.io/renovatebot/renovate:44.222.0@sha256:a8cb8222b49d15da701436954b7463427d535eae2203b294655c9a29675c47d1
           mount-docker-socket: false
           docker-volumes: /tmp:/tmp;${{ github.workspace }}/automation/dependency-sync/sync.ts:/opt/nylzo-dependency-sync.ts:ro
-      # Runs started by another workflow may only read the cache; the scheduled run writes once a week.
+      # Runs started by another workflow may only read the cache; the regular run writes it once a week.
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: success() && github.event_name != 'workflow_run' && steps.metadata-cache.outputs.cache-hit != 'true'
         with:

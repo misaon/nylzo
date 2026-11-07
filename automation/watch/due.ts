@@ -22,7 +22,7 @@ function windowStart(now: number): number | null {
   return now >= start ? start : null;
 }
 
-// GitHub drops many scheduled runs, so the watch chain starts each periodic workflow whose turn has passed.
+// GitHub drops many scheduled runs, so the watch is the one scheduler: it starts each periodic workflow whose turn has passed.
 export function dueWorkflows(now: number, last: LastRuns): DueWorkflows {
   const window = windowStart(now);
   return {
