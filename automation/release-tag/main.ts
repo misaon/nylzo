@@ -72,7 +72,7 @@ async function maintenanceReleaseFromBranch(
   trigger: MaintenanceTrigger,
 ): Promise<ReleasePlan | null> {
   if ((await branchTip(client, branch)) !== commit) {
-    console.log(`${branch} moved past ${commit}; the newer commit releases after its own CI.`);
+    console.log(`${branch} moved past ${commit}; the newer commit releases after its own CI or in the next window.`);
     return null;
   }
   if ((await mergedPullRequest(client, commit, branch)) === undefined) {

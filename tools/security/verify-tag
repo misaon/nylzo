@@ -48,7 +48,8 @@ verify_maintenance_patch() {
     fail 'the base must be the latest published release'
   branch="release/${base%.*}"
   git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
-  [[ "$(git rev-parse "refs/remotes/origin/$branch")" = "$GITHUB_SHA" ]] || fail "the tag must sit on the tip of $branch"
+  # A merge after the tag must not strand it: tags are immutable, so its patch number could never be released.
+  git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/$branch" || fail "the tag must sit on $branch"
   git merge-base --is-ancestor "$base" "$GITHUB_SHA" || fail 'the patch must descend from its base release'
 }
 
