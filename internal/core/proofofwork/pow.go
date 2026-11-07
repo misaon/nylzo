@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	ScryptN       = 1 << 14
-	ScryptR       = 8
-	ScryptP       = 1
+	scryptN       = 1 << 14
+	scryptR       = 8
+	scryptP       = 1
 	WindowLen     = 4
 	NonceOffset   = WindowLen
 	NonceLen      = 16
@@ -34,9 +34,9 @@ func Digest(challenge *[ChallengeLen]byte, id core.ID, counter uint64) ([core.Ke
 	digest, err := scrypt.Key(
 		password,
 		binary.BigEndian.AppendUint64(nil, counter),
-		ScryptN,
-		ScryptR,
-		ScryptP,
+		scryptN,
+		scryptR,
+		scryptP,
 		core.KeyLen,
 	)
 	if err != nil {

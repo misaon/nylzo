@@ -178,7 +178,7 @@ func (s *Server) parseProxyMode(value string) error {
 	case ProxyModeScaleway:
 		s.ProxyMode = value
 	case "none", "off":
-		s.ProxyMode = ProxyModeNone
+		s.ProxyMode = proxyModeNone
 	default:
 		return fmt.Errorf("%w %q", errUnknownProxyMode, value)
 	}

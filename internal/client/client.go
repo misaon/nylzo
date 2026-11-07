@@ -26,7 +26,7 @@ const (
 	minTransfer               = 120 * time.Second
 	minTransferBytesPerSecond = 16000
 	maxJSONBytes              = 64 << 10
-	MaxFetchBytes             = 8 << 20
+	maxFetchBytes             = 8 << 20
 	UserAgent                 = "nylzo-cli"
 )
 
@@ -131,7 +131,7 @@ func (c *Client) Fetch(ctx context.Context, path, acceptEncoding string, limit i
 	if response.StatusCode != http.StatusOK {
 		return Fetched{}, &APIError{Status: response.StatusCode, Kind: "unexpected"}
 	}
-	limit = min(limit, MaxFetchBytes)
+	limit = min(limit, maxFetchBytes)
 	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
 		return Fetched{}, err

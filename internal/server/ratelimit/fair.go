@@ -55,14 +55,14 @@ func (f *Fair) Allow(addressRange Bucket, now time.Time) bool {
 func (f *Fair) Purge(now time.Time) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-	f.ranges = Rebuilt(f.ranges, func(state paced) bool { return counts(state, now) })
+	f.ranges = rebuilt(f.ranges, func(state paced) bool { return counts(state, now) })
 	f.pruned = now
 }
 
 func (f *Fair) Reset() {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-	f.ranges = Rebuilt(f.ranges, func(paced) bool { return false })
+	f.ranges = rebuilt(f.ranges, func(paced) bool { return false })
 }
 
 func (f *Fair) take(allowed bool) bool {

@@ -82,7 +82,7 @@ func (f *frontend) page(path string) http.HandlerFunc {
 
 func (f *frontend) serveReader(w http.ResponseWriter, r *http.Request) {
 	page := f.pages.For(core.LinkPath)
-	if IsPreviewAgent(r.UserAgent()) {
+	if isPreviewAgent(r.UserAgent()) {
 		w.Header().Set("Content-Security-Policy", page.Policy())
 		w.Header().Set("Content-Type", htmlContentType)
 		w.Header().Set("Vary", "Accept-Language")

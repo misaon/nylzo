@@ -61,7 +61,7 @@ func (b Build) Render(publicURL, contact string) (Pages, error) {
 		if err != nil {
 			return nil, fmt.Errorf("server: web client %s: %w", name, err)
 		}
-		policy := PagePolicy(html)
+		policy := pagePolicy(html)
 		if isStatusTemplate(name) {
 			policy = StatusPolicy(html)
 		}
