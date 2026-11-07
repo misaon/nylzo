@@ -29,26 +29,29 @@ cp "${published}/\${url##*/}" "$output"
     };
     const run = () => spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/directive")], {
       encoding: "utf8", timeout: 30000,
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, NYLZO_DIRECTIVE_SOURCE: "https://raw.example/production-directive", NYLZO_DIRECTIVE_DIR: state },
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, NYLZO_DIRECTIVE_SOURCE: "https://raw.example/production-directive", NYLZO_DIRECTIVE_DIR: state, NYLZO_DOMAIN: "nylzo.example" },
     });
     const maintenance = () => existsSync(join(state, "maintenance"));
 
     assert.equal(run().status, 0, "no directive published yet");
     assert.equal(maintenance(), false);
-    publish({ format: 1, state: "maintenance", issued: 100, run: "1" });
+    publish({ format: 1, instance: "nylzo.example", state: "maintenance", issued: 100, run: "1" });
     assert.equal(run().status, 0);
     assert.equal(maintenance(), true);
     assert.equal(readFileSync(join(state, "issued"), "utf8"), "100\n");
-    publish({ format: 1, state: "normal", issued: 50, run: "0" });
+    publish({ format: 1, instance: "nylzo.example", state: "normal", issued: 50, run: "0" });
     assert.equal(run().status, 0);
     assert.equal(maintenance(), true, "an older directive cannot end maintenance");
-    publish({ format: 1, state: "normal", issued: 200, run: "2" }, false);
+    publish({ format: 1, instance: "nylzo.example", state: "normal", issued: 200, run: "2" }, false);
     assert.notEqual(run().status, 0, "a forged directive fails");
     assert.equal(maintenance(), true);
-    publish({ format: 1, state: "lockdown", issued: 300, run: "3" });
+    publish({ format: 1, instance: "nylzo.example", state: "lockdown", issued: 300, run: "3" });
     assert.notEqual(run().status, 0, "an unknown state fails");
     assert.equal(maintenance(), true);
-    publish({ format: 1, state: "normal", issued: 200, run: "2" });
+    publish({ format: 1, instance: "other.example", state: "normal", issued: 250, run: "4" });
+    assert.equal(run().status, 0);
+    assert.equal(maintenance(), true, "a directive for another instance does not apply");
+    publish({ format: 1, instance: "nylzo.example", state: "normal", issued: 200, run: "2" });
     assert.equal(run().status, 0);
     assert.equal(maintenance(), false);
     assert.equal(readFileSync(join(state, "issued"), "utf8"), "200\n");

@@ -25,10 +25,6 @@ jobs:
   verify:
     name: Production serves the signed web client
     if: github.repository == 'misaon/nylzo' && vars.NYLZO_MONITOR_URL != '' && (inputs.directive || 'none') == 'none'
-    # The environment's wait timer spaces the chained runs without holding a runner.
-    environment:
-      name: production-watch
-      deployment: false
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
@@ -73,7 +69,7 @@ jobs:
           case "${status}" in
             0) outcome=match ;;
             3) outcome=mismatch ;;
-            *) outcome=unavailable ;;
+            *) outcome=unverified ;;
           esac
           echo "outcome=${outcome}" >> "${GITHUB_OUTPUT}"
           echo "Production web client: **${outcome}**" >> "${GITHUB_STEP_SUMMARY}"
@@ -82,11 +78,12 @@ jobs:
   alert:
     name: Open an incident for the owner
     needs: verify
-    # An unreachable instance fails the run but opens no issue; a changed client or an unverifiable release does.
-    if: always() && needs.verify.result == 'failure' && needs.verify.outputs.outcome != 'unavailable'
+    # A server can refuse the watch to hide a changed client, so a check that fails twice in a row is an incident too.
+    if: always() && needs.verify.result == 'failure'
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
+      actions: read # the result of the previous watch run
       issues: write # open or update the incident issue
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
@@ -95,15 +92,27 @@ jobs:
       - name: Open or update the production incident
         env:
           GH_TOKEN: ${{ github.token }}
-          OUTCOME: ${{ needs.verify.outputs.outcome || 'unavailable' }}
+          OUTCOME: ${{ needs.verify.outputs.outcome || 'unverified' }}
           TAG: ${{ needs.verify.outputs.tag }}
           RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          if [[ "${OUTCOME}" != mismatch ]]; then
+            previous=$(gh run list -R "${GITHUB_REPOSITORY}" --workflow watch.yml --branch main --status completed --limit 1 \
+              --json databaseId --jq '.[0].databaseId // empty')
+            verified=$(gh run view "${previous:-0}" -R "${GITHUB_REPOSITORY}" --json jobs \
+              --jq '.jobs[] | select(.name == "Production serves the signed web client") | .conclusion' 2> /dev/null || true)
+            if [[ "${verified}" != failure ]]; then
+              echo 'The first failed check opens no incident; the next run confirms it.' >> "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+          fi
           case "${OUTCOME}" in
-            mismatch) title='Production serves a web client that differs from its signed release' ;;
-            *) title='Production web client could not be verified' ;;
+            mismatch) title='Production serves a web client that differs from its signed release'
+              detail='The watch forces maintenance.' ;;
+            *) title='Production web client could not be verified'
+              detail='Two checks in a row failed: the instance is down, or it refuses the watch, which can hide a changed client.' ;;
           esac
-          body=$(printf '%s\n\nRelease: %s\nRun: %s\n\n@%s' "${title}." "${TAG:-unknown}" "${RUN}" "${GITHUB_REPOSITORY_OWNER}")
+          body=$(printf '%s.\n\n%s\n\nRelease: %s\nRun: %s\n\n@%s' "${title}" "${detail}" "${TAG:-unknown}" "${RUN}" "${GITHUB_REPOSITORY_OWNER}")
           issue=$(gh issue list -R "${GITHUB_REPOSITORY}" --state open --label production-incident --json number,updatedAt \
             --jq '.[0] // empty | "\(.number) \(.updatedAt)"')
           if [[ -n "${issue}" ]]; then
@@ -142,13 +151,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STATE: ${{ (inputs.directive || 'none') != 'none' && inputs.directive || 'maintenance' }}
+          URL: ${{ vars.NYLZO_MONITOR_URL }}
         run: |
           [[ "${STATE}" = maintenance || "${STATE}" = normal ]]
+          # The host applies only a directive that names its own domain.
+          address=${URL#https://}
+          instance=${address%%[/:]*}
+          [[ "${instance}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo 'Set NYLZO_MONITOR_URL to the instance address.'; exit 1; }
           directory=$(mktemp -d)
           cd "${directory}"
           git init --quiet --initial-branch production-directive
-          jq -n --arg state "${STATE}" --argjson issued "$(date -u +%s)" --arg run "${GITHUB_RUN_ID}" \
-            '{format: 1, state: $state, issued: $issued, run: $run}' > directive.json
+          jq -n --arg instance "${instance}" --arg state "${STATE}" --argjson issued "$(date -u +%s)" --arg run "${GITHUB_RUN_ID}" \
+            '{format: 1, instance: $instance, state: $state, issued: $issued, run: $run}' > directive.json
           cosign sign-blob directive.json --bundle directive.json.sigstore.json --yes > /dev/null
           git add directive.json directive.json.sigstore.json
           git -c user.name='Nylzo production watch' -c user.email='automation@nylzo.com' commit --quiet -m "Production directive: ${STATE}"
@@ -177,7 +191,8 @@ jobs:
         env:
           HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
           FIREWALL: ${{ vars.NYLZO_FIREWALL_ID }}
-          NETWORKS: ${{ vars.NYLZO_ADMINISTRATOR_NETWORKS }}
+          # A secret, because the log of this public repository prints every variable a step receives.
+          NETWORKS: ${{ secrets.NYLZO_ADMINISTRATOR_NETWORKS }}
         run: |
           [[ "${FIREWALL}" =~ ^[1-9][0-9]{0,15}$ ]]
           # Without administrator networks the firewall admits nothing at all.
@@ -200,6 +215,10 @@ jobs:
     name: Start what is due and keep the watch going
     needs: [verify, alert, directive, kill-switch]
     if: always() && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    # The environment's wait timer spaces the chained runs without holding a runner.
+    environment:
+      name: production-watch
+      deployment: false
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:

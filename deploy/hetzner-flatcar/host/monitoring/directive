@@ -6,6 +6,7 @@ export PATH="/opt/nylzo/bin:$PATH"
 readonly source="${NYLZO_DIRECTIVE_SOURCE:-https://raw.githubusercontent.com/misaon/nylzo/production-directive}"
 readonly state="${NYLZO_DIRECTIVE_DIR:-/var/lib/nylzo-directive}"
 readonly identity=https://github.com/misaon/nylzo/.github/workflows/watch.yml@refs/heads/main
+readonly domain="${NYLZO_DOMAIN:?NYLZO_DOMAIN must name this instance}"
 
 temporary=$(mktemp -d)
 trap 'rm -rf "$temporary"' EXIT
@@ -20,6 +21,8 @@ download directive.json 2> /dev/null || exit 0
 download directive.json.sigstore.json
 cosign verify-blob "$temporary/directive.json" --bundle "$temporary/directive.json.sigstore.json" \
   --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+# Other instances built from this profile ignore the directives of this one.
+[[ "$(jq -r '.instance' "$temporary/directive.json")" = "$domain" ]] || exit 0
 wanted=$(jq -er 'select(.format == 1) | .state | select(. == "maintenance" or . == "normal")' "$temporary/directive.json")
 issued=$(jq -er '.issued | select(type == "number" and . > 0 and . == floor)' "$temporary/directive.json")
 applied=0

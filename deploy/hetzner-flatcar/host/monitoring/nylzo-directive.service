@@ -6,8 +6,13 @@ After=network-online.target
 Type=oneshot
 ExecStart=/opt/nylzo/runtime/directive
 TimeoutStartSec=90
+EnvironmentFile=/etc/nylzo/caddy.env
 StateDirectory=nylzo-directive
 StateDirectoryMode=0755
+# cosign keeps the Sigstore trust root under $HOME.
+Environment=HOME=/var/cache/nylzo-directive
+CacheDirectory=nylzo-directive
+CacheDirectoryMode=0700
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
