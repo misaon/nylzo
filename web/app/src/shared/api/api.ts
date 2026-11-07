@@ -1,5 +1,6 @@
 import {
   authorizationHeader,
+  decodeBase64url,
   encodeBase64url,
   idToString,
   MAX_OBJECT_BYTES,
@@ -15,7 +16,7 @@ import {
   utf8,
   verifierHeader,
 } from '@nylzo/core';
-import type { KdfId, Purpose, RequestKey } from '@nylzo/core';
+import type { KdfId, Purpose, RequestKey, ShareKey } from '@nylzo/core';
 
 import { ResponseError, StoppedError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
@@ -111,7 +112,11 @@ export interface Envelope {
   readonly policy: ServedPolicy;
   readonly object: Uint8Array<ArrayBuffer>;
   readonly share?: Uint8Array<ArrayBuffer> | undefined;
+  readonly shareKey: ShareKey;
 }
+
+// Each attempt draws its own share key, so no key ever serves two requests (Protocol §5.6).
+type ShareKeys = () => Promise<ShareKey>;
 
 interface Claimed extends Envelope {
   readonly lease: string;
@@ -119,7 +124,7 @@ interface Claimed extends Envelope {
 
 interface ClaimOptions {
   readonly verifierKey: RequestKey;
-  readonly shareKey: Uint8Array;
+  readonly shareKeys: ShareKeys;
   readonly onLease?: (lease: string) => void;
   readonly onProgress?: DownloadProgress;
   readonly proceed?: () => boolean;
@@ -140,7 +145,7 @@ export interface Api {
     id: Uint8Array,
     readKey: RequestKey,
     lease: string,
-    shareKey: Uint8Array,
+    shareKeys: ShareKeys,
     onProgress?: DownloadProgress,
   ) => Promise<Envelope>;
   ack: (id: Uint8Array, readKey: RequestKey, lease: string) => Promise<void>;
@@ -156,11 +161,14 @@ interface SignedRequest {
   readonly key: RequestKey;
   readonly verifier?: RequestKey | undefined;
   readonly headers?: Readonly<Record<string, string>>;
+  readonly attemptHeaders?: () => Promise<Readonly<Record<string, string>>>;
   readonly json?: Json;
   readonly proceed?: (() => boolean) | undefined;
+  readonly keepalive?: boolean;
 }
 
 const SHORT_TIMEOUT_MS = 30_000;
+const LEASE_LENGTH = 32;
 const TRANSFER_MARGIN_MS = 21_000;
 export const TRANSFER_TIMEOUT_MS = transferSeconds(MAX_OBJECT_BYTES) * 1000 + TRANSFER_MARGIN_MS;
 
@@ -213,11 +221,31 @@ function issuedOf(create: Json): Issued {
 }
 
 function leaseOf(response: Response): string {
-  const lease = response.headers.get('X-Nylzo-Lease');
-  if (lease === null) {
-    throw new ResponseError('claim without a lease');
+  const lease = response.headers.get('X-Nylzo-Lease') ?? '';
+  let length = 0;
+  try {
+    length = decodeBase64url(lease).length;
+  } catch {}
+  if (length !== LEASE_LENGTH) {
+    throw new ResponseError('claim without a canonical lease');
   }
   return lease;
+}
+
+function sentShareKey(shareKeys: ShareKeys) {
+  let current: ShareKey | undefined;
+  return {
+    headers: async () => {
+      current = await shareKeys();
+      return { 'X-Nylzo-Share-Key': encodeBase64url(current.publicKey) };
+    },
+    last: (): ShareKey => {
+      if (!current) {
+        throw new ResponseError('no share key was sent');
+      }
+      return current;
+    },
+  };
 }
 
 export function createApi(options: ApiOptions = {}): Api {
@@ -231,13 +259,13 @@ export function createApi(options: ApiOptions = {}): Api {
       headers.set('X-Requested-With', 'XMLHttpRequest');
     }
     return fetchResource(`${base}${path}`, {
+      ...requestInit,
+      headers,
       credentials: 'omit',
       cache: 'no-store',
       redirect: 'error',
       referrerPolicy: 'no-referrer',
       signal: AbortSignal.timeout(timeoutMs),
-      ...requestInit,
-      headers,
     });
   }
 
@@ -248,7 +276,7 @@ export function createApi(options: ApiOptions = {}): Api {
 
   async function signedOnce(request: SignedRequest, timeoutMs: number): Promise<Response> {
     const fresh = await challenge();
-    const headers: Record<string, string> = { ...request.headers };
+    const headers: Record<string, string> = { ...request.headers, ...(await request.attemptHeaders?.()) };
     const body = request.json === undefined ? undefined : utf8(JSON.stringify(request.json));
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -262,7 +290,11 @@ export function createApi(options: ApiOptions = {}): Api {
     if (request.proceed?.() === false) {
       throw new StoppedError();
     }
-    return call(request.path, { method: request.method, headers, ...(body !== undefined && { body }) }, timeoutMs);
+    return call(
+      request.path,
+      { method: request.method, headers, keepalive: request.keepalive === true, ...(body !== undefined && { body }) },
+      timeoutMs,
+    );
   }
 
   async function signed(request: SignedRequest, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
@@ -370,6 +402,7 @@ export function createApi(options: ApiOptions = {}): Api {
     },
 
     async claim(id, readKey, claimOptions) {
+      const sent = sentShareKey(claimOptions.shareKeys);
       const response = await signed(
         {
           method: 'POST',
@@ -377,7 +410,7 @@ export function createApi(options: ApiOptions = {}): Api {
           purpose: PURPOSE_READ,
           key: readKey,
           verifier: claimOptions.verifierKey,
-          headers: { 'X-Nylzo-Share-Key': encodeBase64url(claimOptions.shareKey) },
+          attemptHeaders: sent.headers,
           proceed: claimOptions.proceed,
         },
         TRANSFER_TIMEOUT_MS,
@@ -386,23 +419,26 @@ export function createApi(options: ApiOptions = {}): Api {
       claimOptions.onLease?.(lease);
       const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
       const share = shareOf(response);
-      return { lease, policy, share, object: await readObject(response, claimOptions.onProgress) };
+      const object = await readObject(response, claimOptions.onProgress);
+      return { lease, policy, share, shareKey: sent.last(), object };
     },
 
-    async blob(id, readKey, lease, shareKey, onProgress) {
+    async blob(id, readKey, lease, shareKeys, onProgress) {
+      const sent = sentShareKey(shareKeys);
       const response = await signed(
         {
           method: 'GET',
           path: `${messagePath(id)}/blob`,
           purpose: PURPOSE_READ,
           key: readKey,
-          headers: { 'X-Nylzo-Lease': lease, 'X-Nylzo-Share-Key': encodeBase64url(shareKey) },
+          headers: { 'X-Nylzo-Lease': lease },
+          attemptHeaders: sent.headers,
         },
         TRANSFER_TIMEOUT_MS,
       );
       const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
       const share = shareOf(response);
-      return { policy, share, object: await readObject(response, onProgress) };
+      return { policy, share, shareKey: sent.last(), object: await readObject(response, onProgress) };
     },
 
     async ack(id, readKey, lease) {
@@ -412,6 +448,7 @@ export function createApi(options: ApiOptions = {}): Api {
         purpose: PURPOSE_READ,
         key: readKey,
         headers: { 'X-Nylzo-Lease': lease },
+        keepalive: true,
       });
     },
 

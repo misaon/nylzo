@@ -53,6 +53,14 @@ export async function readBody(
   return received === object.length ? object : object.slice(0, received);
 }
 
+export function mediaTypeOf(response: Response): string {
+  return (response.headers.get('Content-Type') ?? '').split(';', 1)[0]?.trim().toLowerCase() ?? '';
+}
+
 export async function readObject(response: Response, onProgress?: DownloadProgress): Promise<Uint8Array<ArrayBuffer>> {
+  if (mediaTypeOf(response) !== 'application/octet-stream') {
+    await response.body?.cancel();
+    throw new ResponseError('the object is not application/octet-stream');
+  }
   return readBody(response, MAX_OBJECT_BYTES, onProgress);
 }

@@ -2,7 +2,7 @@ import { decodeBase64url, utf8 } from '@nylzo/core';
 
 import { ApiError, ERROR_KINDS, MESSAGE_STATES, ResponseError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
-import { readBody } from './object-body.ts';
+import { mediaTypeOf, readBody } from './object-body.ts';
 
 export type Json = Readonly<Record<string, unknown>>;
 
@@ -164,6 +164,10 @@ export function clientFiles(manifest: Json): readonly ClientFile[] {
 }
 
 export async function readJson(response: Response): Promise<Json> {
+  if (mediaTypeOf(response) !== 'application/json') {
+    await response.body?.cancel();
+    throw new ResponseError('the answer is not application/json');
+  }
   let body: unknown;
   try {
     const bytes = await readBody(response, MAX_JSON_BYTES);
@@ -178,9 +182,8 @@ export async function readJson(response: Response): Promise<Json> {
 }
 
 function retryAfterHeader(response: Response): number | undefined {
-  const header = response.headers.get('Retry-After');
-  const value = header === null || header.trim() === '' ? Number.NaN : Number(header);
-  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+  const header = response.headers.get('Retry-After')?.trim() ?? '';
+  return /^\d{1,9}$/u.test(header) ? Number(header) : undefined;
 }
 
 export async function apiError(response: Response): Promise<ApiError> {
