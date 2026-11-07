@@ -21,6 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/sweep"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -76,7 +77,7 @@ type Server struct {
 	requestCounts *logging.RequestCounts
 	eventCounts   *logging.Events
 	events        *slog.Logger
-	pace          pace
+	pace          transport.Pace
 	handler       http.Handler
 }
 
@@ -100,7 +101,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		logger:      logging.New(os.Stderr),
 		webFiles:    web.Files(),
 		dummyRow:    newDummyRow(),
-		pace:        defaultPace(),
+		pace:        transport.DefaultPace(),
 	}
 	server.settings.Pepper, server.settings.PepperPrevious = nil, nil
 	for _, option := range options {

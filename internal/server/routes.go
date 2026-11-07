@@ -17,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/crossorigin"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -53,7 +54,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET "+api.HealthPath, handleHealth)
 	mux.Handle("/", s.frontend)
 	routed := logging.Route(mux)
-	return s.requestCounts.Requests(inSecretMode(closeUnreadBodies(
+	return s.requestCounts.Requests(inSecretMode(transport.CloseUnreadBodies(
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
 			s.settings.PublicURL,
 			http.HandlerFunc(refuseCrossOrigin),

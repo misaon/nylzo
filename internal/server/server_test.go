@@ -30,6 +30,7 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -313,8 +314,8 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
-	window := defaultPace().window
-	if chunks := len(blobWriter.writes) - 1; chunks < size/paceChunk ||
+	window := transport.DefaultPace().Window
+	if chunks := len(blobWriter.writes) - 1; chunks < size/transport.PaceChunk ||
 		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
 			return time.Until(deadline) > window
 		}) {
@@ -385,7 +386,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := writer.writes[len(writer.writes)-1].Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
 	}
-	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > defaultPace().window {
+	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > transport.DefaultPace().Window {
 		t.Fatalf("F7: the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
 	}
 }

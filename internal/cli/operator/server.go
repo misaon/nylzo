@@ -29,6 +29,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/sweep"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -351,7 +352,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	sweeper.Go(func() { instance.RunRatchet(ctx) })
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
-	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()
+	go func() { served <- httpServer.Serve(transport.SecureEarlyErrors(listener)) }()
 	logListening(ctx, logger, listener.Addr(), &settings)
 	select {
 	case err = <-served:

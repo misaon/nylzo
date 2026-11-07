@@ -37,6 +37,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -207,7 +208,7 @@ func (h *testHarness) listen() string {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	go httpServer.Serve(SecureEarlyErrors(listener))
+	go httpServer.Serve(transport.SecureEarlyErrors(listener))
 	h.t.Cleanup(func() { httpServer.Close() })
 	return listener.Addr().String()
 }

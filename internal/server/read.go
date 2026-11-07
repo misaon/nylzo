@@ -447,7 +447,7 @@ func (s *Server) serveBlob(
 	header.Set("Content-Type", octetStream)
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
+	paced := s.pace.Writer(w, http.NewResponseController(w), overall)
 	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
 	defer streamBuffers.Put(buffer)
 	if copied, err := io.CopyBuffer(

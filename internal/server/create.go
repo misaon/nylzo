@@ -340,12 +340,9 @@ func (s *Server) receiveBlob(
 	blob *storedBlob,
 ) (envelope.Header, time.Time, bool) {
 	size := request.header.Size
-	body := &trackingReader{reader: &pacedReader{
-		reader:     http.MaxBytesReader(w, r.Body, size),
-		controller: http.NewResponseController(w),
-		pace:       s.pace,
-		overall:    request.bodyBy,
-	}}
+	body := &trackingReader{
+		reader: s.pace.Reader(http.MaxBytesReader(w, r.Body, size), http.NewResponseController(w), request.bodyBy),
+	}
 	var raw [envelope.HeaderLen]byte
 	if _, err := io.ReadFull(body, raw[:]); err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
