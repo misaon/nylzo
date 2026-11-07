@@ -24,6 +24,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/sweep"
 	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/web"
+	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -48,6 +49,14 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(server *Server) {
 		if logger != nil {
 			server.logger = logger
+		}
+	}
+}
+
+func WithWebFiles(files fs.FS) Option {
+	return func(server *Server) {
+		if files != nil {
+			server.webFiles = files
 		}
 	}
 }
@@ -238,6 +247,23 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 		}
 		eraseUnreachableSecrets()
 	}
+}
+
+func (s *Server) loadWebClient() error {
+	build, err := webclient.Load(s.webFiles)
+	if err != nil {
+		return err
+	}
+	if s.frontend, err = webclient.NewHandler(
+		build,
+		s.settings.PublicURL,
+		s.settings.Operator.Contact,
+		s.buildInformation(),
+	); err != nil {
+		return err
+	}
+	s.logger.Info("web-client", "built", build.Built, "assets", len(build.Assets), "public_url", s.settings.PublicURL)
+	return nil
 }
 
 func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {

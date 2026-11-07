@@ -64,6 +64,15 @@ func (s *Server) routes() http.Handler {
 	)
 }
 
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte("ok"))
+}
+
+func handleAPINotFound(w http.ResponseWriter, _ *http.Request) {
+	writeNotFound(w)
+}
+
 // inSecretMode runs every API request, which may carry public keys and open record keys, blob keys and erase salts,
 // in secret mode: its registers and stack are erased when it returns, its heap allocations once unreachable (A4-2).
 func inSecretMode(next http.Handler) http.Handler {
