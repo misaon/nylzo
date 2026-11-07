@@ -4,7 +4,16 @@ on:
   workflow_run: # zizmor: ignore[dangerous-triggers] -- Runs main's definition, reads only API metadata and never checks out or executes the tagged commit.
     workflows: [ci, release]
     types: [completed]
+  schedule:
+    # Dependency release windows: Monday, Wednesday and Friday after Renovate's morning runs.
+    - cron: "47 13 * * 1,3,5"
   workflow_dispatch:
+    inputs:
+      task:
+        description: What to run
+        type: choice
+        options: [signing-probe, dependency-window]
+        default: signing-probe
 
 permissions: {}
 
@@ -13,10 +22,12 @@ jobs:
     if: >-
       github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
       github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci' &&
-      github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v'))
-    name: Tag a merged release PR or maintenance fix
+      ((github.event.workflow_run.event == 'push' &&
+        (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v'))) ||
+       (github.event.workflow_run.event == 'workflow_dispatch' && startsWith(github.event.workflow_run.head_branch, 'release/v')))
+    name: Tag a merged release PR, a security fix or a dependency release
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     environment: dependency-updates
@@ -134,8 +145,40 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app.outputs.token }}
         run: bun automation/release-tag/published.ts
 
+  dependency-window:
+    if: >-
+      github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.task == 'dependency-window'))
+    name: Open a dependency release window on the maintenance branch
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    concurrency:
+      group: dependency-window
+      cancel-in-progress: false
+    permissions:
+      actions: write # run the full CI on the maintenance branch; its success tags the release
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Run CI on the maintenance branch when it holds unreleased changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq 'select(.immutable and (.draft | not)) | .tag_name')
+          [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          branch="release/${latest%.*}"
+          ahead=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${latest}...${branch}" --jq .ahead_by)
+          if [[ "$ahead" = 0 ]]; then
+            echo "$branch holds nothing after $latest." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          echo "CI runs on $branch ($ahead commits after $latest); its success tags the dependency release." >> "$GITHUB_STEP_SUMMARY"
+
   signing-probe:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'signing-probe' && github.repository == 'misaon/nylzo'
     name: Verify keyless tag signing without publishing
     runs-on: ubuntu-26.04
     timeout-minutes: 10

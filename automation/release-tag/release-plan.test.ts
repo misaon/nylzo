@@ -1,20 +1,43 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { maintenanceRelease, plannedRelease } from './release-plan.ts';
+import { maintenanceKind, maintenanceRelease, plannedRelease } from './release-plan.ts';
 
 const commit = 'a'.repeat(40);
 const releaseCommit = 'b'.repeat(40);
 
-test('a merged fix on the current maintenance branch becomes the next patch', () => {
+const securityFix = { labels: ['dependencies', 'security'], number: 1 };
+const update = { labels: ['dependencies', 'backend'], number: 2 };
+
+test('a merged security fix on the current maintenance branch becomes the next patch at once', () => {
   assert.deepEqual(
     maintenanceRelease({
       branch: 'release/v0.2',
       commit,
       latestRelease: 'v0.2.3',
       latestReleaseCommit: releaseCommit,
+      trigger: 'merge',
+      unreleased: [update, securityFix],
     }),
     { baseRelease: 'v0.2.3', commit, kind: 'security', tag: 'v0.2.4' },
+  );
+});
+
+test('other updates wait for the dependency release window and then ship together', () => {
+  assert.equal(maintenanceKind('merge', [update]), null);
+  assert.equal(maintenanceKind('window', [update]), 'dependencies');
+  assert.equal(maintenanceKind('window', [update, securityFix]), 'security');
+  assert.equal(maintenanceKind('window', []), null);
+  assert.deepEqual(
+    maintenanceRelease({
+      branch: 'release/v0.2',
+      commit,
+      latestRelease: 'v0.2.3',
+      latestReleaseCommit: releaseCommit,
+      trigger: 'window',
+      unreleased: [update],
+    }),
+    { baseRelease: 'v0.2.3', commit, kind: 'dependencies', tag: 'v0.2.4' },
   );
 });
 
@@ -25,6 +48,8 @@ test('the maintenance branch at the published commit has nothing to release', ()
       commit: releaseCommit,
       latestRelease: 'v0.2.3',
       latestReleaseCommit: releaseCommit,
+      trigger: 'window',
+      unreleased: [],
     }),
     null,
   );
@@ -37,6 +62,8 @@ test('an older maintenance line cannot publish a patch after a newer release', (
       commit,
       latestRelease: 'v0.3.0',
       latestReleaseCommit: releaseCommit,
+      trigger: 'merge',
+      unreleased: [securityFix],
     }),
   );
 });
