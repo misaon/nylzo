@@ -197,7 +197,7 @@ type Counters interface {
 	RateReserve(ctx context.Context, hit RateHit) (int64, error)
 	RateReserveBatch(ctx context.Context, hits []RateHit) ([]bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
-	RateCopy(ctx context.Context, from, to string, windowStart time.Time) error
+	RateCopy(ctx context.Context, sourceKey, targetKey string, windowStart time.Time) error
 	RatePurge(ctx context.Context, now time.Time, limit int) (int, error)
 }
 

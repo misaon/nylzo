@@ -298,14 +298,8 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
-	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
-		return lockErr
-	}
-	if secretErr := requireSecretMode(settings.Development, logger); secretErr != nil {
-		return secretErr
-	}
-	if epochErr := prepareEpoch(&settings, logger); epochErr != nil {
-		return epochErr
+	if prepareErr := prepareProcess(&settings, logger); prepareErr != nil {
+		return prepareErr
 	}
 	database, blobs, err := openStore(
 		ctx,
@@ -372,6 +366,18 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	waitFor(ctx, &sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
+}
+
+// prepareProcess refuses a process that would leave keys in swap or in memory and prepares the epoch directory, all
+// before any store is opened.
+func prepareProcess(settings *config.Server, logger *slog.Logger) error {
+	if err := requireMemoryLock(settings.Development, logger); err != nil {
+		return err
+	}
+	if err := requireSecretMode(settings.Development, logger); err != nil {
+		return err
+	}
+	return prepareEpoch(settings, logger)
 }
 
 // Behind a declared reverse proxy a plain HTTP listener is the intended setup, not a misconfiguration.

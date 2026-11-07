@@ -66,16 +66,16 @@ func (s *Store) RateRelease(ctx context.Context, key string, windowStart time.Ti
 }
 
 // RateCopy sets an existing counter to the count of another one in the same window, or to 0 when that has none.
-func (s *Store) RateCopy(ctx context.Context, from, to string, windowStart time.Time) error {
+func (s *Store) RateCopy(ctx context.Context, sourceKey, targetKey string, windowStart time.Time) error {
 	window := milliseconds(windowStart)
 	_, err := s.writer.ExecContext(
 		ctx,
 		`UPDATE rate_counters SET count = COALESCE(
 			(SELECT count FROM rate_counters WHERE key = ? AND window_start = ?), 0
 		) WHERE key = ? AND window_start = ?`,
-		from,
+		sourceKey,
 		window,
-		to,
+		targetKey,
 		window,
 	)
 	return err

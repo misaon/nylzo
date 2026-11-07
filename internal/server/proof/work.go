@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -137,7 +138,11 @@ func (w *Work) spend(ctx context.Context, challenge *[proofofwork.ChallengeLen]b
 }
 
 func (w *Work) tag(signed []byte, difficulty int) []byte {
-	mac := w.ring.MAC(pepper.PoW, append(signed[:len(signed):len(signed)], byte(difficulty))).MAC
+	var encoded byte
+	if difficulty >= 0 && difficulty <= proofofwork.MaxDifficulty {
+		encoded = byte(difficulty)
+	}
+	mac := w.ring.MAC(pepper.PoW, append(slices.Clip(signed), encoded)).MAC
 	return mac[:proofofwork.TagLen]
 }
 

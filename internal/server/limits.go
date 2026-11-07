@@ -69,7 +69,7 @@ func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string, limit int64) bool {
-	return s.countHourly(w, r, ratelimit.Hit{Kind: kind, Limit: limit})
+	return s.countHourly(w, r, &ratelimit.Hit{Kind: kind, Limit: limit})
 }
 
 // allowReadBytes counts the object that a claim or download is about to stream, so a few clients cannot fill the
@@ -79,16 +79,16 @@ func (s *Server) allowReadBytes(w http.ResponseWriter, r *http.Request, size int
 	if limit <= 0 {
 		return true
 	}
-	return s.countHourly(w, r, ratelimit.Hit{Kind: "read-bytes", Bytes: size, BytesLimit: limit})
+	return s.countHourly(w, r, &ratelimit.Hit{Kind: "read-bytes", Bytes: size, BytesLimit: limit})
 }
 
 // countHourly counts a hit against the hour of its /32 or /64 source and, with limits times the coarse multiplier,
 // of its /24 or /48 range.
-func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit ratelimit.Hit) bool {
+func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit *ratelimit.Hit) bool {
 	now := time.Now()
 	buckets := s.bucketsOf(r)
 	coarse := s.settings.Rates.CoarseMultiplier
-	source := hit
+	source := *hit
 	source.Kind, source.Bucket, source.Window = hit.Kind+":h", buckets.source, ratelimit.Hour(now)
 	addressRange := source
 	addressRange.Kind, addressRange.Bucket = hit.Kind+":h:c", buckets.addressRange

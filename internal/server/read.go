@@ -455,7 +455,12 @@ func (s *Server) serveBlob(
 	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
 	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
 	defer streamBuffers.Put(buffer)
-	if copied, err := io.CopyBuffer(paced, blob, buffer[:]); (err != nil || copied != size) && r.Context().Err() == nil {
+	if copied, err := io.CopyBuffer(
+		paced,
+		blob,
+		buffer[:],
+	); (err != nil || copied != size) &&
+		r.Context().Err() == nil {
 		s.events.WarnContext(r.Context(), "blob-stream")
 	}
 }

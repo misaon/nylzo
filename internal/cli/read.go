@@ -310,7 +310,11 @@ func passphraseKey(environment *command.Environment, link *openLink, source pass
 	return key, err
 }
 
-func readAndDerivePassphraseKey(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
+func readAndDerivePassphraseKey(
+	environment *command.Environment,
+	link *openLink,
+	source passphraseSource,
+) ([]byte, error) {
 	if link.kdf == core.KDFNone {
 		return nil, nil
 	}
