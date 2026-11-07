@@ -90,7 +90,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("create during slowloris: %v %v", err, response)
 	}
 	response.Body.Close()
-	tooLarge := harness.settings.Limits.MaxObjectBytes + 1
+	tooLarge := harness.settings.Limits.MaxObjectBytes + envelope.Pad
 	checks := []struct {
 		name         string
 		header       string
@@ -350,7 +350,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 		)
 	}
 
-	body := append(envelope.NewHeader(core.KDFNone).Bytes(), make([]byte, 1000)...)
+	body := append(envelope.NewHeader(core.KDFNone).Bytes(), make([]byte, envelope.Pad-envelope.HeaderLen)...)
 	id = core.NewID()
 	header, _ = json.Marshal(
 		map[string]any{

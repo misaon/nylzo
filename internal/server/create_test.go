@@ -200,6 +200,16 @@ func TestCreateHeaderRules(t *testing.T) {
 	raw, _ := base64.RawURLEncoding.DecodeString(none.createHeader(0))
 	cases := map[string]string{
 		"unknown-key": mutateHeader(t, none, func(fields map[string]any) { fields["extra"] = 1 }),
+		"unpadded-size": mutateHeader(
+			t,
+			none,
+			func(fields map[string]any) { fields["size"] = envelope.Pad + 1 },
+		),
+		"below-one-block": mutateHeader(
+			t,
+			none,
+			func(fields map[string]any) { fields["size"] = envelope.Pad / 2 },
+		),
 		"case-variant-key": mutateHeader(
 			t,
 			none,

@@ -179,7 +179,7 @@ func (c *createRequest) checkPolicy(limits config.Limits) bool {
 		return false
 	}
 	c.opensMax, c.ttlSeconds = uint16(opens), uint32(ttl)
-	return c.header.Size >= envelope.HeaderLen+envelope.TagLen+envelope.MetaLenPrefix
+	return c.header.Size >= envelope.Pad && c.header.Size%envelope.Pad == 0
 }
 
 func onlyCreateHeaderKeys(data []byte) bool {

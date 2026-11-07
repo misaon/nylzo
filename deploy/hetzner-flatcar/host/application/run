@@ -5,8 +5,8 @@ digest=$(/opt/nylzo/bin/jq -er .digest /var/lib/nylzo-deploy/current.json)
 exec docker run --rm --name nylzo --pull=never --user 65532:65532 \
   --network nylzo --ip 172.30.81.2 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
-  --memory 1g --cpus 1.5 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 \
-  --env-file /etc/nylzo/service.env --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
+  --memory 1g --cpus 1.5 --pids-limit 1024 --ulimit memlock=-1:-1 --ulimit core=0:0 \
+  --env-file /etc/nylzo/service.env --env NYLZO_EPOCH_DIR=/run/nylzo-epoch --env GOMEMLIMIT=768MiB \
   --volume /var/lib/nylzo/data:/home/nonroot:Z \
   --volume /run/nylzo-epoch:/run/nylzo-epoch:Z \
   --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro,Z \
