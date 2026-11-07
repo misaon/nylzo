@@ -16,6 +16,8 @@ const (
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`
 	releaseQuery = `UPDATE rate_counters SET count = count - 1 WHERE key = ? AND window_start = ? AND count > 0`
 	counterQuery = `SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`
+	purgeQuery   = `DELETE FROM rate_counters WHERE (key, window_start) IN
+		(SELECT key, window_start FROM rate_counters WHERE purge_at <= ? LIMIT ?)`
 )
 
 func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
@@ -74,12 +76,7 @@ func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) 
 }
 
 func (s *Store) RatePurge(ctx context.Context, now time.Time, limit int) (int, error) {
-	return s.purge(
-		ctx,
-		`DELETE FROM rate_counters WHERE (key, window_start) IN (SELECT key, window_start FROM rate_counters WHERE purge_at <= ? LIMIT ?)`,
-		now,
-		limit,
-	)
+	return s.purge(ctx, purgeQuery, now, limit)
 }
 
 func countHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (store.RateCount, error) {

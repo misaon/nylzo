@@ -7,6 +7,8 @@ import (
 	"fmt"
 )
 
+const countersPurgeIndex = `CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at)`
+
 const schema = `
 CREATE TABLE IF NOT EXISTS messages (
 	locator BLOB PRIMARY KEY,
@@ -27,6 +29,7 @@ CREATE TABLE IF NOT EXISTS rate_counters (
 	purge_at INTEGER NOT NULL,
 	PRIMARY KEY (key, window_start)
 ) WITHOUT ROWID;
+` + countersPurgeIndex + `;
 CREATE TABLE IF NOT EXISTS wal_scrub (
 	slot INTEGER PRIMARY KEY,
 	generation INTEGER NOT NULL,
@@ -34,7 +37,10 @@ CREATE TABLE IF NOT EXISTS wal_scrub (
 );
 `
 
-const schemaVersion = 7
+const schemaVersion = 8
+
+// previousSchema is the schema of nylzo 0.3 to 0.8, which lacks only the index on rate_counters(purge_at).
+const previousSchema = 7
 
 var (
 	ErrNewerSchema    = errors.New("sqlite: the database was written by a newer nylzo")
@@ -54,14 +60,23 @@ type queryRower interface {
 
 func requireCurrent(ctx context.Context, database *sql.DB) error {
 	version, err := userVersion(ctx, database)
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
+	case version == previousSchema:
+		return prepareSchema(ctx, database, false)
+	default:
+		return checkVersion(version)
 	}
-	return checkVersion(version)
 }
 
-// createSchema reads the version in the write transaction that creates the schema, so concurrent opens create it once.
 func createSchema(ctx context.Context, database *sql.DB) error {
+	return prepareSchema(ctx, database, true)
+}
+
+// prepareSchema reads the version in the write transaction that changes the schema, so concurrent opens change it
+// once; a database of nylzo 0.3 to 0.8 only gains the index of version 8 and keeps every row.
+func prepareSchema(ctx context.Context, database *sql.DB, create bool) error {
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -75,10 +90,16 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 	if countErr := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master`).Scan(&objects); countErr != nil {
 		return countErr
 	}
-	if version != 0 || objects > 0 {
+	var statements string
+	switch {
+	case create && version == 0 && objects == 0:
+		statements = schema
+	case version == previousSchema:
+		statements = countersPurgeIndex + ";\n"
+	default:
 		return checkVersion(version)
 	}
-	if _, err = tx.ExecContext(ctx, schema+fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
+	if _, err = tx.ExecContext(ctx, statements+fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
 		return err
 	}
 	return tx.Commit()
