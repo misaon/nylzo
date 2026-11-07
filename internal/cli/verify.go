@@ -18,6 +18,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
@@ -129,14 +130,14 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
-	local, err := webClient(environment)
-	if err != nil || !local.Built {
+	build, err := webClient(environment)
+	if err != nil || !build.Built {
 		return command.Failf(environment, "%s", errNoLocalClient)
 	}
 	check := &verifier{
 		api:         api,
 		information: environment.BuildInformation(),
-		local:       local,
+		local:       build,
 		version:     buildVersion(environment.Version),
 		allowed:     options.allowed,
 	}
@@ -271,13 +272,12 @@ func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) err
 
 // contact reads the operator's contact, which every page's Connection-Allowlist admits.
 func (v *verifier) contact(ctx context.Context) (string, error) {
-	fetched, err := v.api.Fetch(ctx, server.TransparencyPath, identity, maxManifestBytes)
+	contact, err := local.OperatorContact(ctx, v.api)
+	if _, unreadable := errors.AsType[*local.ContactError](err); unreadable {
+		return "", differs("%s: %s", server.TransparencyPath, err)
+	}
 	if err != nil {
 		return "", fetchFailed(server.TransparencyPath, err)
-	}
-	contact, err := operatoraddress.OperatorContact(fetched.Body)
-	if err != nil {
-		return "", differs("%s: %s", server.TransparencyPath, err)
 	}
 	return contact, nil
 }
