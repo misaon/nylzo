@@ -164,6 +164,18 @@ func ReadFileLimited(path string, limit int64) ([]byte, error) {
 	return data, err
 }
 
+func CreatePrivateFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, PrivateFileMode)
+}
+
+func WritePrivateFile(file *os.File, content string) error {
+	_, err := file.WriteString(content)
+	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
+		os.Remove(file.Name())
+	}
+	return err
+}
+
 // Unreadable drops the path from a file error, so no message repeats a flag value.
 func Unreadable(err error) error {
 	switch {

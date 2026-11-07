@@ -186,13 +186,11 @@ func (g *generatedPassphrase) discard() {
 
 func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
 	passphrase := keys.GeneratePassphrase()
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
+	file, err := command.CreatePrivateFile(path)
 	if err != nil {
 		return nil, errPassphraseFileExists
 	}
-	_, err = file.WriteString(passphrase + "\n")
-	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
-		os.Remove(path)
+	if command.WritePrivateFile(file, passphrase+"\n") != nil {
 		return nil, errPassphraseNotWritten
 	}
 	return &generatedPassphrase{passphrase: passphrase, path: path}, nil
@@ -525,7 +523,7 @@ func reserveManageFile(path string) (manageFile, error) {
 	if path == "" {
 		return manageFile{}, nil
 	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
+	file, err := command.CreatePrivateFile(path)
 	if err != nil {
 		return manageFile{}, err
 	}
