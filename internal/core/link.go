@@ -97,7 +97,7 @@ func parseFragment(path, fragment string) (Link, error) {
 		return Link{}, ErrLink
 	}
 	link.ID = id
-	if !decodeInto(link.Secret[:], fields[3]) || !decodeInto(link.ObjectHash[:], fields[4]) {
+	if !DecodeInto(link.Secret[:], fields[3]) || !DecodeInto(link.ObjectHash[:], fields[4]) {
 		link.Wipe()
 		return Link{}, ErrLink
 	}
@@ -133,16 +133,6 @@ func releasedLink(path, fragment string) bool {
 	secret, secretErr := DecodeExact(fields[2], SecretLen)
 	clear(secret)
 	return idErr == nil && secretErr == nil
-}
-
-func decodeInto(destination []byte, text string) bool {
-	decoded, err := DecodeExact(text, len(destination))
-	if err != nil {
-		return false
-	}
-	copy(destination, decoded)
-	clear(decoded)
-	return true
 }
 
 func newerFragment(fragment string) bool {
