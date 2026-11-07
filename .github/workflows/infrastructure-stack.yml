@@ -1,0 +1,138 @@
+name: Infrastructure stack
+
+on:
+  workflow_call:
+    inputs:
+      stack:
+        description: The OpenTofu stack under deploy/hetzner-flatcar/infrastructure
+        type: string
+        required: true
+      apply:
+        description: Apply a plan that has changes; otherwise a change fails the run as drift
+        type: boolean
+        required: true
+
+permissions: {}
+
+jobs:
+  plan:
+    name: Plan ${{ inputs.stack }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    environment:
+      name: infrastructure-plan
+      deployment: false
+    permissions:
+      contents: read
+    outputs:
+      changes: ${{ steps.plan.outputs.changes }}
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/mise
+        with:
+          tools: bun opentofu cosign
+          cache: none
+      - uses: $/.github/actions/deploy-site
+        with:
+          site: ${{ secrets.NYLZO_SITE_JSON }}
+          state-passphrase: ${{ secrets.NYLZO_STATE_PASSPHRASE }}
+      - name: Plan the ${{ inputs.stack }} stack
+        id: plan
+        env:
+          STACK: ${{ inputs.stack }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.NYLZO_STATE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.NYLZO_STATE_SECRET_KEY }}
+          NYLZO_STATE_BUCKET: ${{ vars.NYLZO_STATE_BUCKET }}
+          NYLZO_STATE_ENDPOINT: ${{ vars.NYLZO_STATE_ENDPOINT }}
+          NYLZO_STATE_REGION: ${{ vars.NYLZO_STATE_REGION }}
+        run: |
+          if [[ "$STACK" = dns ]]; then mise run deploy outputs server "$RUNNER_TEMP/site/site.json" > /dev/null; fi
+          mise run deploy plan "$STACK" "$RUNNER_TEMP/site/site.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.plan.outputs.changes == 'true'
+        with:
+          name: plan-${{ inputs.stack }}
+          path: |
+            ${{ runner.temp }}/site/${{ inputs.stack }}/deployment.tfplan
+            ${{ runner.temp }}/site/${{ inputs.stack }}/review.json
+          if-no-files-found: error
+          retention-days: 1
+
+  apply:
+    name: Apply ${{ inputs.stack }}
+    needs: plan
+    if: inputs.apply && needs.plan.outputs.changes == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    # The owner may add a required reviewer to this environment; the encrypted plan expires after an hour.
+    environment:
+      name: infrastructure
+      deployment: false
+    permissions:
+      contents: read
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/mise
+        with:
+          tools: bun opentofu cosign
+          cache: none
+      - uses: $/.github/actions/deploy-site
+        with:
+          site: ${{ secrets.NYLZO_SITE_JSON }}
+          state-passphrase: ${{ secrets.NYLZO_STATE_PASSPHRASE }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        env:
+          # The bundled unzip stream still calls the deprecated Buffer(); actions/download-artifact issue 484.
+          NODE_OPTIONS: --no-deprecation
+        with:
+          name: plan-${{ inputs.stack }}
+          path: ${{ runner.temp }}/site/${{ inputs.stack }}
+          digest-mismatch: error
+      - name: Apply exactly the reviewed ${{ inputs.stack }} plan
+        env:
+          STACK: ${{ inputs.stack }}
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.NYLZO_STATE_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.NYLZO_STATE_SECRET_KEY }}
+          NYLZO_STATE_BUCKET: ${{ vars.NYLZO_STATE_BUCKET }}
+          NYLZO_STATE_ENDPOINT: ${{ vars.NYLZO_STATE_ENDPOINT }}
+          NYLZO_STATE_REGION: ${{ vars.NYLZO_STATE_REGION }}
+        run: |
+          if [[ "$STACK" = dns ]]; then mise run deploy outputs server "$RUNNER_TEMP/site/site.json" > /dev/null; fi
+          chmod 0600 "$RUNNER_TEMP/site/$STACK/deployment.tfplan" "$RUNNER_TEMP/site/$STACK/review.json"
+          mise run deploy apply "$STACK" "$RUNNER_TEMP/site/site.json"
+
+  drift:
+    name: ${{ inputs.stack }} matches its code
+    needs: plan
+    if: ${{ !inputs.apply }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: The deployed ${{ inputs.stack }} stack has not drifted
+        env:
+          CHANGES: ${{ needs.plan.outputs.changes }}
+          STACK: ${{ inputs.stack }}
+        run: |
+          if [[ "$CHANGES" != false ]]; then
+            echo "The deployed $STACK stack differs from its code; review the plan job and apply it from main."
+            exit 1
+          fi

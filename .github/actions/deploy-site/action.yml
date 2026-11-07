@@ -1,0 +1,26 @@
+name: Private deployment site
+description: >-
+  Writes the site configuration and the state encryption key from environment secrets into a private directory, where
+  the deploy tool expects the operator's files. The site file holds the operator's administrator networks, so it stays
+  out of the public repository.
+inputs:
+  site:
+    description: The site.json of the deployment.
+    required: true
+  state-passphrase:
+    description: The passphrase that encrypts OpenTofu state and plans.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Write the private site directory
+      shell: bash
+      env:
+        SITE_JSON: ${{ inputs.site }}
+        STATE_PASSPHRASE: ${{ inputs.state-passphrase }}
+      run: |
+        directory="${RUNNER_TEMP}/site"
+        install -d -m 0700 "$directory"
+        (umask 077 && printf '%s\n' "$SITE_JSON" > "$directory/site.json" && printf '%s' "$STATE_PASSPHRASE" > "$directory/state-encryption.key")
+        jq -e 'type == "object"' "$directory/site.json" > /dev/null
+        [[ ${#STATE_PASSPHRASE} -ge 64 ]]

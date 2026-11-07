@@ -48,6 +48,24 @@ The server's Ignition holds only site settings, the SSH key, a few early securit
 
 Keep `publicAccess: false` during acceptance: HTTPS then answers only the administrator networks, while port 80 stays public for ACME HTTP-01 and redirects. When you open the service, set `publicAccess: true`, apply a new server plan, and change `PUBLIC_ACCESS=true` in `/etc/nylzo/host.env` on the server followed by `sudo systemctl restart nylzo-firewall`. Both firewalls must agree. Do the same for a change of administrator networks (`ADMINISTRATOR_NETWORKS`, comma-separated).
 
+## Deploy from GitHub Actions
+
+After the first provisioning from the laptop, `infrastructure.yml` plans and applies every stack from `main`, so infrastructure changes need no laptop and no SSH:
+
+- A push to `main` that changes an OpenTofu stack, the toolchain or the deploy tool plans the server stack, then the DNS stack, in the `infrastructure-plan` environment, and applies a plan with changes in the `infrastructure` environment. Apply checks that the inputs still hash to the reviewed plan, which expires after an hour.
+- A daily run only plans; a stack whose plan has changes fails as drift.
+- `gh workflow run infrastructure.yml -f stack=image` builds a new verified Flatcar image after a Flatcar update; the server stack then finds the newest verified image by its labels.
+- State lives in an S3-compatible bucket, one object per stack, encrypted by OpenTofu with the state passphrase before it leaves the runner.
+
+One-time setup, in this order:
+
+1. Create a private bucket (for example Hetzner Object Storage) and an access key for it.
+2. Move the state of each stack there from the laptop: set `NYLZO_STATE_BUCKET`, `NYLZO_STATE_ENDPOINT`, `NYLZO_STATE_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, run `mise run deploy plan server .deploy/production/site.json` and answer yes to OpenTofu's offer to copy the existing state, then do the same for `dns`. The plan must show no changes.
+3. Create the environments `infrastructure-plan` and `infrastructure`, both limited to the `main` branch. Store in both `NYLZO_SITE_JSON` (the contents of `site.json`), `NYLZO_STATE_PASSPHRASE` (the contents of `state-encryption.key`), `NYLZO_STATE_ACCESS_KEY` and `NYLZO_STATE_SECRET_KEY`; store a Hetzner Read token and a Cloudflare DNS Read token as `HCLOUD_TOKEN` and `CLOUDFLARE_API_TOKEN` in `infrastructure-plan`, and Read & Write tokens in `infrastructure`. Add yourself as required reviewer of `infrastructure` if you want to approve each apply.
+4. Set the repository variables `NYLZO_STATE_BUCKET`, `NYLZO_STATE_ENDPOINT`, `NYLZO_STATE_REGION` and finally `NYLZO_INFRASTRUCTURE_ENABLED=true`.
+
+The site file stays out of the repository because it names your administrator networks. Changes to host settings that live in Ignition (`host.env`, the heartbeat URL, the monitor certificate) still need the host steps below until the server moves to a replaceable design; [the infrastructure roadmap](../maintainers/Infrastructure-roadmap.md) describes that migration.
+
 ## Cloudflare DNS without proxying
 
 Create the zone, copy existing records, and keep the registrar. The registrar of record for nylzo.com is Tucows, reached through a reseller.
