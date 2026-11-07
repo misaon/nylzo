@@ -11,9 +11,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/operator"
+	"github.com/misaon/nylzo/internal/cli/verifyclient"
 	"github.com/misaon/nylzo/internal/core"
 )
 
@@ -54,7 +54,7 @@ func commands() []subcommand {
 		{"takedown", "remove reported messages by id from stdin, on the server host", operator.RunTakedown},
 		{"report-key", "create the key pair that seals abuse reports for the operator", operator.RunReportKey},
 		{"reports", "open sealed abuse reports from stdin with the operator's private key", operator.RunReports},
-		{"verify-client", "check that a server sends the same web client as this nylzo", runVerifyClient},
+		{"verify-client", "check that a server sends the same web client as this nylzo", verifyclient.Run},
 		{"version", "print the version", runVersion},
 	}
 }
@@ -129,8 +129,4 @@ func runVersion(_ context.Context, environment *command.Environment, arguments [
 		fmt.Fprintln(environment.Stdout, information.Version)
 	}
 	return command.ExitOK
-}
-
-func buildVersion(version string) string {
-	return buildinfo.Read(version, "", "", "").Version
 }

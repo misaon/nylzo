@@ -1,4 +1,4 @@
-package cli
+package verifyclient
 
 import (
 	"bytes"
@@ -121,7 +121,7 @@ func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOption
 	return flags, options
 }
 
-func runVerifyClient(ctx context.Context, environment *command.Environment, arguments []string) int {
+func Run(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := verifyFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
@@ -142,7 +142,7 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 		server:      server,
 		information: environment.BuildInformation(),
 		local:       build,
-		version:     buildVersion(environment.Version),
+		version:     buildinfo.Read(environment.Version, "", "", "").Version,
 		allowed:     options.allowed,
 	}
 	result, err := check.run(ctx)
