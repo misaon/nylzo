@@ -135,7 +135,7 @@ func do(t *testing.T, server *localclient.Server, request call) *httptest.Respon
 		outgoing.Header.Set(name, value)
 	}
 	recorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(recorder, outgoing)
+	server.HTTPServer().Handler.ServeHTTP(recorder, outgoing)
 	return recorder
 }
 
@@ -230,7 +230,7 @@ func TestRelayAdmitsOnlyFetchCallsFromItsOwnPages(t *testing.T) {
 	duplicated.Header["Sec-Fetch-Site"] = []string{"same-origin", "cross-site"}
 	duplicated.Header.Set("Origin", server.Origin())
 	recorder := httptest.NewRecorder()
-	server.Handler().ServeHTTP(recorder, duplicated)
+	server.HTTPServer().Handler.ServeHTTP(recorder, duplicated)
 	if recorder.Code != http.StatusForbidden {
 		t.Errorf("duplicated metadata: %d", recorder.Code)
 	}

@@ -43,10 +43,6 @@ func templateFor(path string) string {
 	return indexTemplate
 }
 
-func (b Build) Page(path, publicURL string) (string, error) {
-	return render(b.Templates[templateFor(path)], publicURL)
-}
-
 type Pages map[string]Page
 
 // Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names.

@@ -107,10 +107,6 @@ func (s *Server) Instance() string {
 	return s.instance
 }
 
-func (s *Server) Handler() http.Handler {
-	return s.handler
-}
-
 func (s *Server) HTTPServer() *http.Server {
 	return &http.Server{
 		Handler:           s.handler,
