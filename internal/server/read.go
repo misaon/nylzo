@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -452,10 +453,18 @@ func (s *Server) serveBlob(
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
 	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
-	if copied, err := io.Copy(paced, blob); (err != nil || copied != size) && r.Context().Err() == nil {
+	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
+	defer streamBuffers.Put(buffer)
+	if copied, err := io.CopyBuffer(paced, blob, buffer[:]); (err != nil || copied != size) && r.Context().Err() == nil {
 		s.events.WarnContext(r.Context(), "blob-stream")
 	}
 }
+
+const streamBufferLength = 32 << 10
+
+// streamBuffers spares each download a buffer of its own, since neither the decrypting reader nor the paced writer
+// lets io.Copy skip one.
+var streamBuffers = sync.Pool{New: func() any { return new([streamBufferLength]byte) }}
 
 func encodePolicy(message *store.Message) string {
 	data, _ := json.Marshal(policyHeader{
