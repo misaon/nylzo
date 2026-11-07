@@ -1,6 +1,6 @@
 ---
 name: nylzo
-description: Send a secret (password, API key, token, private file) as a one-time encrypted nylzo link, or open a nylzo link someone sent, with the nylzo CLI, so the secret stays out of the chat, the transcript and command arguments. Use when the user wants to share or receive credentials or a sensitive file, mentions nylzo, or has a link like https://host/m/ID#1.0.KEY.
+description: Send a secret (password, API key, token, private file) as a one-time encrypted nylzo link, or open a nylzo link someone sent, with the nylzo CLI, so the secret stays out of the chat, the transcript and command arguments. Use when the user wants to share or receive credentials or a sensitive file, mentions nylzo, or has a link like https://host/r#2.0.ID.KEY.HASH.
 license: MIT
 compatibility: Needs the nylzo CLI on PATH (https://github.com/misaon/nylzo/releases) and network access to a nylzo server.
 ---
@@ -37,7 +37,7 @@ D=/tmp/tmp.XXXXXXXXXX; nylzo create --server https://nylzo.example --ttl 1h --op
 
 - `create` reads the text from stdin and prints only the link. `mktemp -d` made the directory with mode 0700, so `link.txt` is private whatever the umask. Tell the user the path of `link.txt` and let them send it. Print the link only if the user asks: a printed link stays in the transcript, and it works until it is opened or expires.
 - An attachment instead of text: `nylzo create --server https://nylzo.example --from-file "$D/report.pdf"`, with the output redirected to `"$D/link.txt"` as above.
-- A passphrase: `nylzo create --generate-passphrase-file "$D/pass.txt"` generates a strong one into a new file with mode 0600 and never prints it; tell the user the path so they can send it by another channel than the link. With the user's own passphrase in the first line of a file, `--passphrase-file "$D/pass.txt"`; the CLI refuses one under 12 characters, a repetition, a run of letters, digits or keyboard keys, and a commonly used password.
+- A passphrase: `nylzo create --generate-passphrase-file "$D/pass.txt"` generates a strong one into a new file with mode 0600 and never prints it; tell the user the path so they can send it by another channel than the link. With the user's own passphrase in the first line of a file, `--passphrase-file "$D/pass.txt"`; the CLI refuses one under 15 characters, a repetition, a run of letters, digits or keyboard keys, and a commonly used password.
 - `--manage-token-file` writes a new file with mode 0600 and refuses an existing one. The token checks and cancels the message but cannot read it.
 - `--server` can come from `NYLZO_SERVER`. `--ttl` and `--opens` default to the instance settings and 1.
 - When the user no longer needs the manage token, suggest deleting the whole directory.
@@ -55,7 +55,7 @@ Make a private directory as above and ask the user to save the link into `link.t
 
 ```bash
 D=/tmp/tmp.XXXXXXXXXX; cat > "$D/link.txt" <<'EOF'
-https://nylzo.example/m/ID#1.0.KEY
+https://nylzo.example/r#2.0.ID.KEY.HASH
 EOF
 nylzo read --link-file /tmp/tmp.XXXXXXXXXX/link.txt --out /tmp/tmp.XXXXXXXXXX
 nylzo burn --link-file /tmp/tmp.XXXXXXXXXX/link.txt
