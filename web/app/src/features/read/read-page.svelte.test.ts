@@ -83,7 +83,12 @@ describe('read page interactions', () => {
       notify = onView;
       return reader;
     });
-    vi.stubGlobal('document', { activeElement: null, body: {}, visibilityState: 'visible' });
+    vi.stubGlobal('document', {
+      activeElement: null,
+      body: {},
+      visibilityState: 'visible',
+      querySelector: () => null,
+    });
     vi.stubGlobal('location', { pathname: '/m/example', hash: '', reload });
     vi.stubGlobal('sessionStorage', {
       getItem: vi.fn<(...arguments_: unknown[]) => void>(),
@@ -115,6 +120,24 @@ describe('read page interactions', () => {
     expect(page.linkInHistory).toBe(false);
     page.retry();
     expect(reader.load).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the lease of a local client session in memory, never in session storage (Protocol §14.1)', () => {
+    vi.stubGlobal('location', { pathname: '/r', hash: '', origin: 'http://abc.localhost:8095', reload });
+    vi.stubGlobal('document', {
+      activeElement: null,
+      body: {},
+      visibilityState: 'visible',
+      querySelector: () => ({ content: 'https://nylzo.example' }),
+    });
+    const setItem = vi.fn<(key: string, value: string) => void>();
+    vi.stubGlobal('sessionStorage', { getItem: () => null, setItem, removeItem: setItem });
+    void new ReadPage(new Translator('en'));
+    dependencies.session.setItem('nylzo:lease:r', 'kept');
+    expect(dependencies.session.getItem('nylzo:lease:r')).toBe('kept');
+    dependencies.session.removeItem('nylzo:lease:r');
+    expect(dependencies.session.getItem('nylzo:lease:r')).toBeNull();
+    expect(setItem).not.toHaveBeenCalled();
   });
 
   it('requires a passphrase before revealing and clears it before handing it to the reader', async () => {

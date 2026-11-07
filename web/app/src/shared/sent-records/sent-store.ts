@@ -28,12 +28,41 @@ function storedId(value: unknown): string | undefined {
 function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly close: () => void } {
   let database: Promise<IDBDatabase> | undefined;
 
+  // Reading or deleting must not create the database for someone who never chose to remember a message.
+  async function databaseCreated(): Promise<boolean> {
+    return database !== undefined || factory === undefined || (await databaseExists(factory, DATABASE));
+  }
+
+  async function connect(): Promise<IDBDatabase> {
+    const opened = await openDatabase(factory, DATABASE, createRecords);
+    // Another tab that deletes or upgrades the database must not wait for this one.
+    opened.addEventListener('versionchange', () => {
+      opened.close();
+      database = undefined;
+    });
+    opened.addEventListener('close', () => {
+      database = undefined;
+    });
+    return opened;
+  }
+
+  async function connected(): Promise<IDBDatabase> {
+    const opening = (database ??= connect());
+    try {
+      return await opening;
+    } catch (error) {
+      if (database === opening) {
+        database = undefined;
+      }
+      throw error;
+    }
+  }
+
   async function withRecords<Result>(
     mode: IDBTransactionMode,
     action: (records: IDBObjectStore) => Promise<Result>,
   ): Promise<Result> {
-    database ??= openDatabase(factory, DATABASE, createRecords);
-    const opened = await database;
+    const opened = await connected();
     const transaction = opened.transaction(RECORDS, mode);
     const done = committed(transaction);
     const result = action(transaction.objectStore(RECORDS));
@@ -49,6 +78,9 @@ function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly 
       database = undefined;
     },
     async list() {
+      if (!(await databaseCreated())) {
+        return [];
+      }
       const values = await withRecords('readonly', async (records) => requestResult(records.getAll()));
       const kept: SentRecord[] = [];
       for (const value of values) {
@@ -67,13 +99,19 @@ function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly 
       await withRecords('readwrite', async (records) => requestResult(records.put(stored)));
     },
     async markEnded(id, endedAt) {
-      return withRecords('readwrite', async (records) => endIfStored(records, id, endedAt));
+      return (await databaseCreated())
+        ? withRecords('readwrite', async (records) => endIfStored(records, id, endedAt))
+        : undefined;
     },
     async remove(id) {
-      await withRecords('readwrite', async (records) => requestResult(records.delete(id)));
+      if (await databaseCreated()) {
+        await withRecords('readwrite', async (records) => requestResult(records.delete(id)));
+      }
     },
     async clear() {
-      await withRecords('readwrite', async (records) => requestResult(records.clear()));
+      if (await databaseCreated()) {
+        await withRecords('readwrite', async (records) => requestResult(records.clear()));
+      }
     },
   };
 }

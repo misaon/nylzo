@@ -144,7 +144,7 @@ test('a status that answers after the sender forgot the message does not store i
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
 });
 
-test('a visitor and a sender who keeps the default leave no database, and every page load drops records 7 days after expiry (D39)', async ({
+test('a visitor, a sender who keeps the default and a look at the sent list leave no database, and every page load drops records 7 days after expiry (D39)', async ({
   page,
   newPage,
 }) => {
@@ -157,6 +157,9 @@ test('a visitor and a sender who keeps the default leave no database, and every 
   await createdLink(page);
   await expect(page.getByText(REMEMBERED)).toHaveCount(0);
   expect(await databaseNames(page)).toEqual([]);
+  await page.goto('/sent');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(await databaseNames(page), 'opening the sent list creates no database').toEqual([]);
 
   const sender = await newPage();
   const kept = idOf(await createMessageInPage(sender, { text: 'kept', remember: true }));

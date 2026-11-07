@@ -174,6 +174,16 @@ test(
       await expectMessageShown(reader);
       await expect(reader.locator('pre')).toHaveText('read in the verified client');
       expect(reader.url()).not.toContain('#');
+      await reader.goto(`${local}/sent`);
+      await expect(reader.getByRole('heading', { level: 1 })).toBeVisible();
+      expect(
+        await reader.evaluate(async () => ({
+          databases: await indexedDB.databases(),
+          session: sessionStorage.length,
+          local: localStorage.length,
+        })),
+        'a local client session leaves no browser storage behind (Protocol §14.1)',
+      ).toEqual({ databases: [], session: 0, local: 0 });
 
       expect(hostile.loot).toEqual([]);
       expect(hostile.requests.length).toBeGreaterThan(0);

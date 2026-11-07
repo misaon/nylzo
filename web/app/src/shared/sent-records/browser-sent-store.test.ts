@@ -26,6 +26,26 @@ describe('persistent sent records', () => {
     };
   });
 
+  it('reads, ends, forgets and clears without creating a database nobody asked for', async () => {
+    expect(await store.list()).toEqual([]);
+    expect(await store.markEnded(record.id, NOW)).toBeUndefined();
+    await store.remove(record.id);
+    await store.clear();
+    expect(await factory.databases()).toEqual([]);
+  });
+
+  it('lets another tab delete the database while it is open, then opens it again', async () => {
+    await store.put(record);
+    const deletion = factory.deleteDatabase('nylzo');
+    const outcome = await new Promise<string>((resolve) => {
+      deletion.addEventListener('success', () => resolve('deleted'));
+      deletion.addEventListener('blocked', () => resolve('blocked'));
+    });
+    expect(outcome).toBe('deleted');
+    await store.put(record);
+    expect(await store.list()).toHaveLength(1);
+  });
+
   it('persists a non-extractable signing key and reads it from a new store instance', async () => {
     await store.put(record);
     const restored = await browserSentStore(factory).list();

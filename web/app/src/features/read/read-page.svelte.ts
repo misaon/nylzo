@@ -20,6 +20,7 @@ import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
 import { noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
+import { readerSession } from './reader-session.ts';
 import { createReader } from './reader.ts';
 import type { BurnOutcome, BusyStep, Reader, ReadView, RevealedFile } from './reader.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
@@ -385,11 +386,7 @@ export class ReadPage {
           this.linkInHistory = taken.fragment !== '' && !taken.handedOver;
           return taken.fragment;
         },
-        session: {
-          getItem: (key) => sessionStorage.getItem(key),
-          setItem: (key, value) => sessionStorage.setItem(key, value),
-          removeItem: (key) => sessionStorage.removeItem(key),
-        },
+        session: readerSession(),
         page: {
           visible: () => document.visibilityState === 'visible',
           prerendering: () => document.prerendering === true,
