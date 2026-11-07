@@ -3,9 +3,9 @@ package vectors
 import (
 	"encoding/hex"
 
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
-	"github.com/misaon/nylzo/internal/server/epoch"
 )
 
 type Server struct {

@@ -15,7 +15,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/operator"
-	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/epoch"
 )
 
 type checked struct {
