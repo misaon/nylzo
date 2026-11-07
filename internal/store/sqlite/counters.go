@@ -14,6 +14,10 @@ const (
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 RETURNING count`
 	reserveQuery = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`
+	releaseQuery = `UPDATE rate_counters SET count = count - 1 WHERE key = ? AND window_start = ? AND count > 0`
+	counterQuery = `SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`
+	purgeQuery   = `DELETE FROM rate_counters WHERE (key, window_start) IN
+		(SELECT key, window_start FROM rate_counters WHERE purge_at <= ? LIMIT ?)`
 )
 
 func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
@@ -33,7 +37,13 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 }
 
 func (s *Store) RateReserve(ctx context.Context, hit store.RateHit) (int64, error) {
-	return reserveHit(ctx, s.statements.reserveCounter, &hit)
+	var count int64
+	err := s.transaction(ctx, func(tx *sql.Tx) error {
+		var err error
+		count, err = reserveHit(ctx, tx.StmtContext(ctx, s.statements.reserveCounter), &hit)
+		return err
+	})
+	return count, err
 }
 
 func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
@@ -56,13 +66,10 @@ func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]b
 }
 
 func (s *Store) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
-	_, err := s.writer.ExecContext(
-		ctx,
-		`UPDATE rate_counters SET count = count - 1 WHERE key = ? AND window_start = ? AND count > 0`,
-		key,
-		milliseconds(windowStart),
-	)
-	return err
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		_, err := execIn(ctx, tx, s.statements.releaseCounter, key, milliseconds(windowStart))
+		return err
+	})
 }
 
 // RateCopy sets an existing counter to the count of another one in the same window, or to 0 when that has none.
@@ -83,12 +90,7 @@ func (s *Store) RateCopy(ctx context.Context, sourceKey, targetKey string, windo
 
 func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) (store.RateCount, error) {
 	var count store.RateCount
-	err := s.reader.QueryRowContext(
-		ctx,
-		`SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`,
-		key,
-		milliseconds(windowStart),
-	).Scan(&count.Count)
+	err := s.statements.loadCounter.QueryRowContext(ctx, key, milliseconds(windowStart)).Scan(&count.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.RateCount{}, nil
 	}
@@ -96,12 +98,7 @@ func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) 
 }
 
 func (s *Store) RatePurge(ctx context.Context, now time.Time, limit int) (int, error) {
-	return s.purge(
-		ctx,
-		`DELETE FROM rate_counters WHERE (key, window_start) IN (SELECT key, window_start FROM rate_counters WHERE purge_at <= ? LIMIT ?)`,
-		now,
-		limit,
-	)
+	return s.purge(ctx, purgeQuery, now, limit)
 }
 
 func countHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (store.RateCount, error) {

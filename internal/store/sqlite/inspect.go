@@ -49,6 +49,8 @@ func Inspect(ctx context.Context, path string) (Readiness, error) {
 		return emptyReadiness(path)
 	case version == releasedSchema:
 		return ReadinessUpgrade, nil
+	case version == previousSchema:
+		return ReadinessOpen, nil
 	}
 	if versionErr := checkVersion(version); versionErr != nil {
 		return ReadinessCreate, versionErr

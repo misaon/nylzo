@@ -29,6 +29,7 @@ const (
 	FreeAttempts      = 5
 	MaxBackoff        = time.Hour
 	SweepBatch        = 100
+	CounterPurgeBatch = 1000
 	BlobGrace         = 15 * time.Minute
 	MinTransferRate   = 16000
 	BlobPurgeStep     = 15 * time.Minute

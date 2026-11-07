@@ -2,11 +2,14 @@ package sqlite
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -112,4 +115,63 @@ func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T)
 			t.Fatalf("%s: a second start upgraded again: %t %v", name, again, againErr)
 		}
 	}
+}
+
+// TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow covers schema 8: the counter purge reads an index on purge_at, so
+// a flood of challenge rows costs no scan of the table per batch, and a database of nylzo 0.3 to 0.8 keeps its rows.
+func TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow(t *testing.T) {
+	t.Parallel()
+	for name, open := range map[string]func(context.Context, string) (*Store, error){
+		"serve":      Open,
+		"sweep-once": OpenCurrent,
+	} {
+		path := filepath.Join(t.TempDir(), "nylzo.db")
+		storage, err := Open(t.Context(), path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hit := store.RateHit{Key: "global:stored:d", PurgeAt: time.UnixMilli(0)}
+		if _, err = storage.RateHit(t.Context(), []store.RateHit{hit}); err != nil {
+			t.Fatal(err)
+		}
+		_, err = storage.writer.Exec(`DROP INDEX IF EXISTS rate_counters_purge_at; PRAGMA user_version = 7`)
+		if err = errors.Join(err, storage.Close()); err != nil {
+			t.Fatal(err)
+		}
+		if readiness, inspectErr := Inspect(t.Context(), path); inspectErr != nil || readiness != ReadinessOpen {
+			t.Fatalf("%s: store-check of version 7: %v %v", name, readiness, inspectErr)
+		}
+		opened, err := open(t.Context(), path)
+		if err != nil {
+			t.Fatalf("%s: open version 7: %v", name, err)
+		}
+		version, err := userVersion(t.Context(), opened.reader)
+		count, countErr := opened.RateGet(t.Context(), hit.Key, hit.WindowStart)
+		plan, planErr := queryPlan(opened.reader, purgeQuery, 0, store.CounterPurgeBatch)
+		if err = errors.Join(err, countErr, planErr, opened.Close()); err != nil || version != schemaVersion ||
+			count.Count != 1 {
+			t.Fatalf("%s: version %d, counter %+v, %v", name, version, count, err)
+		}
+		if !strings.Contains(plan, "rate_counters_purge_at") {
+			t.Fatalf("%s: the counter purge scans the table:\n%s", name, plan)
+		}
+	}
+}
+
+func queryPlan(database *sql.DB, query string, arguments ...any) (string, error) {
+	rows, err := database.Query(`EXPLAIN QUERY PLAN `+query, arguments...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var plan strings.Builder
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if scanErr := rows.Scan(&id, &parent, &unused, &detail); scanErr != nil {
+			return "", scanErr
+		}
+		plan.WriteString(detail + "\n")
+	}
+	return plan.String(), rows.Err()
 }

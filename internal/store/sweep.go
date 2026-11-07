@@ -27,8 +27,10 @@ func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (S
 		errs = append(errs, err)
 	}
 	count(&report.Blobs, func() (int, error) { return deleteDueBlobs(ctx, storage, blobs, now) })
-	count(&report.Rows, func() (int, error) { return purge(ctx, "rows", storage.PurgeRows, now) })
-	count(&report.Counters, func() (int, error) { return purge(ctx, "counters", storage.RatePurge, now) })
+	count(&report.Rows, func() (int, error) { return purge(ctx, "rows", storage.PurgeRows, now, SweepBatch) })
+	count(&report.Counters, func() (int, error) {
+		return purge(ctx, "counters", storage.RatePurge, now, CounterPurgeBatch)
+	})
 	errs = append(errs, storage.Checkpoint(ctx))
 	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemp(ctx, now.Add(-BlobGrace)) })
 	return report, errors.Join(errs...)
@@ -87,15 +89,16 @@ func purge(
 	step string,
 	page func(context.Context, time.Time, int) (int, error),
 	now time.Time,
+	batch int,
 ) (int, error) {
 	total := 0
 	for {
-		purged, err := page(ctx, now, SweepBatch)
+		purged, err := page(ctx, now, batch)
 		if err != nil {
 			return total, fmt.Errorf("store: purge %s: %w", step, err)
 		}
 		total += purged
-		if purged < SweepBatch {
+		if purged < batch {
 			return total, nil
 		}
 	}

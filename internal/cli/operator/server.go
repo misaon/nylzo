@@ -312,6 +312,13 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		return err
 	}
 	defer database.Close()
+	if database.LogResetSkipped() {
+		logger.WarnContext(
+			ctx,
+			"wal-reset-skipped",
+			"notice", "another process had the database open, so the log headers still count earlier writes",
+		)
+	}
 	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
 	clear(settings.Pepper)
 	clear(settings.PepperPrevious)
