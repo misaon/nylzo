@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -52,6 +53,19 @@ func (e *differenceError) Error() string {
 
 func differs(format string, arguments ...any) error {
 	return &differenceError{message: fmt.Sprintf(format, arguments...)}
+}
+
+func isDifference(err error) bool {
+	_, differing := errors.AsType[*differenceError](err)
+	return differing
+}
+
+// A server that answers with something other than this nylzo must not look unreachable.
+func fetchFailed(where string, err error) error {
+	if errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse) {
+		return differs("%s: %s", where, explain(err))
+	}
+	return fmt.Errorf("%s: %s", where, explain(err))
 }
 
 type verified struct {
@@ -120,7 +134,7 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 		allowed:     options.allowed,
 	}
 	result, err := check.run(ctx)
-	if _, differing := errors.AsType[*differenceError](err); differing {
+	if isDifference(err) {
 		return command.FailWith(environment, command.ExitMismatch, "%s", err)
 	}
 	if err != nil {
@@ -170,7 +184,7 @@ func (v *verifier) run(ctx context.Context) (verified, error) {
 func (v *verifier) manifest(ctx context.Context) error {
 	fetched, err := v.api.Fetch(ctx, webclient.ManifestPath, identity, maxManifestBytes)
 	if err != nil {
-		return fmt.Errorf("%s: %s", webclient.ManifestPath, explain(err))
+		return fetchFailed(webclient.ManifestPath, err)
 	}
 	var served webclient.Manifest
 	if err = json.Unmarshal(fetched.Body, &served); err != nil {
@@ -207,7 +221,7 @@ func (v *verifier) manifest(ctx context.Context) error {
 func (v *verifier) contact(ctx context.Context) (string, error) {
 	fetched, err := v.api.Fetch(ctx, server.TransparencyPath, identity, maxManifestBytes)
 	if err != nil {
-		return "", fmt.Errorf("%s: %s", server.TransparencyPath, explain(err))
+		return "", fetchFailed(server.TransparencyPath, err)
 	}
 	contact, err := webclient.OperatorContact(fetched.Body)
 	if err != nil {
@@ -222,23 +236,18 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	expected := v.pages.For(path)
 	fetched, err := v.api.Fetch(ctx, path, encoding, maxPageBytes)
 	if err != nil {
-		return fmt.Errorf("%s: %s", where, explain(err))
+		return fetchFailed(where, err)
 	}
-	if headersErr := v.headers(fetched.Header, "text/html; charset=utf-8", path, where); headersErr != nil {
+	headersErr := v.headers(fetched.Header, "text/html; charset=utf-8", path, where)
+	if isDifference(headersErr) {
 		return headersErr
 	}
 	if fetched.Header.Get("Content-Security-Policy") != expected.Policy() {
 		return differs("%s: the Content-Security-Policy differs from this nylzo", where)
 	}
-	if values := fetched.Header.Values("Connection-Allowlist"); len(values) != 1 || values[0] != expected.Allowlist() {
-		if len(values) == 1 && values[0] == webclient.ConnectionAllowlist("") {
-			return fmt.Errorf(
-				"%s: the Connection-Allowlist leaves out the operator's contact from %s; a Caddy front needs the same NYLZO_CONTACT as the server",
-				where,
-				server.TransparencyPath,
-			)
-		}
-		return differs("%s: the Connection-Allowlist differs from this nylzo", where)
+	allowlistErr := allowlist(fetched.Header.Values("Connection-Allowlist"), expected.Allowlist(), where)
+	if isDifference(allowlistErr) {
+		return allowlistErr
 	}
 	body, err := decoded(&fetched, encoding, int64(len(expected.Body())), where)
 	if err != nil {
@@ -247,7 +256,22 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if !bytes.Equal(body, expected.Body()) {
 		return differs("%s: the page differs from the web client of this nylzo", where)
 	}
-	return nil
+	return cmp.Or(headersErr, allowlistErr)
+}
+
+func allowlist(values []string, expected, where string) error {
+	switch {
+	case len(values) == 1 && values[0] == expected:
+		return nil
+	case len(values) == 1 && values[0] == webclient.ConnectionAllowlist(""):
+		return fmt.Errorf(
+			"%s: the Connection-Allowlist leaves out the operator's contact from %s; a Caddy front needs the same NYLZO_CONTACT as the server",
+			where,
+			server.TransparencyPath,
+		)
+	default:
+		return differs("%s: the Connection-Allowlist differs from this nylzo", where)
+	}
 }
 
 func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asset, encoding string) error {
@@ -256,9 +280,10 @@ func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asse
 	limit := int64(max(len(asset.Body), len(asset.Gzip))) + maxPageBytes
 	fetched, err := v.api.Fetch(ctx, path, encoding, limit)
 	if err != nil {
-		return fmt.Errorf("%s: %s", where, explain(err))
+		return fetchFailed(where, err)
 	}
-	if headersErr := v.headers(fetched.Header, asset.ContentType, path, where); headersErr != nil {
+	headersErr := v.headers(fetched.Header, asset.ContentType, path, where)
+	if isDifference(headersErr) {
 		return headersErr
 	}
 	if fetched.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
@@ -271,10 +296,11 @@ func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asse
 	if !bytes.Equal(body, asset.Body) {
 		return differs("%s: the file differs from the web client of this nylzo", where)
 	}
-	return nil
+	return headersErr
 }
 
-// headers requires every header this version sends exactly once and refuses any other unless it is allowed.
+// headers requires every header this version sends exactly once and refuses any other unless it is allowed;
+// a difference wins over a header that is merely unexpected.
 func (v *verifier) headers(header http.Header, contentType, path, where string) error {
 	expected := webclient.SecurityHeaders(path)
 	expected["Content-Type"] = contentType
@@ -287,12 +313,15 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 	if len(header.Values("Content-Security-Policy")) != 1 {
 		return differs("%s: the Content-Security-Policy header differs from this nylzo", where)
 	}
+	var unexpected error
 	for name, values := range header {
-		if err := v.unknownHeader(name, values, expected, contentType, where); err != nil {
+		err := v.unknownHeader(name, values, expected, contentType, where)
+		if isDifference(err) {
 			return err
 		}
+		unexpected = cmp.Or(unexpected, err)
 	}
-	return nil
+	return unexpected
 }
 
 // unknownHeader refuses a header this version never sends with this response, unless a proxy may add it.
