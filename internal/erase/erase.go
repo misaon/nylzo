@@ -8,6 +8,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+
+	"github.com/misaon/nylzo/internal/iolimit"
 )
 
 const (
@@ -25,6 +27,8 @@ var (
 
 // Overwrite replaces the first length bytes of the file with zeros where they lie and syncs them to the disk.
 func Overwrite(path string, length int64) error {
+	iolimit.Hold()
+	defer iolimit.Release()
 	file, err := openForOverwrite(path)
 	if err != nil {
 		return err
@@ -38,6 +42,8 @@ func Overwrite(path string, length int64) error {
 
 // Replace writes content over the whole file where it lies, so the old content is gone once it returns.
 func Replace(path string, content []byte) error {
+	iolimit.Hold()
+	defer iolimit.Release()
 	file, err := openForOverwrite(path)
 	if err != nil {
 		return err
@@ -76,6 +82,8 @@ func Remove(path string, length int64) error {
 }
 
 func SyncDirectory(directory string) error {
+	iolimit.Hold()
+	defer iolimit.Release()
 	handle, err := os.Open(directory)
 	if err != nil {
 		return err
