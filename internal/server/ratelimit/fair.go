@@ -11,7 +11,8 @@ const activeRangeWindow = 10 * time.Second
 // Fair is the instance token bucket. While it is less than half full, it paces each /24 or /48 to one request per
 // (ranges + 1) / rate seconds, where ranges counts those seen in the last ten seconds or still paced. A range that
 // comes when its turn is due takes a token if one is left and otherwise loses the turn, so refused ranges cannot queue
-// up for the spare share and take it from a range that asks for no more than its share (F4).
+// up for the spare share and take it from a range that asks for no more than its share (F4). A full table drops the
+// ranges that no longer count and then an eighth at random, so a flood of ranges cannot lock out a new one.
 type Fair struct {
 	mutex    sync.Mutex
 	rate     float64
@@ -38,7 +39,7 @@ func (f *Fair) Allow(addressRange Bucket, now time.Time) bool {
 	unpressed := f.tokens >= max(1, f.burst/2)
 	state, tracked := f.ranges[addressRange]
 	if !tracked && len(f.ranges) >= maxTableEntries {
-		return f.take(unpressed)
+		Trim(f.ranges, maxTableEntries, func(state paced) bool { return !counts(state, now) })
 	}
 	state.seen = now
 	f.ranges[addressRange] = state

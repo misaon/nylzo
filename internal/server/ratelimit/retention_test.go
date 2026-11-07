@@ -85,3 +85,15 @@ func TestARangeWithinItsShareGetsThroughWhenRangesOutnumberTheRate(t *testing.T)
 		t.Fatalf("the bystander got %d of %d requests through, all ranges %d", served, asked, admitted+served)
 	}
 }
+
+func TestAFullFairTableStillAdmitsANewRange(t *testing.T) {
+	t.Parallel()
+	fair := NewFair(10, 20)
+	now := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	for i := range maxTableEntries {
+		fair.Allow(Bucket{byte(i), byte(i >> 8), 1}, now)
+	}
+	if !fair.Allow(Bucket{0xff, 0xff, 0xff}, now.Add(500*time.Millisecond)) {
+		t.Fatal("a full table refused a new range whose turn was due")
+	}
+}
