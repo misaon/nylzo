@@ -137,7 +137,7 @@ func readEnvelope(response *http.Response) (Envelope, error) {
 	if response.ContentLength > limit {
 		return Envelope{}, ErrResponse
 	}
-	object, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	object, err := readObject(response, limit)
 	if err != nil {
 		return Envelope{}, err
 	}
@@ -147,6 +147,18 @@ func readEnvelope(response *http.Response) (Envelope, error) {
 	}
 	received.Object = object
 	return received, nil
+}
+
+// readObject reads a body of known length into one allocation and falls back to a bounded read for a chunked one.
+func readObject(response *http.Response, limit int64) ([]byte, error) {
+	if response.ContentLength < 0 {
+		return io.ReadAll(io.LimitReader(response.Body, limit+1))
+	}
+	object := make([]byte, response.ContentLength)
+	if _, err := io.ReadFull(response.Body, object); err != nil {
+		return nil, err
+	}
+	return object, nil
 }
 
 func decodePolicy(header string) (Envelope, error) {

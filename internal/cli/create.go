@@ -22,6 +22,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/secretmode"
 )
 
 const (
@@ -131,7 +132,11 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 		return command.Failf(environment, "%s", err)
 	}
 	defer message.wipe()
-	passphrase, generated, err := chosenPassphrase(environment, options)
+	var (
+		passphrase string
+		generated  *generatedPassphrase
+	)
+	secretmode.Do(func() { passphrase, generated, err = chosenPassphrase(environment, options) })
 	if err != nil {
 		return command.Failf(environment, "passphrase: %s", explain(err))
 	}
@@ -421,7 +426,18 @@ type sealInput struct {
 	compress   bool
 }
 
+// sealMessage derives the keys and seals the object in secret mode, which erases the scrypt memory, the normalized
+// passphrase and the derived keys once they are unreachable.
 func sealMessage(input *sealInput) (client.CreateRequest, error) {
+	var (
+		request client.CreateRequest
+		err     error
+	)
+	secretmode.Do(func() { request, err = sealWithDerivedKeys(input) })
+	return request, err
+}
+
+func sealWithDerivedKeys(input *sealInput) (client.CreateRequest, error) {
 	derived, err := keys.DeriveAll(input.id, input.secret, input.kdf, input.passphrase, input.share)
 	if err != nil {
 		return client.CreateRequest{}, err

@@ -20,6 +20,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/share"
+	"github.com/misaon/nylzo/internal/secretmode"
 )
 
 const (
@@ -298,7 +299,18 @@ func contentKeysOf(
 	return keys.DeriveContent(link.id, &link.secret, passphraseKey, &expiryShare)
 }
 
+// passphraseKey reads the passphrase and runs scrypt in secret mode, so neither the passphrase nor the scrypt memory
+// outlives its use where the build erases memory.
 func passphraseKey(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
+	var (
+		key []byte
+		err error
+	)
+	secretmode.Do(func() { key, err = readAndDerivePassphraseKey(environment, link, source) })
+	return key, err
+}
+
+func readAndDerivePassphraseKey(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
 	if link.kdf == core.KDFNone {
 		return nil, nil
 	}
