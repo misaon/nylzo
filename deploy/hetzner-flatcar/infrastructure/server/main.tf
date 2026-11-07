@@ -21,7 +21,11 @@ variable "image_id" { type = number }
 variable "flatcar_version" { type = string }
 variable "architecture" { type = string }
 variable "user_data_path" { type = string }
-variable "administrator_networks" { type = list(string) }
+# CI plans run in public workflow logs.
+variable "administrator_networks" {
+  type      = list(string)
+  sensitive = true
+}
 variable "public_access" {
   type    = bool
   default = false
@@ -81,7 +85,7 @@ resource "hcloud_server" "server" {
   location           = var.location
   server_type        = var.server_type
   image              = var.image_id
-  user_data          = file(var.user_data_path)
+  user_data          = sensitive(file(var.user_data_path))
   firewall_ids       = [hcloud_firewall.server.id]
   backups            = false
   delete_protection  = true
@@ -89,9 +93,9 @@ resource "hcloud_server" "server" {
   labels             = { application = "nylzo", profile = "flatcar" }
   lifecycle {
     prevent_destroy = true
-    # Ignition is consumed on first boot. Host changes need an explicit rollout;
-    # editing a template must never schedule replacement of a live message store.
-    ignore_changes = [user_data]
+    # Ignition and the image are consumed on first boot; Flatcar updates itself in place.
+    # Host changes need an explicit rollout, so a new template or image never rebuilds a live message store.
+    ignore_changes = [user_data, image]
     precondition {
       condition     = lookup(data.hcloud_image.flatcar.labels, "nylzo-verified-image", "") == "true" && lookup(data.hcloud_image.flatcar.labels, "nylzo-flatcar-version", "") == var.flatcar_version && lookup(data.hcloud_image.flatcar.labels, "nylzo-architecture", "") == var.architecture
       error_message = "Use an image produced by the verified image factory in this account."

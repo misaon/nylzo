@@ -1,0 +1,41 @@
+[Unit]
+Description=Apply the production directive signed by the production watch
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/opt/nylzo/runtime/directive
+TimeoutStartSec=90
+EnvironmentFile=/etc/nylzo/caddy.env
+StateDirectory=nylzo-directive
+StateDirectoryMode=0755
+# cosign keeps the Sigstore trust root under $HOME.
+Environment=HOME=/var/cache/nylzo-directive
+CacheDirectory=nylzo-directive
+CacheDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+InaccessiblePaths=/var/lib/caddy /var/lib/nylzo /var/lib/nylzo-secrets /var/lib/nylzo-deploy
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=169.254.0.0/16 fe80::/10
+LimitCORE=0

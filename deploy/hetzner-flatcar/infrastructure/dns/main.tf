@@ -14,7 +14,10 @@ terraform {
 
 provider "cloudflare" {}
 
-variable "account_id" { type = string }
+variable "account_id" {
+  type      = string
+  sensitive = true
+}
 variable "zone" { type = string }
 variable "domain" { type = string }
 variable "ipv4_address" { type = string }

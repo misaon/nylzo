@@ -20,10 +20,11 @@ import (
 )
 
 const (
-	Program   = "nylzo"
-	ExitOK    = 0
-	ExitError = 1
-	ExitUsage = 2
+	Program      = "nylzo"
+	ExitOK       = 0
+	ExitError    = 1
+	ExitUsage    = 2
+	ExitMismatch = 3
 
 	ExitInterrupted = 130
 
@@ -116,8 +117,12 @@ func FlagsDone(err error) (int, bool) {
 }
 
 func Failf(environment *Environment, format string, arguments ...any) int {
+	return FailWith(environment, ExitError, format, arguments...)
+}
+
+func FailWith(environment *Environment, code int, format string, arguments ...any) int {
 	fmt.Fprintln(environment.Stderr, Program+": "+printable(fmt.Sprintf(format, arguments...)))
-	return ExitError
+	return code
 }
 
 func printable(text string) string {

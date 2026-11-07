@@ -1,0 +1,312 @@
+name: Production watch
+run-name: Production watch ${{ inputs.directive || '' }}
+
+on:
+  schedule:
+    # Restarts the chain if it stopped; GitHub drops many scheduled runs, so the chain carries the watch.
+    - cron: "4,34 * * * *"
+  workflow_dispatch:
+    inputs:
+      directive:
+        description: Publish a signed directive for the production host instead of waiting for a mismatch
+        type: choice
+        options: [none, maintenance, normal]
+        default: none
+
+permissions: {}
+
+concurrency:
+  # An owner's directive must not wait behind the chain.
+  group: production-watch${{ (inputs.directive || 'none') != 'none' && '-directive' || '' }}
+  cancel-in-progress: false
+  # A cron run that meets the chain waits instead of cancelling it; the next run then sees it pending and stops chaining.
+  queue: max
+
+jobs:
+  verify:
+    name: Production serves the signed web client
+    if: github.repository == 'misaon/nylzo' && vars.NYLZO_MONITOR_URL != '' && (inputs.directive || 'none') == 'none'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.result.outputs.outcome }}
+      tag: ${{ steps.release.outputs.tag }}
+    env:
+      URL: ${{ vars.NYLZO_MONITOR_URL }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign
+          cosign-release: v3.1.4
+      # Only a directive this workflow signed for this instance counts, as on the host.
+      - name: Read the signed production directive
+        id: directive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          directory=$(mktemp -d)
+          for file in directive.json directive.json.sigstore.json; do
+            gh api "repos/${GITHUB_REPOSITORY}/contents/${file}?ref=production-directive" --jq .content 2> /dev/null \
+              | base64 -d > "${directory}/${file}" || exit 0
+          done
+          cosign verify-blob "${directory}/directive.json" --bundle "${directory}/directive.json.sigstore.json" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/watch.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null 2>&1 || exit 0
+          address=${URL#https://}
+          state=$(jq -r --arg instance "${address%%[/:]*}" 'select(.instance == $instance) | .state' "${directory}/directive.json")
+          if [[ "${state}" = maintenance ]]; then
+            echo "maintenance=true" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: The instance answers with a release manifest, twice before calling it changed
+        id: claim
+        run: |
+          # A redirect or a manifest that names no release is a changed client; no answer at all is not.
+          changed() {
+            local code
+            code=$(curl --silent --proto '=https' --max-redirs 0 --max-time 30 --output "${RUNNER_TEMP}/client.json" \
+              --write-out '%{http_code}' "${URL}/.well-known/nylzo/client.json") || return 1
+            [[ "${code}" =~ ^3 ]] && return 0
+            [[ "${code}" = 200 ]] || return 1
+            ! jq -e '.server | strings | test("^v?[0-9]+\\.[0-9]+\\.[0-9]+$")' "${RUNNER_TEMP}/client.json" > /dev/null 2>&1
+          }
+          if changed && sleep 120 && changed; then
+            echo "outcome=mismatch" >> "${GITHUB_OUTPUT}"
+          fi
+      - id: release
+        if: steps.claim.outputs.outcome != 'mismatch'
+        # Maintenance answers 503, so the release cannot be read then.
+        continue-on-error: ${{ steps.directive.outputs.maintenance == 'true' }}
+        uses: $/.github/actions/released-nylzo
+        with:
+          url: ${{ vars.NYLZO_MONITOR_URL }}
+      - name: Compare the served web client with that release, twice before calling it changed
+        if: steps.release.outcome == 'success'
+        id: compare
+        env:
+          ALLOW: ${{ vars.NYLZO_MONITOR_ALLOW_HEADERS }}
+        run: |
+          read -ra headers <<< "${ALLOW}"
+          args=()
+          for header in "${headers[@]}"; do args+=(--allow-header "${header}"); done
+          check() {
+            local token status
+            token=$(openssl rand -hex 16)
+            echo "::stop-commands::${token}"
+            status=0
+            # A server that stalls every request must not run the job into its timeout.
+            timeout 240 ./nylzo verify-client --server "${URL}" "${args[@]}" > /dev/null 2>&1 || status=$?
+            echo "::${token}::"
+            return "${status}"
+          }
+          status=0
+          check || status=$?
+          if [[ "${status}" = 3 ]]; then
+            # A release restarts Caddy within seconds; a second look rules that out.
+            sleep 120
+            status=0
+            check || status=$?
+          fi
+          case "${status}" in
+            0) echo "outcome=match" >> "${GITHUB_OUTPUT}" ;;
+            3) echo "outcome=mismatch" >> "${GITHUB_OUTPUT}" ;;
+          esac
+      - name: Record the outcome
+        id: result
+        if: always()
+        env:
+          CLAIM: ${{ steps.claim.outputs.outcome }}
+          COMPARED: ${{ steps.compare.outputs.outcome }}
+          MAINTENANCE: ${{ steps.directive.outputs.maintenance }}
+        run: |
+          outcome=${CLAIM:-${COMPARED:-unverified}}
+          # During maintenance only a changed client is news; the 503 is expected.
+          if [[ "${outcome}" = unverified && "${MAINTENANCE}" = true ]]; then outcome=maintenance; fi
+          echo "outcome=${outcome}" >> "${GITHUB_OUTPUT}"
+          echo "Production web client: **${outcome}**" >> "${GITHUB_STEP_SUMMARY}"
+          [[ "${outcome}" = match || "${outcome}" = maintenance ]]
+
+  alert:
+    name: Open an incident for the owner
+    needs: [verify, directive, kill-switch]
+    # A server can refuse the watch to hide a changed client, so a check that fails twice in a row is an incident too.
+    if: always() && (needs.verify.result == 'failure' || needs.verify.result == 'cancelled')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: read # the result of the previous watch run
+      issues: write # open or update the incident issue
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Open or update the production incident
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ needs.verify.outputs.outcome || 'unverified' }}
+          DIRECTIVE: ${{ needs.directive.result }}
+          KILL_SWITCH: ${{ needs.kill-switch.result }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ "${OUTCOME}" != mismatch ]]; then
+            previous=$(gh run list -R "${GITHUB_REPOSITORY}" --workflow watch.yml --branch main --status completed --limit 1 \
+              --json databaseId --jq '.[0].databaseId // empty')
+            verified=none
+            if [[ -n "${previous}" ]]; then
+              verified=$(gh run view "${previous}" -R "${GITHUB_REPOSITORY}" --json jobs \
+                --jq '[.jobs[] | select(.name == "Production serves the signed web client")][0].conclusion // "missing"')
+              [[ "${verified}" != missing ]] || { echo '::error::The previous run has no verify job; its name changed.'; exit 1; }
+            fi
+            case "${verified}" in
+              failure | cancelled | timed_out) ;;
+              *) echo 'The first failed check opens no incident; the next run confirms it.' >> "${GITHUB_STEP_SUMMARY}"
+                exit 0 ;;
+            esac
+          fi
+          case "${OUTCOME}" in
+            mismatch) title='Production serves a web client that differs from its signed release'
+              detail="Maintenance directive: ${DIRECTIVE}. Firewall kill switch: ${KILL_SWITCH}." ;;
+            *) title='Production web client could not be verified'
+              detail='Two checks in a row failed: the instance is down, runs a release that is unsigned or no longer current, or refuses the watch, which can hide a changed client.' ;;
+          esac
+          body=$(printf '%s.\n\n%s\n\nRelease: %s\nRun: %s\n\n@%s' "${title}" "${detail}" "${TAG:-unknown}" "${RUN}" "${GITHUB_REPOSITORY_OWNER}")
+          issue=$(gh issue list -R "${GITHUB_REPOSITORY}" --state open --label production-incident --json number,updatedAt,title \
+            --jq '.[0] // empty | [.number, .updatedAt, .title] | @tsv')
+          if [[ -n "${issue}" ]]; then
+            IFS=$'\t' read -r number updated current <<< "${issue}"
+            if [[ "${OUTCOME}" = mismatch && "${current}" != "${title}" ]]; then
+              gh issue edit "${number}" -R "${GITHUB_REPOSITORY}" --title "${title}" > /dev/null
+              gh issue comment "${number}" -R "${GITHUB_REPOSITORY}" --body "${body}"
+            elif (( $(date -u +%s) - $(date -u -d "${updated}" +%s) > 3600 )); then
+              # One comment an hour is enough while the incident stays open.
+              gh issue comment "${number}" -R "${GITHUB_REPOSITORY}" --body "${body}"
+            fi
+          else
+            gh label create production-incident -R "${GITHUB_REPOSITORY}" --color B60205 --description 'The production watch found a problem' --force > /dev/null
+            gh issue create -R "${GITHUB_REPOSITORY}" --title "${title}" --body "${body}" --label production-incident --assignee "${GITHUB_REPOSITORY_OWNER}"
+          fi
+
+  directive:
+    name: Sign the production host directive
+    needs: verify
+    if: >-
+      always() && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
+      (needs.verify.outputs.outcome == 'mismatch' || (inputs.directive || 'none') != 'none')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    concurrency:
+      group: production-directive
+      cancel-in-progress: false
+    permissions:
+      contents: write # publish the directive on its own branch, which no ruleset covers
+      id-token: write # keyless signature bound to this workflow on main, which the host verifies
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign
+          cosign-release: v3.1.4
+      - name: Sign and publish the directive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ (inputs.directive || 'none') != 'none' && inputs.directive || 'maintenance' }}
+          URL: ${{ vars.NYLZO_MONITOR_URL }}
+        run: |
+          [[ "${STATE}" = maintenance || "${STATE}" = normal ]]
+          # The host applies only a directive that names its own domain.
+          address=${URL#https://}
+          instance=${address%%[/:]*}
+          [[ "${instance}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || { echo 'Set NYLZO_MONITOR_URL to the instance address.'; exit 1; }
+          directory=$(mktemp -d)
+          cd "${directory}"
+          git init --quiet --initial-branch production-directive
+          jq -n --arg instance "${instance}" --arg state "${STATE}" --argjson issued "$(date -u +%s)" --arg run "${GITHUB_RUN_ID}" \
+            '{format: 1, instance: $instance, state: $state, issued: $issued, run: $run}' > directive.json
+          cosign sign-blob directive.json --bundle directive.json.sigstore.json --yes > /dev/null
+          git add directive.json directive.json.sigstore.json
+          git -c user.name='Nylzo production watch' -c user.email='automation@nylzo.com' commit --quiet -m "Production directive: ${STATE}"
+          authorization=$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w 0)
+          echo "::add-mask::${authorization}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${authorization}" push --force --quiet \
+            "https://github.com/${GITHUB_REPOSITORY}.git" production-directive
+          echo "Published a signed **${STATE}** directive." >> "${GITHUB_STEP_SUMMARY}"
+
+  kill-switch:
+    name: Close production at the cloud firewall
+    needs: verify
+    if: always() && needs.verify.outputs.outcome == 'mismatch' && vars.NYLZO_KILL_SWITCH_ENABLED == 'true'
+    environment:
+      name: kill-switch
+      deployment: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      # A compromised server cannot undo a rule of the Hetzner Cloud Firewall; administrator SSH stays open.
+      - name: Keep only administrator SSH in the server's cloud firewall
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          FIREWALL: ${{ vars.NYLZO_FIREWALL_ID }}
+          # A secret, because the log of this public repository prints every variable a step receives.
+          NETWORKS: ${{ secrets.NYLZO_ADMINISTRATOR_NETWORKS }}
+        run: |
+          [[ "${FIREWALL}" =~ ^[1-9][0-9]{0,15}$ ]]
+          # Without administrator networks the firewall admits nothing at all.
+          rules=$(jq -nec --arg networks "${NETWORKS}" \
+            '($networks | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))) as $sources
+            | if ($sources | all(test("^[0-9A-Fa-f:.]+/[0-9]{1,3}$"))) then . else error("NYLZO_ADMINISTRATOR_NETWORKS holds a value that is not a CIDR") end
+            | {rules: (if $sources == [] then [] else [{direction: "in", protocol: "tcp", port: "22", source_ips: $sources, description: "kill switch"}] end)}')
+          action=$(curl --fail --silent --show-error --proto '=https' --max-time 30 -X POST \
+            -H "Authorization: Bearer ${HCLOUD_TOKEN}" -H 'Content-Type: application/json' \
+            --data "${rules}" "https://api.hetzner.cloud/v1/firewalls/${FIREWALL}/actions/set_rules" | jq -er '.actions[0].id')
+          for _ in $(seq 1 30); do
+            status=$(curl --fail --silent --show-error --proto '=https' --max-time 30 \
+              -H "Authorization: Bearer ${HCLOUD_TOKEN}" "https://api.hetzner.cloud/v1/actions/${action}" | jq -er .action.status)
+            [[ "${status}" = success ]] && { echo 'The cloud firewall now admits only administrator SSH.' >> "${GITHUB_STEP_SUMMARY}"; exit 0; }
+            [[ "${status}" = error ]] && exit 1
+            sleep 2
+          done
+          exit 1
+
+  schedule:
+    name: Start what is due and keep the watch going
+    needs: [verify, alert, directive, kill-switch]
+    if: always() && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    # The environment's wait timer spaces the chained runs without holding a runner.
+    environment:
+      name: production-watch
+      deployment: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: write # start Renovate, the dependency release window and the next watch run
+      contents: read
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/mise
+        with:
+          tools: bun
+          cache: none
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
+      - name: Start Renovate, the dependency release window and the next watch run when due
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WATCH_CHAIN: ${{ (inputs.directive || 'none') == 'none' && vars.NYLZO_WATCH_CHAIN || '' }}
+        run: bun automation/watch/main.ts

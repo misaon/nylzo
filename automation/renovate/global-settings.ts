@@ -5,18 +5,25 @@ export interface GlobalSettingsInput {
   readonly bunVersion: string;
 }
 
+const maintenanceLine = String.raw`/^release\/v/`;
+const maintenanceRules = [
+  {
+    description: 'Maintenance lines ship only updates that need no migration.',
+    matchBaseBranches: [maintenanceLine],
+    matchUpdateTypes: ['major'],
+    enabled: false,
+  },
+  {
+    description: 'Maintenance lines take no pre-1.0 minor either.',
+    matchBaseBranches: [maintenanceLine],
+    matchCurrentVersion: String.raw`/^v?0\./`,
+    matchUpdateTypes: ['minor'],
+    enabled: false,
+  },
+];
+
 export function globalSettings(input: GlobalSettingsInput): Record<string, unknown> {
-  const maintenanceRules =
-    input.maintenanceBranch === null
-      ? []
-      : [
-          {
-            description: 'The maintenance branch takes only security fixes.',
-            matchBaseBranches: [input.maintenanceBranch],
-            matchPackageNames: ['*'],
-            enabled: false,
-          },
-        ];
+  const baseBranchPatterns = input.maintenanceBranch === null ? ['main'] : ['main', input.maintenanceBranch];
   const fastPathRules =
     input.affectedPackages.length === 0
       ? []
@@ -31,6 +38,7 @@ export function globalSettings(input: GlobalSettingsInput): Record<string, unkno
           },
         ];
   return {
+    $schema: 'https://docs.renovatebot.com/renovate-global-schema.json',
     platform: 'github',
     repositories: ['misaon/nylzo'],
     autodiscover: false,
@@ -46,10 +54,11 @@ export function globalSettings(input: GlobalSettingsInput): Record<string, unkno
     cacheDir: '/tmp/renovate-cache',
     baseDir: '/tmp/renovate-work',
     persistRepoData: false,
+    repositoryCache: 'enabled',
     constraints: { mise: input.miseVersion, bun: input.bunVersion },
+    // Renovate applies these before the repository's rules, so the fast path must come last to win here too.
     packageRules: [...maintenanceRules, ...fastPathRules],
-    force: {
-      baseBranchPatterns: input.maintenanceBranch === null ? ['main'] : ['main', input.maintenanceBranch],
-    },
+    baseBranchPatterns,
+    force: { baseBranchPatterns },
   };
 }

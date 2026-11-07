@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
-const releaseKinds = new Set(['manual', 'planned', 'security', 'weekly']);
+const releaseKinds = new Set(['dependencies', 'manual', 'planned', 'security', 'weekly']);
 
 function required(name: string, pattern: RegExp): string {
   const value = process.env[name];

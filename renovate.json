@@ -1,8 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigestsToSemver",
+    ":configMigration",
+    ":pinDevDependencies",
+    "abandonments:recommended",
+    "mergeConfidence:all-badges",
+    "security:openssf-scorecard",
+    ":semanticCommits"
   ],
+  "timezone": "Europe/Prague",
   "dependencyDashboard": false,
   "enabledManagers": [
     "gomod",
@@ -15,12 +24,8 @@
     "bun-version"
   ],
   "platformCommit": "enabled",
-  "pinDigests": true,
   "ignoreScripts": true,
   "ignorePlugins": true,
-  "semanticCommits": "enabled",
-  "semanticCommitType": "fix",
-  "semanticCommitScope": "deps",
   "labels": [
     "dependencies"
   ],
@@ -32,39 +37,40 @@
     "main",
     "/^release\\/v(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/"
   ],
-  "prConcurrentLimit": 8,
+  "prConcurrentLimit": 12,
   "prHourlyLimit": 0,
   "schedule": [
-    "* 0-7 * * 1"
+    "* 0-14 * * 1,3,5"
   ],
   "minimumReleaseAge": "3 days",
   "internalChecksFilter": "strict",
+  "prCreation": "immediate",
   "rebaseWhen": "behind-base-branch",
-  "separateMinorPatch": false,
   "rangeStrategy": "pin",
   "postUpdateOptions": [
-    "gomodTidy"
+    "gomodTidy",
+    "gomodTidyAll"
   ],
-  "automerge": true,
   "automergeType": "pr",
   "platformAutomerge": false,
   "automergeStrategy": "squash",
   "stopUpdatingLabel": "manual-hold",
   "vulnerabilityAlerts": {
     "enabled": true,
-    "labels": [
-      "dependencies",
+    "addLabels": [
       "security"
     ],
     "automerge": true,
-    "minimumReleaseAge": null
+    "draftPR": false,
+    "minimumReleaseAge": null,
+    "semanticCommitType": "fix"
   },
   "osvVulnerabilityAlerts": true,
-  "statusCheckNames": {
-    "artifactError": null,
-    "configValidation": null,
-    "mergeConfidence": null,
-    "minimumReleaseAge": null
+  "statusCheckWhen": {
+    "artifactError": "never",
+    "configValidation": "never",
+    "mergeConfidence": "never",
+    "minimumReleaseAge": "never"
   },
   "logLevelRemap": [
     {
@@ -76,6 +82,9 @@
     "commands": [
       "bun /opt/nylzo-dependency-sync.ts"
     ],
+    "installTools": {
+      "bun": {}
+    },
     "fileFilters": [
       "deploy/hetzner-flatcar/toolchain.json",
       "mise-tasks/deploy"
@@ -89,6 +98,139 @@
         "ghcr.io/misaon/nylzo"
       ],
       "enabled": false
+    },
+    {
+      "description": "Infrastructure: tools in mise.toml, OpenTofu providers, Compose images and pinned binaries.",
+      "matchManagers": [
+        "mise",
+        "terraform",
+        "docker-compose",
+        "custom.regex"
+      ],
+      "groupName": "infrastructure dependencies",
+      "groupSlug": "infrastructure",
+      "addLabels": [
+        "infrastructure"
+      ],
+      "semanticCommitType": "build",
+      "semanticCommitScope": "infrastructure"
+    },
+    {
+      "description": "CI: GitHub Actions in workflows and composite actions.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "CI dependencies",
+      "groupSlug": "ci",
+      "addLabels": [
+        "ci"
+      ],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "CI: the automation workspace.",
+      "matchFileNames": [
+        "automation/**"
+      ],
+      "groupName": "CI dependencies",
+      "groupSlug": "ci",
+      "addLabels": [
+        "ci"
+      ],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Frontend: the web workspace.",
+      "matchFileNames": [
+        "web/**"
+      ],
+      "groupName": "frontend dependencies",
+      "groupSlug": "frontend",
+      "addLabels": [
+        "frontend"
+      ],
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "frontend"
+    },
+    {
+      "description": "Backend: the server module and the Caddy module.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "groupName": "backend dependencies",
+      "groupSlug": "backend",
+      "addLabels": [
+        "backend"
+      ],
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "backend"
+    },
+    {
+      "description": "The Go toolchain moves in mise.toml and both Go modules at once, Caddy in its module and Compose.",
+      "matchPackageNames": [
+        "go",
+        "golang/go",
+        "golangci/golangci-lint",
+        "golangci-lint",
+        "github.com/caddyserver/caddy/v2",
+        "caddy"
+      ],
+      "groupName": "backend dependencies",
+      "groupSlug": "backend",
+      "addLabels": [
+        "backend"
+      ],
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "backend"
+    },
+    {
+      "description": "Bun moves in mise.toml and every package.json at once.",
+      "matchPackageNames": [
+        "bun",
+        "oven-sh/bun",
+        "@types/bun"
+      ],
+      "groupName": "frontend dependencies",
+      "groupSlug": "frontend",
+      "addLabels": [
+        "frontend"
+      ],
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "frontend"
+    },
+    {
+      "description": "CI tools pinned across workflows, mise.toml and assets.json.",
+      "matchPackageNames": [
+        "jdx/mise",
+        "golang.org/x/vuln",
+        "ghcr.io/renovatebot/renovate",
+        "renovatebot/github-action"
+      ],
+      "groupName": "CI dependencies",
+      "groupSlug": "ci",
+      "addLabels": [
+        "ci"
+      ],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Show age, confidence and the OpenSSF score together; prBodyColumns does not merge.",
+      "matchSourceUrls": [
+        "https://github.com/**"
+      ],
+      "prBodyColumns": [
+        "Package",
+        "Type",
+        "Update",
+        "Change",
+        "Age",
+        "Confidence",
+        "Pending",
+        "OpenSSF"
+      ]
     },
     {
       "description": "Indirect Go modules update on main; maintenance branches take them only as security fixes.",
@@ -170,134 +312,6 @@
       "allowedVersions": "/^\\d*[02468]\\.04$/"
     },
     {
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
-      ],
-      "groupName": "Go dependencies"
-    },
-    {
-      "matchManagers": [
-        "npm"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
-      ],
-      "groupName": "web dependencies"
-    },
-    {
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
-      ],
-      "groupName": "GitHub Actions"
-    },
-    {
-      "description": "Each tool updates every pin and checksum it owns in one PR.",
-      "matchPackageNames": [
-        "opentofu/opentofu"
-      ],
-      "groupName": "OpenTofu"
-    },
-    {
-      "matchPackageNames": [
-        "jdx/mise"
-      ],
-      "groupName": "mise"
-    },
-    {
-      "matchPackageNames": [
-        "github.com/caddyserver/caddy/v2",
-        "caddy"
-      ],
-      "groupName": "Caddy"
-    },
-    {
-      "matchPackageNames": [
-        "cli/cli"
-      ],
-      "groupName": "GitHub CLI"
-    },
-    {
-      "matchPackageNames": [
-        "sigstore/cosign"
-      ],
-      "groupName": "Cosign"
-    },
-    {
-      "matchPackageNames": [
-        "jqlang/jq"
-      ],
-      "groupName": "jq"
-    },
-    {
-      "matchPackageNames": [
-        "coreos/ignition"
-      ],
-      "groupName": "Ignition validator"
-    },
-    {
-      "matchPackageNames": [
-        "goreleaser/goreleaser"
-      ],
-      "groupName": "GoReleaser"
-    },
-    {
-      "matchPackageNames": [
-        "anchore/syft"
-      ],
-      "groupName": "Syft"
-    },
-    {
-      "matchPackageNames": [
-        "codecov/codecov-cli"
-      ],
-      "groupName": "Codecov CLI"
-    },
-    {
-      "matchPackageNames": [
-        "go",
-        "golang/go"
-      ],
-      "groupName": "Go toolchain"
-    },
-    {
-      "description": "Breaking upgrades need a planned migration and a code owner approval.",
-      "matchUpdateTypes": [
-        "major"
-      ],
-      "automerge": false,
-      "draftPR": true,
-      "rebaseWhen": "conflicted",
-      "addLabels": [
-        "requires-attention"
-      ]
-    },
-    {
-      "description": "Minor upgrades below 1.0 can break; treat them like majors.",
-      "matchCurrentVersion": "/^0\\./",
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "groupName": null,
-      "automerge": false,
-      "draftPR": true,
-      "rebaseWhen": "conflicted",
-      "addLabels": [
-        "requires-attention"
-      ]
-    },
-    {
       "description": "modernc.org/libc follows modernc.org/sqlite; a libc major on its own is never wanted.",
       "matchPackageNames": [
         "modernc.org/libc"
@@ -308,14 +322,12 @@
       "enabled": false
     },
     {
-      "description": "typescript-eslint and svelte-check accept TypeScript only below 7; lift this once both support it.",
+      "description": "typescript-eslint and svelte-check in the web app accept TypeScript only below 7; lift this once both support it.",
       "matchPackageNames": [
         "typescript"
       ],
       "matchFileNames": [
-        "web/package.json",
-        "web/app/package.json",
-        "automation/package.json"
+        "web/app/package.json"
       ],
       "allowedVersions": "<7"
     },
@@ -329,17 +341,52 @@
         ".github/workflows/release-please.yml",
         ".github/workflows/release-tag.yml",
         ".github/workflows/renovate.yml",
-        ".github/workflows/scorecard.yml"
+        ".github/workflows/scorecard.yml",
+        ".github/workflows/watch.yml",
+        ".github/workflows/infrastructure.yml",
+        ".github/workflows/infrastructure-stack.yml",
+        ".github/actions/deploy-site/action.yml",
+        ".github/actions/released-nylzo/action.yml"
       ],
       "enabled": false
     },
     {
-      "matchPackageNames": [
-        "bun",
-        "oven-sh/bun",
-        "@types/bun"
+      "description": "Updates that need no code change merge themselves once every required check is green.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest"
       ],
-      "groupName": "Bun toolchain"
+      "automerge": true
+    },
+    {
+      "description": "Below 1.0 a minor can break; Go versions carry a v prefix. Treat them like majors.",
+      "matchCurrentVersion": "/^v?0\\./",
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "groupName": null,
+      "automerge": false,
+      "draftPR": true,
+      "rebaseWhen": "conflicted",
+      "addLabels": [
+        "requires-attention"
+      ]
+    },
+    {
+      "description": "Breaking upgrades need a planned migration and a code owner approval.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": null,
+      "automerge": false,
+      "draftPR": true,
+      "rebaseWhen": "conflicted",
+      "addLabels": [
+        "requires-attention"
+      ]
     }
   ],
   "customManagers": [
@@ -369,7 +416,8 @@
       "customType": "regex",
       "managerFilePatterns": [
         "/^mise\\.toml$/",
-        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/",
+        "/^\\.github/actions/[^/]+/action\\.ya?ml$/"
       ],
       "matchStrings": [
         "go run (?<depName>golang\\.org/x/vuln)/cmd/govulncheck@(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
@@ -379,7 +427,8 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github/workflows/[^/]+\\.ya?ml$/"
+        "/^\\.github/workflows/[^/]+\\.ya?ml$/",
+        "/^\\.github/actions/[^/]+/action\\.ya?ml$/"
       ],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>[A-Za-z0-9_./-]+)\\n[ \\t]*[a-z_-]+[ \\t]*[:=][ \\t]*[\"']?(?<currentValue>v?[0-9]+\\.[0-9]+\\.[0-9]+)"
@@ -436,7 +485,7 @@
       "defaultRegistryUrlTemplate": "https://www.flatcar.org/releases-json/releases-stable.json",
       "format": "json",
       "transformTemplates": [
-        "{ \"releases\": $map($keys($), function($v) { { \"version\": $v } }) }"
+        "{ \"releases\": $map($keys($)[$ != \"current\"], function($v) { { \"version\": $v, \"releaseTimestamp\": $lookup($$, $v).release_date } }) }"
       ]
     }
   }

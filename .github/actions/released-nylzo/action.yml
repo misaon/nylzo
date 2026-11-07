@@ -1,0 +1,59 @@
+name: The signed nylzo release a server runs
+description: >-
+  Reads the release a server claims, checks that it is the latest or the one it replaced less than a day ago, downloads its
+  linux amd64 archive and signed checksums, verifies the signature and extracts ./nylzo.
+inputs:
+  url:
+    description: The instance address, such as https://nylzo.com.
+    required: true
+outputs:
+  tag:
+    description: The release tag the server runs.
+    value: ${{ steps.release.outputs.tag }}
+runs:
+  using: composite
+  steps:
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      with:
+        # renovate: datasource=github-releases depName=sigstore/cosign
+        cosign-release: v3.1.4
+    # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
+    - name: Find the release the server runs
+      id: release
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+      run: |
+        version=$(curl -fsS --proto '=https' --max-redirs 0 --max-time 30 "${URL}/.well-known/nylzo/client.json" | jq -r .server)
+        if [[ ! "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "The instance names no release."
+          exit 1
+        fi
+        echo "tag=v${version#v}" >> "${GITHUB_OUTPUT}"
+    - name: The server runs the latest release, or the one right before it during the first day
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ steps.release.outputs.tag }}
+      run: |
+        verdict=$(gh release list -R "${GITHUB_REPOSITORY}" --exclude-drafts --exclude-pre-releases --limit 20 \
+          --json tagName,publishedAt,isLatest | jq -r --arg tag "${TAG}" --argjson now "$(date -u +%s)" '
+            sort_by(.publishedAt) | reverse
+            | (map(.isLatest) | index(true)) as $latest
+            | if $latest == null then "GitHub names no latest release."
+              elif .[$latest].tagName == $tag then "ok"
+              elif .[$latest + 1].tagName == $tag and $now - (.[$latest].publishedAt | fromdate) < 86400 then "ok"
+              else "The instance runs \($tag); only \(.[$latest].tagName) passes, or the release before it during the first day." end')
+        [[ "${verdict}" = ok ]] || { echo "${verdict}"; exit 1; }
+    - name: Download that release and verify its signature
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ steps.release.outputs.tag }}
+      run: |
+        gh release download "${TAG}" -R "${GITHUB_REPOSITORY}" -p checksums.txt -p checksums.txt.sigstore.json -p "nylzo_${TAG#v}_linux_amd64.tar.gz"
+        cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
+        sha256sum --ignore-missing -c checksums.txt
+        tar -xzf "nylzo_${TAG#v}_linux_amd64.tar.gz" nylzo

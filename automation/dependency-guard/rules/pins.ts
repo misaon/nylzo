@@ -6,7 +6,11 @@ function pinRule(extractions: readonly Extraction[]): FileRule {
 }
 
 export const miseToolVersions = pinRule([
-  { name: 'name', pattern: /^(?<name>[\w-]+) = "(?<version>v?\d+\.\d+\.\d+)"$/dgmu, values: { version: 'version' } },
+  {
+    name: 'name',
+    pattern: /^"?(?<name>(?:[a-z]+:)?[\w./-]+)"? = "(?<version>v?\d+\.\d+\.\d+)"$/dgmu,
+    values: { version: 'version' },
+  },
   { name: 'govulncheck', pattern: /govulncheck@(?<version>v\d+\.\d+\.\d+) /dgu, values: { version: 'version' } },
 ]);
 

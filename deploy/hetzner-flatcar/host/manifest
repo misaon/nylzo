@@ -48,3 +48,6 @@ format 1
 /etc/systemd/system/nylzo-clock.timer monitoring/nylzo-clock.timer
 /etc/systemd/system/nylzo-heartbeat.service monitoring/nylzo-heartbeat.service
 /etc/systemd/system/nylzo-heartbeat.timer monitoring/nylzo-heartbeat.timer
+/opt/nylzo/runtime/directive monitoring/directive
+/etc/systemd/system/nylzo-directive.service monitoring/nylzo-directive.service
+/etc/systemd/system/nylzo-directive.timer monitoring/nylzo-directive.timer

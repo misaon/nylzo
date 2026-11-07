@@ -8,6 +8,8 @@ import (
 	"github.com/misaon/nylzo/internal/core/vectors"
 )
 
+var generate = vectors.Generate
+
 func main() {
 	out := flag.String("out", "", "write the vectors to this file instead of stdout")
 	flag.Parse()
@@ -22,7 +24,7 @@ func main() {
 }
 
 func run(out string) error {
-	file, err := vectors.Generate()
+	file, err := generate()
 	if err != nil {
 		return err
 	}

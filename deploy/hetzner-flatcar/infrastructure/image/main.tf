@@ -29,7 +29,7 @@ resource "hcloud_server" "builder" {
   location     = var.location
   server_type  = var.server_type
   image        = "ubuntu-24.04"
-  user_data    = file(var.user_data_path)
+  user_data    = sensitive(file(var.user_data_path))
   firewall_ids = [hcloud_firewall.builder.id]
   labels       = { application = "nylzo", purpose = "image-builder" }
   public_net {

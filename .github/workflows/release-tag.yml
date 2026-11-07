@@ -1,10 +1,18 @@
 name: Release tag
+run-name: Release tag ${{ inputs.task || github.event_name }}
 
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] -- Runs main's definition, reads only API metadata and never checks out or executes the tagged commit.
     workflows: [ci, release]
     types: [completed]
+  # The production watch opens the dependency release windows on Monday, Wednesday and Friday (automation/watch/due.ts).
   workflow_dispatch:
+    inputs:
+      task:
+        description: What to run
+        type: choice
+        options: [signing-probe, dependency-window]
+        default: signing-probe
 
 permissions: {}
 
@@ -13,11 +21,13 @@ jobs:
     if: >-
       github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
       github.event_name == 'workflow_run' && github.event.workflow_run.name == 'ci' &&
-      github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v'))
-    name: Tag a merged release PR or maintenance fix
-    runs-on: ubuntu-latest
+      ((github.event.workflow_run.event == 'push' &&
+        (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v'))) ||
+       (github.event.workflow_run.event == 'workflow_dispatch' && startsWith(github.event.workflow_run.head_branch, 'release/v')))
+    name: Tag a merged release PR, a security fix or a dependency release
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     environment: dependency-updates
     concurrency:
@@ -31,7 +41,7 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,12 +49,10 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun gitsign
-          cache: false
+          tools: bun gitsign
+          cache: none
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Decide the release for the commit whose CI completed
         id: plan
@@ -63,7 +71,7 @@ jobs:
         if: steps.plan.outputs.tag != ''
         id: app
         with:
-          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID || vars.DEPENDENCY_APP_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
           owner: misaon
           repositories: nylzo
@@ -98,7 +106,7 @@ jobs:
       github.event.workflow_run.name == 'release' && github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     name: Open the maintenance branch and record the published release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     concurrency:
       group: release-published
@@ -110,24 +118,22 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache: false
+          tools: bun
+          cache: none
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
         with:
-          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID || vars.DEPENDENCY_APP_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
           owner: misaon
           repositories: nylzo
@@ -138,10 +144,54 @@ jobs:
           GITHUB_TOKEN: ${{ steps.app.outputs.token }}
         run: bun automation/release-tag/published.ts
 
+  dependency-window:
+    if: >-
+      github.repository == 'misaon/nylzo' && vars.SECURITY_AUTOMATION_ENABLED == 'true' &&
+      github.event_name == 'workflow_dispatch' && inputs.task == 'dependency-window'
+    name: Open a dependency release window on the maintenance branch
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    environment:
+      name: dependency-updates
+      deployment: false
+    concurrency:
+      group: dependency-window
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      # GitHub documents that an App token, unlike GITHUB_TOKEN, starts further workflows: the CI run's success must start the tag job.
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID || vars.DEPENDENCY_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          owner: misaon
+          repositories: nylzo
+          permission-actions: write # run the full CI on the maintenance branch
+          permission-contents: read
+      - name: Run CI on the maintenance branch when it holds unreleased changes
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          latest=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq 'select(.immutable and (.draft | not)) | .tag_name')
+          [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          branch="release/${latest%.*}"
+          ahead=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${latest}...${branch}" --jq .ahead_by)
+          if [[ "$ahead" = 0 ]]; then
+            echo "$branch holds nothing after $latest." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          echo "CI runs on $branch ($ahead commits after $latest); its success tags the dependency release." >> "$GITHUB_STEP_SUMMARY"
+
   signing-probe:
-    if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'signing-probe' && github.repository == 'misaon/nylzo'
     name: Verify keyless tag signing without publishing
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     concurrency:
       group: signing-probe
@@ -152,18 +202,16 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: gitsign
-          cache: false
+          tools: gitsign
+          cache: none
       - name: Sign and verify a local tag; do not push it
         env:
           GITSIGN_TOKEN_PROVIDER: github-actions

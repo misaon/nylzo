@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/misaon/nylzo/internal/core/vectors"
 )
 
 func TestVectorCommandEntrypoint(t *testing.T) {
@@ -22,6 +24,8 @@ func TestVectorCommandEntrypoint(t *testing.T) {
 			// With no flags the command writes vectors to stdout.
 		}
 		flag.CommandLine = flag.NewFlagSet("nylzo-vectors", flag.ExitOnError)
+		// The full generator needs gigabytes under the race detector; TestCommittedVectorsMatchGenerator covers it.
+		generate = func() (*vectors.File, error) { return &vectors.File{Spec: vectors.Spec}, nil }
 		main()
 		os.Exit(0)
 	}

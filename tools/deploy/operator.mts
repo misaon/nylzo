@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +28,7 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
   const origin = service === "hetzner" ? "https://api.hetzner.cloud/v1" : "https://api.cloudflare.com/client/v4";
   return async (pathname: string, body?: object) => {
     const allowed = service === "hetzner"
-      ? /^\/(?:servers\/[1-9][0-9]*(?:\/actions\/create_image)?|images\/[1-9][0-9]*)$/u
+      ? /^\/(?:servers\/[1-9][0-9]*(?:\/actions\/create_image)?|images\/[1-9][0-9]*|images\?type=snapshot&label_selector=nylzo-verified-image%3Dtrue%2Cnylzo-flatcar-version%3D[0-9.]+%2Cnylzo-architecture%3D(?:amd64|arm64))$/u
       : /^\/zones(?:\/[a-f0-9]{32}\/dns_records)?\?name=[a-z0-9._-]+(?:&type=(?:A|AAAA|CAA|CNAME|MX|TXT))?$/u;
     if (!allowed.test(pathname) || pathname.includes("..")) throw new Error("Cloud API endpoint is not allowed");
     const endpoint = new URL(origin);
@@ -80,14 +81,58 @@ export function execute(directory: string, environment: NodeJS.ProcessEnv, argum
   return capture ? result.toString() : "";
 }
 
-export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
+// CI keeps OpenTofu state in S3-compatible object storage; the operator laptop keeps it in the private directory.
+export function remoteState(site: string, kind: string, environment: NodeJS.ProcessEnv = process.env) {
+  const bucket = environment.NYLZO_STATE_BUCKET;
+  if (bucket === undefined || bucket === "") return undefined;
+  const endpoint = environment.NYLZO_STATE_ENDPOINT ?? "";
+  const region = environment.NYLZO_STATE_REGION ?? "";
+  assert.match(bucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/u, "NYLZO_STATE_BUCKET must be an S3 bucket name");
+  assert.match(endpoint, /^https:\/\/[a-z0-9.-]{1,253}$/u, "NYLZO_STATE_ENDPOINT must be an https:// origin");
+  assert.match(region, /^[a-z0-9-]{2,32}$/u, "NYLZO_STATE_REGION must name the storage region");
+  return `terraform {
+  backend "s3" {
+    bucket                      = ${JSON.stringify(bucket)}
+    key                         = ${JSON.stringify(`nylzo/${site}/${kind}.tfstate`)}
+    region                      = ${JSON.stringify(region)}
+    endpoints                   = { s3 = ${JSON.stringify(endpoint)} }
+    use_path_style              = true
+    use_lockfile                = true
+    skip_credentials_validation = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+    skip_metadata_api_check     = true
+    skip_s3_checksum            = true
+  }
+}
+`;
+}
+
+// The newest snapshot that createImage labelled for this Flatcar version and architecture.
+export async function verifiedImage(token: string, version: string, architecture: string) {
+  const selector = encodeURIComponent(`nylzo-verified-image=true,nylzo-flatcar-version=${version},nylzo-architecture=${architecture}`);
+  const { images } = await client(token)(`/images?type=snapshot&label_selector=${selector}`);
+  assert(Array.isArray(images), "Hetzner returned no image list");
+  const available = images.filter((image: any) => image.status === "available" && Number.isSafeInteger(image.id) && image.id > 0)
+    .sort((left: any, right: any) => Date.parse(right.created) - Date.parse(left.created));
+  assert(available.length > 0, `No verified Flatcar ${version} ${architecture} image exists; apply the image stack first`);
+  return { id: available[0].id as number, version, architecture };
+}
+
+async function validatedSite(siteFile: string, kind: string) {
   assert(["image", "server", "dns"].includes(kind));
   const site = configuration(JSON.parse(await readFile(siteFile, "utf8")));
   assert(!/(^|\.)example\.(org|com|net)$/u.test(site.domain), "Replace the example domain before provisioning");
   assert(site.administratorNetworks.every((network: string) => !/^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)/iu.test(network)), "Replace the example administrator networks before provisioning");
   assert(site.operator.length > 0 && site.contact.length > 0, "Set the public operator and contact details before provisioning");
-  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com administrator key; create one with ssh-keygen -t ed25519-sk -O verify-required");
-  const bundle = kind === "dns" ? undefined : await releaseEvidence(site.initialRelease, site.architecture, verify);
+  return site;
+}
+
+export async function workspace(siteFile: string, kind: string) {
+  return stackWorkspace(await validatedSite(siteFile, kind), siteFile, kind);
+}
+
+async function stackWorkspace(site: Awaited<ReturnType<typeof validatedSite>>, siteFile: string, kind: string) {
   const root = path.dirname(path.resolve(siteFile));
   const privateDirectory = await lstat(root);
   assert(privateDirectory.isDirectory() && !privateDirectory.isSymbolicLink() && (privateDirectory.mode & 0o077) === 0, "Operator directory must be private (0700) and must not be a symlink");
@@ -97,6 +142,23 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   for (const filename of await readdir(source)) {
     if (filename.endsWith(".tf") || filename === ".terraform.lock.hcl") await copyFile(path.join(source, filename), path.join(directory, filename));
   }
+  const backend = remoteState(site.name, kind);
+  if (backend) await writeFile(path.join(directory, "backend.tf"), backend, { mode: 0o600 });
+  const environment: NodeJS.ProcessEnv = { ...process.env, TF_IN_AUTOMATION: "true", TF_ENCRYPTION: await encryption(root) };
+  for (const name of Object.keys(environment)) {
+    if (["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"].includes(name) || name.startsWith("TF_LOG")) delete environment[name];
+  }
+  const version = JSON.parse(execute(directory, environment, ["version", "-json"], true));
+  assert.equal(version.terraform_version, toolchain.opentofu);
+  return { site, root, directory, environment };
+}
+
+export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
+  const site = await validatedSite(siteFile, kind);
+  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com or sk-ecdsa-sha2-nistp256@openssh.com administrator key: a security key, or a Mac Secure Enclave key as the Hetzner Flatcar guide describes");
+  const bundle = kind === "dns" ? undefined : await releaseEvidence(site.initialRelease, site.architecture, verify);
+  const prepared = await stackWorkspace(site, siteFile, kind);
+  const { root, directory, environment } = prepared;
   const userDataPath = path.join(directory, "user-data");
   if (bundle) {
     const rendered = await render(site, bundle);
@@ -104,7 +166,10 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   }
   let variables: object = { name: site.name, location: site.location, server_type: site.serverType, user_data_path: userDataPath };
   if (kind === "server") {
-    const image = JSON.parse(await readFile(path.join(root, "image.json"), "utf8"));
+    const imageFile = path.join(root, "image.json");
+    const image = existsSync(imageFile)
+      ? JSON.parse(await readFile(imageFile, "utf8"))
+      : await verifiedImage(await credential("HCLOUD_TOKEN"), toolchain.flatcar, site.architecture);
     assert.equal(image.version, toolchain.flatcar);
     assert.equal(image.architecture, site.architecture);
     assert(Number.isSafeInteger(image.id) && image.id > 0);
@@ -116,15 +181,9 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
     variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value, acme_account_uri: site.acmeAccountUri ?? "" };
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
-  const environment: NodeJS.ProcessEnv = { ...process.env, TF_IN_AUTOMATION: "true", TF_ENCRYPTION: await encryption(root) };
-  for (const name of Object.keys(environment)) {
-    if (["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"].includes(name) || name.startsWith("TF_LOG")) delete environment[name];
-  }
   if (kind === "dns") environment.CLOUDFLARE_API_TOKEN = await credential("CLOUDFLARE_API_TOKEN");
   else environment.HCLOUD_TOKEN = await credential("HCLOUD_TOKEN");
-  const version = JSON.parse(execute(directory, environment, ["version", "-json"], true));
-  assert.equal(version.terraform_version, toolchain.opentofu);
-  return { site, root, directory, environment };
+  return prepared;
 }
 
 const hash = (contents: Uint8Array | string) => createHash("sha256").update(contents).digest("hex");

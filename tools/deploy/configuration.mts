@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { isIP } from "node:net";
-import { X509Certificate } from "node:crypto";
+import { X509Certificate, createPublicKey } from "node:crypto";
 
 export function configuration(input: any) {
   const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "monitorClientCertificate", "heartbeatUrl", "tang", "acmeAccountUri"];
@@ -75,8 +75,8 @@ export function patchCandidate(current: string, candidate: string) {
 
 export function administratorKeyIsHardware(line: unknown) {
   assert.equal(typeof line, "string");
-  const match = /^(ssh-ed25519|sk-ssh-ed25519@openssh\.com) ([A-Za-z0-9+/]+={0,2})(?: [^\r\n]+)?$/u.exec(line as string);
-  assert(match, "Use an Ed25519 SSH key, preferably the hardware-backed sk-ssh-ed25519@openssh.com type");
+  const match = /^(ssh-ed25519|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) ([A-Za-z0-9+/]+={0,2})(?: [^\r\n]+)?$/u.exec(line as string);
+  assert(match, "Use an Ed25519 SSH key, or better a hardware-backed sk-ssh-ed25519@openssh.com or sk-ecdsa-sha2-nistp256@openssh.com key");
   const [, type, encoded] = match;
   const blob = Buffer.from(encoded!, "base64");
   assert.equal(blob.toString("base64"), encoded, "Invalid SSH key encoding");
@@ -89,10 +89,20 @@ export function administratorKeyIsHardware(line: unknown) {
     fields.push(blob.subarray(offset, offset + length));
     offset += length;
   }
+  assert.equal(fields[0]?.toString("latin1"), type, "Invalid SSH key encoding");
+  const application = (value: Buffer | undefined) => assert.match(value?.toString("latin1") ?? "", /^ssh:[!-~]{0,64}$/u, "Invalid security key application");
+  if (type === "sk-ecdsa-sha2-nistp256@openssh.com") {
+    assert.equal(fields.length, 4, "Invalid SSH key encoding");
+    assert.equal(fields[1]!.toString("latin1"), "nistp256", "Invalid ECDSA SSH key encoding");
+    const point = fields[2]!;
+    assert(point.length === 65 && point[0] === 4, "Invalid ECDSA SSH key encoding");
+    assert.doesNotThrow(() => createPublicKey({ key: { kty: "EC", crv: "P-256", x: point.subarray(1, 33).toString("base64url"), y: point.subarray(33).toString("base64url") }, format: "jwk" }), "Invalid ECDSA SSH key point");
+    application(fields[3]);
+    return true;
+  }
   const hardware = type === "sk-ssh-ed25519@openssh.com";
   assert.equal(fields.length, hardware ? 3 : 2, "Invalid SSH key encoding");
-  assert.equal(fields[0]!.toString("latin1"), type, "Invalid SSH key encoding");
   assert.equal(fields[1]!.length, 32, "Invalid Ed25519 SSH key encoding");
-  if (hardware) assert.match(fields[2]!.toString("latin1"), /^ssh:[!-~]{0,64}$/u, "Invalid security key application");
+  if (hardware) application(fields[2]);
   return hardware;
 }

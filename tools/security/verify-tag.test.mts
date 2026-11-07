@@ -58,7 +58,7 @@ esac
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("an automatic patch tag must sit on the tip of the latest release's maintenance branch", () => {
+test("an automatic patch tag must sit on the latest release's maintenance branch, even after the branch moved on", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-patch-guard-"));
   try {
     const commands = {
@@ -67,7 +67,8 @@ case "$1" in
  fetch) case "$*" in *refs/heads/main:*|*"refs/heads/release/v0.2:"*) exit 0 ;; *) exit 1 ;; esac ;;
  cat-file) if [ "$2" = -t ]; then echo tag; else printf 'object aaaa\\ntype commit\\ntag %s\\ntagger test\\n\\nNylzo\\n\\nRelease-Kind: %s\\nBase-Release: %s\\n' "$GITHUB_REF_NAME" "$KIND" "$BASE"; fi ;;
  rev-parse) case "$2" in refs/remotes/origin/*) echo "$BRANCH_TIP" ;; *) echo "$GITHUB_SHA" ;; esac ;;
- merge-base) if [ "$4" = refs/remotes/origin/main ]; then exit 1; fi; exit 0 ;;
+ merge-base) if [ "$4" = refs/remotes/origin/main ]; then exit 1; fi
+  if [ "$4" = refs/remotes/origin/release/v0.2 ] && [ "$ON_BRANCH" = no ]; then exit 1; fi; exit 0 ;;
 esac
 `,
       gh: '#!/bin/sh\ncase "$2" in */releases/latest) echo "$LATEST" ;; *) printf "%s" \'{"verification":{"verified":false}}\' ;; esac\n',
@@ -83,8 +84,10 @@ esac
     }});
     assert.equal(run().status, 0);
     assert.equal(readFileSync(join(directory, "output"), "utf8"), "environment=release-automatic\n");
+    assert.equal(run({ KIND: "dependencies" }).status, 0);
+    assert.equal(run({ BRANCH_TIP: "b".repeat(40) }).status, 0);
     for (const overrides of [
-      { BRANCH_TIP: "b".repeat(40) }, { LATEST: "v0.3.0" }, { BASE: "v0.2.2" }, { GITHUB_REF_NAME: "v0.2.5" },
+      { ON_BRANCH: "no" }, { LATEST: "v0.3.0" }, { BASE: "v0.2.2" }, { GITHUB_REF_NAME: "v0.2.5" },
       { KIND: "planned" }, { KIND: "weekly" }, { GITHUB_ACTOR: "nylzo-security-automation[bot]" },
     ]) assert.notEqual(run(overrides).status, 0, JSON.stringify(overrides));
   } finally { rmSync(directory, { recursive: true, force: true }); }

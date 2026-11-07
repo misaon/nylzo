@@ -4,14 +4,14 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 
 ## Schedules
 
-- `renovate.yml` runs every six hours (`17 */6 * * *`, UTC), after every CI run on `main`, a maintenance branch or a `renovate/` branch that was not cancelled, and on manual dispatch. Only one Renovate run is active at a time. GitHub schedules are best effort.
+- `renovate.yml` runs every six hours, started by the [production watch](../guides/Host-monitoring.md#production-watch), after every CI run on `main`, a maintenance branch or a `renovate/` branch that was not cancelled, and on manual dispatch. Only one Renovate run is active at a time. GitHub schedules are best effort.
 - Security fixes are proposed in any run. They come from GitHub advisories (Dependabot alerts read through the App), from OSV for direct Go and npm dependencies, and from the vulnerability inventory below.
-- Ordinary updates are proposed only on Monday before 08:00 UTC and only for versions at least three days old (`minimumReleaseAge`, strict). Registries that publish no release time, such as GHCR, therefore get ordinary updates only through the inventory's fast path.
+- Ordinary updates are proposed on Monday, Wednesday and Friday before 15:00 Prague time and only for versions at least three days old (`minimumReleaseAge`, strict). Registries that publish no release time, such as GHCR, therefore get ordinary updates only through the inventory's fast path.
 - Bun keeps its own 24-hour minimum release age for every package, including security fixes. A fresh npm fix fails its lockfile update until it is a day old; a later Renovate run retries it.
 
 ## What merges automatically
 
-- Each security fix has its own PR. Ordinary updates are grouped: Go modules, web packages and GitHub Actions each in one PR, and each pinned tool in its own PR together with all files that pin it.
+- Each security fix has its own PR, labelled `security`. Ordinary updates are grouped by area, each with its own label and commit scope: `frontend` (the web workspace and Bun), `backend` (both Go modules, the Go toolchain and Caddy), `ci` (GitHub Actions, the automation workspace and CI tools) and `infrastructure` (tools in `mise.toml`, OpenTofu providers, images and pinned binaries). A tool moves in every file that pins it at once.
 - Renovate merges a PR itself, by squash, once every check on its current head is green, including the dependency guard. It merges one PR per branch per run; the run after the merge rebases the rest. GitHub auto-merge is not used, because a ruleset bypass applies only to a direct merge.
 - Majors, and minor updates of packages below 1.0, open as draft PRs labelled `requires-attention`. They merge only after a code owner approves them on the current head and re-runs the dependency guard. Renovate rebases a draft only when it conflicts; add the `rebase` label or update the branch when one is ready for review.
 - When CI fails, Renovate assigns the PR to `misaon`. A failed group is not split automatically; fix it, close it, or let a later version replace it. The `manual-hold` label stops Renovate from rebasing a branch someone is editing.
@@ -19,11 +19,12 @@ Self-hosted [Renovate](https://docs.renovatebot.com/) proposes and merges depend
 ## Maintenance branch and patch releases
 
 - Every planned release `vX.Y.0` opens `release/vX.Y` at its tag. Renovate processes `main` and the maintenance branch of the latest release only.
-- The maintenance branch takes only security fixes. Ordinary updates reach production with the next planned release.
-- Renovate does not update `monitor.yml`, `release-please.yml`, `release-tag.yml`, `renovate.yml` or `scorecard.yml` on a maintenance branch, not even through the inventory fast path. GitHub runs these workflows only from `main`, so such a PR would cost a patch release that changes nothing. A GitHub or OSV advisory against one of their dependencies still opens a PR.
-- After CI succeeds on a merge into `release/vX.Y`, `release-tag.yml` signs `vX.Y.(Z+1)` with gitsign and the workflow's GitHub OIDC identity and pushes it with the Nylzo Dependency Updates App. The tag carries `Release-Kind: security`, `Base-Release` and `Policy-Commit`.
-- `release.yml` publishes only a tag whose keyless signature names `release-tag.yml` on `main`, whose base is the latest release, and which sits on the tip of `release/vX.Y`. It rebuilds, scans, signs and attests every artifact as for any release.
-- If a merged maintenance fix waits more than an hour for its release, the `monitor.yml` watchdog fails and GitHub notifies the maintainer. Re-run failed CI; a tag is never moved or reused. GitHub may drop scheduled runs under load, so the watchdog also runs after every `ci`, `Release tag` and `release` run that did not come from a pull request.
+- The maintenance branch takes security fixes and every update that needs no code change: no majors and no minor updates below 1.0, except the inventory fast path, which also opens those for an affected package.
+- Renovate does not update `infrastructure.yml`, `infrastructure-stack.yml`, `monitor.yml`, `release-please.yml`, `release-tag.yml`, `renovate.yml`, `scorecard.yml`, `watch.yml` or the `deploy-site` and `released-nylzo` actions on a maintenance branch, not even through the inventory fast path. GitHub runs these workflows only from `main`, so such a PR would cost a patch release that changes nothing. A GitHub or OSV advisory against one of their dependencies still opens a PR.
+- After CI succeeds on a merge into `release/vX.Y` that brings a PR labelled `security`, `release-tag.yml` signs `vX.Y.(Z+1)` with gitsign and the workflow's GitHub OIDC identity and pushes it with the Nylzo Dependency Updates App. The tag carries `Release-Kind: security`, `Base-Release` and `Policy-Commit`.
+- Other merged updates wait for a dependency release window. On Monday, Wednesday and Friday from 13:47 UTC, the production watch starts `release-tag.yml`, which uses the Dependency Updates App (it needs the Actions: Read and write permission) to run the full CI on the tip of `release/vX.Y` if it holds unreleased changes; its success tags the next patch with `Release-Kind: dependencies`. A release tag still comes only from a completed CI run (`workflow_run`), never from a manual trigger.
+- `release.yml` publishes only a tag whose keyless signature names `release-tag.yml` on `main`, whose base is the latest release, and which sits on `release/vX.Y`, so a merge right after the tag cannot strand it. It rebuilds, scans, signs and attests every artifact as for any release.
+- If a merged security fix waits more than an hour, or any other merged update more than four days, for its release, the `monitor.yml` watchdog fails and GitHub notifies the maintainer. Re-run failed CI; a tag is never moved or reused. GitHub may drop scheduled runs under load, so the watchdog also runs after every `ci`, `Release tag` and `release` run that did not come from a pull request.
 
 ## Planned releases
 
@@ -36,7 +37,7 @@ Production hosts move to a newer minor or major line only when its `vX.Y.0` carr
 Today any release that `release.yml` signs reaches production within ten minutes. A planned release needs a merged release PR, but that approval lives in the same GitHub account an attacker would use. Proposal for the owner, not yet implemented:
 
 - Hosts keep installing `kind: security` patches of an approved line at once, so security fixes stay as fast as now.
-- Every other kind (`planned`, `weekly`, `manual`) also needs an owner signature over `nylzo_X.Y.Z.evidence.sha256`, made with the owner's FIDO2 SSH key: `ssh-keygen -Y sign -f id_ed25519_sk -n nylzo-release`. The allowed signer lives in `/etc/nylzo/release-signers`, written by Ignition and never by a release, so a malicious release cannot replace it.
+- Every other kind (`planned`, `dependencies`, `weekly`, `manual`) also needs an owner signature over `nylzo_X.Y.Z.evidence.sha256`, made with the owner's FIDO2 SSH key: `ssh-keygen -Y sign -f id_ed25519_sk -n nylzo-release`. The allowed signer lives in `/etc/nylzo/release-signers`, written by Ignition and never by a release, so a malicious release cannot replace it.
 - Release assets are immutable after publication, so the signature travels separately: the owner pushes it over SSH, or commits it to a signed approvals branch that hosts read.
 - Cost: planned releases wait for the owner. A forged release labelled `security` still installs at once; the planned-base rule limits it to a patch of an approved line, and a host-checked, owner-signed revocation list could stop a bad one within one timer period.
 
@@ -66,7 +67,7 @@ The module may require newer dependencies than Caddy itself when a fix ships bef
 
 ## Credentials
 
-The Nylzo Dependency Updates App is installed on `misaon/nylzo` only. Its key lives in the main-only `dependency-updates` environment. Jobs request reduced, revocable tokens: Renovate gets contents, pull requests and workflows write and actions and Dependabot alerts read, and reads the check results of this public repository without a separate permission; the tagger gets contents and workflows write. The App may bypass required review on pull requests and may create release tags; tag immutability and the integrity ruleset have no bypass. Renovate runs with scripts, plugins and unsafe executions disabled; its only post-upgrade command is the read-only mounted `automation/dependency-sync/sync.ts` from `main`.
+The Nylzo Dependency Updates App is installed on `misaon/nylzo` only. Its key lives in the main-only `dependency-updates` environment. Jobs request reduced, revocable tokens: Renovate gets contents, pull requests and workflows write and actions and Dependabot alerts read, and reads the check results of this public repository without a separate permission; the tagger gets contents and workflows write; the dependency window gets actions write and contents read to start CI. The App may bypass required review on pull requests and may create release tags; tag immutability and the integrity ruleset have no bypass. Renovate runs with scripts, plugins and unsafe executions disabled; its only post-upgrade command is the read-only mounted `automation/dependency-sync/sync.ts` from `main`.
 
 ## Recovery
 

@@ -135,7 +135,7 @@ hardware=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
 [[ ! -e "$hardware" ]]
 reapply() { bash /opt/nylzo/host/initial/update/activate /opt/nylzo/host/initial; }
 refused() { if reapply 2>/dev/null; then exit 1; fi; [[ ! -e "$hardware" ]]; }
-installed() { reapply; grep -qx 'PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com' "$hardware"; }
+installed() { reapply; grep -qx 'PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com' "$hardware"; }
 mkdir -p /home/core/.ssh
 printf 'ssh-ed25519 AAAA old@laptop\n' > /home/core/.ssh/authorized_keys
 printf 'HARDWARE_KEYS_ONLY=true\n' >> /etc/nylzo/host.env
@@ -146,7 +146,7 @@ rm "$hardware"
 mkdir /home/core/.ssh/authorized_keys.d
 printf 'ssh-ed25519 AAAA old@laptop\n' > /home/core/.ssh/authorized_keys.d/ignition
 refused
-printf 'verify-required sk-ssh-ed25519@openssh.com AAAA operator@laptop\n' > /home/core/.ssh/authorized_keys.d/hardware
+printf 'sk-ecdsa-sha2-nistp256@openssh.com AAAA ssh:\n' > /home/core/.ssh/authorized_keys.d/hardware
 installed
 sed -i 's/^HARDWARE_KEYS_ONLY=true$/HARDWARE_KEYS_ONLY=false/' /etc/nylzo/host.env
 reapply

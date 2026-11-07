@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { globalSettings } from './global-settings.ts';
 
-test('the maintenance branch disables ordinary updates before the fast path enables affected packages', () => {
+test('the maintenance branch joins main and the fast path follows its limits, so a needed major still opens', () => {
   const settings = globalSettings({
     affectedPackages: ['goreleaser/goreleaser'],
     maintenanceBranch: 'release/v0.2',
@@ -11,22 +11,20 @@ test('the maintenance branch disables ordinary updates before the fast path enab
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main', 'release/v0.2'] });
-  assert.deepEqual(settings['packageRules'], [
-    {
-      description: 'The maintenance branch takes only security fixes.',
-      matchBaseBranches: ['release/v0.2'],
-      matchPackageNames: ['*'],
-      enabled: false,
-    },
-    {
-      description: 'The vulnerability inventory found these dependencies affected; propose their fix at once.',
-      matchPackageNames: ['goreleaser/goreleaser'],
-      enabled: true,
-      minimumReleaseAge: null,
-      schedule: [],
-      addLabels: ['security'],
-    },
-  ]);
+  const rules = settings['packageRules'] as { enabled: boolean; matchBaseBranches?: string[] }[];
+  assert.deepEqual(
+    rules.map((rule) => rule.enabled),
+    [false, false, true],
+  );
+  assert.deepEqual(rules[0]?.matchBaseBranches, [String.raw`/^release\/v/`]);
+  assert.deepEqual(rules.at(-1), {
+    description: 'The vulnerability inventory found these dependencies affected; propose their fix at once.',
+    matchPackageNames: ['goreleaser/goreleaser'],
+    enabled: true,
+    minimumReleaseAge: null,
+    schedule: [],
+    addLabels: ['security'],
+  });
 });
 
 test('without a maintenance branch Renovate processes only main', () => {
@@ -37,5 +35,5 @@ test('without a maintenance branch Renovate processes only main', () => {
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main'] });
-  assert.deepEqual(settings['packageRules'], []);
+  assert.equal((settings['packageRules'] as unknown[]).length, 2);
 });
