@@ -210,7 +210,7 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
 	locator := record.Row.Locator
 	delay := time.Until(leaseExpires.Add(store.LeaseTimerSlack))
-	s.leaseTimers.schedule(locator, record.Key, delay, func(key seal.Key) {
+	s.leaseTimers.Schedule(locator, record.Key, delay, func(key seal.Key) {
 		ctx := context.Background()
 		kept := store.Record{Row: store.Row{Locator: locator}, Key: key}
 		defer clear(kept.Key[:])
@@ -271,7 +271,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !leased.record.HasBlob() {
-		s.leaseTimers.cancel(leased.record.Row.Locator)
+		s.leaseTimers.Cancel(leased.record.Row.Locator)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

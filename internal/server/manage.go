@@ -50,7 +50,7 @@ func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpos
 		return
 	}
 	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, time.Now())
-	s.leaseTimers.cancel(granted.record.Row.Locator)
+	s.leaseTimers.Cancel(granted.record.Row.Locator)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.writeCurrentGone(w, r, &granted.record)

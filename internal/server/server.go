@@ -17,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
+	"github.com/misaon/nylzo/internal/server/leasetimer"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
@@ -57,7 +58,7 @@ type Server struct {
 	blobs         store.Blobs
 	ring          *pepper.Ring
 	epochs        *epoch.Ratchet
-	leaseTimers   *releases
+	leaseTimers   *leasetimer.Timers
 	logger        *slog.Logger
 	instance      *ratelimit.Fair
 	sourceLimiter *ratelimit.Limiter
@@ -97,7 +98,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		store:       storage,
 		blobs:       blobs,
 		ring:        ring,
-		leaseTimers: newReleases(),
+		leaseTimers: leasetimer.New(),
 		logger:      logging.New(os.Stderr),
 		webFiles:    web.Files(),
 		dummyRow:    newDummyRow(),
@@ -135,7 +136,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 }
 
 func (s *Server) Close() {
-	s.leaseTimers.stop()
+	s.leaseTimers.Stop()
 	s.epochs.Close()
 }
 

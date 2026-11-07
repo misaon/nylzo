@@ -127,7 +127,7 @@ func signedPurpose(purpose seal.Purpose) string {
 func (s *Server) settle(ctx context.Context, record *store.Record, now time.Time) {
 	finished, err := store.Finish(ctx, s.store, s.blobs, record, now)
 	if finished {
-		s.leaseTimers.cancel(record.Row.Locator)
+		s.leaseTimers.Cancel(record.Row.Locator)
 	}
 	if err == nil && finished {
 		err = s.reload(ctx, record)

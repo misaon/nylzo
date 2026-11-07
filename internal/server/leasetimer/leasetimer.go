@@ -1,4 +1,4 @@
-package server
+package leasetimer
 
 import (
 	"sync"
@@ -8,9 +8,9 @@ import (
 	"github.com/misaon/nylzo/internal/secretmode"
 )
 
-// releases keeps the record key of a message whose last lease runs until the release at lease end, or until a
-// request ends the message first and cancel clears the key at once (A4-2); stop waits for releases already running.
-type releases struct {
+// Timers keep the record key of a message whose last lease runs until the release at lease end, or until a
+// request ends the message first and Cancel clears the key at once (A4-2); Stop waits for releases already running.
+type Timers struct {
 	mutex   sync.Mutex
 	running sync.WaitGroup
 	closed  bool
@@ -22,11 +22,11 @@ type pendingRelease struct {
 	key   seal.Key
 }
 
-func newReleases() *releases {
-	return &releases{pending: map[seal.Locator]*pendingRelease{}}
+func New() *Timers {
+	return &Timers{pending: map[seal.Locator]*pendingRelease{}}
 }
 
-func (r *releases) schedule(locator seal.Locator, key seal.Key, delay time.Duration, release func(seal.Key)) {
+func (r *Timers) Schedule(locator seal.Locator, key seal.Key, delay time.Duration, release func(seal.Key)) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if r.closed {
@@ -50,21 +50,13 @@ func (r *releases) schedule(locator seal.Locator, key seal.Key, delay time.Durat
 	r.pending[locator] = pending
 }
 
-func (r *releases) cancel(locator seal.Locator) {
+func (r *Timers) Cancel(locator seal.Locator) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.forgetLocked(locator)
 }
 
-func (r *releases) forgetLocked(locator seal.Locator) {
-	if pending, ok := r.pending[locator]; ok {
-		pending.timer.Stop()
-		clear(pending.key[:])
-		delete(r.pending, locator)
-	}
-}
-
-func (r *releases) stop() {
+func (r *Timers) Stop() {
 	r.mutex.Lock()
 	r.closed = true
 	for locator := range r.pending {
@@ -72,4 +64,12 @@ func (r *releases) stop() {
 	}
 	r.mutex.Unlock()
 	r.running.Wait()
+}
+
+func (r *Timers) forgetLocked(locator seal.Locator) {
+	if pending, ok := r.pending[locator]; ok {
+		pending.timer.Stop()
+		clear(pending.key[:])
+		delete(r.pending, locator)
+	}
 }
