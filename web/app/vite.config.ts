@@ -15,8 +15,7 @@ const information = buildInfo();
 const outputDirectory = path.resolve(import.meta.dirname, '../../internal/server/web/dist');
 const developmentApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
 const GZIP_OS_UNKNOWN = 255;
-const PRELOADED_FONTS =
-  /^assets\/(?:geist|geist-mono|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/u;
+const PRELOADED_FONTS = /^assets\/(?:geist|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/u;
 const PRECOMPRESSED = /\.(?:js|css)$/u;
 const VITE_BROWSER_NAMES = new Map([
   ['and_chr', 'chrome'],

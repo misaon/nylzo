@@ -74,7 +74,6 @@ const CZECH = [
 ];
 const FAMILIES = [
   { file: 'geist', name: 'Geist' },
-  { file: 'geist-mono', name: 'Geist Mono' },
   { file: 'sora', name: 'Sora' },
 ] as const;
 

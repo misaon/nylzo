@@ -53,7 +53,7 @@
     <div class="glass mt-4 rv-rise overflow-hidden rounded-card md:mt-12" {@attach reveal}>
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
-        class="overflow-x-auto outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2"
+        class="overflow-x-auto outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 focus-visible:outline-aegis-300"
         role="region"
         aria-labelledby="compare-title"
         tabindex="0"

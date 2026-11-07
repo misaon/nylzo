@@ -44,7 +44,6 @@ const FONT_FACE = /@font-face\{[^}]*\}/gu;
 const APPLE_TOUCH_ICON = /<link rel="apple-touch-icon" href="([^"]+)"/u;
 const MODULE_SCRIPT = /<script type="module"[^>]*><\/script>\s*/u;
 const MODULE_PRELOAD = /<link rel="modulepreload"[^>]*>\s*/gu;
-const MONO_FONT_PRELOAD = /<link rel="preload" href="\/assets\/geist-mono-[\w-]+\.woff2"[^>]*>\n?/gu;
 
 export function agentsMarkdown(): string {
   return agentsGuide(new Translator('en').translate);
@@ -212,7 +211,7 @@ function statusTemplate(index: string, page: StatusPage, language: Language): st
   let html = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}" data-fonts>`);
   html = replaceOnce(html, /<meta\s+name="description"[^>]*>\s*/u, '');
   html = replaceOnce(html, /<title>[^<]*<\/title>/u, head.trim());
-  html = replaceOnce(html, MODULE_SCRIPT, '').replaceAll(MODULE_PRELOAD, '').replaceAll(MONO_FONT_PRELOAD, '');
+  html = replaceOnce(html, MODULE_SCRIPT, '').replaceAll(MODULE_PRELOAD, '');
   return replaceOnce(html, '<body></body>', `<body>${body}</body>`);
 }
 

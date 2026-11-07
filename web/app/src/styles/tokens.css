@@ -1,7 +1,6 @@
 @theme {
   --font-display: 'Sora', 'Geist', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --color-void-950: oklch(0.11 0.025 270);
   --color-void-900: oklch(0.14 0.03 270);
   --color-ink: oklch(0.97 0.006 255);

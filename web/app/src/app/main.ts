@@ -9,7 +9,7 @@ import { HOME_PATHS, homeLanguage, screenOf } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
 const PAINT_WAIT_MS = 1000;
-const FONTS = ['300 1em Sora', '400 1em Geist', '500 1em Geist', '400 1em "Geist Mono"'];
+const FONTS = ['300 1em Sora', '400 1em Geist', '500 1em Geist'];
 const HOME_FONT_SAMPLES: Readonly<Record<Language, string>> = { en: 'Aa', cs: 'Aáčř' };
 const ANY_TEXT_SAMPLE = 'Aáčřł';
 

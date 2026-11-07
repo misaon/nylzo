@@ -120,7 +120,7 @@
           role="tabpanel"
           aria-labelledby="host-tab-{tab}"
           tabindex="0"
-          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 md:text-body-sm"
+          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 focus-visible:outline-aegis-300 md:text-body-sm"
         >
           {#each tabs as id (id)}
             {const lines = $derived(installLines(id, domain))}
