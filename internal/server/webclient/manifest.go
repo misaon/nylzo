@@ -11,7 +11,7 @@ import (
 const ManifestPath = "/.well-known/nylzo/client.json"
 
 var PagePaths = []string{
-	englishHome, czechHome, sentPath, "/transparency", "/terms", "/agents", core.LinkPath, "/m/{id}",
+	englishHome, czechHome, sentPath, "/transparency", "/terms", "/agents", core.LinkPath, messagePagePath,
 }
 
 var manifestPages = []string{englishHome, czechHome, sentPath}

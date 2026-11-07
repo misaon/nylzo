@@ -20,6 +20,7 @@ const (
 	englishHome          = "/"
 	czechHome            = "/cs/"
 	sentPath             = "/sent"
+	messagePagePath      = "/m/{id}"
 	htmlContentType      = "text/html; charset=utf-8"
 )
 
