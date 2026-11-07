@@ -13,9 +13,8 @@ import type { DefaultTreeAdapterMap } from 'parse5';
 type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
-// Runs before any other resource loads, so the link secret leaves the address bar at once (Protocol §4).
-export const FRAGMENT_GUARD =
-  "(()=>{const{pathname:p,search:s,hash:h}=location;if(h===''||(p!=='/r'&&!p.startsWith('/m/')))return;history.replaceState(null,'',p+s);try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()";
+// Runs before any other resource loads, so a link secret leaves the address bar at once, also on a mangled path (Protocol §4).
+export const FRAGMENT_GUARD = String.raw`(()=>{const{pathname:p,search:s,hash:h}=location;const r=p==='/r'||p.startsWith('/m/')||p==='/open';if(h===''||!(r||/^#\d/.test(h)||h.length>40))return;history.replaceState(null,'',p+s);if(!r)return;if(p==='/r'||/^\/m\/[\w-]{22}$/.test(p))try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()`;
 
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/u.test(url) || /[?#%\\]/u.test(url)) {

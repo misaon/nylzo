@@ -157,10 +157,34 @@ describe('the fragment guard at the start of every page (W2-04)', () => {
     },
   );
 
-  it('leaves other pages and read pages without a fragment alone', () => {
+  it.each([
+    ['/open', '#ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
+    ['/m/short', '#1.0.secret'],
+  ])('takes the fragment off %s and hands it over without marking a read page', (page, fragment) => {
+    const { replaced, session, take } = runGuard(`https://nylzo.test${page}${fragment}`);
+    expect(replaced).toEqual([page]);
+    expect(session.size).toBe(0);
+    expect(take?.()).toBe(fragment);
+  });
+
+  it.each([
+    ['/r/', '#2.0.AAAAAAAAAAAAAAAAAAAAAA.secret.hash'],
+    ['/R', '#2.0.AAAAAAAAAAAAAAAAAAAAAA.secret.hash'],
+    ['/', '#2.0.id.secret.hash'],
+    ['/report', '#2.0.x'],
+    ['/sent', `#${'x'.repeat(41)}`],
+  ])('takes a link key off the mangled address %s without keeping it', (page, fragment) => {
+    const { replaced, session, take } = runGuard(`https://nylzo.test${page}${fragment}`);
+    expect(replaced).toEqual([page]);
+    expect(session.size).toBe(0);
+    expect(take).toBeUndefined();
+  });
+
+  it('leaves in-page anchors and read pages without a fragment alone', () => {
     for (const href of [
       'https://nylzo.test/#how',
-      'https://nylzo.test/report#2.0.x',
+      'https://nylzo.test/cs/#napsat',
+      'https://nylzo.test/transparency#transparency-verify',
       'https://nylzo.test/r',
       'https://nylzo.test/m/AAAAAAAAAAAAAAAAAAAAAA',
     ]) {
