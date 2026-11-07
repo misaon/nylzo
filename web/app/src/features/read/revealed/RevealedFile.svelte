@@ -90,9 +90,8 @@
               >{page.confirmingDownload ? translate('revealed.confirm.title') : ''}</span
             >
             <span class="block text-micro text-ink-mute"
-              >{extension
-                ? translate('revealed.confirm.extension', { extension })
-                : translate('revealed.confirm.none')}</span
+              >{#if extension}{translate('revealed.confirm.extension')}
+                <bdi translate="no">.{extension}</bdi>{:else}{translate('revealed.confirm.none')}{/if}</span
             >
           </span>
         </div>

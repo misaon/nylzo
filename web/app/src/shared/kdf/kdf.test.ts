@@ -87,6 +87,19 @@ describe('worker lifecycle', () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
+  it('counts the time the worker takes to start against the proof-of-work budget', async () => {
+    const started = Promise.withResolvers<Awaited<ReturnType<typeof startWorker>>>();
+    vi.mocked(startWorker).mockReturnValue(started.promise);
+    const result = solvePowInWorker('challenge', new Uint8Array(16), 1, 1000, progress);
+    vi.advanceTimersByTime(300);
+    started.resolve({ worker: worker as unknown as Worker, stop });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(worker.postMessage).toHaveBeenCalledOnce();
+    expect(worker.postMessage.mock.calls[0]?.[0]).toMatchObject({ kind: 'pow', budgetMs: 700 });
+    reply({ kind: 'token', token: 'challenge.0000000000000001' });
+    await expect(result).resolves.toBe('challenge.0000000000000001');
+  });
+
   it.each(['error', 'messageerror'])('cleans up on a worker %s event', async (type) => {
     const result = scryptInWorker('phrase', salt, progress);
     const failed = settled(result);

@@ -300,8 +300,22 @@ func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
 			t.Fatalf("%q: contact %q, %v", source, frontend.Contact, err)
 		}
 	}
+	for source, want := range map[string]string{
+		"nylzo_error {\n contact security@example.org\n}": "security@example.org",
+		"nylzo_error {\n contact\n}":                      "",
+		"nylzo_error":                                     "",
+	} {
+		var page ErrorPage
+		if err := page.UnmarshalCaddyfile(caddyfile.NewTestDispenser(source)); err != nil || page.Contact != want {
+			t.Fatalf("%q: contact %q, %v", source, page.Contact, err)
+		}
+	}
 	var frontend Frontend
 	if err := frontend.UnmarshalCaddyfile(caddyfile.NewTestDispenser("nylzo_frontend https://localhost {\n contact a@b.example c@d.example\n}")); err == nil {
 		t.Fatal("two contacts were accepted")
+	}
+	var page ErrorPage
+	if err := page.UnmarshalCaddyfile(caddyfile.NewTestDispenser("nylzo_error {\n status 500\n}")); err == nil {
+		t.Fatal("an unknown subdirective was accepted")
 	}
 }

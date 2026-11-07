@@ -11,6 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 type localOptions struct {
@@ -38,7 +39,7 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 		fmt.Fprintln(environment.Stderr, command.Program+" web needs --server or "+envServer)
 		return command.ExitUsage
 	}
-	instance, err := client.Origin(options.server)
+	instance, err := localInstance(options.server)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -67,7 +68,7 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 		fmt.Fprintln(environment.Stderr, command.Program+" open needs --server or "+envServer)
 		return command.ExitUsage
 	}
-	instance, err := client.Origin(options.server)
+	instance, err := localInstance(options.server)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -111,4 +112,16 @@ func handedOverLink(raw, instance string) (handedOver, error) {
 		return handedOver{}, errors.New("the link is incomplete or damaged")
 	}
 	return handedOver{path: address.EscapedPath(), fragment: fragment}, nil
+}
+
+// localInstance names the instance the local client relays to; its pages carry it, so it follows the rules of a public URL.
+func localInstance(server string) (string, error) {
+	instance, err := client.Origin(server)
+	if err != nil {
+		return "", err
+	}
+	if err = webclient.CheckPublicURL(instance); err != nil {
+		return "", fmt.Errorf("the instance address %s: %w", instance, err)
+	}
+	return instance, nil
 }

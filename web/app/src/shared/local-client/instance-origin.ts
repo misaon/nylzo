@@ -5,7 +5,7 @@ const ORIGIN =
 // The verified local client runs on loopback, so its links must name the instance it relays to, never itself.
 export function instanceOrigin(): string {
   const configured = document.querySelector<HTMLMetaElement>(INSTANCE)?.content ?? '';
-  return ORIGIN.test(configured) ? configured : location.origin;
+  return ORIGIN.test(configured) && URL.canParse(configured) ? configured : location.origin;
 }
 
 // Each session of the local client has a new origin that nobody purges later, so it keeps no key in the browser.

@@ -94,7 +94,7 @@ for (const file of RISKY_FILES) {
       const downloads = await watchDownloads(page);
       await showMessage(page, message.link);
       await expectMessageShown(page);
-      await expect(page.locator('bdi')).toHaveText(file.shown);
+      await expect(page.locator('bdi').filter({ hasText: file.shown })).toHaveText(file.shown);
       const readPage = page.url();
       const download = page.getByRole('button', { name: 'Download attachment' });
       const cancel = page.getByRole('button', { name: 'Do not download' });
@@ -143,7 +143,7 @@ test(
     const downloads = await watchDownloads(page);
     await showMessage(page, message.link);
     await expectMessageShown(page);
-    await expect(page.locator('bdi')).toHaveText('report.pdf');
+    await expect(page.locator('bdi').filter({ hasText: 'report.pdf' })).toHaveText('report.pdf');
     const readPage = page.url();
     const saving = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download attachment' }).dblclick();

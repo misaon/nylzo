@@ -62,7 +62,9 @@
 	handle_errors {
 		header -Server
 		route {
-			nylzo_error
+			nylzo_error {
+				contact {$NYLZO_CONTACT}
+			}
 		}
 	}
 }

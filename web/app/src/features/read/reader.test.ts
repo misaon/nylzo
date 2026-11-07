@@ -69,15 +69,22 @@ function input(overrides: Partial<CreateInput> = {}): CreateInput {
   return { text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', ...overrides };
 }
 
-function memorySession(): SessionStore & { map: Map<string, string>; log: string[] } {
+function memorySession(): SessionStore & {
+  map: Map<string, string>;
+  log: string[];
+  writes: [key: string, value: string][];
+} {
   const map = new Map<string, string>();
   const log: string[] = [];
+  const writes: [string, string][] = [];
   return {
     map,
     log,
+    writes,
     getItem: (key) => map.get(key) ?? null,
     setItem: (key, value) => {
       log.push(`set ${key}`);
+      writes.push([key, value]);
       map.set(key, value);
     },
     removeItem: (key) => {
@@ -388,6 +395,8 @@ describe('reading a message', () => {
       `set nylzo:lease:${PAGE_KEY}`,
       `remove nylzo:lease:${PAGE_KEY}`,
     ]);
+    const tag = await leaseValue(created.link, '');
+    expect(reader.session.writes.find(([key]) => key === 'nylzo:kdf')?.[1]).toBe(tag.trimEnd());
     expect(
       reader.views.filter((readView) => readView.view === 'busy' && readView.step === 'deriving').length,
     ).toBeGreaterThan(2);

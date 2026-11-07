@@ -11,22 +11,46 @@ import (
 const connectionAllowlistHeader = "Connection-Allowlist"
 
 var (
-	emailContact = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@([A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+)$`)
-	httpsContact = regexp.MustCompile(
-		`^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?$`,
-	)
-	patternLiteral = regexp.MustCompile(`^[A-Za-z0-9/._~%@!$&',;=-]$`)
+	emailContact   = regexp.MustCompile(`^[A-Za-z0-9_%+-]+(\.[A-Za-z0-9_%+-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+	httpsContact   = regexp.MustCompile(`^https://[A-Za-z0-9_.~:/?@!&+,;=%-]+$`)
+	patternLiteral = regexp.MustCompile(`^[A-Za-z0-9_/.~%@!&,;=-]$`)
 )
+
+var errContact = errors.New("want an email address or an https:// address without user, fragment or dot segments")
 
 // The addresses the client links to; a link that redirects fails, because the allowlist refuses redirects.
 var linkedAddresses = []string{`"https://github.com/misaon/nylzo"`, `"https://github.com/misaon/nylzo/*"`}
 
 // CheckContact accepts no contact, an email address or an https:// address, the forms the transparency page links.
 func CheckContact(contact string) error {
-	if contact == "" || emailContact.MatchString(contact) || httpsContact.MatchString(contact) {
+	if contact == "" || emailContact.MatchString(contact) {
 		return nil
 	}
-	return errors.New("want an email address or an https:// address")
+	_, err := contactURL(contact)
+	return err
+}
+
+func contactURL(contact string) (*url.URL, error) {
+	parsed, err := url.Parse(contact)
+	if err != nil || !httpsContact.MatchString(contact) || parsed.Scheme != "https" || parsed.Opaque != "" ||
+		parsed.User != nil || parsed.Host == "" || strings.HasSuffix(parsed.Host, ":") ||
+		parsed.Fragment != "" || parsed.ForceQuery {
+		return nil, errContact
+	}
+	if _, queryErr := url.QueryUnescape(parsed.RawQuery); queryErr != nil {
+		return nil, errContact
+	}
+	if segments := "/" + parsed.EscapedPath() + "/"; strings.Contains(segments, "/./") ||
+		strings.Contains(segments, "/../") {
+		return nil, errContact
+	}
+	if portErr := checkPort(parsed.Port()); portErr != nil {
+		return nil, portErr
+	}
+	if hostErr := checkHost(strings.ToLower(parsed.Hostname())); hostErr != nil {
+		return nil, hostErr
+	}
+	return parsed, nil
 }
 
 // ConnectionAllowlist lets a page reach only its origin, the repository and the operator's contact, so injected
@@ -39,22 +63,24 @@ func ConnectionAllowlist(contact string) string {
 	return "(" + strings.Join(patterns, " ") + ")"
 }
 
+// contactPattern pins the exact address the transparency page links, with an empty or exact query and no fragment.
 func contactPattern(contact string) string {
-	if match := emailContact.FindStringSubmatch(contact); match != nil {
-		return `"mailto:*@` + match[2] + `"`
+	if emailContact.MatchString(contact) {
+		return `"mailto\\:` + literalPattern(contact) + `?#"`
 	}
-	if !httpsContact.MatchString(contact) {
-		return ""
-	}
-	parsed, err := url.Parse(contact)
+	parsed, err := contactURL(contact)
 	if err != nil {
 		return ""
 	}
-	pattern := "https://" + strings.ToLower(parsed.Host) + literalPattern(parsed.EscapedPath())
-	if parsed.RawQuery != "" {
-		pattern += "?" + literalPattern(parsed.RawQuery)
+	authority := strings.ToLower(parsed.Hostname())
+	if port := parsed.Port(); port != "" && port != "443" {
+		authority += ":" + port
 	}
-	return `"` + pattern + `"`
+	path := parsed.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	return `"https://` + authority + literalPattern(path) + "?" + literalPattern(parsed.RawQuery) + `#"`
 }
 
 // literalPattern escapes every URL pattern syntax character, written for a structured-field string.

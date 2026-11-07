@@ -21,6 +21,7 @@ const (
 	noticeBuffer    = 8
 	reminderShare   = 12
 	maxContactBytes = 64 << 10
+	contactTimeout  = 3 * time.Second
 )
 
 type Link struct {
@@ -65,7 +66,12 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 		notices:     make(chan localclient.Notice, noticeBuffer),
 		cleanup:     func() {},
 	}
-	current.contact = instanceContact(ctx, options.Instance)
+	if current.contact, err = instanceContact(ctx, options.Instance); err != nil {
+		current.note(
+			"the pages link no operator contact, because the instance's transparency document is unreadable: %s",
+			err,
+		)
+	}
 	if current.server, err = localclient.New(listeners, current.config()); err != nil {
 		listeners.Close()
 		return command.Failf(environment, "%s", err)
@@ -101,22 +107,19 @@ func (s *session) config() *localclient.Config {
 	}
 }
 
-// instanceContact reads the operator's contact, the one address outside the client its pages may reach; without it
-// the transparency page still names the contact, and Chromium refuses to follow its link.
-func instanceContact(ctx context.Context, instance string) string {
+// instanceContact reads the operator's contact, the one address outside the client its pages may reach.
+func instanceContact(ctx context.Context, instance string) (string, error) {
 	api, err := client.New(instance)
 	if err != nil {
-		return ""
+		return "", err
 	}
+	ctx, cancel := context.WithTimeout(ctx, contactTimeout)
+	defer cancel()
 	fetched, err := api.Fetch(ctx, server.TransparencyPath, "identity", maxContactBytes)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	contact, err := webclient.OperatorContact(fetched.Body)
-	if err != nil {
-		return ""
-	}
-	return contact
+	return webclient.OperatorContact(fetched.Body)
 }
 
 func (s *session) keepNameLocal() {

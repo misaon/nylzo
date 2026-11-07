@@ -43,10 +43,19 @@ test('every page links only where its connection allowlist admits, and code in a
     const response = await openApp(page, path);
     const allowlist = response?.headers()['connection-allowlist'] ?? '';
     expect(allowlist).toMatch(/^\(response-origin "/u);
-    const patterns = Array.from(
-      allowlist.matchAll(/"(?<pattern>[^"]+)"/gu),
-      (match) => match.groups?.['pattern'] ?? '',
+    const patterns = Array.from(allowlist.matchAll(/"(?<pattern>(?:[^"\\]|\\["\\])*)"/gu), (match) =>
+      (match.groups?.['pattern'] ?? '').replaceAll(/\\(["\\])/gu, '$1'),
     );
+    const widened = await page.evaluate(
+      (admitted) =>
+        [
+          'mailto:abuse@nylzo.test?cc=someone@example.org',
+          'mailto:someone@nylzo.test',
+          'https://github.com/misaon/nylzo.evil',
+        ].filter((href) => admitted.some((pattern) => new URLPattern(pattern).test(href))),
+      patterns,
+    );
+    expect(widened, path).toEqual([]);
     const outside = await page.evaluate(
       (admitted) =>
         Array.from(document.querySelectorAll('a[href]'), (anchor) => (anchor as HTMLAnchorElement).href).filter(
@@ -73,10 +82,13 @@ test('a file dropped outside a drop zone cannot replace the page, while a file i
     const transfer = new DataTransfer();
     transfer.items.add(new File(['synthetic'], 'synthetic.txt', { type: 'text/plain' }));
     const fileInput = document.querySelector('input[type="file"]');
+    if (!fileInput) {
+      throw new Error('the home page has no file input to drop on');
+    }
     return ['dragover', 'drop'].flatMap((type) =>
       [document.body, fileInput].map((target) => {
         const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer });
-        target?.dispatchEvent(event);
+        target.dispatchEvent(event);
         return `${type} ${target === document.body ? 'page' : 'file input'} ${event.defaultPrevented}`;
       }),
     );

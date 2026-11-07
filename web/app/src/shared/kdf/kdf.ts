@@ -19,7 +19,7 @@ export function stopRunningWorkers(): void {
   }
 }
 
-async function runWorker(request: KdfRequest, onProgress: Progress): Promise<KdfResponse> {
+async function runWorker(requestOnStart: () => KdfRequest, onProgress: Progress): Promise<KdfResponse> {
   const visit = pageVisit;
   const { worker, stop } = await startWorker();
   if (visit !== pageVisit) {
@@ -67,7 +67,7 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
     worker.addEventListener('error', () => fail(new KdfWorkerError()));
     worker.addEventListener('messageerror', () => fail(new KdfWorkerError()));
     restartSilenceTimer();
-    worker.postMessage(request, []);
+    worker.postMessage(requestOnStart(), []);
   });
 }
 
@@ -76,7 +76,7 @@ export async function scryptInWorker(
   passphraseSalt: Uint8Array<ArrayBuffer>,
   onProgress: Progress,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await runWorker({ kind: 'scrypt', passphrase, passphraseSalt }, onProgress);
+  const response = await runWorker(() => ({ kind: 'scrypt', passphrase, passphraseSalt }), onProgress);
   if (response.kind !== 'key') {
     throw new KdfWorkerError();
   }
@@ -90,7 +90,12 @@ export async function solvePowInWorker(
   budgetMs: number,
   onProgress: Progress,
 ): Promise<string> {
-  const response = await runWorker({ kind: 'pow', challenge, id, difficulty, budgetMs }, onProgress);
+  // The challenge expires on the server's clock, so starting the worker spends the same budget.
+  const deadline = performance.now() + budgetMs;
+  const response = await runWorker(
+    () => ({ kind: 'pow', challenge, id, difficulty, budgetMs: Math.max(1, deadline - performance.now()) }),
+    onProgress,
+  );
   if (response.kind !== 'token' || !response.token.startsWith(`${challenge}.`)) {
     throw new KdfWorkerError();
   }

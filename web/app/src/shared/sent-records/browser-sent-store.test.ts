@@ -1,6 +1,6 @@
 import { requestKey } from '@nylzo/core';
 import { IDBFactory } from 'fake-indexeddb';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { committed, openDatabase, requestResult } from './indexed-database.ts';
 import { RETENTION_MS } from './sent-record.ts';
@@ -32,6 +32,29 @@ describe('persistent sent records', () => {
     await store.remove(record.id);
     await store.clear();
     expect(await factory.databases()).toEqual([]);
+  });
+
+  it('creates no database when the browser cannot list its databases in time, and opens one when listing fails', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const hanging = browserSentStore(
+        Object.assign(Object.create(factory) as IDBFactory, {
+          databases: async () => Promise.withResolvers<IDBDatabaseInfo[]>().promise,
+        }),
+      );
+      const listed = hanging.list();
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(await listed).toEqual([]);
+      expect(await factory.databases()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+    const failing = browserSentStore(
+      Object.assign(Object.create(factory) as IDBFactory, { databases: () => Promise.reject(new Error('refused')) }),
+    );
+    expect(await failing.list()).toEqual([]);
+    const created = await factory.databases();
+    expect(created.map((database) => database.name)).toEqual(['nylzo']);
   });
 
   it('lets another tab delete the database while it is open, then opens it again', async () => {

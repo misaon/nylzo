@@ -215,6 +215,13 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 		return fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
 	}
 	if values := fetched.Header.Values("Connection-Allowlist"); len(values) != 1 || values[0] != expected.Allowlist() {
+		if len(values) == 1 && values[0] == webclient.ConnectionAllowlist("") {
+			return fmt.Errorf(
+				"%s: the Connection-Allowlist leaves out the operator's contact from %s; a Caddy front needs the same NYLZO_CONTACT as the server",
+				where,
+				server.TransparencyPath,
+			)
+		}
 		return fmt.Errorf("%s: the Connection-Allowlist differs from this nylzo", where)
 	}
 	body, err := decoded(&fetched, encoding, int64(len(expected.Body())), where)

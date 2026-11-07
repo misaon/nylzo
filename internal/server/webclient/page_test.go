@@ -150,10 +150,11 @@ func TestConnectionAllowlistAdmitsOnlyTheOperatorContact(t *testing.T) {
 	t.Parallel()
 	const linked = `response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*"`
 	for contact, want := range map[string]string{
-		"":                                     "(" + linked + ")",
-		"Security+Desk@Mail.Example.org":       "(" + linked + ` "mailto:*@Mail.Example.org")`,
-		"https://Example.org:8443/contact":     "(" + linked + ` "https://example.org:8443/contact")`,
-		"https://example.org/a(b)*c:d?q=1+2&x": "(" + linked + ` "https://example.org/a\\(b\\)\\*c\\:d?q=1\\+2&x")`,
+		"":                                    "(" + linked + ")",
+		"Security+Desk_1@Mail.Example.org":    "(" + linked + ` "mailto\\:Security\\+Desk_1@Mail.Example.org?#")`,
+		"https://Example.org:8443/contact":    "(" + linked + ` "https://example.org:8443/contact?#")`,
+		"https://example.org:443":             "(" + linked + ` "https://example.org/?#")`,
+		"https://example.org/a!b:c_d?q=1+2&x": "(" + linked + ` "https://example.org/a!b\\:c_d?q=1\\+2&x#")`,
 	} {
 		if got := webclient.ConnectionAllowlist(contact); got != want {
 			t.Errorf("%q: %s, want %s", contact, got, want)
@@ -172,10 +173,27 @@ func TestConnectionAllowlistAdmitsOnlyTheOperatorContact(t *testing.T) {
 	) {
 		t.Fatalf("the transparency page carries %q", got)
 	}
-	for _, unsafe := range []string{"javascript:alert(1)", "http://example.org/", "mailto:a@b.example", `https://example.org/"`} {
+	for _, unsafe := range []string{
+		"javascript:alert(1)", "http://example.org/", "mailto:a@b.example", `https://example.org/"`,
+		"https://user@example.org/", "https://example.org/#top", "https://example.org/a(b)", "https://example.org:0/",
+		"https://example.org:99999/", "https://exa_mple.org/", "https://example.org/%zz", "https://example.org/?q=%zz",
+		"https://example.org/a/../b", "https://example.org/?", "https://example.org:/",
+	} {
 		if _, renderErr := build.Render("", unsafe); renderErr == nil {
 			t.Errorf("%q was accepted as a contact", unsafe)
 		}
+	}
+}
+
+func TestAPageTheBuildLacksStillCarriesTheStrictestPolicy(t *testing.T) {
+	t.Parallel()
+	response := httptest.NewRecorder()
+	webclient.Pages{}.For("/").Serve(response, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	if got := response.Header().Get("Content-Security-Policy"); got != webclient.NonHTMLCSP {
+		t.Errorf("Content-Security-Policy %q, want %q", got, webclient.NonHTMLCSP)
+	}
+	if got := response.Header().Get("Connection-Allowlist"); got != "(response-origin)" {
+		t.Errorf("Connection-Allowlist %q", got)
 	}
 }
 

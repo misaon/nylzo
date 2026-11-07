@@ -132,11 +132,11 @@ func (p Page) Body() []byte {
 }
 
 func (p Page) Policy() string {
-	return p.headers.policy
+	return p.securityHeaders().policy
 }
 
 func (p Page) Allowlist() string {
-	return p.headers.allowlist
+	return p.securityHeaders().allowlist
 }
 
 func (p Page) SHA256() string {
@@ -150,8 +150,9 @@ func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
 
 func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header := w.Header()
-	header.Set("Content-Security-Policy", p.headers.policy)
-	header.Set(connectionAllowlistHeader, p.headers.allowlist)
+	headers := p.securityHeaders()
+	header.Set("Content-Security-Policy", headers.policy)
+	header.Set(connectionAllowlistHeader, headers.allowlist)
 	header.Set("Content-Type", htmlContentType)
 	header.Add("Vary", "Accept-Encoding")
 	body := p.body
@@ -161,6 +162,14 @@ func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	}
 	w.WriteHeader(status)
 	w.Write(body)
+}
+
+// securityHeaders keeps a page the build lacks from going out without a policy.
+func (p Page) securityHeaders() pageHeaders {
+	if p.headers == nil {
+		return pageHeaders{policy: NonHTMLCSP, allowlist: "(response-origin)"}
+	}
+	return *p.headers
 }
 
 func (a Asset) Serve(w http.ResponseWriter, r *http.Request) {

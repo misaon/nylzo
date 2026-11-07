@@ -90,18 +90,26 @@ func (f *Frontend) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 					return dispenser.ArgErr()
 				}
 			case "contact":
-				// An empty environment variable leaves the subdirective without a value: no contact.
-				arguments := dispenser.RemainingArgs()
-				if len(arguments) > 1 {
-					return dispenser.ArgErr()
+				contact, err := contactArgument(dispenser)
+				if err != nil {
+					return err
 				}
-				f.Contact = strings.Join(arguments, "")
+				f.Contact = contact
 			default:
 				return dispenser.Errf("unknown subdirective %q", dispenser.Val())
 			}
 		}
 	}
 	return nil
+}
+
+// contactArgument reads the one optional value; an empty environment variable leaves none: no contact.
+func contactArgument(dispenser *caddyfile.Dispenser) (string, error) {
+	arguments := dispenser.RemainingArgs()
+	if len(arguments) > 1 {
+		return "", dispenser.ArgErr()
+	}
+	return strings.Join(arguments, ""), nil
 }
 
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {

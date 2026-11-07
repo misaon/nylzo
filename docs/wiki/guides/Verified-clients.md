@@ -53,6 +53,7 @@ Paste the link at the hidden prompt and press Enter. You can also pipe it in (`p
 - It listens on `127.0.0.1` and `[::1]` on a random port, under a new random name ending in `.localhost` for every session, and answers only requests for that exact name. A program that held the port earlier, and left a page or a service worker in the browser for it, cannot take the link, and a web page that rebinds its DNS name to your computer reaches nothing.
 - Chrome, Edge and Firefox keep names under `localhost` on your computer. Safari does so from macOS 26; on an older macOS the commands open no browser and ask you to use one of the others.
 - It sends only API calls to the instance, the way the command line does: without cookies, the page address or browser details. It accepts them only from its own pages.
+- At start it reads the operator's contact from the instance's transparency document, so its pages may link that one address and no other outside the instance. When the instance does not answer within three seconds, the pages link no contact and the command says so.
 - Nothing the instance answers can run as code in the local page.
 
 The [protocol, section 14](../reference/Protocol.md#14-client-code-integrity), states these rules exactly.

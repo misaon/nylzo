@@ -26,13 +26,15 @@ import (
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
+const operatorContact = "security@example.org"
+
 func embeddedPages(t *testing.T, publicURL string) webclient.Pages {
 	t.Helper()
 	build, err := webclient.Load(web.Files())
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := build.Render(publicURL, "")
+	pages, err := build.Render(publicURL, operatorContact)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +54,7 @@ func expectSameResponse(t *testing.T, response *http.Response, status int, write
 	if response.StatusCode != status || expected.Code != status || !bytes.Equal(body, expected.Body.Bytes()) {
 		t.Fatalf("status %d with %d bytes, want %d with %d bytes", response.StatusCode, len(body), status, expected.Body.Len())
 	}
-	for _, name := range []string{"Content-Security-Policy", "Content-Type", "Retry-After", "Vary"} {
+	for _, name := range []string{"Connection-Allowlist", "Content-Security-Policy", "Content-Type", "Retry-After", "Vary"} {
 		if got, want := response.Header.Get(name), expected.Header().Get(name); got != want {
 			t.Errorf("%s = %q, want %q", name, got, want)
 		}
@@ -134,6 +136,7 @@ func startCaddy(t *testing.T, caddyfile string, backend string) (address string,
 func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance string) (string, *x509.CertPool) {
 	t.Helper()
 	t.Setenv("NYLZO_DOMAIN", "localhost")
+	t.Setenv("NYLZO_CONTACT", operatorContact)
 	source, err := os.ReadFile(caddyfile)
 	if err != nil {
 		t.Fatal(err)

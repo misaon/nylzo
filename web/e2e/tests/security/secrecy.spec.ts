@@ -38,8 +38,10 @@ test(
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(text);
-    await expect(recipient.locator('bdi')).toHaveText(file.name);
-    await expect(recipient.locator('bdi')).toHaveAttribute('translate', 'no');
+    const shownName = recipient.locator('bdi').filter({ hasText: file.name });
+    await expect(shownName).toHaveText(file.name);
+    await expect(shownName).toHaveAttribute('translate', 'no');
+    await expect(recipient.locator('bdi').filter({ hasText: /^\.pdf$/u })).toHaveAttribute('translate', 'no');
     expect(new URL(recipient.url()).hash).toBe('');
     await expect(notInert(recipient, recipient.getByRole('button', { name: 'Delete message' }))).toHaveCount(0);
     expect(await senderViolations()).toEqual([]);

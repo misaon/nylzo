@@ -372,6 +372,22 @@ describe('api client', () => {
     expect(server.seenOptions.at(-1)?.keepalive).toBe(true);
   });
 
+  it('signs the retry of an ack with a new challenge when the server refused the prepared one', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    const used: string[] = [];
+    const server = fakeServer((request) => {
+      used.push(authorizationParts(request.headers.get('Authorization') ?? '')[1]);
+      return used.length === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 });
+    });
+    const prepared = await server.api.challenge();
+    await server.api.ack(randomId(), readKey, LEASE, prepared);
+    expect(server.issued()).toBe(2);
+    expect(used).toEqual([
+      encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)),
+      encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(2)),
+    ]);
+  });
+
   it('maps errors from the server', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(4));
     const cases: [Response, Partial<ApiError>][] = [

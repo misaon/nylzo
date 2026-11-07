@@ -88,10 +88,17 @@ function onlyApprovedTrustedTypesPolicies(): Plugin {
         if (output.type !== 'chunk') {
           continue;
         }
-        for (const [, name = ''] of output.code.matchAll(/createPolicy\(\s*["'`]([^"'`]+)["'`]/gu)) {
+        const mentions = output.code.match(/\bcreatePolicy\b/gu)?.length ?? 0;
+        const calls = [...output.code.matchAll(/\bcreatePolicy\(\s*["'`]([^"'`]+)["'`]/gu)];
+        for (const [, name = ''] of calls) {
           if (!TRUSTED_TYPES_POLICIES.has(name)) {
             this.error(`${output.fileName} creates the Trusted Types policy ${name}, which the page CSP refuses.`);
           }
+        }
+        if (mentions !== calls.length) {
+          this.error(
+            `${output.fileName} reaches createPolicy without a literal policy name, which this check cannot verify.`,
+          );
         }
       }
     },

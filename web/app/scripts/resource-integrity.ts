@@ -14,7 +14,7 @@ type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
 // Runs before any other resource loads, so a link secret leaves the address bar at once, also on a mangled path (Protocol §4).
-export const FRAGMENT_GUARD = String.raw`(()=>{const k=h=>/^#\d/.test(h)||h.length>41,a=p=>p==='/r'||p.startsWith('/m/')||p==='/open',{pathname:p,search:s,hash:h}=location,r=a(p);addEventListener('hashchange',()=>{const{pathname:q,search:t,hash:g}=location;if(g!==''&&!a(q)&&k(g))history.replaceState(null,'',q+t)});if(h===''||!(r||k(h)))return;history.replaceState(null,'',p+s);if(!r)return;if(!location.hostname.endsWith('.localhost')&&(p==='/r'||/^\/m\/[\w-]{22}$/.test(p)))try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()`;
+export const FRAGMENT_GUARD = String.raw`(()=>{const k=h=>/^#\d/.test(h)||h.length>41,a=p=>p==='/r'||/^\/m\/[\w-]{22}$/.test(p)||p==='/open',{pathname:p,search:s,hash:h}=location,r=a(p);addEventListener('hashchange',()=>{const{pathname:q,search:t,hash:g}=location;if(g!==''&&!a(q)&&k(g))history.replaceState(null,'',q+t)});if(h===''||!(r||k(h)))return;history.replaceState(null,'',p+s);if(!r)return;if(!location.hostname.endsWith('.localhost')&&p!=='/open')try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()`;
 
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/u.test(url) || /[?#%\\]/u.test(url)) {

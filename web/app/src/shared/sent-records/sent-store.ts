@@ -34,9 +34,9 @@ function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly 
     if (database !== undefined || factory === undefined) {
       return true;
     }
-    // A browser that cannot list its databases in time leaves the answer to opening, which has a timeout and an error.
+    // A listing that fails leaves the answer to opening; one that hangs counts as no database, so no read creates it.
     const timedOut = Promise.withResolvers<boolean>();
-    const timer = setTimeout(timedOut.resolve, LISTING_TIMEOUT_MS, true);
+    const timer = setTimeout(timedOut.resolve, LISTING_TIMEOUT_MS, false);
     try {
       return await Promise.race([databaseExists(factory, DATABASE), timedOut.promise]);
     } catch {
