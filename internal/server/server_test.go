@@ -505,6 +505,8 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	}
 }
 
+// TestRunSweeperStopsWithoutAnError also covers spec §10: a successful sweep writes no line, so no count of
+// expiries, purges or failed uploads reaches the log.
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -512,6 +514,10 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 		settings.SweepInterval = time.Minute
 		harness := newHarness(t, settings)
 		server, logs := harness.server, harness.logs
+		dueAtStartup := newMessage(t, core.KDFNone, "", 1, 60, "due at startup")
+		harness.mustCreate(dueAtStartup)
+		synctest.Sleep(store.BlobPurgeStep + time.Minute)
+		startupLogs := logs.String()
 		ctx, cancel := context.WithCancel(t.Context())
 		stopped := make(chan struct{})
 		go func() {
@@ -519,13 +525,17 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 			close(stopped)
 		}()
 		synctest.Wait()
-		if sweeps := strings.Count(logs.String(), `"msg":"sweep"`); sweeps != 1 {
-			t.Fatalf("sweeps at startup: %d", sweeps)
+		if harness.blobExists(dueAtStartup) {
+			t.Fatal("no sweep at startup")
 		}
-		time.Sleep(time.Minute)
-		synctest.Wait()
-		if sweeps := strings.Count(logs.String(), `"msg":"sweep"`); sweeps != 2 {
-			t.Fatalf("sweeps after one interval: %d", sweeps)
+		dueLater := newMessage(t, core.KDFNone, "", 1, 60, "due later")
+		harness.mustCreate(dueLater)
+		synctest.Sleep(store.BlobPurgeStep)
+		if harness.blobExists(dueLater) {
+			t.Fatal("no sweep after an interval")
+		}
+		if logs.String() != startupLogs {
+			t.Fatalf("a successful sweep wrote a line: %s", strings.TrimPrefix(logs.String(), startupLogs))
 		}
 		cancel()
 		synctest.Wait()
@@ -640,6 +650,7 @@ func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 		secret := core.NewSecret()
 		id := core.NewID()
 		harness.do(&testRequest{method: http.MethodGet, path: "/m/" + id.String() + "%231.0." + core.Encode(secret[:])})
+		harness.server.flushCounts(t.Context())
 		logs := harness.logs.String()
 		if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, core.Encode(secret[:])) {
 			t.Fatal("log contains a peer address or a link secret")
@@ -650,26 +661,27 @@ func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 	})
 }
 
-func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T) {
+func TestIgnoredForwardingHeaderIsCountedWithoutAddresses(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
 		settings.TrustedProxies = nil
 		harness := newHarness(t, settings)
 		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), "forwarded-header-ignored") {
 			t.Fatal("a request without a forwarding header must not warn")
 		}
 		for range 3 {
 			harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
 		}
+		harness.server.flushCounts(t.Context())
 		if count := strings.Count(
 			harness.logs.String(),
-			`"msg":"forwarded-header-ignored","header":"X-Forwarded-For"`,
+			`"msg":"forwarded-header-ignored","category":"X-Forwarded-For","count":3`,
 		); count != 1 {
-			t.Fatalf("want one warning in the hour, got %d: %s", count, harness.logs.String())
+			t.Fatalf("want one warning with the count of the window, got %d: %s", count, harness.logs.String())
 		}
-		synctest.Sleep(time.Hour)
 		harness.statusFrom(
 			&testRequest{
 				method:  http.MethodGet,
@@ -677,9 +689,10 @@ func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T
 				headers: map[string]string{"Forwarded": "for=198.51.100.7"},
 			},
 		)
+		harness.server.flushCounts(t.Context())
 		logs := harness.logs.String()
-		if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"header":"Forwarded"`) {
-			t.Fatalf("the next hour must warn again, for pages too: %s", logs)
+		if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"category":"Forwarded"`) {
+			t.Fatalf("the next window must warn again, for pages too: %s", logs)
 		}
 		if strings.Contains(logs, "198.51.100") {
 			t.Fatal("the log names a client address")
@@ -702,6 +715,8 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 				headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"},
 			},
 		)
+		harness.server.flushCounts(t.Context())
+		scalewayHarness.server.flushCounts(t.Context())
 		for _, logs := range []string{harness.logs.String(), scalewayHarness.logs.String()} {
 			if strings.Contains(logs, "forwarded-header-ignored") {
 				t.Fatalf("a header the server used must not warn: %s", logs)
@@ -733,9 +748,10 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 				harness.statusFrom(
 					&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: testCase.headers},
 				)
+				harness.server.flushCounts(t.Context())
 				if !strings.Contains(
 					harness.logs.String(),
-					`"msg":"forwarded-header-ignored","header":"`+testCase.header+`"`,
+					`"msg":"forwarded-header-ignored","category":"`+testCase.header+`"`,
 				) {
 					t.Fatalf("no warning: %s", harness.logs.String())
 				}
@@ -744,24 +760,16 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 	}
 }
 
-func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
-	t.Parallel()
-	server := &Server{}
-	now := time.Now()
-	if !server.firstNoticeThisHour(now.Add(48*time.Hour)) || !server.firstNoticeThisHour(now.Add(time.Hour)) {
-		t.Fatal("want a warning after the clock stepped back")
-	}
-}
-
-// TestRequestsAreLoggedAsCountsPerMinute covers A4-5 and A4-8: no line per request, no latency, no client method.
-func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
+// TestRequestsAreLoggedAsCountsPerHour covers A4-5, A4-8 and spec §10: no line per request, no latency, no client
+// method, no line before the hour ends, and the routes that act on a message counted together by status class.
+func TestRequestsAreLoggedAsCountsPerHour(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		flushed, stop := context.WithCancel(t.Context())
+		housekeeping, stop := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		go func() {
-			harness.server.RunHousekeeping(flushed)
+			harness.server.RunHousekeeping(housekeeping)
 			close(done)
 		}()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "logged")
@@ -776,11 +784,12 @@ func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 		harness.metadata(message)
 		harness.metadata(message)
 		harness.statusFrom(&testRequest{method: "AAAAAAAAAAAAAAAAAAAAAAAAAAAA", path: "/api/v1/instance"})
+		hourEnd := time.Now().Truncate(time.Hour).Add(time.Hour)
+		synctest.Sleep(time.Until(hourEnd) - time.Minute)
 		if strings.Contains(harness.logs.String(), `"msg":"requests"`) {
-			t.Fatalf("a request was logged before the minute ended: %s", harness.logs.String())
+			t.Fatalf("a request was logged before the hour ended: %s", harness.logs.String())
 		}
-		time.Sleep(time.Until(time.Now().Truncate(time.Minute).Add(time.Minute)))
-		synctest.Wait()
+		synctest.Sleep(time.Minute)
 		stop()
 		<-done
 		counts := map[string]float64{}
@@ -794,14 +803,23 @@ func TestRequestsAreLoggedAsCountsPerMinute(t *testing.T) {
 					t.Fatalf("a request count carries %s: %s", leak, line)
 				}
 			}
-			method, _ := entry["method"].(string)
 			route, _ := entry["route"].(string)
 			count, _ := entry["count"].(float64)
-			counts[method+" "+route] += count
+			if class, grouped := entry["status_class"].(string); grouped {
+				if _, found := entry["method"]; found {
+					t.Fatalf("a count of the message routes names a method: %s", line)
+				}
+				counts[route+" "+class] += count
+				continue
+			}
+			method, _ := entry["method"].(string)
+			status, _ := entry["status"].(float64)
+			counts[method+" "+route+" "+strconv.Itoa(int(status))] += count
 		}
-		if counts["GET GET /api/v1/messages/{id}"] != 2 || counts["POST POST /api/v1/messages/{id}/claim"] != 1 ||
-			counts["OTHER /api/"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") {
-			t.Fatalf("counts per method, route and status, and OTHER for a method nylzo does not route: %v", counts)
+		if counts["message 2xx"] != 4 || counts["POST POST /api/v1/messages 201"] != 1 ||
+			counts["OTHER /api/ 404"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") ||
+			strings.Contains(harness.logs.String(), "{id}") {
+			t.Fatalf("counts per method, route and status, the message routes by class only: %v", counts)
 		}
 	})
 }

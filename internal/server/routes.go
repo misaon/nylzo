@@ -22,26 +22,30 @@ import (
 const (
 	prefetchRetry = time.Minute
 	throttleRetry = time.Second
+	messageRoutes = "message"
 )
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	onMessage := func(pattern string, handler http.HandlerFunc) {
+		mux.Handle(pattern, logging.InGroup(messageRoutes, handler))
+	}
 	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
 	mux.HandleFunc("HEAD /api/v1/instance", handleAPINotFound)
 	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
 	mux.HandleFunc("HEAD /api/v1/challenge", handleAPINotFound)
 	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
-	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
-	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/ack", s.handleAck)
-	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
-	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
-	mux.HandleFunc("GET /api/v1/messages/{id}/status", s.handleStatus)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
+	onMessage("GET /api/v1/messages/{id}", s.handleMetadata)
+	onMessage("HEAD /api/v1/messages/{id}", handleAPINotFound)
+	onMessage("POST /api/v1/messages/{id}/claim", s.handleClaim)
+	onMessage("GET /api/v1/messages/{id}/blob", s.handleBlob)
+	onMessage("HEAD /api/v1/messages/{id}/blob", handleAPINotFound)
+	onMessage("POST /api/v1/messages/{id}/ack", s.handleAck)
+	onMessage("POST /api/v1/messages/{id}/burn", s.handleBurn)
+	onMessage("POST /api/v1/messages/{id}/cancel", s.handleCancel)
+	onMessage("GET /api/v1/messages/{id}/status", s.handleStatus)
+	onMessage("HEAD /api/v1/messages/{id}/status", handleAPINotFound)
+	onMessage("POST /api/v1/abuse", s.handleAbuse)
 	mux.HandleFunc("/api/", handleAPINotFound)
 	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET /healthz", handleHealth)
@@ -81,27 +85,15 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// noticeForwarded warns at most once per hour that a forwarding header did not set the client address.
+// noticeForwarded counts the requests whose forwarding header did not set the client address, by header name.
 func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := ratelimit.ForwardingHeader(r)
-		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) &&
-			s.firstNoticeThisHour(time.Now()) {
-			s.logger.WarnContext(r.Context(), "forwarded-header-ignored", "header", header)
+		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) {
+			s.events.WarnContext(r.Context(), "forwarded-header-ignored", "category", header)
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (s *Server) firstNoticeThisHour(now time.Time) bool {
-	hour := now.UTC().Truncate(time.Hour).Unix()
-	hourSeconds := int64(time.Hour / time.Second)
-	for last := s.forwardedHour.Load(); hour > last || hour < last-hourSeconds; last = s.forwardedHour.Load() {
-		if s.forwardedHour.CompareAndSwap(last, hour) {
-			return true
-		}
-	}
-	return false
 }
 
 type spentKey struct{}
@@ -238,7 +230,7 @@ func ceilSeconds(wait time.Duration) int64 {
 
 func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error) {
 	entry := failure(r.Context(), err)
-	s.logger.Log(r.Context(), entry.level, "handler", "route", r.Pattern, "err", entry.text)
+	s.events.Log(r.Context(), entry.level, "handler", "err", entry.text)
 	if entry.clientGone {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return

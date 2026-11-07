@@ -790,8 +790,9 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 		if response, _ := harness.post(live, "burn", live.readToken); response.StatusCode != http.StatusNoContent {
 			t.Fatalf("burn on a nearly full disk: %d", response.StatusCode)
 		}
-		if count := strings.Count(harness.logs.String(), `"msg":"disk-full"`); count != 1 {
-			t.Fatalf("logged disk-full %d times, want once per change", count)
+		harness.server.flushCounts(t.Context())
+		if count := strings.Count(harness.logs.String(), `"msg":"disk-full","count":1`); count != 1 {
+			t.Fatalf("logged disk-full %d times, want once per change: %s", count, harness.logs.String())
 		}
 		harness.setFreeSpace(func(string) (uint64, error) { return math.MaxUint64, errors.New("statfs failed") })
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -813,7 +814,8 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 				response.StatusCode,
 			)
 		}
-		if count := strings.Count(harness.logs.String(), `"msg":"disk-free-again"`); count != 1 {
+		harness.server.flushCounts(t.Context())
+		if count := strings.Count(harness.logs.String(), `"msg":"disk-free-again","count":1`); count != 1 {
 			t.Fatalf("logged disk-free-again %d times", count)
 		}
 
@@ -1529,6 +1531,7 @@ func TestASmallOrderShareKeyIsMalformed(t *testing.T) {
 		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("the refused claims spent the open: %d", response.StatusCode)
 		}
+		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), `"level":"ERROR"`) {
 			t.Fatalf("a malformed share key logged an error: %s", harness.logs.String())
 		}

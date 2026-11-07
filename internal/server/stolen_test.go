@@ -265,6 +265,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		settings.PoWDifficulty = 1
 		harness := newHarness(t, settings)
 		faulty := harness.withFaultyBlobs()
+		startupLogs := harness.logs.String()
 		needles := &stolenNeedles{t: t, named: map[string][]byte{}}
 		const ip4, ip6 = "203.0.113.77", "2001:db8:77::1"
 		needles.text("IPv4 address", ip4)
@@ -359,9 +360,6 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		); response.StatusCode != http.StatusInternalServerError {
 			t.Fatalf("burn with a failing blob store: %d", response.StatusCode)
 		}
-		if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
-			t.Fatal("the failing delete was not logged")
-		}
 
 		removed := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext removed sentinel")
 		removed.address = ip4
@@ -429,7 +427,13 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.text("contact", contact)
 		needles.text("reason", "spam, see")
-		harness.server.requestCounts.Flush()
+		if logs := harness.logs.String(); logs != startupLogs {
+			t.Fatalf("a line was written before the hourly flush: %s", strings.TrimPrefix(logs, startupLogs))
+		}
+		harness.server.flushCounts(t.Context())
+		if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
+			t.Fatal("the failing delete was not logged")
+		}
 		stolen := harness.stolenCopy()
 		reportFile := filepath.Join("abuse", time.Now().UTC().Format(time.DateOnly)+abuse.FileExtension)
 		for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {
@@ -595,10 +599,10 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		if want := []int{200, 200, 200, 204, 200, 410, 200}; !slices.Equal(codes, want) {
 			t.Fatalf("the flow behind the log check answered %v, want %v", codes, want)
 		}
-		harness.server.requestCounts.Flush()
+		harness.server.flushCounts(t.Context())
 		logs := harness.logs.String()
-		if !strings.Contains(logs, "POST /api/v1/messages/{id}/claim") {
-			t.Fatal("log should contain the route pattern")
+		if !strings.Contains(logs, `"route":"message"`) {
+			t.Fatal("log should count the message routes")
 		}
 		if strings.Contains(logs, message.id.String()) || strings.Contains(logs, hex.EncodeToString(message.id[:])) {
 			t.Fatal("a log line must not name the message, so a stolen log cannot be joined with the database")

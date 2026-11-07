@@ -146,23 +146,17 @@ func TestReconcileRunsOncePerDayUntilItHasListedTheStore(t *testing.T) {
 	}
 }
 
-func TestLogAttributesCountEveryFailedItem(t *testing.T) {
+func TestFirstErrorNamesOneFailureAndNoCount(t *testing.T) {
 	t.Parallel()
 	setup := newFixture(t)
 	now := nextDay()
 	setup.blobs.FailDelete(setup.createExpiring(t, now), storetest.ErrInjected)
 	setup.blobs.FailDelete(setup.createExpiring(t, now), storetest.ErrInjected)
-	report, err := setup.run(t, now.Add(store.BlobPurgeStep))
-	attributes := sweep.LogAttributes(report, err)
-	got := map[any]any{}
-	for i := 0; i+1 < len(attributes); i += 2 {
-		got[attributes[i]] = attributes[i+1]
+	_, err := setup.run(t, now.Add(store.BlobPurgeStep))
+	if got := sweep.FirstError(err); got != "store: delete blob: "+storetest.ErrInjected.Error() {
+		t.Fatalf("want only the first of two failures: %q", got)
 	}
-	if got["errors"] != 2 || strings.Contains(fmt.Sprint(got["err"]), "\n") {
-		t.Fatalf("want 2 failed items and only the first error: %v", got)
-	}
-	empty := sweep.LogAttributes(store.SweepReport{}, fmt.Errorf("%w %w", nil, nil))
-	if len(empty) < 4 || empty[len(empty)-4] != "errors" || empty[len(empty)-3] != 1 {
-		t.Fatalf("an empty join: %v", empty)
+	if sweep.FirstError(fmt.Errorf("%w %w", nil, nil)) == "" {
+		t.Fatal("an empty join must still name the failure")
 	}
 }

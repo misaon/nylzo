@@ -318,13 +318,15 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		return err
 	}
 	defer database.Close()
-	database.OnScrubFailure(func(err error) { logger.ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err)) })
 	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
 	clear(settings.Pepper)
 	clear(settings.PepperPrevious)
 	if err != nil {
 		return err
 	}
+	database.OnScrubFailure(func(err error) {
+		instance.Events().ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err))
+	})
 	if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
 		return returnErr
 	}
@@ -426,13 +428,12 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	}
 	defer database.Close()
 	now := time.Now()
-	report, err := sweep.Run(ctx, database, blobs, settings.DataDir, now)
+	_, err = sweep.Run(ctx, database, blobs, settings.DataDir, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
-		logger.ErrorContext(ctx, "sweep-once", sweep.LogAttributes(report, err)...)
+		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))
 		return errSweepFailed
 	}
-	logger.InfoContext(ctx, "sweep-once", report.LogAttrs()...)
 	return nil
 }
 

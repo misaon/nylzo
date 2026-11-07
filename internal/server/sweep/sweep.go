@@ -45,14 +45,12 @@ func reconcileOncePerDay(ctx context.Context, storage store.Store, blobs store.B
 	return report.Orphans, errors.Join(err, markErr)
 }
 
-func LogAttributes(report store.SweepReport, err error) []any {
-	attributes := report.LogAttrs()
-	if err == nil {
-		return attributes
-	}
+// FirstError names only the first failure of a sweep; a count of the failed items would count the blobs and rows
+// that came due while the storage failed (spec §10).
+func FirstError(err error) string {
 	failures := logging.JoinedErrors(err)
 	if len(failures) == 0 {
-		failures = []error{err}
+		return logging.ErrorText(err)
 	}
-	return append(attributes, "errors", len(failures), "err", logging.ErrorText(failures[0]))
+	return logging.ErrorText(failures[0])
 }
