@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const (
@@ -18,6 +20,7 @@ const (
 	englishHome          = "/"
 	czechHome            = "/cs/"
 	sentPath             = "/sent"
+	messagePagePath      = "/m/{id}"
 	htmlContentType      = "text/html; charset=utf-8"
 )
 
@@ -40,15 +43,11 @@ func templateFor(path string) string {
 	return indexTemplate
 }
 
-func (b Build) Page(path, publicURL string) (string, error) {
-	return render(b.Templates[templateFor(path)], publicURL)
-}
-
 type Pages map[string]Page
 
 // Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names.
 func (b Build) Render(publicURL, contact string) (Pages, error) {
-	if err := CheckContact(contact); err != nil {
+	if err := operatoraddress.CheckContact(contact); err != nil {
 		return nil, fmt.Errorf("server: operator contact: %w", err)
 	}
 	allowlist := ConnectionAllowlist(contact)
@@ -58,7 +57,7 @@ func (b Build) Render(publicURL, contact string) (Pages, error) {
 		if err != nil {
 			return nil, fmt.Errorf("server: web client %s: %w", name, err)
 		}
-		policy := PagePolicy(html)
+		policy := pagePolicy(html)
 		if isStatusTemplate(name) {
 			policy = StatusPolicy(html)
 		}
@@ -75,7 +74,7 @@ func (p Pages) For(path string) Page {
 
 func render(template, publicURL string) (string, error) {
 	if publicURL != "" {
-		if err := CheckPublicURL(publicURL); err != nil {
+		if err := operatoraddress.CheckPublicURL(publicURL); err != nil {
 			return "", fmt.Errorf("public URL: %w", err)
 		}
 	}

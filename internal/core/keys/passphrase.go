@@ -175,14 +175,7 @@ func distinctCharacters(text string) int {
 
 func repeatsShorterPart(characters []rune) bool {
 	for period := 1; period <= len(characters)/2; period++ {
-		repeats := true
-		for index := period; index < len(characters); index++ {
-			if characters[index] != characters[index-period] {
-				repeats = false
-				break
-			}
-		}
-		if repeats {
+		if slices.Equal(characters[period:], characters[:len(characters)-period]) {
 			return true
 		}
 	}

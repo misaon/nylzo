@@ -38,7 +38,7 @@ type Envelope struct {
 
 type FileContent struct {
 	Name    string `json:"name"`
-	Mime    string `json:"mime"`
+	MIME    string `json:"mime"`
 	Size    int    `json:"size"`
 	Content string `json:"content"`
 }
@@ -210,9 +210,9 @@ func (c envelopeCase) payload() (envelope.Payload, *FileContent) {
 	if c.file == nil {
 		return payload, nil
 	}
-	payload.Meta.File = &envelope.FileMeta{Name: c.file.name, Mime: c.file.mime, Size: int64(c.file.size)}
+	payload.Meta.File = &envelope.FileMeta{Name: c.file.name, MIME: c.file.mime, Size: int64(c.file.size)}
 	payload.File = counterBytes(c.file.size)
-	content := &FileContent{Name: c.file.name, Mime: c.file.mime, Size: c.file.size, Content: "counter"}
+	content := &FileContent{Name: c.file.name, MIME: c.file.mime, Size: c.file.size, Content: "counter"}
 	if c.file.inHex {
 		content.Content = hex.EncodeToString(payload.File)
 	}

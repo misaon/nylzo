@@ -129,9 +129,15 @@ func FailWith(environment *Environment, code int, format string, arguments ...an
 }
 
 func printable(text string) string {
+	return EscapeRunes(text, func(character rune) bool {
+		return unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError
+	})
+}
+
+func EscapeRunes(text string, escaped func(rune) bool) string {
 	var out strings.Builder
 	for _, character := range text {
-		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError {
+		if escaped(character) {
 			fmt.Fprintf(&out, "\\u%04x", character)
 			continue
 		}
@@ -162,6 +168,18 @@ func ReadFileLimited(path string, limit int64) ([]byte, error) {
 		return nil, Unreadable(err)
 	}
 	return data, err
+}
+
+func CreatePrivateFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, PrivateFileMode)
+}
+
+func WritePrivateFile(file *os.File, content string) error {
+	_, err := file.WriteString(content)
+	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
+		os.Remove(file.Name())
+	}
+	return err
 }
 
 // Unreadable drops the path from a file error, so no message repeats a flag value.

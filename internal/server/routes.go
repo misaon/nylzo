@@ -65,12 +65,16 @@ func (s *Server) routes() http.Handler {
 // in secret mode: its registers and stack are erased when it returns, its heap allocations once unreachable (A4-2).
 func inSecretMode(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !isAPI(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		secretmode.Do(func() { next.ServeHTTP(w, r) })
 	})
+}
+
+func isAPI(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/api/")
 }
 
 func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {
@@ -102,7 +106,7 @@ type spentKey struct{}
 func (s *Server) spendChallenges(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(r.URL.Path, "/api/") || err != nil {
+		if !isAPI(r) || err != nil {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -125,8 +129,7 @@ func spentBy(r *http.Request, challenge [signing.ChallengeLen]byte) bool {
 
 func prefetchGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		guarded := r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/") ||
-			strings.HasPrefix(r.URL.Path, "/api/")
+		guarded := r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/") || isAPI(r)
 		if guarded && r.Header.Get("Sec-Purpose") != "" {
 			setRetryAfter(w, prefetchRetry)
 			writeError(w, http.StatusServiceUnavailable, errUnavailable)
@@ -138,7 +141,7 @@ func prefetchGuard(next http.Handler) http.Handler {
 
 func (s *Server) throttle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !isAPI(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

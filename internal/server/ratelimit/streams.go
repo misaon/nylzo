@@ -46,8 +46,8 @@ func (s *Streams) Purge() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	held := func(count int) bool { return count > 0 }
-	s.perSource = Rebuilt(s.perSource, held)
-	s.perRange = Rebuilt(s.perRange, held)
+	s.perSource = rebuilt(s.perSource, held)
+	s.perRange = rebuilt(s.perRange, held)
 }
 
 func decrement(held map[Bucket]int, bucket Bucket) {

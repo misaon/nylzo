@@ -12,7 +12,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/report"
 )
 
-const manageTokenFileUsage = "read the manage token from this file (or " + envManageToken + ", or stdin)"
+const manageTokenFileUsage = "read the manage token from this file (or " + environmentManageToken + ", or stdin)"
 
 type explanationError struct {
 	explanation string
@@ -106,7 +106,7 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 
 func runBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
@@ -137,7 +137,7 @@ func linkClient(environment *command.Environment, linkFile string) (*openLink, *
 
 func runReport(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "report")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
 	reasonFile := flags.String(
 		"reason-file",
 		"",

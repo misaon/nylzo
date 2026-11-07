@@ -15,7 +15,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/abuse"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const (
@@ -79,10 +79,10 @@ func FromEnv(getenv func(string) string, needPepper bool) (Server, error) {
 
 func (s *Server) readSecrets(getenv func(string) string) error {
 	var err error
-	if s.Pepper, err = secretFromEnv(getenv, "NYLZO_PEPPER"); err != nil {
+	if s.Pepper, err = secretFromEnvironment(getenv, "NYLZO_PEPPER"); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	if s.PepperPrevious, err = secretFromEnv(getenv, "NYLZO_PEPPER_PREVIOUS"); err != nil {
+	if s.PepperPrevious, err = secretFromEnvironment(getenv, "NYLZO_PEPPER_PREVIOUS"); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return nil
@@ -102,26 +102,26 @@ func (s *Server) variables() []variable {
 			return errPassphraseScopeRemoved
 		}},
 		{"NYLZO_SWEEP_INTERVAL", durationInto(&s.SweepInterval)},
-		{"NYLZO_MAX_FILE_BYTES", int64Into(&s.Limits.MaxFileBytes)},
+		{"NYLZO_MAX_FILE_BYTES", integerInto(&s.Limits.MaxFileBytes)},
 		{"NYLZO_MAX_TTL", durationInto(&s.Limits.MaxTTL)},
 		{"NYLZO_DEFAULT_TTL", durationInto(&s.Limits.DefaultTTL)},
-		{"NYLZO_MAX_OPENS", intInto(&s.Limits.MaxOpens)},
-		{"NYLZO_RATE_CREATE_HOUR", int64Into(&s.Rates.CreatePerHour)},
-		{"NYLZO_RATE_CREATE_DAY", int64Into(&s.Rates.CreatePerDay)},
-		{"NYLZO_RATE_CREATE_BYTES_DAY", int64Into(&s.Rates.CreateBytesPerDay)},
-		{"NYLZO_RATE_READ_HOUR", int64Into(&s.Rates.ReadPerHour)},
-		{"NYLZO_RATE_READ_BYTES_HOUR", int64Into(&s.Rates.ReadBytesPerHour)},
-		{"NYLZO_RATE_ABUSE_HOUR", int64Into(&s.Rates.AbusePerHour)},
-		{"NYLZO_RATE_COARSE_MULTIPLIER", int64Into(&s.Rates.CoarseMultiplier)},
+		{"NYLZO_MAX_OPENS", integerInto(&s.Limits.MaxOpens)},
+		{"NYLZO_RATE_CREATE_HOUR", integerInto(&s.Rates.CreatePerHour)},
+		{"NYLZO_RATE_CREATE_DAY", integerInto(&s.Rates.CreatePerDay)},
+		{"NYLZO_RATE_CREATE_BYTES_DAY", integerInto(&s.Rates.CreateBytesPerDay)},
+		{"NYLZO_RATE_READ_HOUR", integerInto(&s.Rates.ReadPerHour)},
+		{"NYLZO_RATE_READ_BYTES_HOUR", integerInto(&s.Rates.ReadBytesPerHour)},
+		{"NYLZO_RATE_ABUSE_HOUR", integerInto(&s.Rates.AbusePerHour)},
+		{"NYLZO_RATE_COARSE_MULTIPLIER", integerInto(&s.Rates.CoarseMultiplier)},
 		{"NYLZO_RATE_BUCKET_RPS", floatInto(&s.Rates.BucketPerSecond)},
 		{"NYLZO_RATE_BUCKET_BURST", floatInto(&s.Rates.BucketBurst)},
 		{"NYLZO_RATE_SOURCE_RPS", floatInto(&s.Rates.SourcePerSecond)},
 		{"NYLZO_RATE_SOURCE_BURST", floatInto(&s.Rates.SourceBurst)},
-		{"NYLZO_GLOBAL_DAILY_CREATES", int64Into(&s.Rates.GlobalDailyCreates)},
-		{"NYLZO_POW_DIFFICULTY", intInto(&s.PoWDifficulty)},
-		{"NYLZO_POW_CONCURRENCY", intInto(&s.PoWConcurrency)},
-		{"NYLZO_MAX_STREAMS", intInto(&s.MaxStreams)},
-		{"NYLZO_MIN_FREE_BYTES", int64Into(&s.MinFreeBytes)},
+		{"NYLZO_GLOBAL_DAILY_CREATES", integerInto(&s.Rates.GlobalDailyCreates)},
+		{"NYLZO_POW_DIFFICULTY", integerInto(&s.PoWDifficulty)},
+		{"NYLZO_POW_CONCURRENCY", integerInto(&s.PoWConcurrency)},
+		{"NYLZO_MAX_STREAMS", integerInto(&s.MaxStreams)},
+		{"NYLZO_MIN_FREE_BYTES", integerInto(&s.MinFreeBytes)},
 		{"NYLZO_OPERATOR", text(&s.Operator.Name)},
 		{"NYLZO_CONTACT", text(&s.Operator.Contact)},
 		{"NYLZO_HOSTING", text(&s.Operator.Hosting)},
@@ -135,7 +135,7 @@ func (s *Server) variables() []variable {
 		}},
 		{"NYLZO_PUBLIC_URL", func(value string) error {
 			s.PublicURL = value
-			return webclient.CheckPublicURL(value)
+			return operatoraddress.CheckPublicURL(value)
 		}},
 	}
 }
@@ -178,15 +178,15 @@ func (s *Server) parseProxyMode(value string) error {
 	case ProxyModeScaleway:
 		s.ProxyMode = value
 	case "none", "off":
-		s.ProxyMode = ProxyModeNone
+		s.ProxyMode = proxyModeNone
 	default:
 		return fmt.Errorf("%w %q", errUnknownProxyMode, value)
 	}
 	return nil
 }
 
-// secretFromEnv reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.
-func secretFromEnv(getenv func(string) string, key string) ([]byte, error) {
+// secretFromEnvironment reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.
+func secretFromEnvironment(getenv func(string) string, key string) ([]byte, error) {
 	if getenv(key) != "" {
 		return nil, fmt.Errorf("%s %w %s_FILE", key, errSecretInEnvironment, key)
 	}
@@ -253,27 +253,16 @@ func durationInto(target *time.Duration) func(string) error {
 	}
 }
 
-func int64Into(target *int64) func(string) error {
+func integerInto[Integer int | int64](target *Integer) func(string) error {
 	return func(value string) error {
 		number, err := parseNonNegative(value)
 		if err != nil {
 			return err
 		}
-		*target = number
-		return nil
-	}
-}
-
-func intInto(target *int) func(string) error {
-	return func(value string) error {
-		number, err := parseNonNegative(value)
-		if err != nil {
-			return err
-		}
-		if number > math.MaxInt {
+		if int64(Integer(number)) != number {
 			return fmt.Errorf("%w, got %q", errIntegerTooLarge, value)
 		}
-		*target = int(number)
+		*target = Integer(number)
 		return nil
 	}
 }

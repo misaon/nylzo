@@ -58,7 +58,6 @@ var (
 	ErrShareGone    = errors.New("epoch: the share of this message no longer exists")
 )
 
-// Hour is the epoch that contains the moment.
 func Hour(moment time.Time) uint32 {
 	hours := moment.Unix() / hourSeconds
 	return uint32(hours) //nolint:gosec // G115: 32 bits of hours since 1970 last until the year 491970
@@ -83,6 +82,14 @@ func ShareOf(epochKey *[SeedLen]byte, locator seal.Locator) [core.ShareLen]byte 
 	var share [core.ShareLen]byte
 	mac.Sum(share[:0])
 	return share
+}
+
+func advance(seed *Seed, hours uint32) {
+	for range hours {
+		next := Next(seed)
+		*seed = next
+		clear(next[:])
+	}
 }
 
 func expand(seed *Seed, info string) [SeedLen]byte {
@@ -226,11 +233,7 @@ func (r *Ratchet) Share(id RatchetID, hour uint32, locator seal.Locator, now tim
 	if id != ratchetID || hour < current {
 		return [core.ShareLen]byte{}, ErrShareGone
 	}
-	for range hour - current {
-		next := Next(&seed)
-		seed = next
-		clear(next[:])
-	}
+	advance(&seed, hour-current)
 	key := Key(&seed)
 	defer clear(key[:])
 	return ShareOf(&key, locator), nil
@@ -304,11 +307,8 @@ func (r *Ratchet) loadLocked(now time.Time) error {
 		return ErrCorrupt
 	}
 	target := max(Hour(now), hour)
-	for ; hour < target; hour++ {
-		next := Next(&seed)
-		seed = next
-		clear(next[:])
-	}
+	advance(&seed, target-hour)
+	hour = target
 	r.id, r.hour, r.seed = id, hour, seed
 	updated := encode(id, hour, &seed)
 	defer clear(updated)

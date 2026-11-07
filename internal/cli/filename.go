@@ -50,11 +50,10 @@ func attachmentName(name string) string {
 	if len(clean) <= maxNameBytes {
 		return clean
 	}
-	extension := ""
-	if dot := strings.LastIndex(clean, "."); dot > 0 && len(clean[dot+1:]) <= maxExtensionBytes {
-		extension = clean[dot:]
+	stem, extension := clean, ""
+	if before, after, found := strings.CutLast(clean, "."); found && before != "" && len(after) <= maxExtensionBytes {
+		stem, extension = before, "."+after
 	}
-	stem := strings.TrimSuffix(clean, extension)
 	return strings.ToValidUTF8(stem[:min(maxNameBytes-len(extension), len(stem))], "") + extension
 }
 

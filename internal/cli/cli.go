@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -41,6 +42,15 @@ func webClient(environment *command.Environment) (webclient.Build, error) {
 		return environment.WebClient()
 	}
 	return server.EmbeddedWebClient()
+}
+
+func serverAddress(environment *command.Environment, name, flagValue string) (string, bool) {
+	address := cmp.Or(flagValue, environment.Getenv(environmentServer))
+	if address == "" {
+		fmt.Fprintln(environment.Stderr, command.Program+" "+name+" needs --server or "+environmentServer)
+		return "", false
+	}
+	return address, true
 }
 
 func commands() []subcommand {
@@ -99,10 +109,7 @@ func Run(arguments []string, environment *command.Environment) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		stop()
-	}()
+	context.AfterFunc(ctx, stop)
 	return commands()[index].run(ctx, environment, arguments[1:])
 }
 

@@ -15,6 +15,8 @@ import (
 
 const badGatewayBody = `{"error":"bad_gateway"}`
 
+var forwardedHeaders = []string{"Content-Length", "Retry-After", "X-Nylzo-Lease", "X-Nylzo-Share", "X-Nylzo-Policy"}
+
 var (
 	errRefusedResponse = errors.New("untrusted upstream response")
 	errNoProxyResponse = errors.New("nylzo_data requires a proxy response")
@@ -103,16 +105,20 @@ func (d *dataResponse) WriteHeader(status int) {
 		d.ResponseWriter.WriteHeader(status)
 		return
 	}
-	for _, name := range []string{"Content-Length", "Retry-After", "X-Nylzo-Lease", "X-Nylzo-Share", "X-Nylzo-Policy"} {
-		if value := d.header.Get(name); value != "" {
-			header.Set(name, value)
-		}
-	}
+	copyForwardedHeaders(header, d.header)
 	if contentType != "application/octet-stream" {
 		contentType += "; charset=utf-8"
 	}
 	header.Set("Content-Type", contentType)
 	d.ResponseWriter.WriteHeader(status)
+}
+
+func copyForwardedHeaders(destination, upstream http.Header) {
+	for _, name := range forwardedHeaders {
+		if value := upstream.Get(name); value != "" {
+			destination.Set(name, value)
+		}
+	}
 }
 
 func responseContentType(path string, status int) string {

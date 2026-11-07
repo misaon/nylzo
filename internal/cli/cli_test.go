@@ -434,7 +434,10 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 		!strings.Contains(result.stderr, "needs a passphrase") {
 		t.Fatalf("no passphrase: %d %q", result.code, result.stderr)
 	}
-	paths := readPaths(t, runWith(t, link, map[string]string{envPassphrase: right}, nil, "read", "--out", t.TempDir()))
+	paths := readPaths(
+		t,
+		runWith(t, link, map[string]string{environmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
+	)
 	assertPrivate(t, paths[0], "behind a passphrase")
 }
 
@@ -555,7 +558,7 @@ func TestBurnAndPrintedManageToken(t *testing.T) {
 	if burned := runWith(
 		t,
 		"",
-		map[string]string{envLink: lines[0]},
+		map[string]string{environmentLink: lines[0]},
 		nil,
 		"burn",
 	); burned.code != command.ExitOK ||
@@ -875,7 +878,7 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 		result := runWith(
 			t,
 			strings.Replace(link, instance.url, proxy, 1),
-			map[string]string{envPassphrase: passphrase},
+			map[string]string{environmentPassphrase: passphrase},
 			nil,
 			"read",
 			"--out",
@@ -932,7 +935,7 @@ func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
 	}
 	text := "beside a clashing attachment"
 	message := content{
-		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: "MESSAGE.TXT", Mime: "text/plain", Size: 4}},
+		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: "MESSAGE.TXT", MIME: "text/plain", Size: 4}},
 		file: []byte("file"),
 	}
 	created, err := createOnce(
@@ -1103,7 +1106,7 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 		writeSecretFile(t, "correct horse battery staple"),
 	)
 	readPaths(t, runWith(t, "\n  "+plain+"  \n", nil, nil, "read", "--out", t.TempDir()))
-	passphrase := map[string]string{envPassphrase: writeSecretFile(t, "correct horse battery staple")}
+	passphrase := map[string]string{environmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
 	readPaths(t, runWith(t, guarded, passphrase, nil, "read", "--out", t.TempDir()))
 	for route, sizes := range lengths {
 		if len(sizes) != 2 || sizes[0] != sizes[1] {
@@ -1127,8 +1130,8 @@ func TestErrorsNeverEchoSecrets(t *testing.T) {
 		variables map[string]string
 		arguments []string
 	}{
-		"passphrase in the file variable": {map[string]string{envPassphrase: secret}, []string{"read", "--stdout"}},
-		"token in the file variable":      {map[string]string{envManageToken: token}, []string{"status"}},
+		"passphrase in the file variable": {map[string]string{environmentPassphrase: secret}, []string{"read", "--stdout"}},
+		"token in the file variable":      {map[string]string{environmentManageToken: token}, []string{"status"}},
 		"passphrase as a file":            {nil, []string{"read", "--stdout", "--passphrase-file", secret}},
 		"passphrase as a duration":        {nil, []string{"create", "--server", instance.url, "--ttl", secret}},
 		"token as a count":                {nil, []string{"create", "--server", instance.url, "--opens", token}},
@@ -1167,7 +1170,10 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 	result := runWith(
 		t,
 		"",
-		map[string]string{envLink: link, envPassphrase: writeSecretFile(t, "correct horse battery staple")},
+		map[string]string{
+			environmentLink:       link,
+			environmentPassphrase: writeSecretFile(t, "correct horse battery staple"),
+		},
 		nil,
 		"read",
 		"--out",
@@ -1175,8 +1181,8 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 	)
 	paths := readPaths(t, result)
 	assertPrivate(t, paths[0], "first line")
-	if !strings.Contains(result.stderr, "named by "+envLink) ||
-		!strings.Contains(result.stderr, "named by "+envPassphrase) {
+	if !strings.Contains(result.stderr, "named by "+environmentLink) ||
+		!strings.Contains(result.stderr, "named by "+environmentPassphrase) {
 		t.Fatalf("read did not say it used the variables: %q", result.stderr)
 	}
 }
@@ -1299,7 +1305,7 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 	text := "beside a folded clash"
 	for _, name := range []string{"Meßage.txt", "meſſage.txt", "MESSAGE.TXT"} {
 		message := content{
-			meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, Mime: "text/plain", Size: 4}},
+			meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, MIME: "text/plain", Size: 4}},
 			file: []byte("file"),
 		}
 		created, createErr := createOnce(
@@ -1410,8 +1416,8 @@ func TestManageTokenVariableIsNamed(t *testing.T) {
 	instance := newTestServer(t, nil)
 	manage := filepath.Join(t.TempDir(), "manage")
 	createText(t, instance, "named", "--manage-token-file", manage)
-	result := runWith(t, "", map[string]string{envManageToken: manage}, nil, "status")
-	if result.code != command.ExitOK || !strings.Contains(result.stderr, "named by "+envManageToken) {
+	result := runWith(t, "", map[string]string{environmentManageToken: manage}, nil, "status")
+	if result.code != command.ExitOK || !strings.Contains(result.stderr, "named by "+environmentManageToken) {
 		t.Fatalf("status from the variable: %d %q", result.code, result.stderr)
 	}
 }

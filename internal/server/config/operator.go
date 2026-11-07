@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const maxOperatorField = 200
@@ -31,7 +31,7 @@ func (o Operator) validate() error {
 			return fmt.Errorf("%s %w", field.name, errNotPlainText)
 		}
 	}
-	if webclient.CheckContact(o.Contact) != nil {
+	if operatoraddress.CheckContact(o.Contact) != nil {
 		return errContactInvalid
 	}
 	return nil

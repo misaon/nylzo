@@ -45,7 +45,7 @@ func seal(tb testing.TB, text string, file []byte) sealed {
 	if file != nil {
 		sample.payload.Meta.File = &envelope.FileMeta{
 			Name: "f.bin",
-			Mime: "application/octet-stream",
+			MIME: "application/octet-stream",
 			Size: int64(len(file)),
 		}
 		sample.payload.File = file

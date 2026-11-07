@@ -18,9 +18,11 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -99,7 +101,12 @@ type verifyOptions struct {
 func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOptions) {
 	options := &verifyOptions{allowed: map[string]bool{}}
 	flags := command.NewFlags(environment, "verify-client")
-	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
+	flags.StringVar(
+		&options.server,
+		"server",
+		"",
+		"server address such as https://nylzo.example (or "+environmentServer+")",
+	)
 	flags.Func(
 		"allow-header",
 		"accept this response header, which a proxy in front of the server adds (repeatable)",
@@ -120,25 +127,22 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	if options.server == "" {
-		options.server = environment.Getenv(envServer)
-	}
-	if options.server == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" verify-client needs --server or "+envServer)
+	address, ok := serverAddress(environment, "verify-client", options.server)
+	if !ok {
 		return command.ExitUsage
 	}
-	api, err := client.New(options.server)
+	api, err := client.New(address)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
-	local, err := webClient(environment)
-	if err != nil || !local.Built {
+	build, err := webClient(environment)
+	if err != nil || !build.Built {
 		return command.Failf(environment, "%s", errNoLocalClient)
 	}
 	check := &verifier{
 		api:         api,
 		information: environment.BuildInformation(),
-		local:       local,
+		local:       build,
 		version:     buildVersion(environment.Version),
 		allowed:     options.allowed,
 	}
@@ -242,7 +246,7 @@ func (v *verifier) release(ctx context.Context) (webclient.Manifest, error) {
 		)
 	}
 	if served.PublicURL != "" {
-		if err = webclient.CheckPublicURL(served.PublicURL); err != nil {
+		if err = operatoraddress.CheckPublicURL(served.PublicURL); err != nil {
 			return served, differs(
 				"the server's client manifest names a public URL that this nylzo would refuse: %s",
 				err,
@@ -273,13 +277,12 @@ func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) err
 
 // contact reads the operator's contact, which every page's Connection-Allowlist admits.
 func (v *verifier) contact(ctx context.Context) (string, error) {
-	fetched, err := v.api.Fetch(ctx, server.TransparencyPath, identity, maxManifestBytes)
+	contact, err := local.OperatorContact(ctx, v.api)
+	if _, unreadable := errors.AsType[*local.ContactError](err); unreadable {
+		return "", differs("%s: %s", server.TransparencyPath, err)
+	}
 	if err != nil {
 		return "", fetchFailed(server.TransparencyPath, err)
-	}
-	contact, err := webclient.OperatorContact(fetched.Body)
-	if err != nil {
-		return "", differs("%s: %s", server.TransparencyPath, err)
 	}
 	return contact, nil
 }

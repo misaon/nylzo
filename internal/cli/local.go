@@ -11,10 +11,10 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
-var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + envServer)
+var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + environmentServer)
 
 type localOptions struct {
 	server    string
@@ -24,7 +24,12 @@ type localOptions struct {
 func localFlags(environment *command.Environment, name string) (*flag.FlagSet, *localOptions) {
 	options := &localOptions{}
 	flags := command.NewFlags(environment, name)
-	flags.StringVar(&options.server, "server", "", "the instance, such as https://nylzo.example (or "+envServer+")")
+	flags.StringVar(
+		&options.server,
+		"server",
+		"",
+		"the instance, such as https://nylzo.example (or "+environmentServer+")",
+	)
 	flags.BoolVar(&options.noBrowser, "no-browser", false, "print the address instead of opening a browser")
 	return flags, options
 }
@@ -34,14 +39,11 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	if options.server == "" {
-		options.server = environment.Getenv(envServer)
-	}
-	if options.server == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" web needs --server or "+envServer)
+	address, ok := serverAddress(environment, "web", options.server)
+	if !ok {
 		return command.ExitUsage
 	}
-	instance, err := localInstance(options.server)
+	instance, err := localInstance(address)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -59,18 +61,15 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 // runOpen hands a link to the local client in memory, so it reaches neither an argument nor a browser address.
 func runOpen(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := localFlags(environment, "open")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	if options.server == "" {
-		options.server = environment.Getenv(envServer)
-	}
-	if options.server == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" open needs --server or "+envServer)
+	address, ok := serverAddress(environment, "open", options.server)
+	if !ok {
 		return command.ExitUsage
 	}
-	instance, err := localInstance(options.server)
+	instance, err := localInstance(address)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -122,7 +121,7 @@ func localInstance(server string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err = webclient.CheckPublicURL(instance); err != nil {
+	if err = operatoraddress.CheckPublicURL(instance); err != nil {
 		return "", fmt.Errorf("the instance address %s: %w", instance, err)
 	}
 	return instance, nil

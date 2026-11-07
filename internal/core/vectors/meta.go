@@ -16,7 +16,7 @@ type MetaCase struct {
 	Canonical *string `json:"canonical,omitempty"`
 	Text      *string `json:"text,omitempty"`
 	FileName  *string `json:"file_name,omitempty"`
-	FileMime  *string `json:"file_mime,omitempty"`
+	FileMIME  *string `json:"file_mime,omitempty"`
 	FileSize  *int64  `json:"file_size,omitempty"`
 }
 
@@ -119,7 +119,7 @@ func (f *File) meta() error {
 		vector.Text = meta.Text
 		if meta.File != nil {
 			vector.FileName = new(meta.File.Name)
-			vector.FileMime = new(meta.File.Mime)
+			vector.FileMIME = new(meta.File.MIME)
 			vector.FileSize = new(meta.File.Size)
 		}
 		f.Meta = append(f.Meta, vector)

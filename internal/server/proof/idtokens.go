@@ -1,6 +1,7 @@
 package proof
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"encoding/binary"
 	"time"
@@ -48,7 +49,7 @@ func (t IDTokens) Valid(id core.ID, epoch uint32, token string, now time.Time) (
 	if err != nil {
 		return ratchetID, false
 	}
-	fields := binary.BigEndian.AppendUint32(append([]byte(nil), raw[:4]...), epoch)
+	fields := binary.BigEndian.AppendUint32(bytes.Clone(raw[:4]), epoch)
 	fields = append(fields, raw[8:idTokenFieldsLen]...)
 	tagOK := hmac.Equal(t.tag(id, fields), raw[idTokenFieldsLen:])
 	epochOK := binary.BigEndian.Uint32(raw[4:8]) == epoch

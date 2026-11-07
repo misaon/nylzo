@@ -14,11 +14,11 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/server/diskspace"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const (
-	ProxyModeNone     = ""
+	proxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 4
 	MaxPoWDifficulty  = proofofwork.MaxDifficulty
@@ -151,7 +151,7 @@ func (s *Server) validateWithoutReports() error {
 	if s.PublicURL == "" {
 		return nil
 	}
-	if err := webclient.CheckPublicURL(s.PublicURL); err != nil {
+	if err := operatoraddress.CheckPublicURL(s.PublicURL); err != nil {
 		return fmt.Errorf("%w: NYLZO_PUBLIC_URL: %w", ErrInvalid, err)
 	}
 	return nil
@@ -200,7 +200,7 @@ func (s *Server) rules() []rule {
 			"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzo cannot measure free space",
 		},
 		{
-			s.ProxyMode == ProxyModeNone || s.ProxyMode == ProxyModeScaleway,
+			s.ProxyMode == proxyModeNone || s.ProxyMode == ProxyModeScaleway,
 			"NYLZO_PROXY_MODE must be empty or scaleway",
 		},
 		{

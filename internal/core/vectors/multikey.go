@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"encoding/binary"
 	"errors"
+	"slices"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
@@ -74,9 +75,9 @@ func (a fieldElement) inverse() fieldElement {
 func ghash(hashKey fieldElement, aad, ciphertext []byte) fieldElement {
 	var state fieldElement
 	absorb := func(data []byte) {
-		for i := 0; i < len(data); i += 16 {
+		for chunk := range slices.Chunk(data, 16) {
 			block := make([]byte, 16)
-			copy(block, data[i:min(i+16, len(data))])
+			copy(block, chunk)
 			state = state.add(elementOf(block)).multiply(hashKey)
 		}
 	}

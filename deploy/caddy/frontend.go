@@ -15,6 +15,7 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -54,10 +55,10 @@ func (*Frontend) CaddyModule() caddy.ModuleInfo {
 }
 
 func (f *Frontend) Provision(_ caddy.Context) error {
-	if err := webclient.CheckPublicURL(f.PublicURL); err != nil {
+	if err := operatoraddress.CheckPublicURL(f.PublicURL); err != nil {
 		return err
 	}
-	if err := webclient.CheckContact(f.Contact); err != nil {
+	if err := operatoraddress.CheckContact(f.Contact); err != nil {
 		return fmt.Errorf("the contact %q: %w", f.Contact, err)
 	}
 	if f.Maintenance != "" && !filepath.IsAbs(f.Maintenance) {

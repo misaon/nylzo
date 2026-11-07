@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto/hpke"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/cli/command"
@@ -45,23 +43,15 @@ func RunReportKey(_ context.Context, environment *command.Environment, arguments
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
-	if err = writeNewPrivateFile(*keyFile, core.Encode(private)+"\n"); err != nil {
+	file, err := command.CreatePrivateFile(*keyFile)
+	if err == nil {
+		err = command.WritePrivateFile(file, core.Encode(private)+"\n")
+	}
+	if err != nil {
 		return command.Failf(environment, "--key-file: the file already exists or cannot be written")
 	}
 	fmt.Fprintf(environment.Stdout, "NYLZO_REPORT_KEY=%s\n", core.Encode(key.PublicKey().Bytes()))
 	return command.ExitOK
-}
-
-func writeNewPrivateFile(path, content string) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
-	if err != nil {
-		return err
-	}
-	_, err = file.WriteString(content)
-	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
-		os.Remove(path)
-	}
-	return err
 }
 
 func RunReports(_ context.Context, environment *command.Environment, arguments []string) int {
