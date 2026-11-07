@@ -21,6 +21,10 @@ on:
         type: choice
         options: [server, dns, image]
         default: server
+      restore:
+        description: Reopen the firewall that the kill switch closed (server stack, after the investigation)
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -31,22 +35,69 @@ concurrency:
   queue: max
 
 jobs:
-  server:
+  image-check:
+    name: A verified image exists for the pinned Flatcar
+    if: github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' && github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    environment:
+      name: infrastructure-plan
+      deployment: false
     permissions:
       contents: read
-      issues: read # the apply job's incident check
+    outputs:
+      missing: ${{ steps.check.outputs.missing }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy/hetzner-flatcar/toolchain.json
+          sparse-checkout-cone-mode: false
+      # A Flatcar update from Renovate needs a new verified image before the server stack can plan.
+      - id: check
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          SITE: ${{ secrets.NYLZO_SITE_JSON }}
+        run: |
+          version=$(jq -er .flatcar deploy/hetzner-flatcar/toolchain.json)
+          architecture=$(jq -er .architecture <<< "${SITE}")
+          available=$(curl --fail --silent --show-error --proto '=https' --max-time 30 -G \
+            -H "Authorization: Bearer ${HCLOUD_TOKEN}" --data-urlencode type=snapshot \
+            --data-urlencode "label_selector=nylzo-verified-image=true,nylzo-flatcar-version=${version},nylzo-architecture=${architecture}" \
+            https://api.hetzner.cloud/v1/images | jq -e '[.images[] | select(.status == "available")] | length')
+          echo "missing=$([[ "${available}" = 0 ]] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
+
+  image:
+    needs: image-check
+    permissions:
+      contents: read
     if: >-
-      github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
-      (github.event_name != 'workflow_dispatch' || inputs.stack == 'server')
+      always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
+      (inputs.stack == 'image' || needs.image-check.outputs.missing == 'true')
+    uses: $/.github/workflows/infrastructure-stack.yml
+    with:
+      stack: image
+      apply: true
+
+  server:
+    needs: image
+    permissions:
+      contents: read
+    if: >-
+      always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
+      needs.image.result != 'failure' && (github.event_name != 'workflow_dispatch' || inputs.stack == 'server')
     uses: $/.github/workflows/infrastructure-stack.yml
     with:
       stack: server
       apply: ${{ github.event_name != 'schedule' }}
+      restore: ${{ inputs.restore == true }}
 
   dns:
     permissions:
       contents: read
-      issues: read # the apply job's incident check
     needs: server
     if: >-
       always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
@@ -55,13 +106,3 @@ jobs:
     with:
       stack: dns
       apply: ${{ github.event_name != 'schedule' }}
-
-  image:
-    permissions:
-      contents: read
-      issues: read # the apply job's incident check
-    if: github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' && inputs.stack == 'image'
-    uses: $/.github/workflows/infrastructure-stack.yml
-    with:
-      stack: image
-      apply: true

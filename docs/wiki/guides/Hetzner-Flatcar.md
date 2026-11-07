@@ -52,9 +52,9 @@ Keep `publicAccess: false` during acceptance: HTTPS then answers only the admini
 
 After the first provisioning from the laptop, `infrastructure.yml` plans and applies every stack from `main`, so infrastructure changes need no laptop and no SSH:
 
-- A push to `main` that changes an OpenTofu stack, the toolchain or the deploy tool plans the server stack, then the DNS stack, in the `infrastructure-plan` environment, and applies a plan with changes in the `infrastructure` environment. Apply checks that the inputs still hash to the reviewed plan, which expires after an hour. An open `production-incident` issue blocks every apply, so an update cannot undo the [kill switch](Host-monitoring.md#production-watch).
+- A push to `main` that changes an OpenTofu stack, the toolchain or the deploy tool plans the server stack, then the DNS stack, in the `infrastructure-plan` environment, and applies a plan with changes in the `infrastructure` environment. Apply checks that the inputs still hash to the reviewed plan, which expires after an hour. A server apply stops while the [kill switch](Host-monitoring.md#production-watch) holds the firewall, until a dispatch with `-f restore=true`.
 - A daily run only plans; a stack whose plan has changes fails as drift.
-- `gh workflow run infrastructure.yml -f stack=image` builds a new verified Flatcar image for new servers. A running server keeps its image and Ignition, because Flatcar updates itself in place, so neither change rebuilds it.
+- When a push pins a Flatcar version without a verified image, the workflow builds the image first; `gh workflow run infrastructure.yml -f stack=image` builds one by hand. A running server keeps its image and Ignition, because Flatcar updates itself in place, so neither change rebuilds it.
 - State lives in an S3-compatible bucket, one object per stack, encrypted by OpenTofu with the state passphrase before it leaves the runner.
 
 One-time setup, in this order:
@@ -225,7 +225,7 @@ sudo journalctl -u nylzo-host -u nylzo-initialize -u nylzo-update -u nylzo-ready
 sudo cat /var/lib/nylzo-deploy/current.json; readlink /opt/nylzo/host/current
 ```
 
-For planned work, `gh workflow run watch.yml -f directive=maintenance` publishes a signed maintenance directive, which the host applies within about six minutes (GitHub caches the file for five), and `-f directive=normal` ends it, without a restart. The flag is `/var/lib/nylzo-directive/maintenance`, owned by root, so Caddy can read it but not remove it; a newer signed directive overrides a flag set by hand. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
+For planned work, `gh workflow run watch.yml -f directive=maintenance` publishes a signed maintenance directive, which the host applies within about six minutes (GitHub caches the file for five), and `-f directive=normal` ends it, without a restart. The production watch pauses meanwhile. The flag is `/var/lib/nylzo-directive/maintenance`, owned by root, so Caddy can read it but not remove it; a newer signed directive overrides a flag set by hand. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
 
 Hetzner backups stay off: restoring a snapshot can resurrect consumed messages. Cleanup keeps the current and previous image, Caddy, tools and host generation.
 
