@@ -26,7 +26,13 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	path := filepath.Join(directory, "nylzo.db")
 	storage, blobs := openStore(t, path), newBlobs(t, directory)
 	record := newRecord(1, true)
-	if err := blobs.Put(t.Context(), record.Row.BlobRef, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		record.Row.BlobRef,
+		bytes.NewReader(make([]byte, 64)),
+		64,
+		time.Hour,
+	); err != nil {
 		t.Fatal(err)
 	}
 	create(t, storage, record)

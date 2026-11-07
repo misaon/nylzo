@@ -152,7 +152,7 @@ func TestDeleteBatchFailsEveryRefWhenTheSyncFails(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
-	if err := blobs.Put(t.Context(), "a", strings.NewReader("x"), 1); err != nil {
+	if _, err := blobs.PutExpiring(t.Context(), "a", strings.NewReader("x"), 1, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.RemoveAll(filepath.Join(directory, disk.Directory)); err != nil {
@@ -172,7 +172,13 @@ func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 	content := bytes.Repeat([]byte{0xA5}, 2*erase.BlockLen)
 	opened := map[string]*os.File{}
 	for _, ref := range []string{"deleted", "batched", "stale-upload"} {
-		if err := blobs.Put(t.Context(), ref, bytes.NewReader(content), int64(len(content))); err != nil {
+		if _, err := blobs.PutExpiring(
+			t.Context(),
+			ref,
+			bytes.NewReader(content),
+			int64(len(content)),
+			time.Hour,
+		); err != nil {
 			t.Fatal(err)
 		}
 		file, err := os.Open(filepath.Join(root, hex.EncodeToString([]byte(ref))))

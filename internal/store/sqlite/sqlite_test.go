@@ -250,7 +250,13 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	directory := t.TempDir()
 	storage, blobs := openStore(t, filepath.Join(directory, "nylzo.db")), newBlobs(t, directory)
 	record := newRecord(1, false)
-	if err := blobs.Put(t.Context(), record.Row.BlobRef, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		record.Row.BlobRef,
+		bytes.NewReader(make([]byte, 64)),
+		64,
+		time.Hour,
+	); err != nil {
 		t.Fatal(err)
 	}
 	create(t, storage, record)

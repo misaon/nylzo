@@ -25,10 +25,7 @@ const (
 	copyBufferLen      = 32 << 10
 )
 
-var (
-	copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
-	undated     = time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
-)
+var copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
 
 var ErrRef = errors.New("disk: invalid blob reference")
 
@@ -79,13 +76,6 @@ func (b *Blobs) PutExpiring(
 	return b.putStamped(ctx, ref, content, size, func(stored time.Time) time.Time {
 		return store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
 	})
-}
-
-// Put stores content that no message dates; its file carries a time far ahead, so reconcile never takes it for an
-// orphan while a row may still name it.
-func (b *Blobs) Put(ctx context.Context, ref string, content io.Reader, size int64) error {
-	_, err := b.putStamped(ctx, ref, content, size, func(time.Time) time.Time { return undated })
-	return err
 }
 
 func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
