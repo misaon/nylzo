@@ -24,11 +24,11 @@ import (
 )
 
 const (
-	textFileName     = "message.txt"
-	blobRetries      = 3
-	outputDirPrefix  = "nylzo-"
-	attachmentPrefix = "attachment-"
-	releasesURL      = "https://github.com/misaon/nylzo/releases"
+	textFileName          = "message.txt"
+	blobRetries           = 3
+	outputDirectoryPrefix = "nylzo-"
+	attachmentPrefix      = "attachment-"
+	releasesURL           = "https://github.com/misaon/nylzo/releases"
 )
 
 var (
@@ -60,7 +60,7 @@ var (
 	errLinkDamaged      = errors.New("the link is incomplete or damaged")
 	errLinkMismatch     = errors.New("the link does not match the message on the server")
 	errPassphraseNeeded = errors.New(
-		"this message needs a passphrase: use --passphrase-file, " + envPassphrase + " or --ask-passphrase",
+		"this message needs a passphrase: use --passphrase-file, " + environmentPassphrase + " or --ask-passphrase",
 	)
 	errOutNotDirectory = errors.New("--out must name an existing directory")
 	errOutNotCreated   = errors.New("--out: cannot create a private directory there")
@@ -132,12 +132,17 @@ func linkFromInput(environment *command.Environment, linkFile string) (openLink,
 func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	options := &readOptions{}
 	flags := command.NewFlags(environment, "read")
-	flags.StringVar(&options.linkFile, "link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	flags.StringVar(
+		&options.linkFile,
+		"link-file",
+		"",
+		"read the link from this file (or "+environmentLink+", or stdin)",
+	)
 	flags.StringVar(
 		&options.passphrase.file,
 		"passphrase-file",
 		"",
-		"read the passphrase from the first line of this file (or "+envPassphrase+")",
+		"read the passphrase from the first line of this file (or "+environmentPassphrase+")",
 	)
 	flags.BoolVar(
 		&options.passphrase.ask,
@@ -176,7 +181,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 	}
 	directory := ""
 	if options.out != "" {
-		if directory, err = outputDir(options.out); err != nil {
+		if directory, err = outputDirectory(options.out); err != nil {
 			return command.Failf(environment, "%s", err)
 		}
 		defer removeIfEmpty(directory)
@@ -437,7 +442,7 @@ func writeWithFallback(environment *command.Environment, directory, base string,
 	if err == nil {
 		return paths, nil
 	}
-	fallback, err := os.MkdirTemp(base, outputDirPrefix)
+	fallback, err := os.MkdirTemp(base, outputDirectoryPrefix)
 	if err != nil {
 		return nil, errWriteOutput
 	}
@@ -470,11 +475,11 @@ func writeAll(directory string, files []outputFile) ([]string, error) {
 	return paths, nil
 }
 
-func outputDir(base string) (string, error) {
+func outputDirectory(base string) (string, error) {
 	if info, err := os.Stat(base); err != nil || !info.IsDir() {
 		return "", errOutNotDirectory
 	}
-	directory, err := os.MkdirTemp(base, outputDirPrefix)
+	directory, err := os.MkdirTemp(base, outputDirectoryPrefix)
 	if err != nil {
 		return "", errOutNotCreated
 	}

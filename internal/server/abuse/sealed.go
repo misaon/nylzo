@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	info         = "nylzo/v1/abuse-report"
-	plaintextLen = 1808
-	encLen       = 1120
-	tagLen       = 16
-	SealedLen    = encLen + plaintextLen + tagLen
+	info               = "nylzo/v1/abuse-report"
+	plaintextLen       = 1808
+	encapsulatedKeyLen = 1120
+	tagLen             = 16
+	SealedLen          = encapsulatedKeyLen + plaintextLen + tagLen
 )
 
 var (

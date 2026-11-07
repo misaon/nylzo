@@ -195,7 +195,7 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 			Meta: envelope.Meta{
 				File: &envelope.FileMeta{
 					Name: "quarterly-plan-sentinel.pdf",
-					Mime: "application/pdf",
+					MIME: "application/pdf",
 					Size: int64(len(content)),
 				},
 			},

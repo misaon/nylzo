@@ -79,10 +79,10 @@ func FromEnv(getenv func(string) string, needPepper bool) (Server, error) {
 
 func (s *Server) readSecrets(getenv func(string) string) error {
 	var err error
-	if s.Pepper, err = secretFromEnv(getenv, "NYLZO_PEPPER"); err != nil {
+	if s.Pepper, err = secretFromEnvironment(getenv, "NYLZO_PEPPER"); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
-	if s.PepperPrevious, err = secretFromEnv(getenv, "NYLZO_PEPPER_PREVIOUS"); err != nil {
+	if s.PepperPrevious, err = secretFromEnvironment(getenv, "NYLZO_PEPPER_PREVIOUS"); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return nil
@@ -185,8 +185,8 @@ func (s *Server) parseProxyMode(value string) error {
 	return nil
 }
 
-// secretFromEnv reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.
-func secretFromEnv(getenv func(string) string, key string) ([]byte, error) {
+// secretFromEnvironment reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.
+func secretFromEnvironment(getenv func(string) string, key string) ([]byte, error) {
 	if getenv(key) != "" {
 		return nil, fmt.Errorf("%s %w %s_FILE", key, errSecretInEnvironment, key)
 	}

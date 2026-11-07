@@ -10,7 +10,7 @@ import (
 
 const (
 	MaxFileName  = 255
-	MaxMime      = 255
+	MaxMIME      = 255
 	MaxJSONDepth = 32
 )
 
@@ -18,7 +18,7 @@ var ErrMeta = errors.New("core: invalid meta")
 
 type FileMeta struct {
 	Name string
-	Mime string
+	MIME string
 	Size int64
 }
 
@@ -36,7 +36,7 @@ type metaObject struct {
 
 type fileObject struct {
 	Name        string `json:"name"`
-	Mime        string `json:"mime"`
+	MIME        string `json:"mime"`
 	Size        int64  `json:"size"`
 	Encoding    string `json:"encoding,omitzero"`
 	EncodedSize int64  `json:"encoded_size,omitzero"`
@@ -56,7 +56,7 @@ func (m Meta) Validate() error {
 }
 
 func (f *FileMeta) valid() bool {
-	return validFileName(f.Name) && len(f.Mime) <= MaxMime && utf8.ValidString(f.Mime) &&
+	return validFileName(f.Name) && len(f.MIME) <= MaxMIME && utf8.ValidString(f.MIME) &&
 		f.Size >= 0 && f.Size <= MaxFileBytes
 }
 
@@ -82,7 +82,7 @@ func encodeStoredMeta(meta Meta, compressedSize int64) ([]byte, error) {
 		object.Version = 2
 	}
 	if meta.File != nil {
-		object.File = &fileObject{Name: meta.File.Name, Mime: meta.File.Mime, Size: meta.File.Size}
+		object.File = &fileObject{Name: meta.File.Name, MIME: meta.File.MIME, Size: meta.File.Size}
 		if compressedSize > 0 {
 			object.File.Encoding, object.File.EncodedSize = "gzip", compressedSize
 		}
@@ -216,7 +216,7 @@ func decodeFileMeta(raw json.RawMessage) (*FileMeta, error) {
 	if decodeRequired(object, "name", &file.Name) != nil || decodeRequired(object, "size", &file.Size) != nil {
 		return nil, ErrMeta
 	}
-	if mime := lookup(object, "mime"); mime != nil && json.Unmarshal(mime, &file.Mime) != nil {
+	if mime := lookup(object, "mime"); mime != nil && json.Unmarshal(mime, &file.MIME) != nil {
 		return nil, ErrMeta
 	}
 	return file, nil

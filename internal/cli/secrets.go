@@ -13,13 +13,13 @@ import (
 )
 
 const (
-	maxSecretInput   = 4096
-	envLink          = "NYLZO_LINK"
-	envPassphrase    = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
-	envManageToken   = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
-	envServer        = "NYLZO_SERVER"
-	manageTokenLines = 2
-	manageTokenPath  = "/m/"
+	maxSecretInput         = 4096
+	environmentLink        = "NYLZO_LINK"
+	environmentPassphrase  = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
+	environmentManageToken = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
+	environmentServer      = "NYLZO_SERVER"
+	manageTokenLines       = 2
+	manageTokenPath        = "/m/"
 )
 
 var (
@@ -30,7 +30,7 @@ var (
 		"a manage token has two lines: the message address without the part after # and the token",
 	)
 	errManageTokenSource = errors.New(
-		"pass the manage token with --manage-token-file, " + envManageToken + " or on stdin",
+		"pass the manage token with --manage-token-file, " + environmentManageToken + " or on stdin",
 	)
 )
 
@@ -44,9 +44,9 @@ func readLink(environment *command.Environment, linkFile string) (string, error)
 	switch {
 	case linkFile != "":
 		raw, err = command.ReadFileLimited(linkFile, maxSecretInput)
-	case environment.Getenv(envLink) != "":
-		noteSource(environment, "link", envLink)
-		raw = []byte(environment.Getenv(envLink))
+	case environment.Getenv(environmentLink) != "":
+		noteSource(environment, "link", environmentLink)
+		raw = []byte(environment.Getenv(environmentLink))
 	case environment.Terminal.StdinIsTerminal():
 		raw, err = environment.Terminal.ReadSecret("Link (hidden): ")
 	default:
@@ -69,14 +69,14 @@ type passphraseSource struct {
 }
 
 func (p passphraseSource) given(environment *command.Environment) bool {
-	return p.file != "" || environment.Getenv(envPassphrase) != "" || p.ask
+	return p.file != "" || environment.Getenv(environmentPassphrase) != "" || p.ask
 }
 
 func readPassphrase(environment *command.Environment, source passphraseSource, confirm bool) (string, error) {
 	path := source.file
-	if path == "" && environment.Getenv(envPassphrase) != "" {
-		path = environment.Getenv(envPassphrase)
-		noteSource(environment, "passphrase file", envPassphrase)
+	if path == "" && environment.Getenv(environmentPassphrase) != "" {
+		path = environment.Getenv(environmentPassphrase)
+		noteSource(environment, "passphrase file", environmentPassphrase)
 	}
 	if path != "" && source.ask {
 		return "", errPassphraseSource
@@ -135,9 +135,9 @@ func formatManageToken(origin string, id core.ID, seed *[core.SeedLen]byte) stri
 
 func readManageToken(environment *command.Environment, file string) (manageToken, error) {
 	path := file
-	if path == "" && environment.Getenv(envManageToken) != "" {
-		path = environment.Getenv(envManageToken)
-		noteSource(environment, "manage token file", envManageToken)
+	if path == "" && environment.Getenv(environmentManageToken) != "" {
+		path = environment.Getenv(environmentManageToken)
+		noteSource(environment, "manage token file", environmentManageToken)
 	}
 	var raw []byte
 	var err error

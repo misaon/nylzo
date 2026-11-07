@@ -179,7 +179,7 @@ func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
 	if vector.File != nil {
 		payload.Meta.File = &envelope.FileMeta{
 			Name: vector.File.Name,
-			Mime: vector.File.Mime,
+			MIME: vector.File.MIME,
 			Size: int64(vector.File.Size),
 		}
 	}
@@ -303,7 +303,7 @@ func TestMetaVectors(t *testing.T) {
 			t.Errorf("%s: decoded %+v", vector.Name, meta)
 		}
 		if meta.File != nil &&
-			(meta.File.Name != *vector.FileName || meta.File.Mime != *vector.FileMime || meta.File.Size != *vector.FileSize) {
+			(meta.File.Name != *vector.FileName || meta.File.MIME != *vector.FileMIME || meta.File.Size != *vector.FileSize) {
 			t.Errorf("%s: decoded file %+v", vector.Name, meta.File)
 		}
 	}

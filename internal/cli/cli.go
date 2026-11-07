@@ -45,9 +45,9 @@ func webClient(environment *command.Environment) (webclient.Build, error) {
 }
 
 func serverAddress(environment *command.Environment, name, flagValue string) (string, bool) {
-	address := cmp.Or(flagValue, environment.Getenv(envServer))
+	address := cmp.Or(flagValue, environment.Getenv(environmentServer))
 	if address == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" "+name+" needs --server or "+envServer)
+		fmt.Fprintln(environment.Stderr, command.Program+" "+name+" needs --server or "+environmentServer)
 		return "", false
 	}
 	return address, true

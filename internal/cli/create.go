@@ -26,12 +26,12 @@ import (
 )
 
 const (
-	createAttempts = 3
-	workBudget     = 110 * time.Second
-	workRounds     = 2
-	weakBelowChars = 16
-	weakBelowWords = 4
-	attachmentMime = "application/octet-stream"
+	createAttempts      = 3
+	workBudget          = 110 * time.Second
+	workRounds          = 2
+	weakBelowCharacters = 16
+	weakBelowWords      = 4
+	attachmentMIME      = "application/octet-stream"
 )
 
 var (
@@ -68,7 +68,12 @@ func (c *content) wipe() {
 func createFlags(environment *command.Environment) (*flag.FlagSet, *createOptions) {
 	options := &createOptions{}
 	flags := command.NewFlags(environment, "create")
-	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
+	flags.StringVar(
+		&options.server,
+		"server",
+		"",
+		"server address such as https://nylzo.example (or "+environmentServer+")",
+	)
 	flags.StringVar(&options.fromFile, "from-file", "", "send this file as an attachment instead of text from stdin")
 	flags.DurationVar(
 		&options.ttl,
@@ -81,7 +86,7 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		&options.passphrase.file,
 		"passphrase-file",
 		"",
-		"protect the message with the passphrase on the first line of this file (or "+envPassphrase+")",
+		"protect the message with the passphrase on the first line of this file (or "+environmentPassphrase+")",
 	)
 	flags.BoolVar(
 		&options.passphrase.ask,
@@ -213,7 +218,7 @@ func createPassphrase(environment *command.Environment, source passphraseSource)
 			"%s: warning: a passphrase of at least %d words and %d characters is much harder to guess\n",
 			command.Program,
 			weakBelowWords,
-			weakBelowChars,
+			weakBelowCharacters,
 		)
 	}
 	return passphrase, nil
@@ -247,7 +252,7 @@ func weakPassphrase(passphrase string) bool {
 	words := strings.FieldsFunc(normalized, func(character rune) bool {
 		return unicode.IsSpace(character) || character == '-'
 	})
-	return utf8.RuneCountInString(normalized) < weakBelowChars || len(words) < weakBelowWords
+	return utf8.RuneCountInString(normalized) < weakBelowCharacters || len(words) < weakBelowWords
 }
 
 func readContent(environment *command.Environment, fromFile string) (content, error) {
@@ -289,11 +294,11 @@ func readAttachment(path string) (content, error) {
 	}
 	name := attachmentName(filepath.Base(path))
 	kind := mime.TypeByExtension(filepath.Ext(name))
-	if kind == "" || len(kind) > envelope.MaxMime || !utf8.ValidString(kind) {
-		kind = attachmentMime
+	if kind == "" || len(kind) > envelope.MaxMIME || !utf8.ValidString(kind) {
+		kind = attachmentMIME
 	}
 	return content{
-		meta: envelope.Meta{File: &envelope.FileMeta{Name: name, Mime: kind, Size: int64(len(data))}},
+		meta: envelope.Meta{File: &envelope.FileMeta{Name: name, MIME: kind, Size: int64(len(data))}},
 		file: data,
 	}, nil
 }

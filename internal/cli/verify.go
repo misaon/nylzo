@@ -101,7 +101,12 @@ type verifyOptions struct {
 func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOptions) {
 	options := &verifyOptions{allowed: map[string]bool{}}
 	flags := command.NewFlags(environment, "verify-client")
-	flags.StringVar(&options.server, "server", "", "server address such as https://nylzo.example (or "+envServer+")")
+	flags.StringVar(
+		&options.server,
+		"server",
+		"",
+		"server address such as https://nylzo.example (or "+environmentServer+")",
+	)
 	flags.Func(
 		"allow-header",
 		"accept this response header, which a proxy in front of the server adds (repeatable)",

@@ -14,7 +14,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
-var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + envServer)
+var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + environmentServer)
 
 type localOptions struct {
 	server    string
@@ -24,7 +24,12 @@ type localOptions struct {
 func localFlags(environment *command.Environment, name string) (*flag.FlagSet, *localOptions) {
 	options := &localOptions{}
 	flags := command.NewFlags(environment, name)
-	flags.StringVar(&options.server, "server", "", "the instance, such as https://nylzo.example (or "+envServer+")")
+	flags.StringVar(
+		&options.server,
+		"server",
+		"",
+		"the instance, such as https://nylzo.example (or "+environmentServer+")",
+	)
 	flags.BoolVar(&options.noBrowser, "no-browser", false, "print the address instead of opening a browser")
 	return flags, options
 }
@@ -56,7 +61,7 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 // runOpen hands a link to the local client in memory, so it reaches neither an argument nor a browser address.
 func runOpen(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := localFlags(environment, "open")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+envLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
