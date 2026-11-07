@@ -21,7 +21,7 @@ func Run(
 	now time.Time,
 ) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, storage, blobs, now)
-	pruneErr := abuse.Prune(dataDir, now)
+	pruneErr := errors.Join(abuse.Prune(dataDir, now), abuse.Prepare(dataDir, now))
 	orphans, reconcileErr := reconcileOncePerDay(ctx, storage, blobs, now)
 	report.OrphanedBlobs = orphans
 	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDir, now))

@@ -121,6 +121,9 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		server.logger,
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
+	if prepareErr := abuse.Prepare(settings.DataDir, time.Now()); prepareErr != nil {
+		return nil, prepareErr
+	}
 	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
 	server.handler = server.routes()
 	return server, nil
@@ -213,10 +216,18 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 			day = today
 			s.addressKey.Rotate()
 			s.forgetAddresses()
+			s.prepareReportDays(ctx, now)
 		} else {
 			s.purgeRateTables(now)
 		}
 		eraseUnreachableSecrets()
+	}
+}
+
+// prepareReportDays keeps the day files ready when no sweep runs in this process or an external one stopped.
+func (s *Server) prepareReportDays(ctx context.Context, now time.Time) {
+	if err := abuse.Prepare(s.settings.DataDir, now); err != nil {
+		s.logger.ErrorContext(ctx, "abuse-prepare", "err", logging.ErrorText(err))
 	}
 }
 

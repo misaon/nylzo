@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -28,6 +29,7 @@ const (
 
 var (
 	ErrFull          = errors.New("server: abuse report files reached their size limit")
+	ErrDayMissing    = errors.New("abuse: no day file was prepared for the report; a sweep or a start prepares it")
 	ErrLegacyReports = errors.New(
 		"abuse: the data directory holds abuse reports in the clear from an unreleased development build; " +
 			"nylzo does not convert them, so remove them from the data directory",
@@ -72,9 +74,6 @@ func (r *Reports) Record(now time.Time, report *Report) error {
 	if pruneErr := pruneDirectory(r.directory, now); pruneErr != nil {
 		return pruneErr
 	}
-	if mkdirErr := os.MkdirAll(r.directory, 0o700); mkdirErr != nil {
-		return mkdirErr
-	}
 	used, err := usedBytes(r.directory)
 	if err != nil {
 		return err
@@ -89,10 +88,15 @@ func (r *Reports) Record(now time.Time, report *Report) error {
 	return r.appendToDay(reportDate(now), sealed)
 }
 
-// appendToDay writes at the end of the whole reports and cuts a failed write off again, so one report never hides the next.
+// appendToDay writes the report over a partial tail, so no truncation frees a block with sealed bytes, and cuts a
+// failed write off only after it has overwritten it with zeros, so one report never hides the next. It never creates
+// the day file, whose birth time would show when the day's first report arrived.
 func (r *Reports) appendToDay(day string, sealed []byte) error {
 	path := filepath.Join(r.directory, day+FileExtension)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
+	file, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: %s", ErrDayMissing, day)
+	}
 	if err != nil {
 		return err
 	}
@@ -106,25 +110,56 @@ func (r *Reports) appendToDay(day string, sealed []byte) error {
 	}
 	_, writeErr := file.WriteAt(sealed, whole)
 	if writeErr == nil {
-		writeErr = file.Truncate(whole + int64(len(sealed)))
-	}
-	if writeErr == nil {
 		writeErr = file.Sync()
 	}
+	closeErr := file.Close()
 	if writeErr != nil {
-		writeErr = errors.Join(writeErr, file.Truncate(whole), file.Sync())
+		return errors.Join(writeErr, closeErr, erase.Cut(path, whole))
 	}
-	if closeErr := errors.Join(writeErr, file.Close()); closeErr != nil {
+	if closeErr != nil {
 		return closeErr
 	}
-	start, err := time.Parse(time.DateOnly, day)
-	if err == nil {
-		err = errors.Join(os.Chtimes(path, start, start), os.Chtimes(r.directory, start, start))
-	}
-	if err != nil {
+	if err = errors.Join(stampDay(path, day), stampDay(r.directory, day)); err != nil {
 		r.logger.Error("abuse-times", "err", logging.ErrorText(err))
 	}
 	return nil
+}
+
+// Prepare creates the empty day files of today and tomorrow ahead of their reports, so a day file's birth time shows
+// the sweep or start that created it.
+func Prepare(dataDir string, now time.Time) error {
+	directory := Directory(dataDir)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	var errs []error
+	created := false
+	for _, moment := range []time.Time{now, now.UTC().AddDate(0, 0, 1)} {
+		day := reportDate(moment)
+		path := filepath.Join(directory, day+FileExtension)
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		created = true
+		errs = append(errs, file.Close(), stampDay(path, day))
+	}
+	if created {
+		errs = append(errs, erase.SyncDirectory(directory))
+	}
+	return errors.Join(errs...)
+}
+
+func stampDay(path, day string) error {
+	start, err := time.Parse(time.DateOnly, day)
+	if err != nil {
+		return err
+	}
+	return os.Chtimes(path, start, start)
 }
 
 func RefuseLegacyReports(dataDir string) error {
@@ -183,7 +218,8 @@ func Restamp(dataDir string, now time.Time) error {
 	return errors.Join(append(errs, os.Chtimes(directory, quarter, quarter))...)
 }
 
-// Prune deletes the day files older than the retention.
+// Prune overwrites the day files older than the retention in full before it deletes them, so no freed block keeps a
+// sealed report past it.
 func Prune(dataDir string, now time.Time) error {
 	return pruneDirectory(Directory(dataDir), now)
 }
@@ -197,7 +233,7 @@ func pruneDirectory(directory string, now time.Time) error {
 	}
 	for _, entry := range entries {
 		if day, ok := reportDay(entry.Name()); ok && day <= reportDate(cutoff) {
-			errs = append(errs, removeFile(filepath.Join(directory, entry.Name())))
+			errs = append(errs, erase.Remove(filepath.Join(directory, entry.Name()), erase.WholeFile))
 		}
 	}
 	return errors.Join(errs...)
@@ -205,6 +241,9 @@ func pruneDirectory(directory string, now time.Time) error {
 
 func usedBytes(directory string) (int64, error) {
 	entries, err := os.ReadDir(directory)
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -235,11 +274,4 @@ func reportDay(name string) (string, bool) {
 		return "", false
 	}
 	return day, true
-}
-
-func removeFile(path string) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	return nil
 }

@@ -35,7 +35,29 @@ func Overwrite(path string, length int64) error {
 	}
 	size, err := regularSize(file)
 	if err == nil {
-		err = writeZeros(file, min(length, size))
+		err = writeZeros(file, 0, min(length, size))
+	}
+	return closeSynced(file, err)
+}
+
+// Cut overwrites the file past size with zeros where it lies and syncs them before it truncates the file to size, so
+// the blocks the truncation frees hold nothing.
+func Cut(path string, size int64) error {
+	iolimit.Hold()
+	defer iolimit.Release()
+	file, err := openForOverwrite(path)
+	if err != nil {
+		return err
+	}
+	length, err := regularSize(file)
+	if err == nil && length > size {
+		err = writeZeros(file, size, length-size)
+		if err == nil {
+			err = file.Sync()
+		}
+		if err == nil {
+			err = file.Truncate(size)
+		}
 	}
 	return closeSynced(file, err)
 }
@@ -102,10 +124,10 @@ func regularSize(file *os.File) (int64, error) {
 	return info.Size(), nil
 }
 
-func writeZeros(file *os.File, length int64) error {
+func writeZeros(file *os.File, start, length int64) error {
 	zeros := make([]byte, min(length, zeroBufferLen))
-	for offset := int64(0); offset < length; {
-		chunk := zeros[:min(int64(len(zeros)), length-offset)]
+	for offset := start; offset < start+length; {
+		chunk := zeros[:min(int64(len(zeros)), start+length-offset)]
 		written, err := file.WriteAt(chunk, offset)
 		if err != nil {
 			return err
