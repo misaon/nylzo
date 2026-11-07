@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { appendFile, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createImage, execute, initialize, inputs, prepare, importDns } from "./operator.mts";
+import { createImage, execute, initialize, inputs, prepare, importDns, workspace } from "./operator.mts";
 
 const [command, kind, siteFile = ".deploy/site.json"] = process.argv.slice(2);
 try {
@@ -11,7 +11,9 @@ try {
     await initialize(kind, process.argv[4] ?? ".deploy");
   } else {
     assert(["plan", "apply", "outputs", "migrate"].includes(command!), "Usage: deploy plan|apply|outputs|migrate image|server|dns [SITE_JSON]");
-    const prepared = await prepare(siteFile, kind!);
+    assert(command !== "migrate" || process.env.NYLZO_STATE_BUCKET, "Set NYLZO_STATE_BUCKET, NYLZO_STATE_ENDPOINT and NYLZO_STATE_REGION to the bucket that receives the state");
+    // Moving state needs neither the release bundle nor a verified image of the pinned Flatcar.
+    const prepared = command === "migrate" ? await workspace(siteFile, kind!) : await prepare(siteFile, kind!);
     const { directory, environment } = prepared;
     const plan = path.join(directory, "deployment.tfplan");
     const planHash = async () => createHash("sha256").update(await readFile(plan)).digest("hex");
@@ -36,7 +38,6 @@ try {
       if (kind === "image") await createImage(prepared);
       else execute(directory, environment, ["output"]);
     } else if (command === "migrate") {
-      // Moves the local state of this stack into the bucket that NYLZO_STATE_BUCKET names.
       execute(directory, environment, ["init", "-input=false", "-lockfile=readonly", "-migrate-state", "-force-copy"]);
     } else {
       execute(directory, environment, ["init", "-input=false", "-lockfile=readonly"]);

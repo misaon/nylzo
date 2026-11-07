@@ -119,14 +119,20 @@ export async function verifiedImage(token: string, version: string, architecture
   return { id: available[0].id as number, version, architecture };
 }
 
-export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
+async function validatedSite(siteFile: string, kind: string) {
   assert(["image", "server", "dns"].includes(kind));
   const site = configuration(JSON.parse(await readFile(siteFile, "utf8")));
   assert(!/(^|\.)example\.(org|com|net)$/u.test(site.domain), "Replace the example domain before provisioning");
   assert(site.administratorNetworks.every((network: string) => !/^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)/iu.test(network)), "Replace the example administrator networks before provisioning");
   assert(site.operator.length > 0 && site.contact.length > 0, "Set the public operator and contact details before provisioning");
-  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com administrator key; create one with ssh-keygen -t ed25519-sk -O verify-required");
-  const bundle = kind === "dns" ? undefined : await releaseEvidence(site.initialRelease, site.architecture, verify);
+  return site;
+}
+
+export async function workspace(siteFile: string, kind: string) {
+  return stackWorkspace(await validatedSite(siteFile, kind), siteFile, kind);
+}
+
+async function stackWorkspace(site: Awaited<ReturnType<typeof validatedSite>>, siteFile: string, kind: string) {
   const root = path.dirname(path.resolve(siteFile));
   const privateDirectory = await lstat(root);
   assert(privateDirectory.isDirectory() && !privateDirectory.isSymbolicLink() && (privateDirectory.mode & 0o077) === 0, "Operator directory must be private (0700) and must not be a symlink");
@@ -138,6 +144,21 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   }
   const backend = remoteState(site.name, kind);
   if (backend) await writeFile(path.join(directory, "backend.tf"), backend, { mode: 0o600 });
+  const environment: NodeJS.ProcessEnv = { ...process.env, TF_IN_AUTOMATION: "true", TF_ENCRYPTION: await encryption(root) };
+  for (const name of Object.keys(environment)) {
+    if (["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"].includes(name) || name.startsWith("TF_LOG")) delete environment[name];
+  }
+  const version = JSON.parse(execute(directory, environment, ["version", "-json"], true));
+  assert.equal(version.terraform_version, toolchain.opentofu);
+  return { site, root, directory, environment };
+}
+
+export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
+  const site = await validatedSite(siteFile, kind);
+  assert(kind !== "server" || administratorKeyIsHardware(site.administratorPublicKey), "A production server accepts only a hardware-backed sk-ssh-ed25519@openssh.com administrator key; create one with ssh-keygen -t ed25519-sk -O verify-required");
+  const bundle = kind === "dns" ? undefined : await releaseEvidence(site.initialRelease, site.architecture, verify);
+  const prepared = await stackWorkspace(site, siteFile, kind);
+  const { root, directory, environment } = prepared;
   const userDataPath = path.join(directory, "user-data");
   if (bundle) {
     const rendered = await render(site, bundle);
@@ -160,15 +181,9 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
     variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value, acme_account_uri: site.acmeAccountUri ?? "" };
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
-  const environment: NodeJS.ProcessEnv = { ...process.env, TF_IN_AUTOMATION: "true", TF_ENCRYPTION: await encryption(root) };
-  for (const name of Object.keys(environment)) {
-    if (["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"].includes(name) || name.startsWith("TF_LOG")) delete environment[name];
-  }
   if (kind === "dns") environment.CLOUDFLARE_API_TOKEN = await credential("CLOUDFLARE_API_TOKEN");
   else environment.HCLOUD_TOKEN = await credential("HCLOUD_TOKEN");
-  const version = JSON.parse(execute(directory, environment, ["version", "-json"], true));
-  assert.equal(version.terraform_version, toolchain.opentofu);
-  return { site, root, directory, environment };
+  return prepared;
 }
 
 const hash = (contents: Uint8Array | string) => createHash("sha256").update(contents).digest("hex");
