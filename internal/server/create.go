@@ -296,7 +296,7 @@ func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.T
 	switch {
 	case err != nil:
 		entry := failure(r.Context(), err)
-		s.logger.Log(r.Context(), entry.level, "global-cap", "err", entry.text)
+		s.events.Log(r.Context(), entry.level, "global-cap", "err", entry.text)
 	case stored.Count >= s.settings.Rates.GlobalDailyCreates:
 		retry = day.End.Sub(now) + time.Second
 	default:
@@ -447,7 +447,7 @@ func (s *Server) storeMessage(
 		return true
 	}
 	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), blob.ref); deleteErr != nil {
-		s.logger.ErrorContext(r.Context(), "create-cleanup", "err", logging.ErrorText(deleteErr))
+		s.events.ErrorContext(r.Context(), "create-cleanup", "err", logging.ErrorText(deleteErr))
 	}
 	switch {
 	case errors.Is(err, store.ErrConflict):
@@ -510,14 +510,14 @@ func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) 
 
 func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {
 	if err := http.NewResponseController(w).SetReadDeadline(bodyBy); err != nil {
-		s.logger.Error("read-deadline", "err", logging.ErrorText(err))
+		s.events.Error("read-deadline", "err", logging.ErrorText(err))
 	}
 	s.setWriteDeadline(w, bodyBy.Add(writeTimeout))
 }
 
 func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 	if err := http.NewResponseController(w).SetWriteDeadline(by); err != nil {
-		s.logger.Error("write-deadline", "err", logging.ErrorText(err))
+		s.events.Error("write-deadline", "err", logging.ErrorText(err))
 	}
 }
 

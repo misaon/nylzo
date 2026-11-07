@@ -159,7 +159,7 @@ func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
 	}
 	err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, ratelimit.Day(now).Start)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "global-release", "err", logging.ErrorText(err))
+		s.events.ErrorContext(ctx, "global-release", "err", logging.ErrorText(err))
 	}
 }
 

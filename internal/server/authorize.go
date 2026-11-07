@@ -135,7 +135,7 @@ func (s *Server) settle(ctx context.Context, record *store.Record, now time.Time
 	}
 	if err != nil {
 		entry := failure(ctx, err)
-		s.logger.Log(ctx, entry.level, "settle", "err", entry.text)
+		s.events.Log(ctx, entry.level, "settle", "err", entry.text)
 	}
 }
 

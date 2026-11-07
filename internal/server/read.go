@@ -186,7 +186,7 @@ func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *st
 func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *store.Record, now time.Time) {
 	final, err := store.End(r.Context(), s.store, s.blobs, record, store.StateDeleted, now)
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
+		s.events.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
 		final = store.StateDeleted
 	}
 	writeGone(w, string(final))
@@ -244,7 +244,7 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 			_, err = store.Finish(ctx, s.store, s.blobs, &kept, time.Now())
 		}
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			s.logger.ErrorContext(ctx, "lease-timer", "err", logging.ErrorText(err))
+			s.events.ErrorContext(ctx, "lease-timer", "err", logging.ErrorText(err))
 		}
 	})
 }
@@ -449,7 +449,7 @@ func (s *Server) serveBlob(
 	w.WriteHeader(http.StatusOK)
 	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
 	if copied, err := io.Copy(paced, blob); (err != nil || copied != size) && r.Context().Err() == nil {
-		s.logger.WarnContext(r.Context(), "blob-stream")
+		s.events.WarnContext(r.Context(), "blob-stream")
 	}
 }
 
@@ -476,7 +476,7 @@ func (s *Server) finishMissingBlob(ctx context.Context, record *store.Record) (s
 		return "", store.ErrBlobMissing
 	}
 	if _, err := store.Finish(ctx, s.store, s.blobs, record, now); err != nil {
-		s.logger.ErrorContext(ctx, "finish-ending", "err", logging.ErrorText(err))
+		s.events.ErrorContext(ctx, "finish-ending", "err", logging.ErrorText(err))
 	}
 	return record.State(now), nil
 }
@@ -497,7 +497,7 @@ func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, record *stor
 	if err := s.reload(r.Context(), record); err == nil {
 		_, err = store.Finish(r.Context(), s.store, s.blobs, record, time.Now())
 		if err != nil {
-			s.logger.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
+			s.events.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
 		}
 	}
 	writeGone(w, string(state))

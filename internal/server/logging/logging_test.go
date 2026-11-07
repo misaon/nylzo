@@ -9,10 +9,10 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
-	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -79,37 +79,73 @@ func TestLogLinesCarryTheMinuteOnly(t *testing.T) {
 	}
 }
 
-func TestHTTPErrorLogKeepsCategoriesOnlyAndLimitsThem(t *testing.T) {
+func TestEventsWriteOnlyCountsAndTheFirstErrorWhenFlushed(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		var buffer bytes.Buffer
-		errorLog := logging.NewHTTPErrorLog(slog.New(slog.NewJSONHandler(&buffer, nil)))
-		errorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
-		for range 40 {
-			errorLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
+	var buffer bytes.Buffer
+	events := logging.NewEvents(slog.New(slog.NewJSONHandler(&buffer, nil)))
+	logger, ctx := events.Logger(), t.Context()
+	logger.ErrorContext(ctx, "finish-ending", "err", "store: busy", "bytes", 512)
+	logger.ErrorContext(ctx, "finish-ending", "err", "store: locked")
+	pathErr := &fs.PathError{Op: "remove", Path: "/data/blobs/0a", Err: syscall.EROFS}
+	logger.ErrorContext(ctx, "lease-timer", "err", pathErr)
+	logger.With("category", "X-Real-IP").WarnContext(ctx, "forwarded-header-ignored")
+	logger.WarnContext(ctx, "abuse-files-half-full", "bytes", 1234, "limit", 4096)
+	if buffer.Len() != 0 {
+		t.Fatalf("an event was written before the flush: %s", buffer.String())
+	}
+	events.Flush(t.Context())
+	var lines []string
+	for line := range strings.SplitSeq(strings.TrimSpace(buffer.String()), "\n") {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
 		}
-		errorLog.Printf("http2: panic serving 203.0.113.99:4242: boom")
-		logs := buffer.String()
-		for _, want := range []string{`"category":"tls-handshake"`, `"category":"http2"`, `"category":"panic"`} {
-			if !strings.Contains(logs, want) {
-				t.Fatalf("%s missing: %s", want, logs)
-			}
+		delete(entry, "time")
+		lines = append(lines, fmt.Sprint(entry))
+	}
+	want := []string{
+		"map[count:1 level:WARN msg:abuse-files-half-full]",
+		"map[count:2 err:store: busy level:ERROR msg:finish-ending]",
+		"map[category:X-Real-IP count:1 level:WARN msg:forwarded-header-ignored]",
+		"map[count:1 err:remove: " + syscall.EROFS.Error() + " level:ERROR msg:lease-timer]",
+	}
+	if !slices.Equal(lines, want) {
+		t.Fatalf("held lines:\n%s\nwant:\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
+	}
+	buffer.Reset()
+	events.Flush(t.Context())
+	if buffer.Len() != 0 {
+		t.Fatalf("a flush wrote the events of the window before: %s", buffer.String())
+	}
+}
+
+func TestHTTPErrorLogHoldsCategoriesOnly(t *testing.T) {
+	t.Parallel()
+	var buffer bytes.Buffer
+	events := logging.NewEvents(slog.New(slog.NewJSONHandler(&buffer, nil)))
+	errorLog := logging.NewHTTPErrorLog(events)
+	errorLog.Printf("http: TLS handshake error from 203.0.113.99:4242: EOF")
+	for range 40 {
+		errorLog.Printf("http2: server: error reading preface from client 203.0.113.99:4242: EOF")
+	}
+	errorLog.Printf("http2: panic serving 203.0.113.99:4242: boom")
+	if buffer.Len() != 0 {
+		t.Fatalf("a net/http error was written before the flush: %s", buffer.String())
+	}
+	events.Flush(t.Context())
+	logs := buffer.String()
+	for _, want := range []string{
+		`"level":"WARN","msg":"net/http error","category":"http2","count":40}`,
+		`"level":"ERROR","msg":"net/http error","category":"panic","count":1}`,
+		`"level":"WARN","msg":"net/http error","category":"tls-handshake","count":1}`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("%s missing: %s", want, logs)
 		}
-		if count := strings.Count(logs, `"level":"WARN","msg":"net/http error"`); count != 20 {
-			t.Fatalf("net/http warnings must be limited to a burst of 20, got %d", count)
-		}
-		if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, "boom") {
-			t.Fatal("net/http error text reached the log")
-		}
-		for _, dropped := range []string{`"dropped":21`, `"dropped":0`} {
-			time.Sleep(time.Second)
-			buffer.Reset()
-			errorLog.Printf("http2: server: error reading preface")
-			if !strings.Contains(buffer.String(), dropped) {
-				t.Fatalf("dropped lines must be reported once and then reset, want %s: %s", dropped, buffer.String())
-			}
-		}
-	})
+	}
+	if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, "boom") {
+		t.Fatal("net/http error text reached the log")
+	}
 }
 
 func TestWindowEndsAtTheStartOfAnHourOnceItSpansAnHour(t *testing.T) {

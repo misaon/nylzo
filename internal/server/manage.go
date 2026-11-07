@@ -177,10 +177,10 @@ func (s *Server) recordAbuse(
 		return
 	}
 	if uncountErr := store.UncountReport(r.Context(), s.store, record, now); uncountErr != nil {
-		s.logger.ErrorContext(r.Context(), "abuse-release", "err", logging.ErrorText(uncountErr))
+		s.events.ErrorContext(r.Context(), "abuse-release", "err", logging.ErrorText(uncountErr))
 	}
 	if errors.Is(err, abuse.ErrFull) {
-		s.logger.ErrorContext(r.Context(), "abuse-file-full")
+		s.events.ErrorContext(r.Context(), "abuse-file-full")
 		setRetryAfter(w, abuseFullRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
 		return

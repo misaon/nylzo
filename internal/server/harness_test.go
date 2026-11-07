@@ -231,7 +231,7 @@ func shareEpochFor(ttlSeconds float64) uint32 {
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
-	h.server.disk = diskspace.NewReserver(h.settings.DataDir, h.settings.MinFreeBytes, free, h.server.logger)
+	h.server.disk = h.server.newDiskReserver(free)
 }
 
 func (h *testHarness) do(request *testRequest) (testResponse, responseBody) {

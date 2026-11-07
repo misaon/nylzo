@@ -719,6 +719,27 @@ func TestAbuseReportHardening(t *testing.T) {
 			t.Fatalf("json report: %d", response.StatusCode)
 		}
 		path := harness.abuseFile(time.Now())
+		if truncateErr := os.Truncate(path, 40<<20); truncateErr != nil {
+			t.Fatal(truncateErr)
+		}
+		logsBefore := harness.logs.String()
+		response, _ = harness.do(
+			&testRequest{
+				method:  http.MethodPost,
+				path:    "/api/v1/abuse",
+				address: "203.0.113.83",
+				body:    []byte(body),
+				token:   message.readToken,
+				headers: map[string]string{"Content-Type": "application/json"},
+			},
+		)
+		if response.StatusCode != http.StatusAccepted || harness.logs.String() != logsBefore {
+			t.Fatalf(
+				"a report into half-full files must be accepted and logged only at the flush: %d %s",
+				response.StatusCode,
+				strings.TrimPrefix(harness.logs.String(), logsBefore),
+			)
+		}
 		if truncateErr := os.Truncate(path, 64<<20); truncateErr != nil {
 			t.Fatal(truncateErr)
 		}
@@ -733,8 +754,10 @@ func TestAbuseReportHardening(t *testing.T) {
 			},
 		)
 		info, err := os.Stat(path)
+		harness.server.flushCounts(t.Context())
 		if response.StatusCode != http.StatusServiceUnavailable || err != nil || info.Size() != 64<<20 ||
-			!strings.Contains(harness.logs.String(), "abuse-file-full") {
+			!strings.Contains(harness.logs.String(), "abuse-file-full") ||
+			!strings.Contains(harness.logs.String(), `"msg":"abuse-files-half-full","count":1}`) {
 			t.Fatalf(
 				"a full report file must answer 503, log an error and not grow: %d %v %d",
 				response.StatusCode,

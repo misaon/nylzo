@@ -173,6 +173,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 			t.Fatalf("status: %v", status)
 		}
 		synctest.Sleep(store.LeaseDuration + store.LeaseTimerSlack)
+		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), "lease-timer") {
 			t.Fatalf("the lease timer of an acknowledged message failed: %s", harness.logs.String())
 		}
@@ -1250,6 +1251,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 				readErr,
 			)
 		}
+		harness.server.flushCounts(t.Context())
 		if !strings.Contains(harness.logs.String(), `"msg":"blob-stream"`) {
 			t.Fatalf("a failed stream must be logged: %s", harness.logs.String())
 		}
@@ -1261,8 +1263,9 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			delete(entry, "time")
 			delete(entry, "level")
 			delete(entry, "msg")
+			delete(entry, "count")
 			if len(entry) != 0 {
-				t.Fatalf("the stream warning carries more than its name: %s", line)
+				t.Fatalf("the stream warning carries more than its name and count: %s", line)
 			}
 		}
 		faulty.FailRead(nil)

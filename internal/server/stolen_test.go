@@ -265,6 +265,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		settings.PoWDifficulty = 1
 		harness := newHarness(t, settings)
 		faulty := harness.withFaultyBlobs()
+		startupLogs := harness.logs.String()
 		needles := &stolenNeedles{t: t, named: map[string][]byte{}}
 		const ip4, ip6 = "203.0.113.77", "2001:db8:77::1"
 		needles.text("IPv4 address", ip4)
@@ -359,9 +360,6 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		); response.StatusCode != http.StatusInternalServerError {
 			t.Fatalf("burn with a failing blob store: %d", response.StatusCode)
 		}
-		if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
-			t.Fatal("the failing delete was not logged")
-		}
 
 		removed := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext removed sentinel")
 		removed.address = ip4
@@ -429,7 +427,13 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.text("contact", contact)
 		needles.text("reason", "spam, see")
+		if logs := harness.logs.String(); logs != startupLogs {
+			t.Fatalf("a line was written before the hourly flush: %s", strings.TrimPrefix(logs, startupLogs))
+		}
 		harness.server.flushCounts(t.Context())
+		if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
+			t.Fatal("the failing delete was not logged")
+		}
 		stolen := harness.stolenCopy()
 		reportFile := filepath.Join("abuse", time.Now().UTC().Format(time.DateOnly)+abuse.FileExtension)
 		for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {

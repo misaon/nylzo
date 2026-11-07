@@ -297,13 +297,15 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		return err
 	}
 	defer database.Close()
-	database.OnScrubFailure(func(err error) { logger.ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err)) })
 	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
 	clear(settings.Pepper)
 	clear(settings.PepperPrevious)
 	if err != nil {
 		return err
 	}
+	database.OnScrubFailure(func(err error) {
+		instance.Events().ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err))
+	})
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", settings.Listen)
 	if err != nil {
 		return err

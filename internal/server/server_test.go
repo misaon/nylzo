@@ -650,6 +650,7 @@ func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 		secret := core.NewSecret()
 		id := core.NewID()
 		harness.do(&testRequest{method: http.MethodGet, path: "/m/" + id.String() + "%231.0." + core.Encode(secret[:])})
+		harness.server.flushCounts(t.Context())
 		logs := harness.logs.String()
 		if strings.Contains(logs, "203.0.113.99") || strings.Contains(logs, core.Encode(secret[:])) {
 			t.Fatal("log contains a peer address or a link secret")
@@ -660,26 +661,27 @@ func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
 	})
 }
 
-func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T) {
+func TestIgnoredForwardingHeaderIsCountedWithoutAddresses(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
 		settings.TrustedProxies = nil
 		harness := newHarness(t, settings)
 		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), "forwarded-header-ignored") {
 			t.Fatal("a request without a forwarding header must not warn")
 		}
 		for range 3 {
 			harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
 		}
+		harness.server.flushCounts(t.Context())
 		if count := strings.Count(
 			harness.logs.String(),
-			`"msg":"forwarded-header-ignored","header":"X-Forwarded-For"`,
+			`"msg":"forwarded-header-ignored","category":"X-Forwarded-For","count":3`,
 		); count != 1 {
-			t.Fatalf("want one warning in the hour, got %d: %s", count, harness.logs.String())
+			t.Fatalf("want one warning with the count of the window, got %d: %s", count, harness.logs.String())
 		}
-		synctest.Sleep(time.Hour)
 		harness.statusFrom(
 			&testRequest{
 				method:  http.MethodGet,
@@ -687,9 +689,10 @@ func TestIgnoredForwardingHeaderIsLoggedOncePerHourWithoutAddresses(t *testing.T
 				headers: map[string]string{"Forwarded": "for=198.51.100.7"},
 			},
 		)
+		harness.server.flushCounts(t.Context())
 		logs := harness.logs.String()
-		if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"header":"Forwarded"`) {
-			t.Fatalf("the next hour must warn again, for pages too: %s", logs)
+		if strings.Count(logs, "forwarded-header-ignored") != 2 || !strings.Contains(logs, `"category":"Forwarded"`) {
+			t.Fatalf("the next window must warn again, for pages too: %s", logs)
 		}
 		if strings.Contains(logs, "198.51.100") {
 			t.Fatal("the log names a client address")
@@ -712,6 +715,8 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 				headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"},
 			},
 		)
+		harness.server.flushCounts(t.Context())
+		scalewayHarness.server.flushCounts(t.Context())
 		for _, logs := range []string{harness.logs.String(), scalewayHarness.logs.String()} {
 			if strings.Contains(logs, "forwarded-header-ignored") {
 				t.Fatalf("a header the server used must not warn: %s", logs)
@@ -743,23 +748,15 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 				harness.statusFrom(
 					&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: testCase.headers},
 				)
+				harness.server.flushCounts(t.Context())
 				if !strings.Contains(
 					harness.logs.String(),
-					`"msg":"forwarded-header-ignored","header":"`+testCase.header+`"`,
+					`"msg":"forwarded-header-ignored","category":"`+testCase.header+`"`,
 				) {
 					t.Fatalf("no warning: %s", harness.logs.String())
 				}
 			})
 		})
-	}
-}
-
-func TestForwardingWarningRecoversFromAClockThatJumpedAhead(t *testing.T) {
-	t.Parallel()
-	server := &Server{}
-	now := time.Now()
-	if !server.firstNoticeThisHour(now.Add(48*time.Hour)) || !server.firstNoticeThisHour(now.Add(time.Hour)) {
-		t.Fatal("want a warning after the clock stepped back")
 	}
 }
 

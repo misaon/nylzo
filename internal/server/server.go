@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"sync/atomic"
 	"time"
 
 	"github.com/misaon/nylzo/internal/erase"
@@ -64,7 +63,6 @@ type Server struct {
 	proxies       ratelimit.Proxies
 	counters      *ratelimit.Counters
 	streams       *ratelimit.Streams
-	forwardedHour atomic.Int64
 	challenges    *proof.Challenges
 	work          *proof.Work
 	idTokens      proof.IDTokens
@@ -74,6 +72,8 @@ type Server struct {
 	webFiles      fs.FS
 	frontend      http.Handler
 	requestCounts *logging.RequestCounts
+	eventCounts   *logging.Events
+	events        *slog.Logger
 	pace          pace
 	handler       http.Handler
 }
@@ -108,6 +108,8 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		return nil, loadErr
 	}
 	server.requestCounts = logging.NewRequestCounts(server.logger)
+	server.eventCounts = logging.NewEvents(server.logger)
+	server.events = server.eventCounts.Logger()
 	if ratchetErr := server.openRatchet(); ratchetErr != nil {
 		return nil, ratchetErr
 	}
@@ -118,10 +120,10 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.reports = abuse.NewReports(
 		settings.DataDir,
 		settings.ReportKey,
-		server.logger,
+		server.events,
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
-	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
+	server.disk = server.newDiskReserver(diskspace.Free)
 	server.handler = server.routes()
 	return server, nil
 }
@@ -129,6 +131,11 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 func (s *Server) Close() {
 	s.leaseTimers.stop()
 	s.epochs.Close()
+}
+
+// Events logs what happens to a request or a message: its lines wait for the hourly flush of RunHousekeeping.
+func (s *Server) Events() *slog.Logger {
+	return s.events
 }
 
 // RunRatchet erases the epoch key of every hour that has passed within a minute of the next one. It reads the wall
@@ -166,7 +173,7 @@ func (s *Server) HTTPServer() *http.Server {
 			MaxReceiveBufferPerStream:     h2cStreamBuffer,
 			MaxReadFrameSize:              h2cMaxFrame,
 		},
-		ErrorLog: logging.NewHTTPErrorLog(s.logger),
+		ErrorLog: logging.NewHTTPErrorLog(s.eventCounts),
 	}
 }
 
@@ -194,9 +201,9 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	}
 }
 
-// RunHousekeeping works at every minute boundary: it writes the request counts of a window that ended, drops
-// rate-limit entries that no longer limit anything and draws a new address key when a UTC day begins (spec §5.3,
-// §10). It drops the counts of the last window at shutdown, which would end that window early.
+// RunHousekeeping works at every minute boundary: it writes the request counts and events of a window that ended,
+// drops rate-limit entries that no longer limit anything and draws a new address key when a UTC day begins (spec
+// §5.3, §10). It drops the counts of the last window at shutdown, which would end that window early.
 func (s *Server) RunHousekeeping(ctx context.Context) {
 	day := ratelimit.Day(time.Now()).Start
 	window := logging.StartWindow(time.Now())
@@ -222,8 +229,13 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 	}
 }
 
+func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {
+	return diskspace.NewReserver(s.settings.DataDir, s.settings.MinFreeBytes, free, s.events)
+}
+
 func (s *Server) flushCounts(ctx context.Context) {
 	s.requestCounts.Flush(ctx)
+	s.eventCounts.Flush(ctx)
 }
 
 // advanceRatchet runs in secret mode, so the derivation leaves no copy of the passed seed in memory.
