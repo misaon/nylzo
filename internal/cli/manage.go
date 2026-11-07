@@ -9,6 +9,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/report"
 )
 
@@ -33,12 +34,12 @@ func runStatus(ctx context.Context, environment *command.Environment, arguments 
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	token, api, err := manageClient(environment, *file)
+	token, server, err := manageClient(environment, *file)
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
 	defer token.wipe()
-	status, err := api.Status(ctx, token.id, &token.seed)
+	status, err := server.Status(ctx, token.id, &token.seed)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -51,7 +52,7 @@ func runStatus(ctx context.Context, environment *command.Environment, arguments 
 	return command.ExitOK
 }
 
-func printStatus(environment *command.Environment, status *client.Status) {
+func printStatus(environment *command.Environment, status *api.Status) {
 	fmt.Fprintf(environment.Stdout, "state: %s\n", status.State)
 	if status.EndedAt == "" {
 		fmt.Fprintf(environment.Stdout, "opens: %d of %d used\n", status.OpensUsed, status.OpensMax)
@@ -79,12 +80,12 @@ func runCancel(ctx context.Context, environment *command.Environment, arguments 
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	token, api, err := manageClient(environment, *file)
+	token, server, err := manageClient(environment, *file)
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
 	defer token.wipe()
-	if err = api.Cancel(ctx, token.id, &token.seed); err != nil {
+	if err = server.Cancel(ctx, token.id, &token.seed); err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "cancelled")
@@ -96,12 +97,12 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("manage token: %w", explained(err))
 	}
-	api, err := client.New(token.origin)
+	server, err := client.New(token.origin)
 	if err != nil {
 		token.wipe()
 		return nil, nil, explained(err)
 	}
-	return &token, api, nil
+	return &token, server, nil
 }
 
 func runBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
@@ -110,12 +111,12 @@ func runBurn(ctx context.Context, environment *command.Environment, arguments []
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	link, api, err := linkClient(environment, *linkFile)
+	link, server, err := linkClient(environment, *linkFile)
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	if err = api.Burn(ctx, link.id, &link.keys.R); err != nil {
+	if err = server.Burn(ctx, link.id, &link.keys.R); err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "deleted")
@@ -127,12 +128,12 @@ func linkClient(environment *command.Environment, linkFile string) (*openLink, *
 	if err != nil {
 		return nil, nil, fmt.Errorf("link: %w", explained(err))
 	}
-	api, err := client.New(link.origin)
+	server, err := client.New(link.origin)
 	if err != nil {
 		link.wipe()
 		return nil, nil, explained(err)
 	}
-	return &link, api, nil
+	return &link, server, nil
 }
 
 func runReport(ctx context.Context, environment *command.Environment, arguments []string) int {
@@ -181,12 +182,12 @@ func runReport(ctx context.Context, environment *command.Environment, arguments 
 		)
 		return command.ExitUsage
 	}
-	link, api, err := linkClient(environment, *linkFile)
+	link, server, err := linkClient(environment, *linkFile)
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	err = api.Report(
+	err = server.Report(
 		ctx,
 		link.id,
 		&link.keys.R,

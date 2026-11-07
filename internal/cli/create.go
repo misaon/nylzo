@@ -9,6 +9,7 @@ import (
 	"mime"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +18,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
@@ -42,6 +44,7 @@ var (
 	errPassphraseNotWritten = errors.New("--generate-passphrase-file: the passphrase could not be written")
 	errTextNotUTF8          = errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
 	errFromFileTooLarge     = errors.New("--from-file must be a regular file")
+	retriedWithNewID        = []string{api.ErrorIDToken, api.ErrorConflict, api.ErrorShareLost, api.ErrorWork}
 )
 
 type createOptions struct {
@@ -125,7 +128,7 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 	if !ok {
 		return command.ExitUsage
 	}
-	api, err := client.New(address)
+	server, err := client.New(address)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -150,7 +153,7 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 	created, err := createMessage(
 		ctx,
 		environment,
-		api,
+		server,
 		createInput{options: options, passphrase: passphrase, message: &message},
 	)
 	if err != nil {
@@ -159,7 +162,7 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 		return command.Failf(environment, "%s", explain(err))
 	}
 	defer created.wipe()
-	return reportCreated(environment, api, options, &created, manage)
+	return reportCreated(environment, server, options, &created, manage)
 }
 
 // chosenPassphrase writes a generated passphrase before the create, so a failed write never leaves an unreadable message.
@@ -226,12 +229,12 @@ func createPassphrase(environment *command.Environment, source passphraseSource)
 
 func reportCreated(
 	environment *command.Environment,
-	api *client.Client,
+	server *client.Client,
 	options *createOptions,
 	created *createdMessage,
 	manage manageFile,
 ) int {
-	token := formatManageToken(api.Origin(), created.id, &created.manage)
+	token := formatManageToken(server.Origin(), created.id, &created.manage)
 	if err := manage.write(token); err != nil {
 		fmt.Fprintln(environment.Stdout, created.link)
 		return command.Failf(environment, "the message was created, but its manage token file could not be written")
@@ -327,10 +330,10 @@ type createInput struct {
 func createMessage(
 	ctx context.Context,
 	environment *command.Environment,
-	api *client.Client,
+	server *client.Client,
 	input createInput,
 ) (createdMessage, error) {
-	instance, err := api.Instance(ctx, nil)
+	instance, err := server.Instance(ctx, nil)
 	if err != nil {
 		return createdMessage{}, err
 	}
@@ -339,7 +342,7 @@ func createMessage(
 	}
 	input.maxObject = instance.Limits.MaxObjectBytes
 	for attempt := 1; ; attempt++ {
-		created, createErr := createOnce(ctx, environment, api, &input)
+		created, createErr := createOnce(ctx, environment, server, &input)
 		if attempt == createAttempts || !retryWithNewID(createErr) {
 			return created, createErr
 		}
@@ -347,18 +350,17 @@ func createMessage(
 }
 
 func retryWithNewID(err error) bool {
-	return client.IsKind(err, "id_token") || client.IsKind(err, "conflict") || client.IsKind(err, "share_lost") ||
-		client.IsKind(err, "pow")
+	return slices.ContainsFunc(retriedWithNewID, func(kind string) bool { return client.IsKind(err, kind) })
 }
 
 func createOnce(
 	ctx context.Context,
 	environment *command.Environment,
-	api *client.Client,
+	server *client.Client,
 	input *createInput,
 ) (createdMessage, error) {
 	shareKey := share.NewKey()
-	instance, err := api.Instance(
+	instance, err := server.Instance(
 		ctx,
 		&client.Creation{TTLSeconds: input.policy.TTLSeconds, ShareKey: shareKey.PublicKey()},
 	)
@@ -397,17 +399,17 @@ func createOnce(
 	}
 	request.IDToken, request.Epoch = issued.IDToken, issued.Epoch
 	if instance.PoW.Required {
-		if request.PoWToken, err = prove(ctx, environment, api, issued.ID); err != nil {
+		if request.PoWToken, err = prove(ctx, environment, server, issued.ID); err != nil {
 			return createdMessage{}, err
 		}
 	}
 	objectHash := envelope.ObjectHash(request.Object)
-	expires, err := api.Create(ctx, &request)
+	expires, err := server.Create(ctx, &request)
 	if err != nil {
 		return createdMessage{}, err
 	}
 	return createdMessage{
-		link:    core.FormatLink(api.Origin(), issued.ID, kdf, secret, &objectHash),
+		link:    core.FormatLink(server.Origin(), issued.ID, kdf, secret, &objectHash),
 		id:      issued.ID,
 		manage:  *manage,
 		expires: expires,
@@ -464,7 +466,7 @@ func sealWithDerivedKeys(input *sealInput) (client.CreateRequest, error) {
 	}, nil
 }
 
-func createPolicy(options *createOptions, limits client.Limits, message *content) (envelope.Policy, error) {
+func createPolicy(options *createOptions, limits api.InstanceLimits, message *content) (envelope.Policy, error) {
 	maxText := min(limits.MaxTextBytes, envelope.MaxTextBytes)
 	if message.meta.Text != nil && int64(len(*message.meta.Text)) > maxText {
 		return envelope.Policy{}, fmt.Errorf("%w: the text is longer than %d bytes", errPolicy, maxText)
@@ -472,7 +474,7 @@ func createPolicy(options *createOptions, limits client.Limits, message *content
 	if message.meta.File != nil && message.meta.File.Size > limits.MaxFileBytes {
 		return envelope.Policy{}, fmt.Errorf("%w: the file is larger than %d bytes", errPolicy, limits.MaxFileBytes)
 	}
-	ttl := time.Duration(limits.DefaultTTL) * time.Second
+	ttl := time.Duration(limits.DefaultTTLSeconds) * time.Second
 	if options.ttl != 0 {
 		ttl = options.ttl
 	}
@@ -493,9 +495,9 @@ func createPolicy(options *createOptions, limits client.Limits, message *content
 }
 
 // prove solves the proof of work and fetches a new challenge once if the first one runs out of time.
-func prove(ctx context.Context, environment *command.Environment, api *client.Client, id core.ID) (string, error) {
+func prove(ctx context.Context, environment *command.Environment, server *client.Client, id core.ID) (string, error) {
 	for round := 1; ; round++ {
-		instance, err := api.Instance(ctx, nil)
+		instance, err := server.Instance(ctx, nil)
 		if err != nil {
 			return "", err
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/share"
@@ -175,7 +176,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 		return command.Failf(environment, "link: %s", explain(err))
 	}
 	defer link.wipe()
-	api, err := client.New(link.origin)
+	server, err := client.New(link.origin)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -186,7 +187,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 		}
 		defer removeIfEmpty(directory)
 	}
-	opened, err := readMessage(ctx, environment, api, &link, options.passphrase)
+	opened, err := readMessage(ctx, environment, server, &link, options.passphrase)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}
@@ -195,7 +196,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 	if err != nil {
 		return command.Failf(environment, "the message was opened but could not be saved: %s", err)
 	}
-	if err = api.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, "gone") {
+	if err = server.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, api.ErrorGone) {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
@@ -223,11 +224,11 @@ type openedMessage struct {
 func readMessage(
 	ctx context.Context,
 	environment *command.Environment,
-	api *client.Client,
+	server *client.Client,
 	link *openLink,
 	source passphraseSource,
 ) (openedMessage, error) {
-	metadata, err := api.Metadata(ctx, link.id, &link.keys.R)
+	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
 		return openedMessage{}, err
 	}
@@ -244,7 +245,7 @@ func readMessage(
 		return openedMessage{}, err
 	}
 	defer clear(verifier[:])
-	fetched, lease, err := fetchEnvelope(ctx, api, link, &verifier, metadata.Size)
+	fetched, lease, err := fetchEnvelope(ctx, server, link, &verifier, metadata.Size)
 	if err != nil {
 		return openedMessage{}, err
 	}
@@ -271,17 +272,17 @@ func readMessage(
 }
 
 // checkMetadata refuses before anything is spent: an ended message and a link of another profile.
-func checkMetadata(link *openLink, metadata *client.Metadata) error {
-	if metadata.State != "available" {
-		return &client.APIError{Status: http.StatusGone, Kind: "gone", State: metadata.State}
+func checkMetadata(link *openLink, metadata *api.Metadata) error {
+	if metadata.State != api.StateAvailable {
+		return &client.APIError{Status: http.StatusGone, Kind: api.ErrorGone, State: metadata.State}
 	}
-	if err := core.AssertProfile(link.kdf, metadata.KDF); err != nil {
+	if err := core.AssertProfile(link.kdf, metadata.KDFID); err != nil {
 		return errLinkMismatch
 	}
 	return nil
 }
 
-func headerMatches(fetched *client.Envelope, link *openLink, metadata *client.Metadata) bool {
+func headerMatches(fetched *client.Envelope, link *openLink, metadata *api.Metadata) bool {
 	return fetched.Flags == 0 && fetched.KDF == link.kdf && int(fetched.Policy.OpensMax) == metadata.OpensMax &&
 		int64(fetched.Policy.TTLSeconds) == metadata.TTLSeconds
 }
@@ -339,12 +340,12 @@ func readAndDerivePassphraseKey(
 // fetchEnvelope resumes a broken claim through the lease it already received, so it never spends a second open.
 func fetchEnvelope(
 	ctx context.Context,
-	api *client.Client,
+	server *client.Client,
 	link *openLink,
 	verifier *[core.SeedLen]byte,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
+	claimed, err := server.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}
@@ -352,12 +353,12 @@ func fetchEnvelope(
 		return client.Envelope{}, "", err
 	}
 	for range blobRetries {
-		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
+		fetched, blobErr := server.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
 		if blobErr == nil {
 			return fetched, claimed.Lease, nil
 		}
 		err = blobErr
-		if client.IsKind(blobErr, "gone") || client.IsKind(blobErr, "rate_limited") || ctx.Err() != nil {
+		if client.IsKind(blobErr, api.ErrorGone) || client.IsKind(blobErr, api.ErrorRateLimited) || ctx.Err() != nil {
 			break
 		}
 	}
