@@ -314,7 +314,7 @@ export const english: Record<MessageKey, string> = {
     'Daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes.',
   'transparency.stores.addresses.title': 'IP addresses',
   'transparency.stores.addresses':
-    'It does not store them. Per-address limits live only in memory and are forgotten on restart.',
+    'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
   'transparency.stores.enforced.title': 'The server enforces expiry and opens',
   'transparency.stores.enforced':
     "This server enforces expiry and the number of opens. Within about two hours after expiry, it erases the part of the key the message needs, so a copy taken after that no longer opens it. Until then, a server in someone else's hands could keep the message and that key part, and only the secrecy of the link and of the passphrase protect it.",
@@ -740,7 +740,7 @@ export const english: Record<MessageKey, string> = {
   'extra.padding.proof': 'Blocks of 64 KiB',
   'extra.forget.title': 'The server forgets',
   'extra.forget.text':
-    'It overwrites deleted database records with zeros. It keeps message times encrypted and rounded to the minute.',
+    'It overwrites deleted records and their older copies with zeros and erases the key of every deleted file. Message times stay encrypted and rounded to the minute.',
   'extra.forget.proof': 'Stores no IP addresses',
   'extra.twice.title': 'Two independent implementations',
   'extra.twice.text':

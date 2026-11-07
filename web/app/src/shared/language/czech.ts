@@ -308,7 +308,7 @@ export const czech = {
     'Denní počty vytvořených zpráv uchovává ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
   'transparency.stores.addresses.title': 'IP adresy',
   'transparency.stores.addresses':
-    'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti a\u{A0}po restartu je zapomene.',
+    'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti, která se nikdy neodkládá na disk, a\u{A0}po restartu je zapomene.',
   'transparency.stores.enforced.title': 'Platnost a\u{A0}počet otevření hlídá server',
   'transparency.stores.enforced':
     'Platnost a\u{A0}počet otevření hlídá tento server. Zhruba do dvou hodin po skončení platnosti smaže část klíče, kterou zpráva potřebuje, takže kopie pořízená později už zprávu neotevře. Do té doby by si server v\u{A0}cizích rukou mohl zprávu i\u{A0}tuto část klíče nechat a\u{A0}chránilo by ji jen utajení odkazu a\u{A0}hesla.',
@@ -735,7 +735,7 @@ export const czech = {
   'extra.padding.proof': 'Bloky po 64\u{A0}KiB',
   'extra.forget.title': 'Server zapomíná',
   'extra.forget.text':
-    'Smazané záznamy v\u{A0}databázi přepíše nulami. Časy zprávy uchovává zašifrované a\u{A0}zaokrouhlené na minutu.',
+    'Smazané záznamy i\u{A0}jejich starší kopie přepíše nulami a\u{A0}u\u{A0}smazaných souborů smaže klíč. Časy zprávy uchovává zašifrované a\u{A0}zaokrouhlené na minutu.',
   'extra.forget.proof': 'IP adresy neukládá',
   'extra.twice.title': 'Dvě nezávislé implementace',
   'extra.twice.text':
