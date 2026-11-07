@@ -60,7 +60,7 @@ The web client must be built before the Go binary to embed it. `mise run build` 
 
 ## Proxy trust and limits
 
-Configure `NYLZO_TRUSTED_PROXIES` or `NYLZO_PROXY_MODE` behind a reverse proxy. Otherwise clients share the proxy's address bucket. The server logs `forwarded-header-ignored` at most once an hour, naming only the ignored header. This can also be triggered by a client sending forwarding headers outside a trusted proxy.
+Configure `NYLZO_TRUSTED_PROXIES` or `NYLZO_PROXY_MODE` behind a reverse proxy. Otherwise clients share the proxy's address bucket. The server counts `forwarded-header-ignored` warnings and writes them with the hourly counts, naming only the ignored header. This can also be triggered by a client sending forwarding headers outside a trusted proxy.
 
 In `scaleway` mode, `X-Real-IP` must occur exactly once. With `NYLZO_TRUSTED_PROXIES`, the connection must match one of those CIDRs; without it, only loopback, link-local, private, and CGNAT source addresses are accepted. Use this mode only when every request passes through the intended ingress.
 
@@ -100,7 +100,7 @@ A version 2 message opens only with a key share that the server computes from th
 
 ## Logging and upgrades
 
-The server writes no line per request. At every minute boundary it writes one `requests` line per method, route pattern and status with the count of that minute, so neither line timestamps nor line order reveal when a request ended or how long it took. Methods the server does not route appear as `OTHER`. Latency and response sizes are never logged. Logs omit message IDs, raw paths, blob paths, Authorization and `X-Nylzo-*` headers, bodies, and client addresses. Storage failures log only the operation and system error, while internal HTTP-server errors use categories rather than raw error text. At very low traffic, a log's rounded minute may still correlate with an individual message event.
+The server writes no line per request. At the start of an hour, once a window of at least an hour has passed, it writes one `requests` line per method, route pattern and status with the count of that window, so neither line timestamps nor line order reveal when a request ended or how long it took. The message routes count together as `message` by status class. Errors about requests and messages, a full disk included, are counted and written with the same lines, so they can appear up to two hours late, and the counts of the last window before a restart are lost. Methods the server does not route appear as `OTHER`. Latency and response sizes are never logged. Logs omit message IDs, raw paths, blob paths, Authorization and `X-Nylzo-*` headers, bodies, and client addresses. Storage failures log only the operation and system error, while internal HTTP-server errors use categories rather than raw error text. At very low traffic, the hourly count of creates may still correlate with an individual message.
 
 Burn and cancel persist the intended end state before deleting a blob. A later request or cleanup completes an interrupted operation. Expiration follows `expires_at`. A missing blob for a live message without an end state returns 500 rather than deleting the message or consuming an open. Cleanup runs at startup; orphaned-blob inspection is retried after failure. `sweep-once` returns a nonzero status if any cleanup step fails.
 
