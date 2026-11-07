@@ -374,7 +374,8 @@ export const english: Record<MessageKey, string> = {
   'transparency.limits.read': 'Reads from one address',
   'transparency.limits.read.value': '{hour} requests per hour',
   'transparency.limits.global': 'New messages in total per day',
-  'transparency.limits.global.value': '{max}, from half of that with an anti-flooding check in the browser',
+  'transparency.limits.global.value':
+    '{max}, from half of that with an anti-flooding check in the browser that takes longer as the cap fills',
   'transparency.limits.none': 'no limit',
   'transparency.verify.title': 'Web client verification',
   'transparency.verify.short': 'Client check',

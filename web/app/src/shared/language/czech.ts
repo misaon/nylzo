@@ -368,7 +368,8 @@ export const czech = {
   'transparency.limits.read': 'Čtení z\u{A0}jedné adresy',
   'transparency.limits.read.value': '{hour} požadavků za hodinu',
   'transparency.limits.global': 'Nové zprávy celkem za den',
-  'transparency.limits.global.value': '{max}, od poloviny s\u{A0}výpočtem proti zahlcení služby',
+  'transparency.limits.global.value':
+    '{max}, od poloviny s\u{A0}výpočtem proti zahlcení služby, který se prodlužuje, jak se limit plní',
   'transparency.limits.none': 'bez limitu',
   'transparency.verify.title': 'Ověření webového klienta',
   'transparency.verify.short': 'Ověření klienta',
