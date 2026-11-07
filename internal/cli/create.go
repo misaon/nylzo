@@ -116,14 +116,11 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	if options.server == "" {
-		options.server = environment.Getenv(envServer)
-	}
-	if options.server == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" create needs --server or "+envServer)
+	address, ok := serverAddress(environment, "create", options.server)
+	if !ok {
 		return command.ExitUsage
 	}
-	api, err := client.New(options.server)
+	api, err := client.New(address)
 	if err != nil {
 		return command.Failf(environment, "%s", explain(err))
 	}

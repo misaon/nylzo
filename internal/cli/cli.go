@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -41,6 +42,15 @@ func webClient(environment *command.Environment) (webclient.Build, error) {
 		return environment.WebClient()
 	}
 	return server.EmbeddedWebClient()
+}
+
+func serverAddress(environment *command.Environment, name, flagValue string) (string, bool) {
+	address := cmp.Or(flagValue, environment.Getenv(envServer))
+	if address == "" {
+		fmt.Fprintln(environment.Stderr, command.Program+" "+name+" needs --server or "+envServer)
+		return "", false
+	}
+	return address, true
 }
 
 func commands() []subcommand {
