@@ -97,20 +97,6 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - name: The kill switch has not closed the firewall
-        if: inputs.stack == 'server' && !inputs.restore && vars.NYLZO_FIREWALL_ID != ''
-        env:
-          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
-          FIREWALL: ${{ vars.NYLZO_FIREWALL_ID }}
-        run: |
-          # An apply restores the coded rules, so it would undo the kill switch, which leaves only its own.
-          [[ "${FIREWALL}" =~ ^[1-9][0-9]{0,15}$ ]]
-          coded=$(curl --fail --silent --show-error --proto '=https' --max-time 30 -H "Authorization: Bearer ${HCLOUD_TOKEN}" \
-            "https://api.hetzner.cloud/v1/firewalls/${FIREWALL}" | jq -e '[.firewall.rules[] | select(.description != "kill switch")] | length')
-          if [[ "${coded}" = 0 ]]; then
-            echo "The kill switch closed the firewall. After the investigation: gh workflow run infrastructure.yml -f stack=server -f restore=true"
-            exit 1
-          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -130,6 +116,20 @@ jobs:
           name: plan-${{ inputs.stack }}
           path: ${{ runner.temp }}/site/${{ inputs.stack }}
           digest-mismatch: error
+      - name: The kill switch has not closed the firewall
+        if: inputs.stack == 'server' && !inputs.restore && vars.NYLZO_KILL_SWITCH_ENABLED == 'true'
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          FIREWALL: ${{ vars.NYLZO_FIREWALL_ID }}
+        run: |
+          # An apply restores the coded rules, so it would undo the kill switch, which leaves only its own.
+          [[ "${FIREWALL}" =~ ^[1-9][0-9]{0,15}$ ]] || { echo 'With the kill switch enabled, set the repository variable NYLZO_FIREWALL_ID.'; exit 1; }
+          coded=$(curl --fail --silent --show-error --proto '=https' --max-time 30 -H "Authorization: Bearer ${HCLOUD_TOKEN}" \
+            "https://api.hetzner.cloud/v1/firewalls/${FIREWALL}" | jq -e '[.firewall.rules[] | select(.description != "kill switch")] | length')
+          if [[ "${coded}" = 0 ]]; then
+            echo "The kill switch closed the firewall. After the investigation: gh workflow run infrastructure.yml -f stack=server -f restore=true"
+            exit 1
+          fi
       - name: Apply exactly the reviewed ${{ inputs.stack }} plan
         env:
           STACK: ${{ inputs.stack }}

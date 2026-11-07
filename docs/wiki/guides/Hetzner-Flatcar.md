@@ -60,7 +60,7 @@ After the first provisioning from the laptop, `infrastructure.yml` plans and app
 One-time setup, in this order:
 
 1. Create a private bucket (for example Hetzner Object Storage) and an access key for it.
-2. Move the state of each stack there from the laptop: set `NYLZO_STATE_BUCKET`, `NYLZO_STATE_ENDPOINT`, `NYLZO_STATE_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, run `mise run deploy plan server .deploy/production/site.json` and answer yes to OpenTofu's offer to copy the existing state, then do the same for `dns`. The plan must show no changes.
+2. Move the state of each stack there from the laptop: set `NYLZO_STATE_BUCKET`, `NYLZO_STATE_ENDPOINT`, `NYLZO_STATE_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, run `mise run deploy migrate server .deploy/production/site.json`, which copies the existing state into the bucket, then do the same for `dns`. `mise run deploy plan` must then show no changes for either stack.
 3. Create the environments `infrastructure-plan` and `infrastructure`, both limited to the `main` branch. Store in both `NYLZO_SITE_JSON` (the contents of `site.json`), `NYLZO_STATE_PASSPHRASE` (the contents of `state-encryption.key`), `NYLZO_STATE_ACCESS_KEY` and `NYLZO_STATE_SECRET_KEY`; store a Hetzner Read token and a Cloudflare DNS Read token as `HCLOUD_TOKEN` and `CLOUDFLARE_API_TOKEN` in `infrastructure-plan`, and Read & Write tokens in `infrastructure`. Add yourself as required reviewer of `infrastructure` if you want to approve each apply.
 4. Set the repository variables `NYLZO_STATE_BUCKET`, `NYLZO_STATE_ENDPOINT`, `NYLZO_STATE_REGION` and finally `NYLZO_INFRASTRUCTURE_ENABLED=true`.
 
@@ -225,7 +225,7 @@ sudo journalctl -u nylzo-host -u nylzo-initialize -u nylzo-update -u nylzo-ready
 sudo cat /var/lib/nylzo-deploy/current.json; readlink /opt/nylzo/host/current
 ```
 
-For planned work, `gh workflow run watch.yml -f directive=maintenance` publishes a signed maintenance directive, which the host applies within about six minutes (GitHub caches the file for five), and `-f directive=normal` ends it, without a restart. The production watch pauses meanwhile. The flag is `/var/lib/nylzo-directive/maintenance`, owned by root, so Caddy can read it but not remove it; a newer signed directive overrides a flag set by hand. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
+For planned work, `gh workflow run watch.yml -f directive=maintenance` publishes a signed maintenance directive, which the host applies within about six minutes (GitHub caches the file for five), and `-f directive=normal` ends it, without a restart. Meanwhile the production watch expects the maintenance page and alerts only on a changed client. The flag is `/var/lib/nylzo-directive/maintenance` (the older `/var/lib/caddy/maintenance` no longer applies), owned by root, so Caddy can read it but not remove it; a newer signed directive overrides a flag set by hand. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
 
 Hetzner backups stay off: restoring a snapshot can resurrect consumed messages. Cleanup keeps the current and previous image, Caddy, tools and host generation.
 

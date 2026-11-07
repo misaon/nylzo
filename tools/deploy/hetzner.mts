@@ -10,7 +10,7 @@ try {
     assert(kind, "Usage: deploy init SSH_PUBLIC_KEY [PRIVATE_DIRECTORY]");
     await initialize(kind, process.argv[4] ?? ".deploy");
   } else {
-    assert(["plan", "apply", "outputs"].includes(command!), "Usage: deploy plan|apply|outputs image|server|dns [SITE_JSON]");
+    assert(["plan", "apply", "outputs", "migrate"].includes(command!), "Usage: deploy plan|apply|outputs|migrate image|server|dns [SITE_JSON]");
     const prepared = await prepare(siteFile, kind!);
     const { directory, environment } = prepared;
     const plan = path.join(directory, "deployment.tfplan");
@@ -35,6 +35,9 @@ try {
       execute(directory, environment, ["apply", "-input=false", plan]);
       if (kind === "image") await createImage(prepared);
       else execute(directory, environment, ["output"]);
+    } else if (command === "migrate") {
+      // Moves the local state of this stack into the bucket that NYLZO_STATE_BUCKET names.
+      execute(directory, environment, ["init", "-input=false", "-lockfile=readonly", "-migrate-state", "-force-copy"]);
     } else {
       execute(directory, environment, ["init", "-input=false", "-lockfile=readonly"]);
       execute(directory, environment, ["output"]);
