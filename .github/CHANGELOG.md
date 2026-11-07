@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.8.0](https://github.com/misaon/nylzo/compare/v0.7.0...v0.8.0) (2026-11-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **web:** the web client no longer has the /report page and the server answers GET /report with 404. Abuse goes to the operator contact on /transparency.
+
+### Features
+
+* **web:** implement the redesigned web client ([#245](https://github.com/misaon/nylzo/issues/245)) ([078926d](https://github.com/misaon/nylzo/commit/078926d4068afa6fced79f019f3e418eb90501f0))
+
+
+### Fixes
+
+* **security:** harden the web client, its pages and their deployment ([#249](https://github.com/misaon/nylzo/issues/249)) ([9d26900](https://github.com/misaon/nylzo/commit/9d2690056a199dfac9cf67bfbc32af63ce2f19c5))
+* **web:** show focus, honour reduced motion and drop Geist Mono ([#247](https://github.com/misaon/nylzo/issues/247)) ([0fa92a4](https://github.com/misaon/nylzo/commit/0fa92a410cceaae013983d2c2c9c1395f1b05a5c))
+
+
+### Refactoring
+
+* **web:** review the Svelte client with no visual change ([#248](https://github.com/misaon/nylzo/issues/248)) ([9ca0552](https://github.com/misaon/nylzo/commit/9ca0552219ed79799ebdc4356a385d6e89735e39))
+* **web:** tidy the CSS and Tailwind classes without changing the output ([#246](https://github.com/misaon/nylzo/issues/246)) ([a2be466](https://github.com/misaon/nylzo/commit/a2be4667b52aa83d5b05e5a1c29203d92862a001))
+
+
+### CI
+
+* automate delivery, watch production and deploy Hetzner from Actions ([#250](https://github.com/misaon/nylzo/issues/250)) ([3b8b3ad](https://github.com/misaon/nylzo/commit/3b8b3adb407a0643a696d998a43a8960c782df96))
+
+
+### Maintenance
+
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.221.4 (main) ([#237](https://github.com/misaon/nylzo/issues/237)) ([e59d137](https://github.com/misaon/nylzo/commit/e59d1375b9921f3067b0c5f175a677a711bf41ee))
+* **deps:** update module github.com/klauspost/compress to v1.20.2 [security] (main) ([#241](https://github.com/misaon/nylzo/issues/241)) ([56acf32](https://github.com/misaon/nylzo/commit/56acf32c7c806c3e72bd0be0df850c82ebab4fe2))
+
 ## [0.7.0](https://github.com/misaon/nylzo/compare/v0.6.0...v0.7.0) (2026-11-04)
 
 
