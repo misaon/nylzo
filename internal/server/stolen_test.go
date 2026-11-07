@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/signing"
@@ -84,7 +85,7 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		policy, err := decodePolicy(response.Header.Get(policyHeaderName))
+		policy, err := decodePolicy(response.Header.Get(api.PolicyHeaderName))
 		if err != nil {
 			t.Fatal(err)
 		}

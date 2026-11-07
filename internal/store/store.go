@@ -7,6 +7,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
@@ -14,11 +15,11 @@ import (
 type State string
 
 const (
-	StateAvailable State = "available"
-	StateOpened    State = "opened"
-	StateExpired   State = "expired"
-	StateCancelled State = "cancelled"
-	StateDeleted   State = "deleted"
+	StateAvailable State = api.StateAvailable
+	StateOpened    State = api.StateOpened
+	StateExpired   State = api.StateExpired
+	StateCancelled State = api.StateCancelled
+	StateDeleted   State = api.StateDeleted
 )
 
 const (

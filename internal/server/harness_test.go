@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
@@ -256,8 +257,8 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 		r.Header.Set(name, value)
 	}
 	streams := strings.HasSuffix(request.path, "/claim") || strings.HasSuffix(request.path, "/blob")
-	if _, set := request.headers[shareKeyHeaderName]; streams && !set {
-		r.Header.Set(shareKeyHeaderName, testShareKeyHeader)
+	if _, set := request.headers[api.ShareKeyHeaderName]; streams && !set {
+		r.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 	}
 	if request.address != "" {
 		r.Header.Set("X-Forwarded-For", request.address)
@@ -679,8 +680,8 @@ func (h *testHarness) issueMessage(
 ) *testMessage {
 	h.t.Helper()
 	response, body := h.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
-		ttlHeaderName:      strconv.FormatUint(uint64(ttl), 10),
-		shareKeyHeaderName: testShareKeyHeader,
+		api.TTLHeaderName:      strconv.FormatUint(uint64(ttl), 10),
+		api.ShareKeyHeaderName: testShareKeyHeader,
 	}})
 	create, ok := decodeJSON(h.t, body)["create"].(map[string]any)
 	if response.StatusCode != http.StatusOK || !ok {
@@ -825,7 +826,7 @@ var (
 // unwrapShare reads the share a claim or download carried, as a client does.
 func unwrapShare(t *testing.T, response testResponse) [core.ShareLen]byte {
 	t.Helper()
-	wrapped, err := core.DecodeExact(response.Header.Get(shareHeaderName), share.WrappedLen)
+	wrapped, err := core.DecodeExact(response.Header.Get(api.ShareHeaderName), share.WrappedLen)
 	if err != nil {
 		t.Fatalf("no share in the response: %v", err)
 	}

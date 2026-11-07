@@ -16,6 +16,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
@@ -32,29 +33,14 @@ import (
 )
 
 const (
-	createHeaderName = "X-Nylzo-Create"
-	workHeaderName   = "X-Nylzo-Pow"
-	maxCreateHeader  = 1024
-	diskFullRetry    = 60 * time.Second
-	workBusyRetry    = 5 * time.Second
-	poolEmptyRetry   = 5 * time.Second
-	capPendingRetry  = time.Minute
+	maxCreateHeader = 1024
+	diskFullRetry   = 60 * time.Second
+	workBusyRetry   = 5 * time.Second
+	poolEmptyRetry  = 5 * time.Second
+	capPendingRetry = time.Minute
 	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
 	storeSlack = 2 * time.Minute
 )
-
-type createHeader struct {
-	ID          string  `json:"id"`
-	IDToken     string  `json:"id_token"`
-	Epoch       *uint32 `json:"epoch"`
-	ReadKey     string  `json:"read_key"`
-	VerifierKey *string `json:"verifier_key"`
-	ManageKey   string  `json:"manage_key"`
-	KDFID       int     `json:"kdf_id"`
-	OpensMax    int     `json:"opens_max"`
-	TTLSeconds  int64   `json:"ttl_s"`
-	Size        int64   `json:"size"`
-}
 
 var createHeaderKeys = map[string]bool{
 	"id":           true,
@@ -70,7 +56,7 @@ var createHeaderKeys = map[string]bool{
 }
 
 type createRequest struct {
-	header      createHeader
+	header      api.CreateHeader
 	id          core.ID
 	readKey     []byte
 	verifierKey []byte
@@ -115,7 +101,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequest, bool) {
-	request, ok := parseCreateHeader(r.Header.Get(createHeaderName), s.settings.Limits)
+	request, ok := parseCreateHeader(r.Header.Get(api.CreateHeaderName), s.settings.Limits)
 	size := request.header.Size
 	tokenOK := false
 	if ok {
@@ -243,7 +229,7 @@ func (s *Server) reserveCreate(
 			w,
 			r,
 			http.StatusTooManyRequests,
-			rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(retry)},
+			api.RateLimitedResponse{Error: api.ErrorRateLimited, RetryAfter: retrySeconds(retry)},
 		)
 		return nil, false
 	}
@@ -278,7 +264,7 @@ func (s *Server) reserveCreate(
 }
 
 func (s *Server) verifyWork(w http.ResponseWriter, r *http.Request, id core.ID, now time.Time) bool {
-	err := s.work.Verify(r.Context(), r.Header.Get(workHeaderName), id, now)
+	err := s.work.Verify(r.Context(), r.Header.Get(api.WorkHeaderName), id, now)
 	switch {
 	case err == nil:
 		return true
@@ -547,34 +533,11 @@ func (s *Server) setWriteDeadline(w http.ResponseWriter, by time.Time) {
 const TransparencyPath = "/.well-known/nylzo/transparency.json"
 
 type instanceResponse struct {
-	Limits   instanceLimits   `json:"limits"`
-	Work     instanceWork     `json:"pow"`
-	Create   *instanceCreate  `json:"create,omitempty"`
-	Versions instanceVersions `json:"versions"`
-	Build    buildinfo.Info   `json:"build"`
-}
-
-type instanceLimits struct {
-	MaxFileBytes   int64 `json:"max_file_bytes"`
-	MaxTextBytes   int64 `json:"max_text_bytes"`
-	MaxObjectBytes int64 `json:"max_object_bytes"`
-	MaxTTL         int64 `json:"max_ttl_s"`
-	DefaultTTL     int64 `json:"default_ttl_s"`
-	MaxOpens       int   `json:"max_opens"`
-}
-
-type instanceWork struct {
-	Required   bool   `json:"required"`
-	Difficulty int    `json:"difficulty"`
-	Challenge  string `json:"challenge,omitempty"`
-}
-
-type instanceCreate struct {
-	ID        string `json:"id"`
-	IDToken   string `json:"id_token"`
-	ExpiresAt string `json:"expires_at"`
-	Epoch     uint32 `json:"epoch"`
-	Share     string `json:"share"`
+	Limits   api.InstanceLimits  `json:"limits"`
+	Work     api.Work            `json:"pow"`
+	Create   *api.InstanceCreate `json:"create,omitempty"`
+	Versions instanceVersions    `json:"versions"`
+	Build    buildinfo.Info      `json:"build"`
 }
 
 type instanceVersions struct {
@@ -584,16 +547,11 @@ type instanceVersions struct {
 	Server   string `json:"server"`
 }
 
-type challengeResponse struct {
-	Challenge string `json:"challenge"`
-	ExpiresAt string `json:"expires_at"`
-}
-
 type transparencyResponse struct {
 	Build     buildinfo.Info        `json:"build"`
 	Server    string                `json:"server"`
 	Operator  *config.Operator      `json:"operator,omitempty"`
-	Limits    instanceLimits        `json:"limits"`
+	Limits    api.InstanceLimits    `json:"limits"`
 	Rates     transparencyRates     `json:"rates"`
 	Retention transparencyRetention `json:"retention"`
 }
@@ -626,7 +584,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	response := instanceResponse{
 		Limits: s.instanceLimits(),
 		Build:  s.buildInformation(),
-		Work:   instanceWork{Difficulty: s.settings.PoWDifficulty},
+		Work:   api.Work{Difficulty: s.settings.PoWDifficulty},
 		Versions: instanceVersions{
 			API:      1,
 			Envelope: int(envelope.Version),
@@ -663,7 +621,7 @@ type creationRequest struct {
 
 // parseCreation reads the TTL and share key headers, which a client sends together when it is about to create a message.
 func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
-	ttlValues, keyValues := header.Values(ttlHeaderName), header.Values(shareKeyHeaderName)
+	ttlValues, keyValues := header.Values(api.TTLHeaderName), header.Values(api.ShareKeyHeaderName)
 	if len(ttlValues) == 0 && len(keyValues) == 0 {
 		return creationRequest{}, true
 	}
@@ -683,7 +641,7 @@ func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
 }
 
 // issueID hands out an id with the share of the hour in which a message made with it can expire at the latest.
-func (s *Server) issueID(creation *creationRequest, now time.Time) (instanceCreate, error) {
+func (s *Server) issueID(creation *creationRequest, now time.Time) (api.InstanceCreate, error) {
 	id := core.NewID()
 	upload := max(createBodyTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
 	latestExpiry := now.Add(proof.IDTokenTTL() + upload + storeSlack + creation.ttl)
@@ -692,25 +650,25 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (instanceCrea
 	token, expires := s.idTokens.Issue(id, shareEpoch, ratchetID, now)
 	expiryShare, err := s.epochs.Share(ratchetID, shareEpoch, seal.LocatorOf(id[:]), now)
 	if err != nil {
-		return instanceCreate{}, err
+		return api.InstanceCreate{}, err
 	}
 	defer clear(expiryShare[:])
 	wrapped, err := share.Wrap(&expiryShare, creation.shareKey)
 	if err != nil {
-		return instanceCreate{}, err
+		return api.InstanceCreate{}, err
 	}
-	return instanceCreate{
+	return api.InstanceCreate{
 		ID:        id.String(),
 		IDToken:   token,
 		ExpiresAt: formatTime(expires),
-		Epoch:     shareEpoch,
+		Epoch:     &shareEpoch,
 		Share:     core.Encode(wrapped[:]),
 	}, nil
 }
 
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {
 	challenge, expires := s.challenges.Issue(time.Now())
-	writeJSON(w, http.StatusOK, challengeResponse{Challenge: core.Encode(challenge[:]), ExpiresAt: formatTime(expires)})
+	writeJSON(w, http.StatusOK, api.Challenge{Challenge: core.Encode(challenge[:]), ExpiresAt: formatTime(expires)})
 }
 
 func (s *Server) handleTransparency(w http.ResponseWriter, _ *http.Request) {
@@ -743,15 +701,15 @@ func (s *Server) handleTransparency(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) instanceLimits() instanceLimits {
+func (s *Server) instanceLimits() api.InstanceLimits {
 	limits := s.settings.Limits
-	return instanceLimits{
-		MaxFileBytes:   limits.MaxFileBytes,
-		MaxTextBytes:   envelope.MaxTextBytes,
-		MaxObjectBytes: limits.MaxObjectBytes,
-		MaxTTL:         int64(limits.MaxTTL / time.Second),
-		DefaultTTL:     int64(limits.DefaultTTL / time.Second),
-		MaxOpens:       limits.MaxOpens,
+	return api.InstanceLimits{
+		MaxFileBytes:      limits.MaxFileBytes,
+		MaxTextBytes:      envelope.MaxTextBytes,
+		MaxObjectBytes:    limits.MaxObjectBytes,
+		MaxTTLSeconds:     int64(limits.MaxTTL / time.Second),
+		DefaultTTLSeconds: int64(limits.DefaultTTL / time.Second),
+		MaxOpens:          limits.MaxOpens,
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
@@ -56,7 +57,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a message after the loss: %d", response.StatusCode)
 		}
-		if _, err := harness.openObject(fresh, object, response.Header.Get(policyHeaderName)); err != nil {
+		if _, err := harness.openObject(fresh, object, response.Header.Get(api.PolicyHeaderName)); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
@@ -518,7 +519,7 @@ func TestClaimBodyVariants(t *testing.T) {
 				Authorization(),
 		)
 		r.Header.Set("X-Forwarded-For", "203.0.113.4")
-		r.Header.Set(shareKeyHeaderName, testShareKeyHeader)
+		r.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 		response, err := harness.client.Do(r)
 		if err != nil {
 			t.Fatal(err)
@@ -1239,7 +1240,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			t.Fatal(err)
 		}
 		harness.sign(request, message.readToken, "", nil)
-		request.Header.Set(shareKeyHeaderName, testShareKeyHeader)
+		request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)
 		if err != nil {
