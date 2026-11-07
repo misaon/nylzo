@@ -9,10 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/erase"
+	"github.com/misaon/nylzo/internal/iolimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -23,90 +25,121 @@ const (
 	copyBufferLen      = 32 << 10
 )
 
-var copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
+var (
+	copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
+	undated     = time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
+)
 
 var ErrRef = errors.New("disk: invalid blob reference")
 
 type Blobs struct {
-	root string
+	root      string
+	pool      Pool
+	filling   sync.Mutex
+	known     sync.Mutex
+	poolNames []string
 }
 
 var _ store.Blobs = (*Blobs)(nil)
 
-func New(dataDirectory string) (*Blobs, error) {
+type Option func(*Blobs)
+
+func WithPool(pool Pool) Option {
+	return func(b *Blobs) { b.pool = pool }
+}
+
+// New fills the pool of empty files when it holds none, so the first upload already finds one.
+func New(dataDirectory string, options ...Option) (*Blobs, error) {
 	root := filepath.Join(dataDirectory, Directory)
 	if err := os.MkdirAll(filepath.Join(root, temporaryDirectory), 0o700); err != nil {
 		return nil, err
 	}
-	blobs := &Blobs{root: root}
+	blobs := &Blobs{root: root, pool: defaultPool}
+	for _, option := range options {
+		option(blobs)
+	}
 	if err := blobs.probe(); err != nil {
 		return nil, fmt.Errorf("disk: the blob directory must support hard links and directory sync: %w", err)
+	}
+	if err := blobs.fillEmptyPool(); err != nil {
+		return nil, err
 	}
 	return blobs, nil
 }
 
-func (b *Blobs) Put(_ context.Context, ref string, content io.Reader, size int64) error {
-	final, err := b.path(ref)
-	if err != nil {
-		return err
-	}
-	temporary, err := b.writeTemp(content, size)
-	if err == nil {
-		err = os.Link(temporary, final)
-	}
-	if temporary != "" {
-		dropTemporary(temporary, err == nil)
-	}
-	if errors.Is(err, os.ErrExist) {
-		return store.ErrConflict
-	}
-	if err != nil {
-		return err
-	}
-	if err = b.syncDirectory(); err != nil {
-		return errors.Join(err, erase.Shred(final, erase.BlockLen))
-	}
-	return nil
+// PutExpiring gives the blob the blob_purge_at of a message stored with ttl at the moment the content was stored,
+// so its times show nothing the row does not (spec section 5.2).
+func (b *Blobs) PutExpiring(
+	ctx context.Context,
+	ref string,
+	content io.Reader,
+	size int64,
+	ttl time.Duration,
+) (time.Time, error) {
+	return b.putStamped(ctx, ref, content, size, func(stored time.Time) time.Time {
+		return store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
+	})
 }
 
-// dropTemporary unlinks the temporary name of a published blob, whose final name keeps the data, and shreds any other;
-// a temporary file it cannot drop is left to PurgeTemp.
-func dropTemporary(temporary string, published bool) {
-	if published {
-		os.Remove(temporary)
-		return
-	}
-	_ = erase.Shred(temporary, erase.BlockLen)
+// Put stores content that no message dates; its file carries a time far ahead, so reconcile never takes it for an
+// orphan while a row may still name it.
+func (b *Blobs) Put(ctx context.Context, ref string, content io.Reader, size int64) error {
+	_, err := b.putStamped(ctx, ref, content, size, func(time.Time) time.Time { return undated })
+	return err
 }
 
-func (b *Blobs) Open(_ context.Context, ref string) (io.ReadCloser, int64, error) {
+func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
 	path, err := b.path(ref)
 	if err != nil {
 		return nil, 0, err
 	}
-	file, err := openBlob(path)
+	var file *os.File
+	var info os.FileInfo
+	err = withSlot(ctx, func() error {
+		var openErr error
+		if file, openErr = openBlob(path); openErr != nil {
+			return openErr
+		}
+		if info, openErr = file.Stat(); openErr != nil {
+			file.Close()
+		}
+		return openErr
+	})
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, 0, store.ErrBlobMissing
 	}
 	if err != nil {
 		return nil, 0, err
 	}
-	info, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, 0, err
-	}
-	return file, info.Size(), nil
+	return &blobReader{file: file, ctx: ctx}, info.Size(), nil
 }
 
-func (b *Blobs) Delete(_ context.Context, ref string) error {
+// blobReader reads in a file slot, so the streams of every request cannot all hold a thread in a blocking read.
+type blobReader struct {
+	file *os.File
+	ctx  context.Context //nolint:containedctx // the reader serves one request and waits for a slot under its context
+}
+
+func (r *blobReader) Read(buffer []byte) (int, error) {
+	if err := iolimit.Acquire(r.ctx); err != nil {
+		return 0, err
+	}
+	defer iolimit.Release()
+	return r.file.Read(buffer)
+}
+
+func (r *blobReader) Close() error {
+	return r.file.Close()
+}
+
+func (b *Blobs) Delete(ctx context.Context, ref string) error {
 	if err := b.remove(ref); err != nil {
 		return err
 	}
-	return b.syncDirectory()
+	return b.syncDirectory(ctx)
 }
 
-func (b *Blobs) DeleteBatch(_ context.Context, refs []string) []error {
+func (b *Blobs) DeleteBatch(ctx context.Context, refs []string) []error {
 	errs := make([]error, len(refs))
 	if len(refs) == 0 {
 		return errs
@@ -114,7 +147,7 @@ func (b *Blobs) DeleteBatch(_ context.Context, refs []string) []error {
 	for i, ref := range refs {
 		errs[i] = b.remove(ref)
 	}
-	if syncErr := b.syncDirectory(); syncErr != nil {
+	if syncErr := b.syncDirectory(ctx); syncErr != nil {
 		for i := range errs {
 			errs[i] = cmp.Or(errs[i], syncErr)
 		}
@@ -143,38 +176,43 @@ func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
 		if infoErr != nil {
 			return nil, infoErr
 		}
-		blobs = append(blobs, store.BlobInfo{Ref: string(ref), Modified: info.ModTime()})
+		blobs = append(blobs, store.BlobInfo{Ref: string(ref), PurgeAt: info.ModTime()})
 	}
 	return blobs, nil
 }
 
 // EraseAll overwrites every stored and temporary blob file in full before it unlinks it, for blobs that predate the
-// erase block; a missing blob directory holds nothing to erase.
+// erase block; a missing blob directory holds nothing to erase, and a pool file holds nothing at all.
 func EraseAll(dataDirectory string) error {
 	root := filepath.Join(dataDirectory, Directory)
 	for _, directory := range []string{filepath.Join(root, temporaryDirectory), root} {
-		entries, err := os.ReadDir(directory)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
+		if err := eraseDirectory(directory); err != nil {
 			return err
-		}
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			if shredErr := erase.Shred(filepath.Join(directory, entry.Name()), erase.WholeFile); shredErr != nil {
-				return shredErr
-			}
-		}
-		if syncErr := erase.SyncDirectory(directory); syncErr != nil {
-			return syncErr
 		}
 	}
 	return nil
 }
 
+func eraseDirectory(directory string) error {
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || pooled(entry.Name()) {
+			continue
+		}
+		if shredErr := erase.Shred(filepath.Join(directory, entry.Name()), erase.WholeFile); shredErr != nil {
+			return shredErr
+		}
+	}
+	return erase.SyncDirectory(directory)
+}
+
+// PurgeTemp shreds the files that crashed uploads left; the pool files wait for uploads, whatever their age.
 func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
 	temporary := filepath.Join(b.root, temporaryDirectory)
 	entries, err := os.ReadDir(temporary)
@@ -184,6 +222,9 @@ func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
 	purged := 0
 	var errs []error
 	for _, entry := range entries {
+		if pooled(entry.Name()) {
+			continue
+		}
 		removed, removeErr := removeStale(temporary, entry, olderThan)
 		if removed {
 			purged++
@@ -193,7 +234,8 @@ func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
 	return purged, errors.Join(errs...)
 }
 
-// Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload.
+// Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload; a
+// pool file keeps the ctime of the sweep that created it.
 func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 	var errs []error
 	for _, directory := range []string{b.root, filepath.Join(b.root, temporaryDirectory)} {
@@ -203,7 +245,7 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 			continue
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			if !entry.IsDir() && !pooled(entry.Name()) {
 				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
 			}
 		}
@@ -213,6 +255,50 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 		errs = append(errs, os.Chtimes(directory, quarter, quarter))
 	}
 	return errors.Join(errs...)
+}
+
+func (b *Blobs) putStamped(
+	ctx context.Context,
+	ref string,
+	content io.Reader,
+	size int64,
+	purgeAt func(stored time.Time) time.Time,
+) (time.Time, error) {
+	final, err := b.path(ref)
+	if err != nil {
+		return time.Time{}, err
+	}
+	taken, err := b.claim(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	stored, err := taken.write(ctx, content, size, purgeAt)
+	if err == nil {
+		err = withSlot(ctx, func() error { return os.Link(taken.path, final) })
+	}
+	dropTemporary(taken.path, err == nil)
+	if errors.Is(err, os.ErrExist) {
+		return time.Time{}, store.ErrConflict
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err = b.syncDirectory(ctx); err != nil {
+		return time.Time{}, errors.Join(err, erase.Shred(final, erase.BlockLen))
+	}
+	return stored, nil
+}
+
+// dropTemporary unlinks the temporary name of a published blob, whose final name keeps the data, and shreds any other;
+// a temporary file it cannot drop is left to PurgeTemp.
+func dropTemporary(temporary string, published bool) {
+	if published {
+		iolimit.Hold()
+		os.Remove(temporary)
+		iolimit.Release()
+		return
+	}
+	_ = erase.Shred(temporary, erase.BlockLen)
 }
 
 func (b *Blobs) probe() error {
@@ -231,7 +317,7 @@ func (b *Blobs) probe() error {
 	if err != nil {
 		return err
 	}
-	return b.syncDirectory()
+	return erase.SyncDirectory(b.root)
 }
 
 func (b *Blobs) path(ref string) (string, error) {
@@ -241,29 +327,57 @@ func (b *Blobs) path(ref string) (string, error) {
 	return filepath.Join(b.root, hex.EncodeToString([]byte(ref))), nil
 }
 
-func (b *Blobs) writeTemp(content io.Reader, size int64) (string, error) {
-	file, err := os.CreateTemp(filepath.Join(b.root, temporaryDirectory), "blob-*")
-	if err != nil {
-		return "", err
-	}
+// write copies through the pooled buffer, which it clears afterwards, and stamps the file once the content is synced.
+func (u *upload) write(
+	ctx context.Context,
+	content io.Reader,
+	size int64,
+	purgeAt func(stored time.Time) time.Time,
+) (time.Time, error) {
 	buffer, _ := copyBuffers.Get().(*[copyBufferLen]byte)
-	written, err := io.CopyBuffer(struct{ io.Writer }{file}, struct{ io.Reader }{content}, buffer[:])
+	written, err := io.CopyBuffer(slotWriter(ctx, u.file), struct{ io.Reader }{content}, buffer[:])
 	clear(buffer[:])
 	copyBuffers.Put(buffer)
 	if err == nil && written != size {
 		err = io.ErrUnexpectedEOF
 	}
 	if err == nil {
-		err = file.Sync()
+		err = withSlot(ctx, u.file.Sync)
 	}
-	if closeErr := file.Close(); err == nil {
+	if closeErr := u.file.Close(); err == nil {
 		err = closeErr
 	}
-	if err == nil {
-		quarter := store.CeilQuarterHour(time.Now())
-		err = os.Chtimes(file.Name(), quarter, quarter)
+	if err != nil {
+		return time.Time{}, err
 	}
-	return file.Name(), err
+	stored := time.Now()
+	stamp := purgeAt(stored)
+	return stored, withSlot(ctx, func() error { return os.Chtimes(u.path, stamp, stamp) })
+}
+
+type writerFunc func(data []byte) (int, error)
+
+func (write writerFunc) Write(data []byte) (int, error) {
+	return write(data)
+}
+
+// slotWriter hides the file's ReadFrom, so every write goes through the copy buffer and waits for a file slot.
+func slotWriter(ctx context.Context, file *os.File) io.Writer {
+	return writerFunc(func(data []byte) (int, error) {
+		if err := iolimit.Acquire(ctx); err != nil {
+			return 0, err
+		}
+		defer iolimit.Release()
+		return file.Write(data)
+	})
+}
+
+func withSlot(ctx context.Context, work func() error) error {
+	if err := iolimit.Acquire(ctx); err != nil {
+		return err
+	}
+	defer iolimit.Release()
+	return work()
 }
 
 func restampFile(path string, entry os.DirEntry) error {
@@ -281,13 +395,15 @@ func restampFile(path string, entry os.DirEntry) error {
 	return err
 }
 
-func (b *Blobs) syncDirectory() error {
-	directory, err := os.Open(b.root)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
+func (b *Blobs) syncDirectory(ctx context.Context) error {
+	return withSlot(ctx, func() error {
+		directory, err := os.Open(b.root)
+		if err != nil {
+			return err
+		}
+		defer directory.Close()
+		return directory.Sync()
+	})
 }
 
 // remove overwrites the erase block in place before it unlinks the file, so no freed block holds its salt.
@@ -321,4 +437,8 @@ func removeStale(directory string, entry os.DirEntry, olderThan time.Time) (bool
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func pooled(name string) bool {
+	return strings.HasPrefix(name, poolPrefix)
 }

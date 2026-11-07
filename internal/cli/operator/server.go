@@ -171,6 +171,7 @@ func openStore(
 	ctx context.Context,
 	dataDir string,
 	development config.Development,
+	pool disk.Pool,
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
@@ -192,7 +193,7 @@ func openStore(
 	if err != nil {
 		return nil, nil, err
 	}
-	blobs, err := disk.New(dataDir)
+	blobs, err := disk.New(dataDir, disk.WithPool(pool))
 	var paths []string
 	if err == nil {
 		paths, err = erasablePaths(dataDir)
@@ -245,6 +246,11 @@ func upgradingOpen(dataDir string, logger *slog.Logger) func(context.Context, st
 	}
 }
 
+// blobPool sizes the pool of upload files the same way in serve, sweep-once and takedown.
+func blobPool(settings *config.Server) disk.Pool {
+	return disk.PoolFor(settings.Rates.GlobalDailyCreates, settings.SweepInterval, settings.Limits.MaxTTL)
+}
+
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
 func requireStore(dataDir string) error {
 	directory, err := filepath.Abs(dataDir)
@@ -290,6 +296,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		ctx,
 		settings.DataDir,
 		settings.Development,
+		blobPool(&settings),
 		upgradingOpen(settings.DataDir, logger),
 		logger,
 	)
@@ -396,7 +403,14 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	if storeErr := requireStore(settings.DataDir); storeErr != nil {
 		return storeErr
 	}
-	database, blobs, err := openStore(ctx, settings.DataDir, settings.Development, sqlite.OpenCurrent, logger)
+	database, blobs, err := openStore(
+		ctx,
+		settings.DataDir,
+		settings.Development,
+		blobPool(&settings),
+		sqlite.OpenCurrent,
+		logger,
+	)
 	if err != nil {
 		return err
 	}
@@ -471,6 +485,7 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 		ctx,
 		settings.DataDir,
 		settings.Development,
+		blobPool(&settings),
 		sqlite.OpenCurrent,
 		slog.New(slog.NewTextHandler(environment.Stderr, nil)),
 	)

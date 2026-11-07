@@ -156,24 +156,21 @@ func (f *fixture) sweepPurgesInBatches() {
 	}
 }
 
+// reconcile covers that an orphan waits for the blob_purge_at it carries, which hides its TTL until then.
 func (f *fixture) reconcile() {
 	t, ctx := f.t, f.t.Context()
 	fresh, failingA, failingB, orphan := core.NewID().String(), core.NewID().String(), core.NewID().String(),
 		core.NewID().String()
-	for _, ref := range []string{fresh, failingA, failingB, orphan} {
-		if err := f.blobs.Put(ctx, ref, strings.NewReader("x"), 1); err != nil {
-			t.Fatal(err)
-		}
-	}
-	live := f.create(1, oneHour, false)
-	report, err := store.Reconcile(ctx, f.store, f.blobs, time.Now())
+	purgeAt := f.putOrphans(fresh, failingA, failingB, orphan)
+	live := f.create(1, oneMinute, false)
+	report, err := store.Reconcile(ctx, f.store, f.blobs, purgeAt.Add(-time.Second))
 	if err != nil || !report.Listed || report.Orphans != 0 || !f.blobExists(fresh) {
-		t.Fatalf("a reconcile inside the grace window must keep fresh objects: %+v %v", report, err)
+		t.Fatalf("an orphan must stay until the blob_purge_at it carries: %+v %v", report, err)
 	}
 	failing := NewFaultyBlobs(f.blobs)
 	failing.FailDelete(failingA, ErrInjected)
 	failing.FailDelete(failingB, ErrInjected)
-	report, err = store.Reconcile(ctx, f.store, failing, time.Now().Add(store.BlobGrace+store.BlobPurgeStep))
+	report, err = store.Reconcile(ctx, f.store, failing, purgeAt)
 	if !errors.Is(err, ErrInjected) || !report.Listed || report.Orphans != 2 || f.blobExists(fresh) ||
 		f.blobExists(orphan) {
 		t.Fatalf("a failing delete must not stop the others: %+v %v", report, err)
@@ -181,4 +178,20 @@ func (f *fixture) reconcile() {
 	if failing.DeleteAttempts(failingA) != 1 || failing.DeleteAttempts(failingB) != 1 || !f.blobExists(live.ref()) {
 		t.Fatal("the reconcile skipped an orphan after a failure or deleted a live blob")
 	}
+}
+
+// putOrphans stores blobs that no row holds and returns the latest blob_purge_at among them.
+func (f *fixture) putOrphans(refs ...string) time.Time {
+	f.t.Helper()
+	var purgeAt time.Time
+	for _, ref := range refs {
+		stored, err := f.blobs.PutExpiring(f.t.Context(), ref, strings.NewReader("x"), 1, time.Hour)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		if blobPurgeAt := store.BlobPurgeAt(store.ExpiresAt(stored, time.Hour)); blobPurgeAt.After(purgeAt) {
+			purgeAt = blobPurgeAt
+		}
+	}
+	return purgeAt
 }

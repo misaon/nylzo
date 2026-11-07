@@ -45,6 +45,16 @@ func CeilQuarterHour(moment time.Time) time.Time {
 	return ceil(moment, BlobPurgeStep)
 }
 
+// ExpiresAt is when a message whose upload was stored at uploaded expires: ttl later, rounded up to the minute.
+func ExpiresAt(uploaded time.Time, ttl time.Duration) time.Time {
+	return CeilMinute(uploaded.UTC().Add(ttl))
+}
+
+// BlobPurgeAt is when the sweep deletes the blob of a message that expires at expiresAt.
+func BlobPurgeAt(expiresAt time.Time) time.Time {
+	return CeilQuarterHour(expiresAt)
+}
+
 func ceil(moment time.Time, step time.Duration) time.Time {
 	if truncated := moment.Truncate(step); !truncated.Equal(moment) {
 		return truncated.Add(step)
@@ -67,6 +77,9 @@ var (
 	ErrLeaseLimit   = errors.New("store: lease download limit reached")
 	ErrBlobMissing  = errors.New("store: message has no blob")
 	ErrCorrupt      = errors.New("store: a record holds a value it cannot have")
+	ErrPoolEmpty    = errors.New(
+		"store: no prepared blob file was free, so the upload was refused and the pool refilled",
+	)
 )
 
 type GoneError struct {
@@ -206,17 +219,21 @@ type Store interface {
 	Checkpoint(ctx context.Context) error
 }
 
+// BlobInfo names a stored blob and the blob_purge_at its file carries.
 type BlobInfo struct {
-	Ref      string
-	Modified time.Time
+	Ref     string
+	PurgeAt time.Time
 }
 
 type Blobs interface {
-	Put(ctx context.Context, ref string, content io.Reader, size int64) error
+	// PutExpiring stores the content and reports when it was stored; the blob carries the BlobPurgeAt of a message
+	// stored then with ttl.
+	PutExpiring(ctx context.Context, ref string, content io.Reader, size int64, ttl time.Duration) (time.Time, error)
 	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
 	Delete(ctx context.Context, ref string) error
 	DeleteBatch(ctx context.Context, refs []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)
 	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
+	Replenish(ctx context.Context) error
 	Restamp(ctx context.Context, now time.Time) error
 }

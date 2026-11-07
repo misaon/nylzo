@@ -5,6 +5,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/store"
@@ -15,13 +16,13 @@ func (f *fixture) blobsPutOpenDelete() {
 	if err := f.blobs.Delete(ctx, core.NewID().String()); err != nil {
 		t.Fatalf("deleting a missing object must succeed: %v", err)
 	}
-	if err := f.blobs.Put(ctx, "short", strings.NewReader("short"), 10); err == nil || f.blobExists("short") {
+	if err := f.put("short", "short", 10); err == nil || f.blobExists("short") {
 		t.Fatalf("a short body must leave no object: %v", err)
 	}
-	if err := f.blobs.Put(ctx, "y", strings.NewReader("hello"), 5); err != nil {
+	if err := f.put("y", "hello", 5); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.blobs.Put(ctx, "y", strings.NewReader("other"), 5); !errors.Is(err, store.ErrConflict) {
+	if err := f.put("y", "other", 5); !errors.Is(err, store.ErrConflict) {
 		t.Fatalf("a second Put of an existing ref must not replace it: %v", err)
 	}
 	if content := f.read("y", 5); content != "hello" {
@@ -29,7 +30,7 @@ func (f *fixture) blobsPutOpenDelete() {
 	}
 	upper, lower := "AbCdEfGhIjKlMnOpQrStUw", "abcdefghijklmnopqrstuw"
 	for _, ref := range []string{upper, lower, "../escape"} {
-		if err := f.blobs.Put(ctx, ref, strings.NewReader(ref[:1]), 1); err != nil {
+		if err := f.put(ref, ref[:1], 1); err != nil {
 			t.Fatalf("ref %q: %v", ref, err)
 		}
 	}
@@ -50,6 +51,11 @@ func (f *fixture) blobsPutOpenDelete() {
 	}
 }
 
+func (f *fixture) put(ref, content string, size int64) error {
+	_, err := f.blobs.PutExpiring(f.t.Context(), ref, strings.NewReader(content), size, time.Hour)
+	return err
+}
+
 func (f *fixture) read(ref string, size int64) string {
 	f.t.Helper()
 	content, length, err := f.blobs.Open(f.t.Context(), ref)
@@ -68,7 +74,7 @@ func (f *fixture) blobsDeleteBatch() {
 	t, ctx := f.t, f.t.Context()
 	first, second, kept := core.NewID().String(), core.NewID().String(), core.NewID().String()
 	for _, ref := range []string{first, second, kept} {
-		if err := f.blobs.Put(ctx, ref, strings.NewReader("x"), 1); err != nil {
+		if err := f.put(ref, "x", 1); err != nil {
 			t.Fatal(err)
 		}
 	}

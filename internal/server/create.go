@@ -37,6 +37,7 @@ const (
 	maxCreateHeader  = 1024
 	diskFullRetry    = 60 * time.Second
 	workBusyRetry    = 5 * time.Second
+	poolEmptyRetry   = 5 * time.Second
 	capPendingRetry  = time.Minute
 	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
 	storeSlack = 2 * time.Minute
@@ -106,11 +107,11 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	blob := newStoredBlob()
 	defer blob.clear()
-	envelopeHeader, ok := s.receiveBlob(w, r, &request, &blob)
+	envelopeHeader, uploaded, ok := s.receiveBlob(w, r, &request, &blob)
 	if !ok {
 		return
 	}
-	stored = s.storeMessage(w, r, &request, envelopeHeader, &blob, now)
+	stored = s.storeMessage(w, r, &request, envelopeHeader, &blob, uploaded, now)
 }
 
 func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequest, bool) {
@@ -367,7 +368,7 @@ func (s *Server) receiveBlob(
 	r *http.Request,
 	request *createRequest,
 	blob *storedBlob,
-) (envelope.Header, bool) {
+) (envelope.Header, time.Time, bool) {
 	size := request.header.Size
 	body := &trackingReader{reader: &pacedReader{
 		reader:     http.MaxBytesReader(w, r.Body, size),
@@ -378,30 +379,34 @@ func (s *Server) receiveBlob(
 	var raw [envelope.HeaderLen]byte
 	if _, err := io.ReadFull(body, raw[:]); err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
-		return envelope.Header{}, false
+		return envelope.Header{}, time.Time{}, false
 	}
 	envelopeHeader, err := envelope.ParseHeader(raw[:])
 	if raw[0] < envelope.Version {
 		writeError(w, http.StatusBadRequest, errClientOutdated)
-		return envelope.Header{}, false
+		return envelope.Header{}, time.Time{}, false
 	}
 	if err != nil || int(envelopeHeader.KDF) != request.header.KDFID {
 		writeError(w, http.StatusBadRequest, errBadRequest)
-		return envelope.Header{}, false
+		return envelope.Header{}, time.Time{}, false
 	}
-	err = s.blobs.Put(
+	uploaded, err := s.blobs.PutExpiring(
 		r.Context(),
 		blob.ref,
 		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size),
 		seal.StoredBlobSize(size),
+		request.ttl(),
 	)
 	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
 	if err == nil {
-		return envelopeHeader, true
+		return envelopeHeader, uploaded, true
 	}
 	switch {
 	case errors.Is(err, store.ErrConflict):
 		rejectCreate(w, r, http.StatusConflict, errConflict)
+	case errors.Is(err, store.ErrPoolEmpty):
+		setRetryAfter(w, poolEmptyRetry)
+		rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
 	case isMaxBytesError(body.err):
 		writeError(w, http.StatusRequestEntityTooLarge, errTooLarge)
 	case body.err != nil || errors.Is(err, io.ErrUnexpectedEOF):
@@ -409,7 +414,7 @@ func (s *Server) receiveBlob(
 	default:
 		s.writeInternal(w, r, err)
 	}
-	return envelope.Header{}, false
+	return envelope.Header{}, time.Time{}, false
 }
 
 func isMaxBytesError(err error) bool {
@@ -423,9 +428,9 @@ func (s *Server) storeMessage(
 	request *createRequest,
 	envelopeHeader envelope.Header,
 	blob *storedBlob,
-	now time.Time,
+	uploaded, now time.Time,
 ) bool {
-	message := s.newMessage(request, envelopeHeader, time.Now(), blob.salt)
+	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt)
 	locator := seal.LocatorOf(request.id[:])
 	err := errShareEpoch
 	if request.ratchetID != s.epochs.ID() {
@@ -485,7 +490,7 @@ func (s *Server) newMessage(
 		KDF:            uint8(envelopeHeader.KDF),
 		Flags:          envelopeHeader.Flags,
 		CreatedAt:      uploaded.UTC().Truncate(time.Minute),
-		ExpiresAt:      store.CeilMinute(uploaded.UTC().Add(time.Duration(request.ttlSeconds) * time.Second)),
+		ExpiresAt:      store.ExpiresAt(uploaded, request.ttl()),
 		TTLSeconds:     request.ttlSeconds,
 		OpensMax:       request.opensMax,
 		OpensRemaining: request.opensMax,
@@ -499,6 +504,10 @@ func (s *Server) newMessage(
 		message.VerifierPepperID = verifier.PepperID
 	}
 	return message
+}
+
+func (c *createRequest) ttl() time.Duration {
+	return time.Duration(c.ttlSeconds) * time.Second
 }
 
 func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) {

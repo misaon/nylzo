@@ -26,6 +26,7 @@ func storeMessage(t *testing.T, directory string) core.ID {
 		t.Context(),
 		directory,
 		testDevelopment,
+		testPool,
 		sqlite.Open,
 		slog.New(slog.DiscardHandler),
 	)
@@ -64,7 +65,14 @@ func storeMessage(t *testing.T, directory string) core.ID {
 
 func hasContent(t *testing.T, directory string, id core.ID) bool {
 	t.Helper()
-	database, _, err := openStore(t.Context(), directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	database, _, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

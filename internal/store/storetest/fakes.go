@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/store"
@@ -100,15 +101,21 @@ func (b *FaultyBlobs) Open(ctx context.Context, ref string) (io.ReadCloser, int6
 	return &failingReader{ReadCloser: blob, err: readErr}, size, nil
 }
 
-func (b *FaultyBlobs) Put(ctx context.Context, ref string, reader io.Reader, size int64) error {
+func (b *FaultyBlobs) PutExpiring(
+	ctx context.Context,
+	ref string,
+	reader io.Reader,
+	size int64,
+	ttl time.Duration,
+) (time.Time, error) {
 	b.mutex.Lock()
 	err := b.put
 	b.mutex.Unlock()
 	if err != nil {
 		_, _ = io.Copy(io.Discard, reader)
-		return err
+		return time.Time{}, err
 	}
-	return b.Blobs.Put(ctx, ref, reader, size)
+	return b.Blobs.PutExpiring(ctx, ref, reader, size, ttl)
 }
 
 func (b *FaultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {
