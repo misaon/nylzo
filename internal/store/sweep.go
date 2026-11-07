@@ -17,16 +17,6 @@ type SweepReport struct {
 	StaleTempFiles int
 }
 
-func (r SweepReport) LogAttrs() []any {
-	return []any{
-		"blobs", r.Blobs,
-		"rows", r.Rows,
-		"counters", r.Counters,
-		"orphans", r.OrphanedBlobs,
-		"temp", r.StaleTempFiles,
-	}
-}
-
 // SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed.
 func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (SweepReport, error) {
 	var report SweepReport

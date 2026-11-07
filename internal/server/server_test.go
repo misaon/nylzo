@@ -505,6 +505,8 @@ func TestH2CRefusesFramesAbove16KiB(t *testing.T) {
 	}
 }
 
+// TestRunSweeperStopsWithoutAnError also covers spec §10: a successful sweep writes no line, so no count of
+// expiries, purges or failed uploads reaches the log.
 func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -512,6 +514,10 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 		settings.SweepInterval = time.Minute
 		harness := newHarness(t, settings)
 		server, logs := harness.server, harness.logs
+		dueAtStartup := newMessage(t, core.KDFNone, "", 1, 60, "due at startup")
+		harness.mustCreate(dueAtStartup)
+		synctest.Sleep(store.BlobPurgeStep + time.Minute)
+		startupLogs := logs.String()
 		ctx, cancel := context.WithCancel(t.Context())
 		stopped := make(chan struct{})
 		go func() {
@@ -519,13 +525,17 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 			close(stopped)
 		}()
 		synctest.Wait()
-		if sweeps := strings.Count(logs.String(), `"msg":"sweep"`); sweeps != 1 {
-			t.Fatalf("sweeps at startup: %d", sweeps)
+		if harness.blobExists(dueAtStartup) {
+			t.Fatal("no sweep at startup")
 		}
-		time.Sleep(time.Minute)
-		synctest.Wait()
-		if sweeps := strings.Count(logs.String(), `"msg":"sweep"`); sweeps != 2 {
-			t.Fatalf("sweeps after one interval: %d", sweeps)
+		dueLater := newMessage(t, core.KDFNone, "", 1, 60, "due later")
+		harness.mustCreate(dueLater)
+		synctest.Sleep(store.BlobPurgeStep)
+		if harness.blobExists(dueLater) {
+			t.Fatal("no sweep after an interval")
+		}
+		if logs.String() != startupLogs {
+			t.Fatalf("a successful sweep wrote a line: %s", strings.TrimPrefix(logs.String(), startupLogs))
 		}
 		cancel()
 		synctest.Wait()

@@ -177,15 +177,14 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
-		report, err := s.sweepOnce(ctx)
+		_, err := s.sweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
-			s.logger.InfoContext(ctx, "sweep-stopped", report.LogAttrs()...)
+			s.logger.InfoContext(ctx, "sweep-stopped")
 			return
 		case err != nil:
-			s.logger.ErrorContext(ctx, "sweep", sweep.LogAttributes(report, err)...)
+			s.logger.ErrorContext(ctx, "sweep", "err", sweep.FirstError(err))
 		default:
-			s.logger.InfoContext(ctx, "sweep", report.LogAttrs()...)
 		}
 		select {
 		case <-ctx.Done():

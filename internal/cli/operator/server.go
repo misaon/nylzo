@@ -402,13 +402,12 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	}
 	defer database.Close()
 	now := time.Now()
-	report, err := sweep.Run(ctx, database, blobs, settings.DataDir, now)
+	_, err = sweep.Run(ctx, database, blobs, settings.DataDir, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
-		logger.ErrorContext(ctx, "sweep-once", sweep.LogAttributes(report, err)...)
+		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))
 		return errSweepFailed
 	}
-	logger.InfoContext(ctx, "sweep-once", report.LogAttrs()...)
 	return nil
 }
 

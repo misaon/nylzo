@@ -146,8 +146,8 @@ func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	if result.code != 0 {
 		t.Fatalf("sweep-once without a pepper: exit %d, %s", result.code, result.stderr)
 	}
-	if strings.Count(result.stderr, `"level":"ERROR"`) != 0 {
-		t.Fatalf("a clean sweep logged an error: %s", result.stderr)
+	if strings.Count(result.stderr, `"level":"ERROR"`) != 0 || strings.Contains(result.stderr, `"msg":"sweep-once"`) {
+		t.Fatalf("a clean sweep logged an error or a report: %s", result.stderr)
 	}
 	if _, err = os.Stat(old); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("sweep-once kept an abuse report older than 7 days: %v", err)
