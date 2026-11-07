@@ -6,4 +6,4 @@ Only the latest stable release receives security fixes. Older versions and prere
 
 The Wiki contains the full [disclosure policy](https://github.com/misaon/nylzo/wiki/Security-policy), [security model](https://github.com/misaon/nylzo/wiki/Security-model), and [release verification instructions](https://github.com/misaon/nylzo/wiki/Verify-a-release).
 
-For abusive content on an instance, use that instance's `/report` page.
+For abusive content on an instance, write to the operator contact on that instance's `/transparency` page, if it lists one.

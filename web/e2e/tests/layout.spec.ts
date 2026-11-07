@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
@@ -93,6 +93,26 @@ async function layoutChanges(page: Page): Promise<LayoutChanges | undefined> {
   return page.evaluate(() => globalThis.nylzoLayoutChanges?.());
 }
 
+async function pagePosition(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return `${Math.round(box.x + scrollX)},${Math.round(box.y + scrollY)} ${Math.round(box.width)}x${Math.round(box.height)}`;
+  });
+}
+
+// The card grows into the created panel and shrinks to the revealed message by design (owner decision R11).
+async function settle(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const changes = await layoutChanges(page);
+        return changes?.shifts;
+      },
+      { intervals: [1000] },
+    )
+    .toEqual([]);
+}
+
 async function expectNothingMoved(page: Page, screen: string): Promise<void> {
   expect(await layoutChanges(page), screen).toEqual({ shifts: [], resizes: [] });
 }
@@ -111,6 +131,7 @@ for (const viewport of VIEWPORTS) {
     await layoutChanges(sender);
     await sender.getByRole('button', { name: 'Create link' }).click();
     await createdLink(sender);
+    await settle(sender);
     await expectNothingMoved(sender, 'created');
 
     const recipient = await newPage({ viewport, ...FULL_MOTION });
@@ -123,16 +144,17 @@ for (const viewport of VIEWPORTS) {
     await expectNothingMoved(recipient, 'read loaded');
     await passphrase.fill('definitely the wrong one');
     await show.click();
-    await expect(recipient.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
     await expectNothingMoved(recipient, 'rejected');
     await passphrase.fill(PASSPHRASE);
     await show.click();
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(LONG_TEXT);
+    await settle(recipient);
     await expectNothingMoved(recipient, 'revealed and unscrambled');
   });
 
-  test(`nothing shifts or resizes on the sent list, the report page and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
+  test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
     newPage,
   }) => {
     const sender = await newPage({ viewport });
@@ -141,52 +163,35 @@ for (const viewport of VIEWPORTS) {
     await sender.emulateMedia(FULL_MOTION);
     await watchLayout(sender);
     await sender.goto('/sent');
-    await expect(sender.getByText('Waiting to be opened.')).toHaveCount(2);
+    await expect(sender.getByText('Waiting to be opened').filter({ visible: true })).toHaveCount(2);
     await expectNothingMoved(sender, 'sent loaded');
-    await sender.getByRole('button', { name: 'Cancel message' }).first().click();
+    // A cancelled item takes its ended form by design (R26), so only the items above it must stay in place.
+    const cancel = sender.getByRole('button', { name: 'Cancel message' }).last();
+    await cancel.scrollIntoViewIfNeeded();
+    const firstItem = sender.getByRole('listitem').first();
+    const before = await pagePosition(firstItem);
+    await cancel.click();
     await sender.getByRole('dialog').getByRole('button', { name: 'Yes, cancel' }).click();
-    await expect(sender.getByText('Cancelled.', { exact: true })).toBeVisible();
-    await expectNothingMoved(sender, 'cancelled');
+    await expect(sender.getByText('Cancelled', { exact: true })).toBeVisible();
+    await settle(sender);
+    expect(await pagePosition(firstItem), 'cancelled').toEqual(before);
 
-    const reporter = await newPage({ viewport, ...FULL_MOTION });
-    await watchLayout(reporter);
     const message = await createMessageThroughApi({ text: 'layout', opensMax: 2 });
-    const link = reporter.getByLabel('Link to the message');
-    const send = reporter.getByRole('button', { name: 'Send report' });
-    await reporter.goto('/report');
-    await expect(link).toBeVisible();
-    await expectNothingMoved(reporter, 'report loaded');
-    await reporter.getByRole('checkbox', { name: /^I believe in good faith/u }).check();
-    const answers = [
-      { link: 'not a link', answer: 'The link is incomplete or damaged.' },
-      { link: message.link.replace('#2.', '#3.'), answer: 'The link needs a newer version of Nylzo.' },
-      { link: message.link.replace('#2.0.', '#2.2.'), answer: 'The link uses a retired passphrase method.' },
-      { link: message.link, answer: 'We received the report.' },
-    ];
-    for (const { link: pasted, answer } of answers) {
-      await link.fill(pasted);
-      await send.click();
-      await expect(reporter.getByText(answer)).toBeVisible();
-      await expectNothingMoved(reporter, answer);
-    }
-
     const recipient = await newPage({ viewport, ...FULL_MOTION });
     await watchLayout(recipient);
     await recipient.goto(message.link);
     await expect(recipient.getByRole('button', { name: 'Show message' })).toBeVisible();
     await expectNothingMoved(recipient, 'read loaded');
-    await recipient.getByRole('button', { name: 'Report', exact: true }).click();
-    await expect(recipient.getByLabel('Reason, optional')).toBeFocused();
-    await expectNothingMoved(recipient, 'report form open');
-    await recipient.getByRole('button', { name: 'Delete without showing' }).click();
+    await recipient.getByRole('button', { name: 'Delete without opening' }).click();
     await recipient.getByRole('alertdialog').getByRole('button', { name: 'Do not delete' }).click();
     await expectNothingMoved(recipient, 'delete dismissed');
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(recipient);
+    await settle(recipient);
     await expectNothingMoved(recipient, 'revealed with actions');
-    await recipient.getByRole('button', { name: 'Delete the remaining opens' }).click();
+    await recipient.getByRole('button', { name: 'Delete message' }).click();
     await recipient.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
-    await expect(recipient.getByRole('button', { name: 'Delete the remaining opens' })).toBeDisabled();
+    await expect(recipient.getByRole('button', { name: 'Delete message' })).toBeDisabled();
     await expectNothingMoved(recipient, 'rest deleted');
   });
 }

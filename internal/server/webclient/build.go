@@ -13,14 +13,23 @@ import (
 )
 
 const (
-	EncodingGzip    = "gzip"
-	indexTemplate   = "index.html"
-	placeholderFile = "placeholder.html"
-	distDirectory   = "dist"
-	assetsDirectory = "dist/assets"
+	EncodingGzip        = "gzip"
+	indexTemplate       = "index.html"
+	placeholderFile     = "placeholder.html"
+	distDirectory       = "dist"
+	assetsDirectory     = "dist/assets"
+	agentsGuideFile     = "agents.md"
+	markdownContentType = "text/markdown; charset=utf-8"
 )
 
 var templateNames = []string{indexTemplate, "home.en.html", "home.cs.html"}
+
+var statusTemplateNames = []string{
+	serverErrorPage + ".en.html",
+	serverErrorPage + ".cs.html",
+	maintenancePage + ".en.html",
+	maintenancePage + ".cs.html",
+}
 
 var assetTypes = map[string]string{
 	".json":  "application/json; charset=utf-8",
@@ -44,9 +53,10 @@ type Asset struct {
 }
 
 type Build struct {
-	Built     bool
-	Templates map[string]string
-	Assets    map[string]Asset
+	Built       bool
+	Templates   map[string]string
+	Assets      map[string]Asset
+	AgentsGuide *Asset
 }
 
 func Load(files fs.FS) (Build, error) {
@@ -63,6 +73,22 @@ func Load(files fs.FS) (Build, error) {
 			return Build{}, err
 		}
 	}
+	for _, name := range statusTemplateNames {
+		if _, statErr := fs.Stat(files, path.Join(distDirectory, name)); errors.Is(statErr, fs.ErrNotExist) {
+			continue
+		}
+		if build.Templates[name], err = loadTemplate(files, name, build.Assets); err != nil {
+			return Build{}, err
+		}
+	}
+	guide, err := fs.ReadFile(files, path.Join(distDirectory, agentsGuideFile))
+	if errors.Is(err, fs.ErrNotExist) {
+		return build, nil
+	}
+	if err != nil {
+		return Build{}, fmt.Errorf("server: web client %s: %w", agentsGuideFile, err)
+	}
+	build.AgentsGuide = &Asset{ContentType: markdownContentType, Body: guide}
 	return build, nil
 }
 

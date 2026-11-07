@@ -101,10 +101,8 @@ describe('message composer interactions', () => {
   it('disables persistent records when served from the verified local client', () => {
     querySelector.mockReturnValue({ content: 'https://instance.test' });
     const form = composer();
-    form.remember = true;
     const stop = form.start({} as HTMLElement);
     expect(form.canRemember).toBe(false);
-    expect(form.remember).toBe(false);
     if (typeof stop === 'function') {
       stop();
     }
@@ -221,7 +219,7 @@ describe('message composer interactions', () => {
     expect(form.sealed).toBeUndefined();
     vi.advanceTimersByTime(5100);
     expect(form.phase).toBe('done');
-    expect(form.sealed).toMatchObject({ created, opensMax: 3, passphrase: true });
+    expect(form.sealed).toMatchObject({ created, opensMax: 3, passphrase: 'correct horse battery staple' });
     expect(form.remembered).toBe('off');
     expect(rememberSent).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -233,38 +231,43 @@ describe('message composer interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
-  it.each([true, false])('shows whether the manage key was saved after the link appears: %s', async (stored) => {
+  it.each([true, false])('saves the manage key only when the sender asks and shows the result: %s', async (stored) => {
     const form = composer();
     form.text = 'remember this message';
-    form.remember = true;
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
     await submit(form);
+    vi.advanceTimersByTime(5100);
+    expect(rememberSent).not.toHaveBeenCalled();
+    const tracking = form.track('  Heslo pro Petra ');
     expect(rememberSent).toHaveBeenCalledWith(
       expect.anything(),
-      { id: created.id, createdAt: Date.now(), expiresAt: Date.parse(created.expiresAt), manageKey: created.manageKey },
+      {
+        id: created.id,
+        createdAt: Date.now(),
+        expiresAt: Date.parse(created.expiresAt),
+        label: 'Heslo pro Petra',
+        manageKey: created.manageKey,
+      },
       5000,
     );
-    vi.advanceTimersByTime(5100);
     expect(form.remembered).toBe('saving');
     gate.resolve(stored);
-    await gate.promise;
-    await Promise.resolve();
+    await tracking;
     expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
   });
 
   it('does not update a reset form when saving a previous record finishes late', async () => {
     const form = composer();
     form.text = 'message';
-    form.remember = true;
     const gate = Promise.withResolvers<boolean>();
     vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
     await submit(form);
     vi.advanceTimersByTime(5100);
+    const tracking = form.track('');
     await form.another();
     gate.resolve(true);
-    await gate.promise;
-    await Promise.resolve();
+    await tracking;
     expect(form.remembered).toBe('off');
     expect(form.sealed).toBeUndefined();
   });
@@ -385,6 +388,6 @@ function submit(form: Composer): Promise<void> {
 
 function focusTarget(form: Composer, target: Parameters<typeof form.focus.attach>[0]): ReturnType<typeof vi.fn> {
   const focus = vi.fn<(...arguments_: unknown[]) => void>();
-  form.focus.attach(target)({ focus } as unknown as HTMLElement);
+  form.focus.attach(target)({ focus, scrollIntoView: vi.fn<() => void>() } as unknown as HTMLElement);
   return focus;
 }

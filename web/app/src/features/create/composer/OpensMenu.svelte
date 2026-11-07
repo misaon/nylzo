@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import Icon from '../../../shared/ui/Icon.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
   import Popover from '../../../shared/ui/Popover.svelte';
   import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';
@@ -12,6 +12,7 @@
   const { composer }: Props = $props();
   const { translate } = getTranslator();
   const id = $props.id();
+  const SEGMENTS = Array.from({ length: 10 }, (_, index) => index + 1);
 </script>
 
 <div class="sm:relative" data-menu>
@@ -28,35 +29,49 @@
     label={translate('compose.opens.title')}
     open={composer.menu === 'opens'}
     onclose={() => composer.closeMenu('opens')}
-    class="inset-x-0 top-full mt-2 p-2 sm:inset-x-auto sm:left-0 sm:w-52"
+    class="inset-x-0 top-full mt-2 p-1.5 sm:inset-x-auto sm:left-0 sm:w-64"
   >
-    <p class="px-1 pt-0.5 text-[11px] text-ink-mute">{translate('compose.opens.title')}</p>
-    <div class="mt-1.5 flex items-center justify-between rounded-[8px] p-0.5 well">
-      <button
-        type="button"
-        disabled={composer.opensMax <= 1}
-        onclick={() => (composer.opensMax = Math.max(1, composer.opensMax - 1))}
-        aria-label={translate('compose.opens.less')}
-        class="grid size-11 place-items-center rounded-[7px] text-ink-soft hover:bg-white/8 hover:text-ink disabled:opacity-40 md:size-8"
-      >
-        <Icon name="minus" class="size-3.5" stroke={2} />
-      </button>
-      <output class="text-[15px] font-medium text-ink tabular-nums" aria-live="polite">{composer.opensMax}</output>
-      <button
-        type="button"
-        disabled={composer.opensMax >= composer.maxOpens}
-        onclick={() => (composer.opensMax = Math.min(composer.maxOpens, composer.opensMax + 1))}
-        aria-label={translate('compose.opens.more')}
-        class="grid size-11 place-items-center rounded-[7px] text-ink-soft hover:bg-white/8 hover:text-ink disabled:opacity-40 md:size-8"
-      >
-        <Icon name="plus" class="size-3.5" stroke={2} />
-      </button>
+    <p class="px-3 pt-1.5 pb-1 text-caption text-ink-mute">{translate('compose.opens.title')}</p>
+    <div class="mx-1 rounded-pane p-2 well">
+      <div class="flex items-center justify-between">
+        <button
+          type="button"
+          disabled={composer.opensMax <= 1}
+          onclick={() => (composer.opensMax = Math.max(1, composer.opensMax - 1))}
+          aria-label={translate('compose.opens.less')}
+          class="group/act btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition duration-300 ease-silk disabled:opacity-40 md:size-9"
+        >
+          <Icon name="minus" class="size-4 shrink-0" animated />
+        </button>
+        <div class="flex flex-col items-center gap-1">
+          <output class="text-stat font-light text-ink tabular-nums" aria-live="polite">{composer.opensMax}</output>
+          <span class="text-micro text-ink-mute" aria-hidden="true"
+            >{translate(composer.opensMax === 1 ? 'compose.opens.unit.one' : 'compose.opens.unit.other')}</span
+          >
+        </div>
+        <button
+          type="button"
+          disabled={composer.opensMax >= composer.maxOpens}
+          onclick={() => (composer.opensMax = Math.min(composer.maxOpens, composer.opensMax + 1))}
+          aria-label={translate('compose.opens.more')}
+          class="group/act btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition duration-300 ease-silk disabled:opacity-40 md:size-9"
+        >
+          <Icon name="plus" class="size-4 shrink-0" animated />
+        </button>
+      </div>
+      <div class="mt-2.5 flex gap-1 px-1 pb-0.5" aria-hidden="true">
+        {#each SEGMENTS as segment (segment)}
+          <span
+            class={[
+              'h-1 flex-1 rounded-full transition duration-300 ease-silk',
+              segment <= composer.opensMax ? 'bg-aegis-300 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]' : 'bg-white/10',
+            ]}
+          ></span>
+        {/each}
+      </div>
     </div>
-    <p class="mt-1.5 px-1 pb-0.5 text-[11px] leading-relaxed text-ink-mute">
-      {translate('compose.opens.note', { max: composer.maxOpens })}
-    </p>
     {#if composer.opensMax > 1 && !composer.usesPassphrase}
-      <p class="px-1 pb-0.5 text-[11px] leading-relaxed text-nebula-300">{translate('compose.opens.history')}</p>
+      <p class="px-3 pt-2 pb-1 text-micro text-pretty text-nebula-300">{translate('compose.opens.history')}</p>
     {/if}
   </Popover>
 </div>

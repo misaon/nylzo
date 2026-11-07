@@ -1,4 +1,4 @@
-<div class="nebula-sky" aria-hidden="true">
+<div class="nebula-sky animate-appear" aria-hidden="true">
   <div class="nebula-layer">
     <div class="nebula-cloud nebula-violet animate-drift-1"></div>
     <div class="nebula-cloud nebula-blue animate-drift-2"></div>

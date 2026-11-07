@@ -24,15 +24,13 @@ import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey, ShareKey } from '@
 
 import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../shared/api/api-errors.ts';
 import type { ApiError, EndedState, MessageState } from '../../shared/api/api-errors.ts';
-import type { AbuseReport, Api, Envelope, Metadata } from '../../shared/api/api.ts';
+import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
 import type { DownloadProgress } from '../../shared/api/object-body.ts';
 import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import type { Progress } from '../../shared/kdf/kdf.ts';
 import { HANDOFF_PATH } from '../../shared/local-client/handoff.ts';
-import { sendReport } from '../../shared/report/report.ts';
-import type { ReportOutcome } from '../../shared/report/report.ts';
 
 export type BusyStep = 'claiming' | 'decrypting' | 'deriving' | 'downloading';
 
@@ -58,7 +56,7 @@ export type ReadView =
     }
   | { readonly view: 'failed' }
   | { readonly view: 'invalid' }
-  | { readonly view: 'loading' }
+  | { readonly view: 'loading'; readonly kdfId?: KdfId | undefined }
   | { readonly view: 'newer' }
   | {
       readonly view: 'ready';
@@ -78,6 +76,7 @@ export type ReadView =
       readonly text?: string | undefined;
       readonly file?: RevealedFile | undefined;
       readonly burnable: boolean;
+      readonly opensRemaining: number;
     }
   | { readonly view: 'tampered' }
   | { readonly view: 'unknown' };
@@ -116,7 +115,6 @@ export interface Reader {
   readonly load: () => Promise<void>;
   readonly reveal: (passphrase?: string) => Promise<void>;
   readonly burn: () => Promise<BurnOutcome>;
-  readonly report: (report: AbuseReport) => Promise<ReportOutcome>;
   readonly clear: () => void;
 }
 
@@ -244,7 +242,6 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let metadata: Metadata | undefined;
   let deviceFailed = false;
   let busy = false;
-  let reporting = false;
   let acknowledging = false;
   let acknowledged: Promise<unknown> = Promise.resolve();
   let readKey: RequestKey | undefined;
@@ -301,7 +298,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   function wipeUnusedReadKey(): void {
-    if (heldKey || busy || reporting || acknowledging) {
+    if (heldKey || busy || acknowledging) {
       return;
     }
     wipeRequestKey(readKey);
@@ -388,6 +385,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return;
     }
     messageId = idToString(link.id);
+    show({ view: 'loading', kdfId: link.kdfId });
     if (safely(() => session.getItem(kdfKey()), null) !== null) {
       deviceFailed = true;
       safely(() => session.removeItem(kdfKey()), undefined);
@@ -398,7 +396,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return;
     }
     secrets = linked;
-    if (readKey && !busy && !reporting && !acknowledging) {
+    if (readKey && !busy && !acknowledging) {
       wipeRequestKey(readKey);
     }
     readKey = linked.readKey;
@@ -602,6 +600,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
           ? { name: sanitizeFileName(file.name), mime: file.mime, bytes: opened.payload.file }
           : undefined,
       burnable: remaining > 0,
+      opensRemaining: Math.max(0, remaining),
     });
     await dependencies.shown?.();
     if (pageLeft()) {
@@ -634,7 +633,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   function showBurnOutcome(outcome: BurnOutcome, shown: RevealedView | undefined): void {
     if (shown) {
       if (revealedView === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
-        show({ ...shown, burnable: false });
+        show({ ...shown, burnable: false, opensRemaining: 0 });
       }
       return;
     }
@@ -681,28 +680,11 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     return outcome;
   }
 
-  async function report(abuseReport: AbuseReport): Promise<ReportOutcome> {
-    const current = heldKey;
-    if (!current || reporting || revealedView?.burnable === false || !allowed()) {
-      return { outcome: 'ignored' };
-    }
-    reporting = true;
-    try {
-      return await sendReport(api, current.id, current.readKey, abuseReport);
-    } finally {
-      reporting = false;
-      if (current.readKey !== readKey) {
-        wipeRequestKey(current.readKey);
-      }
-      wipeUnusedReadKey();
-    }
-  }
-
   function clear(): void {
     left = true;
     revealedView?.file?.bytes.fill(0);
     show({ view: 'cleared' });
   }
 
-  return { load, reveal, burn, report, clear };
+  return { load, reveal, burn, clear };
 }

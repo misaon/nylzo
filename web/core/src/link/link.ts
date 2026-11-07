@@ -36,7 +36,18 @@ export function formatLink(
 
 // The read page of a link of protocol version 1 still loads, only to say that the upgrade erased its message.
 export function isReadPath(path: string): boolean {
-  return path === LINK_PATH || path.startsWith(RELEASED_PATH_PREFIX);
+  if (path === LINK_PATH) {
+    return true;
+  }
+  if (!path.startsWith(RELEASED_PATH_PREFIX)) {
+    return false;
+  }
+  try {
+    parseId(path.slice(RELEASED_PATH_PREFIX.length));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Reads the link from the page path and the fragment, as the address bar held them.

@@ -3,7 +3,7 @@ import type { RequestKey } from '@nylzo/core';
 
 import { ApiError, StoppedError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
-import type { AbuseReport, Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
+import type { Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -13,13 +13,6 @@ interface Stored {
   leases: Set<string>;
   endedAt?: string;
 }
-
-interface Report extends AbuseReport {
-  readonly id: string;
-  readonly signedByReader: boolean;
-}
-
-const REPORTS_PER_MESSAGE = 3;
 
 export interface FakeOptions {
   pow?: { required: boolean; difficulty: number };
@@ -39,7 +32,6 @@ export interface FakeOptions {
   failStatus?: ApiError[];
   failCancel?: ApiError[];
   failBurn?: ApiError[];
-  failReport?: ApiError[];
 }
 
 export interface FakeApi extends Api {
@@ -47,11 +39,6 @@ export interface FakeApi extends Api {
   readonly challenges: string[];
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
-  readonly reports: Report[];
-}
-
-export function abuseReport(reason: string, contact = ''): AbuseReport {
-  return { reason, contact, goodFaith: true };
 }
 
 // Wraps a share as the server does (spec 5.6), so the flow tests exercise the client's unwrapping.
@@ -87,8 +74,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   const failStatus = [...(options.failStatus ?? [])];
   const failCancel = [...(options.failCancel ?? [])];
   const failBurn = [...(options.failBurn ?? [])];
-  const failReport = [...(options.failReport ?? [])];
-  const reports: Report[] = [];
   const shares = new Map<string, Uint8Array<ArrayBuffer>>();
   const expiresAt = new Date(Date.now() + (options.expiresInSeconds ?? 3600) * 1000).toISOString();
 
@@ -264,21 +249,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       }
       end(managed(id, manageKey), 'cancelled');
     },
-    async report(id, readKey, report) {
-      calls.push('report');
-      const failure = failReport.shift();
-      if (failure) {
-        throw failure;
-      }
-      const key = idToString(id);
-      const signedByReader = sameBytes(stored.get(key)?.request.readKey, readKey.publicKey);
-      const earlier = reports.filter((sent) => sent.id === key && sent.signedByReader);
-      if (signedByReader && earlier.length >= REPORTS_PER_MESSAGE) {
-        return 'limit';
-      }
-      reports.push({ id: key, signedByReader, ...report });
-      return 'accepted';
-    },
     async status(id, manageKey): Promise<Status> {
       calls.push('status');
       const failure = failStatus.shift();
@@ -306,5 +276,5 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     },
   };
   /* oxlint-enable typescript/require-await -- only the fake methods above */
-  return Object.assign(api, { calls, challenges, stored, issuedIds, reports });
+  return Object.assign(api, { calls, challenges, stored, issuedIds });
 }

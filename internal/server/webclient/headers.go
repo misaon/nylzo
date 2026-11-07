@@ -14,8 +14,6 @@ const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'se
 
 const robotsTag = "noindex, nofollow"
 
-const PreviewHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><title>Nylzo</title></head><body><p>Open this link in your browser to read the message.</p></body></html>`
-
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
 	"Integrity-Policy":             "blocked-destinations=(script)",

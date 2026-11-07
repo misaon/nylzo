@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/http/httptrace"
 	"net/textproto"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -64,7 +65,7 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 				}
 				return response.Header
 			}
-			for _, path := range []string{"/", "/cs/", "/r", "/sent", "/report", "/transparency"} {
+			for _, path := range []string{"/", "/cs/", "/r", "/sent", "/transparency", "/terms", "/agents"} {
 				header := check(path, pages.For(path).Body())
 				if header.Get("Content-Security-Policy") != pages.For(path).Policy() {
 					t.Fatalf("%s: the frontend lost its content security policy", path)
@@ -212,6 +213,76 @@ func TestBackendResponsesCannotBecomeExecutableContent(t *testing.T) {
 			_ = response.Body.Close()
 			if response.StatusCode != http.StatusBadGateway || response.Header.Get("Upgrade") != "" {
 				t.Fatal("an upstream protocol upgrade bypassed the response boundary")
+			}
+		})
+	}
+}
+
+func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
+	for _, caddyfile := range []string{
+		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
+		filepath.Join("..", "compose", "Caddyfile"),
+	} {
+		t.Run(caddyfile, func(t *testing.T) {
+			var requests atomic.Int64
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests.Add(1)
+				w.Header().Set("Content-Type", "text/plain")
+				_, _ = io.WriteString(w, "ok")
+			}))
+			defer backend.Close()
+			maintenance := filepath.Join(t.TempDir(), "maintenance")
+			address, roots := startCaddyWithMaintenance(t, caddyfile, backend.Listener.Addr().String(), maintenance)
+			client := &http.Client{
+				Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}},
+				Timeout:   10 * time.Second,
+			}
+			get := func(path, destination string) (*http.Response, *http.Request) {
+				t.Helper()
+				request, _ := http.NewRequest(http.MethodGet, "https://"+address+path, http.NoBody)
+				request.Header.Set("Sec-Fetch-Dest", destination)
+				response, err := client.Do(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return response, request
+			}
+			pages := embeddedPages(t, "https://localhost")
+
+			response, _ := get("/sent", "document")
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("page without the maintenance file: %d", response.StatusCode)
+			}
+			if err := os.WriteFile(maintenance, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for _, path := range []string{"/", "/sent", "/r", "/missing"} {
+				response, request := get(path, "document")
+				expectSameResponse(t, response, http.StatusServiceUnavailable, func(w http.ResponseWriter) {
+					pages.ServeMaintenance(w, request)
+				})
+			}
+			response, _ = get("/api/v1/instance", "empty")
+			body, _ := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusServiceUnavailable || response.Header.Get("Retry-After") != "30" ||
+				string(body) != `{"error":"unavailable"}` || requests.Load() != 0 {
+				t.Fatalf("API during maintenance: %d %q %s, backend requests %d",
+					response.StatusCode, response.Header.Get("Retry-After"), body, requests.Load())
+			}
+			response, _ = get("/healthz", "empty")
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK || requests.Load() != 1 {
+				t.Fatalf("health check during maintenance: %d, backend requests %d", response.StatusCode, requests.Load())
+			}
+			if err := os.Remove(maintenance); err != nil {
+				t.Fatal(err)
+			}
+			response, _ = get("/sent", "document")
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("page after the maintenance file was removed: %d", response.StatusCode)
 			}
 		})
 	}

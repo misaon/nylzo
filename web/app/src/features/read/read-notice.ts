@@ -1,4 +1,4 @@
-import type { IconName } from '../../shared/ui/icons.ts';
+import type { IconName } from '../../shared/ui/icon/icons.ts';
 import type { BurnOutcome, ReadView } from './reader.ts';
 
 export type Notice =
@@ -48,6 +48,24 @@ export const NOTICE_ICONS: Readonly<Record<Notice, IconName>> = {
 };
 
 const ALARMING: ReadonlySet<Notice> = new Set(['failed', 'invalid', 'locked', 'tampered']);
+const ENDED: ReadonlySet<Notice> = new Set([
+  'burned',
+  'cancelled',
+  'deleted',
+  'expired',
+  'invalid',
+  'locked',
+  'newer',
+  'opened',
+  'released',
+  'retired',
+  'tampered',
+  'unknown',
+]);
+
+export function isEnded(notice: Notice): boolean {
+  return ENDED.has(notice);
+}
 
 export function isAlarming(notice: Notice): boolean {
   return ALARMING.has(notice);

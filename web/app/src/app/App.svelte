@@ -1,17 +1,17 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import { prefersReducedMotion } from 'svelte/motion';
 
+  import Agents from '../features/agents/Agents.svelte';
   import Create from '../features/create/Create.svelte';
+  import NotFound from '../features/errors/NotFound.svelte';
   import Read from '../features/read/Read.svelte';
-  import Report from '../features/report/Report.svelte';
   import Sent from '../features/sent/Sent.svelte';
+  import Terms from '../features/terms/Terms.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
-  import { handOverLink } from '../shared/link/link-handoff.ts';
-  import { setLinkOpener } from '../shared/link/link-opener.ts';
-  import { instanceOrigin } from '../shared/local-client/instance-origin.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
@@ -23,10 +23,12 @@
   }
 
   const HEADER_VARIANTS = {
+    agents: 'page',
     create: 'home',
+    notFound: 'page',
     read: 'read',
-    report: 'page',
     sent: 'page',
+    terms: 'page',
     transparency: 'page',
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
@@ -38,23 +40,6 @@
   const { translate } = translator;
   const variant = $derived(HEADER_VARIANTS[screen]);
 
-  setLinkOpener((link) => {
-    const handed = handOverLink(link, instanceOrigin());
-    if ('problem' in handed) {
-      return handed.problem;
-    }
-    if (location.pathname === handed.path) {
-      history.replaceState(null, '', handed.path);
-    } else {
-      history.pushState(null, '', handed.path);
-    }
-    path = handed.path;
-    visit++;
-    scrollTo({ top: 0 });
-    // oxlint-disable-next-line no-useless-return -- noImplicitReturns requires an explicit success return for this callback.
-    return;
-  });
-
   function returned() {
     if (location.pathname !== path) {
       location.reload();
@@ -65,8 +50,16 @@
     if (translator.language === language) {
       return;
     }
-    translator.language = language;
-    document.documentElement.lang = language;
+    const applyLanguage = async () => {
+      translator.language = language;
+      document.documentElement.lang = language;
+      await tick();
+    };
+    if (prefersReducedMotion.current || typeof document.startViewTransition !== 'function') {
+      void applyLanguage();
+    } else {
+      document.startViewTransition(applyLanguage);
+    }
     saveLanguage(browserPreferences(), language);
     if (screen === 'create') {
       history.replaceState(history.state, '', `${HOME_PATHS[language]}${location.hash}`);
@@ -79,8 +72,8 @@
 <div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
-    <SiteHeader {variant} />
-    <main class="min-h-svh flex-1">
+    <SiteHeader {variant} current={screen} onlanguage={switchLanguage} />
+    <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
           {#key visit}
@@ -88,13 +81,17 @@
           {/key}
         {:else if screen === 'create'}
           <Create />
+        {:else if screen === 'agents'}
+          <Agents />
+        {:else if screen === 'notFound'}
+          <NotFound />
         {:else}
           <div class="mx-auto max-w-[860px] px-4 pt-16 pb-24 sm:px-6 md:pt-24">
-            <div class="glass rounded-card p-6 md:p-10">
+            <div class="glass animate-rise rounded-card p-6 [animation-delay:80ms] md:p-10">
               {#if screen === 'sent'}
                 <Sent />
-              {:else if screen === 'report'}
-                <Report />
+              {:else if screen === 'terms'}
+                <Terms />
               {:else}
                 <Transparency />
               {/if}

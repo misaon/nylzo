@@ -73,14 +73,15 @@ describe('sent messages interface', () => {
   it('announces loading, unavailable storage and an empty list', () => {
     show();
     expect(page.load).toHaveBeenCalledOnce();
-    expect(target.querySelector('[role="status"]')?.textContent).toBe(translator.translate('sent.loading'));
+    expect(target.textContent).toContain(translator.translate('sent.loading'));
     notify({ view: 'unavailable' });
     flushSync();
-    expect(target.querySelector('[role="alert"]')?.textContent).toBe(translator.translate('sent.unavailable'));
+    expect(target.querySelector('[role="alert"]')?.textContent.trim()).toBe(translator.translate('sent.unavailable'));
     notify({ view: 'list', items: [] });
     flushSync();
     expect(target.textContent).toContain(translator.translate('sent.empty'));
-    expect(target.querySelector('button')).toBeNull();
+    expect(target.querySelectorAll('button')).toHaveLength(1);
+    expect(target.querySelector('button')?.classList).toContain('invisible');
   });
 
   it.each<ItemState>([
@@ -92,7 +93,7 @@ describe('sent messages interface', () => {
     show([item(state)]);
     expect(target.querySelector('h3')).not.toBeNull();
     const retry = [...target.querySelectorAll('button')].find(
-      (candidate) => candidate.textContent === translator.translate('action.retry'),
+      (candidate) => candidate.textContent.trim() === translator.translate('action.retry'),
     );
     expect(retry !== undefined).toBe(state.kind === 'failed' || state.kind === 'retry_later');
     if (!retry) {
@@ -124,8 +125,9 @@ describe('sent messages interface', () => {
       ],
     });
     flushSync();
-    expect(target.textContent).toContain(translator.translate('sent.not_kept'));
-    expect(button(translator.translate('sent.cancel')).disabled).toBe(true);
+    expect(target.textContent).toContain(translator.translate('sent.state.expired'));
+    expect(target.textContent).not.toContain(translator.translate('sent.opens', { used: 1, max: 3 }));
+    expect(() => button(translator.translate('sent.cancel'))).toThrow('missing button');
   });
 
   it.each<CancelOutcome>([{ outcome: 'cancelled' }, { outcome: 'failed' }, { outcome: 'retry_later', retryAfter: 30 }])(
@@ -151,7 +153,7 @@ describe('sent messages interface', () => {
     button(translator.translate('sent.cancel.no')).click();
     await tick();
     expect(page.cancel).not.toHaveBeenCalled();
-    button(translator.translate('sent.forget')).click();
+    button(`${translator.translate('sent.forget')}${translator.translate('sent.forget.suffix')}`).click();
     flushSync();
     expect(page.forget).not.toHaveBeenCalled();
     button(translator.translate('sent.forget.yes')).click();
@@ -160,7 +162,7 @@ describe('sent messages interface', () => {
 
   it('forgets an ended record directly, and confirms before forgetting the whole list', async () => {
     show([{ ...item(), cancellable: false, ended: true }]);
-    button(translator.translate('sent.forget')).click();
+    button(`${translator.translate('sent.forget')}${translator.translate('sent.forget.suffix')}`).click();
     await tick();
     expect(page.forget).toHaveBeenCalledExactlyOnceWith(item().id);
     expect(target.querySelector('dialog')).toBeNull();
@@ -174,11 +176,11 @@ describe('sent messages interface', () => {
   it('shows storage failure if forgetting fails and returns focus to the page', async () => {
     page.forget.mockRejectedValue(new Error('storage denied'));
     show([{ ...item(), cancellable: false }]);
-    button(translator.translate('sent.forget')).click();
+    button(`${translator.translate('sent.forget')}${translator.translate('sent.forget.suffix')}`).click();
     await vi.waitFor(() =>
       expect(target.querySelector('[role="status"]')?.textContent).toBe(translator.translate('sent.unavailable')),
     );
-    expect(document.activeElement).toBe(target.querySelector('h2'));
+    expect(document.activeElement).toBe(target.querySelector('h1'));
   });
 });
 

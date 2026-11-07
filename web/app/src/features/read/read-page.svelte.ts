@@ -2,21 +2,20 @@ import { KDF_NONE } from '@nylzo/core';
 import { flushSync, onDestroy, tick } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
-import type { Metadata, ReportStatus } from '../../shared/api/api.ts';
+import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
 import { scryptInWorker } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import type { MessageKey } from '../../shared/language/czech.ts';
-import { formatWait } from '../../shared/language/format.ts';
+import { formatMoment, formatWait } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
-import type { ReportOutcome, ReportSubmission } from '../../shared/report/report.ts';
 import { Flash } from '../../shared/ui/flash.svelte.ts';
 import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
-import type { IconName } from '../../shared/ui/icons.ts';
+import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { markHiddenCharacters } from './hidden-characters.ts';
 import type { MarkedText } from './hidden-characters.ts';
 import { noticeOf } from './read-notice.ts';
@@ -27,7 +26,7 @@ import { saveFile } from './save-file.ts';
 
 export type Phase = 'notice' | 'opening' | 'ready' | 'revealed';
 
-export interface ChipData {
+export interface Fact {
   readonly icon: IconName;
   readonly text: string;
   readonly accent?: boolean;
@@ -43,12 +42,16 @@ export type FocusTarget =
   | 'passphrase'
   | 'readTitle'
   | 'readyArea'
-  | 'reportButton'
-  | 'reportPopover'
   | 'revealedTitle';
 
-export const PANEL_SHOWN = 'translate-y-0 opacity-100';
-export const PANEL_HIDDEN = 'pointer-events-none translate-y-3 opacity-0';
+export function panelClasses(shown: boolean, phase: Phase): string {
+  if (shown) {
+    return 'relative translate-y-0 opacity-100';
+  }
+  return phase === 'revealed'
+    ? 'pointer-events-none absolute inset-x-0 top-0 translate-y-3 opacity-0'
+    : 'pointer-events-none relative translate-y-3 opacity-0';
+}
 
 const STEPS = [
   { id: 'derive', busy: 'deriving', icon: 'key' },
@@ -83,6 +86,7 @@ export class ReadPage {
   #left = false;
   #pending: ReadView | undefined;
   #revealing = false;
+  #revealWhenReady = false;
   #markShown: (() => void) | undefined;
   #revealTimer: ReturnType<typeof setInterval> | undefined;
   readonly #reader: Reader;
@@ -98,9 +102,6 @@ export class ReadPage {
   metadata = $state.raw<Metadata>();
   confirmingDownload = $state(false);
   askingDelete = $state(false);
-  reporting = $state(false);
-  reportSent = $state<ReportStatus>();
-  reportRound = $state(0);
   restDeleted = $state(false);
   deleting = $state(false);
   burned = $state.raw<Burned>();
@@ -141,7 +142,6 @@ export class ReadPage {
   readonly notice: Notice = $derived(noticeOf(this.shown, this.burned));
   readonly burnNote = $derived(this.burned ? this.#burnText(this.burned) : '');
   readonly burnFailed = $derived(this.burned !== undefined && FAILED_BURNS.has(this.burned.outcome.outcome));
-  readonly reportable = $derived(this.ready !== undefined || (this.revealed?.burnable ?? false));
 
   readonly actions = $derived.by(() => {
     if (this.phase === 'opening') {
@@ -159,38 +159,35 @@ export class ReadPage {
     if (this.opening && this.view.view === 'busy') {
       return translate(`busy.${this.view.step}`);
     }
-    if (this.reporting && this.reportSent) {
-      return translate(this.reportSent === 'limit' ? 'open.report.limit' : 'open.report.sent');
-    }
     return this.burnNote;
   });
 
-  readonly readyChips: readonly ChipData[] = $derived.by(() => {
+  readonly readyFacts: readonly Fact[] = $derived.by(() => {
     const { translate } = this.#translator;
     if (!this.metadata) {
       return [];
     }
-    const chips: ChipData[] = [];
+    const facts: Fact[] = [];
     if (this.metadata.expiresAt) {
-      chips.push({
+      facts.push({
         icon: 'clock',
         text: translate('open.chip.expires', { time: this.shortTime(this.metadata.expiresAt) }),
       });
     }
-    chips.push({ icon: 'eye', text: this.opensLeft(this.metadata.opensRemaining) });
+    facts.push({ icon: 'eye', text: this.opensLeft(this.metadata.opensRemaining) });
     if (this.metadata.kdfId !== KDF_NONE) {
-      chips.push({ icon: 'key', text: translate('compose.passphrase.chip'), accent: true });
+      facts.push({ icon: 'key', text: translate('create.passphrase'), accent: true });
     }
-    return chips;
+    return facts;
   });
 
-  readonly afterChips: readonly ChipData[] = $derived.by(() => {
+  readonly afterFacts: readonly Fact[] = $derived.by(() => {
     const { translate } = this.#translator;
     if (this.revealed) {
       const more = this.revealed.burnable && !this.restDeleted;
       return [
         { icon: 'check', text: translate('open.chip.now') },
-        { icon: 'eye', text: more ? translate('open.chip.more') : this.opensLeft(0) },
+        { icon: 'eye', text: more ? this.opensLeft(this.revealed.opensRemaining) : translate('open.chip.last') },
       ];
     }
     if (this.notice === 'burned') {
@@ -208,7 +205,6 @@ export class ReadPage {
   });
 
   readonly askDelete = async (): Promise<void> => {
-    this.reporting = false;
     this.burned = undefined;
     this.askingDelete = true;
     await this.focus.focusAfterUpdate(() => 'keepMessage');
@@ -250,11 +246,6 @@ export class ReadPage {
     }
     this.confirmingDownload = false;
     await this.focus.focusAfterUpdate(() => 'download');
-  };
-
-  readonly closeReport = async (): Promise<void> => {
-    this.reporting = false;
-    await this.focus.focusAfterUpdate(() => 'reportButton');
   };
 
   readonly confirmDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
@@ -311,7 +302,6 @@ export class ReadPage {
     this.burned = undefined;
     this.confirmingDownload = false;
     this.askingDelete = false;
-    this.reporting = false;
     this.showPassphrase = false;
     this.passphrase = '';
     this.#pending = undefined;
@@ -335,23 +325,6 @@ export class ReadPage {
     void this.cancelDelete();
   };
 
-  readonly onWindowClick = (event: MouseEvent): void => {
-    if (this.reporting && !(event.target instanceof Element && event.target.closest('[data-menu]'))) {
-      this.reporting = false;
-    }
-  };
-
-  readonly report = async ({ reason, contact, goodFaith }: ReportSubmission): Promise<ReportOutcome> =>
-    this.#reader.report({ reason, contact, goodFaith });
-
-  readonly reportFinished = async (status: ReportStatus): Promise<void> => {
-    this.reportSent = status;
-    await tick();
-    if (this.reporting) {
-      this.focus.focus('reportPopover');
-    }
-  };
-
   readonly retry = (): void => {
     void this.#reader.load();
   };
@@ -371,6 +344,14 @@ export class ReadPage {
 
   readonly reveal = (event: SubmitEvent): void => {
     event.preventDefault();
+    if (this.shown.view === 'loading') {
+      this.#revealWhenReady = true;
+      return;
+    }
+    this.#submit();
+  };
+
+  #submit(): void {
     if (this.#revealing || this.phase !== 'ready' || this.shown.view !== 'ready' || this.deleting) {
       return;
     }
@@ -381,18 +362,13 @@ export class ReadPage {
     }
     this.emptyPassphrase = false;
     this.showPassphrase = false;
-    this.reporting = false;
     this.askingDelete = false;
     this.burned = undefined;
     const entered = this.passphrase;
     this.passphrase = '';
     this.#revealing = true;
     void this.#revealWith(entered);
-  };
-
-  readonly toggleReport = (): void => {
-    this.reporting = !this.reporting;
-  };
+  }
 
   readonly typed = (): void => {
     this.emptyPassphrase = false;
@@ -406,8 +382,8 @@ export class ReadPage {
         api: createApi(),
         location,
         takeFragment: () => {
-          const taken = takeFragment(location.pathname);
-          this.linkInHistory = taken.fragment !== '' && !taken.pasted;
+          const taken = takeFragment();
+          this.linkInHistory = taken.fragment !== '' && !taken.handedOver;
           return taken.fragment;
         },
         session: {
@@ -471,6 +447,9 @@ export class ReadPage {
   #onView(next: ReadView): void {
     const wasOpening = this.opening;
     this.view = next;
+    if (next.view === 'loading' && next.kdfId !== undefined) {
+      this.passphraseRequired = next.kdfId !== KDF_NONE;
+    }
     if (next.view === 'ready') {
       this.passphraseRequired = next.metadata.kdfId !== KDF_NONE;
       this.metadata = next.metadata;
@@ -492,6 +471,14 @@ export class ReadPage {
     this.#pending = undefined;
     this.#stopTimeline();
     this.#show(next);
+    const submitted = this.#revealWhenReady && next.view === 'ready';
+    if (next.view !== 'loading') {
+      this.#revealWhenReady = false;
+    }
+    if (submitted) {
+      this.#submit();
+      return;
+    }
     if (wasOpening && next.view === 'ready' && this.passphraseRequired) {
       void this.focus.focusAfterUpdate(() => 'passphrase');
     }
@@ -529,8 +516,6 @@ export class ReadPage {
       return;
     }
 
-    this.reportSent = undefined;
-    this.reportRound++;
     void this.#startReveal(next.text);
   }
 
@@ -597,11 +582,6 @@ export class ReadPage {
   }
 
   shortTime(timestamp: string): string {
-    return new Intl.DateTimeFormat(this.#translator.language, {
-      day: 'numeric',
-      month: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(Date.parse(timestamp));
+    return formatMoment(timestamp, this.#translator.language);
   }
 }

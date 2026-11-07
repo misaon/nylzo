@@ -1,122 +1,129 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { VERIFIED_CLIENTS_URL } from '../../../shared/shell/repository.ts';
-  import Icon from '../../../shared/ui/Icon.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
 
   const limits = [
-    { key: 'limits.save', icon: 'camera' },
-    { key: 'limits.link', icon: 'link' },
-    { key: 'limits.server', icon: 'shield', link: VERIFIED_CLIENTS_URL },
-    { key: 'limits.abuse', icon: 'ban' },
+    { key: 'limits.save', icon: 'camera', order: '[--rv-i:0]' },
+    { key: 'limits.link', icon: 'link', order: '[--rv-i:1]' },
+    { key: 'limits.server', icon: 'shield', order: '[--rv-i:2]' },
+    { key: 'limits.abuse', icon: 'ban', order: '[--rv-i:3]' },
   ] as const;
+  const DEVICE =
+    'rv-pop grid size-12 place-items-center rounded-pane text-white outline-1 outline-offset-[3px] outline-solar-300/30 outline-dashed tile-warning [--rv-delay:900ms]';
+  const BADGE =
+    'rv-pop grid size-5 shrink-0 place-items-center rounded-full bg-aegis-500/12 text-aegis-200 ring-1 ring-aegis-400/35 [--rv-delay:560ms]';
+  const DASHED =
+    'rv-draw mt-6 h-1 bg-[repeating-linear-gradient(90deg,oklch(0.86_0.12_85/0.55)_0_6px,transparent_6px_11px)] [--rv-delay:820ms]';
+  const LABEL = 'rv-focus mt-3 text-center text-caption text-balance text-ink [--rv-blur:4px] [--rv-y:6px]';
+  const ZONE =
+    'rv-focus mt-0.5 text-center text-eyebrow font-medium whitespace-nowrap uppercase [--rv-blur:4px] [--rv-y:6px]';
 </script>
-
-{#snippet device(icon: 'laptop' | 'phone', label: string)}
-  <div class="flex w-[84px] flex-col items-center text-center">
-    <span
-      class="grid size-14 place-items-center rounded-control bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/50 outline-1 outline-offset-[3px] outline-nebula-300/40 outline-dashed"
-    >
-      <Icon name={icon} stroke={1.6} class="size-6" />
-    </span>
-    <span class="mt-3 text-[13px] text-ink">{label}</span>
-    <span class="text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-nebula-300 uppercase"
-      >{translate('limits.outside')}</span
-    >
-  </div>
-{/snippet}
-
-{#snippet wire(direction: 'out' | 'in')}
-  <div
-    class={[
-      'relative mt-7 h-px bg-linear-to-r',
-      direction === 'out'
-        ? 'from-nebula-300/40 via-aegis-400/80 to-aegis-400/80'
-        : 'from-aegis-400/80 via-aegis-400/80 to-nebula-300/40',
-    ]}
-  >
-    <span
-      class="absolute top-1/2 left-1/2 grid size-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-void-900 text-aegis-300 ring-1 ring-aegis-400/50"
-    >
-      <Icon name="keyhole" stroke={2.2} class="size-3" />
-    </span>
-  </div>
-{/snippet}
 
 <span id="hranice" class="block" aria-hidden="true"></span>
 
 <section id="limits" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="limits-title">
-  <div class="glass relative mx-auto max-w-[1160px] reveal-up overflow-hidden rounded-card p-6 md:p-10">
+  <div class="glass relative mx-auto max-w-[1160px] rv-rise overflow-hidden rounded-card p-6 md:p-10" {@attach reveal}>
     <div
-      class="pointer-events-none absolute -top-24 -left-24 size-80 rounded-full bg-[radial-gradient(closest-side,oklch(0.5_0.17_305/0.3),transparent)]"
+      class="pointer-events-none absolute -top-32 -right-24 size-96 rv-glow rounded-full bg-[radial-gradient(closest-side,oklch(0.86_0.12_85/0.1),transparent)] [--rv-delay:200ms]"
       aria-hidden="true"
     ></div>
     <div class="relative grid items-center gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-14">
       <div>
-        <p class="text-sm font-medium text-nebula-300">{translate('limits.eyebrow')}</p>
+        <p class="rv-focus text-eyebrow text-solar-300 uppercase [--rv-delay:150ms] [--rv-i:0]">
+          {translate('limits.eyebrow')}
+        </p>
         <h2
           id="limits-title"
-          class="mt-3 font-display text-[26px] leading-[1.2] font-light tracking-[-0.02em] text-balance md:text-[36px]"
+          class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-delay:150ms] [--rv-i:1] md:text-section-lg"
         >
           {translate('limits.title')}
         </h2>
-        <p class="mt-4 max-w-[440px] leading-relaxed text-pretty text-ink-soft">{translate('limits.sub')}</p>
+        <p
+          class="mt-4 max-w-[440px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-delay:150ms] [--rv-i:2] md:text-lead-lg"
+        >
+          {translate('limits.sub')}
+        </p>
       </div>
-
-      <div class="rounded-pane px-4 py-6 well md:px-8 md:py-8" role="img" aria-label={translate('limits.diagram')}>
-        <div class="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-start" aria-hidden="true">
-          {@render device('laptop', translate('limits.you'))}
-          {@render wire('out')}
-          <div class="flex w-[84px] flex-col items-center text-center">
-            <span
-              class="grid size-14 place-items-center rounded-control bg-aegis-500/15 text-aegis-300 shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)] ring-1 ring-aegis-400/45"
-            >
-              <Icon name="database" stroke={1.6} class="size-6" />
-            </span>
-            <span class="mt-3 text-[13px] text-ink">{translate('limits.server')}</span>
-            <span class="text-[11px] font-medium tracking-[0.08em] whitespace-nowrap text-aegis-300 uppercase"
-              >{translate('limits.ours')}</span
-            >
+      <div
+        class="rounded-pane px-4 py-6 well md:px-8 md:py-8"
+        role="img"
+        aria-label={translate('limits.diagram')}
+        {@attach reveal}
+      >
+        <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1fr)] gap-x-1.5" aria-hidden="true">
+          <div class="flex justify-center">
+            <span class={DEVICE}><Icon name="laptop" class="size-6" stroke={1.6} /></span>
           </div>
-          {@render wire('in')}
-          {@render device('phone', translate('limits.recipient'))}
+          <div class="flex items-center justify-center gap-1.5">
+            <span class={BADGE}><Icon name="keyhole" class="size-3" stroke={2.2} /></span>
+            <span class="hidden h-px flex-1 origin-right rv-draw bg-aegis-400/50 [--rv-delay:280ms] sm:block"></span>
+            <IconTile icon="database" tone="current" class="rv-pop shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)]" />
+            <span class="hidden h-px flex-1 origin-left rv-draw bg-aegis-400/50 [--rv-delay:280ms] sm:block"></span>
+            <span class={BADGE}><Icon name="keyhole" class="size-3" stroke={2.2} /></span>
+          </div>
+          <div class="flex justify-center">
+            <span class={DEVICE}><Icon name="phone" class="size-6" stroke={1.6} /></span>
+          </div>
+          <span class={[DASHED, 'origin-right rounded-l-full']}></span>
+          <span
+            class="mt-6 h-1 origin-center rv-draw rounded-full bg-aegis-400 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)] [--rv-delay:250ms] [--rv-time:1.1s]"
+          ></span>
+          <span class={[DASHED, 'origin-left rounded-r-full']}></span>
+          <span class={[LABEL, '[--rv-delay:1000ms]']}>{translate('limits.you')}</span>
+          <span class={[LABEL, '[--rv-delay:1060ms]']}>{translate('limits.server')}</span>
+          <span class={[LABEL, '[--rv-delay:1120ms]']}>{translate('limits.recipient')}</span>
+          <span class={[ZONE, 'text-solar-300 [--rv-delay:1090ms]']}>{translate('limits.outside')}</span>
+          <span class={[ZONE, 'text-aegis-300 [--rv-delay:1150ms]']}>{translate('limits.ours')}</span>
+          <span class={[ZONE, 'text-solar-300 [--rv-delay:1210ms]']}>{translate('limits.outside')}</span>
         </div>
       </div>
     </div>
-
-    <ul class="relative mt-10 grid gap-3 md:grid-cols-2">
-      {#each limits as limit (limit.key)}
-        <li class="flex items-center gap-4 rounded-pane p-4 well">
-          <span
-            class="grid size-10 shrink-0 place-items-center rounded-control bg-nebula-400/10 text-nebula-300 ring-1 ring-nebula-300/30"
+    <div class="relative mt-8 overflow-hidden rounded-pane well md:mt-10" {@attach reveal}>
+      <ul class="grid md:grid-cols-2">
+        {#each limits as limit (limit.key)}
+          <li
+            class={[
+              'grid rv-focus grid-cols-[auto_minmax(0,1fr)] content-start items-center gap-x-4 border-white/8 p-5 [--rv-blur:5px] [--rv-step:90ms] max-md:not-last:border-b md:p-6 md:odd:border-r md:nth-[-n+2]:border-b',
+              limit.order,
+            ]}
           >
-            <Icon name={limit.icon} stroke={1.6} class="size-5" />
-          </span>
-          <span class="min-w-0">
-            <span class="block text-[15px] text-ink">{translate(`${limit.key}.title`)}</span>
-            <span class="mt-0.5 block text-[13px] leading-relaxed text-ink-mute">{translate(`${limit.key}.note`)}</span>
-            {#if 'link' in limit}
+            <IconTile
+              icon={limit.icon}
+              tone="warning"
+              size="medium"
+              class={['row-span-2 rv-pop self-center [--rv-delay:150ms] [--rv-step:90ms]', limit.order]}
+            />
+            <h3 class="col-start-2 text-title-sm font-medium text-balance text-ink">
+              {translate(`${limit.key}.title`)}
+            </h3>
+            <p class="col-start-2 mt-1 text-caption text-pretty text-ink-soft">{translate(`${limit.key}.note`)}</p>
+            {#if limit.key === 'limits.server'}
               <a
-                href={limit.link}
+                href={VERIFIED_CLIENTS_URL}
                 rel="noreferrer"
-                class="inline-flex min-h-11 items-center text-[13px] text-aegis-300 underline-offset-4 hover:text-aegis-200 hover:underline"
-                >{translate('limits.server.link')}</a
+                class={[ARROW_LINK, 'col-start-2 -mb-2.5 min-h-11 text-caption']}
               >
+                {translate('limits.server.link')}
+                <Icon name="arrowRight" class="size-3.5" stroke={2} animated />
+              </a>
             {/if}
-          </span>
-        </li>
-      {/each}
-    </ul>
-    <div class="relative mt-6 flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-      <p class="max-w-[760px] text-xs leading-relaxed text-ink-mute">{translate('limits.liability')}</p>
-      <a
-        href="/report"
-        class="btn-ghost flex h-11 shrink-0 items-center justify-center gap-2 self-start rounded-control px-4 text-[13px] sm:self-auto md:h-9"
+          </li>
+        {/each}
+      </ul>
+      <div
+        class="flex rv-focus flex-col gap-3 border-t border-white/8 bg-white/4 px-5 py-4 [--rv-blur:4px] [--rv-i:4] [--rv-step:90ms] sm:flex-row sm:items-center sm:justify-between sm:gap-6 md:px-6"
       >
-        <Icon name="flag" class="size-4" />
-        {translate('limits.report')}
-      </a>
+        <p class="max-w-[760px] text-caption text-ink-mute">
+          {translate('limits.liability')}
+          <a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('limits.terms')}</a>.
+        </p>
+      </div>
     </div>
   </div>
 </section>

@@ -8,19 +8,19 @@ import {
 } from '../support/indexed-database.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
 import {
-  chooseRemember,
   createdLink,
   createMessageInPage,
   expectMessageShown,
   notInert,
   openApp,
   showMessage,
+  trackInSent,
 } from '../support/pages.ts';
 import { holdRoute } from '../support/routes.ts';
 import { watchViolations } from '../support/watchers.ts';
 
 const REMEMBERED = 'This device remembered the message.';
-const NOTHING_REMEMBERED = 'This device remembers no messages.';
+const NOTHING_REMEMBERED = 'Nothing here yet';
 
 function idOf(link: string): string {
   return new URL(link).hash.slice(1).split('.', 3)[2] ?? '';
@@ -33,11 +33,11 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   const violations = await watchViolations(page);
   const link = await createMessageInPage(page, { text: 'cancel me', remember: true });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
-  await page.getByRole('link', { name: 'Status and cancelling' }).click();
-  await expect(page.getByRole('heading', { name: 'Sent messages' })).toBeVisible();
+  await page.getByRole('link', { name: 'Open Sent' }).click();
+  await expect(page.getByRole('heading', { name: 'Sent', exact: true })).toBeVisible();
   const item = page.getByRole('listitem');
   await expect(item).toHaveCount(1);
-  await expect(item.getByText('Waiting to be opened.')).toBeVisible();
+  await expect(item.getByText('Waiting to be opened')).toBeVisible();
   await expect(item.getByText('0 of 1')).toBeVisible();
 
   const cancel = item.getByRole('button', { name: 'Cancel message' });
@@ -58,8 +58,8 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   }
   await cancel.click();
   await dialog.getByRole('button', { name: 'Yes, cancel', exact: true }).click();
-  await expect(item.getByText('Cancelled.')).toBeVisible();
-  await expect(cancel).toBeDisabled();
+  await expect(item.getByText('Cancelled', { exact: true })).toBeVisible();
+  await expect(cancel).toHaveCount(0);
   await expect(item.getByRole('heading', { level: 3 })).toBeFocused();
   await expect(page.getByRole('status').first()).toHaveText('The message is cancelled.');
   await expect.poll(() => sentRecords(page)).toMatchObject([{ id: idOf(link), endedAt: expect.any(Number) }]);
@@ -68,8 +68,8 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await recipient.goto(link);
   await expect(recipient.getByText('The sender cancelled the message')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Forget all' }).click();
-  await dialog.getByRole('button', { name: 'Yes, forget all', exact: true }).click();
+  await page.getByRole('button', { name: 'Clear the list' }).click();
+  await dialog.getByRole('button', { name: 'Yes, clear', exact: true }).click();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await sentRecords(page)).toEqual([]);
   await page.reload();
@@ -77,25 +77,22 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   expect(await violations()).toEqual([]);
 });
 
-test('this device remembers a new message as soon as it exists, before the animation ends (D39)', async ({
-  newPage,
+test('this device remembers a new message only when the sender saves it in the created panel (UX13)', async ({
+  page,
 }) => {
-  const page = await newPage({ reducedMotion: 'no-preference' });
   const completedWrites = await countCompletedWrites(page);
   await openApp(page, '/');
-  await page.getByLabel('Message text').fill('remember early');
-  await chooseRemember(page);
-  const created = page.waitForResponse(
-    (response) => response.url().endsWith('/api/v1/messages') && response.request().method() === 'POST',
-  );
+  await page.getByLabel('Message text').fill('remember on request');
   await page.getByRole('button', { name: 'Create link' }).click();
-  const response = await created;
-  expect(response.ok()).toBe(true);
+  await createdLink(page);
+  expect(await completedWrites()).toBe(0);
+  expect(await databaseNames(page)).toEqual([]);
+  await trackInSent(page, 'Password for Peter');
+  await expect(page.getByText(REMEMBERED)).toBeVisible();
   await expect.poll(completedWrites).toBeGreaterThan(0);
-  await expect(notInert(page, page.getByLabel('Link to the message'))).toHaveCount(0);
   await page.goto('/sent');
   await expect(page.getByRole('listitem')).toHaveCount(1);
-  await expect(page.getByText('Waiting to be opened.')).toBeVisible();
+  await expect(page.getByText('Waiting to be opened')).toBeVisible();
 });
 
 test(
@@ -132,7 +129,7 @@ test('a status that answers after the sender forgot the message does not store i
   const status = await holdRoute(page, '**/api/v1/messages/*/status');
   await page.goto('/sent');
   await status.requested;
-  await page.getByRole('listitem').getByRole('button', { name: 'Forget', exact: true }).click();
+  await page.getByRole('listitem').getByRole('button', { name: 'Remove from the list' }).click();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await sentRecords(page)).toEqual([]);
   const writesBeforeAnswer = await completedWrites();
@@ -155,11 +152,6 @@ test('a visitor and a sender who keeps the default leave no database, and every 
   await page.goto(message.link);
   await expect(page.getByRole('button', { name: 'Show message' })).toBeVisible();
   await openApp(page, '/');
-  await page.getByRole('button', { name: 'Passphrase', exact: true }).click();
-  await expect(page.getByRole('switch', { name: /^Cancel from this device/u })).toHaveAttribute(
-    'aria-checked',
-    'false',
-  );
   await page.getByLabel('Message text').fill('not remembered');
   await page.getByRole('button', { name: 'Create link' }).click();
   await createdLink(page);
@@ -175,7 +167,7 @@ test('a visitor and a sender who keeps the default leave no database, and every 
     return new Set(records.map(({ id }) => id));
   };
   expect(await storedIds()).toEqual(new Set([EXPIRED_RECORD_ID, kept]));
-  await sender.goto('/report');
+  await sender.goto('/terms');
   await expect.poll(storedIds).toEqual(new Set([kept]));
 });
 

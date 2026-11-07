@@ -14,7 +14,6 @@ import { describe, expect, it } from 'vitest';
 import { ResponseError, StoppedError } from './api-errors.ts';
 import type { ApiError } from './api-errors.ts';
 import { createApi, TRANSFER_TIMEOUT_MS } from './api.ts';
-import { abuseReport } from './fake-api.ts';
 import { servedPolicy } from './responses.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
@@ -234,40 +233,6 @@ describe('api client', () => {
     }
   });
 
-  it('signs an abuse report with R over its JSON body', async () => {
-    const id = randomId();
-    const readKey = await requestKey(new Uint8Array(32).fill(7));
-    const server = fakeServer(() => json(202, { status: 'accepted' }));
-    expect(await server.api.report(id, readKey, abuseReport('phishing "quoted" ✓', 'jana@example.cz'))).toBe(
-      'accepted',
-    );
-    await server.api.report(id, readKey, { reason: '', contact: '', goodFaith: false });
-    const reports = server.seen.filter((request) => request.url.endsWith('/api/v1/abuse'));
-    const bodies = [];
-    for (const request of reports) {
-      expect(request.method).toBe('POST');
-      expect(request.headers.get('Content-Type')).toBe('application/json');
-      const body = new Uint8Array(await request.arrayBuffer());
-      bodies.push(JSON.parse(new TextDecoder().decode(body)));
-      const parts = authorizationParts(request.headers.get('Authorization') ?? '');
-      expect(await verifies(...parts, 'read', 'POST', '/api/v1/abuse', body)).toBe(true);
-      expect(await verifies(...parts, 'read', 'POST', '/api/v1/abuse')).toBe(false);
-    }
-    expect(bodies).toEqual([
-      { id: idToString(id), reason: 'phishing "quoted" ✓', contact: 'jana@example.cz', good_faith: true },
-      { id: idToString(id) },
-    ]);
-  });
-
-  it('tells a report the daily cap dropped from one the server took (spec §6.6)', async () => {
-    const readKey = await requestKey(new Uint8Array(32).fill(7));
-    const answers = [{ status: 'limit' }, { status: 'stored' }, {}];
-    const server = fakeServer(() => json(202, answers.shift()));
-    expect(await server.api.report(randomId(), readKey, abuseReport(''))).toBe('limit');
-    await expect(server.api.report(randomId(), readKey, abuseReport(''))).rejects.toThrow(ResponseError);
-    await expect(server.api.report(randomId(), readKey, abuseReport(''))).rejects.toThrow(ResponseError);
-  });
-
   it('claims with R and V over the same challenge and streams the object', async () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(1));
@@ -477,9 +442,6 @@ describe('api client', () => {
       if (path.endsWith('/claim') || path.endsWith('/blob')) {
         return new Response(object, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } });
       }
-      if (path === '/api/v1/abuse') {
-        return json(202, { status: 'accepted' });
-      }
       return new Response(null, { status: 204 });
     });
     const id = randomId();
@@ -500,8 +462,7 @@ describe('api client', () => {
     await server.api.blob(id, readKey, 'l', shareKey);
     await server.api.ack(id, readKey, 'l');
     await server.api.burn(id, readKey);
-    await server.api.report(id, readKey, abuseReport('spam'));
-    expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(8);
+    expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(7);
     expect(
       server.seenOptions.map((request) => ({
         url: request.url,

@@ -1,14 +1,20 @@
 <script lang="ts">
+  import type { Language } from '../language/language.ts';
+  import LanguageMenu from '../language/LanguageMenu.svelte';
   import { getTranslator } from '../language/translator.svelte.ts';
-  import Icon from '../ui/Icon.svelte';
+  import Button from '../ui/button/Button.svelte';
+  import Icon from '../ui/icon/Icon.svelte';
+  import GithubMark from './GithubMark.svelte';
   import Logo from './Logo.svelte';
   import { REPOSITORY_URL } from './repository.ts';
 
   interface Props {
-    readonly variant: 'home' | 'read' | 'page';
+    readonly variant: 'home' | 'read' | 'page' | 'status';
+    readonly current?: string;
+    readonly onlanguage?: (language: Language) => void;
   }
 
-  const { variant }: Props = $props();
+  const { variant, current, onlanguage }: Props = $props();
   const { translate } = getTranslator();
 
   const sections = [
@@ -22,49 +28,56 @@
 
 <header class="sticky top-0 z-40 px-3 pt-3 sm:px-6">
   <nav
-    class="glass-soft mx-auto flex h-14 max-w-[1160px] animate-rise items-center justify-between gap-4 rounded-card pr-2 pl-4"
+    class="glass-soft mx-auto flex h-14 max-w-[1160px] animate-rise items-center justify-between gap-3 rounded-card pr-2 pl-4 sm:gap-4"
     aria-label={translate('nav.label')}
   >
-    {#if variant === 'page'}
-      <h1 class="m-0 flex">
-        <a href="/" class="flex items-center rounded-control py-1">
-          <Logo class="h-7 w-[105px]" label={translate('nav.home')} />
-        </a>
-      </h1>
-    {:else}
-      <a
-        href={variant === 'home' ? '#create' : '/'}
-        class="flex items-center rounded-control py-1"
-        aria-label={translate(variant === 'home' ? 'nav.top' : 'nav.home')}
-      >
-        <Logo class="h-7 w-[105px]" />
-      </a>
-    {/if}
+    <a
+      href={variant === 'home' ? '#create' : '/'}
+      class="flex items-center rounded-control py-1"
+      aria-label={translate('nav.home')}
+    >
+      <Logo class="h-7 w-[105px]" />
+    </a>
 
     {#if variant === 'home'}
       <div class="hidden items-center gap-0.5 lg:flex">
         {#each sections as section (section.href)}
           <a
             href={section.href}
-            class="rounded-control px-3.5 py-2 text-sm text-ink-soft hover:bg-white/5 hover:text-ink"
+            class="rounded-control px-3.5 py-2 text-ui text-ink-soft transition duration-300 ease-silk hover:bg-white/6 hover:text-ink"
             >{translate(section.key)}</a
           >
         {/each}
       </div>
-      <a href={REPOSITORY_URL} class="btn-ghost flex h-11 items-center gap-2 rounded-control px-3.5 text-sm md:h-10">
-        <svg class="size-[18px]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
-          <path
-            d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-1.96c-3.2.7-3.87-1.54-3.87-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5z"
-          ></path>
-        </svg>
-        <span>GitHub</span>
-      </a>
-    {:else}
-      <a href="/" class="btn-ghost flex h-11 items-center gap-2 rounded-control px-3.5 text-sm md:h-10">
-        <Icon name="pen" />
-        <span class="sm:hidden">{translate('nav.write.short')}</span>
-        <span class="hidden sm:inline">{translate('nav.write')}</span>
-      </a>
     {/if}
+
+    <div class="flex shrink-0 items-center gap-1.5">
+      {#if variant === 'home' || variant === 'page'}
+        <Button
+          variant="tint"
+          href="/sent"
+          id="nav-sent"
+          class="max-sm:px-3"
+          aria-current={current === 'sent' ? 'page' : undefined}
+        >
+          <Icon name="shieldCheck" class="size-4 shrink-0 text-aegis-300" animated />
+          <span>{translate('nav.sent')}</span>
+        </Button>
+      {/if}
+      {#if variant === 'read' || variant === 'page'}
+        <Button variant="ghost" href="/" class="max-[379px]:w-11 max-[379px]:px-0 max-sm:px-3">
+          <Icon name="pen" animated />
+          <span class="max-[379px]:sr-only sm:hidden">{translate('nav.write.short')}</span>
+          <span class="hidden sm:inline">{translate('nav.write')}</span>
+        </Button>
+      {/if}
+      <Button variant="ghost" href={REPOSITORY_URL} class="max-sm:hidden">
+        <GithubMark animated />
+        <span class="max-sm:sr-only">{translate('footer.github')}</span>
+      </Button>
+      {#if onlanguage}
+        <LanguageMenu placement="header" {onlanguage} class={variant === 'page' ? 'max-sm:hidden' : undefined} />
+      {/if}
+    </div>
   </nav>
 </header>

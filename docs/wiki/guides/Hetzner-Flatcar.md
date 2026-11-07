@@ -27,6 +27,7 @@ Edit `site.json`:
 - Replace the example domain, administrator networks, operator and contact.
 - Set `initialRelease` to the latest release. Planning checks with cosign that the release workflow signed its `checksums.txt` at that tag, and that it lists the `nylzo-caddy_*` archive for your architecture and `nylzo-host_X.Y.Z.tar`.
 - For nylzo.com, set `domain` and `dnsZone` to `nylzo.com`. An apex domain also gets a `www` redirect.
+- Set `hosting` to where the server runs, for example `Hetzner Cloud, Helsinki, Finland (EU)` for `location` `hel1`. The transparency page shows it under Operator; the page itself names no location, because it runs on every instance.
 - Optional: `heartbeatUrl` (see [host monitoring](Host-monitoring.md)), `tang` (see [encrypted data volume](#encrypted-data-volume)) and `acmeAccountUri` (see [DNS](#cloudflare-dns-without-proxying)).
 - Pick a server type and matching architecture (`cx`/`cpx`/`ccx`: amd64; `cax`: arm64), with at least 2 vCPUs, 4 GiB RAM and 40 GB disk.
 
@@ -205,6 +206,8 @@ sudo systemctl status nylzo caddy nylzo-firewall nylzo-update.timer update-engin
 sudo journalctl -u nylzo-host -u nylzo-initialize -u nylzo-update -u nylzo-ready
 sudo cat /var/lib/nylzo-deploy/current.json; readlink /opt/nylzo/host/current
 ```
+
+For planned work, `sudo touch /var/lib/caddy/maintenance` shows the maintenance page and `sudo rm /var/lib/caddy/maintenance` ends it, without a restart. [Self-hosting](Self-hosting.md#maintenance) lists what changes while the file exists.
 
 Hetzner backups stay off: restoring a snapshot can resurrect consumed messages. Cleanup keeps the current and previous image, Caddy, tools and host generation.
 

@@ -6,7 +6,7 @@ import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT } from '../keys/kdf.ts';
 import type { KdfId } from '../keys/kdf.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { idToString, newSecret } from '../primitives/identifiers.ts';
-import { assertProfile, formatLink, parseFragment, parseLink } from './link.ts';
+import { assertProfile, formatLink, isReadPath, parseFragment, parseLink } from './link.ts';
 
 const base = 'https://nylzo.example';
 
@@ -91,6 +91,14 @@ describe('links and fragments (spec 4, 15)', () => {
     );
     expect(thrownBy(() => parseFragment('/r', `1.1.${encoded}`))).toStrictEqual(new LinkError());
     expect(thrownBy(() => parseFragment(`/m/${idToString(id)}`, `2.3.${fields}`))).toStrictEqual(new LinkError());
+  });
+
+  it('reads only the paths the server serves as read pages, so any other path is not found', () => {
+    expect(isReadPath('/r')).toBe(true);
+    expect(isReadPath(`/m/${idToString(id)}`)).toBe(true);
+    expect(isReadPath('/m/invalid')).toBe(false);
+    expect(isReadPath(`/m/${idToString(id)}/`)).toBe(false);
+    expect(isReadPath('/r/')).toBe(false);
   });
 
   it.each<[string, new () => LinkError]>([

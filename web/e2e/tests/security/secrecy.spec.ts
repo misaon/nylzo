@@ -33,7 +33,7 @@ test(
     expect(new URL(link).hash).toMatch(/^#2\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
 
     await showMessage(recipient, link, WRONG_PASSPHRASE);
-    await expect(recipient.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
     await recipient.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(recipient);
@@ -41,10 +41,7 @@ test(
     await expect(recipient.locator('bdi')).toHaveText(file.name);
     await expect(recipient.locator('bdi')).toHaveAttribute('translate', 'no');
     expect(new URL(recipient.url()).hash).toBe('');
-    await expect(
-      notInert(recipient, recipient.getByRole('button', { name: 'Delete the remaining opens' })),
-    ).toHaveCount(0);
-    await expect(notInert(recipient, recipient.getByRole('button', { name: 'Report', exact: true }))).toHaveCount(0);
+    await expect(notInert(recipient, recipient.getByRole('button', { name: 'Delete message' }))).toHaveCount(0);
     expect(await senderViolations()).toEqual([]);
     expect(await recipientViolations()).toEqual([]);
 
@@ -103,19 +100,15 @@ test(
 
     await openApp(page, '/');
     await expectAttributes(page.getByLabel('Message text'), quiet);
-    await expectAttributes(page.getByLabel('Passphrase, optional'), passphrase);
-    await expectAttributes(page.getByLabel('Link to open'), quiet);
-    expect(await formOwner(page.getByLabel('Passphrase, optional'))).toBeNull();
+    await expectAttributes(page.getByLabel('Passphrase', { exact: true }), passphrase);
+    expect(await formOwner(page.getByLabel('Passphrase', { exact: true }))).toBeNull();
     await expect(passwordFields).toHaveCount(0);
 
     await page.goto(message.link);
     const field = page.getByLabel('Passphrase', { exact: true });
     await expectAttributes(field, passphrase);
     expect(await formOwner(field)).toBeNull();
-    await page.getByRole('button', { name: 'Report', exact: true }).click();
-    await expectAttributes(page.getByLabel('Reason, optional'), quiet);
     await expect(passwordFields).toHaveCount(0);
-    await page.getByRole('button', { name: 'Report', exact: true }).click();
 
     const filled: string[] = [];
     await page.route('**/api/v1/messages/*/claim', async (route) => {
@@ -133,10 +126,6 @@ test(
     await expectMessageShown(page);
     expect(filled).toEqual([]);
     await expect(page.locator('pre')).toHaveAttribute('translate', 'no');
-
-    await page.goto('/report');
-    await expectAttributes(page.getByLabel('Link to the message'), quiet);
-    await expectAttributes(page.getByLabel('Reason, optional'), quiet);
   },
 );
 

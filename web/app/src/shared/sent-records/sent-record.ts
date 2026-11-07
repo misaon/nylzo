@@ -6,12 +6,14 @@ export const RETENTION_DAYS = 1;
 export const RETENTION_MS = RETENTION_DAYS * DAY_MS;
 const MAX_LIFETIME_MS = 31 * DAY_MS;
 const MAX_TIME_MS = 8.64e15;
+export const MAX_LABEL_CHARACTERS = 80;
 
 export interface SentRecord {
   readonly id: string;
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly endedAt?: number | undefined;
+  readonly label?: string | undefined;
   readonly manageKey: RequestKey;
 }
 
@@ -20,6 +22,7 @@ export interface StoredRecord {
   readonly createdAt: number;
   readonly expiresAt: number;
   readonly endedAt?: number;
+  readonly label?: string;
   readonly privateKey: CryptoKey;
   readonly publicKey: Uint8Array<ArrayBuffer>;
 }
@@ -66,6 +69,16 @@ function areTimes(createdAt: unknown, expiresAt: unknown, endedAt: unknown): boo
   );
 }
 
+function isLabel(label: unknown): label is string {
+  return (
+    typeof label === 'string' &&
+    label !== '' &&
+    label.isWellFormed() &&
+    label.trim() === label &&
+    (label.match(/./gsu)?.length ?? 0) <= MAX_LABEL_CHARACTERS
+  );
+}
+
 function isSigningKey(key: unknown): key is CryptoKey {
   return (
     key instanceof CryptoKey &&
@@ -83,6 +96,7 @@ export function storedForm(record: SentRecord): StoredRecord {
   if (
     !isMessageId(record.id) ||
     !areTimes(record.createdAt, record.expiresAt, record.endedAt) ||
+    (record.label !== undefined && record.label !== '' && !isLabel(record.label)) ||
     !isSigningKey(record.manageKey.privateKey) ||
     !(record.manageKey.publicKey instanceof Uint8Array) ||
     record.manageKey.publicKey.length !== PUBLIC_KEY_LENGTH
@@ -94,6 +108,7 @@ export function storedForm(record: SentRecord): StoredRecord {
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
     ...(record.endedAt !== undefined && { endedAt: record.endedAt }),
+    ...(isLabel(record.label) && { label: record.label }),
     privateKey: record.manageKey.privateKey,
     publicKey: record.manageKey.publicKey,
   };
@@ -103,7 +118,7 @@ export function recordFrom(value: unknown): SentRecord | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined;
   }
-  const { id, createdAt, expiresAt, endedAt, privateKey, publicKey } = value as Partial<
+  const { id, createdAt, expiresAt, endedAt, label, privateKey, publicKey } = value as Partial<
     Record<keyof StoredRecord, unknown>
   >;
   if (
@@ -123,6 +138,7 @@ export function recordFrom(value: unknown): SentRecord | undefined {
     createdAt,
     expiresAt,
     ...(isTime(endedAt) && { endedAt }),
+    ...(isLabel(label) && { label }),
     manageKey: { privateKey, publicKey: new Uint8Array(publicKey) },
   };
 }

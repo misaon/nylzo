@@ -289,7 +289,7 @@ func TestRelayCarriesOnlyTheAPIAsANativeClient(t *testing.T) {
 	}
 	before := len(upstream.seen())
 	for _, path := range []string{
-		"/", "/cs/", "/sent", "/report", "/transparency", "/m/AAAAAAAAAAAAAAAAAAAAAA", "/open", "/assets/index-a1.js",
+		"/", "/cs/", "/sent", "/transparency", "/terms", "/agents", "/m/AAAAAAAAAAAAAAAAAAAAAA", "/open", "/assets/index-a1.js",
 		webclient.ManifestPath, "/robots.txt", "/api/v2/messages", "/api/v1/%2e%2e/assets/index-a1.js",
 		"/api/v1/instance?callback=x", "/assets/../api/v1/instance", "/api/v1/messages%2Finstance",
 	} {

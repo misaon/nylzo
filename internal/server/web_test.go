@@ -27,6 +27,7 @@ import (
 const (
 	builtIndex   = `<!doctype html><html><head><link rel="icon" href="/assets/favicon-d4.svg" type="image/svg+xml"><script type="importmap">{"integrity":{}}</script><script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body></body></html>`
 	appJS        = "console.log('nylzo')"
+	agentsGuide  = "# Nylzo for AI agents\n"
 	previewAgent = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
 )
 
@@ -99,7 +100,7 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		for _, path := range []string{
-			"/", "/cs/", "/sent", "/report", "/m/" + core.NewID().String(), "/robots.txt", "/api/v1/instance",
+			"/", "/cs/", "/sent", "/terms", "/m/" + core.NewID().String(), "/robots.txt", "/agents.md", "/api/v1/instance",
 			"/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope",
 		} {
 			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
@@ -151,7 +152,7 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 		checkSecurityHeaders(t, "throttled", response, false)
 
 		specCSP := htmlCSPFromSpec(t)
-		for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
+		for _, path := range []string{"/", "/cs/", "/sent", "/transparency", "/terms", "/agents", "/m/" + core.NewID().String()} {
 			first, firstBody := harness.do(&testRequest{method: http.MethodGet, path: path})
 			second, secondBody := harness.do(&testRequest{method: http.MethodGet, path: path})
 			csp := first.Header.Get("Content-Security-Policy")
@@ -244,6 +245,7 @@ func builtClient(t *testing.T) fstest.MapFS {
 		"dist/assets/kdf-worker-c3.js": {Data: []byte("self.onmessage=null")},
 		"dist/assets/favicon-d4.svg":   {Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)},
 		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
+		"dist/agents.md":               {Data: []byte(agentsGuide)},
 	}
 }
 
@@ -299,7 +301,7 @@ func (h *testHarness) fetch(path string, headers map[string]string, followRedire
 func TestBuiltClientIsServed(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
-	for _, path := range []string{"/", "/cs/", "/sent", "/report", "/transparency", "/m/" + core.NewID().String()} {
+	for _, path := range []string{"/", "/cs/", "/sent", "/transparency", "/terms", "/agents", "/m/" + core.NewID().String()} {
 		page := harness.get(path, nil)
 		if page.StatusCode != http.StatusOK || strings.Contains(page.body, "placeholder") ||
 			strings.Contains(page.body, "nonce") || !strings.Contains(page.body, `src="/assets/index-a1.js"`) {
@@ -312,6 +314,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 		"/assets/kdf-worker-c3.js": "text/javascript; charset=utf-8",
 		"/assets/favicon-d4.svg":   "image/svg+xml",
 		"/assets/favicon-e5.png":   "image/png",
+		"/agents.md":               "text/markdown; charset=utf-8",
 	} {
 		asset := harness.get(path, nil)
 		if asset.StatusCode != http.StatusOK || asset.Header.Get("Content-Type") != contentType || asset.body == "" {
@@ -351,7 +354,8 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 		"/":       "<h1>home en</h1>",
 		"/cs/":    "<h1>home cs</h1>",
 		"/sent":   "<body></body>",
-		"/report": "<body></body>",
+		"/terms":  "<body></body>",
+		"/agents": "<body></body>",
 	} {
 		page := harness.get(path, nil)
 		if page.StatusCode != http.StatusOK || !strings.Contains(page.body, want) {
@@ -365,7 +369,7 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 			t.Fatalf("%s: %d %q %v", path, redirect.StatusCode, redirect.Header.Get("Location"), redirect.Header)
 		}
 	}
-	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/"} {
+	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/", "/report"} {
 		if missing := harness.get(path, nil); missing.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", path, missing.StatusCode)
 		}
@@ -387,7 +391,7 @@ func TestPagesAreTheSameOnEveryResponse(t *testing.T) {
 	}
 	browser := map[string]string{"Accept-Encoding": "gzip, deflate, br"}
 	for path, manifestPath := range map[string]string{
-		"/": "/", "/cs/": "/cs/", "/sent": "/sent", "/report": "/sent", "/transparency": "/sent",
+		"/": "/", "/cs/": "/cs/", "/sent": "/sent", "/transparency": "/sent", "/terms": "/sent", "/agents": "/sent",
 		"/m/" + core.NewID().String(): "/sent",
 	} {
 		plain, again := harness.get(path, nil), harness.get(path, nil)

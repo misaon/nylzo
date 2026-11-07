@@ -1,8 +1,9 @@
 <script lang="ts">
   import { formatBytes, formatSize } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import Pipeline from '../../../shared/pipeline/Pipeline.svelte';
-  import Icon from '../../../shared/ui/Icon.svelte';
+  import PipelineRing from '../../../shared/pipeline/PipelineRing.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { lingering } from '../../../shared/ui/lingering.ts';
   import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
   import type { Composer } from './composer.svelte.ts';
 
@@ -15,6 +16,22 @@
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
+  const COUNTER_FROM = 0.8;
+
+  const keepName = lingering();
+  const keepSize = lingering();
+  const fileName = $derived(keepName(composer.file?.name ?? ''));
+  const fileSize = $derived.by(() => {
+    if (!composer.file) {
+      return keepSize('');
+    }
+    const size = formatBytes(composer.file.size, translator.language);
+    return keepSize(
+      composer.problemOf.file === undefined
+        ? size
+        : translate('compose.file.over', { size, limit: formatBytes(composer.fileLimit, translator.language) }),
+    );
+  });
 </script>
 
 <div
@@ -37,69 +54,87 @@
     aria-invalid={composer.problemOf.content !== undefined || composer.problemOf.text !== undefined}
     aria-describedby={noticeId}
     class={[
-      'block min-h-[200px] w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-base leading-[1.7] text-ink caret-aegis-300 transition-opacity duration-500 outline-none placeholder:text-ink-mute md:min-h-[280px] md:text-[17px]',
+      'block min-h-[200px] w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-lead text-ink caret-aegis-300 transition-opacity duration-500 ease-silk outline-none placeholder:text-ink-mute md:min-h-[280px] md:text-lead-lg',
       composer.phase === 'encrypting' ? 'opacity-0' : 'opacity-100',
     ]}></textarea>
   <div class="pointer-events-none absolute inset-x-4 bottom-3 flex items-center justify-between gap-3">
     <span
       class={[
-        'flex h-8 min-w-0 origin-left items-center gap-2 rounded-[8px] pr-0.5 pl-2.5 text-[13px] ring-1 transition-[opacity,translate,scale] duration-500 ease-silk',
-        composer.problemOf.file ? 'bg-rose-500/10 ring-rose-300/50' : 'bg-nebula-400/10 ring-nebula-300/30',
+        'flex h-9 min-w-0 origin-left items-center gap-2.5 rounded-control pr-1 pl-1.5 text-caption transition-[opacity,translate,scale,background-color,box-shadow] duration-500 ease-silk',
+        composer.problemOf.file
+          ? 'bg-[rgb(244_63_94/0.14)] shadow-[inset_0_0_0_1px_rgb(251_113_133/0.65),0_4px_14px_-6px_rgb(0_0_0/0.5)]'
+          : 'bg-nebula-400/10 shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_4px_14px_-6px_rgb(0_0_0/0.5)] ring-1 ring-nebula-300/30',
         composer.file && composer.phase === 'compose'
           ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
           : 'translate-y-1 scale-95 opacity-0',
       ]}
       inert={!composer.file || composer.phase !== 'compose'}
     >
-      <Icon name="file" class="size-4 shrink-0 text-nebula-300" />
-      <span translate="no" class="truncate text-ink">{composer.file?.name ?? ''}</span>
-      <span class="shrink-0 font-mono text-[11px] text-ink-mute"
-        >{composer.file ? formatBytes(composer.file.size, translator.language) : ''}</span
+      {#if composer.problemOf.file}
+        <Icon name="warning" class="size-6 shrink-0 rounded-[7px] p-1 text-white tile-danger" />
+      {:else}
+        <Icon name="file" class="size-6 shrink-0 rounded-[7px] bg-current/16 p-[5px] text-nebula-300" />
+      {/if}
+      <span
+        translate="no"
+        class={['truncate font-medium md:max-w-[220px]', composer.problemOf.file ? 'text-[#ffe4e6]' : 'text-ink']}
+        >{fileName}</span
+      >
+      <span
+        class={[
+          'shrink-0 pl-0.5 text-micro tabular-nums',
+          composer.problemOf.file ? 'font-medium text-[#fda4af]' : 'text-ink-mute',
+        ]}>{fileSize}</span
       >
       <button
         type="button"
         onclick={composer.removeFile}
         aria-label={translate('create.file.clear')}
-        class="grid size-7 shrink-0 place-items-center rounded-[6px] text-ink-soft hover:bg-white/8 hover:text-ink max-md:-my-1.5 max-md:size-11"
+        class="group/act grid size-7 shrink-0 place-items-center rounded-control text-ink-soft transition duration-300 ease-silk hover:bg-white/10 hover:text-ink max-md:-my-1.5 max-md:-mr-2.5 max-md:size-11"
       >
-        <Icon name="close" class="size-3.5" stroke={2} />
+        <Icon name="close" class="size-3.5" stroke={2} animated />
       </button>
     </span>
     <span
       class={[
-        'shrink-0 pr-2 font-mono text-[11px] tabular-nums transition-opacity duration-500',
+        'shrink-0 pr-2 text-micro tabular-nums transition-opacity duration-500 ease-silk',
         composer.problemOf.text ? 'text-rose-300' : 'text-ink-mute',
         composer.phase === 'compose' ? 'opacity-100' : 'opacity-0',
       ]}
       aria-hidden="true"
     >
-      {translate('compose.counter', {
-        size: formatSize(composer.textBytes, translator.language),
-        max: formatBytes(composer.textLimit, translator.language),
-      })}
+      {#if composer.textBytes >= composer.textLimit * COUNTER_FROM || composer.problemOf.text !== undefined}
+        {translate('compose.counter', {
+          size: formatSize(composer.textBytes, translator.language),
+          max: formatBytes(composer.textLimit, translator.language),
+        })}
+      {/if}
     </span>
   </div>
 
   <div
     class={[
-      'pointer-events-none absolute inset-0 overflow-hidden rounded-t-card transition-opacity duration-500',
+      'pointer-events-none absolute inset-0 overflow-hidden rounded-t-card transition-opacity duration-500 ease-silk',
       composer.phase === 'encrypting' ? 'opacity-100' : 'opacity-0',
     ]}
     aria-hidden="true"
   >
     <p
-      class="absolute inset-0 [mask-image:radial-gradient(ellipse_62%_58%_at_50%_50%,transparent_35%,black_100%)] px-6 pt-6 font-mono text-[13px] leading-6 break-all text-aegis-200/35"
+      class="absolute inset-0 [mask-image:radial-gradient(ellipse_70%_68%_at_50%_50%,transparent_42%,black_100%)] px-6 pt-6 text-caption break-all text-ink-soft/15 tabular-nums"
     >
       {composer.cipher}
     </p>
     <div
-      class="absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-400/12 to-transparent"
+      class="absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-300/6 to-transparent"
     ></div>
     <div
       class="absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"
     ></div>
-    <div class="absolute inset-0 flex flex-col items-center justify-center px-4 pb-4">
-      <Pipeline
+    <div
+      class="absolute inset-0 bg-[radial-gradient(40%_46%_at_50%_40%,oklch(0.67_0.16_252/0.11),oklch(0.72_0.14_305/0.05)_55%,transparent_78%)]"
+    ></div>
+    <div class="absolute inset-0 flex flex-col items-center justify-center px-4">
+      <PipelineRing
         nodes={composer.nodes}
         current={composer.timeline.paced.step}
         progress={composer.timeline.paced.progress}
@@ -109,21 +144,31 @@
   </div>
 
   <div
-    class="pointer-events-none absolute inset-0 rounded-t-card opacity-0 shadow-[inset_0_0_0_2px_oklch(0.77_0.115_249/0.7)] transition-opacity duration-500 group-focus-within:opacity-100"
+    class="pointer-events-none absolute inset-0 rounded-t-card opacity-0 ring-2 ring-aegis-300/50 transition duration-500 ease-silk group-focus-within:opacity-100"
     aria-hidden="true"
   ></div>
   <div
     class={[
-      'pointer-events-none absolute inset-2 grid place-items-center rounded-pane border border-dashed border-aegis-300/60 bg-void-950/80 transition-opacity duration-300',
+      'pointer-events-none absolute inset-2 grid place-items-center overflow-hidden rounded-pane border border-dashed border-aegis-300/55 bg-void-950/92 backdrop-blur-md transition-opacity duration-300 ease-silk',
       composer.dragging ? 'opacity-100' : 'opacity-0',
     ]}
     aria-hidden="true"
   >
-    <p class="flex items-center gap-3 px-4 text-center text-aegis-200">
-      <span class="grid size-9 shrink-0 place-items-center rounded-control bg-aegis-500/15 ring-1 ring-aegis-400/35">
-        <Icon name="upload" class="size-[18px]" />
+    <span class="absolute inset-0 bg-[radial-gradient(55%_65%_at_50%_50%,oklch(0.56_0.19_258/0.22),transparent_72%)]"
+    ></span>
+    <div class="relative flex flex-col items-center px-6 text-center">
+      <span class="relative grid size-12 place-items-center">
+        <span class="absolute -inset-2 animate-pulse-core rounded-tile ring-1 ring-aegis-300/35"></span>
+        <span
+          class="relative grid size-12 place-items-center rounded-pane text-white shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] step-current"
+        >
+          <Icon name="upload" class="relative size-6" stroke={1.6} />
+        </span>
       </span>
-      {translate('compose.drop')}
-    </p>
+      <p class="mt-5 text-title font-medium text-ink">{translate('compose.drop.title')}</p>
+      <p class="mt-1 text-caption text-ink-mute">
+        {translate('compose.drop.note', { size: formatBytes(composer.fileLimit, translator.language) })}
+      </p>
+    </div>
   </div>
 </div>

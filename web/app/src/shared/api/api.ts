@@ -46,14 +46,13 @@ export interface Transparency {
     readonly createPerDay: number;
     readonly createBytesPerDay: number;
     readonly readPerHour: number;
-    readonly abusePerHour: number;
     readonly coarseMultiplier: number;
     readonly globalDailyCreates: number;
     readonly powDifficulty: number;
   };
   readonly retention: {
     readonly tombstoneSeconds: number;
-    readonly abuseReportSeconds: number;
+    readonly abuseReportSeconds?: number;
     readonly dailyCounterSeconds: number;
   };
   readonly files: readonly ClientFile[];
@@ -126,14 +125,6 @@ interface ClaimOptions {
   readonly proceed?: () => boolean;
 }
 
-export interface AbuseReport {
-  readonly reason: string;
-  readonly contact: string;
-  readonly goodFaith: boolean;
-}
-
-export type ReportStatus = 'accepted' | 'limit';
-
 export interface ApiOptions {
   readonly base?: string;
   readonly fetch?: typeof fetch;
@@ -155,7 +146,6 @@ export interface Api {
   ack: (id: Uint8Array, readKey: RequestKey, lease: string) => Promise<void>;
   burn: (id: Uint8Array, readKey: RequestKey) => Promise<void>;
   cancel: (id: Uint8Array, manageKey: RequestKey) => Promise<void>;
-  report: (id: Uint8Array, readKey: RequestKey, report: AbuseReport) => Promise<ReportStatus>;
   status: (id: Uint8Array, manageKey: RequestKey) => Promise<Status>;
 }
 
@@ -336,14 +326,15 @@ export function createApi(options: ApiOptions = {}): Api {
           createPerDay: integer(rates, 'create_per_day'),
           createBytesPerDay: integer(rates, 'create_bytes_per_day'),
           readPerHour: integer(rates, 'read_per_hour'),
-          abusePerHour: integer(rates, 'abuse_per_hour'),
           coarseMultiplier: integer(rates, 'coarse_multiplier'),
           globalDailyCreates: integer(rates, 'global_daily_creates'),
           powDifficulty: integer(rates, 'pow_difficulty'),
         },
         retention: {
           tombstoneSeconds: integer(retention, 'tombstone_s'),
-          abuseReportSeconds: integer(retention, 'abuse_report_s'),
+          ...(retention['abuse_report_s'] !== undefined && {
+            abuseReportSeconds: integer(retention, 'abuse_report_s'),
+          }),
           dailyCounterSeconds: integer(retention, 'daily_counter_s'),
         },
         files: clientFiles(manifest),
@@ -430,27 +421,6 @@ export function createApi(options: ApiOptions = {}): Api {
 
     async cancel(id, manageKey) {
       await signed({ method: 'POST', path: `${messagePath(id)}/cancel`, purpose: PURPOSE_MANAGE, key: manageKey });
-    },
-
-    async report(id, readKey, { reason, contact, goodFaith }) {
-      const json = {
-        id: idToString(id),
-        ...(reason !== '' && { reason }),
-        ...(contact !== '' && { contact }),
-        ...(goodFaith && { good_faith: true }),
-      };
-      const response = await signed({
-        method: 'POST',
-        path: '/api/v1/abuse',
-        purpose: PURPOSE_READ,
-        key: readKey,
-        json,
-      });
-      const status = text(await readJson(response), 'status');
-      if (status !== 'accepted' && status !== 'limit') {
-        throw new ResponseError('the server answered an unknown report status');
-      }
-      return status;
     },
 
     async status(id, manageKey) {

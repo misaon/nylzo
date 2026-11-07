@@ -6,7 +6,17 @@ import { watchViolations } from '../support/watchers.ts';
 
 const spec = readFileSync(new URL('../../../../docs/wiki/reference/Protocol.md', import.meta.url), 'utf8');
 const htmlPolicy = /^- HTML responses carry `Content-Security-Policy: ([^`]+)`/mu.exec(spec)?.[1] ?? '';
-const PAGES = ['/', '/cs/', '/sent', '/report', '/transparency', '/r', '/m/AAAAAAAAAAAAAAAAAAAAAA'];
+const PAGES = [
+  '/',
+  '/cs/',
+  '/sent',
+  '/transparency',
+  '/terms',
+  '/agents',
+  '/r',
+  '/m/AAAAAAAAAAAAAAAAAAAAAA',
+  '/no-such-page',
+];
 const HASHES = / 'sha384-[A-Za-z0-9+/]+={0,2}'/gu;
 
 function withHashPlaceholders(policy: string): string {

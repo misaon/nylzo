@@ -83,7 +83,7 @@ nylzo report --link-file link.txt --reason-file reason.txt \
   --contact reporter@example.com --good-faith
 ```
 
-The report is signed with the message's read key, like the instance's `/report` page. Links use the same private input channels as `read`. The reason comes from a file so an accidentally included link does not enter the process arguments. The CLI redacts links and long tokens before submission and rejects a sanitized reason longer than 1000 bytes. `--contact` is optional; `--good-faith` declares that the report is accurate and complete to the reporter's good-faith belief. Invalid contact addresses are rejected before a request.
+The report is signed with the message's read key. Links use the same private input channels as `read`. The reason comes from a file so an accidentally included link does not enter the process arguments. The CLI redacts links and long tokens before submission and rejects a sanitized reason longer than 1000 bytes. `--contact` is optional; `--good-faith` declares that the report is accurate and complete to the reporter's good-faith belief. Invalid contact addresses are rejected before a request.
 
 Reports about ended messages are accepted but not stored. When the per-message daily report allowance is exhausted, the CLI reports that no further report was stored and exits with status 1. Report vulnerabilities in Nylzo through [SECURITY.md](../community/Security-policy.md), rather than the content-reporting channel.
 

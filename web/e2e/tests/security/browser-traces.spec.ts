@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -11,22 +11,6 @@ import { expectMessageShown, openApp, showMessage } from '../support/pages.ts';
 import { BASE_URL } from '../support/servers.ts';
 
 const PASSPHRASE = 'four random words here';
-
-function filesUnder(directory: string): string[] {
-  return readdirSync(directory, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.join(entry.parentPath, entry.name));
-}
-
-function filesHolding(directory: string, needle: string): string[] {
-  const forms = [Buffer.from(needle, 'utf8'), Buffer.from(needle, 'utf16le')];
-  return filesUnder(directory)
-    .filter((file) => {
-      const bytes = readFileSync(file);
-      return forms.some((form) => bytes.includes(form));
-    })
-    .map((file) => path.relative(directory, file));
-}
 
 async function withChromiumProfile(use: (context: BrowserContext, profile: string) => Promise<void>): Promise<void> {
   const profile = mkdtempSync(path.join(tmpdir(), 'nylzo-profile-'));
@@ -86,9 +70,8 @@ test(
     await page.unrouteAll();
     await page.reload();
     await expect(page.getByText('Open the link again to finish')).toBeVisible();
-    await page.getByLabel('Link to open').fill(message.link);
-    await page.getByRole('button', { name: 'Open', exact: true }).click();
-    await expect(page.getByText('You already opened the message on this page')).toBeVisible();
+    await page.goto(message.link);
+    await expect(page.getByText('You already opened the message here')).toBeVisible();
     await page.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(page);
     await expect(page.locator('pre')).toHaveText('finish from the lease');
@@ -144,31 +127,6 @@ test(
   },
 );
 
-test('a pasted link reaches no browser store on disk, while a clicked one does (W2-01, W2-02)', async () => {
-  const pasted = await createMessageThroughApi({ text: 'pasted, not clicked', opensMax: 2 });
-  const clicked = await createMessageThroughApi({ text: 'clicked', opensMax: 2 });
-  await withChromiumProfile(async (context, profile) => {
-    const page = context.pages()[0] ?? (await context.newPage());
-    const addresses: string[] = [];
-    page.on('framenavigated', (frame) => {
-      addresses.push(frame.url());
-    });
-    await openApp(page, `${BASE_URL}/`);
-    await page.getByLabel('Link to open').fill(pasted.link);
-    await page.getByRole('button', { name: 'Open', exact: true }).click();
-    await page.getByRole('button', { name: 'Show message' }).click();
-    await expectMessageShown(page);
-    await expect(page.locator('pre')).toHaveText('pasted, not clicked');
-    expect(addresses.filter((address) => address.includes('#'))).toEqual([]);
-    const other = await context.newPage();
-    await showMessage(other, clicked.link);
-    await expectMessageShown(other);
-    await context.close();
-    expect(filesHolding(profile, pasted.secret)).toEqual([]);
-    expect(filesHolding(profile, clicked.secret)).not.toEqual([]);
-  });
-});
-
 test('Chromium offers to save neither passphrase (W2-03)', async () => {
   await withChromiumProfile(async (context) => {
     const internals = context.pages()[0] ?? (await context.newPage());
@@ -176,9 +134,9 @@ test('Chromium offers to save neither passphrase (W2-03)', async () => {
     const sender = await context.newPage();
     await openApp(sender, `${BASE_URL}/`);
     await sender.getByLabel('Message text').fill('saved nowhere');
-    await sender.getByRole('button', { name: 'Passphrase', exact: true }).click();
+    await sender.getByRole('button', { name: 'No passphrase', exact: true }).click();
     await sender.getByRole('switch', { name: /^Protect with a passphrase/u }).click();
-    const chosen = sender.getByLabel('Passphrase, optional');
+    const chosen = sender.getByLabel('Passphrase', { exact: true });
     await chosen.clear();
     await chosen.pressSequentially(PASSPHRASE);
     await sender.getByRole('button', { name: 'Create link' }).click();

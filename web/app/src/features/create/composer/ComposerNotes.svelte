@@ -1,6 +1,10 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
-  import Icon from '../../../shared/ui/Icon.svelte';
+  import Button from '../../../shared/ui/button/Button.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { lingering } from '../../../shared/ui/lingering.ts';
+  import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import ServiceCallout from '../../../shared/ui/notice/ServiceCallout.svelte';
   import type { Composer } from './composer.svelte.ts';
 
   interface Props {
@@ -11,6 +15,10 @@
   const { composer, noticeId }: Props = $props();
   const { translate } = getTranslator();
 
+  const failed = $derived(composer.failureNotice !== '');
+  const keepProblem = lingering();
+  const problemNotice = $derived(keepProblem(composer.problemNotice));
+  const quiet = $derived(composer.notice === '' && composer.phase !== 'done');
   const rememberedShown = $derived(composer.remembered === 'remembered' || composer.remembered === 'failed');
   const rememberedText = $derived.by(() => {
     if (composer.remembered === 'remembered') {
@@ -20,11 +28,12 @@
   });
 </script>
 
-<div class="relative mt-4 text-xs">
+<div class="relative mt-4 grid text-caption">
   <p
     class={[
-      'flex items-center justify-center gap-2 text-ink-mute fade-swap',
-      composer.notice === '' && composer.remembered === 'off' ? 'opacity-100' : 'pointer-events-none opacity-0',
+      'col-start-1 row-start-1 flex items-center justify-center gap-2 overflow-y-clip text-ink-mute transition-[opacity,height] duration-500 ease-silk [interpolate-size:allow-keywords]',
+      quiet ? 'opacity-100' : 'pointer-events-none opacity-0',
+      failed && 'h-0',
     ]}
   >
     <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
@@ -32,22 +41,26 @@
   </p>
   <div
     class={[
-      'absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center gap-3 text-center fade-swap',
-      composer.notice === '' ? 'pointer-events-none opacity-0' : 'opacity-100',
+      'col-start-1 row-start-1 -my-px overflow-y-clip transition-[opacity,height,padding] duration-500 ease-silk [interpolate-size:allow-keywords]',
+      failed ? 'h-auto py-px opacity-100' : 'pointer-events-none h-0 py-0 opacity-0',
+    ]}
+    inert={!failed}
+  >
+    <ServiceCallout id="{noticeId}-failure" message={composer.failureNotice} class="mx-auto max-w-[860px]">
+      {#snippet action()}
+        {#if composer.loadFailed}
+          <Button variant="ghost" size="compact" onclick={composer.loadLimits}>{translate('action.retry')}</Button>
+        {/if}
+      {/snippet}
+    </ServiceCallout>
+  </div>
+  <div
+    class={[
+      'absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center text-center fade-swap',
+      composer.problemNotice === '' ? 'pointer-events-none invisible opacity-0' : 'opacity-100',
     ]}
   >
-    <p id={noticeId} role="alert" class="text-rose-300">{composer.notice}</p>
-    <button
-      type="button"
-      onclick={composer.loadLimits}
-      inert={!composer.loadFailed}
-      class={[
-        'btn-ghost h-11 rounded-[9px] px-3 text-xs md:h-8',
-        composer.loadFailed ? 'opacity-100' : 'pointer-events-none opacity-0',
-      ]}
-    >
-      {translate('action.retry')}
-    </button>
+    <p id={noticeId} role="alert" class="font-medium text-[#fda4af]">{problemNotice}</p>
   </div>
   <div
     class={[
@@ -63,9 +76,9 @@
       <Icon name={composer.remembered === 'failed' ? 'alert' : 'check'} class="size-4 shrink-0 text-aegis-300" />
       {rememberedText}
     </p>
-    <a href="/sent" class="inline-flex items-center gap-1.5 text-aegis-300 hover:text-aegis-200">
+    <a href="/sent" class={ARROW_LINK}>
       {translate('created.status_link')}
-      <Icon name="arrowRight" class="size-3.5" />
+      <Icon name="arrowRight" class="size-3.5" stroke={2} animated />
     </a>
   </div>
 </div>

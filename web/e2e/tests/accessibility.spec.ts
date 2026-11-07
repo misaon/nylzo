@@ -3,7 +3,14 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
-import { choosePassphrase, createMessageInPage, expectMessageShown, openApp, showMessage } from './support/pages.ts';
+import {
+  chooseLanguage,
+  choosePassphrase,
+  createMessageInPage,
+  expectMessageShown,
+  openApp,
+  showMessage,
+} from './support/pages.ts';
 import { BASE_URL } from './support/servers.ts';
 
 const PHONE = { viewport: { width: 430, height: 932 }, bypassCSP: true };
@@ -97,7 +104,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   }
 
   await page
-    .getByLabel(/Attachment, up to/u)
+    .getByLabel(/Attachment up to/u)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
   await expectAccessible(page, 'attachment', '#create');
@@ -105,11 +112,11 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   await page.getByLabel('Message text').fill('axe');
   await choosePassphrase(page, 'short');
   await page.getByRole('button', { name: 'Create link' }).click();
-  await expect(page.getByLabel('Passphrase, optional')).toBeFocused();
+  await expect(page.getByLabel('Passphrase', { exact: true })).toBeFocused();
   await expectAccessible(page, 'refused passphrase', '#create');
 });
 
-test('the read page in every state, with its report form and its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({
+test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -118,18 +125,16 @@ test('the read page in every state, with its report form and its delete and down
   await page.goto(message.link);
   await expect(show).toBeVisible();
   await expectAccessible(page, 'ready');
-  await page.getByRole('button', { name: 'Report', exact: true }).click();
-  await expectAccessible(page, 'report form');
-  await page.getByRole('button', { name: 'Delete without showing' }).click();
+  await page.getByRole('button', { name: 'Delete without opening' }).click();
   await expectAccessible(page, 'delete confirmation');
   await page.getByRole('alertdialog').getByRole('button', { name: 'Do not delete' }).click();
   await show.click();
   await expectMessageShown(page);
   await expectAccessible(page, 'revealed with actions');
-  await page.getByRole('button', { name: 'Čeština' }).click();
+  await chooseLanguage(page, 'Čeština');
   await expect(page.getByRole('heading', { name: 'Obsah zprávy' })).toBeVisible();
   await expectAccessible(page, 'revealed in Czech');
-  await page.getByRole('button', { name: 'English' }).click();
+  await chooseLanguage(page, 'English');
 
   const risky = await createMessageThroughApi({
     file: { name: 'setup.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') },
@@ -146,7 +151,7 @@ test('the read page in every state, with its report form and its delete and down
 
   const guarded = await createMessageThroughApi({ passphrase: 'four random words here' });
   await showMessage(page, guarded.link, 'definitely the wrong one');
-  await expect(page.getByText(/The passphrase does not match/u)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 
   await openFresh(page, `${BASE_URL}/r#0.0.${message.id}.${message.secret}`);
@@ -159,30 +164,33 @@ test('the sent list, empty and with a message, and its cancel dialog pass axe wi
 }) => {
   const page = await newPage(PHONE);
   await page.goto('/sent');
-  await expect(page.getByText('This device remembers no messages.')).toBeVisible();
+  await expect(page.getByText('Nothing here yet')).toBeVisible();
   await expectAccessible(page, 'sent empty');
   await createMessageInPage(page, { text: 'axe', remember: true });
   await expectAccessible(page, 'created and remembered');
   await page.goto('/sent');
-  await expect(page.getByText('Waiting to be opened.')).toBeVisible();
+  await expect(page.getByText('Waiting to be opened')).toBeVisible();
   await expectAccessible(page, 'sent list');
   await page.getByRole('button', { name: 'Cancel message' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expectAccessible(page, 'cancel dialog');
 });
 
-test('the report page with and without problems and the transparency page pass axe with 44 px targets on a phone (AK20)', async ({
+test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone (AK20)', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
-  await page.goto('/report');
-  await expectAccessible(page, 'report');
-  await page.getByLabel('Link to the message').fill('not a link');
-  await page.getByLabel('Reason, optional').fill('x'.repeat(1001));
-  await page.getByRole('button', { name: 'Send report' }).click();
-  await expect(page.getByLabel('Link to the message')).toBeFocused();
-  await expectAccessible(page, 'report with problems');
   await page.goto('/transparency');
   await expect(page.getByText('Nylzo e2e')).toBeVisible();
   await expectAccessible(page, 'transparency');
+  await page.goto('/terms');
+  await expect(page.getByRole('heading', { name: 'Terms of use', level: 1 })).toBeVisible();
+  await expectAccessible(page, 'terms');
+  await page.goto('/agents');
+  await expect(page.getByRole('heading', { name: 'Nylzo for AI agents', level: 1 })).toBeVisible();
+  await expectAccessible(page, 'agents');
+  const missing = await page.goto('/m/invalid');
+  expect(missing?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: 'This page does not exist', level: 1 })).toBeVisible();
+  await expectAccessible(page, 'not found');
 });

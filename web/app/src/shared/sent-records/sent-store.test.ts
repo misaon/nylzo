@@ -3,7 +3,14 @@ import type { RequestKey } from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { memoryStore } from './memory-sent-store.ts';
-import { ExtractableKeyError, InvalidRecordError, recordFrom, RETENTION_MS, storedForm } from './sent-record.ts';
+import {
+  ExtractableKeyError,
+  InvalidRecordError,
+  MAX_LABEL_CHARACTERS,
+  recordFrom,
+  RETENTION_MS,
+  storedForm,
+} from './sent-record.ts';
 import type { SentRecord } from './sent-record.ts';
 import { purgeSentRecords, rememberSent, retainedRecords } from './sent-store.ts';
 
@@ -97,6 +104,27 @@ describe('stored records of sent messages (D39)', () => {
       'record',
     ]) {
       expect(recordFrom(malformed)).toBeUndefined();
+    }
+  });
+
+  it('keeps a short label the sender typed and drops one that is not plain text', async () => {
+    const manageKey = await manageKeyOf(newSecret());
+    const labelled = storedForm({ id: ID, createdAt: NOW, expiresAt: NOW + 1, label: 'Heslo pro Petra', manageKey });
+    expect(recordFrom(labelled)?.label).toBe('Heslo pro Petra');
+    expect(storedForm({ id: ID, createdAt: NOW, expiresAt: NOW + 1, label: '', manageKey })).not.toHaveProperty(
+      'label',
+    );
+    expect(() =>
+      storedForm({
+        id: ID,
+        createdAt: NOW,
+        expiresAt: NOW + 1,
+        label: 'x'.repeat(MAX_LABEL_CHARACTERS + 1),
+        manageKey,
+      }),
+    ).toThrow(InvalidRecordError);
+    for (const label of [42, '\uD800', ' padded ', 'x'.repeat(MAX_LABEL_CHARACTERS + 1)]) {
+      expect(recordFrom({ ...labelled, label })).not.toHaveProperty('label');
     }
   });
 

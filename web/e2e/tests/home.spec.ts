@@ -1,12 +1,12 @@
 import { expect, test } from './support/fixtures.ts';
-import { openApp } from './support/pages.ts';
+import { chooseLanguage, openApp } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
 import { BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
 
 const HOMES = [
   { path: '/', language: 'en', heading: 'A secret that opens once', title: /^Share passwords and files securely/u },
-  { path: '/cs/', language: 'cs', heading: 'Tajemství na jedno otevření', title: /^Bezpečně poslat heslo/u },
+  { path: '/cs/', language: 'cs', heading: 'Tajemství na jedno otevření', title: /^Jak bezpečně poslat heslo/u },
 ];
 
 for (const home of HOMES) {
@@ -31,8 +31,13 @@ for (const home of HOMES) {
     const preview = await request.get(image);
     expect(preview.headers()['content-type']).toBe('image/png');
     const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/u.exec(html)?.[1] ?? '';
-    const graph = (JSON.parse(structured) as { '@graph': { url: string }[] })['@graph'];
-    expect(graph.map((node) => node.url)).toEqual([`${BASE_URL}/`, `${BASE_URL}${home.path}`]);
+    const graph = (JSON.parse(structured) as { '@graph': { '@type': string; url?: string; logo?: string }[] })[
+      '@graph'
+    ];
+    const node = (type: string) => graph.find((entry) => entry['@type'] === type);
+    expect([node('WebSite')?.url, node('WebApplication')?.url]).toEqual([`${BASE_URL}/`, `${BASE_URL}${home.path}`]);
+    const logo = await request.get(node('Organization')?.logo ?? '');
+    expect(logo.headers()['content-type']).toBe('image/png');
 
     const page = await newPage({ javaScriptEnabled: false });
     await page.goto(home.path);
@@ -78,15 +83,15 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await expect(page.getByRole('heading', { level: 1, name: 'A secret that opens once' })).toBeVisible();
   await expect(page).toHaveURL(`${BASE_URL}/`);
   await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
-  await page.getByRole('button', { name: 'Čeština' }).click();
+  await chooseLanguage(page, 'Čeština');
   await expect(page).toHaveURL(`${BASE_URL}/cs/`);
-  await expect(page).toHaveTitle(/^Bezpečně poslat heslo/u);
+  await expect(page).toHaveTitle(/^Jak bezpečně poslat heslo/u);
   expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
 
   await openApp(page, '/#create');
   await expect(page).toHaveURL(`${BASE_URL}/cs/#create`);
   await expect(page.getByRole('heading', { level: 1, name: 'Tajemství na jedno otevření' })).toBeVisible();
-  await page.getByRole('button', { name: 'English' }).click();
+  await chooseLanguage(page, 'English');
   await expect(page).toHaveURL(`${BASE_URL}/#create`);
   await openApp(page, '/cs/');
   await expect(page).toHaveURL(`${BASE_URL}/`);
