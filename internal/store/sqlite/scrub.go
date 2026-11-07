@@ -27,9 +27,10 @@ var (
 	errScrubShort     = errors.New("sqlite: the scrub table did not grow to the size of the log")
 )
 
-// Checkpoint copies the log into the database and then overwrites every frame of the log in place (spec §5.2).
+// Checkpoint rebuilds the tables whose rows changed, copies the log into the database and then overwrites every frame
+// of the log in place (spec §5.2).
 func (s *Store) Checkpoint(ctx context.Context) error {
-	return s.scrubLog(ctx, true)
+	return errors.Join(s.rebuildChanged(ctx), s.scrubLog(ctx, true))
 }
 
 // scrubLog overwrites every frame of the log, or the first writeScrubFrames frames when the writes since the last

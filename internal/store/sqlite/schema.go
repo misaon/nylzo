@@ -7,10 +7,18 @@ import (
 	"fmt"
 )
 
-const countersPurgeIndex = `CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at)`
+type table struct {
+	name       string
+	definition string
+	columns    string
+	key        string
+	index      string
+}
 
-const schema = `
-CREATE TABLE IF NOT EXISTS messages (
+var (
+	messagesTable = table{
+		name: "messages",
+		definition: `CREATE TABLE IF NOT EXISTS messages (
 	locator BLOB PRIMARY KEY,
 	read_wrap BLOB NOT NULL,
 	manage_wrap BLOB NOT NULL,
@@ -19,23 +27,37 @@ CREATE TABLE IF NOT EXISTS messages (
 	blob_wrap BLOB,
 	blob_purge_at INTEGER,
 	purge_at INTEGER NOT NULL
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS messages_purge_at ON messages(purge_at);
-CREATE TABLE IF NOT EXISTS rate_counters (
+) WITHOUT ROWID`,
+		columns: "locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at",
+		key:     "locator",
+		index:   `CREATE INDEX IF NOT EXISTS messages_purge_at ON messages(purge_at)`,
+	}
+	countersTable = table{
+		name: "rate_counters",
+		definition: `CREATE TABLE IF NOT EXISTS rate_counters (
 	key TEXT NOT NULL,
 	window_start INTEGER NOT NULL,
 	count INTEGER NOT NULL,
 	bytes INTEGER NOT NULL,
 	purge_at INTEGER NOT NULL,
 	PRIMARY KEY (key, window_start)
-) WITHOUT ROWID;
-` + countersPurgeIndex + `;
-CREATE TABLE IF NOT EXISTS wal_scrub (
+) WITHOUT ROWID`,
+		columns: "key, window_start, count, bytes, purge_at",
+		key:     "key, window_start",
+		index:   `CREATE INDEX IF NOT EXISTS rate_counters_purge_at ON rate_counters(purge_at)`,
+	}
+	rebuiltTables = []table{messagesTable, countersTable}
+)
+
+const scrubTable = `CREATE TABLE IF NOT EXISTS wal_scrub (
 	slot INTEGER PRIMARY KEY,
 	generation INTEGER NOT NULL,
 	filler BLOB NOT NULL
-);
-`
+)`
+
+var schema = messagesTable.definition + ";\n" + messagesTable.index + ";\n" +
+	countersTable.definition + ";\n" + countersTable.index + ";\n" +
+	scrubTable + ";\n"
 
 const schemaVersion = 8
 
@@ -95,7 +117,7 @@ func prepareSchema(ctx context.Context, database *sql.DB, create bool) error {
 	case create && version == 0 && objects == 0:
 		statements = schema
 	case version == previousSchema:
-		statements = countersPurgeIndex + ";\n"
+		statements = countersTable.index + ";\n"
 	default:
 		return checkVersion(version)
 	}

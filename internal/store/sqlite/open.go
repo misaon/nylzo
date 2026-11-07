@@ -37,16 +37,18 @@ var (
 )
 
 type Store struct {
-	path             string
-	pageSize         int
-	writer           *sql.DB
-	reader           *sql.DB
-	statements       *statements
-	scrubs           chan struct{}
-	stopScrubs       context.CancelFunc
-	scrubbersUp      sync.WaitGroup
-	scrubFailed      atomic.Pointer[func(error)]
-	unscrubbedFrames atomic.Int64
+	path               string
+	pageSize           int
+	writer             *sql.DB
+	reader             *sql.DB
+	statements         *statements
+	scrubs             chan struct{}
+	stopScrubs         context.CancelFunc
+	scrubbersUp        sync.WaitGroup
+	scrubFailed        atomic.Pointer[func(error)]
+	unscrubbedFrames   atomic.Int64
+	changedSinceBuild  atomic.Bool
+	builtAtDataVersion atomic.Int64
 }
 
 var _ store.Store = (*Store)(nil)
@@ -64,7 +66,7 @@ func OpenCurrent(ctx context.Context, path string) (*Store, error) {
 	return openWith(ctx, path, requireCurrent)
 }
 
-// Close scrubs the log once more, so a process that changed rows leaves no older row version in it.
+// Close rebuilds and scrubs once more, so a process that changed rows leaves no older row version behind.
 func (s *Store) Close() error {
 	s.stopScrubs()
 	s.scrubbersUp.Wait()
@@ -75,7 +77,8 @@ func (s *Store) Close() error {
 	return errors.Join(scrubErr, s.statements.close(), s.reader.Close(), s.writer.Close())
 }
 
-// transaction commits body on the only writer connection, then asks for a scrub of the frames the commit wrote.
+// transaction commits body on the only writer connection, then asks for a scrub of the frames the commit wrote and
+// marks the tables for the next rebuild.
 func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) error {
 	connection, err := s.writer.Conn(ctx)
 	if err != nil {
@@ -86,7 +89,9 @@ func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) er
 		return err
 	}
 	err = commit(ctx, connection, body)
-	s.noteFrames(ctx, connection, err == nil)
+	if s.noteFrames(ctx, connection, err == nil) && err == nil {
+		s.changedSinceBuild.Store(true)
+	}
 	return err
 }
 
@@ -107,12 +112,12 @@ func commit(ctx context.Context, connection *sql.Conn, body func(tx *sql.Tx) err
 	return nil
 }
 
-// noteFrames asks for a scrub of the frames a transaction wrote; it asks for a full scrub when it cannot tell the last
-// frame, or when a transaction that rolled back had spilled pages into the log.
-func (s *Store) noteFrames(ctx context.Context, connection *sql.Conn, committed bool) {
+// noteFrames reports whether a transaction wrote to the log and asks for a scrub of what it wrote; it asks for a full
+// scrub when it cannot tell the last frame, or when a transaction that rolled back had spilled pages into the log.
+func (s *Store) noteFrames(ctx context.Context, connection *sql.Conn, committed bool) bool {
 	pages, err := writtenPages(connection)
 	if err == nil && pages == 0 {
-		return
+		return false
 	}
 	frames := int64(math.MaxInt64)
 	if err == nil && committed {
@@ -124,6 +129,7 @@ func (s *Store) noteFrames(ctx context.Context, connection *sql.Conn, committed 
 		s.unscrubbedFrames.Store(frames)
 	}
 	s.requestScrub()
+	return true
 }
 
 // writtenPages counts the pages the connection wrote to the log since it last asked, spilled pages included.
@@ -270,6 +276,7 @@ func connect(ctx context.Context, path string, prepareSchema func(context.Contex
 	reader.SetMaxOpenConns(readerConnections)
 	reader.SetMaxIdleConns(readerConnections)
 	opened := &Store{path: path, writer: writer, reader: reader, scrubs: make(chan struct{}, 1)}
+	opened.changedSinceBuild.Store(true)
 	err = reader.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&opened.pageSize)
 	if err == nil {
 		opened.statements, err = prepare(ctx, writer, reader)

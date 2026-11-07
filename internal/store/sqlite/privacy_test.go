@@ -2,13 +2,16 @@ package sqlite_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
+	mathrand "math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -361,4 +364,234 @@ func TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkLog("close")
+}
+
+// TestChurnAndPurgeLeaveNoCopyOfARow reproduces the audit probe: a page split leaves copies of the cells it moved in
+// the free space of the page, which secure_delete never zeroes, so only the rebuild in the sweep removes them. The
+// sweep rebuilds after writes of its own process and after commits of another one.
+func TestChurnAndPurgeLeaveNoCopyOfARow(t *testing.T) {
+	t.Parallel()
+	t.Run("swept by the process that wrote", func(t *testing.T) {
+		t.Parallel()
+		directory := t.TempDir()
+		path := filepath.Join(directory, "nylzo.db")
+		storage := openStore(t, path)
+		checkpoint(t, storage)
+		churned := churn(t, storage)
+		if _, err := store.SweepAll(t.Context(), storage, newBlobs(t, directory), testNow); err != nil {
+			t.Fatal(err)
+		}
+		churned.requireNoCopy(t, storage, path)
+	})
+	t.Run("swept by another process", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), "nylzo.db")
+		writing, sweeping := openStore(t, path), openStore(t, path)
+		checkpoint(t, sweeping)
+		churned := churn(t, writing)
+		for _, purge := range []func(context.Context, time.Time, int) (int, error){writing.PurgeRows, writing.RatePurge} {
+			for {
+				purged, err := purge(t.Context(), testNow, store.SweepBatch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if purged < store.SweepBatch {
+					break
+				}
+			}
+		}
+		checkpoint(t, sweeping)
+		churned.requireNoCopy(t, sweeping, path)
+	})
+}
+
+// checkpoint retries while the scrubber of another store holds the log.
+func checkpoint(t *testing.T, storage *sqlite.Store) {
+	t.Helper()
+	err := storage.Checkpoint(t.Context())
+	for retry := 0; retry < 20 && errors.Is(err, sqlite.ErrCheckpointBusy); retry++ {
+		time.Sleep(50 * time.Millisecond)
+		err = storage.Checkpoint(t.Context())
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+type churned struct {
+	written    *traces
+	locators   []seal.Locator
+	challenges []string
+}
+
+// churn creates rows and counters, changes and purges rows in turn, and leaves half the rows and counters due.
+func churn(t *testing.T, storage *sqlite.Store) *churned {
+	t.Helper()
+	ctx, choice := t.Context(), mathrand.New(mathrand.NewPCG(1, 2))
+	due, later := testNow.Add(-time.Hour), testNow.Add(24*time.Hour)
+	result := &churned{written: newTraces()}
+	createRow := func() {
+		row := result.written.row()
+		challenge := store.RateHit{Key: string(result.written.value("CHL-", 24)), PurgeAt: later}
+		result.challenges = append(result.challenges, challenge.Key)
+		if choice.IntN(2) == 0 {
+			challenge.PurgeAt = due
+		}
+		if err := storage.Create(ctx, &row, challenge); err != nil {
+			t.Fatal(err)
+		}
+		result.locators = append(result.locators, row.Locator)
+	}
+	update := func(locator seal.Locator, change func(row *store.Row)) {
+		err := storage.Update(ctx, locator, func(row *store.Row) error {
+			change(row)
+			return nil
+		})
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			t.Fatal(err)
+		}
+	}
+	for range churnRows {
+		createRow()
+	}
+	for step := range churnSteps {
+		locator := result.locators[choice.IntN(len(result.locators))]
+		switch step % 4 {
+		case 0:
+			update(locator, func(row *store.Row) { row.Record = result.written.value("REC:", seal.RecordBlock) })
+		case 1:
+			update(locator, func(row *store.Row) {
+				row.Record, row.BlobWrap = result.written.value("REC:", seal.RecordBlock), nil
+				row.PurgeAt = later.Add(time.Duration(choice.IntN(1000)) * time.Hour)
+			})
+		case 2:
+			update(locator, func(row *store.Row) { row.BlobRef, row.BlobWrap, row.BlobPurgeAt = "", nil, time.Time{} })
+		default:
+			update(locator, func(row *store.Row) { row.PurgeAt = due })
+			if _, err := storage.PurgeRows(ctx, testNow, store.SweepBatch); err != nil {
+				t.Fatal(err)
+			}
+			createRow()
+		}
+	}
+	for _, locator := range result.locators {
+		if choice.IntN(2) == 0 {
+			update(locator, func(row *store.Row) { row.PurgeAt = due })
+		}
+	}
+	return result
+}
+
+func (c *churned) requireNoCopy(t *testing.T, storage *sqlite.Store, path string) {
+	t.Helper()
+	current := c.written.current(t, storage, c.locators, c.challenges)
+	for _, name := range []string{path, path + "-wal"} {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stale := c.written.staleIn(data, current); len(stale) > 0 {
+			t.Errorf("%s still holds %d deleted rows or older row versions: %v", filepath.Base(name), len(stale), stale)
+		}
+	}
+}
+
+const (
+	churnRows  = 800
+	churnSteps = 3200
+	traceLen   = 16
+)
+
+var traceTags = []string{"LOC:", "RWR:", "MWR:", "REC:", "BWR:", "REF-", "CHL-"}
+
+// traces writes values whose first bytes are a tag and random bytes, so a scan of a file finds every copy of them.
+type traces struct {
+	random  *mathrand.ChaCha8
+	written map[string]bool
+}
+
+func newTraces() *traces {
+	return &traces{random: mathrand.NewChaCha8([32]byte{1}), written: map[string]bool{}}
+}
+
+func (tr *traces) value(tag string, length int) []byte {
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	value := make([]byte, length)
+	tr.random.Read(value)
+	if strings.HasSuffix(tag, "-") {
+		for i := range value {
+			value[i] = alphabet[value[i]%byte(len(alphabet))]
+		}
+	}
+	copy(value, tag)
+	tr.written[string(value[:traceLen])] = true
+	return value
+}
+
+func (tr *traces) row() store.Row {
+	return store.Row{
+		Locator:     seal.Locator(tr.value("LOC:", seal.LocatorLen)),
+		ReadWrap:    tr.value("RWR:", seal.WrapLen),
+		ManageWrap:  tr.value("MWR:", seal.WrapLen),
+		Record:      tr.value("REC:", seal.RecordBlock),
+		BlobRef:     string(tr.value("REF-", 22)),
+		BlobWrap:    tr.value("BWR:", seal.WrapLen),
+		BlobPurgeAt: testNow.Add(1000 * time.Hour),
+		PurgeAt:     testNow.Add(1000 * time.Hour),
+	}
+}
+
+func (*traces) current(
+	t *testing.T,
+	storage *sqlite.Store,
+	locators []seal.Locator,
+	challenges []string,
+) map[string]bool {
+	t.Helper()
+	current := map[string]bool{}
+	for _, locator := range locators {
+		row, err := storage.Load(t.Context(), locator)
+		if errors.Is(err, store.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, value := range [][]byte{row.Locator[:], row.ReadWrap, row.ManageWrap, row.Record, []byte(row.BlobRef), row.BlobWrap} {
+			if len(value) >= traceLen {
+				current[string(value[:traceLen])] = true
+			}
+		}
+	}
+	for _, key := range challenges {
+		count, err := storage.RateGet(t.Context(), key, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count.Count > 0 {
+			current[key[:traceLen]] = true
+		}
+	}
+	return current
+}
+
+func (tr *traces) staleIn(data []byte, current map[string]bool) []string {
+	var stale []string
+	for _, tag := range traceTags {
+		for offset := 0; ; {
+			at := bytes.Index(data[offset:], []byte(tag))
+			if at < 0 {
+				break
+			}
+			start := offset + at
+			offset = start + len(tag)
+			if start+traceLen > len(data) {
+				break
+			}
+			if trace := string(data[start : start+traceLen]); tr.written[trace] && !current[trace] {
+				stale = append(stale, fmt.Sprintf("%q at %d", trace[:len(tag)], start))
+			}
+		}
+	}
+	return stale
 }
