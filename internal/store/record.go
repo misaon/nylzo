@@ -18,8 +18,10 @@ const (
 	macLen       = 32
 	fieldsLen    = 123
 	leaseLen     = 42
-	blobRefLen   = 16
 )
+
+// BlobRefLen is the number of random bytes in a blob reference.
+const BlobRefLen = 16
 
 var endings = []State{"", StateDeleted, StateCancelled}
 
@@ -34,7 +36,7 @@ func NewDummyRow() Row {
 	rand.Read(ref[:])
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
 	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
-	blobRef := base64.RawURLEncoding.EncodeToString(ref[:blobRefLen])
+	blobRef := base64.RawURLEncoding.EncodeToString(ref[:BlobRefLen])
 	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobRef, seal.NewKey()).Row
 }
 

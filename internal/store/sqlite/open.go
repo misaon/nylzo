@@ -88,17 +88,33 @@ func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) er
 }
 
 type statements struct {
-	loadRow        *sql.Stmt
-	hitCounter     *sql.Stmt
-	reserveCounter *sql.Stmt
+	loadRow           *sql.Stmt
+	reloadRow         *sql.Stmt
+	insertRow         *sql.Stmt
+	updateRow         *sql.Stmt
+	updateRowAndPurge *sql.Stmt
+	shredBlob         *sql.Stmt
+	forgetBlob        *sql.Stmt
+	hitCounter        *sql.Stmt
+	reserveCounter    *sql.Stmt
+	releaseCounter    *sql.Stmt
+	loadCounter       *sql.Stmt
 }
 
 func prepare(ctx context.Context, writer, reader *sql.DB) (*statements, error) {
 	prepared := &statements{}
-	var errs [3]error
+	var errs [11]error
 	prepared.loadRow, errs[0] = reader.PrepareContext(ctx, rowQuery)
-	prepared.hitCounter, errs[1] = writer.PrepareContext(ctx, hitQuery)
-	prepared.reserveCounter, errs[2] = writer.PrepareContext(ctx, reserveQuery)
+	prepared.reloadRow, errs[1] = writer.PrepareContext(ctx, rowQuery)
+	prepared.insertRow, errs[2] = writer.PrepareContext(ctx, insertRow)
+	prepared.updateRow, errs[3] = writer.PrepareContext(ctx, updateRow)
+	prepared.updateRowAndPurge, errs[4] = writer.PrepareContext(ctx, updateRowAndPurge)
+	prepared.shredBlob, errs[5] = writer.PrepareContext(ctx, shredBlob)
+	prepared.forgetBlob, errs[6] = writer.PrepareContext(ctx, forgetBlob)
+	prepared.hitCounter, errs[7] = writer.PrepareContext(ctx, hitQuery)
+	prepared.reserveCounter, errs[8] = writer.PrepareContext(ctx, reserveQuery)
+	prepared.releaseCounter, errs[9] = writer.PrepareContext(ctx, releaseQuery)
+	prepared.loadCounter, errs[10] = reader.PrepareContext(ctx, counterQuery)
 	if err := errors.Join(errs[:]...); err != nil {
 		return nil, errors.Join(err, prepared.close())
 	}
@@ -106,13 +122,33 @@ func prepare(ctx context.Context, writer, reader *sql.DB) (*statements, error) {
 }
 
 func (p *statements) close() error {
-	var errs []error
-	for _, statement := range []*sql.Stmt{p.loadRow, p.hitCounter, p.reserveCounter} {
+	all := []*sql.Stmt{
+		p.loadRow,
+		p.reloadRow,
+		p.insertRow,
+		p.updateRow,
+		p.updateRowAndPurge,
+		p.shredBlob,
+		p.forgetBlob,
+		p.hitCounter,
+		p.reserveCounter,
+		p.releaseCounter,
+		p.loadCounter,
+	}
+	errs := make([]error, 0, len(all))
+	for _, statement := range all {
 		if statement != nil {
 			errs = append(errs, statement.Close())
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// execIn runs a prepared statement inside tx; closing it leaves the statement prepared on the connection.
+func execIn(ctx context.Context, tx *sql.Tx, prepared *sql.Stmt, arguments ...any) (sql.Result, error) {
+	statement := tx.StmtContext(ctx, prepared)
+	defer statement.Close()
+	return statement.ExecContext(ctx, arguments...)
 }
 
 func openWith(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {

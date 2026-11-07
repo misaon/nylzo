@@ -14,6 +14,8 @@ const (
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 RETURNING count`
 	reserveQuery = `INSERT INTO rate_counters (key, window_start, count, bytes, purge_at) VALUES (?, ?, 1, 0, ?)
 		ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count`
+	releaseQuery = `UPDATE rate_counters SET count = count - 1 WHERE key = ? AND window_start = ? AND count > 0`
+	counterQuery = `SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`
 )
 
 func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
@@ -56,23 +58,15 @@ func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]b
 }
 
 func (s *Store) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
-	_, err := s.writer.ExecContext(
-		ctx,
-		`UPDATE rate_counters SET count = count - 1 WHERE key = ? AND window_start = ? AND count > 0`,
-		key,
-		milliseconds(windowStart),
-	)
-	return err
+	return s.transaction(ctx, func(tx *sql.Tx) error {
+		_, err := execIn(ctx, tx, s.statements.releaseCounter, key, milliseconds(windowStart))
+		return err
+	})
 }
 
 func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) (store.RateCount, error) {
 	var count store.RateCount
-	err := s.reader.QueryRowContext(
-		ctx,
-		`SELECT count FROM rate_counters WHERE key = ? AND window_start = ?`,
-		key,
-		milliseconds(windowStart),
-	).Scan(&count.Count)
+	err := s.statements.loadCounter.QueryRowContext(ctx, key, milliseconds(windowStart)).Scan(&count.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.RateCount{}, nil
 	}
