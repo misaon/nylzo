@@ -41,6 +41,19 @@ var (
 	encodings = []string{identity, browserEncodings}
 )
 
+// differenceError marks a response that differs from this nylzo, as opposed to one that could not be read.
+type differenceError struct {
+	message string
+}
+
+func (e *differenceError) Error() string {
+	return e.message
+}
+
+func differs(format string, arguments ...any) error {
+	return &differenceError{message: fmt.Sprintf(format, arguments...)}
+}
+
 type verified struct {
 	pages int
 	files int
@@ -107,6 +120,9 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 		allowed:     options.allowed,
 	}
 	result, err := check.run(ctx)
+	if _, differing := errors.AsType[*differenceError](err); differing {
+		return command.FailWith(environment, command.ExitMismatch, "%s", err)
+	}
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
@@ -158,7 +174,7 @@ func (v *verifier) manifest(ctx context.Context) error {
 	}
 	var served webclient.Manifest
 	if err = json.Unmarshal(fetched.Body, &served); err != nil {
-		return errors.New("the server's client manifest is not valid JSON")
+		return differs("the server's client manifest is not valid JSON")
 	}
 	if served.Server != v.version {
 		return fmt.Errorf(
@@ -169,7 +185,7 @@ func (v *verifier) manifest(ctx context.Context) error {
 	}
 	if served.PublicURL != "" {
 		if err = webclient.CheckPublicURL(served.PublicURL); err != nil {
-			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %w", err)
+			return differs("the server's client manifest names a public URL that this nylzo would refuse: %s", err)
 		}
 	}
 	contact, err := v.contact(ctx)
@@ -182,7 +198,7 @@ func (v *verifier) manifest(ctx context.Context) error {
 	servedJSON, _ := json.Marshal(served)
 	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, served.PublicURL, v.pages, v.information))
 	if !bytes.Equal(servedJSON, expectedJSON) {
-		return errors.New("the server's client manifest differs from the web client of this nylzo")
+		return differs("the server's client manifest differs from the web client of this nylzo")
 	}
 	return nil
 }
@@ -212,7 +228,7 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 		return headersErr
 	}
 	if fetched.Header.Get("Content-Security-Policy") != expected.Policy() {
-		return fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
+		return differs("%s: the Content-Security-Policy differs from this nylzo", where)
 	}
 	if values := fetched.Header.Values("Connection-Allowlist"); len(values) != 1 || values[0] != expected.Allowlist() {
 		if len(values) == 1 && values[0] == webclient.ConnectionAllowlist("") {
@@ -222,14 +238,14 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 				server.TransparencyPath,
 			)
 		}
-		return fmt.Errorf("%s: the Connection-Allowlist differs from this nylzo", where)
+		return differs("%s: the Connection-Allowlist differs from this nylzo", where)
 	}
 	body, err := decoded(&fetched, encoding, int64(len(expected.Body())), where)
 	if err != nil {
 		return err
 	}
 	if !bytes.Equal(body, expected.Body()) {
-		return fmt.Errorf("%s: the page differs from the web client of this nylzo", where)
+		return differs("%s: the page differs from the web client of this nylzo", where)
 	}
 	return nil
 }
@@ -246,14 +262,14 @@ func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asse
 		return headersErr
 	}
 	if fetched.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
-		return fmt.Errorf("%s: the headers differ from this nylzo", where)
+		return differs("%s: the headers differ from this nylzo", where)
 	}
 	body, err := decoded(&fetched, encoding, int64(len(asset.Body)), where)
 	if err != nil {
 		return err
 	}
 	if !bytes.Equal(body, asset.Body) {
-		return fmt.Errorf("%s: the file differs from the web client of this nylzo", where)
+		return differs("%s: the file differs from the web client of this nylzo", where)
 	}
 	return nil
 }
@@ -265,11 +281,11 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 	expected["Vary"] = "Accept-Encoding"
 	for name, value := range expected {
 		if values := header.Values(name); len(values) != 1 || values[0] != value {
-			return fmt.Errorf("%s: the %s header differs from this nylzo", where, name)
+			return differs("%s: the %s header differs from this nylzo", where, name)
 		}
 	}
 	if len(header.Values("Content-Security-Policy")) != 1 {
-		return fmt.Errorf("%s: the Content-Security-Policy header differs from this nylzo", where)
+		return differs("%s: the Content-Security-Policy header differs from this nylzo", where)
 	}
 	for name, values := range header {
 		known := expected[name] != "" || name == "Content-Security-Policy" ||
@@ -278,7 +294,11 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 		if name == "Content-Encoding" {
 			known = len(values) == 1
 		}
-		if !known {
+		switch {
+		case known:
+		case name == "Content-Encoding" || name == "Connection-Allowlist" || slices.Contains(neverAllowed, name):
+			return differs("%s: the server sent the %s header, which this nylzo never sends here", where, name)
+		default:
 			return fmt.Errorf(
 				"%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header",
 				where,
@@ -302,19 +322,19 @@ func decoded(fetched *client.Fetched, encoding string, limit int64, where string
 		return fetched.Body, nil
 	case webclient.EncodingGzip:
 		if encoding == identity {
-			return nil, fmt.Errorf("%s: the server compressed a response that was asked for without compression", where)
+			return nil, differs("%s: the server compressed a response that was asked for without compression", where)
 		}
 		reader, err := gzip.NewReader(bytes.NewReader(fetched.Body))
 		if err != nil {
-			return nil, fmt.Errorf("%s: the compressed response is damaged", where)
+			return nil, differs("%s: the compressed response is damaged", where)
 		}
 		body, err := io.ReadAll(io.LimitReader(reader, limit+1))
 		if err != nil {
-			return nil, fmt.Errorf("%s: the compressed response is damaged", where)
+			return nil, differs("%s: the compressed response is damaged", where)
 		}
 		return body, nil
 	default:
-		return nil, fmt.Errorf("%s: the server used an encoding that this nylzo never sends", where)
+		return nil, differs("%s: the server used an encoding that this nylzo never sends", where)
 	}
 }
 

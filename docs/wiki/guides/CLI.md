@@ -72,7 +72,7 @@ nylzo verify-client --server https://nylzo.example
 
 This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, the static CSP, security headers, the `Connection-Allowlist` with the operator's contact from `/.well-known/nylzo/transparency.json`, and `/.well-known/nylzo/client.json`.
 
-Unexpected headers are mismatches. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
+It exits with 0 when everything matches, 3 when a page, file, manifest or header differs from the release, and 1 when the check could not finish, so a monitor can tell a changed client from an unreachable server. Unexpected headers are mismatches. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
 
 The result applies only to that invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network; a successful check does not prove what other visitors receive. The repository's `monitor` workflow runs hourly after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
 
