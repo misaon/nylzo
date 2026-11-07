@@ -18,6 +18,8 @@ const (
 	maxScrubGrowths               = 4
 	scrubRetries                  = 5
 	scrubRetryDelay               = time.Second
+	scrubDelay                    = 100 * time.Millisecond
+	writeScrubFrames              = 32
 )
 
 var (
@@ -27,18 +29,41 @@ var (
 
 // Checkpoint copies the log into the database and then overwrites every frame of the log in place (spec §5.2).
 func (s *Store) Checkpoint(ctx context.Context) error {
+	return s.scrubLog(ctx, true)
+}
+
+// scrubLog overwrites every frame of the log, or the first writeScrubFrames frames when the writes since the last
+// scrub filled no frame beyond them; that scrub always writes the same frames, so it says nothing about the writes.
+func (s *Store) scrubLog(ctx context.Context, everyFrame bool) error {
+	if !everyFrame && s.unscrubbedFrames.Load() == 0 {
+		return nil
+	}
 	connection, err := s.writer.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
 	defer connection.Close()
-	if _, err = connection.ExecContext(
+	written := s.unscrubbedFrames.Load()
+	err = withCheckpointTimeout(ctx, connection, func() error {
+		if everyFrame || written > writeScrubFrames {
+			return s.scrubAll(ctx, connection)
+		}
+		return s.scrubFirst(ctx, connection)
+	})
+	if err == nil {
+		s.unscrubbedFrames.Store(0)
+	}
+	return err
+}
+
+func withCheckpointTimeout(ctx context.Context, connection *sql.Conn, body func() error) error {
+	if _, err := connection.ExecContext(
 		ctx,
 		fmt.Sprintf(`PRAGMA busy_timeout = %d`, checkpointTimeoutMilliseconds),
 	); err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
-	err = s.scrub(ctx, connection)
+	err := body()
 	restore := fmt.Sprintf(`PRAGMA busy_timeout = %d`, busyTimeoutMilliseconds)
 	if _, restoreErr := connection.ExecContext(context.WithoutCancel(ctx), restore); restoreErr != nil {
 		discarded := connection.Raw(func(any) error { return sqldriver.ErrBadConn })
@@ -47,8 +72,8 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 	return err
 }
 
-// scrub rewrites one zero-filled page per frame from the start of the log, over every older version of a row.
-func (s *Store) scrub(ctx context.Context, connection *sql.Conn) error {
+// scrubAll rewrites one zero-filled page per frame from the start of the log, over every older version of a row.
+func (s *Store) scrubAll(ctx context.Context, connection *sql.Conn) error {
 	for range maxScrubGrowths {
 		if err := restartLog(ctx, connection); err != nil {
 			return err
@@ -57,19 +82,66 @@ func (s *Store) scrub(ctx context.Context, connection *sql.Conn) error {
 		if err != nil {
 			return fmt.Errorf("sqlite: wal scrub: %w", err)
 		}
-		var slots int
-		if err = connection.QueryRowContext(ctx, `SELECT COUNT(*) FROM wal_scrub`).Scan(&slots); err != nil {
+		slots, err := scrubSlots(ctx, connection)
+		if err != nil {
 			return wrapScrub(err)
 		}
-		if slots >= frames {
-			_, err = connection.ExecContext(ctx, `UPDATE wal_scrub SET generation = 1 - generation`)
-			return wrapScrub(err)
+		needed := max(frames, writeScrubFrames)
+		if slots >= needed {
+			return rewriteSlots(ctx, connection, slots)
 		}
-		if growErr := growScrub(ctx, connection, frames-slots); growErr != nil {
+		if growErr := growScrub(ctx, connection, needed-slots); growErr != nil {
 			return growErr
 		}
 	}
 	return errScrubShort
+}
+
+// scrubFirst rewrites the first writeScrubFrames frames, which hold every frame the writes since the last scrub filled.
+func (s *Store) scrubFirst(ctx context.Context, connection *sql.Conn) error {
+	if err := restartLog(ctx, connection); err != nil {
+		return err
+	}
+	slots, err := scrubSlots(ctx, connection)
+	if err != nil {
+		return wrapScrub(err)
+	}
+	if slots < writeScrubFrames {
+		return s.scrubAll(ctx, connection)
+	}
+	return rewriteSlots(ctx, connection, writeScrubFrames)
+}
+
+// rewriteSlots checks that the rewrite filled the log from its first frame: each slot fills one page, and a log that
+// did not start over would keep its first frames.
+func rewriteSlots(ctx context.Context, connection *sql.Conn, slots int) error {
+	if _, err := connection.ExecContext(
+		ctx,
+		`UPDATE wal_scrub SET generation = 1 - generation WHERE slot <= ?`,
+		slots,
+	); err != nil {
+		return wrapScrub(err)
+	}
+	frames, err := logFrames(ctx, connection)
+	switch {
+	case err != nil:
+		return wrapScrub(err)
+	case frames != int64(slots):
+		return fmt.Errorf(
+			"%w: the log did not start over, %d frames after a scrub of %d",
+			ErrCheckpointBusy,
+			frames,
+			slots,
+		)
+	default:
+		return nil
+	}
+}
+
+func scrubSlots(ctx context.Context, connection *sql.Conn) (int, error) {
+	var slots int
+	err := connection.QueryRowContext(ctx, `SELECT ifnull(max(slot), 0) FROM wal_scrub`).Scan(&slots)
+	return slots, err
 }
 
 // restartLog checkpoints the whole log and waits until no reader uses it, so the next write starts at its first frame.
@@ -137,19 +209,29 @@ func (s *Store) requestScrub() {
 	}
 }
 
-// OnScrubFailure sets what receives the error of a scrub that an ending asked for and that failed after its retries;
+// OnScrubFailure sets what receives the error of a scrub that a write asked for and that failed after its retries;
 // the older row versions then stay in the log until the next sweep scrubs it.
 func (s *Store) OnScrubFailure(report func(error)) {
 	s.scrubFailed.Store(&report)
 }
 
-// scrubWhenAsked runs the scrubs that endings ask for, one at a time, and tries a busy one again a few times.
+// scrubWhenAsked waits scrubDelay after a write asks, so a burst of writes shares one scrub, then scrubs and tries a
+// busy scrub again a few times.
 func (s *Store) scrubWhenAsked(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.scrubs:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(scrubDelay):
+		}
+		select {
+		case <-s.scrubs:
+		default:
 		}
 		if err := s.scrubWithRetries(ctx); err != nil && ctx.Err() == nil {
 			if report := s.scrubFailed.Load(); report != nil {
@@ -160,14 +242,14 @@ func (s *Store) scrubWhenAsked(ctx context.Context) {
 }
 
 func (s *Store) scrubWithRetries(ctx context.Context) error {
-	err := s.Checkpoint(ctx)
+	err := s.scrubLog(ctx, false)
 	for retry := 1; retry < scrubRetries && errors.Is(err, ErrCheckpointBusy); retry++ {
 		select {
 		case <-ctx.Done():
 			return err
 		case <-time.After(scrubRetryDelay):
 		}
-		err = s.Checkpoint(ctx)
+		err = s.scrubLog(ctx, false)
 	}
 	return err
 }

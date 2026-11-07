@@ -7,6 +7,7 @@ import (
 	sqldriver "database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -30,18 +31,22 @@ const (
 	busyTimeoutMilliseconds = 5000
 )
 
-var errNoFileControl = errors.New("sqlite: the driver cannot keep the log file, so it would free its blocks")
+var (
+	errNoFileControl = errors.New("sqlite: the driver cannot keep the log file, so it would free its blocks")
+	errNoStatus      = errors.New("sqlite: the driver cannot count the pages a write puts into the log")
+)
 
 type Store struct {
-	path        string
-	pageSize    int
-	writer      *sql.DB
-	reader      *sql.DB
-	statements  *statements
-	scrubs      chan struct{}
-	stopScrubs  context.CancelFunc
-	scrubbersUp sync.WaitGroup
-	scrubFailed atomic.Pointer[func(error)]
+	path             string
+	pageSize         int
+	writer           *sql.DB
+	reader           *sql.DB
+	statements       *statements
+	scrubs           chan struct{}
+	stopScrubs       context.CancelFunc
+	scrubbersUp      sync.WaitGroup
+	scrubFailed      atomic.Pointer[func(error)]
+	unscrubbedFrames atomic.Int64
 }
 
 var _ store.Store = (*Store)(nil)
@@ -59,7 +64,7 @@ func OpenCurrent(ctx context.Context, path string) (*Store, error) {
 	return openWith(ctx, path, requireCurrent)
 }
 
-// Close scrubs the log once more, so a process that ended messages leaves no older row version in it.
+// Close scrubs the log once more, so a process that changed rows leaves no older row version in it.
 func (s *Store) Close() error {
 	s.stopScrubs()
 	s.scrubbersUp.Wait()
@@ -70,8 +75,23 @@ func (s *Store) Close() error {
 	return errors.Join(scrubErr, s.statements.close(), s.reader.Close(), s.writer.Close())
 }
 
+// transaction commits body on the only writer connection, then asks for a scrub of the frames the commit wrote.
 func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) error {
-	tx, err := s.writer.BeginTx(ctx, nil)
+	connection, err := s.writer.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer connection.Close()
+	if _, err = writtenPages(connection); err != nil {
+		return err
+	}
+	err = commit(ctx, connection, body)
+	s.noteFrames(ctx, connection, err == nil)
+	return err
+}
+
+func commit(ctx context.Context, connection *sql.Conn, body func(tx *sql.Tx) error) error {
+	tx, err := connection.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -85,6 +105,47 @@ func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) er
 		return cmp.Or(ctx.Err(), err)
 	}
 	return nil
+}
+
+// noteFrames asks for a scrub of the frames a transaction wrote; it asks for a full scrub when it cannot tell the last
+// frame, or when a transaction that rolled back had spilled pages into the log.
+func (s *Store) noteFrames(ctx context.Context, connection *sql.Conn, committed bool) {
+	pages, err := writtenPages(connection)
+	if err == nil && pages == 0 {
+		return
+	}
+	frames := int64(math.MaxInt64)
+	if err == nil && committed {
+		if logged, logErr := logFrames(context.WithoutCancel(ctx), connection); logErr == nil {
+			frames = logged
+		}
+	}
+	if frames > s.unscrubbedFrames.Load() {
+		s.unscrubbedFrames.Store(frames)
+	}
+	s.requestScrub()
+}
+
+// writtenPages counts the pages the connection wrote to the log since it last asked, spilled pages included.
+func writtenPages(connection *sql.Conn) (int, error) {
+	var pages int
+	err := connection.Raw(func(driverConnection any) error {
+		status, ok := driverConnection.(driver.DBStatus)
+		if !ok {
+			return errNoStatus
+		}
+		var statusErr error
+		pages, _, statusErr = status.Status(driver.DBStatusCacheWrite, true)
+		return statusErr
+	})
+	return pages, err
+}
+
+// logFrames reads the last frame of the log that holds a commit since the log last started over.
+func logFrames(ctx context.Context, connection *sql.Conn) (int64, error) {
+	var blocked, frames, moved int64
+	err := connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&blocked, &frames, &moved)
+	return frames, err
 }
 
 type statements struct {

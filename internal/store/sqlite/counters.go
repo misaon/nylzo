@@ -37,7 +37,13 @@ func (s *Store) RateHit(ctx context.Context, hits []store.RateHit) ([]store.Rate
 }
 
 func (s *Store) RateReserve(ctx context.Context, hit store.RateHit) (int64, error) {
-	return reserveHit(ctx, s.statements.reserveCounter, &hit)
+	var count int64
+	err := s.transaction(ctx, func(tx *sql.Tx) error {
+		var err error
+		count, err = reserveHit(ctx, tx.StmtContext(ctx, s.statements.reserveCounter), &hit)
+		return err
+	})
+	return count, err
 }
 
 func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {

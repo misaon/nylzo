@@ -157,37 +157,72 @@ func isPassphraseError(err error) bool {
 	return ok
 }
 
-func TestWALHoldsOnlyTheLastTransaction(t *testing.T) {
+// TestTheLogKeepsNoOlderRowVersionAfterAWrite reproduces the audit probe: a write that fills fewer frames than an
+// earlier one leaves the older frames behind, so every write asks for a scrub.
+func TestTheLogKeepsNoOlderRowVersionAfterAWrite(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	storage := openStore(t, path)
-	for range 5 {
-		create(t, storage, newRecord(1, false))
+	records := make([]*store.Record, 40)
+	for i := range records {
+		records[i] = newRecord(2, false)
+		hit := store.RateHit{Key: "global:stored:d", WindowStart: testNow, PurgeAt: testNow.Add(time.Hour)}
+		create(t, storage, records[i], hit)
 	}
-	wal, err := os.ReadFile(path + "-wal")
-	if err != nil {
+	hits := make([]store.RateHit, 0, 300)
+	for i := range cap(hits) {
+		hits = append(hits, store.RateHit{Key: fmt.Sprintf("challenge:%03d", i), PurgeAt: testNow.Add(time.Hour)})
+	}
+	if _, err := storage.RateHit(t.Context(), hits); err != nil {
 		t.Fatal(err)
 	}
-	if commits := walCommits(wal); commits > 1 {
-		t.Fatalf("the WAL keeps %d transactions, so it shows the order of earlier writes", commits)
+	older := make([][]byte, 0, 10)
+	for _, record := range records[20:30] {
+		older = append(older, slices.Clone(record.Row.Record[:64]))
+		claim(t, storage, record, testNow)
 	}
+	current := make([][]byte, 0, len(records))
+	for _, record := range records {
+		current = append(current, record.Row.Record[:64])
+	}
+	var stale []string
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		wal, err := os.ReadFile(path + "-wal")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stale = staleFrames(wal, older, current); len(stale) == 0 {
+			return
+		}
+	}
+	t.Fatalf("the log still holds older row versions after the scrubs: %v", stale)
 }
 
-func walCommits(wal []byte) int {
+// staleFrames reads every frame of the log: none may hold an older version of a row, and a frame that the last log
+// generation did not write may hold no row at all, since it would show the order of earlier writes.
+func staleFrames(wal []byte, older, current [][]byte) []string {
 	const header, frameHeader = 32, 24
 	if len(wal) < header {
-		return 0
+		return nil
 	}
 	pageSize := int(binary.BigEndian.Uint32(wal[8:12]))
 	salts := wal[16:24]
-	commits := 0
-	for offset := header; offset+frameHeader+pageSize <= len(wal); offset += frameHeader + pageSize {
-		frame := wal[offset : offset+frameHeader]
-		if bytes.Equal(frame[8:16], salts) && binary.BigEndian.Uint32(frame[4:8]) != 0 {
-			commits++
+	var stale []string
+	for offset, frame := header, 1; offset+frameHeader+pageSize <= len(wal); offset, frame = offset+frameHeader+pageSize, frame+1 {
+		page := wal[offset+frameHeader : offset+frameHeader+pageSize]
+		earlier := !bytes.Equal(wal[offset+8:offset+16], salts)
+		for _, record := range older {
+			if bytes.Contains(page, record) {
+				stale = append(stale, fmt.Sprintf("frame %d: a record before its claim", frame))
+			}
+		}
+		for _, record := range current {
+			if earlier && bytes.Contains(page, record) {
+				stale = append(stale, fmt.Sprintf("frame %d: a row from an earlier generation of the log", frame))
+			}
 		}
 	}
-	return commits
+	return stale
 }
 
 func TestABlockedCheckpointFailsTheSweepQuickly(t *testing.T) {

@@ -51,13 +51,8 @@ func (s *Store) ShredBlobs(ctx context.Context, due []store.DueBlob) error {
 	return s.eachDue(ctx, s.statements.shredBlob, due)
 }
 
-// ForgetBlobs asks for a scrub of the log, so no older version of these rows stays in a frame of the WAL.
 func (s *Store) ForgetBlobs(ctx context.Context, due []store.DueBlob) error {
-	err := s.eachDue(ctx, s.statements.forgetBlob, due)
-	if err == nil {
-		s.requestScrub()
-	}
-	return err
+	return s.eachDue(ctx, s.statements.forgetBlob, due)
 }
 
 func (s *Store) eachDue(ctx context.Context, prepared *sql.Stmt, due []store.DueBlob) error {
@@ -95,11 +90,15 @@ func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) 
 }
 
 func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {
-	result, err := s.writer.ExecContext(ctx, query, milliseconds(now), limit)
-	if err != nil {
-		return 0, err
-	}
-	purged, err := result.RowsAffected()
+	var purged int64
+	err := s.transaction(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, query, milliseconds(now), limit)
+		if err != nil {
+			return err
+		}
+		purged, err = result.RowsAffected()
+		return err
+	})
 	return int(purged), err
 }
 
