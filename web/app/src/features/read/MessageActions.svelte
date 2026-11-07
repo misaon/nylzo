@@ -2,7 +2,7 @@
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
-  import { lingering } from '../../shared/ui/lingering.ts';
+  import { lingering } from '../../shared/ui/transition/lingering.ts';
   import type { ReadPage } from './read-page.svelte.ts';
 
   interface Props {
@@ -57,7 +57,7 @@
       variant="danger"
       size="compact"
       disabled={page.ready === undefined || page.deleting}
-      onclick={page.askDelete}
+      onclick={() => void page.askDelete()}
       class="transition"
     >
       <Icon name="trash" class="size-4 shrink-0" animated />

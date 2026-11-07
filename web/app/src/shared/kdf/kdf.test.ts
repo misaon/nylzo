@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { KdfResponse } from './kdf-protocol.ts';
 import { KdfWorkerError } from './kdf-protocol.ts';
-import { scryptInWorker, solvePowInWorker } from './kdf.ts';
+import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from './kdf.ts';
 import { startWorker } from './worker-source.ts';
 
 vi.mock('./worker-source.ts', () => ({ startWorker: vi.fn<typeof import('./worker-source.ts').startWorker>() }));
@@ -52,6 +52,21 @@ describe('worker lifecycle', () => {
     await expect(result).resolves.toBe(key);
     expect(stop).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stops a running worker when the page is left, so no passphrase stays behind', async () => {
+    const result = scryptInWorker('synthetic passphrase', salt, progress);
+    await Promise.resolve();
+    stopRunningWorkers();
+    await expect(result).rejects.toBeInstanceOf(KdfWorkerError);
+    expect(stop).toHaveBeenCalledOnce();
+    reply({ kind: 'progress', fraction: 0.9 });
+    expect(progress).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    const late = scryptInWorker('synthetic passphrase', salt, progress);
+    stopRunningWorkers();
+    await expect(late).rejects.toBeInstanceOf(KdfWorkerError);
+    expect(worker.postMessage).toHaveBeenCalledOnce();
   });
 
   it('forwards proof-of-work parameters and returns the token', async () => {

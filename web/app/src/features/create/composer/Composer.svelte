@@ -42,7 +42,7 @@
 
 <section id="create" class="px-4 pt-10 sm:px-6 md:pt-16" aria-labelledby="{id}-title" {@attach composer.start}>
   <div class="mx-auto max-w-column text-center">
-    <p data-eyebrow class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
+    <p class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
       {translate('hero.title.lead')} <span class="text-aegis-300">{translate('hero.title.accent')}</span>
     </h1>
@@ -54,6 +54,7 @@
       inert={composer.phase === 'done'}
     >
       <ol
+        role="list"
         class="mx-auto grid w-full max-w-[360px] animate-rise grid-cols-3 [animation-delay:160ms] sm:flex sm:w-fit sm:max-w-none sm:items-center"
         aria-label={translate('hero.steps')}
       >
@@ -91,23 +92,26 @@
             composer.phase === 'done' ? 'pointer-events-none translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
           ]}
           inert={composer.phase === 'done'}
-          onsubmit={composer.submit}
+          onsubmit={(event) => void composer.submit(event)}
           novalidate
         >
           <MessageField {composer} {noticeId} />
           <ComposerBar {composer} {noticeId} />
         </form>
 
-        {#if composer.sealed}
-          <CreatedPanel
-            created={composer.sealed.created}
-            opensMax={composer.sealed.opensMax}
-            passphrase={composer.sealed.passphrase}
-            canTrack={composer.canRemember}
-            tracking={composer.remembered}
-            ontrack={(label) => void composer.track(label)}
-            onanother={composer.another}
-          />
+        <!-- Leaving destroys the panel without its outro, which a frozen page would never finish. -->
+        {#if !composer.left}
+          {#if composer.sealed}
+            <CreatedPanel
+              created={composer.sealed.created}
+              opensMax={composer.sealed.opensMax}
+              passphrase={composer.sealed.passphrase}
+              canRemember={composer.canRemember}
+              remembered={composer.remembered}
+              onremember={(label) => void composer.remember(label)}
+              onanother={() => void composer.another()}
+            />
+          {/if}
         {/if}
       </div>
     </div>

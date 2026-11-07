@@ -109,7 +109,7 @@ function strengthProblem(normalized: string): PassphraseProblem | undefined {
 }
 
 function codePoints(text: string): string[] {
-  // eslint-disable-next-line @typescript-eslint/no-misused-spread -- spec 2 counts code points, not graphemes
+  // oxlint-disable-next-line typescript/no-misused-spread -- spec 2 counts code points, not graphemes
   return [...text];
 }
 

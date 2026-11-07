@@ -52,24 +52,48 @@ test('the composer forgets the text, the passphrase and the file once the link e
   await expect(passphrase).toHaveValue('');
   expect(await attachedFiles()).toBe(0);
 
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const link = await createMessageInPage(page, { text: 'forget me', passphrase: PASSPHRASE, file: NOTES });
   expect(link).toContain('#2.3.');
   await expect(text).toHaveValue('');
   await expect(passphrase).toHaveValue('');
   expect(await attachedFiles()).toBe(0);
 
-  await leavePage(page);
-  await expect(page.getByLabel('Link to the message')).toHaveCount(0);
   const secret = link.split('.').at(-1) ?? '';
+  // The page may be frozen as soon as pagehide returns, so the link must be gone before any exit animation.
   const shown = await page.evaluate(
-    (part) =>
-      document.body.textContent.includes(part) ||
-      [...document.querySelectorAll<HTMLInputElement>('input, textarea')].some((field) => field.value.includes(part)),
-    secret,
+    (parts) => {
+      dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+      const fields = [...document.querySelectorAll<HTMLInputElement>('input, textarea')];
+      return parts.some(
+        (part) => document.body.textContent.includes(part) || fields.some((field) => field.value.includes(part)),
+      );
+    },
+    [secret, NOTES.name],
   );
   expect(shown).toBe(false);
+  await expect(page.getByLabel('Link to the message')).toHaveCount(0);
   await returnFromBackForwardCache(page);
   await expect(text).toHaveValue('');
+});
+
+test('a page left while the link fades out after New message keeps no trace of it (SEC-8)', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const link = await createMessageInPage(page, { text: 'fading link' });
+  const secret = link.split('.').at(-1) ?? '';
+  const traces = await page.evaluate(async (part) => {
+    const holds = () =>
+      document.body.textContent.includes(part) ||
+      [...document.querySelectorAll<HTMLInputElement>('input')].some((field) => field.value.includes(part));
+    [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'New message')?.click();
+    await new Promise((resolve) => {
+      requestAnimationFrame(resolve);
+    });
+    const fading = holds();
+    dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    return { fading, kept: holds() };
+  }, secret);
+  expect(traces).toEqual({ fading: true, kept: false });
 });
 
 test('a refused create keeps the message and hands focus back to Create link', async ({ page }) => {

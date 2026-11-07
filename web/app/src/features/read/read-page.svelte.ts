@@ -4,8 +4,10 @@ import { prefersReducedMotion } from 'svelte/motion';
 
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
+import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
-import { scryptInWorker } from '../../shared/kdf/kdf.ts';
+import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
+import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import type { MessageKey } from '../../shared/language/czech.ts';
 import { formatMoment, formatWait } from '../../shared/language/format.ts';
@@ -13,16 +15,15 @@ import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
-import { Flash } from '../../shared/ui/flash.svelte.ts';
-import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
+import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
-import { markHiddenCharacters } from './hidden-characters.ts';
-import type { MarkedText } from './hidden-characters.ts';
+import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
 import { noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { createReader } from './reader.ts';
 import type { BurnOutcome, BusyStep, Reader, ReadView, RevealedFile } from './reader.ts';
-import { saveFile } from './save-file.ts';
+import { markHiddenCharacters } from './revealed/hidden-characters.ts';
+import type { MarkedText } from './revealed/hidden-characters.ts';
 
 export type Phase = 'notice' | 'opening' | 'ready' | 'revealed';
 
@@ -268,14 +269,10 @@ export class ReadPage {
     this.confirmingCopy = false;
   };
 
-  readonly clearClipboard = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText('');
-      this.clipboard = 'cleared';
-    } catch {
-      this.clipboard = 'copied';
-    }
-  };
+  readonly clearClipboard = (): Promise<void> =>
+    clearClipboard((state) => {
+      this.clipboard = state;
+    });
 
   readonly copyText = async (): Promise<void> => {
     this.confirmingCopy = false;
@@ -298,6 +295,8 @@ export class ReadPage {
   };
 
   readonly leave = (): void => {
+    stopRunningWorkers();
+    revokeSavedFiles();
     this.#left = true;
     this.burned = undefined;
     this.confirmingDownload = false;
@@ -393,7 +392,7 @@ export class ReadPage {
         },
         page: {
           visible: () => document.visibilityState === 'visible',
-          prerendering: () => (document as Document & { prerendering?: boolean }).prerendering === true,
+          prerendering: () => document.prerendering === true,
         },
         prepared: prepareWorker,
         shown: async () => this.#displayed(),
@@ -507,6 +506,7 @@ export class ReadPage {
     const wasRevealed = this.shown.view === 'revealed';
     this.shown = next;
     if (next.view !== 'revealed') {
+      clearInterval(this.#revealTimer);
       this.revealText = undefined;
       this.marked = undefined;
       return;

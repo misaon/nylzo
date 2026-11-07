@@ -21,7 +21,10 @@
 </script>
 
 {#snippet facts(list: readonly Fact[], className: ClassValue)}
-  <ul class={['flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 text-caption text-ink-soft', className]}>
+  <ul
+    role="list"
+    class={['flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 text-caption text-ink-soft', className]}
+  >
     {#each list as fact (fact.text)}
       <li class={['flex items-center gap-1.5 whitespace-nowrap', fact.accent && 'text-nebula-300']}>
         <Icon name={fact.icon} class={['size-4 shrink-0', !fact.accent && 'text-ink-mute']} />
@@ -67,7 +70,7 @@
             {@attach page.focus.attach('deleteRest')}
             variant="danger"
             disabled={!(page.revealed?.burnable ?? false) || page.deleting}
-            onclick={page.askDelete}
+            onclick={() => void page.askDelete()}
             class="max-sm:flex-1"
           >
             <Icon name="trash" class="size-4" animated />
@@ -110,10 +113,10 @@
         </p>
       </div>
       <div class="grid grid-cols-2 gap-1.5 sm:flex sm:items-center">
-        <Button {@attach page.focus.attach('keepMessage')} variant="ghost" onclick={page.cancelDelete}>
+        <Button {@attach page.focus.attach('keepMessage')} variant="ghost" onclick={() => void page.cancelDelete()}>
           {translate('read.delete.no')}
         </Button>
-        <Button variant="danger" disabled={!page.askingDelete} onclick={page.burn}>
+        <Button variant="danger" disabled={!page.askingDelete} onclick={() => void page.burn()}>
           <Icon name="trash" class="size-4 shrink-0" animated />
           {translate('read.delete.yes')}
         </Button>

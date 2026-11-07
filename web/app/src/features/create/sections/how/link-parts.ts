@@ -23,10 +23,10 @@ export const LINK_PARTS: readonly LinkPart[] = [
     bar: 'bg-ink-soft/35',
     glow: 'shadow-[0_0_8px_oklch(0.86_0.014_255/0.6)]',
     delays: {
-      text: '[--rv-delay:320ms]',
-      bar: '[--rv-delay:400ms]',
-      title: '[--rv-delay:480ms]',
-      meta: '[--rv-delay:540ms]',
+      text: '[--reveal-delay:320ms]',
+      bar: '[--reveal-delay:400ms]',
+      title: '[--reveal-delay:480ms]',
+      meta: '[--reveal-delay:540ms]',
     },
   },
   {
@@ -39,10 +39,10 @@ export const LINK_PARTS: readonly LinkPart[] = [
     bar: 'bg-solar-300/35',
     glow: 'shadow-[0_0_8px_oklch(0.86_0.12_85/0.7)]',
     delays: {
-      text: '[--rv-delay:470ms]',
-      bar: '[--rv-delay:550ms]',
-      title: '[--rv-delay:630ms]',
-      meta: '[--rv-delay:690ms]',
+      text: '[--reveal-delay:470ms]',
+      bar: '[--reveal-delay:550ms]',
+      title: '[--reveal-delay:630ms]',
+      meta: '[--reveal-delay:690ms]',
     },
   },
   {
@@ -55,10 +55,10 @@ export const LINK_PARTS: readonly LinkPart[] = [
     bar: 'bg-rose-400/35',
     glow: 'shadow-[0_0_8px_oklch(0.8_0.08_350/0.8)]',
     delays: {
-      text: '[--rv-delay:620ms]',
-      bar: '[--rv-delay:700ms]',
-      title: '[--rv-delay:780ms]',
-      meta: '[--rv-delay:840ms]',
+      text: '[--reveal-delay:620ms]',
+      bar: '[--reveal-delay:700ms]',
+      title: '[--reveal-delay:780ms]',
+      meta: '[--reveal-delay:840ms]',
     },
   },
   {
@@ -71,10 +71,10 @@ export const LINK_PARTS: readonly LinkPart[] = [
     bar: 'bg-aegis-300/35',
     glow: 'shadow-glow',
     delays: {
-      text: '[--rv-delay:770ms]',
-      bar: '[--rv-delay:850ms]',
-      title: '[--rv-delay:930ms]',
-      meta: '[--rv-delay:990ms]',
+      text: '[--reveal-delay:770ms]',
+      bar: '[--reveal-delay:850ms]',
+      title: '[--reveal-delay:930ms]',
+      meta: '[--reveal-delay:990ms]',
     },
   },
 ];

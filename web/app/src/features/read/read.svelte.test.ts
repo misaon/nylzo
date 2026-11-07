@@ -4,14 +4,17 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Metadata } from '../../shared/api/api.ts';
+import { saveFile } from '../../shared/files/save-file.ts';
 import { getTranslator, Translator } from '../../shared/language/translator.svelte.ts';
 import Read from './Read.svelte';
 import type { BurnOutcome, Reader, ReadView } from './reader.ts';
 import { createReader } from './reader.ts';
-import { saveFile } from './save-file.ts';
 
 vi.mock('./reader.ts', () => ({ createReader: vi.fn<typeof import('./reader.ts').createReader>() }));
-vi.mock('./save-file.ts', () => ({ saveFile: vi.fn<typeof import('./save-file.ts').saveFile>() }));
+vi.mock('../../shared/files/save-file.ts', () => ({
+  revokeSavedFiles: vi.fn<typeof import('../../shared/files/save-file.ts').revokeSavedFiles>(),
+  saveFile: vi.fn<typeof import('../../shared/files/save-file.ts').saveFile>(),
+}));
 vi.mock('../../shared/link/link-opener.ts', () => ({
   getLinkOpener: () => vi.fn<(...arguments_: unknown[]) => void>(),
 }));

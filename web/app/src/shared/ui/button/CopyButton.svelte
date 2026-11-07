@@ -2,8 +2,8 @@
   import type { ClassValue } from 'svelte/elements';
 
   import { getTranslator } from '../../language/translator.svelte.ts';
-  import { Flash } from '../flash.svelte.ts';
   import Icon from '../icon/Icon.svelte';
+  import { Flash } from '../transition/flash.svelte.ts';
   import Button from './Button.svelte';
 
   interface Props {
@@ -29,7 +29,13 @@
   }
 </script>
 
-<Button variant="tint" size="compact" class={className} aria-label={label ?? translate('action.copy')} onclick={copy}>
+<Button
+  variant="tint"
+  size="compact"
+  class={className}
+  aria-label={label ?? translate('action.copy')}
+  onclick={() => void copy()}
+>
   <span class="stack justify-items-center">
     <span class={['flex items-center gap-2 fade-swap', copied.shown ? 'pointer-events-none opacity-0' : 'opacity-100']}>
       <Icon name="copy" animated />

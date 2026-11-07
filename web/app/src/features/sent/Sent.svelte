@@ -12,11 +12,11 @@
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
   import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import Button from '../../shared/ui/button/Button.svelte';
-  import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
-  import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
+  import ConfirmDialog from '../../shared/ui/dialog/ConfirmDialog.svelte';
+  import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
-  import { motionMs } from '../../shared/ui/motion.ts';
   import StateCard from '../../shared/ui/notice/StateCard.svelte';
+  import { motionMs } from '../../shared/ui/transition/motion.ts';
   import { createSentPage } from './sent-page.ts';
   import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 
@@ -56,8 +56,8 @@
       return {
         title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
         message: translate('sent.cancel.confirm'),
-        confirm: translate('sent.cancel.yes'),
-        dismiss: translate('sent.cancel.no'),
+        confirmLabel: translate('sent.cancel.yes'),
+        dismissLabel: translate('sent.cancel.no'),
         icon: 'trash',
       } as const;
     }
@@ -67,8 +67,8 @@
     return {
       title: translate(confirming.kind === 'forget' ? 'sent.forget.title' : 'sent.forget_all.title'),
       message: translate(confirming.kind === 'forget' ? 'sent.forget.confirm' : 'sent.forget_all.confirm'),
-      confirm: translate(confirming.kind === 'forget' ? 'sent.forget.yes' : 'sent.forget_all.yes'),
-      dismiss: translate('sent.keep'),
+      confirmLabel: translate(confirming.kind === 'forget' ? 'sent.forget.yes' : 'sent.forget_all.yes'),
+      dismissLabel: translate('sent.keep'),
       icon: 'close',
     } as const;
   });
@@ -222,7 +222,7 @@
   </div>
 
   {#if listed && view.view === 'list'}
-    <ul class="mt-8 grid gap-3">
+    <ul role="list" class="mt-8 grid gap-3">
       {#each view.items as item (item.id)}
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
@@ -238,21 +238,21 @@
             <span
               class={[
                 'grid size-10 shrink-0 place-items-center rounded-full',
-                item.ended ? 'text-ink-soft tile-neutral' : 'text-white step-current',
+                item.ended ? 'text-ink-soft tile-neutral' : 'text-white tile-current',
               ]}
               aria-hidden="true"
             >
               <Icon name={item.ended ? 'envelopeOpen' : 'envelope'} class="size-[18px]" />
             </span>
             <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 max-sm:gap-x-2.5">
-              <h3
+              <h2
                 id={headingId(item.id)}
                 tabindex="-1"
                 class="text-title-sm text-ink outline-none max-sm:basis-full"
                 {@attach focus.attach(headingId(item.id))}
               >
                 {item.label ?? translate('sent.item')}
-              </h3>
+              </h2>
               <span
                 class={[
                   'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow]',
@@ -323,7 +323,7 @@
                   variant="tint"
                   size="compact"
                   class="max-sm:flex-auto"
-                  onclick={() => run(() => sent.refresh(item.id), item.id)}
+                  onclick={() => void run(() => sent.refresh(item.id), item.id)}
                 >
                   <Icon name="refresh" class="size-4 shrink-0" animated />
                   {translate('action.retry')}
@@ -386,10 +386,10 @@
     id="sent-confirm"
     title={dialog.title}
     message={dialog.message}
-    confirm={dialog.confirm}
-    dismiss={dialog.dismiss}
+    confirmLabel={dialog.confirmLabel}
+    dismissLabel={dialog.dismissLabel}
     icon={dialog.icon}
-    onconfirm={confirmed}
+    onconfirm={() => void confirmed()}
     onclose={dismissed}
   />
 {/if}

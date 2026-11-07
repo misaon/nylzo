@@ -21,6 +21,7 @@
 
   const { compact = false, current, onlanguage }: Props = $props();
   const { translate } = getTranslator();
+  const id = $props.id();
   const versionHref = buildSourceHref(BUILD_INFO);
   const LINK = 'transition hover:text-ink';
 
@@ -86,17 +87,14 @@
     </div>
   {:else}
     <div class="glass-soft mx-auto max-w-page rounded-card p-6 md:p-10">
-      <div
-        class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))] md:gap-10"
-        data-footer-mobile
-      >
+      <div class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))] md:gap-10">
         <div class="col-span-2 md:col-span-1">
           <Logo class="h-8 w-[120px]" label="Nylzo" />
           <p class="mt-4 max-w-[280px] text-body-sm text-ink-mute">{translate('footer.tagline')}</p>
         </div>
         {#each groups as group (group.key)}
-          <nav aria-label={translate(group.key)} class="flex flex-col text-ui max-md:gap-0 md:gap-2.5">
-            <p class="text-micro text-ink-mute max-md:mb-1">{translate(group.key)}</p>
+          <nav aria-labelledby="{id}-{group.key}" class="flex flex-col text-ui max-md:gap-0 md:gap-2.5">
+            <p id="{id}-{group.key}" class="text-micro text-ink-mute max-md:mb-1">{translate(group.key)}</p>
             {#each group.links as link (link.key)}
               <a
                 href={link.href}

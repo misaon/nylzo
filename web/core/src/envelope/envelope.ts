@@ -6,7 +6,7 @@ import {
   HEADER_LENGTH,
   MAX_META_BYTES,
   MAX_OBJECT_BYTES,
-  META_LEN_PREFIX,
+  META_LENGTH_PREFIX,
   OBJECT_HASH_LENGTH,
   PAD,
   PREFIX_LENGTH,
@@ -204,7 +204,7 @@ async function buildPlaintext(payload: Payload, compress: boolean): Promise<Uint
         }
       }
     }
-    return padContent(meta, file, paddedLength(OVERHEAD + META_LEN_PREFIX + meta.length + file.length));
+    return padContent(meta, file, paddedLength(OVERHEAD + META_LENGTH_PREFIX + meta.length + file.length));
   } finally {
     meta.fill(0);
   }
@@ -216,7 +216,7 @@ function compressedPlaintext(
   file: Uint8Array,
   compressed: Uint8Array,
 ): Uint8Array<ArrayBuffer> {
-  const contentOverhead = OVERHEAD + META_LEN_PREFIX;
+  const contentOverhead = OVERHEAD + META_LENGTH_PREFIX;
   const original = paddedLength(contentOverhead + metadata.length + file.length);
   let encoded: Uint8Array<ArrayBuffer>;
   try {
@@ -239,21 +239,21 @@ function padContent(meta: Uint8Array, file: Uint8Array, objectLength: number): U
   }
   const plaintext = new Uint8Array(objectLength - OVERHEAD);
   new DataView(plaintext.buffer).setUint32(0, meta.length);
-  plaintext.set(meta, META_LEN_PREFIX);
-  plaintext.set(file, META_LEN_PREFIX + meta.length);
+  plaintext.set(meta, META_LENGTH_PREFIX);
+  plaintext.set(file, META_LENGTH_PREFIX + meta.length);
   return plaintext;
 }
 
 async function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): Promise<OpenedPayload> {
-  if (plaintext.length < META_LEN_PREFIX) {
+  if (plaintext.length < META_LENGTH_PREFIX) {
     throw new PlaintextError();
   }
   const metaLength = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).getUint32(0);
-  const fileStart = META_LEN_PREFIX + metaLength;
+  const fileStart = META_LENGTH_PREFIX + metaLength;
   if (metaLength > MAX_META_BYTES || fileStart > plaintext.length) {
     throw new PlaintextError();
   }
-  const { meta, compressedSize } = decodeStoredMeta(plaintext.subarray(META_LEN_PREFIX, fileStart));
+  const { meta, compressedSize } = decodeStoredMeta(plaintext.subarray(META_LENGTH_PREFIX, fileStart));
   if (meta.file === undefined) {
     return { meta };
   }

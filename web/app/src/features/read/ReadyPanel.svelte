@@ -2,10 +2,10 @@
   import { formatCount, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
+  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../shared/ui/field/private-fields.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
-  import { lingering } from '../../shared/ui/lingering.ts';
-  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../shared/ui/private-fields.ts';
+  import { lingering } from '../../shared/ui/transition/lingering.ts';
   import type { ReadPage } from './read-page.svelte.ts';
   import { panelClasses } from './read-page.svelte.ts';
 
@@ -93,11 +93,11 @@
     ></span>
     <span class="absolute -inset-3 rounded-[28px] ring-1 ring-aegis-300/15"></span>
     <span class="absolute -inset-1.5 animate-pulse-core rounded-[25px] ring-1 ring-aegis-300/30"></span>
-    <span class="relative grid size-20 place-items-center rounded-tile text-white step-current">
+    <span class="relative grid size-20 place-items-center rounded-tile text-white tile-current">
       <Icon name="envelope" stroke={1.5} class="size-9" />
     </span>
     <span
-      class="absolute -right-2 -bottom-2 grid size-8 place-items-center rounded-full text-white step-current outline-2 outline-void-900"
+      class="absolute -right-2 -bottom-2 grid size-8 place-items-center rounded-full text-white tile-current outline-2 outline-void-900"
     >
       <Icon name="keyhole" class="size-4" />
     </span>
@@ -144,7 +144,6 @@
               type="button"
               onclick={() => (page.showPassphrase = !page.showPassphrase)}
               aria-label={translate(page.showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
-              aria-pressed={page.showPassphrase}
               class="group/action grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={page.showPassphrase} size="size-[18px]" animated />

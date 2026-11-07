@@ -1,3 +1,4 @@
+import { attempt } from '../attempt.ts';
 import { browserDatabases, committed, databaseExists, openDatabase, requestResult } from './indexed-database.ts';
 import { isRetained, recordFrom, storedForm } from './sent-record.ts';
 import type { SentRecord } from './sent-record.ts';
@@ -24,7 +25,7 @@ function storedId(value: unknown): string | undefined {
   return typeof value.id === 'string' ? value.id : undefined;
 }
 
-export function browserSentStore(factory = browserDatabases()): SentStore {
+function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly close: () => void } {
   let database: Promise<IDBDatabase> | undefined;
 
   async function withRecords<Result>(
@@ -41,6 +42,12 @@ export function browserSentStore(factory = browserDatabases()): SentStore {
   }
 
   return {
+    close() {
+      if (database) {
+        void attempt(database.then((opened) => opened.close()));
+      }
+      database = undefined;
+    },
     async list() {
       const values = await withRecords('readonly', async (records) => requestResult(records.getAll()));
       const kept: SentRecord[] = [];
@@ -103,11 +110,9 @@ async function removeLateRecord(store: SentStore, id: string, saving: Promise<bo
 
 export async function rememberSent(store: SentStore, record: SentRecord, timeoutMs: number): Promise<boolean> {
   const saving = saved(store, record);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(resolve, timeoutMs, 'timeout');
-  });
-  const result = await Promise.race([saving, timedOut]);
+  const timedOut = Promise.withResolvers<'timeout'>();
+  const timer = setTimeout(timedOut.resolve, timeoutMs, 'timeout');
+  const result = await Promise.race([saving, timedOut.promise]);
   clearTimeout(timer);
   if (result !== 'timeout') {
     return result;
@@ -116,10 +121,19 @@ export async function rememberSent(store: SentStore, record: SentRecord, timeout
   return false;
 }
 
+export function browserSentStore(factory = browserDatabases()): SentStore {
+  return openSentStore(factory);
+}
+
 export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<void> {
   try {
     if (await databaseExists(factory, DATABASE)) {
-      await retainedRecords(browserSentStore(factory), now);
+      const store = openSentStore(factory);
+      try {
+        await retainedRecords(store, now);
+      } finally {
+        store.close();
+      }
     }
   } catch {}
 }

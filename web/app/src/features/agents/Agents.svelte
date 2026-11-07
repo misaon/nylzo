@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import Icon from '../../shared/ui/icon/Icon.svelte';
   import { TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
+  import CheckList from '../../shared/ui/list/CheckList.svelte';
   import { AGENT_RULES, AGENT_STEPS, DISCUSSIONS } from './agents-content.ts';
   import type { AgentLink } from './agents-content.ts';
 
@@ -24,10 +24,13 @@
     </h1>
     <p class="mt-4 text-lead text-pretty text-ink-soft md:text-lead-lg">{translate('agents.lead')}</p>
   </div>
-  <ol class="mt-8 grid gap-3 md:grid-cols-3">
+  <ol role="list" class="mt-8 grid gap-3 md:grid-cols-3">
     {#each AGENT_STEPS as step, index (step.title)}
       <li class="glass-soft flex flex-col rounded-card p-5">
-        <span class="grid size-8 place-items-center rounded-full text-caption font-medium text-white step-current">
+        <span
+          class="grid size-8 place-items-center rounded-full text-caption font-medium text-white tile-current"
+          aria-hidden="true"
+        >
           {index + 1}
         </span>
         <p class="mt-4 text-title-sm text-ink">{translate(step.title)}</p>
@@ -41,14 +44,7 @@
   <div class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
     <section class="glass-soft rounded-card p-6">
       <h2 class="text-title text-ink">{translate('agents.rules.title')}</h2>
-      <ul class="mt-4 grid gap-2.5 text-body-sm text-pretty text-ink-soft">
-        {#each AGENT_RULES as rule (rule)}
-          <li class="flex gap-2.5">
-            <Icon name="check" class="mt-0.5 size-4 shrink-0 text-aegis-300" stroke={2} />
-            <span>{translate(rule)}</span>
-          </li>
-        {/each}
-      </ul>
+      <CheckList items={AGENT_RULES} />
     </section>
     <section class="glass-soft rounded-card p-6">
       <h2 class="text-title text-ink">{translate('agents.missing.title')}</h2>

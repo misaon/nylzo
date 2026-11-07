@@ -9,6 +9,7 @@
   import Sent from '../features/sent/Sent.svelte';
   import Terms from '../features/terms/Terms.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
+  import { loadCatalog } from '../shared/language/catalogs.ts';
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
@@ -33,12 +34,12 @@
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
   const { start }: Props = $props();
-  let path = $state(untrack(() => start.path));
-  let visit = $state(0);
-  const screen: Screen = $derived(screenOf(path));
+  const path = untrack(() => start.path);
+  const screen: Screen = screenOf(path);
   const translator = setTranslator(new Translator(untrack(() => start.language)));
   const { translate } = translator;
-  const variant = $derived(HEADER_VARIANTS[screen]);
+  const variant = HEADER_VARIANTS[screen];
+  let requestedLanguage = untrack(() => start.language);
 
   function returned() {
     if (location.pathname !== path) {
@@ -46,8 +47,17 @@
     }
   }
 
-  function switchLanguage(language: Language) {
+  async function switchLanguage(language: Language) {
+    requestedLanguage = language;
     if (translator.language === language) {
+      return;
+    }
+    try {
+      await loadCatalog(language);
+    } catch {
+      return;
+    }
+    if (requestedLanguage !== language) {
       return;
     }
     const applyLanguage = async () => {
@@ -72,13 +82,11 @@
 <div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
-    <SiteHeader {variant} current={screen} onlanguage={switchLanguage} />
+    <SiteHeader {variant} current={screen} onlanguage={(language) => void switchLanguage(language)} />
     <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
-          {#key visit}
-            <Read />
-          {/key}
+          <Read />
         {:else if screen === 'create'}
           <Create />
         {:else if screen === 'agents'}
@@ -106,6 +114,6 @@
         {/snippet}
       </svelte:boundary>
     </main>
-    <SiteFooter compact={screen === 'read'} current={screen} onlanguage={switchLanguage} />
+    <SiteFooter compact={screen === 'read'} current={screen} onlanguage={(language) => void switchLanguage(language)} />
   </div>
 </div>

@@ -27,6 +27,7 @@ const VITE_BROWSER_NAMES = new Map([
   ['safari', 'safari'],
 ]);
 const versionOrder = new Intl.Collator('en', { numeric: true });
+const SAFARI_MODULE_INTEGRITY_BUG = 'https://bugs.webkit.org/show_bug.cgi?id=326340';
 
 function browserTargets(): string[] {
   const browsers = browserslist(undefined, { path: import.meta.dirname });
@@ -75,12 +76,31 @@ function preloadFonts(): Plugin {
   };
 }
 
+function staticImportsOnlyFromEntry(): Plugin {
+  return {
+    name: 'nylzo-static-imports-only-from-entry',
+    apply: 'build',
+    generateBundle(_, bundle) {
+      const chunks = Object.values(bundle).filter((output) => output.type === 'chunk');
+      const entries = new Set(chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName));
+      for (const chunk of chunks) {
+        const unloaded = chunk.imports.filter((name) => chunk.isEntry || !entries.has(name));
+        if (unloaded.length > 0) {
+          this.error(
+            `${chunk.fileName} statically imports ${unloaded.join(', ')}. Under Integrity-Policy, Safari blocks a static import of any chunk that is not loaded yet (${SAFARI_MODULE_INTEGRITY_BUG}), so shared code must stay in the entry chunk.`,
+          );
+        }
+      }
+    },
+  };
+}
+
 function precompress(): Plugin {
   return {
     name: 'nylzo-precompress',
     apply: 'build',
-    closeBundle() {
-      const assets = path.join(outputDirectory, 'assets');
+    writeBundle({ dir = outputDirectory }) {
+      const assets = path.join(dir, 'assets');
       for (const name of readdirSync(assets)) {
         if (!PRECOMPRESSED.test(name)) {
           continue;
@@ -94,7 +114,11 @@ function precompress(): Plugin {
 }
 
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [tailwindcss(), svelte(), ...(isSsrBuild ? [] : [buildMetadata(), preloadFonts(), precompress()])],
+  plugins: [
+    tailwindcss(),
+    svelte(),
+    ...(isSsrBuild ? [] : [buildMetadata(), preloadFonts(), staticImportsOnlyFromEntry(), precompress()]),
+  ],
   define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {
@@ -104,6 +128,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     assetsInlineLimit: 0,
     cssCodeSplit: false,
     modulePreload: false,
+    reportCompressedSize: false,
   },
   ssr: { noExternal: ['@nylzo/core'] },
   worker: { format: 'es' },
@@ -118,14 +143,20 @@ export default defineConfig(({ isSsrBuild }) => ({
       {
         test: {
           name: 'bun',
-          include: ['src/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
           exclude: ['src/**/*.svelte.test.ts'],
           testTimeout: 30_000,
+          setupFiles: ['src/shared/language/test-catalogs.ts'],
         },
       },
       {
         resolve: { conditions: ['browser'] },
-        test: { name: 'client', include: ['src/**/*.svelte.test.ts'], environment: './client-environment.ts' },
+        test: {
+          name: 'client',
+          include: ['src/**/*.svelte.test.ts'],
+          environment: './client-environment.ts',
+          setupFiles: ['src/shared/language/test-catalogs.ts'],
+        },
       },
     ],
   },

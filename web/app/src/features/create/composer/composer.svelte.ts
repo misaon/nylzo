@@ -5,7 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 
 import { createApi } from '../../../shared/api/api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
-import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
+import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from '../../../shared/kdf/kdf.ts';
 import { formatBytes, formatCount, formatDuration, formatWait } from '../../../shared/language/format.ts';
 import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
@@ -15,7 +15,8 @@ import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
 import { randomCharacter, randomText } from '../../../shared/pipeline/random-text.ts';
 import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
 import type { SentStore } from '../../../shared/sent-records/sent-store.ts';
-import { FocusTargets } from '../../../shared/ui/focus.ts';
+import { ttlChoices, ttlKey } from '../../../shared/ttl/ttl-choices.ts';
+import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
 import {
   CreateError,
   createMessage,
@@ -32,7 +33,7 @@ import type {
   CreateProblem,
   CreateProgress,
 } from '../create-message.ts';
-import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
+import { failureKey, problemKey, readAttachment } from './create-form.ts';
 
 export type Menu = 'opens' | 'security' | 'ttl';
 
@@ -42,7 +43,7 @@ export type ComposerTarget = 'file' | 'opens' | 'passphrase' | 'security' | 'sub
 
 type Phase = 'compose' | 'done' | 'encrypting';
 
-type Remembered = 'failed' | 'off' | 'remembered' | 'saving';
+export type Remembered = 'failed' | 'off' | 'remembered' | 'saving';
 
 interface SealedMessage {
   readonly created: Created;
@@ -100,7 +101,6 @@ export class Composer {
   opensMax = $state(1);
   protect = $state(false);
   passphrase = $state('');
-  passphraseVisible = $state(false);
   canRemember = $state(true);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
@@ -109,6 +109,7 @@ export class Composer {
   proving = $state(false);
   cipher = $state('');
   sealed = $state.raw<SealedMessage>();
+  left = $state(false);
   sealingWithPassphrase = $state(false);
   remembered = $state<Remembered>('off');
   readonly focus = new FocusTargets<ComposerTarget>();
@@ -218,7 +219,7 @@ export class Composer {
     return () => this.timeline.stop();
   };
 
-  readonly track = async (label: string): Promise<void> => {
+  readonly remember = async (label: string): Promise<void> => {
     const sealed = this.sealed;
     if (!sealed || !this.canRemember || this.remembered === 'saving' || this.remembered === 'remembered') {
       return;
@@ -242,17 +243,20 @@ export class Composer {
 
   readonly forgetPassphrase = (): void => {
     this.passphrase = '';
-    this.passphraseVisible = false;
     flushSync();
   };
 
   readonly leave = (): void => {
+    stopRunningWorkers();
+    this.left = true;
     this.#run++;
     this.timeline.stop();
     this.#pending = undefined;
     this.cipher = '';
     this.menu = undefined;
     this.#reset();
+    // Commit removal before pagehide returns and the browser freezes this document.
+    flushSync();
   };
 
   readonly loadLimits = async (): Promise<void> => {
@@ -346,7 +350,6 @@ export class Composer {
 
   readonly generatePassphrase = (): void => {
     this.passphrase = generatePassphrase();
-    this.passphraseVisible = true;
     this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
   };
 
@@ -360,7 +363,6 @@ export class Composer {
       return;
     }
     this.passphrase = '';
-    this.passphraseVisible = false;
     this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
   };
 
@@ -407,7 +409,6 @@ export class Composer {
     this.remembered = 'off';
     this.text = '';
     this.passphrase = '';
-    this.passphraseVisible = false;
     this.protect = false;
     this.removeFile();
     this.phase = 'compose';
@@ -468,7 +469,6 @@ export class Composer {
       }
       this.text = '';
       this.passphrase = '';
-      this.passphraseVisible = false;
       this.removeFile();
       this.#pending = { created, opensMax: this.opensMax, passphrase: input.passphrase };
       this.timeline.complete();

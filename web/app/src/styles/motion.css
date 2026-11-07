@@ -41,17 +41,17 @@
   --animate-halo: halo 5s ease-in-out infinite;
   --animate-orbit: orbit 18s linear infinite;
   --animate-retry: retry 30s linear infinite;
-  --animate-how4-flow-a: how4-flow-a 7s linear infinite;
-  --animate-how4-flow-b: how4-flow-b 7s linear infinite;
-  --animate-how4-flow-key: how4-flow-key 7s linear infinite;
-  --animate-how4-node-sender: how4-node-sender 7s var(--ease-silk) infinite;
-  --animate-how4-node-server: how4-node-server 7s var(--ease-silk) infinite;
-  --animate-how4-node-recipient: how4-node-recipient 7s var(--ease-silk) infinite;
-  --animate-how4-stored: how4-stored 7s var(--ease-silk) infinite;
-  --animate-how4-opened: how4-opened 7s var(--ease-silk) infinite;
-  --animate-how4-chip-a: how4-chip-cipher 7s var(--ease-silk) 0.8s infinite;
-  --animate-how4-chip-b: how4-chip-cipher 7s var(--ease-silk) 2.2s infinite;
-  --animate-how4-chip-key: how4-chip-key 7s var(--ease-silk) 1.6s infinite;
+  --animate-how-flow-a: how-flow-a 7s linear infinite;
+  --animate-how-flow-b: how-flow-b 7s linear infinite;
+  --animate-how-flow-key: how-flow-key 7s linear infinite;
+  --animate-how-node-sender: how-node-sender 7s var(--ease-silk) infinite;
+  --animate-how-node-server: how-node-server 7s var(--ease-silk) infinite;
+  --animate-how-node-recipient: how-node-recipient 7s var(--ease-silk) infinite;
+  --animate-how-stored: how-stored 7s var(--ease-silk) infinite;
+  --animate-how-opened: how-opened 7s var(--ease-silk) infinite;
+  --animate-how-chip-a: how-chip-cipher 7s var(--ease-silk) 0.8s infinite;
+  --animate-how-chip-b: how-chip-cipher 7s var(--ease-silk) 2.2s infinite;
+  --animate-how-chip-key: how-chip-key 7s var(--ease-silk) 1.6s infinite;
 
   @keyframes wave {
     from {
@@ -391,7 +391,7 @@
       translate: 0 -3rem;
     }
   }
-  @keyframes how4-flow-a {
+  @keyframes how-flow-a {
     0%,
     2.9% {
       stroke-dashoffset: 8;
@@ -402,7 +402,7 @@
       stroke-dashoffset: -100;
     }
   }
-  @keyframes how4-flow-b {
+  @keyframes how-flow-b {
     0%,
     22.9% {
       stroke-dashoffset: 8;
@@ -413,7 +413,7 @@
       stroke-dashoffset: -100;
     }
   }
-  @keyframes how4-flow-key {
+  @keyframes how-flow-key {
     0%,
     5.7% {
       stroke-dashoffset: 4;
@@ -424,7 +424,7 @@
       stroke-dashoffset: -100;
     }
   }
-  @keyframes how4-node-sender {
+  @keyframes how-node-sender {
     0% {
       color: oklch(0.86 0.014 255);
       box-shadow:
@@ -449,7 +449,7 @@
         0 0 0 0 oklch(0.56 0.19 258 / 0);
     }
   }
-  @keyframes how4-node-server {
+  @keyframes how-node-server {
     0%,
     19% {
       color: oklch(0.86 0.014 255);
@@ -484,7 +484,7 @@
         0 0 0 0 oklch(0.56 0.19 258 / 0);
     }
   }
-  @keyframes how4-node-recipient {
+  @keyframes how-node-recipient {
     0%,
     39% {
       color: oklch(0.86 0.014 255);
@@ -519,7 +519,7 @@
         0 0 0 0 oklch(0.56 0.19 258 / 0);
     }
   }
-  @keyframes how4-stored {
+  @keyframes how-stored {
     0%,
     20% {
       opacity: 0;
@@ -540,7 +540,7 @@
       scale: 0.4;
     }
   }
-  @keyframes how4-opened {
+  @keyframes how-opened {
     0%,
     40% {
       opacity: 0;
@@ -561,7 +561,7 @@
       scale: 0.4;
     }
   }
-  @keyframes how4-chip-cipher {
+  @keyframes how-chip-cipher {
     0%,
     12%,
     100% {
@@ -575,7 +575,7 @@
         0 0 18px -2px oklch(0.56 0.19 258 / 0.9);
     }
   }
-  @keyframes how4-chip-key {
+  @keyframes how-chip-key {
     0%,
     12%,
     100% {

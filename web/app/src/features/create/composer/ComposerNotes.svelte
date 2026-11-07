@@ -2,9 +2,9 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { lingering } from '../../../shared/ui/lingering.ts';
   import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
   import ServiceCallout from '../../../shared/ui/notice/ServiceCallout.svelte';
+  import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import type { Composer } from './composer.svelte.ts';
 
   interface Props {
@@ -49,7 +49,9 @@
     <ServiceCallout id="{noticeId}-failure" message={composer.failureNotice} class="mx-auto max-w-column">
       {#snippet action()}
         {#if composer.loadFailed}
-          <Button variant="ghost" size="compact" onclick={composer.loadLimits}>{translate('action.retry')}</Button>
+          <Button variant="ghost" size="compact" onclick={() => void composer.loadLimits()}>
+            {translate('action.retry')}
+          </Button>
         {/if}
       {/snippet}
     </ServiceCallout>

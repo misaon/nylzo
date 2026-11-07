@@ -2,32 +2,32 @@
   import type { Attachment } from 'svelte/attachments';
   import { fade } from 'svelte/transition';
 
+  import { clearClipboard } from '../../../shared/clipboard/clear-clipboard.ts';
   import { formatMoment } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { MAX_LABEL_CHARACTERS } from '../../../shared/sent-records/sent-record.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
-  import { Flash } from '../../../shared/ui/flash.svelte.ts';
-  import { FocusTargets } from '../../../shared/ui/focus.ts';
+  import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
-  import { motionMs } from '../../../shared/ui/motion.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
+  import { Flash } from '../../../shared/ui/transition/flash.svelte.ts';
+  import { motionMs } from '../../../shared/ui/transition/motion.ts';
+  import type { Remembered } from '../composer/composer.svelte.ts';
   import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
-
-  type Tracking = 'failed' | 'off' | 'remembered' | 'saving';
 
   interface Props {
     readonly created: Created;
     readonly opensMax: number;
     readonly passphrase: string;
-    readonly canTrack: boolean;
-    readonly tracking: Tracking;
-    readonly ontrack: (label: string) => void;
+    readonly canRemember: boolean;
+    readonly remembered: Remembered;
+    readonly onremember: (label: string) => void;
     readonly onanother: () => void;
   }
 
-  const { created, opensMax, passphrase, canTrack, tracking, ontrack, onanother }: Props = $props();
+  const { created, opensMax, passphrase, canRemember, remembered, onremember, onanother }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -92,15 +92,6 @@
     } catch {}
   }
 
-  async function clearClipboard() {
-    try {
-      await navigator.clipboard.writeText('');
-      clipboard = 'cleared';
-    } catch {
-      clipboard = 'copied';
-    }
-  }
-
   function item(delay: string): string[] {
     return entered
       ? ['translate-y-0 opacity-100 duration-500', delay]
@@ -112,7 +103,7 @@
   <Button
     variant="primary"
     size="large"
-    onclick={copy}
+    onclick={() => void copy()}
     aria-label={translate('created.copy')}
     class={shareable ? 'w-full' : 'w-full sm:w-auto'}
   >
@@ -149,7 +140,7 @@
       <span
         class="absolute -inset-6 rounded-full bg-[radial-gradient(closest-side,oklch(0.67_0.16_252/0.32),transparent)]"
       ></span>
-      <span class="absolute inset-0 rounded-full step-current"></span>
+      <span class="absolute inset-0 rounded-full tile-current"></span>
       <span class="absolute inset-0 rounded-full opacity-0 ring-1 ring-aegis-300/50 motion-safe:animate-burst"></span>
       <Icon name="check" class="relative size-6 text-white" stroke={1.6} />
     </span>
@@ -241,7 +232,7 @@
             {#if shareable}
               <div class="grid grid-cols-2 gap-2.5">
                 {@render copyLinkButton()}
-                <Button variant="tint" size="large" onclick={share} class="w-full">
+                <Button variant="tint" size="large" onclick={() => void share()} class="w-full">
                   <Icon name="upload" class="size-4 shrink-0" />
                   <span>{translate('created.share')}</span>
                 </Button>
@@ -273,7 +264,6 @@
             >
             <button
               type="button"
-              aria-pressed={passphraseShown}
               aria-label={translate(passphraseShown ? 'created.passphrase.hide' : 'created.passphrase.show')}
               onclick={() => (passphraseShown = !passphraseShown)}
               class="group/action ml-auto grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
@@ -281,7 +271,7 @@
               <SwapIcon from="eye" to="eyeOff" swapped={passphraseShown} />
             </button>
           </div>
-          <Button variant="tint" size="large" onclick={copyPassphrase} class="w-full sm:w-auto">
+          <Button variant="tint" size="large" onclick={() => void copyPassphrase()} class="w-full sm:w-auto">
             <SwapIcon from="copy" to="check" swapped={passphraseCopied.shown} />
             <span>{translate('created.passphrase.copy')}</span>
           </Button>
@@ -290,6 +280,7 @@
 
       <div class="relative mt-3 text-caption text-ink-mute sm:mt-4 md:mt-5">
         <ul
+          role="list"
           class={[
             'mx-auto flex w-fit items-center justify-center gap-6 fade-swap max-sm:hidden',
             clipboard === 'untouched' ? 'opacity-100' : 'opacity-0',
@@ -321,7 +312,10 @@
             <Button
               variant="ghost"
               size="compact"
-              onclick={clearClipboard}
+              onclick={() =>
+                void clearClipboard((state) => {
+                  clipboard = state;
+                })}
               disabled={clipboard !== 'copied'}
               class={clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
             >
@@ -333,7 +327,7 @@
     </div>
   </div>
 
-  {#if canTrack}
+  {#if canRemember}
     <div
       class={[
         'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left transition-[opacity,translate] sm:flex-row sm:items-center sm:gap-4',
@@ -351,7 +345,7 @@
         class="flex flex-row gap-2 sm:items-center"
         onsubmit={(event) => {
           event.preventDefault();
-          ontrack(label);
+          onremember(label);
         }}
       >
         <label class="flex h-11 min-w-0 flex-1 items-center rounded-control px-3.5 well sm:w-56 sm:flex-none md:h-9">
@@ -361,25 +355,30 @@
             bind:value={label}
             maxlength={MAX_LABEL_CHARACTERS}
             autocomplete="off"
-            readonly={tracking === 'saving' || tracking === 'remembered'}
+            readonly={remembered === 'saving' || remembered === 'remembered'}
             placeholder={translate('created.track.placeholder')}
             class="h-full min-w-0 flex-1 bg-transparent text-caption text-ink outline-none placeholder:text-ink-mute"
           />
         </label>
-        <Button variant="tint" size="field" type="submit" disabled={tracking === 'saving' || tracking === 'remembered'}>
+        <Button
+          variant="tint"
+          size="field"
+          type="submit"
+          disabled={remembered === 'saving' || remembered === 'remembered'}
+        >
           <span class="stack place-items-center">
             <span
-              class={['transition-opacity', tracking === 'remembered' && 'opacity-0']}
-              aria-hidden={tracking === 'remembered'}>{translate('created.track.save')}</span
+              class={['transition-opacity', remembered === 'remembered' && 'opacity-0']}
+              aria-hidden={remembered === 'remembered'}>{translate('created.track.save')}</span
             >
             <span
               class={[
                 'transition-[opacity,scale]',
-                tracking === 'remembered' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+                remembered === 'remembered' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
               ]}
             >
               <Icon name="check" class="size-4" stroke={2} />
-              <span class="sr-only">{tracking === 'remembered' ? translate('created.track.saved') : ''}</span>
+              <span class="sr-only">{remembered === 'remembered' ? translate('created.track.saved') : ''}</span>
             </span>
           </span>
         </Button>
@@ -394,6 +393,7 @@
     ]}
   >
     <ul
+      role="list"
       class="flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 px-3 py-2 text-caption text-ink-soft max-sm:w-full sm:gap-x-4 sm:px-2 sm:py-0"
     >
       <li class="flex items-center gap-1.5 whitespace-nowrap max-sm:min-h-6 max-sm:text-ui">

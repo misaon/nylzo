@@ -32,7 +32,9 @@
   <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
       <SectionIntro id="how-it-works-title" eyebrow={translate('how.eyebrow')} title={translate('how.title')} />
-      <p class="mx-auto mt-4 max-w-[600px] rv-focus text-center text-lead text-balance text-ink-soft [--rv-i:2]">
+      <p
+        class="mx-auto mt-4 max-w-[600px] reveal-focus text-center text-lead text-balance text-ink-soft [--reveal-index:2]"
+      >
         {translate('how.lead')}
       </p>
     </div>
@@ -45,7 +47,7 @@
       <HowDiagram layout="mobile" />
       <HowDiagram layout="desktop" />
       <p
-        class="relative mt-6 flex rv-focus items-center justify-center gap-2 text-caption text-ink-mute [--rv-delay:1350ms] md:mt-4 md:text-body-sm"
+        class="relative mt-6 flex reveal-focus items-center justify-center gap-2 text-caption text-ink-mute [--reveal-delay:1350ms] md:mt-4 md:text-body-sm"
       >
         <Icon name="trash" class="size-4 shrink-0 text-aegis-300" />
         {translate('how.deleted')}
@@ -53,9 +55,9 @@
     </div>
 
     <div
-      class="glass mt-6 rv-rise rounded-card p-5 md:p-8"
+      class="glass mt-6 reveal-rise rounded-card p-5 md:p-8"
       role="group"
-      aria-labelledby="jak-link-title"
+      aria-labelledby="how-link-title"
       {@attach reveal}
       {@attach cycle.observe}
       {@attach cycle.advance}
@@ -67,12 +69,12 @@
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h3
-            id="jak-link-title"
-            class="rv-focus font-display text-panel font-light [--rv-delay:150ms] [--rv-i:0] md:text-panel-lg"
+            id="how-link-title"
+            class="reveal-focus font-display text-panel font-light [--reveal-delay:150ms] [--reveal-index:0] md:text-panel-lg"
           >
             {translate('how.link.title')}
           </h3>
-          <p class="mt-1 rv-focus text-body-sm text-ink-soft [--rv-delay:150ms] [--rv-i:1]">
+          <p class="mt-1 reveal-focus text-body-sm text-ink-soft [--reveal-delay:150ms] [--reveal-index:1]">
             {translate('how.link.sub')}
           </p>
         </div>
@@ -82,7 +84,6 @@
           {#each LINK_PARTS as part, index (part.id)}
             {const active = $derived(cycle.index === index)}
             <div
-              data-part
               class={[
                 'max-lg:rounded-pane max-lg:p-3.5 max-lg:ring-1 lg:contents',
                 active ? 'max-lg:bg-aegis-500/8 max-lg:ring-aegis-400/35' : 'max-lg:bg-white/4 max-lg:ring-white/8',
@@ -100,7 +101,7 @@
                 <span class="flex w-fit max-w-full flex-col">
                   <span
                     class={[
-                      'rv-focus truncate text-ui whitespace-nowrap tabular-nums transition duration-500 [--rv-blur:4px] [--rv-y:6px] lg:text-body',
+                      'reveal-focus truncate text-ui whitespace-nowrap tabular-nums transition duration-500 [--reveal-blur:4px] [--reveal-y:6px] lg:text-body',
                       part.tone,
                       part.delays.text,
                       active ? 'opacity-100' : 'opacity-75 group-hover:opacity-100',
@@ -110,7 +111,7 @@
                   </span>
                   <span
                     class={[
-                      'relative mt-2 block h-[3px] w-full origin-left rv-draw overflow-hidden rounded-full',
+                      'relative mt-2 block h-[3px] w-full origin-left reveal-draw overflow-hidden rounded-full',
                       part.bar,
                       part.delays.bar,
                       active && part.glow,
@@ -130,14 +131,16 @@
                 </span>
                 <span
                   class={[
-                    'mt-3 rv-focus text-body transition-colors duration-500 [--rv-blur:4px] [--rv-y:6px]',
+                    'mt-3 reveal-focus text-body transition-colors duration-500 [--reveal-blur:4px] [--reveal-y:6px]',
                     part.delays.title,
                     active ? 'text-ink' : 'text-ink-soft',
                   ]}>{translate(part.title)}</span
                 >
                 <span
-                  class={['mt-0.5 rv-focus text-caption text-ink-mute [--rv-blur:4px] [--rv-y:6px]', part.delays.meta]}
-                  >{translate(part.meta)}</span
+                  class={[
+                    'mt-0.5 reveal-focus text-caption text-ink-mute [--reveal-blur:4px] [--reveal-y:6px]',
+                    part.delays.meta,
+                  ]}>{translate(part.meta)}</span
                 >
               </button>
               {#if active}

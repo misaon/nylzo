@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { bytesToHex, hexToBytes, vectors } from '../../test/vectors.ts';
+import { hexToBytes, vectors } from '../../test/vectors.ts';
 import { SEED_LENGTH } from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
 import { utf8 } from '../primitives/bytes.ts';
@@ -32,7 +32,7 @@ describe('AK9: request vectors', () => {
     const challenge = parseChallenge(vector.challenge);
     const body = hexToBytes(vector.body_hex);
     const message = await requestMessage(vector.purpose, vector.method, vector.path, challenge, body);
-    expect(bytesToHex(message)).toBe(vector.message_hex);
+    expect(message.toHex()).toBe(vector.message_hex);
 
     const sign = (signingKey: RequestKey) =>
       signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body);

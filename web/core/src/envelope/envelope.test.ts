@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { bytesToHex, fileBytes, hexToBytes, kdfIdOf, randomId, sha256Hex, vectors } from '../../test/vectors.ts';
+import { fileBytes, hexToBytes, kdfIdOf, randomId, sha256Hex, vectors } from '../../test/vectors.ts';
 import {
   FlagsError,
   HeaderError,
@@ -116,8 +116,8 @@ describe('AK9: envelope vectors', () => {
 
     expect(new TextDecoder().decode(encodeMeta(meta))).toBe(vector.meta_json);
     const committed = object.subarray(HEADER_LENGTH, PREFIX_LENGTH);
-    expect(bytesToHex(aad(header, committed, id, vectorPolicy))).toBe(vector.aad_hex);
-    expect(bytesToHex(committed)).toBe(vector.commitment_hex);
+    expect(aad(header, committed, id, vectorPolicy).toHex()).toBe(vector.aad_hex);
+    expect(committed.toHex()).toBe(vector.commitment_hex);
     expect(object.length).toBe(vector.object_len);
     expect(object.length - PREFIX_LENGTH - TAG_LENGTH).toBe(vector.plaintext_len);
     expect(await sha256Hex(object)).toBe(vector.object_sha256);
@@ -334,7 +334,7 @@ describe('secrets in the envelope', () => {
     const distinct = Array.from({ length: IV_LENGTH }, () => new Set<number>());
     for (let count = 0; count < 4096; count++) {
       const { iv } = newHeader(KDF_NONE);
-      seen.add(bytesToHex(iv));
+      seen.add(iv.toHex());
       for (const [index, byte] of iv.entries()) {
         distinct[index]?.add(byte);
       }

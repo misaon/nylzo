@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import compressionFixture from '../../../../spec/compression-vectors.json' with { type: 'json' };
-import { bytesToHex, hexToBytes, vectors as protocolVectors, randomId } from '../../test/vectors.ts';
+import { hexToBytes, vectors as protocolVectors, randomId } from '../../test/vectors.ts';
 import { IntegrityError, MetaError, PlaintextError } from '../errors.ts';
 import { deriveContent } from '../keys/derive.ts';
 import type { ContentKeys } from '../keys/derive.ts';
@@ -81,7 +81,7 @@ describe('attachment compression on request (spec 3.2)', () => {
       expect(object).toHaveLength(PAD);
       const opened = await openObject(keys, id, object);
       expect(opened.payload.meta).toEqual(payload.meta);
-      expect(bytesToHex(opened.payload.file ?? new Uint8Array())).toBe(bytesToHex(file));
+      expect((opened.payload.file ?? new Uint8Array()).toHex()).toBe(file.toHex());
       const commitment = object.subarray(15, prefix);
       const plaintext = new Uint8Array(
         await crypto.subtle.decrypt(

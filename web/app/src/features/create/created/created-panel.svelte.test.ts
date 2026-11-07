@@ -17,16 +17,24 @@ describe('created message panel', () => {
   let created: Created;
   const translator = new Translator('en');
   const another = vi.fn<() => void>();
-  const track = vi.fn<(label: string) => void>();
+  const remember = vi.fn<(label: string) => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();
   const coarsePointer = vi.fn<() => boolean>();
 
-  function show({ passphrase = '', opensMax = 1, canTrack = true } = {}): void {
+  function show({ passphrase = '', opensMax = 1, canRemember = true } = {}): void {
     component = mount(CreatedPanel, {
       target,
-      props: { created, opensMax, passphrase, canTrack, tracking: 'off', ontrack: track, onanother: another },
+      props: {
+        created,
+        opensMax,
+        passphrase,
+        canRemember,
+        remembered: 'off',
+        onremember: remember,
+        onanother: another,
+      },
     });
     flushSync();
   }
@@ -140,13 +148,13 @@ describe('created message panel', () => {
     if (!label) {
       throw new Error('missing label field');
     }
-    expect(track).not.toHaveBeenCalled();
+    expect(remember).not.toHaveBeenCalled();
     label.value = 'Password for Peter';
     label.dispatchEvent(new Event('input', { bubbles: true }));
     target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
-    expect(track).toHaveBeenCalledExactlyOnceWith('Password for Peter');
+    expect(remember).toHaveBeenCalledExactlyOnceWith('Password for Peter');
     await unmount(component);
-    show({ canTrack: false });
+    show({ canRemember: false });
     expect(target.textContent).not.toContain(translator.translate('created.track.title'));
   });
 

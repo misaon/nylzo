@@ -3,10 +3,10 @@
 
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
+  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import Popover from '../../../shared/ui/Popover.svelte';
-  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/private-fields.ts';
-  import Switch from '../../../shared/ui/Switch.svelte';
+  import Popover from '../../../shared/ui/menu/Popover.svelte';
+  import Switch from '../../../shared/ui/switch/Switch.svelte';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
   import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';
@@ -42,7 +42,7 @@
       type="button"
       role="switch"
       aria-checked={composer.protect}
-      onclick={composer.toggleProtect}
+      onclick={() => void composer.toggleProtect()}
       class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control p-2.5 text-left transition hover:bg-white/4"
     >
       <span class="text-ui font-medium text-ink">{translate('compose.passphrase.switch')}</span>

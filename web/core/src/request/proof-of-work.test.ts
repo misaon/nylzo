@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bytesToHex, vectors } from '../../test/vectors.ts';
+import { vectors } from '../../test/vectors.ts';
 import { EncodingError, PowError, PowTimeoutError } from '../errors.ts';
 import { ID_LENGTH } from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
@@ -23,7 +23,7 @@ describe('AK9: proof-of-work vectors', () => {
 
   it.each(vectors.pow)('$name', (vector) => {
     const digest = powDigest(parsePowChallenge(vector.challenge), parseId(vector.id), vector.counter);
-    expect(bytesToHex(digest)).toBe(vector.digest_hex);
+    expect(digest.toHex()).toBe(vector.digest_hex);
     expect(leadingZeroBits(digest)).toBe(vector.zero_bits);
     expect(powToken(vector.challenge, vector.counter)).toBe(vector.token);
   });

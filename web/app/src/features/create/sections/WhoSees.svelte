@@ -18,7 +18,7 @@
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
       <SectionIntro id="who-title" eyebrow={translate('who.eyebrow')} title={translate('who.title')} />
       <p
-        class="mx-auto mt-5 max-w-[540px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
+        class="mx-auto mt-5 max-w-[540px] reveal-focus text-lead leading-relaxed text-pretty text-ink-soft [--reveal-index:2] md:text-lead-lg"
       >
         {translate('who.lead')}
       </p>
@@ -28,7 +28,7 @@
     >
       <article
         class={[
-          'glass rv-rise rounded-card [--rv-delay:180ms] [--rv-time:1.1s] md:[--rv-x:40px] md:[--rv-y:0px]',
+          'glass reveal-rise rounded-card [--reveal-delay:180ms] [--reveal-duration:1.1s] md:[--reveal-x:40px] md:[--reveal-y:0px]',
           ARTICLE,
         ]}
         aria-labelledby="who-you"
@@ -79,7 +79,7 @@
         </p>
       </article>
       <div
-        class="relative flex rv-pop items-center justify-center py-1 [--rv-time:0.8s] md:row-span-5 md:w-36 md:py-0"
+        class="relative flex reveal-pop items-center justify-center py-1 [--reveal-duration:0.8s] md:row-span-5 md:w-36 md:py-0"
         aria-hidden="true"
         {@attach reveal}
       >
@@ -109,7 +109,7 @@
               class="absolute inset-0 rounded-full opacity-0 ring-1 ring-aegis-300/50 motion-safe:animate-who-ripple"
             ></span>
             <span
-              class="relative grid size-11 place-items-center rounded-full text-white step-current motion-safe:animate-who-lock"
+              class="relative grid size-11 place-items-center rounded-full text-white tile-current motion-safe:animate-who-lock"
             >
               <Icon name="lock" class="size-5" stroke={1.7} />
             </span>
@@ -119,7 +119,7 @@
       </div>
       <article
         class={[
-          'rv-focus rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8 [--rv-blur:14px] [--rv-delay:440ms] [--rv-time:1.3s] [--rv-y:16px] md:[--rv-x:-40px] md:[--rv-y:0px]',
+          'reveal-focus rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8 [--reveal-blur:14px] [--reveal-delay:440ms] [--reveal-duration:1.3s] [--reveal-y:16px] md:[--reveal-x:-40px] md:[--reveal-y:0px]',
           ARTICLE,
         ]}
         aria-labelledby="who-server"
@@ -184,7 +184,7 @@
     <div class="mt-8 flex justify-center" {@attach reveal}>
       <a
         href="#resilience"
-        class="group inline-block min-h-11 rv-focus rounded-control px-3 py-2.5 text-center text-body text-balance text-aegis-300 transition hover:text-aegis-200"
+        class="group inline-block min-h-11 reveal-focus rounded-control px-3 py-2.5 text-center text-body text-balance text-aegis-300 transition hover:text-aegis-200"
       >
         {translate('who.try')}
         <span class="whitespace-nowrap"

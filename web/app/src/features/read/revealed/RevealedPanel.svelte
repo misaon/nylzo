@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import Button from '../../shared/ui/button/Button.svelte';
-  import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
-  import Icon from '../../shared/ui/icon/Icon.svelte';
-  import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
-  import Tooltip from '../../shared/ui/tooltip/Tooltip.svelte';
-  import type { ReadPage } from './read-page.svelte.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import Button from '../../../shared/ui/button/Button.svelte';
+  import ConfirmDialog from '../../../shared/ui/dialog/ConfirmDialog.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
+  import Tooltip from '../../../shared/ui/tooltip/Tooltip.svelte';
+  import type { ReadPage } from '../read-page.svelte.ts';
   import RevealedFile from './RevealedFile.svelte';
 
   interface Props {
@@ -36,7 +36,7 @@
   {#if page.revealed}
     <div class="flex items-center justify-between gap-3">
       <div class="flex min-w-0 items-center gap-3">
-        <span class="grid size-10 shrink-0 place-items-center rounded-full text-white step-current" aria-hidden="true">
+        <span class="grid size-10 shrink-0 place-items-center rounded-full text-white tile-current" aria-hidden="true">
           <Icon name="unlock" class="size-5" />
         </span>
         <div class="min-w-0">
@@ -49,7 +49,7 @@
       {#if page.revealed.text !== undefined}
         <Button
           variant="tint"
-          onclick={page.askCopy}
+          onclick={() => void page.askCopy()}
           aria-label={translate('open.copy.text')}
           class="max-sm:w-11 max-sm:px-0"
         >
@@ -70,9 +70,9 @@
           title={translate('revealed.hidden.confirm')}
           tone="warning"
           icon="alert"
-          confirm={translate('revealed.hidden.copy')}
-          dismiss={translate('revealed.hidden.keep')}
-          onconfirm={page.copyText}
+          confirmLabel={translate('revealed.hidden.copy')}
+          dismissLabel={translate('revealed.hidden.keep')}
+          onconfirm={() => void page.copyText()}
           onclose={page.cancelCopy}
         />
       {/if}
@@ -140,7 +140,7 @@
             <Button
               variant="ghost"
               size="compact"
-              onclick={page.clearClipboard}
+              onclick={() => void page.clearClipboard()}
               disabled={page.clipboard !== 'copied'}
               class={page.clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
             >

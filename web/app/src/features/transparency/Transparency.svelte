@@ -10,6 +10,7 @@
   import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
   import GithubMark from '../../shared/shell/GithubMark.svelte';
   import { REPOSITORY_URL, VERIFIED_CLIENTS_URL } from '../../shared/shell/repository.ts';
+  import { SECONDS_PER_DAY } from '../../shared/ttl/ttl-choices.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import CopyButton from '../../shared/ui/button/CopyButton.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
@@ -34,7 +35,6 @@
     readonly value: string;
   }
 
-  const DAY_SECONDS = 86_400;
   const CARD = 'min-w-0 rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8';
   const CHIP =
     'flex items-center gap-1.5 rounded-full bg-white/4 py-1 pr-3 pl-2 text-caption text-ink-soft ring-1 ring-white/12';
@@ -82,9 +82,9 @@
   let view = $state.raw<View>({ view: 'loading' });
   const data = $derived(view.view === 'ready' ? view.data : undefined);
 
-  const days = (seconds: number) => formatDays(Math.round(seconds / DAY_SECONDS), translator.language);
+  const days = (seconds: number) => formatDays(Math.round(seconds / SECONDS_PER_DAY), translator.language);
   const period = (seconds: number) =>
-    seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, translator.language);
+    seconds % SECONDS_PER_DAY === 0 ? days(seconds) : formatDuration(seconds, translator.language);
   const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
 
   function stored({ retention }: Transparency): readonly Entry[] {
@@ -167,10 +167,10 @@
 {/snippet}
 
 {#snippet entries(list: readonly Entry[])}
-  <ul class="mt-6">
+  <ul role="list" class="mt-6">
     {#each list as entry (entry.title)}
       <li class="border-t border-white/8 py-4 first:border-t-0 first:pt-0 last:pb-0">
-        <p class="text-title-sm text-ink">{entry.title}</p>
+        <h3 class="text-title-sm text-ink">{entry.title}</h3>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{entry.text}</p>
       </li>
     {/each}
@@ -181,15 +181,15 @@
   <div class="mt-6 flex gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
     <IconTile icon="caution" tone="warning" size="small" />
     <div class="min-w-0">
-      <p class="text-title-sm text-ink">{title}</p>
+      <h3 class="text-title-sm text-ink">{title}</h3>
       <p class="mt-1 text-body-sm text-pretty text-ink-soft">{text}</p>
     </div>
   </div>
 {/snippet}
 
 {#snippet chips(title: string, list: readonly MessageKey[], icon: IconName, tone: string)}
-  <p class="text-title-sm text-ink">{title}</p>
-  <ul class="mt-3 flex flex-wrap gap-1.5">
+  <h3 class="text-title-sm text-ink">{title}</h3>
+  <ul role="list" class="mt-3 flex flex-wrap gap-1.5">
     {#each list as chip (chip)}
       <li class={CHIP}>
         <Icon name={icon} class={['size-3.5 shrink-0', tone]} stroke={2} />
@@ -214,6 +214,7 @@
     <p class="mt-2 max-w-[560px] text-body text-pretty text-ink-soft">{translate('transparency.intro')}</p>
     {#if data}
       <ul
+        role="list"
         class="mt-5 grid animate-appear gap-2.5 rounded-pane bg-aegis-500/6 p-4 text-body-sm text-ink ring-1 ring-aegis-400/20 sm:p-5"
       >
         {#each SUMMARY as item (item)}
@@ -228,7 +229,7 @@
         <span>{translate('transparency.configured')}</span>
       </p>
       <nav aria-label={translate('transparency.contents')} class="mt-6 animate-appear">
-        <ul class="flex flex-wrap gap-2">
+        <ul role="list" class="flex flex-wrap gap-2">
           {#each SECTIONS as section (section.id)}
             <li>
               <a
@@ -250,7 +251,7 @@
     <StateCard>
       <IconTile icon="alert" tone="warning" class="size-14 rounded-full" iconClass="size-6" stroke={1.6} />
       <p role="alert" class="mt-5 text-title-sm text-ink">{translate('transparency.failed')}</p>
-      <Button variant="primary" class="mt-6" onclick={load}>
+      <Button variant="primary" class="mt-6" onclick={() => void load()}>
         <Icon name="refresh" class="size-4 shrink-0" animated />
         <span class="relative">{translate('action.retry')}</span>
       </Button>
@@ -378,9 +379,9 @@
       </dl>
       <div class="mt-6">
         <div class="flex items-baseline justify-between gap-4">
-          <p id="transparency-files" class="text-title-sm text-ink">
+          <h3 id="transparency-files" class="text-title-sm text-ink">
             {translate('transparency.files.title')}
-          </p>
+          </h3>
           <p class="text-micro text-ink-mute tabular-nums">
             {formatCount(data.files.length, 'file', translator.language)} · SHA-256
           </p>
@@ -394,7 +395,7 @@
             aria-labelledby="transparency-files"
             tabindex="0"
           >
-            <ul>
+            <ul role="list">
               {#each data.files as file (file.path)}
                 <li class="border-t border-white/8 py-2.5 first:border-t-0">
                   <p class="text-caption wrap-anywhere text-ink-soft">{file.path}</p>
@@ -419,7 +420,7 @@
       </div>
       {@render caution(translate('transparency.verify.limit.title'), translate('transparency.verify.limit'))}
       <div class="mt-6">
-        <p class="text-title-sm text-ink">{translate('transparency.verify.apps.title')}</p>
+        <h3 class="text-title-sm text-ink">{translate('transparency.verify.apps.title')}</h3>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.verify.apps')}</p>
         <Button variant="tint" size="compact" href={VERIFIED_CLIENTS_URL} rel="noreferrer" class="mt-3">
           {translate('limits.server.link')}

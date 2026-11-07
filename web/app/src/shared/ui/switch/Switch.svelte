@@ -1,11 +1,11 @@
 <script lang="ts">
   interface Props {
     readonly on: boolean;
-    readonly size?: 'sm' | 'md';
+    readonly size?: 'small' | 'large';
   }
 
-  const { on, size = 'sm' }: Props = $props();
-  const large = $derived(size === 'md');
+  const { on, size = 'small' }: Props = $props();
+  const large = $derived(size === 'large');
 </script>
 
 <span class={['relative block shrink-0 rounded-full', large ? 'h-7 w-12' : 'h-5 w-9']} aria-hidden="true">

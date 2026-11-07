@@ -10,10 +10,15 @@
   const { translate } = getTranslator();
 
   const facts = [
-    { key: 'about.running', icon: 'heart', order: '[--rv-i:0] sm:[--rv-i:0]' },
-    { key: 'about.server', icon: 'server', order: '[--rv-i:1] sm:[--rv-i:1]' },
-    { key: 'about.contact', icon: 'message', order: '[--rv-i:2] sm:[--rv-i:1]', href: `${REPOSITORY_URL}/issues` },
-    { key: 'about.code', icon: 'code', order: '[--rv-i:3] sm:[--rv-i:2]', href: REPOSITORY_URL },
+    { key: 'about.running', icon: 'heart', revealIndex: '[--reveal-index:0] sm:[--reveal-index:0]' },
+    { key: 'about.server', icon: 'server', revealIndex: '[--reveal-index:1] sm:[--reveal-index:1]' },
+    {
+      key: 'about.contact',
+      icon: 'message',
+      revealIndex: '[--reveal-index:2] sm:[--reveal-index:1]',
+      href: `${REPOSITORY_URL}/issues`,
+    },
+    { key: 'about.code', icon: 'code', revealIndex: '[--reveal-index:3] sm:[--reveal-index:2]', href: REPOSITORY_URL },
   ] as const;
 </script>
 
@@ -21,17 +26,19 @@
   <div class="mx-auto grid max-w-page gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-10">
     <div {@attach reveal}>
       <SectionIntro id="about-title" eyebrow={translate('about.eyebrow')} title={translate('about.title')} />
-      <p class="mt-5 rv-focus text-lead text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg">
+      <p class="mt-5 reveal-focus text-lead text-pretty text-ink-soft [--reveal-index:2] md:text-lead-lg">
         {translate('about.text')}
       </p>
-      <p class="mt-4 rv-focus text-body-sm text-pretty text-ink-mute [--rv-i:3]">{translate('about.tools')}</p>
+      <p class="mt-4 reveal-focus text-body-sm text-pretty text-ink-mute [--reveal-index:3]">
+        {translate('about.tools')}
+      </p>
     </div>
     <dl class="grid gap-3 sm:grid-cols-2" {@attach reveal}>
       {#each facts as fact (fact.key)}
         <div
           class={[
-            'glass-soft flex rv-rise flex-col rounded-card p-5 [--rv-delay:150ms] [--rv-step:100ms] [--rv-y:16px] md:p-6',
-            fact.order,
+            'glass-soft flex reveal-rise flex-col rounded-card p-5 [--reveal-delay:150ms] [--reveal-step:100ms] [--reveal-y:16px] md:p-6',
+            fact.revealIndex,
           ]}
         >
           <dt class="flex items-center gap-3 text-title-sm text-ink">
@@ -39,7 +46,7 @@
               icon={fact.icon}
               tone="neutral"
               size="medium"
-              class={['rv-pop [--rv-delay:400ms] [--rv-step:100ms]', fact.order]}
+              class={['reveal-pop [--reveal-delay:400ms] [--reveal-step:100ms]', fact.revealIndex]}
             />
             {translate(`${fact.key}.title`)}
           </dt>
@@ -55,7 +62,7 @@
         </div>
       {/each}
     </dl>
-    <p class="rv-focus text-caption text-pretty text-ink-mute [--rv-blur:4px] md:col-span-2" {@attach reveal}>
+    <p class="reveal-focus text-caption text-pretty text-ink-mute [--reveal-blur:4px] md:col-span-2" {@attach reveal}>
       {translate('about.terms')}
       <a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('about.terms.link')}</a>.
     </p>

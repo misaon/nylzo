@@ -14,7 +14,7 @@
   }
 
   const TONES = {
-    current: 'step-current text-white',
+    current: 'tile-current text-white',
     neutral: 'tile-neutral text-ink-soft',
     warning: 'tile-warning text-white',
     danger: 'tile-danger text-white',

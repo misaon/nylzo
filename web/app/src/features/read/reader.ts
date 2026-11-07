@@ -155,7 +155,7 @@ function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'>
   return state === 'expired' || state === 'cancelled' || state === 'deleted';
 }
 
-function safely<Value>(action: () => Value, fallback: Value): Value {
+function safely<Value>(action: () => Value, fallback: NoInfer<Value>): Value {
   try {
     return action();
   } catch {

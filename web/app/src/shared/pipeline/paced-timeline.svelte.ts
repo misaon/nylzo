@@ -16,12 +16,13 @@ export class PacedTimeline {
   reached = $state(0);
   fraction = $state<number | undefined>();
 
+  readonly paced: Pace;
+
   constructor(settings: () => TimelineSettings) {
     this.#settings = settings;
-  }
-
-  get paced(): Pace {
-    return pace({ elapsedMs: this.#elapsedMs, ...this.#settings(), reached: this.reached, fraction: this.fraction });
+    this.paced = $derived(
+      pace({ elapsedMs: this.#elapsedMs, ...this.#settings(), reached: this.reached, fraction: this.fraction }),
+    );
   }
 
   complete(): void {

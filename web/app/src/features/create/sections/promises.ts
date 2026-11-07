@@ -7,7 +7,7 @@ interface PromiseCard {
   readonly wide: boolean;
   readonly layout: string;
   readonly motion: string;
-  readonly order: string;
+  readonly revealIndex: string;
 }
 
 export const PROMISES: readonly PromiseCard[] = [
@@ -17,8 +17,8 @@ export const PROMISES: readonly PromiseCard[] = [
     verify: '/transparency#transparency-stores',
     wide: true,
     layout: 'md:col-span-4 md:p-8',
-    motion: 'md:[--rv-i:0] md:[--rv-x:28px] md:[--rv-y:28px]',
-    order: 'md:[--rv-i:0]',
+    motion: 'md:[--reveal-index:0] md:[--reveal-x:28px] md:[--reveal-y:28px]',
+    revealIndex: 'md:[--reveal-index:0]',
   },
   {
     key: 'promise.preview',
@@ -26,8 +26,8 @@ export const PROMISES: readonly PromiseCard[] = [
     verify: 'https://github.com/misaon/nylzo/blob/main/spec/protocol.md',
     wide: false,
     layout: 'md:col-span-2 md:p-7',
-    motion: 'md:[--rv-i:1] md:[--rv-x:-28px] md:[--rv-y:28px]',
-    order: 'md:[--rv-i:1]',
+    motion: 'md:[--reveal-index:1] md:[--reveal-x:-28px] md:[--reveal-y:28px]',
+    revealIndex: 'md:[--reveal-index:1]',
   },
   {
     key: 'promise.logs',
@@ -35,8 +35,8 @@ export const PROMISES: readonly PromiseCard[] = [
     verify: '/transparency#transparency-logs',
     wide: false,
     layout: 'md:col-span-2 md:p-7',
-    motion: 'md:[--rv-i:1] md:[--rv-x:28px] md:[--rv-y:0px]',
-    order: 'md:[--rv-i:1]',
+    motion: 'md:[--reveal-index:1] md:[--reveal-x:28px] md:[--reveal-y:0px]',
+    revealIndex: 'md:[--reveal-index:1]',
   },
   {
     key: 'promise.ttl',
@@ -44,8 +44,8 @@ export const PROMISES: readonly PromiseCard[] = [
     verify: '/transparency#transparency-limits',
     wide: false,
     layout: 'md:col-span-2 md:p-7',
-    motion: 'md:[--rv-i:0] md:[--rv-x:0px] md:[--rv-y:0px]',
-    order: 'md:[--rv-i:0]',
+    motion: 'md:[--reveal-index:0] md:[--reveal-x:0px] md:[--reveal-y:0px]',
+    revealIndex: 'md:[--reveal-index:0]',
   },
   {
     key: 'promise.cancel',
@@ -53,7 +53,7 @@ export const PROMISES: readonly PromiseCard[] = [
     verify: '/sent',
     wide: false,
     layout: 'md:col-span-2 md:p-7',
-    motion: 'md:[--rv-i:1] md:[--rv-x:-28px] md:[--rv-y:0px]',
-    order: 'md:[--rv-i:1]',
+    motion: 'md:[--reveal-index:1] md:[--reveal-x:-28px] md:[--reveal-y:0px]',
+    revealIndex: 'md:[--reveal-index:1]',
   },
 ];

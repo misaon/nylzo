@@ -7,10 +7,10 @@
 
   const { translate } = getTranslator();
 
-  const glyphs: readonly { readonly icon: IconName; readonly name: string }[] = $derived([
+  const glyphs: readonly { readonly icon: IconName; readonly name: string }[] = [
     { icon: 'lock', name: 'AES-256-GCM' },
     { icon: 'key', name: 'HKDF-SHA-256' },
-  ]);
+  ];
   const license: { readonly icon: IconName; readonly name: string } = $derived({
     icon: 'document',
     name: translate('trust.license'),
@@ -39,13 +39,17 @@
       </linearGradient>
     </defs>
   </svg>
-  <p class="rv-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
+  <p class="reveal-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
   <div
-    class="relative mx-auto mt-8 max-w-page rv-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--rv-delay:200ms] md:mt-10"
+    class="relative mx-auto mt-8 max-w-page reveal-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--reveal-delay:200ms] md:mt-10"
   >
     <div class="flex w-max motion-safe:animate-trust-marquee">
       {#each [false, true] as copy (copy)}
-        <ul class="flex items-center gap-14 px-7 md:gap-20 md:px-10" aria-hidden={copy ? 'true' : undefined}>
+        <ul
+          role="list"
+          class="flex items-center gap-14 px-7 md:gap-20 md:px-10"
+          aria-hidden={copy ? 'true' : undefined}
+        >
           {#each glyphs as item (item.name)}
             {@render glyph(item)}
           {/each}

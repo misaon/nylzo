@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../../../shared/api/api.ts';
 import { fakeApi } from '../../../shared/api/fake-api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
+import { KdfWorkerError } from '../../../shared/kdf/kdf-protocol.ts';
+import { startWorker } from '../../../shared/kdf/worker-source.ts';
 import { Translator } from '../../../shared/language/translator.svelte.ts';
 import { memoryStore } from '../../../shared/sent-records/memory-sent-store.ts';
 import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
@@ -13,6 +15,9 @@ import { Composer } from './composer.svelte.ts';
 
 vi.mock('../../../shared/api/api.ts', () => ({
   createApi: vi.fn<typeof import('../../../shared/api/api.ts').createApi>(),
+}));
+vi.mock('../../../shared/kdf/worker-source.ts', () => ({
+  startWorker: vi.fn<typeof import('../../../shared/kdf/worker-source.ts').startWorker>(),
 }));
 vi.mock('../../../shared/sent-records/sent-store.ts', () => ({
   browserSentStore: vi.fn<(...arguments_: unknown[]) => void>(),
@@ -129,7 +134,6 @@ describe('message composer interactions', () => {
     await form.toggleProtect();
     expect(form.protect).toBe(true);
     expect(form.passphrase).not.toBe('');
-    expect(form.passphraseVisible).toBe(true);
     expect(focused).toHaveBeenCalledOnce();
     form.passphrase = '';
     await submit(form);
@@ -141,7 +145,6 @@ describe('message composer interactions', () => {
     expect(form.problems).toEqual([]);
     form.forgetPassphrase();
     expect(form.passphrase).toBe('');
-    expect(form.passphraseVisible).toBe(false);
     form.passphrase = 'password';
     expect(form.weak).toBe(true);
     expect(form.passphraseMessage).not.toBe('');
@@ -186,7 +189,6 @@ describe('message composer interactions', () => {
     form.text = 'synthetic message';
     form.protect = true;
     form.passphrase = 'correct horse battery staple';
-    form.passphraseVisible = true;
     form.opensMax = 3;
     form.file = new File(['ok'], 'message.txt');
     const gate = Promise.withResolvers<Created>();
@@ -213,7 +215,6 @@ describe('message composer interactions', () => {
     await sending;
     expect(form.text).toBe('');
     expect(form.passphrase).toBe('');
-    expect(form.passphraseVisible).toBe(false);
     expect(form.file).toBeUndefined();
     expect(vi.mocked(createMessage).mock.calls[0]?.[0].file?.bytes).toEqual(new Uint8Array(2));
     expect(form.sealed).toBeUndefined();
@@ -239,7 +240,7 @@ describe('message composer interactions', () => {
     await submit(form);
     vi.advanceTimersByTime(5100);
     expect(rememberSent).not.toHaveBeenCalled();
-    const tracking = form.track('  Heslo pro Petra ');
+    const remembering = form.remember('  Heslo pro Petra ');
     expect(rememberSent).toHaveBeenCalledWith(
       expect.anything(),
       {
@@ -253,7 +254,7 @@ describe('message composer interactions', () => {
     );
     expect(form.remembered).toBe('saving');
     gate.resolve(stored);
-    await tracking;
+    await remembering;
     expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
   });
 
@@ -264,10 +265,10 @@ describe('message composer interactions', () => {
     vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
     await submit(form);
     vi.advanceTimersByTime(5100);
-    const tracking = form.track('');
+    const remembering = form.remember('');
     await form.another();
     gate.resolve(true);
-    await tracking;
+    await remembering;
     expect(form.remembered).toBe('off');
     expect(form.sealed).toBeUndefined();
   });
@@ -341,6 +342,27 @@ describe('message composer interactions', () => {
     expect(form.failure).toBeUndefined();
     expect(rememberSent).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('stops a running key derivation when the page is left (SEC-8)', async () => {
+    const stop = vi.fn<() => void>();
+    const worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
+    vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
+    const form = composer();
+    form.text = 'synthetic message';
+    form.protect = true;
+    form.passphrase = 'correct horse battery staple';
+    let derivation: Promise<Uint8Array<ArrayBuffer>> | undefined;
+    vi.mocked(createMessage).mockImplementationOnce(async (input, dependencies) => {
+      derivation = dependencies.scrypt(input.passphrase ?? '', new Uint8Array(16), vi.fn<(fraction: number) => void>());
+      return derivation.then(() => created);
+    });
+    const sending = submit(form);
+    await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
+    form.leave();
+    await expect(derivation).rejects.toBeInstanceOf(KdfWorkerError);
+    expect(stop).toHaveBeenCalledOnce();
+    await sending;
   });
 
   it('ignores an attachment read that finishes after leaving and prevents overlapping submissions', async () => {

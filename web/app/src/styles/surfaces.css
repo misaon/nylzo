@@ -118,7 +118,7 @@
   }
 }
 
-@utility step-current {
+@utility tile-current {
   background:
     radial-gradient(120% 150% at 50% -30%, oklch(0.78 0.12 250 / 0.5), transparent 60%),
     linear-gradient(180deg, oklch(0.52 0.18 258 / 0.62), oklch(0.36 0.15 266 / 0.7));

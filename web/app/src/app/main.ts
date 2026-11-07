@@ -1,8 +1,10 @@
 import { hydrate, mount } from 'svelte';
 
 import '../app.css';
+import { attempt } from '../shared/attempt.ts';
 import { prepareWorker } from '../shared/kdf/worker-source.ts';
-import { browserPreferences, savedLanguage, storedLanguage } from '../shared/language/language.ts';
+import { loadCatalog } from '../shared/language/catalogs.ts';
+import { browserPreferences, LANGUAGES, savedLanguage, storedLanguage } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
 import { HOME_PATHS, homeLanguage, screenOf } from './pages.ts';
@@ -45,6 +47,11 @@ async function contentPainted(): Promise<void> {
   });
 }
 
+async function loadApp(language: Language) {
+  const [{ App, prepare, tidy }] = await Promise.all([import('./start.ts'), loadCatalog(language)]);
+  return { App, prepare, tidy };
+}
+
 async function boot(): Promise<void> {
   await takeHandoff();
   const path = location.pathname;
@@ -61,12 +68,14 @@ async function boot(): Promise<void> {
   }
   const language = homePage ?? savedLanguage(preferences, navigator.languages);
   document.documentElement.lang = language;
+  // A prerendered home page shows its content first, so its code waits for that paint; other pages load it with the fonts.
+  const appModules = homePage ? undefined : loadApp(language);
   await fontsLoaded(homePage ? HOME_FONT_SAMPLES[homePage] : ANY_TEXT_SAMPLE);
   document.documentElement.dataset['fonts'] = '';
   if (document.body.firstElementChild) {
     await contentPainted();
   }
-  const { App, prepare, tidy } = await import('./start.ts');
+  const { App, prepare, tidy } = await (appModules ?? loadApp(language));
   await nextTask();
   prepare();
   const options = { target: document.body, props: { start: { path, language } } };
@@ -76,6 +85,10 @@ async function boot(): Promise<void> {
     mount(App, options);
   }
   document.documentElement.dataset['ready'] = '';
+  // A tab left open across a release can no longer fetch the old build's catalogs.
+  for (const other of LANGUAGES.filter((listed) => listed !== language)) {
+    void attempt(loadCatalog(other));
+  }
   void tidy();
 }
 

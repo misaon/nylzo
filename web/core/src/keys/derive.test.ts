@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { bytesToHex, hexToBytes, kdfIdOf, randomId, vectors } from '../../test/vectors.ts';
+import { hexToBytes, kdfIdOf, randomId, vectors } from '../../test/vectors.ts';
 import { ShareError } from '../errors.ts';
 import { KEY_LENGTH } from '../limits.ts';
 import { encodeBase64url } from '../primitives/base64url.ts';
@@ -19,17 +19,18 @@ describe('AK9: derive vectors', () => {
     const id = parseId(vector.id);
     const secret = hexToBytes(vector.s);
     const kdfId = kdfIdOf(vector.kdf_id);
-    expect(bytesToHex(await hsalt(id))).toBe(vector.hsalt_hex);
+    const salt = await hsalt(id);
+    expect(salt.toHex()).toBe(vector.hsalt_hex);
 
     const link = await deriveLink(id, secret);
-    expect(bytesToHex(link.readSeed)).toBe(vector.r_hex);
-    expect(bytesToHex(link.passphraseSalt)).toBe(vector.salt_pw_hex);
+    expect(link.readSeed.toHex()).toBe(vector.r_hex);
+    expect(link.passphraseSalt.toHex()).toBe(vector.salt_pw_hex);
 
     const passphraseKey = derivePassphraseKey(kdfId, vector.passphrase ?? '', link.passphraseSalt);
-    expect(bytesToHex(passphraseKey)).toBe(vector.p_hex);
+    expect(passphraseKey.toHex()).toBe(vector.p_hex);
 
     const verifierSeed = await deriveVerifier(id, secret, passphraseKey);
-    expect(bytesToHex(verifierSeed)).toBe(vector.v_hex);
+    expect(verifierSeed.toHex()).toBe(vector.v_hex);
     expect(await publicKeyOf(link.readSeed)).toBe(vector.read_key);
     expect(await publicKeyOf(hexToBytes(vector.m_hex))).toBe(vector.manage_key);
     expect(await publicKeyOf(verifierSeed)).toBe(vector.verifier_key);

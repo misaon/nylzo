@@ -97,7 +97,7 @@
         ></circle>
       </g>
     </svg>
-    <span class={['relative grid place-items-center rounded-full step-current', look.center]}>
+    <span class={['relative grid place-items-center rounded-full tile-current', look.center]}>
       <span class={['absolute rounded-full ring-1 ring-aegis-300/25', look.halo]}></span>
       <span class="grid">
         {#each nodes as node, index (node.id)}

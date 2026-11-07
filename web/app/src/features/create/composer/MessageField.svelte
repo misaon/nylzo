@@ -1,10 +1,11 @@
 <script lang="ts">
   import { formatBytes, formatSize } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import CipherNoise from '../../../shared/pipeline/CipherNoise.svelte';
   import PipelineRing from '../../../shared/pipeline/PipelineRing.svelte';
+  import { PRIVATE_TEXT } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { lingering } from '../../../shared/ui/lingering.ts';
-  import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
+  import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import type { Composer } from './composer.svelte.ts';
 
   interface Props {
@@ -18,10 +19,13 @@
   const id = $props.id();
   const COUNTER_FROM = 0.8;
 
-  const keepName = lingering();
-  const keepSize = lingering();
-  const fileName = $derived(keepName(composer.file?.name ?? ''));
+  const keepName = $derived(composer.left ? undefined : lingering());
+  const keepSize = $derived(composer.left ? undefined : lingering());
+  const fileName = $derived(keepName?.(composer.file?.name ?? '') ?? '');
   const fileSize = $derived.by(() => {
+    if (!keepSize) {
+      return '';
+    }
     if (!composer.file) {
       return keepSize('');
     }
@@ -119,20 +123,7 @@
     ]}
     aria-hidden="true"
   >
-    <p
-      class="absolute inset-0 [mask-image:radial-gradient(ellipse_70%_68%_at_50%_50%,transparent_42%,black_100%)] px-6 pt-6 text-caption break-all text-ink-soft/15 tabular-nums"
-    >
-      {composer.cipher}
-    </p>
-    <div
-      class="absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-300/6 to-transparent"
-    ></div>
-    <div
-      class="absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"
-    ></div>
-    <div
-      class="absolute inset-0 bg-[radial-gradient(40%_46%_at_50%_40%,oklch(0.67_0.16_252/0.11),oklch(0.72_0.14_305/0.05)_55%,transparent_78%)]"
-    ></div>
+    <CipherNoise text={composer.cipher} />
     <div class="absolute inset-0 flex flex-col items-center justify-center px-4">
       <PipelineRing
         nodes={composer.nodes}
@@ -160,7 +151,7 @@
       <span class="relative grid size-12 place-items-center">
         <span class="absolute -inset-2 animate-pulse-core rounded-tile ring-1 ring-aegis-300/35"></span>
         <span
-          class="relative grid size-12 place-items-center rounded-pane text-white shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] step-current"
+          class="relative grid size-12 place-items-center rounded-pane text-white shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] tile-current"
         >
           <Icon name="upload" class="relative size-6" stroke={1.6} />
         </span>

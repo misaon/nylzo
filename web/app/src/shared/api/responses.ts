@@ -6,6 +6,8 @@ import { readBody } from './object-body.ts';
 
 export type Json = Readonly<Record<string, unknown>>;
 
+type Writable<Shape> = { -readonly [Key in keyof Shape]: Shape[Key] };
+
 export interface InstanceLimits {
   readonly maxFileBytes: number;
   readonly maxTextBytes: number;
@@ -51,6 +53,10 @@ const TIMES = [
   ['ended_at', 'endedAt'],
 ] as const;
 
+function parseJson(bytes: Uint8Array): unknown {
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+}
+
 export function isObject(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -89,7 +95,7 @@ export function messageState(json: Json): MessageState {
 }
 
 export function messageTimes(json: Json): MessageTimes {
-  const times: { -readonly [Key in keyof MessageTimes]: MessageTimes[Key] } = {};
+  const times: Writable<MessageTimes> = {};
   for (const [wire, field] of TIMES) {
     if (json[wire] !== undefined) {
       times[field] = timestamp(json, wire);
@@ -127,7 +133,7 @@ export function operatorOf(value: unknown): Operator | undefined {
   if (!isObject(value)) {
     throw new ResponseError();
   }
-  const operator: { -readonly [Key in keyof Operator]: Operator[Key] } = {};
+  const operator: Writable<Operator> = {};
   for (const key of ['name', 'contact', 'hosting'] as const) {
     const field = operatorField(value, key);
     if (field !== undefined) {
@@ -161,7 +167,7 @@ export async function readJson(response: Response): Promise<Json> {
   let body: unknown;
   try {
     const bytes = await readBody(response, MAX_JSON_BYTES);
-    body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    body = parseJson(bytes);
   } catch {
     throw new ResponseError();
   }
@@ -204,7 +210,7 @@ export function servedPolicy(header: string | null): ServedPolicy {
   }
   let json: unknown;
   try {
-    json = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    json = parseJson(bytes);
   } catch {
     throw new ResponseError('X-Nylzo-Policy is not JSON');
   }

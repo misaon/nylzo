@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bytesToHex, randomId, thrownBy, vectors } from '../../test/vectors.ts';
+import { randomId, thrownBy, vectors } from '../../test/vectors.ts';
 import { KdfMismatchError, LinkError, LinkReleasedError, LinkRetiredKdfError, LinkVersionError } from '../errors.ts';
 import { KDF_NONE, KDF_RETIRED, KDF_SCRYPT } from '../keys/kdf.ts';
 import type { KdfId } from '../keys/kdf.ts';
@@ -19,8 +19,8 @@ describe('AK9: link vectors', () => {
     const link = parseLink(vector.input);
     expect(idToString(link.id)).toBe(vector.id);
     expect(link.kdfId).toBe(vector.kdf_id);
-    expect(bytesToHex(link.secret)).toBe(vector.s_hex);
-    expect(bytesToHex(link.objectHash)).toBe(vector.h_hex);
+    expect(link.secret.toHex()).toBe(vector.s_hex);
+    expect(link.objectHash.toHex()).toBe(vector.h_hex);
   });
 
   it.each(canonical)('$name formats back to its input', (vector) => {
