@@ -271,6 +271,26 @@ describe('reading a message', () => {
     expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
   });
 
+  it('finishes an open that the previous client stored under the message id', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const session = memorySession();
+    const id = idTextOf(created.link);
+    const stored = api.stored.get(id);
+    await api.claim(
+      stored?.request.id ?? new Uint8Array(16),
+      { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
+      {
+        verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
+        shareKeys: () => Promise.resolve({ publicKey: shareKey, privateKey: {} as CryptoKey }),
+        onLease: (lease) => session.setItem(LEASE_KEY, `${id} ${lease}`),
+      },
+    );
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: true });
+  });
+
   it('removes the stored lease as soon as the message is on the screen, before the ack answers', async () => {
     const api = fakeApi();
     const answer = Promise.withResolvers<undefined>();
@@ -306,6 +326,7 @@ describe('reading a message', () => {
     expect(api.calls.slice(api.calls.indexOf('claim'))).toEqual([
       'claim',
       'view:busy',
+      'challenge',
       'view:busy',
       'view:revealed',
       'ack',
@@ -522,10 +543,17 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const session = memorySession();
-    session.setItem('nylzo:kdf', '1');
+    const entry = await leaseValue(created.link, '');
+    session.setItem('nylzo:kdf', entry.trimEnd());
     const reader = openReader(api, created.link, { session });
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true });
+    const other = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
+    const otherSession = memorySession();
+    otherSession.setItem('nylzo:kdf', entry.trimEnd());
+    const unrelated = openReader(api, other.link, { session: otherSession });
+    await unrelated.load();
+    expect(unrelated.last()).toMatchObject({ view: 'ready', deviceFailed: false });
     expect(Object.fromEntries(session.map)).toEqual({ [`nylzo:dropped:${PAGE_KEY}`]: '1' });
   });
 

@@ -148,7 +148,8 @@ export interface Api {
     shareKeys: ShareKeys,
     onProgress?: DownloadProgress,
   ) => Promise<Envelope>;
-  ack: (id: Uint8Array, readKey: RequestKey, lease: string) => Promise<void>;
+  challenge: () => Promise<Uint8Array<ArrayBuffer>>;
+  ack: (id: Uint8Array, readKey: RequestKey, lease: string, challenge?: Uint8Array<ArrayBuffer>) => Promise<void>;
   burn: (id: Uint8Array, readKey: RequestKey) => Promise<void>;
   cancel: (id: Uint8Array, manageKey: RequestKey) => Promise<void>;
   status: (id: Uint8Array, manageKey: RequestKey) => Promise<Status>;
@@ -165,6 +166,7 @@ interface SignedRequest {
   readonly json?: Json;
   readonly proceed?: (() => boolean) | undefined;
   readonly keepalive?: boolean;
+  readonly challenge?: Uint8Array<ArrayBuffer> | undefined;
 }
 
 const SHORT_TIMEOUT_MS = 30_000;
@@ -275,7 +277,7 @@ export function createApi(options: ApiOptions = {}): Api {
   }
 
   async function signedOnce(request: SignedRequest, timeoutMs: number): Promise<Response> {
-    const fresh = await challenge();
+    const fresh = request.challenge ?? (await challenge());
     const headers: Record<string, string> = { ...request.headers, ...(await request.attemptHeaders?.()) };
     const body = request.json === undefined ? undefined : utf8(JSON.stringify(request.json));
     if (body !== undefined) {
@@ -303,7 +305,7 @@ export function createApi(options: ApiOptions = {}): Api {
       return ensureOk(response);
     }
     await response.body?.cancel();
-    return ensureOk(await signedOnce(request, timeoutMs));
+    return ensureOk(await signedOnce({ ...request, challenge: undefined }, timeoutMs));
   }
 
   async function fetchJson(path: string, headers?: Readonly<Record<string, string>>): Promise<Json> {
@@ -441,8 +443,12 @@ export function createApi(options: ApiOptions = {}): Api {
       return { policy, share, shareKey: sent.last(), object: await readObject(response, onProgress) };
     },
 
-    async ack(id, readKey, lease) {
+    challenge,
+
+    // A challenge fetched before the message shows lets the ack leave as one keepalive request, even as the page closes.
+    async ack(id, readKey, lease, prepared) {
       await signed({
+        challenge: prepared,
         method: 'POST',
         path: `${messagePath(id)}/ack`,
         purpose: PURPOSE_READ,

@@ -89,7 +89,7 @@ describe('read page interactions', () => {
       visibilityState: 'visible',
       querySelector: () => null,
     });
-    vi.stubGlobal('location', { pathname: '/m/example', hash: '', reload });
+    vi.stubGlobal('location', { pathname: '/m/example', hash: '', origin: 'https://nylzo.test', reload });
     vi.stubGlobal('sessionStorage', {
       getItem: vi.fn<(...arguments_: unknown[]) => void>(),
       setItem: vi.fn<(...arguments_: unknown[]) => void>(),

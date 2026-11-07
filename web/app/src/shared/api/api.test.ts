@@ -362,6 +362,16 @@ describe('api client', () => {
     expect(claimed.shareKey).toBe(drawn[1]);
   });
 
+  it('sends the ack as one keepalive request when its challenge was fetched before the message showed', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    const server = fakeServer(() => new Response(null, { status: 204 }));
+    const challenge = await server.api.challenge();
+    server.seen.length = 0;
+    await server.api.ack(randomId(), readKey, LEASE, challenge);
+    expect(server.seen.map((request) => new URL(request.url).pathname)).toEqual([expect.stringMatching(/\/ack$/u)]);
+    expect(server.seenOptions.at(-1)?.keepalive).toBe(true);
+  });
+
   it('maps errors from the server', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(4));
     const cases: [Response, Partial<ApiError>][] = [

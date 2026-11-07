@@ -14,7 +14,7 @@ import { formatMoment, formatWait } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
-import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
+import { randomText } from '../../shared/pipeline/random-text.ts';
 import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
@@ -75,8 +75,9 @@ const WHITESPACE: ReadonlySet<string> = new Set([' ', '\n', '\t']);
 
 function scramble(characters: readonly string[], progress: number): string {
   const cut = Math.floor(characters.length * Math.min(1, progress * SCRAMBLE_LEAD));
+  const noise = randomText(characters.length);
   return characters
-    .map((character, index) => (index < cut || WHITESPACE.has(character) ? character : randomCharacter()))
+    .map((character, index) => (index < cut || WHITESPACE.has(character) ? character : noise.charAt(index)))
     .join('');
 }
 

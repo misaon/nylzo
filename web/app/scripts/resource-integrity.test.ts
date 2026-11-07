@@ -126,19 +126,27 @@ function runGuard(href: string) {
   const url = new URL(href);
   const session = new Map<string, string>();
   const replaced: string[] = [];
+  const listeners = new Map<string, () => void>();
+  const location = { hostname: url.hostname, pathname: url.pathname, search: url.search, hash: url.hash };
   const context = {
-    location: { pathname: url.pathname, search: url.search, hash: url.hash },
+    location,
     history: {
       replaceState: (_state: unknown, _title: string, address: string) => {
         replaced.push(address);
       },
     },
     sessionStorage: { setItem: (key: string, value: string) => session.set(key, value) },
+    addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
   };
   Object.assign(context, { globalThis: context });
   runInNewContext(FRAGMENT_GUARD, context);
   const take = Reflect.get(context, 'nylzoFragment') as (() => string) | undefined;
-  return { replaced, session, take, context };
+  const changeHash = (next: string) => {
+    const changed = new URL(next, url);
+    Object.assign(location, { pathname: changed.pathname, search: changed.search, hash: changed.hash });
+    listeners.get('hashchange')?.();
+  };
+  return { replaced, session, take, context, changeHash };
 }
 
 describe('the fragment guard at the start of every page (W2-04)', () => {
@@ -178,6 +186,28 @@ describe('the fragment guard at the start of every page (W2-04)', () => {
     expect(replaced).toEqual([page]);
     expect(session.size).toBe(0);
     expect(take).toBeUndefined();
+  });
+
+  it('keeps a fragment of 40 characters and takes off one of 41, as Protocol §4 counts them', () => {
+    expect(runGuard(`https://nylzo.test/sent#${'x'.repeat(40)}`).replaced).toEqual([]);
+    expect(runGuard(`https://nylzo.test/sent#${'x'.repeat(41)}`).replaced).toEqual(['/sent']);
+  });
+
+  it('also takes a link key off a fragment that changes later on the same page, but leaves read pages to reload', () => {
+    const home = runGuard('https://nylzo.test/');
+    home.changeHash('/#how-it-works');
+    home.changeHash('/?x=1#2.0.id.secret.hash');
+    expect(home.replaced).toEqual(['/?x=1']);
+    const reader = runGuard('https://nylzo.test/r');
+    reader.changeHash('/r#2.0.id.secret.hash');
+    expect(reader.replaced).toEqual([]);
+  });
+
+  it('writes nothing to session storage on a local client origin (Protocol §14.1)', () => {
+    const { replaced, session, take } = runGuard('http://abc.localhost:8095/r#2.0.id.secret.hash');
+    expect(replaced).toEqual(['/r']);
+    expect(session.size).toBe(0);
+    expect(take?.()).toBe('#2.0.id.secret.hash');
   });
 
   it('leaves in-page anchors and read pages without a fragment alone', () => {

@@ -5,6 +5,7 @@ import type { SentRecord } from './sent-record.ts';
 
 const DATABASE = 'nylzo';
 const RECORDS = 'sent';
+const LISTING_TIMEOUT_MS = 2000;
 
 export interface SentStore {
   list: () => Promise<SentRecord[]>;
@@ -30,7 +31,19 @@ function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly 
 
   // Reading or deleting must not create the database for someone who never chose to remember a message.
   async function databaseCreated(): Promise<boolean> {
-    return database !== undefined || factory === undefined || (await databaseExists(factory, DATABASE));
+    if (database !== undefined || factory === undefined) {
+      return true;
+    }
+    // A browser that cannot list its databases in time leaves the answer to opening, which has a timeout and an error.
+    const timedOut = Promise.withResolvers<boolean>();
+    const timer = setTimeout(timedOut.resolve, LISTING_TIMEOUT_MS, true);
+    try {
+      return await Promise.race([databaseExists(factory, DATABASE), timedOut.promise]);
+    } catch {
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async function connect(): Promise<IDBDatabase> {

@@ -5,6 +5,7 @@ import {
   deriveLink,
   deriveVerifier,
   encodeBase64url,
+  idToString,
   IntegrityError,
   isReadPath,
   KDF_NONE,
@@ -150,7 +151,8 @@ const LINK_PAGE_PATH = '/r';
 const LINK_PAGE_KEY = 'r';
 const RELEASED_PAGE_PREFIX = '/m/';
 const LEASE_KEY = `nylzo:lease:${LINK_PAGE_KEY}`;
-// Marks a scrypt run, so a tab that crashed during one explains it next time; it names no message.
+// Marks a scrypt run, so a tab that crashed during one explains it when that message opens again; it holds the lease
+// tag, never the message id.
 const KDF_MARK = 'nylzo:kdf';
 
 function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'> {
@@ -257,6 +259,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let heldKey: HeldKey | undefined;
   let revealedView: RevealedView | undefined;
   let leaseOwner = '';
+  let previousOwner = '';
   let metadata: Metadata | undefined;
   let deviceFailed = false;
   let busy = false;
@@ -280,7 +283,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   // Every link shares one page, so a stored lease names its message and serves no other.
   function leaseOf(stored: string | null): string | null {
     const [owner, value] = stored?.split(' ') ?? [];
-    return owner === leaseOwner && value ? value : null;
+    return (owner === leaseOwner || owner === previousOwner) && value ? value : null;
   }
 
   function forgetStoredLease(): void {
@@ -407,7 +410,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
     show({ view: 'loading', kdfId: link.kdfId });
     leaseOwner = (await attempt(leaseTag(link.secret))) ?? '';
-    if (safely(() => session.getItem(KDF_MARK), null) !== null) {
+    // The client before the lease tag stored the message id; an open it began must still finish after an upgrade.
+    previousOwner = idToString(link.id);
+    if (safely(() => session.getItem(KDF_MARK), null) === leaseOwner) {
       deviceFailed = true;
       safely(() => session.removeItem(KDF_MARK), undefined);
     }
@@ -437,7 +442,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return new Uint8Array(0);
     }
     show({ view: 'busy', step: 'deriving', fraction: 0 });
-    safely(() => session.setItem(KDF_MARK, '1'), undefined);
+    safely(() => session.setItem(KDF_MARK, leaseOwner), undefined);
     try {
       return await dependencies.scrypt(passphrase, current.passphraseSalt, (fraction) =>
         show({ view: 'busy', step: 'deriving', fraction }),
@@ -548,8 +553,12 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
   }
 
-  async function acknowledge(current: Secrets, fetched: Fetched): Promise<void> {
-    await attempt(api.ack(current.id, current.readKey, fetched.lease));
+  async function acknowledge(
+    current: Secrets,
+    fetched: Fetched,
+    challenge: Promise<Uint8Array<ArrayBuffer> | undefined>,
+  ): Promise<void> {
+    await attempt(api.ack(current.id, current.readKey, fetched.lease, await challenge));
     acknowledging = false;
     lease = undefined;
     wipeUnusedReadKey();
@@ -584,6 +593,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (!policyMatches(fetched.envelope, current, metadata)) {
       return { view: 'tampered' };
     }
+    const ackChallenge = attempt(api.challenge());
     show({ view: 'busy', step: 'decrypting' });
     let opened: Awaited<ReturnType<typeof open>>;
     try {
@@ -627,7 +637,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     // Once the message is on the screen, no reload may bring it back from the lease, even if the ack never arrives.
     forgetStoredLease();
     acknowledging = true;
-    acknowledged = acknowledge(current, fetched);
+    acknowledged = acknowledge(current, fetched, ackChallenge);
     return undefined;
   }
 

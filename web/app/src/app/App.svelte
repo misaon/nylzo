@@ -47,9 +47,10 @@
     }
   }
 
-  // A file dropped outside a drop zone would replace the page, and with it a message shown once.
+  // A file dropped outside a drop zone would replace the page, and with it a message shown once; a file input keeps its drop.
   function keepPageOnFileDrop(event: DragEvent) {
-    if (event.dataTransfer?.types.includes('Files')) {
+    const fileInput = event.target instanceof HTMLInputElement && event.target.type === 'file';
+    if (!fileInput && event.dataTransfer?.types.includes('Files')) {
       event.preventDefault();
     }
   }

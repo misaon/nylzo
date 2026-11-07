@@ -75,8 +75,13 @@ describe('verified local client handoff', () => {
   it.each(['network', 'status', 'json', 'size'])(
     'fails closed on a %s error and still clears the token',
     async (failure) => {
-      const body = failure === 'size' ? JSON.stringify({ path: '/r', fragment: 'a'.repeat(2000) }) : 'not json';
-      receive.mockResolvedValue(new Response(body, { status: failure === 'status' ? 410 : 200 }));
+      const body = failure === 'size' ? JSON.stringify({ path: '/r', fragment: 'a'.repeat(70_000) }) : 'not json';
+      receive.mockResolvedValue(
+        new Response(body, {
+          status: failure === 'status' ? 410 : 200,
+          headers: failure === 'size' ? { 'Content-Type': 'application/json' } : {},
+        }),
+      );
       if (failure === 'network') {
         receive.mockRejectedValue(new Error('offline'));
       }

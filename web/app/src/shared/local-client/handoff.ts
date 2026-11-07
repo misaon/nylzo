@@ -1,3 +1,4 @@
+import { readJson } from '../api/responses.ts';
 import { servedByLocalClient } from './instance-origin.ts';
 
 export const HANDOFF_PATH = '/open';
@@ -6,7 +7,6 @@ const PATH = /^\/r$/u;
 const FRAGMENT = /^[\w.-]+$/u;
 const TOKEN = /^#[A-Z2-7]{26}$/u;
 const HANDOFF_TIMEOUT_MS = 5000;
-const MAX_HANDOFF_BYTES = 1024;
 
 const handedOver: { fragment: string | undefined } = { fragment: undefined };
 
@@ -29,8 +29,7 @@ async function redeem(token: string): Promise<unknown> {
     referrerPolicy: 'no-referrer',
     signal: AbortSignal.timeout(HANDOFF_TIMEOUT_MS),
   });
-  const body = response.ok ? await response.text() : '';
-  return body.length > 0 && body.length <= MAX_HANDOFF_BYTES ? JSON.parse(body) : undefined;
+  return response.ok ? readJson(response) : undefined;
 }
 
 // The link comes from `nylzo open` in memory, so no navigation ever puts its key into the browser history.
@@ -52,6 +51,7 @@ export async function takeHandoff(): Promise<void> {
     }
   } catch {}
 }
+
 export function takeHandedOverFragment(): string | undefined {
   const { fragment } = handedOver;
   handedOver.fragment = undefined;

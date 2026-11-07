@@ -9,6 +9,7 @@ export function instanceOrigin(): string {
 }
 
 // Each session of the local client has a new origin that nobody purges later, so it keeps no key in the browser.
+// Origins are compared after parsing, so an instance configured as https://host:443 is still itself.
 export function servedByLocalClient(): boolean {
-  return instanceOrigin() !== location.origin;
+  return new URL(instanceOrigin()).origin !== location.origin;
 }

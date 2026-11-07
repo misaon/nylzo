@@ -49,6 +49,7 @@ export interface SolveOptions {
   readonly onAttempt?: (counter: number) => void;
   readonly budgetMs?: number;
   readonly now?: () => number;
+  readonly wallNow?: () => number;
 }
 
 export function solvePow(challenge: string, id: Uint8Array, difficulty: number, options: SolveOptions = {}): string {
@@ -56,11 +57,14 @@ export function solvePow(challenge: string, id: Uint8Array, difficulty: number, 
     throw new PowError();
   }
   const challengeBytes = parsePowChallenge(challenge);
-  // A monotonic clock, so a wall clock step during the solve neither cuts it short nor lets it overrun.
+  // The budget ends on whichever clock passes it first: the monotonic one ignores wall clock steps, the wall clock
+  // keeps counting while the machine sleeps and the challenge window runs out.
   const now = options.now ?? (() => performance.now());
-  const deadline = options.budgetMs === undefined ? undefined : now() + options.budgetMs;
+  const wallNow = options.wallNow ?? Date.now;
+  const { budgetMs } = options;
+  const deadline = budgetMs === undefined ? undefined : { monotonic: now() + budgetMs, wall: wallNow() + budgetMs };
   for (let counter = 0; ; counter++) {
-    if (deadline !== undefined && now() >= deadline) {
+    if (deadline !== undefined && (now() >= deadline.monotonic || wallNow() >= deadline.wall)) {
       throw new PowTimeoutError();
     }
     options.onAttempt?.(counter);

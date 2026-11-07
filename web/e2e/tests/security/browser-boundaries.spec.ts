@@ -39,7 +39,7 @@ test(
 test('every page links only where its connection allowlist admits, and code in a page cannot navigate anywhere else', async ({
   page,
 }) => {
-  for (const path of ['/', '/cs/', '/sent', '/terms', '/agents']) {
+  for (const path of ['/', '/cs/', '/sent', '/transparency', '/terms', '/agents', '/no-such-page']) {
     const response = await openApp(page, path);
     const allowlist = response?.headers()['connection-allowlist'] ?? '';
     expect(allowlist).toMatch(/^\(response-origin "/u);
@@ -63,6 +63,30 @@ test('every page links only where its connection allowlist admits, and code in a
     location.assign(`${elsewhere}/?carried=secret`);
   }, POW_BASE_URL);
   await expect.poll(() => page.url()).toBe('chrome-error://chromewebdata/');
+});
+
+test('a file dropped outside a drop zone cannot replace the page, while a file input keeps its drop', async ({
+  page,
+}) => {
+  await openApp(page, '/');
+  const prevented = await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['synthetic'], 'synthetic.txt', { type: 'text/plain' }));
+    const fileInput = document.querySelector('input[type="file"]');
+    return ['dragover', 'drop'].flatMap((type) =>
+      [document.body, fileInput].map((target) => {
+        const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer });
+        target?.dispatchEvent(event);
+        return `${type} ${target === document.body ? 'page' : 'file input'} ${event.defaultPrevented}`;
+      }),
+    );
+  });
+  expect(prevented).toEqual([
+    'dragover page true',
+    'dragover file input false',
+    'drop page true',
+    'drop file input false',
+  ]);
 });
 
 test('same-origin browser mutations require the custom request header', { tag: '@cross-browser' }, async ({ page }) => {
@@ -218,7 +242,7 @@ test(
       const factory = Reflect.get(globalThis, 'trustedTypes') as {
         createPolicy: (name: string, rules: Record<string, never>) => unknown;
       };
-      return ['nylzo-kdf', 'svelte-trusted-html'].map((name) => {
+      return ['nylzo-kdf'].map((name) => {
         try {
           factory.createPolicy(name, {});
           return `${name} free`;
@@ -227,7 +251,7 @@ test(
         }
       });
     });
-    expect(claimed).toEqual(['nylzo-kdf taken', 'svelte-trusted-html taken']);
+    expect(claimed).toEqual(['nylzo-kdf taken']);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   },
 );

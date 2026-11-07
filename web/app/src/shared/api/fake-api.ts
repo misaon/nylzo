@@ -231,6 +231,10 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       }
       return envelope(message, await shareKeys());
     },
+    async challenge() {
+      calls.push('challenge');
+      return new Uint8Array(36);
+    },
     async ack(id, readKey, lease) {
       calls.push('ack');
       find(id, readKey).leases.delete(lease);

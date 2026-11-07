@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { vectors } from '../../test/vectors.ts';
 import { EncodingError, PowError, PowTimeoutError } from '../errors.ts';
@@ -60,6 +60,7 @@ describe('proof of work (spec 8.1)', () => {
     const options = {
       budgetMs: 3,
       now: () => clock++,
+      wallNow: () => 0,
       onAttempt: (counter: number) => {
         attempts.push(counter);
       },
@@ -68,9 +69,26 @@ describe('proof of work (spec 8.1)', () => {
     expect(attempts).toEqual([0, 1]);
   });
 
-  it('measures its budget on the monotonic clock, so a wall clock step does not end it', () => {
-    const wallClock = vi.spyOn(Date, 'now').mockReturnValue(Number.MAX_SAFE_INTEGER);
-    expect(solvePow(challenge, id, 0, { budgetMs: 60_000 })).toMatch(/\.0{16}$/u);
-    wallClock.mockRestore();
+  it('stops on the monotonic clock when the wall clock is set back during the solve', () => {
+    let monotonic = 0;
+    let wall = 0;
+    const solve = () =>
+      solvePow(challenge, id, MAX_POW_DIFFICULTY, {
+        budgetMs: 3,
+        now: () => monotonic++,
+        wallNow: () => (wall -= 1_000_000),
+      });
+    expect(solve).toThrow(PowTimeoutError);
+  });
+
+  it('stops on the wall clock when the machine slept and the monotonic clock stood still', () => {
+    let wall = 0;
+    const solve = () =>
+      solvePow(challenge, id, MAX_POW_DIFFICULTY, {
+        budgetMs: 60_000,
+        now: () => 0,
+        wallNow: () => (wall += 30_000),
+      });
+    expect(solve).toThrow(PowTimeoutError);
   });
 });
