@@ -55,7 +55,7 @@ func TestAttachmentNamesMatchTheWebClient(t *testing.T) {
 	}
 }
 
-func TestLongNamesMatchTheSharedVectors(t *testing.T) {
+func TestFileNamesMatchTheSharedVectors(t *testing.T) {
 	t.Parallel()
 	data, err := os.ReadFile("../../spec/file-name-vectors.json")
 	if err != nil {

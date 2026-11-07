@@ -24,6 +24,8 @@ type Envelope struct {
 	Flags  int
 	Object []byte
 	Share  *[share.WrappedLen]byte
+	// ShareKey is the one-time key of the attempt the server answered, which Share is wrapped to.
+	ShareKey *ecdh.PrivateKey
 }
 
 type Claimed struct {
@@ -37,17 +39,17 @@ func (c *Client) Claim(
 	ctx context.Context,
 	id core.ID,
 	read, verifier *[core.SeedLen]byte,
-	shareKey *ecdh.PublicKey,
 	size int64,
 	onLease func(string),
 ) (Claimed, error) {
+	sent := &sentShareKey{}
 	request := signedRequest{
-		method:   http.MethodPost,
-		path:     messagePath(id) + "/claim",
-		purpose:  signing.PurposeRead,
-		seed:     read,
-		verifier: verifier,
-		headers:  map[string]string{shareKeyHeader: core.Encode(shareKey.Bytes())},
+		method:         http.MethodPost,
+		path:           messagePath(id) + "/claim",
+		purpose:        signing.PurposeRead,
+		seed:           read,
+		verifier:       verifier,
+		attemptHeaders: sent.headers,
 	}
 	response, err := c.signed(ctx, &request, transferTime(size))
 	if err != nil {
@@ -65,6 +67,7 @@ func (c *Client) Claim(
 	if err != nil {
 		return Claimed{Lease: lease}, err
 	}
+	received.ShareKey = sent.key
 	return Claimed{Lease: lease, Envelope: received}, nil
 }
 
@@ -72,23 +75,35 @@ func (c *Client) Blob(
 	ctx context.Context,
 	id core.ID,
 	read *[core.SeedLen]byte,
-	shareKey *ecdh.PublicKey,
 	lease string,
 	size int64,
 ) (Envelope, error) {
+	sent := &sentShareKey{}
 	request := signedRequest{
-		method:  http.MethodGet,
-		path:    messagePath(id) + "/blob",
-		purpose: signing.PurposeRead,
-		seed:    read,
-		headers: map[string]string{"X-Nylzo-Lease": lease, shareKeyHeader: core.Encode(shareKey.Bytes())},
+		method:         http.MethodGet,
+		path:           messagePath(id) + "/blob",
+		purpose:        signing.PurposeRead,
+		seed:           read,
+		headers:        map[string]string{"X-Nylzo-Lease": lease},
+		attemptHeaders: sent.headers,
 	}
 	response, err := c.signed(ctx, &request, transferTime(size))
 	if err != nil {
 		return Envelope{}, err
 	}
 	defer response.Body.Close()
-	return readEnvelope(response)
+	received, err := readEnvelope(response)
+	received.ShareKey = sent.key
+	return received, err
+}
+
+type sentShareKey struct {
+	key *ecdh.PrivateKey
+}
+
+func (s *sentShareKey) headers() map[string]string {
+	s.key = share.NewKey()
+	return map[string]string{shareKeyHeader: core.Encode(s.key.PublicKey().Bytes())}
 }
 
 func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, lease string) error {
