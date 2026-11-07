@@ -63,3 +63,4 @@ crash.log
 
 # Native Svelte type-check output
 /web/app/.svelte-check/
+/deploy/caddy/caddy
