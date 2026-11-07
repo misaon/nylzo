@@ -258,16 +258,12 @@ func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 		return nil, err
 	}
 	defer clear(meta)
-	hasFile := payload.Meta.File != nil
-	if hasFile && int64(len(payload.File)) != payload.Meta.File.Size {
-		return nil, ErrMeta
-	}
-	if !hasFile && len(payload.File) != 0 {
+	if !fileMatchesMeta(payload) {
 		return nil, ErrMeta
 	}
 	overhead := PrefixLen + MetaLenPrefix + TagLen
 	file, objectLen := payload.File, padded(overhead+len(meta)+len(payload.File))
-	if compress && hasFile {
+	if compress && payload.Meta.File != nil {
 		encoded := compressAttachment(payload.Meta, meta, file)
 		if encoded.objectLen != 0 {
 			defer clear(encoded.file)
@@ -287,6 +283,13 @@ func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 	copy(plaintext[MetaLenPrefix:], meta)
 	copy(plaintext[MetaLenPrefix+len(meta):], file)
 	return plaintext, nil
+}
+
+func fileMatchesMeta(payload Payload) bool {
+	if payload.Meta.File == nil {
+		return len(payload.File) == 0
+	}
+	return int64(len(payload.File)) == payload.Meta.File.Size
 }
 
 func parsePlaintext(plaintext []byte) (Payload, error) {
