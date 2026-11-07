@@ -47,6 +47,14 @@
     }
   }
 
+  // A file dropped outside a drop zone would replace the page, and with it a message shown once; a file input keeps its drop.
+  function keepPageOnFileDrop(event: DragEvent) {
+    const fileInput = event.target instanceof HTMLInputElement && event.target.type === 'file';
+    if (!fileInput && event.dataTransfer?.types.includes('Files')) {
+      event.preventDefault();
+    }
+  }
+
   async function switchLanguage(language: Language) {
     requestedLanguage = language;
     if (translator.language === language) {
@@ -77,7 +85,7 @@
   }
 </script>
 
-<svelte:window onpopstate={returned} />
+<svelte:window onpopstate={returned} ondragover={keepPageOnFileDrop} ondrop={keepPageOnFileDrop} />
 
 <div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
   <Sky />

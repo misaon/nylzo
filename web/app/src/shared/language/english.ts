@@ -265,7 +265,7 @@ export const english: Record<MessageKey, string> = {
   'revealed.file': 'Attachment',
   'revealed.file.unchecked': 'Nobody scanned it for viruses. Open only files from people you know.',
   'revealed.confirm.title': 'This type of file can run code. Open it only if you trust the sender.',
-  'revealed.confirm.extension': 'File extension: .{extension}',
+  'revealed.confirm.extension': 'File extension:',
   'revealed.confirm.none': 'The file has no extension.',
   'revealed.confirm.download': 'Download anyway',
   'revealed.confirm.cancel': 'Do not download',

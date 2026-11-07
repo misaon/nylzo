@@ -260,7 +260,7 @@ export const czech = {
   'revealed.file': 'Příloha',
   'revealed.file.unchecked': 'Nikdo ji nezkontroloval na viry. Otevírejte jen soubory od lidí, které znáte.',
   'revealed.confirm.title': 'Tento typ souboru může spustit kód. Otevřete ho, jen pokud odesílateli věříte.',
-  'revealed.confirm.extension': 'Přípona souboru: .{extension}',
+  'revealed.confirm.extension': 'Přípona souboru:',
   'revealed.confirm.none': 'Soubor nemá příponu.',
   'revealed.confirm.download': 'Přesto stáhnout',
   'revealed.confirm.cancel': 'Nestahovat',

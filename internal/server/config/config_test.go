@@ -251,7 +251,8 @@ func TestOperatorConfiguration(t *testing.T) {
 	}{
 		{"all set", map[string]string{"NYLZO_OPERATOR": "Example s.r.o.", "NYLZO_CONTACT": "abuse@example.org", "NYLZO_HOSTING": "Vultr, Frankfurt"}, true},
 		{"https contact", map[string]string{"NYLZO_CONTACT": "https://example.org/contact"}, true},
-		{"https with a port", map[string]string{"NYLZO_CONTACT": "https://example.org:8443/report?lang=cs#form"}, true},
+		{"https with a port", map[string]string{"NYLZO_CONTACT": "https://example.org:8443/report?lang=cs"}, true},
+		{"https with a fragment", map[string]string{"NYLZO_CONTACT": "https://example.org/report#form"}, false},
 		{"czech name", map[string]string{"NYLZO_OPERATOR": "Ondřej Misák"}, true},
 		{"200 bytes", map[string]string{"NYLZO_HOSTING": strings.Repeat("a", 200)}, true},
 		{"201 bytes", map[string]string{"NYLZO_HOSTING": strings.Repeat("a", 201)}, false},

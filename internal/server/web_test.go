@@ -40,7 +40,7 @@ var requiredHeaders = map[string]string{
 	"Cross-Origin-Embedder-Policy": "require-corp",
 	"Cross-Origin-Resource-Policy": "same-origin",
 	"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
-	"Permissions-Policy":           "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), direct-sockets=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
+	"Permissions-Policy":           "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), media-playback-while-not-visible=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-app-installation=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
 }
 
 func htmlCSPFromSpec(t *testing.T) string {
@@ -90,7 +90,7 @@ func checkSecurityHeaders(t *testing.T, name string, response testResponse, inde
 	if csp := response.Header.Get("Content-Security-Policy"); !strings.HasPrefix(
 		response.Header.Get("Content-Type"),
 		"text/html",
-	) && csp != "default-src 'none'; frame-ancestors 'none'" {
+	) && csp != "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox" {
 		t.Fatalf("%s: a response other than HTML carries CSP %q", name, csp)
 	}
 }
@@ -105,6 +105,19 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 		} {
 			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
 			checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
+		}
+		const allowlist = `(response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*")`
+		for path, want := range map[string]string{
+			"/": allowlist, "/transparency": allowlist, "/m/" + core.NewID().String(): allowlist, "/nope": allowlist,
+			"/api/v1/instance": "",
+		} {
+			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
+			if got := response.Header.Values(
+				"Connection-Allowlist",
+			); want == "" && len(got) != 0 ||
+				want != "" && (len(got) != 1 || got[0] != want) {
+				t.Fatalf("%s: Connection-Allowlist %q, want %q; no page may leave it out", path, got, want)
+			}
 		}
 		prefetch := map[string]string{"Sec-Purpose": "prefetch"}
 		for _, testCase := range []struct {
@@ -440,7 +453,7 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, err := build.Render(settings.PublicURL)
+	pages, err := build.Render(settings.PublicURL, settings.Operator.Contact)
 	if err != nil {
 		t.Fatal(err)
 	}

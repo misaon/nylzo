@@ -9,6 +9,8 @@
   import type { MessageKey } from '../../shared/language/czech.ts';
   import { formatDays, formatMoment, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { servedByLocalClient } from '../../shared/local-client/instance-origin.ts';
+  import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
   import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import Button from '../../shared/ui/button/Button.svelte';
@@ -33,7 +35,9 @@
   const retention = $derived(formatDays(RETENTION_DAYS, translator.language));
   const listed = $derived(view.view === 'list' && view.items.length > 0);
 
-  const sent = createSentPage({ api: createApi(), store: browserSentStore(), now: () => Date.now() }, (next) => {
+  // A session of the local client has an origin nobody purges later, so it opens no storage (Protocol §14.1).
+  const store = servedByLocalClient() ? memoryStore() : browserSentStore();
+  const sent = createSentPage({ api: createApi(), store, now: () => Date.now() }, (next) => {
     view = next;
   });
 

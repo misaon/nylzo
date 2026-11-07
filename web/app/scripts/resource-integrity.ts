@@ -13,9 +13,8 @@ import type { DefaultTreeAdapterMap } from 'parse5';
 type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
-// Runs before any other resource loads, so the link secret leaves the address bar at once (Protocol §4).
-export const FRAGMENT_GUARD =
-  "(()=>{const{pathname:p,search:s,hash:h}=location;if(h===''||(p!=='/r'&&!p.startsWith('/m/')))return;history.replaceState(null,'',p+s);try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()";
+// Runs before any other resource loads, so a link secret leaves the address bar at once, also on a mangled path (Protocol §4).
+export const FRAGMENT_GUARD = String.raw`(()=>{const k=h=>/^#\d/.test(h)||h.length>41,a=p=>p==='/r'||/^\/m\/[\w-]{22}$/.test(p)||p==='/open',{pathname:p,search:s,hash:h}=location,r=a(p);addEventListener('hashchange',()=>{const{pathname:q,search:t,hash:g}=location;if(g!==''&&!a(q)&&k(g))history.replaceState(null,'',q+t)});if(h===''||!(r||k(h)))return;history.replaceState(null,'',p+s);if(!r)return;if(!location.hostname.endsWith('.localhost')&&p!=='/open')try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()`;
 
 function assetAt(url: string, from: string, assets: Assets): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/u.test(url) || /[?#%\\]/u.test(url)) {
@@ -117,6 +116,7 @@ function visitHtml(node: HtmlNode, visit: (element: DefaultTreeAdapterMap['eleme
 
 export function secureHtml(html: string, assets: Assets): string {
   const document = parse(html, { scriptingEnabled: false });
+  let loadsScripts = false;
   visitHtml(document, (element) => {
     const attributes = new Map(element.attrs.map(({ name, value }) => [name, value]));
     const script = element.tagName === 'script';
@@ -133,6 +133,7 @@ export function secureHtml(html: string, assets: Assets): string {
     }
     if (script || executableLink) {
       if (resource) {
+        loadsScripts ||= script;
         const data = assetAt(resource, '/index.html', assets);
         element.attrs = element.attrs.filter(({ name }) => name !== 'integrity' && name !== 'crossorigin');
         element.attrs.push({ name: 'integrity', value: integrity(data) }, { name: 'crossorigin', value: 'anonymous' });
@@ -178,6 +179,6 @@ export function secureHtml(html: string, assets: Assets): string {
     parentNode: head,
   };
   guard.childNodes.push({ nodeName: '#text', value: FRAGMENT_GUARD, parentNode: guard });
-  head.childNodes.splice(charset + 1, 0, importMap, guard);
+  head.childNodes.splice(charset + 1, 0, ...(loadsScripts ? [importMap, guard] : [guard]));
   return serialize(document, { scriptingEnabled: false });
 }

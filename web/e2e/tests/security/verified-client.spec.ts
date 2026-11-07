@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
-import { createMessageInPage, expectMessageShown, showMessage } from '../support/pages.ts';
+import { chooseLanguage, createMessageInPage, expectMessageShown, showMessage } from '../support/pages.ts';
 import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 const PASSPHRASE = 'orbit maple velvet thunder';
@@ -174,11 +174,24 @@ test(
       await expectMessageShown(reader);
       await expect(reader.locator('pre')).toHaveText('read in the verified client');
       expect(reader.url()).not.toContain('#');
+      await reader.goto(`${local}/sent`);
+      await expect(reader.getByRole('heading', { level: 1 })).toBeVisible();
+      await chooseLanguage(reader, 'Čeština');
+      expect(
+        await reader.evaluate(async () => ({
+          databases: await indexedDB.databases(),
+          session: sessionStorage.length,
+          local: localStorage.length,
+        })),
+        'a local client session leaves no browser storage behind (Protocol §14.1)',
+      ).toEqual({ databases: [], session: 0, local: 0 });
 
       expect(hostile.loot).toEqual([]);
       expect(hostile.requests.length).toBeGreaterThan(0);
       for (const seen of hostile.requests) {
-        expect(seen, 'the instance received something other than an API call').toMatch(/^(?:GET|POST) \/api\/v1\//u);
+        expect(seen, 'the instance received something other than an API call').toMatch(
+          /^(?:(?:GET|POST) \/api\/v1\/|GET \/\.well-known\/nylzo\/transparency\.json$)/u,
+        );
         expect(seen).not.toContain(link.slice(link.indexOf('#') + 1));
       }
     } finally {

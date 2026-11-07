@@ -101,7 +101,9 @@ type signedRequest struct {
 	seed     *[core.SeedLen]byte
 	verifier *[core.SeedLen]byte
 	headers  map[string]string
-	body     []byte
+	// attemptHeaders runs before every attempt, so a retry never repeats a share key (Protocol §5.6).
+	attemptHeaders func() map[string]string
+	body           []byte
 }
 
 // Instance reads the limits, and with a creation also issues an id; it refuses a difficulty above the spec maximum.
@@ -337,6 +339,9 @@ func (c *Client) signedOnce(
 		headers["X-Nylzo-Verifier"] = verifier.VerifierHeader()
 	}
 	maps.Copy(headers, request.headers)
+	if request.attemptHeaders != nil {
+		maps.Copy(headers, request.attemptHeaders())
+	}
 	return c.do(ctx, request.method, request.path, headers, request.body, timeout)
 }
 

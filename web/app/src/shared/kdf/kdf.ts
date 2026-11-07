@@ -1,6 +1,6 @@
 import { PowTimeoutError } from '@nylzo/core';
 
-import { KdfWorkerError } from './kdf-protocol.ts';
+import { isKdfResponse, KdfWorkerError } from './kdf-protocol.ts';
 import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 import { startWorker } from './worker-source.ts';
 
@@ -19,7 +19,7 @@ export function stopRunningWorkers(): void {
   }
 }
 
-async function runWorker(request: KdfRequest, onProgress: Progress): Promise<KdfResponse> {
+async function runWorker(requestOnStart: () => KdfRequest, onProgress: Progress): Promise<KdfResponse> {
   const visit = pageVisit;
   const { worker, stop } = await startWorker();
   if (visit !== pageVisit) {
@@ -49,11 +49,13 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
         SILENCE_LIMIT_MS,
       );
     };
-    worker.addEventListener('message', ({ data }: MessageEvent<KdfResponse>) => {
+    worker.addEventListener('message', ({ data }: MessageEvent<unknown>) => {
       if (settled) {
         return;
       }
-      if (data.kind === 'progress') {
+      if (!isKdfResponse(data)) {
+        fail(new KdfWorkerError('the key derivation worker sent a malformed message'));
+      } else if (data.kind === 'progress') {
         restartSilenceTimer();
         onProgress(data.fraction);
       } else if (data.kind === 'error') {
@@ -65,7 +67,7 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
     worker.addEventListener('error', () => fail(new KdfWorkerError()));
     worker.addEventListener('messageerror', () => fail(new KdfWorkerError()));
     restartSilenceTimer();
-    worker.postMessage(request, []);
+    worker.postMessage(requestOnStart(), []);
   });
 }
 
@@ -74,7 +76,7 @@ export async function scryptInWorker(
   passphraseSalt: Uint8Array<ArrayBuffer>,
   onProgress: Progress,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await runWorker({ kind: 'scrypt', passphrase, passphraseSalt }, onProgress);
+  const response = await runWorker(() => ({ kind: 'scrypt', passphrase, passphraseSalt }), onProgress);
   if (response.kind !== 'key') {
     throw new KdfWorkerError();
   }
@@ -85,11 +87,16 @@ export async function solvePowInWorker(
   challenge: string,
   id: Uint8Array<ArrayBuffer>,
   difficulty: number,
-  deadline: number,
+  budgetMs: number,
   onProgress: Progress,
 ): Promise<string> {
-  const response = await runWorker({ kind: 'pow', challenge, id, difficulty, deadline }, onProgress);
-  if (response.kind !== 'token') {
+  // The challenge expires on the server's clock, so starting the worker spends the same budget.
+  const deadline = performance.now() + budgetMs;
+  const response = await runWorker(
+    () => ({ kind: 'pow', challenge, id, difficulty, budgetMs: Math.max(1, deadline - performance.now()) }),
+    onProgress,
+  );
+  if (response.kind !== 'token' || !response.token.startsWith(`${challenge}.`)) {
     throw new KdfWorkerError();
   }
   return response.token;

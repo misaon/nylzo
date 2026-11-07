@@ -137,9 +137,7 @@ caddy() {
   chmod 0755 /opt/nylzo/caddy "$directory"
   cp "$temporary/caddy" "$directory/caddy"
   chmod 0755 "$directory/caddy"
-  export NYLZO_DOMAIN
-  NYLZO_DOMAIN=$(jq -r .domain "$site")
-  systemd-run --wait --pipe --collect --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$NYLZO_DOMAIN" "$directory/caddy" validate --config /etc/caddy/Caddyfile >/dev/null
+  systemd-run --wait --pipe --collect --uid=caddy --gid=caddy --property=EnvironmentFile=/etc/nylzo/caddy.env "$directory/caddy" validate --config /etc/caddy/Caddyfile >/dev/null
   if [[ "$previous" = v* && "$candidate" = release-* ]]; then
     built=$(systemd-run --wait --pipe --collect --uid=caddy --gid=caddy "$directory/caddy" version | cut -d ' ' -f 1)
     if [[ ! "$built" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || older "$built" "$previous"; then

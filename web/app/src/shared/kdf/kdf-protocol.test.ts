@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { PROGRESS_HEARTBEAT_MS, throttledProgress } from './kdf-protocol.ts';
+import { isKdfRequest, PROGRESS_HEARTBEAT_MS, throttledProgress } from './kdf-protocol.ts';
 
 describe('progress from the key derivation worker', () => {
   it('posts at most one message per percent and always the end', () => {
@@ -37,5 +37,29 @@ describe('progress from the key derivation worker', () => {
     now += 1;
     report(1);
     expect(posted).toEqual([1, 1]);
+  });
+});
+
+describe('requests the key derivation worker accepts', () => {
+  const salt = new Uint8Array(32);
+  const id = new Uint8Array(16);
+
+  it('accepts a well-formed scrypt or proof-of-work request', () => {
+    expect(isKdfRequest({ kind: 'scrypt', passphrase: 'phrase', passphraseSalt: salt })).toBe(true);
+    expect(isKdfRequest({ kind: 'pow', challenge: 'c', id, difficulty: 4, budgetMs: 1000 })).toBe(true);
+  });
+
+  it.each([
+    null,
+    'scrypt',
+    { kind: 'scrypt', passphrase: 1, passphraseSalt: salt },
+    { kind: 'scrypt', passphrase: 'phrase', passphraseSalt: new Uint8Array(31) },
+    { kind: 'pow', challenge: 'c', id: new Uint8Array(15), difficulty: 4, budgetMs: 1000 },
+    { kind: 'pow', challenge: 'c', id, difficulty: 0.5, budgetMs: 1000 },
+    { kind: 'pow', challenge: 'c', id, difficulty: 4, budgetMs: Number.POSITIVE_INFINITY },
+    { kind: 'pow', challenge: 'c', id, difficulty: 4, budgetMs: 0 },
+    { kind: 'eval', source: 'x' },
+  ])('refuses %j', (request) => {
+    expect(isKdfRequest(request)).toBe(false);
   });
 });

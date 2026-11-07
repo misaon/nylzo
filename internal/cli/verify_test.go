@@ -94,6 +94,7 @@ func newPublicWebTestServer(
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Version = version
 	settings.PublicURL = publicURL
+	settings.Operator.Contact = "security@example.org"
 	storage, err := sqlite.Open(t.Context(), filepath.Join(directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -241,6 +242,21 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"weaker page CSP", rewrite(pathIs("/"), func(response *served) {
 			response.header.Set("Content-Security-Policy", strings.Replace(response.header.Get("Content-Security-Policy"), "default-src 'none'", "default-src *", 1))
 		}), "/: the Content-Security-Policy differs"},
+		{"page without Connection-Allowlist", rewrite(pathIs("/"), func(response *served) {
+			response.header.Del("Connection-Allowlist")
+		}), "/: the Connection-Allowlist differs"},
+		{"second Connection-Allowlist", rewrite(pathIs("/sent"), func(response *served) {
+			response.header.Add("Connection-Allowlist", `(response-origin "https://evil.example")`)
+		}), "/sent: the Connection-Allowlist differs"},
+		{"wider Connection-Allowlist", rewrite(pathIs("/terms"), func(response *served) {
+			response.header.Set("Connection-Allowlist", strings.Replace(response.header.Get("Connection-Allowlist"), `?#"`, `*"`, 1))
+		}), "/terms: the Connection-Allowlist differs"},
+		{"Connection-Allowlist without the operator's contact", rewrite(pathIs("/transparency"), func(response *served) {
+			response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
+		}), "a Caddy front needs the same NYLZO_CONTACT as the server"},
+		{"Connection-Allowlist on a file", rewrite(pathIs("/assets/style-b2.css"), func(response *served) {
+			response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
+		}), "/assets/style-b2.css: the server sent the Connection-Allowlist header"},
 		{"second CSP header", rewrite(pathIs("/sent"), func(response *served) {
 			response.header.Add("Content-Security-Policy", "script-src *")
 		}), "/sent: the Content-Security-Policy header differs"},

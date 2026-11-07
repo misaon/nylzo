@@ -19,6 +19,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -171,7 +172,11 @@ func (v *verifier) manifest(ctx context.Context) error {
 			return fmt.Errorf("the server's client manifest names a public URL that this nylzo would refuse: %w", err)
 		}
 	}
-	if v.pages, err = v.local.Render(served.PublicURL); err != nil {
+	contact, err := v.contact(ctx)
+	if err != nil {
+		return err
+	}
+	if v.pages, err = v.local.Render(served.PublicURL, contact); err != nil {
 		return err
 	}
 	servedJSON, _ := json.Marshal(served)
@@ -180,6 +185,19 @@ func (v *verifier) manifest(ctx context.Context) error {
 		return errors.New("the server's client manifest differs from the web client of this nylzo")
 	}
 	return nil
+}
+
+// contact reads the operator's contact, which every page's Connection-Allowlist admits.
+func (v *verifier) contact(ctx context.Context) (string, error) {
+	fetched, err := v.api.Fetch(ctx, server.TransparencyPath, identity, maxManifestBytes)
+	if err != nil {
+		return "", fmt.Errorf("%s: %s", server.TransparencyPath, explain(err))
+	}
+	contact, err := webclient.OperatorContact(fetched.Body)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", server.TransparencyPath, err)
+	}
+	return contact, nil
 }
 
 // page checks that the served page and its policy are byte for byte the ones this nylzo renders.
@@ -195,6 +213,16 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	}
 	if fetched.Header.Get("Content-Security-Policy") != expected.Policy() {
 		return fmt.Errorf("%s: the Content-Security-Policy differs from this nylzo", where)
+	}
+	if values := fetched.Header.Values("Connection-Allowlist"); len(values) != 1 || values[0] != expected.Allowlist() {
+		if len(values) == 1 && values[0] == webclient.ConnectionAllowlist("") {
+			return fmt.Errorf(
+				"%s: the Connection-Allowlist leaves out the operator's contact from %s; a Caddy front needs the same NYLZO_CONTACT as the server",
+				where,
+				server.TransparencyPath,
+			)
+		}
+		return fmt.Errorf("%s: the Connection-Allowlist differs from this nylzo", where)
 	}
 	body, err := decoded(&fetched, encoding, int64(len(expected.Body())), where)
 	if err != nil {
@@ -245,6 +273,7 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 	}
 	for name, values := range header {
 		known := expected[name] != "" || name == "Content-Security-Policy" ||
+			name == "Connection-Allowlist" && strings.HasPrefix(contentType, "text/html") ||
 			slices.Contains(transportHeaders, name) || v.allowed[name]
 		if name == "Content-Encoding" {
 			known = len(values) == 1

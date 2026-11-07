@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/localclient"
+	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -18,6 +20,8 @@ const (
 	shutdownTimeout = 5 * time.Second
 	noticeBuffer    = 8
 	reminderShare   = 12
+	maxContactBytes = 64 << 10
+	contactTimeout  = 3 * time.Second
 )
 
 type Link struct {
@@ -38,6 +42,7 @@ type session struct {
 	environment *command.Environment
 	server      *localclient.Server
 	options     Options
+	contact     string
 	notices     chan localclient.Notice
 	cleanup     func()
 	address     string
@@ -61,6 +66,12 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 		notices:     make(chan localclient.Notice, noticeBuffer),
 		cleanup:     func() {},
 	}
+	if current.contact, err = instanceContact(ctx, options.Instance); err != nil {
+		current.note(
+			"the pages link no operator contact, because the instance's transparency document is unreadable: %s",
+			err,
+		)
+	}
 	if current.server, err = localclient.New(listeners, current.config()); err != nil {
 		listeners.Close()
 		return command.Failf(environment, "%s", err)
@@ -83,6 +94,7 @@ func (s *session) config() *localclient.Config {
 	information := s.environment.BuildInformation()
 	return &localclient.Config{
 		Instance:  s.options.Instance,
+		Contact:   s.contact,
 		Build:     s.options.Build,
 		Version:   information.Version,
 		BuildInfo: information,
@@ -93,6 +105,21 @@ func (s *session) config() *localclient.Config {
 			}
 		},
 	}
+}
+
+// instanceContact reads the operator's contact, the one address outside the client its pages may reach.
+func instanceContact(ctx context.Context, instance string) (string, error) {
+	api, err := client.New(instance)
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(ctx, contactTimeout)
+	defer cancel()
+	fetched, err := api.Fetch(ctx, server.TransparencyPath, "identity", maxContactBytes)
+	if err != nil {
+		return "", err
+	}
+	return webclient.OperatorContact(fetched.Body)
 }
 
 func (s *session) keepNameLocal() {

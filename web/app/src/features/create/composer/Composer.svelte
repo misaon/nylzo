@@ -93,6 +93,7 @@
           ]}
           inert={composer.phase === 'done'}
           onsubmit={(event) => void composer.submit(event)}
+          autocomplete="off"
           novalidate
         >
           <MessageField {composer} {noticeId} />

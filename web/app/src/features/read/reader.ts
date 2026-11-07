@@ -4,6 +4,7 @@ import {
   deriveContent,
   deriveLink,
   deriveVerifier,
+  encodeBase64url,
   idToString,
   IntegrityError,
   isReadPath,
@@ -18,9 +19,10 @@ import {
   parseFragment,
   requestKey,
   unwrapShare,
+  utf8,
   wipeRequestKey,
 } from '@nylzo/core';
-import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey, ShareKey } from '@nylzo/core';
+import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey } from '@nylzo/core';
 
 import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../shared/api/api-errors.ts';
 import type { ApiError, EndedState, MessageState } from '../../shared/api/api-errors.ts';
@@ -142,7 +144,6 @@ interface Fetched {
 interface ContentAccess {
   readonly passphraseKey: Uint8Array<ArrayBuffer>;
   readonly verifierKey: RequestKey;
-  readonly shareKey: ShareKey;
 }
 
 // The fragment guard sets the same dropped keys: `r` for /r and the id for /m/{id}.
@@ -150,6 +151,9 @@ const LINK_PAGE_PATH = '/r';
 const LINK_PAGE_KEY = 'r';
 const RELEASED_PAGE_PREFIX = '/m/';
 const LEASE_KEY = `nylzo:lease:${LINK_PAGE_KEY}`;
+// Marks a scrypt run, so a tab that crashed during one explains it when that message opens again; it holds the lease
+// tag, never the message id.
+const KDF_MARK = 'nylzo:kdf';
 
 function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'> {
   return state === 'expired' || state === 'cancelled' || state === 'deleted';
@@ -180,6 +184,22 @@ function pageKeyOf(path: string): string | undefined {
     return undefined;
   }
   return path === LINK_PAGE_PATH ? LINK_PAGE_KEY : path.slice(RELEASED_PAGE_PREFIX.length);
+}
+
+const LEASE_TAG_LABEL = utf8('nylzo/v2/lease-tag');
+const LEASE_TAG_BYTES = 16;
+
+// Names a stored lease without the message id; only the key in the link can compute it again.
+async function leaseTag(secret: Uint8Array): Promise<string> {
+  const input = new Uint8Array(LEASE_TAG_LABEL.length + secret.length);
+  input.set(LEASE_TAG_LABEL);
+  input.set(secret, LEASE_TAG_LABEL.length);
+  try {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
+    return encodeBase64url(digest.subarray(0, LEASE_TAG_BYTES));
+  } finally {
+    input.fill(0);
+  }
 }
 
 async function linkSecrets(link: Link): Promise<Secrets> {
@@ -238,7 +258,8 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let secrets: Secrets | undefined;
   let heldKey: HeldKey | undefined;
   let revealedView: RevealedView | undefined;
-  let messageId = '';
+  let leaseOwner = '';
+  let previousOwner = '';
   let metadata: Metadata | undefined;
   let deviceFailed = false;
   let busy = false;
@@ -249,7 +270,6 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let revealable = false;
   let left = false;
 
-  const kdfKey = () => `nylzo:kdf:${messageId}`;
   const storedLease = () => lease ?? leaseOf(safely(() => session.getItem(LEASE_KEY), null));
   const allowed = () => page.visible() && !page.prerendering();
   const pageLeft = (): boolean => left;
@@ -257,18 +277,22 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   // Session storage holds only the lease, which authorizes nothing without the key from the link.
   function keepLease(value: string): void {
     lease = value;
-    safely(() => session.setItem(LEASE_KEY, `${messageId} ${value}`), undefined);
+    safely(() => session.setItem(LEASE_KEY, `${leaseOwner} ${value}`), undefined);
   }
 
   // Every link shares one page, so a stored lease names its message and serves no other.
   function leaseOf(stored: string | null): string | null {
     const [owner, value] = stored?.split(' ') ?? [];
-    return owner === messageId && value ? value : null;
+    return (owner === leaseOwner || owner === previousOwner) && value ? value : null;
+  }
+
+  function forgetStoredLease(): void {
+    safely(() => session.removeItem(LEASE_KEY), undefined);
   }
 
   function forgetLease(): void {
     lease = undefined;
-    safely(() => session.removeItem(LEASE_KEY), undefined);
+    forgetStoredLease();
   }
 
   function takeFragment(): string | ReadView {
@@ -384,11 +408,13 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       show(linkProblemView(error));
       return;
     }
-    messageId = idToString(link.id);
     show({ view: 'loading', kdfId: link.kdfId });
-    if (safely(() => session.getItem(kdfKey()), null) !== null) {
+    leaseOwner = (await attempt(leaseTag(link.secret))) ?? '';
+    // The client before the lease tag stored the message id; an open it began must still finish after an upgrade.
+    previousOwner = idToString(link.id);
+    if (safely(() => session.getItem(KDF_MARK), null) === leaseOwner) {
       deviceFailed = true;
-      safely(() => session.removeItem(kdfKey()), undefined);
+      safely(() => session.removeItem(KDF_MARK), undefined);
     }
     const linked = await attempt(linkSecrets(link));
     if (!linked) {
@@ -416,13 +442,13 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return new Uint8Array(0);
     }
     show({ view: 'busy', step: 'deriving', fraction: 0 });
-    safely(() => session.setItem(kdfKey(), '1'), undefined);
+    safely(() => session.setItem(KDF_MARK, leaseOwner), undefined);
     try {
       return await dependencies.scrypt(passphrase, current.passphraseSalt, (fraction) =>
         show({ view: 'busy', step: 'deriving', fraction }),
       );
     } finally {
-      safely(() => session.removeItem(kdfKey()), undefined);
+      safely(() => session.removeItem(KDF_MARK), undefined);
     }
   }
 
@@ -438,11 +464,10 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   async function fetchFromLease(
     current: Secrets,
     previous: string,
-    shareKey: ShareKey,
     onProgress: DownloadProgress,
   ): Promise<Fetched | ReadView> {
     try {
-      const envelope = await api.blob(current.id, current.readKey, previous, shareKey.publicKey, onProgress);
+      const envelope = await api.blob(current.id, current.readKey, previous, newShareKey, onProgress);
       lease = previous;
       return { envelope, lease: previous, fromLease: true };
     } catch (error) {
@@ -463,7 +488,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     try {
       const claimed = await api.claim(current.id, current.readKey, {
         verifierKey: access.verifierKey,
-        shareKey: access.shareKey.publicKey,
+        shareKeys: newShareKey,
         onLease: keepLease,
         onProgress,
         proceed: () => !left,
@@ -487,9 +512,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   async function fetchEnvelope(current: Secrets, access: ContentAccess): Promise<Fetched | ReadView> {
     const onProgress = showDownload;
     const previous = storedLease();
-    return previous === null
-      ? claim(current, access, onProgress)
-      : fetchFromLease(current, previous, access.shareKey, onProgress);
+    return previous === null ? claim(current, access, onProgress) : fetchFromLease(current, previous, onProgress);
   }
 
   // Every claim carries a verifier, also without a passphrase, so its headers do not tell (spec 2).
@@ -501,7 +524,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       passphraseKey = await derivePassphraseKey(current, passphrase);
       verifierSeed = await deriveVerifier(current.id, current.secret, passphraseKey);
       const verifierKey = await requestKey(verifierSeed);
-      return { passphraseKey, verifierKey, shareKey: await newShareKey() };
+      return { passphraseKey, verifierKey };
     } catch (error) {
       passphraseKey?.fill(0);
       if (error instanceof MalformedPassphraseError) {
@@ -522,7 +545,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (fetched.envelope.share === undefined) {
       throw new IntegrityError('the server sent no share');
     }
-    const share = await unwrapShare(access.shareKey, fetched.envelope.share);
+    const share = await unwrapShare(fetched.envelope.shareKey, fetched.envelope.share);
     try {
       return await deriveContent(current.id, current.secret, access.passphraseKey, share);
     } finally {
@@ -530,10 +553,14 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
   }
 
-  async function acknowledge(current: Secrets, fetched: Fetched): Promise<void> {
-    await attempt(api.ack(current.id, current.readKey, fetched.lease));
+  async function acknowledge(
+    current: Secrets,
+    fetched: Fetched,
+    challenge: Promise<Uint8Array<ArrayBuffer> | undefined>,
+  ): Promise<void> {
+    await attempt(api.ack(current.id, current.readKey, fetched.lease, await challenge));
     acknowledging = false;
-    forgetLease();
+    lease = undefined;
     wipeUnusedReadKey();
   }
 
@@ -566,6 +593,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (!policyMatches(fetched.envelope, current, metadata)) {
       return { view: 'tampered' };
     }
+    const ackChallenge = attempt(api.challenge());
     show({ view: 'busy', step: 'decrypting' });
     let opened: Awaited<ReturnType<typeof open>>;
     try {
@@ -606,8 +634,10 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (pageLeft()) {
       return undefined;
     }
+    // Once the message is on the screen, no reload may bring it back from the lease, even if the ack never arrives.
+    forgetStoredLease();
     acknowledging = true;
-    acknowledged = acknowledge(current, fetched);
+    acknowledged = acknowledge(current, fetched, ackChallenge);
     return undefined;
   }
 

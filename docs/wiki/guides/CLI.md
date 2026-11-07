@@ -62,7 +62,7 @@ nylzo web --server https://nylzo.example
 nylzo open --server https://nylzo.example < link.txt
 ```
 
-`web` serves the composer under a new random `http://….localhost` address at a random port for every session and opens it in the default browser; on macOS before 26 it prints the address for Chrome, Edge or Firefox instead, because Safari would ask the network for that name. The links it creates point to the instance. `open` reads a link the way `read` does (stdin, a hidden prompt, `--link-file` or `NYLZO_LINK`), refuses a link of another instance than `--server` or `NYLZO_SERVER`, and opens it through a one-time address that carries no part of the link. It writes that address into a private file and opens the file, so no process argument holds it. `--no-browser` prints the address instead, and so does `open` when no browser has taken the link after ten seconds. Both commands run until Ctrl-C; `open` stops with an error when no browser takes the link within two minutes and warns when something asks for it a second time.
+`web` serves the composer under a new random `http://….localhost` address at a random port for every session and opens it in the default browser; on macOS before 26 it prints the address for Chrome, Edge or Firefox instead, because Safari would ask the network for that name. The links it creates point to the instance. `open` reads a link the way `read` does (stdin, a hidden prompt, `--link-file` or `NYLZO_LINK`), refuses a link of another instance than `--server` or `NYLZO_SERVER`, and opens it through a one-time address that carries no part of the link. It writes that address into a private file and opens the file, so no process argument holds it. `--no-browser` prints the address instead, and so does `open` when no browser has taken the link after ten seconds. At start both read the operator's contact from the instance's transparency document, the one outside address their pages may link. Both commands run until Ctrl-C; `open` stops with an error when no browser takes the link within two minutes and warns when something asks for it a second time.
 
 ## Verify an instance's web client
 
@@ -70,7 +70,7 @@ nylzo open --server https://nylzo.example < link.txt
 nylzo verify-client --server https://nylzo.example
 ```
 
-This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, the static CSP, security headers, and `/.well-known/nylzo/client.json`.
+This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, the static CSP, security headers, the `Connection-Allowlist` with the operator's contact from `/.well-known/nylzo/transparency.json`, and `/.well-known/nylzo/client.json`.
 
 Unexpected headers are mismatches. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
 

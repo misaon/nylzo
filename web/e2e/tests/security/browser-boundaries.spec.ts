@@ -36,6 +36,71 @@ test(
   },
 );
 
+test('every page links only where its connection allowlist admits, and code in a page cannot navigate anywhere else', async ({
+  page,
+}) => {
+  for (const path of ['/', '/cs/', '/sent', '/transparency', '/terms', '/agents', '/no-such-page']) {
+    const response = await openApp(page, path);
+    const allowlist = response?.headers()['connection-allowlist'] ?? '';
+    expect(allowlist).toMatch(/^\(response-origin "/u);
+    const patterns = Array.from(allowlist.matchAll(/"(?<pattern>(?:[^"\\]|\\["\\])*)"/gu), (match) =>
+      (match.groups?.['pattern'] ?? '').replaceAll(/\\(["\\])/gu, '$1'),
+    );
+    const widened = await page.evaluate(
+      (admitted) =>
+        [
+          'mailto:abuse@nylzo.test?cc=someone@example.org',
+          'mailto:someone@nylzo.test',
+          'https://github.com/misaon/nylzo.evil',
+        ].filter((href) => admitted.some((pattern) => new URLPattern(pattern).test(href))),
+      patterns,
+    );
+    expect(widened, path).toEqual([]);
+    const outside = await page.evaluate(
+      (admitted) =>
+        Array.from(document.querySelectorAll('a[href]'), (anchor) => (anchor as HTMLAnchorElement).href).filter(
+          (href) =>
+            new URL(href).origin !== location.origin && !admitted.some((pattern) => new URLPattern(pattern).test(href)),
+        ),
+      patterns,
+    );
+    expect(outside, path).toEqual([]);
+  }
+  const message = await createMessageThroughApi();
+  await page.goto(message.link);
+  await page.evaluate((elsewhere) => {
+    location.assign(`${elsewhere}/?carried=secret`);
+  }, POW_BASE_URL);
+  await expect.poll(() => page.url()).toBe('chrome-error://chromewebdata/');
+});
+
+test('a file dropped outside a drop zone cannot replace the page, while a file input keeps its drop', async ({
+  page,
+}) => {
+  await openApp(page, '/');
+  const prevented = await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(['synthetic'], 'synthetic.txt', { type: 'text/plain' }));
+    const fileInput = document.querySelector('input[type="file"]');
+    if (!fileInput) {
+      throw new Error('the home page has no file input to drop on');
+    }
+    return ['dragover', 'drop'].flatMap((type) =>
+      [document.body, fileInput].map((target) => {
+        const event = new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer });
+        target.dispatchEvent(event);
+        return `${type} ${target === document.body ? 'page' : 'file input'} ${event.defaultPrevented}`;
+      }),
+    );
+  });
+  expect(prevented).toEqual([
+    'dragover page true',
+    'dragover file input false',
+    'drop page true',
+    'drop file input false',
+  ]);
+});
+
 test('same-origin browser mutations require the custom request header', { tag: '@cross-browser' }, async ({ page }) => {
   await openApp(page, '/');
   const statuses = await page.evaluate(async () => {
@@ -175,7 +240,7 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
 });
 
 test(
-  'the entry module claims both Trusted Types policy names before the rest of the client loads (W2-10)',
+  'the entry module claims its Trusted Types policy name before the rest of the client loads (W2-10)',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi();
@@ -189,7 +254,7 @@ test(
       const factory = Reflect.get(globalThis, 'trustedTypes') as {
         createPolicy: (name: string, rules: Record<string, never>) => unknown;
       };
-      return ['nylzo-kdf', 'svelte-trusted-html'].map((name) => {
+      return ['nylzo-kdf'].map((name) => {
         try {
           factory.createPolicy(name, {});
           return `${name} free`;
@@ -198,7 +263,7 @@ test(
         }
       });
     });
-    expect(claimed).toEqual(['nylzo-kdf taken', 'svelte-trusted-html taken']);
+    expect(claimed).toEqual(['nylzo-kdf taken']);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   },
 );

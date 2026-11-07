@@ -1,9 +1,10 @@
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
-export function randomCharacter(): string {
-  return ALPHABET[Math.floor(Math.random() * ALPHABET.length)] ?? 'A';
+// 256 is a multiple of the 64 letters, so a random byte picks each letter equally often.
+function letterOf(byte: number): string {
+  return ALPHABET[byte % ALPHABET.length] ?? 'A';
 }
 
 export function randomText(length: number): string {
-  return Array.from({ length }, randomCharacter).join('');
+  return Array.from(crypto.getRandomValues(new Uint8Array(length)), letterOf).join('');
 }

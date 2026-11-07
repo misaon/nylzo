@@ -14,12 +14,13 @@ import { formatMoment, formatWait } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
-import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
+import { randomText } from '../../shared/pipeline/random-text.ts';
 import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
 import { noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
+import { readerSession } from './reader-session.ts';
 import { createReader } from './reader.ts';
 import type { BurnOutcome, BusyStep, Reader, ReadView, RevealedFile } from './reader.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
@@ -74,8 +75,9 @@ const WHITESPACE: ReadonlySet<string> = new Set([' ', '\n', '\t']);
 
 function scramble(characters: readonly string[], progress: number): string {
   const cut = Math.floor(characters.length * Math.min(1, progress * SCRAMBLE_LEAD));
+  const noise = randomText(characters.length);
   return characters
-    .map((character, index) => (index < cut || WHITESPACE.has(character) ? character : randomCharacter()))
+    .map((character, index) => (index < cut || WHITESPACE.has(character) ? character : noise.charAt(index)))
     .join('');
 }
 
@@ -385,11 +387,7 @@ export class ReadPage {
           this.linkInHistory = taken.fragment !== '' && !taken.handedOver;
           return taken.fragment;
         },
-        session: {
-          getItem: (key) => sessionStorage.getItem(key),
-          setItem: (key, value) => sessionStorage.setItem(key, value),
-          removeItem: (key) => sessionStorage.removeItem(key),
-        },
+        session: readerSession(),
         page: {
           visible: () => document.visibilityState === 'visible',
           prerendering: () => document.prerendering === true,

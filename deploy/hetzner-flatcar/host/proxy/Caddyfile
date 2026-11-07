@@ -37,6 +37,7 @@
 	route {
 		nylzo_frontend https://{$NYLZO_DOMAIN} {
 			maintenance /var/lib/caddy/maintenance
+			contact {$NYLZO_CONTACT}
 		}
 		reverse_proxy 172.30.81.2:8080 {
 			handle_response {
@@ -61,7 +62,9 @@
 	handle_errors {
 		header -Server
 		route {
-			nylzo_error
+			nylzo_error {
+				contact {$NYLZO_CONTACT}
+			}
 		}
 	}
 }

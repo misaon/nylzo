@@ -7,6 +7,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { MAX_LABEL_CHARACTERS } from '../../../shared/sent-records/sent-record.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
+  import { PRIVATE_TEXT } from '../../../shared/ui/field/private-fields.ts';
   import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
@@ -214,6 +215,7 @@
                   {@attach focus.attach('link')}
                   type="text"
                   readonly
+                  autocomplete="off"
                   translate="no"
                   spellcheck="false"
                   value={created.link}
@@ -354,7 +356,7 @@
             type="text"
             bind:value={label}
             maxlength={MAX_LABEL_CHARACTERS}
-            autocomplete="off"
+            {...PRIVATE_TEXT}
             readonly={remembered === 'saving' || remembered === 'remembered'}
             placeholder={translate('created.track.placeholder')}
             class="h-full min-w-0 flex-1 bg-transparent text-caption text-ink outline-none placeholder:text-ink-mute"

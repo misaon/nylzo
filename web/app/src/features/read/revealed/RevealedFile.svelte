@@ -44,6 +44,7 @@
           <Icon name="file" class="size-5" />
           {#if kind}
             <span
+              translate="no"
               class="absolute -bottom-1.5 left-1/2 inline-flex h-5 -translate-x-1/2 items-center rounded-xs bg-void-900 px-1.5 text-micro font-medium tracking-[0.06em] text-nebula-300 uppercase ring-1 ring-nebula-300/35"
               >{kind}</span
             >
@@ -53,7 +54,9 @@
           <bdi translate="no" class="flex min-w-0 text-title-sm text-ink"
             ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
           >
-          <span class="mt-1 block text-caption text-ink-mute tabular-nums">{kind ? `${kind} · ${size}` : size}</span>
+          <span translate="no" class="mt-1 block text-caption text-ink-mute tabular-nums"
+            >{kind ? `${kind} · ${size}` : size}</span
+          >
         </span>
         <Button
           {@attach page.focus.attach('download')}
@@ -87,9 +90,8 @@
               >{page.confirmingDownload ? translate('revealed.confirm.title') : ''}</span
             >
             <span class="block text-micro text-ink-mute"
-              >{extension
-                ? translate('revealed.confirm.extension', { extension })
-                : translate('revealed.confirm.none')}</span
+              >{#if extension}{translate('revealed.confirm.extension')}
+                <bdi translate="no">.{extension}</bdi>{:else}{translate('revealed.confirm.none')}{/if}</span
             >
           </span>
         </div>

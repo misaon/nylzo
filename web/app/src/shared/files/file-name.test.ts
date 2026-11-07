@@ -60,7 +60,7 @@ describe('file names', () => {
   });
 });
 
-describe('long file names match the CLI (spec/file-name-vectors.json)', () => {
+describe('file names match the CLI (spec/file-name-vectors.json)', () => {
   it('has vectors', () => {
     expect(cases.length).toBeGreaterThan(0);
   });

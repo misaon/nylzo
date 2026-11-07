@@ -338,6 +338,23 @@
         "object": "document",
         "property": "writeln",
         "message": "document.writeln parses HTML."
+      },
+      {
+        "property": "createContextualFragment",
+        "message": "Markup sinks parse HTML; build the DOM with Svelte instead."
+      },
+      {
+        "property": "parseFromString",
+        "message": "DOMParser parses HTML; build the DOM with Svelte instead."
+      },
+      {
+        "property": "srcdoc",
+        "message": "srcdoc parses HTML in a frame; the client embeds no frames."
+      },
+      {
+        "object": "Math",
+        "property": "random",
+        "message": "Math.random is predictable; use crypto.getRandomValues."
       }
     ],
     "object-shorthand": ["error", "always"],

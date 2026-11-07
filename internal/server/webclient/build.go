@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -29,6 +30,10 @@ var statusTemplateNames = []string{
 	serverErrorPage + ".cs.html",
 	maintenancePage + ".en.html",
 	maintenancePage + ".cs.html",
+}
+
+func isStatusTemplate(name string) bool {
+	return slices.Contains(statusTemplateNames, name)
 }
 
 var assetTypes = map[string]string{

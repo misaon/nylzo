@@ -1,3 +1,5 @@
+import { servedByLocalClient } from '../local-client/instance-origin.ts';
+
 export const LANGUAGES = ['en', 'cs'] as const;
 
 export type Language = (typeof LANGUAGES)[number];
@@ -24,6 +26,9 @@ export function pickLanguage(preferred: readonly string[]): Language {
 }
 
 export function browserPreferences(): PreferenceStore | undefined {
+  if (servedByLocalClient()) {
+    return undefined;
+  }
   try {
     return localStorage;
   } catch {

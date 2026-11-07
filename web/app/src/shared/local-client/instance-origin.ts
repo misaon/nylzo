@@ -5,10 +5,11 @@ const ORIGIN =
 // The verified local client runs on loopback, so its links must name the instance it relays to, never itself.
 export function instanceOrigin(): string {
   const configured = document.querySelector<HTMLMetaElement>(INSTANCE)?.content ?? '';
-  return ORIGIN.test(configured) ? configured : location.origin;
+  return ORIGIN.test(configured) && URL.canParse(configured) ? configured : location.origin;
 }
 
 // Each session of the local client has a new origin that nobody purges later, so it keeps no key in the browser.
+// Origins are compared after parsing, so an instance configured as https://host:443 is still itself.
 export function servedByLocalClient(): boolean {
-  return instanceOrigin() !== location.origin;
+  return new URL(instanceOrigin()).origin !== location.origin;
 }

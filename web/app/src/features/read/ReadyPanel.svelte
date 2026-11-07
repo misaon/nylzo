@@ -2,7 +2,7 @@
   import { formatCount, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
-  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../shared/ui/field/private-fields.ts';
+  import { privatePassphrase, submitOnEnter } from '../../shared/ui/field/private-fields.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
   import { lingering } from '../../shared/ui/transition/lingering.ts';
@@ -132,7 +132,7 @@
               {@attach page.focus.attach('passphrase')}
               bind:value={page.passphrase}
               type={page.showPassphrase ? 'text' : 'password'}
-              {...PRIVATE_PASSPHRASE}
+              {...privatePassphrase(page.showPassphrase)}
               placeholder={translate('open.passphrase.placeholder')}
               aria-invalid={passphraseAlert !== ''}
               aria-describedby="{id}-passphrase-hint {id}-passphrase-alert"

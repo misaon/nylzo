@@ -55,8 +55,16 @@ if [[ -s /etc/nylzo/monitor-client.pem ]]; then printf '\n' >> "$composed"; cat 
 chmod 0644 "$composed"
 domain=$(sed -n 's/^NYLZO_DOMAIN=//p' /etc/nylzo/caddy.env)
 [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ ]] || fail 'NYLZO_DOMAIN in /etc/nylzo/caddy.env is invalid'
-if [[ "$first_boot" = false && -x /opt/nylzo/bin/caddy ]] && ! cmp --silent "$composed" /etc/caddy/Caddyfile; then
-  systemd-run --wait --pipe --collect --quiet --uid=caddy --gid=caddy --setenv="NYLZO_DOMAIN=$domain" \
+contact=$(sed -n 's/^NYLZO_CONTACT=//p' /etc/nylzo/service.env)
+contact_characters='^[A-Za-z0-9_.~:/?@!&+,;=%-]{0,200}$'
+[[ "$contact" =~ $contact_characters ]] || fail 'NYLZO_CONTACT in /etc/nylzo/service.env is not one email address or https:// address'
+caddy_environment=$(mktemp /run/nylzo-caddy-env.XXXXXXXX)
+trap 'rm -f "$composed" "$caddy_environment"' EXIT
+printf 'NYLZO_DOMAIN=%s\nNYLZO_CONTACT=%s\n' "$domain" "$contact" > "$caddy_environment"
+chmod 0644 "$caddy_environment"
+if [[ "$first_boot" = false && -x /opt/nylzo/bin/caddy ]] &&
+  ! { cmp --silent "$composed" /etc/caddy/Caddyfile && cmp --silent "$caddy_environment" /etc/nylzo/caddy.env; }; then
+  systemd-run --wait --pipe --collect --quiet --uid=caddy --gid=caddy --property=EnvironmentFile="$caddy_environment" \
     /opt/nylzo/bin/caddy validate --config "$composed" --adapter caddyfile >/dev/null || fail 'Caddy rejects the new Caddyfile'
 fi
 hardware_keys=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
@@ -88,6 +96,7 @@ while read -r target source; do
   place "$target" "$generation/$source"
 done <<< "$entries"
 place /etc/caddy/Caddyfile "$composed"
+place /etc/nylzo/caddy.env "$caddy_environment"
 if [[ "$hardware_only" = true ]]; then
   place "$hardware_keys" "$generation/system/sshd-hardware-keys.conf"
 else
@@ -129,7 +138,7 @@ for target in "${changed[@]}"; do
       if [[ "$first_boot" = false ]] && systemctl is-active --quiet nylzo.service; then resume_application=true; fi
       ;;
     /etc/flatcar/* | /etc/systemd/system/update-engine.service.d/*) restart+=(update-engine.service) ;;
-    /etc/caddy/Caddyfile | /etc/systemd/system/caddy.service) restart+=(caddy.service) ;;
+    /etc/caddy/Caddyfile | /etc/nylzo/caddy.env | /etc/systemd/system/caddy.service) restart+=(caddy.service) ;;
     /etc/systemd/system/*.timer) restart+=("${target##*/}") ;;
   esac
 done

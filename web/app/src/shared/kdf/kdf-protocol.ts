@@ -9,7 +9,7 @@ export type KdfRequest =
       readonly challenge: string;
       readonly id: Uint8Array<ArrayBuffer>;
       readonly difficulty: number;
-      readonly deadline: number;
+      readonly budgetMs: number;
     };
 
 export type KdfResponse =
@@ -17,6 +17,56 @@ export type KdfResponse =
   | { readonly kind: 'key'; readonly key: Uint8Array<ArrayBuffer> }
   | { readonly kind: 'token'; readonly token: string }
   | { readonly kind: 'error'; readonly timeout: boolean };
+
+const KEY_LENGTH = 32;
+const ID_LENGTH = 16;
+
+function field(value: object, name: string): unknown {
+  return Reflect.get(value, name);
+}
+
+function isBytes(value: unknown, length: number): value is Uint8Array<ArrayBuffer> {
+  return value instanceof Uint8Array && value.length === length;
+}
+
+function isFraction(value: unknown): value is number {
+  return typeof value === 'number' && value >= 0 && value <= 1;
+}
+
+function isBudget(value: unknown): value is number {
+  return typeof value === 'number' && value > 0 && Number.isFinite(value);
+}
+
+const REQUEST_CHECKS = new Map<unknown, (value: object) => boolean>([
+  [
+    'scrypt',
+    (value) => typeof field(value, 'passphrase') === 'string' && isBytes(field(value, 'passphraseSalt'), KEY_LENGTH),
+  ],
+  [
+    'pow',
+    (value) =>
+      typeof field(value, 'challenge') === 'string' &&
+      isBytes(field(value, 'id'), ID_LENGTH) &&
+      Number.isSafeInteger(field(value, 'difficulty')) &&
+      isBudget(field(value, 'budgetMs')),
+  ],
+]);
+
+const RESPONSE_CHECKS = new Map<unknown, (value: object) => boolean>([
+  ['progress', (value) => isFraction(field(value, 'fraction'))],
+  ['key', (value) => isBytes(field(value, 'key'), KEY_LENGTH)],
+  ['token', (value) => typeof field(value, 'token') === 'string'],
+  ['error', (value) => typeof field(value, 'timeout') === 'boolean'],
+]);
+
+// Both ends check what crosses the worker boundary, so a malformed message fails closed instead of being trusted.
+export function isKdfRequest(value: unknown): value is KdfRequest {
+  return typeof value === 'object' && value !== null && REQUEST_CHECKS.get(field(value, 'kind'))?.(value) === true;
+}
+
+export function isKdfResponse(value: unknown): value is KdfResponse {
+  return typeof value === 'object' && value !== null && RESPONSE_CHECKS.get(field(value, 'kind'))?.(value) === true;
+}
 
 export class KdfWorkerError extends Error {
   override readonly name = 'KdfWorkerError';

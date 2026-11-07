@@ -4,6 +4,8 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -43,11 +45,11 @@ func TestStatusPagesAnswerOnlyNavigations(t *testing.T) {
 		"dist/maintenance.en.html": page("maintenance en"),
 		"dist/maintenance.cs.html": page("maintenance cs"),
 	})
-	pages, err := load(t, files).Render("")
+	pages, err := load(t, files).Render("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	bare, err := load(t, builtClient(t)).Render("")
+	bare, err := load(t, builtClient(t)).Render("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +106,7 @@ func TestStatusPagesAnswerOnlyNavigations(t *testing.T) {
 			}
 			policy := webclient.NonHTMLCSP
 			if body != "" {
-				policy = webclient.PagePolicy(body)
+				policy = webclient.StatusPolicy(body)
 			}
 			if response.Header().Get("Content-Security-Policy") != policy ||
 				response.Header().Get("X-Robots-Tag") == "" ||
@@ -115,5 +117,42 @@ func TestStatusPagesAnswerOnlyNavigations(t *testing.T) {
 				t.Fatal("maintenance lost its Retry-After")
 			}
 		})
+	}
+}
+
+func TestStatusPagePolicyIsTheOneOfTheSpecAndAdmitsOnlyItsGuard(t *testing.T) {
+	t.Parallel()
+	spec, err := os.ReadFile("../../../docs/wiki/reference/Protocol.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const marker = "their own `Content-Security-Policy: "
+	_, rest, found := strings.Cut(string(spec), marker)
+	format, _, closed := strings.Cut(rest, "`")
+	if !found || !closed {
+		t.Fatal("Protocol section 9 lost the status page policy")
+	}
+	const guard = "history.replaceState(null,'','/')"
+	files := builtClient(t)
+	files["dist/error.en.html"] = &fstest.MapFile{
+		Data: []byte(
+			`<!doctype html><html><head><script>` + guard + `</script><style>body{}</style></head><body>error</body></html>`,
+		),
+	}
+	pages, err := load(t, files).Render("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/r", http.NoBody)
+	request.Header.Set("Sec-Fetch-Dest", "document")
+	response := httptest.NewRecorder()
+	pages.ServeServerError(response, request, http.StatusBadGateway)
+	want := strings.NewReplacer("{script hashes}", hashSource(guard), "{style hashes}", hashSource("body{}")).
+		Replace(format)
+	if got := response.Header().Get("Content-Security-Policy"); got != want {
+		t.Fatalf("status page policy\n got %s\nwant %s", got, want)
+	}
+	if response.Header().Get("Connection-Allowlist") != webclient.ConnectionAllowlist("") {
+		t.Fatal("the status page lost its Connection-Allowlist")
 	}
 }

@@ -54,17 +54,41 @@ describe('proof of work (spec 8.1)', () => {
     expect(() => solvePow(challenge.slice(1), id, 0)).toThrow(EncodingError);
   });
 
-  it('stops at the deadline instead of solving past the challenge window', () => {
+  it('stops when its budget is spent instead of solving past the challenge window', () => {
     let clock = 0;
     const attempts: number[] = [];
     const options = {
-      deadline: 3,
+      budgetMs: 3,
       now: () => clock++,
+      wallNow: () => 0,
       onAttempt: (counter: number) => {
         attempts.push(counter);
       },
     };
     expect(() => solvePow(challenge, id, MAX_POW_DIFFICULTY, options)).toThrow(PowTimeoutError);
-    expect(attempts).toEqual([0, 1, 2]);
+    expect(attempts).toEqual([0, 1]);
+  });
+
+  it('stops on the monotonic clock when the wall clock is set back during the solve', () => {
+    let monotonic = 0;
+    let wall = 0;
+    const solve = () =>
+      solvePow(challenge, id, MAX_POW_DIFFICULTY, {
+        budgetMs: 3,
+        now: () => monotonic++,
+        wallNow: () => (wall -= 1_000_000),
+      });
+    expect(solve).toThrow(PowTimeoutError);
+  });
+
+  it('stops on the wall clock when the machine slept and the monotonic clock stood still', () => {
+    let wall = 0;
+    const solve = () =>
+      solvePow(challenge, id, MAX_POW_DIFFICULTY, {
+        budgetMs: 60_000,
+        now: () => 0,
+        wallNow: () => (wall += 30_000),
+      });
+    expect(solve).toThrow(PowTimeoutError);
   });
 });

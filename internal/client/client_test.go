@@ -232,3 +232,37 @@ func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 		}
 	}
 }
+
+func TestRetriedClaimDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
+	t.Parallel()
+	challenge := `{"challenge":"` + core.Encode(
+		make([]byte, signing.ChallengeLen),
+	) + `","expires_at":"2026-10-24T00:00:00Z"}`
+	policy := core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":0}`))
+	var sent []string
+	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/challenge" {
+			w.Write([]byte(challenge))
+			return
+		}
+		sent = append(sent, r.Header.Get(shareKeyHeader))
+		if len(sent) == 1 {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"not_found"}`))
+			return
+		}
+		w.Header().Set("X-Nylzo-Lease", core.Encode(make([]byte, 32)))
+		w.Header().Set("X-Nylzo-Policy", policy)
+		w.WriteHeader(http.StatusOK)
+	})
+	claimed, err := client.Claim(t.Context(), core.NewID(), core.NewSecret(), core.NewSecret(), 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sent) != 2 || sent[0] == sent[1] || sent[0] == "" {
+		t.Fatalf("share keys sent: %q", sent)
+	}
+	if claimed.ShareKey == nil || core.Encode(claimed.ShareKey.PublicKey().Bytes()) != sent[1] {
+		t.Fatal("the claim did not report the share key of the answered attempt")
+	}
+}

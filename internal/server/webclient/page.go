@@ -41,14 +41,23 @@ func (b Build) Page(path, publicURL string) (string, error) {
 
 type Pages map[string]Page
 
-func (b Build) Render(publicURL string) (Pages, error) {
+// Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names.
+func (b Build) Render(publicURL, contact string) (Pages, error) {
+	if err := CheckContact(contact); err != nil {
+		return nil, fmt.Errorf("server: operator contact: %w", err)
+	}
+	allowlist := ConnectionAllowlist(contact)
 	pages := Pages{}
 	for name, template := range b.Templates {
 		html, err := render(template, publicURL)
 		if err != nil {
 			return nil, fmt.Errorf("server: web client %s: %w", name, err)
 		}
-		if pages[name], err = newPage(html); err != nil {
+		policy := PagePolicy(html)
+		if isStatusTemplate(name) {
+			policy = StatusPolicy(html)
+		}
+		if pages[name], err = newPage(html, policy, allowlist); err != nil {
 			return nil, err
 		}
 	}
@@ -60,6 +69,11 @@ func (p Pages) For(path string) Page {
 }
 
 func render(template, publicURL string) (string, error) {
+	if publicURL != "" {
+		if err := CheckPublicURL(publicURL); err != nil {
+			return "", fmt.Errorf("public URL: %w", err)
+		}
+	}
 	var out strings.Builder
 	rest := template
 	for {
@@ -88,13 +102,18 @@ func render(template, publicURL string) (string, error) {
 }
 
 type Page struct {
-	body   []byte
-	gzip   []byte
-	policy string
+	body    []byte
+	gzip    []byte
+	headers *pageHeaders
 }
 
-func newPage(html string) (Page, error) {
-	page := Page{body: []byte(html), policy: PagePolicy(html)}
+type pageHeaders struct {
+	policy    string
+	allowlist string
+}
+
+func newPage(html, policy, allowlist string) (Page, error) {
+	page := Page{body: []byte(html), headers: &pageHeaders{policy: policy, allowlist: allowlist}}
 	var buffer bytes.Buffer
 	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
 	if err != nil {
@@ -113,7 +132,11 @@ func (p Page) Body() []byte {
 }
 
 func (p Page) Policy() string {
-	return p.policy
+	return p.securityHeaders().policy
+}
+
+func (p Page) Allowlist() string {
+	return p.securityHeaders().allowlist
 }
 
 func (p Page) SHA256() string {
@@ -127,7 +150,9 @@ func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
 
 func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header := w.Header()
-	header.Set("Content-Security-Policy", p.policy)
+	headers := p.securityHeaders()
+	header.Set("Content-Security-Policy", headers.policy)
+	header.Set(connectionAllowlistHeader, headers.allowlist)
 	header.Set("Content-Type", htmlContentType)
 	header.Add("Vary", "Accept-Encoding")
 	body := p.body
@@ -137,6 +162,14 @@ func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	}
 	w.WriteHeader(status)
 	w.Write(body)
+}
+
+// securityHeaders keeps a page the build lacks from going out without a policy.
+func (p Page) securityHeaders() pageHeaders {
+	if p.headers == nil {
+		return pageHeaders{policy: NonHTMLCSP, allowlist: "(response-origin)"}
+	}
+	return *p.headers
 }
 
 func (a Asset) Serve(w http.ResponseWriter, r *http.Request) {

@@ -8,10 +8,11 @@ describe('retired recovery cleanup', () => {
     sessionStorage.clear();
   });
 
-  it('removes every retired key pointer while preserving unrelated session state', () => {
+  it('removes every retired key pointer and per-message scrypt mark while preserving unrelated session state', () => {
     sessionStorage.setItem('nylzo:link:first', 'synthetic');
     sessionStorage.setItem('unrelated', 'keep');
     sessionStorage.setItem('nylzo:link:second', 'synthetic');
+    sessionStorage.setItem('nylzo:kdf:AAAAAAAAAAAAAAAAAAAAAA', '1');
     const deleteDatabase = vi.fn<(...arguments_: unknown[]) => void>();
     forgetRetiredRecovery(() => sessionStorage, { deleteDatabase } as unknown as IDBFactory);
     expect(sessionStorage.length).toBe(1);

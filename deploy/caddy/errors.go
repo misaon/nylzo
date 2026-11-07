@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/caddyserver/caddy/v2"
@@ -26,7 +27,8 @@ func init() {
 
 // ErrorPage answers inside handle_errors: a browser that navigated gets the server error page, anything else the bare status.
 type ErrorPage struct {
-	pages webclient.Pages
+	Contact string `json:"contact,omitempty"`
+	pages   webclient.Pages
 }
 
 func (*ErrorPage) CaddyModule() caddy.ModuleInfo {
@@ -34,18 +36,31 @@ func (*ErrorPage) CaddyModule() caddy.ModuleInfo {
 }
 
 func (e *ErrorPage) Provision(_ caddy.Context) error {
+	if err := webclient.CheckContact(e.Contact); err != nil {
+		return fmt.Errorf("the contact %q: %w", e.Contact, err)
+	}
 	build, err := webclient.Load(web.Files())
 	if err != nil {
 		return err
 	}
-	e.pages, err = build.Render("")
+	e.pages, err = build.Render("", e.Contact)
 	return err
 }
 
-func (*ErrorPage) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
+func (e *ErrorPage) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 	for dispenser.Next() {
-		if dispenser.NextArg() || dispenser.NextBlock(0) {
+		if dispenser.NextArg() {
 			return dispenser.ArgErr()
+		}
+		for dispenser.NextBlock(0) {
+			if dispenser.Val() != "contact" {
+				return dispenser.Errf("unknown subdirective %q", dispenser.Val())
+			}
+			contact, err := contactArgument(dispenser)
+			if err != nil {
+				return err
+			}
+			e.Contact = contact
 		}
 	}
 	return nil

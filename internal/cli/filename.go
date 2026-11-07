@@ -20,13 +20,13 @@ var (
 	windowsDevice = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³]|conin\$|conout\$) *(\.|$)`)
 )
 
+// Together with Cf these two properties make up Unicode's Default_Ignorable_Code_Point, which Go does not list itself.
 func invisible(character rune) bool {
-	switch character {
-	case 0x115F, 0x1160, 0x3164, 0xFFA0:
-		return true
-	default:
-		return unicode.In(character, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp)
-	}
+	return unicode.In(
+		character,
+		unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp,
+		unicode.Other_Default_Ignorable_Code_Point, unicode.Variation_Selector,
+	)
 }
 
 // attachmentName makes a received file name safe on every system the same way the web client does.

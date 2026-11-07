@@ -76,6 +76,35 @@ function preloadFonts(): Plugin {
   };
 }
 
+const TRUSTED_TYPES_POLICIES: ReadonlySet<string> = new Set(['nylzo-kdf']);
+
+// The page CSP admits only these policy names, so a chunk that creates another one stops the client from starting.
+function onlyApprovedTrustedTypesPolicies(): Plugin {
+  return {
+    name: 'nylzo-only-approved-trusted-types-policies',
+    apply: 'build',
+    generateBundle(_, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') {
+          continue;
+        }
+        const mentions = output.code.match(/\bcreatePolicy\b/gu)?.length ?? 0;
+        const calls = [...output.code.matchAll(/\bcreatePolicy\(\s*["'`]([^"'`]+)["'`]/gu)];
+        for (const [, name = ''] of calls) {
+          if (!TRUSTED_TYPES_POLICIES.has(name)) {
+            this.error(`${output.fileName} creates the Trusted Types policy ${name}, which the page CSP refuses.`);
+          }
+        }
+        if (mentions !== calls.length) {
+          this.error(
+            `${output.fileName} reaches createPolicy without a literal policy name, which this check cannot verify.`,
+          );
+        }
+      }
+    },
+  };
+}
+
 function staticImportsOnlyFromEntry(): Plugin {
   return {
     name: 'nylzo-static-imports-only-from-entry',
@@ -117,7 +146,15 @@ export default defineConfig(({ isSsrBuild }) => ({
   plugins: [
     tailwindcss(),
     svelte(),
-    ...(isSsrBuild ? [] : [buildMetadata(), preloadFonts(), staticImportsOnlyFromEntry(), precompress()]),
+    ...(isSsrBuild
+      ? []
+      : [
+          buildMetadata(),
+          preloadFonts(),
+          staticImportsOnlyFromEntry(),
+          onlyApprovedTrustedTypesPolicies(),
+          precompress(),
+        ]),
   ],
   define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
   server: { strictPort: true, proxy: { '/api': developmentApi } },

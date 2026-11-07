@@ -227,8 +227,7 @@ func readMessage(
 		return openedMessage{}, err
 	}
 	defer clear(verifier[:])
-	shareKey := share.NewKey()
-	fetched, lease, err := fetchEnvelope(ctx, api, link, &verifier, shareKey, metadata.Size)
+	fetched, lease, err := fetchEnvelope(ctx, api, link, &verifier, metadata.Size)
 	if err != nil {
 		return openedMessage{}, err
 	}
@@ -236,7 +235,7 @@ func readMessage(
 	if !headerMatches(&fetched, link, &metadata) {
 		return openedMessage{}, errPolicyChanged
 	}
-	contentKeys, err := contentKeysOf(link, passphraseKey, shareKey, fetched.Share)
+	contentKeys, err := contentKeysOf(link, passphraseKey, fetched.ShareKey, fetched.Share)
 	if err != nil {
 		return openedMessage{}, errTampered
 	}
@@ -277,7 +276,7 @@ func contentKeysOf(
 	shareKey *ecdh.PrivateKey,
 	wrapped *[share.WrappedLen]byte,
 ) (keys.ContentKeys, error) {
-	if wrapped == nil {
+	if wrapped == nil || shareKey == nil {
 		return keys.ContentKeys{}, errTampered
 	}
 	expiryShare, err := share.Unwrap(shareKey, wrapped)
@@ -313,10 +312,9 @@ func fetchEnvelope(
 	api *client.Client,
 	link *openLink,
 	verifier *[core.SeedLen]byte,
-	shareKey *ecdh.PrivateKey,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, shareKey.PublicKey(), size, nil)
+	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}
@@ -324,7 +322,7 @@ func fetchEnvelope(
 		return client.Envelope{}, "", err
 	}
 	for range blobRetries {
-		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, shareKey.PublicKey(), claimed.Lease, size)
+		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
 		if blobErr == nil {
 			return fetched, claimed.Lease, nil
 		}

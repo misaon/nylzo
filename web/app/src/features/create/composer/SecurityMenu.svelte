@@ -3,7 +3,7 @@
 
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
-  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
+  import { privatePassphrase, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import Popover from '../../../shared/ui/menu/Popover.svelte';
   import Switch from '../../../shared/ui/switch/Switch.svelte';
@@ -68,7 +68,7 @@
             bind:value={composer.passphrase}
             type="text"
             disabled={!composer.protect}
-            {...PRIVATE_PASSPHRASE}
+            {...privatePassphrase(true)}
             onkeydown={submitOnEnter}
             placeholder={translate('compose.passphrase.placeholder', {
               min: MIN_PASSPHRASE_CHARACTERS,

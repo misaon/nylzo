@@ -12,7 +12,7 @@ import { instanceOrigin, servedByLocalClient } from '../../../shared/local-clien
 import { PacedTimeline } from '../../../shared/pipeline/paced-timeline.svelte.ts';
 import type { TimelineSettings } from '../../../shared/pipeline/paced-timeline.svelte.ts';
 import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
-import { randomCharacter, randomText } from '../../../shared/pipeline/random-text.ts';
+import { randomText } from '../../../shared/pipeline/random-text.ts';
 import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
 import type { SentStore } from '../../../shared/sent-records/sent-store.ts';
 import { ttlChoices, ttlKey } from '../../../shared/ttl/ttl-choices.ts';
@@ -77,10 +77,7 @@ function timelineSettings(): TimelineSettings {
 
 function cipherText(plain: string, progress: number): string {
   const cut = Math.floor(plain.length * Math.min(1, progress * CIPHER_LEAD));
-  const scrambled = Array.from({ length: plain.length }, (_, index) =>
-    index < cut ? randomCharacter() : plain.charAt(index),
-  );
-  return scrambled.join('') + randomText(Math.floor(progress * CIPHER_GROWTH));
+  return randomText(cut) + plain.slice(cut) + randomText(Math.floor(progress * CIPHER_GROWTH));
 }
 
 export class Composer {

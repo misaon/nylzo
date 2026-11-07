@@ -29,7 +29,7 @@ class ImpostorError extends Error {
 interface PowCall {
   readonly challenge: string;
   readonly difficulty: number;
-  readonly deadline: number;
+  readonly budgetMs: number;
 }
 
 function createDependencies(api: FakeApi, solve?: (call: PowCall, id: Uint8Array<ArrayBuffer>) => Promise<string>) {
@@ -38,9 +38,8 @@ function createDependencies(api: FakeApi, solve?: (call: PowCall, id: Uint8Array
     api,
     origin: 'https://nylzo.test',
     scrypt,
-    now: () => 1000,
-    solvePow: async (challenge, id, difficulty, deadline) => {
-      const call = { challenge, difficulty, deadline };
+    solvePow: async (challenge, id, difficulty, budgetMs) => {
+      const call = { challenge, difficulty, budgetMs };
       powCalls.push(call);
       api.calls.push('solve');
       return solve ? solve(call, id) : solvePow(challenge, id, difficulty);
@@ -54,13 +53,20 @@ function input(overrides: Partial<CreateInput> = {}): CreateInput {
 }
 
 describe('creating a message', () => {
-  it.each([false, true])('W2-06, F6: compresses an attachment only when the sender asks: %s', async (asked) => {
+  it('W2-06, F6: never compresses an attachment, which only a sender of the CLI may choose', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(256 * 1024).fill(65);
     const file = { name: 'rows.csv', mime: 'text/csv', bytes };
-    await createMessage(input({ file, compress: asked }), createDependencies(api));
+    await createMessage(input({ file }), createDependencies(api));
     const [message] = api.stored.values();
-    expect(message?.request.object.length).toBe(asked ? 65_536 : 327_680);
+    expect(message?.request.object.length).toBe(327_680);
+  });
+
+  it('creates a message whose text or file name holds a lone surrogate instead of failing', async () => {
+    const api = fakeApi();
+    const file = { name: 'a\uD800.txt', mime: 'text/plain', bytes: new Uint8Array([1]) };
+    const created = await createMessage(input({ text: 'x\uDC00', file }), createDependencies(api));
+    expect(created.link).toMatch(/\/r#2\./u);
   });
 
   it('F1, F7: pins the object in the link and sends a verifier also without a passphrase', async () => {
@@ -90,9 +96,7 @@ describe('creating a message', () => {
       'solve',
       'create',
     ]);
-    expect(dependencies.powCalls).toEqual([
-      { challenge: api.challenges[1], difficulty: 2, deadline: 1000 + POW_BUDGET_MS },
-    ]);
+    expect(dependencies.powCalls).toEqual([{ challenge: api.challenges[1], difficulty: 2, budgetMs: POW_BUDGET_MS }]);
     const [message] = api.stored.values();
     expect(message?.request.powToken).toMatch(new RegExp(String.raw`^${api.challenges[1]}\.[0-9a-f]{16}$`, 'u'));
   });

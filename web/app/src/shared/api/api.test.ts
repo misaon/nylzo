@@ -8,7 +8,7 @@ import {
   transferSeconds,
   utf8,
 } from '@nylzo/core';
-import type { Purpose } from '@nylzo/core';
+import type { Purpose, ShareKey } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import { ResponseError, StoppedError } from './api-errors.ts';
@@ -23,6 +23,9 @@ type Handler = (request: Request) => Response | Promise<Response>;
 function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return Response.json(body, { status, headers: { 'Content-Type': 'application/json', ...headers } });
 }
+
+const LEASE = 'A'.repeat(43);
+const OBJECT_HEADERS = { 'Content-Type': 'application/octet-stream', 'X-Nylzo-Lease': LEASE };
 
 function fakeServer(handler: Handler) {
   const seen: Request[] = [];
@@ -74,6 +77,7 @@ function authorizationParts(header: string): [string, string, string] {
 
 const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, flags: 0 })));
 const shareKey = new Uint8Array(32).fill(5);
+const shareKeys = (): Promise<ShareKey> => Promise.resolve({ publicKey: shareKey, privateKey: {} as CryptoKey });
 const wrappedShare = encodeBase64url(new Uint8Array(64).fill(6));
 
 const instanceBody = {
@@ -233,6 +237,40 @@ describe('api client', () => {
     }
   });
 
+  it.each([
+    ['an object of another media type', { 'Content-Type': 'text/html', 'X-Nylzo-Lease': LEASE }],
+    ['a lease that is not 32 canonical bytes', { 'Content-Type': 'application/octet-stream', 'X-Nylzo-Lease': 'l' }],
+    ['no lease', { 'Content-Type': 'application/octet-stream' }],
+  ])('refuses a claim answer with %s', async (_case, headers) => {
+    const readKey = await requestKey(new Uint8Array(32).fill(1));
+    const server = fakeServer(
+      () =>
+        new Response(new Uint8Array(16), {
+          status: 200,
+          headers: { ...headers, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': wrappedShare },
+        }),
+    );
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toBeInstanceOf(
+      ResponseError,
+    );
+  });
+
+  it('reads JSON only as application/json and Retry-After only as plain seconds', async () => {
+    const server = fakeServer(() =>
+      Response.json({ limits: {} }, { status: 200, headers: { 'Content-Type': 'text/plain' } }),
+    );
+    await expect(server.api.instance()).rejects.toBeInstanceOf(ResponseError);
+    for (const [header, expected] of [
+      ['30', 30],
+      ['0x10', undefined],
+      ['1e3', undefined],
+      [' 7 ', 7],
+    ] as const) {
+      const limited = fakeServer(() => new Response('', { status: 429, headers: { 'Retry-After': header } }));
+      await expect(limited.api.instance()).rejects.toMatchObject({ kind: 'unexpected', retryAfter: expected });
+    }
+  });
+
   it('claims with R and V over the same challenge and streams the object', async () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(1));
@@ -243,7 +281,8 @@ describe('api client', () => {
         new Response(object, {
           status: 200,
           headers: {
-            'X-Nylzo-Lease': 'lease-token',
+            'Content-Type': 'application/octet-stream',
+            'X-Nylzo-Lease': LEASE,
             'X-Nylzo-Policy': policy,
             'X-Nylzo-Share': wrappedShare,
             'Content-Length': String(object.length),
@@ -254,7 +293,7 @@ describe('api client', () => {
     const leases: string[] = [];
     const claimed = await server.api.claim(id, readKey, {
       verifierKey,
-      shareKey,
+      shareKeys,
       onLease: (lease) => {
         leases.push(lease);
       },
@@ -262,8 +301,8 @@ describe('api client', () => {
         progress.push([received, total]);
       },
     });
-    expect(leases).toEqual(['lease-token']);
-    expect(claimed.lease).toBe('lease-token');
+    expect(leases).toEqual([LEASE]);
+    expect(claimed.lease).toBe(LEASE);
     expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, flags: 0 });
     expect(claimed.share).toEqual(new Uint8Array(64).fill(6));
     expect(claimed.object).toEqual(object);
@@ -296,6 +335,59 @@ describe('api client', () => {
     expect(gone.issued()).toBe(2);
   });
 
+  it('draws a new share key for the retry after a 404 and reports the one the answer is wrapped to', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    let attempt = 0;
+    const drawn: ShareKey[] = [];
+    const sent: (string | null)[] = [];
+    const flaky = fakeServer((request) => {
+      sent.push(request.headers.get('X-Nylzo-Share-Key'));
+      return ++attempt === 1
+        ? json(404, { error: 'not_found' })
+        : new Response(new Uint8Array(16), {
+            status: 200,
+            headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': wrappedShare },
+          });
+    });
+    const claimed = await flaky.api.claim(randomId(), readKey, {
+      verifierKey: readKey,
+      shareKeys: () => {
+        const key = { publicKey: new Uint8Array(32).fill(drawn.length + 1), privateKey: {} as CryptoKey };
+        drawn.push(key);
+        return Promise.resolve(key);
+      },
+    });
+    expect(sent).toEqual(drawn.map((key) => encodeBase64url(key.publicKey)));
+    expect(new Set(sent).size).toBe(2);
+    expect(claimed.shareKey).toBe(drawn[1]);
+  });
+
+  it('sends the ack as one keepalive request when its challenge was fetched before the message showed', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    const server = fakeServer(() => new Response(null, { status: 204 }));
+    const challenge = await server.api.challenge();
+    server.seen.length = 0;
+    await server.api.ack(randomId(), readKey, LEASE, challenge);
+    expect(server.seen.map((request) => new URL(request.url).pathname)).toEqual([expect.stringMatching(/\/ack$/u)]);
+    expect(server.seenOptions.at(-1)?.keepalive).toBe(true);
+  });
+
+  it('signs the retry of an ack with a new challenge when the server refused the prepared one', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    const used: string[] = [];
+    const server = fakeServer((request) => {
+      used.push(authorizationParts(request.headers.get('Authorization') ?? '')[1]);
+      return used.length === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 });
+    });
+    const prepared = await server.api.challenge();
+    await server.api.ack(randomId(), readKey, LEASE, prepared);
+    expect(server.issued()).toBe(2);
+    expect(used).toEqual([
+      encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)),
+      encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(2)),
+    ]);
+  });
+
   it('maps errors from the server', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(4));
     const cases: [Response, Partial<ApiError>][] = [
@@ -313,7 +405,7 @@ describe('api client', () => {
     ];
     for (const [response, expected] of cases) {
       const server = fakeServer(() => response.clone());
-      await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toMatchObject(
+      await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toMatchObject(
         expected,
       );
     }
@@ -393,7 +485,7 @@ describe('api client', () => {
   it('leaves retryAfter empty when the server sends no Retry-After', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(6));
     const server = fakeServer(() => json(503, { error: 'unavailable' }));
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toMatchObject({
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toMatchObject({
       kind: 'unavailable',
       retryAfter: undefined,
     });
@@ -405,10 +497,10 @@ describe('api client', () => {
       () =>
         new Response(new Uint8Array(16), {
           status: 200,
-          headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) },
+          headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) },
         }),
     );
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toThrow(
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toThrow(
       ResponseError,
     );
   });
@@ -421,7 +513,7 @@ describe('api client', () => {
       challenged = server.issued() > 0;
       return false;
     };
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey, proceed })).rejects.toThrow(
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys, proceed })).rejects.toThrow(
       StoppedError,
     );
     expect(challenged).toBe(true);
@@ -440,7 +532,7 @@ describe('api client', () => {
         return json(201, { id: 'AAAAAAAAAAAAAAAAAAAAAA', expires_at: '2026-10-24T09:00:00Z' });
       }
       if (path.endsWith('/claim') || path.endsWith('/blob')) {
-        return new Response(object, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } });
+        return new Response(object, { status: 200, headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy } });
       }
       return new Response(null, { status: 204 });
     });
@@ -458,9 +550,9 @@ describe('api client', () => {
       ttlSeconds: 3600,
       object,
     });
-    await server.api.claim(id, readKey, { verifierKey: readKey, shareKey });
-    await server.api.blob(id, readKey, 'l', shareKey);
-    await server.api.ack(id, readKey, 'l');
+    await server.api.claim(id, readKey, { verifierKey: readKey, shareKeys });
+    await server.api.blob(id, readKey, LEASE, shareKeys);
+    await server.api.ack(id, readKey, LEASE);
     await server.api.burn(id, readKey);
     expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(7);
     expect(
@@ -480,6 +572,12 @@ describe('api client', () => {
         cache: 'no-store',
       })),
     );
+    expect(
+      server.seenOptions
+        .filter((request) => request.keepalive === true)
+        .map((request) => new URL(request.url).pathname),
+      'only the ack outlives a page that is left',
+    ).toEqual([expect.stringMatching(/^\/api\/v1\/messages\/[\w-]{22}\/ack$/u)]);
   });
 
   it('stops reading an object without Content-Length once it passes the protocol maximum', async () => {
@@ -497,9 +595,9 @@ describe('api client', () => {
       },
     });
     const server = fakeServer(
-      () => new Response(body, { status: 200, headers: { 'X-Nylzo-Lease': 'l', 'X-Nylzo-Policy': policy } }),
+      () => new Response(body, { status: 200, headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy } }),
     );
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKey })).rejects.toThrow(
+    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toThrow(
       ResponseError,
     );
     expect(sent).toBeLessThanOrEqual(MAX_OBJECT_BYTES + 2 * chunk.length);
@@ -512,12 +610,13 @@ describe('api client', () => {
   ])('reads an object in chunks with %s Content-Length', async (_label, length) => {
     const readKey = await requestKey(new Uint8Array(32).fill(9));
     const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
       'X-Nylzo-Policy': policy,
       ...(length !== undefined && { 'Content-Length': String(length) }),
     };
     const progress: [number, number | undefined][] = [];
     const server = fakeServer(() => new Response(chunkedStream(CHUNKED_OBJECT), { status: 200, headers }));
-    const envelope = await server.api.blob(randomId(), readKey, 'l', shareKey, (received, total) => {
+    const envelope = await server.api.blob(randomId(), readKey, LEASE, shareKeys, (received, total) => {
       progress.push([received, total]);
     });
     expect(envelope.object).toEqual(CHUNKED_OBJECT);

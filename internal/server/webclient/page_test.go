@@ -76,6 +76,14 @@ func TestPublicBlocksAreFilledOrDropped(t *testing.T) {
 	if got, err := build.Page("/sent", "https://n.example"); err != nil || got != page {
 		t.Fatalf("a page without markers: %q %v", got, err)
 	}
+	for _, unsafe := range []string{`https://n.example"><script>alert(1)</script>`, "https://n.example'&", "https://n<x>.example"} {
+		if _, err := build.Page("/", unsafe); err == nil {
+			t.Fatalf("%q was written into the page", unsafe)
+		}
+		if _, err := build.Render(unsafe, ""); err == nil {
+			t.Fatalf("%q was rendered", unsafe)
+		}
+	}
 }
 
 func hashSource(content string) string {
@@ -90,7 +98,7 @@ func TestPagePolicyAdmitsOnlyTheInlineCodeOfThePage(t *testing.T) {
 		`<style>p{}</style><noscript><style>body{}</style></noscript><style>p{}</style></head>` + "\n<body></body>"
 	files := builtClient(t)
 	files["dist/index.html"] = &fstest.MapFile{Data: []byte(page + strings.Repeat("<p>nylzo</p>", 20000))}
-	pages, err := load(t, files).Render("https://nylzo.example")
+	pages, err := load(t, files).Render("https://nylzo.example", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +146,57 @@ func TestRobotsAndSitemap(t *testing.T) {
 	}
 }
 
+func TestConnectionAllowlistAdmitsOnlyTheOperatorContact(t *testing.T) {
+	t.Parallel()
+	const linked = `response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*"`
+	for contact, want := range map[string]string{
+		"":                                    "(" + linked + ")",
+		"Security+Desk_1@Mail.Example.org":    "(" + linked + ` "mailto\\:Security\\+Desk_1@Mail.Example.org?#")`,
+		"https://Example.org:8443/contact":    "(" + linked + ` "https://example.org:8443/contact?#")`,
+		"https://example.org:443":             "(" + linked + ` "https://example.org/?#")`,
+		"https://example.org/a!b:c_d?q=1+2&x": "(" + linked + ` "https://example.org/a!b\\:c_d?q=1\\+2&x#")`,
+	} {
+		if got := webclient.ConnectionAllowlist(contact); got != want {
+			t.Errorf("%q: %s, want %s", contact, got, want)
+		}
+	}
+	build := load(t, builtClient(t))
+	pages, err := build.Render("https://nylzo.example", "security@example.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	pages.For("/transparency").Serve(response, httptest.NewRequest(http.MethodGet, "/transparency", http.NoBody))
+	if got := response.Header().
+		Get("Connection-Allowlist"); got != webclient.ConnectionAllowlist(
+		"security@example.org",
+	) {
+		t.Fatalf("the transparency page carries %q", got)
+	}
+	for _, unsafe := range []string{
+		"javascript:alert(1)", "http://example.org/", "mailto:a@b.example", `https://example.org/"`,
+		"https://user@example.org/", "https://example.org/#top", "https://example.org/a(b)", "https://example.org:0/",
+		"https://example.org:99999/", "https://exa_mple.org/", "https://example.org/%zz", "https://example.org/?q=%zz",
+		"https://example.org/a/../b", "https://example.org/?", "https://example.org:/",
+	} {
+		if _, renderErr := build.Render("", unsafe); renderErr == nil {
+			t.Errorf("%q was accepted as a contact", unsafe)
+		}
+	}
+}
+
+func TestAPageTheBuildLacksStillCarriesTheStrictestPolicy(t *testing.T) {
+	t.Parallel()
+	response := httptest.NewRecorder()
+	webclient.Pages{}.For("/").Serve(response, httptest.NewRequest(http.MethodGet, "/", http.NoBody))
+	if got := response.Header().Get("Content-Security-Policy"); got != webclient.NonHTMLCSP {
+		t.Errorf("Content-Security-Policy %q, want %q", got, webclient.NonHTMLCSP)
+	}
+	if got := response.Header().Get("Connection-Allowlist"); got != "(response-origin)" {
+		t.Errorf("Connection-Allowlist %q", got)
+	}
+}
+
 func TestCheckPublicURL(t *testing.T) {
 	t.Parallel()
 	for _, valid := range []string{
@@ -167,7 +226,7 @@ func TestCheckPublicURL(t *testing.T) {
 func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 	t.Parallel()
 	build := load(t, builtClient(t))
-	pages, err := build.Render("https://nylzo.example")
+	pages, err := build.Render("https://nylzo.example", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +264,7 @@ func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 		t.Fatalf("manifest\n got %s\nwant %s", gotJSON, wantJSON)
 	}
 	placeholderBuild := load(t, fstest.MapFS{"placeholder.html": {Data: []byte("placeholder")}})
-	placeholderPages, err := placeholderBuild.Render("")
+	placeholderPages, err := placeholderBuild.Render("", "")
 	if err != nil {
 		t.Fatal(err)
 	}

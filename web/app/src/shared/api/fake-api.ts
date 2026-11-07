@@ -1,5 +1,5 @@
 import { encodeBase64url, idToString, utf8 } from '@nylzo/core';
-import type { RequestKey } from '@nylzo/core';
+import type { RequestKey, ShareKey } from '@nylzo/core';
 
 import { ApiError, StoppedError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
@@ -102,7 +102,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     message.endedAt = '2026-10-23T11:00:00Z';
   }
 
-  async function envelope(message: Stored, shareKey: Uint8Array) {
+  async function envelope(message: Stored, shareKey: ShareKey) {
     const object = new Uint8Array(message.request.object);
     if (options.tamperObject) {
       object[object.length - 1] = (object.at(-1) ?? 0) ^ 1;
@@ -116,7 +116,9 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         flags: options.servedFlags ?? 0,
       },
       object,
-      share: share === undefined || options.withholdShare === true ? undefined : await wrapShare(share, shareKey),
+      share:
+        share === undefined || options.withholdShare === true ? undefined : await wrapShare(share, shareKey.publicKey),
+      shareKey,
     };
   }
 
@@ -217,17 +219,21 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       const lease = `lease-${message.leases.size + 1}`;
       message.leases.add(lease);
       claimOptions.onLease?.(lease);
-      const served = await envelope(message, claimOptions.shareKey);
+      const served = await envelope(message, await claimOptions.shareKeys());
       claimOptions.onProgress?.(served.object.length, served.object.length);
       return { lease, ...served };
     },
-    async blob(id, readKey, lease, shareKey) {
+    async blob(id, readKey, lease, shareKeys) {
       calls.push('blob');
       const message = find(id, readKey);
       if (!message.leases.has(lease)) {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      return envelope(message, shareKey);
+      return envelope(message, await shareKeys());
+    },
+    async challenge() {
+      calls.push('challenge');
+      return new Uint8Array(36);
     },
     async ack(id, readKey, lease) {
       calls.push('ack');
