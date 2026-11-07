@@ -436,7 +436,7 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 	}
 	paths := readPaths(
 		t,
-		runWith(t, link, map[string]string{environmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
+		runWith(t, link, map[string]string{command.EnvironmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
 	)
 	assertPrivate(t, paths[0], "behind a passphrase")
 }
@@ -558,7 +558,7 @@ func TestBurnAndPrintedManageToken(t *testing.T) {
 	if burned := runWith(
 		t,
 		"",
-		map[string]string{environmentLink: lines[0]},
+		map[string]string{command.EnvironmentLink: lines[0]},
 		nil,
 		"burn",
 	); burned.code != command.ExitOK ||
@@ -878,7 +878,7 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 		result := runWith(
 			t,
 			strings.Replace(link, instance.url, proxy, 1),
-			map[string]string{environmentPassphrase: passphrase},
+			map[string]string{command.EnvironmentPassphrase: passphrase},
 			nil,
 			"read",
 			"--out",
@@ -1106,7 +1106,7 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 		writeSecretFile(t, "correct horse battery staple"),
 	)
 	readPaths(t, runWith(t, "\n  "+plain+"  \n", nil, nil, "read", "--out", t.TempDir()))
-	passphrase := map[string]string{environmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
+	passphrase := map[string]string{command.EnvironmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
 	readPaths(t, runWith(t, guarded, passphrase, nil, "read", "--out", t.TempDir()))
 	for route, sizes := range lengths {
 		if len(sizes) != 2 || sizes[0] != sizes[1] {
@@ -1130,8 +1130,8 @@ func TestErrorsNeverEchoSecrets(t *testing.T) {
 		variables map[string]string
 		arguments []string
 	}{
-		"passphrase in the file variable": {map[string]string{environmentPassphrase: secret}, []string{"read", "--stdout"}},
-		"token in the file variable":      {map[string]string{environmentManageToken: token}, []string{"status"}},
+		"passphrase in the file variable": {map[string]string{command.EnvironmentPassphrase: secret}, []string{"read", "--stdout"}},
+		"token in the file variable":      {map[string]string{command.EnvironmentManageToken: token}, []string{"status"}},
 		"passphrase as a file":            {nil, []string{"read", "--stdout", "--passphrase-file", secret}},
 		"passphrase as a duration":        {nil, []string{"create", "--server", instance.url, "--ttl", secret}},
 		"token as a count":                {nil, []string{"create", "--server", instance.url, "--opens", token}},
@@ -1171,8 +1171,8 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 		t,
 		"",
 		map[string]string{
-			environmentLink:       link,
-			environmentPassphrase: writeSecretFile(t, "correct horse battery staple"),
+			command.EnvironmentLink:       link,
+			command.EnvironmentPassphrase: writeSecretFile(t, "correct horse battery staple"),
 		},
 		nil,
 		"read",
@@ -1181,8 +1181,8 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 	)
 	paths := readPaths(t, result)
 	assertPrivate(t, paths[0], "first line")
-	if !strings.Contains(result.stderr, "named by "+environmentLink) ||
-		!strings.Contains(result.stderr, "named by "+environmentPassphrase) {
+	if !strings.Contains(result.stderr, "named by "+command.EnvironmentLink) ||
+		!strings.Contains(result.stderr, "named by "+command.EnvironmentPassphrase) {
 		t.Fatalf("read did not say it used the variables: %q", result.stderr)
 	}
 }
@@ -1281,7 +1281,7 @@ func TestServerTextNeverReachesTheTerminalRaw(t *testing.T) {
 		t.Fatalf("server text on stderr: %d %q", result.code, result.stderr)
 	}
 	cert := &x509.Certificate{DNSNames: []string{"\x1b]0;pwned\x07", "\x1b[2K\rnylzo: the message was saved"}}
-	if explained := explain(
+	if explained := command.Explain(
 		&url.Error{
 			Op:  "Get",
 			URL: "https://localhost/",
@@ -1416,8 +1416,8 @@ func TestManageTokenVariableIsNamed(t *testing.T) {
 	instance := newTestServer(t, nil)
 	manage := filepath.Join(t.TempDir(), "manage")
 	createText(t, instance, "named", "--manage-token-file", manage)
-	result := runWith(t, "", map[string]string{environmentManageToken: manage}, nil, "status")
-	if result.code != command.ExitOK || !strings.Contains(result.stderr, "named by "+environmentManageToken) {
+	result := runWith(t, "", map[string]string{command.EnvironmentManageToken: manage}, nil, "status")
+	if result.code != command.ExitOK || !strings.Contains(result.stderr, "named by "+command.EnvironmentManageToken) {
 		t.Fatalf("status from the variable: %d %q", result.code, result.stderr)
 	}
 }

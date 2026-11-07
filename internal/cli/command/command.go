@@ -1,6 +1,7 @@
 package command
 
 import (
+	"cmp"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -16,7 +17,15 @@ import (
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
+)
+
+const (
+	EnvironmentServer      = "NYLZO_SERVER"
+	EnvironmentLink        = "NYLZO_LINK"
+	EnvironmentPassphrase  = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
+	EnvironmentManageToken = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
 )
 
 const (
@@ -48,6 +57,29 @@ type Environment struct {
 func (e *Environment) BuildInformation() buildinfo.Info {
 	return buildinfo.Read(e.Version, e.Commit, e.Date, e.Dirty)
 }
+
+func (e *Environment) LocalWebClient() (webclient.Build, error) {
+	load := e.WebClient
+	if load == nil {
+		load = func() (webclient.Build, error) { return webclient.Load(web.Files()) }
+	}
+	build, err := load()
+	if err != nil || !build.Built {
+		return webclient.Build{}, ErrNoLocalClient
+	}
+	return build, nil
+}
+
+func ServerAddress(environment *Environment, name, flagValue string) (string, bool) {
+	address := cmp.Or(flagValue, environment.Getenv(EnvironmentServer))
+	if address == "" {
+		fmt.Fprintln(environment.Stderr, Program+" "+name+" needs --server or "+EnvironmentServer)
+		return "", false
+	}
+	return address, true
+}
+
+var ErrNoLocalClient = errors.New("this nylzo carries no web client to compare with; use a release build")
 
 var (
 	errUsage          = errors.New("usage")

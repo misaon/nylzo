@@ -13,19 +13,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/report"
 )
 
-const manageTokenFileUsage = "read the manage token from this file (or " + environmentManageToken + ", or stdin)"
-
-type explanationError struct {
-	explanation string
-}
-
-func (e *explanationError) Error() string {
-	return e.explanation
-}
-
-func explained(err error) error {
-	return &explanationError{explanation: explain(err)}
-}
+const manageTokenFileUsage = "read the manage token from this file (or " + command.EnvironmentManageToken + ", or stdin)"
 
 func runStatus(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "status")
@@ -41,7 +29,7 @@ func runStatus(ctx context.Context, environment *command.Environment, arguments 
 	defer token.wipe()
 	status, err := server.Status(ctx, token.id, &token.seed)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	if *asJSON {
 		encoded, _ := json.Marshal(status)
@@ -86,7 +74,7 @@ func runCancel(ctx context.Context, environment *command.Environment, arguments 
 	}
 	defer token.wipe()
 	if err = server.Cancel(ctx, token.id, &token.seed); err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "cancelled")
 	return command.ExitOK
@@ -95,19 +83,19 @@ func runCancel(ctx context.Context, environment *command.Environment, arguments 
 func manageClient(environment *command.Environment, file string) (*manageToken, *client.Client, error) {
 	token, err := readManageToken(environment, file)
 	if err != nil {
-		return nil, nil, fmt.Errorf("manage token: %w", explained(err))
+		return nil, nil, fmt.Errorf("manage token: %w", command.Explained(err))
 	}
 	server, err := client.New(token.origin)
 	if err != nil {
 		token.wipe()
-		return nil, nil, explained(err)
+		return nil, nil, command.Explained(err)
 	}
 	return &token, server, nil
 }
 
 func runBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
@@ -117,7 +105,7 @@ func runBurn(ctx context.Context, environment *command.Environment, arguments []
 	}
 	defer link.wipe()
 	if err = server.Burn(ctx, link.id, &link.keys.R); err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "deleted")
 	return command.ExitOK
@@ -126,19 +114,19 @@ func runBurn(ctx context.Context, environment *command.Environment, arguments []
 func linkClient(environment *command.Environment, linkFile string) (*openLink, *client.Client, error) {
 	link, err := linkFromInput(environment, linkFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("link: %w", explained(err))
+		return nil, nil, fmt.Errorf("link: %w", command.Explained(err))
 	}
 	server, err := client.New(link.origin)
 	if err != nil {
 		link.wipe()
-		return nil, nil, explained(err)
+		return nil, nil, command.Explained(err)
 	}
 	return &link, server, nil
 }
 
 func runReport(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "report")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
 	reasonFile := flags.String(
 		"reason-file",
 		"",
@@ -169,7 +157,7 @@ func runReport(ctx context.Context, environment *command.Environment, arguments 
 	if *reasonFile != "" {
 		raw, readErr := command.ReadFileLimited(*reasonFile, maxSecretInput)
 		if readErr != nil {
-			return command.Failf(environment, "reason: %s", explain(readErr))
+			return command.Failf(environment, "reason: %s", command.Explain(readErr))
 		}
 		reason = strings.TrimSpace(string(raw))
 	}
@@ -201,7 +189,7 @@ func runReport(ctx context.Context, environment *command.Environment, arguments 
 		)
 	}
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	fmt.Fprintln(
 		environment.Stdout,

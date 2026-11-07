@@ -1,4 +1,4 @@
-package cli
+package command
 
 import (
 	"context"
@@ -13,6 +13,18 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
+type explanationError struct {
+	explanation string
+}
+
+func (e *explanationError) Error() string {
+	return e.explanation
+}
+
+func Explained(err error) error {
+	return &explanationError{explanation: Explain(err)}
+}
+
 var endedStates = map[string]string{
 	api.StateOpened:    "the message was already opened",
 	api.StateExpired:   "the message has expired",
@@ -20,8 +32,8 @@ var endedStates = map[string]string{
 	api.StateDeleted:   "the message was deleted",
 }
 
-// explain turns an error into a message that never repeats text from the server or a certificate.
-func explain(err error) string {
+// Explain turns an error into a message that never repeats text from the server or a certificate.
+func Explain(err error) string {
 	if apiErr, ok := errors.AsType[*client.APIError](err); ok {
 		return explainAPI(apiErr)
 	}

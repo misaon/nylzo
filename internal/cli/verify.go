@@ -35,7 +35,6 @@ const (
 )
 
 var (
-	errNoLocalClient      = errors.New("this nylzo carries no web client to compare with; use a release build")
 	errHeaderNotAllowable = errors.New("this header changes what a browser does and cannot be allowed")
 	errReleaseDiffers     = errors.New("verify with the nylzo release the server runs")
 	errContactLeftOut     = errors.New(
@@ -72,9 +71,9 @@ func isDifference(err error) bool {
 // A server that answers with something other than this nylzo must not look unreachable.
 func fetchFailed(where string, err error) error {
 	if errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse) {
-		return differs("%s: %s", where, explain(err))
+		return differs("%s: %s", where, command.Explain(err))
 	}
-	return fmt.Errorf("%s: %w", where, explained(err))
+	return fmt.Errorf("%s: %w", where, command.Explained(err))
 }
 
 type verified struct {
@@ -105,7 +104,7 @@ func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOption
 		&options.server,
 		"server",
 		"",
-		"server address such as https://nylzo.example (or "+environmentServer+")",
+		"server address such as https://nylzo.example (or "+command.EnvironmentServer+")",
 	)
 	flags.Func(
 		"allow-header",
@@ -127,17 +126,17 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	address, ok := serverAddress(environment, "verify-client", options.server)
+	address, ok := command.ServerAddress(environment, "verify-client", options.server)
 	if !ok {
 		return command.ExitUsage
 	}
 	server, err := client.New(address)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
-	build, err := webClient(environment)
-	if err != nil || !build.Built {
-		return command.Failf(environment, "%s", errNoLocalClient)
+	build, err := environment.LocalWebClient()
+	if err != nil {
+		return command.Failf(environment, "%s", err)
 	}
 	check := &verifier{
 		server:      server,

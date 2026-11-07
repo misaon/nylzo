@@ -14,7 +14,9 @@ import (
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
-var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + environmentServer)
+var errLinkOtherInstance = errors.New(
+	"the link belongs to another instance than --server or " + command.EnvironmentServer,
+)
 
 type localOptions struct {
 	server    string
@@ -28,7 +30,7 @@ func localFlags(environment *command.Environment, name string) (*flag.FlagSet, *
 		&options.server,
 		"server",
 		"",
-		"the instance, such as https://nylzo.example (or "+environmentServer+")",
+		"the instance, such as https://nylzo.example (or "+command.EnvironmentServer+")",
 	)
 	flags.BoolVar(&options.noBrowser, "no-browser", false, "print the address instead of opening a browser")
 	return flags, options
@@ -39,17 +41,17 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	address, ok := serverAddress(environment, "web", options.server)
+	address, ok := command.ServerAddress(environment, "web", options.server)
 	if !ok {
 		return command.ExitUsage
 	}
 	instance, err := localInstance(address)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
-	build, err := webClient(environment)
-	if err != nil || !build.Built {
-		return command.Failf(environment, "%s", errNoLocalClient)
+	build, err := environment.LocalWebClient()
+	if err != nil {
+		return command.Failf(environment, "%s", err)
 	}
 	return local.Serve(ctx, environment, local.Options{
 		Instance:    instance,
@@ -61,29 +63,29 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 // runOpen hands a link to the local client in memory, so it reaches neither an argument nor a browser address.
 func runOpen(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := localFlags(environment, "open")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+environmentLink+", or stdin)")
+	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	address, ok := serverAddress(environment, "open", options.server)
+	address, ok := command.ServerAddress(environment, "open", options.server)
 	if !ok {
 		return command.ExitUsage
 	}
 	instance, err := localInstance(address)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	raw, err := readLink(environment, *linkFile)
 	if err != nil {
-		return command.Failf(environment, "link: %s", explain(err))
+		return command.Failf(environment, "link: %s", command.Explain(err))
 	}
 	link, err := handedOverLink(raw, instance)
 	if err != nil {
-		return command.Failf(environment, "link: %s", explain(err))
+		return command.Failf(environment, "link: %s", command.Explain(err))
 	}
-	build, err := webClient(environment)
-	if err != nil || !build.Built {
-		return command.Failf(environment, "%s", errNoLocalClient)
+	build, err := environment.LocalWebClient()
+	if err != nil {
+		return command.Failf(environment, "%s", err)
 	}
 	return local.Serve(ctx, environment, local.Options{
 		Instance:    instance,

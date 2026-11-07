@@ -75,7 +75,7 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		&options.server,
 		"server",
 		"",
-		"server address such as https://nylzo.example (or "+environmentServer+")",
+		"server address such as https://nylzo.example (or "+command.EnvironmentServer+")",
 	)
 	flags.StringVar(&options.fromFile, "from-file", "", "send this file as an attachment instead of text from stdin")
 	flags.DurationVar(
@@ -89,7 +89,7 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		&options.passphrase.file,
 		"passphrase-file",
 		"",
-		"protect the message with the passphrase on the first line of this file (or "+environmentPassphrase+")",
+		"protect the message with the passphrase on the first line of this file (or "+command.EnvironmentPassphrase+")",
 	)
 	flags.BoolVar(
 		&options.passphrase.ask,
@@ -124,13 +124,13 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	address, ok := serverAddress(environment, "create", options.server)
+	address, ok := command.ServerAddress(environment, "create", options.server)
 	if !ok {
 		return command.ExitUsage
 	}
 	server, err := client.New(address)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	message, err := readContent(environment, options.fromFile)
 	if err != nil {
@@ -143,7 +143,7 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 	)
 	secretmode.Do(func() { passphrase, generated, err = chosenPassphrase(environment, options) })
 	if err != nil {
-		return command.Failf(environment, "passphrase: %s", explain(err))
+		return command.Failf(environment, "passphrase: %s", command.Explain(err))
 	}
 	manage, err := reserveManageFile(options.manageFile)
 	if err != nil {
@@ -159,7 +159,7 @@ func runCreate(ctx context.Context, environment *command.Environment, arguments 
 	if err != nil {
 		manage.discard()
 		generated.discard()
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	defer created.wipe()
 	return reportCreated(environment, server, options, &created, manage)

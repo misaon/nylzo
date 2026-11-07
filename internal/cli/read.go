@@ -61,7 +61,7 @@ var (
 	errLinkDamaged      = errors.New("the link is incomplete or damaged")
 	errLinkMismatch     = errors.New("the link does not match the message on the server")
 	errPassphraseNeeded = errors.New(
-		"this message needs a passphrase: use --passphrase-file, " + environmentPassphrase + " or --ask-passphrase",
+		"this message needs a passphrase: use --passphrase-file, " + command.EnvironmentPassphrase + " or --ask-passphrase",
 	)
 	errOutNotDirectory = errors.New("--out must name an existing directory")
 	errOutNotCreated   = errors.New("--out: cannot create a private directory there")
@@ -137,13 +137,13 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 		&options.linkFile,
 		"link-file",
 		"",
-		"read the link from this file (or "+environmentLink+", or stdin)",
+		"read the link from this file (or "+command.EnvironmentLink+", or stdin)",
 	)
 	flags.StringVar(
 		&options.passphrase.file,
 		"passphrase-file",
 		"",
-		"read the passphrase from the first line of this file (or "+environmentPassphrase+")",
+		"read the passphrase from the first line of this file (or "+command.EnvironmentPassphrase+")",
 	)
 	flags.BoolVar(
 		&options.passphrase.ask,
@@ -173,12 +173,12 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 	}
 	link, err := linkFromInput(environment, options.linkFile)
 	if err != nil {
-		return command.Failf(environment, "link: %s", explain(err))
+		return command.Failf(environment, "link: %s", command.Explain(err))
 	}
 	defer link.wipe()
 	server, err := client.New(link.origin)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	directory := ""
 	if options.out != "" {
@@ -189,7 +189,7 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 	}
 	opened, err := readMessage(ctx, environment, server, &link, options.passphrase)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	defer clear(opened.payload.File)
 	paths, err := saveMessage(environment, directory, options.out, options.stdout, opened.payload)

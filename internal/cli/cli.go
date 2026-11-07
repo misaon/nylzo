@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -16,8 +15,6 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/operator"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server/web"
-	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 type subcommand struct {
@@ -36,22 +33,6 @@ var (
 	)
 	commandLike = regexp.MustCompile(`^[a-z][a-z-]{0,19}$`)
 )
-
-func webClient(environment *command.Environment) (webclient.Build, error) {
-	if environment.WebClient != nil {
-		return environment.WebClient()
-	}
-	return webclient.Load(web.Files())
-}
-
-func serverAddress(environment *command.Environment, name, flagValue string) (string, bool) {
-	address := cmp.Or(flagValue, environment.Getenv(environmentServer))
-	if address == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" "+name+" needs --server or "+environmentServer)
-		return "", false
-	}
-	return address, true
-}
 
 func commands() []subcommand {
 	return []subcommand{
