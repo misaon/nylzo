@@ -43,7 +43,8 @@ export async function unwrapShare(key: ShareKey, wrapped: Uint8Array): Promise<U
   }
   let mask: Uint8Array<ArrayBuffer>;
   try {
-    if (secret.every((byte) => byte === 0)) {
+    // OR every byte instead of stopping at the first non-zero one, so the check takes the same time for every secret.
+    if (secret.reduce((bits, byte) => bits | byte, 0) === 0) {
       throw new IntegrityError('the server sent a share key of small order');
     }
     const keyMaterial = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']);

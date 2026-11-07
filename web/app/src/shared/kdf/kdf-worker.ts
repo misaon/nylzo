@@ -1,7 +1,7 @@
 import { PowTimeoutError, solvePow } from '@nylzo/core';
 import { scryptPassphraseKey } from '@nylzo/core/scrypt';
 
-import { throttledProgress } from './kdf-protocol.ts';
+import { isKdfRequest, throttledProgress } from './kdf-protocol.ts';
 import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- postMessage requires a mutable transfer list in the platform API.
@@ -18,14 +18,17 @@ function handle(request: KdfRequest): void {
   }
   const expected = 2 ** request.difficulty;
   const token = solvePow(request.challenge, request.id, request.difficulty, {
-    deadline: request.deadline,
+    budgetMs: request.budgetMs,
     onAttempt: (counter) => onProgress(Math.min(counter / expected, 1)),
   });
   reply({ kind: 'token', token });
 }
 
-addEventListener('message', (event: MessageEvent<KdfRequest>) => {
+addEventListener('message', (event: MessageEvent<unknown>) => {
   try {
+    if (!isKdfRequest(event.data)) {
+      throw new TypeError('malformed key derivation request');
+    }
     handle(event.data);
   } catch (error) {
     reply({ kind: 'error', timeout: error instanceof PowTimeoutError });

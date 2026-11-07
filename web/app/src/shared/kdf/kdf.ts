@@ -1,6 +1,6 @@
 import { PowTimeoutError } from '@nylzo/core';
 
-import { KdfWorkerError } from './kdf-protocol.ts';
+import { isKdfResponse, KdfWorkerError } from './kdf-protocol.ts';
 import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 import { startWorker } from './worker-source.ts';
 
@@ -49,11 +49,13 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
         SILENCE_LIMIT_MS,
       );
     };
-    worker.addEventListener('message', ({ data }: MessageEvent<KdfResponse>) => {
+    worker.addEventListener('message', ({ data }: MessageEvent<unknown>) => {
       if (settled) {
         return;
       }
-      if (data.kind === 'progress') {
+      if (!isKdfResponse(data)) {
+        fail(new KdfWorkerError('the key derivation worker sent a malformed message'));
+      } else if (data.kind === 'progress') {
         restartSilenceTimer();
         onProgress(data.fraction);
       } else if (data.kind === 'error') {
@@ -85,11 +87,11 @@ export async function solvePowInWorker(
   challenge: string,
   id: Uint8Array<ArrayBuffer>,
   difficulty: number,
-  deadline: number,
+  budgetMs: number,
   onProgress: Progress,
 ): Promise<string> {
-  const response = await runWorker({ kind: 'pow', challenge, id, difficulty, deadline }, onProgress);
-  if (response.kind !== 'token') {
+  const response = await runWorker({ kind: 'pow', challenge, id, difficulty, budgetMs }, onProgress);
+  if (response.kind !== 'token' || !response.token.startsWith(`${challenge}.`)) {
     throw new KdfWorkerError();
   }
   return response.token;

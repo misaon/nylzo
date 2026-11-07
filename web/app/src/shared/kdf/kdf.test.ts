@@ -1,7 +1,6 @@
 import { PowTimeoutError } from '@nylzo/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { KdfResponse } from './kdf-protocol.ts';
 import { KdfWorkerError } from './kdf-protocol.ts';
 import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from './kdf.ts';
 import { startWorker } from './worker-source.ts';
@@ -22,7 +21,7 @@ describe('worker lifecycle', () => {
   const progress = vi.fn<(...arguments_: unknown[]) => void>();
   const salt = new Uint8Array(16).fill(1);
 
-  function reply(data: KdfResponse): void {
+  function reply(data: unknown): void {
     worker.dispatchEvent(new MessageEvent('message', { data }));
   }
 
@@ -79,12 +78,12 @@ describe('worker lifecycle', () => {
         challenge: 'challenge',
         id,
         difficulty: 4,
-        deadline: 1234,
+        budgetMs: 1234,
       },
       [],
     );
-    reply({ kind: 'token', token: 'synthetic-token' });
-    await expect(result).resolves.toBe('synthetic-token');
+    reply({ kind: 'token', token: 'challenge.0000000000000003' });
+    await expect(result).resolves.toBe('challenge.0000000000000003');
     expect(stop).toHaveBeenCalledOnce();
   });
 
@@ -98,7 +97,33 @@ describe('worker lifecycle', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each([true, false])('distinguishes proof-of-work deadline expiry from worker failure: %s', async (timeout) => {
+  it.each([
+    { kind: 'progress', fraction: Number.NaN },
+    { kind: 'progress', fraction: 2 },
+    { kind: 'key', key: new Uint8Array(31) },
+    { kind: 'key', key: 'not bytes' },
+    { kind: 'error' },
+    { kind: 'unknown' },
+    null,
+  ])('fails closed on the malformed worker message %j', async (message) => {
+    const result = scryptInWorker('phrase', salt, progress);
+    const failed = settled(result);
+    await Promise.resolve();
+    reply(message);
+    expect(await failed).toBeInstanceOf(KdfWorkerError);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('refuses a proof-of-work token for another challenge', async () => {
+    const result = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
+    const failed = settled(result);
+    await Promise.resolve();
+    reply({ kind: 'token', token: 'other.0000000000000000' });
+    expect(await failed).toBeInstanceOf(KdfWorkerError);
+  });
+
+  it.each([true, false])('distinguishes proof-of-work budget expiry from worker failure: %s', async (timeout) => {
     const result = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
     const failed = settled(result);
     await Promise.resolve();

@@ -18,7 +18,6 @@ import {
   PowTimeoutError,
   requestKey,
   seal,
-  sealWithCompression,
   TooLargeError,
   unwrapShare,
   utf8,
@@ -45,7 +44,6 @@ export interface CreateInput {
   readonly ttlSeconds: number;
   readonly opensMax: number;
   readonly passphrase: string;
-  readonly compress?: boolean | undefined;
 }
 
 export type CreateProblem =
@@ -101,10 +99,9 @@ export interface CreateDependencies {
     challenge: string,
     id: Uint8Array<ArrayBuffer>,
     difficulty: number,
-    deadline: number,
+    budgetMs: number,
     onProgress: Progress,
   ) => Promise<string>;
-  readonly now?: () => number;
 }
 
 type ReportProgress = (progress: CreateProgress) => void;
@@ -163,13 +160,15 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
   return problems;
 }
 
+// A lone surrogate (pasted text, a Windows file name) becomes U+FFFD, as UTF-8 encoding and the length check already count it.
 function metaOf(input: CreateInput): Meta {
+  const mime = input.file?.mime.toWellFormed() ?? '';
   const file = input.file && {
-    name: sanitizeFileName(input.file.name),
-    mime: utf8(input.file.mime).length <= MAX_MIME_BYTES ? input.file.mime : '',
+    name: sanitizeFileName(input.file.name.toWellFormed()),
+    mime: utf8(mime).length <= MAX_MIME_BYTES ? mime : '',
     size: input.file.bytes.length,
   };
-  return { ...(input.text !== '' && { text: input.text }), ...(file && { file }) };
+  return { ...(input.text !== '' && { text: input.text.toWellFormed() }), ...(file && { file }) };
 }
 
 async function derivePassphraseKey(
@@ -193,7 +192,6 @@ async function prove(
   dependencies: CreateDependencies,
   onProgress: ReportProgress,
 ): Promise<string | undefined> {
-  const now = dependencies.now ?? Date.now;
   for (let round = 1; ; round++) {
     const { pow } = await dependencies.api.instance();
     if (!pow.required) {
@@ -201,8 +199,7 @@ async function prove(
     }
     onProgress({ step: 'proving', fraction: 0 });
     try {
-      const deadline = now() + POW_BUDGET_MS;
-      return await dependencies.solvePow(pow.challenge ?? '', id, pow.difficulty, deadline, (fraction) =>
+      return await dependencies.solvePow(pow.challenge ?? '', id, pow.difficulty, POW_BUDGET_MS, (fraction) =>
         onProgress({ step: 'proving', fraction }),
       );
     } catch (error) {
@@ -253,8 +250,7 @@ async function sealMessage(
     passphraseKey.fill(0);
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
     onProgress({ step: 'encrypting' });
-    const encode = input.compress === true ? sealWithCompression : seal;
-    const object = await encode(contentKeys, newHeader(kdfId), id, policy, {
+    const object = await seal(contentKeys, newHeader(kdfId), id, policy, {
       meta: metaOf(input),
       file: input.file?.bytes,
     });

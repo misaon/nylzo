@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { vectors } from '../../test/vectors.ts';
 import { EncodingError, PowError, PowTimeoutError } from '../errors.ts';
@@ -54,17 +54,23 @@ describe('proof of work (spec 8.1)', () => {
     expect(() => solvePow(challenge.slice(1), id, 0)).toThrow(EncodingError);
   });
 
-  it('stops at the deadline instead of solving past the challenge window', () => {
+  it('stops when its budget is spent instead of solving past the challenge window', () => {
     let clock = 0;
     const attempts: number[] = [];
     const options = {
-      deadline: 3,
+      budgetMs: 3,
       now: () => clock++,
       onAttempt: (counter: number) => {
         attempts.push(counter);
       },
     };
     expect(() => solvePow(challenge, id, MAX_POW_DIFFICULTY, options)).toThrow(PowTimeoutError);
-    expect(attempts).toEqual([0, 1, 2]);
+    expect(attempts).toEqual([0, 1]);
+  });
+
+  it('measures its budget on the monotonic clock, so a wall clock step does not end it', () => {
+    const wallClock = vi.spyOn(Date, 'now').mockReturnValue(Number.MAX_SAFE_INTEGER);
+    expect(solvePow(challenge, id, 0, { budgetMs: 60_000 })).toMatch(/\.0{16}$/u);
+    wallClock.mockRestore();
   });
 });

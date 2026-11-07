@@ -47,7 +47,7 @@ export function powToken(challenge: string, counter: number): string {
 
 export interface SolveOptions {
   readonly onAttempt?: (counter: number) => void;
-  readonly deadline?: number;
+  readonly budgetMs?: number;
   readonly now?: () => number;
 }
 
@@ -56,9 +56,11 @@ export function solvePow(challenge: string, id: Uint8Array, difficulty: number, 
     throw new PowError();
   }
   const challengeBytes = parsePowChallenge(challenge);
-  const now = options.now ?? Date.now;
+  // A monotonic clock, so a wall clock step during the solve neither cuts it short nor lets it overrun.
+  const now = options.now ?? (() => performance.now());
+  const deadline = options.budgetMs === undefined ? undefined : now() + options.budgetMs;
   for (let counter = 0; ; counter++) {
-    if (options.deadline !== undefined && now() >= options.deadline) {
+    if (deadline !== undefined && now() >= deadline) {
       throw new PowTimeoutError();
     }
     options.onAttempt?.(counter);
