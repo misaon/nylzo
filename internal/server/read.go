@@ -372,27 +372,12 @@ type openedBlob struct {
 // openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
 func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (openedBlob, bool) {
 	var key seal.Key
-	var err error
-	secretmode.Do(func() { key, err = record.BlobKey() })
 	defer clear(key[:])
-	if errors.Is(err, store.ErrBlobMissing) {
-		writeGone(w, string(record.State(time.Now())))
+	if !s.readBlobKey(w, r, record, &key) {
 		return openedBlob{}, false
 	}
-	var file io.ReadCloser
-	var salt seal.EraseSalt
-	if err == nil {
-		file, salt, err = s.openStoredBlob(r.Context(), record)
-	}
-	if errors.Is(err, store.ErrBlobMissing) {
-		var state store.State
-		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
-			writeGone(w, string(state))
-			return openedBlob{}, false
-		}
-	}
-	if err != nil {
-		s.writeInternal(w, r, err)
+	file, salt, ok := s.openOrFinishBlob(w, r, record)
+	if !ok {
 		return openedBlob{}, false
 	}
 	var stream cipher.Stream
@@ -400,6 +385,43 @@ func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.
 	plain := cipher.StreamReader{S: stream, R: file}
 	content := decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}
 	return openedBlob{content: content, salt: salt}, true
+}
+
+// readBlobKey fills the caller's key, so the only copy is the one the caller clears.
+func (s *Server) readBlobKey(w http.ResponseWriter, r *http.Request, record *store.Record, key *seal.Key) bool {
+	var err error
+	secretmode.Do(func() { *key, err = record.BlobKey() })
+	switch {
+	case errors.Is(err, store.ErrBlobMissing):
+		writeGone(w, string(record.State(time.Now())))
+		return false
+	case err != nil:
+		s.writeInternal(w, r, err)
+		return false
+	default:
+		return true
+	}
+}
+
+// openOrFinishBlob ends a message whose blob a concurrent deletion already removed and answers it as gone.
+func (s *Server) openOrFinishBlob(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+) (io.ReadCloser, seal.EraseSalt, bool) {
+	file, salt, err := s.openStoredBlob(r.Context(), record)
+	if errors.Is(err, store.ErrBlobMissing) {
+		var state store.State
+		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
+			writeGone(w, string(state))
+			return nil, salt, false
+		}
+	}
+	if err != nil {
+		s.writeInternal(w, r, err)
+		return nil, salt, false
+	}
+	return file, salt, true
 }
 
 // openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
