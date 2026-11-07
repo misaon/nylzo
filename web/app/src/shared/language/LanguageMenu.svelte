@@ -8,7 +8,7 @@
   import Popover from '../ui/menu/Popover.svelte';
   import type { Language } from './language.ts';
   import LanguageFlag from './LanguageFlag.svelte';
-  import { getTranslator, loadCatalog } from './translator.svelte.ts';
+  import { getTranslator } from './translator.svelte.ts';
 
   interface Props {
     readonly placement: 'header' | 'footer';
@@ -27,15 +27,6 @@
   let open = $state(false);
   const current = $derived(translator.language);
   const currentLabel = $derived(translate('language.current', { language: translate(SPOKEN_NAMES[current]) }));
-
-  function toggle() {
-    open = !open;
-    if (open) {
-      for (const language of ORDER) {
-        void loadCatalog(language);
-      }
-    }
-  }
 
   function choose(language: Language) {
     open = false;
@@ -78,7 +69,7 @@
     aria-expanded={open}
     aria-controls={id}
     aria-label={placement === 'footer' ? currentLabel : `${current.toUpperCase()}, ${currentLabel}`}
-    onclick={toggle}
+    onclick={() => (open = !open)}
   >
     {#if placement === 'footer'}
       <Icon name="globe" class="size-4 shrink-0 text-aegis-300" animated />

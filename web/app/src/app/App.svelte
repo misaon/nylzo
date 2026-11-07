@@ -9,9 +9,10 @@
   import Sent from '../features/sent/Sent.svelte';
   import Terms from '../features/terms/Terms.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
+  import { loadCatalog } from '../shared/language/catalogs.ts';
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
-  import { loadCatalog, setTranslator, Translator } from '../shared/language/translator.svelte.ts';
+  import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
@@ -38,6 +39,7 @@
   const translator = setTranslator(new Translator(untrack(() => start.language)));
   const { translate } = translator;
   const variant = HEADER_VARIANTS[screen];
+  let requestedLanguage = untrack(() => start.language);
 
   function returned() {
     if (location.pathname !== path) {
@@ -46,10 +48,18 @@
   }
 
   async function switchLanguage(language: Language) {
+    requestedLanguage = language;
     if (translator.language === language) {
       return;
     }
-    await loadCatalog(language);
+    try {
+      await loadCatalog(language);
+    } catch {
+      return;
+    }
+    if (requestedLanguage !== language) {
+      return;
+    }
     const applyLanguage = async () => {
       translator.language = language;
       document.documentElement.lang = language;
