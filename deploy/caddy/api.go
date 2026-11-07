@@ -10,12 +10,19 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const badGatewayBody = `{"error":"bad_gateway"}`
 
-var forwardedHeaders = []string{"Content-Length", "Retry-After", "X-Nylzo-Lease", "X-Nylzo-Share", "X-Nylzo-Policy"}
+var forwardedHeaders = []string{
+	"Content-Length",
+	"Retry-After",
+	api.LeaseHeaderName,
+	api.ShareHeaderName,
+	api.PolicyHeaderName,
+}
 
 var (
 	errRefusedResponse = errors.New("untrusted upstream response")
@@ -122,11 +129,11 @@ func copyForwardedHeaders(destination, upstream http.Header) {
 }
 
 func responseContentType(path string, status int) string {
-	if path == "/healthz" {
+	if path == api.HealthPath {
 		return "text/plain"
 	}
-	if status == http.StatusOK && strings.HasPrefix(path, "/api/v1/messages/") &&
-		(strings.HasSuffix(path, "/blob") || strings.HasSuffix(path, "/claim")) {
+	if status == http.StatusOK && strings.HasPrefix(path, api.MessagesPath+"/") &&
+		(strings.HasSuffix(path, api.BlobAction) || strings.HasSuffix(path, api.ClaimAction)) {
 		return "application/octet-stream"
 	}
 	return "application/json"
