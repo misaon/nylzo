@@ -83,6 +83,26 @@ func TestUploadsWriteIntoFilesThePoolCreatedBefore(t *testing.T) {
 	}
 }
 
+func TestAFailedUploadGivesItsFileBackToThePool(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	blobs := newBlobs(t, directory)
+	before := poolFiles(t, directory)
+	if _, err := blobs.PutExpiring(t.Context(), "short", strings.NewReader("abc"), 10, time.Hour); err == nil {
+		t.Fatal("an upload shorter than its size must fail")
+	}
+	after := poolFiles(t, directory)
+	if len(after) != len(before) {
+		t.Fatalf("a failed upload took a pool file for good: %d of %d left", len(after), len(before))
+	}
+	for _, file := range after {
+		original := before[slices.IndexFunc(before, func(other os.FileInfo) bool { return os.SameFile(file, other) })]
+		if file.Size() != 0 || !file.ModTime().Equal(original.ModTime()) {
+			t.Fatalf("a returned pool file must be empty with its pool time: %d bytes, %v", file.Size(), file.ModTime())
+		}
+	}
+}
+
 func TestAnEmptyPoolRefusesTheUploadAndRefills(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()

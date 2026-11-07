@@ -63,8 +63,9 @@ func PoolFor(dailyCreates int64, sweepInterval, maxTTL time.Duration) Pool {
 }
 
 type upload struct {
-	file *os.File
-	path string
+	file           *os.File
+	path           string
+	pooledModified time.Time
 }
 
 // claim renames a randomly chosen pool file to an upload name before anything writes to it, so no other upload and no
@@ -161,7 +162,9 @@ func (b *Blobs) take(name string) (upload, error) {
 	if err == nil && (!info.Mode().IsRegular() || info.Size() != 0 || linkCount(info) != 1) {
 		err = errTaken
 	}
+	var pooledModified time.Time
 	if err == nil {
+		pooledModified = info.ModTime()
 		now := time.Now()
 		err = os.Chtimes(pooledPath, now, now)
 	}
@@ -176,7 +179,30 @@ func (b *Blobs) take(name string) (upload, error) {
 		file.Close()
 		return upload{}, err
 	}
-	return upload{file: file, path: uploadPath}, nil
+	return upload{file: file, path: uploadPath, pooledModified: pooledModified}, nil
+}
+
+// giveBack erases a failed upload and returns its file to the pool with the modification time it had there, so
+// uploads that fail cannot empty the pool and the file's times show no upload once a sweep restamps it.
+func (b *Blobs) giveBack(taken *upload) {
+	err := erase.Overwrite(taken.path, erase.BlockLen)
+	if err == nil {
+		err = os.Truncate(taken.path, 0)
+	}
+	if err == nil {
+		err = os.Chtimes(taken.path, taken.pooledModified, taken.pooledModified)
+	}
+	name := poolPrefix + rand.Text()
+	if err == nil {
+		err = os.Rename(taken.path, filepath.Join(b.root, temporaryDirectory, name))
+	}
+	if err != nil {
+		_ = erase.Shred(taken.path, erase.BlockLen)
+		return
+	}
+	b.known.Lock()
+	b.poolNames = append(b.poolNames, name)
+	b.known.Unlock()
 }
 
 // Replenish adds one batch to the pool and removes random files above its size.

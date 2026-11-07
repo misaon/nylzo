@@ -245,7 +245,7 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 			continue
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() && !pooled(entry.Name()) {
+			if !entry.IsDir() {
 				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
 			}
 		}
@@ -276,7 +276,11 @@ func (b *Blobs) putStamped(
 	if err == nil {
 		err = withSlot(ctx, func() error { return os.Link(taken.path, final) })
 	}
-	dropTemporary(taken.path, err == nil)
+	if err == nil {
+		removePublishedTemporary(taken.path)
+	} else {
+		b.giveBack(&taken)
+	}
 	if errors.Is(err, os.ErrExist) {
 		return time.Time{}, store.ErrConflict
 	}
@@ -289,16 +293,12 @@ func (b *Blobs) putStamped(
 	return stored, nil
 }
 
-// dropTemporary unlinks the temporary name of a published blob, whose final name keeps the data, and shreds any other;
-// a temporary file it cannot drop is left to PurgeTemp.
-func dropTemporary(temporary string, published bool) {
-	if published {
-		iolimit.Hold()
-		os.Remove(temporary)
-		iolimit.Release()
-		return
-	}
-	_ = erase.Shred(temporary, erase.BlockLen)
+// removePublishedTemporary unlinks the temporary name of a published blob, whose final name keeps the data; a name it
+// cannot remove is left to PurgeTemp.
+func removePublishedTemporary(temporary string) {
+	iolimit.Hold()
+	os.Remove(temporary)
+	iolimit.Release()
 }
 
 func (b *Blobs) probe() error {
