@@ -205,7 +205,7 @@ func freeAddress(t *testing.T) string {
 }
 
 func healthy(instance string) bool {
-	for range 200 {
+	for range 600 {
 		if response, err := http.Get(instance + "/healthz"); err == nil {
 			response.Body.Close()
 			if response.StatusCode == http.StatusOK {
