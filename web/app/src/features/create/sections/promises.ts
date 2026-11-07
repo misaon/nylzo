@@ -1,3 +1,4 @@
+import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
 import type { IconName } from '../../../shared/ui/icon/icons.ts';
 
 interface PromiseCard {
@@ -23,7 +24,7 @@ export const PROMISES: readonly PromiseCard[] = [
   {
     key: 'promise.preview',
     icon: 'eye',
-    verify: 'https://github.com/misaon/nylzo/blob/main/spec/protocol.md',
+    verify: `${REPOSITORY_URL}/wiki/Protocol#4-link`,
     wide: false,
     layout: 'md:col-span-2 md:p-7',
     motion: 'md:[--reveal-index:1] md:[--reveal-x:-28px] md:[--reveal-y:28px]',
