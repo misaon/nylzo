@@ -423,7 +423,7 @@ func printText(environment *command.Environment, text string) {
 			"%s: the text holds terminal control characters, shown escaped; pipe the output to a file for the exact text\n",
 			command.Program,
 		)
-		text = escapeTerminalControls(text)
+		text = command.EscapeRunes(text, terminalControl)
 	}
 	fmt.Fprint(environment.Stdout, text)
 	if text != "" && !strings.HasSuffix(text, "\n") {
@@ -468,18 +468,6 @@ func writeAll(directory string, files []outputFile) ([]string, error) {
 		paths = append(paths, path)
 	}
 	return paths, nil
-}
-
-func escapeTerminalControls(text string) string {
-	var out strings.Builder
-	for _, character := range text {
-		if terminalControl(character) {
-			fmt.Fprintf(&out, "\\u%04x", character)
-			continue
-		}
-		out.WriteRune(character)
-	}
-	return out.String()
 }
 
 func outputDir(base string) (string, error) {

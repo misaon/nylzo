@@ -129,9 +129,15 @@ func FailWith(environment *Environment, code int, format string, arguments ...an
 }
 
 func printable(text string) string {
+	return EscapeRunes(text, func(character rune) bool {
+		return unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError
+	})
+}
+
+func EscapeRunes(text string, escaped func(rune) bool) string {
 	var out strings.Builder
 	for _, character := range text {
-		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError {
+		if escaped(character) {
 			fmt.Fprintf(&out, "\\u%04x", character)
 			continue
 		}
