@@ -87,28 +87,43 @@ test(
       autocomplete: 'off',
       translate: 'no',
       writingsuggestions: 'false',
+      'data-gramm': 'false',
+      'data-enable-grammarly': 'false',
+      'data-lt-active': 'false',
     };
-    const passphrase = {
+    const shownPassphrase = {
       ...quiet,
-      autocomplete: 'one-time-code',
       'data-1p-ignore': '',
       'data-lpignore': 'true',
       'data-bwignore': 'true',
       'data-protonpass-ignore': 'true',
     };
+    const hiddenPassphrase = { ...shownPassphrase, autocomplete: 'one-time-code' };
     const passwordFields = page.locator('[autocomplete*="password"], [autocomplete="username"]');
 
     await openApp(page, '/');
     await expectAttributes(page.getByLabel('Message text'), quiet);
-    await expectAttributes(page.getByLabel('Passphrase', { exact: true }), passphrase);
+    await expect(page.locator('form').filter({ has: page.getByLabel('Message text') })).toHaveAttribute(
+      'autocomplete',
+      'off',
+    );
+    await expectAttributes(page.getByLabel('Passphrase', { exact: true }), shownPassphrase);
     expect(await formOwner(page.getByLabel('Passphrase', { exact: true }))).toBeNull();
     await expect(passwordFields).toHaveCount(0);
 
+    await page.getByLabel('Message text').fill('kept out of session restore');
+    await page.getByRole('button', { name: 'Create link' }).click();
+    await expect(page.getByLabel('Link to the message')).toHaveAttribute('autocomplete', 'off', { timeout: 45_000 });
+    await expectAttributes(page.getByPlaceholder(/label/iu), quiet);
+
     await page.goto(message.link);
     const field = page.getByLabel('Passphrase', { exact: true });
-    await expectAttributes(field, passphrase);
+    await expectAttributes(field, hiddenPassphrase);
     expect(await formOwner(field)).toBeNull();
     await expect(passwordFields).toHaveCount(0);
+    await page.getByRole('button', { name: 'Show passphrase' }).click();
+    await expectAttributes(field, shownPassphrase);
+    await page.getByRole('button', { name: 'Hide passphrase' }).click();
 
     const filled: string[] = [];
     await page.route('**/api/v1/messages/*/claim', async (route) => {

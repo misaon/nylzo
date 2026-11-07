@@ -127,7 +127,7 @@ test(
   },
 );
 
-test('Chromium offers to save neither passphrase (W2-03)', async () => {
+test('Chromium offers to save no passphrase, hidden or shown (W2-03)', async () => {
   await withChromiumProfile(async (context) => {
     const internals = context.pages()[0] ?? (await context.newPage());
     await internals.goto('chrome://password-manager-internals');
@@ -146,7 +146,14 @@ test('Chromium offers to save neither passphrase (W2-03)', async () => {
     await recipient.getByLabel('Passphrase', { exact: true }).pressSequentially(PASSPHRASE);
     await recipient.getByRole('button', { name: 'Show message' }).click();
     await expectMessageShown(recipient);
-    await recipient.waitForTimeout(2000);
+    const second = await createMessageThroughApi({ passphrase: PASSPHRASE });
+    const shown = await context.newPage();
+    await shown.goto(second.link);
+    await shown.getByLabel('Passphrase', { exact: true }).pressSequentially(PASSPHRASE);
+    await shown.getByRole('button', { name: 'Show passphrase' }).click();
+    await shown.getByRole('button', { name: 'Show message' }).click();
+    await expectMessageShown(shown);
+    await shown.waitForTimeout(2000);
     const log = await internals.evaluate(() => document.body.textContent);
     expect(log).toContain('PasswordManager');
     expect(log).not.toMatch(/Show password prompt|Decision: ASK/u);

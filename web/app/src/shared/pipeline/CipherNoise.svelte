@@ -7,6 +7,7 @@
 </script>
 
 <p
+  translate="no"
   class="pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_70%_68%_at_50%_50%,transparent_42%,black_100%)] px-6 pt-6 text-caption break-all text-ink-soft/15 tabular-nums"
 >
   {text}
