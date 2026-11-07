@@ -63,7 +63,7 @@ func NewRecord(
 			ManageWrap:  seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
 			BlobRef:     blobRef,
 			BlobWrap:    seal.WrapBlobKey(key, blobKey, locator),
-			BlobPurgeAt: ceil(message.ExpiresAt, BlobPurgeStep),
+			BlobPurgeAt: BlobPurgeAt(message.ExpiresAt),
 			PurgeAt:     ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
 		},
 		Key:     key,

@@ -125,6 +125,9 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		server.events,
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
+	if prepareErr := abuse.Prepare(settings.DataDir, time.Now()); prepareErr != nil {
+		return nil, prepareErr
+	}
 	server.disk = server.newDiskReserver(diskspace.Free)
 	server.handler = server.routes()
 	return server, nil
@@ -227,6 +230,7 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 			day = today
 			s.addressKey.Rotate()
 			s.forgetAddresses()
+			s.prepareReportDays(ctx, now)
 		} else {
 			s.purgeRateTables(now)
 		}
@@ -241,6 +245,13 @@ func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {
 func (s *Server) flushCounts(ctx context.Context) {
 	s.requestCounts.Flush(ctx)
 	s.eventCounts.Flush(ctx)
+}
+
+// prepareReportDays keeps the day files ready when no sweep runs in this process or an external one stopped.
+func (s *Server) prepareReportDays(ctx context.Context, now time.Time) {
+	if err := abuse.Prepare(s.settings.DataDir, now); err != nil {
+		s.events.ErrorContext(ctx, "abuse-prepare", "err", logging.ErrorText(err))
+	}
 }
 
 // advanceRatchet runs in secret mode, so the derivation leaves no copy of the passed seed in memory.

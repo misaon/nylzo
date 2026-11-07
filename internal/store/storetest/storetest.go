@@ -98,11 +98,12 @@ func (m *message) ref() string {
 func (f *fixture) create(opens uint16, ttlSeconds uint32, passphrase bool) *message {
 	f.t.Helper()
 	created := f.createRow(opens, ttlSeconds, passphrase)
-	if err := f.blobs.Put(
+	if _, err := f.blobs.PutExpiring(
 		f.t.Context(),
 		created.ref(),
 		bytes.NewReader(bytes.Repeat([]byte{0xAB}, blobSize)),
 		blobSize,
+		time.Duration(ttlSeconds)*time.Second,
 	); err != nil {
 		f.t.Fatal(err)
 	}

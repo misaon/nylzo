@@ -17,7 +17,8 @@ type SweepReport struct {
 	StaleTempFiles int
 }
 
-// SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed.
+// SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed and replenishes the pool
+// of files that uploads take.
 func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (SweepReport, error) {
 	var report SweepReport
 	var errs []error
@@ -33,6 +34,7 @@ func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (S
 	})
 	errs = append(errs, storage.Checkpoint(ctx))
 	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemp(ctx, now.Add(-BlobGrace)) })
+	errs = append(errs, blobs.Replenish(ctx))
 	return report, errors.Join(errs...)
 }
 

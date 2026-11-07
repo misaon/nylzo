@@ -975,7 +975,13 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 			t.Fatal(err)
 		}
 		short := message.object[:len(message.object)-1]
-		if err := harness.blobs.Put(t.Context(), ref, bytes.NewReader(short), int64(len(short))); err != nil {
+		if _, err := harness.blobs.PutExpiring(
+			t.Context(),
+			ref,
+			bytes.NewReader(short),
+			int64(len(short)),
+			time.Hour,
+		); err != nil {
 			t.Fatal(err)
 		}
 		response, _ := harness.claim(message, "", "")

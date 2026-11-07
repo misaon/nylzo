@@ -34,6 +34,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
+	"github.com/misaon/nylzo/internal/store/disk"
 )
 
 func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
@@ -1319,13 +1320,19 @@ type slowPutBlobs struct {
 	delay time.Duration
 }
 
-func (b slowPutBlobs) Put(ctx context.Context, ref string, body io.Reader, size int64) error {
+func (b slowPutBlobs) PutExpiring(
+	ctx context.Context,
+	ref string,
+	body io.Reader,
+	size int64,
+	ttl time.Duration,
+) (time.Time, error) {
 	received, err := io.ReadAll(body)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	time.Sleep(b.delay)
-	return b.Blobs.Put(ctx, ref, bytes.NewReader(received), size)
+	return b.Blobs.PutExpiring(ctx, ref, bytes.NewReader(received), size, ttl)
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
@@ -1374,6 +1381,10 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 		if blobPurge := record.Row.BlobPurgeAt; blobPurge.Truncate(store.BlobPurgeStep) != blobPurge ||
 			record.Row.PurgeAt.Truncate(store.RowPurgeStep) != record.Row.PurgeAt {
 			t.Fatalf("the cleanup times in the clear must be rounded: %v %v", blobPurge, record.Row.PurgeAt)
+		}
+		blobFile := filepath.Join(harness.directory, disk.Directory, hex.EncodeToString([]byte(record.Row.BlobRef)))
+		if info, err := os.Stat(blobFile); err != nil || !info.ModTime().Equal(record.Row.BlobPurgeAt) {
+			t.Fatalf("the blob file must carry blob_purge_at, so its times add no TTL to the row: %v %v", info, err)
 		}
 	})
 }

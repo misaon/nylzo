@@ -16,6 +16,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/store/disk"
 )
 
 var testPepper = strings.Repeat("0123456789abcdef", 4)
@@ -27,6 +28,8 @@ var testDevelopment = config.Development{
 	AllowUnerasableStorage: runtime.GOOS != "linux",
 	AllowUnerasedMemory:    true,
 }
+
+var testPool = disk.Pool{Size: 8, Batch: 2}
 
 func pepperFile(t *testing.T) string {
 	t.Helper()

@@ -341,6 +341,8 @@ type ReconcileReport struct {
 	Listed  bool
 }
 
+// Reconcile deletes a blob that no row holds once the blob_purge_at it carries has passed, so an upload whose row is
+// still being written stays, and an orphan goes when its message would have expired.
 func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (ReconcileReport, error) {
 	known, err := messages.KnownBlobRefs(ctx)
 	if err != nil {
@@ -350,14 +352,13 @@ func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Tim
 	if err != nil {
 		return ReconcileReport{}, err
 	}
-	cutoff := now.Add(-BlobGrace)
 	orphans := 0
 	var errs []error
 	for _, object := range objects {
 		if ctx.Err() != nil {
 			break
 		}
-		if _, live := known[object.Ref]; live || object.Modified.After(cutoff) {
+		if _, live := known[object.Ref]; live || object.PurgeAt.After(now) {
 			continue
 		}
 		if err = blobs.Delete(ctx, object.Ref); err != nil {

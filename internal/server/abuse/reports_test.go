@@ -60,8 +60,16 @@ func TestSealedReportKnownAnswer(t *testing.T) {
 	}
 }
 
-func newReports(dataDir string) *abuse.Reports {
+func unpreparedReports(dataDir string) *abuse.Reports {
 	return abuse.NewReports(dataDir, operatorKey.PublicKey(), slog.New(slog.DiscardHandler), abuse.FilesBytes(0, 3))
+}
+
+func newReports(t *testing.T, dataDir string, now time.Time) *abuse.Reports {
+	t.Helper()
+	if err := abuse.Prepare(dataDir, now); err != nil {
+		t.Fatal(err)
+	}
+	return unpreparedReports(dataDir)
 }
 
 func spam(id string) *abuse.Report {
@@ -76,8 +84,8 @@ func dayFile(dataDir string, day time.Time) string {
 func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	reports := newReports(dataDir)
 	now := time.Date(2026, 10, 22, 13, 17, 5, 0, time.UTC)
+	reports := newReports(t, dataDir, now)
 	id, other := core.NewID().String(), core.NewID().String()
 	secret := core.NewSecret()
 	link := core.FormatLink("https://nylzo.example", core.NewID(), core.KDFNone, secret, core.NewSecret())
@@ -137,8 +145,8 @@ func TestStoredReportsAreSealedToTheOperator(t *testing.T) {
 func TestADamagedReportHidesNoOtherReport(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	reports := newReports(dataDir)
 	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+	reports := newReports(t, dataDir, now)
 	appendRaw := func(data []byte) {
 		file, err := os.OpenFile(dayFile(dataDir, now), os.O_WRONLY|os.O_APPEND, 0o600)
 		if err != nil {
@@ -195,8 +203,8 @@ func TestTheLongestReportFitsItsSealedLength(t *testing.T) {
 func TestReportFilesHaveACap(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	reports := newReports(dataDir)
 	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+	reports := newReports(t, dataDir, now)
 	if err := reports.Record(now, spam(core.NewID().String())); err != nil {
 		t.Fatal(err)
 	}
@@ -211,21 +219,50 @@ func TestReportFilesHaveACap(t *testing.T) {
 	}
 }
 
+// TestAReportNeverCreatesItsDayFile covers that a day file's birth time cannot show when its first report arrived.
+func TestAReportNeverCreatesItsDayFile(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+	if err := abuse.Prepare(dataDir, now.AddDate(0, 0, -3)); err != nil {
+		t.Fatal(err)
+	}
+	err := unpreparedReports(dataDir).Record(now, spam(core.NewID().String()))
+	if !errors.Is(err, abuse.ErrDayMissing) {
+		t.Fatalf("a report without a prepared day file must be refused: %v", err)
+	}
+	if _, statErr := os.Stat(dayFile(dataDir, now)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("the report created its day file: %v", statErr)
+	}
+	if err = abuse.Prepare(dataDir, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, day := range []time.Time{now, now.AddDate(0, 0, 1)} {
+		info, statErr := os.Stat(dayFile(dataDir, day))
+		if statErr != nil || info.Size() != 0 || !info.ModTime().Equal(day.Truncate(24*time.Hour)) {
+			t.Fatalf("today and tomorrow must have empty day files dated to their start: %v %v", info, statErr)
+		}
+	}
+}
+
+// TestOldReportsAreDropped keeps a second link to an old day file, which shows its bytes after the prune.
 func TestOldReportsAreDropped(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	reports := newReports(dataDir)
 	now := time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+	reports := newReports(t, dataDir, now)
+	kept := filepath.Join(t.TempDir(), "kept")
 	oldDays := []time.Time{now.AddDate(0, 0, -21), now.AddDate(0, 0, -8), now.AddDate(0, 0, -7)}
 	recentDay := now.AddDate(0, 0, -6)
 	write := func() {
-		if err := os.MkdirAll(abuse.Directory(dataDir), 0o700); err != nil {
-			t.Fatal(err)
-		}
 		for _, day := range append(oldDays, recentDay) {
 			if err := os.WriteFile(dayFile(dataDir, day), []byte("x\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
+		}
+		os.Remove(kept)
+		if err := os.Link(dayFile(dataDir, oldDays[0]), kept); err != nil {
+			t.Fatal(err)
 		}
 	}
 	check := func(when string) {
@@ -237,6 +274,9 @@ func TestOldReportsAreDropped(t *testing.T) {
 		}
 		if _, err := os.Stat(dayFile(dataDir, recentDay)); err != nil {
 			t.Fatalf("%s dropped reports younger than 7 days: %v", when, err)
+		}
+		if left, err := os.ReadFile(kept); err != nil || !bytes.Equal(left, make([]byte, 2)) {
+			t.Fatalf("%s freed the blocks of a dropped day file without overwriting them: %q %v", when, left, err)
 		}
 	}
 	write()

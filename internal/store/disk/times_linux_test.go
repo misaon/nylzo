@@ -5,9 +5,12 @@ import (
 	"encoding/hex"
 	"io"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/misaon/nylzo/internal/store/disk"
 )
@@ -55,6 +58,29 @@ func TestRestampHidesWhenEachBlobWasUploaded(t *testing.T) {
 		if changed := time.Unix(status.Ctim.Unix()); changed.Before(restamped.Add(-coarseClock)) {
 			t.Fatalf("%s keeps the ctime of its upload: %v", filepath.Base(path), changed)
 		}
+	}
+}
+
+func TestABlobIsBornBeforeItsUpload(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	blobs := newBlobs(t, directory)
+	time.Sleep(100 * time.Millisecond)
+	started := time.Now()
+	if _, err := blobs.PutExpiring(t.Context(), "ref", strings.NewReader("x"), 1, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	var status unix.Statx_t
+	path := filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte("ref")))
+	if err := unix.Statx(unix.AT_FDCWD, path, unix.AT_SYMLINK_NOFOLLOW, unix.STATX_BTIME, &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Mask&unix.STATX_BTIME == 0 {
+		t.Skip("the file system records no birth time")
+	}
+	coarseClock := 20 * time.Millisecond
+	if born := time.Unix(status.Btime.Sec, int64(status.Btime.Nsec)); !born.Before(started.Add(-coarseClock)) {
+		t.Fatalf("the blob's birth time %v dates its upload at %v", born, started)
 	}
 }
 

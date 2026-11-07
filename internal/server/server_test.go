@@ -185,10 +185,16 @@ type gatedPut struct {
 	release chan struct{}
 }
 
-func (b *gatedPut) Put(ctx context.Context, ref string, body io.Reader, size int64) error {
+func (b *gatedPut) PutExpiring(
+	ctx context.Context,
+	ref string,
+	body io.Reader,
+	size int64,
+	ttl time.Duration,
+) (time.Time, error) {
 	close(b.entered)
 	<-b.release
-	return b.Blobs.Put(ctx, ref, body, size)
+	return b.Blobs.PutExpiring(ctx, ref, body, size, ttl)
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
